@@ -1,0 +1,12 @@
+---
+description: How to add or modify LLM providers
+globs: ["crates/providers/**/*.rs"]
+---
+# Provider Patterns
+- Every provider implements `LlmProvider` trait from `crates/core/src/traits.rs`
+- v1 uses reqwest for HTTP; native SDKs planned for v2
+- Anthropic: POST /v1/messages with x-api-key, anthropic-version headers
+- OpenAI: POST /v1/chat/completions with Bearer auth
+- OpenRouter: OpenAI-compatible at openrouter.ai with HTTP-Referer header
+- Tool schemas go through `tool_formats.rs` for cross-provider translation
+- All provider errors map to `ProviderError` in `crates/core/src/error.rs`

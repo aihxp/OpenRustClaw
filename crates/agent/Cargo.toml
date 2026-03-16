@@ -1,0 +1,23 @@
+[package]
+name = "openrustclaw-agent"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Agent runtime and execution for OpenRustClaw"
+
+[dependencies]
+openrustclaw-core.workspace = true
+openrustclaw-db.workspace = true
+openrustclaw-memory.workspace = true
+openrustclaw-providers.workspace = true
+openrustclaw-mcp.workspace = true
+tokio.workspace = true
+futures.workspace = true
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+dashmap.workspace = true

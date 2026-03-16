@@ -1,0 +1,73 @@
+[gateway]
+host = "127.0.0.1"
+port = 18789
+allowed_origins = ["http://localhost:3000", "http://127.0.0.1:3000"]
+
+[database]
+url = "sqlite://data/openrustclaw.db"
+wal_mode = true
+max_connections = 10
+
+[providers]
+default_provider = "anthropic"
+fallback_chain = ["anthropic", "openai", "openrouter"]
+
+[providers.anthropic]
+model = "claude-sonnet-4-20250514"
+api_version = "2023-06-01"
+strict_tools = true
+streaming_tool_deltas = true
+
+[providers.openai]
+model = "gpt-4o"
+use_responses_api = true
+strict_tools = true
+
+[providers.openrouter]
+route_strategy = "quality"  # price, throughput, quality, web_search
+
+[providers.ollama]
+base_url = "http://localhost:11434"
+model = "llama3.1"
+
+[memory]
+core_memory_max_tokens = 500
+core_memory_max_entries = 20
+embedding_concurrency = 4
+dedupe_cosine_threshold = 0.92
+decay_half_life_days = 30.0
+
+[memory.ttl]
+episodic_days = 90
+semantic_days = 0   # 0 = never expire
+procedural_days = 0 # 0 = never expire
+
+[memory.consolidation]
+enabled = true
+threshold_entries = 1000
+schedule_interval_hours = 24
+
+[scheduler]
+poll_interval_ms = 1000
+lease_duration_secs = 60
+max_retries = 3
+base_retry_delay_secs = 5
+max_retry_delay_secs = 300
+
+[security]
+require_auth = true
+origin_validation = true
+prompt_injection_defense = true
+skill_signature_required = false  # marketplace only; workspace skills exempt
+
+[sidecar]
+grpc_port = 50051
+python_path = "python3"
+auto_start = true
+restart_on_crash = true
+
+[observability]
+langsmith_enabled = false
+tracing_enabled = true
+metrics_enabled = true
+metrics_port = 9090

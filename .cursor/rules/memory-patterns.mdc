@@ -1,0 +1,12 @@
+---
+description: Memory system conventions
+globs: ["crates/memory/**/*.rs"]
+---
+# Memory Patterns
+- All writes go through `policies.rs` (dedupe, confidence, TTL)
+- Core memory: tiny, always in prompt (~500 tokens), key-value pairs
+- Recall memory: on-demand via memory_search tool, NEVER auto-injected
+- Archive: consolidated summaries of old low-value memories
+- RAG corpus uses separate indices per source_type (docs, code, configs, convos, runbooks)
+- Context manager: Write→Select→Compress→Isolate, compress at 85% capacity
+- NEVER inject full MEMORY.md into system prompt (OpenClaw anti-pattern)

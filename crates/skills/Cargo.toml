@@ -1,0 +1,19 @@
+[package]
+name = "openrustclaw-skills"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Skill/plugin system for OpenRustClaw"
+
+[dependencies]
+openrustclaw-core.workspace = true
+openrustclaw-security.workspace = true
+tokio.workspace = true
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+sha2.workspace = true
+wasmtime.workspace = true

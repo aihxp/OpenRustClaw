@@ -1,0 +1,23 @@
+[package]
+name = "openrustclaw-security"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Security hardening layer for OpenRustClaw"
+
+[dependencies]
+openrustclaw-core.workspace = true
+tokio.workspace = true
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+ed25519-dalek.workspace = true
+sha2.workspace = true
+argon2.workspace = true
+jsonwebtoken.workspace = true
+rand.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+url.workspace = true

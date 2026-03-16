@@ -1,0 +1,25 @@
+[package]
+name = "openrustclaw-gateway"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "WebSocket gateway and session routing for OpenRustClaw"
+
+[dependencies]
+openrustclaw-core.workspace = true
+openrustclaw-agent.workspace = true
+openrustclaw-security.workspace = true
+tokio.workspace = true
+futures.workspace = true
+async-trait.workspace = true
+axum.workspace = true
+axum-extra.workspace = true
+tower.workspace = true
+tower-http.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+dashmap.workspace = true

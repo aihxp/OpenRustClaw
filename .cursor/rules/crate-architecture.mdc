@@ -1,0 +1,19 @@
+---
+description: Crate structure and dependency rules
+globs: ["**/Cargo.toml", "crates/**/*.rs"]
+---
+# Crate Architecture
+- core → (no internal deps)
+- db → core
+- memory → core, db
+- providers → core
+- mcp → core
+- agent → core, db, memory, providers, mcp
+- gateway → core, agent, security
+- scheduler → core, db, langbridge
+- security → core
+- langbridge → core
+- observability → core
+- channels → core
+- skills → core, security
+- cli → all crates

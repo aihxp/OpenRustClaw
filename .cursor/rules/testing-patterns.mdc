@@ -1,0 +1,10 @@
+---
+description: Testing conventions
+globs: ["tests/**/*.rs", "crates/**/tests/**/*.rs"]
+---
+# Testing Patterns
+- Unit tests: mock LLM providers, use in-memory SQLite
+- Integration tests: use real SQLite in temp dir, mock external APIs
+- E2E tests: full pipeline per vertical slice
+- Name tests: test_{what}_{scenario}_{expected}
+- Every provider needs a request-building test and a response-parsing test

@@ -1,0 +1,21 @@
+[package]
+name = "openrustclaw-scheduler"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Durable scheduler for OpenRustClaw (no cron)"
+
+[dependencies]
+openrustclaw-core.workspace = true
+openrustclaw-db.workspace = true
+openrustclaw-langbridge.workspace = true
+tokio.workspace = true
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+chrono-tz.workspace = true
+backoff.workspace = true

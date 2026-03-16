@@ -1,0 +1,34 @@
+[package]
+name = "openrustclaw-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Command-line interface for OpenRustClaw"
+
+[[bin]]
+name = "openrustclaw"
+path = "src/main.rs"
+
+[dependencies]
+openrustclaw-core.workspace = true
+openrustclaw-db.workspace = true
+openrustclaw-memory.workspace = true
+openrustclaw-providers.workspace = true
+openrustclaw-mcp.workspace = true
+openrustclaw-agent.workspace = true
+openrustclaw-gateway.workspace = true
+openrustclaw-channels.workspace = true
+openrustclaw-skills.workspace = true
+openrustclaw-scheduler.workspace = true
+openrustclaw-security.workspace = true
+openrustclaw-langbridge.workspace = true
+openrustclaw-observability.workspace = true
+tokio.workspace = true
+clap.workspace = true
+ratatui.workspace = true
+crossterm.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true

@@ -1,0 +1,20 @@
+[package]
+name = "openrustclaw-langbridge"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Python sidecar gRPC bridge for OpenRustClaw"
+
+[dependencies]
+openrustclaw-core.workspace = true
+tokio.workspace = true
+async-trait.workspace = true
+tonic.workspace = true
+prost.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[build-dependencies]
+tonic-build.workspace = true

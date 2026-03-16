@@ -1,0 +1,11 @@
+---
+description: Rust coding standards for OpenRustClaw
+globs: ["**/*.rs"]
+---
+# Rust Conventions
+- Use `thiserror` for library errors, `anyhow` for application errors
+- All async functions use tokio runtime
+- Prefer `Arc<dyn Trait>` over generics for plugin boundaries
+- All database access through `crates/db` — never raw SQL outside that crate
+- Use `tracing` macros (info!, warn!, error!) — never println! outside CLI
+- Every public item needs a doc comment

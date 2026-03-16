@@ -1,0 +1,25 @@
+syntax = "proto3";
+package openrustclaw.tracing;
+
+service TracingService {
+    // Forward a trace to LangSmith
+    rpc SendTrace(TraceRequest) returns (TraceResponse);
+}
+
+message TraceRequest {
+    string run_id = 1;
+    string name = 2;
+    string run_type = 3;  // "llm", "tool", "chain", "retriever"
+    string parent_run_id = 4;
+    string inputs = 5;  // JSON
+    string outputs = 6;  // JSON
+    string error = 7;
+    string start_time = 8;
+    string end_time = 9;
+    string project_name = 10;
+}
+
+message TraceResponse {
+    bool success = 1;
+    string error = 2;
+}
