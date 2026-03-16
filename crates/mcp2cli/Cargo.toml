@@ -1,0 +1,65 @@
+[package]
+name = "openrustclaw-mcp2cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "MCP-to-CLI adapter with on-demand discovery for 96-99% token savings"
+
+[dependencies]
+# Internal crates
+openrustclaw-core.workspace = true
+openrustclaw-mcp.workspace = true
+
+# Async runtime
+tokio.workspace = true
+async-trait.workspace = true
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml.workspace = true
+
+# HTTP client
+reqwest.workspace = true
+
+# CLI generation
+clap.workspace = true
+clap_complete = { version = "4", optional = true }
+
+# Caching
+cached.workspace = true
+
+# OpenAPI parsing
+openapiv3.workspace = true
+
+# Error handling
+thiserror.workspace = true
+anyhow.workspace = true
+
+# Observability
+tracing.workspace = true
+
+# Token counting
+tiktoken-rs.workspace = true
+
+# Utilities
+url.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+dashmap.workspace = true
+
+# Auth dependencies
+base64.workspace = true
+urlencoding.workspace = true
+sha2.workspace = true
+rand.workspace = true
+
+[dev-dependencies]
+tokio-test.workspace = true
+wiremock.workspace = true
+tempfile.workspace = true
+serial_test.workspace = true
+
+[features]
+default = ["completions"]
+completions = ["dep:clap_complete"]

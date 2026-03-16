@@ -6,6 +6,7 @@ members = [
     "crates/memory",
     "crates/providers",
     "crates/mcp",
+    "crates/mcp2cli",
     "crates/agent",
     "crates/gateway",
     "crates/channels",
@@ -35,6 +36,7 @@ pin-project-lite = "0.2"
 # Serialization
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+serde_yaml = "0.9"
 toml = "0.8"
 
 # Error handling
@@ -107,8 +109,22 @@ openrustclaw-scheduler = { path = "crates/scheduler" }
 openrustclaw-security = { path = "crates/security" }
 openrustclaw-langbridge = { path = "crates/langbridge" }
 openrustclaw-observability = { path = "crates/observability" }
+openrustclaw-mcp2cli = { path = "crates/mcp2cli" }
+
+# OpenAPI parsing
+openapiv3 = "2.0"
+
+# Caching
+cached = { version = "0.54", features = ["async", "tokio"] }
+
+# Base64 (for OAuth)
+base64 = "0.22"
+
+# URL encoding
+urlencoding = "2"
 
 # Test dependencies
 wiremock = "0.6"
 serial_test = "3"
 tempfile = "3"
+tokio-test = "0.4"

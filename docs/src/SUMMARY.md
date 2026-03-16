@@ -21,6 +21,7 @@
 - [Scheduling Tasks](./guides/scheduling.md)
 - [Creating Skills](./guides/skills.md)
 - [Connecting MCP Servers](./guides/mcp-servers.md)
+- [mcp2cli - Token-Efficient Discovery](./guides/mcp2cli.md)
 - [Security](./guides/security.md)
 - [Cursor Integration](./guides/cursor-integration.md)
 

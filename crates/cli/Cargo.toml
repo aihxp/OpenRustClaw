@@ -23,6 +23,7 @@ openrustclaw-scheduler.workspace = true
 openrustclaw-security.workspace = true
 openrustclaw-langbridge.workspace = true
 openrustclaw-observability.workspace = true
+openrustclaw-mcp2cli.workspace = true
 tokio.workspace = true
 clap.workspace = true
 ratatui.workspace = true

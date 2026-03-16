@@ -69,6 +69,11 @@ enum Commands {
         #[arg(short, long, default_value = "stdio")]
         transport: String,
     },
+    /// mcp2cli - Token-efficient MCP tool discovery (96-99% savings)
+    Mcp2Cli {
+        #[command(subcommand)]
+        action: Mcp2CliAction,
+    },
 }
 
 #[derive(Subcommand)]
@@ -140,6 +145,78 @@ enum CursorAction {
     Setup,
 }
 
+#[derive(Subcommand)]
+#[clap(rename_all = "kebab-case")]
+enum Mcp2CliAction {
+    /// List available tools (~16 tokens/tool)
+    List {
+        #[arg(long, group = "source")]
+        mcp: Option<String>,
+        #[arg(long, group = "source")]
+        mcp_stdio: Option<String>,
+        #[arg(long, group = "source")]
+        spec: Option<String>,
+        #[arg(long)]
+        base_url: Option<String>,
+        #[arg(long)]
+        refresh: bool,
+        #[arg(long, default_value = "table")]
+        format: String,
+    },
+    /// Get tool help (~80-200 tokens)
+    Help {
+        #[arg(long, group = "source")]
+        mcp: Option<String>,
+        #[arg(long, group = "source")]
+        spec: Option<String>,
+        tool: String,
+        #[arg(long, default_value = "text")]
+        format: String,
+    },
+    /// Execute a tool
+    Run {
+        #[arg(long, group = "source")]
+        mcp: Option<String>,
+        #[arg(long, group = "source")]
+        spec: Option<String>,
+        tool: String,
+        #[arg(long)]
+        args: Option<String>,
+        #[arg(long)]
+        stdin: bool,
+        #[arg(long, default_value = "json")]
+        format: String,
+    },
+    /// Analyze token costs
+    Analyze {
+        #[arg(short, long, default_value = "30")]
+        tools: usize,
+        #[arg(short, long, default_value = "15")]
+        turns: usize,
+        #[arg(short, long, default_value = "5")]
+        used: usize,
+    },
+    /// Convert to/from TOON format
+    Toon {
+        input: Option<String>,
+        #[arg(long)]
+        decode: bool,
+    },
+    /// Cache management
+    Cache {
+        #[command(subcommand)]
+        action: Mcp2CliCacheAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum Mcp2CliCacheAction {
+    /// Clear all cached data
+    Clear,
+    /// Show cache statistics
+    Stats,
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -176,5 +253,34 @@ async fn main() -> Result<()> {
             CursorAction::Setup => commands::cursor::setup().await,
         },
         Commands::McpServer { transport } => commands::start::run_mcp_server(&transport).await,
+        Commands::Mcp2Cli { action } => match action {
+            Mcp2CliAction::List { mcp, mcp_stdio, spec, base_url, refresh, format } => {
+                commands::mcp2cli::list(mcp, mcp_stdio, spec, base_url, refresh, parse_format(&format)).await
+            }
+            Mcp2CliAction::Help { mcp, spec, tool, format } => {
+                commands::mcp2cli::help_cmd(mcp, spec, tool, parse_format(&format)).await
+            }
+            Mcp2CliAction::Run { mcp, spec, tool, args, stdin, format } => {
+                commands::mcp2cli::run(mcp, spec, tool, args, stdin, parse_format(&format)).await
+            }
+            Mcp2CliAction::Analyze { tools, turns, used } => {
+                commands::mcp2cli::analyze(tools, turns, used).await
+            }
+            Mcp2CliAction::Toon { input, decode } => {
+                commands::mcp2cli::toon_cmd(input, decode).await
+            }
+            Mcp2CliAction::Cache { action } => match action {
+                Mcp2CliCacheAction::Clear => commands::mcp2cli::cache_clear().await,
+                Mcp2CliCacheAction::Stats => commands::mcp2cli::cache_stats().await,
+            },
+        },
+    }
+}
+
+fn parse_format(s: &str) -> commands::mcp2cli::OutputFormat {
+    match s.to_lowercase().as_str() {
+        "json" => commands::mcp2cli::OutputFormat::Json,
+        "toon" => commands::mcp2cli::OutputFormat::Toon,
+        _ => commands::mcp2cli::OutputFormat::Table,
     }
 }

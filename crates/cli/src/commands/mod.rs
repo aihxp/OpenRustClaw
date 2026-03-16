@@ -2,6 +2,7 @@ pub mod chat;
 pub mod cursor;
 pub mod doctor;
 pub mod memory;
+pub mod mcp2cli;
 pub mod models;
 pub mod schedule;
 pub mod security;
