@@ -71,6 +71,16 @@ pub struct MemoryEntryRow {
     pub metadata: Option<String>,
 }
 
+/// A row from the `memory_vectors` table.
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct MemoryVectorRow {
+    pub memory_id: String,
+    pub vector: Vec<u8>,
+    pub dimensions: i64,
+    pub model_id: Option<String>,
+    pub created_at: String,
+}
+
 // ──────────────────────────────────────────────
 // Skills
 // ──────────────────────────────────────────────

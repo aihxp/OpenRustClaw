@@ -79,13 +79,14 @@ CREATE INDEX IF NOT EXISTS idx_memory_expires ON memory_entries(expires_at);
         name: "004_memory_fts",
         sql: r#"
 CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts USING fts5(
-    id,
     content,
-    source,
-    source_type,
-    memory_type,
     tokenize='porter unicode61'
 );
+CREATE TABLE IF NOT EXISTS memory_fts_mapping (
+    fts_rowid INTEGER PRIMARY KEY,
+    memory_id TEXT NOT NULL UNIQUE REFERENCES memory_entries(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_fts_mapping_memory ON memory_fts_mapping(memory_id);
 "#,
     },
     Migration {

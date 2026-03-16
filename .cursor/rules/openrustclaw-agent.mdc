@@ -1,0 +1,34 @@
+---
+description: OpenRustClaw Agent Behavior
+globs: ["**/*.rs", "crates/**/*.rs"]
+---
+# OpenRustClaw Agent Rules
+
+When working with the OpenRustClaw codebase:
+
+## Architecture Principles
+- **Database-first**: All state is persisted to SQLite, not held in memory
+- **Three-tier memory**: Core (~500 tokens), Recall (searchable), Archive (consolidated)
+- **Tool-first design**: Agent capabilities through tools, not system prompts
+- **Security**: Origin validation, Ed25519 skill verification, WASM sandboxing
+
+## Code Style
+- Use `anyhow` for error handling in CLI/binaries
+- Use `thiserror` for library error types
+- Prefer `&str` over `String` for function parameters
+- Use `Arc<dyn Trait>` for shared state
+
+## Async Patterns
+- Use `tokio::spawn` for concurrent operations
+- Prefer `tokio::sync::RwLock` over `std::sync::Mutex`
+- Use `tokio::select!` for cancellation
+
+## Testing
+- Unit tests in the same file as the code
+- Integration tests in `tests/` directory
+- Use `sqlx::test` for database tests
+
+## Documentation
+- Document all public APIs with rustdoc
+- Include examples in doc comments
+- Keep AGENTS.md files updated

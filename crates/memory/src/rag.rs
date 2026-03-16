@@ -34,11 +34,16 @@ pub struct Chunk {
 
 /// Split text into overlapping chunks.
 pub fn chunk_text(text: &str, chunk_size: usize, overlap: usize) -> Vec<String> {
+    if chunk_size == 0 {
+        return vec![];
+    }
+
     let words: Vec<&str> = text.split_whitespace().collect();
     if words.is_empty() {
         return vec![];
     }
 
+    let step = chunk_size.saturating_sub(overlap).max(1);
     let mut chunks = Vec::new();
     let mut start = 0;
 
@@ -51,7 +56,7 @@ pub fn chunk_text(text: &str, chunk_size: usize, overlap: usize) -> Vec<String> 
             break;
         }
 
-        start += chunk_size.saturating_sub(overlap);
+        start += step;
     }
 
     chunks
@@ -63,4 +68,20 @@ pub fn grade_results(results: Vec<ScoredMemory>, min_score: f32) -> Vec<ScoredMe
         .into_iter()
         .filter(|r| r.score >= min_score)
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::chunk_text;
+
+    #[test]
+    fn chunk_text_returns_empty_for_zero_chunk_size() {
+        assert!(chunk_text("alpha beta", 0, 0).is_empty());
+    }
+
+    #[test]
+    fn chunk_text_progresses_when_overlap_matches_chunk_size() {
+        let chunks = chunk_text("one two three four", 2, 2);
+        assert_eq!(chunks, vec!["one two", "two three", "three four"]);
+    }
 }

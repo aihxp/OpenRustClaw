@@ -6,7 +6,8 @@
 use std::pin::Pin;
 
 use async_trait::async_trait;
-use futures::Stream;
+use eventsource_stream::Eventsource;
+use futures::{Stream, StreamExt};
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use serde_json::Value;
 use tracing::{debug, warn};
@@ -213,7 +214,8 @@ impl OpenAiProvider {
         let tool_calls = assistant_msg
             .get("tool_calls")
             .and_then(|v| v.as_array())
-            .map(|arr| parse_openai_tool_calls(arr));
+            .map(|arr| parse_openai_tool_calls(arr))
+            .transpose()?;
 
         let mut message = Message::assistant(text_content);
         if let Some(ref calls) = tool_calls {
@@ -351,12 +353,203 @@ impl LlmProvider for OpenAiProvider {
 
     async fn stream(
         &self,
-        _request: CompletionRequest,
+        request: CompletionRequest,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<StreamChunk>> + Send>>> {
-        Err(Error::Provider(ProviderError::StreamError {
-            provider: "openai".to_string(),
-            message: "Streaming not yet implemented".to_string(),
-        }))
+        let url = format!("{}/v1/chat/completions", self.base_url);
+        let mut body = self.build_request_body(&request);
+        body["stream"] = serde_json::json!(true);
+
+        debug!(provider = "openai", model = %self.model, "Sending streaming completion request");
+
+        let response = self
+            .client
+            .post(&url)
+            .headers(self.default_headers())
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| {
+                Error::Provider(ProviderError::Request(format!(
+                    "OpenAI streaming request failed: {e}"
+                )))
+            })?;
+
+        let status = response.status();
+
+        if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+            let retry_after = response
+                .headers()
+                .get("retry-after")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|s| s.parse::<u64>().ok());
+            return Err(Error::Provider(ProviderError::RateLimited {
+                provider: "openai".to_string(),
+                retry_after_secs: retry_after,
+            }));
+        }
+
+        if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
+            let error_body = response.text().await.unwrap_or_default();
+            return Err(Error::Provider(ProviderError::AuthFailed {
+                provider: "openai".to_string(),
+                message: error_body,
+            }));
+        }
+
+        if status == reqwest::StatusCode::NOT_FOUND {
+            return Err(Error::Provider(ProviderError::ModelNotFound {
+                provider: "openai".to_string(),
+                model: self.model.clone(),
+            }));
+        }
+
+        if status.is_server_error() {
+            let error_body = response.text().await.unwrap_or_default();
+            return Err(Error::Provider(ProviderError::Unavailable {
+                provider: "openai".to_string(),
+                message: format!("Server error {status}: {error_body}"),
+            }));
+        }
+
+        if !status.is_success() {
+            let error_body = response.text().await.unwrap_or_default();
+            warn!(
+                provider = "openai",
+                status = %status,
+                body = %error_body,
+                "Unexpected error response"
+            );
+            return Err(Error::Provider(ProviderError::Request(format!(
+                "OpenAI API error {status}: {error_body}"
+            ))));
+        }
+
+        let model = self.model.clone();
+        let provider_name = "openai".to_string();
+
+        // Create the SSE stream
+        let stream = response
+            .bytes_stream()
+            .eventsource()
+            .map(move |event: std::result::Result<eventsource_stream::Event, eventsource_stream::EventStreamError<reqwest::Error>>| {
+                match event {
+                    Ok(event) => {
+                        // Check for [DONE] marker
+                        if event.data == "[DONE]" {
+                            return Ok(StreamChunk::Done {
+                                response: CompletionResponse {
+                                    id: "streamed".to_string(),
+                                    message: Message::assistant(""),
+                                    model: model.clone(),
+                                    usage: TokenUsage::default(),
+                                    provider: provider_name.clone(),
+                                    finish_reason: FinishReason::Stop,
+                                },
+                            });
+                        }
+
+                        let data: Value = match serde_json::from_str(&event.data) {
+                            Ok(v) => v,
+                            Err(e) => {
+                                return Err(Error::Provider(ProviderError::StreamError {
+                                    provider: "openai".to_string(),
+                                    message: format!("Failed to parse SSE data: {e}"),
+                                }));
+                            }
+                        };
+
+                        // Extract the delta from the first choice
+                        let choice = data
+                            .get("choices")
+                            .and_then(|v| v.as_array())
+                            .and_then(|arr| arr.first());
+
+                        if let Some(choice) = choice {
+                            // Check for finish_reason
+                            if let Some(finish_reason) = choice.get("finish_reason").and_then(|v| v.as_str()) {
+                                if !finish_reason.is_empty() {
+                                    let reason = match finish_reason {
+                                        "stop" => FinishReason::Stop,
+                                        "tool_calls" => FinishReason::ToolUse,
+                                        "length" => FinishReason::MaxTokens,
+                                        "content_filter" => FinishReason::ContentFilter,
+                                        _ => FinishReason::Stop,
+                                    };
+                                    return Ok(StreamChunk::Done {
+                                        response: CompletionResponse {
+                                            id: data.get("id").and_then(|v| v.as_str()).unwrap_or("streamed").to_string(),
+                                            message: Message::assistant(""),
+                                            model: data.get("model").and_then(|v| v.as_str()).unwrap_or(&model).to_string(),
+                                            usage: TokenUsage::default(),
+                                            provider: provider_name.clone(),
+                                            finish_reason: reason,
+                                        },
+                                    });
+                                }
+                            }
+
+                            // Process delta
+                            if let Some(delta) = choice.get("delta") {
+                                // Check for content delta
+                                if let Some(content) = delta.get("content").and_then(|v| v.as_str()) {
+                                    if !content.is_empty() {
+                                        return Ok(StreamChunk::ContentDelta {
+                                            delta: content.to_string(),
+                                        });
+                                    }
+                                }
+
+                                // Check for tool_calls delta
+                                if let Some(tool_calls) = delta.get("tool_calls").and_then(|v| v.as_array()) {
+                                    if let Some(tool_call) = tool_calls.first() {
+                                        let id = tool_call
+                                            .get("id")
+                                            .and_then(|v| v.as_str())
+                                            .unwrap_or("")
+                                            .to_string();
+                                        let name = tool_call
+                                            .get("function")
+                                            .and_then(|f| f.get("name"))
+                                            .and_then(|v| v.as_str())
+                                            .map(|s| s.to_string());
+                                        let arguments = tool_call
+                                            .get("function")
+                                            .and_then(|f| f.get("arguments"))
+                                            .and_then(|v| v.as_str())
+                                            .unwrap_or("")
+                                            .to_string();
+
+                                        if !id.is_empty() || name.is_some() || !arguments.is_empty() {
+                                            return Ok(StreamChunk::ToolCallDelta {
+                                                id,
+                                                name,
+                                                arguments_delta: arguments,
+                                            });
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Empty delta - return a no-op chunk that will be filtered
+                        Ok(StreamChunk::ContentDelta { delta: String::new() })
+                    }
+                    Err(e) => Err(Error::Provider(ProviderError::StreamError {
+                        provider: "openai".to_string(),
+                        message: format!("SSE stream error: {e}"),
+                    })),
+                }
+            })
+            .filter(|chunk| {
+                // Filter out empty content deltas to reduce noise
+                let should_keep = match chunk {
+                    Ok(StreamChunk::ContentDelta { delta }) if delta.is_empty() => false,
+                    _ => true,
+                };
+                std::future::ready(should_keep)
+            });
+
+        Ok(Box::pin(stream))
     }
 
     fn model_id(&self) -> &str {

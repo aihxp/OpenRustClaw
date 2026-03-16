@@ -6,7 +6,7 @@
 use std::pin::Pin;
 
 use async_trait::async_trait;
-use futures::Stream;
+use futures::{Stream, StreamExt};
 use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
 use serde_json::Value;
 use tracing::{debug, warn};
@@ -336,12 +336,173 @@ impl LlmProvider for OllamaProvider {
 
     async fn stream(
         &self,
-        _request: CompletionRequest,
+        request: CompletionRequest,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<StreamChunk>> + Send>>> {
-        Err(Error::Provider(ProviderError::StreamError {
-            provider: "ollama".to_string(),
-            message: "Streaming not yet implemented".to_string(),
-        }))
+        let url = format!("{}/api/chat", self.base_url);
+        let mut body = self.build_request_body(&request);
+        body["stream"] = serde_json::json!(true);
+
+        debug!(provider = "ollama", model = %self.model, "Sending streaming completion request");
+
+        let response = self
+            .client
+            .post(&url)
+            .headers(self.default_headers())
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| {
+                // Connection errors likely mean Ollama isn't running.
+                Error::Provider(ProviderError::Unavailable {
+                    provider: "ollama".to_string(),
+                    message: format!("Ollama connection failed (is it running?): {e}"),
+                })
+            })?;
+
+        let status = response.status();
+
+        if status == reqwest::StatusCode::NOT_FOUND {
+            return Err(Error::Provider(ProviderError::ModelNotFound {
+                provider: "ollama".to_string(),
+                model: self.model.clone(),
+            }));
+        }
+
+        if status.is_server_error() {
+            let error_body = response.text().await.unwrap_or_default();
+            return Err(Error::Provider(ProviderError::Unavailable {
+                provider: "ollama".to_string(),
+                message: format!("Server error {status}: {error_body}"),
+            }));
+        }
+
+        if !status.is_success() {
+            let error_body = response.text().await.unwrap_or_default();
+            warn!(
+                provider = "ollama",
+                status = %status,
+                body = %error_body,
+                "Unexpected error response"
+            );
+            return Err(Error::Provider(ProviderError::Request(format!(
+                "Ollama API error {status}: {error_body}"
+            ))));
+        }
+
+        let model = self.model.clone();
+        let provider_name = "ollama".to_string();
+
+        // Ollama uses NDJSON (newline-delimited JSON) for streaming
+        let stream = response
+            .bytes_stream()
+            .map(move |bytes| {
+                match bytes {
+                    Ok(bytes) => {
+                        // Split by newlines to get individual JSON objects
+                        let text = String::from_utf8_lossy(&bytes);
+                        let lines: Vec<&str> = text.lines().collect();
+                        let results: Vec<Result<StreamChunk>> = lines
+                            .into_iter()
+                            .filter(|line| !line.is_empty())
+                            .map(|line| {
+                                let data: Value = match serde_json::from_str(line) {
+                                    Ok(v) => v,
+                                    Err(e) => {
+                                        return Err(Error::Provider(ProviderError::StreamError {
+                                            provider: "ollama".to_string(),
+                                            message: format!("Failed to parse NDJSON: {e}"),
+                                        }));
+                                    }
+                                };
+
+                                // Check if stream is done
+                                let done = data.get("done").and_then(|v| v.as_bool()).unwrap_or(false);
+
+                                if done {
+                                    // Extract usage statistics if available
+                                    let prompt_tokens = data
+                                        .get("prompt_eval_count")
+                                        .and_then(|v| v.as_u64())
+                                        .unwrap_or(0) as usize;
+                                    let completion_tokens = data
+                                        .get("eval_count")
+                                        .and_then(|v| v.as_u64())
+                                        .unwrap_or(0) as usize;
+
+                                    // Check for tool calls in the final message
+                                    let message_obj = data.get("message");
+                                    let tool_calls = message_obj
+                                        .and_then(|m| m.get("tool_calls"))
+                                        .and_then(|v| v.as_array());
+
+                                    let has_tool_calls = tool_calls
+                                        .as_ref()
+                                        .is_some_and(|calls| !calls.is_empty());
+
+                                    let finish_reason = if has_tool_calls {
+                                        FinishReason::ToolUse
+                                    } else {
+                                        FinishReason::Stop
+                                    };
+
+                                    return Ok(StreamChunk::Done {
+                                        response: CompletionResponse {
+                                            id: format!(
+                                                "ollama-{}",
+                                                data.get("created_at")
+                                                    .and_then(|v| v.as_str())
+                                                    .unwrap_or("streamed")
+                                            ),
+                                            message: Message::assistant(""),
+                                            model: data.get("model").and_then(|v| v.as_str()).unwrap_or(&model).to_string(),
+                                            usage: TokenUsage {
+                                                prompt_tokens,
+                                                completion_tokens,
+                                                total_tokens: prompt_tokens + completion_tokens,
+                                                cost_usd: None,
+                                            },
+                                            provider: provider_name.clone(),
+                                            finish_reason,
+                                        },
+                                    });
+                                }
+
+                                // Extract content delta from message
+                                if let Some(message) = data.get("message") {
+                                    if let Some(content) = message.get("content").and_then(|v| v.as_str()) {
+                                        if !content.is_empty() {
+                                            return Ok(StreamChunk::ContentDelta {
+                                                delta: content.to_string(),
+                                            });
+                                        }
+                                    }
+                                }
+
+                                Ok(StreamChunk::ContentDelta { delta: String::new() })
+                            })
+                            .collect();
+                        
+                        futures::stream::iter(results)
+                    }
+                    Err(e) => {
+                        futures::stream::iter(vec![Err(Error::Provider(ProviderError::StreamError {
+                            provider: "ollama".to_string(),
+                            message: format!("Stream error: {e}"),
+                        }))])
+                    }
+                }
+            })
+            .flatten()
+            .filter(|chunk| {
+                // Filter out empty content deltas to reduce noise
+                let should_keep = match chunk {
+                    Ok(StreamChunk::ContentDelta { delta }) if delta.is_empty() => false,
+                    _ => true,
+                };
+                std::future::ready(should_keep)
+            });
+
+        Ok(Box::pin(stream))
     }
 
     fn model_id(&self) -> &str {

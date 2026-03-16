@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "openrustclaw": {
+      "command": "cargo",
+      "args": ["run", "--bin", "openrustclaw", "--", "mcpserver", "--transport", "stdio"],
+      "env": {
+        "RUST_LOG": "info"
+      },
+      "description": "OpenRustClaw AI Agent Framework MCP Server",
+      "enabled": true
+    }
+  }
+}

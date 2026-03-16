@@ -22,10 +22,10 @@ impl SessionManager {
     pub async fn create_session(
         &self,
         user_id: &str,
-        _session_type: SessionType,
+        session_type: SessionType,
         platform: Platform,
     ) -> Result<Session> {
-        let session = Session::new_dm(user_id, platform);
+        let session = Session::new(session_type, user_id, platform);
         let id = session.id.to_string();
         self.sessions.write().await.insert(id.clone(), session.clone());
         info!(session_id = %id, user_id = %user_id, "Session created");

@@ -2,605 +2,653 @@
 marp: true
 theme: default
 paginate: true
-header: 'OpenRustClaw — Architecture Deep Dive'
-footer: '2026'
+class: invert
+header: 'Architecture Deep Dive'
+footer: '© 2026 OpenRustClaw Project'
 ---
 
-# OpenRustClaw
-## Architecture Deep Dive
+<!--
+Speaker Notes: This deck provides a technical deep dive into OpenRustClaw's architecture. Target audience: engineers and architects. Plan for 30 minutes.
+-->
 
-A technical walkthrough of the hybrid Rust + Python AI agent framework
-
----
-
-## Crate Dependency Graph
-
-```
-cli ──→ gateway ──→ agent ──→ providers
-  │        │          │          │
-  │        ▼          ▼          ▼
-  │     security   memory      mcp
-  │        │          │          │
-  │        ▼          ▼          ▼
-  ├──→ scheduler ──→ db ──→── core
-  │        │
-  └──→ langbridge ──→ observability
-```
-
-**Rule**: Dependencies flow downward. `core` has zero internal dependencies.
-
----
-
-## Core Crate (`crates/core`)
-
-### Key Traits
-
-```rust
-#[async_trait]
-pub trait LlmProvider: Send + Sync {
-    async fn complete(&self, req: CompletionRequest)
-        -> Result<CompletionResponse>;
-    async fn stream(&self, req: CompletionRequest)
-        -> Result<Pin<Box<dyn Stream<Item = Result<StreamChunk>>>>>;
-    fn model_id(&self) -> &str;
-    fn provider_name(&self) -> &str;
-    fn native_tool_format(&self) -> ToolFormat;
+<style>
+section {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
-```
-
-All providers implement this unified interface.
-
----
-
-## Provider SDK Architecture
-
-```
-┌───────────────┐  ┌───────────────┐  ┌───────────────┐
-│   Anthropic    │  │    OpenAI     │  │  OpenRouter   │
-│                │  │               │  │               │
-│ anthropic_rust │  │ async-openai  │  │ openrouter_api│
-│ Messages API   │  │ Responses API │  │ 400+ models   │
-│ Strict tools   │  │ Strict tools  │  │ Auto-routing  │
-│ Batch (50%)    │  │ Built-in web  │  │ Zero logging  │
-└───────┬───────┘  └───────┬───────┘  └───────┬───────┘
-        │                  │                   │
-        ▼                  ▼                   ▼
-┌─────────────────────────────────────────────────────┐
-│           Unified LlmProvider Trait                  │
-│  + ProviderChain (fallback, cooldowns, key rotation) │
-└─────────────────────────────────────────────────────┘
-```
-
----
-
-## Anthropic Integration Details
-
-**SDK**: `anthropic_rust` (async, type-safe, streaming)
-
-| Feature | Implementation |
-|---------|---------------|
-| Strict tool use | `strict: true` on tool definitions |
-| Fine-grained streaming | `eager_input_streaming: true` |
-| Batch API | 50% cost reduction for non-real-time ops |
-| Token counting | Pre-flight context budget checks |
-
-**Required Headers**:
-- `x-api-key` — API key
-- `anthropic-version` — `2023-06-01`
-- `content-type` — `application/json`
-
----
-
-## OpenAI Integration Details
-
-**SDK**: `async-openai` (comprehensive, actively maintained)
-
-### Responses API (Primary)
-- Server-side conversation state
-- Built-in tools: web search, file search, code interpreter
-- Native agentic loop (multiple tools per request)
-- 40-80% better cache utilization
-
-### Chat Completions (Fallback)
-- Lightweight, stateless
-- Broad model compatibility
-
----
-
-## OpenRouter Integration Details
-
-**SDK**: `openrouter_api` (type-state builder, auto key zeroing)
-
-### Route Strategies
-```rust
-pub enum RouteStrategy {
-    Price,       // :floor — cheapest provider
-    Throughput,  // :nitro — fastest provider
-    Quality,     // default — best quality
-    WebSearch,   // :online — with web search
+h1, h2 {
+  color: #e67e22;
 }
-```
-
-- 400+ models through one API
-- Auto-fallback on provider failure
-- Zero logging by default
-- API key auto-zeroed on drop (`zeroize` crate)
-
----
-
-## Tool Format Translation
-
-MCP, Anthropic, and OpenAI each have different tool schemas:
-
-```rust
-pub enum ToolFormat {
-    Mcp,        // inputSchema, JSON Schema 2020-12
-    Anthropic,  // input_schema, strict mode
-    OpenAi,     // function.parameters, additionalProperties:false
+strong {
+  color: #3498db;
 }
-
-pub fn translate_tool(
-    tool: &ToolDefinition,
-    target: ToolFormat,
-) -> serde_json::Value;
-```
-
-**Key constraints**:
-- MCP: no `$ref` pointers (must be self-contained)
-- OpenAI strict: `additionalProperties: false` on every object
-- Anthropic strict: `strict: true` at tool level
-
----
-
-## Fallback Chain
-
-```rust
-pub struct ProviderChain {
-    providers: Vec<(Box<dyn LlmProvider>, ProviderConfig)>,
-    cooldowns: DashMap<String, Instant>,
+table {
+  font-size: 0.8em;
 }
-```
-
-**Behavior**:
-1. Try providers in order (default: Anthropic -> OpenAI -> OpenRouter)
-2. On 429/500: cooldown provider for 60s, try next
-3. On success: return result + provider name
-4. On all exhausted: `ProviderError::AllProvidersExhausted`
-
----
-
-## MCP Architecture
-
-### Dual Role: Client AND Server
-
-```
-External MCP Servers          OpenRustClaw          External Clients
-(filesystem, DB, etc.)        MCP Layer             (Claude Desktop, etc.)
-
-  ┌──────────┐            ┌──────────────┐         ┌──────────┐
-  │ Server A │◄──stdio──►│  MCP Client  │         │ Claude   │
-  └──────────┘            │              │         │ Desktop  │
-  ┌──────────┐            │  MCP Server  │◄─stdio─►│          │
-  │ Server B │◄──stdio──►│              │         └──────────┘
-  └──────────┘            └──────────────┘         ┌──────────┐
-                                                    │ Cursor   │
-                                                    └──────────┘
-```
-
----
-
-## MCP Client
-
-```rust
-pub struct McpClient {
-    transport: StdioTransport,  // JSON-RPC over stdio
+code {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 0.85em;
 }
+</style>
 
-impl McpClient {
-    // Connect to external MCP server
-    async fn connect(cmd: &str, args: &[&str]) -> Result<Self>;
+# 🏗️ Architecture Deep Dive
 
-    // Discover available tools
-    async fn discover_tools(&self) -> Result<Vec<McpToolDef>>;
+## Understanding OpenRustClaw's Design
 
-    // Invoke a tool
-    async fn call_tool(&self, name: &str, args: Value)
-        -> Result<ToolOutput>;
-}
-```
-
-Access 18,000+ existing MCP servers.
+### A 3-Layer Hybrid Architecture
 
 ---
 
-## MCP Server
+<!--
+Speaker Notes: Start with the high-level view. The hybrid approach is key—Rust for performance, Python for AI workflows.
+-->
 
-```rust
-pub struct McpServer {
-    tool_registry: Arc<ToolRegistry>,
-}
-
-// Exposed tools:
-// - memory_search: Search agent memory
-// - memory_store: Store information
-// - schedule_task: Create scheduled workflow
-// - rag_search: Search documentation corpus
-// - list_skills: List available skills
-// - run_security_audit: Security check
-```
-
-Exposes OpenRustClaw tools to Claude Desktop, Claude Code, Cursor.
-
----
-
-## Memory Architecture: 3 Tiers
-
-### The Problem with OpenClaw
-
-| OpenClaw | Tokens | Waste |
-|----------|--------|-------|
-| MEMORY.md injected every turn | ~15-20K | 93.5% |
-| OpenRustClaw core memory | ~500 | 0% |
-
-### The Fix: Recall-Only
-
-- **Core Memory**: ~500 tokens, always in prompt (identity, prefs)
-- **Recall Memory**: Searchable via `memory_search` tool, NEVER injected
-- **Archive**: Consolidated long-term summaries
-
----
-
-## Memory Write Pipeline
+## 🎯 3-Layer Architecture
 
 ```
-New Memory
-    │
-    ▼
-┌─────────────────────┐
-│  1. Content Hash     │  SHA-256 deduplication
-│  2. Dedupe Check     │  Cosine > 0.92 = merge
-│  3. Score Importance  │  1.0 explicit ... 0.5 background
-│  4. Score Confidence  │  Source reliability
-│  5. Set TTL           │  Episodic: 90d, Semantic: none
-│  6. Async Embed       │  Bounded semaphore (max 4)
-│  7. Store             │  memory_entries + memory_vectors
-└─────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                         LAYER 1                                  │
+│                     🦀 RUST CORE (14 crates)                     │
+│                                                                  │
+│    High-performance, memory-safe, concurrent execution          │
+│    • WebSocket gateway    • Agent runtime    • Memory layer     │
+│    • Tool execution       • Security         • Persistence      │
+└────────────────────────────┬────────────────────────────────────┘
+                             │ gRPC (tonic)
+                             │
+┌────────────────────────────▼────────────────────────────────────┐
+│                         LAYER 2                                  │
+│              🐍 PYTHON LANGGRAPH SIDECAR                         │
+│                                                                  │
+│    AI orchestration, workflow management, maintenance tasks     │
+│    • Agent workflows      • Memory consolidation                │
+│    • Scheduled execution  • Human-in-the-loop                   │
+└────────────────────────────┬────────────────────────────────────┘
+                             │ REST API
+                             │
+┌────────────────────────────▼────────────────────────────────────┐
+│                         LAYER 3                                  │
+│               📊 OBSERVABILITY (LangSmith)                       │
+│                                                                  │
+│    Tracing, metrics, evaluation, cost tracking                  │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Hybrid Search (<3ms)
+<!--
+Speaker Notes: Explain why this split makes sense. Rust handles I/O and performance-critical paths; Python handles complex AI reasoning workflows.
+-->
+
+## 🦀 Rust Core — 14 Crates Breakdown
+
+### Dependency Graph
 
 ```
-Query
-  │
-  ├──► BM25 (FTS5)  ──────┐
-  │                         │
-  ├──► Vector (libSQL) ────┤──► Reciprocal Rank Fusion
-  │                         │
-  └──► Metadata filter ────┘
+                    ┌─────────┐
+                    │  core   │ ← Types, traits, errors
+                    └────┬────┘
+                         │
+         ┌───────────────┼───────────────┐
+         │               │               │
+    ┌────▼────┐    ┌─────▼─────┐   ┌────▼────┐
+    │   db    │    │  memory   │   │providers│
+    └────┬────┘    └─────┬─────┘   └────┬────┘
+         │               │               │
+         │         ┌─────▼─────┐         │
+         │         │ security  │◄────────┘
+         │         └─────┬─────┘
+         │               │
+    ┌────▼───────────────▼────┐
+    │        agent            │ ← Runtime, tools, streaming
+    └───────────┬─────────────┘
                 │
-                ▼
-         MMR Diversity
+    ┌───────────┼───────────┬───────────┐
+    │           │           │           │
+┌───▼───┐  ┌────▼────┐ ┌────▼────┐ ┌───▼────┐
+│gateway│  │ channels│ │ skills  │ │scheduler│
+└───┬───┘  └─────────┘ └────┬────┘ └────┬───┘
+    │                       │           │
+    └───────────┬───────────┴───────────┘
                 │
-                ▼
-         Temporal Decay
+          ┌─────▼──────┐
+          │ langbridge │ ← gRPC to Python
+          └─────┬──────┘
                 │
-                ▼
-         Top-K Results
+          ┌─────▼─────┐
+          │    cli    │ ← 10 CLI commands
+          └───────────┘
 ```
 
 ---
 
-## Context Window Manager
+<!--
+Speaker Notes: Go through each crate's responsibility. Mention that this modular design allows for independent testing and deployment.
+-->
 
-### Write-Select-Compress-Isolate
+## 📦 Crate Responsibilities
 
-**1. WRITE** — Build lean system prompt (~2K tokens)
-- Core memory (~500 tokens)
-- Tool schemas (names + descriptions only)
-- Runtime metadata (~50 tokens)
+### Foundation Layer
 
-**2. SELECT** — Recent N conversation turns
+| Crate | Responsibility | Key Dependencies |
+|-------|---------------|------------------|
+| `core` | Types, traits, errors, config | `thiserror`, `serde` |
+| `db` | SQLite persistence, migrations | `sqlx`, `libsql`, `rusqlite` |
 
-**3. COMPRESS** — At 85% capacity
-- Summarize older turns
-- Replace large tool outputs with summaries
+### Service Layer
 
-**4. ISOLATE** — For overflow
-- Spawn sub-agent with focused context
+| Crate | Responsibility | Key Technologies |
+|-------|---------------|------------------|
+| `memory` | 3-tier memory, RAG, search | FTS5, vectors, BM25 |
+| `providers` | LLM clients, fallback chain | Native SDKs, `reqwest` |
+| `security` | Auth, origin check, injection | Ed25519, WASMtime |
+| `mcp` | MCP protocol client + server | JSON-RPC, schema transform |
 
----
+### Application Layer
 
-## SQLite Triple-Driver Strategy
-
-| Driver | Role | Layer |
-|--------|------|-------|
-| **sqlx** | Async. Sessions, conversations, skills, audit, jobs. Compile-time checked. | General persistence |
-| **libSQL** | Vector operations. Native vector search. Future Turso cloud. | Embeddings |
-| **rusqlite** | Sync fallback. CLI queries, migrations, diagnostics. | CLI |
-
-**All share** the same WAL-mode SQLite database file.
-
-**Rule**: sqlx owns non-vector writes, libSQL owns vector writes, rusqlite is read-only except migrations.
+| Crate | Responsibility | Key Technologies |
+|-------|---------------|------------------|
+| `agent` | Runtime, tool registry, streaming | `tokio`, `futures` |
+| `gateway` | Axum WebSocket server | `axum`, `tokio-tungstenite` |
 
 ---
 
-## Database Schema (12 Migrations)
+<!--
+Speaker Notes: Continue with the remaining crates. Emphasize the scheduler's durability guarantees and the langbridge's role.
+-->
 
-```
-sessions ← conversations
-memory_entries ← memory_fts (FTS5)
-               ← memory_vectors (libSQL)
-core_memory
-memory_archive
-skills
-audit_log
-scheduled_jobs ← job_runs
-               ← dead_letter_queue
-workflow_checkpoints
-```
+## 📦 More Crate Responsibilities
 
----
+### Integration Layer
 
-## Scheduler Architecture
+| Crate | Responsibility | Key Technologies |
+|-------|---------------|------------------|
+| `channels` | Chat platform integrations | WebChat (v1), future: Discord, Slack |
+| `skills` | SKILL.md parser, WASM sandbox | `wasmtime`, Ed25519 verify |
+| `scheduler` | Durable job scheduling | LangGraph integration |
+| `langbridge` | gRPC bridge to Python | `tonic`, Protocol Buffers |
+| `observability` | Tracing, metrics, LangSmith | OpenTelemetry |
+| `cli` | Command-line interface | `clap`, `anyhow` |
 
-### Rust-Owned Worker Loop (No Cron)
+### Why 14 Crates?
 
 ```rust
-loop {
-    // 1. Poll: due jobs WHERE next_run_at <= now()
-    // 2. Lease: atomic UPDATE (prevents double-exec)
-    // 3. Idempotency: check job_runs for same key
-    // 4. Dispatch: gRPC to LangGraph sidecar
-    // 5. Success: record, calc next_run_at, release
-    // 6. Failure: backoff retry or dead-letter
-    tokio::time::sleep(poll_interval).await;
-}
+// Independent versioning
+// Separate test suites
+// Selective deployment
+// Clear dependency boundaries
 ```
 
 ---
 
-## Scheduler Properties
+<!--
+Speaker Notes: Explain how the Python sidecar extends capabilities without sacrificing Rust's performance for critical paths.
+-->
 
-| Property | Implementation |
-|----------|---------------|
-| Idempotency | `idempotency_key` UNIQUE constraint |
-| Lease/Lock | `lease_owner` + `lease_expires_at` columns |
-| Retries | Exponential: `base * 2^count`, capped |
-| Dead-letter | After max retries, full payload saved |
-| Timezone | chrono-tz, all stored as UTC |
-| Crash recovery | Expired leases auto-released |
-| Durability | SQLite WAL mode survives restarts |
+## 🐍 Python Sidecar — LangGraph Workflows
 
----
+### Architecture
 
-## Security Layers
-
-```
-Incoming Request
-       │
-       ▼
-┌──────────────┐
-│ Origin Check  │  CVE-2026-25253 fix
-└──────┬───────┘
-       ▼
-┌──────────────┐
-│ JWT Auth      │  Token validation
-└──────┬───────┘
-       ▼
-┌──────────────┐
-│ Input Sanitize│  Prompt injection defense
-└──────┬───────┘
-       ▼
-┌──────────────┐
-│ Skill Verify  │  Ed25519 signatures
-└──────┬───────┘
-       ▼
-┌──────────────┐
-│ WASM Sandbox  │  Capability enforcement
-└──────┬───────┘
-       ▼
-┌──────────────┐
-│ Isolation     │  Per-session namespaces
-└──────────────┘
+```python
+# sidecar/src/server.py
+class LangBridgeServicer(langbridge_pb2_grpc.LangBridgeServicer):
+    """gRPC server for Rust ↔ Python communication"""
+    
+    async def ExecuteWorkflow(self, request, context):
+        # LangGraph StateGraph execution
+        graph = self.build_workflow_graph(request.workflow_type)
+        result = await graph.ainvoke(request.state)
+        return langbridge_pb2.WorkflowResult(data=result)
 ```
 
----
+### Workflow Types
 
-## Prompt Injection Defense
-
-### Multi-Layer Approach
-
-1. **Pattern Matching** — 36 known injection patterns
-2. **Sandwich Defense** — System instructions at start AND end of prompt
-3. **Canary Tokens** — Unique markers that trigger alert if echoed
-4. **Content Classification** — Score text for injection likelihood
-
-**OpenClaw**: 17% defense rate
-**OpenRustClaw**: Multi-layer with canary detection alerts
-
----
-
-## gRPC Bridge (`crates/langbridge`)
-
-### Rust <-> Python Communication
-
-```protobuf
-service OrchestrationService {
-    rpc ExecuteWorkflow(WorkflowRequest)
-        returns (WorkflowResponse);
-    rpc ExecuteWorkflowStream(WorkflowRequest)
-        returns (stream WorkflowEvent);
-    rpc GetWorkflowStatus(StatusRequest)
-        returns (StatusResponse);
-}
+```
+sidecar/src/workflows/
+├── agent_workflow.py      # Main agent reasoning
+├── memory_maintenance.py  # Consolidation & cleanup
+├── reminder_executor.py   # Durable scheduled tasks
+├── human_approval.py      # HITL workflows
+└── rag_pipeline.py        # Document processing
 ```
 
-**Sidecar lifecycle**: Auto-start, health monitoring, restart on crash.
+### Why Python for This?
+
+- 🧠 **LangGraph ecosystem** — StateGraph, checkpoints, persistence
+- 📚 **RAG libraries** — LangChain document loaders, embeddings
+- 🤖 **Model integrations** — Easy access to all LLM providers
 
 ---
 
-## Python Sidecar Workflows
+<!--
+Speaker Notes: Trace a message through the system. This helps understand the data flow end-to-end.
+-->
 
-| Workflow | Purpose |
-|----------|---------|
-| `agent_orchestrator.py` | Main agent graph (decide -> retrieve -> tool -> respond) |
-| `memory_maintenance.py` | Expire, dedupe, consolidate, archive, reindex |
-| `rag_pipeline.py` | Query -> retrieve -> grade -> web fallback -> generate |
-| `reminder.py` | Parse reminder -> wait -> send message |
-| `scheduler.py` | Generic scheduled workflow executor |
+## 🔄 Data Flow Diagram
 
-All defined as LangGraph `StateGraph` with checkpointing.
+### Message Processing Pipeline
+
+```
+┌──────────┐     ┌──────────────┐     ┌───────────────┐
+│  Client  │────►│   Gateway    │────►│ Auth/Origin   │
+│ (WebChat)│     │  (Axum WS)   │     │   Validation  │
+└──────────┘     └──────────────┘     └───────┬───────┘
+                                              │
+┌──────────┐     ┌──────────────┐     ┌───────▼───────┐
+│  Client  │◄────│   Response   │◄────│ Agent Runtime │
+│ (Stream) │     │   (Stream)   │     │  (Tool Exec)  │
+└──────────┘     └──────────────┘     └───────┬───────┘
+                                              │
+                         ┌────────────────────┼────────────────────┐
+                         │                    │                    │
+                   ┌─────▼─────┐       ┌──────▼──────┐      ┌─────▼─────┐
+                   │  Memory   │       │  gRPC Call  │      │  Provider │
+                   │  (Local)  │       │  (Sidecar)  │      │  (LLM)    │
+                   └───────────┘       └─────────────┘      └───────────┘
+```
+
+### Flow Steps
+
+1. **Receive** → WebSocket message arrives at Gateway
+2. **Authenticate** → JWT validation + origin check
+3. **Enrich** → Load core memory, inject context
+4. **Execute** → Agent runtime processes with tools
+5. **Stream** → Token-by-token response to client
 
 ---
 
-## Observability Stack
+<!--
+Speaker Notes: The fallback chain is critical for production reliability. Explain the cooldown mechanism and how it prevents cascading failures.
+-->
 
-### LangSmith (Framework-Agnostic REST API)
+## 🔗 Provider Chain with Fallback
+
+### Fallback Architecture
 
 ```rust
-pub struct LangSmithClient {
-    api_key: String,
-    project_name: String,
+// crates/providers/src/fallback.rs
+pub struct FallbackChain {
+    providers: Vec<Box<dyn LlmProvider>>,
+    cooldowns: HashMap<String, Instant>,
+    health_checks: HashMap<String, ProviderHealth>,
 }
 
-impl LangSmithClient {
-    async fn trace_run(&self, run: &TraceRun) -> Result<()>;
-    async fn update_run(&self, id: &str, ...) -> Result<()>;
-    async fn log_feedback(&self, run_id: &str, ...) -> Result<()>;
-}
-```
-
-**Traced**: Every LLM call, tool execution, RAG retrieval, scheduler job, memory operation.
-
----
-
-## Offline Eval Datasets
-
-| Dataset | Test Cases | Purpose |
-|---------|-----------|---------|
-| `reminder_timing` | 50+ | Timezone handling, time parsing |
-| `memory_recall` | 100+ | Cross-session fact retrieval |
-| `rag_accuracy` | 100+ | Retrieval relevance, citations |
-| `tool_use` | 50+ | Tool selection, parameter extraction |
-
-### Online Evaluators
-- Memory recall accuracy
-- RAG precision scoring
-- Reminder timing accuracy
-- Failure classification taxonomy
-
----
-
-## Agent Runtime Loop
-
-```rust
-pub async fn process(&self, messages: Vec<Message>)
-    -> Result<CompletionResponse>
-{
-    let mut current = messages;
-    for _ in 0..MAX_ITERATIONS {
-        let response = self.provider.complete(request).await?;
-
-        if response.tool_calls.is_empty() {
-            return Ok(response);  // Done
+impl FallbackChain {
+    pub async fn complete(&self, request: Request) -> Result<Response> {
+        for provider in self.available_providers() {
+            match provider.complete(request.clone()).await {
+                Ok(response) => return Ok(response),
+                Err(e) => {
+                    self.record_failure(&provider.name(), e);
+                    continue; // Try next provider
+                }
+            }
         }
+        Err(Error::AllProvidersFailed)
+    }
+}
+```
 
-        for call in &response.tool_calls {
-            let output = self.tools.execute(
-                &call.name, call.arguments.clone(), &ctx
-            ).await?;
-            current.push(Message::tool(output));
+### Provider Priority
+
+```
+Primary:    Anthropic (Claude) ─────┐
+                                     ├──► Automatic Fallback
+Secondary:  OpenAI (GPT-4) ─────────┤
+                                     │
+Tertiary:   OpenRouter (400+ models)┘
+
+Local:      Ollama (offline mode)
+```
+
+---
+
+<!--
+Speaker Notes: Deep dive into the memory architecture. This is where OpenRustClaw really differentiates from other frameworks.
+-->
+
+## 🧠 Memory System Architecture
+
+### 3-Tier Design
+
+```rust
+// crates/memory/src/lib.rs
+pub struct MemoryManager {
+    core: CoreMemory,        // ~500 tokens, always loaded
+    recall: RecallMemory,    // Searchable, on-demand
+    archive: ArchiveMemory,  // Consolidated summaries
+}
+
+impl MemoryManager {
+    pub async fn search(&self, query: &str, limit: usize) -> Vec<MemoryEntry> {
+        // Hybrid search: BM25 + Vector + MMR
+        let bm25_results = self.recall.bm25_search(query, limit * 2);
+        let vector_results = self.recall.vector_search(query, limit * 2);
+        
+        // Merge and diversify with MMR
+        hybrid_merge(bm25_results, vector_results)
+            .diversify(MMR_lambda)
+            .temporal_decay()
+            .take(limit)
+            .collect()
+    }
+}
+```
+
+### Storage Layer
+
+```
+SQLite Database
+├── core_memory (key-value, always cached)
+├── memory_entries (content + metadata)
+├── memory_fts (FTS5 full-text index)
+├── memory_vectors (libSQL vector embeddings)
+└── memory_archive (consolidated summaries)
+```
+
+---
+
+<!--
+Speaker Notes: Continue with the search algorithm details. The hybrid approach gives both semantic and lexical matching.
+-->
+
+## 🔍 Hybrid Search Algorithm
+
+### BM25 + Vector + MMR
+
+```python
+# Pseudocode for hybrid search
+def hybrid_search(query: str, k: int = 10) -> List[MemoryEntry]:
+    # 1. Lexical search (exact matches)
+    bm25_scores = bm25_search(query, top_k=k*2)
+    
+    # 2. Semantic search (meaning similarity)
+    query_embedding = embed(query)
+    vector_scores = vector_search(query_embedding, top_k=k*2)
+    
+    # 3. Score fusion (Reciprocal Rank Fusion)
+    fused = rrf_fusion(bm25_scores, vector_scores)
+    
+    # 4. Diversity with MMR
+    results = []
+    candidates = fused
+    while len(results) < k and candidates:
+        # Max Marginal Relevance
+        best = max(candidates, 
+                   key=lambda d: lambda_param * relevance(d) 
+                               - (1-lambda_param) * max_sim(d, results))
+        results.append(best)
+        candidates.remove(best)
+    
+    # 5. Temporal decay (recent = more relevant)
+    return apply_temporal_decay(results)
+```
+
+### Performance
+
+- **Query latency**: <3ms (p99)
+- **Embedding generation**: ~50ms (batched)
+- **Index update**: Async, non-blocking
+
+---
+
+<!--
+Speaker Notes: Security is layered. Each layer provides defense in depth. If one fails, others protect the system.
+-->
+
+## 🔒 Security Layers
+
+### Layer 1: Transport & Auth
+
+```rust
+// crates/security/src/origin_check.rs
+pub async fn validate_origin(
+    request: &Request,
+    allowed_origins: &[String],
+) -> Result<(), SecurityError> {
+    let origin = request.headers()
+        .get("origin")
+        .ok_or(SecurityError::MissingOrigin)?;
+    
+    if !allowed_origins.contains(&origin.to_str()?) {
+        // Log and reject
+        audit_log.record(AuditEvent::InvalidOrigin { origin });
+        return Err(SecurityError::InvalidOrigin);
+    }
+    Ok(())
+}
+```
+
+### Layer 2: Prompt Injection Defense
+
+```
+┌───────────────────────────────────────────────┐
+│  Defense Stack                                │
+│                                               │
+│  1. Input Sanitization                        │
+│     • HTML/JS stripping                       │
+│     • Known pattern matching                  │
+│                                               │
+│  2. Sandwich Defense                          │
+│     • User input wrapped in delimiters        │
+│     • Clear separation from system            │
+│                                               │
+│  3. Canary Tokens                             │
+│     • Hidden markers in prompts               │
+│     • Detection of prompt leakage             │
+│                                               │
+│  4. Classification                            │
+│     • ML-based injection detection            │
+│     • Real-time scoring                       │
+└───────────────────────────────────────────────┘
+```
+
+---
+
+<!--
+Speaker Notes: Explain skill verification and sandboxing. This is how OpenRustClaw handles untrusted code safely.
+-->
+
+## 🔐 Skill Verification & Sandboxing
+
+### Ed25519 Signature Verification
+
+```rust
+// crates/security/src/skill_verifier.rs
+pub struct SkillVerifier {
+    trusted_keys: HashSet<Ed25519PublicKey>,
+}
+
+impl SkillVerifier {
+    pub fn verify(&self, skill: &Skill) -> Result<(), VerifyError> {
+        // Check manifest signature
+        let manifest_json = serde_json::to_string(&skill.manifest)?;
+        let signature = Ed25519Signature::from_bytes(&skill.signature)?;
+        
+        for key in &self.trusted_keys {
+            if key.verify(&manifest_json, &signature).is_ok() {
+                return Ok(());
+            }
         }
+        Err(VerifyError::UntrustedSignature)
+    }
+}
+```
+
+### WASM Sandboxing
+
+```rust
+// crates/skills/src/wasm_runtime.rs
+pub struct WasmSandbox {
+    engine: wasmtime::Engine,
+    store: wasmtime::Store<SandboxState>,
+    limits: ResourceLimits,
+}
+
+impl WasmSandbox {
+    pub fn instantiate(&mut self, wasm_bytes: &[u8]) -> Result<Instance> {
+        let module = Module::new(&self.engine, wasm_bytes)?;
+        
+        // Apply resource limits
+        self.store.limiter(|state| &mut state.limits);
+        
+        // Pre-instantiate with restricted imports
+        let instance = Instance::new(&mut self.store, &module, &[])?;
+        Ok(instance)
     }
 }
 ```
 
 ---
 
-## Streaming with Ollama Fix
+<!--
+Speaker Notes: Cover deployment options. OpenRustClaw is designed to be flexible—single binary, Docker, or cloud-native.
+-->
 
-### The Problem
-Ollama sends tool_call deltas across multiple chunks.
-Naive forwarding breaks JSON parsing.
+## 🚀 Deployment Options
 
-### The Fix
-```rust
-pub struct ToolCallBuffer {
-    partial: HashMap<String, PartialToolCall>,
-}
-
-impl ToolCallBuffer {
-    fn accumulate(&mut self, chunk: &StreamChunk);
-    fn flush(&mut self) -> Vec<ToolCall>;  // On Done
-}
-```
-
-Buffer deltas, emit only complete tool calls.
-
----
-
-## Cursor IDE Integration
-
-### Three Levels
-
-| Level | What | Status |
-|-------|------|--------|
-| **Context** | `.cursor/rules/` (5 MDC files) | v1 |
-| **Tools** | MCP server exposed to Cursor | v1 |
-| **Agent** | Cursor CLI as subprocess tool | v2 |
+### Option 1: Single Binary
 
 ```bash
-# Auto-generate Cursor configuration
-openrustclaw cursor setup
-# Creates .cursor/mcp.json + .cursor/rules/
+# Build standalone binary
+cargo build --release --bin openrustclaw
+
+# Run everything
+./openrustclaw start
+```
+
+**Pros**: Simple, minimal dependencies, edge deployment  
+**Cons**: Single process, vertical scaling only
+
+### Option 2: Docker Compose
+
+```yaml
+# docker-compose.yml
+version: '3.8'
+services:
+  openrustclaw:
+    image: openrustclaw:latest
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - DATABASE_URL=sqlite:/data/openrustclaw.db
+    volumes:
+      - ./data:/data
+    ports:
+      - "3000:3000"
+  
+  sidecar:
+    image: openrustclaw-sidecar:latest
+    environment:
+      - LANGSMITH_API_KEY=${LANGSMITH_API_KEY}
 ```
 
 ---
 
-## Performance Targets
+<!--
+Speaker Notes: Kubernetes deployment for production. Mention the Helm chart availability.
+-->
 
-| Metric | Target |
-|--------|--------|
-| Memory search latency | < 3ms (hybrid BM25 + vector) |
-| System prompt size | ~2K tokens (vs 15-20K) |
-| Concurrent sessions | 10K+ (Axum + tokio) |
-| Embedding concurrency | 4 max (bounded semaphore) |
-| Scheduler poll interval | 1s (configurable) |
-| Provider failover | < 100ms cooldown check |
+## 🚀 Deployment Options (Continued)
+
+### Option 3: Kubernetes
+
+```yaml
+# deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openrustclaw
+spec:
+  replicas: 3  # Horizontal scaling
+  selector:
+    matchLabels:
+      app: openrustclaw
+  template:
+    spec:
+      containers:
+        - name: gateway
+          image: openrustclaw/gateway:v1.0
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+        - name: sidecar
+          image: openrustclaw/sidecar:v1.0
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: openrustclaw-pvc
+```
+
+### Scaling Characteristics
+
+| Deployment | Scale | Best For |
+|------------|-------|----------|
+| Single Binary | 1 instance | Development, edge |
+| Docker Compose | 1 host | Small teams, demos |
+| Kubernetes | 100+ pods | Production, enterprise |
 
 ---
 
-## Build & Test
+<!--
+Speaker Notes: Summary slide. Emphasize the modular design and how it enables future extensibility.
+-->
 
-```bash
-# Build all 14 crates
-cargo build --workspace
+## 🎯 Architecture Summary
 
-# Run tests (75+ tests)
-cargo test --workspace
+### Key Design Decisions
 
-# Python sidecar tests
-pytest sidecar/tests/
+1. **Hybrid Rust/Python**
+   - Rust for performance-critical I/O and security
+   - Python for AI orchestration and workflow complexity
 
-# Generate API documentation
-cargo doc --workspace --no-deps --open
+2. **Modular Crate Structure**
+   - 14 focused crates with clear boundaries
+   - Independent testing, versioning, deployment
 
-# Build documentation book
-mdbook build docs/
+3. **3-Tier Memory**
+   - Core (~500 tokens) for speed
+   - Recall for comprehensive search
+   - Archive for long-term consolidation
+
+4. **Defense in Depth**
+   - Multiple security layers
+   - No single point of failure
+   - Audit everything
+
+### Future Extensibility
+
+```
+New Provider?   → Add to crates/providers/
+New Channel?    → Add to crates/channels/
+New Security?   → Add to crates/security/
+New Workflow?   → Add to sidecar/src/workflows/
 ```
 
 ---
 
-<!-- _class: lead -->
+## 📚 Additional Resources
 
-# Architecture Summary
+### Code Locations
 
-**Rust Core** — Performance, safety, persistence
-**Python Sidecar** — AI orchestration, workflows
-**LangSmith** — Observability, evals
+| Component | Path |
+|-----------|------|
+| Rust Core | `crates/` |
+| Python Sidecar | `sidecar/src/` |
+| Protocol Buffers | `proto/` |
+| Database Migrations | `crates/db/migrations/` |
+| CLI Commands | `crates/cli/src/commands/` |
 
-**14 crates | 4 providers | 3-tier memory | MCP | Durable scheduling**
+### Documentation
 
-github.com/hprincivil/OpenRustClaw
+- 📖 Architecture Decision Records: `docs/src/architecture/`
+- 🔐 Security Guide: `docs/src/security/`
+- 🧠 Memory System: `docs/src/memory/`
+
+### Next Steps
+
+1. 📊 See "Memory System" deck for RAG details
+2. 🔒 See "Security Features" deck for hardening guide
+3. 🔌 See "Provider Ecosystem" deck for LLM integration

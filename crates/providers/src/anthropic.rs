@@ -6,7 +6,8 @@
 use std::pin::Pin;
 
 use async_trait::async_trait;
-use futures::Stream;
+use eventsource_stream::Eventsource;
+use futures::{Stream, StreamExt};
 use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
 use serde_json::Value;
 use tracing::{debug, warn};
@@ -378,12 +379,240 @@ impl LlmProvider for AnthropicProvider {
 
     async fn stream(
         &self,
-        _request: CompletionRequest,
+        request: CompletionRequest,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<StreamChunk>> + Send>>> {
-        Err(Error::Provider(ProviderError::StreamError {
-            provider: "anthropic".to_string(),
-            message: "Streaming not yet implemented".to_string(),
-        }))
+        let url = format!("{}/v1/messages", self.base_url);
+        let mut body = self.build_request_body(&request);
+        body["stream"] = serde_json::json!(true);
+
+        debug!(provider = "anthropic", model = %self.model, "Sending streaming completion request");
+
+        let response = self
+            .client
+            .post(&url)
+            .headers(self.default_headers())
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| {
+                Error::Provider(ProviderError::Request(format!(
+                    "Anthropic streaming request failed: {e}"
+                )))
+            })?;
+
+        let status = response.status();
+
+        if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+            let retry_after = response
+                .headers()
+                .get("retry-after")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|s| s.parse::<u64>().ok());
+            return Err(Error::Provider(ProviderError::RateLimited {
+                provider: "anthropic".to_string(),
+                retry_after_secs: retry_after,
+            }));
+        }
+
+        if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
+            let error_body = response.text().await.unwrap_or_default();
+            return Err(Error::Provider(ProviderError::AuthFailed {
+                provider: "anthropic".to_string(),
+                message: error_body,
+            }));
+        }
+
+        if status == reqwest::StatusCode::NOT_FOUND {
+            return Err(Error::Provider(ProviderError::ModelNotFound {
+                provider: "anthropic".to_string(),
+                model: self.model.clone(),
+            }));
+        }
+
+        if status.is_server_error() {
+            let error_body = response.text().await.unwrap_or_default();
+            return Err(Error::Provider(ProviderError::Unavailable {
+                provider: "anthropic".to_string(),
+                message: format!("Server error {status}: {error_body}"),
+            }));
+        }
+
+        if !status.is_success() {
+            let error_body = response.text().await.unwrap_or_default();
+            warn!(
+                provider = "anthropic",
+                status = %status,
+                body = %error_body,
+                "Unexpected error response"
+            );
+            return Err(Error::Provider(ProviderError::Request(format!(
+                "Anthropic API error {status}: {error_body}"
+            ))));
+        }
+
+        // Accumulators for building the final response
+        let model = self.model.clone();
+        let provider_name = "anthropic".to_string();
+
+        // Create the SSE stream
+        let stream = response
+            .bytes_stream()
+            .eventsource()
+            .map(move |event: std::result::Result<eventsource_stream::Event, eventsource_stream::EventStreamError<reqwest::Error>>| {
+                match event {
+                    Ok(event) => {
+                        // Parse the SSE data
+                        if event.data == "[DONE]" {
+                            // End of stream marker (not used by Anthropic but good to handle)
+                            return Ok(StreamChunk::Done {
+                                response: CompletionResponse {
+                                    id: "streamed".to_string(),
+                                    message: Message::assistant(""),
+                                    model: model.clone(),
+                                    usage: TokenUsage::default(),
+                                    provider: provider_name.clone(),
+                                    finish_reason: FinishReason::Stop,
+                                },
+                            });
+                        }
+
+                        let data: Value = match serde_json::from_str(&event.data) {
+                            Ok(v) => v,
+                            Err(e) => {
+                                return Err(Error::Provider(ProviderError::StreamError {
+                                    provider: "anthropic".to_string(),
+                                    message: format!("Failed to parse SSE data: {e}"),
+                                }));
+                            }
+                        };
+
+                        let event_type = data
+                            .get("type")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("");
+
+                        match event_type {
+                            "content_block_delta" => {
+                                // Content delta (text or tool_use)
+                                if let Some(delta) = data.get("delta") {
+                                    if let Some(text) = delta.get("text").and_then(|v| v.as_str()) {
+                                        return Ok(StreamChunk::ContentDelta {
+                                            delta: text.to_string(),
+                                        });
+                                    }
+                                    if let Some(partial_json) = delta.get("partial_json").and_then(|v| v.as_str()) {
+                                        // Tool call argument delta - need to get the block index
+                                        if let Some(index) = data.get("index").and_then(|v| v.as_u64()) {
+                                            return Ok(StreamChunk::ToolCallDelta {
+                                                id: format!("tool_{}", index),
+                                                name: None,
+                                                arguments_delta: partial_json.to_string(),
+                                            });
+                                        }
+                                    }
+                                }
+                                Ok(StreamChunk::ContentDelta { delta: String::new() })
+                            }
+                            "content_block_start" => {
+                                // New content block started (could be tool_use)
+                                if let Some(content_block) = data.get("content_block") {
+                                    if content_block.get("type").and_then(|v| v.as_str()) == Some("tool_use") {
+                                        let id = content_block
+                                            .get("id")
+                                            .and_then(|v| v.as_str())
+                                            .unwrap_or("")
+                                            .to_string();
+                                        let name = content_block
+                                            .get("name")
+                                            .and_then(|v| v.as_str())
+                                            .map(|s| s.to_string());
+                                        return Ok(StreamChunk::ToolCallDelta {
+                                            id,
+                                            name,
+                                            arguments_delta: String::new(),
+                                        });
+                                    }
+                                }
+                                Ok(StreamChunk::ContentDelta { delta: String::new() })
+                            }
+                            "message_delta" => {
+                                // Message-level delta with stop_reason and usage
+                                if let Some(usage) = data.get("usage") {
+                                    // Return the final response when we have usage data
+                                    let finish_reason = data
+                                        .get("delta")
+                                        .and_then(|d| d.get("stop_reason"))
+                                        .and_then(|v| v.as_str())
+                                        .map(|s| match s {
+                                            "end_turn" | "stop" => FinishReason::Stop,
+                                            "tool_use" => FinishReason::ToolUse,
+                                            "max_tokens" => FinishReason::MaxTokens,
+                                            _ => FinishReason::Stop,
+                                        })
+                                        .unwrap_or(FinishReason::Stop);
+
+                                    let prompt_tokens = usage
+                                        .get("input_tokens")
+                                        .and_then(|v| v.as_u64())
+                                        .unwrap_or(0) as usize;
+                                    let completion_tokens = usage
+                                        .get("output_tokens")
+                                        .and_then(|v| v.as_u64())
+                                        .unwrap_or(0) as usize;
+
+                                    return Ok(StreamChunk::Done {
+                                        response: CompletionResponse {
+                                            id: "streamed".to_string(),
+                                            message: Message::assistant(""),
+                                            model: model.clone(),
+                                            usage: TokenUsage {
+                                                prompt_tokens,
+                                                completion_tokens,
+                                                total_tokens: prompt_tokens + completion_tokens,
+                                                cost_usd: None,
+                                            },
+                                            provider: provider_name.clone(),
+                                            finish_reason,
+                                        },
+                                    });
+                                }
+                                Ok(StreamChunk::ContentDelta { delta: String::new() })
+                            }
+                            "message_stop" => {
+                                // Stream is complete
+                                Ok(StreamChunk::Done {
+                                    response: CompletionResponse {
+                                        id: "streamed".to_string(),
+                                        message: Message::assistant(""),
+                                        model: model.clone(),
+                                        usage: TokenUsage::default(),
+                                        provider: provider_name.clone(),
+                                        finish_reason: FinishReason::Stop,
+                                    },
+                                })
+                            }
+                            _ => {
+                                // Ignore other event types (ping, message_start, content_block_stop)
+                                Ok(StreamChunk::ContentDelta { delta: String::new() })
+                            }
+                        }
+                    }
+                    Err(e) => Err(Error::Provider(ProviderError::StreamError {
+                        provider: "anthropic".to_string(),
+                        message: format!("SSE stream error: {e}"),
+                    })),
+                }
+            })
+            .filter(|chunk| {
+                // Filter out empty content deltas to reduce noise
+                let should_keep = match chunk {
+                    Ok(StreamChunk::ContentDelta { delta }) if delta.is_empty() => false,
+                    _ => true,
+                };
+                std::future::ready(should_keep)
+            });
+
+        Ok(Box::pin(stream))
     }
 
     fn model_id(&self) -> &str {

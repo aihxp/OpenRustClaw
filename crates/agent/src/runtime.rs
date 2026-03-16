@@ -6,7 +6,7 @@
 use std::sync::Arc;
 
 use openrustclaw_core::error::Result;
-use openrustclaw_core::traits::{LlmProvider, ToolContext};
+use openrustclaw_core::traits::{CoreMemoryStore, LlmProvider, MemoryStore, ToolContext};
 use openrustclaw_core::types::{CompletionRequest, CoreEntry, FinishReason, Message};
 use tracing::{debug, info};
 
@@ -19,9 +19,18 @@ pub struct AgentRuntime {
     tool_registry: Arc<ToolRegistry>,
     agent_name: String,
     max_tool_iterations: usize,
+    memory_store: Option<Arc<dyn MemoryStore>>,
+    core_memory_store: Option<Arc<dyn CoreMemoryStore>>,
 }
 
 impl AgentRuntime {
+    /// Create a new AgentRuntime with the given components.
+    ///
+    /// # Arguments
+    ///
+    /// * `provider` - The LLM provider to use for completions
+    /// * `tool_registry` - The registry of available tools
+    /// * `agent_name` - The name of the agent (used in system prompt)
     pub fn new(
         provider: Arc<dyn LlmProvider>,
         tool_registry: Arc<ToolRegistry>,
@@ -32,10 +41,74 @@ impl AgentRuntime {
             tool_registry,
             agent_name,
             max_tool_iterations: 10,
+            memory_store: None,
+            core_memory_store: None,
         }
     }
 
+    /// Create a new AgentRuntime with memory stores.
+    ///
+    /// This constructor creates a runtime with memory tools pre-configured
+    /// in the tool registry.
+    ///
+    /// # Arguments
+    ///
+    /// * `provider` - The LLM provider to use for completions
+    /// * `agent_name` - The name of the agent (used in system prompt)
+    /// * `memory_store` - The memory store for recall memory operations
+    /// * `core_memory_store` - The core memory store for persistent key-value storage
+    pub fn with_memory_stores(
+        provider: Arc<dyn LlmProvider>,
+        agent_name: String,
+        memory_store: Arc<dyn MemoryStore>,
+        core_memory_store: Arc<dyn CoreMemoryStore>,
+    ) -> Self {
+        let tool_registry = Arc::new(ToolRegistry::with_memory_tools(
+            memory_store.clone(),
+            core_memory_store.clone(),
+        ));
+
+        Self {
+            provider,
+            tool_registry,
+            agent_name,
+            max_tool_iterations: 10,
+            memory_store: Some(memory_store),
+            core_memory_store: Some(core_memory_store),
+        }
+    }
+
+    /// Set the maximum number of tool iterations allowed per request.
+    ///
+    /// Default is 10. Set to 0 to disable tool use entirely.
+    pub fn with_max_tool_iterations(mut self, max: usize) -> Self {
+        self.max_tool_iterations = max;
+        self
+    }
+
+    /// Get a reference to the memory store, if configured.
+    pub fn memory_store(&self) -> Option<&Arc<dyn MemoryStore>> {
+        self.memory_store.as_ref()
+    }
+
+    /// Get a reference to the core memory store, if configured.
+    pub fn core_memory_store(&self) -> Option<&Arc<dyn CoreMemoryStore>> {
+        self.core_memory_store.as_ref()
+    }
+
+    /// Get a reference to the tool registry.
+    pub fn tool_registry(&self) -> &Arc<ToolRegistry> {
+        &self.tool_registry
+    }
+
     /// Process a conversation and return the agent's response.
+    ///
+    /// # Arguments
+    ///
+    /// * `messages` - The conversation history
+    /// * `core_memory` - Core memory entries to include in the system prompt
+    /// * `session_id` - The unique session identifier
+    /// * `user_id` - The user identifier
     pub async fn process(
         &self,
         messages: &[Message],

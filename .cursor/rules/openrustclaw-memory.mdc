@@ -1,0 +1,61 @@
+---
+description: OpenRustClaw Memory Management
+globs: ["crates/memory/**/*.rs", "crates/db/**/*.rs"]
+---
+# Memory System Rules
+
+## Three-Tier Architecture
+
+### 1. Core Memory (~500 tokens)
+- Always in the system prompt
+- Key-value pairs for critical user info
+- Managed by `CoreMemoryManager`
+- Budget-trimmed by importance
+
+### 2. Recall Memory (Searchable)
+- Never auto-injected into prompt
+- Retrieved via `memory_search` tool only
+- Full-text + vector hybrid search
+- BM25 + cosine similarity + temporal decay
+
+### 3. Archive (Consolidated)
+- Long-term storage for old memories
+- Summarized by LLM when threshold reached
+- Background consolidation job
+
+## Adding Memory
+
+```rust
+// Episodic memory (events, conversations)
+let entry = MemoryEntry {
+    memory_type: MemoryType::Episodic,
+    content: "User prefers dark mode".to_string(),
+    namespace: "user_preferences".to_string(),
+    importance: 0.8,
+    ..Default::default()
+};
+
+// Semantic memory (facts, knowledge)
+let entry = MemoryEntry {
+    memory_type: MemoryType::Semantic,
+    content: "Project uses Axum for web server".to_string(),
+    namespace: "project_context".to_string(),
+    importance: 0.6,
+    ..Default::default()
+};
+
+// Procedural memory (how-to)
+let entry = MemoryEntry {
+    memory_type: MemoryType::Procedural,
+    content: "To deploy: run ./scripts/deploy.sh".to_string(),
+    namespace: "procedures".to_string(),
+    importance: 0.9,
+    ..Default::default()
+};
+```
+
+## Memory Policies
+- Deduplication: Skip if cosine similarity > 0.92
+- TTL: Episodic expires after 90 days by default
+- Decay: Importance reduces over time
+- Consolidation: Triggered at 1000 entries

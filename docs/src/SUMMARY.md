@@ -28,4 +28,10 @@
 - [Development Setup](./contributing/development.md)
 - [Testing](./contributing/testing.md)
 
+# API Reference
+- [Core Types](./api-reference/core-types.md)
+- [Provider Traits](./api-reference/provider-traits.md)
+- [Memory Traits](./api-reference/memory-traits.md)
+- [Tool Trait](./api-reference/tool-trait.md)
+
 [Changelog](./changelog.md)

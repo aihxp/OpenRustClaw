@@ -7,6 +7,7 @@
 
 use openrustclaw_core::types::{ToolCall, ToolDefinition, ToolFormat};
 use serde_json::Value;
+use openrustclaw_core::error::{Error, ProviderError, Result};
 
 /// Translate a unified [`ToolDefinition`] to a provider-specific JSON value.
 pub fn translate_tool_definition(tool: &ToolDefinition, target: ToolFormat) -> Value {
@@ -132,19 +133,58 @@ pub fn parse_anthropic_tool_calls(content_blocks: &[Value]) -> Vec<ToolCall> {
 ///   }
 /// }
 /// ```
-pub fn parse_openai_tool_calls(tool_calls: &[Value]) -> Vec<ToolCall> {
+pub fn parse_openai_tool_calls(tool_calls: &[Value]) -> Result<Vec<ToolCall>> {
     tool_calls
         .iter()
-        .filter_map(|tc| {
-            let function = tc.get("function")?;
-            Some(ToolCall {
-                id: tc.get("id")?.as_str()?.to_string(),
-                name: function.get("name")?.as_str()?.to_string(),
-                arguments: function
-                    .get("arguments")
-                    .and_then(|a| a.as_str())
-                    .and_then(|s| serde_json::from_str(s).ok())
-                    .unwrap_or(Value::Null),
+        .map(|tc| {
+            let function = tc.get("function").ok_or_else(|| {
+                Error::Provider(ProviderError::InvalidToolCall {
+                    provider: "openai".to_string(),
+                    message: "Missing function object".to_string(),
+                })
+            })?;
+
+            let id = tc
+                .get("id")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| {
+                    Error::Provider(ProviderError::InvalidToolCall {
+                        provider: "openai".to_string(),
+                        message: "Missing tool call id".to_string(),
+                    })
+                })?;
+
+            let name = function
+                .get("name")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| {
+                    Error::Provider(ProviderError::InvalidToolCall {
+                        provider: "openai".to_string(),
+                        message: "Missing function name".to_string(),
+                    })
+                })?;
+
+            let arguments_str = function
+                .get("arguments")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| {
+                    Error::Provider(ProviderError::InvalidToolCall {
+                        provider: "openai".to_string(),
+                        message: format!("Missing arguments for tool `{name}`"),
+                    })
+                })?;
+
+            let arguments = serde_json::from_str(arguments_str).map_err(|e| {
+                Error::Provider(ProviderError::InvalidToolCall {
+                    provider: "openai".to_string(),
+                    message: format!("Invalid arguments for tool `{name}`: {e}"),
+                })
+            })?;
+
+            Ok(ToolCall {
+                id: id.to_string(),
+                name: name.to_string(),
+                arguments,
             })
         })
         .collect()
@@ -241,7 +281,7 @@ mod tests {
                 "arguments": "{\"location\":\"New York\"}"
             }
         })];
-        let calls = parse_openai_tool_calls(&tool_calls);
+        let calls = parse_openai_tool_calls(&tool_calls).expect("tool calls should parse");
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].id, "call_abc");
         assert_eq!(calls[0].name, "get_weather");
@@ -258,8 +298,7 @@ mod tests {
                 "arguments": "not valid json"
             }
         })];
-        let calls = parse_openai_tool_calls(&tool_calls);
-        assert_eq!(calls.len(), 1);
-        assert_eq!(calls[0].arguments, Value::Null);
+        let err = parse_openai_tool_calls(&tool_calls).unwrap_err();
+        assert!(err.to_string().contains("Invalid arguments"));
     }
 }
