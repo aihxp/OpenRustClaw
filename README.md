@@ -264,19 +264,43 @@ npx @marp-team/marp-cli slides/openrustclaw-overview.md -o slides/output/overvie
 
 ## Roadmap
 
-### v1 (Current)
-- [x] 14-crate Rust workspace
+### v1.0 - Complete ✅
+
+All v1 features are now implemented:
+
+- [x] 15-crate Rust workspace (added mcp2cli)
 - [x] 4 LLM providers with fallback chain
+- [x] Provider streaming (Anthropic, OpenAI, OpenRouter, Ollama)
 - [x] MCP client + server
-- [x] 3-tier recall-only memory
-- [x] Durable scheduler
+- [x] mcp2cli integration (96-99% token savings)
+- [x] 3-tier recall-only memory (Core/Recall/Archive)
+- [x] Memory tools wired to SQLite backends
+- [x] Durable scheduler (idempotent, with retry/lease)
 - [x] Security hardening (6 modules)
-- [x] CLI with 10 commands
-- [x] Python sidecar skeleton
-- [ ] Wire memory tools to backends
-- [ ] Implement provider streaming
-- [ ] Integration tests per vertical slice
-- [ ] Python sidecar gRPC service implementation
+- [x] CLI with 11 commands (+ mcp2cli)
+- [x] Python sidecar with LangGraph workflows
+- [x] Integration tests (160+ tests)
+
+### v1.1 - Polish & Hardening (Next)
+- [ ] Production-ready error handling review
+- [ ] Performance benchmarks and optimization
+- [ ] End-to-end testing with real providers
+- [ ] Docker deployment configuration
+- [ ] Metrics and observability dashboards
+- [ ] Documentation complete (API reference)
+
+### v2 - Ecosystem Expansion
+- [ ] Native SDK crates (anthropic_rust, async-openai, openrouter_api)
+- [ ] Telegram, Discord, Slack channels
+- [ ] Browser automation (Playwright/CDP)
+- [ ] Gemini provider
+- [ ] Cursor ACP deep integration
+- [ ] Multi-node distributed mode
+
+### v3+ - Advanced Features
+- [ ] Canvas/A2UI visual workspace
+- [ ] Device integration (camera, screen, voice)
+- [ ] Community channel plugins
 
 ### v2
 - [ ] Native SDK crates (anthropic_rust, async-openai, openrouter_api)
