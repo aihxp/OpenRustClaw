@@ -1,4 +1,5 @@
 pub mod chat;
+#[cfg(feature = "cursor")]
 pub mod cursor;
 pub mod doctor;
 pub mod memory;
@@ -9,5 +10,6 @@ pub mod schedule;
 pub mod security;
 pub mod skills;
 pub mod start;
+#[cfg(feature = "voice")]
 pub mod talk;
 pub mod webhooks;

@@ -7,10 +7,10 @@ pub mod node;
 pub mod sync;
 pub mod notifications;
 
-#[cfg(target_os = "ios")]
+#[cfg(all(target_os = "ios", feature = "ios"))]
 pub mod ios;
 
-#[cfg(target_os = "android")]
+#[cfg(all(target_os = "android", feature = "android"))]
 pub mod android;
 
 // MobileNodeHandle is defined in this module below

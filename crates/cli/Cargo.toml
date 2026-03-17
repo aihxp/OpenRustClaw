@@ -23,9 +23,9 @@ openrustclaw-scheduler.workspace = true
 openrustclaw-security.workspace = true
 openrustclaw-langbridge.workspace = true
 openrustclaw-observability.workspace = true
-openrustclaw-cursor.workspace = true
+openrustclaw-cursor = { workspace = true, optional = true }
 openrustclaw-mcp2cli.workspace = true
-openrustclaw-voice.workspace = true
+openrustclaw-voice = { workspace = true, optional = true }
 tokio.workspace = true
 clap.workspace = true
 ratatui.workspace = true
@@ -49,3 +49,8 @@ async-trait.workspace = true
 rand.workspace = true
 base64.workspace = true
 dirs = "5"
+
+[features]
+default = ["voice", "cursor"]
+voice = ["dep:openrustclaw-voice"]
+cursor = ["dep:openrustclaw-cursor"]

@@ -2,14 +2,22 @@
 
 use crate::config::{DiscoveryBackend, DiscoveryConfig};
 use crate::error::{DistributedError, Result};
-use crate::node::{NodeId, NodeInfo, NodeRole};
+use crate::node::{NodeId, NodeInfo};
+#[cfg(any(feature = "etcd", feature = "mdns"))]
+use crate::node::NodeRole;
 use async_trait::async_trait;
+#[cfg(feature = "etcd")]
 use etcd_client::Client as EtcdClient;
+#[cfg(feature = "mdns")]
 use mdns_sd::{ServiceDaemon, ServiceEvent, ServiceInfo};
+#[cfg(feature = "mdns")]
 use std::collections::HashMap;
+#[cfg(feature = "mdns")]
 use std::net::SocketAddr;
 use std::sync::Arc;
+#[cfg(feature = "mdns")]
 use tokio::sync::RwLock;
+#[cfg(any(feature = "etcd", feature = "mdns"))]
 use tracing::{debug, info};
 
 /// Service discovery trait.
@@ -17,13 +25,13 @@ use tracing::{debug, info};
 pub trait Discovery: Send + Sync {
     /// Register this node with the discovery service.
     async fn register(&self, node: &NodeInfo) -> Result<()>;
-    
+
     /// Deregister this node.
     async fn deregister(&self, node_id: &NodeId) -> Result<()>;
-    
+
     /// Discover other nodes in the cluster.
     async fn discover(&self) -> Result<Vec<NodeInfo>>;
-    
+
     /// Watch for changes in cluster membership.
     async fn watch(&self) -> Result<Box<dyn DiscoveryStream>>;
 }
@@ -47,20 +55,42 @@ pub enum DiscoveryEvent {
 /// Discovery factory.
 pub async fn create_discovery(
     config: &DiscoveryConfig,
+    #[allow(unused_variables)]
     local_id: NodeId,
 ) -> Result<Arc<dyn Discovery>> {
     match config.backend {
+        #[cfg(feature = "etcd")]
         DiscoveryBackend::Etcd => {
             let discovery = EtcdDiscovery::new(config, local_id).await?;
             Ok(Arc::new(discovery))
         }
+        #[cfg(not(feature = "etcd"))]
+        DiscoveryBackend::Etcd => {
+            Err(DistributedError::Config(
+                "etcd discovery requires the 'etcd' feature to be enabled".to_string(),
+            ))
+        }
+        #[cfg(feature = "consul")]
         DiscoveryBackend::Consul => {
             let discovery = ConsulDiscovery::new(config, local_id)?;
             Ok(Arc::new(discovery))
         }
+        #[cfg(not(feature = "consul"))]
+        DiscoveryBackend::Consul => {
+            Err(DistributedError::Config(
+                "Consul discovery requires the 'consul' feature to be enabled".to_string(),
+            ))
+        }
+        #[cfg(feature = "mdns")]
         DiscoveryBackend::Gossip => {
             let discovery = GossipDiscovery::new(config, local_id)?;
             Ok(Arc::new(discovery))
+        }
+        #[cfg(not(feature = "mdns"))]
+        DiscoveryBackend::Gossip => {
+            Err(DistributedError::Config(
+                "Gossip discovery requires the 'mdns' feature to be enabled".to_string(),
+            ))
         }
         DiscoveryBackend::Static => {
             let discovery = StaticDiscovery::new(config)?;
@@ -70,12 +100,14 @@ pub async fn create_discovery(
 }
 
 /// etcd-based discovery.
+#[cfg(feature = "etcd")]
 pub struct EtcdDiscovery {
     client: EtcdClient,
     prefix: String,
     local_id: NodeId,
 }
 
+#[cfg(feature = "etcd")]
 impl EtcdDiscovery {
     pub async fn new(config: &DiscoveryConfig, local_id: NodeId) -> Result<Self> {
         if config.etcd_endpoints.is_empty() {
@@ -102,12 +134,13 @@ impl EtcdDiscovery {
     }
 }
 
+#[cfg(feature = "etcd")]
 #[async_trait]
 impl Discovery for EtcdDiscovery {
     async fn register(&self, node: &NodeInfo) -> Result<()> {
         let key = self.node_key(&node.id);
         let value = serde_json::to_vec(node)?;
-        
+
         let mut client = self.client.clone();
         let lease = client
             .lease_grant(30, None)
@@ -125,7 +158,7 @@ impl Discovery for EtcdDiscovery {
 
     async fn deregister(&self, node_id: &NodeId) -> Result<()> {
         let key = self.node_key(node_id);
-        
+
         let mut client = self.client.clone();
         client
             .delete(key, None)
@@ -160,7 +193,7 @@ impl Discovery for EtcdDiscovery {
         let (tx, rx) = tokio::sync::mpsc::channel(100);
         let prefix = self.prefix.clone();
         let local_id = self.local_id.clone();
-        
+
         let mut client = self.client.clone();
         let (_, mut stream) = client
             .watch(prefix, Some(etcd_client::WatchOptions::new().with_prefix()))
@@ -198,6 +231,7 @@ impl Discovery for EtcdDiscovery {
 }
 
 /// Consul-based discovery.
+#[cfg(feature = "consul")]
 pub struct ConsulDiscovery {
     #[allow(dead_code)]
     config: DiscoveryConfig,
@@ -205,6 +239,7 @@ pub struct ConsulDiscovery {
     local_id: NodeId,
 }
 
+#[cfg(feature = "consul")]
 impl ConsulDiscovery {
     pub fn new(config: &DiscoveryConfig, local_id: NodeId) -> Result<Self> {
         if config.consul_addr.is_none() {
@@ -220,6 +255,7 @@ impl ConsulDiscovery {
     }
 }
 
+#[cfg(feature = "consul")]
 #[async_trait]
 impl Discovery for ConsulDiscovery {
     async fn register(&self, node: &NodeInfo) -> Result<()> {
@@ -245,6 +281,7 @@ impl Discovery for ConsulDiscovery {
 }
 
 /// Gossip-based discovery using mDNS.
+#[cfg(feature = "mdns")]
 pub struct GossipDiscovery {
     mdns: ServiceDaemon,
     service_type: String,
@@ -253,6 +290,7 @@ pub struct GossipDiscovery {
     nodes: Arc<RwLock<HashMap<NodeId, NodeInfo>>>,
 }
 
+#[cfg(feature = "mdns")]
 impl GossipDiscovery {
     pub fn new(config: &DiscoveryConfig, local_id: NodeId) -> Result<Self> {
         let mdns = ServiceDaemon::new()
@@ -269,6 +307,7 @@ impl GossipDiscovery {
     }
 }
 
+#[cfg(feature = "mdns")]
 #[async_trait]
 impl Discovery for GossipDiscovery {
     async fn register(&self, node: &NodeInfo) -> Result<()> {
@@ -313,11 +352,11 @@ impl Discovery for GossipDiscovery {
             .map_err(|e| DistributedError::Discovery(format!("Failed to browse: {}", e)))?;
 
         let mut nodes = Vec::new();
-        
+
         // Process events for a short time to collect services
         let timeout = tokio::time::Duration::from_secs(2);
         let start = tokio::time::Instant::now();
-        
+
         while start.elapsed() < timeout {
             if let Ok(event) = receiver.recv_timeout(std::time::Duration::from_millis(100)) {
                 if let ServiceEvent::ServiceResolved(info) = event {
@@ -422,6 +461,7 @@ impl DiscoveryStream for ChannelDiscoveryStream {
 }
 
 /// Convert mDNS service info to NodeInfo.
+#[cfg(feature = "mdns")]
 fn service_info_to_node(info: ServiceInfo) -> Option<NodeInfo> {
     let id = info.get_property_val_str("id")?;
     let role_str = info.get_property_val_str("role")?;
@@ -451,7 +491,7 @@ mod tests {
         };
 
         let discovery = StaticDiscovery::new(&config).unwrap();
-        
+
         // Should be empty since we haven't parsed seed nodes into NodeInfo yet
         let nodes = discovery.discover().await.unwrap();
         assert!(nodes.is_empty());

@@ -90,12 +90,14 @@ impl From<serde_json::Error> for DistributedError {
     }
 }
 
+#[cfg(feature = "redis")]
 impl From<redis::RedisError> for DistributedError {
     fn from(err: redis::RedisError) -> Self {
         DistributedError::Memory(format!("Redis error: {}", err))
     }
 }
 
+#[cfg(feature = "etcd")]
 impl From<etcd_client::Error> for DistributedError {
     fn from(err: etcd_client::Error) -> Self {
         DistributedError::Discovery(format!("etcd error: {}", err))

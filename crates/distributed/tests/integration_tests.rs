@@ -8,6 +8,8 @@ use std::time::Duration;
 use tokio::time::sleep;
 
 /// Test basic cluster manager creation.
+/// Requires the `mdns` feature for gossip discovery.
+#[cfg(feature = "mdns")]
 #[tokio::test]
 async fn test_cluster_manager_builder() {
     let manager = ClusterManagerBuilder::new()
@@ -23,10 +25,12 @@ async fn test_cluster_manager_builder() {
 }
 
 /// Test worker configuration.
+/// Requires the `redis` feature for the default Redis memory backend.
+#[cfg(feature = "redis")]
 #[tokio::test]
 async fn test_worker_configuration() {
     let leader_addr: SocketAddr = "127.0.0.1:50051".parse().unwrap();
-    
+
     let manager = ClusterManagerBuilder::new()
         .node_id("test-worker-1")
         .join_worker(leader_addr)

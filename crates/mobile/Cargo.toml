@@ -22,14 +22,14 @@ async-trait.workspace = true
 tauri = { version = "1.5", optional = true }
 uniffi = { version = "0.25", optional = true }
 
-[target.'cfg(target_os = "ios")'.dependencies]
-objc = "0.2"
-cocoa = "0.25"
+# iOS dependencies (optional, behind feature gate)
+objc = { version = "0.2", optional = true }
+cocoa = { version = "0.25", optional = true }
 
-[target.'cfg(target_os = "android")'.dependencies]
-jnix = { version = "0.5", features = ["derive"] }
-ndk = "0.8"
-ndk-sys = "0.5"
+# Android dependencies (optional, behind feature gate)
+jnix = { version = "0.5", features = ["derive"], optional = true }
+ndk = { version = "0.8", optional = true }
+ndk-sys = { version = "0.5", optional = true }
 
 [dev-dependencies]
 tokio-test.workspace = true
@@ -39,6 +39,8 @@ serial_test.workspace = true
 default = []
 tauri = ["dep:tauri"]
 uniffi = ["dep:uniffi"]
+ios = ["dep:objc", "dep:cocoa"]
+android = ["dep:jnix", "dep:ndk", "dep:ndk-sys"]
 
 [lib]
 crate-type = ["cdylib", "staticlib", "rlib"]

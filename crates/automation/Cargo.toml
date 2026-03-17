@@ -9,6 +9,7 @@ description = "Browser automation capabilities for OpenRustClaw with Playwright 
 default = ["playwright"]
 playwright = []
 cdp = ["tokio-tungstenite"]
+chrome = ["dep:headless_chrome"]
 ocr = ["base64"]
 
 [dependencies]

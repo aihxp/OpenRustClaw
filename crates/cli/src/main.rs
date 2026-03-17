@@ -64,6 +64,7 @@ enum Commands {
     /// Interactive onboarding wizard
     Onboard,
     /// Set up Cursor IDE integration
+    #[cfg(feature = "cursor")]
     Cursor {
         #[command(subcommand)]
         action: CursorAction,
@@ -80,6 +81,7 @@ enum Commands {
         action: Mcp2CliAction,
     },
     /// Talk Mode - continuous voice conversation
+    #[cfg(feature = "voice")]
     Talk {
         /// Provider to use (anthropic, openai, openrouter, ollama)
         #[arg(short, long, default_value = "anthropic")]
@@ -194,6 +196,7 @@ enum MemoryAction {
     Stats,
 }
 
+#[cfg(feature = "cursor")]
 #[derive(Subcommand)]
 enum CursorAction {
     /// Generate .cursor/mcp.json and .cursor/rules/
@@ -359,6 +362,7 @@ async fn main() -> Result<()> {
         },
         Commands::Doctor => commands::doctor::run().await,
         Commands::Onboard => commands::onboard::run().await,
+        #[cfg(feature = "cursor")]
         Commands::Cursor { action } => match action {
             CursorAction::Setup => commands::cursor::setup().await,
             CursorAction::Start { transport, port } => commands::cursor::start(&transport, port).await,
@@ -386,6 +390,7 @@ async fn main() -> Result<()> {
                 Mcp2CliCacheAction::Stats => commands::mcp2cli::cache_stats().await,
             },
         },
+        #[cfg(feature = "voice")]
         Commands::Talk { provider, model, wake_word, silence_timeout, max_utterance, barge_in } => {
             commands::talk::run(&provider, model.as_deref(), &wake_word, silence_timeout, max_utterance, barge_in).await
         }

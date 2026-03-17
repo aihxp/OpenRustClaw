@@ -5,6 +5,15 @@ edition.workspace = true
 license.workspace = true
 description = "Multi-node distributed mode for OpenRustClaw - horizontal scaling across machines"
 
+[features]
+default = []
+raft-consensus = ["dep:raft", "dep:raft-proto"]
+etcd = ["dep:etcd-client"]
+consul = ["dep:consul"]
+redis = ["dep:redis"]
+mdns = ["dep:mdns-sd"]
+full = ["raft-consensus", "etcd", "consul", "redis", "mdns"]
+
 [dependencies]
 # Internal crates
 openrustclaw-core.workspace = true
@@ -36,17 +45,17 @@ tower.workspace = true
 thiserror.workspace = true
 anyhow.workspace = true
 
-# Consensus
-raft = "0.7"
-raft-proto = "0.7"
+# Consensus (optional)
+raft = { version = "0.7", optional = true }
+raft-proto = { version = "0.7", optional = true }
 
-# Service discovery
-etcd-client = { version = "0.14", features = ["tls"] }
-consul = "0.4"
-mdns-sd = "0.11"
+# Service discovery (optional)
+etcd-client = { version = "0.14", features = ["tls"], optional = true }
+consul = { version = "0.4", optional = true }
+mdns-sd = { version = "0.11", optional = true }
 
-# Distributed state
-redis = { version = "0.28", features = ["tokio-comp", "cluster-async", "connection-manager"] }
+# Distributed state (optional)
+redis = { version = "0.28", features = ["tokio-comp", "cluster-async", "connection-manager"], optional = true }
 
 # Health checks
 tonic-health = "0.12"

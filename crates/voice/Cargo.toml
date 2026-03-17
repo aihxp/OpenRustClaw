@@ -20,16 +20,17 @@ uuid.workspace = true
 chrono.workspace = true
 bytes.workspace = true
 
-# Audio processing
-rubato = "0.15"      # Audio resampling
-hound = "3.5"        # WAV file handling
+# Audio processing (optional)
+rubato = { version = "0.15", optional = true }
+hound = { version = "3.5", optional = true }
 
-# For real audio input/output and cloud TTS
-cpal = "0.15"
-rodio = "0.17"
+# For real audio input/output and cloud TTS (optional)
+cpal = { version = "0.15", optional = true }
+rodio = { version = "0.17", optional = true }
 reqwest.workspace = true
 tempfile.workspace = true
 
 [features]
 default = ["tts"]
 tts = []
+audio = ["dep:cpal", "dep:rodio", "dep:rubato", "dep:hound"]

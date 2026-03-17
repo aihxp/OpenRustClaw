@@ -57,6 +57,7 @@ pub enum VoiceError {
     Io(#[from] std::io::Error),
 }
 
+#[cfg(feature = "audio")]
 impl From<hound::Error> for VoiceError {
     fn from(err: hound::Error) -> Self {
         Self::InvalidFormat(format!("WAV error: {err}"))
