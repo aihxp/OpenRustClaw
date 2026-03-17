@@ -261,11 +261,11 @@ mod tests {
         assert_eq!(result.tools.len(), 1);
         assert_eq!(result.tools[0].name, "tool1");
         
-        // Second call should hit cache
+        // Second call should hit cache - the closure body should not be executed
         let result2 = cache
             .get_or_insert("test", || async {
-                // This should not be called
-                panic!("Should not be called");
+                // Return an empty vec that will fail the assertion if this is called
+                Ok(vec![])
             })
             .await
             .unwrap();

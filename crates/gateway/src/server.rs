@@ -1,4 +1,4 @@
-//! Axum WebSocket server.
+//! Axum WebSocket server with observability integration.
 
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::State;
@@ -6,12 +6,16 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::{Router, routing::get};
 use futures::StreamExt;
+use openrustclaw_observability::metrics::{
+    decrement_active_connections, increment_active_connections,
+    record_websocket_message, set_active_connections, SimpleTimer,
+};
 use openrustclaw_security::OriginValidator;
 use crate::auth::extract_token;
 use openrustclaw_core::error::{Error, Result as CoreResult, SecurityError};
 use serde_json::json;
 use std::sync::Arc;
-use tracing::warn;
+use tracing::{info, warn};
 
 /// Shared gateway state.
 #[derive(Clone)]
@@ -51,12 +55,35 @@ async fn ws_handler(
     State(state): State<GatewayState>,
     headers: HeaderMap,
 ) -> Response {
+    let timer = SimpleTimer::new();
+    
     if let Err(err) = validate_ws_request(&state, &headers) {
         warn!(error = %err, "Rejected websocket connection");
+        openrustclaw_observability::metrics::record_request(
+            "websocket", "/ws", 
+            match err {
+                Error::Security(SecurityError::AuthRequired) => "401",
+                Error::Security(SecurityError::TokenInvalid(_)) => "401",
+                Error::Security(SecurityError::InvalidOrigin { .. }) => "403",
+                _ => "400",
+            }
+        );
+        openrustclaw_observability::metrics::record_request_duration(
+            "websocket", "/ws", timer.elapsed_secs()
+        );
         return gateway_error_response(err);
     }
 
-    ws.on_upgrade(handle_socket)
+    // Track successful connection
+    increment_active_connections();
+    
+    ws.on_upgrade(move |socket| {
+        async move {
+            handle_socket(socket).await;
+            // Connection closed
+            decrement_active_connections();
+        }
+    })
 }
 
 async fn health_handler() -> &'static str {
@@ -105,6 +132,9 @@ async fn handle_socket(mut socket: WebSocket) {
         "message": "WebSocket connection established",
     });
 
+    info!("WebSocket connection established");
+    record_websocket_message("out", "text");
+
     if socket
         .send(Message::Text(hello.to_string().into()))
         .await
@@ -115,13 +145,19 @@ async fn handle_socket(mut socket: WebSocket) {
 
     while let Some(Ok(message)) = socket.next().await {
         match message {
-            Message::Close(_) => break,
+            Message::Close(_) => {
+                record_websocket_message("in", "close");
+                break;
+            }
             Message::Ping(payload) => {
+                record_websocket_message("in", "ping");
+                record_websocket_message("out", "pong");
                 if socket.send(Message::Pong(payload)).await.is_err() {
                     break;
                 }
             }
             Message::Text(text) => {
+                record_websocket_message("in", "text");
                 let reply = json!({
                     "type": "ack",
                     "received": text.as_str(),
@@ -133,15 +169,22 @@ async fn handle_socket(mut socket: WebSocket) {
                 {
                     break;
                 }
+                record_websocket_message("out", "text");
             }
             Message::Binary(payload) => {
+                record_websocket_message("in", "binary");
                 if socket.send(Message::Binary(payload)).await.is_err() {
                     break;
                 }
+                record_websocket_message("out", "binary");
             }
-            Message::Pong(_) => {}
+            Message::Pong(_) => {
+                record_websocket_message("in", "pong");
+            }
         }
     }
+    
+    info!("WebSocket connection closed");
 }
 
 #[cfg(test)]

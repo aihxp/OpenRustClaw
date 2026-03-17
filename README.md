@@ -185,6 +185,24 @@ cargo run --bin openrustclaw -- doctor
 cargo run --bin openrustclaw -- cursor setup
 ```
 
+### Docker Deployment
+
+```bash
+# Build and run with Docker
+docker build -t openrustclaw .
+docker run -p 18789:18789 -e ANTHROPIC_API_KEY=sk-ant-... openrustclaw
+
+# Or use Docker Compose
+cp .env.docker .env
+# Edit .env with your API keys
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# See docs/src/deployment/docker.md for complete guide
+```
+
 ---
 
 ## CLI Commands
@@ -285,7 +303,7 @@ All v1 features are now implemented:
 - [ ] Production-ready error handling review
 - [ ] Performance benchmarks and optimization
 - [ ] End-to-end testing with real providers
-- [ ] Docker deployment configuration
+- [x] Docker deployment configuration
 - [ ] Metrics and observability dashboards
 - [ ] Documentation complete (API reference)
 

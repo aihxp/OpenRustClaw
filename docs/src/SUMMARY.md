@@ -25,14 +25,21 @@
 - [Security](./guides/security.md)
 - [Cursor Integration](./guides/cursor-integration.md)
 
+# API Reference
+- [Core](./api-reference/core.md)
+- [Providers](./api-reference/providers.md)
+- [Memory](./api-reference/memory.md)
+- [Agent](./api-reference/agent.md)
+- [MCP](./api-reference/mcp.md)
+- [Security](./api-reference/security.md)
+- [Scheduler](./api-reference/scheduler.md)
+- [CLI](./api-reference/cli.md)
+
+# Operations
+- [Observability & Monitoring](./operations/observability.md)
+
 # Contributing
 - [Development Setup](./contributing/development.md)
 - [Testing](./contributing/testing.md)
-
-# API Reference
-- [Core Types](./api-reference/core-types.md)
-- [Provider Traits](./api-reference/provider-traits.md)
-- [Memory Traits](./api-reference/memory-traits.md)
-- [Tool Trait](./api-reference/tool-trait.md)
 
 [Changelog](./changelog.md)

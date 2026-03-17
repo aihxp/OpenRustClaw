@@ -92,10 +92,20 @@ pub async fn run(config_path: &str) -> Result<()> {
     
     // Create shutdown signal handler
     let shutdown = async {
-        let mut sigterm = signal::unix::signal(signal::unix::SignalKind::terminate())
-            .expect("Failed to create SIGTERM handler");
-        let mut sigint = signal::unix::signal(signal::unix::SignalKind::interrupt())
-            .expect("Failed to create SIGINT handler");
+        let mut sigterm = match signal::unix::signal(signal::unix::SignalKind::terminate()) {
+            Ok(sig) => sig,
+            Err(e) => {
+                error!(error = %e, "Failed to create SIGTERM handler");
+                return;
+            }
+        };
+        let mut sigint = match signal::unix::signal(signal::unix::SignalKind::interrupt()) {
+            Ok(sig) => sig,
+            Err(e) => {
+                error!(error = %e, "Failed to create SIGINT handler");
+                return;
+            }
+        };
         
         tokio::select! {
             _ = sigterm.recv() => info!("Received SIGTERM, shutting down..."),

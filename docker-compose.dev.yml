@@ -1,0 +1,198 @@
+# OpenRustClaw Development Docker Compose
+# Hot reload for Rust and Python development
+
+version: "3.8"
+
+services:
+  openrustclaw-rust:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: rust-dev
+    image: openrustclaw-rust:dev
+    container_name: openrustclaw-rust-dev
+    
+    environment:
+      - RUST_LOG=${RUST_LOG:-debug}
+      - RUST_BACKTRACE=1
+      - APP_ENV=development
+      - GATEWAY_HOST=0.0.0.0
+      - GATEWAY_PORT=18789
+      - DATABASE_URL=sqlite:///app/data/openrustclaw.db
+      - DATABASE_WAL_MODE=true
+      - SIDECAR_GRPC_HOST=openrustclaw-sidecar
+      - SIDECAR_GRPC_PORT=50051
+      - SIDECAR_AUTO_START=false
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - LANGSMITH_API_KEY=${LANGSMITH_API_KEY:-}
+      - LANGSMITH_PROJECT=${LANGSMITH_PROJECT:-openrustclaw-dev}
+      - AUTH_SECRET=dev-secret-not-for-production
+    
+    ports:
+      - "18789:18789"
+      - "9090:9090"
+    
+    volumes:
+      # Source code for hot reload
+      - ./crates:/app/crates:ro
+      - ./proto:/app/proto:ro
+      - ./Cargo.toml:/app/Cargo.toml:ro
+      - ./config:/app/config:ro
+      # Build cache (persisted)
+      - rust_target_cache:/app/target
+      # Data persistence
+      - openrustclaw_dev_data:/app/data
+      # Logs
+      - ./logs:/app/logs
+    
+    working_dir: /app
+    
+    command: >
+      cargo watch 
+        --watch crates 
+        --watch proto 
+        --watch Cargo.toml 
+        -x 'run --bin openrustclaw -- start --sidecar-host openrustclaw-sidecar'
+    
+    depends_on:
+      - openrustclaw-sidecar
+    
+    networks:
+      - openrustclaw-dev-network
+
+  openrustclaw-sidecar:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: python-dev
+    image: openrustclaw-sidecar:dev
+    container_name: openrustclaw-sidecar-dev
+    
+    environment:
+      - LOG_LEVEL=${LOG_LEVEL:-DEBUG}
+      - SIDECAR_PORT=50051
+      - LANGSMITH_API_KEY=${LANGSMITH_API_KEY:-}
+      - LANGSMITH_PROJECT=${LANGSMITH_PROJECT:-openrustclaw-dev}
+      - PYTHONUNBUFFERED=1
+    
+    ports:
+      - "50051:50051"
+    
+    volumes:
+      # Python source for hot reload
+      - ./sidecar/src:/app/sidecar/src
+      - ./proto:/app/proto:ro
+    
+    working_dir: /app/sidecar/src
+    
+    command: >
+      python -m watchdog.observers 
+        --pattern="*.py" 
+        --command="python server.py --port 50051 --log-level DEBUG"
+    
+    # Alternative: Use watchdog for file watching
+    # command: >
+    #   python -c "
+    #     import subprocess
+    #     import sys
+    #     from watchdog.observers import Observer
+    #     from watchdog.events import FileSystemEventHandler
+    #     
+    #     class ReloadHandler(FileSystemEventHandler):
+    #         def __init__(self):
+    #             self.process = None
+    #             self.start()
+    #         
+    #         def start(self):
+    #             if self.process:
+    #                 self.process.terminate()
+    #                 self.process.wait()
+    #             self.process = subprocess.Popen([sys.executable, 'server.py', '--port', '50051', '--log-level', 'DEBUG'])
+    #         
+    #         def on_modified(self, event):
+    #             if event.src_path.endswith('.py'):
+    #                 print(f'Reloading due to change in {event.src_path}')
+    #                 self.start()
+    #     
+    #     handler = ReloadHandler()
+    #     observer = Observer()
+    #     observer.schedule(handler, '.', recursive=True)
+    #     observer.start()
+    #     try:
+    #         observer.join()
+    #     except KeyboardInterrupt:
+    #         observer.stop()
+    #         if handler.process:
+    #             handler.process.terminate()
+    #     observer.join()
+    #   "
+    
+    networks:
+      - openrustclaw-dev-network
+
+  # Optional: Database viewer for development
+  sqlite-web:
+    image: coleifer/sqlite-web:latest
+    container_name: openrustclaw-sqlite-web
+    profiles:
+      - db-ui
+    environment:
+      - SQLITE_DATABASE=/data/openrustclaw.db
+      - SQLITE_WEB_PASSWORD=${DB_UI_PASSWORD:-admin}
+    ports:
+      - "8080:8080"
+    volumes:
+      - openrustclaw_dev_data:/data
+    command: ["sqlite_web", "-H", "0.0.0.0", "-p", "8080", "/data/openrustclaw.db"]
+    networks:
+      - openrustclaw-dev-network
+
+  # Optional: Prometheus for metrics
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: openrustclaw-prometheus
+    profiles:
+      - monitoring
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    networks:
+      - openrustclaw-dev-network
+
+  # Optional: Grafana for dashboards
+  grafana:
+    image: grafana/grafana:latest
+    container_name: openrustclaw-grafana
+    profiles:
+      - monitoring
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    networks:
+      - openrustclaw-dev-network
+
+networks:
+  openrustclaw-dev-network:
+    driver: bridge
+
+volumes:
+  openrustclaw_dev_data:
+    driver: local
+  rust_target_cache:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local

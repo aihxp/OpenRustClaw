@@ -142,11 +142,7 @@ impl OpenApiAdapter {
                 let base = format!("{}://{}{}", 
                     parsed.scheme(),
                     parsed.host_str().unwrap_or("localhost"),
-                    if parsed.port().is_some() { 
-                        format!(":{}", parsed.port().unwrap()) 
-                    } else { 
-                        String::new() 
-                    }
+                    parsed.port().map_or_else(String::new, |p| format!(":{}", p))
                 );
                 return base;
             }

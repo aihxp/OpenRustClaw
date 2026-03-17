@@ -1,0 +1,53 @@
+[package]
+name = "openrustclaw-benches"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Performance benchmarks for OpenRustClaw"
+publish = false
+
+[dependencies]
+# Internal crates
+openrustclaw-core.workspace = true
+openrustclaw-memory.workspace = true
+openrustclaw-providers.workspace = true
+openrustclaw-agent.workspace = true
+openrustclaw-gateway.workspace = true
+
+# Benchmarking framework
+criterion = { version = "0.5", features = ["html_reports", "async_tokio"] }
+
+# Async runtime
+tokio.workspace = true
+async-trait.workspace = true
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+
+# Utilities
+uuid = { workspace = true, features = ["v4"] }
+chrono.workspace = true
+rand = { version = "0.8", features = ["small_rng"] }
+tiktoken-rs.workspace = true
+dashmap.workspace = true
+
+# HTTP/WebSocket for gateway benchmarks
+axum.workspace = true
+tokio-tungstenite = "0.26"
+
+[[bench]]
+name = "memory_bench"
+harness = false
+
+[[bench]]
+name = "provider_bench"
+harness = false
+
+[[bench]]
+name = "agent_bench"
+harness = false
+
+[[bench]]
+name = "gateway_bench"
+harness = false

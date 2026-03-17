@@ -1,0 +1,87 @@
+# OpenRustClaw Development Dockerfile
+# Hot reload for Rust (cargo-watch) and Python (watchdog)
+
+# =============================================================================
+# Stage 1: Rust Development Environment
+# =============================================================================
+FROM rust:1.85-slim AS rust-dev
+
+WORKDIR /app
+
+# Install development dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    protobuf-compiler \
+    libssl-dev \
+    pkg-config \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install cargo-watch for hot reload
+RUN cargo install cargo-watch
+
+# Copy dependency files for caching
+COPY Cargo.toml Cargo.lock ./
+COPY crates/*/Cargo.toml ./crates/
+
+# Create dummy main files to build dependencies
+RUN mkdir -p crates/cli/src && \
+    echo 'fn main() {}' > crates/cli/src/main.rs && \
+    cargo build --bin openrustclaw 2>/dev/null || true
+
+# Copy actual source
+COPY . .
+
+# Build once to cache dependencies
+RUN cargo build --bin openrustclaw
+
+# Development command with hot reload
+CMD ["cargo", "watch", "-x", "run --bin openrustclaw"]
+
+# =============================================================================
+# Stage 2: Python Development Environment
+# =============================================================================
+FROM python:3.11-slim AS python-dev
+
+WORKDIR /app/sidecar
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python development dependencies
+RUN pip install --no-cache-dir \
+    langgraph>=0.4 \
+    langchain>=0.3 \
+    langsmith>=0.3 \
+    grpcio>=1.60 \
+    grpcio-tools>=1.60 \
+    protobuf>=5.0 \
+    openai>=1.0 \
+    anthropic>=0.40 \
+    langchain-openai>=0.3 \
+    langchain-anthropic>=0.3 \
+    pydantic>=2.0 \
+    typing-extensions>=4.0 \
+    python-dateutil>=2.8 \
+    pytz>=2024.1 \
+    numpy>=1.24 \
+    watchdog>=3.0 \
+    pytest>=8.0 \
+    pytest-asyncio>=0.23 \
+    mypy>=1.8 \
+    ruff>=0.2
+
+# Set environment
+ENV PYTHONPATH=/app/sidecar/src:$PYTHONPATH \
+    PYTHONUNBUFFERED=1 \
+    LOG_LEVEL=DEBUG
+
+# Copy Python source
+COPY sidecar/src /app/sidecar/src
+COPY proto /app/proto
+
+WORKDIR /app/sidecar/src
+
+# Default command - start server
+CMD ["python", "server.py", "--port", "50051", "--log-level", "DEBUG"]

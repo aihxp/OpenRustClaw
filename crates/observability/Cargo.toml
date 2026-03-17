@@ -3,7 +3,7 @@ name = "openrustclaw-observability"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "LangSmith + OpenTelemetry observability for OpenRustClaw"
+description = "LangSmith + OpenTelemetry + Prometheus observability for OpenRustClaw"
 
 [dependencies]
 openrustclaw-core.workspace = true
@@ -18,5 +18,13 @@ tracing-subscriber.workspace = true
 tracing-opentelemetry.workspace = true
 opentelemetry.workspace = true
 prometheus.workspace = true
+metrics.workspace = true
+metrics-exporter-prometheus = "0.16"
 chrono.workspace = true
 uuid.workspace = true
+rand.workspace = true
+hex.workspace = true
+tower-http.workspace = true
+axum.workspace = true
+http.workspace = true
+http-body-util = "0.1"

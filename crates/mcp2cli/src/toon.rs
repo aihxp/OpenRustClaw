@@ -156,7 +156,9 @@ pub fn decode_toon(input: &str) -> Result<Value> {
         return Ok(Value::Number(n.into()));
     }
     if let Ok(n) = input.parse::<f64>() {
-        return Ok(Value::Number(serde_json::Number::from_f64(n).unwrap()));
+        return serde_json::Number::from_f64(n)
+            .map(Value::Number)
+            .ok_or_else(|| crate::error::Mcp2CliError::toon(format!("Invalid float value: {}", n)));
     }
 
     // Try to parse as array

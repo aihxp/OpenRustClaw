@@ -17,6 +17,8 @@ members = [
     "crates/observability",
     "crates/cli",
     "tests/integration",
+    "tests/e2e",
+    "benches",
 ]
 
 [workspace.package]
@@ -75,10 +77,15 @@ wasmtime = "27"
 
 # Observability
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "tracing-log"] }
 tracing-opentelemetry = "0.28"
 opentelemetry = "0.27"
 prometheus = "0.13"
+metrics = "0.24"
+
+# HTTP
+http = "1"
+http-body-util = "0.1"
 
 # Utilities
 uuid = { version = "1", features = ["v4", "serde"] }
@@ -128,3 +135,7 @@ wiremock = "0.6"
 serial_test = "3"
 tempfile = "3"
 tokio-test = "0.4"
+
+[profile.bench]
+debug = true
+lto = "thin"
