@@ -11,7 +11,8 @@
 //!
 //! # Authentication
 //!
-//! Uses Google Cloud service account authentication. Requires:
+//! Intended authentication model: Google Cloud service account credentials. The
+//! service-account flow is not implemented in this crate yet. Planned inputs:
 //! - Service account JSON key file
 //! - `chat.bot` scope for bot operations
 //! - Project ID for API calls
@@ -415,22 +416,12 @@ impl GoogleChatChannel {
 
     /// Load service account key and obtain access token.
     async fn authenticate(&self) -> Result<String> {
-        // In a full implementation, this would:
-        // 1. Load the service account JSON key file
-        // 2. Use yup_oauth2 or google-auth to get an access token
-        // 3. Cache the token and refresh when expired
-        //
-        // For now, we return a placeholder
-        // Real implementation would use:
-        // ```rust
-        // let service_account_key = yup_oauth2::read_service_account_key(&self.config.service_account_key).await?;
-        // let authenticator = yup_oauth2::ServiceAccountAuthenticator::builder(service_account_key)
-        //     .build().await?;
-        // let token = authenticator.token(&["https://www.googleapis.com/auth/chat.bot"]).await?;
-        // ```
-
-        warn!("Using placeholder authentication - implement real service account auth");
-        Ok("placeholder_token".to_string())
+        warn!("Google Chat service account auth is not implemented yet");
+        Err(ChannelError::AuthFailed {
+            platform: "google_chat".to_string(),
+            message: "Service account authentication is not implemented yet".to_string(),
+        }
+        .into())
     }
 }
 

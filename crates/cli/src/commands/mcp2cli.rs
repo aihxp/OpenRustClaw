@@ -204,11 +204,12 @@ pub async fn list(
 /// Run mcp2cli help command
 pub async fn help_cmd(
     mcp: Option<String>,
+    mcp_stdio: Option<String>,
     spec: Option<String>,
     tool_name: String,
     format: OutputFormat,
 ) -> Result<()> {
-    let source = resolve_source(mcp, None, spec, None)?;
+    let source = resolve_source(mcp, mcp_stdio, spec, None)?;
 
     let discovery = ToolDiscovery::with_ttl(Duration::from_secs(3600));
 
@@ -274,13 +275,14 @@ pub async fn help_cmd(
 /// Run mcp2cli execute command
 pub async fn run(
     mcp: Option<String>,
+    mcp_stdio: Option<String>,
     spec: Option<String>,
     tool_name: String,
     args: Option<String>,
     stdin: bool,
     format: OutputFormat,
 ) -> Result<()> {
-    let source = resolve_source(mcp, None, spec, None)?;
+    let source = resolve_source(mcp, mcp_stdio, spec, None)?;
 
     let args_json = if stdin {
         let mut input = String::new();
@@ -437,10 +439,17 @@ fn resolve_source(
 ) -> Result<ToolSource> {
     match (mcp, mcp_stdio, spec) {
         (Some(url), None, None) => Ok(ToolSource::McpUrl { url }),
-        (None, Some(cmd), None) => Ok(ToolSource::McpStdio {
-            command: cmd,
-            args: Vec::new(),
-        }),
+        (None, Some(cmdline), None) => {
+            let parts = shlex::split(&cmdline)
+                .ok_or_else(|| anyhow::anyhow!("Invalid --mcp-stdio command line"))?;
+            let (command, args) = parts
+                .split_first()
+                .ok_or_else(|| anyhow::anyhow!("--mcp-stdio cannot be empty"))?;
+            Ok(ToolSource::McpStdio {
+                command: command.clone(),
+                args: args.to_vec(),
+            })
+        }
         (None, None, Some(spec)) => {
             // Determine if it's a URL or file path
             if spec.starts_with("http://") || spec.starts_with("https://") {
@@ -504,15 +513,33 @@ mod tests {
 
     #[test]
     fn test_resolve_source_mcp_stdio() {
-        let result = resolve_source(None, Some("npx some-server".to_string()), None, None);
+        let result = resolve_source(
+            None,
+            Some("npx -y @modelcontextprotocol/server-filesystem /tmp".to_string()),
+            None,
+            None,
+        );
         assert!(result.is_ok());
         match result.unwrap() {
             ToolSource::McpStdio { command, args } => {
-                assert_eq!(command, "npx some-server");
-                assert!(args.is_empty());
+                assert_eq!(command, "npx");
+                assert_eq!(
+                    args,
+                    vec![
+                        "-y".to_string(),
+                        "@modelcontextprotocol/server-filesystem".to_string(),
+                        "/tmp".to_string()
+                    ]
+                );
             }
             _ => panic!("Expected McpStdio"),
         }
+    }
+
+    #[test]
+    fn test_resolve_source_rejects_invalid_mcp_stdio() {
+        let result = resolve_source(None, Some("\"unterminated".to_string()), None, None);
+        assert!(result.is_err());
     }
 
     #[test]

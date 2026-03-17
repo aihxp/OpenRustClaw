@@ -189,53 +189,9 @@ impl McpTransport for StdioTransport {
 }
 ```
 
-#### SSE Transport
+#### Remote HTTP/SSE Transport
 
-For remote MCP servers over HTTP:
-
-```rust
-pub struct SseTransport {
-    client: reqwest::Client,
-    base_url: String,
-    session_id: String,
-    message_endpoint: String,
-}
-
-impl SseTransport {
-    pub async fn connect(base_url: &str) -> Result<Self> {
-        // Connect to SSE endpoint
-        let response = reqwest::get(format!("{}/sse", base_url)).await?;
-        
-        // Parse session ID and message endpoint from SSE stream
-        let (session_id, message_endpoint) = parse_sse_endpoint(response).await?;
-        
-        Ok(Self {
-            client: reqwest::Client::new(),
-            base_url: base_url.into(),
-            session_id,
-            message_endpoint,
-        })
-    }
-}
-
-#[async_trait]
-impl McpTransport for SseTransport {
-    async fn send(&mut self, request: JsonRpcRequest) -> Result<()> {
-        self.client
-            .post(&self.message_endpoint)
-            .header("Mcp-Session-Id", &self.session_id)
-            .json(&request)
-            .send()
-            .await?;
-        Ok(())
-    }
-    
-    async fn receive(&mut self) -> Result<JsonRpcResponse> {
-        // Receive via SSE event stream
-        // ...
-    }
-}
-```
+Remote MCP over HTTP/SSE is not implemented in the current `openrustclaw_mcp` runtime. The architecture supports adding another transport later, but the shipped code path today is stdio subprocess transport only.
 
 ---
 
@@ -541,54 +497,48 @@ impl McpRegistry {
 
 ## 🔧 Configuration
 
-### MCP Servers Configuration
+The current MCP client integration is programmatic. The repo does not currently provide a built-in TOML loader such as `config/mcp-servers.toml`.
 
-```toml
-# config/mcp-servers.toml
-[[servers]]
-name = "filesystem"
-transport = "stdio"
-command = "npx"
-args = ["-y", "@modelcontextprotocol/server-filesystem", "/home/user/docs"]
-
-[[servers]]
-name = "github"
-transport = "stdio"
-command = "npx"
-args = ["-y", "@modelcontextprotocol/server-github"]
-env = { GITHUB_PERSONAL_ACCESS_TOKEN = "${GITHUB_TOKEN}" }
-
-[[servers]]
-name = "postgres"
-transport = "stdio"
-command = "npx"
-args = ["-y", "@modelcontextprotocol/server-postgres", "postgresql://localhost/mydb"]
-
-[[servers]]
-name = "brave-search"
-transport = "stdio"
-command = "npx"
-args = ["-y", "@modelcontextprotocol/server-brave-search"]
-env = { BRAVE_API_KEY = "${BRAVE_API_KEY}" }
-```
-
-### Loading MCP Servers
+Today, the configuration surface is:
 
 ```rust
-impl McpRegistry {
-    pub async fn load_from_config(&self, path: &str) -> Result<()> {
-        let config: McpConfig = toml::from_str(&fs::read_to_string(path)?)?;
-        
-        for server_config in config.servers {
-            if let Err(e) = self.add_server(&server_config.name, server_config).await {
-                tracing::warn!("Failed to add MCP server '{}': {}", server_config.name, e);
-            }
-        }
-        
-        Ok(())
-    }
+pub struct McpServerEntry {
+    pub name: String,
+    pub command: String,
+    pub args: Vec<String>,
+    pub enabled: bool,
 }
 ```
+
+Example:
+
+```rust
+use openrustclaw_mcp::registry::{McpRegistry, McpServerEntry};
+
+let mut mcp_registry = McpRegistry::new(vec![
+    McpServerEntry {
+        name: "filesystem".into(),
+        command: "npx".into(),
+        args: vec![
+            "-y".into(),
+            "@modelcontextprotocol/server-filesystem".into(),
+            "/home/user/docs".into(),
+        ],
+        enabled: true,
+    },
+    McpServerEntry {
+        name: "github".into(),
+        command: "npx".into(),
+        args: vec![
+            "-y".into(),
+            "@modelcontextprotocol/server-github".into(),
+        ],
+        enabled: false,
+    },
+]);
+```
+
+If your application wants file-based MCP configuration, add that translation layer outside the `openrustclaw_mcp` crate and construct `Vec<McpServerEntry>` yourself.
 
 ---
 
@@ -597,11 +547,23 @@ impl McpRegistry {
 ### As MCP Client
 
 ```rust
-// Initialize registry
-let mcp_registry = Arc::new(McpRegistry::new());
+use openrustclaw_mcp::registry::{McpRegistry, McpServerEntry};
 
-// Load configured servers
-mcp_registry.load_from_config("config/mcp-servers.toml").await?;
+let mut mcp_registry = McpRegistry::new(vec![
+    McpServerEntry {
+        name: "filesystem".into(),
+        command: "npx".into(),
+        args: vec![
+            "-y".into(),
+            "@modelcontextprotocol/server-filesystem".into(),
+            "/home/user/docs".into(),
+        ],
+        enabled: true,
+    },
+]);
+
+mcp_registry.connect_all().await?;
+mcp_registry.discover_all_tools().await?;
 
 // Use MCP tools through the agent
 let response = agent

@@ -131,7 +131,7 @@ enum SkillsAction {
         #[arg(short, long, default_value = "relevance")]
         sort: String,
     },
-    /// Install a skill from marketplace
+    /// Install a skill from the workspace or ClawHub registry
     Install { name: String },
     /// Update an installed skill
     Update { name: String },
@@ -237,6 +237,8 @@ enum Mcp2CliAction {
         #[arg(long, group = "source")]
         mcp: Option<String>,
         #[arg(long, group = "source")]
+        mcp_stdio: Option<String>,
+        #[arg(long, group = "source")]
         spec: Option<String>,
         tool: String,
         #[arg(long, default_value = "text")]
@@ -246,6 +248,8 @@ enum Mcp2CliAction {
     Run {
         #[arg(long, group = "source")]
         mcp: Option<String>,
+        #[arg(long, group = "source")]
+        mcp_stdio: Option<String>,
         #[arg(long, group = "source")]
         spec: Option<String>,
         tool: String,
@@ -404,18 +408,33 @@ async fn main() -> Result<()> {
             }
             Mcp2CliAction::Help {
                 mcp,
+                mcp_stdio,
                 spec,
                 tool,
                 format,
-            } => commands::mcp2cli::help_cmd(mcp, spec, tool, parse_format(&format)).await,
+            } => {
+                commands::mcp2cli::help_cmd(mcp, mcp_stdio, spec, tool, parse_format(&format)).await
+            }
             Mcp2CliAction::Run {
                 mcp,
+                mcp_stdio,
                 spec,
                 tool,
                 args,
                 stdin,
                 format,
-            } => commands::mcp2cli::run(mcp, spec, tool, args, stdin, parse_format(&format)).await,
+            } => {
+                commands::mcp2cli::run(
+                    mcp,
+                    mcp_stdio,
+                    spec,
+                    tool,
+                    args,
+                    stdin,
+                    parse_format(&format),
+                )
+                .await
+            }
             Mcp2CliAction::Analyze { tools, turns, used } => {
                 commands::mcp2cli::analyze(tools, turns, used).await
             }

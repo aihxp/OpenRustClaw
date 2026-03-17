@@ -84,11 +84,11 @@ Provider fallback chain with configurable cooldowns routes requests through avai
 
 ## Messaging Channels
 
-Current channel integrations available via the `Channel` trait and CLI startup:
+Current channel modules available in the repo and startup path:
 
 Telegram, Discord, Slack, WhatsApp (Baileys bridge), Microsoft Teams, Google Chat, Gmail (Pub/Sub), Matrix, iMessage, LINE, Viber, WeChat, Messenger, Instagram DMs, WebChat
 
-Additional channel modules such as Signal, Twilio, and X/Twitter are present in the repo but are not fully integrated into the current startup path.
+Not all of these modules are feature-complete. Google Chat and Gmail Pub/Sub still have authentication scaffolding only, and additional channel modules such as Signal, Twilio, and X/Twitter are present in the repo but are not fully integrated into the current startup path.
 
 ## Memory System
 

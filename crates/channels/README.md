@@ -11,9 +11,9 @@ Messaging platform integrations for the OpenRustClaw AI agent.
 | Discord | ✅ Ready | Gateway, slash commands, embeds |
 | Slack | ✅ Ready | App API, Socket Mode |
 | Microsoft Teams | ✅ Ready | Bot Framework, Adaptive Cards |
-| Google Chat | ✅ Ready | Cards, slash commands |
+| Google Chat | ⚠️ Partial | Channel scaffolding present; service-account auth not implemented |
 | WhatsApp | ✅ Ready | Web bridge, media |
-| Gmail Pub/Sub | ✅ Ready | Email notifications |
+| Gmail Pub/Sub | ⚠️ Partial | Channel scaffolding present; service-account auth not implemented |
 | Matrix | ✅ Ready | Matrix protocol |
 | Meta (Messenger/Instagram) | ✅ Ready | Graph API |
 | LINE | ✅ Ready | Messaging API |

@@ -8,8 +8,9 @@
 //!
 //! # Authentication
 //!
-//! Uses Google Cloud service account authentication with domain-wide delegation
-//! to access Gmail API on behalf of a user.
+//! Intended authentication model: Google Cloud service account credentials with
+//! domain-wide delegation. The service-account flow is not implemented in this
+//! crate yet.
 //!
 //! # Setup Requirements
 //!
@@ -458,17 +459,12 @@ impl GmailPubSub {
     /// 2. Use yup_oauth2 or google-auth to get an access token
     /// 3. Cache the token and refresh when expired
     async fn authenticate(&self) -> Result<String> {
-        // Placeholder implementation
-        // Real implementation would use:
-        // ```rust
-        // let service_account_key = yup_oauth2::read_service_account_key(&self.config.service_account_key_path).await?;
-        // let authenticator = yup_oauth2::ServiceAccountAuthenticator::builder(service_account_key)
-        //     .build().await?;
-        // let token = authenticator.token(&["https://www.googleapis.com/auth/gmail.modify"]).await?;
-        // ```
-
-        warn!("Using placeholder authentication - implement real service account auth");
-        Ok("placeholder_token".to_string())
+        warn!("Gmail Pub/Sub service account auth is not implemented yet");
+        Err(ChannelError::AuthFailed {
+            platform: "gmail_pubsub".to_string(),
+            message: "Service account authentication is not implemented yet".to_string(),
+        }
+        .into())
     }
 
     /// Setup Gmail watch for this user.

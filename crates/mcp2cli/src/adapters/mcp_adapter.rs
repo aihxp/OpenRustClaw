@@ -10,12 +10,12 @@ use async_trait::async_trait;
 use openrustclaw_mcp::McpClient;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use tracing::{debug, info, warn};
+use tokio::sync::Mutex;
+use tracing::{debug, info};
 
 /// Adapter for MCP servers
 pub struct McpAdapter {
-    _client: McpClient,
-    _server_url: Option<String>,
+    client: Mutex<McpClient>,
 }
 
 impl McpAdapter {
@@ -23,35 +23,10 @@ impl McpAdapter {
     pub async fn from_url(url: &str) -> Result<Self> {
         debug!("Connecting to MCP server at {}", url);
 
-        // For HTTP-based MCP, we'd typically use an SSE transport
-        // For now, we'll use a simplified approach with HTTP polling
-        // In a full implementation, this would use proper MCP HTTP+SSE transport
-
-        let client = reqwest::Client::new();
-        let response =
-            client.get(url).send().await.map_err(|e| {
-                Mcp2CliError::other(format!("Failed to connect to MCP server: {}", e))
-            })?;
-
-        if !response.status().is_success() {
-            return Err(Mcp2CliError::other(format!(
-                "MCP server returned error: {}",
-                response.status()
-            )));
-        }
-
-        // Create a placeholder client - in a real implementation,
-        // we'd initialize the MCP client with proper HTTP transport
-        let client = McpClient::connect("http_server", "echo", &[])
-            .await
-            .map_err(|e| Mcp2CliError::mcp(format!("Failed to initialize MCP client: {}", e)))?;
-
-        info!("Connected to MCP server at {}", url);
-
-        Ok(Self {
-            _client: client,
-            _server_url: Some(url.to_string()),
-        })
+        Err(Mcp2CliError::mcp(format!(
+            "Remote MCP over HTTP/SSE is not implemented for mcp2-cli in this repo: {}. Use --mcp-stdio or --spec instead.",
+            url
+        )))
     }
 
     /// Connect to an MCP server via stdio
@@ -67,9 +42,25 @@ impl McpAdapter {
         info!("MCP server started successfully");
 
         Ok(Self {
-            _client: client,
-            _server_url: None,
+            client: Mutex::new(client),
         })
+    }
+
+    async fn load_tools(&self) -> Result<Vec<McpToolDef>> {
+        let mut client = self.client.lock().await;
+        let tools = client
+            .discover_tools()
+            .await
+            .map_err(|e| Mcp2CliError::mcp(format!("Failed to discover MCP tools: {}", e)))?;
+
+        Ok(tools
+            .into_iter()
+            .map(|tool| McpToolDef {
+                name: tool.name,
+                description: tool.description,
+                input_schema: tool.input_schema,
+            })
+            .collect())
     }
 
     /// Convert MCP tool definition to ToolSummary
@@ -256,46 +247,28 @@ impl McpAdapter {
 #[async_trait]
 impl ToolSourceAdapter for McpAdapter {
     async fn list_tools(&self) -> Result<Vec<ToolSummary>> {
-        // In a real implementation, this would call the MCP client
-        // For now, we'll return placeholder data
-        warn!("McpAdapter::list_tools using placeholder implementation");
-
-        // This would be: self.client.discover_tools().await
-        // and then convert each McpToolDef to ToolSummary
-
-        Ok(vec![
-            ToolSummary::new("mcp_tool_1", "Example MCP tool"),
-            ToolSummary::new("mcp_tool_2", "Another MCP tool"),
-        ])
+        let tools = self.load_tools().await?;
+        Ok(tools.iter().map(Self::mcp_tool_to_summary).collect())
     }
 
     async fn get_tool_help(&self, tool_name: &str) -> Result<ToolHelp> {
-        // In a real implementation, this would fetch from the MCP client
-        warn!(
-            tool_name = %tool_name,
-            "McpAdapter::get_tool_help using placeholder implementation"
-        );
+        let tools = self.load_tools().await?;
+        let tool = tools
+            .iter()
+            .find(|tool| tool.name == tool_name)
+            .ok_or_else(|| Mcp2CliError::tool_not_found(tool_name))?;
 
-        Ok(ToolHelp::new(
-            tool_name,
-            format!("Help for {} (placeholder)", tool_name),
-            format!("{} [args]", tool_name),
-            vec![],
-        ))
+        Ok(Self::mcp_tool_to_help(tool))
     }
 
     async fn execute_tool(&self, tool_name: &str, args: Value) -> Result<String> {
-        info!(
-            tool_name = %tool_name,
-            "Executing MCP tool"
-        );
-
-        // In a real implementation:
-        // let output = self.client.call_tool(tool_name, args).await?;
-        // Ok(output.content)
-
-        // Placeholder implementation
-        Ok(format!("Executed {} with args: {}", tool_name, args))
+        info!(tool_name = %tool_name, "Executing MCP tool");
+        let mut client = self.client.lock().await;
+        let output = client
+            .call_tool(tool_name, args)
+            .await
+            .map_err(|e| Mcp2CliError::mcp(format!("Failed to execute MCP tool: {}", e)))?;
+        Ok(output.content)
     }
 }
 
@@ -360,5 +333,15 @@ mod tests {
         assert_eq!(McpAdapter::parse_value("123", "number"), 123.0);
         assert_eq!(McpAdapter::parse_value("true", "boolean"), true);
         assert_eq!(McpAdapter::parse_value("hello", "string"), "hello");
+    }
+
+    #[tokio::test]
+    async fn from_url_returns_honest_unsupported_error() {
+        let err = match McpAdapter::from_url("https://mcp.example.com/sse").await {
+            Err(err) => err,
+            Ok(_) => panic!("expected unsupported URL error"),
+        };
+        assert!(err.to_string().contains("not implemented"));
+        assert!(err.to_string().contains("--mcp-stdio"));
     }
 }

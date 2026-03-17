@@ -125,7 +125,7 @@ openrustclaw skills <ACTION>
 
 Actions:
   list              List installed skills
-  install <NAME>    Install skill from marketplace
+  install <NAME>    Install skill from the workspace or ClawHub registry
   verify <NAME>     Verify skill signatures
 ```
 
@@ -273,7 +273,7 @@ openrustclaw mcp-server [OPTIONS]
 
 Options:
   -t, --transport <TRANSPORT>  Transport type [default: stdio]
-                               Options: stdio, sse
+                               Only `stdio` is currently implemented
 ```
 
 **Examples**:
@@ -281,26 +281,26 @@ Options:
 # Start MCP server with stdio (for Claude Desktop)
 openrustclaw mcp-server
 
-# Start with SSE transport
-openrustclaw mcp-server --transport sse
+# Explicit stdio transport
+openrustclaw mcp-server --transport stdio
 ```
 
 ---
 
-### `mcp2cli`
+### `mcp2-cli`
 
 Token-efficient MCP tool discovery and execution.
 
-#### `mcp2cli list`
+#### `mcp2-cli list`
 
 List available tools (~16 tokens/tool vs 300-800 native).
 
 ```bash
-openrustclaw mcp2cli list [OPTIONS]
+openrustclaw mcp2-cli list [OPTIONS]
 
 Options:
-      --mcp <MCP>          MCP server spec (format: name|command|arg1|arg2...)
-      --mcp-stdio <MCP>    MCP server via stdio
+      --mcp <URL>          MCP server URL (currently returns an unsupported error)
+      --mcp-stdio <CMD>    MCP server via stdio command line
       --spec <SPEC>        OpenAPI spec URL or file
       --base-url <URL>     Base URL for OpenAPI
       --refresh            Force refresh cache
@@ -310,28 +310,29 @@ Options:
 
 **Examples**:
 ```bash
-# List tools from MCP server (table format)
-openrustclaw mcp2cli list --mcp "filesystem|npx|-y|@modelcontextprotocol/server-filesystem|/"
+# List tools from MCP server over stdio
+openrustclaw mcp2-cli list --mcp-stdio 'npx -y @modelcontextprotocol/server-filesystem /'
 
 # JSON output
-openrustclaw mcp2cli list --mcp "filesystem|..." --format json
+openrustclaw mcp2-cli list --mcp-stdio 'npx -y @modelcontextprotocol/server-filesystem /' --format json
 
 # OpenAPI spec
-openrustclaw mcp2cli list --spec https://api.example.com/openapi.json --base-url https://api.example.com
+openrustclaw mcp2-cli list --spec https://api.example.com/openapi.json --base-url https://api.example.com
 
 # Force cache refresh
-openrustclaw mcp2cli list --mcp "filesystem|..." --refresh
+openrustclaw mcp2-cli list --mcp-stdio 'npx -y @modelcontextprotocol/server-filesystem /' --refresh
 ```
 
-#### `mcp2cli help`
+#### `mcp2-cli help`
 
 Get tool help (~80-200 tokens).
 
 ```bash
-openrustclaw mcp2cli help [OPTIONS] <TOOL>
+openrustclaw mcp2-cli help [OPTIONS] <TOOL>
 
 Options:
-      --mcp <MCP>      MCP server spec
+      --mcp <URL>      MCP server URL (currently unsupported)
+      --mcp-stdio <CMD>  MCP server via stdio command line
       --spec <SPEC>    OpenAPI spec URL or file
       --format <FMT>   Output format [default: text]
                        Options: text, json, toon
@@ -339,18 +340,19 @@ Options:
 
 **Example**:
 ```bash
-openrustclaw mcp2cli help --mcp "filesystem|..." read_file
+openrustclaw mcp2-cli help --mcp-stdio 'npx -y @modelcontextprotocol/server-filesystem /' read_file
 ```
 
-#### `mcp2cli run`
+#### `mcp2-cli run`
 
 Execute a tool.
 
 ```bash
-openrustclaw mcp2cli run [OPTIONS] <TOOL>
+openrustclaw mcp2-cli run [OPTIONS] <TOOL>
 
 Options:
-      --mcp <MCP>      MCP server spec
+      --mcp <URL>      MCP server URL (currently unsupported)
+      --mcp-stdio <CMD>  MCP server via stdio command line
       --spec <SPEC>    OpenAPI spec URL or file
       --args <ARGS>    JSON arguments
       --stdin          Read arguments from stdin
@@ -361,18 +363,18 @@ Options:
 **Examples**:
 ```bash
 # Run with inline args
-openrustclaw mcp2cli run --mcp "filesystem|..." read_file --args '{"path":"/etc/hosts"}'
+openrustclaw mcp2-cli run --mcp-stdio 'npx -y @modelcontextprotocol/server-filesystem /' read_file --args '{"path":"/etc/hosts"}'
 
 # Run with stdin
-echo '{"path":"/etc/hosts"}' | openrustclaw mcp2cli run --mcp "filesystem|..." read_file --stdin
+echo '{"path":"/etc/hosts"}' | openrustclaw mcp2-cli run --mcp-stdio 'npx -y @modelcontextprotocol/server-filesystem /' read_file --stdin
 ```
 
-#### `mcp2cli analyze`
+#### `mcp2-cli analyze`
 
 Analyze token cost savings.
 
 ```bash
-openrustclaw mcp2cli analyze [OPTIONS]
+openrustclaw mcp2-cli analyze [OPTIONS]
 
 Options:
   -t, --tools <N>    Number of tools [default: 30]
@@ -382,15 +384,15 @@ Options:
 
 **Example**:
 ```bash
-openrustclaw mcp2cli analyze --tools 50 --turns 20 --used 8
+openrustclaw mcp2-cli analyze --tools 50 --turns 20 --used 8
 ```
 
-#### `mcp2cli toon`
+#### `mcp2-cli toon`
 
 Convert to/from TOON (Token-Optimized Output Notation) format.
 
 ```bash
-openrustclaw mcp2cli toon [INPUT] [OPTIONS]
+openrustclaw mcp2-cli toon [INPUT] [OPTIONS]
 
 Options:
       --decode    Decode TOON instead of encode
@@ -399,18 +401,18 @@ Options:
 **Examples**:
 ```bash
 # Encode JSON to TOON
-cat tools.json | openrustclaw mcp2cli toon
+cat tools.json | openrustclaw mcp2-cli toon
 
 # Decode TOON to JSON
-cat tools.toon | openrustclaw mcp2cli toon --decode
+cat tools.toon | openrustclaw mcp2-cli toon --decode
 ```
 
-#### `mcp2cli cache`
+#### `mcp2-cli cache`
 
 Cache management.
 
 ```bash
-openrustclaw mcp2cli cache <ACTION>
+openrustclaw mcp2-cli cache <ACTION>
 
 Actions:
   clear    Clear all cached data
@@ -420,10 +422,10 @@ Actions:
 **Examples**:
 ```bash
 # Show cache stats
-openrustclaw mcp2cli cache stats
+openrustclaw mcp2-cli cache stats
 
 # Clear cache
-openrustclaw mcp2cli cache clear
+openrustclaw mcp2-cli cache clear
 ```
 
 ---

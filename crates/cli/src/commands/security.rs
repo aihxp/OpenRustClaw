@@ -214,7 +214,10 @@ pub async fn generate_keys() -> Result<()> {
         println!();
         println!("  \x1b[1mIMPORTANT:\x1b[0m");
         println!("  - Move signing_key.pem to a secure location");
-        println!("  - Set [security].skill_verifying_key = \"{}\"", verifying_key_hex);
+        println!(
+            "  - Set [security].skill_verifying_key = \"{}\"",
+            verifying_key_hex
+        );
         println!("  - Never commit signing_key.pem to version control!");
     }
 

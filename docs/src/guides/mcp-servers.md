@@ -1,532 +1,181 @@
 # Connecting MCP Servers
 
-The Model Context Protocol (MCP) enables OpenRustClaw to connect with thousands of existing tools and services. This guide covers setting up and using MCP servers.
+OpenRustClaw supports MCP in two real ways today:
+
+- As an MCP client from Rust code via `openrustclaw_mcp::McpRegistry`
+- As an MCP server for external clients via `openrustclaw mcp-server`
+
+This guide documents the current surface. It does not assume a file-based MCP config loader or extra `openrustclaw mcp ...` client subcommands, because those are not implemented in the repo today.
 
 ---
 
-## 🎯 What Are MCP Servers?
+## Current State
 
-MCP servers are standalone processes that expose tools through a standardized protocol. They can be:
+The client-side MCP integration is currently programmatic and stdio-based:
 
-- **Local processes** — Run on your machine (filesystem, databases)
-- **Remote services** — Connect over HTTP/SSE (web APIs)
-- **Containerized** — Run in Docker for isolation
+- `McpRegistry::new(Vec<McpServerEntry>)`
+- `McpRegistry::connect_all()`
+- `McpRegistry::discover_all_tools()`
+- `McpRegistry::get_client_mut(...)`
 
-```mermaid
-flowchart LR
-    ORC["OpenRustClaw"] --> MCP["MCP Protocol"]
-    
-    subgraph Servers["MCP Servers"]
-        FS["Filesystem"]
-        DB["Database"]
-        GH["GitHub"]
-        WEB["Web Search"]
-        GIT["Git"]
-    end
-    
-    MCP --> Servers
-```
+Each `McpServerEntry` currently supports:
 
----
-
-## 📦 Available MCP Servers
-
-### Official MCP Servers
-
-| Server | Package | Description |
-|--------|---------|-------------|
-| Filesystem | `@modelcontextprotocol/server-filesystem` | Read/write local files |
-| GitHub | `@modelcontextprotocol/server-github` | GitHub API access |
-| PostgreSQL | `@modelcontextprotocol/server-postgres` | Query PostgreSQL |
-| SQLite | `@modelcontextprotocol/server-sqlite` | Query SQLite databases |
-| Brave Search | `@modelcontextprotocol/server-brave-search` | Web search |
-| Fetch | `@modelcontextprotocol/server-fetch` | HTTP requests |
-| Puppeteer | `@modelcontextprotocol/server-puppeteer` | Browser automation |
-| Sentry | `@modelcontextprotocol/server-sentry` | Error tracking |
-| Slack | `@modelcontextprotocol/server-slack` | Slack integration |
-
-### Community MCP Servers
-
-- `@modelcontextprotocol/server-google-drive` — Google Drive access
-- `@modelcontextprotocol/server-notion` — Notion integration
-- `@modelcontextprotocol/server-discord` — Discord bot
-- `@modelcontextprotocol/server-spotify` — Spotify control
-
----
-
-## ⚙️ Configuration
-
-### Global Configuration
-
-Create `config/mcp-servers.toml`:
-
-```toml
-# Filesystem access
-[[servers]]
-name = "filesystem"
-transport = "stdio"
-command = "npx"
-args = ["-y", "@modelcontextprotocol/server-filesystem", "/home/user/projects"]
-
-# GitHub integration
-[[servers]]
-name = "github"
-transport = "stdio"
-command = "npx"
-args = ["-y", "@modelcontextprotocol/server-github"]
-[servers.env]
-GITHUB_PERSONAL_ACCESS_TOKEN = "${GITHUB_TOKEN}"
-
-# PostgreSQL database
-[[servers]]
-name = "postgres"
-transport = "stdio"
-command = "npx"
-args = ["-y", "@modelcontextprotocol/server-postgres", "postgresql://localhost/mydb"]
-
-# Brave Search
-[[servers]]
-name = "brave-search"
-transport = "stdio"
-command = "npx"
-args = ["-y", "@modelcontextprotocol/server-brave-search"]
-[servers.env]
-BRAVE_API_KEY = "${BRAVE_API_KEY}"
-
-# Web fetch
-[[servers]]
-name = "fetch"
-transport = "stdio"
-command = "npx"
-args = ["-y", "@modelcontextprotocol/server-fetch"]
-```
-
-### Per-Project Configuration
-
-Create `mcp.json` in your project root:
-
-```json
-{
-  "servers": [
-    {
-      "name": "project-files",
-      "transport": "stdio",
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-filesystem", "."]
-    },
-    {
-      "name": "project-db",
-      "transport": "stdio",
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-postgres", "${DATABASE_URL}"]
-    }
-  ]
+```rust
+pub struct McpServerEntry {
+    pub name: String,
+    pub command: String,
+    pub args: Vec<String>,
+    pub enabled: bool,
 }
 ```
 
+There is no built-in `config/mcp-servers.toml` loader in the current codebase.
+
 ---
 
-## 🚀 Setup Instructions
+## Using MCP as a Client
 
-### Prerequisites
+Create server entries in Rust and connect them through the registry:
 
-```bash
-# Install Node.js (required for npx)
-# macOS
-brew install node
+```rust
+use openrustclaw_mcp::registry::{McpRegistry, McpServerEntry};
 
-# Ubuntu/Debian
-sudo apt install nodejs npm
+let mut registry = McpRegistry::new(vec![
+    McpServerEntry {
+        name: "filesystem".into(),
+        command: "npx".into(),
+        args: vec![
+            "-y".into(),
+            "@modelcontextprotocol/server-filesystem".into(),
+            "/home/user/projects".into(),
+        ],
+        enabled: true,
+    },
+    McpServerEntry {
+        name: "github".into(),
+        command: "npx".into(),
+        args: vec![
+            "-y".into(),
+            "@modelcontextprotocol/server-github".into(),
+        ],
+        enabled: false,
+    },
+]);
 
-# Verify installation
-node --version  # Should be 18+
-npm --version
+registry.connect_all().await?;
+let tools = registry.discover_all_tools().await?;
+println!("discovered {} tools", tools.len());
 ```
 
-### Filesystem Server
+If you need file-based configuration, add it in your own application layer and map it into `Vec<McpServerEntry>`.
+
+### Common Stdio Servers
 
 ```bash
-# Install globally (optional)
-npm install -g @modelcontextprotocol/server-filesystem
-
-# Test directly
+# Filesystem
 npx -y @modelcontextprotocol/server-filesystem /path/to/allowed/dir
-```
 
-Configure in `mcp-servers.toml`:
+# GitHub
+npx -y @modelcontextprotocol/server-github
 
-```toml
-[[servers]]
-name = "my-files"
-transport = "stdio"
-command = "npx"
-args = ["-y", "@modelcontextprotocol/server-filesystem", "/home/user/projects"]
-```
-
-### GitHub Server
-
-1. Get a GitHub personal access token:
-   - Visit https://github.com/settings/tokens
-   - Create token with `repo` scope
-
-2. Configure:
-
-```toml
-[[servers]]
-name = "github"
-transport = "stdio"
-command = "npx"
-args = ["-y", "@modelcontextprotocol/server-github"]
-[servers.env]
-GITHUB_PERSONAL_ACCESS_TOKEN = "${GITHUB_TOKEN}"
-```
-
-3. Add to `.env`:
-
-```bash
-GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx
-```
-
-### Brave Search Server
-
-1. Get API key from https://brave.com/search/api/
-
-2. Configure:
-
-```toml
-[[servers]]
-name = "web-search"
-transport = "stdio"
-command = "npx"
-args = ["-y", "@modelcontextprotocol/server-brave-search"]
-[servers.env]
-BRAVE_API_KEY = "${BRAVE_API_KEY}"
-```
-
-### PostgreSQL Server
-
-```toml
-[[servers]]
-name = "database"
-transport = "stdio"
-command = "npx"
-args = ["-y", "@modelcontextprotocol/server-postgres", "postgresql://user:pass@localhost/dbname"]
-```
-
-Or use connection string from environment:
-
-```toml
-[[servers]]
-name = "database"
-transport = "stdio"
-command = "npx"
-args = ["-y", "@modelcontextprotocol/server-postgres", "${DATABASE_URL}"]
+# SQLite
+npx -y @modelcontextprotocol/server-sqlite ./data/app.db
 ```
 
 ---
 
-## 🔧 Using MCP Servers
+## Using OpenRustClaw as an MCP Server
 
-### Listing Available Tools
-
-```bash
-# List all MCP tools
-openrustclaw mcp tools
-
-# Output:
-# Server: filesystem
-#   - read_file(path: string)
-#   - write_file(path: string, content: string)
-#   - list_directory(path: string)
-#   - search_files(path: string, pattern: string)
-#
-# Server: github
-#   - search_repositories(query: string)
-#   - create_issue(owner: string, repo: string, title: string, body: string)
-#   - create_pull_request(owner: string, repo: string, title: string, ...)
-```
-
-### Testing MCP Servers
+OpenRustClaw can expose its own tools over stdio:
 
 ```bash
-# Test a specific server
-openrustclaw mcp test filesystem
-
-# Test all servers
-openrustclaw mcp test --all
-
-# Output:
-# ✓ filesystem (4 tools available)
-# ✓ github (12 tools available)
-# ✗ postgres (connection refused)
+openrustclaw mcp-server
 ```
 
-### Interactive MCP Shell
+This is the current production-ready transport for the built-in MCP server. The CLI also accepts `--transport`, but only `stdio` is implemented today.
 
-```bash
-# Enter MCP shell for testing
-openrustclaw mcp shell
+### Claude Desktop Example
 
-> use filesystem
-> call read_file {"path": "/home/user/README.md"}
-< File content displayed...
-
-> use github
-> call search_repositories {"query": "rust ai agent"}
-< Repository results...
+```json
+{
+  "mcpServers": {
+    "openrustclaw": {
+      "command": "openrustclaw",
+      "args": ["mcp-server"]
+    }
+  }
+}
 ```
+
+Cursor and other MCP-capable tools use the same basic model: launch `openrustclaw mcp-server` as a stdio subprocess.
 
 ---
 
-## 💡 Usage Examples
+## mcp2cli
 
-### File Operations
+If you want token-efficient MCP discovery from the command line, use `mcp2-cli`:
 
-With the filesystem MCP server connected:
-
-```
-User: Read the README file
-
-Agent: [filesystem/read_file] {"path": "README.md"}
-
-The README describes an AI agent framework called OpenRustClaw...
-```
-
-```
-User: Find all Rust files in the project
-
-Agent: [filesystem/search_files] {"path": ".", "pattern": "**/*.rs"}
-
-Found 42 Rust files:
-- src/main.rs
-- src/lib.rs
-- crates/core/src/lib.rs
-...
+```bash
+openrustclaw mcp2-cli list \
+  --mcp-stdio 'npx -y @modelcontextprotocol/server-filesystem /home/user/projects'
+openrustclaw mcp2-cli help \
+  --mcp-stdio 'npx -y @modelcontextprotocol/server-filesystem /home/user/projects' \
+  read_file
+openrustclaw mcp2-cli run \
+  --mcp-stdio 'npx -y @modelcontextprotocol/server-filesystem /home/user/projects' \
+  read_file --args '{"path":"README.md"}'
 ```
 
-### GitHub Integration
+This is separate from the Rust `McpRegistry` path. `mcp2-cli` is the documented CLI for MCP discovery and execution today.
 
-```
-User: Check for open issues in the repository
+## Token Costs
 
-Agent: [github/search_issues] {"owner": "openrustclaw", "repo": "openrustclaw", "state": "open"}
-
-There are 5 open issues:
-1. #123 - Improve error handling
-2. #124 - Add more tests
-...
-```
-
-### Database Queries
-
-```
-User: How many users signed up this week?
-
-Agent: [postgres/query] {"sql": "SELECT COUNT(*) FROM users WHERE created_at > NOW() - INTERVAL '7 days'"}
-
-This week, 156 new users signed up.
-```
-
-### Web Search
-
-```
-User: Search for recent Rust concurrency patterns
-
-Agent: [brave-search/search] {"query": "Rust concurrency patterns 2024"}
-
-Here are some recent articles about Rust concurrency:
-1. "Modern Rust Concurrency" by...
-2. "Tokio Best Practices" by...
-```
+For large MCP toolsets, prefer `mcp2-cli` over injecting full tool schemas into every turn. See [mcp2cli - Token-Efficient Discovery](./mcp2cli.md).
 
 ---
 
-## 🔒 Security Considerations
+## Security Notes
 
-### Filesystem Access
+Treat MCP servers as executable integrations:
 
-**Always specify allowed directories:**
+- Restrict filesystem servers to explicit allowlisted directories.
+- Prefer dedicated credentials for remote services.
+- Review any server command before enabling it.
+- Avoid wrapping commands in a shell when you do not need one.
 
-```toml
-# Good - restricted access
-args = ["-y", "@modelcontextprotocol/server-filesystem", "/home/user/projects"]
+Example:
 
-# Bad - full filesystem access
-args = ["-y", "@modelcontextprotocol/server-filesystem", "/"]
+```rust
+McpServerEntry {
+    name: "filesystem".into(),
+    command: "npx".into(),
+    args: vec![
+        "-y".into(),
+        "@modelcontextprotocol/server-filesystem".into(),
+        "/home/user/projects/myapp".into(),
+    ],
+    enabled: true,
+}
 ```
 
-### Environment Variables
-
-Use environment variable substitution for secrets:
-
-```toml
-# Good
-[servers.env]
-GITHUB_TOKEN = "${GITHUB_TOKEN}"
-
-# Bad - hardcoded token
-[servers.env]
-GITHUB_TOKEN = "ghp_abc123..."
-```
-
-### Network Access
-
-Only enable network access for trusted servers:
-
-```toml
-# Review before enabling
-[[servers]]
-name = "fetch"
-transport = "stdio"
-command = "npx"
-args = ["-y", "@modelcontextprotocol/server-fetch"]
-# This allows arbitrary HTTP requests
-```
+Avoid broad access like `/` unless you fully trust the server and its callers.
 
 ---
 
-## 🔧 Troubleshooting
+## Troubleshooting
 
-### "Server not found" errors
+### Tool discovery returns zero tools
 
-```bash
-# Verify server is installed
-npm list -g @modelcontextprotocol/server-filesystem
+- Run the MCP server command manually first.
+- Confirm the server supports MCP `initialize`, `tools/list`, and `tools/call`.
+- Check logs with `RUST_LOG=debug`.
 
-# Reinstall if needed
-npm install -g @modelcontextprotocol/server-filesystem
-```
+### Connection fails
 
-### "Connection refused" errors
+- Verify `node`, `npx`, `python3`, or the target binary is installed.
+- Confirm the command and args work outside OpenRustClaw.
+- Make sure disabled entries have `enabled = false`.
 
-```bash
-# For database servers, check service is running
-pg_isready -h localhost
+### Remote MCP over SSE
 
-# For HTTP servers, check URL is correct
-curl http://localhost:8080/health
-```
-
-### "Permission denied" errors
-
-```bash
-# Check filesystem permissions
-ls -la /path/to/allowed/dir
-
-# For MCP servers, ensure paths are absolute
-# Bad: "./projects"
-# Good: "/home/user/projects"
-```
-
-### Debugging MCP Servers
-
-```bash
-# Enable verbose logging
-RUST_LOG=debug openrustclaw mcp test filesystem
-
-# Run server manually to see errors
-npx -y @modelcontextprotocol/server-filesystem /path/to/dir
-```
-
----
-
-## 📝 Advanced Configuration
-
-### SSE Transport (Remote Servers)
-
-```toml
-[[servers]]
-name = "remote-api"
-transport = "sse"
-url = "https://api.example.com/mcp"
-headers = { Authorization = "Bearer ${API_TOKEN}" }
-```
-
-### Docker-based Servers
-
-```toml
-[[servers]]
-name = "isolated-filesystem"
-transport = "stdio"
-command = "docker"
-args = ["run", "--rm", "-i", "-v", "/host/path:/data:ro", "mcp/filesystem", "/data"]
-```
-
-### Conditional Loading
-
-```toml
-[[servers]]
-name = "production-db"
-transport = "stdio"
-command = "npx"
-args = ["-y", "@modelcontextprotocol/server-postgres", "${PROD_DATABASE_URL}"]
-# Only load if environment variable is set
-required_env = ["PROD_DATABASE_URL"]
-```
-
----
-
-## 🎓 Best Practices
-
-### 1. Use Specific Paths
-
-```toml
-# Good
-args = ["-y", "@modelcontextprotocol/server-filesystem", "/home/user/projects/myapp"]
-
-# Bad
-args = ["-y", "@modelcontextprotocol/server-filesystem", "/"]
-```
-
-### 2. Separate Credentials
-
-```bash
-# .env file (never commit)
-GITHUB_TOKEN=ghp_xxx
-BRAVE_API_KEY=bs_xxx
-DATABASE_URL=postgresql://...
-
-# mcp-servers.toml
-[servers.env]
-GITHUB_TOKEN = "${GITHUB_TOKEN}"
-```
-
-### 3. Test Before Enabling
-
-```bash
-# Always test servers before using
-openrustclaw mcp test filesystem
-openrustclaw mcp test github
-```
-
-### 4. Document Your Setup
-
-```markdown
-# MCP Servers Setup
-
-## Required Environment Variables
-- `GITHUB_TOKEN` - GitHub personal access token
-- `BRAVE_API_KEY` - Brave Search API key
-
-## Available Tools
-- `filesystem/read_file` - Read project files
-- `github/search_issues` - Find GitHub issues
-- `brave-search/search` - Web search
-```
-
-### 5. Limit Concurrent Servers
-
-Too many MCP servers can impact performance:
-
-```toml
-# Recommended: 3-5 active servers
-# Prioritize based on your workflow
-
-# Essential
-- filesystem
-- github
-
-# Optional
-- postgres (only when working with DB)
-- brave-search (only when researching)
-```
+The current `mcp2-cli` implementation in this repo supports OpenAPI sources and MCP stdio sources. The `--mcp` URL flag exists, but it currently returns an explicit unsupported error because the HTTP/SSE transport is not implemented yet.

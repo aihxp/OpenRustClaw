@@ -33,8 +33,9 @@ All 30 tool schemas (3,600 tokens) → injected every turn
 ### List Available Tools
 
 ```bash
-# From MCP server
-openrustclaw mcp2-cli list --mcp https://mcp.example.com/sse
+# From MCP server via stdio
+openrustclaw mcp2-cli list \
+  --mcp-stdio 'npx -y @modelcontextprotocol/server-filesystem /tmp'
 
 # From OpenAPI spec
 openrustclaw mcp2-cli list --spec https://api.example.com/openapi.json
@@ -43,21 +44,26 @@ openrustclaw mcp2-cli list --spec https://api.example.com/openapi.json
 openrustclaw mcp2-cli list --spec ./api.yaml
 
 # Force refresh (bypass cache)
-openrustclaw mcp2-cli list --mcp https://mcp.example.com/sse --refresh
+openrustclaw mcp2-cli list \
+  --mcp-stdio 'npx -y @modelcontextprotocol/server-filesystem /tmp' \
+  --refresh
 ```
 
 ### Get Tool Help
 
 ```bash
-openrustclaw mcp2-cli help --mcp https://mcp.example.com/sse search-files
+openrustclaw mcp2-cli help \
+  --mcp-stdio 'npx -y @modelcontextprotocol/server-filesystem /tmp' \
+  read_file
 ```
 
 ### Execute a Tool
 
 ```bash
 # With JSON arguments
-openrustclaw mcp2-cli run --mcp https://mcp.example.com/sse search-files \
-  --args '{"query": "test", "limit": 10}'
+openrustclaw mcp2-cli run \
+  --mcp-stdio 'npx -y @modelcontextprotocol/server-filesystem /tmp' \
+  read_file --args '{"path": "notes.txt"}'
 
 # With stdin
 openrustclaw mcp2-cli run --spec ./api.json create-pet --stdin < pet.json
@@ -94,12 +100,12 @@ openrustclaw mcp2-cli cache stats
 
 ## Supported Sources
 
-| Source | Flag | Example |
-|--------|------|---------|
-| MCP HTTP/SSE | `--mcp` | `https://mcp.example.com/sse` |
-| MCP stdio | `--mcp-stdio` | `npx @modelcontextprotocol/server-filesystem /tmp` |
-| OpenAPI URL | `--spec` | `https://api.example.com/openapi.json` |
-| OpenAPI file | `--spec` | `./api.yaml` |
+| Source | Flag | Status | Example |
+|--------|------|--------|---------|
+| MCP stdio | `--mcp-stdio` | Supported | `npx -y @modelcontextprotocol/server-filesystem /tmp` |
+| OpenAPI URL | `--spec` | Supported | `https://api.example.com/openapi.json` |
+| OpenAPI file | `--spec` | Supported | `./api.yaml` |
+| MCP HTTP/SSE | `--mcp` | Not implemented in this repo | `https://mcp.example.com/sse` |
 
 ## Output Formats
 
@@ -124,8 +130,15 @@ To use mcp2cli tools in the agent runtime:
 ```rust
 use openrustclaw_mcp2cli::integration::{Mcp2CliFactory, Mcp2CliRegistry};
 
-// Create tool from MCP server
-let mcp_tool = Mcp2CliFactory::from_mcp_url("https://mcp.example.com/sse")
+// Create tool from MCP server via stdio
+let mcp_tool = Mcp2CliFactory::from_mcp_stdio(
+    "npx",
+    vec![
+        "-y".into(),
+        "@modelcontextprotocol/server-filesystem".into(),
+        "/tmp".into(),
+    ],
+)
     .await?;
 
 // Or from OpenAPI spec
@@ -162,6 +175,11 @@ registry.register(Arc::new(mcp_tool));
 3. **Works with any LLM** - Not tied to specific providers
 4. **Zero codegen** - Runtime CLI generation, no rebuilds needed
 5. **Native Rust** - Fast, safe, integrated with OpenRustClaw
+
+## Current Limitations
+
+- `--mcp-stdio` and OpenAPI sources are the supported runtime paths today.
+- The `--mcp` URL flag is present, but returns an explicit unsupported error until a real MCP HTTP/SSE transport is added.
 
 ## Comparison with Alternatives
 

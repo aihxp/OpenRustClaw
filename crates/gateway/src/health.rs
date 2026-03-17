@@ -597,27 +597,19 @@ async fn check_database_detailed(
 
 /// Check memory system status.
 async fn check_memory_system() -> anyhow::Result<serde_json::Value> {
-    // In a real implementation, this would check:
-    // - Memory store connectivity
-    // - Embedding provider availability
-    // - Recent operation latency
-
     Ok(serde_json::json!({
         "status": "operational",
-        "notes": "Memory system health check placeholder"
+        "check_mode": "basic",
+        "notes": "Deep memory health probes are not wired into the gateway yet"
     }))
 }
 
 /// Check scheduler status.
 async fn check_scheduler() -> ComponentHealth {
-    // In a real implementation, this would check:
-    // - Scheduler worker is running
-    // - Job queue depth
-    // - Recent job execution success rate
-
     ComponentHealth::healthy_with_details(serde_json::json!({
         "status": "operational",
-        "notes": "Scheduler health check placeholder"
+        "check_mode": "basic",
+        "notes": "Gateway exposes scheduler status, but does not yet inspect worker depth or execution success"
     }))
 }
 

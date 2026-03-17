@@ -248,28 +248,9 @@ let result = adaptive.execute("read_file", json!({"path": "/etc/hosts"})).await?
 
 ## Configuration
 
-### MCP Servers Configuration
+### MCP Client Configuration
 
-```toml
-[[mcp.servers]]
-name = "filesystem"
-command = "npx"
-args = ["-y", "@modelcontextprotocol/server-filesystem", "/home/user"]
-enabled = true
-
-[[mcp.servers]]
-name = "github"
-command = "npx"
-args = ["-y", "@modelcontextprotocol/server-github"]
-enabled = true
-env = { GITHUB_PERSONAL_ACCESS_TOKEN = "${GITHUB_TOKEN}" }
-
-[[mcp.servers]]
-name = "postgres"
-command = "uvx"
-args = ["mcp-server-postgres", "postgresql://localhost/mydb"]
-enabled = false
-```
+The current `openrustclaw_mcp` crate uses programmatic configuration via `Vec<McpServerEntry>`. There is no built-in TOML config loader in this repo today.
 
 ### Claude Desktop Configuration
 
@@ -310,31 +291,31 @@ enabled = false
 # Start MCP server (stdio for Claude Desktop)
 openrustclaw mcp-server
 
-# Start with SSE transport
-openrustclaw mcp-server --transport sse
+# Only stdio is implemented today
+openrustclaw mcp-server --transport stdio
 ```
 
-### mcp2cli
+### mcp2-cli
 
 ```bash
 # List tools from MCP server (~16 tokens/tool)
-openrustclaw mcp2cli list --mcp "filesystem|npx|-y|@modelcontextprotocol/server-filesystem|/"
+openrustclaw mcp2-cli list --mcp-stdio 'npx -y @modelcontextprotocol/server-filesystem /'
 
 # Get tool help (~80-200 tokens)
-openrustclaw mcp2cli help --mcp "filesystem" read_file
+openrustclaw mcp2-cli help --mcp-stdio 'npx -y @modelcontextprotocol/server-filesystem /' read_file
 
 # Execute tool
-openrustclaw mcp2cli run --mcp "filesystem" read_file --args '{"path":"/etc/hosts"}'
+openrustclaw mcp2-cli run --mcp-stdio 'npx -y @modelcontextprotocol/server-filesystem /' read_file --args '{"path":"/etc/hosts"}'
 
 # Convert to TOON format
-openrustclaw mcp2cli toon < tools.json
+openrustclaw mcp2-cli toon < tools.json
 
 # Analyze token savings
-openrustclaw mcp2cli analyze --tools 30 --turns 15 --used 5
+openrustclaw mcp2-cli analyze --tools 30 --turns 15 --used 5
 
 # Cache management
-openrustclaw mcp2cli cache stats
-openrustclaw mcp2cli cache clear
+openrustclaw mcp2-cli cache stats
+openrustclaw mcp2-cli cache clear
 ```
 
 ---

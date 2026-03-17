@@ -50,6 +50,7 @@ rand.workspace = true
 base64.workspace = true
 walkdir.workspace = true
 dirs = "5"
+shlex = "1"
 
 [features]
 default = ["voice", "cursor"]
