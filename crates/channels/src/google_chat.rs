@@ -26,7 +26,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use governor::{Quota, RateLimiter};
 use std::num::NonZeroU32;
-use tokio::sync::{mpsc, Mutex, RwLock};
+use tokio::sync::{Mutex, RwLock, mpsc};
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 
@@ -44,7 +44,14 @@ pub struct GoogleChatChannel {
     config: GoogleChatConfig,
     _incoming_tx: mpsc::Sender<IncomingMessage>,
     incoming_rx: Mutex<mpsc::Receiver<IncomingMessage>>,
-    rate_limiter: Arc<RateLimiter<governor::state::NotKeyed, governor::state::InMemoryState, governor::clock::DefaultClock, governor::middleware::NoOpMiddleware>>,
+    rate_limiter: Arc<
+        RateLimiter<
+            governor::state::NotKeyed,
+            governor::state::InMemoryState,
+            governor::clock::DefaultClock,
+            governor::middleware::NoOpMiddleware,
+        >,
+    >,
     is_connected: RwLock<bool>,
     /// Access token for API calls (cached and refreshed as needed)
     access_token: RwLock<Option<String>>,
@@ -211,7 +218,7 @@ impl GoogleChatChannel {
         // Create rate limiter (Google Chat API allows ~10+ requests per second)
         let quota = Quota::per_second(
             NonZeroU32::new(config.rate_limit_requests_per_second.max(1))
-                .unwrap_or(NonZeroU32::new(10).unwrap())
+                .unwrap_or(NonZeroU32::new(10).unwrap()),
         );
         let rate_limiter = Arc::new(RateLimiter::direct(quota));
 
@@ -238,10 +245,10 @@ impl GoogleChatChannel {
             return true;
         }
 
-        if let Some(email) = email {
-            if self.config.allowlist.contains(&email.to_string()) {
-                return true;
-            }
+        if let Some(email) = email
+            && self.config.allowlist.contains(&email.to_string())
+        {
+            return true;
         }
 
         self.config.allowlist.contains(&user_id.to_string())
@@ -262,20 +269,25 @@ impl GoogleChatChannel {
         match self.config.response_mode {
             GoogleChatResponseMode::SlashCommands => {
                 // Only respond if there's a slash command
-                event.message.as_ref()
+                event
+                    .message
+                    .as_ref()
                     .and_then(|m| m.slash_command.as_ref())
                     .is_some()
             }
             GoogleChatResponseMode::Mention => {
                 // Check if the bot was mentioned
-                event.message.as_ref()
+                event
+                    .message
+                    .as_ref()
                     .and_then(|m| m.annotations.as_ref())
                     .map(|annots| {
                         annots.iter().any(|a| {
-                            a.annotation_type == "USER_MENTION" &&
-                            a.user_mention.as_ref()
-                                .map(|um| um.user.name.contains("/bots/"))
-                                .unwrap_or(false)
+                            a.annotation_type == "USER_MENTION"
+                                && a.user_mention
+                                    .as_ref()
+                                    .map(|um| um.user.name.contains("/bots/"))
+                                    .unwrap_or(false)
                         })
                     })
                     .unwrap_or(false)
@@ -289,17 +301,15 @@ impl GoogleChatChannel {
         ChatMessage {
             text: Some(text.to_string()),
             cards_v2: None,
-            thread: thread_name.map(|name| Thread { name: name.to_string() }),
+            thread: thread_name.map(|name| Thread {
+                name: name.to_string(),
+            }),
         }
     }
 
     /// Build a card message payload.
     #[allow(dead_code)]
-    fn build_card_message(
-        title: &str,
-        content: &str,
-        thread_name: Option<&str>,
-    ) -> ChatMessage {
+    fn build_card_message(title: &str, content: &str, thread_name: Option<&str>) -> ChatMessage {
         let card = CardV2 {
             card_id: Uuid::new_v4().to_string(),
             card: Card {
@@ -320,7 +330,9 @@ impl GoogleChatChannel {
         ChatMessage {
             text: None,
             cards_v2: Some(vec![card]),
-            thread: thread_name.map(|name| Thread { name: name.to_string() }),
+            thread: thread_name.map(|name| Thread {
+                name: name.to_string(),
+            }),
         }
     }
 
@@ -340,11 +352,17 @@ impl GoogleChatChannel {
                     card: Card {
                         header: Some(CardHeader {
                             title: title.to_string(),
-                            subtitle: card_data.get("subtitle").and_then(|s| s.as_str().map(String::from)),
-                            image_url: card_data.get("image_url").and_then(|u| u.as_str().map(String::from)),
+                            subtitle: card_data
+                                .get("subtitle")
+                                .and_then(|s| s.as_str().map(String::from)),
+                            image_url: card_data
+                                .get("image_url")
+                                .and_then(|u| u.as_str().map(String::from)),
                         }),
                         sections: vec![CardSection {
-                            header: card_data.get("section_header").and_then(|h| h.as_str().map(String::from)),
+                            header: card_data
+                                .get("section_header")
+                                .and_then(|h| h.as_str().map(String::from)),
                             widgets: vec![Widget::TextParagraph {
                                 text: content.to_string(),
                             }],
@@ -378,13 +396,21 @@ impl GoogleChatChannel {
     /// Extract user ID from the user resource name.
     fn extract_user_id(user_name: &str) -> String {
         // Format: "users/123456789"
-        user_name.split('/').last().unwrap_or(user_name).to_string()
+        user_name
+            .split('/')
+            .next_back()
+            .unwrap_or(user_name)
+            .to_string()
     }
 
     /// Extract space ID from the space resource name.
     fn extract_space_id(space_name: &str) -> String {
         // Format: "spaces/AAAAxxxxxx"
-        space_name.split('/').last().unwrap_or(space_name).to_string()
+        space_name
+            .split('/')
+            .next_back()
+            .unwrap_or(space_name)
+            .to_string()
     }
 
     /// Load service account key and obtain access token.
@@ -402,7 +428,7 @@ impl GoogleChatChannel {
         //     .build().await?;
         // let token = authenticator.token(&["https://www.googleapis.com/auth/chat.bot"]).await?;
         // ```
-        
+
         warn!("Using placeholder authentication - implement real service account auth");
         Ok("placeholder_token".to_string())
     }
@@ -419,7 +445,9 @@ impl Channel for GoogleChatChannel {
         self.rate_limiter.until_ready().await;
 
         // Get space from metadata
-        let space_name = msg.metadata.get("google_chat_space")
+        let space_name = msg
+            .metadata
+            .get("google_chat_space")
             .and_then(|v| v.as_str())
             .ok_or_else(|| ChannelError::InvalidFormat {
                 platform: "google_chat".to_string(),
@@ -427,7 +455,9 @@ impl Channel for GoogleChatChannel {
             })?;
 
         // Get thread from metadata (optional)
-        let thread_name = msg.metadata.get("google_chat_thread")
+        let thread_name = msg
+            .metadata
+            .get("google_chat_thread")
             .and_then(|v| v.as_str());
 
         // Format content
@@ -439,7 +469,9 @@ impl Channel for GoogleChatChannel {
                 ChatMessage {
                     text: None,
                     cards_v2: Some(cards),
-                    thread: thread_name.map(|name| Thread { name: name.to_string() }),
+                    thread: thread_name.map(|name| Thread {
+                        name: name.to_string(),
+                    }),
                 }
             } else {
                 Self::build_text_message(&formatted_content, thread_name)
@@ -451,7 +483,9 @@ impl Channel for GoogleChatChannel {
         // Get access token
         let _token = {
             let token_guard = self.access_token.read().await;
-            token_guard.clone().unwrap_or_else(|| "placeholder".to_string())
+            token_guard
+                .clone()
+                .unwrap_or_else(|| "placeholder".to_string())
         };
 
         // In a full implementation, this would:
@@ -485,7 +519,8 @@ impl Channel for GoogleChatChannel {
             ChannelError::Connection {
                 platform: "google_chat".to_string(),
                 message: "Incoming message channel closed".to_string(),
-            }.into()
+            }
+            .into()
         })
     }
 
@@ -501,14 +536,16 @@ impl Channel for GoogleChatChannel {
             return Err(ChannelError::Config {
                 platform: "google_chat".to_string(),
                 message: "Google Chat service account key path is required".to_string(),
-            }.into());
+            }
+            .into());
         }
 
         if self.config.project_id.is_empty() {
             return Err(ChannelError::Config {
                 platform: "google_chat".to_string(),
                 message: "Google Cloud project ID is required".to_string(),
-            }.into());
+            }
+            .into());
         }
 
         // Authenticate
@@ -525,7 +562,9 @@ impl Channel for GoogleChatChannel {
         } else if self.config.webhook_url.is_some() {
             info!("Google Chat HTTP webhook mode - events will be received via webhooks");
         } else {
-            warn!("No Pub/Sub subscription or webhook URL configured - bot will not receive messages");
+            warn!(
+                "No Pub/Sub subscription or webhook URL configured - bot will not receive messages"
+            );
         }
 
         *self.is_connected.write().await = true;
@@ -554,17 +593,20 @@ pub struct GoogleChatWebhookHandler {
 impl GoogleChatWebhookHandler {
     /// Create a new webhook handler.
     pub fn new(config: GoogleChatConfig, incoming_tx: mpsc::Sender<IncomingMessage>) -> Self {
-        Self { config, incoming_tx }
+        Self {
+            config,
+            incoming_tx,
+        }
     }
 
     /// Handle an incoming webhook event.
-    /// 
+    ///
     /// This should be called by your HTTP server when a webhook is received
     /// from Google Chat.
     pub async fn handle_event(&self, body: &[u8]) -> Result<Option<serde_json::Value>> {
         // Parse the event
-        let event: ChatEvent = serde_json::from_slice(body)
-            .map_err(|e| ChannelError::InvalidFormat {
+        let event: ChatEvent =
+            serde_json::from_slice(body).map_err(|e| ChannelError::InvalidFormat {
                 platform: "google_chat".to_string(),
                 message: format!("Failed to parse event: {}", e),
             })?;
@@ -590,13 +632,17 @@ impl GoogleChatWebhookHandler {
     }
 
     async fn handle_message_event(&self, event: ChatEvent) -> Result<Option<serde_json::Value>> {
-        let message = event.message.as_ref()
+        let message = event
+            .message
+            .as_ref()
             .ok_or_else(|| ChannelError::InvalidFormat {
                 platform: "google_chat".to_string(),
                 message: "MESSAGE event without message data".to_string(),
             })?;
 
-        let user = event.user.as_ref()
+        let user = event
+            .user
+            .as_ref()
             .ok_or_else(|| ChannelError::InvalidFormat {
                 platform: "google_chat".to_string(),
                 message: "Event without user data".to_string(),
@@ -655,25 +701,36 @@ impl GoogleChatWebhookHandler {
         Ok(None)
     }
 
-    async fn handle_card_click_event(&self, _event: ChatEvent) -> Result<Option<serde_json::Value>> {
+    async fn handle_card_click_event(
+        &self,
+        _event: ChatEvent,
+    ) -> Result<Option<serde_json::Value>> {
         // Handle card button clicks
         debug!("Card clicked event received");
         // In a full implementation, this would parse the action and route it appropriately
         Ok(None)
     }
 
-    async fn handle_slash_command_event(&self, event: ChatEvent) -> Result<Option<serde_json::Value>> {
-        let message = event.message.as_ref()
+    async fn handle_slash_command_event(
+        &self,
+        event: ChatEvent,
+    ) -> Result<Option<serde_json::Value>> {
+        let message = event
+            .message
+            .as_ref()
             .ok_or_else(|| ChannelError::InvalidFormat {
                 platform: "google_chat".to_string(),
                 message: "SLASH_COMMAND event without message data".to_string(),
             })?;
 
-        let slash_command = message.slash_command.as_ref()
-            .ok_or_else(|| ChannelError::InvalidFormat {
-                platform: "google_chat".to_string(),
-                message: "SLASH_COMMAND event without command data".to_string(),
-            })?;
+        let slash_command =
+            message
+                .slash_command
+                .as_ref()
+                .ok_or_else(|| ChannelError::InvalidFormat {
+                    platform: "google_chat".to_string(),
+                    message: "SLASH_COMMAND event without command data".to_string(),
+                })?;
 
         info!(command_id = %slash_command.command_id, "Slash command received");
 
@@ -687,10 +744,10 @@ impl GoogleChatWebhookHandler {
             return true;
         }
 
-        if let Some(email) = email {
-            if self.config.allowlist.contains(&email.to_string()) {
-                return true;
-            }
+        if let Some(email) = email
+            && self.config.allowlist.contains(&email.to_string())
+        {
+            return true;
         }
 
         self.config.allowlist.contains(&user_id.to_string())
@@ -740,7 +797,8 @@ mod tests {
 
     #[test]
     fn test_build_text_message_with_thread() {
-        let msg = GoogleChatChannel::build_text_message("Hello world", Some("spaces/AAA/threads/BBB"));
+        let msg =
+            GoogleChatChannel::build_text_message("Hello world", Some("spaces/AAA/threads/BBB"));
         assert!(msg.thread.is_some());
         assert_eq!(msg.thread.unwrap().name, "spaces/AAA/threads/BBB");
     }
@@ -819,21 +877,27 @@ mod tests {
         let channel = GoogleChatChannel::new(config);
 
         // Event without slash command
-        let event_no_command: ChatEvent = serde_json::from_str(r#"{
+        let event_no_command: ChatEvent = serde_json::from_str(
+            r#"{
             "type": "MESSAGE",
             "eventTime": "2024-01-01T00:00:00Z",
             "space": {"name": "spaces/AAA", "type": "ROOM"},
             "message": {"name": "messages/123", "text": "Hello"}
-        }"#).unwrap();
+        }"#,
+        )
+        .unwrap();
         assert!(!channel.should_respond(&event_no_command));
 
         // Event with slash command
-        let event_with_command: ChatEvent = serde_json::from_str(r#"{
+        let event_with_command: ChatEvent = serde_json::from_str(
+            r#"{
             "type": "MESSAGE",
             "eventTime": "2024-01-01T00:00:00Z",
             "space": {"name": "spaces/AAA", "type": "ROOM"},
             "message": {"name": "messages/123", "text": "/help", "slashCommand": {"commandId": "1"}}
-        }"#).unwrap();
+        }"#,
+        )
+        .unwrap();
         assert!(channel.should_respond(&event_with_command));
     }
 }

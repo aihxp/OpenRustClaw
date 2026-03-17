@@ -6,7 +6,7 @@ use serde_json::json;
 use tracing::info;
 
 use crate::browser::Browser;
-use crate::tools::{error_response, success_response, AutomationTool, ToolContext};
+use crate::tools::{AutomationTool, ToolContext, error_response, success_response};
 
 /// Execute JavaScript in the browser.
 pub struct ExecuteJsTool {
@@ -75,29 +75,29 @@ impl AutomationTool for ExecuteJsTool {
         _ctx: &ToolContext,
     ) -> anyhow::Result<String> {
         let args: ExecuteJsArgs = serde_json::from_value(input)?;
-        
-        let pages = self.browser.pages().await.map_err(|e| {
-            anyhow::anyhow!("Failed to get pages: {}", e)
-        })?;
-        
-        let page = pages.first().ok_or_else(|| {
-            anyhow::anyhow!("No pages available")
-        })?;
-        
+
+        let pages = self
+            .browser
+            .pages()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to get pages: {}", e))?;
+
+        let page = pages
+            .first()
+            .ok_or_else(|| anyhow::anyhow!("No pages available"))?;
+
         info!(script_len = args.script.len(), "Executing JavaScript");
-        
+
         let result = if let Some(selector) = args.selector {
             // Execute in element context
-            let element = page.query_selector(&selector).await.map_err(|e| {
-                anyhow::anyhow!("Failed to find element: {}", e)
-            })?;
-            
+            let element = page
+                .query_selector(&selector)
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to find element: {}", e))?;
+
             match element {
                 Some(el) => {
-                    let script = format!(
-                        "(function() {{ {} }}).call(this)",
-                        args.script
-                    );
+                    let script = format!("(function() {{ {} }}).call(this)", args.script);
                     el.evaluate(&script).await.map_err(|e| {
                         anyhow::anyhow!("Failed to execute script on element: {}", e)
                     })?
@@ -109,16 +109,16 @@ impl AutomationTool for ExecuteJsTool {
         } else {
             // Execute in page context
             if let Some(args_vec) = args.args {
-                page.evaluate_with_args(&args.script, args_vec).await.map_err(|e| {
-                    anyhow::anyhow!("Failed to execute script with args: {}", e)
-                })?
+                page.evaluate_with_args(&args.script, args_vec)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("Failed to execute script with args: {}", e))?
             } else {
-                page.evaluate(&args.script).await.map_err(|e| {
-                    anyhow::anyhow!("Failed to execute script: {}", e)
-                })?
+                page.evaluate(&args.script)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("Failed to execute script: {}", e))?
             }
         };
-        
+
         // Format the result
         let result_str = match &result {
             serde_json::Value::Null => "null".to_string(),
@@ -132,7 +132,7 @@ impl AutomationTool for ExecuteJsTool {
                 serde_json::to_string_pretty(obj).unwrap_or_else(|_| "{Object}".to_string())
             }
         };
-        
+
         Ok(success_response(format!(
             "Script executed successfully.\n\nResult ({}):\n{}",
             get_json_type(&result),

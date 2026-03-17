@@ -150,7 +150,10 @@ impl fmt::Display for OllamaError {
             OllamaError::Timeout { operation } => {
                 write!(f, "Timeout during {operation}")
             }
-            OllamaError::RetryExhausted { attempts, last_error } => {
+            OllamaError::RetryExhausted {
+                attempts,
+                last_error,
+            } => {
                 write!(f, "Retry exhausted after {attempts} attempts: {last_error}")
             }
             OllamaError::NotFound { resource, id } => {
@@ -211,8 +214,6 @@ impl From<std::io::Error> for OllamaError {
         OllamaError::Io { source: err }
     }
 }
-
-
 
 impl OllamaError {
     /// Check if this error is retryable.
@@ -331,7 +332,7 @@ mod tests {
     #[test]
     fn test_json_error_conversion() {
         // Create a JSON error by parsing invalid JSON
-        let result: std::result::Result<serde_json::Value, serde_json::Error> = 
+        let result: std::result::Result<serde_json::Value, serde_json::Error> =
             serde_json::from_str("invalid json");
         let json_err = result.unwrap_err();
         let err: OllamaError = json_err.into();

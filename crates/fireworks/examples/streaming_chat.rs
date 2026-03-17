@@ -1,7 +1,7 @@
 //! Streaming chat completion example for Fireworks AI.
 
-use futures::StreamExt;
 use fireworks_ai::{ChatRequest, FireworksClient, Role};
+use futures::StreamExt;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -26,9 +26,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Streaming response:");
     let mut stream = client.chat().complete_stream(request).await?;
-    
+
     let mut full_content = String::new();
-    
+
     while let Some(chunk) = stream.next().await {
         match chunk {
             Ok(chunk) => {
@@ -37,7 +37,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     full_content.push_str(content);
                     std::io::Write::flush(&mut std::io::stdout())?;
                 }
-                
+
                 if chunk.is_final() {
                     if let Some(reason) = chunk.finish_reason() {
                         println!("\n\n[Finished: {}]", reason);

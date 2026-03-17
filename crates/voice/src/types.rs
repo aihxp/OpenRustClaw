@@ -64,10 +64,7 @@ impl AudioStream {
 
     /// Get all frames as a single continuous buffer.
     pub fn to_buffer(&self) -> Vec<f32> {
-        self.frames
-            .iter()
-            .flat_map(|f| f.samples.clone())
-            .collect()
+        self.frames.iter().flat_map(|f| f.samples.clone()).collect()
     }
 
     /// Get the total duration of the stream.
@@ -128,7 +125,8 @@ impl TranscriptionResult {
 #[async_trait]
 pub trait SpeechToText: Send + Sync {
     /// Transcribe audio data to text.
-    async fn transcribe(&self, audio: &[f32], sample_rate: u32) -> VoiceResult<TranscriptionResult>;
+    async fn transcribe(&self, audio: &[f32], sample_rate: u32)
+    -> VoiceResult<TranscriptionResult>;
 
     /// Check if the STT engine is available.
     fn is_available(&self) -> bool;
@@ -179,7 +177,11 @@ pub struct MockSpeechToText;
 
 #[async_trait]
 impl SpeechToText for MockSpeechToText {
-    async fn transcribe(&self, _audio: &[f32], _sample_rate: u32) -> VoiceResult<TranscriptionResult> {
+    async fn transcribe(
+        &self,
+        _audio: &[f32],
+        _sample_rate: u32,
+    ) -> VoiceResult<TranscriptionResult> {
         Ok(TranscriptionResult::new("mock transcription"))
     }
 

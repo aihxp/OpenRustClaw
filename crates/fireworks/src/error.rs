@@ -107,9 +107,15 @@ impl fmt::Display for FireworksError {
             FireworksError::Authentication { message } => {
                 write!(f, "Authentication failed: {message}")
             }
-            FireworksError::RateLimit { retry_after, message } => {
+            FireworksError::RateLimit {
+                retry_after,
+                message,
+            } => {
                 if let Some(duration) = retry_after {
-                    write!(f, "Rate limit exceeded (retry after {duration:?}): {message}")
+                    write!(
+                        f,
+                        "Rate limit exceeded (retry after {duration:?}): {message}"
+                    )
                 } else {
                     write!(f, "Rate limit exceeded: {message}")
                 }
@@ -144,7 +150,10 @@ impl fmt::Display for FireworksError {
             FireworksError::Io { source } => {
                 write!(f, "I/O error: {source}")
             }
-            FireworksError::RetryExhausted { attempts, last_error } => {
+            FireworksError::RetryExhausted {
+                attempts,
+                last_error,
+            } => {
                 write!(f, "Retry exhausted after {attempts} attempts: {last_error}")
             }
             FireworksError::NotFound { resource, id } => {
@@ -249,10 +258,7 @@ impl FireworksError {
             }
 
             // Alternative error format (message at root)
-            if let Some(message) = error_json
-                .get("message")
-                .and_then(|v| v.as_str())
-            {
+            if let Some(message) = error_json.get("message").and_then(|v| v.as_str()) {
                 if status == reqwest::StatusCode::UNAUTHORIZED {
                     return FireworksError::Authentication {
                         message: message.to_string(),

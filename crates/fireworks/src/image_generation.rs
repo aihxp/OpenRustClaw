@@ -18,7 +18,10 @@ impl<'a> Images<'a> {
     }
 
     /// Generate an image from a prompt.
-    pub async fn generate(&self, request: ImageGenerationRequest) -> Result<ImageGenerationResponse> {
+    pub async fn generate(
+        &self,
+        request: ImageGenerationRequest,
+    ) -> Result<ImageGenerationResponse> {
         let body = serde_json::to_value(&request)?;
 
         self.client
@@ -133,7 +136,10 @@ pub struct ImageGenerationRequest {
 
 impl ImageGenerationRequest {
     /// Create a new builder.
-    pub fn builder(model: impl Into<String>, prompt: impl Into<String>) -> ImageGenerationRequestBuilder {
+    pub fn builder(
+        model: impl Into<String>,
+        prompt: impl Into<String>,
+    ) -> ImageGenerationRequestBuilder {
         ImageGenerationRequestBuilder::new(model, prompt)
     }
 

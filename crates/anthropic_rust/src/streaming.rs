@@ -136,7 +136,10 @@ impl StreamCollector {
                 self.message_id = Some(message.id.clone());
                 self.model = Some(message.model.clone());
             }
-            StreamEvent::ContentBlockStart { index, content_block } => {
+            StreamEvent::ContentBlockStart {
+                index,
+                content_block,
+            } => {
                 // Ensure we have enough slots
                 while self.content_blocks.len() <= *index {
                     self.content_blocks.push(PartialBlock::Text(String::new()));
@@ -285,7 +288,9 @@ mod tests {
 
         let block_start = StreamEvent::ContentBlockStart {
             index: 0,
-            content_block: ContentBlockStart::Text { text: String::new() },
+            content_block: ContentBlockStart::Text {
+                text: String::new(),
+            },
         };
         collector.process_event(&block_start);
 

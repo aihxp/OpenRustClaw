@@ -4,8 +4,8 @@
 //! Prevents path traversal attacks by rejecting `..` components
 //! and never falling back to unresolved paths.
 
+use openrustclaw_core::error::{Error, Result, SecurityError};
 use std::path::{Component, Path, PathBuf};
-use openrustclaw_core::error::{SecurityError, Error, Result};
 use tracing::warn;
 
 /// Enforces filesystem isolation between sessions.
@@ -28,13 +28,10 @@ impl IsolationManager {
     /// Reject paths containing traversal components (`..`, leading `/`).
     fn reject_traversal_components(path: &Path) -> Result<()> {
         for component in path.components() {
-            match component {
-                Component::ParentDir => {
-                    return Err(Error::Security(SecurityError::IsolationViolation(
-                        "Path contains '..' traversal component".to_string(),
-                    )));
-                }
-                _ => {}
+            if let Component::ParentDir = component {
+                return Err(Error::Security(SecurityError::IsolationViolation(
+                    "Path contains '..' traversal component".to_string(),
+                )));
             }
         }
         Ok(())
@@ -144,11 +141,20 @@ mod tests {
         let _ = manager.ensure_workspace("sess_1");
 
         // Attempt traversal via ..
-        let malicious = base.join("sess_1").join("..").join("..").join("etc").join("passwd");
+        let malicious = base
+            .join("sess_1")
+            .join("..")
+            .join("..")
+            .join("etc")
+            .join("passwd");
         let result = manager.validate_path("sess_1", &malicious);
         assert!(result.is_err());
         let err_msg = format!("{}", result.unwrap_err());
-        assert!(err_msg.contains("traversal"), "Error should mention traversal: {}", err_msg);
+        assert!(
+            err_msg.contains("traversal"),
+            "Error should mention traversal: {}",
+            err_msg
+        );
 
         // Cleanup
         let _ = std::fs::remove_dir_all(&base);

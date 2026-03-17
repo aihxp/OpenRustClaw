@@ -58,14 +58,14 @@ impl CanvasError {
 impl axum::response::IntoResponse for CanvasError {
     fn into_response(self) -> axum::response::Response {
         use axum::http::StatusCode;
-        
+
         let status = match &self {
             CanvasError::CanvasNotFound(_) => StatusCode::NOT_FOUND,
             CanvasError::ElementNotFound(_) => StatusCode::NOT_FOUND,
             CanvasError::InvalidMessage(_) => StatusCode::BAD_REQUEST,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };
-        
+
         (status, self.to_string()).into_response()
     }
 }

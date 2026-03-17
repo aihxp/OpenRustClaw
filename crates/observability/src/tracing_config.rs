@@ -19,13 +19,8 @@
 //! ```
 
 use std::collections::HashMap;
-use tracing::{span, Level, Span};
-use tracing_subscriber::{
-    fmt,
-    layer::SubscriberExt,
-    util::SubscriberInitExt,
-    EnvFilter, Registry,
-};
+use tracing::{Level, Span, span};
+use tracing_subscriber::{EnvFilter, Registry, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 /// Runtime environment for configuring tracing behavior.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -171,14 +166,12 @@ where
         attrs.record(&mut RequestIdVisitor(&mut request_id));
 
         // If not found in attributes, try to inherit from parent span
-        if request_id.is_none() {
-            if let Some(span) = ctx.span(id) {
-                if let Some(parent) = span.parent() {
-                    if let Some(ext) = parent.extensions().get::<SpanExtensions>() {
-                        request_id = ext.request_id.clone();
-                    }
-                }
-            }
+        if request_id.is_none()
+            && let Some(span) = ctx.span(id)
+            && let Some(parent) = span.parent()
+            && let Some(ext) = parent.extensions().get::<SpanExtensions>()
+        {
+            request_id = ext.request_id.clone();
         }
 
         // Generate a new request ID if none exists
@@ -314,7 +307,7 @@ impl TraceContext {
         // Generate W3C-compatible trace and span IDs
         let trace_id = generate_trace_id();
         let span_id = generate_span_id();
-        
+
         Self {
             trace_id: Some(trace_id),
             span_id: Some(span_id),
@@ -336,7 +329,7 @@ impl TraceContext {
     /// Parse a trace context from W3C traceparent header.
     ///
     /// Format: `00-<trace-id>-<parent-id>-<trace-flags>`
-    /// 
+    ///
     /// The trace-flags field is 2 hex digits. The least significant bit (0x01)
     /// indicates whether the trace is sampled.
     pub fn from_traceparent(header: &str) -> Option<Self> {
@@ -348,8 +341,10 @@ impl TraceContext {
         let trace_id = parts[1].to_string();
         let span_id = parts[2].to_string();
         // Parse trace flags - sampled if the least significant bit is set (0x01)
-        let sampled = parts[3].len() == 2 && 
-            u8::from_str_radix(parts[3], 16).map(|f| f & 0x01 != 0).unwrap_or(false);
+        let sampled = parts[3].len() == 2
+            && u8::from_str_radix(parts[3], 16)
+                .map(|f| f & 0x01 != 0)
+                .unwrap_or(false);
 
         Some(Self {
             trace_id: Some(trace_id),
@@ -363,14 +358,9 @@ impl TraceContext {
     pub fn to_traceparent(&self) -> String {
         let trace_id = self
             .trace_id
-            .as_ref()
-            .map(|s| s.as_str())
+            .as_deref()
             .unwrap_or("00000000000000000000000000000000");
-        let span_id = self
-            .span_id
-            .as_ref()
-            .map(|s| s.as_str())
-            .unwrap_or("0000000000000000");
+        let span_id = self.span_id.as_deref().unwrap_or("0000000000000000");
         let flags = if self.sampled { "01" } else { "00" };
 
         format!("00-{trace_id}-{span_id}-{flags}")
@@ -393,13 +383,9 @@ impl TraceContext {
 /// Supports:
 /// - W3C Trace Context (`traceparent`)
 /// - OpenTelemetry baggage (`baggage`)
-pub fn extract_trace_context_from_headers(
-    headers: &http::HeaderMap,
-) -> Option<TraceContext> {
+pub fn extract_trace_context_from_headers(headers: &http::HeaderMap) -> Option<TraceContext> {
     // Try to extract traceparent
-    let traceparent = headers
-        .get("traceparent")
-        .and_then(|v| v.to_str().ok())?;
+    let traceparent = headers.get("traceparent").and_then(|v| v.to_str().ok())?;
 
     let mut ctx = TraceContext::from_traceparent(traceparent)?;
 
@@ -440,7 +426,7 @@ pub fn inject_trace_context_into_headers(ctx: &TraceContext, headers: &mut http:
 /// This is a placeholder for OpenTelemetry initialization.
 /// In a real implementation, you would configure the OTLP exporter
 /// or Jaeger agent endpoint.
-#[cfg(false)]  // Disabled until opentelemetry feature is properly configured
+#[cfg(false)] // Disabled until opentelemetry feature is properly configured
 pub fn init_opentelemetry(service_name: &str, service_version: &str) {
     use opentelemetry::trace::TracerProvider;
     use opentelemetry_sdk::trace::TracerProvider as SdkTracerProvider;
@@ -467,7 +453,7 @@ pub fn init_opentelemetry(service_name: &str, service_version: &str) {
 }
 
 /// Shutdown OpenTelemetry providers.
-#[cfg(false)]  // Disabled until opentelemetry feature is properly configured
+#[cfg(false)] // Disabled until opentelemetry feature is properly configured
 pub fn shutdown_opentelemetry() {
     opentelemetry::global::shutdown_tracer_provider();
 }

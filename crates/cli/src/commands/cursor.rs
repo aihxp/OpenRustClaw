@@ -159,7 +159,10 @@ pub async fn start(transport: &str, port: u16) -> Result<()> {
     println!("Press Ctrl+C to stop the server");
     println!();
 
-    server.run().await.map_err(|e| anyhow::anyhow!("Server error: {}", e))?;
+    server
+        .run()
+        .await
+        .map_err(|e| anyhow::anyhow!("Server error: {}", e))?;
 
     Ok(())
 }
@@ -275,7 +278,8 @@ fn generate_settings_config() -> String {
     }
   }
 }
-"#.to_string()
+"#
+    .to_string()
 }
 
 /// Generate agent behavior rule.
@@ -314,7 +318,8 @@ When working with the OpenRustClaw codebase:
 - Document all public APIs with rustdoc
 - Include examples in doc comments
 - Keep AGENTS.md files updated
-"#.to_string()
+"#
+    .to_string()
 }
 
 /// Generate memory management rule.
@@ -380,7 +385,8 @@ let entry = MemoryEntry {
 - TTL: Episodic expires after 90 days by default
 - Decay: Importance reduces over time
 - Consolidation: Triggered at 1000 entries
-"#.to_string()
+"#
+    .to_string()
 }
 
 /// Generate skill development rule.
@@ -479,7 +485,8 @@ Untrusted skills run in WASM sandbox:
 - Network: Explicitly declared
 - Time: Limited execution time
 - Memory: Bounded memory usage
-"#.to_string()
+"#
+    .to_string()
 }
 
 /// Generate ACP integration rule.
@@ -530,5 +537,6 @@ ACP provides deep IDE integration for OpenRustClaw, enabling the agent to:
 - Deletion requires explicit confirmation
 - Terminal commands have timeouts (default 30s)
 - Large files (>1MB) are skipped
-"#.to_string()
+"#
+    .to_string()
 }

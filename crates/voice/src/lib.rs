@@ -15,9 +15,13 @@ pub mod vad;
 pub mod wake;
 
 pub use error::{VoiceError, VoiceResult};
-pub use stt::{Segment, SpeechToText, SttConfig, StreamingStt, Transcription};
-pub use talk_mode::{TalkConfig, TalkEvent, TalkMode, TalkModeBuilder, TalkState, ConversationTurn};
+pub use stt::{Segment, SpeechToText, StreamingStt, SttConfig, Transcription};
+pub use talk_mode::{
+    ConversationTurn, TalkConfig, TalkEvent, TalkMode, TalkModeBuilder, TalkState,
+};
 pub use tts::{ElevenLabsVoiceSettings, TextToSpeech, TtsBackend, TtsConfig, VoiceInfo};
 pub use types::{AudioFrame, AudioStream};
-pub use vad::{VadConfig, VadState, VoiceActivityDetector, AdaptiveVad};
-pub use wake::{WakeDetectionResult, WakeDetector, WakeWordConfig, SimpleWakeDetector, WakeDetectorFactory};
+pub use vad::{AdaptiveVad, VadConfig, VadState, VoiceActivityDetector};
+pub use wake::{
+    SimpleWakeDetector, WakeDetectionResult, WakeDetector, WakeDetectorFactory, WakeWordConfig,
+};

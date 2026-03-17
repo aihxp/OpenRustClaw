@@ -72,11 +72,7 @@ impl<'a> TokenizeEndpoint<'a> {
     }
 
     /// Helper method to decode tokens to text.
-    pub async fn decode(
-        &self,
-        model: impl Into<String>,
-        tokens: Vec<u64>,
-    ) -> Result<String> {
+    pub async fn decode(&self, model: impl Into<String>, tokens: Vec<u64>) -> Result<String> {
         let request = DetokenizeRequest::new(model, tokens);
         let response = self.detokenize(request).await?;
         Ok(response.text)

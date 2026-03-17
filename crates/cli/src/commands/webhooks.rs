@@ -4,9 +4,7 @@ use anyhow::{Context, Result};
 use dialoguer::{Confirm, Input, Select};
 use sqlx::Row;
 
-use openrustclaw_gateway::webhooks::{
-    handlers, WebhookHandler, WebhookSource,
-};
+use openrustclaw_gateway::webhooks::{WebhookHandler, WebhookSource, handlers};
 
 /// List configured webhooks.
 pub async fn list() -> Result<()> {
@@ -65,7 +63,10 @@ pub async fn list() -> Result<()> {
                     "\x1b[90m○\x1b[0m"
                 };
 
-                println!("{} /webhooks/{} {} {}", secret_indicator, path, status, action_type);
+                println!(
+                    "{} /webhooks/{} {} {}",
+                    secret_indicator, path, status, action_type
+                );
                 println!("  Source: {}", source);
                 println!();
             }
@@ -131,16 +132,26 @@ pub async fn create(path: &str) -> Result<()> {
         .default(0)
         .interact()?;
 
-    let (source, secret, action_type, template): (WebhookSource, Option<String>, String, Option<String>) = match preset_idx {
+    let (source, secret, action_type, template): (
+        WebhookSource,
+        Option<String>,
+        String,
+        Option<String>,
+    ) = match preset_idx {
         0 => {
             // GitHub
             let secret: String = Input::new()
                 .with_prompt("Webhook secret (leave empty for none)")
                 .allow_empty(true)
                 .interact_text()?;
-            let secret = if secret.is_empty() { None } else { Some(secret) };
+            let secret = if secret.is_empty() {
+                None
+            } else {
+                Some(secret)
+            };
 
-            let template = "🔔 GitHub: {{action}} on {{repository.full_name}} by {{sender.login}}".to_string();
+            let template =
+                "🔔 GitHub: {{action}} on {{repository.full_name}} by {{sender.login}}".to_string();
             println!("Message template: {}", template);
 
             (
@@ -156,9 +167,14 @@ pub async fn create(path: &str) -> Result<()> {
                 .with_prompt("Webhook secret (leave empty for none)")
                 .allow_empty(true)
                 .interact_text()?;
-            let secret = if secret.is_empty() { None } else { Some(secret) };
+            let secret = if secret.is_empty() {
+                None
+            } else {
+                Some(secret)
+            };
 
-            let template = "🔔 GitLab: {{object_kind}} on {{project.name}} by {{user_name}}".to_string();
+            let template =
+                "🔔 GitLab: {{object_kind}} on {{project.name}} by {{user_name}}".to_string();
             println!("Message template: {}", template);
 
             (
@@ -218,7 +234,11 @@ pub async fn create(path: &str) -> Result<()> {
                 .with_prompt("Bot token (for verification)")
                 .allow_empty(true)
                 .interact_text()?;
-            let secret = if secret.is_empty() { None } else { Some(secret) };
+            let secret = if secret.is_empty() {
+                None
+            } else {
+                Some(secret)
+            };
 
             let template = "📱 Telegram: {{message.text}}".to_string();
             println!("Message template: {}", template);
@@ -337,7 +357,10 @@ pub async fn delete(path: &str) -> Result<()> {
 
     // Confirm deletion
     let confirm = Confirm::new()
-        .with_prompt(format!("Are you sure you want to delete webhook '{}'?", path))
+        .with_prompt(format!(
+            "Are you sure you want to delete webhook '{}'?",
+            path
+        ))
         .default(false)
         .interact()?;
 
@@ -382,11 +405,12 @@ async fn update_webhook_status(path: &str, enabled: bool) -> Result<()> {
         .context("Failed to run migrations")?;
 
     // Update webhook status
-    let result = sqlx::query("UPDATE webhooks SET enabled = ?, updated_at = datetime('now') WHERE path = ?")
-        .bind(if enabled { 1 } else { 0 })
-        .bind(path)
-        .execute(&pool)
-        .await?;
+    let result =
+        sqlx::query("UPDATE webhooks SET enabled = ?, updated_at = datetime('now') WHERE path = ?")
+            .bind(if enabled { 1 } else { 0 })
+            .bind(path)
+            .execute(&pool)
+            .await?;
 
     if result.rows_affected() == 0 {
         println!("Webhook '{}' not found.", path);
@@ -459,9 +483,23 @@ pub async fn info(path: &str) -> Result<()> {
     println!("  ID: {}", id);
     println!("  Path: /webhooks/{}", path);
     println!("  Source: {}", source);
-    println!("  Status: {}", if enabled == 1 { "\x1b[32menabled\x1b[0m" } else { "\x1b[90mdisabled\x1b[0m" });
+    println!(
+        "  Status: {}",
+        if enabled == 1 {
+            "\x1b[32menabled\x1b[0m"
+        } else {
+            "\x1b[90mdisabled\x1b[0m"
+        }
+    );
     println!("  Action: {}", action_type);
-    println!("  Signature verification: {}", if has_secret == 1 { "enabled" } else { "disabled" });
+    println!(
+        "  Signature verification: {}",
+        if has_secret == 1 {
+            "enabled"
+        } else {
+            "disabled"
+        }
+    );
 
     if let Some(template) = template {
         println!("  Template: {}", template);

@@ -2,11 +2,11 @@
 //!
 //! Tests SQLite operations, migrations, and query performance in isolation.
 
+#[allow(unused_imports)]
+use openrustclaw_core::traits::{CoreMemoryStore, MemoryStore};
+#[allow(unused_imports)]
+use openrustclaw_core::types::{MemoryQuery, MemorySource, MemoryType};
 use openrustclaw_e2e_tests::common::*;
-#[allow(unused_imports)]
-use openrustclaw_core::traits::{MemoryStore, CoreMemoryStore};
-#[allow(unused_imports)]
-use openrustclaw_core::types::{MemoryQuery, MemoryType, MemorySource};
 use uuid::Uuid;
 
 /// Test: Database migrations run successfully
@@ -25,7 +25,10 @@ async fn test_db_migrations() {
         .fetch_one(&env.db_pool)
         .await;
 
-    assert!(result.is_ok(), "Migrations should create core_memories table");
+    assert!(
+        result.is_ok(),
+        "Migrations should create core_memories table"
+    );
 }
 
 /// Test: Memory store and retrieve
@@ -59,7 +62,9 @@ async fn test_db_core_memory_operations() {
         .importance(1.0)
         .build();
 
-    env.store_core_memory(&user_id, entry).await.expect("Store failed");
+    env.store_core_memory(&user_id, entry)
+        .await
+        .expect("Store failed");
 
     // Get all core memories
     let memories = env.get_core_memory(&user_id).await.expect("Get failed");
@@ -100,7 +105,7 @@ async fn test_db_memory_type_filtering() {
     };
 
     let results = env.search_memories(query).await.expect("Search failed");
-    
+
     // Should only get semantic memories
     for result in &results {
         assert_eq!(result.entry.memory_type, MemoryType::Semantic);
@@ -134,7 +139,10 @@ async fn test_db_memory_expiration() {
 
     for result in &results {
         if let Some(expires_at) = result.entry.expires_at {
-            assert!(expires_at > chrono::Utc::now(), "Should not return expired memories");
+            assert!(
+                expires_at > chrono::Utc::now(),
+                "Should not return expired memories"
+            );
         }
     }
 }
@@ -169,7 +177,7 @@ async fn test_db_namespace_isolation() {
     };
 
     let results = env.search_memories(query).await.expect("Search failed");
-    
+
     for result in &results {
         assert_eq!(result.entry.namespace, "work");
     }
@@ -181,12 +189,16 @@ async fn test_db_transaction_handling() {
     let env = TestEnvironment::new().await;
 
     // Start a transaction
-    let mut tx = env.db_pool.begin().await.expect("Failed to begin transaction");
+    let mut tx = env
+        .db_pool
+        .begin()
+        .await
+        .expect("Failed to begin transaction");
 
     // Insert within transaction
     let result: Result<(), sqlx::Error> = sqlx::query(
         "INSERT INTO memories (id, content, content_hash, namespace, memory_type, created_at) 
-         VALUES ($1, $2, $3, $4, $5, $6)"
+         VALUES ($1, $2, $3, $4, $5, $6)",
     )
     .bind(Uuid::new_v4().to_string())
     .bind("Test content")
@@ -204,10 +216,11 @@ async fn test_db_transaction_handling() {
     tx.rollback().await.expect("Rollback failed");
 
     // Verify data was not persisted
-    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM memories WHERE content_hash = 'hash123'")
-        .fetch_one(&env.db_pool)
-        .await
-        .expect("Query failed");
+    let count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM memories WHERE content_hash = 'hash123'")
+            .fetch_one(&env.db_pool)
+            .await
+            .expect("Query failed");
 
     assert_eq!(count, 0, "Rolled back data should not exist");
 }

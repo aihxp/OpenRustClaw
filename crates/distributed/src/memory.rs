@@ -8,10 +8,10 @@ use dashmap::DashMap;
 use redis::aio::ConnectionManager;
 #[cfg(feature = "redis")]
 use redis::{AsyncCommands, Client as RedisClient};
-#[cfg(feature = "redis")]
-use tokio_stream::StreamExt;
 use std::sync::Arc;
 use std::time::Duration;
+#[cfg(feature = "redis")]
+use tokio_stream::StreamExt;
 #[cfg(any(feature = "redis", feature = "etcd"))]
 use tracing::info;
 
@@ -77,11 +77,9 @@ pub async fn create_memory(config: &MemoryConfig) -> Result<Arc<dyn DistributedM
             Ok(Arc::new(redis))
         }
         #[cfg(not(feature = "redis"))]
-        MemoryBackend::Redis => {
-            Err(DistributedError::Config(
-                "Redis memory backend requires the 'redis' feature to be enabled".to_string(),
-            ))
-        }
+        MemoryBackend::Redis => Err(DistributedError::Config(
+            "Redis memory backend requires the 'redis' feature to be enabled".to_string(),
+        )),
         MemoryBackend::Gossip => {
             let gossip = GossipMemory::new(config)?;
             Ok(Arc::new(gossip))
@@ -92,11 +90,9 @@ pub async fn create_memory(config: &MemoryConfig) -> Result<Arc<dyn DistributedM
             Ok(Arc::new(etcd))
         }
         #[cfg(not(feature = "etcd"))]
-        MemoryBackend::Etcd => {
-            Err(DistributedError::Config(
-                "etcd memory backend requires the 'etcd' feature to be enabled".to_string(),
-            ))
-        }
+        MemoryBackend::Etcd => Err(DistributedError::Config(
+            "etcd memory backend requires the 'etcd' feature to be enabled".to_string(),
+        )),
     }
 }
 
@@ -115,13 +111,15 @@ impl RedisMemory {
     /// Create a new Redis memory backend.
     pub async fn new(config: &MemoryConfig) -> Result<Self> {
         let client = if config.redis_cluster.is_empty() {
-            RedisClient::open(config.redis_url.clone())
-                .map_err(|e| DistributedError::Memory(format!("Failed to connect to Redis: {}", e)))?
+            RedisClient::open(config.redis_url.clone()).map_err(|e| {
+                DistributedError::Memory(format!("Failed to connect to Redis: {}", e))
+            })?
         } else {
             // Cluster mode - use the first node as the connection point
             // In production, you'd use redis::cluster::ClusterClient here
-            RedisClient::open(config.redis_cluster[0].clone())
-                .map_err(|e| DistributedError::Memory(format!("Failed to connect to Redis cluster: {}", e)))?
+            RedisClient::open(config.redis_cluster[0].clone()).map_err(|e| {
+                DistributedError::Memory(format!("Failed to connect to Redis cluster: {}", e))
+            })?
         };
 
         let connection = client
@@ -131,10 +129,7 @@ impl RedisMemory {
 
         info!("Connected to Redis at {}", config.redis_url);
 
-        Ok(Self {
-            client,
-            connection,
-        })
+        Ok(Self { client, connection })
     }
 
     /// Get a clone of the connection.
@@ -150,7 +145,9 @@ impl RedisMemory {
 impl DistributedMemory for RedisMemory {
     async fn get(&self, key: &str) -> Result<Option<Vec<u8>>> {
         let mut conn = self.conn();
-        let value: Option<Vec<u8>> = conn.get(key).await
+        let value: Option<Vec<u8>> = conn
+            .get(key)
+            .await
             .map_err(|e| DistributedError::Memory(format!("Redis get error: {}", e)))?;
         Ok(value)
     }
@@ -159,10 +156,14 @@ impl DistributedMemory for RedisMemory {
         let mut conn = self.conn();
 
         if let Some(ttl) = ttl_secs {
-            let _: () = conn.set_ex(key, value, ttl).await
+            let _: () = conn
+                .set_ex(key, value, ttl)
+                .await
                 .map_err(|e| DistributedError::Memory(format!("Redis set error: {}", e)))?;
         } else {
-            let _: () = conn.set(key, value).await
+            let _: () = conn
+                .set(key, value)
+                .await
                 .map_err(|e| DistributedError::Memory(format!("Redis set error: {}", e)))?;
         }
 
@@ -171,21 +172,27 @@ impl DistributedMemory for RedisMemory {
 
     async fn delete(&self, key: &str) -> Result<bool> {
         let mut conn = self.conn();
-        let deleted: i32 = conn.del(key).await
+        let deleted: i32 = conn
+            .del(key)
+            .await
             .map_err(|e| DistributedError::Memory(format!("Redis delete error: {}", e)))?;
         Ok(deleted > 0)
     }
 
     async fn exists(&self, key: &str) -> Result<bool> {
         let mut conn = self.conn();
-        let exists: bool = conn.exists(key).await
+        let exists: bool = conn
+            .exists(key)
+            .await
             .map_err(|e| DistributedError::Memory(format!("Redis exists error: {}", e)))?;
         Ok(exists)
     }
 
     async fn mget(&self, keys: &[&str]) -> Result<Vec<Option<Vec<u8>>>> {
         let mut conn = self.conn();
-        let values: Vec<Option<Vec<u8>>> = conn.get(keys).await
+        let values: Vec<Option<Vec<u8>>> = conn
+            .get(keys)
+            .await
             .map_err(|e| DistributedError::Memory(format!("Redis mget error: {}", e)))?;
         Ok(values)
     }
@@ -200,19 +207,31 @@ impl DistributedMemory for RedisMemory {
             // Use atomic MSET with TTL
             // Use MSET with pipelined EXPIRE
             let _: () = redis::cmd("MSET")
-                .arg(items.iter().map(|(k, v)| (k.clone(), v.clone())).collect::<Vec<_>>())
+                .arg(
+                    items
+                        .iter()
+                        .map(|(k, v)| (k.clone(), v.clone()))
+                        .collect::<Vec<_>>(),
+                )
                 .query_async(&mut conn)
                 .await
                 .map_err(|e| DistributedError::Memory(format!("Redis mset error: {}", e)))?;
 
             // Set TTLs individually
             for (key, _) in items {
-                let _: () = conn.expire(key, ttl as i64).await
+                let _: () = conn
+                    .expire(key, ttl as i64)
+                    .await
                     .map_err(|e| DistributedError::Memory(format!("Redis expire error: {}", e)))?;
             }
         } else {
             let _: () = redis::cmd("MSET")
-                .arg(items.iter().map(|(k, v)| (k.clone(), v.clone())).collect::<Vec<_>>())
+                .arg(
+                    items
+                        .iter()
+                        .map(|(k, v)| (k.clone(), v.clone()))
+                        .collect::<Vec<_>>(),
+                )
                 .query_async(&mut conn)
                 .await
                 .map_err(|e| DistributedError::Memory(format!("Redis mset error: {}", e)))?;
@@ -224,7 +243,9 @@ impl DistributedMemory for RedisMemory {
     async fn keys(&self, prefix: &str) -> Result<Vec<String>> {
         let mut conn = self.conn();
         let pattern = format!("{}*", prefix);
-        let keys: Vec<String> = conn.keys(&pattern).await
+        let keys: Vec<String> = conn
+            .keys(&pattern)
+            .await
             .map_err(|e| DistributedError::Memory(format!("Redis keys error: {}", e)))?;
         Ok(keys)
     }
@@ -296,16 +317,23 @@ impl DistributedMemory for RedisMemory {
 
     async fn publish(&self, channel: &str, message: Vec<u8>) -> Result<u64> {
         let mut conn = self.conn();
-        let receivers: i64 = conn.publish(channel, message).await
+        let receivers: i64 = conn
+            .publish(channel, message)
+            .await
             .map_err(|e| DistributedError::Memory(format!("Redis publish error: {}", e)))?;
         Ok(receivers as u64)
     }
 
     async fn subscribe(&self, channel: &str) -> Result<Box<dyn MemorySubscription>> {
-        let mut pubsub = self.client.get_async_pubsub().await
+        let mut pubsub = self
+            .client
+            .get_async_pubsub()
+            .await
             .map_err(|e| DistributedError::Memory(format!("Redis subscribe error: {}", e)))?;
 
-        pubsub.subscribe(channel).await
+        pubsub
+            .subscribe(channel)
+            .await
             .map_err(|e| DistributedError::Memory(format!("Redis subscribe error: {}", e)))?;
 
         let stream = pubsub.into_on_message();
@@ -388,7 +416,10 @@ impl DistributedMemory for GossipMemory {
             .as_secs();
 
         // Simple conflict resolution: higher version wins
-        let mut entry = self.data.entry(key.to_string()).or_insert((value.clone(), version));
+        let mut entry = self
+            .data
+            .entry(key.to_string())
+            .or_insert((value.clone(), version));
         if version > entry.value().1 {
             *entry.value_mut() = (value, version);
         }
@@ -445,11 +476,11 @@ impl DistributedMemory for GossipMemory {
     async fn release_lock(&self, lock_name: &str, holder: &str) -> Result<bool> {
         self.cleanup_locks();
 
-        if let Some(entry) = self.locks.get(lock_name) {
-            if entry.value().0 == holder {
-                self.locks.remove(lock_name);
-                return Ok(true);
-            }
+        if let Some(entry) = self.locks.get(lock_name)
+            && entry.value().0 == holder
+        {
+            self.locks.remove(lock_name);
+            return Ok(true);
         }
 
         Ok(false)
@@ -458,11 +489,11 @@ impl DistributedMemory for GossipMemory {
     async fn renew_lock(&self, lock_name: &str, holder: &str, ttl_secs: u64) -> Result<bool> {
         self.cleanup_locks();
 
-        if let Some(mut entry) = self.locks.get_mut(lock_name) {
-            if entry.value().0 == holder {
-                entry.value_mut().1 = std::time::Instant::now() + Duration::from_secs(ttl_secs);
-                return Ok(true);
-            }
+        if let Some(mut entry) = self.locks.get_mut(lock_name)
+            && entry.value().0 == holder
+        {
+            entry.value_mut().1 = std::time::Instant::now() + Duration::from_secs(ttl_secs);
+            return Ok(true);
         }
 
         Ok(false)
@@ -503,7 +534,9 @@ impl EtcdMemory {
 
         let client = etcd_client::Client::connect(endpoints, None)
             .await
-            .map_err(|e| DistributedError::Discovery(format!("Failed to connect to etcd: {}", e)))?;
+            .map_err(|e| {
+                DistributedError::Discovery(format!("Failed to connect to etcd: {}", e))
+            })?;
 
         info!("Connected to etcd");
 
@@ -519,7 +552,9 @@ impl EtcdMemory {
 impl DistributedMemory for EtcdMemory {
     async fn get(&self, key: &str) -> Result<Option<Vec<u8>>> {
         let mut client = self.client.clone();
-        let response = client.get(key, None).await
+        let response = client
+            .get(key, None)
+            .await
             .map_err(|e| DistributedError::Memory(format!("etcd get error: {}", e)))?;
 
         if let Some(kv) = response.kvs().first() {
@@ -533,14 +568,23 @@ impl DistributedMemory for EtcdMemory {
         let mut client = self.client.clone();
 
         if let Some(ttl) = ttl_secs {
-            let lease = client.lease_grant(ttl as i64, None).await
+            let lease = client
+                .lease_grant(ttl as i64, None)
+                .await
                 .map_err(|e| DistributedError::Memory(format!("etcd lease error: {}", e)))?;
 
-            client.put(key, value, Some(etcd_client::PutOptions::new().with_lease(lease.id())))
+            client
+                .put(
+                    key,
+                    value,
+                    Some(etcd_client::PutOptions::new().with_lease(lease.id())),
+                )
                 .await
                 .map_err(|e| DistributedError::Memory(format!("etcd put error: {}", e)))?;
         } else {
-            client.put(key, value, None).await
+            client
+                .put(key, value, None)
+                .await
                 .map_err(|e| DistributedError::Memory(format!("etcd put error: {}", e)))?;
         }
 
@@ -549,7 +593,9 @@ impl DistributedMemory for EtcdMemory {
 
     async fn delete(&self, key: &str) -> Result<bool> {
         let mut client = self.client.clone();
-        let response = client.delete(key, None).await
+        let response = client
+            .delete(key, None)
+            .await
             .map_err(|e| DistributedError::Memory(format!("etcd delete error: {}", e)))?;
 
         Ok(response.deleted() > 0)
@@ -576,11 +622,16 @@ impl DistributedMemory for EtcdMemory {
 
     async fn keys(&self, prefix: &str) -> Result<Vec<String>> {
         let mut client = self.client.clone();
-        let response = client.get(prefix, Some(etcd_client::GetOptions::new().with_prefix()))
+        let response = client
+            .get(prefix, Some(etcd_client::GetOptions::new().with_prefix()))
             .await
             .map_err(|e| DistributedError::Memory(format!("etcd keys error: {}", e)))?;
 
-        Ok(response.kvs().iter().map(|kv| String::from_utf8_lossy(kv.key()).to_string()).collect())
+        Ok(response
+            .kvs()
+            .iter()
+            .map(|kv| String::from_utf8_lossy(kv.key()).to_string())
+            .collect())
     }
 
     async fn acquire_lock(&self, lock_name: &str, holder: &str, ttl_secs: u64) -> Result<bool> {
@@ -589,18 +640,26 @@ impl DistributedMemory for EtcdMemory {
         let value = holder.as_bytes().to_vec();
 
         let mut client = self.client.clone();
-        let lease = client.lease_grant(ttl_secs as i64, None).await
+        let lease = client
+            .lease_grant(ttl_secs as i64, None)
+            .await
             .map_err(|e| DistributedError::Memory(format!("etcd lease error: {}", e)))?;
 
         let txn = etcd_client::Txn::new()
-            .when([etcd_client::Compare::version(key.clone(), etcd_client::CompareOp::Equal, 0)])
+            .when([etcd_client::Compare::version(
+                key.clone(),
+                etcd_client::CompareOp::Equal,
+                0,
+            )])
             .and_then([etcd_client::TxnOp::put(
                 key.clone(),
                 value,
                 Some(etcd_client::PutOptions::new().with_lease(lease.id())),
             )]);
 
-        let response = client.txn(txn).await
+        let response = client
+            .txn(txn)
+            .await
             .map_err(|e| DistributedError::Memory(format!("etcd lock error: {}", e)))?;
 
         Ok(response.succeeded())
@@ -648,7 +707,6 @@ impl DistributedMemory for EtcdMemory {
         Ok(())
     }
 }
-
 
 #[cfg(test)]
 mod tests {

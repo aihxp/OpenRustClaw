@@ -137,7 +137,7 @@ mod tests {
         let registry = ToolRegistry::new(create_test_context());
         let definitions = registry.get_tool_definitions();
         assert!(!definitions.is_empty());
-        
+
         for def in definitions {
             assert!(def.get("name").is_some());
             assert!(def.get("description").is_some());

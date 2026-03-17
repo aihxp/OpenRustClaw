@@ -22,32 +22,32 @@ impl McpAdapter {
     /// Connect to an MCP server via HTTP/SSE URL
     pub async fn from_url(url: &str) -> Result<Self> {
         debug!("Connecting to MCP server at {}", url);
-        
+
         // For HTTP-based MCP, we'd typically use an SSE transport
         // For now, we'll use a simplified approach with HTTP polling
         // In a full implementation, this would use proper MCP HTTP+SSE transport
-        
+
         let client = reqwest::Client::new();
-        let response = client
-            .get(url)
-            .send()
-            .await
-            .map_err(|e| Mcp2CliError::other(format!("Failed to connect to MCP server: {}", e)))?;
-        
+        let response =
+            client.get(url).send().await.map_err(|e| {
+                Mcp2CliError::other(format!("Failed to connect to MCP server: {}", e))
+            })?;
+
         if !response.status().is_success() {
             return Err(Mcp2CliError::other(format!(
                 "MCP server returned error: {}",
                 response.status()
             )));
         }
-        
+
         // Create a placeholder client - in a real implementation,
         // we'd initialize the MCP client with proper HTTP transport
-        let client = McpClient::connect("http_server", "echo", &[]).await
+        let client = McpClient::connect("http_server", "echo", &[])
+            .await
             .map_err(|e| Mcp2CliError::mcp(format!("Failed to initialize MCP client: {}", e)))?;
-        
+
         info!("Connected to MCP server at {}", url);
-        
+
         Ok(Self {
             _client: client,
             _server_url: Some(url.to_string()),
@@ -57,15 +57,15 @@ impl McpAdapter {
     /// Connect to an MCP server via stdio
     pub async fn from_stdio(command: &str, args: Vec<String>) -> Result<Self> {
         let args_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-        
+
         info!("Starting MCP server via {} {:?}", command, args);
-        
+
         let client = McpClient::connect("stdio_server", command, &args_refs)
             .await
             .map_err(|e| Mcp2CliError::mcp(format!("Failed to start MCP server: {}", e)))?;
-        
+
         info!("MCP server started successfully");
-        
+
         Ok(Self {
             _client: client,
             _server_url: None,
@@ -94,20 +94,20 @@ impl McpAdapter {
 
         // Generate usage string
         let usage = if parameters.is_empty() {
-            format!("{}", tool.name)
+            tool.name.to_string()
         } else {
             let required_params: Vec<_> = parameters
                 .iter()
                 .filter(|p| p.required)
                 .map(|p| format!("--{} <{}>", p.name, p.type_name))
                 .collect();
-            
+
             let optional_params: Vec<_> = parameters
                 .iter()
                 .filter(|p| !p.required)
                 .map(|p| format!("[--{} <{}>]", p.name, p.type_name))
                 .collect();
-            
+
             let mut parts = vec![tool.name.clone()];
             parts.extend(required_params);
             parts.extend(optional_params);
@@ -148,13 +148,13 @@ impl McpAdapter {
             let is_required = required.contains(name);
 
             let default = prop.get("default").cloned();
-            let example = prop.get("example").and_then(|e| match e {
-                Value::String(s) => Some(s.clone()),
-                other => Some(other.to_string()),
+            let example = prop.get("example").map(|e| match e {
+                Value::String(s) => s.clone(),
+                other => other.to_string(),
             });
 
             let mut param = ParamHelp::new(name, description, type_name, is_required);
-            
+
             if let Some(d) = default {
                 param = param.with_default(d);
             }
@@ -203,11 +203,9 @@ impl McpAdapter {
 
             while i < tokens.len() {
                 let token = tokens[i];
-                
+
                 // Check if it's a flag (--param-name)
-                if token.starts_with("--") {
-                    let param_name = &token[2..];
-                    
+                if let Some(param_name) = token.strip_prefix("--") {
                     // Find the parameter definition
                     if let Some(param_def) = params.iter().find(|p| p.name == param_name) {
                         if param_def.type_name == "boolean" {
@@ -221,7 +219,7 @@ impl McpAdapter {
                         }
                     }
                 }
-                
+
                 i += 1;
             }
 
@@ -246,7 +244,8 @@ impl McpAdapter {
                     Value::String(s.to_string())
                 }
             }
-            "boolean" => s.parse::<bool>()
+            "boolean" => s
+                .parse::<bool>()
                 .map(Value::Bool)
                 .unwrap_or_else(|_| Value::String(s.to_string())),
             _ => Value::String(s.to_string()),
@@ -260,10 +259,10 @@ impl ToolSourceAdapter for McpAdapter {
         // In a real implementation, this would call the MCP client
         // For now, we'll return placeholder data
         warn!("McpAdapter::list_tools using placeholder implementation");
-        
+
         // This would be: self.client.discover_tools().await
         // and then convert each McpToolDef to ToolSummary
-        
+
         Ok(vec![
             ToolSummary::new("mcp_tool_1", "Example MCP tool"),
             ToolSummary::new("mcp_tool_2", "Another MCP tool"),
@@ -332,11 +331,11 @@ mod tests {
 
         let params = McpAdapter::extract_parameters(&schema);
         assert_eq!(params.len(), 2);
-        
+
         let query_param = params.iter().find(|p| p.name == "query").unwrap();
         assert!(query_param.required);
         assert_eq!(query_param.type_name, "string");
-        
+
         let limit_param = params.iter().find(|p| p.name == "limit").unwrap();
         assert!(!limit_param.required);
         assert_eq!(limit_param.default, Some(serde_json::json!(10)));
@@ -351,7 +350,7 @@ mod tests {
 
         let args = Value::String("--query rust --limit 10".to_string());
         let result = McpAdapter::args_to_json(&args, &params);
-        
+
         assert_eq!(result["query"], "rust");
         assert_eq!(result["limit"], 10.0);
     }

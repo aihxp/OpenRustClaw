@@ -5,12 +5,12 @@
 
 use crate::constants::Model;
 
-pub mod anthropic;
+pub mod ai21;
 pub mod amazon;
+pub mod anthropic;
 pub mod cohere;
 pub mod meta;
 pub mod mistral;
-pub mod ai21;
 pub mod stability;
 
 /// Get the provider-specific request format for a model.

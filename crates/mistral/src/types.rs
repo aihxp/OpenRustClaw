@@ -335,7 +335,9 @@ pub struct ChatResponse {
 impl ChatResponse {
     /// Get the content of the first choice.
     pub fn content(&self) -> Option<&str> {
-        self.choices.first().and_then(|c| c.message.content.as_deref())
+        self.choices
+            .first()
+            .and_then(|c| c.message.content.as_deref())
     }
 
     /// Get the message of the first choice.
@@ -587,7 +589,9 @@ impl std::str::FromStr for MistralModel {
             "mistral-tiny" => Ok(MistralModel::MistralTiny),
             "codestral-latest" | "codestral" => Ok(MistralModel::Codestral),
             "mistral-embed" => Ok(MistralModel::MistralEmbed),
-            "mistral-moderation-latest" | "mistral-moderation" => Ok(MistralModel::MistralModeration),
+            "mistral-moderation-latest" | "mistral-moderation" => {
+                Ok(MistralModel::MistralModeration)
+            }
             "pixtral-large-latest" | "pixtral-large" => Ok(MistralModel::PixtralLarge),
             "ministral-3b-latest" | "ministral-3b" => Ok(MistralModel::Ministral3B),
             "ministral-8b-latest" | "ministral-8b" => Ok(MistralModel::Ministral8B),
@@ -612,7 +616,12 @@ mod tests {
     fn test_function_builder() {
         let func = Function::builder("get_weather", "Get weather")
             .string_property("location", "City name", true)
-            .enum_property("unit", "Temperature unit", vec!["celsius", "fahrenheit"], false)
+            .enum_property(
+                "unit",
+                "Temperature unit",
+                vec!["celsius", "fahrenheit"],
+                false,
+            )
             .build();
 
         assert_eq!(func.name, "get_weather");

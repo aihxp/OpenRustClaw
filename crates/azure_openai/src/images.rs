@@ -64,10 +64,7 @@ impl<'a> Images<'a> {
     }
 
     /// Generate a simple image with default settings.
-    pub async fn generate_simple(
-        &self,
-        prompt: impl Into<String>,
-    ) -> Result<ImageResponse> {
+    pub async fn generate_simple(&self, prompt: impl Into<String>) -> Result<ImageResponse> {
         let request = ImageRequest::new(prompt);
         self.generate(request).await
     }

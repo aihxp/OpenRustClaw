@@ -14,7 +14,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use governor::{Quota, RateLimiter};
 use std::num::NonZeroU32;
-use tokio::sync::{mpsc, Mutex, RwLock};
+use tokio::sync::{Mutex, RwLock, mpsc};
 use tracing::{debug, info};
 
 use openrustclaw_core::config::TelegramConfig;
@@ -27,7 +27,14 @@ pub struct TelegramChannel {
     config: TelegramConfig,
     _incoming_tx: mpsc::Sender<IncomingMessage>,
     incoming_rx: Mutex<mpsc::Receiver<IncomingMessage>>,
-    rate_limiter: Arc<RateLimiter<governor::state::NotKeyed, governor::state::InMemoryState, governor::clock::DefaultClock, governor::middleware::NoOpMiddleware>>,
+    rate_limiter: Arc<
+        RateLimiter<
+            governor::state::NotKeyed,
+            governor::state::InMemoryState,
+            governor::clock::DefaultClock,
+            governor::middleware::NoOpMiddleware,
+        >,
+    >,
     is_connected: RwLock<bool>,
 }
 
@@ -35,10 +42,11 @@ impl TelegramChannel {
     /// Create a new Telegram channel with the given configuration.
     pub fn new(config: TelegramConfig) -> Self {
         let (incoming_tx, incoming_rx) = mpsc::channel(256);
-        
+
         // Create rate limiter
         let quota = Quota::per_second(
-            NonZeroU32::new(config.rate_limit_per_second.max(1)).unwrap_or(NonZeroU32::new(30).unwrap())
+            NonZeroU32::new(config.rate_limit_per_second.max(1))
+                .unwrap_or(NonZeroU32::new(30).unwrap()),
         );
         let rate_limiter = Arc::new(RateLimiter::direct(quota));
 
@@ -78,7 +86,9 @@ impl Channel for TelegramChannel {
         self.rate_limiter.until_ready().await;
 
         // Extract chat ID from session metadata
-        let _chat_id = msg.metadata.get("telegram_chat_id")
+        let _chat_id = msg
+            .metadata
+            .get("telegram_chat_id")
             .and_then(|v| v.as_str())
             .ok_or_else(|| ChannelError::InvalidFormat {
                 platform: "telegram".to_string(),
@@ -101,7 +111,8 @@ impl Channel for TelegramChannel {
             ChannelError::Connection {
                 platform: "telegram".to_string(),
                 message: "Incoming message channel closed".to_string(),
-            }.into()
+            }
+            .into()
         })
     }
 
@@ -117,7 +128,8 @@ impl Channel for TelegramChannel {
             return Err(ChannelError::Config {
                 platform: "telegram".to_string(),
                 message: "Telegram bot token is required".to_string(),
-            }.into());
+            }
+            .into());
         }
 
         // In a full implementation, this would:
@@ -127,7 +139,7 @@ impl Channel for TelegramChannel {
         // 4. Handle incoming messages via the UpdateHandler
 
         info!(mode = ?self.config.mode, "Telegram bot would start here");
-        
+
         *self.is_connected.write().await = true;
 
         info!("Telegram channel connected");
@@ -136,9 +148,9 @@ impl Channel for TelegramChannel {
 
     async fn disconnect(&mut self) -> Result<()> {
         info!("Disconnecting from Telegram...");
-        
+
         *self.is_connected.write().await = false;
-        
+
         info!("Telegram channel disconnected");
         Ok(())
     }

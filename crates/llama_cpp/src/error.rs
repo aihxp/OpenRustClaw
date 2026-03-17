@@ -165,7 +165,10 @@ impl fmt::Display for LlamaCppError {
             LlamaCppError::Timeout { operation } => {
                 write!(f, "Timeout during {operation}")
             }
-            LlamaCppError::RetryExhausted { attempts, last_error } => {
+            LlamaCppError::RetryExhausted {
+                attempts,
+                last_error,
+            } => {
                 write!(f, "Retry exhausted after {attempts} attempts: {last_error}")
             }
             LlamaCppError::NotFound { resource, id } => {

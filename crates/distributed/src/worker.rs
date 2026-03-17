@@ -7,7 +7,7 @@ use crate::error::{DistributedError, Result};
 use crate::load_balancer::LoadBalancer;
 use crate::memory::DistributedMemory;
 use crate::messaging::proto;
-use crate::messaging::{datetime_to_timestamp, GrpcClientPool};
+use crate::messaging::{GrpcClientPool, datetime_to_timestamp};
 use crate::node::{LocalNode, NodeId, NodeMetrics, NodeRole, NodeState};
 use crate::session::SessionManager;
 use crate::task::{Task, TaskExecutor, TaskManager};
@@ -16,7 +16,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tokio::time::{interval, sleep, Duration};
+use tokio::time::{Duration, interval, sleep};
 use tonic::transport::Channel;
 use tracing::{debug, error, info, warn};
 
@@ -65,7 +65,7 @@ impl Worker {
         task_executor: Arc<dyn TaskExecutor>,
     ) -> Result<Arc<Self>> {
         let load_balancer = LoadBalancer::new(config.load_balancer.clone());
-        
+
         let session_manager = SessionManager::new(
             local_node.id(),
             cluster.clone(),
@@ -73,11 +73,7 @@ impl Worker {
             config.clone(),
         );
 
-        let task_manager = TaskManager::new(
-            local_node.id(),
-            memory.clone(),
-            task_executor.clone(),
-        );
+        let task_manager = TaskManager::new(local_node.id(), memory.clone(), task_executor.clone());
 
         let client_pool = Arc::new(GrpcClientPool::new(5));
 
@@ -147,7 +143,9 @@ impl Worker {
             .map_err(|e| DistributedError::Network(format!("Invalid leader address: {}", e)))?
             .connect()
             .await
-            .map_err(|e| DistributedError::Network(format!("Failed to connect to leader: {}", e)))?;
+            .map_err(|e| {
+                DistributedError::Network(format!("Failed to connect to leader: {}", e))
+            })?;
 
         let mut client = proto::cluster_service_client::ClusterServiceClient::new(channel.clone());
 
@@ -164,17 +162,17 @@ impl Worker {
 
         if response.success {
             info!("Successfully joined cluster");
-            
+
             // Update local state
             self.local_node.set_role(NodeRole::Worker).await;
             self.local_node.set_state(NodeState::Healthy).await;
 
             // Add discovered nodes to cluster
             for node_proto in response.nodes {
-                if let Some(node) = node_from_proto(node_proto) {
-                    if node.id != local_info.id {
-                        self.cluster.upsert_node(node).await;
-                    }
+                if let Some(node) = node_from_proto(node_proto)
+                    && node.id != local_info.id
+                {
+                    self.cluster.upsert_node(node).await;
                 }
             }
 
@@ -215,13 +213,13 @@ impl Worker {
     fn start_background_tasks(self: Arc<Self>) {
         // Heartbeat sender
         tokio::spawn(self.clone().send_heartbeats());
-        
+
         // Cluster event processor
         tokio::spawn(self.clone().process_cluster_events());
-        
+
         // Task processor
         tokio::spawn(self.clone().process_tasks());
-        
+
         // Metrics reporter
         tokio::spawn(self.clone().report_metrics());
     }
@@ -234,7 +232,7 @@ impl Worker {
             interval.tick().await;
 
             let leader_id = self.cluster.leader_id().await;
-            
+
             if leader_id.is_none() {
                 // Try to reconnect to leader
                 if let Err(e) = self.reconnect_leader().await {
@@ -284,11 +282,11 @@ impl Worker {
                 Ok(event) => {
                     match event {
                         ClusterEvent::LeaderChanged { new_leader, .. } => {
-                            if let Some(leader_id) = new_leader {
-                                if leader_id != self.cluster.local_id() {
-                                    info!("New leader elected: {}", leader_id);
-                                    // Update leader connection if needed
-                                }
+                            if let Some(leader_id) = new_leader
+                                && leader_id != self.cluster.local_id()
+                            {
+                                info!("New leader elected: {}", leader_id);
+                                // Update leader connection if needed
                             }
                         }
                         ClusterEvent::NodeLeft(node_id) => {
@@ -315,10 +313,11 @@ impl Worker {
             match self.task_manager.get_next_task().await {
                 Ok(Some(task)) => {
                     info!("Processing task {}", task.id);
-                    
+
                     match self.task_executor.execute(task.clone()).await {
                         Ok(result) => {
-                            if let Err(e) = self.task_manager.complete_task(&task.id, result).await {
+                            if let Err(e) = self.task_manager.complete_task(&task.id, result).await
+                            {
                                 error!("Failed to complete task {}: {}", task.id, e);
                             }
                         }
@@ -355,23 +354,27 @@ impl Worker {
     /// Collect current metrics.
     async fn collect_metrics(&self) -> HashMap<String, proto::MetricValue> {
         let mut metrics = HashMap::new();
-        
+
         let local_metrics = self.gather_metrics().await;
-        
+
         metrics.insert(
             "cpu_usage".to_string(),
             proto::MetricValue {
-                value: Some(proto::metric_value::Value::FloatValue(local_metrics.cpu_usage)),
+                value: Some(proto::metric_value::Value::FloatValue(
+                    local_metrics.cpu_usage,
+                )),
             },
         );
-        
+
         metrics.insert(
             "memory_usage".to_string(),
             proto::MetricValue {
-                value: Some(proto::metric_value::Value::FloatValue(local_metrics.memory_usage)),
+                value: Some(proto::metric_value::Value::FloatValue(
+                    local_metrics.memory_usage,
+                )),
             },
         );
-        
+
         metrics.insert(
             "active_sessions".to_string(),
             proto::MetricValue {
@@ -380,7 +383,7 @@ impl Worker {
                 )),
             },
         );
-        
+
         metrics.insert(
             "running_tasks".to_string(),
             proto::MetricValue {
@@ -389,7 +392,7 @@ impl Worker {
                 )),
             },
         );
-        
+
         metrics
     }
 
@@ -447,8 +450,12 @@ impl std::fmt::Display for WorkerStatus {
         write!(
             f,
             "Worker {} [{}] | Leader: {:?} | Sessions: {} | Tasks: {} | Healthy: {}",
-            self.node_id, self.state, self.leader_id,
-            self.active_sessions, self.running_tasks, self.is_healthy
+            self.node_id,
+            self.state,
+            self.leader_id,
+            self.active_sessions,
+            self.running_tasks,
+            self.is_healthy
         )
     }
 }
@@ -478,9 +485,11 @@ impl WorkerManager {
     /// Assign a task to a worker.
     pub async fn assign_task(&self, task: &Task) -> Result<NodeId> {
         let workers = self.cluster.worker_nodes();
-        
+
         if workers.is_empty() {
-            return Err(DistributedError::Cluster("No available workers".to_string()));
+            return Err(DistributedError::Cluster(
+                "No available workers".to_string(),
+            ));
         }
 
         // Select worker using load balancer
@@ -496,7 +505,9 @@ impl WorkerManager {
 
     /// Get worker capacity.
     pub async fn get_worker_capacity(&self, worker_id: &NodeId) -> Result<WorkerCapacity> {
-        let metrics = self.cluster.get_metrics(worker_id)
+        let metrics = self
+            .cluster
+            .get_metrics(worker_id)
             .ok_or_else(|| DistributedError::NodeNotFound(worker_id.clone()))?;
 
         let capacity = WorkerCapacity {
@@ -520,7 +531,7 @@ pub struct WorkerCapacity {
 /// Convert proto NodeInfo to NodeInfo.
 fn node_from_proto(proto: proto::NodeInfo) -> Option<crate::node::NodeInfo> {
     use std::net::SocketAddr;
-    
+
     let role = match proto::NodeType::try_from(proto.node_type) {
         Ok(proto::NodeType::Leader) => NodeRole::Leader,
         Ok(proto::NodeType::Worker) => NodeRole::Worker,

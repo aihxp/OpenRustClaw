@@ -43,22 +43,24 @@ impl CdpBackend {
                 return Err(AutomationError::ConfigError {
                     field: "browser".to_string(),
                     reason: format!("CDP only supports Chromium-based browsers, got: {}", other),
-                })
+                });
             }
         }
 
         // Find Chrome/Chromium executable
         let chrome_path = find_chrome_executable(config.executable_path.as_deref())?;
-        
+
         info!(path = %chrome_path, "Found Chrome executable");
 
         // In a real implementation, we would:
         // 1. Launch Chrome with --remote-debugging-port
         // 2. Connect to the debugging port
         // 3. Create a WebSocket connection to the CDP endpoint
-        
-        let websocket_url = format!("ws://localhost:9222/devtools/browser/{}"
-, uuid::Uuid::new_v4());
+
+        let websocket_url = format!(
+            "ws://localhost:9222/devtools/browser/{}",
+            uuid::Uuid::new_v4()
+        );
 
         Ok(Self {
             config: config.clone(),
@@ -81,19 +83,20 @@ impl CdpBackend {
     /// Send a CDP command.
     async fn send_command(&self, method: &str, _params: Value) -> Result<Value> {
         trace!(method = %method, "Sending CDP command");
-        
+
         // In a real implementation, this would:
         // 1. Serialize the command
         // 2. Send via WebSocket
         // 3. Wait for and parse the response
-        
+
         Ok(Value::Object(serde_json::Map::new()))
     }
 
     /// Enable a CDP domain.
     #[allow(dead_code)]
     async fn enable_domain(&self, domain: &str) -> Result<()> {
-        self.send_command(&format!("{}.enable", domain), Value::Null).await?;
+        self.send_command(&format!("{}.enable", domain), Value::Null)
+            .await?;
         Ok(())
     }
 }
@@ -102,12 +105,15 @@ impl CdpBackend {
 impl BrowserBackend for CdpBackend {
     async fn new_page(&self) -> Result<Arc<dyn PageBackend>> {
         debug!("Creating new CDP page");
-        
+
         // Target.createTarget
         let result = self
-            .send_command("Target.createTarget", serde_json::json!({"url": "about:blank"}))
+            .send_command(
+                "Target.createTarget",
+                serde_json::json!({"url": "about:blank"}),
+            )
             .await?;
-        
+
         let target_id = result
             .get("targetId")
             .and_then(|v| v.as_str())
@@ -115,14 +121,18 @@ impl BrowserBackend for CdpBackend {
                 method: "Target.createTarget".to_string(),
                 error: "Missing targetId in response".to_string(),
             })?;
-        
-        Ok(Arc::new(CdpPage::new(&self.websocket_url, target_id, &self.config)?))
+
+        Ok(Arc::new(CdpPage::new(
+            &self.websocket_url,
+            target_id,
+            &self.config,
+        )?))
     }
 
     async fn pages(&self) -> Result<Vec<Arc<dyn PageBackend>>> {
         // Target.getTargets
         let result = self.send_command("Target.getTargets", Value::Null).await?;
-        
+
         let targets = result
             .get("targetInfos")
             .and_then(|v| v.as_array())
@@ -133,16 +143,15 @@ impl BrowserBackend for CdpBackend {
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default();
-        
+
         let mut pages = Vec::new();
         for target_id in targets {
-            pages.push(Arc::new(CdpPage::new(
-                &self.websocket_url,
-                target_id,
-                &self.config,
-            )?) as Arc<dyn PageBackend>);
+            pages.push(
+                Arc::new(CdpPage::new(&self.websocket_url, target_id, &self.config)?)
+                    as Arc<dyn PageBackend>,
+            );
         }
-        
+
         Ok(pages)
     }
 
@@ -159,7 +168,7 @@ impl BrowserBackend for CdpBackend {
         let result = self
             .send_command("Target.createBrowserContext", Value::Null)
             .await?;
-        
+
         let context_id = result
             .get("browserContextId")
             .and_then(|v| v.as_str())
@@ -167,7 +176,7 @@ impl BrowserBackend for CdpBackend {
                 method: "Target.createBrowserContext".to_string(),
                 error: "Missing browserContextId".to_string(),
             })?;
-        
+
         Ok(Arc::new(CdpContext::new(context_id, &self.config)?))
     }
 
@@ -210,7 +219,7 @@ impl BrowserContextBackend for CdpContext {
 
     async fn add_cookies(&self, cookies: Vec<Cookie>) -> Result<()> {
         debug!(count = cookies.len(), "Adding cookies via CDP");
-        
+
         for cookie in cookies {
             let _params = serde_json::json!({
                 "name": cookie.name,
@@ -223,7 +232,7 @@ impl BrowserContextBackend for CdpContext {
             });
             // Network.setCookie
         }
-        
+
         Ok(())
     }
 
@@ -237,10 +246,7 @@ impl BrowserContextBackend for CdpContext {
         Ok(())
     }
 
-    async fn grant_permissions(
-        &self,
-        permissions: Vec<crate::config::Permission>,
-    ) -> Result<()> {
+    async fn grant_permissions(&self, permissions: Vec<crate::config::Permission>) -> Result<()> {
         debug!(count = permissions.len(), "Granting permissions via CDP");
         Ok(())
     }
@@ -250,12 +256,13 @@ impl BrowserContextBackend for CdpContext {
         Ok(())
     }
 
-    async fn set_geolocation(
-        &self,
-        geolocation: Option<crate::config::Geolocation>,
-    ) -> Result<()> {
+    async fn set_geolocation(&self, geolocation: Option<crate::config::Geolocation>) -> Result<()> {
         if let Some(geo) = geolocation {
-            debug!(lat = geo.latitude, lng = geo.longitude, "Setting geolocation");
+            debug!(
+                lat = geo.latitude,
+                lng = geo.longitude,
+                "Setting geolocation"
+            );
             // Emulation.setGeolocationOverride
         }
         Ok(())
@@ -294,12 +301,12 @@ impl CdpPage {
 impl PageBackend for CdpPage {
     async fn goto(&self, url: &str) -> Result<()> {
         debug!(url = %url, "Navigating via CDP");
-        
+
         // Page.navigate
         let _result = self
             .send_command("Page.navigate", serde_json::json!({ "url": url }))
             .await?;
-        
+
         // Wait for Page.loadEventFired
         info!(url = %url, "Navigation complete via CDP");
         Ok(())
@@ -359,13 +366,13 @@ impl PageBackend for CdpPage {
 
     async fn screenshot(&self, options: ScreenshotOptions) -> Result<Screenshot> {
         debug!("Taking screenshot via CDP");
-        
+
         // Page.captureScreenshot
         let format = match options.format {
             crate::browser::ScreenshotFormat::Png => "png",
             crate::browser::ScreenshotFormat::Jpeg => "jpeg",
         };
-        
+
         let _params = serde_json::json!({
             "format": format,
             "quality": options.quality,
@@ -378,13 +385,17 @@ impl PageBackend for CdpPage {
                 "scale": 1.0,
             })),
         });
-        
+
         // Decode base64 response
         let width = self.config.automation.viewport.width;
-        let height = if options.full_page { 3000 } else { self.config.automation.viewport.height };
-        
+        let height = if options.full_page {
+            3000
+        } else {
+            self.config.automation.viewport.height
+        };
+
         let data = create_placeholder_screenshot(width, height)?;
-        
+
         Ok(Screenshot {
             data,
             width,
@@ -406,15 +417,19 @@ impl PageBackend for CdpPage {
 
     async fn add_script_tag(&self, content: &str) -> Result<()> {
         // Page.addScriptToEvaluateOnNewDocument or Runtime.evaluate
-        let script = format!("var script = document.createElement('script'); script.textContent = {}; document.head.appendChild(script);", 
-            serde_json::to_string(content)?);
+        let script = format!(
+            "var script = document.createElement('script'); script.textContent = {}; document.head.appendChild(script);",
+            serde_json::to_string(content)?
+        );
         self.evaluate(&script).await?;
         Ok(())
     }
 
     async fn add_style_tag(&self, content: &str) -> Result<()> {
-        let script = format!("var style = document.createElement('style'); style.textContent = {}; document.head.appendChild(style);", 
-            serde_json::to_string(content)?);
+        let script = format!(
+            "var style = document.createElement('style'); style.textContent = {}; document.head.appendChild(style);",
+            serde_json::to_string(content)?
+        );
         self.evaluate(&script).await?;
         Ok(())
     }
@@ -492,7 +507,10 @@ impl PageBackend for CdpPage {
 
     async fn viewport_size(&self) -> Result<(u32, u32)> {
         // Runtime.evaluate: window.innerWidth/window.innerHeight
-        Ok((self.config.automation.viewport.width, self.config.automation.viewport.height))
+        Ok((
+            self.config.automation.viewport.width,
+            self.config.automation.viewport.height,
+        ))
     }
 
     async fn set_viewport_size(&self, width: u32, height: u32) -> Result<()> {
@@ -503,7 +521,8 @@ impl PageBackend for CdpPage {
             "deviceScaleFactor": self.config.automation.viewport.device_scale_factor,
             "mobile": self.config.automation.viewport.is_mobile,
         });
-        self.send_command("Emulation.setDeviceMetricsOverride", params).await?;
+        self.send_command("Emulation.setDeviceMetricsOverride", params)
+            .await?;
         Ok(())
     }
 
@@ -523,10 +542,7 @@ impl PageBackend for CdpPage {
     }
 
     async fn local_storage(&self, key: &str) -> Result<Option<String>> {
-        let script = format!(
-            "localStorage.getItem({})",
-            serde_json::to_string(key)?
-        );
+        let script = format!("localStorage.getItem({})", serde_json::to_string(key)?);
         let result = self.evaluate(&script).await?;
         Ok(result.as_str().map(String::from))
     }
@@ -542,10 +558,7 @@ impl PageBackend for CdpPage {
     }
 
     async fn session_storage(&self, key: &str) -> Result<Option<String>> {
-        let script = format!(
-            "sessionStorage.getItem({})",
-            serde_json::to_string(key)?
-        );
+        let script = format!("sessionStorage.getItem({})", serde_json::to_string(key)?);
         let result = self.evaluate(&script).await?;
         Ok(result.as_str().map(String::from))
     }
@@ -856,12 +869,11 @@ fn find_chrome_executable(custom_path: Option<&str>) -> Result<String> {
     if let Ok(output) = std::process::Command::new("which")
         .arg("google-chrome")
         .output()
+        && output.status.success()
     {
-        if output.status.success() {
-            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if !path.is_empty() {
-                return Ok(path);
-            }
+        let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if !path.is_empty() {
+            return Ok(path);
         }
     }
 
@@ -874,14 +886,14 @@ fn find_chrome_executable(custom_path: Option<&str>) -> Result<String> {
 /// Create a placeholder screenshot.
 fn create_placeholder_screenshot(width: u32, height: u32) -> Result<Vec<u8>> {
     let mut img = image::RgbImage::new(width, height);
-    
+
     for (x, y, pixel) in img.enumerate_pixels_mut() {
         let r = ((x as f32 / width as f32) * 255.0) as u8;
         let g = ((y as f32 / height as f32) * 255.0) as u8;
         let b = 200;
         *pixel = image::Rgb([r, g, b]);
     }
-    
+
     let mut buf = Vec::new();
     let encoder = image::codecs::png::PngEncoder::new(&mut buf);
     encoder
@@ -889,7 +901,7 @@ fn create_placeholder_screenshot(width: u32, height: u32) -> Result<Vec<u8>> {
         .map_err(|e| AutomationError::ScreenshotFailed {
             reason: format!("Failed to encode PNG: {}", e),
         })?;
-    
+
     Ok(buf)
 }
 
@@ -898,7 +910,7 @@ fn create_placeholder_screenshot(width: u32, height: u32) -> Result<Vec<u8>> {
 // ============================================================================
 
 /// Network request interception configuration.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct NetworkInterceptor {
     patterns: Vec<RequestPattern>,
 }
@@ -919,10 +931,7 @@ impl NetworkInterceptor {
     }
 
     /// Add a resource type to intercept.
-    pub fn intercept_resource_type(
-        mut self,
-        resource_type: ResourceType,
-    ) -> Self {
+    pub fn intercept_resource_type(mut self, resource_type: ResourceType) -> Self {
         self.patterns.push(RequestPattern {
             url_pattern: "*".to_string(),
             resource_type: Some(resource_type),

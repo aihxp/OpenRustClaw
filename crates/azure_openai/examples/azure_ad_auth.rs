@@ -18,7 +18,7 @@
 //! cargo run --example azure_ad_auth --features azure-ad
 //! ```
 
-use azure_openai::{AzureOpenAIClient, AzureConfig, ChatRequest, Role};
+use azure_openai::{AzureConfig, AzureOpenAIClient, ChatRequest, Role};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -41,13 +41,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::env::var("AZURE_TENANT_ID"),
     ) {
         println!("Using Azure AD client credentials authentication");
-        let config = AzureConfig::azure_ad_client_credentials(
-            client_id,
-            client_secret,
-            tenant_id,
-        )
-        .resource_name(&resource_name)
-        .deployment_name(&deployment_name);
+        let config = AzureConfig::azure_ad_client_credentials(client_id, client_secret, tenant_id)
+            .resource_name(&resource_name)
+            .deployment_name(&deployment_name);
         AzureOpenAIClient::with_config(config)?
     } else {
         eprintln!("Error: No Azure AD credentials found");

@@ -9,7 +9,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
 
     // Create client
-    let base_url = std::env::var("VLLM_URL").unwrap_or_else(|_| "http://localhost:8000".to_string());
+    let base_url =
+        std::env::var("VLLM_URL").unwrap_or_else(|_| "http://localhost:8000".to_string());
     let client = VllmClient::new(&base_url)?;
 
     println!("Connected to vLLM at: {}", client.base_url());
@@ -29,7 +30,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let request = ChatRequest::builder(&model)
         .system("You are a helpful AI assistant running on vLLM.")
-        .message(Role::User, "Explain continuous batching in vLLM and why it improves throughput.")
+        .message(
+            Role::User,
+            "Explain continuous batching in vLLM and why it improves throughput.",
+        )
         .max_tokens(300)
         .temperature(0.7)
         .build();
@@ -51,7 +55,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 std::io::Write::flush(&mut std::io::stdout())?;
 
                 if chunk.is_final() {
-                    total_tokens = chunk.usage.as_ref().map(|u| u.completion_tokens).unwrap_or(0);
+                    total_tokens = chunk
+                        .usage
+                        .as_ref()
+                        .map(|u| u.completion_tokens)
+                        .unwrap_or(0);
                 }
             }
             Err(e) => {
@@ -62,7 +70,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     println!("\n\n---");
-    println!("Streaming complete! Generated approximately {} tokens", total_tokens);
+    println!(
+        "Streaming complete! Generated approximately {} tokens",
+        total_tokens
+    );
 
     Ok(())
 }

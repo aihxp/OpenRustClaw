@@ -25,15 +25,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("\nSending chat completion request...");
     let response = client.chat().complete(request).await?;
-    
+
     println!("Response ID: {}", response.id);
     println!("Model: {}", response.model);
     println!("Content: {}", response.content());
     println!(
         "Usage: {} prompt, {} completion, {} total tokens",
-        response.usage.prompt_tokens,
-        response.usage.completion_tokens,
-        response.usage.total_tokens
+        response.usage.prompt_tokens, response.usage.completion_tokens, response.usage.total_tokens
     );
 
     // Multi-turn conversation

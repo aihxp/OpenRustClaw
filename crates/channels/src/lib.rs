@@ -61,16 +61,16 @@ pub struct ChannelFactory;
 
 impl ChannelFactory {
     /// Create enabled channels based on configuration.
-    /// 
+    ///
     /// This method instantiates all channels that are enabled in the configuration
     /// and returns them as a vector of boxed trait objects.
-    /// 
+    ///
     /// # Example
-    /// 
+    ///
     /// ```rust,no_run
     /// use openrustclaw_channels::ChannelFactory;
     /// use openrustclaw_core::config::ChannelsConfig;
-    /// 
+    ///
     /// let config = ChannelsConfig::default();
     /// let channels = ChannelFactory::create_channels(&config);
     /// ```
@@ -185,189 +185,221 @@ impl ChannelFactory {
     }
 
     /// Create a Telegram channel.
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// Returns an error if the configuration is invalid.
-    pub fn create_telegram(config: openrustclaw_core::config::TelegramConfig) -> Result<TelegramChannel> {
+    pub fn create_telegram(
+        config: openrustclaw_core::config::TelegramConfig,
+    ) -> Result<TelegramChannel> {
         if config.token.is_empty() {
-            return Err(openrustclaw_core::error::Error::Channel(ChannelError::Config { 
-                platform: "telegram".to_string(), 
-                message: "bot token is required".to_string() 
-            }));
+            return Err(openrustclaw_core::error::Error::Channel(
+                ChannelError::Config {
+                    platform: "telegram".to_string(),
+                    message: "bot token is required".to_string(),
+                },
+            ));
         }
         Ok(TelegramChannel::new(config))
     }
 
     /// Create a Discord channel.
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// Returns an error if the configuration is invalid.
-    pub fn create_discord(config: openrustclaw_core::config::DiscordConfig) -> Result<DiscordChannel> {
+    pub fn create_discord(
+        config: openrustclaw_core::config::DiscordConfig,
+    ) -> Result<DiscordChannel> {
         if config.token.is_empty() {
-            return Err(openrustclaw_core::error::Error::Channel(ChannelError::Config { 
-                platform: "discord".to_string(), 
-                message: "bot token is required".to_string() 
-            }));
+            return Err(openrustclaw_core::error::Error::Channel(
+                ChannelError::Config {
+                    platform: "discord".to_string(),
+                    message: "bot token is required".to_string(),
+                },
+            ));
         }
         Ok(DiscordChannel::new(config))
     }
 
     /// Create a Slack channel.
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// Returns an error if the configuration is invalid.
     pub fn create_slack(config: openrustclaw_core::config::SlackConfig) -> Result<SlackChannel> {
         if config.token.is_empty() {
-            return Err(openrustclaw_core::error::Error::Channel(ChannelError::Config { 
-                platform: "slack".to_string(), 
-                message: "token is required".to_string() 
-            }));
+            return Err(openrustclaw_core::error::Error::Channel(
+                ChannelError::Config {
+                    platform: "slack".to_string(),
+                    message: "token is required".to_string(),
+                },
+            ));
         }
         Ok(SlackChannel::new(config))
     }
 
     /// Create a Microsoft Teams channel.
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// Returns an error if the configuration is invalid.
     pub fn create_teams(config: openrustclaw_core::config::TeamsConfig) -> Result<TeamsChannel> {
         if config.app_id.is_empty() || config.app_password.is_empty() {
-            return Err(openrustclaw_core::error::Error::Channel(ChannelError::Config { 
-                platform: "teams".to_string(), 
-                message: "app_id and app_password are required".to_string() 
-            }));
+            return Err(openrustclaw_core::error::Error::Channel(
+                ChannelError::Config {
+                    platform: "teams".to_string(),
+                    message: "app_id and app_password are required".to_string(),
+                },
+            ));
         }
         Ok(TeamsChannel::new(config))
     }
 
     /// Create a Google Chat channel.
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// Returns an error if the configuration is invalid.
-    pub fn create_google_chat(config: openrustclaw_core::config::GoogleChatConfig) -> Result<GoogleChatChannel> {
+    pub fn create_google_chat(
+        config: openrustclaw_core::config::GoogleChatConfig,
+    ) -> Result<GoogleChatChannel> {
         if config.service_account_key.is_empty() {
-            return Err(openrustclaw_core::error::Error::Channel(ChannelError::Config { 
-                platform: "google_chat".to_string(), 
-                message: "service_account_key is required".to_string() 
-            }));
+            return Err(openrustclaw_core::error::Error::Channel(
+                ChannelError::Config {
+                    platform: "google_chat".to_string(),
+                    message: "service_account_key is required".to_string(),
+                },
+            ));
         }
         Ok(GoogleChatChannel::new(config))
     }
 
     /// Create a WhatsApp channel.
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// Returns an error if the configuration is invalid.
-    pub fn create_whatsapp(config: openrustclaw_core::config::WhatsAppConfig) -> Result<WhatsAppChannel> {
+    pub fn create_whatsapp(
+        config: openrustclaw_core::config::WhatsAppConfig,
+    ) -> Result<WhatsAppChannel> {
         Ok(WhatsAppChannel::new(config))
     }
 
     /// Create a Gmail Pub/Sub channel.
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// Returns an error if the configuration is invalid.
-    pub fn create_gmail_pubsub(config: openrustclaw_core::config::GmailPubSubConfig) -> Result<GmailPubSub> {
+    pub fn create_gmail_pubsub(
+        config: openrustclaw_core::config::GmailPubSubConfig,
+    ) -> Result<GmailPubSub> {
         if config.project_id.is_empty() || config.service_account_key_path.is_empty() {
-            return Err(openrustclaw_core::error::Error::Channel(ChannelError::Config { 
-                platform: "gmail_pubsub".to_string(), 
-                message: "project_id and service_account_key_path are required".to_string() 
-            }));
+            return Err(openrustclaw_core::error::Error::Channel(
+                ChannelError::Config {
+                    platform: "gmail_pubsub".to_string(),
+                    message: "project_id and service_account_key_path are required".to_string(),
+                },
+            ));
         }
         Ok(GmailPubSub::new(config))
     }
 
     /// Create a Matrix channel.
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// Returns an error if the configuration is invalid.
     pub fn create_matrix(config: openrustclaw_core::config::MatrixConfig) -> Result<MatrixChannel> {
         if config.homeserver.is_empty() || config.user_id.is_empty() {
-            return Err(openrustclaw_core::error::Error::Channel(ChannelError::Config { 
-                platform: "matrix".to_string(), 
-                message: "homeserver and user_id are required".to_string() 
-            }));
+            return Err(openrustclaw_core::error::Error::Channel(
+                ChannelError::Config {
+                    platform: "matrix".to_string(),
+                    message: "homeserver and user_id are required".to_string(),
+                },
+            ));
         }
         Ok(MatrixChannel::new(config))
     }
 
     /// Create a Meta (Messenger/Instagram) channel.
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// Returns an error if the configuration is invalid.
     pub fn create_meta(config: openrustclaw_core::config::MetaConfig) -> Result<MetaChannel> {
         if config.app_secret.is_empty() || config.page_access_token.is_empty() {
-            return Err(openrustclaw_core::error::Error::Channel(ChannelError::Config { 
-                platform: "meta".to_string(), 
-                message: "app_secret and page_access_token are required".to_string() 
-            }));
+            return Err(openrustclaw_core::error::Error::Channel(
+                ChannelError::Config {
+                    platform: "meta".to_string(),
+                    message: "app_secret and page_access_token are required".to_string(),
+                },
+            ));
         }
         Ok(MetaChannel::new(config))
     }
 
     /// Create a LINE channel.
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// Returns an error if the configuration is invalid.
     pub fn create_line(config: openrustclaw_core::config::LineConfig) -> Result<LineChannel> {
         if config.channel_access_token.is_empty() || config.channel_secret.is_empty() {
-            return Err(openrustclaw_core::error::Error::Channel(ChannelError::Config { 
-                platform: "line".to_string(), 
-                message: "channel_access_token and channel_secret are required".to_string() 
-            }));
+            return Err(openrustclaw_core::error::Error::Channel(
+                ChannelError::Config {
+                    platform: "line".to_string(),
+                    message: "channel_access_token and channel_secret are required".to_string(),
+                },
+            ));
         }
         Ok(LineChannel::new(config))
     }
 
     /// Create a Viber channel.
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// Returns an error if the configuration is invalid.
     pub fn create_viber(config: openrustclaw_core::config::ViberConfig) -> Result<ViberChannel> {
         if config.auth_token.is_empty() {
-            return Err(openrustclaw_core::error::Error::Channel(ChannelError::Config { 
-                platform: "viber".to_string(), 
-                message: "auth_token is required".to_string() 
-            }));
+            return Err(openrustclaw_core::error::Error::Channel(
+                ChannelError::Config {
+                    platform: "viber".to_string(),
+                    message: "auth_token is required".to_string(),
+                },
+            ));
         }
         Ok(ViberChannel::new(config))
     }
 
     /// Create a WeChat channel.
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// Returns an error if the configuration is invalid.
     pub fn create_wechat(config: openrustclaw_core::config::WeChatConfig) -> Result<WeChatChannel> {
         if config.app_id.is_empty() || config.app_secret.is_empty() {
-            return Err(openrustclaw_core::error::Error::Channel(ChannelError::Config { 
-                platform: "wechat".to_string(), 
-                message: "app_id and app_secret are required".to_string() 
-            }));
+            return Err(openrustclaw_core::error::Error::Channel(
+                ChannelError::Config {
+                    platform: "wechat".to_string(),
+                    message: "app_id and app_secret are required".to_string(),
+                },
+            ));
         }
         Ok(WeChatChannel::new(config))
     }
 
     /// Create an iMessage channel.
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// Returns an error if the configuration is invalid.
-    pub fn create_imessage(config: openrustclaw_core::config::IMessageConfig) -> Result<IMessageChannel> {
+    pub fn create_imessage(
+        config: openrustclaw_core::config::IMessageConfig,
+    ) -> Result<IMessageChannel> {
         Ok(IMessageChannel::new(config))
     }
-
-
 }
 
 /// Channel types that can be started via CLI.
@@ -453,20 +485,18 @@ impl std::fmt::Display for ChannelType {
 }
 
 /// Parse a comma-separated list of channel types.
-/// 
+///
 /// # Example
-/// 
+///
 /// ```
 /// use openrustclaw_channels::parse_channels_list;
 /// use openrustclaw_channels::ChannelType;
-/// 
+///
 /// let channels = parse_channels_list("telegram,discord").unwrap();
 /// assert_eq!(channels.len(), 2);
 /// ```
 pub fn parse_channels_list(s: &str) -> std::result::Result<Vec<ChannelType>, String> {
-    s.split(',')
-        .map(|s| s.trim().parse())
-        .collect()
+    s.split(',').map(|s| s.trim().parse()).collect()
 }
 
 #[cfg(test)]
@@ -569,7 +599,9 @@ mod tests {
             ChannelType::Messenger
         );
         assert_eq!(
-            "meta_messenger".parse::<ChannelType>().expect("valid channel"),
+            "meta_messenger"
+                .parse::<ChannelType>()
+                .expect("valid channel"),
             ChannelType::Messenger
         );
     }
@@ -581,7 +613,9 @@ mod tests {
             ChannelType::Instagram
         );
         assert_eq!(
-            "meta_instagram".parse::<ChannelType>().expect("valid channel"),
+            "meta_instagram"
+                .parse::<ChannelType>()
+                .expect("valid channel"),
             ChannelType::Instagram
         );
     }

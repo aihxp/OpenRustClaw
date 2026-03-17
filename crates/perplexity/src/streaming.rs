@@ -37,7 +37,7 @@ impl Stream for ChatCompletionStream {
             Poll::Ready(Some(Ok(bytes))) => {
                 // Parse the bytes as SSE event
                 let text = String::from_utf8_lossy(&bytes);
-                
+
                 // Handle SSE format: "data: {...}\n\n" or multiple lines
                 for line in text.lines() {
                     let line = line.trim();
@@ -56,7 +56,7 @@ impl Stream for ChatCompletionStream {
                         }
                     }
                 }
-                
+
                 // If we got bytes but no valid data line, continue polling
                 cx.waker().wake_by_ref();
                 Poll::Pending
@@ -93,14 +93,20 @@ pub struct ChatCompletionChunk {
     pub citations: Vec<Citation>,
 
     /// Related questions (Perplexity-specific, may appear in final chunk).
-    #[serde(default, rename = "related_questions", skip_serializing_if = "Vec::is_empty")]
+    #[serde(
+        default,
+        rename = "related_questions",
+        skip_serializing_if = "Vec::is_empty"
+    )]
     pub related_questions: Vec<RelatedQuestion>,
 }
 
 impl ChatCompletionChunk {
     /// Get the delta content from the first choice.
     pub fn delta_content(&self) -> Option<&str> {
-        self.choices.first().and_then(|c| c.delta.content.as_deref())
+        self.choices
+            .first()
+            .and_then(|c| c.delta.content.as_deref())
     }
 
     /// Check if this is the final chunk.

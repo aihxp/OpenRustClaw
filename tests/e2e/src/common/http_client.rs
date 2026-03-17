@@ -1,7 +1,7 @@
 //! HTTP client for E2E tests.
 
 use reqwest::{Client, Method, RequestBuilder, Response};
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 use std::time::Duration;
 
 /// HTTP client for E2E testing
@@ -52,29 +52,17 @@ impl TestHttpClient {
         path: &str,
         query: &Q,
     ) -> reqwest::Result<Response> {
-        self.client
-            .get(self.url(path))
-            .query(query)
-            .send()
-            .await
+        self.client.get(self.url(path)).query(query).send().await
     }
 
     /// Make a POST request with JSON body
     pub async fn post<B: Serialize>(&self, path: &str, body: &B) -> reqwest::Result<Response> {
-        self.client
-            .post(self.url(path))
-            .json(body)
-            .send()
-            .await
+        self.client.post(self.url(path)).json(body).send().await
     }
 
     /// Make a PUT request with JSON body
     pub async fn put<B: Serialize>(&self, path: &str, body: &B) -> reqwest::Result<Response> {
-        self.client
-            .put(self.url(path))
-            .json(body)
-            .send()
-            .await
+        self.client.put(self.url(path)).json(body).send().await
     }
 
     /// Make a DELETE request
@@ -112,7 +100,7 @@ impl TestHttpClient {
             )));
         }
 
-        serde_json::from_str(&text).map_err(|e| TestError::Json(e))
+        serde_json::from_str(&text).map_err(TestError::Json)
     }
 
     /// Check if server is healthy
@@ -182,7 +170,12 @@ impl TestWebSocketClient {
     /// Connect to WebSocket endpoint
     pub async fn connect(
         &self,
-    ) -> Result<tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>, TestError> {
+    ) -> Result<
+        tokio_tungstenite::WebSocketStream<
+            tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+        >,
+        TestError,
+    > {
         use tokio_tungstenite::connect_async;
 
         let (ws_stream, _) = connect_async(&self.url)

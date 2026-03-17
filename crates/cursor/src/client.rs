@@ -3,16 +3,16 @@
 //! The client connects to a Cursor ACP server (running within the IDE or externally)
 //! and provides a convenient API for making requests and receiving responses.
 
-use crate::acp::{AcpMessage, AcpPayload, ACP_PROTOCOL_VERSION};
-use crate::types::{AcpRequest, AcpResponse};
+use crate::acp::{ACP_PROTOCOL_VERSION, AcpMessage, AcpPayload};
 use crate::error::{CursorError, Result};
+use crate::types::{AcpRequest, AcpResponse};
 use crate::types::{CursorConfig, Diagnostic, GitStatus, IdeState};
 use std::path::PathBuf;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
 use tokio::process::{Child, Command};
 use tokio::sync::mpsc;
-use tokio::time::{timeout, Duration};
+use tokio::time::{Duration, timeout};
 use tracing::{debug, error, info};
 use uuid::Uuid;
 
@@ -102,12 +102,8 @@ impl CursorClient {
     /// Connect to the server.
     pub async fn connect(&self) -> Result<CursorConnection> {
         match &self.connection {
-            ClientConnection::Stdio { command, args } => {
-                self.connect_stdio(command, args).await
-            }
-            ClientConnection::Tcp { host, port } => {
-                self.connect_tcp(host, *port).await
-            }
+            ClientConnection::Stdio { command, args } => self.connect_stdio(command, args).await,
+            ClientConnection::Tcp { host, port } => self.connect_tcp(host, *port).await,
             ClientConnection::WebSocket { url: _ } => {
                 // WebSocket support would require the tokio-tungstenite crate
                 Err(CursorError::Connection(
@@ -118,12 +114,11 @@ impl CursorClient {
     }
 
     /// Connect via stdio.
-    async fn connect_stdio(
-        &self,
-        command: &str,
-        args: &[String],
-    ) -> Result<CursorConnection> {
-        info!("Connecting to Cursor server via stdio: {} {:?}", command, args);
+    async fn connect_stdio(&self, command: &str, args: &[String]) -> Result<CursorConnection> {
+        info!(
+            "Connecting to Cursor server via stdio: {} {:?}",
+            command, args
+        );
 
         let mut child = Command::new(command)
             .args(args)
@@ -158,21 +153,29 @@ impl CursorClient {
                 let msg_str = match serde_json::to_string(&message) {
                     Ok(s) => s,
                     Err(e) => {
-                        let _ = response_tx_clone.send(Err(CursorError::Protocol(e.to_string()))).await;
+                        let _ = response_tx_clone
+                            .send(Err(CursorError::Protocol(e.to_string())))
+                            .await;
                         continue;
                     }
                 };
 
                 if let Err(e) = stdin.write_all(msg_str.as_bytes()).await {
-                    let _ = response_tx_clone.send(Err(CursorError::Connection(e.to_string()))).await;
+                    let _ = response_tx_clone
+                        .send(Err(CursorError::Connection(e.to_string())))
+                        .await;
                     break;
                 }
                 if let Err(e) = stdin.write_all(b"\n").await {
-                    let _ = response_tx_clone.send(Err(CursorError::Connection(e.to_string()))).await;
+                    let _ = response_tx_clone
+                        .send(Err(CursorError::Connection(e.to_string())))
+                        .await;
                     break;
                 }
                 if let Err(e) = stdin.flush().await {
-                    let _ = response_tx_clone.send(Err(CursorError::Connection(e.to_string()))).await;
+                    let _ = response_tx_clone
+                        .send(Err(CursorError::Connection(e.to_string())))
+                        .await;
                     break;
                 }
             }
@@ -199,7 +202,7 @@ impl CursorClient {
                         match serde_json::from_str::<AcpMessage>(trimmed) {
                             Ok(message) => {
                                 if let AcpPayload::Response(response) = message.payload {
-                                    let _ = response_tx.send(Ok(response)).await;
+                                    let _ = response_tx.send(Ok(*response)).await;
                                 }
                             }
                             Err(e) => {
@@ -208,7 +211,9 @@ impl CursorClient {
                         }
                     }
                     Err(e) => {
-                        let _ = response_tx.send(Err(CursorError::Connection(e.to_string()))).await;
+                        let _ = response_tx
+                            .send(Err(CursorError::Connection(e.to_string())))
+                            .await;
                         break;
                     }
                 }
@@ -243,21 +248,29 @@ impl CursorClient {
                 let msg_str = match serde_json::to_string(&message) {
                     Ok(s) => s,
                     Err(e) => {
-                        let _ = response_tx_clone.send(Err(CursorError::Protocol(e.to_string()))).await;
+                        let _ = response_tx_clone
+                            .send(Err(CursorError::Protocol(e.to_string())))
+                            .await;
                         continue;
                     }
                 };
 
                 if let Err(e) = writer.write_all(msg_str.as_bytes()).await {
-                    let _ = response_tx_clone.send(Err(CursorError::Connection(e.to_string()))).await;
+                    let _ = response_tx_clone
+                        .send(Err(CursorError::Connection(e.to_string())))
+                        .await;
                     break;
                 }
                 if let Err(e) = writer.write_all(b"\n").await {
-                    let _ = response_tx_clone.send(Err(CursorError::Connection(e.to_string()))).await;
+                    let _ = response_tx_clone
+                        .send(Err(CursorError::Connection(e.to_string())))
+                        .await;
                     break;
                 }
                 if let Err(e) = writer.flush().await {
-                    let _ = response_tx_clone.send(Err(CursorError::Connection(e.to_string()))).await;
+                    let _ = response_tx_clone
+                        .send(Err(CursorError::Connection(e.to_string())))
+                        .await;
                     break;
                 }
             }
@@ -281,7 +294,7 @@ impl CursorClient {
                         match serde_json::from_str::<AcpMessage>(trimmed) {
                             Ok(message) => {
                                 if let AcpPayload::Response(response) = message.payload {
-                                    let _ = response_tx.send(Ok(response)).await;
+                                    let _ = response_tx.send(Ok(*response)).await;
                                 }
                             }
                             Err(e) => {
@@ -290,7 +303,9 @@ impl CursorClient {
                         }
                     }
                     Err(e) => {
-                        let _ = response_tx.send(Err(CursorError::Connection(e.to_string()))).await;
+                        let _ = response_tx
+                            .send(Err(CursorError::Connection(e.to_string())))
+                            .await;
                         break;
                     }
                 }
@@ -331,19 +346,21 @@ impl CursorConnection {
         match timeout(self.timeout, self.response_rx.recv()).await {
             Ok(Some(Ok(response))) => Ok(response),
             Ok(Some(Err(e))) => Err(e),
-            Ok(None) => Err(CursorError::Connection("Response channel closed".to_string())),
-            Err(_) => Err(CursorError::Timeout(
-                "Request timed out".to_string(),
+            Ok(None) => Err(CursorError::Connection(
+                "Response channel closed".to_string(),
             )),
+            Err(_) => Err(CursorError::Timeout("Request timed out".to_string())),
         }
     }
 
     /// Get the current IDE state.
     pub async fn get_state(&mut self) -> Result<IdeState> {
         match self.request(AcpRequest::GetState).await? {
-            AcpResponse::State(state) => Ok(state),
+            AcpResponse::State(state) => Ok(*state),
             AcpResponse::Error { message, .. } => Err(CursorError::InvalidContext(message)),
-            _ => Err(CursorError::Protocol("Unexpected response type".to_string())),
+            _ => Err(CursorError::Protocol(
+                "Unexpected response type".to_string(),
+            )),
         }
     }
 
@@ -365,7 +382,9 @@ impl CursorConnection {
                 exit_code,
             } => Ok((stdout, stderr, exit_code)),
             AcpResponse::Error { message, .. } => Err(CursorError::Terminal(message)),
-            _ => Err(CursorError::Protocol("Unexpected response type".to_string())),
+            _ => Err(CursorError::Protocol(
+                "Unexpected response type".to_string(),
+            )),
         }
     }
 
@@ -376,7 +395,9 @@ impl CursorConnection {
         match self.request(request).await? {
             AcpResponse::FileContent { content, .. } => Ok(content),
             AcpResponse::Error { message, .. } => Err(CursorError::FileOperation(message)),
-            _ => Err(CursorError::Protocol("Unexpected response type".to_string())),
+            _ => Err(CursorError::Protocol(
+                "Unexpected response type".to_string(),
+            )),
         }
     }
 
@@ -394,7 +415,9 @@ impl CursorConnection {
         match self.request(request).await? {
             AcpResponse::FileOperationSuccess { .. } => Ok(()),
             AcpResponse::Error { message, .. } => Err(CursorError::FileOperation(message)),
-            _ => Err(CursorError::Protocol("Unexpected response type".to_string())),
+            _ => Err(CursorError::Protocol(
+                "Unexpected response type".to_string(),
+            )),
         }
     }
 
@@ -414,7 +437,9 @@ impl CursorConnection {
         match self.request(request).await? {
             AcpResponse::FileOperationSuccess { .. } => Ok(()),
             AcpResponse::Error { message, .. } => Err(CursorError::FileOperation(message)),
-            _ => Err(CursorError::Protocol("Unexpected response type".to_string())),
+            _ => Err(CursorError::Protocol(
+                "Unexpected response type".to_string(),
+            )),
         }
     }
 
@@ -432,7 +457,9 @@ impl CursorConnection {
         match self.request(request).await? {
             AcpResponse::SearchResults { matches, .. } => Ok(matches),
             AcpResponse::Error { message, .. } => Err(CursorError::PatternError(message)),
-            _ => Err(CursorError::Protocol("Unexpected response type".to_string())),
+            _ => Err(CursorError::Protocol(
+                "Unexpected response type".to_string(),
+            )),
         }
     }
 
@@ -450,7 +477,9 @@ impl CursorConnection {
         match self.request(request).await? {
             AcpResponse::DirectoryListing { entries, .. } => Ok(entries),
             AcpResponse::Error { message, .. } => Err(CursorError::FileOperation(message)),
-            _ => Err(CursorError::Protocol("Unexpected response type".to_string())),
+            _ => Err(CursorError::Protocol(
+                "Unexpected response type".to_string(),
+            )),
         }
     }
 
@@ -459,7 +488,9 @@ impl CursorConnection {
         match self.request(AcpRequest::GitStatus).await? {
             AcpResponse::GitStatus(status) => Ok(status),
             AcpResponse::Error { message, .. } => Err(CursorError::GitOperation(message)),
-            _ => Err(CursorError::Protocol("Unexpected response type".to_string())),
+            _ => Err(CursorError::Protocol(
+                "Unexpected response type".to_string(),
+            )),
         }
     }
 
@@ -470,7 +501,9 @@ impl CursorConnection {
         match self.request(request).await? {
             AcpResponse::GitDiff(diff) => Ok(diff),
             AcpResponse::Error { message, .. } => Err(CursorError::GitOperation(message)),
-            _ => Err(CursorError::Protocol("Unexpected response type".to_string())),
+            _ => Err(CursorError::Protocol(
+                "Unexpected response type".to_string(),
+            )),
         }
     }
 
@@ -485,7 +518,9 @@ impl CursorConnection {
                 exit_code,
             } => Ok((stdout, stderr, exit_code)),
             AcpResponse::Error { message, .. } => Err(CursorError::GitOperation(message)),
-            _ => Err(CursorError::Protocol("Unexpected response type".to_string())),
+            _ => Err(CursorError::Protocol(
+                "Unexpected response type".to_string(),
+            )),
         }
     }
 
@@ -507,7 +542,9 @@ impl CursorConnection {
                 ..
             } => Ok((output, diagnostics)),
             AcpResponse::Error { message, .. } => Err(CursorError::Linter(message)),
-            _ => Err(CursorError::Protocol("Unexpected response type".to_string())),
+            _ => Err(CursorError::Protocol(
+                "Unexpected response type".to_string(),
+            )),
         }
     }
 
@@ -540,7 +577,7 @@ mod tests {
             host: "localhost".to_string(),
             port: 8080,
         };
-        
+
         if let ClientConnection::Tcp { host, port } = conn {
             assert_eq!(host, "localhost");
             assert_eq!(port, 8080);

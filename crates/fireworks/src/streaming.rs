@@ -77,10 +77,7 @@ pub struct CompletionChunk {
 impl CompletionChunk {
     /// Get the text from the first choice.
     pub fn text(&self) -> &str {
-        self.choices
-            .first()
-            .map(|c| c.text.as_str())
-            .unwrap_or("")
+        self.choices.first().map(|c| c.text.as_str()).unwrap_or("")
     }
 
     /// Check if this is the final chunk.
@@ -155,12 +152,11 @@ impl Stream for ChatCompletionStream {
             Poll::Ready(Some(Ok(bytes))) => {
                 // Parse the bytes as SSE event
                 let text = String::from_utf8_lossy(&bytes);
-                
+
                 // Handle SSE format: "data: {...}\n\n" or multiple lines
                 for line in text.lines() {
                     let line = line.trim();
                     if let Some(data) = line.strip_prefix("data: ") {
-                        
                         if data == "[DONE]" {
                             continue; // End of stream
                         }
@@ -175,14 +171,12 @@ impl Stream for ChatCompletionStream {
                         }
                     }
                 }
-                
+
                 // If we got bytes but no valid data line, continue polling
                 cx.waker().wake_by_ref();
                 Poll::Pending
             }
-            Poll::Ready(Some(Err(e))) => {
-                Poll::Ready(Some(Err(FireworksError::Http { source: e })))
-            }
+            Poll::Ready(Some(Err(e))) => Poll::Ready(Some(Err(FireworksError::Http { source: e }))),
             Poll::Ready(None) => Poll::Ready(None),
             Poll::Pending => Poll::Pending,
         }
@@ -216,12 +210,11 @@ impl Stream for CompletionStream {
             Poll::Ready(Some(Ok(bytes))) => {
                 // Parse the bytes as SSE event
                 let text = String::from_utf8_lossy(&bytes);
-                
+
                 // Handle SSE format: "data: {...}\n\n" or multiple lines
                 for line in text.lines() {
                     let line = line.trim();
                     if let Some(data) = line.strip_prefix("data: ") {
-                        
                         if data == "[DONE]" {
                             continue; // End of stream
                         }
@@ -236,14 +229,12 @@ impl Stream for CompletionStream {
                         }
                     }
                 }
-                
+
                 // If we got bytes but no valid data line, continue polling
                 cx.waker().wake_by_ref();
                 Poll::Pending
             }
-            Poll::Ready(Some(Err(e))) => {
-                Poll::Ready(Some(Err(FireworksError::Http { source: e })))
-            }
+            Poll::Ready(Some(Err(e))) => Poll::Ready(Some(Err(FireworksError::Http { source: e }))),
             Poll::Ready(None) => Poll::Ready(None),
             Poll::Pending => Poll::Pending,
         }

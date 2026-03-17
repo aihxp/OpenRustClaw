@@ -3,13 +3,11 @@
 //! These tests use wiremock to mock the Anthropic API.
 
 use wiremock::{
-    matchers::{body_json, header, method, path},
     Mock, MockServer, ResponseTemplate,
+    matchers::{body_json, header, method, path},
 };
 
-use anthropic_rust::{
-    AnthropicClient, Message, MessageRequest, Role, Tool, ToolResult,
-};
+use anthropic_rust::{AnthropicClient, Message, MessageRequest, Role, Tool, ToolResult};
 
 async fn setup_mock_server() -> (MockServer, AnthropicClient) {
     let mock_server = MockServer::start().await;
@@ -136,14 +134,12 @@ async fn test_authentication_error() {
 
     Mock::given(method("POST"))
         .and(path("/v1/messages"))
-        .respond_with(
-            ResponseTemplate::new(401).set_body_json(serde_json::json!({
-                "error": {
-                    "type": "authentication_error",
-                    "message": "Invalid API key"
-                }
-            })),
-        )
+        .respond_with(ResponseTemplate::new(401).set_body_json(serde_json::json!({
+            "error": {
+                "type": "authentication_error",
+                "message": "Invalid API key"
+            }
+        })))
         .mount(&mock_server)
         .await;
 

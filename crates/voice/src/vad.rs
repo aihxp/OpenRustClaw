@@ -216,9 +216,8 @@ pub struct AdaptiveVad {
 
 impl AdaptiveVad {
     /// Create a new adaptive VAD.
-    pub fn new(mut config: VadConfig) -> Self {
+    pub fn new(config: VadConfig) -> Self {
         let base_threshold = config.threshold;
-        config.threshold = base_threshold; // Will be updated adaptively
 
         Self {
             base_vad: VoiceActivityDetector::new(config),
@@ -238,7 +237,8 @@ impl AdaptiveVad {
             self.noise_floor = self.alpha * self.noise_floor + (1.0 - self.alpha) * energy;
 
             // Update threshold based on noise floor
-            let new_threshold = (self.noise_floor * 3.0).clamp(self.min_threshold, self.max_threshold);
+            let new_threshold =
+                (self.noise_floor * 3.0).clamp(self.min_threshold, self.max_threshold);
             self.base_vad.config.threshold = new_threshold;
         }
 

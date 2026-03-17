@@ -5,12 +5,11 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
+use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue};
 use tracing::{debug, trace};
 
 use crate::auth::{
-    service_endpoint, AwsCredentials, CredentialChain, Region, Service,
-    SigV4Signer,
+    AwsCredentials, CredentialChain, Region, Service, SigV4Signer, service_endpoint,
 };
 use crate::constants::{DEFAULT_MAX_RETRIES, DEFAULT_RETRY_DELAY, DEFAULT_TIMEOUT};
 use crate::converse::ConverseClient;
@@ -51,14 +50,12 @@ impl BedrockClient {
         // Resolve credentials
         let credentials = match config.credentials {
             Some(creds) => creds,
-            None => {
-                CredentialChain::default_chain()
-                    .resolve()
-                    .await
-                    .map_err(|e| BedrockError::Credential {
-                        message: format!("Failed to resolve credentials: {e}"),
-                    })?
-            }
+            None => CredentialChain::default_chain()
+                .resolve()
+                .await
+                .map_err(|e| BedrockError::Credential {
+                    message: format!("Failed to resolve credentials: {e}"),
+                })?,
         };
 
         debug!("Credentials resolved successfully");
@@ -159,13 +156,9 @@ impl BedrockClient {
             .map(|b| b.to_string().into_bytes())
             .unwrap_or_default();
 
-        self.inner.signer.sign_request(
-            method,
-            &url,
-            &mut headers,
-            &body_bytes,
-            service,
-        )?;
+        self.inner
+            .signer
+            .sign_request(method, &url, &mut headers, &body_bytes, service)?;
 
         // Build and send request
         let mut request_builder = self.inner.http.request(
@@ -218,10 +211,7 @@ impl BedrockClient {
                     );
 
                     tokio::time::sleep(delay).await;
-                    delay = std::cmp::min(
-                        delay.mul_f64(2.0),
-                        Duration::from_millis(32000),
-                    );
+                    delay = std::cmp::min(delay.mul_f64(2.0), Duration::from_millis(32000));
                 }
             }
         }
@@ -286,8 +276,8 @@ impl ClientConfig {
 
     /// Create configuration from environment variables.
     pub fn from_env(region: impl Into<Region>) -> Result<Self> {
-        use crate::auth::EnvironmentCredentialProvider;
         use crate::auth::CredentialProvider;
+        use crate::auth::EnvironmentCredentialProvider;
 
         let rt = tokio::runtime::Runtime::new().map_err(|e| BedrockError::Config {
             message: format!("Failed to create runtime: {e}"),
@@ -301,8 +291,8 @@ impl ClientConfig {
 
     /// Create configuration with a profile.
     pub fn with_profile(region: impl Into<Region>, profile: impl Into<String>) -> Result<Self> {
-        use crate::auth::ProfileCredentialProvider;
         use crate::auth::CredentialProvider;
+        use crate::auth::ProfileCredentialProvider;
 
         let rt = tokio::runtime::Runtime::new().map_err(|e| BedrockError::Config {
             message: format!("Failed to create runtime: {e}"),
@@ -332,7 +322,10 @@ mod tests {
 
     #[test]
     fn test_client_config_with_credentials() {
-        let creds = AwsCredentials::new("AKIAIOSFODNN7EXAMPLE", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY");
+        let creds = AwsCredentials::new(
+            "AKIAIOSFODNN7EXAMPLE",
+            "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+        );
         let config = ClientConfig::new("us-west-2").with_credentials(creds);
 
         assert!(config.credentials.is_some());

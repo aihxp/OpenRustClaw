@@ -14,11 +14,11 @@ use openrustclaw_core::error::{Error, ProviderError, Result};
 use openrustclaw_core::traits::{LlmProvider, Tool, ToolContext};
 use openrustclaw_core::types::{
     CompletionRequest, CompletionResponse, CoreEntry, FinishReason, MemoryEntry, MemoryQuery,
-    MemorySource, MemoryType, Message, Role, SkillCapability, StreamChunk,
-    TokenUsage, ToolCall, ToolFormat, ToolOutput,
+    MemorySource, MemoryType, Message, Role, SkillCapability, StreamChunk, TokenUsage, ToolCall,
+    ToolFormat, ToolOutput,
 };
-use openrustclaw_db::memory_store::SqliteMemoryStore;
 use openrustclaw_db::core_memory_store::SqliteCoreMemoryStore;
+use openrustclaw_db::memory_store::SqliteMemoryStore;
 use openrustclaw_gateway::server::{GatewayServer, GatewayState};
 use openrustclaw_gateway::sessions::SessionManager;
 use openrustclaw_memory::context::ContextManager;
@@ -35,13 +35,13 @@ use tracing_subscriber::EnvFilter;
 use uuid::Uuid;
 use wiremock::MockServer;
 
-pub mod fixtures;
 pub mod assertions;
+pub mod fixtures;
 pub mod http_client;
 
-pub use fixtures::*;
 pub use assertions::E2eAssertions;
-pub use http_client::{TestHttpClient, TestWebSocketClient, ResponseExt, TestError};
+pub use fixtures::*;
+pub use http_client::{ResponseExt, TestError, TestHttpClient, TestWebSocketClient};
 
 /// Initialize tracing subscriber for tests.
 pub fn init_test_tracing() {
@@ -163,9 +163,12 @@ impl TestEnvironment {
         let app = gateway.router(state);
 
         let handle = tokio::spawn(async move {
-            axum::serve(tokio::net::TcpListener::from_std(listener.into_std().unwrap()).unwrap(), app)
-                .await
-                .expect("Server failed");
+            axum::serve(
+                tokio::net::TcpListener::from_std(listener.into_std().unwrap()).unwrap(),
+                app,
+            )
+            .await
+            .expect("Server failed");
         });
 
         // Wait for server to be ready
@@ -181,7 +184,10 @@ impl TestEnvironment {
     }
 
     /// Search memories.
-    pub async fn search_memories(&self, query: MemoryQuery) -> Result<Vec<openrustclaw_core::types::ScoredMemory>> {
+    pub async fn search_memories(
+        &self,
+        query: MemoryQuery,
+    ) -> Result<Vec<openrustclaw_core::types::ScoredMemory>> {
         use openrustclaw_core::traits::MemoryStore;
         self.memory_store.search(&query).await
     }
@@ -720,7 +726,10 @@ impl Tool for CalculatorTool {
     }
 
     async fn execute(&self, input: Value, _ctx: &ToolContext) -> Result<ToolOutput> {
-        let operation = input.get("operation").and_then(|v| v.as_str()).unwrap_or("");
+        let operation = input
+            .get("operation")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
         let a = input.get("a").and_then(|v| v.as_f64()).unwrap_or(0.0);
         let b = input.get("b").and_then(|v| v.as_f64()).unwrap_or(0.0);
 
@@ -743,7 +752,7 @@ impl Tool for CalculatorTool {
                     tool_call_id: String::new(),
                     content: format!("Error: Unknown operation '{}'", operation),
                     is_error: true,
-                })
+                });
             }
         };
 
@@ -996,7 +1005,7 @@ pub fn parse_json<T: DeserializeOwned>(json_str: &str) -> Result<T> {
 
 /// Create a test JWT token.
 pub fn create_test_jwt(sub: &str, secret: &str) -> String {
-    use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
+    use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
     use serde::{Deserialize, Serialize};
 
     #[derive(Debug, Serialize, Deserialize)]

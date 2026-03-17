@@ -2,7 +2,9 @@
 
 #[cfg(not(feature = "rerank"))]
 fn main() {
-    println!("This example requires the 'rerank' feature. Run with: cargo run --example rerank --features rerank");
+    println!(
+        "This example requires the 'rerank' feature. Run with: cargo run --example rerank --features rerank"
+    );
 }
 
 #[cfg(feature = "rerank")]
@@ -11,8 +13,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     use cohere::{CohereClient, RerankRequest};
 
     // Get API key from environment
-    let api_key = std::env::var("COHERE_API_KEY")
-        .expect("COHERE_API_KEY environment variable must be set");
+    let api_key =
+        std::env::var("COHERE_API_KEY").expect("COHERE_API_KEY environment variable must be set");
 
     // Create client
     let client = CohereClient::new(api_key)?;

@@ -8,7 +8,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
 
     // Create client
-    let base_url = std::env::var("VLLM_URL").unwrap_or_else(|_| "http://localhost:8000".to_string());
+    let base_url =
+        std::env::var("VLLM_URL").unwrap_or_else(|_| "http://localhost:8000".to_string());
     let client = VllmClient::new(&base_url)?;
 
     println!("Connected to vLLM at: {}", client.base_url());
@@ -31,7 +32,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Raw Metrics (first 2000 chars) ===");
     if raw_metrics.len() > 2000 {
         println!("{}...", &raw_metrics[..2000]);
-        println!("\n... (truncated, total length: {} chars)", raw_metrics.len());
+        println!(
+            "\n... (truncated, total length: {} chars)",
+            raw_metrics.len()
+        );
     } else {
         println!("{}", raw_metrics);
     }

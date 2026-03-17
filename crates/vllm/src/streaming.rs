@@ -79,10 +79,7 @@ pub struct CompletionChunk {
 impl CompletionChunk {
     /// Get the text from the first choice.
     pub fn text(&self) -> &str {
-        self.choices
-            .first()
-            .map(|c| c.text.as_str())
-            .unwrap_or("")
+        self.choices.first().map(|c| c.text.as_str()).unwrap_or("")
     }
 
     /// Check if this is the final chunk.
@@ -176,9 +173,7 @@ impl Stream for ChatStream {
                     *this.buffer = this.buffer[pos + 1..].to_string();
 
                     // Handle SSE format: "data: {...}"
-                    if line.starts_with("data: ") {
-                        let data = &line[6..]; // Skip "data: "
-
+                    if let Some(data) = line.strip_prefix("data: ") {
                         if data == "[DONE]" {
                             return Poll::Ready(None); // End of stream
                         }
@@ -198,9 +193,7 @@ impl Stream for ChatStream {
                 cx.waker().wake_by_ref();
                 Poll::Pending
             }
-            Poll::Ready(Some(Err(e))) => {
-                Poll::Ready(Some(Err(VllmError::Http { source: e })))
-            }
+            Poll::Ready(Some(Err(e))) => Poll::Ready(Some(Err(VllmError::Http { source: e }))),
             Poll::Ready(None) => Poll::Ready(None),
             Poll::Pending => Poll::Pending,
         }
@@ -243,9 +236,7 @@ impl Stream for CompletionStream {
                     *this.buffer = this.buffer[pos + 1..].to_string();
 
                     // Handle SSE format: "data: {...}"
-                    if line.starts_with("data: ") {
-                        let data = &line[6..]; // Skip "data: "
-
+                    if let Some(data) = line.strip_prefix("data: ") {
                         if data == "[DONE]" {
                             return Poll::Ready(None); // End of stream
                         }
@@ -265,9 +256,7 @@ impl Stream for CompletionStream {
                 cx.waker().wake_by_ref();
                 Poll::Pending
             }
-            Poll::Ready(Some(Err(e))) => {
-                Poll::Ready(Some(Err(VllmError::Http { source: e })))
-            }
+            Poll::Ready(Some(Err(e))) => Poll::Ready(Some(Err(VllmError::Http { source: e }))),
             Poll::Ready(None) => Poll::Ready(None),
             Poll::Pending => Poll::Pending,
         }

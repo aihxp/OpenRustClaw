@@ -194,40 +194,30 @@
 mod client;
 mod error;
 
-#[cfg(feature = "text")]
-pub mod text;
 #[cfg(feature = "embeddings")]
 pub mod embeddings;
-#[cfg(feature = "translation")]
-pub mod translation;
-#[cfg(feature = "summarization")]
-pub mod summarization;
 #[cfg(feature = "image")]
 pub mod image;
 #[cfg(feature = "speech")]
 pub mod speech;
+#[cfg(feature = "summarization")]
+pub mod summarization;
+#[cfg(feature = "text")]
+pub mod text;
+#[cfg(feature = "translation")]
+pub mod translation;
 
 pub mod types;
 
-pub use client::{CloudflareAiClient, ClientConfig, DEFAULT_BASE_URL, endpoints};
+pub use client::{ClientConfig, CloudflareAiClient, DEFAULT_BASE_URL, endpoints};
 pub use error::{CloudflareAiError, Result};
 
 // Re-export commonly used types
 pub use types::{
-    ChatMessage,
-    TextGenerationResponse,
-    TextGenerationStreamResponse,
-    EmbeddingsResponse,
-    Embedding,
-    TranslationResponse,
-    SummarizationResponse,
-    ClassificationResult,
-    ImageClassificationResponse,
-    TextToImageResponse,
-    SpeechRecognitionResponse,
-    CloudflareModel,
-    Role,
-    ModelCategory,
+    ChatMessage, ClassificationResult, CloudflareModel, Embedding, EmbeddingsResponse,
+    ImageClassificationResponse, ModelCategory, Role, SpeechRecognitionResponse,
+    SummarizationResponse, TextGenerationResponse, TextGenerationStreamResponse,
+    TextToImageResponse, TranslationResponse,
 };
 
 // Text generation types
@@ -236,11 +226,13 @@ pub use text::{TextGenerationRequest, TextGenerationRequestBuilder};
 
 // Embeddings types
 #[cfg(feature = "embeddings")]
-pub use embeddings::{EmbeddingsRequest, EmbeddingsRequestBuilder, EmbeddingsBody};
+pub use embeddings::{EmbeddingsBody, EmbeddingsRequest, EmbeddingsRequestBuilder};
 
 // Translation types
 #[cfg(feature = "translation")]
-pub use translation::{TranslationRequest, TranslationRequestBuilder, languages as translation_languages};
+pub use translation::{
+    TranslationRequest, TranslationRequestBuilder, languages as translation_languages,
+};
 
 // Summarization types
 #[cfg(feature = "summarization")]
@@ -249,19 +241,15 @@ pub use summarization::{SummarizationRequest, SummarizationRequestBuilder};
 // Image types
 #[cfg(feature = "image")]
 pub use image::{
-    ImageClassificationRequest,
-    ImageClassificationRequestBuilder,
-    TextToImageRequest,
+    ImageClassificationRequest, ImageClassificationRequestBuilder, TextToImageRequest,
     TextToImageRequestBuilder,
 };
 
 // Speech types
 #[cfg(feature = "speech")]
 pub use speech::{
-    SpeechRecognitionRequest,
-    SpeechRecognitionRequestBuilder,
+    SpeechRecognitionRequest, SpeechRecognitionRequestBuilder, formats as audio_formats,
     languages as speech_languages,
-    formats as audio_formats,
 };
 
 /// The version of this crate.

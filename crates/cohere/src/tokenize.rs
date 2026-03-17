@@ -51,7 +51,11 @@ impl<'a> TokenizeEndpoint<'a> {
     }
 
     /// Convenience method to tokenize a single text.
-    pub async fn encode(&self, model: impl Into<String>, text: impl Into<String>) -> Result<Vec<i64>> {
+    pub async fn encode(
+        &self,
+        model: impl Into<String>,
+        text: impl Into<String>,
+    ) -> Result<Vec<i64>> {
         let request = TokenizeRequest::new(model, text);
         let response = self.tokenize(request).await?;
         Ok(response.tokens)
@@ -188,14 +192,21 @@ mod tests {
     fn test_tokenize_response() {
         let response = TokenizeResponse {
             tokens: vec![100, 200, 300],
-            token_strings: Some(vec!["Hello".to_string(), " world".to_string(), "!".to_string()]),
+            token_strings: Some(vec![
+                "Hello".to_string(),
+                " world".to_string(),
+                "!".to_string(),
+            ]),
             text: "Hello world!".to_string(),
             meta: None,
         };
 
         assert_eq!(response.len(), 3);
         assert_eq!(response.tokens(), &[100, 200, 300]);
-        assert_eq!(response.token_strings(), Some(vec!["Hello".to_string(), " world".to_string(), "!".to_string()].as_slice()));
+        assert_eq!(
+            response.token_strings(),
+            Some(vec!["Hello".to_string(), " world".to_string(), "!".to_string()].as_slice())
+        );
     }
 
     #[test]

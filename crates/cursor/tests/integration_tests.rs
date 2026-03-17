@@ -1,9 +1,9 @@
 //! Integration tests for the Cursor ACP crate.
 
 use openrustclaw_cursor::{
-    setup_cursor_integration, check_cursor_setup, generate_mcp_config, generate_cursor_settings,
-    CursorClient, CursorServer, CursorServerConfig, ServerTransport, ClientConnection,
-    CursorConfig, ToolRegistry, ToolContext,
+    ClientConnection, CursorClient, CursorConfig, CursorServer, CursorServerConfig,
+    ServerTransport, ToolContext, ToolRegistry, check_cursor_setup, generate_cursor_settings,
+    generate_mcp_config, setup_cursor_integration,
 };
 use std::path::PathBuf;
 use tempfile::TempDir;
@@ -31,29 +31,31 @@ async fn test_cursor_setup() {
 #[tokio::test]
 async fn test_mcp_config_generation() {
     let config = generate_mcp_config(PathBuf::from("/test/project"), vec!["clippy", "check"]);
-    
+
     let mcp_servers = config.get("mcpServers").expect("mcpServers key missing");
-    let orc = mcp_servers.get("openrustclaw").expect("openrustclaw server missing");
-    
+    let orc = mcp_servers
+        .get("openrustclaw")
+        .expect("openrustclaw server missing");
+
     assert_eq!(orc["command"], "cargo");
-    
+
     let args = orc["args"].as_array().expect("args should be array");
     assert!(args.contains(&serde_json::json!("cursor")));
     assert!(args.contains(&serde_json::json!("serve")));
-    
+
     assert!(orc["enabled"].as_bool().unwrap());
 }
 
 #[tokio::test]
 async fn test_cursor_settings_generation() {
     let settings = generate_cursor_settings(PathBuf::from("/test/project"));
-    
+
     let cursor = settings.get("cursor").expect("cursor key missing");
     assert!(cursor["agent"]["enabled"].as_bool().unwrap());
-    
+
     let tools = cursor["tools"]["openrustclaw"].clone();
     assert_eq!(tools["projectRoot"], "/test/project");
-    
+
     let include_patterns = tools["includePatterns"].as_array().unwrap();
     assert!(include_patterns.contains(&serde_json::json!("src/**/*.rs")));
 }
@@ -72,8 +74,9 @@ fn test_cursor_client_with_tcp() {
             port: 8080,
         },
         CursorConfig::default(),
-    ).with_timeout(60);
-    
+    )
+    .with_timeout(60);
+
     // Verify creation
     assert!(true);
 }
@@ -82,7 +85,7 @@ fn test_cursor_client_with_tcp() {
 fn test_cursor_server_creation() {
     let config = CursorServerConfig::default();
     let server = CursorServer::new(config);
-    
+
     // Just verify it creates without panic
     assert!(true);
 }
@@ -95,26 +98,23 @@ fn test_cursor_server_with_http() {
         version: "1.0.0".to_string(),
         cursor_config: CursorConfig::default(),
     };
-    
+
     let server = CursorServer::new(config);
-    
+
     // Verify creation
     assert!(true);
 }
 
 #[test]
 fn test_tool_registry() {
-    let ctx = ToolContext::new(
-        PathBuf::from("."),
-        CursorConfig::default(),
-    );
-    
+    let ctx = ToolContext::new(PathBuf::from("."), CursorConfig::default());
+
     let registry = ToolRegistry::new(ctx);
     let tools = registry.list_tools();
-    
+
     // Should have all default tools
     assert!(!tools.is_empty());
-    
+
     // Check specific tools exist
     assert!(registry.get("search_code").is_some());
     assert!(registry.get("read_file").is_some());
@@ -131,22 +131,26 @@ fn test_tool_registry() {
 async fn test_tool_execution_list_files() {
     let temp_dir = TempDir::new().unwrap();
     let path = temp_dir.path().to_path_buf();
-    
+
     // Create some test files
-    tokio::fs::write(path.join("test1.txt"), "content1").await.unwrap();
-    tokio::fs::write(path.join("test2.txt"), "content2").await.unwrap();
+    tokio::fs::write(path.join("test1.txt"), "content1")
+        .await
+        .unwrap();
+    tokio::fs::write(path.join("test2.txt"), "content2")
+        .await
+        .unwrap();
     tokio::fs::create_dir(path.join("subdir")).await.unwrap();
-    
+
     std::env::set_current_dir(&path).unwrap();
-    
+
     let ctx = ToolContext::new(path.clone(), CursorConfig::default());
     let registry = ToolRegistry::new(ctx);
-    
+
     let result = registry
         .execute("list_files", serde_json::json!({"path": "."}))
         .await
         .unwrap();
-    
+
     let entries = result["entries"].as_array().unwrap();
     assert_eq!(entries.len(), 3); // 2 files + 1 directory
 }
@@ -155,21 +159,20 @@ async fn test_tool_execution_list_files() {
 async fn test_tool_execution_read_file() {
     let temp_dir = TempDir::new().unwrap();
     let path = temp_dir.path().to_path_buf();
-    
-    tokio::fs::write(path.join("test.txt"), "Hello, World!").await.unwrap();
-    std::env::set_current_dir(&path).unwrap();
-    
-    let ctx = ToolContext::new(path.clone(), CursorConfig::default());
-    let registry = ToolRegistry::new(ctx);
-    
-    let result = registry
-        .execute(
-            "read_file",
-            serde_json::json!({"path": "test.txt"}),
-        )
+
+    tokio::fs::write(path.join("test.txt"), "Hello, World!")
         .await
         .unwrap();
-    
+    std::env::set_current_dir(&path).unwrap();
+
+    let ctx = ToolContext::new(path.clone(), CursorConfig::default());
+    let registry = ToolRegistry::new(ctx);
+
+    let result = registry
+        .execute("read_file", serde_json::json!({"path": "test.txt"}))
+        .await
+        .unwrap();
+
     assert_eq!(result["content"], "Hello, World!");
 }
 
@@ -178,10 +181,10 @@ async fn test_tool_execution_create_and_delete_file() {
     let temp_dir = TempDir::new().unwrap();
     let path = temp_dir.path().to_path_buf();
     std::env::set_current_dir(&path).unwrap();
-    
+
     let ctx = ToolContext::new(path.clone(), CursorConfig::default());
     let registry = ToolRegistry::new(ctx);
-    
+
     // Create file
     let result = registry
         .execute(
@@ -193,13 +196,15 @@ async fn test_tool_execution_create_and_delete_file() {
         )
         .await
         .unwrap();
-    
+
     assert!(result["created"].as_bool().unwrap());
-    
+
     // Verify file exists
-    let content = tokio::fs::read_to_string(path.join("new_file.txt")).await.unwrap();
+    let content = tokio::fs::read_to_string(path.join("new_file.txt"))
+        .await
+        .unwrap();
     assert_eq!(content, "New content");
-    
+
     // Delete file
     let result = registry
         .execute(
@@ -211,9 +216,9 @@ async fn test_tool_execution_create_and_delete_file() {
         )
         .await
         .unwrap();
-    
+
     assert!(result["deleted"].as_bool().unwrap());
-    
+
     // Verify file is gone
     assert!(!path.join("new_file.txt").exists());
 }
@@ -222,13 +227,15 @@ async fn test_tool_execution_create_and_delete_file() {
 async fn test_tool_execution_edit_file() {
     let temp_dir = TempDir::new().unwrap();
     let path = temp_dir.path().to_path_buf();
-    
-    tokio::fs::write(path.join("test.txt"), "Hello, World!").await.unwrap();
+
+    tokio::fs::write(path.join("test.txt"), "Hello, World!")
+        .await
+        .unwrap();
     std::env::set_current_dir(&path).unwrap();
-    
+
     let ctx = ToolContext::new(path.clone(), CursorConfig::default());
     let registry = ToolRegistry::new(ctx);
-    
+
     let result = registry
         .execute(
             "edit_file",
@@ -240,10 +247,12 @@ async fn test_tool_execution_edit_file() {
         )
         .await
         .unwrap();
-    
+
     assert!(result["success"].as_bool().unwrap());
-    
-    let content = tokio::fs::read_to_string(path.join("test.txt")).await.unwrap();
+
+    let content = tokio::fs::read_to_string(path.join("test.txt"))
+        .await
+        .unwrap();
     assert_eq!(content, "Hello, Rust!");
 }
 
@@ -251,15 +260,19 @@ async fn test_tool_execution_edit_file() {
 async fn test_tool_execution_search_code() {
     let temp_dir = TempDir::new().unwrap();
     let path = temp_dir.path().to_path_buf();
-    
+
     // Create files with search targets
-    tokio::fs::write(path.join("file1.rs"), "fn main() {}").await.unwrap();
-    tokio::fs::write(path.join("file2.rs"), "fn helper() {}").await.unwrap();
+    tokio::fs::write(path.join("file1.rs"), "fn main() {}")
+        .await
+        .unwrap();
+    tokio::fs::write(path.join("file2.rs"), "fn helper() {}")
+        .await
+        .unwrap();
     std::env::set_current_dir(&path).unwrap();
-    
+
     let ctx = ToolContext::new(path.clone(), CursorConfig::default());
     let registry = ToolRegistry::new(ctx);
-    
+
     let result = registry
         .execute(
             "search_code",
@@ -270,7 +283,7 @@ async fn test_tool_execution_search_code() {
         )
         .await
         .unwrap();
-    
+
     let matches = result["matches"].as_array().unwrap();
     assert!(!matches.is_empty());
     assert_eq!(matches[0]["line_content"], "fn main() {}");
@@ -281,10 +294,10 @@ async fn test_tool_execution_run_command() {
     let temp_dir = TempDir::new().unwrap();
     let path = temp_dir.path().to_path_buf();
     std::env::set_current_dir(&path).unwrap();
-    
+
     let ctx = ToolContext::new(path.clone(), CursorConfig::default());
     let registry = ToolRegistry::new(ctx);
-    
+
     let result = registry
         .execute(
             "run_command",
@@ -294,7 +307,7 @@ async fn test_tool_execution_run_command() {
         )
         .await
         .unwrap();
-    
+
     assert!(result["success"].as_bool().unwrap());
     assert!(result["stdout"].as_str().unwrap().contains("test output"));
     assert_eq!(result["exit_code"], 0);
@@ -303,7 +316,7 @@ async fn test_tool_execution_run_command() {
 #[tokio::test]
 async fn test_config_default() {
     let config = CursorConfig::default();
-    
+
     assert!(config.enabled);
     assert_eq!(config.terminal_timeout, 30);
     assert_eq!(config.max_file_size, 1024 * 1024);
@@ -315,7 +328,7 @@ async fn test_config_default() {
 #[test]
 fn test_acp_protocol_version() {
     use openrustclaw_cursor::ACP_PROTOCOL_VERSION;
-    
+
     // Version should be in semver format
     assert!(!ACP_PROTOCOL_VERSION.is_empty());
     assert!(ACP_PROTOCOL_VERSION.contains('-') || ACP_PROTOCOL_VERSION.contains('.'));

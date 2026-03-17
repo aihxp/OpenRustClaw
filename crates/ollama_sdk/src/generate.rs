@@ -104,32 +104,28 @@ impl<'a> Generate<'a> {
         // Ollama uses NDJSON (newline-delimited JSON) for streaming
         let stream = response
             .bytes_stream()
-            .map(|bytes| {
-                match bytes {
-                    Ok(bytes) => {
-                        let text = String::from_utf8_lossy(&bytes);
-                        let lines: Vec<&str> = text.lines().collect();
-                        let results: Vec<Result<GenerateStreamChunk>> = lines
-                            .into_iter()
-                            .filter(|line| !line.is_empty())
-                            .map(|line| {
-                                match serde_json::from_str::<GenerateStreamChunk>(line) {
-                                    Ok(chunk) => Ok(chunk),
-                                    Err(e) => Err(OllamaError::Stream {
-                                        message: format!("Failed to parse NDJSON: {e}"),
-                                    }),
-                                }
-                            })
-                            .collect();
-                        
-                        futures::stream::iter(results)
-                    }
-                    Err(e) => {
-                        futures::stream::iter(vec![Err(OllamaError::Stream {
-                            message: format!("Stream error: {e}"),
-                        })])
-                    }
+            .map(|bytes| match bytes {
+                Ok(bytes) => {
+                    let text = String::from_utf8_lossy(&bytes);
+                    let lines: Vec<&str> = text.lines().collect();
+                    let results: Vec<Result<GenerateStreamChunk>> = lines
+                        .into_iter()
+                        .filter(|line| !line.is_empty())
+                        .map(
+                            |line| match serde_json::from_str::<GenerateStreamChunk>(line) {
+                                Ok(chunk) => Ok(chunk),
+                                Err(e) => Err(OllamaError::Stream {
+                                    message: format!("Failed to parse NDJSON: {e}"),
+                                }),
+                            },
+                        )
+                        .collect();
+
+                    futures::stream::iter(results)
                 }
+                Err(e) => futures::stream::iter(vec![Err(OllamaError::Stream {
+                    message: format!("Stream error: {e}"),
+                })]),
             })
             .flatten();
 
@@ -411,9 +407,7 @@ mod tests {
 
     #[test]
     fn test_builder_basic() {
-        let request = GenerateRequest::builder("llama3.2")
-            .prompt("Hello")
-            .build();
+        let request = GenerateRequest::builder("llama3.2").prompt("Hello").build();
 
         assert_eq!(request.model, "llama3.2");
         assert_eq!(request.prompt, "Hello");

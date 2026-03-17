@@ -104,7 +104,10 @@ impl<'a> Chat<'a> {
         request.stream = Some(true);
         let body = serde_json::to_value(&request)?;
         let deployment = self.client.deployment_name().to_string();
-        let url = self.client.build_url(&format!("/openai/deployments/{}/chat/completions", deployment));
+        let url = self.client.build_url(&format!(
+            "/openai/deployments/{}/chat/completions",
+            deployment
+        ));
 
         tracing::debug!("Initiating streaming chat completion request");
 
@@ -137,24 +140,23 @@ impl<'a> Chat<'a> {
         let stream = response
             .bytes_stream()
             .eventsource()
-            .map(|event| {
-                match event {
-                    Ok(event) => {
-                        if event.data == "[DONE]" {
-                            return Ok(crate::streaming::ChatCompletionChunk::done());
-                        }
-
-                        match serde_json::from_str::<crate::streaming::ChatCompletionChunk>(&event.data) {
-                            Ok(chunk) => Ok(chunk),
-                            Err(e) => Err(AzureOpenAIError::Stream {
-                                message: format!("Failed to parse SSE event: {e}"),
-                            }),
-                        }
+            .map(|event| match event {
+                Ok(event) => {
+                    if event.data == "[DONE]" {
+                        return Ok(crate::streaming::ChatCompletionChunk::done());
                     }
-                    Err(e) => Err(AzureOpenAIError::Stream {
-                        message: format!("SSE error: {e}"),
-                    }),
+
+                    match serde_json::from_str::<crate::streaming::ChatCompletionChunk>(&event.data)
+                    {
+                        Ok(chunk) => Ok(chunk),
+                        Err(e) => Err(AzureOpenAIError::Stream {
+                            message: format!("Failed to parse SSE event: {e}"),
+                        }),
+                    }
                 }
+                Err(e) => Err(AzureOpenAIError::Stream {
+                    message: format!("SSE error: {e}"),
+                }),
             });
 
         Ok(stream)
@@ -267,9 +269,7 @@ impl ChatRequest {
 
     /// Create a simple chat request with a single user message.
     pub fn simple(message: impl Into<String>) -> Self {
-        Self::builder()
-            .message(Role::User, message)
-            .build()
+        Self::builder().message(Role::User, message).build()
     }
 
     /// Add a message to the conversation.
@@ -508,7 +508,10 @@ mod tests {
         let none = crate::types::ToolChoice::none();
 
         match func {
-            crate::types::ToolChoice::Specific { tool_type, function } => {
+            crate::types::ToolChoice::Specific {
+                tool_type,
+                function,
+            } => {
                 assert_eq!(tool_type, "function");
                 assert_eq!(function.name, "get_weather");
             }
@@ -530,10 +533,7 @@ mod tests {
 
     #[test]
     fn test_seed() {
-        let request = ChatRequest::builder()
-            .user("Hello")
-            .seed(42)
-            .build();
+        let request = ChatRequest::builder().user("Hello").seed(42).build();
 
         assert_eq!(request.seed, Some(42));
     }

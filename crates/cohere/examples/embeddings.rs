@@ -1,12 +1,12 @@
 //! Example: Embeddings with Cohere
 
-use cohere::{EmbedRequest, CohereClient, InputType};
+use cohere::{CohereClient, EmbedRequest, InputType};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Get API key from environment
-    let api_key = std::env::var("COHERE_API_KEY")
-        .expect("COHERE_API_KEY environment variable must be set");
+    let api_key =
+        std::env::var("COHERE_API_KEY").expect("COHERE_API_KEY environment variable must be set");
 
     // Create client
     let client = CohereClient::new(api_key)?;
@@ -27,10 +27,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Print results
     println!("Generated {} embeddings:\n", response.len());
 
-    for (i, (text, embedding)) in response.texts.iter().zip(response.get_embeddings()).enumerate() {
+    for (i, (text, embedding)) in response
+        .texts
+        .iter()
+        .zip(response.get_embeddings())
+        .enumerate()
+    {
         println!("Text {}: {}", i + 1, text);
         println!("  Dimensions: {}", embedding.len());
-        println!("  First 5 values: {:?}\n", &embedding[..5.min(embedding.len())]);
+        println!(
+            "  First 5 values: {:?}\n",
+            &embedding[..5.min(embedding.len())]
+        );
     }
 
     Ok(())

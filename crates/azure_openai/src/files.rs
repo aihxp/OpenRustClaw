@@ -41,11 +41,12 @@ impl<'a> Files<'a> {
     /// ```
     pub async fn upload(&self, request: FileUploadRequest) -> Result<FileObject> {
         // Read the file
-        let file_bytes = tokio::fs::read(&request.file_path)
-            .await
-            .map_err(|e| AzureOpenAIError::Config {
-                message: format!("Failed to read file: {e}"),
-            })?;
+        let file_bytes =
+            tokio::fs::read(&request.file_path)
+                .await
+                .map_err(|e| AzureOpenAIError::Config {
+                    message: format!("Failed to read file: {e}"),
+                })?;
 
         let file_name = std::path::Path::new(&request.file_path)
             .file_name()
@@ -143,10 +144,7 @@ impl<'a> Files<'a> {
             }
         }
 
-        let response = request
-            .send()
-            .await
-            .map_err(AzureOpenAIError::from)?;
+        let response = request.send().await.map_err(AzureOpenAIError::from)?;
 
         if !response.status().is_success() {
             return Err(AzureOpenAIError::from_response(response).await);

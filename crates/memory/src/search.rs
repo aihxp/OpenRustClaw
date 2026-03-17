@@ -152,7 +152,10 @@ mod tests {
     #[test]
     fn content_overlap_identical_strings() {
         let sim = content_overlap("hello world", "hello world");
-        assert!((sim - 1.0).abs() < 1e-6, "Identical strings should have overlap 1.0");
+        assert!(
+            (sim - 1.0).abs() < 1e-6,
+            "Identical strings should have overlap 1.0"
+        );
     }
 
     #[test]
@@ -167,7 +170,10 @@ mod tests {
         // "hello there" = {hello, there}
         // intersection = 1, union = 3
         let sim = content_overlap("hello world", "hello there");
-        assert!((sim - 1.0 / 3.0).abs() < 1e-6, "Partial overlap should be 1/3");
+        assert!(
+            (sim - 1.0 / 3.0).abs() < 1e-6,
+            "Partial overlap should be 1/3"
+        );
     }
 
     #[test]
@@ -277,7 +283,10 @@ mod tests {
             make_scored("000000000003", "third best", 0.80),
         ];
         let reranked = mmr_rerank(results, 2, 0.5);
-        assert_eq!(reranked[0].entry.content, "best result", "First selected should be highest scored");
+        assert_eq!(
+            reranked[0].entry.content, "best result",
+            "First selected should be highest scored"
+        );
     }
 
     #[test]
@@ -291,8 +300,7 @@ mod tests {
         let reranked = mmr_rerank(results, 2, 0.3); // Low lambda = prefer diversity
         // The second pick should prefer the diverse python doc over the similar rust doc
         assert_eq!(
-            reranked[1].entry.content,
-            "python data science introduction",
+            reranked[1].entry.content, "python data science introduction",
             "MMR with low lambda should prefer diverse results"
         );
     }

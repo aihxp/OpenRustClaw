@@ -46,12 +46,12 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use base64::{engine::general_purpose::STANDARD, Engine};
+use base64::{Engine, engine::general_purpose::STANDARD};
 use chrono;
 use governor::{Quota, RateLimiter};
 use serde::Deserialize;
 use std::num::NonZeroU32;
-use tokio::sync::{mpsc, Mutex, RwLock};
+use tokio::sync::{Mutex, RwLock, mpsc};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
@@ -65,7 +65,14 @@ pub struct GmailPubSub {
     config: GmailPubSubConfig,
     incoming_tx: mpsc::Sender<IncomingMessage>,
     incoming_rx: Mutex<mpsc::Receiver<IncomingMessage>>,
-    rate_limiter: Arc<RateLimiter<governor::state::NotKeyed, governor::state::InMemoryState, governor::clock::DefaultClock, governor::middleware::NoOpMiddleware>>,
+    rate_limiter: Arc<
+        RateLimiter<
+            governor::state::NotKeyed,
+            governor::state::InMemoryState,
+            governor::clock::DefaultClock,
+            governor::middleware::NoOpMiddleware,
+        >,
+    >,
     is_connected: RwLock<bool>,
     _http_client: reqwest::Client,
     access_token: RwLock<Option<String>>,
@@ -132,7 +139,10 @@ pub enum EmailAction {
     /// Reply to the email.
     Reply { body: String },
     /// Add or remove labels.
-    Label { add: Vec<String>, remove: Vec<String> },
+    Label {
+        add: Vec<String>,
+        remove: Vec<String>,
+    },
     /// Archive the email (remove INBOX label).
     Archive,
     /// Delete the email.
@@ -360,9 +370,10 @@ impl GmailPubSub {
 
         let parts = self.get_parts(&msg.payload);
 
-        let internal_date = msg.internal_date.parse::<i64>().unwrap_or_else(|_| {
-            chrono::Utc::now().timestamp_millis()
-        });
+        let internal_date = msg
+            .internal_date
+            .parse::<i64>()
+            .unwrap_or_else(|_| chrono::Utc::now().timestamp_millis());
 
         let is_unread = msg.label_ids.contains(&"UNREAD".to_string());
 
@@ -385,7 +396,7 @@ impl GmailPubSub {
             attachments: parts.attachments,
             labels: msg.label_ids.clone(),
             received_at: chrono::DateTime::from_timestamp_millis(internal_date)
-                .unwrap_or_else(|| chrono::Utc::now()),
+                .unwrap_or_else(chrono::Utc::now),
             is_unread,
         })
     }
@@ -405,8 +416,7 @@ impl GmailPubSub {
             }
             "text/html" => {
                 if let Some(data) = &payload.body.data {
-                    result.html = Self::decode_base64(data)
-                        .and_then(|b| String::from_utf8(b).ok());
+                    result.html = Self::decode_base64(data).and_then(|b| String::from_utf8(b).ok());
                 }
             }
             mime if mime.starts_with("multipart/") => {
@@ -427,15 +437,15 @@ impl GmailPubSub {
         }
 
         // Check for attachments at this level
-        if let Some(attachment_id) = &payload.body.attachment_id {
-            if let Some(filename) = payload.filename.clone() {
-                result.attachments.push(Attachment {
-                    filename,
-                    mime_type: payload.mime_type.clone(),
-                    size: payload.body.size as usize,
-                    attachment_id: attachment_id.clone(),
-                });
-            }
+        if let Some(attachment_id) = &payload.body.attachment_id
+            && let Some(filename) = payload.filename.clone()
+        {
+            result.attachments.push(Attachment {
+                filename,
+                mime_type: payload.mime_type.clone(),
+                size: payload.body.size as usize,
+                attachment_id: attachment_id.clone(),
+            });
         }
 
         result
@@ -484,14 +494,15 @@ impl GmailPubSub {
     }
 
     /// Get new messages since history_id.
-    async fn get_new_messages(&self, history_id: u64, _token: &str) -> Result<Vec<MessageMetadata>> {
+    async fn get_new_messages(
+        &self,
+        history_id: u64,
+        _token: &str,
+    ) -> Result<Vec<MessageMetadata>> {
         // Placeholder implementation
         // Real implementation would call:
         // GET https://gmail.googleapis.com/gmail/v1/users/{userId}/history
-        debug!(
-            "Fetching new messages since history_id: {}",
-            history_id
-        );
+        debug!("Fetching new messages since history_id: {}", history_id);
 
         Ok(vec![])
     }
@@ -516,7 +527,9 @@ impl GmailPubSub {
         // Get access token
         let token = {
             let token_guard = self.access_token.read().await;
-            token_guard.clone().unwrap_or_else(|| "placeholder".to_string())
+            token_guard
+                .clone()
+                .unwrap_or_else(|| "placeholder".to_string())
         };
 
         // Fetch new messages using history API
@@ -536,10 +549,7 @@ impl GmailPubSub {
                 let incoming = IncomingMessage {
                     session_id: Uuid::new_v4(),
                     user_id: email.from.clone(),
-                    content: format!(
-                        "Subject: {}\n\n{}",
-                        email.subject, email.body_text
-                    ),
+                    content: format!("Subject: {}\n\n{}", email.subject, email.body_text),
                     platform: Platform::Gmail,
                     metadata: serde_json::json!({
                         "gmail_message_id": email.id,
@@ -574,7 +584,9 @@ impl GmailPubSub {
         // Get access token
         let token = {
             let token_guard = self.access_token.read().await;
-            token_guard.clone().unwrap_or_else(|| "placeholder".to_string())
+            token_guard
+                .clone()
+                .unwrap_or_else(|| "placeholder".to_string())
         };
 
         match action {
@@ -641,7 +653,13 @@ impl GmailPubSub {
     }
 
     /// Forward a message.
-    async fn forward_message(&self, email_id: &str, to: &str, _body: &str, _token: &str) -> Result<()> {
+    async fn forward_message(
+        &self,
+        email_id: &str,
+        to: &str,
+        _body: &str,
+        _token: &str,
+    ) -> Result<()> {
         debug!(email_id = %email_id, to = %to, "Forwarding message");
         // POST https://gmail.googleapis.com/gmail/v1/users/{userId}/messages/send
         Ok(())
@@ -672,15 +690,14 @@ impl Channel for GmailPubSub {
             .get("gmail_message_id")
             .and_then(|v| v.as_str());
 
-        let _thread_id = msg
-            .metadata
-            .get("gmail_thread_id")
-            .and_then(|v| v.as_str());
+        let _thread_id = msg.metadata.get("gmail_thread_id").and_then(|v| v.as_str());
 
         // Get access token
         let token = {
             let token_guard = self.access_token.read().await;
-            token_guard.clone().unwrap_or_else(|| "placeholder".to_string())
+            token_guard
+                .clone()
+                .unwrap_or_else(|| "placeholder".to_string())
         };
 
         if let Some(msg_id) = message_id {
@@ -787,12 +804,11 @@ impl GmailWebhookHandler {
     /// <https://cloud.google.com/pubsub/docs/push#receiving_messages>
     pub async fn handle_push(&self, body: &[u8]) -> Result<()> {
         // Parse the Pub/Sub message envelope
-        let envelope: serde_json::Value = serde_json::from_slice(body).map_err(|e| {
-            ChannelError::InvalidFormat {
+        let envelope: serde_json::Value =
+            serde_json::from_slice(body).map_err(|e| ChannelError::InvalidFormat {
                 platform: "gmail".to_string(),
                 message: format!("Failed to parse Pub/Sub envelope: {}", e),
-            }
-        })?;
+            })?;
 
         // Extract the message data
         let message = envelope
@@ -811,25 +827,25 @@ impl GmailWebhookHandler {
             })?;
 
         // Decode base64 data
-        let decoded = STANDARD.decode(data).map_err(|e| ChannelError::InvalidFormat {
-            platform: "gmail".to_string(),
-            message: format!("Failed to decode message data: {}", e),
-        })?;
+        let decoded = STANDARD
+            .decode(data)
+            .map_err(|e| ChannelError::InvalidFormat {
+                platform: "gmail".to_string(),
+                message: format!("Failed to decode message data: {}", e),
+            })?;
 
         // Parse the Gmail notification
-        let notification: GmailNotification = serde_json::from_slice(&decoded).map_err(|e| {
-            ChannelError::InvalidFormat {
+        let notification: GmailNotification =
+            serde_json::from_slice(&decoded).map_err(|e| ChannelError::InvalidFormat {
                 platform: "gmail".to_string(),
                 message: format!("Failed to parse Gmail notification: {}", e),
-            }
-        })?;
+            })?;
 
         // Process the notification
         self.gmail.process_notification(notification).await
     }
 }
 
-/// Base64 decoding utility.
 #[allow(dead_code)]
 mod b64 {
     //! Base64 decoding for Gmail API responses.

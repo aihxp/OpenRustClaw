@@ -8,5 +8,5 @@
 
 pub mod test_api_layer;
 pub mod test_db_layer;
-pub mod test_provider_layer;
 pub mod test_gateway_layer;
+pub mod test_provider_layer;

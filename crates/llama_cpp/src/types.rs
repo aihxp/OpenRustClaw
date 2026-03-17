@@ -321,7 +321,7 @@ impl std::fmt::Display for GgufArchitecture {
 }
 
 /// Sampling parameters for generation.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SamplingParams {
     /// Temperature for sampling.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -353,23 +353,6 @@ pub struct SamplingParams {
     /// TFS (Tail Free Sampling) parameter.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tfs_z: Option<f32>,
-}
-
-impl Default for SamplingParams {
-    fn default() -> Self {
-        Self {
-            temperature: None,
-            top_p: None,
-            top_k: None,
-            min_p: None,
-            repeat_penalty: None,
-            presence_penalty: None,
-            frequency_penalty: None,
-            penalty_last_n: None,
-            typical_p: None,
-            tfs_z: None,
-        }
-    }
 }
 
 impl SamplingParams {

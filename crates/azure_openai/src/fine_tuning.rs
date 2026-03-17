@@ -380,7 +380,9 @@ impl FineTuningJobStatus {
     pub fn is_terminal(&self) -> bool {
         matches!(
             self,
-            FineTuningJobStatus::Succeeded | FineTuningJobStatus::Failed | FineTuningJobStatus::Cancelled
+            FineTuningJobStatus::Succeeded
+                | FineTuningJobStatus::Failed
+                | FineTuningJobStatus::Cancelled
         )
     }
 }
@@ -442,13 +444,19 @@ pub struct CheckpointMetrics {
     #[serde(rename = "valid_loss", skip_serializing_if = "Option::is_none")]
     pub valid_loss: Option<f64>,
     /// The validation mean token accuracy.
-    #[serde(rename = "valid_mean_token_accuracy", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "valid_mean_token_accuracy",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub valid_mean_token_accuracy: Option<f64>,
     /// The full validation loss.
     #[serde(rename = "full_valid_loss", skip_serializing_if = "Option::is_none")]
     pub full_valid_loss: Option<f64>,
     /// The full validation mean token accuracy.
-    #[serde(rename = "full_valid_mean_token_accuracy", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "full_valid_mean_token_accuracy",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub full_valid_mean_token_accuracy: Option<f64>,
 }
 
@@ -523,7 +531,10 @@ mod tests {
 
         assert!(matches!(hp.n_epochs, Some(EpochSetting::Number(3))));
         assert!(matches!(hp.batch_size, Some(AutoOrNumber::Number(4))));
-        assert!(matches!(hp.learning_rate_multiplier, Some(AutoOrNumber::Float(0.1))));
+        assert!(matches!(
+            hp.learning_rate_multiplier,
+            Some(AutoOrNumber::Float(0.1))
+        ));
     }
 
     #[test]

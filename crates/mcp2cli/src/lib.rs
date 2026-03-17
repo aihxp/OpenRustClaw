@@ -15,6 +15,7 @@
 //! - Zero-codegen runtime CLI generation
 
 pub mod adapters;
+pub mod adaptive;
 pub mod auth;
 pub mod cache;
 pub mod cli_generator;
@@ -23,26 +24,24 @@ pub mod error;
 pub mod integration;
 pub mod token_counter;
 pub mod toon;
-pub mod adaptive;
 
 // Re-export mcp for unified API
 pub use openrustclaw_mcp as mcp;
 
 // Core mcp2cli exports
-pub use adapters::{mcp_adapter::McpAdapter, openapi_adapter::OpenApiAdapter, ToolSource};
+pub use adapters::{ToolSource, mcp_adapter::McpAdapter, openapi_adapter::OpenApiAdapter};
 pub use auth::{AuthManager, OAuthConfig, Token};
-pub use cache::{ToolCache, CachedToolList};
+pub use cache::{CachedToolList, ToolCache};
 pub use cli_generator::CliGenerator;
-pub use discovery::{ToolDiscovery, ToolSummary, ToolHelp, ParamHelp};
+pub use discovery::{ParamHelp, ToolDiscovery, ToolHelp, ToolSummary};
 pub use error::{Mcp2CliError, Result};
-pub use integration::{Mcp2CliTool, Mcp2CliFactory};
-pub use token_counter::{TokenCounter, CostComparison};
-pub use toon::{encode_toon, decode_toon, calculate_savings};
+pub use integration::{Mcp2CliFactory, Mcp2CliTool};
+pub use token_counter::{CostComparison, TokenCounter};
+pub use toon::{calculate_savings, decode_toon, encode_toon};
 
 // Unified adaptive MCP exports - transparent mcp2cli optimization
 pub use adaptive::{
-    AdaptiveConfig, AdaptiveConfigBuilder, AdaptiveMcpRegistry, 
-    AdaptiveMode, AdaptiveStats,
+    AdaptiveConfig, AdaptiveConfigBuilder, AdaptiveMcpRegistry, AdaptiveMode, AdaptiveStats,
 };
 
 use std::time::Duration;

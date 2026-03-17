@@ -33,7 +33,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     full_response.push_str(content);
                     std::io::Write::flush(&mut std::io::stdout())?;
                 }
-                
+
                 if chunk.done {
                     println!("\n\n[Stream complete]");
                     if let Some(eval_count) = chunk.eval_count {

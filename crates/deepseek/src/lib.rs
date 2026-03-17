@@ -154,23 +154,22 @@ pub mod chat;
 pub mod models;
 pub mod types;
 
-pub use client::{DeepSeekClient, ClientConfig, DEFAULT_BASE_URL, endpoints};
+pub use client::{ClientConfig, DEFAULT_BASE_URL, DeepSeekClient, endpoints};
 pub use error::{DeepSeekError, Result};
 
 // Re-export commonly used types
 pub use types::{
-    ChatChoice, ChatMessage, ChatResponse, Function, FunctionCall, 
-    Role, TokenUsage, Tool, ToolCall, DeepSeekModel,
-    FinishReason, Model, ListModelsResponse,
+    ChatChoice, ChatMessage, ChatResponse, DeepSeekModel, FinishReason, Function, FunctionCall,
+    ListModelsResponse, Model, Role, TokenUsage, Tool, ToolCall,
 };
 
-pub use chat::{ChatRequest, ChatRequestBuilder, ToolChoice, ResponseFormat};
+pub use chat::{ChatRequest, ChatRequestBuilder, ResponseFormat, ToolChoice};
 
 // Streaming types
 #[cfg(feature = "streaming")]
 pub use chat::{
-    ChatCompletionChunk, StreamChoice, StreamDelta, 
-    StreamCollector, ToolCallDelta, FunctionDelta, ChatStream,
+    ChatCompletionChunk, ChatStream, FunctionDelta, StreamChoice, StreamCollector, StreamDelta,
+    ToolCallDelta,
 };
 
 /// The version of this crate.

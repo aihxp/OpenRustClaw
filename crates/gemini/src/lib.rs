@@ -8,18 +8,18 @@
 //! - Embeddings
 //! - Streaming responses
 
-pub mod client;
-pub mod types;
-pub mod error;
 pub mod chat;
+pub mod client;
 pub mod embedding;
-pub mod vision;
+pub mod error;
 pub mod streaming;
+pub mod types;
+pub mod vision;
 
-pub use client::GeminiClient;
-pub use types::*;
-pub use error::GeminiError;
 pub use chat::ChatSession;
+pub use client::GeminiClient;
+pub use error::GeminiError;
+pub use types::*;
 
 /// SDK version
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

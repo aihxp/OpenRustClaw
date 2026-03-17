@@ -97,14 +97,14 @@ pub mod chat;
 pub mod completions;
 #[cfg(feature = "embeddings")]
 pub mod embeddings;
+#[cfg(feature = "metrics")]
+pub mod metrics;
 #[cfg(feature = "models")]
 pub mod models;
 #[cfg(feature = "streaming")]
 pub mod streaming;
 #[cfg(feature = "tokenize")]
 pub mod tokenize;
-#[cfg(feature = "metrics")]
-pub mod metrics;
 pub mod types;
 
 pub use client::{ClientConfig, VllmClient};
@@ -134,7 +134,7 @@ pub use models::{ModelInfo, ModelsResponse};
 
 #[cfg(feature = "streaming")]
 pub use streaming::{
-    ChatCompletionChunk, CompletionChunk, StreamChoice, StreamDelta, ChatStream, CompletionStream,
+    ChatCompletionChunk, ChatStream, CompletionChunk, CompletionStream, StreamChoice, StreamDelta,
     collect_chat_stream, collect_completion_stream,
 };
 

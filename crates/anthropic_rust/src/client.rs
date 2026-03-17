@@ -3,11 +3,11 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
+use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue};
 use secrecy::{ExposeSecret, SecretString};
 use tracing::{debug, trace};
 
-use crate::constants::{headers, retry, DEFAULT_API_VERSION, DEFAULT_BASE_URL};
+use crate::constants::{DEFAULT_API_VERSION, DEFAULT_BASE_URL, headers, retry};
 use crate::error::{AnthropicError, Result};
 use crate::types::{MessageRequest, MessageResponse};
 
@@ -42,14 +42,16 @@ impl AnthropicClient {
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
         headers.insert(
             headers::X_API_KEY,
-            HeaderValue::from_str(config.api_key.expose_secret())
-                .map_err(|_| AnthropicError::Config {
+            HeaderValue::from_str(config.api_key.expose_secret()).map_err(|_| {
+                AnthropicError::Config {
                     message: "Invalid API key".to_string(),
-                })?,
+                }
+            })?,
         );
         headers.insert(
             headers::ANTHROPIC_VERSION,
-            HeaderValue::from_str(&config.api_version).unwrap_or_else(|_| HeaderValue::from_static(DEFAULT_API_VERSION)),
+            HeaderValue::from_str(&config.api_version)
+                .unwrap_or_else(|_| HeaderValue::from_static(DEFAULT_API_VERSION)),
         );
 
         let http = reqwest::Client::builder()
@@ -136,7 +138,11 @@ impl AnthropicClient {
     }
 
     /// Make a POST request to the API.
-    pub(crate) async fn post(&self, path: &str, body: serde_json::Value) -> Result<reqwest::Response> {
+    pub(crate) async fn post(
+        &self,
+        path: &str,
+        body: serde_json::Value,
+    ) -> Result<reqwest::Response> {
         let url = format!("{}{}", self.inner.base_url, path);
 
         trace!(url = %url, body = %body, "Making POST request");
@@ -154,7 +160,10 @@ impl AnthropicClient {
     }
 
     /// Parse a response or return an error.
-    pub(crate) async fn handle_response(&self, response: reqwest::Response) -> Result<serde_json::Value> {
+    pub(crate) async fn handle_response(
+        &self,
+        response: reqwest::Response,
+    ) -> Result<serde_json::Value> {
         let status = response.status();
 
         if status.is_success() {
@@ -186,7 +195,9 @@ impl<'a> Messages<'a> {
                 let client = self.client.clone();
                 let body = body.clone();
                 Box::pin(async move {
-                    let response = client.post(crate::constants::endpoints::MESSAGES, body).await?;
+                    let response = client
+                        .post(crate::constants::endpoints::MESSAGES, body)
+                        .await?;
                     let body = client.handle_response(response).await?;
                     let message: MessageResponse = serde_json::from_value(body)?;
                     Ok(message)
@@ -233,24 +244,22 @@ impl<'a> Messages<'a> {
         let stream = response
             .bytes_stream()
             .eventsource()
-            .map(|event| {
-                match event {
-                    Ok(event) => {
-                        if event.data == "[DONE]" {
-                            return Ok(StreamEvent::MessageStop);
-                        }
-
-                        match serde_json::from_str::<StreamEvent>(&event.data) {
-                            Ok(stream_event) => Ok(stream_event),
-                            Err(e) => Err(AnthropicError::Stream {
-                                message: format!("Failed to parse SSE event: {e}"),
-                            }),
-                        }
+            .map(|event| match event {
+                Ok(event) => {
+                    if event.data == "[DONE]" {
+                        return Ok(StreamEvent::MessageStop);
                     }
-                    Err(e) => Err(AnthropicError::Stream {
-                        message: format!("SSE error: {e}"),
-                    }),
+
+                    match serde_json::from_str::<StreamEvent>(&event.data) {
+                        Ok(stream_event) => Ok(stream_event),
+                        Err(e) => Err(AnthropicError::Stream {
+                            message: format!("Failed to parse SSE event: {e}"),
+                        }),
+                    }
                 }
+                Err(e) => Err(AnthropicError::Stream {
+                    message: format!("SSE error: {e}"),
+                }),
             })
             .filter(|result| {
                 // Filter out ping events

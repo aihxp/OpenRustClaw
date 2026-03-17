@@ -43,8 +43,8 @@ async fn test_gateway_origin_validation() {
     // Should succeed (or at least not fail due to origin)
     // The actual validation depends on gateway configuration
     assert!(
-        allowed_response.status().is_success() || 
-        allowed_response.status() == StatusCode::FORBIDDEN
+        allowed_response.status().is_success()
+            || allowed_response.status() == StatusCode::FORBIDDEN
     );
 }
 
@@ -52,11 +52,15 @@ async fn test_gateway_origin_validation() {
 #[tokio::test]
 async fn test_gateway_session_management() {
     let env = TestEnvironment::new().await;
-    let _session = TestSessions::new();
+    let _session = TestSessions::create();
 
     // Create session
-    use openrustclaw_core::types::{SessionType, Platform};
-    let session = env.session_manager.create_session(&TestUsers::alice().id, SessionType::Dm, Platform::WebChat).await.expect("Create failed");
+    use openrustclaw_core::types::{Platform, SessionType};
+    let session = env
+        .session_manager
+        .create_session(&TestUsers::alice().id, SessionType::Dm, Platform::WebChat)
+        .await
+        .expect("Create failed");
     let session_id = session.id.to_string();
 
     // Verify session exists
@@ -64,7 +68,10 @@ async fn test_gateway_session_management() {
     assert!(retrieved.is_ok(), "Session should exist");
 
     // Remove session
-    env.session_manager.remove_session(&session_id).await.expect("Remove failed");
+    env.session_manager
+        .remove_session(&session_id)
+        .await
+        .expect("Remove failed");
 
     // Verify session removed
     let retrieved = env.session_manager.get_session(&session_id).await;
@@ -119,9 +126,7 @@ async fn test_gateway_concurrent_connections() {
     // Spawn 50 concurrent connections
     for _ in 0..50 {
         let client = TestHttpClient::new(format!("http://{}", addr));
-        handles.push(tokio::spawn(async move {
-            client.get("/health").await
-        }));
+        handles.push(tokio::spawn(async move { client.get("/health").await }));
     }
 
     let mut success_count = 0;
@@ -177,7 +182,7 @@ async fn test_gateway_response_headers() {
 
     // Check standard headers
     assert!(response.headers().contains_key("content-type"));
-    
+
     // Check CORS headers if configured
     // These may or may not be present depending on configuration
 }
@@ -198,15 +203,15 @@ async fn test_gateway_request_size_limits() {
     // This tests the gateway's handling of large payloads
     // The actual limit depends on gateway configuration
     let result = client.post("/health", &large_body).await;
-    
+
     // Should either succeed or return appropriate error
     match result {
         Ok(resp) => {
             let status = resp.status();
             assert!(
-                status.is_success() || 
-                status == StatusCode::PAYLOAD_TOO_LARGE ||
-                status == StatusCode::BAD_REQUEST
+                status.is_success()
+                    || status == StatusCode::PAYLOAD_TOO_LARGE
+                    || status == StatusCode::BAD_REQUEST
             );
         }
         Err(_) => {

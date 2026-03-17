@@ -87,11 +87,7 @@ impl Output {
     /// Get tool uses from the output.
     pub fn tool_uses(&self) -> Vec<&ContentBlock> {
         match self {
-            Output::Message(msg) => msg
-                .content
-                .iter()
-                .filter(|b| b.is_tool_use())
-                .collect(),
+            Output::Message(msg) => msg.content.iter().filter(|b| b.is_tool_use()).collect(),
         }
     }
 }
@@ -269,21 +265,29 @@ impl StreamCollector {
             StreamEvent::MessageStart { message } => {
                 self.role = Some(message.role);
             }
-            StreamEvent::ContentBlockStart { content_block_index, start } => {
+            StreamEvent::ContentBlockStart {
+                content_block_index,
+                start,
+            } => {
                 // Ensure we have enough slots
                 while self.content_blocks.len() <= *content_block_index as usize {
-                    self.content_blocks.push(PartialContentBlock::Text(String::new()));
+                    self.content_blocks
+                        .push(PartialContentBlock::Text(String::new()));
                 }
 
                 if let Some(tool_use) = &start.tool_use {
-                    self.content_blocks[*content_block_index as usize] = PartialContentBlock::ToolUse {
-                        id: tool_use.tool_use_id.clone(),
-                        name: tool_use.name.clone(),
-                        input: String::new(),
-                    };
+                    self.content_blocks[*content_block_index as usize] =
+                        PartialContentBlock::ToolUse {
+                            id: tool_use.tool_use_id.clone(),
+                            name: tool_use.name.clone(),
+                            input: String::new(),
+                        };
                 }
             }
-            StreamEvent::ContentBlockDelta { content_block_index, delta } => {
+            StreamEvent::ContentBlockDelta {
+                content_block_index,
+                delta,
+            } => {
                 if let Some(block) = self.content_blocks.get_mut(*content_block_index as usize) {
                     match block {
                         PartialContentBlock::Text(text) => {
@@ -326,7 +330,11 @@ impl StreamCollector {
                 }
                 PartialContentBlock::ToolUse { id, name, input } => {
                     let parsed_input = serde_json::from_str(input).unwrap_or_default();
-                    Some(ContentBlock::tool_use(id.clone(), name.clone(), parsed_input))
+                    Some(ContentBlock::tool_use(
+                        id.clone(),
+                        name.clone(),
+                        parsed_input,
+                    ))
                 }
             })
             .collect();
@@ -436,10 +444,7 @@ mod tests {
     fn test_output_text() {
         let output = Output::Message(Message {
             role: ConversationRole::Assistant,
-            content: vec![
-                ContentBlock::text("Hello "),
-                ContentBlock::text("world!"),
-            ],
+            content: vec![ContentBlock::text("Hello "), ContentBlock::text("world!")],
         });
 
         assert_eq!(output.text(), "Hello world!");

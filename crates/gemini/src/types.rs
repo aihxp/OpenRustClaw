@@ -3,9 +3,10 @@
 use serde::{Deserialize, Serialize};
 
 /// Gemini model variants
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub enum GeminiModel {
     /// Gemini 1.5 Pro
+    #[default]
     Gemini15Pro,
     /// Gemini 1.5 Flash
     Gemini15Flash,
@@ -35,14 +36,6 @@ impl GeminiModel {
     }
 }
 
-impl Default for GeminiModel {
-    fn default() -> Self {
-        GeminiModel::Gemini15Pro
-    }
-}
-
-
-
 /// Request to generate content
 #[derive(Debug, Clone, Serialize)]
 pub struct GenerateContentRequest {
@@ -62,7 +55,7 @@ pub struct GenerateContentRequest {
 /// Content structure (message)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Content {
-    pub role: String,  // "user", "model", "system"
+    pub role: String, // "user", "model", "system"
     pub parts: Vec<Part>,
 }
 
@@ -73,21 +66,21 @@ impl Content {
             parts: vec![Part::text(text)],
         }
     }
-    
+
     pub fn model(text: impl Into<String>) -> Self {
         Self {
             role: "model".to_string(),
             parts: vec![Part::text(text)],
         }
     }
-    
+
     pub fn system(text: impl Into<String>) -> Self {
         Self {
             role: "system".to_string(),
             parts: vec![Part::text(text)],
         }
     }
-    
+
     pub fn with_image(self, mime_type: &str, data: Vec<u8>) -> Self {
         let mut parts = self.parts;
         parts.push(Part::inline_data(mime_type, data));
@@ -113,7 +106,7 @@ impl Part {
     pub fn text(text: impl Into<String>) -> Self {
         Part::Text { text: text.into() }
     }
-    
+
     pub fn inline_data(mime_type: impl Into<String>, data: Vec<u8>) -> Self {
         use base64::Engine;
         Part::InlineData {
@@ -129,7 +122,7 @@ impl Part {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Blob {
     pub mime_type: String,
-    pub data: String,  // base64 encoded
+    pub data: String, // base64 encoded
 }
 
 /// Generate content response
@@ -212,7 +205,7 @@ pub enum FunctionCallingConfig {
 pub struct FunctionDeclaration {
     pub name: String,
     pub description: String,
-    pub parameters: serde_json::Value,  // JSON Schema
+    pub parameters: serde_json::Value, // JSON Schema
 }
 
 /// Function call

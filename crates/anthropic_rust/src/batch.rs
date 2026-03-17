@@ -41,7 +41,11 @@ impl<'a> BatchClient<'a> {
     }
 
     /// Create a new batch request with a custom ID.
-    pub async fn create_with_id(&self, custom_id: &str, requests: Vec<BatchRequest>) -> Result<Batch> {
+    pub async fn create_with_id(
+        &self,
+        custom_id: &str,
+        requests: Vec<BatchRequest>,
+    ) -> Result<Batch> {
         let body = serde_json::json!({
             "requests": requests.iter().enumerate().map(|(i, req)| {
                 serde_json::json!({
@@ -51,10 +55,7 @@ impl<'a> BatchClient<'a> {
             }).collect::<Vec<_>>(),
         });
 
-        let response = self
-            .client
-            .post(endpoints::BATCH, body)
-            .await?;
+        let response = self.client.post(endpoints::BATCH, body).await?;
 
         let body = self.client.handle_response(response).await?;
         let batch: Batch = serde_json::from_value(body)?;
@@ -71,7 +72,12 @@ impl<'a> BatchClient<'a> {
     }
 
     /// List batches.
-    pub async fn list(&self, limit: Option<usize>, before_id: Option<&str>, after_id: Option<&str>) -> Result<BatchList> {
+    pub async fn list(
+        &self,
+        limit: Option<usize>,
+        before_id: Option<&str>,
+        after_id: Option<&str>,
+    ) -> Result<BatchList> {
         let mut params = HashMap::new();
         if let Some(limit) = limit {
             params.insert("limit", limit.to_string());
@@ -143,21 +149,24 @@ impl<'a> BatchClient<'a> {
     pub async fn results(&self, batch_id: &str) -> Result<Vec<BatchResult>> {
         let url = format!("{}/{}/results", endpoints::BATCH, batch_id);
         let response = self.client.post(&url, serde_json::json!({})).await?;
-        
+
         if !response.status().is_success() {
             return Err(AnthropicError::from_response(response).await);
         }
 
         // Results are returned as newline-delimited JSON (NDJSON)
-        let text = response.text().await.map_err(|e| AnthropicError::Http { source: e })?;
+        let text = response
+            .text()
+            .await
+            .map_err(|e| AnthropicError::Http { source: e })?;
         let mut results = Vec::new();
 
         for line in text.lines() {
             if line.trim().is_empty() {
                 continue;
             }
-            let result: BatchResult = serde_json::from_str(line)
-                .map_err(|e| AnthropicError::Json { source: e })?;
+            let result: BatchResult =
+                serde_json::from_str(line).map_err(|e| AnthropicError::Json { source: e })?;
             results.push(result);
         }
 

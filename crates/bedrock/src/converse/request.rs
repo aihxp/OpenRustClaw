@@ -99,7 +99,7 @@ impl ConverseStreamRequest {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{ConversationRole, ContentBlock};
+    use crate::types::{ContentBlock, ConversationRole};
 
     #[test]
     fn test_converse_request() {
@@ -119,7 +119,13 @@ mod tests {
             performance_config: None,
         };
 
-        assert_eq!(request.endpoint_path(), "/model/anthropic.claude-3-sonnet-20240229-v1:0/converse");
-        assert_eq!(request.stream_endpoint_path(), "/model/anthropic.claude-3-sonnet-20240229-v1:0/converse-stream");
+        assert_eq!(
+            request.endpoint_path(),
+            "/model/anthropic.claude-3-sonnet-20240229-v1:0/converse"
+        );
+        assert_eq!(
+            request.stream_endpoint_path(),
+            "/model/anthropic.claude-3-sonnet-20240229-v1:0/converse-stream"
+        );
     }
 }

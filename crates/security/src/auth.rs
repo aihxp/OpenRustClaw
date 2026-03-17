@@ -1,17 +1,17 @@
 //! Authentication and token management.
 
-use chrono::{Utc, Duration};
-use jsonwebtoken::{encode, decode, Header, Validation, EncodingKey, DecodingKey};
-use serde::{Serialize, Deserialize};
-use openrustclaw_core::error::{SecurityError, Error, Result};
+use chrono::{Duration, Utc};
+use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
+use openrustclaw_core::error::{Error, Result, SecurityError};
+use serde::{Deserialize, Serialize};
 use tracing::warn;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
-    pub sub: String,  // user_id
+    pub sub: String, // user_id
     pub session_id: Option<String>,
-    pub exp: i64,     // expiration timestamp
-    pub iat: i64,     // issued at
+    pub exp: i64, // expiration timestamp
+    pub iat: i64, // issued at
 }
 
 /// Manages authentication tokens.
@@ -73,7 +73,9 @@ mod tests {
     #[test]
     fn generate_and_validate_token() {
         let manager = AuthManager::new("test-secret-key-12345".to_string());
-        let token = manager.generate_token("user_42", Some("session_1")).unwrap();
+        let token = manager
+            .generate_token("user_42", Some("session_1"))
+            .unwrap();
         let claims = manager.validate_token(&token).unwrap();
         assert_eq!(claims.sub, "user_42");
         assert_eq!(claims.session_id.as_deref(), Some("session_1"));
@@ -180,8 +182,11 @@ mod tests {
         let manager = AuthManager::new("test-secret".to_string());
         // This is a completely fabricated token with none algorithm
         let result = manager.validate_token(
-            "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiJ0ZXN0IiwiZXhwIjo5OTk5OTk5OTk5fQ."
+            "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiJ0ZXN0IiwiZXhwIjo5OTk5OTk5OTk5fQ.",
         );
-        assert!(result.is_err(), "Token with 'none' algorithm should be rejected");
+        assert!(
+            result.is_err(),
+            "Token with 'none' algorithm should be rejected"
+        );
     }
 }

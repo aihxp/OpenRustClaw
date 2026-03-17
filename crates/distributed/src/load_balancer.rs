@@ -7,8 +7,8 @@ use dashmap::DashMap;
 use siphasher::sip::SipHasher13;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::RwLock;
 use tracing::{debug, info, trace, warn};
 
@@ -56,22 +56,27 @@ impl LoadBalancer {
                     let hash = self.hash_virtual_node(&node.id, i);
                     ring.push((hash, node.id.clone()));
                 }
-                
+
                 // Initialize connection counter if not exists
                 if !self.connection_counts.contains_key(&node.id) {
-                    self.connection_counts.insert(node.id.clone(), AtomicU64::new(0));
+                    self.connection_counts
+                        .insert(node.id.clone(), AtomicU64::new(0));
                 }
-                
+
                 // Initialize response times if not exists
                 if !self.response_times.contains_key(&node.id) {
-                    self.response_times.insert(node.id.clone(), RwLock::new(Vec::new()));
+                    self.response_times
+                        .insert(node.id.clone(), RwLock::new(Vec::new()));
                 }
             }
 
             // Sort the ring by hash value
             ring.sort_by_key(|(hash, _)| *hash);
-            
-            debug!("Updated consistent hash ring with {} virtual nodes", ring.len());
+
+            debug!(
+                "Updated consistent hash ring with {} virtual nodes",
+                ring.len()
+            );
         }
     }
 
@@ -86,15 +91,13 @@ impl LoadBalancer {
         }
 
         // Check session affinity
-        if let Some(sid) = session_id {
-            if self.config.sticky_sessions {
-                if let Some(node_id) = self.session_affinity.get(sid) {
-                    if let Some(node) = nodes.iter().find(|n| &n.id == node_id.value()) {
-                        trace!("Session {} routed to {} (sticky)", sid, node.id);
-                        return Ok(node.clone());
-                    }
-                }
-            }
+        if let Some(sid) = session_id
+            && self.config.sticky_sessions
+            && let Some(node_id) = self.session_affinity.get(sid)
+            && let Some(node) = nodes.iter().find(|n| &n.id == node_id.value())
+        {
+            trace!("Session {} routed to {} (sticky)", sid, node.id);
+            return Ok(node.clone());
         }
 
         let selected = match self.config.strategy {
@@ -112,10 +115,11 @@ impl LoadBalancer {
         }?;
 
         // Record session affinity
-        if let Some(sid) = session_id {
-            if self.config.sticky_sessions {
-                self.session_affinity.insert(sid.to_string(), selected.id.clone());
-            }
+        if let Some(sid) = session_id
+            && self.config.sticky_sessions
+        {
+            self.session_affinity
+                .insert(sid.to_string(), selected.id.clone());
         }
 
         // Increment connection count
@@ -149,11 +153,11 @@ impl LoadBalancer {
     pub async fn remove_node(&self, node_id: &NodeId) {
         self.connection_counts.remove(node_id);
         self.response_times.remove(node_id);
-        
+
         // Remove from consistent hash ring
         let mut ring = self.consistent_hash_ring.write().await;
         ring.retain(|(_, id)| id != node_id);
-        
+
         // Remove session affinities for this node
         let sessions_to_remove: Vec<String> = self
             .session_affinity
@@ -161,7 +165,7 @@ impl LoadBalancer {
             .filter(|entry| entry.value() == node_id)
             .map(|entry| entry.key().clone())
             .collect();
-        
+
         for session in sessions_to_remove {
             self.session_affinity.remove(&session);
         }
@@ -217,7 +221,7 @@ impl LoadBalancer {
     /// Consistent hashing selection.
     fn consistent_hash(&self, nodes: &[NodeInfo], key: &str) -> Result<NodeInfo> {
         let hash = self.hash_key(key);
-        
+
         let ring = self.consistent_hash_ring.blocking_read();
         if ring.is_empty() {
             // Fallback to round-robin
@@ -320,7 +324,11 @@ impl SessionRouter {
         session_id: &str,
         available_nodes: &[NodeInfo],
     ) -> RouteResult {
-        match self.load_balancer.select_node(available_nodes, Some(session_id)).await {
+        match self
+            .load_balancer
+            .select_node(available_nodes, Some(session_id))
+            .await
+        {
             Ok(node) => {
                 if node.id == self.local_id {
                     RouteResult::Local
@@ -349,12 +357,9 @@ impl SessionRouter {
         self.load_balancer
             .session_affinity
             .insert(session_id.to_string(), target_node.id.clone());
-        
-        info!(
-            "Migrated session {} to node {}",
-            session_id, target_node.id
-        );
-        
+
+        info!("Migrated session {} to node {}", session_id, target_node.id);
+
         Ok(())
     }
 }
@@ -440,9 +445,15 @@ mod tests {
 
         // Same session should route to same node
         let session_id = "test-session-123";
-        let node1 = balancer.select_node(&nodes, Some(session_id)).await.unwrap();
-        let node2 = balancer.select_node(&nodes, Some(session_id)).await.unwrap();
-        
+        let node1 = balancer
+            .select_node(&nodes, Some(session_id))
+            .await
+            .unwrap();
+        let node2 = balancer
+            .select_node(&nodes, Some(session_id))
+            .await
+            .unwrap();
+
         assert_eq!(node1.id, node2.id);
     }
 
@@ -454,18 +465,21 @@ mod tests {
         };
         let balancer = LoadBalancer::new(config);
 
-        let nodes = vec![
-            create_test_node("node-1"),
-            create_test_node("node-2"),
-        ];
+        let nodes = vec![create_test_node("node-1"), create_test_node("node-2")];
 
         balancer.update_nodes(&nodes).await;
 
         let session_id = "sticky-session";
-        let selected = balancer.select_node(&nodes, Some(session_id)).await.unwrap();
+        let selected = balancer
+            .select_node(&nodes, Some(session_id))
+            .await
+            .unwrap();
 
         // Second request should go to same node
-        let selected2 = balancer.select_node(&nodes, Some(session_id)).await.unwrap();
+        let selected2 = balancer
+            .select_node(&nodes, Some(session_id))
+            .await
+            .unwrap();
         assert_eq!(selected.id, selected2.id);
 
         // Verify affinity is stored
@@ -480,10 +494,7 @@ mod tests {
         };
         let balancer = LoadBalancer::new(config);
 
-        let nodes = vec![
-            create_test_node("node-1"),
-            create_test_node("node-2"),
-        ];
+        let nodes = vec![create_test_node("node-1"), create_test_node("node-2")];
 
         balancer.update_nodes(&nodes).await;
 

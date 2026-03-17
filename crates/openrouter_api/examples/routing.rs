@@ -5,7 +5,7 @@
 //! OPENROUTER_API_KEY=your-key cargo run --example routing
 //! ```
 
-use openrouter_api::{OpenRouterClient, ChatRequest, RouteStrategy};
+use openrouter_api::{ChatRequest, OpenRouterClient, RouteStrategy};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

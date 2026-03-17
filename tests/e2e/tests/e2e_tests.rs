@@ -4,9 +4,9 @@
 
 // Re-export all test modules
 mod horizontal;
-mod vertical;
-mod smoke;
 mod regression;
+mod smoke;
+mod vertical;
 
 // The actual tests are in the submodules
 // Each submodule imports common utilities via:

@@ -93,9 +93,15 @@ impl fmt::Display for CohereError {
             CohereError::Authentication { message } => {
                 write!(f, "Authentication failed: {message}")
             }
-            CohereError::RateLimit { retry_after, message } => {
+            CohereError::RateLimit {
+                retry_after,
+                message,
+            } => {
                 if let Some(duration) = retry_after {
-                    write!(f, "Rate limit exceeded (retry after {duration:?}): {message}")
+                    write!(
+                        f,
+                        "Rate limit exceeded (retry after {duration:?}): {message}"
+                    )
                 } else {
                     write!(f, "Rate limit exceeded: {message}")
                 }
@@ -124,7 +130,10 @@ impl fmt::Display for CohereError {
             CohereError::Timeout { operation } => {
                 write!(f, "Timeout during {operation}")
             }
-            CohereError::RetryExhausted { attempts, last_error } => {
+            CohereError::RetryExhausted {
+                attempts,
+                last_error,
+            } => {
                 write!(f, "Retry exhausted after {attempts} attempts: {last_error}")
             }
             CohereError::Internal { message } => {
@@ -151,8 +160,6 @@ impl From<reqwest::Error> for CohereError {
             CohereError::Timeout {
                 operation: "HTTP request".to_string(),
             }
-        } else if err.is_connect() {
-            CohereError::Http { source: err }
         } else {
             CohereError::Http { source: err }
         }
@@ -210,10 +217,7 @@ impl CohereError {
 
         // Try to parse Cohere's error format
         if let Ok(error_json) = serde_json::from_str::<serde_json::Value>(&body) {
-            if let Some(message) = error_json
-                .get("message")
-                .and_then(|v| v.as_str())
-            {
+            if let Some(message) = error_json.get("message").and_then(|v| v.as_str()) {
                 // Map specific HTTP status codes to error types
                 match status {
                     reqwest::StatusCode::UNAUTHORIZED => {

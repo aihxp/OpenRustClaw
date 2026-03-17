@@ -95,14 +95,11 @@ impl AzureADToken {
         ];
 
         let client = reqwest::Client::new();
-        let response = client
-            .post(&url)
-            .form(&params)
-            .send()
-            .await
-            .map_err(|e| AzureOpenAIError::TokenAcquisition {
+        let response = client.post(&url).form(&params).send().await.map_err(|e| {
+            AzureOpenAIError::TokenAcquisition {
                 message: format!("Failed to acquire token: {e}"),
-            })?;
+            }
+        })?;
 
         if !response.status().is_success() {
             let error_text = response
@@ -114,11 +111,13 @@ impl AzureADToken {
             });
         }
 
-        let token_response: TokenResponse = response.json().await.map_err(|e| {
-            AzureOpenAIError::TokenAcquisition {
-                message: format!("Failed to parse token response: {e}"),
-            }
-        })?;
+        let token_response: TokenResponse =
+            response
+                .json()
+                .await
+                .map_err(|e| AzureOpenAIError::TokenAcquisition {
+                    message: format!("Failed to parse token response: {e}"),
+                })?;
 
         Ok(token_response.access_token)
     }
@@ -190,39 +189,40 @@ impl ManagedIdentityCredential {
             request
         };
 
-        let response = request.send().await.map_err(|e| {
-            AzureOpenAIError::TokenAcquisition {
+        let response = request
+            .send()
+            .await
+            .map_err(|e| AzureOpenAIError::TokenAcquisition {
                 message: format!("IMDS request failed: {e}"),
-            }
-        })?;
+            })?;
 
         if !response.status().is_success() {
             // Fall back to MSI_ENDPOINT for App Service/Functions
             return self.get_token_msi_endpoint().await;
         }
 
-        let token_response: ManagedIdentityTokenResponse = response.json().await.map_err(|e| {
-            AzureOpenAIError::TokenAcquisition {
-                message: format!("Failed to parse token response: {e}"),
-            }
-        })?;
+        let token_response: ManagedIdentityTokenResponse =
+            response
+                .json()
+                .await
+                .map_err(|e| AzureOpenAIError::TokenAcquisition {
+                    message: format!("Failed to parse token response: {e}"),
+                })?;
 
         Ok(token_response.access_token)
     }
 
     /// Get token using MSI_ENDPOINT (for App Service/Azure Functions).
     async fn get_token_msi_endpoint(&self) -> Result<String> {
-        let msi_endpoint = std::env::var("MSI_ENDPOINT").map_err(|_| {
-            AzureOpenAIError::TokenAcquisition {
+        let msi_endpoint =
+            std::env::var("MSI_ENDPOINT").map_err(|_| AzureOpenAIError::TokenAcquisition {
                 message: "MSI_ENDPOINT not set and IMDS failed".to_string(),
-            }
-        })?;
+            })?;
 
-        let msi_secret = std::env::var("MSI_SECRET").map_err(|_| {
-            AzureOpenAIError::TokenAcquisition {
+        let msi_secret =
+            std::env::var("MSI_SECRET").map_err(|_| AzureOpenAIError::TokenAcquisition {
                 message: "MSI_SECRET not set".to_string(),
-            }
-        })?;
+            })?;
 
         let client = reqwest::Client::new();
         let request = client
@@ -236,11 +236,12 @@ impl ManagedIdentityCredential {
             request
         };
 
-        let response = request.send().await.map_err(|e| {
-            AzureOpenAIError::TokenAcquisition {
+        let response = request
+            .send()
+            .await
+            .map_err(|e| AzureOpenAIError::TokenAcquisition {
                 message: format!("MSI request failed: {e}"),
-            }
-        })?;
+            })?;
 
         if !response.status().is_success() {
             let error_text = response
@@ -252,11 +253,13 @@ impl ManagedIdentityCredential {
             });
         }
 
-        let token_response: ManagedIdentityTokenResponse = response.json().await.map_err(|e| {
-            AzureOpenAIError::TokenAcquisition {
-                message: format!("Failed to parse token response: {e}"),
-            }
-        })?;
+        let token_response: ManagedIdentityTokenResponse =
+            response
+                .json()
+                .await
+                .map_err(|e| AzureOpenAIError::TokenAcquisition {
+                    message: format!("Failed to parse token response: {e}"),
+                })?;
 
         Ok(token_response.access_token)
     }
@@ -439,9 +442,8 @@ impl DefaultAzureCredential {
 
         // Try managed identity
         let managed_identity = ManagedIdentityCredential::new();
-        match managed_identity.get_token().await {
-            Ok(token) => return Ok(token),
-            Err(_) => {}
+        if let Ok(token) = managed_identity.get_token().await {
+            return Ok(token);
         }
 
         Err(AzureOpenAIError::TokenAcquisition {

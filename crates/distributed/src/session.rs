@@ -10,7 +10,7 @@ use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::time::{interval, Duration};
+use tokio::time::{Duration, interval};
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 
@@ -130,7 +130,9 @@ impl SessionManager {
                 .select_node(&workers, Some(&session_id))
                 .await?
         } else {
-            return Err(DistributedError::Cluster("No available workers".to_string()));
+            return Err(DistributedError::Cluster(
+                "No available workers".to_string(),
+            ));
         };
 
         let now = Utc::now();
@@ -148,8 +150,12 @@ impl SessionManager {
 
         // If the session is assigned to us, store it locally
         if target_node.id == self.local_id {
-            self.local_sessions.insert(session_id.clone(), session.clone());
-            info!("Created local session {} for user {}", session_id, session.user_id);
+            self.local_sessions
+                .insert(session_id.clone(), session.clone());
+            info!(
+                "Created local session {} for user {}",
+                session_id, session.user_id
+            );
         } else {
             // Otherwise, forward to the target node
             self.forward_create_session(&target_node, &session).await?;
@@ -177,13 +183,11 @@ impl SessionManager {
         }
 
         // Check affinity to find which node has the session
-        if let Some(node_id) = self.load_balancer.session_affinity.get(session_id) {
-            if *node_id.value() != self.local_id {
-                // Forward to the node that has the session
-                if let Some(node) = self.cluster.get_node(node_id.value()) {
-                    return self.forward_get_session(&node, session_id).await;
-                }
-            }
+        if let Some(node_id) = self.load_balancer.session_affinity.get(session_id)
+            && *node_id.value() != self.local_id
+            && let Some(node) = self.cluster.get_node(node_id.value())
+        {
+            return self.forward_get_session(&node, session_id).await;
         }
 
         Err(DistributedError::SessionNotFound(session_id.to_string()))
@@ -203,13 +207,14 @@ impl SessionManager {
     ) -> Result<DistributedSession> {
         // Get the session first to find where it lives
         let mut session = self.get_session(session_id).await?;
-        
+
         session.data = data;
         session.last_accessed = Utc::now();
 
         // If it's a local session, update it
         if session.assigned_node == self.local_id {
-            self.local_sessions.insert(session_id.to_string(), session.clone());
+            self.local_sessions
+                .insert(session_id.to_string(), session.clone());
             Ok(session)
         } else {
             // Forward update to the assigned node
@@ -241,7 +246,8 @@ impl SessionManager {
         // Mark as migrating
         session.state = SessionState::Migrating;
         if session.assigned_node == self.local_id {
-            self.local_sessions.insert(session_id.to_string(), session.clone());
+            self.local_sessions
+                .insert(session_id.to_string(), session.clone());
         }
 
         info!(
@@ -275,10 +281,14 @@ impl SessionManager {
 
         // Store locally if target is us
         if target_node_id == &self.local_id {
-            self.local_sessions.insert(session_id.to_string(), session.clone());
+            self.local_sessions
+                .insert(session_id.to_string(), session.clone());
         }
 
-        info!("Successfully migrated session {} to {}", session_id, target_node_id);
+        info!(
+            "Successfully migrated session {} to {}",
+            session_id, target_node_id
+        );
 
         Ok(session)
     }
@@ -322,7 +332,7 @@ impl SessionManager {
     fn start_cleanup_task(self: Arc<Self>) {
         tokio::spawn(async move {
             let mut interval = interval(Duration::from_secs(60));
-            
+
             loop {
                 interval.tick().await;
                 self.cleanup_expired_sessions().await;
@@ -334,7 +344,7 @@ impl SessionManager {
     async fn cleanup_expired_sessions(&self) {
         let now = Utc::now();
         let timeout = chrono::Duration::seconds(self.session_timeout_secs as i64);
-        
+
         let expired: Vec<String> = self
             .local_sessions
             .iter()
@@ -374,19 +384,31 @@ impl SessionManager {
     }
 
     // Placeholder methods for forwarding to remote nodes
-    async fn forward_create_session(&self, node: &NodeInfo, _session: &DistributedSession) -> Result<()> {
+    async fn forward_create_session(
+        &self,
+        node: &NodeInfo,
+        _session: &DistributedSession,
+    ) -> Result<()> {
         // This would use gRPC to forward to the target node
         // For now, just simulate success
         debug!("Forwarding session creation to node {}", node.id);
         Ok(())
     }
 
-    async fn forward_get_session(&self, _node: &NodeInfo, session_id: &str) -> Result<DistributedSession> {
+    async fn forward_get_session(
+        &self,
+        _node: &NodeInfo,
+        session_id: &str,
+    ) -> Result<DistributedSession> {
         // This would use gRPC to fetch from the target node
         Err(DistributedError::SessionNotFound(session_id.to_string()))
     }
 
-    async fn forward_update_session(&self, _node: &NodeInfo, session: &DistributedSession) -> Result<DistributedSession> {
+    async fn forward_update_session(
+        &self,
+        _node: &NodeInfo,
+        session: &DistributedSession,
+    ) -> Result<DistributedSession> {
         // This would use gRPC to update on the target node
         Ok(session.clone())
     }
@@ -423,7 +445,7 @@ impl SessionReplication {
     pub async fn replicate_session(&self, session: &DistributedSession) -> Result<()> {
         let workers = self.cluster.worker_nodes();
         let target_count = self.replication_factor.saturating_sub(1); // Exclude primary
-        
+
         if target_count == 0 || workers.len() <= 1 {
             return Ok(());
         }
@@ -436,10 +458,7 @@ impl SessionReplication {
             .collect();
 
         for node in replica_nodes {
-            debug!(
-                "Replicating session {} to node {}",
-                session.id, node.id
-            );
+            debug!("Replicating session {} to node {}", session.id, node.id);
             // Would use gRPC to send replica to node
         }
 
@@ -456,7 +475,8 @@ impl SessionReplication {
         if let Some((_, session)) = self.replica_sessions.remove(session_id) {
             let mut session = session;
             session.assigned_node = self.cluster.local_id();
-            self.primary_sessions.insert(session_id.to_string(), session.clone());
+            self.primary_sessions
+                .insert(session_id.to_string(), session.clone());
             info!("Promoted session {} from replica to primary", session_id);
             Ok(session)
         } else {
@@ -468,19 +488,13 @@ impl SessionReplication {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cluster::Cluster;
     use crate::NodeRole;
+    use crate::cluster::Cluster;
     use std::net::SocketAddr;
 
     fn create_test_cluster() -> (Arc<Cluster>, Arc<LoadBalancer>) {
         let addr: SocketAddr = "127.0.0.1:50051".parse().unwrap();
-        let info = crate::node::NodeInfo::new(
-            "test-1",
-            "test-node",
-            addr,
-            addr,
-            NodeRole::Leader,
-        );
+        let info = crate::node::NodeInfo::new("test-1", "test-node", addr, addr, NodeRole::Leader);
         let local = Arc::new(crate::node::LocalNode::new(info));
         let config = DistributedConfig::default();
         let cluster = Cluster::new(local, config.clone());
@@ -492,13 +506,8 @@ mod tests {
     async fn test_session_creation() {
         let (cluster, lb) = create_test_cluster();
         let config = DistributedConfig::default();
-        
-        let manager = SessionManager::new(
-            "test-1".to_string(),
-            cluster,
-            lb,
-            config,
-        );
+
+        let manager = SessionManager::new("test-1".to_string(), cluster, lb, config);
 
         let session = manager.create_session("user-1", None).await.unwrap();
         assert_eq!(session.user_id, "user-1");
@@ -509,17 +518,12 @@ mod tests {
     async fn test_local_session_storage() {
         let (cluster, lb) = create_test_cluster();
         let config = DistributedConfig::default();
-        
-        let manager = SessionManager::new(
-            "test-1".to_string(),
-            cluster,
-            lb,
-            config,
-        );
+
+        let manager = SessionManager::new("test-1".to_string(), cluster, lb, config);
 
         let session = manager.create_session("user-1", None).await.unwrap();
         let retrieved = manager.get_session(&session.id).await.unwrap();
-        
+
         assert_eq!(session.id, retrieved.id);
         assert_eq!(session.user_id, retrieved.user_id);
     }

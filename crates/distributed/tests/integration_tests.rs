@@ -64,13 +64,7 @@ async fn test_node_info() {
     use openrustclaw_distributed::node::{NodeInfo, NodeRole};
 
     let addr: SocketAddr = "127.0.0.1:50051".parse().unwrap();
-    let node = NodeInfo::new(
-        "node-1",
-        "Test Node",
-        addr,
-        addr,
-        NodeRole::Worker,
-    );
+    let node = NodeInfo::new("node-1", "Test Node", addr, addr, NodeRole::Worker);
 
     assert_eq!(node.id, "node-1");
     assert_eq!(node.name, "Test Node");
@@ -82,8 +76,8 @@ async fn test_node_info() {
 #[tokio::test]
 async fn test_load_balancer_round_robin() {
     use openrustclaw_distributed::load_balancer::LoadBalancer;
-    use openrustclaw_distributed::{LoadBalancerConfig, LoadBalanceStrategy};
     use openrustclaw_distributed::node::{NodeInfo, NodeRole};
+    use openrustclaw_distributed::{LoadBalanceStrategy, LoadBalancerConfig};
 
     let config = LoadBalancerConfig {
         strategy: LoadBalanceStrategy::RoundRobin,
@@ -91,7 +85,7 @@ async fn test_load_balancer_round_robin() {
     };
 
     let balancer = LoadBalancer::new(config);
-    
+
     let addr: SocketAddr = "127.0.0.1:50051".parse().unwrap();
     let nodes = vec![
         NodeInfo::new("node-1", "Node 1", addr, addr, NodeRole::Worker),
@@ -111,8 +105,8 @@ async fn test_load_balancer_round_robin() {
 #[tokio::test]
 async fn test_consistent_hashing() {
     use openrustclaw_distributed::load_balancer::LoadBalancer;
-    use openrustclaw_distributed::{LoadBalancerConfig, LoadBalanceStrategy};
     use openrustclaw_distributed::node::{NodeInfo, NodeRole};
+    use openrustclaw_distributed::{LoadBalanceStrategy, LoadBalancerConfig};
 
     let config = LoadBalancerConfig {
         strategy: LoadBalanceStrategy::ConsistentHash,
@@ -122,7 +116,7 @@ async fn test_consistent_hashing() {
     };
 
     let balancer = LoadBalancer::new(config);
-    
+
     let addr: SocketAddr = "127.0.0.1:50051".parse().unwrap();
     let nodes = vec![
         NodeInfo::new("node-1", "Node 1", addr, addr, NodeRole::Worker),
@@ -134,9 +128,15 @@ async fn test_consistent_hashing() {
 
     // Same session should always map to same node
     let session_id = "test-session-abc123";
-    let first = balancer.select_node(&nodes, Some(session_id)).await.unwrap();
-    let second = balancer.select_node(&nodes, Some(session_id)).await.unwrap();
-    
+    let first = balancer
+        .select_node(&nodes, Some(session_id))
+        .await
+        .unwrap();
+    let second = balancer
+        .select_node(&nodes, Some(session_id))
+        .await
+        .unwrap();
+
     assert_eq!(first.id, second.id);
 }
 
@@ -165,8 +165,8 @@ async fn test_cluster_state() {
 /// Test session affinity.
 #[tokio::test]
 async fn test_session_affinity() {
-    use openrustclaw_distributed::load_balancer::LoadBalancer;
     use openrustclaw_distributed::LoadBalancerConfig;
+    use openrustclaw_distributed::load_balancer::LoadBalancer;
     use openrustclaw_distributed::node::{NodeInfo, NodeRole};
 
     let config = LoadBalancerConfig {
@@ -175,7 +175,7 @@ async fn test_session_affinity() {
     };
 
     let balancer = LoadBalancer::new(config);
-    
+
     let addr: SocketAddr = "127.0.0.1:50051".parse().unwrap();
     let nodes = vec![
         NodeInfo::new("node-1", "Node 1", addr, addr, NodeRole::Worker),
@@ -185,17 +185,26 @@ async fn test_session_affinity() {
     balancer.update_nodes(&nodes).await;
 
     let session_id = "sticky-session-1";
-    
+
     // First request establishes affinity
-    let node1 = balancer.select_node(&nodes, Some(session_id)).await.unwrap();
-    
+    let node1 = balancer
+        .select_node(&nodes, Some(session_id))
+        .await
+        .unwrap();
+
     // Subsequent requests should go to same node
-    let node2 = balancer.select_node(&nodes, Some(session_id)).await.unwrap();
-    let node3 = balancer.select_node(&nodes, Some(session_id)).await.unwrap();
+    let node2 = balancer
+        .select_node(&nodes, Some(session_id))
+        .await
+        .unwrap();
+    let node3 = balancer
+        .select_node(&nodes, Some(session_id))
+        .await
+        .unwrap();
 
     assert_eq!(node1.id, node2.id);
     assert_eq!(node2.id, node3.id);
-    
+
     // Verify affinity is stored
     assert!(balancer.session_affinity.contains_key(session_id));
 }
@@ -291,11 +300,11 @@ async fn test_config_defaults() {
 #[tokio::test]
 async fn test_memory_backends() {
     use openrustclaw_distributed::memory::GossipMemory;
-    use openrustclaw_distributed::{MemoryConfig, MemoryBackend};
+    use openrustclaw_distributed::{MemoryBackend, MemoryConfig};
 
     let config = MemoryConfig::default();
     let memory = GossipMemory::new(&config);
-    
+
     assert!(memory.is_ok());
 }
 
@@ -303,7 +312,7 @@ async fn test_memory_backends() {
 #[tokio::test]
 async fn test_discovery_backends() {
     use openrustclaw_distributed::discovery::StaticDiscovery;
-    use openrustclaw_distributed::{DiscoveryConfig, DiscoveryBackend};
+    use openrustclaw_distributed::{DiscoveryBackend, DiscoveryConfig};
 
     let config = DiscoveryConfig {
         backend: DiscoveryBackend::Static,

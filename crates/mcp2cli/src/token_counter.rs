@@ -41,11 +41,7 @@ impl TokenCounter {
     /// # Returns
     ///
     /// A cost comparison showing token savings
-    pub fn compare_costs(
-        tool_count: usize,
-        turns: usize,
-        tools_used: usize,
-    ) -> CostComparison {
+    pub fn compare_costs(tool_count: usize, turns: usize, tools_used: usize) -> CostComparison {
         // Native MCP: All tool schemas are included in every prompt
         // Average tool schema is ~500 tokens
         let native_tokens_per_turn = tool_count * 500;
@@ -228,7 +224,8 @@ SAVINGS: {:.1}% ({} tokens)
             self.total_for_session,
             self.native_equivalent,
             self.savings_percent * 100.0,
-            self.native_equivalent.saturating_sub(self.total_for_session)
+            self.native_equivalent
+                .saturating_sub(self.total_for_session)
         )
     }
 }
@@ -242,11 +239,8 @@ pub fn quick_savings_estimate(tool_count: usize) -> String {
         ("20 turns, 10 tools used", 20, 10),
     ];
 
-    let mut output = format!(
-        "Token Savings Estimate ({} tools available)\n",
-        tool_count
-    );
-    output.push_str("=" .repeat(50).as_str());
+    let mut output = format!("Token Savings Estimate ({} tools available)\n", tool_count);
+    output.push_str("=".repeat(50).as_str());
     output.push('\n');
 
     for (desc, turns, tools_used) in scenarios {
@@ -272,7 +266,7 @@ mod tests {
         let text = "Hello, world!";
         let count = TokenCounter::count_tokens(text);
         assert!(count > 0);
-        
+
         // Should be consistent
         assert_eq!(TokenCounter::count_tokens(text), count);
     }
@@ -281,11 +275,11 @@ mod tests {
     fn test_compare_costs() {
         // 100 tools, 10 turns, 5 tools actually used
         let comparison = TokenCounter::compare_costs(100, 10, 5);
-        
+
         // Native: 100 * 500 * 10 = 500,000 tokens
         // mcp2cli: 100 * 16 + 5 * 150 = 2,350 tokens
         // Savings should be very high (>95%)
-        
+
         assert!(comparison.native_tokens > comparison.mcp2cli_tokens);
         assert!(comparison.savings_percent > 0.90); // >90% savings
     }
@@ -297,7 +291,7 @@ mod tests {
             mcp2cli_tokens: 2350,
             savings_percent: 0.9953,
         };
-        
+
         let formatted = comparison.format();
         assert!(formatted.contains("500000"));
         assert!(formatted.contains("2350"));
@@ -307,10 +301,10 @@ mod tests {
     #[test]
     fn test_session_cost_breakdown() {
         let breakdown = TokenCounter::session_cost_breakdown(50, 10, 3, 5);
-        
+
         assert!(breakdown.total_for_session < breakdown.native_equivalent);
         assert!(breakdown.savings_percent > 0.0);
-        
+
         let report = breakdown.format_report();
         assert!(report.contains("Token Cost Breakdown"));
         assert!(report.contains("SAVINGS"));
@@ -325,7 +319,7 @@ mod tests {
                 "age": { "type": "number" }
             }
         });
-        
+
         let tokens = TokenCounter::estimate_schema_tokens(&schema);
         assert!(tokens > 0);
     }

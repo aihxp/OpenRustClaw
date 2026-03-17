@@ -98,10 +98,7 @@ impl ChatMessage {
     }
 
     /// Create an assistant message with tool calls.
-    pub fn assistant_with_tools(
-        content: impl Into<String>,
-        tool_calls: Vec<ToolCall>,
-    ) -> Self {
+    pub fn assistant_with_tools(content: impl Into<String>, tool_calls: Vec<ToolCall>) -> Self {
         Self {
             role: Role::Assistant,
             content: Some(content.into()),
@@ -427,14 +424,19 @@ pub struct ChatResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub system_fingerprint: Option<String>,
     /// Content filter results for the prompt.
-    #[serde(rename = "prompt_filter_results", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "prompt_filter_results",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub prompt_filter_results: Option<Vec<super::PromptFilterResult>>,
 }
 
 impl ChatResponse {
     /// Get the content of the first choice.
     pub fn content(&self) -> Option<&str> {
-        self.choices.first().and_then(|c| c.message.content.as_deref())
+        self.choices
+            .first()
+            .and_then(|c| c.message.content.as_deref())
     }
 
     /// Get the message of the first choice.
@@ -474,7 +476,10 @@ pub struct ChatChoice {
     /// The reason the completion finished.
     pub finish_reason: Option<super::FinishReason>,
     /// Content filter results.
-    #[serde(rename = "content_filter_results", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "content_filter_results",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub content_filter_results: Option<super::ContentFilterResults>,
     /// Log probabilities (if requested).
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -497,7 +502,12 @@ mod tests {
     fn test_function_builder() {
         let func = Function::builder("get_weather", "Get weather")
             .string_property("location", "City name", true)
-            .enum_property("unit", "Temperature unit", vec!["celsius", "fahrenheit"], false)
+            .enum_property(
+                "unit",
+                "Temperature unit",
+                vec!["celsius", "fahrenheit"],
+                false,
+            )
             .build();
 
         assert_eq!(func.name, "get_weather");
@@ -546,7 +556,10 @@ mod tests {
         let none = ToolChoice::none();
 
         match func {
-            ToolChoice::Specific { tool_type, function } => {
+            ToolChoice::Specific {
+                tool_type,
+                function,
+            } => {
                 assert_eq!(tool_type, "function");
                 assert_eq!(function.name, "get_weather");
             }

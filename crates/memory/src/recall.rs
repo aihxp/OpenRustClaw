@@ -34,10 +34,9 @@ impl RecallMemory {
         let importance = MemoryPolicies::score_importance(&source);
 
         let expires_at = match memory_type {
-            MemoryType::Episodic if self.policies.ttl_episodic_days > 0 => Some(
-                Utc::now()
-                    + chrono::Duration::days(self.policies.ttl_episodic_days as i64),
-            ),
+            MemoryType::Episodic if self.policies.ttl_episodic_days > 0 => {
+                Some(Utc::now() + chrono::Duration::days(self.policies.ttl_episodic_days as i64))
+            }
             _ => None,
         };
 
@@ -65,7 +64,7 @@ impl RecallMemory {
     }
 
     /// Apply temporal decay to scored results.
-    pub fn apply_decay(&self, results: &mut Vec<ScoredMemory>) {
+    pub fn apply_decay(&self, results: &mut [ScoredMemory]) {
         let now = Utc::now();
         for result in results.iter_mut() {
             if let Some(last_accessed) = result.entry.last_accessed {
@@ -95,7 +94,11 @@ mod tests {
         RecallMemory::new(MemoryPolicies::default())
     }
 
-    fn make_scored_memory(content: &str, score: f32, last_accessed: Option<DateTime<Utc>>) -> ScoredMemory {
+    fn make_scored_memory(
+        content: &str,
+        score: f32,
+        last_accessed: Option<DateTime<Utc>>,
+    ) -> ScoredMemory {
         ScoredMemory {
             entry: MemoryEntry {
                 id: Uuid::new_v4(),
@@ -132,7 +135,10 @@ mod tests {
             None,
             None,
         );
-        assert_eq!(entry.content_hash, MemoryPolicies::content_hash("test content"));
+        assert_eq!(
+            entry.content_hash,
+            MemoryPolicies::content_hash("test content")
+        );
     }
 
     #[test]
@@ -160,11 +166,18 @@ mod tests {
             None,
             None,
         );
-        assert!(entry.expires_at.is_some(), "Episodic memories should have an expiry");
+        assert!(
+            entry.expires_at.is_some(),
+            "Episodic memories should have an expiry"
+        );
         let expires = entry.expires_at.unwrap();
         let days_until = (expires - Utc::now()).num_days();
         // Should be roughly 90 days from now (default ttl_episodic_days)
-        assert!(days_until >= 89 && days_until <= 91, "Expected ~90 days, got {}", days_until);
+        assert!(
+            days_until >= 89 && days_until <= 91,
+            "Expected ~90 days, got {}",
+            days_until
+        );
     }
 
     #[test]
@@ -178,7 +191,10 @@ mod tests {
             None,
             None,
         );
-        assert!(entry.expires_at.is_none(), "Semantic memories should not expire by default");
+        assert!(
+            entry.expires_at.is_none(),
+            "Semantic memories should not expire by default"
+        );
     }
 
     #[test]
@@ -192,7 +208,10 @@ mod tests {
             None,
             None,
         );
-        assert!(entry.expires_at.is_none(), "Procedural memories should not expire by default");
+        assert!(
+            entry.expires_at.is_none(),
+            "Procedural memories should not expire by default"
+        );
     }
 
     #[test]
@@ -274,7 +293,10 @@ mod tests {
         let recall = default_recall();
         let mut results = vec![make_scored_memory("test", 0.9, None)];
         recall.apply_decay(&mut results);
-        assert!((results[0].score - 0.9).abs() < 1e-6, "No last_accessed = no decay");
+        assert!(
+            (results[0].score - 0.9).abs() < 1e-6,
+            "No last_accessed = no decay"
+        );
     }
 
     #[test]
@@ -284,7 +306,11 @@ mod tests {
         let mut results = vec![make_scored_memory("test", 1.0, Some(recent))];
         recall.apply_decay(&mut results);
         // Less than 1 day old, so minimal decay
-        assert!(results[0].score > 0.95, "Recent access should have minimal decay, got {}", results[0].score);
+        assert!(
+            results[0].score > 0.95,
+            "Recent access should have minimal decay, got {}",
+            results[0].score
+        );
     }
 
     #[test]

@@ -102,5 +102,3 @@ impl Mcp2CliError {
         Self::ToolNotFound(name.into())
     }
 }
-
-

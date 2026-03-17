@@ -10,8 +10,8 @@ use anthropic_rust::{AnthropicClient, MessageRequest};
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Load API key from environment
-    let api_key = std::env::var("ANTHROPIC_API_KEY")
-        .expect("ANTHROPIC_API_KEY environment variable not set");
+    let api_key =
+        std::env::var("ANTHROPIC_API_KEY").expect("ANTHROPIC_API_KEY environment variable not set");
 
     // Create client
     let client = AnthropicClient::new(api_key)?;

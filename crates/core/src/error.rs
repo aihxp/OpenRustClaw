@@ -324,7 +324,10 @@ pub enum ChannelError {
     AuthFailed { platform: String, message: String },
 
     #[error("{platform} rate limited (retry after {retry_after_secs:?}s)")]
-    RateLimited { platform: String, retry_after_secs: Option<u64> },
+    RateLimited {
+        platform: String,
+        retry_after_secs: Option<u64>,
+    },
 
     #[error("{platform} connection error: {message}")]
     Connection { platform: String, message: String },

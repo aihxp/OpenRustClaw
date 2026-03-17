@@ -9,7 +9,7 @@
 use chrono::{Duration, Utc};
 use openrustclaw_scheduler::jobs::{Job, JobRun, JobState, RunStatus};
 use openrustclaw_scheduler::retry::{backoff_delay, should_dead_letter};
-use openrustclaw_scheduler::triggers::{calculate_next_run, TriggerConfig};
+use openrustclaw_scheduler::triggers::{TriggerConfig, calculate_next_run};
 
 use crate::common::init_test_tracing;
 
@@ -23,7 +23,9 @@ use openrustclaw_scheduler::worker::SchedulerConfig;
 fn job_creation() {
     init_test_tracing();
 
-    let trigger = TriggerConfig::Interval { interval_secs: 3600 };
+    let trigger = TriggerConfig::Interval {
+        interval_secs: 3600,
+    };
 
     let job = Job {
         id: "job_123".to_string(),
@@ -442,7 +444,9 @@ fn trigger_config_absolute() {
 fn calculate_next_run_interval_first_run() {
     init_test_tracing();
 
-    let trigger = TriggerConfig::Interval { interval_secs: 3600 };
+    let trigger = TriggerConfig::Interval {
+        interval_secs: 3600,
+    };
     let next = calculate_next_run(&trigger, None);
 
     // First run should be approximately now + interval
@@ -457,7 +461,9 @@ fn calculate_next_run_interval_first_run() {
 fn calculate_next_run_interval_subsequent_run() {
     init_test_tracing();
 
-    let trigger = TriggerConfig::Interval { interval_secs: 3600 };
+    let trigger = TriggerConfig::Interval {
+        interval_secs: 3600,
+    };
     let last_run = Utc::now() - Duration::minutes(30);
     let next = calculate_next_run(&trigger, Some(last_run));
 
@@ -598,7 +604,7 @@ fn scheduler_worker_creation() {
     };
 
     let worker = openrustclaw_scheduler::SchedulerWorker::new(config);
-    
+
     // Worker is created with unique ID
     assert!(!worker.worker_id().is_empty());
     assert_eq!(worker.poll_interval(), std::time::Duration::from_secs(30));
@@ -616,7 +622,7 @@ fn scheduler_worker_acquire_lease() {
     };
 
     let worker = openrustclaw_scheduler::SchedulerWorker::new(config);
-    
+
     let mut job = Job {
         id: "job_1".to_string(),
         name: "Test".to_string(),
@@ -655,7 +661,7 @@ fn scheduler_worker_process_success() {
     };
 
     let worker = openrustclaw_scheduler::SchedulerWorker::new(config);
-    
+
     let mut job = Job {
         id: "job_1".to_string(),
         name: "Test".to_string(),
@@ -696,7 +702,7 @@ fn scheduler_worker_process_failure_with_retry() {
     };
 
     let worker = openrustclaw_scheduler::SchedulerWorker::new(config);
-    
+
     let mut job = Job {
         id: "job_1".to_string(),
         name: "Test".to_string(),
@@ -735,7 +741,7 @@ fn scheduler_worker_process_failure_dead_letter() {
     };
 
     let worker = openrustclaw_scheduler::SchedulerWorker::new(config);
-    
+
     let mut job = Job {
         id: "job_1".to_string(),
         name: "Test".to_string(),
@@ -788,9 +794,8 @@ fn idempotency_key_uniqueness() {
         created_at: Utc::now(),
     };
 
-    let keys: std::collections::HashSet<String> = (0..100)
-        .map(|_| job.generate_idempotency_key())
-        .collect();
+    let keys: std::collections::HashSet<String> =
+        (0..100).map(|_| job.generate_idempotency_key()).collect();
 
     // All keys should be unique
     assert_eq!(keys.len(), 100);
@@ -834,7 +839,7 @@ fn job_completed_no_next_run() {
     };
 
     let worker = openrustclaw_scheduler::SchedulerWorker::new(config);
-    
+
     // Absolute trigger job that has run once
     let mut job = Job {
         id: "job_1".to_string(),

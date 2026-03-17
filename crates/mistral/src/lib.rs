@@ -100,25 +100,24 @@ pub mod chat;
 pub mod embedding;
 pub mod types;
 
-pub use client::{MistralClient, ClientConfig, DEFAULT_BASE_URL, endpoints};
+pub use client::{ClientConfig, DEFAULT_BASE_URL, MistralClient, endpoints};
 pub use error::{MistralError, Result};
 
 // Re-export commonly used types
 pub use types::{
-    ChatChoice, ChatMessage, ChatResponse, Function, FunctionCall, 
-    Role, TokenUsage, Tool, ToolCall, MistralModel,
-    Embedding, EmbeddingsResponse, EmbeddingUsage,
-    FinishReason,
+    ChatChoice, ChatMessage, ChatResponse, Embedding, EmbeddingUsage, EmbeddingsResponse,
+    FinishReason, Function, FunctionCall, MistralModel, Role, TokenUsage, Tool, ToolCall,
 };
 
-pub use chat::{ChatRequest, ChatRequestBuilder, AgentRequest, AgentRequestBuilder, ToolChoice, ResponseFormat};
+pub use chat::{
+    AgentRequest, AgentRequestBuilder, ChatRequest, ChatRequestBuilder, ResponseFormat, ToolChoice,
+};
 pub use embedding::EmbeddingRequest;
 
 // Streaming types
 #[cfg(feature = "streaming")]
 pub use chat::{
-    ChatCompletionChunk, StreamChoice, StreamDelta, 
-    StreamCollector, ToolCallDelta, FunctionDelta,
+    ChatCompletionChunk, FunctionDelta, StreamChoice, StreamCollector, StreamDelta, ToolCallDelta,
 };
 
 // Agents support

@@ -8,12 +8,10 @@
 
 use std::collections::HashMap;
 
-use criterion::{
-    criterion_group, criterion_main, BenchmarkId, Criterion, Throughput,
-};
+use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use openrustclaw_core::types::{
-    CompletionRequest, CompletionResponse, FinishReason, Message, TokenUsage,
-    ToolCall, ToolDefinition, ToolFormat, StreamChunk,
+    CompletionRequest, CompletionResponse, FinishReason, Message, StreamChunk, TokenUsage,
+    ToolCall, ToolDefinition, ToolFormat,
 };
 use openrustclaw_providers::tool_formats::{
     parse_anthropic_tool_calls, parse_openai_tool_calls, translate_tool_definition,
@@ -165,16 +163,12 @@ fn bench_request_deserialization(c: &mut Criterion) {
 
         group.throughput(Throughput::Bytes(json.len() as u64));
 
-        group.bench_with_input(
-            BenchmarkId::new("json", &param),
-            &json,
-            |b, json_str| {
-                b.iter(|| {
-                    let req: CompletionRequest = serde_json::from_str(json_str).unwrap();
-                    criterion::black_box(req);
-                });
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("json", &param), &json, |b, json_str| {
+            b.iter(|| {
+                let req: CompletionRequest = serde_json::from_str(json_str).unwrap();
+                criterion::black_box(req);
+            });
+        });
     }
 
     group.finish();
@@ -331,28 +325,20 @@ fn bench_token_counting(c: &mut Criterion) {
             .map(|i| format!("word{} ", i % 1000))
             .collect();
 
-        group.bench_with_input(
-            BenchmarkId::new("tiktoken", text_size),
-            &text,
-            |b, txt| {
-                b.iter(|| {
-                    let tokens = bpe.encode_with_special_tokens(txt);
-                    criterion::black_box(tokens.len());
-                });
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("tiktoken", text_size), &text, |b, txt| {
+            b.iter(|| {
+                let tokens = bpe.encode_with_special_tokens(txt);
+                criterion::black_box(tokens.len());
+            });
+        });
 
         // Simple estimation for comparison
-        group.bench_with_input(
-            BenchmarkId::new("estimate", text_size),
-            &text,
-            |b, txt| {
-                b.iter(|| {
-                    let estimate = txt.len() / 4;
-                    criterion::black_box(estimate);
-                });
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("estimate", text_size), &text, |b, txt| {
+            b.iter(|| {
+                let estimate = txt.len() / 4;
+                criterion::black_box(estimate);
+            });
+        });
     }
 
     group.finish();
@@ -433,7 +419,11 @@ fn bench_stream_chunk_processing(c: &mut Criterion) {
                             StreamChunk::ContentDelta { delta } => {
                                 full_content.push_str(delta);
                             }
-                            StreamChunk::ToolCallDelta { id, name: _, arguments_delta } => {
+                            StreamChunk::ToolCallDelta {
+                                id,
+                                name: _,
+                                arguments_delta,
+                            } => {
                                 tool_calls
                                     .entry(id.clone())
                                     .or_default()
@@ -460,22 +450,26 @@ fn bench_json_value_clone(c: &mut Criterion) {
     let mut group = c.benchmark_group("provider/json_clone");
 
     let messages: Vec<_> = (0..50)
-        .map(|i| serde_json::json!({
-            "role": if i % 2 == 0 { "user" } else { "assistant" },
-            "content": format!("Message content {}", i)
-        }))
+        .map(|i| {
+            serde_json::json!({
+                "role": if i % 2 == 0 { "user" } else { "assistant" },
+                "content": format!("Message content {}", i)
+            })
+        })
         .collect();
 
     let tools: Vec<_> = (0..10)
-        .map(|i| serde_json::json!({
-            "name": format!("tool_{}", i),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "arg": { "type": "string" }
+        .map(|i| {
+            serde_json::json!({
+                "name": format!("tool_{}", i),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "arg": { "type": "string" }
+                    }
                 }
-            }
-        }))
+            })
+        })
         .collect();
 
     let value = serde_json::json!({

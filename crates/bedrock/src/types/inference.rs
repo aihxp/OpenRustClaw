@@ -233,9 +233,7 @@ mod tests {
 
     #[test]
     fn test_inference_configuration_clamping() {
-        let config = InferenceConfiguration::new()
-            .temperature(1.5)
-            .top_p(-0.5);
+        let config = InferenceConfiguration::new().temperature(1.5).top_p(-0.5);
 
         assert_eq!(config.temperature, Some(1.0));
         assert_eq!(config.top_p, Some(0.0));

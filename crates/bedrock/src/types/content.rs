@@ -66,10 +66,7 @@ impl ContentBlock {
     }
 
     /// Create an image content block from base64 bytes.
-    pub fn image_from_bytes(
-        format: ImageFormat,
-        bytes: impl Into<String>,
-    ) -> Self {
+    pub fn image_from_bytes(format: ImageFormat, bytes: impl Into<String>) -> Self {
         ContentBlock::Image {
             image: ImageBlock {
                 format,

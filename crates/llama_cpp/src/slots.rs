@@ -34,19 +34,31 @@ impl<'a> Slots<'a> {
     /// Get the number of idle slots.
     pub async fn idle_count(&self) -> Result<usize> {
         let slots = self.list().await?;
-        Ok(slots.slots.iter().filter(|s| s.state == SlotState::Idle).count())
+        Ok(slots
+            .slots
+            .iter()
+            .filter(|s| s.state == SlotState::Idle)
+            .count())
     }
 
     /// Get the number of processing slots.
     pub async fn processing_count(&self) -> Result<usize> {
         let slots = self.list().await?;
-        Ok(slots.slots.iter().filter(|s| s.state == SlotState::Processing).count())
+        Ok(slots
+            .slots
+            .iter()
+            .filter(|s| s.state == SlotState::Processing)
+            .count())
     }
 
     /// Get the available (idle) slots.
     pub async fn available(&self) -> Result<Vec<SlotInfo>> {
         let slots = self.list().await?;
-        Ok(slots.slots.into_iter().filter(|s| s.state == SlotState::Idle).collect())
+        Ok(slots
+            .slots
+            .into_iter()
+            .filter(|s| s.state == SlotState::Idle)
+            .collect())
     }
 
     /// Check if there are any available slots.

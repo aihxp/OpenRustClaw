@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use tracing::{debug, trace};
 
-use crate::auth::{service_endpoint, Service, SigV4Signer};
+use crate::auth::{Service, SigV4Signer, service_endpoint};
 
 use crate::error::{BedrockError, Result};
 use crate::types::{
@@ -24,9 +24,9 @@ mod response;
 
 pub use request::ConverseRequest;
 pub use response::{
-    ConverseResponse, ConverseStreamResponse, ConverseTrace, ContentBlockStart, GuardrailTrace,
-    Message as ConverseMessage, Metrics, Output, StreamCollector, StreamEvent as ConverseStreamEvent,
-    StreamMessageStart, StreamMetadata,
+    ContentBlockStart, ConverseResponse, ConverseStreamResponse, ConverseTrace, GuardrailTrace,
+    Message as ConverseMessage, Metrics, Output, StreamCollector,
+    StreamEvent as ConverseStreamEvent, StreamMessageStart, StreamMetadata,
 };
 
 /// Client for the Converse API.
@@ -45,11 +45,7 @@ struct ConverseClientInner {
 
 impl ConverseClient {
     /// Create a new Converse API client.
-    pub fn new(
-        http: reqwest::Client,
-        region: crate::auth::Region,
-        signer: SigV4Signer,
-    ) -> Self {
+    pub fn new(http: reqwest::Client, region: crate::auth::Region, signer: SigV4Signer) -> Self {
         let endpoint = service_endpoint(Service::BedrockRuntime, &region);
 
         Self {
@@ -102,11 +98,10 @@ impl ConverseClient {
             return Err(BedrockError::from_response(response).await);
         }
 
-        let response_body: ConverseResponse = response.json().await.map_err(|e| {
-            BedrockError::Internal {
+        let response_body: ConverseResponse =
+            response.json().await.map_err(|e| BedrockError::Internal {
                 message: format!("Failed to parse response: {e}"),
-            }
-        })?;
+            })?;
 
         debug!("Converse request completed successfully");
 
@@ -164,41 +159,38 @@ impl ConverseClient {
             return Err(BedrockError::from_response(response).await);
         }
 
-        let stream = response
-            .bytes_stream()
-            .eventsource()
-            .map(|event| {
-                match event {
-                    Ok(event) => {
-                        trace!(event_type = %event.event, "Received stream event");
-                        
-                        // Handle different event types
-                        match event.event.as_str() {
-                            "messageStart" | "contentBlockStart" | "contentBlockDelta" 
-                            | "contentBlockStop" | "messageStop" | "metadata" => {
-                                match serde_json::from_str::<StreamEvent>(&event.data) {
-                                    Ok(stream_event) => Ok(stream_event),
-                                    Err(e) => Err(BedrockError::Stream {
-                                        message: format!("Failed to parse stream event: {e}"),
-                                    }),
-                                }
+        let stream = response.bytes_stream().eventsource().map(|event| {
+            match event {
+                Ok(event) => {
+                    trace!(event_type = %event.event, "Received stream event");
+
+                    // Handle different event types
+                    match event.event.as_str() {
+                        "messageStart" | "contentBlockStart" | "contentBlockDelta"
+                        | "contentBlockStop" | "messageStop" | "metadata" => {
+                            match serde_json::from_str::<StreamEvent>(&event.data) {
+                                Ok(stream_event) => Ok(stream_event),
+                                Err(e) => Err(BedrockError::Stream {
+                                    message: format!("Failed to parse stream event: {e}"),
+                                }),
                             }
-                            _ => {
-                                // Unknown event type, try to parse anyway
-                                match serde_json::from_str::<StreamEvent>(&event.data) {
-                                    Ok(stream_event) => Ok(stream_event),
-                                    Err(_) => Err(BedrockError::Stream {
-                                        message: format!("Unknown event type: {}", event.event),
-                                    }),
-                                }
+                        }
+                        _ => {
+                            // Unknown event type, try to parse anyway
+                            match serde_json::from_str::<StreamEvent>(&event.data) {
+                                Ok(stream_event) => Ok(stream_event),
+                                Err(_) => Err(BedrockError::Stream {
+                                    message: format!("Unknown event type: {}", event.event),
+                                }),
                             }
                         }
                     }
-                    Err(e) => Err(BedrockError::Stream {
-                        message: format!("Stream error: {e}"),
-                    }),
                 }
-            });
+                Err(e) => Err(BedrockError::Stream {
+                    message: format!("Stream error: {e}"),
+                }),
+            }
+        });
 
         Ok(stream)
     }
@@ -218,9 +210,7 @@ impl ConverseClient {
         // In a real implementation, this would fetch the conversation history
         // from a store using the conversation_id, add the new message, and invoke.
         // For now, we create a new request with just the new message.
-        let request = ConverseRequest::builder(model_id)
-            .message(message)
-            .build();
+        let request = ConverseRequest::builder(model_id).message(message).build();
 
         self.invoke(request).await
     }
@@ -268,7 +258,11 @@ impl ConverseRequestBuilder {
     }
 
     /// Add a text message with the given role.
-    pub fn text_message(mut self, role: crate::types::ConversationRole, text: impl Into<String>) -> Self {
+    pub fn text_message(
+        mut self,
+        role: crate::types::ConversationRole,
+        text: impl Into<String>,
+    ) -> Self {
         self.messages.push(Message::text(role, text));
         self
     }
@@ -429,8 +423,11 @@ mod tests {
 
     #[test]
     fn test_converse_request_builder_with_tools() {
-        let tool = Tool::new("calculator", "A calculator tool")
-            .with_property("expression", "string", "Math expression");
+        let tool = Tool::new("calculator", "A calculator tool").with_property(
+            "expression",
+            "string",
+            "Math expression",
+        );
 
         let request = ConverseRequest::builder("anthropic.claude-3-sonnet-20240229-v1:0")
             .user_message("Calculate 2+2")

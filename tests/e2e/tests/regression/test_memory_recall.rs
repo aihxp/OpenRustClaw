@@ -2,10 +2,10 @@
 //!
 //! Comprehensive tests for memory storage, retrieval, and eviction.
 
-use openrustclaw_e2e_tests::common::*;
 #[allow(unused_imports)]
 use openrustclaw_core::traits::MemoryStore;
 use openrustclaw_core::types::{MemoryQuery, MemoryType};
+use openrustclaw_e2e_tests::common::*;
 #[allow(unused_imports)]
 use uuid::Uuid;
 
@@ -146,7 +146,10 @@ async fn test_memory_under_load() {
         search_time
     );
 
-    println!("Stored 100 memories in {:?}, searched in {:?}", store_time, search_time);
+    println!(
+        "Stored 100 memories in {:?}, searched in {:?}",
+        store_time, search_time
+    );
 }
 
 /// Test: Memory access counting

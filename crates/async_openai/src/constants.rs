@@ -115,9 +115,7 @@ impl Model {
     pub fn is_embedding(&self) -> bool {
         matches!(
             self,
-            Model::TextEmbedding3Small
-                | Model::TextEmbedding3Large
-                | Model::TextEmbeddingAda002
+            Model::TextEmbedding3Small | Model::TextEmbedding3Large | Model::TextEmbeddingAda002
         )
     }
 }

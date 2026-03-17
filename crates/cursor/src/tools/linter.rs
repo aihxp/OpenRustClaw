@@ -3,8 +3,8 @@
 use crate::error::{CursorError, Result};
 use crate::types::{CursorTool, Diagnostic, Severity};
 use async_trait::async_trait;
-use serde_json::{json, Value};
-use std::path::PathBuf;
+use serde_json::{Value, json};
+use std::path::Path;
 use tokio::process::Command;
 use tracing::{error, info, warn};
 
@@ -62,71 +62,82 @@ impl CursorTool for RunLinterTool {
             .and_then(|a| a.as_bool())
             .unwrap_or(true);
 
-        let project_root = std::env::current_dir().map_err(|e| CursorError::Linter(e.to_string()))?;
+        let project_root =
+            std::env::current_dir().map_err(|e| CursorError::Linter(e.to_string()))?;
 
         info!("Running linter: {} (fix: {})", tool_name, fix);
 
-        let (command, args, parser): (String, Vec<String>, fn(&str, &PathBuf) -> Vec<Diagnostic>) = match tool_name {
-            "clippy" => {
-                let mut args = vec!["clippy".to_string()];
-                if all_targets {
-                    args.push("--all-targets".to_string());
+        let (command, args, parser): (String, Vec<String>, fn(&str, &Path) -> Vec<Diagnostic>) =
+            match tool_name {
+                "clippy" => {
+                    let mut args = vec!["clippy".to_string()];
+                    if all_targets {
+                        args.push("--all-targets".to_string());
+                    }
+                    args.push("--message-format=short".to_string());
+                    if fix {
+                        args.push("--fix".to_string());
+                        args.push("--allow-dirty".to_string());
+                    }
+                    if let Some(p) = path {
+                        args.push("-p".to_string());
+                        args.push(p.to_string());
+                    }
+                    ("cargo".to_string(), args, parse_cargo_diagnostics)
                 }
-                args.push("--message-format=short".to_string());
-                if fix {
-                    args.push("--fix".to_string());
-                    args.push("--allow-dirty".to_string());
+                "cargo-check" => {
+                    let mut args = vec!["check".to_string()];
+                    if all_targets {
+                        args.push("--all-targets".to_string());
+                    }
+                    args.push("--message-format=short".to_string());
+                    if let Some(p) = path {
+                        args.push("-p".to_string());
+                        args.push(p.to_string());
+                    }
+                    ("cargo".to_string(), args, parse_cargo_diagnostics)
                 }
-                if let Some(p) = path {
-                    args.push("-p".to_string());
-                    args.push(p.to_string());
+                "cargo-test" => {
+                    let mut args = vec!["test".to_string(), "--no-run".to_string()];
+                    args.push("--message-format=short".to_string());
+                    ("cargo".to_string(), args, parse_cargo_diagnostics)
                 }
-                ("cargo".to_string(), args, parse_cargo_diagnostics)
-            }
-            "cargo-check" => {
-                let mut args = vec!["check".to_string()];
-                if all_targets {
-                    args.push("--all-targets".to_string());
+                "eslint" => {
+                    let mut args = vec![".".to_string()];
+                    if fix {
+                        args.push("--fix".to_string());
+                    }
+                    if let Some(p) = path {
+                        args.push(p.to_string());
+                    }
+                    (
+                        "npx".to_string(),
+                        vec!["eslint".to_string()],
+                        parse_eslint_diagnostics,
+                    )
                 }
-                args.push("--message-format=short".to_string());
-                if let Some(p) = path {
-                    args.push("-p".to_string());
-                    args.push(p.to_string());
+                "prettier" => {
+                    #[allow(clippy::useless_vec)]
+                    let mut args = vec!["--check".to_string(), ".".to_string()];
+                    if fix {
+                        args[0] = "--write".to_string();
+                    }
+                    if let Some(p) = path {
+                        args[1] = p.to_string();
+                    }
+                    (
+                        "npx".to_string(),
+                        vec!["prettier".to_string()],
+                        parse_prettier_diagnostics,
+                    )
                 }
-                ("cargo".to_string(), args, parse_cargo_diagnostics)
-            }
-            "cargo-test" => {
-                let mut args = vec!["test".to_string(), "--no-run".to_string()];
-                args.push("--message-format=short".to_string());
-                ("cargo".to_string(), args, parse_cargo_diagnostics)
-            }
-            "eslint" => {
-                let mut args = vec![".".to_string()];
-                if fix {
-                    args.push("--fix".to_string());
+                _ => {
+                    return Err(CursorError::Linter(format!(
+                        "Unknown linter tool: {}",
+                        tool_name
+                    )));
                 }
-                if let Some(p) = path {
-                    args.push(p.to_string());
-                }
-                ("npx".to_string(), vec!["eslint".to_string()], parse_eslint_diagnostics)
-            }
-            "prettier" => {
-                let mut args = vec!["--check".to_string(), ".".to_string()];
-                if fix {
-                    args[0] = "--write".to_string();
-                }
-                if let Some(p) = path {
-                    args[1] = p.to_string();
-                }
-                ("npx".to_string(), vec!["prettier".to_string()], parse_prettier_diagnostics)
-            }
-            _ => {
-                return Err(CursorError::Linter(format!(
-                    "Unknown linter tool: {}",
-                    tool_name
-                )))
-            }
-        };
+            };
 
         let output = Command::new(&command)
             .args(&args)
@@ -146,8 +157,14 @@ impl CursorTool for RunLinterTool {
         let diagnostics = parser(&combined, &project_root);
 
         // Count by severity
-        let error_count = diagnostics.iter().filter(|d| matches!(d.severity, Severity::Error)).count();
-        let warning_count = diagnostics.iter().filter(|d| matches!(d.severity, Severity::Warning)).count();
+        let error_count = diagnostics
+            .iter()
+            .filter(|d| matches!(d.severity, Severity::Error))
+            .count();
+        let warning_count = diagnostics
+            .iter()
+            .filter(|d| matches!(d.severity, Severity::Warning))
+            .count();
 
         info!(
             "Linter {} completed: {} errors, {} warnings",
@@ -210,9 +227,13 @@ impl CursorTool for FormatCodeTool {
             .and_then(|l| l.as_str())
             .unwrap_or("rust");
         let path = params.get("path").and_then(|p| p.as_str());
-        let check = params.get("check").and_then(|c| c.as_bool()).unwrap_or(false);
+        let check = params
+            .get("check")
+            .and_then(|c| c.as_bool())
+            .unwrap_or(false);
 
-        let project_root = std::env::current_dir().map_err(|e| CursorError::Linter(e.to_string()))?;
+        let project_root =
+            std::env::current_dir().map_err(|e| CursorError::Linter(e.to_string()))?;
 
         info!("Formatting code: {} (check: {})", language, check);
 
@@ -240,7 +261,11 @@ impl CursorTool for FormatCodeTool {
                 ("npx".to_string(), args)
             }
             "json" => {
-                let mut args = vec!["prettier".to_string(), "--parser".to_string(), "json".to_string()];
+                let mut args = vec![
+                    "prettier".to_string(),
+                    "--parser".to_string(),
+                    "json".to_string(),
+                ];
                 if check {
                     args.push("--check".to_string());
                 } else {
@@ -250,7 +275,11 @@ impl CursorTool for FormatCodeTool {
                 ("npx".to_string(), args)
             }
             "yaml" => {
-                let mut args = vec!["prettier".to_string(), "--parser".to_string(), "yaml".to_string()];
+                let mut args = vec![
+                    "prettier".to_string(),
+                    "--parser".to_string(),
+                    "yaml".to_string(),
+                ];
                 if check {
                     args.push("--check".to_string());
                 } else {
@@ -263,7 +292,7 @@ impl CursorTool for FormatCodeTool {
                 return Err(CursorError::Linter(format!(
                     "Unsupported language for formatting: {}",
                     language
-                )))
+                )));
             }
         };
 
@@ -300,33 +329,33 @@ impl CursorTool for FormatCodeTool {
 }
 
 /// Parse cargo/clippy diagnostics from output.
-fn parse_cargo_diagnostics(output: &str, project_root: &PathBuf) -> Vec<Diagnostic> {
+fn parse_cargo_diagnostics(output: &str, project_root: &Path) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
     let re = regex::Regex::new(r"^(.*):(\d+):(\d+):\s*(error|warning|note|help):\s*(.*)$").ok();
 
     for line in output.lines() {
-        if let Some(ref regex) = re {
-            if let Some(caps) = regex.captures(line) {
-                let file_path = project_root.join(&caps[1]);
-                let line_num: usize = caps[2].parse().unwrap_or(1);
-                let col: usize = caps[3].parse().unwrap_or(1);
-                let severity = match &caps[4] {
-                    "error" => Severity::Error,
-                    "warning" => Severity::Warning,
-                    _ => Severity::Information,
-                };
-                let message = caps[5].to_string();
+        if let Some(ref regex) = re
+            && let Some(caps) = regex.captures(line)
+        {
+            let file_path = project_root.join(&caps[1]);
+            let line_num: usize = caps[2].parse().unwrap_or(1);
+            let col: usize = caps[3].parse().unwrap_or(1);
+            let severity = match &caps[4] {
+                "error" => Severity::Error,
+                "warning" => Severity::Warning,
+                _ => Severity::Information,
+            };
+            let message = caps[5].to_string();
 
-                diagnostics.push(Diagnostic {
-                    file_path,
-                    severity,
-                    message,
-                    source: "cargo".to_string(),
-                    line: line_num.saturating_sub(1), // Convert to 0-indexed
-                    column: col.saturating_sub(1),
-                    code: None,
-                });
-            }
+            diagnostics.push(Diagnostic {
+                file_path,
+                severity,
+                message,
+                source: "cargo".to_string(),
+                line: line_num.saturating_sub(1), // Convert to 0-indexed
+                column: col.saturating_sub(1),
+                code: None,
+            });
         }
     }
 
@@ -334,34 +363,34 @@ fn parse_cargo_diagnostics(output: &str, project_root: &PathBuf) -> Vec<Diagnost
 }
 
 /// Parse ESLint diagnostics.
-fn parse_eslint_diagnostics(output: &str, project_root: &PathBuf) -> Vec<Diagnostic> {
+fn parse_eslint_diagnostics(output: &str, project_root: &Path) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
     // ESLint output format: /path/to/file.js:line:col: severity message
     let re = regex::Regex::new(r"^\s*(.+):(\d+):(\d+):\s*(error|warning|warn)\s+(.*)$").ok();
 
     for line in output.lines() {
-        if let Some(ref regex) = re {
-            if let Some(caps) = regex.captures(line) {
-                let file_path = project_root.join(&caps[1]);
-                let line_num: usize = caps[2].parse().unwrap_or(1);
-                let col: usize = caps[3].parse().unwrap_or(1);
-                let severity = match &caps[4] {
-                    "error" => Severity::Error,
-                    "warning" | "warn" => Severity::Warning,
-                    _ => Severity::Information,
-                };
-                let message = caps[5].to_string();
+        if let Some(ref regex) = re
+            && let Some(caps) = regex.captures(line)
+        {
+            let file_path = project_root.join(&caps[1]);
+            let line_num: usize = caps[2].parse().unwrap_or(1);
+            let col: usize = caps[3].parse().unwrap_or(1);
+            let severity = match &caps[4] {
+                "error" => Severity::Error,
+                "warning" | "warn" => Severity::Warning,
+                _ => Severity::Information,
+            };
+            let message = caps[5].to_string();
 
-                diagnostics.push(Diagnostic {
-                    file_path,
-                    severity,
-                    message,
-                    source: "eslint".to_string(),
-                    line: line_num.saturating_sub(1),
-                    column: col.saturating_sub(1),
-                    code: None,
-                });
-            }
+            diagnostics.push(Diagnostic {
+                file_path,
+                severity,
+                message,
+                source: "eslint".to_string(),
+                line: line_num.saturating_sub(1),
+                column: col.saturating_sub(1),
+                code: None,
+            });
         }
     }
 
@@ -369,26 +398,26 @@ fn parse_eslint_diagnostics(output: &str, project_root: &PathBuf) -> Vec<Diagnos
 }
 
 /// Parse prettier diagnostics.
-fn parse_prettier_diagnostics(output: &str, project_root: &PathBuf) -> Vec<Diagnostic> {
+fn parse_prettier_diagnostics(output: &str, project_root: &Path) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
     // Prettier check output: [warn] path/to/file.js
     let re = regex::Regex::new(r"\[warn\]\s*(.+)$").ok();
 
     for line in output.lines() {
-        if let Some(ref regex) = re {
-            if let Some(caps) = regex.captures(line) {
-                let file_path = project_root.join(&caps[1]);
+        if let Some(ref regex) = re
+            && let Some(caps) = regex.captures(line)
+        {
+            let file_path = project_root.join(&caps[1]);
 
-                diagnostics.push(Diagnostic {
-                    file_path,
-                    severity: Severity::Warning,
-                    message: "Code style issues found (prettier)".to_string(),
-                    source: "prettier".to_string(),
-                    line: 0,
-                    column: 0,
-                    code: None,
-                });
-            }
+            diagnostics.push(Diagnostic {
+                file_path,
+                severity: Severity::Warning,
+                message: "Code style issues found (prettier)".to_string(),
+                source: "prettier".to_string(),
+                line: 0,
+                column: 0,
+                code: None,
+            });
         }
     }
 
@@ -419,6 +448,7 @@ fn input_validation_error(tool: impl Into<String>, message: impl Into<String>) -
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
     #[test]
     fn test_parse_cargo_diagnostics() {

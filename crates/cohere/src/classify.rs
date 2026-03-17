@@ -68,10 +68,7 @@ impl ClassifyRequest {
 
     /// Create a few-shot classification request.
     pub fn few_shot(inputs: Vec<String>, examples: Vec<Example>) -> Self {
-        Self::builder()
-            .inputs(inputs)
-            .examples(examples)
-            .build()
+        Self::builder().inputs(inputs).examples(examples).build()
     }
 
     /// Create a zero-shot classification request (v3 models).
@@ -142,7 +139,9 @@ impl ClassifyRequestBuilder {
 
     /// Add a label ID (for zero-shot).
     pub fn add_label(mut self, label: impl Into<String>) -> Self {
-        self.label_ids.get_or_insert_with(Vec::new).push(label.into());
+        self.label_ids
+            .get_or_insert_with(Vec::new)
+            .push(label.into());
         self
     }
 
@@ -320,17 +319,15 @@ mod tests {
     #[test]
     fn test_response_helpers() {
         let response = ClassifyResponse {
-            classifications: vec![
-                Classification {
-                    input: "test".to_string(),
-                    prediction: "positive".to_string(),
-                    confidence: 0.95,
-                    labels: serde_json::json!({
-                        "positive": 0.95,
-                        "negative": 0.05
-                    }),
-                },
-            ],
+            classifications: vec![Classification {
+                input: "test".to_string(),
+                prediction: "positive".to_string(),
+                confidence: 0.95,
+                labels: serde_json::json!({
+                    "positive": 0.95,
+                    "negative": 0.05
+                }),
+            }],
             meta: None,
         };
 

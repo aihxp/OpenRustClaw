@@ -27,11 +27,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .expect("AZURE_OPENAI_DEPLOYMENT environment variable not set");
 
     // Create the client
-    let client = AzureOpenAIClient::new(
-        &resource_name,
-        &deployment_name,
-        api_key.clone(),
-    )?;
+    let client = AzureOpenAIClient::new(&resource_name, &deployment_name, api_key.clone())?;
 
     println!("Azure OpenAI Assistants API Example\n");
 
@@ -54,9 +50,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Add a message to the thread
     println!("\n3. Adding Message...");
-    let message_request = ThreadMessageRequest::user(
-        "I need to solve the equation 3x + 11 = 14. Can you help me?"
-    );
+    let message_request =
+        ThreadMessageRequest::user("I need to solve the equation 3x + 11 = 14. Can you help me?");
     let message = client
         .assistants()
         .create_message(&thread.id, message_request)
@@ -67,7 +62,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create a run
     println!("\n4. Creating Run...");
     let run_request = RunRequest::new(&assistant.id);
-    let run = client.assistants().create_run(&thread.id, run_request).await?;
+    let run = client
+        .assistants()
+        .create_run(&thread.id, run_request)
+        .await?;
     println!("   Run ID: {}", run.id);
     println!("   Status: {:?}", run.status);
 
@@ -76,14 +74,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut current_run = run;
     loop {
         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-        
+
         current_run = client
             .assistants()
             .retrieve_run(&thread.id, &current_run.id)
             .await?;
-        
+
         println!("   Status: {:?}", current_run.status);
-        
+
         match current_run.status {
             RunStatus::Completed => break,
             RunStatus::Failed | RunStatus::Cancelled | RunStatus::Expired => {
@@ -97,7 +95,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Retrieve messages
     println!("\n6. Retrieving Messages...");
     let messages = client.assistants().list_messages(&thread.id).await?;
-    
+
     for msg in messages.data.iter().rev() {
         println!("\n   {}: ", msg.role);
         for content in &msg.content {
@@ -116,7 +114,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n7. Cleaning up...");
     client.assistants().delete_thread(&thread.id).await?;
     println!("   Thread deleted");
-    
+
     client.assistants().delete(&assistant.id).await?;
     println!("   Assistant deleted");
 

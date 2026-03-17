@@ -27,31 +27,35 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .expect("AZURE_OPENAI_DEPLOYMENT environment variable not set");
 
     // Create the client
-    let client = AzureOpenAIClient::new(
-        &resource_name,
-        &deployment_name,
-        api_key.clone(),
-    )?;
+    let client = AzureOpenAIClient::new(&resource_name, &deployment_name, api_key.clone())?;
 
     println!("Azure OpenAI Content Safety Example\n");
 
     // Test different types of content
     let test_cases = vec![
-        ("Safe content", "The weather is nice today. I enjoy going for walks in the park."),
-        ("Potentially problematic", "I hate everyone who disagrees with me."),
-        ("Programming content", "How do I write a function in Rust to parse JSON?"),
+        (
+            "Safe content",
+            "The weather is nice today. I enjoy going for walks in the park.",
+        ),
+        (
+            "Potentially problematic",
+            "I hate everyone who disagrees with me.",
+        ),
+        (
+            "Programming content",
+            "How do I write a function in Rust to parse JSON?",
+        ),
     ];
 
     for (name, text) in test_cases {
         println!("\n{}: '{}'", name, truncate(text, 50));
-        
-        let request = TextAnalysisRequest::new(text)
-            .categories(vec![
-                HarmCategory::Hate,
-                HarmCategory::SelfHarm,
-                HarmCategory::Sexual,
-                HarmCategory::Violence,
-            ]);
+
+        let request = TextAnalysisRequest::new(text).categories(vec![
+            HarmCategory::Hate,
+            HarmCategory::SelfHarm,
+            HarmCategory::Sexual,
+            HarmCategory::Violence,
+        ]);
 
         match client.content_safety().analyze_text(request).await {
             Ok(response) => {
@@ -75,9 +79,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     if !blocklists.is_empty() {
                         println!("   Blocklist matches:");
                         for blocklist in blocklists {
-                            println!("     - {}: {}", 
-                                blocklist.blocklist_name, 
-                                blocklist.blocklist_item_text
+                            println!(
+                                "     - {}: {}",
+                                blocklist.blocklist_name, blocklist.blocklist_item_text
                             );
                         }
                     }
@@ -91,10 +95,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Demonstrate threshold comparison
     println!("\n\nThreshold Comparison:");
-    
+
     let test_text = "This is a sample text for testing thresholds.";
     let request = TextAnalysisRequest::new(test_text);
-    
+
     if let Ok(response) = client.content_safety().analyze_text(request).await {
         let thresholds_configs = vec![
             ("Most Restrictive", SafetyThresholds::most_restrictive()),
@@ -131,8 +135,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     println!("   Was filtered: {}", filter_details.was_filtered());
-    println!("   Highest severity: {:?}", filter_details.highest_severity());
-    
+    println!(
+        "   Highest severity: {:?}",
+        filter_details.highest_severity()
+    );
+
     let report = utils::format_filter_report(&filter_details);
     println!("   Report: {}", report);
 

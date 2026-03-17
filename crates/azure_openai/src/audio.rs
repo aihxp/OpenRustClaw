@@ -115,18 +115,16 @@ impl<'a> Audio<'a> {
     }
 
     /// Build multipart form for audio upload.
-    async fn build_form(
-        &self,
-        request: &TranscriptionRequest,
-    ) -> Result<reqwest::multipart::Form> {
+    async fn build_form(&self, request: &TranscriptionRequest) -> Result<reqwest::multipart::Form> {
         let mut form = reqwest::multipart::Form::new();
 
         // Read the file
-        let file_bytes = tokio::fs::read(&request.file_path)
-            .await
-            .map_err(|e| AzureOpenAIError::Config {
-                message: format!("Failed to read audio file: {e}"),
-            })?;
+        let file_bytes =
+            tokio::fs::read(&request.file_path)
+                .await
+                .map_err(|e| AzureOpenAIError::Config {
+                    message: format!("Failed to read audio file: {e}"),
+                })?;
 
         let file_name = std::path::Path::new(&request.file_path)
             .file_name()

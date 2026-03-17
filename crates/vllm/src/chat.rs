@@ -3,9 +3,7 @@
 use crate::client::VllmClient;
 use crate::constants::endpoints;
 use crate::error::Result;
-use crate::types::{
-    ChatMessage, ChatResponse, ResponseFormat, Role, Tool, ToolChoice,
-};
+use crate::types::{ChatMessage, ChatResponse, ResponseFormat, Role, Tool, ToolChoice};
 
 /// Client for chat completions.
 #[derive(Debug)]

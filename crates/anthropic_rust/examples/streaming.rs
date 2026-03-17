@@ -12,8 +12,8 @@ use anthropic_rust::{AnthropicClient, MessageRequest, StreamEvent};
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Load API key from environment
-    let api_key = std::env::var("ANTHROPIC_API_KEY")
-        .expect("ANTHROPIC_API_KEY environment variable not set");
+    let api_key =
+        std::env::var("ANTHROPIC_API_KEY").expect("ANTHROPIC_API_KEY environment variable not set");
 
     // Create client
     let client = AnthropicClient::new(api_key)?;
@@ -46,7 +46,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
             }
-            StreamEvent::ContentBlockStart { index, content_block } => {
+            StreamEvent::ContentBlockStart {
+                index,
+                content_block,
+            } => {
                 println!("\n[Content block {} started: {:?}]", index, content_block);
             }
             StreamEvent::ContentBlockStop { index } => {

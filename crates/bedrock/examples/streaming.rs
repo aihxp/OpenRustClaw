@@ -12,8 +12,8 @@
 //! cargo run --example streaming
 //! ```
 
-use futures::StreamExt;
 use aws_bedrock::{BedrockClient, ConverseRequest, StreamEvent};
+use futures::StreamExt;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

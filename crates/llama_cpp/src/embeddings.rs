@@ -41,10 +41,7 @@ impl<'a> Embeddings<'a> {
     }
 
     /// Embed multiple texts in batch.
-    pub async fn embed_batch(
-        &self,
-        contents: Vec<String>,
-    ) -> Result<Vec<EmbeddingResponse>> {
+    pub async fn embed_batch(&self, contents: Vec<String>) -> Result<Vec<EmbeddingResponse>> {
         let mut results = Vec::with_capacity(contents.len());
         for content in contents {
             results.push(self.embed_text(content).await?);
@@ -206,7 +203,10 @@ mod tests {
 
         assert_eq!(request.add_special, Some(true));
         assert_eq!(request.normalize, Some(false));
-        assert_eq!(request.truncation_direction, Some(TruncationDirection::Start));
+        assert_eq!(
+            request.truncation_direction,
+            Some(TruncationDirection::Start)
+        );
     }
 
     #[test]

@@ -42,15 +42,15 @@ pub mod routing;
 pub mod streaming;
 pub mod types;
 
-pub use client::{OpenRouterClient, ClientConfig};
+pub use client::{ClientConfig, OpenRouterClient};
 pub use constants::*;
 pub use error::{OpenRouterError, Result};
 
 // Re-export commonly used types
-pub use types::{ChatChoice, ChatMessage, ChatResponse, Role, TokenUsage, Tool, ToolCall};
 pub use chat::{ChatRequest, ChatRequestBuilder};
-pub use routing::RouteStrategy;
 pub use models::ModelInfo;
+pub use routing::RouteStrategy;
+pub use types::{ChatChoice, ChatMessage, ChatResponse, Role, TokenUsage, Tool, ToolCall};
 
 #[cfg(feature = "streaming")]
 pub use streaming::{ChatCompletionChunk, StreamChoice};

@@ -42,21 +42,18 @@ impl<'a> Chat<'a> {
         request: ChatRequest,
     ) -> Result<crate::streaming::ChatCompletionStream> {
         use crate::streaming::ChatCompletionStream;
-        
+
         let mut request = request;
         request.stream = Some(true);
-        
+
         let body = serde_json::to_value(&request)?;
-        
-        let response = self
-            .client
-            .post(endpoints::CHAT_COMPLETIONS, body)
-            .await?;
-        
+
+        let response = self.client.post(endpoints::CHAT_COMPLETIONS, body).await?;
+
         if !response.status().is_success() {
             return Err(crate::error::FireworksError::from_response(response).await);
         }
-        
+
         Ok(ChatCompletionStream::new(response))
     }
 }
@@ -129,9 +126,7 @@ impl ChatRequest {
 
     /// Create a simple request.
     pub fn simple(model: impl Into<String>, message: impl Into<String>) -> Self {
-        Self::builder(model)
-            .message(Role::User, message)
-            .build()
+        Self::builder(model).message(Role::User, message).build()
     }
 }
 
@@ -210,7 +205,11 @@ impl ChatRequestBuilder {
     }
 
     /// Add a tool message.
-    pub fn tool_message(mut self, tool_call_id: impl Into<String>, content: impl Into<String>) -> Self {
+    pub fn tool_message(
+        mut self,
+        tool_call_id: impl Into<String>,
+        content: impl Into<String>,
+    ) -> Self {
         self.messages.push(ChatMessage::tool(tool_call_id, content));
         self
     }

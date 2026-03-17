@@ -170,6 +170,9 @@ mod tests {
 
     #[test]
     fn test_default_base_url() {
-        assert_eq!(client::DEFAULT_BASE_URL, "https://api.fireworks.ai/inference/v1");
+        assert_eq!(
+            client::DEFAULT_BASE_URL,
+            "https://api.fireworks.ai/inference/v1"
+        );
     }
 }

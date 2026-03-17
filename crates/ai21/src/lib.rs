@@ -123,8 +123,8 @@ pub mod tokenize;
 
 pub use client::{Ai21Client, ClientConfig};
 pub use constants::{
-    endpoints, headers, retry, JambaModel, JurassicModel, Model, DEFAULT_API_VERSION,
-    DEFAULT_BASE_URL,
+    DEFAULT_API_VERSION, DEFAULT_BASE_URL, JambaModel, JurassicModel, Model, endpoints, headers,
+    retry,
 };
 pub use error::{Ai21Error, Result};
 
@@ -159,7 +159,7 @@ pub use tokenize::{
 };
 
 #[cfg(feature = "streaming")]
-pub use streaming::{StreamEvent, StreamCollector, StreamResult};
+pub use streaming::{StreamCollector, StreamEvent, StreamResult};
 
 /// The version of this crate.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

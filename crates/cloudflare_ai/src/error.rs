@@ -123,9 +123,15 @@ impl fmt::Display for CloudflareAiError {
             CloudflareAiError::Authentication { message } => {
                 write!(f, "Authentication failed: {message}")
             }
-            CloudflareAiError::RateLimit { retry_after, message } => {
+            CloudflareAiError::RateLimit {
+                retry_after,
+                message,
+            } => {
                 if let Some(duration) = retry_after {
-                    write!(f, "Rate limit exceeded (retry after {duration:?}): {message}")
+                    write!(
+                        f,
+                        "Rate limit exceeded (retry after {duration:?}): {message}"
+                    )
                 } else {
                     write!(f, "Rate limit exceeded: {message}")
                 }
@@ -140,7 +146,11 @@ impl fmt::Display for CloudflareAiError {
             CloudflareAiError::ModelNotFound { model } => {
                 write!(f, "Model not found: {model}")
             }
-            CloudflareAiError::Api { status, code, message } => {
+            CloudflareAiError::Api {
+                status,
+                code,
+                message,
+            } => {
                 if let Some(c) = code {
                     write!(f, "API error ({status} - code {c}): {message}")
                 } else {
@@ -162,7 +172,10 @@ impl fmt::Display for CloudflareAiError {
             CloudflareAiError::Timeout { operation } => {
                 write!(f, "Timeout during {operation}")
             }
-            CloudflareAiError::RetryExhausted { attempts, last_error } => {
+            CloudflareAiError::RetryExhausted {
+                attempts,
+                last_error,
+            } => {
                 write!(f, "Retry exhausted after {attempts} attempts: {last_error}")
             }
             CloudflareAiError::NotFound { resource, id } => {
@@ -259,7 +272,10 @@ impl CloudflareAiError {
         if let Ok(error_json) = serde_json::from_str::<serde_json::Value>(&body) {
             if let Some(errors) = error_json.get("errors").and_then(|v| v.as_array()) {
                 if let Some(first_error) = errors.first() {
-                    let code = first_error.get("code").and_then(|v| v.as_u64()).map(|c| c as u32);
+                    let code = first_error
+                        .get("code")
+                        .and_then(|v| v.as_u64())
+                        .map(|c| c as u32);
                     let message = first_error
                         .get("message")
                         .and_then(|v| v.as_str())
@@ -273,7 +289,7 @@ impl CloudflareAiError {
                             return CloudflareAiError::RateLimit {
                                 retry_after: None,
                                 message,
-                            }
+                            };
                         }
                         _ => {
                             if status == reqwest::StatusCode::UNAUTHORIZED {

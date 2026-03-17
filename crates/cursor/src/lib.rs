@@ -41,14 +41,14 @@
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! // Create client
 //! let client = CursorClient::with_defaults();
-//! 
+//!
 //! // Connect to Cursor IDE
 //! let mut conn = client.connect().await?;
-//! 
+//!
 //! // Get IDE state
 //! let state = conn.get_state().await?;
 //! println!("Active file: {:?}", state.active_file);
-//! 
+//!
 //! // Search code
 //! let matches = conn.search_code("fn main").await?;
 //! println!("Found {} matches", matches.len());
@@ -92,18 +92,18 @@ pub mod tools;
 pub mod types;
 
 // Re-export commonly used types
-pub use acp::{AcpCapabilities, AcpMessage, AcpProtocol, ACP_PROTOCOL_VERSION};
+pub use acp::{ACP_PROTOCOL_VERSION, AcpCapabilities, AcpMessage, AcpProtocol};
 pub use client::{ClientConnection, CursorClient, CursorConnection};
 pub use error::{CursorError, Result};
 pub use server::{CursorServer, CursorServerConfig, ServerTransport};
-pub use tools::{ToolRegistry};
+pub use tools::ToolRegistry;
 pub use types::{
-    CursorConfig, CursorPosition, Diagnostic, GitState, GitStatus, IdeState, Selection, Severity,
-    ToolContext, CursorTool,
+    CursorConfig, CursorPosition, CursorTool, Diagnostic, GitState, GitStatus, IdeState, Selection,
+    Severity, ToolContext,
 };
 
 use serde_json::Value;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Generate MCP (Model Context Protocol) configuration for Cursor.
 ///
@@ -190,16 +190,22 @@ pub async fn setup_cursor_integration(project_root: PathBuf) -> Result<()> {
     // Generate mcp.json
     let mcp_config = generate_mcp_config(project_root.clone(), vec!["*"]);
     let mcp_path = cursor_dir.join("mcp.json");
-    fs::write(&mcp_path, serde_json::to_string_pretty(&mcp_config).unwrap())
-        .await
-        .map_err(|e| CursorError::Config(e.to_string()))?;
+    fs::write(
+        &mcp_path,
+        serde_json::to_string_pretty(&mcp_config).unwrap(),
+    )
+    .await
+    .map_err(|e| CursorError::Config(e.to_string()))?;
 
     // Generate settings.json
     let settings = generate_cursor_settings(project_root.clone());
     let settings_path = cursor_dir.join("settings.json");
-    fs::write(&settings_path, serde_json::to_string_pretty(&settings).unwrap())
-        .await
-        .map_err(|e| CursorError::Config(e.to_string()))?;
+    fs::write(
+        &settings_path,
+        serde_json::to_string_pretty(&settings).unwrap(),
+    )
+    .await
+    .map_err(|e| CursorError::Config(e.to_string()))?;
 
     // Create agent rules file
     let rules_content = generate_agent_rules();
@@ -271,7 +277,7 @@ You are an AI assistant integrated with the OpenRustClaw framework. You have acc
 /// Check if Cursor integration is properly configured.
 ///
 /// Returns a report of the configuration status.
-pub async fn check_cursor_setup(project_root: &PathBuf) -> SetupStatus {
+pub async fn check_cursor_setup(project_root: &Path) -> SetupStatus {
     use tokio::fs;
 
     let cursor_dir = project_root.join(".cursor");
@@ -321,11 +327,31 @@ pub struct SetupStatus {
 impl std::fmt::Display for SetupStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "Cursor Integration Status:")?;
-        writeln!(f, "  .cursor/ directory: {}", if self.has_cursor_dir { "✓" } else { "✗" })?;
-        writeln!(f, "  mcp.json: {}", if self.has_mcp_config { "✓" } else { "✗" })?;
-        writeln!(f, "  settings.json: {}", if self.has_settings { "✓" } else { "✗" })?;
+        writeln!(
+            f,
+            "  .cursor/ directory: {}",
+            if self.has_cursor_dir { "✓" } else { "✗" }
+        )?;
+        writeln!(
+            f,
+            "  mcp.json: {}",
+            if self.has_mcp_config { "✓" } else { "✗" }
+        )?;
+        writeln!(
+            f,
+            "  settings.json: {}",
+            if self.has_settings { "✓" } else { "✗" }
+        )?;
         writeln!(f, "  MCP valid: {}", if self.mcp_valid { "✓" } else { "✗" })?;
-        writeln!(f, "  Overall: {}", if self.all_ready { "✓ Ready" } else { "✗ Not ready" })
+        writeln!(
+            f,
+            "  Overall: {}",
+            if self.all_ready {
+                "✓ Ready"
+            } else {
+                "✗ Not ready"
+            }
+        )
     }
 }
 
@@ -337,17 +363,22 @@ mod tests {
     #[test]
     fn test_generate_mcp_config() {
         let config = generate_mcp_config(PathBuf::from("/test"), vec!["clippy"]);
-        
+
         assert!(config.get("mcpServers").is_some());
         let orc = &config["mcpServers"]["openrustclaw"];
         assert_eq!(orc["command"], "cargo");
-        assert!(orc["args"].as_array().unwrap().contains(&serde_json::json!("cursor")));
+        assert!(
+            orc["args"]
+                .as_array()
+                .unwrap()
+                .contains(&serde_json::json!("cursor"))
+        );
     }
 
     #[test]
     fn test_generate_cursor_settings() {
         let settings = generate_cursor_settings(PathBuf::from("/test"));
-        
+
         assert!(settings.get("cursor").is_some());
         assert!(settings["cursor"]["agent"]["enabled"].as_bool().unwrap());
     }
@@ -387,7 +418,7 @@ mod tests {
             mcp_valid: true,
             all_ready: false,
         };
-        
+
         let display = format!("{}", status);
         assert!(display.contains("Cursor Integration Status"));
         assert!(display.contains("✓"));

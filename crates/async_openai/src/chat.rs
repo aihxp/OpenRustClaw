@@ -68,24 +68,23 @@ impl<'a> Chat<'a> {
         let stream = response
             .bytes_stream()
             .eventsource()
-            .map(|event| {
-                match event {
-                    Ok(event) => {
-                        if event.data == "[DONE]" {
-                            return Ok(crate::streaming::ChatCompletionChunk::done());
-                        }
-
-                        match serde_json::from_str::<crate::streaming::ChatCompletionChunk>(&event.data) {
-                            Ok(chunk) => Ok(chunk),
-                            Err(e) => Err(OpenAIError::Stream {
-                                message: format!("Failed to parse SSE event: {e}"),
-                            }),
-                        }
+            .map(|event| match event {
+                Ok(event) => {
+                    if event.data == "[DONE]" {
+                        return Ok(crate::streaming::ChatCompletionChunk::done());
                     }
-                    Err(e) => Err(OpenAIError::Stream {
-                        message: format!("SSE error: {e}"),
-                    }),
+
+                    match serde_json::from_str::<crate::streaming::ChatCompletionChunk>(&event.data)
+                    {
+                        Ok(chunk) => Ok(chunk),
+                        Err(e) => Err(OpenAIError::Stream {
+                            message: format!("Failed to parse SSE event: {e}"),
+                        }),
+                    }
                 }
+                Err(e) => Err(OpenAIError::Stream {
+                    message: format!("SSE error: {e}"),
+                }),
             });
 
         Ok(stream)
@@ -234,9 +233,7 @@ impl ChatRequest {
 
     /// Create a simple chat request.
     pub fn simple(model: impl Into<String>, message: impl Into<String>) -> Self {
-        Self::builder(model)
-            .message(Role::User, message)
-            .build()
+        Self::builder(model).message(Role::User, message).build()
     }
 
     /// Add a message to the conversation.
@@ -444,7 +441,10 @@ mod tests {
         let none = ToolChoice::none();
 
         match func {
-            ToolChoice::Specific { tool_type, function } => {
+            ToolChoice::Specific {
+                tool_type,
+                function,
+            } => {
                 assert_eq!(tool_type, "function");
                 assert_eq!(function.name, "get_weather");
             }

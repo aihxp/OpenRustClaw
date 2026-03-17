@@ -80,7 +80,9 @@ impl ModelsResponse {
         models.sort_by(|a, b| {
             let a_price = a.pricing.prompt + a.pricing.completion;
             let b_price = b.pricing.prompt + b.pricing.completion;
-            a_price.partial_cmp(&b_price).unwrap_or(std::cmp::Ordering::Equal)
+            a_price
+                .partial_cmp(&b_price)
+                .unwrap_or(std::cmp::Ordering::Equal)
         });
         models
     }
@@ -101,7 +103,7 @@ impl<'a> Models<'a> {
     /// List available models.
     pub async fn list(&self) -> crate::Result<ModelsResponse> {
         use crate::constants::endpoints;
-        
+
         let response = self.client.get(endpoints::MODELS).await?;
         let body = self.client.handle_response(response).await?;
         let models: ModelsResponse = serde_json::from_value(body)?;

@@ -59,17 +59,14 @@ impl Tool for MemorySearchTool {
 
     #[instrument(skip(self, input, ctx), fields(user_id = %ctx.user_id, session_id = %ctx.session_id))]
     async fn execute(&self, input: Value, ctx: &ToolContext) -> Result<ToolOutput> {
-        let query_text = input
-            .get("query")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| {
-                openrustclaw_core::error::Error::Tool(
-                    openrustclaw_core::error::ToolError::InputValidation {
-                        tool: self.name().to_string(),
-                        message: "Missing or invalid 'query' parameter".to_string(),
-                    },
-                )
-            })?;
+        let query_text = input.get("query").and_then(|v| v.as_str()).ok_or_else(|| {
+            openrustclaw_core::error::Error::Tool(
+                openrustclaw_core::error::ToolError::InputValidation {
+                    tool: self.name().to_string(),
+                    message: "Missing or invalid 'query' parameter".to_string(),
+                },
+            )
+        })?;
 
         let limit = input
             .get("limit")
@@ -315,29 +312,23 @@ impl Tool for CoreMemoryUpdateTool {
 
     #[instrument(skip(self, input, ctx), fields(user_id = %ctx.user_id, session_id = %ctx.session_id))]
     async fn execute(&self, input: Value, ctx: &ToolContext) -> Result<ToolOutput> {
-        let key = input
-            .get("key")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| {
-                openrustclaw_core::error::Error::Tool(
-                    openrustclaw_core::error::ToolError::InputValidation {
-                        tool: self.name().to_string(),
-                        message: "Missing or invalid 'key' parameter".to_string(),
-                    },
-                )
-            })?;
+        let key = input.get("key").and_then(|v| v.as_str()).ok_or_else(|| {
+            openrustclaw_core::error::Error::Tool(
+                openrustclaw_core::error::ToolError::InputValidation {
+                    tool: self.name().to_string(),
+                    message: "Missing or invalid 'key' parameter".to_string(),
+                },
+            )
+        })?;
 
-        let value = input
-            .get("value")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| {
-                openrustclaw_core::error::Error::Tool(
-                    openrustclaw_core::error::ToolError::InputValidation {
-                        tool: self.name().to_string(),
-                        message: "Missing or invalid 'value' parameter".to_string(),
-                    },
-                )
-            })?;
+        let value = input.get("value").and_then(|v| v.as_str()).ok_or_else(|| {
+            openrustclaw_core::error::Error::Tool(
+                openrustclaw_core::error::ToolError::InputValidation {
+                    tool: self.name().to_string(),
+                    message: "Missing or invalid 'value' parameter".to_string(),
+                },
+            )
+        })?;
 
         debug!(key = %key, "Updating core memory");
 

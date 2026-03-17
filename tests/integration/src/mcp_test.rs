@@ -264,16 +264,14 @@ fn translate_preserves_complex_schemas() {
     let mcp_json = translate(&tool, ToolFormat::Mcp, ToolFormat::Mcp);
     let schema = mcp_json.get("inputSchema").unwrap();
 
-    assert!(schema
-        .get("properties")
-        .unwrap()
-        .get("nested")
-        .is_some());
-    assert!(schema
-        .get("properties")
-        .unwrap()
-        .get("enum_field")
-        .is_some());
+    assert!(schema.get("properties").unwrap().get("nested").is_some());
+    assert!(
+        schema
+            .get("properties")
+            .unwrap()
+            .get("enum_field")
+            .is_some()
+    );
     assert!(schema.get("required").is_some());
 }
 
@@ -294,12 +292,14 @@ fn translate_empty_parameters() {
     let mcp_json = translate(&tool, ToolFormat::Mcp, ToolFormat::Mcp);
     let schema = mcp_json.get("inputSchema").unwrap();
 
-    assert!(schema
-        .get("properties")
-        .unwrap()
-        .as_object()
-        .unwrap()
-        .is_empty());
+    assert!(
+        schema
+            .get("properties")
+            .unwrap()
+            .as_object()
+            .unwrap()
+            .is_empty()
+    );
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

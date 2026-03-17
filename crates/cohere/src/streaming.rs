@@ -70,10 +70,10 @@ pub enum StreamEvent {
         generation_id: String,
         /// Response text.
         #[serde(rename = "response")]
-        response: Option<StreamEndResponse>,
+        response: Option<Box<StreamEndResponse>>,
         /// Additional metadata.
         #[serde(skip_serializing_if = "Option::is_none")]
-        meta: Option<ApiMeta>,
+        meta: Option<Box<ApiMeta>>,
     },
 }
 
@@ -153,7 +153,7 @@ impl StreamCollector {
                 ..
             } => {
                 self.finish_reason = Some(*finish_reason);
-                self.meta = meta.clone();
+                self.meta = meta.as_deref().cloned();
             }
             _ => {}
         }

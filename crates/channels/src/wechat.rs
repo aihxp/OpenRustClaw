@@ -1,7 +1,7 @@
 //! WeChat Channel Integration
 //!
 //! Supports both WeChat Work (Enterprise) and WeChat Official Accounts APIs.
-//! 
+//!
 //! WeChat Work API: https://developer.work.weixin.qq.com/
 //! WeChat Official Accounts API: https://developers.weixin.qq.com/
 
@@ -11,7 +11,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use async_trait::async_trait;
 use governor::{Quota, RateLimiter};
 use std::num::NonZeroU32;
-use tokio::sync::{mpsc, Mutex, RwLock};
+use tokio::sync::{Mutex, RwLock, mpsc};
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
@@ -26,7 +26,14 @@ pub struct WeChatChannel {
     incoming_tx: mpsc::Sender<IncomingMessage>,
     incoming_rx: Mutex<mpsc::Receiver<IncomingMessage>>,
     http: reqwest::Client,
-    rate_limiter: Arc<RateLimiter<governor::state::NotKeyed, governor::state::InMemoryState, governor::clock::DefaultClock, governor::middleware::NoOpMiddleware>>,
+    rate_limiter: Arc<
+        RateLimiter<
+            governor::state::NotKeyed,
+            governor::state::InMemoryState,
+            governor::clock::DefaultClock,
+            governor::middleware::NoOpMiddleware,
+        >,
+    >,
     is_connected: RwLock<bool>,
     access_token: RwLock<Option<String>>,
     token_expires_at: RwLock<Option<u64>>,
@@ -150,10 +157,11 @@ impl WeChatChannel {
     /// Create a new WeChat channel with the given configuration.
     pub fn new(config: WeChatConfig) -> Self {
         let (incoming_tx, incoming_rx) = mpsc::channel(256);
-        
+
         // Create rate limiter (WeChat: 20 requests/second)
         let quota = Quota::per_second(
-            NonZeroU32::new(config.rate_limit_per_second.max(1)).unwrap_or(NonZeroU32::new(20).unwrap())
+            NonZeroU32::new(config.rate_limit_per_second.max(1))
+                .unwrap_or(NonZeroU32::new(20).unwrap()),
         );
         let rate_limiter = Arc::new(RateLimiter::direct(quota));
 
@@ -199,11 +207,12 @@ impl WeChatChannel {
             .unwrap_or_default()
             .as_secs();
 
-        if let Some(expires) = *self.token_expires_at.read().await {
-            if expires > now + 60 { // Refresh 1 minute before expiry
-                if let Some(token) = self.access_token.read().await.clone() {
-                    return Ok(token);
-                }
+        if let Some(expires) = *self.token_expires_at.read().await
+            && expires > now + 60
+        {
+            // Refresh 1 minute before expiry
+            if let Some(token) = self.access_token.read().await.clone() {
+                return Ok(token);
             }
         }
 
@@ -228,7 +237,8 @@ impl WeChatChannel {
             self.config.corp_id, self.config.corp_secret
         );
 
-        let response = self.http
+        let response = self
+            .http
             .get(&url)
             .send()
             .await
@@ -237,25 +247,31 @@ impl WeChatChannel {
                 message: e.to_string(),
             })?;
 
-        let result: WeChatAccessTokenResponse = response.json().await.map_err(|e| ChannelError::InvalidFormat {
-            platform: "wechat".to_string(),
-            message: e.to_string(),
-        })?;
+        let result: WeChatAccessTokenResponse =
+            response
+                .json()
+                .await
+                .map_err(|e| ChannelError::InvalidFormat {
+                    platform: "wechat".to_string(),
+                    message: e.to_string(),
+                })?;
 
-        if let Some(err_code) = result.err_code {
-            if err_code != 0 {
-                return Err(ChannelError::AuthFailed {
-                    platform: "wechat_work".to_string(),
-                    message: result.err_msg.unwrap_or_default(),
-                }.into());
+        if let Some(err_code) = result.err_code
+            && err_code != 0
+        {
+            return Err(ChannelError::AuthFailed {
+                platform: "wechat_work".to_string(),
+                message: result.err_msg.unwrap_or_default(),
             }
+            .into());
         }
 
         result.access_token.ok_or_else(|| {
             ChannelError::AuthFailed {
                 platform: "wechat_work".to_string(),
                 message: "No access token in response".to_string(),
-            }.into()
+            }
+            .into()
         })
     }
 
@@ -266,7 +282,8 @@ impl WeChatChannel {
             self.config.app_id, self.config.app_secret
         );
 
-        let response = self.http
+        let response = self
+            .http
             .get(&url)
             .send()
             .await
@@ -275,34 +292,46 @@ impl WeChatChannel {
                 message: e.to_string(),
             })?;
 
-        let result: WeChatAccessTokenResponse = response.json().await.map_err(|e| ChannelError::InvalidFormat {
-            platform: "wechat".to_string(),
-            message: e.to_string(),
-        })?;
+        let result: WeChatAccessTokenResponse =
+            response
+                .json()
+                .await
+                .map_err(|e| ChannelError::InvalidFormat {
+                    platform: "wechat".to_string(),
+                    message: e.to_string(),
+                })?;
 
-        if let Some(err_code) = result.err_code {
-            if err_code != 0 {
-                return Err(ChannelError::AuthFailed {
-                    platform: "wechat_oa".to_string(),
-                    message: result.err_msg.unwrap_or_default(),
-                }.into());
+        if let Some(err_code) = result.err_code
+            && err_code != 0
+        {
+            return Err(ChannelError::AuthFailed {
+                platform: "wechat_oa".to_string(),
+                message: result.err_msg.unwrap_or_default(),
             }
+            .into());
         }
 
         result.access_token.ok_or_else(|| {
             ChannelError::AuthFailed {
                 platform: "wechat_oa".to_string(),
                 message: "No access token in response".to_string(),
-            }.into()
+            }
+            .into()
         })
     }
 
     /// Verify WeChat webhook signature.
-    pub fn verify_signature(&self, timestamp: &str, nonce: &str, body: &str, signature: &str) -> Result<()> {
-        use sha1::{Sha1, Digest};
+    pub fn verify_signature(
+        &self,
+        timestamp: &str,
+        nonce: &str,
+        body: &str,
+        signature: &str,
+    ) -> Result<()> {
+        use sha1::{Digest, Sha1};
 
         // Sort token, timestamp, nonce and body
-        let mut params = vec![
+        let mut params = [
             self.config.token.clone(),
             timestamp.to_string(),
             nonce.to_string(),
@@ -319,7 +348,8 @@ impl WeChatChannel {
             return Err(ChannelError::AuthFailed {
                 platform: "wechat".to_string(),
                 message: "Invalid webhook signature".to_string(),
-            }.into());
+            }
+            .into());
         }
 
         Ok(())
@@ -399,7 +429,8 @@ impl WeChatChannel {
             },
         };
 
-        let response = self.http
+        let response = self
+            .http
             .post(&url)
             .json(&message)
             .send()
@@ -409,16 +440,21 @@ impl WeChatChannel {
                 message: e.to_string(),
             })?;
 
-        let result: WeChatApiResponse = response.json().await.map_err(|e| ChannelError::InvalidFormat {
-            platform: "wechat_work".to_string(),
-            message: e.to_string(),
-        })?;
+        let result: WeChatApiResponse =
+            response
+                .json()
+                .await
+                .map_err(|e| ChannelError::InvalidFormat {
+                    platform: "wechat_work".to_string(),
+                    message: e.to_string(),
+                })?;
 
         if result.err_code != 0 {
             return Err(ChannelError::SendFailed {
                 platform: "wechat_work".to_string(),
                 message: format!("{} (errcode: {})", result.err_msg, result.err_code),
-            }.into());
+            }
+            .into());
         }
 
         Ok(())
@@ -442,7 +478,8 @@ impl WeChatChannel {
             }
         });
 
-        let response = self.http
+        let response = self
+            .http
             .post(&url)
             .json(&payload)
             .send()
@@ -452,16 +489,21 @@ impl WeChatChannel {
                 message: e.to_string(),
             })?;
 
-        let result: WeChatApiResponse = response.json().await.map_err(|e| ChannelError::InvalidFormat {
-            platform: "wechat_oa".to_string(),
-            message: e.to_string(),
-        })?;
+        let result: WeChatApiResponse =
+            response
+                .json()
+                .await
+                .map_err(|e| ChannelError::InvalidFormat {
+                    platform: "wechat_oa".to_string(),
+                    message: e.to_string(),
+                })?;
 
         if result.err_code != 0 {
             return Err(ChannelError::SendFailed {
                 platform: "wechat_oa".to_string(),
                 message: format!("{} (errcode: {})", result.err_msg, result.err_code),
-            }.into());
+            }
+            .into());
         }
 
         Ok(())
@@ -475,7 +517,8 @@ impl WeChatChannel {
             token, code
         );
 
-        let response = self.http
+        let response = self
+            .http
             .get(&url)
             .send()
             .await
@@ -484,20 +527,29 @@ impl WeChatChannel {
                 message: e.to_string(),
             })?;
 
-        let result: WeChatUserInfo = response.json().await.map_err(|e| ChannelError::InvalidFormat {
-            platform: "wechat_work".to_string(),
-            message: e.to_string(),
-        })?;
+        let result: WeChatUserInfo =
+            response
+                .json()
+                .await
+                .map_err(|e| ChannelError::InvalidFormat {
+                    platform: "wechat_work".to_string(),
+                    message: e.to_string(),
+                })?;
 
         Ok(result)
     }
 
     /// Upload media to WeChat (for sending images, files, etc).
-    pub async fn upload_media(&self, media_type: &str, data: Vec<u8>, filename: &str) -> Result<String> {
+    pub async fn upload_media(
+        &self,
+        media_type: &str,
+        data: Vec<u8>,
+        filename: &str,
+    ) -> Result<String> {
         self.rate_limiter.until_ready().await;
 
         let token = self.get_access_token().await?;
-        
+
         let url = match self.mode() {
             WeChatMode::Work => format!(
                 "https://qyapi.weixin.qq.com/cgi-bin/media/upload?access_token={}&type={}",
@@ -509,13 +561,12 @@ impl WeChatChannel {
             ),
         };
 
-        let part = reqwest::multipart::Part::bytes(data)
-            .file_name(filename.to_string());
+        let part = reqwest::multipart::Part::bytes(data).file_name(filename.to_string());
 
-        let form = reqwest::multipart::Form::new()
-            .part("media", part);
+        let form = reqwest::multipart::Form::new().part("media", part);
 
-        let response = self.http
+        let response = self
+            .http
             .post(&url)
             .multipart(form)
             .send()
@@ -525,28 +576,39 @@ impl WeChatChannel {
                 message: e.to_string(),
             })?;
 
-        let result: serde_json::Value = response.json().await.map_err(|e| ChannelError::InvalidFormat {
-            platform: "wechat".to_string(),
-            message: e.to_string(),
-        })?;
-
-        if let Some(err_code) = result.get("errcode").and_then(|v| v.as_i64()) {
-            if err_code != 0 {
-                return Err(ChannelError::SendFailed {
+        let result: serde_json::Value =
+            response
+                .json()
+                .await
+                .map_err(|e| ChannelError::InvalidFormat {
                     platform: "wechat".to_string(),
-                    message: result.get("errmsg").and_then(|v| v.as_str()).unwrap_or("Unknown error").to_string(),
-                }.into());
+                    message: e.to_string(),
+                })?;
+
+        if let Some(err_code) = result.get("errcode").and_then(|v| v.as_i64())
+            && err_code != 0
+        {
+            return Err(ChannelError::SendFailed {
+                platform: "wechat".to_string(),
+                message: result
+                    .get("errmsg")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Unknown error")
+                    .to_string(),
             }
+            .into());
         }
 
-        result.get("media_id")
+        result
+            .get("media_id")
             .and_then(|v| v.as_str())
             .map(String::from)
             .ok_or_else(|| {
                 ChannelError::InvalidFormat {
                     platform: "wechat".to_string(),
                     message: "No media_id in response".to_string(),
-                }.into()
+                }
+                .into()
             })
     }
 }
@@ -562,7 +624,9 @@ impl Channel for WeChatChannel {
         self.rate_limiter.until_ready().await;
 
         // Extract recipient ID from metadata
-        let recipient_id = msg.metadata.get("wechat_user_id")
+        let recipient_id = msg
+            .metadata
+            .get("wechat_user_id")
             .and_then(|v| v.as_str())
             .or_else(|| msg.metadata.get("recipient_id").and_then(|v| v.as_str()))
             .ok_or_else(|| ChannelError::InvalidFormat {
@@ -571,13 +635,18 @@ impl Channel for WeChatChannel {
             })?;
 
         // Determine message type
-        let msg_type = msg.metadata.get("msg_type")
+        let msg_type = msg
+            .metadata
+            .get("msg_type")
             .and_then(|v| v.as_str())
             .unwrap_or("text");
 
         // Send based on mode
         match self.mode() {
-            WeChatMode::Work => self.send_work_message(recipient_id, &msg.content, msg_type).await,
+            WeChatMode::Work => {
+                self.send_work_message(recipient_id, &msg.content, msg_type)
+                    .await
+            }
             WeChatMode::OfficialAccount => self.send_oa_message(recipient_id, &msg.content).await,
         }
     }
@@ -588,7 +657,8 @@ impl Channel for WeChatChannel {
             ChannelError::Connection {
                 platform: "wechat".to_string(),
                 message: "Incoming message channel closed".to_string(),
-            }.into()
+            }
+            .into()
         })
     }
 
@@ -606,21 +676,26 @@ impl Channel for WeChatChannel {
                     return Err(ChannelError::Config {
                         platform: "wechat_work".to_string(),
                         message: "WeChat Work corp_id and corp_secret are required".to_string(),
-                    }.into());
+                    }
+                    .into());
                 }
             }
             WeChatMode::OfficialAccount => {
                 if self.config.app_id.is_empty() || self.config.app_secret.is_empty() {
                     return Err(ChannelError::Config {
                         platform: "wechat_oa".to_string(),
-                        message: "WeChat Official Account app_id and app_secret are required".to_string(),
-                    }.into());
+                        message: "WeChat Official Account app_id and app_secret are required"
+                            .to_string(),
+                    }
+                    .into());
                 }
                 if self.config.token.is_empty() {
                     return Err(ChannelError::Config {
                         platform: "wechat_oa".to_string(),
-                        message: "WeChat Official Account token is required for webhook validation".to_string(),
-                    }.into());
+                        message: "WeChat Official Account token is required for webhook validation"
+                            .to_string(),
+                    }
+                    .into());
                 }
             }
         }

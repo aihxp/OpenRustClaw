@@ -1,12 +1,12 @@
 //! Wake word detection for activating voice interaction.
 
 use crate::error::{VoiceError, VoiceResult};
-use crate::vad::{VoiceActivityDetector, VadConfig};
+use crate::vad::{VadConfig, VoiceActivityDetector};
 use async_trait::async_trait;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
-use tokio::sync::{mpsc, Mutex, Notify};
+use tokio::sync::{Mutex, Notify, mpsc};
 
 /// Configuration for wake word detection.
 #[derive(Debug, Clone)]
@@ -29,10 +29,7 @@ impl Default for WakeWordConfig {
     fn default() -> Self {
         Self {
             wake_word: "Hey Assistant".to_string(),
-            alternative_wake_words: vec![
-                "Hey OpenRustClaw".to_string(),
-                "Assistant".to_string(),
-            ],
+            alternative_wake_words: vec!["Hey OpenRustClaw".to_string(), "Assistant".to_string()],
             sensitivity: 0.7,
             min_confidence: 0.6,
             timeout: None,
@@ -241,7 +238,7 @@ impl WakeDetector for PorcupineWakeDetector {
     async fn listen(&self) -> VoiceResult<WakeDetectionResult> {
         // Would implement Porcupine wake word detection here
         Err(VoiceError::WakeWord(
-            "Porcupine not implemented. Use SimpleWakeDetector instead.".to_string()
+            "Porcupine not implemented. Use SimpleWakeDetector instead.".to_string(),
         ))
     }
 
@@ -310,9 +307,7 @@ mod tests {
         let detector_clone = Arc::new(detector);
         let detector_for_task = detector_clone.clone();
 
-        let handle = tokio::spawn(async move {
-            detector_for_task.listen().await
-        });
+        let handle = tokio::spawn(async move { detector_for_task.listen().await });
 
         // Send silence frames to trigger end of utterance
         let tx = detector_clone.audio_sender();

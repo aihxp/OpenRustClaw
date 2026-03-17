@@ -6,7 +6,7 @@ use serde_json::json;
 use tracing::info;
 
 use crate::browser::{Browser, ScreenshotOptions};
-use crate::tools::{error_response, success_response, AutomationTool, ToolContext};
+use crate::tools::{AutomationTool, ToolContext, error_response, success_response};
 
 /// Take a screenshot of the page.
 pub struct ScreenshotTool {
@@ -74,29 +74,27 @@ impl AutomationTool for ScreenshotTool {
         })
     }
 
-    async fn execute(
-        &self,
-        input: serde_json::Value,
-        ctx: &ToolContext,
-    ) -> anyhow::Result<String> {
+    async fn execute(&self, input: serde_json::Value, ctx: &ToolContext) -> anyhow::Result<String> {
         let args: ScreenshotArgs = serde_json::from_value(input)?;
-        
-        let pages = self.browser.pages().await.map_err(|e| {
-            anyhow::anyhow!("Failed to get pages: {}", e)
-        })?;
-        
-        let page = pages.first().ok_or_else(|| {
-            anyhow::anyhow!("No pages available")
-        })?;
-        
+
+        let pages = self
+            .browser
+            .pages()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to get pages: {}", e))?;
+
+        let page = pages
+            .first()
+            .ok_or_else(|| anyhow::anyhow!("No pages available"))?;
+
         info!("Taking screenshot");
-        
+
         // Build screenshot options
         let format = match args.format.as_deref() {
             Some("jpeg") | Some("jpg") => crate::browser::ScreenshotFormat::Jpeg,
             _ => crate::browser::ScreenshotFormat::Png,
         };
-        
+
         let options = ScreenshotOptions {
             format,
             quality: args.quality.map(|q| q.min(100)),
@@ -104,29 +102,31 @@ impl AutomationTool for ScreenshotTool {
             full_page: args.full_page.unwrap_or(false),
             hide_selectors: vec![],
         };
-        
+
         // Take screenshot
         let screenshot = if let Some(selector) = args.selector {
             // Element-specific screenshot
-            let element = page.query_selector(&selector).await.map_err(|e| {
-                anyhow::anyhow!("Failed to find element: {}", e)
-            })?;
-            
+            let element = page
+                .query_selector(&selector)
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to find element: {}", e))?;
+
             match element {
-                Some(el) => el.screenshot().await.map_err(|e| {
-                    anyhow::anyhow!("Failed to take element screenshot: {}", e)
-                })?,
+                Some(el) => el
+                    .screenshot()
+                    .await
+                    .map_err(|e| anyhow::anyhow!("Failed to take element screenshot: {}", e))?,
                 None => {
                     return Ok(error_response(format!("Element not found: {}", selector)));
                 }
             }
         } else {
             // Full page screenshot
-            page.screenshot_with_options(options).await.map_err(|e| {
-                anyhow::anyhow!("Failed to take screenshot: {}", e)
-            })?
+            page.screenshot_with_options(options)
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to take screenshot: {}", e))?
         };
-        
+
         // Save or return base64
         let result = if let Some(path) = args.path {
             // Save to file
@@ -137,11 +137,11 @@ impl AutomationTool for ScreenshotTool {
             } else {
                 path
             };
-            
-            screenshot.save(&path).map_err(|e| {
-                anyhow::anyhow!("Failed to save screenshot: {}", e)
-            })?;
-            
+
+            screenshot
+                .save(&path)
+                .map_err(|e| anyhow::anyhow!("Failed to save screenshot: {}", e))?;
+
             success_response(format!(
                 "Screenshot saved to: {}\nDimensions: {}x{}",
                 path, screenshot.width, screenshot.height
@@ -153,7 +153,10 @@ impl AutomationTool for ScreenshotTool {
                 let base64_data = screenshot.to_base64();
                 success_response(format!(
                     "Screenshot captured ({}x{} pixels)\nFormat: {:?}\nBase64 length: {} characters",
-                    screenshot.width, screenshot.height, format, base64_data.len()
+                    screenshot.width,
+                    screenshot.height,
+                    format,
+                    base64_data.len()
                 ))
             }
             #[cfg(not(feature = "base64"))]
@@ -164,7 +167,7 @@ impl AutomationTool for ScreenshotTool {
                 ))
             }
         };
-        
+
         Ok(result)
     }
 }

@@ -1,7 +1,7 @@
 //! Security audit logging.
 
-use serde::{Serialize, Deserialize};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use tracing::info;
 
 /// Severity level for audit events.

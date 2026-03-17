@@ -69,10 +69,11 @@ impl Default for AutomationConfig {
 }
 
 /// Browser type selection.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum BrowserType {
     /// Chromium/Chrome.
+    #[default]
     Chromium,
     /// Firefox.
     Firefox,
@@ -80,12 +81,6 @@ pub enum BrowserType {
     Webkit,
     /// Microsoft Edge.
     Edge,
-}
-
-impl Default for BrowserType {
-    fn default() -> Self {
-        Self::Chromium
-    }
 }
 
 impl std::fmt::Display for BrowserType {
@@ -180,7 +175,7 @@ pub enum ColorScheme {
 }
 
 /// Browser-specific configuration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct BrowserConfig {
     /// The automation config.
     #[serde(flatten)]
@@ -213,21 +208,6 @@ pub struct BrowserConfig {
     /// Tracing configuration for performance analysis.
     #[serde(default)]
     pub tracing: Option<TracingConfig>,
-}
-
-impl Default for BrowserConfig {
-    fn default() -> Self {
-        Self {
-            automation: AutomationConfig::default(),
-            browser_args: Vec::new(),
-            executable_path: None,
-            proxy: None,
-            geolocation: None,
-            permissions: Vec::new(),
-            record_video: None,
-            tracing: None,
-        }
-    }
 }
 
 impl BrowserConfig {

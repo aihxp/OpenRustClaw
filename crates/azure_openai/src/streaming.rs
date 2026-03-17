@@ -19,14 +19,19 @@ pub struct ChatCompletionChunk {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub system_fingerprint: Option<String>,
     /// Content filter results for the prompt.
-    #[serde(rename = "prompt_filter_results", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "prompt_filter_results",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub prompt_filter_results: Option<Vec<crate::types::PromptFilterResult>>,
 }
 
 impl ChatCompletionChunk {
     /// Check if this is the final chunk.
     pub fn is_done(&self) -> bool {
-        self.choices.iter().all(|c| c.delta.is_empty() && c.finish_reason.is_some())
+        self.choices
+            .iter()
+            .all(|c| c.delta.is_empty() && c.finish_reason.is_some())
     }
 
     /// Create a done chunk.
@@ -44,12 +49,16 @@ impl ChatCompletionChunk {
 
     /// Get the content delta from the first choice.
     pub fn content(&self) -> Option<&str> {
-        self.choices.first().and_then(|c| c.delta.content.as_deref())
+        self.choices
+            .first()
+            .and_then(|c| c.delta.content.as_deref())
     }
 
     /// Get tool call deltas from the first choice.
     pub fn tool_calls(&self) -> Option<&Vec<ToolCallDelta>> {
-        self.choices.first().and_then(|c| c.delta.tool_calls.as_ref())
+        self.choices
+            .first()
+            .and_then(|c| c.delta.tool_calls.as_ref())
     }
 
     /// Check if the first choice has finished.
@@ -59,7 +68,9 @@ impl ChatCompletionChunk {
 
     /// Get content filter results.
     pub fn content_filter_results(&self) -> Option<&crate::types::ContentFilterResults> {
-        self.choices.first().and_then(|c| c.content_filter_results.as_ref())
+        self.choices
+            .first()
+            .and_then(|c| c.content_filter_results.as_ref())
     }
 }
 
@@ -73,7 +84,10 @@ pub struct StreamChoice {
     /// The reason the completion finished.
     pub finish_reason: Option<crate::types::FinishReason>,
     /// Content filter results.
-    #[serde(rename = "content_filter_results", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "content_filter_results",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub content_filter_results: Option<crate::types::ContentFilterResults>,
     /// Log probabilities (if requested).
     #[serde(skip_serializing_if = "Option::is_none")]

@@ -177,9 +177,15 @@ impl fmt::Display for AzureOpenAIError {
             AzureOpenAIError::TokenAcquisition { message } => {
                 write!(f, "Azure AD token acquisition failed: {message}")
             }
-            AzureOpenAIError::RateLimit { retry_after, message } => {
+            AzureOpenAIError::RateLimit {
+                retry_after,
+                message,
+            } => {
                 if let Some(duration) = retry_after {
-                    write!(f, "Rate limit exceeded (retry after {duration:?}): {message}")
+                    write!(
+                        f,
+                        "Rate limit exceeded (retry after {duration:?}): {message}"
+                    )
                 } else {
                     write!(f, "Rate limit exceeded: {message}")
                 }
@@ -235,7 +241,10 @@ impl fmt::Display for AzureOpenAIError {
             AzureOpenAIError::Timeout { operation } => {
                 write!(f, "Timeout during {operation}")
             }
-            AzureOpenAIError::RetryExhausted { attempts, last_error } => {
+            AzureOpenAIError::RetryExhausted {
+                attempts,
+                last_error,
+            } => {
                 write!(f, "Retry exhausted after {attempts} attempts: {last_error}")
             }
             AzureOpenAIError::NotFound { resource, id } => {
@@ -371,7 +380,9 @@ impl AzureOpenAIError {
                         };
                     }
                     Some("model_not_found") | Some("DeploymentNotFound") => {
-                        return AzureOpenAIError::DeploymentNotFound { deployment: message };
+                        return AzureOpenAIError::DeploymentNotFound {
+                            deployment: message,
+                        };
                     }
                     Some("content_filter") | Some("ContentFiltered") => {
                         return AzureOpenAIError::ContentFiltered {
@@ -406,7 +417,10 @@ impl AzureOpenAIError {
 
         if let Some(hate) = content_filter.get("hate") {
             results.hate = Some(ContentFilterResult {
-                filtered: hate.get("filtered").and_then(|v| v.as_bool()).unwrap_or(false),
+                filtered: hate
+                    .get("filtered")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false),
                 severity: hate
                     .get("severity")
                     .and_then(|v| v.as_str())

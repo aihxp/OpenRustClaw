@@ -5,8 +5,8 @@ use cohere::{ChatRequest, CohereClient};
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Get API key from environment
-    let api_key = std::env::var("COHERE_API_KEY")
-        .expect("COHERE_API_KEY environment variable must be set");
+    let api_key =
+        std::env::var("COHERE_API_KEY").expect("COHERE_API_KEY environment variable must be set");
 
     // Create client
     let client = CohereClient::new(api_key)?;

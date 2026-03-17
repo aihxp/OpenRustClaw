@@ -2,8 +2,8 @@ pub mod chat;
 #[cfg(feature = "cursor")]
 pub mod cursor;
 pub mod doctor;
-pub mod memory;
 pub mod mcp2cli;
+pub mod memory;
 pub mod models;
 pub mod onboard;
 pub mod schedule;

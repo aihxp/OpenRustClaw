@@ -7,10 +7,10 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::{Mutex, RwLock};
-use tokio::time::{interval, Duration};
+use tokio::time::{Duration, interval};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
@@ -142,10 +142,10 @@ impl TaskResult {
 pub trait TaskExecutor: Send + Sync {
     /// Execute a task.
     async fn execute(&self, task: Task) -> Result<TaskResult>;
-    
+
     /// Check if this executor can handle a task type.
     fn can_handle(&self, task_type: &str) -> bool;
-    
+
     /// Get supported task types.
     fn supported_types(&self) -> Vec<String>;
 }
@@ -207,7 +207,7 @@ impl TaskManager {
     /// Submit a task to the queue.
     pub async fn submit_task(&self, task: Task) -> Result<()> {
         let task_id = task.id.clone();
-        
+
         if task.assigned_node.as_ref() == Some(&self.node_id) {
             // Task is for us, add to local queue
             let mut queue = self.queue.lock().await;
@@ -234,7 +234,10 @@ impl TaskManager {
             let mut task = task;
             task.state = TaskState::Running;
             task.started_at = Some(Utc::now());
-            self.running_tasks.write().await.insert(task.id.clone(), task.clone());
+            self.running_tasks
+                .write()
+                .await
+                .insert(task.id.clone(), task.clone());
             return Ok(Some(task));
         }
 
@@ -256,7 +259,9 @@ impl TaskManager {
             // Store result
             let result_key = format!("task_result:{}", task_id);
             let result_value = serde_json::to_vec(&result)?;
-            self.memory.set(&result_key, result_value, Some(3600)).await?;
+            self.memory
+                .set(&result_key, result_value, Some(3600))
+                .await?;
 
             // Store in completed tasks
             self.completed_tasks
@@ -286,10 +291,12 @@ impl TaskManager {
                 let result = TaskResult::failure(error, 0, self.node_id.clone());
                 let result_key = format!("task_result:{}", task_id);
                 let result_value = serde_json::to_vec(&result)?;
-                self.memory.set(&result_key, result_value, Some(3600)).await?;
+                self.memory
+                    .set(&result_key, result_value, Some(3600))
+                    .await?;
 
                 let retry_count = task.retry_count;
-            self.completed_tasks
+                self.completed_tasks
                     .write()
                     .await
                     .insert(task_id.to_string(), (task, result));
@@ -300,13 +307,16 @@ impl TaskManager {
                 // Retry the task
                 task.state = TaskState::Pending;
                 task.started_at = None;
-                
+
                 let retry_count = task.retry_count;
                 let mut queue = self.queue.lock().await;
                 queue.push(task);
                 queue.sort_by(|a, b| b.priority.value().cmp(&a.priority.value()));
-                
-                warn!("Task {} failed, retrying (attempt {})", task_id, retry_count);
+
+                warn!(
+                    "Task {} failed, retrying (attempt {})",
+                    task_id, retry_count
+                );
             }
         }
 
@@ -321,13 +331,13 @@ impl TaskManager {
             let mut task = queue.remove(pos);
             task.state = TaskState::Cancelled;
             task.completed_at = Some(Utc::now());
-            
+
             let result = TaskResult::failure("Cancelled", 0, self.node_id.clone());
             self.completed_tasks
                 .write()
                 .await
                 .insert(task_id.to_string(), (task, result));
-            
+
             return Ok(true);
         }
 
@@ -403,10 +413,10 @@ impl TaskManager {
     fn start_cleanup_task(self: Arc<Self>) {
         tokio::spawn(async move {
             let mut interval = interval(Duration::from_secs(300)); // 5 minutes
-            
+
             loop {
                 interval.tick().await;
-                
+
                 if self.running.load(Ordering::SeqCst) == 0 {
                     break;
                 }
@@ -419,15 +429,13 @@ impl TaskManager {
     /// Clean up old completed tasks.
     async fn cleanup_completed_tasks(&self) {
         let cutoff = Utc::now() - chrono::Duration::minutes(10);
-        
+
         let to_remove: Vec<String> = self
             .completed_tasks
             .read()
             .await
             .iter()
-            .filter(|(_, (task, _))| {
-                task.completed_at.map(|t| t < cutoff).unwrap_or(false)
-            })
+            .filter(|(_, (task, _))| task.completed_at.map(|t| t < cutoff).unwrap_or(false))
             .map(|(id, _)| id.clone())
             .collect();
 
@@ -478,12 +486,12 @@ impl TaskScheduler {
     /// Mark task as assigned.
     pub async fn assign_task(&self, task_id: &str, worker_id: NodeId) -> Result<()> {
         let mut tasks = self.pending_tasks.write().await;
-        
+
         if let Some(pos) = tasks.iter().position(|t| t.id == task_id) {
             let mut task = tasks.remove(pos);
             task.assigned_node = Some(worker_id);
             task.state = TaskState::Scheduled;
-            
+
             // Store in distributed memory for the worker
             let key = format!("task:{}", task.id);
             let value = serde_json::to_vec(&task)?;

@@ -7,10 +7,8 @@ use tokio::sync::mpsc;
 use tracing::{error, info};
 
 use openrustclaw_voice::{
-    TalkConfig, TalkEvent, TalkModeBuilder, TalkState,
-    SimpleWakeDetector, WakeWordConfig,
-    SpeechToText, SttConfig,
-    TextToSpeech, TtsConfig,
+    SimpleWakeDetector, SpeechToText, SttConfig, TalkConfig, TalkEvent, TalkModeBuilder, TalkState,
+    TextToSpeech, TtsConfig, WakeWordConfig,
 };
 
 /// Run the Talk Mode voice conversation.
@@ -27,15 +25,29 @@ pub async fn run(
     println!("Wake word: \"{}\"", wake_word);
     println!("Silence timeout: {}s", silence_timeout_secs);
     println!("Max utterance: {}s", max_utterance_secs);
-    println!("Barge-in: {}", if enable_barge_in { "enabled" } else { "disabled" });
+    println!(
+        "Barge-in: {}",
+        if enable_barge_in {
+            "enabled"
+        } else {
+            "disabled"
+        }
+    );
     println!();
 
     // Create voice components
-    let wake = Arc::new(SimpleWakeDetector::new(WakeWordConfig::with_wake_word(wake_word)));
-    let stt = Arc::new(SpeechToText::new(SttConfig::default())
-        .map_err(|e| anyhow::anyhow!("Failed to create STT: {}", e))?);
-    let tts = Arc::new(TextToSpeech::new(TtsConfig::default()).await
-        .map_err(|e| anyhow::anyhow!("Failed to create TTS: {}", e))?);
+    let wake = Arc::new(SimpleWakeDetector::new(WakeWordConfig::with_wake_word(
+        wake_word,
+    )));
+    let stt = Arc::new(
+        SpeechToText::new(SttConfig::default())
+            .map_err(|e| anyhow::anyhow!("Failed to create STT: {}", e))?,
+    );
+    let tts = Arc::new(
+        TextToSpeech::new(TtsConfig::default())
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to create TTS: {}", e))?,
+    );
 
     // Create Talk Mode configuration
     let config = TalkConfig::with_wake_word(wake_word)
@@ -106,13 +118,20 @@ async fn display_events(event_rx: mpsc::Receiver<TalkEvent>) {
                 println!("{} State: {} → {}", icon, from, to);
             }
             TalkEvent::WakeWordDetected { word, confidence } => {
-                println!("👋 Wake word detected: \"{}\" (confidence: {:.2})", word, confidence);
+                println!(
+                    "👋 Wake word detected: \"{}\" (confidence: {:.2})",
+                    word, confidence
+                );
             }
             TalkEvent::SpeechStarted => {
                 println!("💬 Listening...");
             }
             TalkEvent::SpeechEnded { duration } => {
-                println!("✓ Speech ended ({}.{:03}s)", duration.as_secs(), duration.subsec_millis());
+                println!(
+                    "✓ Speech ended ({}.{:03}s)",
+                    duration.as_secs(),
+                    duration.subsec_millis()
+                );
             }
             TalkEvent::Transcription { text, confidence } => {
                 println!("📝 You said: \"{}\" (confidence: {:.2})", text, confidence);

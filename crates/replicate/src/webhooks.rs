@@ -68,50 +68,51 @@ impl WebhookVerifier {
         // Parse the signature header
         // Format: t=<timestamp>,v1=<signature>
         let parts: Vec<&str> = signature_header.split(',').collect();
-        
+
         let mut timestamp = None;
         let mut signature = None;
-        
+
         for part in parts {
             let kv: Vec<&str> = part.splitn(2, '=').collect();
             if kv.len() != 2 {
                 continue;
             }
-            
+
             match kv[0] {
                 "t" => timestamp = Some(kv[1]),
                 "v1" => signature = Some(kv[1]),
                 _ => {}
             }
         }
-        
+
         let timestamp = timestamp.ok_or_else(|| ReplicateError::Webhook {
             message: "Missing timestamp in signature".to_string(),
         })?;
-        
+
         let signature = signature.ok_or_else(|| ReplicateError::Webhook {
             message: "Missing signature in signature header".to_string(),
         })?;
-        
+
         // Construct the signed payload
         let signed_payload = format!("{}.{}", timestamp, String::from_utf8_lossy(body));
-        
+
         // Compute expected signature
-        let mut mac = HmacSha256::new_from_slice(self.secret.as_bytes())
-            .map_err(|e| ReplicateError::Webhook {
+        let mut mac = HmacSha256::new_from_slice(self.secret.as_bytes()).map_err(|e| {
+            ReplicateError::Webhook {
                 message: format!("Failed to create HMAC: {}", e),
-            })?;
+            }
+        })?;
         mac.update(signed_payload.as_bytes());
         let result = mac.finalize();
         let expected_signature = hex::encode(result.into_bytes());
-        
+
         // Compare signatures
         if !constant_time_eq(&expected_signature, signature) {
             return Err(ReplicateError::Webhook {
                 message: "Invalid signature".to_string(),
             });
         }
-        
+
         debug!("Webhook signature verified successfully");
         Ok(())
     }
@@ -127,7 +128,7 @@ impl WebhookVerifier {
     ) -> Result<()> {
         // Parse the signature header to get timestamp
         let parts: Vec<&str> = signature_header.split(',').collect();
-        
+
         let mut timestamp = None;
         for part in parts {
             let kv: Vec<&str> = part.splitn(2, '=').collect();
@@ -135,24 +136,24 @@ impl WebhookVerifier {
                 timestamp = Some(kv[1]);
             }
         }
-        
+
         let timestamp_str = timestamp.ok_or_else(|| ReplicateError::Webhook {
             message: "Missing timestamp in signature".to_string(),
         })?;
-        
+
         let timestamp_ms: i64 = timestamp_str.parse().map_err(|_| ReplicateError::Webhook {
             message: "Invalid timestamp".to_string(),
         })?;
-        
+
         let now = chrono::Utc::now().timestamp_millis();
         let tolerance_ms = (tolerance_seconds as i64) * 1000;
-        
+
         if (now - timestamp_ms).abs() > tolerance_ms {
             return Err(ReplicateError::Webhook {
                 message: "Timestamp outside tolerance window".to_string(),
             });
         }
-        
+
         self.verify(signature_header, body)
     }
 }
@@ -162,7 +163,7 @@ fn constant_time_eq(a: &str, b: &str) -> bool {
     if a.len() != b.len() {
         return false;
     }
-    
+
     let mut result = 0u8;
     for (x, y) in a.bytes().zip(b.bytes()) {
         result |= x ^ y;
@@ -194,7 +195,7 @@ pub enum WebhookEventType {
 
 impl WebhookEventType {
     /// Parse from string.
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s {
             "start" => Some(Self::Start),
             "output" => Some(Self::Output),
@@ -241,10 +242,19 @@ mod tests {
 
     #[test]
     fn test_webhook_event_type() {
-        assert_eq!(WebhookEventType::from_str("start"), Some(WebhookEventType::Start));
-        assert_eq!(WebhookEventType::from_str("output"), Some(WebhookEventType::Output));
-        assert_eq!(WebhookEventType::from_str("completed"), Some(WebhookEventType::Completed));
-        assert_eq!(WebhookEventType::from_str("invalid"), None);
+        assert_eq!(
+            WebhookEventType::parse("start"),
+            Some(WebhookEventType::Start)
+        );
+        assert_eq!(
+            WebhookEventType::parse("output"),
+            Some(WebhookEventType::Output)
+        );
+        assert_eq!(
+            WebhookEventType::parse("completed"),
+            Some(WebhookEventType::Completed)
+        );
+        assert_eq!(WebhookEventType::parse("invalid"), None);
     }
 
     #[test]
@@ -263,11 +273,11 @@ mod tests {
     #[test]
     fn test_webhook_verifier_invalid_signature_format() {
         let verifier = WebhookVerifier::new("test_secret").unwrap();
-        
+
         // Missing timestamp
         let result = verifier.verify("v1=abc123", b"{}");
         assert!(result.is_err());
-        
+
         // Missing signature
         let result = verifier.verify("t=1234567890", b"{}");
         assert!(result.is_err());

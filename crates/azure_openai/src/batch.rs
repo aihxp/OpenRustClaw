@@ -246,7 +246,10 @@ impl BatchStatus {
 
     /// Check if the batch is processing.
     pub fn is_processing(&self) -> bool {
-        matches!(self, BatchStatus::Validating | BatchStatus::InProgress | BatchStatus::Finalizing)
+        matches!(
+            self,
+            BatchStatus::Validating | BatchStatus::InProgress | BatchStatus::Finalizing
+        )
     }
 }
 
@@ -308,8 +311,8 @@ mod tests {
 
     #[test]
     fn test_batch_request_builder() {
-        let request = BatchRequest::new("file-123", "/v1/chat/completions")
-            .completion_window("24h");
+        let request =
+            BatchRequest::new("file-123", "/v1/chat/completions").completion_window("24h");
 
         assert_eq!(request.input_file_id, "file-123");
         assert_eq!(request.endpoint, "/v1/chat/completions");

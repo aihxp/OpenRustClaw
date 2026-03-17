@@ -237,7 +237,10 @@ mod tests {
             .format(SummaryFormat::Paragraph)
             .build();
 
-        assert_eq!(request.text, "This is a long text that needs to be summarized...");
+        assert_eq!(
+            request.text,
+            "This is a long text that needs to be summarized..."
+        );
         assert_eq!(request.length, Some(SummaryLength::Medium));
         assert_eq!(request.format, Some(SummaryFormat::Paragraph));
     }
@@ -253,7 +256,10 @@ mod tests {
             .build();
 
         assert_eq!(request.model, Some("summarize-xlarge".to_string()));
-        assert_eq!(request.additional_command, Some("Focus on key points".to_string()));
+        assert_eq!(
+            request.additional_command,
+            Some("Focus on key points".to_string())
+        );
         assert_eq!(request.temperature, Some(0.5));
         assert_eq!(request.truncate, Some(TruncateMode::End));
     }

@@ -45,9 +45,8 @@ pub async fn extract_text(image_data: &[u8]) -> Result<String> {
     // 4. Return the extracted text
 
     // Placeholder implementation
-    let _img = image::load_from_memory(image_data).map_err(|e| {
-        AutomationError::Other(format!("Failed to decode image: {}", e))
-    })?;
+    let _img = image::load_from_memory(image_data)
+        .map_err(|e| AutomationError::Other(format!("Failed to decode image: {}", e)))?;
 
     // Mock result - in reality, this would call the OCR engine
     Ok(String::from(

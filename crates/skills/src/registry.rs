@@ -3,13 +3,13 @@
 //! A ClawHub-like skill registry for discovering and installing skills.
 //! Supports skill search, installation, updates, and signature verification.
 
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use chrono::{DateTime, Duration, Utc};
-use ed25519_dalek::{Signature, VerifyingKey, Verifier};
+use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use reqwest::Client;
 use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
-use sqlx::{sqlite::SqliteConnectOptions, Row, SqlitePool};
+use sqlx::{Row, SqlitePool, sqlite::SqliteConnectOptions};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tracing::{debug, info, warn};
@@ -239,7 +239,8 @@ impl ClawHubRegistry {
 
     /// Download and install a skill
     pub async fn install(&self, name: &str, version: Option<Version>) -> Result<InstallResult> {
-        self.install_internal(name, version, &mut std::collections::HashSet::new()).await
+        self.install_internal(name, version, &mut std::collections::HashSet::new())
+            .await
     }
 
     /// Internal install method with dependency tracking
@@ -293,10 +294,7 @@ impl ClawHubRegistry {
         // Resolve and install dependencies (using boxed future to avoid recursion)
         for dep in &metadata.dependencies {
             if !dep.optional {
-                info!(
-                    "Installing dependency: {} ({})",
-                    dep.name, dep.version_req
-                );
+                info!("Installing dependency: {} ({})", dep.name, dep.version_req);
                 let dep_name = dep.name.clone();
                 match Box::pin(self.install_internal(&dep_name, None, installing)).await? {
                     InstallResult::AlreadyInstalled => {
@@ -374,12 +372,7 @@ impl ClawHubRegistry {
         // Remove files
         tokio::fs::remove_dir_all(&installed.install_path)
             .await
-            .map_err(|e| {
-                Error::Internal(format!(
-                    "Failed to remove skill directory: {}",
-                    e
-                ))
-            })?;
+            .map_err(|e| Error::Internal(format!("Failed to remove skill directory: {}", e)))?;
 
         // Unregister
         self.local_db.unregister(name).await?;
@@ -444,12 +437,23 @@ impl ClawHubRegistry {
         debug!("Verifying signature for {}", name);
 
         // Parse signature
-        let sig_bytes = BASE64
-            .decode(signature)
-            .map_err(|e| Error::Security(openrustclaw_core::error::SecurityError::SkillVerificationFailed(format!("Invalid signature format: {}", e))))?;
-        
-        let signature = Signature::from_slice(&sig_bytes)
-            .map_err(|e| Error::Security(openrustclaw_core::error::SecurityError::SkillVerificationFailed(format!("Invalid signature: {}", e))))?;
+        let sig_bytes = BASE64.decode(signature).map_err(|e| {
+            Error::Security(
+                openrustclaw_core::error::SecurityError::SkillVerificationFailed(format!(
+                    "Invalid signature format: {}",
+                    e
+                )),
+            )
+        })?;
+
+        let signature = Signature::from_slice(&sig_bytes).map_err(|e| {
+            Error::Security(
+                openrustclaw_core::error::SecurityError::SkillVerificationFailed(format!(
+                    "Invalid signature: {}",
+                    e
+                )),
+            )
+        })?;
 
         // Get author's public key from registry
         let url = format!("{}/api/v1/authors/{}/key", self.endpoint, name);
@@ -482,13 +486,11 @@ impl ClawHubRegistry {
             .map_err(|_| Error::Internal("Invalid public key length".to_string()))?;
 
         // Verify
-        verifying_key
-            .verify(package, &signature)
-            .map_err(|_| {
-                Error::Security(openrustclaw_core::error::SecurityError::SkillVerificationFailed(
-                    name.to_string(),
-                ))
-            })?;
+        verifying_key.verify(package, &signature).map_err(|_| {
+            Error::Security(
+                openrustclaw_core::error::SecurityError::SkillVerificationFailed(name.to_string()),
+            )
+        })?;
 
         info!("Signature verified for {}", name);
         Ok(())
@@ -500,9 +502,9 @@ impl ClawHubRegistry {
             "{}/api/v1/skills/{}/{}/download",
             self.endpoint, name, version
         );
-        
+
         info!("Downloading skill package from {}", url);
-        
+
         let response = self
             .client
             .get(&url)
@@ -518,10 +520,10 @@ impl ClawHubRegistry {
         }
 
         if !response.status().is_success() {
-                return Err(Error::Internal(format!(
-                    "Failed to download package: {}",
-                    response.status()
-                )));
+            return Err(Error::Internal(format!(
+                "Failed to download package: {}",
+                response.status()
+            )));
         }
 
         response
@@ -546,9 +548,9 @@ impl ClawHubRegistry {
 
         // Remove existing installation if present
         if install_dir.exists() {
-            tokio::fs::remove_dir_all(&install_dir)
-                .await
-                .map_err(|e| Error::Internal(format!("Failed to remove old installation: {}", e)))?;
+            tokio::fs::remove_dir_all(&install_dir).await.map_err(|e| {
+                Error::Internal(format!("Failed to remove old installation: {}", e))
+            })?;
         }
 
         tokio::fs::create_dir_all(&install_dir)
@@ -558,7 +560,7 @@ impl ClawHubRegistry {
         // Extract tar.gz in a blocking task
         let install_dir_clone = install_dir.clone();
         let package = package.to_vec();
-        
+
         tokio::task::spawn_blocking(move || {
             let tar = flate2::read::GzDecoder::new(&package[..]);
             let mut archive = tar::Archive::new(tar);
@@ -655,7 +657,13 @@ impl SkillCache {
     fn sanitize_filename(query: &str) -> String {
         query
             .chars()
-            .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+            .map(|c| {
+                if c.is_alphanumeric() || c == '-' || c == '_' {
+                    c
+                } else {
+                    '_'
+                }
+            })
             .collect()
     }
 }
@@ -676,9 +684,11 @@ impl LocalSkillDb {
             .filename(&db_path)
             .create_if_missing(true);
 
-        let pool = SqlitePool::connect_with(options)
-            .await
-            .map_err(|e| Error::Database(openrustclaw_core::error::DatabaseError::Connection(e.to_string())))?;
+        let pool = SqlitePool::connect_with(options).await.map_err(|e| {
+            Error::Database(openrustclaw_core::error::DatabaseError::Connection(
+                e.to_string(),
+            ))
+        })?;
 
         // Initialize schema
         let db = Self { pool };
@@ -706,20 +716,27 @@ impl LocalSkillDb {
         )
         .execute(&self.pool)
         .await
-        .map_err(|e| Error::Database(openrustclaw_core::error::DatabaseError::Migration(e.to_string())))?;
+        .map_err(|e| {
+            Error::Database(openrustclaw_core::error::DatabaseError::Migration(
+                e.to_string(),
+            ))
+        })?;
 
         Ok(())
     }
 
     /// Check if a skill is installed
     async fn is_installed(&self, name: &str, version: &Version) -> Result<bool> {
-        let row: Option<(String,)> = sqlx::query_as(
-            "SELECT version FROM installed_skills WHERE name = ?"
-        )
-        .bind(name)
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(|e| Error::Database(openrustclaw_core::error::DatabaseError::Query(e.to_string())))?;
+        let row: Option<(String,)> =
+            sqlx::query_as("SELECT version FROM installed_skills WHERE name = ?")
+                .bind(name)
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(|e| {
+                    Error::Database(openrustclaw_core::error::DatabaseError::Query(
+                        e.to_string(),
+                    ))
+                })?;
 
         if let Some((installed_version,)) = row {
             let installed = Version::parse(&installed_version)
@@ -742,11 +759,14 @@ impl LocalSkillDb {
         .bind(name)
         .fetch_optional(&self.pool)
         .await
-        .map_err(|e| Error::Database(openrustclaw_core::error::DatabaseError::Query(e.to_string())))?;
-
-        let row = row.ok_or_else(|| {
-            Error::Internal(format!("Skill '{}' is not installed", name))
+        .map_err(|e| {
+            Error::Database(openrustclaw_core::error::DatabaseError::Query(
+                e.to_string(),
+            ))
         })?;
+
+        let row =
+            row.ok_or_else(|| Error::Internal(format!("Skill '{}' is not installed", name)))?;
 
         let version_str: String = row.get("version");
         let install_path_str: String = row.get("install_path");
@@ -796,7 +816,11 @@ impl LocalSkillDb {
         .bind(&path_str)
         .execute(&self.pool)
         .await
-        .map_err(|e| Error::Database(openrustclaw_core::error::DatabaseError::Query(e.to_string())))?;
+        .map_err(|e| {
+            Error::Database(openrustclaw_core::error::DatabaseError::Query(
+                e.to_string(),
+            ))
+        })?;
 
         Ok(())
     }
@@ -807,7 +831,11 @@ impl LocalSkillDb {
             .bind(name)
             .execute(&self.pool)
             .await
-            .map_err(|e| Error::Database(openrustclaw_core::error::DatabaseError::Query(e.to_string())))?;
+            .map_err(|e| {
+                Error::Database(openrustclaw_core::error::DatabaseError::Query(
+                    e.to_string(),
+                ))
+            })?;
 
         Ok(())
     }
@@ -823,7 +851,11 @@ impl LocalSkillDb {
         )
         .fetch_all(&self.pool)
         .await
-        .map_err(|e| Error::Database(openrustclaw_core::error::DatabaseError::Query(e.to_string())))?;
+        .map_err(|e| {
+            Error::Database(openrustclaw_core::error::DatabaseError::Query(
+                e.to_string(),
+            ))
+        })?;
 
         let mut skills = Vec::new();
         for row in rows {
@@ -831,7 +863,7 @@ impl LocalSkillDb {
             let install_path_str: String = row.get("install_path");
             let installed_at_str: String = row.get("installed_at");
             let updated_at_str: String = row.get("updated_at");
-            
+
             skills.push(InstalledSkill {
                 name: row.get("name"),
                 version: Version::parse(&version_str)
@@ -1066,8 +1098,7 @@ mod tests {
         };
 
         let json = serde_json::to_string(&metadata).expect("serialize");
-        let deserialized: SkillMetadata =
-            serde_json::from_str(&json).expect("deserialize");
+        let deserialized: SkillMetadata = serde_json::from_str(&json).expect("deserialize");
 
         assert_eq!(deserialized.name, "my-skill");
         assert_eq!(deserialized.version, Version::new(1, 2, 3));
@@ -1107,8 +1138,7 @@ mod tests {
         };
 
         let json = serde_json::to_string(&metadata).expect("serialize");
-        let deserialized: SkillMetadata =
-            serde_json::from_str(&json).expect("deserialize");
+        let deserialized: SkillMetadata = serde_json::from_str(&json).expect("deserialize");
         assert!(deserialized.signature.is_none());
         assert!(deserialized.min_openrustclaw_version.is_none());
         assert!(deserialized.dependencies.is_empty());
@@ -1125,8 +1155,7 @@ mod tests {
         };
 
         let json = serde_json::to_string(&dep).expect("serialize");
-        let deserialized: SkillDependency =
-            serde_json::from_str(&json).expect("deserialize");
+        let deserialized: SkillDependency = serde_json::from_str(&json).expect("deserialize");
 
         assert_eq!(deserialized.name, "base-skill");
         assert!(!deserialized.optional);

@@ -4,8 +4,8 @@
 //! 1. A valid training file in JSONL format
 //! 2. Sufficient credits in your Fireworks account
 
-use fireworks_ai::fine_tuning::FineTuneRequest;
 use fireworks_ai::FireworksClient;
+use fireworks_ai::fine_tuning::FineTuneRequest;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -28,7 +28,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             for job in &jobs.data {
                 println!(
                     "  - {}: {} (model: {}, status: {})",
-                    job.id, 
+                    job.id,
                     job.fine_tuned_model.as_deref().unwrap_or("N/A"),
                     job.model,
                     job.status
@@ -46,11 +46,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Ok(files) => {
             println!("Found {} files", files.data.len());
             for file in &files.data {
-                println!("  - {}: {} ({} bytes, purpose: {})",
-                    file.id,
-                    file.filename,
-                    file.bytes,
-                    file.purpose
+                println!(
+                    "  - {}: {} ({} bytes, purpose: {})",
+                    file.id, file.filename, file.bytes, file.purpose
                 );
             }
         }
@@ -83,12 +81,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let job_id = "ft-job-id";
     let job = client.fine_tuning().get_job(job_id).await?;
     println!("Job {} status: {}", job.id, job.status);
-    
+
     // List events
     let events = client.fine_tuning().list_events(job_id).await?;
     println!("Events:");
     for event in &events.data {
-        println!("  [{}] {}: {}", 
+        println!("  [{}] {}: {}",
             chrono::DateTime::from_timestamp(event.created_at, 0)
                 .map(|d| d.to_rfc3339())
                 .unwrap_or_default(),

@@ -41,13 +41,19 @@ impl Tool {
     ) -> Self {
         let name = name.into();
         let mut prop = serde_json::Map::new();
-        prop.insert("type".to_string(), serde_json::Value::String(property_type.into()));
-        prop.insert("description".to_string(), serde_json::Value::String(description.into()));
+        prop.insert(
+            "type".to_string(),
+            serde_json::Value::String(property_type.into()),
+        );
+        prop.insert(
+            "description".to_string(),
+            serde_json::Value::String(description.into()),
+        );
 
         self.tool_spec
             .input_schema
             .properties
-            .get_or_insert_with(|| serde_json::Map::new())
+            .get_or_insert_with(serde_json::Map::new)
             .insert(name, serde_json::Value::Object(prop));
         self
     }
@@ -101,11 +107,7 @@ impl ToolInputSchema {
     }
 
     /// Add a string property.
-    pub fn with_string(
-        mut self,
-        name: impl Into<String>,
-        description: impl Into<String>,
-    ) -> Self {
+    pub fn with_string(mut self, name: impl Into<String>, description: impl Into<String>) -> Self {
         let name = name.into();
         let mut prop = serde_json::Map::new();
         prop.insert("type".to_string(), "string".into());
@@ -119,11 +121,7 @@ impl ToolInputSchema {
     }
 
     /// Add an integer property.
-    pub fn with_integer(
-        mut self,
-        name: impl Into<String>,
-        description: impl Into<String>,
-    ) -> Self {
+    pub fn with_integer(mut self, name: impl Into<String>, description: impl Into<String>) -> Self {
         let name = name.into();
         let mut prop = serde_json::Map::new();
         prop.insert("type".to_string(), "integer".into());
@@ -137,11 +135,7 @@ impl ToolInputSchema {
     }
 
     /// Add a number property.
-    pub fn with_number(
-        mut self,
-        name: impl Into<String>,
-        description: impl Into<String>,
-    ) -> Self {
+    pub fn with_number(mut self, name: impl Into<String>, description: impl Into<String>) -> Self {
         let name = name.into();
         let mut prop = serde_json::Map::new();
         prop.insert("type".to_string(), "number".into());
@@ -155,11 +149,7 @@ impl ToolInputSchema {
     }
 
     /// Add a boolean property.
-    pub fn with_boolean(
-        mut self,
-        name: impl Into<String>,
-        description: impl Into<String>,
-    ) -> Self {
+    pub fn with_boolean(mut self, name: impl Into<String>, description: impl Into<String>) -> Self {
         let name = name.into();
         let mut prop = serde_json::Map::new();
         prop.insert("type".to_string(), "boolean".into());
@@ -193,10 +183,7 @@ impl ToolInputSchema {
         prop.insert("type".to_string(), "string".into());
         prop.insert("description".to_string(), description.into().into());
         let enum_values: Vec<serde_json::Value> = values.into_iter().map(|s| s.into()).collect();
-        prop.insert(
-            "enum".to_string(),
-            enum_values.into(),
-        );
+        prop.insert("enum".to_string(), enum_values.into());
 
         self.properties
             .as_mut()
@@ -286,11 +273,18 @@ mod tests {
             "calculator",
             "A calculator tool for mathematical expressions",
         )
-        .with_property("expression", "string", "The mathematical expression to evaluate")
+        .with_property(
+            "expression",
+            "string",
+            "The mathematical expression to evaluate",
+        )
         .with_required("expression");
 
         assert_eq!(tool.tool_spec.name, "calculator");
-        assert_eq!(tool.tool_spec.description, "A calculator tool for mathematical expressions");
+        assert_eq!(
+            tool.tool_spec.description,
+            "A calculator tool for mathematical expressions"
+        );
         assert!(tool.tool_spec.input_schema.properties.is_some());
         assert!(tool.tool_spec.input_schema.required.is_some());
     }
@@ -301,7 +295,11 @@ mod tests {
             .with_string("name", "The person's name")
             .with_integer("age", "The person's age")
             .with_boolean("active", "Whether the person is active")
-            .with_enum("status", "The status", vec!["active".to_string(), "inactive".to_string()])
+            .with_enum(
+                "status",
+                "The status",
+                vec!["active".to_string(), "inactive".to_string()],
+            )
             .required("name")
             .required("age");
 
@@ -317,13 +315,13 @@ mod tests {
     fn test_tool_choice() {
         let auto = ToolChoice::auto();
         match auto {
-            ToolChoice::Auto(_) => {},
+            ToolChoice::Auto(_) => {}
             _ => panic!("Expected auto tool choice"),
         }
 
         let any = ToolChoice::any();
         match any {
-            ToolChoice::Any(_) => {},
+            ToolChoice::Any(_) => {}
             _ => panic!("Expected any tool choice"),
         }
 

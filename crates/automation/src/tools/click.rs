@@ -6,7 +6,7 @@ use serde_json::json;
 use tracing::{info, warn};
 
 use crate::browser::Browser;
-use crate::tools::{error_response, success_response, AutomationTool, ToolContext};
+use crate::tools::{AutomationTool, ToolContext, error_response, success_response};
 
 /// Click on an element.
 pub struct ClickTool {
@@ -90,16 +90,18 @@ impl AutomationTool for ClickTool {
         _ctx: &ToolContext,
     ) -> anyhow::Result<String> {
         let args: ClickArgs = serde_json::from_value(input)?;
-        
+
         // Get current page (in a real implementation, we'd track the active page)
-        let pages = self.browser.pages().await.map_err(|e| {
-            anyhow::anyhow!("Failed to get pages: {}", e)
-        })?;
-        
-        let page = pages.first().ok_or_else(|| {
-            anyhow::anyhow!("No pages available")
-        })?;
-        
+        let pages = self
+            .browser
+            .pages()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to get pages: {}", e))?;
+
+        let page = pages
+            .first()
+            .ok_or_else(|| anyhow::anyhow!("No pages available"))?;
+
         // Determine selector
         let selector = if let Some(sel) = args.selector {
             sel
@@ -113,9 +115,9 @@ impl AutomationTool for ClickTool {
         } else {
             return Ok(error_response("No selector, xpath, or text provided"));
         };
-        
+
         info!(selector = %selector, "Clicking element");
-        
+
         // Wait for element if requested
         if args.wait_for {
             let timeout = args.timeout.unwrap_or(5000);
@@ -129,7 +131,7 @@ impl AutomationTool for ClickTool {
                 }
             }
         }
-        
+
         // Get element info before clicking
         let element = match page.query_selector(&selector).await {
             Ok(Some(el)) => el,
@@ -140,22 +142,24 @@ impl AutomationTool for ClickTool {
                 return Ok(error_response(format!("Failed to find element: {}", e)));
             }
         };
-        
+
         let tag_name = element.tag_name().await.unwrap_or_default();
         let text = element.inner_text().await.unwrap_or_default();
-        
+
         // Perform the click
         let click_count = args.click_count.unwrap_or(1);
         if click_count == 2 {
-            element.dblclick().await.map_err(|e| {
-                anyhow::anyhow!("Failed to double-click element: {}", e)
-            })?;
+            element
+                .dblclick()
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to double-click element: {}", e))?;
         } else {
-            element.click().await.map_err(|e| {
-                anyhow::anyhow!("Failed to click element: {}", e)
-            })?;
+            element
+                .click()
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to click element: {}", e))?;
         }
-        
+
         Ok(success_response(format!(
             "Successfully clicked element:\n  Selector: {}\n  Tag: {}\n  Text: {}",
             selector, tag_name, text

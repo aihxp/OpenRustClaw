@@ -125,9 +125,15 @@ impl fmt::Display for GroqError {
             GroqError::Authentication { message } => {
                 write!(f, "Authentication failed: {message}")
             }
-            GroqError::RateLimit { retry_after, message } => {
+            GroqError::RateLimit {
+                retry_after,
+                message,
+            } => {
                 if let Some(duration) = retry_after {
-                    write!(f, "Rate limit exceeded (retry after {duration:?}): {message}")
+                    write!(
+                        f,
+                        "Rate limit exceeded (retry after {duration:?}): {message}"
+                    )
                 } else {
                     write!(f, "Rate limit exceeded: {message}")
                 }
@@ -177,7 +183,10 @@ impl fmt::Display for GroqError {
             GroqError::Timeout { operation } => {
                 write!(f, "Timeout during {operation}")
             }
-            GroqError::RetryExhausted { attempts, last_error } => {
+            GroqError::RetryExhausted {
+                attempts,
+                last_error,
+            } => {
                 write!(f, "Retry exhausted after {attempts} attempts: {last_error}")
             }
             GroqError::NotFound { resource, id } => {

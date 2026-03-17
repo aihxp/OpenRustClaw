@@ -3,23 +3,23 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
+use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue};
 use secrecy::{ExposeSecret, SecretString};
 use tracing::{debug, trace};
 
-use crate::constants::{headers, retry, DEFAULT_API_VERSION, DEFAULT_BASE_URL};
+use crate::constants::{DEFAULT_API_VERSION, DEFAULT_BASE_URL, headers, retry};
 use crate::error::{CohereError, Result};
 
 #[cfg(feature = "chat")]
 use crate::chat::ChatEndpoint;
-#[cfg(feature = "generate")]
-use crate::generate::GenerateEndpoint;
-#[cfg(feature = "embeddings")]
-use crate::embeddings::EmbedEndpoint;
-#[cfg(feature = "rerank")]
-use crate::rerank::RerankEndpoint;
 #[cfg(feature = "classify")]
 use crate::classify::ClassifyEndpoint;
+#[cfg(feature = "embeddings")]
+use crate::embeddings::EmbedEndpoint;
+#[cfg(feature = "generate")]
+use crate::generate::GenerateEndpoint;
+#[cfg(feature = "rerank")]
+use crate::rerank::RerankEndpoint;
 #[cfg(feature = "summarize")]
 use crate::summarize::SummarizeEndpoint;
 #[cfg(feature = "tokenize")]
@@ -186,7 +186,11 @@ impl CohereClient {
     }
 
     /// Make a POST request to the API.
-    pub(crate) async fn post(&self, path: &str, body: serde_json::Value) -> Result<reqwest::Response> {
+    pub(crate) async fn post(
+        &self,
+        path: &str,
+        body: serde_json::Value,
+    ) -> Result<reqwest::Response> {
         let url = format!("{}{}", self.inner.base_url, path);
 
         trace!(url = %url, body = %body, "Making POST request");
@@ -204,15 +208,20 @@ impl CohereClient {
     }
 
     /// Parse a response or return an error.
-    pub(crate) async fn handle_response(&self, response: reqwest::Response) -> Result<serde_json::Value> {
+    pub(crate) async fn handle_response(
+        &self,
+        response: reqwest::Response,
+    ) -> Result<serde_json::Value> {
         let status = response.status();
 
         if status.is_success() {
-            let body = response.json::<serde_json::Value>().await.map_err(|e| {
-                CohereError::Internal {
-                    message: format!("Failed to parse JSON response: {e}"),
-                }
-            })?;
+            let body =
+                response
+                    .json::<serde_json::Value>()
+                    .await
+                    .map_err(|e| CohereError::Internal {
+                        message: format!("Failed to parse JSON response: {e}"),
+                    })?;
             Ok(body)
         } else {
             Err(CohereError::from_response(response).await)

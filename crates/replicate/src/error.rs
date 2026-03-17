@@ -144,9 +144,15 @@ impl fmt::Display for ReplicateError {
             ReplicateError::Authentication { message } => {
                 write!(f, "Authentication failed: {message}")
             }
-            ReplicateError::RateLimit { retry_after, message } => {
+            ReplicateError::RateLimit {
+                retry_after,
+                message,
+            } => {
                 if let Some(duration) = retry_after {
-                    write!(f, "Rate limit exceeded (retry after {duration:?}): {message}")
+                    write!(
+                        f,
+                        "Rate limit exceeded (retry after {duration:?}): {message}"
+                    )
                 } else {
                     write!(f, "Rate limit exceeded: {message}")
                 }
@@ -170,7 +176,11 @@ impl fmt::Display for ReplicateError {
             ReplicateError::VersionNotFound { version } => {
                 write!(f, "Version not found: {version}")
             }
-            ReplicateError::Api { status, code, message } => {
+            ReplicateError::Api {
+                status,
+                code,
+                message,
+            } => {
                 if let Some(c) = code {
                     write!(f, "API error ({status} - {c}): {message}")
                 } else {
@@ -192,7 +202,10 @@ impl fmt::Display for ReplicateError {
             ReplicateError::Timeout { operation } => {
                 write!(f, "Timeout during {operation}")
             }
-            ReplicateError::RetryExhausted { attempts, last_error } => {
+            ReplicateError::RetryExhausted {
+                attempts,
+                last_error,
+            } => {
                 write!(f, "Retry exhausted after {attempts} attempts: {last_error}")
             }
             ReplicateError::NotFound { resource, id } => {

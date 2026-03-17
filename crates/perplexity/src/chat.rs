@@ -10,12 +10,12 @@ use serde::{Deserialize, Serialize};
 use tracing::debug;
 
 use crate::client::PerplexityClient;
-use crate::constants::endpoints;
 use crate::constants::SearchRecencyFilter;
+use crate::constants::endpoints;
 use crate::error::{PerplexityError, Result};
-use crate::types::{Citation, FinishReason, Message, RelatedQuestion, ResponseFormat, TokenUsage, Tool, ToolCall};
-
-
+use crate::types::{
+    Citation, FinishReason, Message, RelatedQuestion, ResponseFormat, TokenUsage, Tool, ToolCall,
+};
 
 /// Client for the Chat Completions API.
 #[derive(Debug)]
@@ -44,25 +44,25 @@ impl<'a> ChatEndpoint<'a> {
 
     /// Send a streaming chat completion request.
     #[cfg(feature = "streaming")]
-    pub async fn complete_stream(&self, request: ChatRequest) -> Result<crate::streaming::ChatCompletionStream> {
+    pub async fn complete_stream(
+        &self,
+        request: ChatRequest,
+    ) -> Result<crate::streaming::ChatCompletionStream> {
         use crate::streaming::ChatCompletionStream;
-        
+
         let mut request = request;
         request.stream = Some(true);
-        
+
         let body = serde_json::to_value(&request)?;
-        
+
         debug!("Initiating streaming chat request");
-        
-        let response = self
-            .client
-            .post(endpoints::CHAT_COMPLETIONS, body)
-            .await?;
-        
+
+        let response = self.client.post(endpoints::CHAT_COMPLETIONS, body).await?;
+
         if !response.status().is_success() {
             return Err(PerplexityError::from_response(response).await);
         }
-        
+
         Ok(ChatCompletionStream::new(response))
     }
 }
@@ -138,7 +138,10 @@ pub struct ChatRequest {
 
     /// Return related questions.
     /// Only applicable for online models.
-    #[serde(rename = "return_related_questions", skip_serializing_if = "Option::is_none")]
+    #[serde(
+        rename = "return_related_questions",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub return_related_questions: Option<bool>,
 
     /// Return images in the response.
@@ -168,9 +171,7 @@ impl ChatRequest {
 
     /// Create a simple request with a single user message.
     pub fn simple(model: impl Into<String>, message: impl Into<String>) -> Self {
-        Self::builder(model)
-            .message(Message::user(message))
-            .build()
+        Self::builder(model).message(Message::user(message)).build()
     }
 }
 
@@ -411,7 +412,11 @@ pub struct ChatResponse {
     pub citations: Vec<Citation>,
 
     /// Related questions (Perplexity-specific).
-    #[serde(default, rename = "related_questions", skip_serializing_if = "Vec::is_empty")]
+    #[serde(
+        default,
+        rename = "related_questions",
+        skip_serializing_if = "Vec::is_empty"
+    )]
     pub related_questions: Vec<RelatedQuestion>,
 }
 

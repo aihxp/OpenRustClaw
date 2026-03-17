@@ -4,8 +4,8 @@
 //! as a mobile node in distributed systems.
 
 pub mod node;
-pub mod sync;
 pub mod notifications;
+pub mod sync;
 
 #[cfg(all(target_os = "ios", feature = "ios"))]
 pub mod ios;

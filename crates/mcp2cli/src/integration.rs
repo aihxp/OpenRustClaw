@@ -27,7 +27,12 @@ pub struct Mcp2CliTool {
 
 impl Mcp2CliTool {
     /// Create a new mcp2cli tool wrapper
-    pub fn new(discovery: ToolDiscovery, source: ToolSource, name: String, description: String) -> Self {
+    pub fn new(
+        discovery: ToolDiscovery,
+        source: ToolSource,
+        name: String,
+        description: String,
+    ) -> Self {
         Self {
             discovery,
             source,
@@ -52,7 +57,10 @@ impl Mcp2CliTool {
     }
 
     /// Get help for a specific tool
-    pub async fn get_tool_help(&self, tool_name: &str) -> Mcp2CliResult<crate::discovery::ToolHelp> {
+    pub async fn get_tool_help(
+        &self,
+        tool_name: &str,
+    ) -> Mcp2CliResult<crate::discovery::ToolHelp> {
         self.discovery.get_help(&self.source, tool_name).await
     }
 
@@ -109,15 +117,19 @@ impl Tool for Mcp2CliTool {
     }
 
     #[instrument(skip(self, input, ctx), fields(tool_name = %self.name))]
-    async fn execute(&self, input: Value, ctx: &ToolContext) -> openrustclaw_core::error::Result<ToolOutput> {
+    async fn execute(
+        &self,
+        input: Value,
+        ctx: &ToolContext,
+    ) -> openrustclaw_core::error::Result<ToolOutput> {
         use openrustclaw_core::error::ToolError;
 
         let action = input
             .get("action")
             .and_then(|a| a.as_str())
-            .ok_or_else(|| ToolError::InputValidation { 
-                tool: self.name.clone(), 
-                message: "Missing 'action' field".into() 
+            .ok_or_else(|| ToolError::InputValidation {
+                tool: self.name.clone(),
+                message: "Missing 'action' field".into(),
             })?;
 
         let use_toon = input
@@ -128,12 +140,13 @@ impl Tool for Mcp2CliTool {
         match action {
             "list" => {
                 debug!("Listing tools from source");
-                let tools = self.discovery.list_tools(&self.source).await
-                    .map_err(|e| ToolError::ExecutionFailed { 
-                        tool: self.name.clone(), 
-                        message: e.to_string() 
-                    })?;
-                
+                let tools = self.discovery.list_tools(&self.source).await.map_err(|e| {
+                    ToolError::ExecutionFailed {
+                        tool: self.name.clone(),
+                        message: e.to_string(),
+                    }
+                })?;
+
                 let output = tools
                     .iter()
                     .map(|t| t.to_compact_string())
@@ -147,19 +160,23 @@ impl Tool for Mcp2CliTool {
                 })
             }
             "help" => {
-                let tool_name = input
-                    .get("tool_name")
-                    .and_then(|n| n.as_str())
-                    .ok_or_else(|| ToolError::InputValidation { 
-                        tool: self.name.clone(), 
-                        message: "Missing 'tool_name' for help action".into() 
-                    })?;
+                let tool_name =
+                    input
+                        .get("tool_name")
+                        .and_then(|n| n.as_str())
+                        .ok_or_else(|| ToolError::InputValidation {
+                            tool: self.name.clone(),
+                            message: "Missing 'tool_name' for help action".into(),
+                        })?;
 
                 debug!(tool_name = %tool_name, "Getting tool help");
-                let help = self.discovery.get_help(&self.source, tool_name).await
-                    .map_err(|e| ToolError::ExecutionFailed { 
-                        tool: self.name.clone(), 
-                        message: e.to_string() 
+                let help = self
+                    .discovery
+                    .get_help(&self.source, tool_name)
+                    .await
+                    .map_err(|e| ToolError::ExecutionFailed {
+                        tool: self.name.clone(),
+                        message: e.to_string(),
                     })?;
 
                 let content = if use_toon {
@@ -187,13 +204,14 @@ impl Tool for Mcp2CliTool {
                 })
             }
             "execute" => {
-                let tool_name = input
-                    .get("tool_name")
-                    .and_then(|n| n.as_str())
-                    .ok_or_else(|| ToolError::InputValidation { 
-                        tool: self.name.clone(), 
-                        message: "Missing 'tool_name' for execute action".into() 
-                    })?;
+                let tool_name =
+                    input
+                        .get("tool_name")
+                        .and_then(|n| n.as_str())
+                        .ok_or_else(|| ToolError::InputValidation {
+                            tool: self.name.clone(),
+                            message: "Missing 'tool_name' for execute action".into(),
+                        })?;
 
                 let args = input
                     .get("args")
@@ -206,10 +224,13 @@ impl Tool for Mcp2CliTool {
                     "Executing tool via mcp2cli"
                 );
 
-                let result = self.discovery.execute(&self.source, tool_name, args).await
-                    .map_err(|e| ToolError::ExecutionFailed { 
-                        tool: tool_name.to_string(), 
-                        message: e.to_string() 
+                let result = self
+                    .discovery
+                    .execute(&self.source, tool_name, args)
+                    .await
+                    .map_err(|e| ToolError::ExecutionFailed {
+                        tool: tool_name.to_string(),
+                        message: e.to_string(),
                     })?;
 
                 // Try to parse as JSON and convert to TOON if requested
@@ -229,10 +250,14 @@ impl Tool for Mcp2CliTool {
                     is_error: false,
                 })
             }
-            _ => Err(ToolError::InputValidation { 
-                tool: self.name.clone(), 
-                message: format!("Unknown action: {}. Use 'list', 'help', or 'execute'", action)
-            }.into()),
+            _ => Err(ToolError::InputValidation {
+                tool: self.name.clone(),
+                message: format!(
+                    "Unknown action: {}. Use 'list', 'help', or 'execute'",
+                    action
+                ),
+            }
+            .into()),
         }
     }
 }
@@ -332,7 +357,12 @@ impl Mcp2CliFactory {
         name: impl Into<String>,
         description: impl Into<String>,
     ) -> Mcp2CliTool {
-        Mcp2CliTool::new(ToolDiscovery::new(), source, name.into(), description.into())
+        Mcp2CliTool::new(
+            ToolDiscovery::new(),
+            source,
+            name.into(),
+            description.into(),
+        )
     }
 }
 
@@ -341,11 +371,7 @@ fn sanitize_name(input: &str) -> String {
     input
         .replace("https://", "")
         .replace("http://", "")
-        .replace('/', "_")
-        .replace('.', "_")
-        .replace(':', "_")
-        .replace('-', "_")
-        .replace(' ', "_")
+        .replace(['/', '.', ':', '-', ' '], "_")
         .to_lowercase()
 }
 
@@ -421,11 +447,8 @@ mod tests {
 
     #[test]
     fn test_mcp2cli_tool_schema() {
-        let tool = Mcp2CliFactory::with_name(
-            ToolSource::mcp_url("http://test"),
-            "test_tool",
-            "Test tool",
-        );
+        let tool =
+            Mcp2CliFactory::with_name(ToolSource::mcp_url("http://test"), "test_tool", "Test tool");
 
         let schema = tool.schema();
         assert!(schema.get("properties").is_some());
@@ -438,18 +461,18 @@ mod tests {
     #[test]
     fn test_registry() {
         let registry = Mcp2CliRegistry::new();
-        
+
         let tool = Mcp2CliFactory::with_name(
             ToolSource::mcp_url("http://test"),
             "test_source",
             "Test source for registry",
         );
-        
+
         registry.register("test", tool);
-        
+
         assert!(registry.get("test").is_some());
         assert_eq!(registry.list().len(), 1);
-        
+
         registry.remove("test");
         assert!(registry.get("test").is_none());
     }

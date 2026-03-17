@@ -93,9 +93,15 @@ impl fmt::Display for Ai21Error {
             Ai21Error::Authentication { message } => {
                 write!(f, "Authentication failed: {message}")
             }
-            Ai21Error::RateLimit { retry_after, message } => {
+            Ai21Error::RateLimit {
+                retry_after,
+                message,
+            } => {
                 if let Some(duration) = retry_after {
-                    write!(f, "Rate limit exceeded (retry after {duration:?}): {message}")
+                    write!(
+                        f,
+                        "Rate limit exceeded (retry after {duration:?}): {message}"
+                    )
                 } else {
                     write!(f, "Rate limit exceeded: {message}")
                 }
@@ -124,7 +130,10 @@ impl fmt::Display for Ai21Error {
             Ai21Error::Timeout { operation } => {
                 write!(f, "Timeout during {operation}")
             }
-            Ai21Error::RetryExhausted { attempts, last_error } => {
+            Ai21Error::RetryExhausted {
+                attempts,
+                last_error,
+            } => {
                 write!(f, "Retry exhausted after {attempts} attempts: {last_error}")
             }
             Ai21Error::Internal { message } => {
@@ -151,8 +160,6 @@ impl From<reqwest::Error> for Ai21Error {
             Ai21Error::Timeout {
                 operation: "HTTP request".to_string(),
             }
-        } else if err.is_connect() {
-            Ai21Error::Http { source: err }
         } else {
             Ai21Error::Http { source: err }
         }

@@ -3,7 +3,7 @@
 use crate::client::DeepSeekClient;
 use crate::client::endpoints;
 use crate::error::{DeepSeekError, Result};
-use crate::types::{ChatMessage, ChatResponse, Function, Role, Tool, FinishReason};
+use crate::types::{ChatMessage, ChatResponse, FinishReason, Function, Role, Tool};
 
 /// Client for the chat completions API.
 #[derive(Debug)]
@@ -37,10 +37,7 @@ impl<'a> Chat<'a> {
 
     /// Send a streaming chat completion request.
     #[cfg(feature = "streaming")]
-    pub async fn stream(
-        &self,
-        mut request: ChatRequest,
-    ) -> Result<ChatStream> {
+    pub async fn stream(&self, mut request: ChatRequest) -> Result<ChatStream> {
         use eventsource_stream::Eventsource;
         use futures::StreamExt;
 
@@ -68,24 +65,22 @@ impl<'a> Chat<'a> {
         let stream = response
             .bytes_stream()
             .eventsource()
-            .map(|event| {
-                match event {
-                    Ok(event) => {
-                        if event.data == "[DONE]" {
-                            return Ok(ChatCompletionChunk::done());
-                        }
-
-                        match serde_json::from_str::<ChatCompletionChunk>(&event.data) {
-                            Ok(chunk) => Ok(chunk),
-                            Err(e) => Err(DeepSeekError::Stream {
-                                message: format!("Failed to parse SSE event: {e}"),
-                            }),
-                        }
+            .map(|event| match event {
+                Ok(event) => {
+                    if event.data == "[DONE]" {
+                        return Ok(ChatCompletionChunk::done());
                     }
-                    Err(e) => Err(DeepSeekError::Stream {
-                        message: format!("SSE error: {e}"),
-                    }),
+
+                    match serde_json::from_str::<ChatCompletionChunk>(&event.data) {
+                        Ok(chunk) => Ok(chunk),
+                        Err(e) => Err(DeepSeekError::Stream {
+                            message: format!("Failed to parse SSE event: {e}"),
+                        }),
+                    }
                 }
+                Err(e) => Err(DeepSeekError::Stream {
+                    message: format!("SSE error: {e}"),
+                }),
             });
 
         Ok(ChatStream::new(stream))
@@ -257,9 +252,7 @@ impl ChatRequest {
 
     /// Create a simple chat request.
     pub fn simple(model: impl Into<String>, message: impl Into<String>) -> Self {
-        Self::builder(model)
-            .message(Role::User, message)
-            .build()
+        Self::builder(model).message(Role::User, message).build()
     }
 
     /// Add a message to the conversation.
@@ -487,7 +480,11 @@ pub struct ChatCompletionChunk {
 impl ChatCompletionChunk {
     /// Check if this is the final chunk.
     pub fn is_done(&self) -> bool {
-        self.choices.is_empty() || self.choices.iter().all(|c| c.delta.is_empty() && c.finish_reason.is_some())
+        self.choices.is_empty()
+            || self
+                .choices
+                .iter()
+                .all(|c| c.delta.is_empty() && c.finish_reason.is_some())
     }
 
     /// Create a done chunk.
@@ -503,12 +500,16 @@ impl ChatCompletionChunk {
 
     /// Get the content delta from the first choice.
     pub fn content(&self) -> Option<&str> {
-        self.choices.first().and_then(|c| c.delta.content.as_deref())
+        self.choices
+            .first()
+            .and_then(|c| c.delta.content.as_deref())
     }
 
     /// Get the reasoning content delta from the first choice (DeepSeek-R1).
     pub fn reasoning_content(&self) -> Option<&str> {
-        self.choices.first().and_then(|c| c.delta.reasoning_content.as_deref())
+        self.choices
+            .first()
+            .and_then(|c| c.delta.reasoning_content.as_deref())
     }
 
     /// Check if this chunk has reasoning content.
@@ -518,7 +519,9 @@ impl ChatCompletionChunk {
 
     /// Get tool call deltas from the first choice.
     pub fn tool_calls(&self) -> Option<&Vec<ToolCallDelta>> {
-        self.choices.first().and_then(|c| c.delta.tool_calls.as_ref())
+        self.choices
+            .first()
+            .and_then(|c| c.delta.tool_calls.as_ref())
     }
 
     /// Check if the first choice has finished.
@@ -561,9 +564,9 @@ pub struct StreamDelta {
 impl StreamDelta {
     /// Check if this delta is empty.
     pub fn is_empty(&self) -> bool {
-        self.role.is_none() 
-            && self.content.is_none() 
-            && self.reasoning_content.is_none() 
+        self.role.is_none()
+            && self.content.is_none()
+            && self.reasoning_content.is_none()
             && self.tool_calls.is_none()
     }
 }
@@ -736,7 +739,10 @@ mod tests {
         let none = ToolChoice::none();
 
         match func {
-            ToolChoice::Specific { tool_type, function } => {
+            ToolChoice::Specific {
+                tool_type,
+                function,
+            } => {
                 assert_eq!(tool_type, "function");
                 assert_eq!(function.name, "get_weather");
             }
@@ -845,7 +851,10 @@ mod tests {
         collector.process_chunk(&chunk2);
 
         assert_eq!(collector.content(), "The answer is 42");
-        assert_eq!(collector.reasoning_content(), "Let me think... step by step");
+        assert_eq!(
+            collector.reasoning_content(),
+            "Let me think... step by step"
+        );
         assert!(collector.has_reasoning());
         assert!(collector.is_complete());
     }

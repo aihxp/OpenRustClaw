@@ -8,16 +8,15 @@
 //! - Token cost comparisons
 //! - End-to-end discovery and execution
 
-use openrustclaw_mcp2cli::{
-    decode_toon, encode_toon, calculate_savings, Mcp2CliFactory, ToolDiscovery,
-    ToolSource, TokenCounter, ToolCache, ToolHelp, ToolSummary, ParamHelp,
-    AdaptiveMcpRegistry,
-};
 use openrustclaw_core::traits::Tool;
+use openrustclaw_mcp2cli::{
+    AdaptiveMcpRegistry, Mcp2CliFactory, ParamHelp, TokenCounter, ToolCache, ToolDiscovery,
+    ToolHelp, ToolSource, ToolSummary, calculate_savings, decode_toon, encode_toon,
+};
 use serde_json::json;
 use std::time::Duration;
-use wiremock::{MockServer, Mock, ResponseTemplate};
 use wiremock::matchers::{method, path};
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
 // ============================================================================
 // TOON Tests
@@ -52,7 +51,11 @@ fn test_toon_roundtrip() {
     for original in test_values {
         let toon = encode_toon(&original);
         let decoded = decode_toon(&toon).expect("Failed to decode TOON");
-        assert_eq!(original, decoded, "TOON roundtrip failed for: {:?}", original);
+        assert_eq!(
+            original, decoded,
+            "TOON roundtrip failed for: {:?}",
+            original
+        );
     }
 }
 
@@ -74,10 +77,10 @@ fn test_toon_savings() {
     let toon_tokens = TokenCounter::count_tokens(&toon_str);
 
     let savings = calculate_savings(json_tokens, toon_tokens);
-    
+
     // TOON should provide some savings
     assert!(savings >= 0.0, "TOON should not increase token count");
-    
+
     println!("JSON: {} tokens", json_tokens);
     println!("TOON: {} tokens", toon_tokens);
     println!("Savings: {:.1}%", savings * 100.0);
@@ -92,7 +95,7 @@ fn test_token_counting() {
     let text = "Hello, world!";
     let count = TokenCounter::count_tokens(text);
     assert!(count > 0, "Token count should be positive");
-    
+
     // Longer text should have more tokens
     let longer_text = "This is a longer text with more words.";
     let longer_count = TokenCounter::count_tokens(longer_text);
@@ -103,14 +106,17 @@ fn test_token_counting() {
 fn test_cost_comparison() {
     // Simulate a scenario with 100 tools, 10 turns, 5 used
     let comparison = TokenCounter::compare_costs(100, 10, 5);
-    
+
     // Native should cost much more
     assert!(comparison.native_tokens > comparison.mcp2cli_tokens);
-    
+
     // Should have significant savings (>90%)
-    assert!(comparison.savings_percent > 0.90, 
-        "Expected >90% savings, got {:.1}%", comparison.savings_percent * 100.0);
-    
+    assert!(
+        comparison.savings_percent > 0.90,
+        "Expected >90% savings, got {:.1}%",
+        comparison.savings_percent * 100.0
+    );
+
     println!("Cost Comparison:");
     println!("{}", comparison.format());
 }
@@ -118,10 +124,10 @@ fn test_cost_comparison() {
 #[test]
 fn test_session_cost_breakdown() {
     let breakdown = TokenCounter::session_cost_breakdown(50, 10, 3, 5);
-    
+
     assert!(breakdown.native_equivalent > breakdown.total_for_session);
     assert!(breakdown.savings_percent > 0.0);
-    
+
     println!("Session Cost Breakdown:");
     println!("{}", breakdown.format_report());
 }
@@ -133,7 +139,7 @@ fn test_session_cost_breakdown() {
 #[tokio::test]
 async fn test_cache_basic() {
     let cache = ToolCache::new(Duration::from_secs(60));
-    
+
     // First call should miss and populate cache
     let result1 = cache
         .get_or_insert("test_key", || async {
@@ -141,10 +147,10 @@ async fn test_cache_basic() {
         })
         .await
         .expect("Cache insert failed");
-    
+
     assert_eq!(result1.tools.len(), 1);
     assert_eq!(result1.tools[0].name, "tool1");
-    
+
     // Second call should hit cache
     let result2 = cache
         .get_or_insert("test_key", || async {
@@ -153,9 +159,9 @@ async fn test_cache_basic() {
         })
         .await
         .expect("Cache get failed");
-    
+
     assert_eq!(result2.tools.len(), 1);
-    
+
     let stats = cache.stats();
     assert_eq!(stats.hits, 1);
     assert_eq!(stats.misses, 1);
@@ -165,17 +171,17 @@ async fn test_cache_basic() {
 #[tokio::test]
 async fn test_cache_invalidation() {
     let cache = ToolCache::new(Duration::from_secs(60));
-    
+
     cache
         .get_or_insert("key1", || async {
             Ok(vec![ToolSummary::new("tool1", "Test")])
         })
         .await
         .unwrap();
-    
+
     // Invalidate the key
     cache.invalidate("key1");
-    
+
     // Should be a miss now
     cache
         .get_or_insert("key1", || async {
@@ -183,7 +189,7 @@ async fn test_cache_invalidation() {
         })
         .await
         .unwrap();
-    
+
     let stats = cache.stats();
     assert_eq!(stats.misses, 2);
 }
@@ -191,26 +197,40 @@ async fn test_cache_invalidation() {
 #[tokio::test]
 async fn test_cache_prefix_invalidation() {
     let cache = ToolCache::new(Duration::from_secs(60));
-    
-    cache.get_or_insert("prefix:key1", || async {
-        Ok(vec![ToolSummary::new("tool1", "Test")])
-    }).await.unwrap();
-    
-    cache.get_or_insert("prefix:key2", || async {
-        Ok(vec![ToolSummary::new("tool2", "Test")])
-    }).await.unwrap();
-    
-    cache.get_or_insert("other:key3", || async {
-        Ok(vec![ToolSummary::new("tool3", "Test")])
-    }).await.unwrap();
-    
+
+    cache
+        .get_or_insert("prefix:key1", || async {
+            Ok(vec![ToolSummary::new("tool1", "Test")])
+        })
+        .await
+        .unwrap();
+
+    cache
+        .get_or_insert("prefix:key2", || async {
+            Ok(vec![ToolSummary::new("tool2", "Test")])
+        })
+        .await
+        .unwrap();
+
+    cache
+        .get_or_insert("other:key3", || async {
+            Ok(vec![ToolSummary::new("tool3", "Test")])
+        })
+        .await
+        .unwrap();
+
     // Invalidate by prefix
     cache.invalidate_prefix("prefix:");
-    
+
     // Only prefix keys should be removed
-    assert!(cache.get_or_insert("other:key3", || async {
-        panic!("Should not be called");
-    }).await.is_ok());
+    assert!(
+        cache
+            .get_or_insert("other:key3", || async {
+                panic!("Should not be called");
+            })
+            .await
+            .is_ok()
+    );
 }
 
 // ============================================================================
@@ -220,11 +240,11 @@ async fn test_cache_prefix_invalidation() {
 #[test]
 fn test_tool_summary() {
     let summary = ToolSummary::new("search", "Search for documents in the database");
-    
+
     assert_eq!(summary.name, "search");
     assert_eq!(summary.description, "Search for documents in the database");
     assert!(summary.token_cost > 0);
-    
+
     let compact = summary.to_compact_string();
     assert!(compact.contains("search"));
     assert!(compact.contains("Search for"));
@@ -235,21 +255,20 @@ fn test_tool_help() {
     let params = vec![
         ParamHelp::new("query", "Search query string", "string", true)
             .with_example("rust programming"),
-        ParamHelp::new("limit", "Maximum results", "number", false)
-            .with_default(json!(10)),
+        ParamHelp::new("limit", "Maximum results", "number", false).with_default(json!(10)),
     ];
-    
+
     let help = ToolHelp::new(
         "search",
         "Search for documents in the database",
         "search --query <query> [--limit <n>]",
         params,
     );
-    
+
     assert_eq!(help.name, "search");
     assert_eq!(help.parameters.len(), 2);
     assert!(help.token_cost >= 80 && help.token_cost <= 200);
-    
+
     let compact = help.to_compact_string();
     assert!(compact.contains("search"));
     assert!(compact.contains("query"));
@@ -261,7 +280,7 @@ fn test_param_help_builder() {
     let param = ParamHelp::new("name", "The name", "string", true)
         .with_example("John Doe")
         .with_default(json!("Anonymous"));
-    
+
     assert_eq!(param.name, "name");
     assert!(param.required);
     assert_eq!(param.example, Some("John Doe".to_string()));
@@ -276,13 +295,13 @@ fn test_param_help_builder() {
 fn test_tool_source_creation() {
     let mcp_url = ToolSource::mcp_url("http://localhost:3000/sse");
     assert!(matches!(mcp_url, ToolSource::McpUrl { .. }));
-    
+
     let mcp_stdio = ToolSource::mcp_stdio("npx");
     assert!(matches!(mcp_stdio, ToolSource::McpStdio { .. }));
-    
+
     let openapi_url = ToolSource::openapi_url("https://api.example.com/openapi.json");
     assert!(matches!(openapi_url, ToolSource::OpenApiUrl { .. }));
-    
+
     let openapi_file = ToolSource::openapi_file("./spec.yaml");
     assert!(matches!(openapi_file, ToolSource::OpenApiFile { .. }));
 }
@@ -292,7 +311,7 @@ fn test_tool_source_cache_key() {
     let source1 = ToolSource::mcp_url("http://test.com");
     let source2 = ToolSource::mcp_url("http://test.com");
     let source3 = ToolSource::mcp_url("http://other.com");
-    
+
     assert_eq!(source1.cache_key(), source2.cache_key());
     assert_ne!(source1.cache_key(), source3.cache_key());
 }
@@ -302,7 +321,7 @@ fn test_tool_source_description() {
     let mcp_url = ToolSource::mcp_url("http://localhost:3000");
     assert!(mcp_url.description().contains("MCP server"));
     assert!(mcp_url.description().contains("localhost"));
-    
+
     let openapi_file = ToolSource::openapi_file("./api.yaml");
     assert!(openapi_file.description().contains("OpenAPI"));
     assert!(openapi_file.description().contains("api.yaml"));
@@ -316,10 +335,10 @@ fn test_tool_source_description() {
 async fn test_discovery_with_cache() {
     let discovery = ToolDiscovery::new();
     let source = ToolSource::openapi_url("https://example.com/api");
-    
+
     // First call - should hit the source (and potentially fail, that's ok)
     let _ = discovery.list_tools(&source).await;
-    
+
     // Check stats
     let stats = discovery.cache_stats();
     // Cache might be empty if the source failed, which is ok
@@ -330,7 +349,7 @@ async fn test_discovery_with_cache() {
 async fn test_openapi_adapter_from_file() {
     use std::io::Write;
     use tempfile::NamedTempFile;
-    
+
     let openapi_content = r#"
 openapi: 3.0.0
 info:
@@ -365,11 +384,10 @@ paths:
 
     let mut temp_file = NamedTempFile::with_suffix(".yaml").unwrap();
     temp_file.write_all(openapi_content.as_bytes()).unwrap();
-    
-    let adapter = openrustclaw_mcp2cli::OpenApiAdapter::from_file(
-        temp_file.path().to_str().unwrap()
-    ).await;
-    
+
+    let adapter =
+        openrustclaw_mcp2cli::OpenApiAdapter::from_file(temp_file.path().to_str().unwrap()).await;
+
     // The adapter might fail in test environment, which is ok
     match adapter {
         Ok(_) => println!("OpenAPI adapter created successfully"),
@@ -394,20 +412,20 @@ fn test_token_savings_scenario() {
     // - 50 tools available
     // - User conversation with 20 turns
     // - 8 different tools actually used
-    
+
     let tool_count = 50;
     let turns = 20;
     let tools_used = 8;
-    
+
     let comparison = TokenCounter::compare_costs(tool_count, turns, tools_used);
-    
+
     println!("\n=== Token Savings Scenario ===");
     println!("Tools available: {}", tool_count);
     println!("Conversation turns: {}", turns);
     println!("Tools actually used: {}", tools_used);
     println!();
     println!("{}", comparison.format());
-    
+
     // Should have 95%+ savings
     assert!(
         comparison.savings_percent >= 0.95,
@@ -422,12 +440,12 @@ fn test_large_scale_savings() {
     let tool_count = 200;
     let turns = 10;
     let tools_used = 5;
-    
+
     let comparison = TokenCounter::compare_costs(tool_count, turns, tools_used);
-    
+
     println!("\n=== Large Scale Scenario (200 tools) ===");
     println!("{}", comparison.format());
-    
+
     // With many tools, savings should be even higher (99%+)
     assert!(
         comparison.savings_percent >= 0.99,
@@ -443,16 +461,16 @@ fn test_mcp2cli_as_tool_schema() {
         "api_gateway",
         "API gateway for external services",
     );
-    
+
     let schema = tool.schema();
-    
+
     // Verify schema structure
     assert_eq!(schema["type"], "object");
     assert!(schema["properties"]["action"].is_object());
     assert!(schema["properties"]["tool_name"].is_object());
     assert!(schema["properties"]["args"].is_object());
     assert!(schema["properties"]["use_toon"].is_object());
-    
+
     // Verify required fields
     let required = schema["required"].as_array().unwrap();
     assert!(required.contains(&json!("action")));
@@ -465,10 +483,10 @@ fn test_mcp2cli_as_tool_schema() {
 #[tokio::test]
 async fn test_concurrent_cache_access() {
     use std::sync::Arc;
-    
+
     let cache = Arc::new(ToolCache::new(Duration::from_secs(60)));
     let mut handles = vec![];
-    
+
     // Spawn multiple concurrent accesses
     for i in 0..10 {
         let cache_clone = Arc::clone(&cache);
@@ -477,21 +495,18 @@ async fn test_concurrent_cache_access() {
                 .get_or_insert("concurrent_key", || async {
                     // Simulate some work
                     tokio::time::sleep(Duration::from_millis(10)).await;
-                    Ok(vec![ToolSummary::new(
-                        &format!("tool{}", i),
-                        "Test tool"
-                    )])
+                    Ok(vec![ToolSummary::new(&format!("tool{}", i), "Test tool")])
                 })
                 .await
         });
         handles.push(handle);
     }
-    
+
     // Wait for all to complete
     for handle in handles {
         let _ = handle.await.unwrap();
     }
-    
+
     // Should only have one actual miss (the rest cached)
     let stats = cache.stats();
     println!("Concurrent cache stats: {:?}", stats);
@@ -506,13 +521,13 @@ async fn test_concurrent_cache_access() {
 #[test]
 fn test_error_types() {
     use openrustclaw_mcp2cli::Mcp2CliError;
-    
+
     let err = Mcp2CliError::tool_not_found("missing_tool");
     assert!(err.to_string().contains("missing_tool"));
-    
+
     let err = Mcp2CliError::auth("Invalid credentials");
     assert!(err.to_string().contains("authentication"));
-    
+
     let err = Mcp2CliError::cache("Cache full");
     assert!(err.to_string().contains("cache"));
 }

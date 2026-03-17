@@ -31,8 +31,8 @@ pub fn calculate_next_run(
                 Some(*run_at)
             }
         }
-        TriggerConfig::Event { .. } => None,      // Event-triggered, no scheduled time
-        TriggerConfig::Webhook { .. } => None,     // Webhook-triggered, no scheduled time
-        TriggerConfig::Dependency { .. } => None,  // Dependency-triggered
+        TriggerConfig::Event { .. } => None, // Event-triggered, no scheduled time
+        TriggerConfig::Webhook { .. } => None, // Webhook-triggered, no scheduled time
+        TriggerConfig::Dependency { .. } => None, // Dependency-triggered
     }
 }

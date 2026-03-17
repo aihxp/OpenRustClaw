@@ -2,7 +2,7 @@
 
 use anyhow::Result;
 use console::style;
-use dialoguer::{theme::ColorfulTheme, Confirm, Input, MultiSelect, Password, Select};
+use dialoguer::{Confirm, Input, MultiSelect, Password, Select, theme::ColorfulTheme};
 use indicatif::{ProgressBar, ProgressStyle};
 use std::path::Path;
 use tokio::fs;
@@ -86,10 +86,7 @@ impl OnboardingWizard {
         ];
 
         for step in steps {
-            println!(
-                "\n{}",
-                style(format!("📋 {}", step.name())).bold().cyan()
-            );
+            println!("\n{}", style(format!("📋 {}", step.name())).bold().cyan());
             println!("{}", style(step.description()).dim());
 
             match step.run(self).await {
@@ -245,7 +242,10 @@ async fn setup_telegram(wizard: &mut OnboardingWizard) -> Result<()> {
     // Validate and save
     if !token.is_empty() {
         save_channel_config("telegram", &token).await?;
-        wizard.state.channels_configured.push("telegram".to_string());
+        wizard
+            .state
+            .channels_configured
+            .push("telegram".to_string());
         println!("✓ Telegram configured");
     } else {
         println!("⚠️  No token provided, skipping Telegram setup");
@@ -381,18 +381,12 @@ async fn run_skill_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
         // Simulate installation (in real implementation, call skills::install)
         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
-        wizard
-            .state
-            .skills_installed
-            .push(skills[idx].to_string());
+        wizard.state.skills_installed.push(skills[idx].to_string());
         pb.inc(1);
     }
 
     pb.finish_with_message("Done!");
-    println!(
-        "✓ {} skills installed",
-        wizard.state.skills_installed.len()
-    );
+    println!("✓ {} skills installed", wizard.state.skills_installed.len());
     Ok(true)
 }
 
@@ -526,7 +520,8 @@ WantedBy=default.target
     );
 
     // Get config directory for user systemd service
-    let config_dir = dirs::config_dir().ok_or_else(|| anyhow::anyhow!("Could not find config directory"))?;
+    let config_dir =
+        dirs::config_dir().ok_or_else(|| anyhow::anyhow!("Could not find config directory"))?;
     let service_dir = config_dir.join("systemd/user");
     let service_path = service_dir.join("openrustclaw.service");
 
@@ -609,10 +604,7 @@ mod tests {
     fn test_generate_jwt_secret_is_base64() {
         let secret = generate_jwt_secret();
         // Should be valid base64
-        let decoded = base64::Engine::decode(
-            &base64::engine::general_purpose::STANDARD,
-            &secret,
-        );
+        let decoded = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &secret);
         assert!(decoded.is_ok());
         // Should be 32 bytes when decoded
         assert_eq!(decoded.unwrap().len(), 32);

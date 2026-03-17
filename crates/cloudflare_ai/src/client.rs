@@ -3,7 +3,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
+use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue};
 use secrecy::{ExposeSecret, SecretString};
 use tracing::{debug, trace};
 
@@ -284,11 +284,12 @@ impl CloudflareAiClient {
         let status = response.status();
 
         if status.is_success() {
-            let body = response.json::<T>().await.map_err(|e| {
-                CloudflareAiError::Internal {
+            let body = response
+                .json::<T>()
+                .await
+                .map_err(|e| CloudflareAiError::Internal {
                     message: format!("Failed to parse JSON response: {e}"),
-                }
-            })?;
+                })?;
             Ok(body)
         } else if status == reqwest::StatusCode::NOT_FOUND {
             let body = response.text().await.unwrap_or_default();
@@ -303,7 +304,10 @@ impl CloudflareAiClient {
 
     /// Parse a raw bytes response or return an error.
     #[allow(dead_code)]
-    pub(crate) async fn handle_bytes_response(&self, response: reqwest::Response) -> Result<Vec<u8>> {
+    pub(crate) async fn handle_bytes_response(
+        &self,
+        response: reqwest::Response,
+    ) -> Result<Vec<u8>> {
         let status = response.status();
 
         if status.is_success() {

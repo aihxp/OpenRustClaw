@@ -8,7 +8,7 @@ use openrustclaw_agent::runtime::AgentRuntime;
 use openrustclaw_agent::tools::ToolRegistry;
 use openrustclaw_core::types::{Message, Platform, Session};
 use openrustclaw_providers::{
-    AnthropicProvider, OpenAiProvider, OpenRouterProvider, OllamaProvider,
+    AnthropicProvider, OllamaProvider, OpenAiProvider, OpenRouterProvider,
 };
 
 /// Run the interactive chat REPL.
@@ -28,49 +28,46 @@ pub async fn run(provider: &str, model: Option<&str>) -> Result<()> {
     println!("  /tools, /t    - List available tools");
     println!("  /help, /h     - Show this help");
     println!();
-    
+
     // Initialize provider based on CLI args
-    let provider = create_provider(provider, model).await
+    let provider = create_provider(provider, model)
+        .await
         .context("Failed to initialize provider")?;
-    
+
     // Create tool registry
     let tool_registry = Arc::new(ToolRegistry::new());
-    
+
     // Create agent runtime
-    let runtime = AgentRuntime::new(
-        provider,
-        tool_registry.clone(),
-        "OpenRustClaw".to_string(),
-    );
-    
+    let runtime = AgentRuntime::new(provider, tool_registry.clone(), "OpenRustClaw".to_string());
+
     // Create a session
     let user_id = std::env::var("USER").unwrap_or_else(|_| "cli_user".to_string());
     let session = Session::new_dm(&user_id, Platform::Cli);
     let session_id = session.id.to_string();
-    
+
     println!("Session started: {}", session_id);
     println!("Type your message and press Enter (or /quit to exit)");
     println!();
-    
+
     // Conversation history
     let mut messages: Vec<Message> = vec![];
     let core_memory = vec![];
-    
+
     // REPL loop
     loop {
         // Print prompt
         print!("\x1b[1;32mYou:\x1b[0m ");
         io::stdout().flush()?;
-        
+
         // Read user input
         let mut input = String::new();
         io::stdin().read_line(&mut input)?;
         let input = input.trim();
-        
+
         if input.is_empty() {
             continue;
         }
-        
+
         // Handle special commands
         match handle_command(input, &tool_registry, &messages).await? {
             CommandResult::Continue => continue,
@@ -80,25 +77,28 @@ pub async fn run(provider: &str, model: Option<&str>) -> Result<()> {
             }
             CommandResult::Proceed => {}
         }
-        
+
         // Add user message to history
         messages.push(Message::user(input));
-        
+
         // Send to agent runtime and stream response
         print!("\x1b[1;34mAgent:\x1b[0m ");
         io::stdout().flush()?;
-        
-        match runtime.process(&messages, &core_memory, &session_id, &user_id).await {
+
+        match runtime
+            .process(&messages, &core_memory, &session_id, &user_id)
+            .await
+        {
             Ok(response) => {
                 println!("{}", response.message.content);
-                
+
                 if response.tool_calls_made > 0 {
                     println!("\x1b[90m[Used {} tool(s)]\x1b[0m", response.tool_calls_made);
                 }
-                
+
                 // Add assistant response to history
                 messages.push(response.message);
-                
+
                 // Keep conversation size manageable
                 if messages.len() > 20 {
                     // Keep system context (first message if system) and last 10 exchanges
@@ -110,10 +110,10 @@ pub async fn run(provider: &str, model: Option<&str>) -> Result<()> {
                 eprintln!("\x1b[1;31mError: {}\x1b[0m", e);
             }
         }
-        
+
         println!();
     }
-    
+
     Ok(())
 }
 
@@ -183,8 +183,10 @@ fn show_memory(messages: &[Message]) {
             };
             let preview: String = msg.content.chars().take(60).collect();
             let ellipsis = if msg.content.len() > 60 { "..." } else { "" };
-            println!("  {}[{}] {}{}: {}{}\x1b[0m", 
-                role_color, i, msg.role, "\x1b[0m", preview, ellipsis);
+            println!(
+                "  {}[{}] {}\x1b[0m: {}{}\x1b[0m",
+                role_color, i, msg.role, preview, ellipsis
+            );
         }
     }
     println!("═══ {} messages in context ═══", messages.len());
@@ -235,9 +237,7 @@ async fn create_provider(
             Ok(Arc::new(provider))
         }
         "ollama" => {
-            let provider = OllamaProvider::new(
-                model.unwrap_or("llama3.1").to_string(),
-            );
+            let provider = OllamaProvider::new(model.unwrap_or("llama3.1").to_string());
             Ok(Arc::new(provider))
         }
         _ => anyhow::bail!(

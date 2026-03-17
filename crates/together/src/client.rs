@@ -3,10 +3,10 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
+use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue};
 use secrecy::{ExposeSecret, SecretString};
 
-use crate::constants::{retry, DEFAULT_APP_NAME, DEFAULT_BASE_URL};
+use crate::constants::{DEFAULT_APP_NAME, DEFAULT_BASE_URL, retry};
 use crate::error::{Result, TogetherError};
 
 /// A client for the Together AI API.
@@ -38,10 +38,11 @@ impl TogetherClient {
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
         headers.insert(
             AUTHORIZATION,
-            HeaderValue::from_str(&format!("Bearer {}", config.api_key.expose_secret()))
-                .map_err(|_| TogetherError::Config {
+            HeaderValue::from_str(&format!("Bearer {}", config.api_key.expose_secret())).map_err(
+                |_| TogetherError::Config {
                     message: "Invalid API key".to_string(),
-                })?,
+                },
+            )?,
         );
 
         let http = reqwest::Client::builder()
@@ -151,7 +152,11 @@ impl TogetherClient {
     }
 
     /// Make a POST request.
-    pub(crate) async fn post(&self, path: &str, body: serde_json::Value) -> Result<reqwest::Response> {
+    pub(crate) async fn post(
+        &self,
+        path: &str,
+        body: serde_json::Value,
+    ) -> Result<reqwest::Response> {
         let url = format!("{}{}", self.inner.base_url, path);
         let response = self
             .inner
@@ -196,7 +201,10 @@ impl TogetherClient {
     }
 
     /// Parse a response or return an error.
-    pub(crate) async fn handle_response(&self, response: reqwest::Response) -> Result<serde_json::Value> {
+    pub(crate) async fn handle_response(
+        &self,
+        response: reqwest::Response,
+    ) -> Result<serde_json::Value> {
         let status = response.status();
 
         if status.is_success() {

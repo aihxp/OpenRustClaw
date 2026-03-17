@@ -69,24 +69,22 @@ impl<'a> Completion<'a> {
         let stream = response
             .bytes_stream()
             .eventsource()
-            .map(|event| {
-                match event {
-                    Ok(event) => {
-                        if event.data == "[DONE]" {
-                            return Ok(CompletionChunk::done());
-                        }
-
-                        match serde_json::from_str::<CompletionChunk>(&event.data) {
-                            Ok(chunk) => Ok(chunk),
-                            Err(e) => Err(LlamaCppError::Stream {
-                                message: format!("Failed to parse SSE event: {e}"),
-                            }),
-                        }
+            .map(|event| match event {
+                Ok(event) => {
+                    if event.data == "[DONE]" {
+                        return Ok(CompletionChunk::done());
                     }
-                    Err(e) => Err(LlamaCppError::Stream {
-                        message: format!("SSE error: {e}"),
-                    }),
+
+                    match serde_json::from_str::<CompletionChunk>(&event.data) {
+                        Ok(chunk) => Ok(chunk),
+                        Err(e) => Err(LlamaCppError::Stream {
+                            message: format!("Failed to parse SSE event: {e}"),
+                        }),
+                    }
                 }
+                Err(e) => Err(LlamaCppError::Stream {
+                    message: format!("SSE error: {e}"),
+                }),
             });
 
         Ok(stream)
@@ -375,7 +373,11 @@ pub struct CompletionChunk {
 impl CompletionChunk {
     /// Check if this is the final chunk.
     pub fn is_done(&self) -> bool {
-        self.choices.is_empty() || self.choices.iter().all(|c| c.text.is_empty() && c.finish_reason.is_some())
+        self.choices.is_empty()
+            || self
+                .choices
+                .iter()
+                .all(|c| c.text.is_empty() && c.finish_reason.is_some())
     }
 
     /// Create a done chunk.
@@ -498,18 +500,14 @@ mod tests {
 
     #[test]
     fn test_echo() {
-        let request = CompletionRequest::builder("Hello")
-            .echo(true)
-            .build();
+        let request = CompletionRequest::builder("Hello").echo(true).build();
 
         assert_eq!(request.echo, Some(true));
     }
 
     #[test]
     fn test_logprobs() {
-        let request = CompletionRequest::builder("Hello")
-            .logprobs(5)
-            .build();
+        let request = CompletionRequest::builder("Hello").logprobs(5).build();
 
         assert_eq!(request.logprobs, Some(5));
     }

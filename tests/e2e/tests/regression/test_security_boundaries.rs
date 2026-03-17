@@ -2,9 +2,9 @@
 //!
 //! Tests authentication, authorization, input validation, and security controls.
 
-use openrustclaw_e2e_tests::common::*;
 use openrustclaw_core::traits::LlmProvider;
 use openrustclaw_core::types::{CompletionRequest, Message};
+use openrustclaw_e2e_tests::common::*;
 use reqwest::StatusCode;
 
 /// Test: Origin validation blocks invalid origins
@@ -25,10 +25,7 @@ async fn test_origin_validation() {
 
     // Gateway either accepts (if CORS permissive) or rejects
     // The test verifies the gateway handles the request
-    assert!(
-        response.status().is_success() || 
-        response.status() == StatusCode::FORBIDDEN
-    );
+    assert!(response.status().is_success() || response.status() == StatusCode::FORBIDDEN);
 }
 
 /// Test: SQL injection prevention
@@ -38,7 +35,7 @@ async fn test_sql_injection_prevention() {
 
     // Try to inject SQL via memory content
     let malicious_content = "'; DROP TABLE memories; --";
-    
+
     let entry = MemoryEntryBuilder::new(malicious_content)
         .user_id(TestUsers::alice().id)
         .build();
@@ -61,7 +58,7 @@ async fn test_xss_prevention() {
     let env = TestEnvironment::new().await;
 
     let xss_content = "<script>alert('xss')</script>";
-    
+
     let entry = MemoryEntryBuilder::new(xss_content)
         .user_id(TestUsers::alice().id)
         .build();
@@ -120,13 +117,27 @@ async fn test_session_isolation() {
     let env = TestEnvironment::new().await;
 
     // Create sessions
-    use openrustclaw_core::types::{SessionType, Platform};
-    let session_a = env.session_manager.create_session(&TestUsers::alice().id, SessionType::Dm, Platform::WebChat).await.expect("Create failed");
-    let session_b = env.session_manager.create_session(&TestUsers::bob().id, SessionType::Dm, Platform::WebChat).await.expect("Create failed");
+    use openrustclaw_core::types::{Platform, SessionType};
+    let session_a = env
+        .session_manager
+        .create_session(&TestUsers::alice().id, SessionType::Dm, Platform::WebChat)
+        .await
+        .expect("Create failed");
+    let session_b = env
+        .session_manager
+        .create_session(&TestUsers::bob().id, SessionType::Dm, Platform::WebChat)
+        .await
+        .expect("Create failed");
 
     // Verify isolation
-    let retrieved_a = env.session_manager.get_session(&session_a.id.to_string()).await;
-    let retrieved_b = env.session_manager.get_session(&session_b.id.to_string()).await;
+    let retrieved_a = env
+        .session_manager
+        .get_session(&session_a.id.to_string())
+        .await;
+    let retrieved_b = env
+        .session_manager
+        .get_session(&session_b.id.to_string())
+        .await;
 
     assert!(retrieved_a.is_ok());
     assert!(retrieved_b.is_ok());
@@ -213,9 +224,9 @@ async fn test_brute_force_protection() {
     for _ in 0..10 {
         let url = format!("http://{}/health", addr);
         let client_clone = client.clone();
-        handles.push(tokio::spawn(async move {
-            client_clone.get(&url).send().await
-        }));
+        handles.push(tokio::spawn(
+            async move { client_clone.get(&url).send().await },
+        ));
     }
 
     // All should complete (gateway may or may not rate limit)

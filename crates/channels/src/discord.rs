@@ -17,7 +17,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use governor::{Quota, RateLimiter};
 use std::num::NonZeroU32;
-use tokio::sync::{mpsc, Mutex, RwLock};
+use tokio::sync::{Mutex, RwLock, mpsc};
 use tracing::{debug, info};
 use uuid::Uuid;
 
@@ -31,7 +31,14 @@ pub struct DiscordChannel {
     config: DiscordConfig,
     _incoming_tx: mpsc::Sender<IncomingMessage>,
     incoming_rx: Mutex<mpsc::Receiver<IncomingMessage>>,
-    rate_limiter: Arc<RateLimiter<governor::state::NotKeyed, governor::state::InMemoryState, governor::clock::DefaultClock, governor::middleware::NoOpMiddleware>>,
+    rate_limiter: Arc<
+        RateLimiter<
+            governor::state::NotKeyed,
+            governor::state::InMemoryState,
+            governor::clock::DefaultClock,
+            governor::middleware::NoOpMiddleware,
+        >,
+    >,
     is_connected: RwLock<bool>,
     _message_cache: Arc<RwLock<HashMap<Uuid, String>>>, // Maps session_id to message_id
 }
@@ -43,7 +50,8 @@ impl DiscordChannel {
 
         // Create rate limiter (Discord allows ~5 requests per second)
         let quota = Quota::per_second(
-            NonZeroU32::new(config.rate_limit_requests_per_second.max(1)).unwrap_or(NonZeroU32::new(5).unwrap())
+            NonZeroU32::new(config.rate_limit_requests_per_second.max(1))
+                .unwrap_or(NonZeroU32::new(5).unwrap()),
         );
         let rate_limiter = Arc::new(RateLimiter::direct(quota));
 
@@ -80,7 +88,9 @@ impl Channel for DiscordChannel {
         self.rate_limiter.until_ready().await;
 
         // Get channel ID from metadata
-        let _channel_id_str = msg.metadata.get("discord_channel_id")
+        let _channel_id_str = msg
+            .metadata
+            .get("discord_channel_id")
             .and_then(|v| v.as_str())
             .ok_or_else(|| ChannelError::InvalidFormat {
                 platform: "discord".to_string(),
@@ -95,7 +105,7 @@ impl Channel for DiscordChannel {
         // 1. Split long messages (Discord limit is 2000 chars)
         // 2. Send with or without embeds
         // 3. Cache the message for potential edits
-        
+
         debug!(content = %msg.content, "Would send Discord message");
 
         Ok(())
@@ -107,7 +117,8 @@ impl Channel for DiscordChannel {
             ChannelError::Connection {
                 platform: "discord".to_string(),
                 message: "Incoming message channel closed".to_string(),
-            }.into()
+            }
+            .into()
         })
     }
 
@@ -123,7 +134,8 @@ impl Channel for DiscordChannel {
             return Err(ChannelError::Config {
                 platform: "discord".to_string(),
                 message: "Discord bot token is required".to_string(),
-            }.into());
+            }
+            .into());
         }
 
         // In a full implementation, this would:

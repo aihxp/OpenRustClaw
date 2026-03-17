@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use secrecy::{ExposeSecret, SecretString};
 
-use crate::constants::{retry, DEFAULT_API_VERSION};
+use crate::constants::{DEFAULT_API_VERSION, retry};
 use crate::error::{AzureOpenAIError, Result};
 use crate::{AzureADToken, AzureRegion};
 
@@ -223,10 +223,7 @@ impl AzureConfig {
 
     /// Check if this configuration uses Azure AD authentication.
     pub fn is_azure_ad(&self) -> bool {
-        matches!(
-            self.credential,
-            AzureCredential::AzureADToken(_)
-        )
+        matches!(self.credential, AzureCredential::AzureADToken(_))
     }
 
     /// Check if this configuration uses API key authentication.

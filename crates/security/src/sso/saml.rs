@@ -2,7 +2,7 @@
 
 use super::{SsoClient, SsoError, SsoMetadata, SsoTokens, SsoUserInfo};
 use async_trait::async_trait;
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -111,17 +111,19 @@ impl AuthnRequest {
 
     /// Deflate and base64 encode
     pub fn deflate_and_encode(&self) -> Result<String, SsoError> {
-        use flate2::write::DeflateEncoder;
         use flate2::Compression;
+        use flate2::write::DeflateEncoder;
         use std::io::Write;
 
         let xml = self.to_xml();
         let mut encoder = DeflateEncoder::new(Vec::new(), Compression::default());
-        encoder.write_all(xml.as_bytes())
+        encoder
+            .write_all(xml.as_bytes())
             .map_err(|e| SsoError::SamlError(format!("Compression failed: {}", e)))?;
-        let compressed = encoder.finish()
+        let compressed = encoder
+            .finish()
             .map_err(|e| SsoError::SamlError(format!("Compression failed: {}", e)))?;
-        
+
         Ok(BASE64.encode(&compressed))
     }
 }
@@ -235,19 +237,20 @@ impl SamlClient {
 
     /// Parse SAML response
     pub fn parse_response(&self, encoded_response: &str) -> Result<SamlResponse, SsoError> {
-        let decoded = BASE64.decode(encoded_response)
+        let decoded = BASE64
+            .decode(encoded_response)
             .map_err(|e| SsoError::SamlError(format!("Base64 decode failed: {}", e)))?;
-        
+
         let _xml = String::from_utf8(decoded)
             .map_err(|e| SsoError::SamlError(format!("Invalid UTF-8: {}", e)))?;
 
         // Parse XML to SamlResponse
         // This is a simplified implementation
         // In production, use a proper SAML library like `samael`
-        
+
         // For now, return an error indicating this needs a full SAML library
         Err(SsoError::SamlError(
-            "SAML response parsing requires the 'samael' feature. Use OIDC for now.".to_string()
+            "SAML response parsing requires the 'samael' feature. Use OIDC for now.".to_string(),
         ))
     }
 
@@ -273,19 +276,25 @@ impl SamlClient {
             for attr in &attr_stmt.attributes {
                 let attr_name = attr.name.as_str();
                 let values: Vec<String> = attr.values.iter().map(|v| v.value.clone()).collect();
-                
+
                 if let Some(first_value) = values.first() {
                     match attr_name {
-                        "email" | "mail" | "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress" => {
+                        "email"
+                        | "mail"
+                        | "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress" => {
                             email = Some(first_value.clone());
                         }
-                        "name" | "displayName" | "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name" => {
+                        "name"
+                        | "displayName"
+                        | "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name" => {
                             name = Some(first_value.clone());
                         }
-                        "givenName" | "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/givenname" => {
+                        "givenName"
+                        | "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/givenname" => {
                             given_name = Some(first_value.clone());
                         }
-                        "surname" | "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/surname" => {
+                        "surname"
+                        | "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/surname" => {
                             family_name = Some(first_value.clone());
                         }
                         "groups" | "memberOf" | "http://schemas.xmlsoap.org/claims/Group" => {
@@ -342,7 +351,7 @@ impl SamlClient {
             self.config.want_requests_signed,
             self.config.name_id_format,
             self.config.sp_acs_url,
-            if self.config.sp_certificate.is_some() {
+            if let Some(cert) = &self.config.sp_certificate {
                 format!(
                     r#"<KeyDescriptor use="signing">
             <KeyInfo xmlns="http://www.w3.org/2000/09/xmldsig#">
@@ -351,7 +360,7 @@ impl SamlClient {
                 </X509Data>
             </KeyInfo>
         </KeyDescriptor>"#,
-                    self.config.sp_certificate.as_ref().unwrap()
+                    cert
                 )
             } else {
                 String::new()
@@ -362,7 +371,10 @@ impl SamlClient {
 
 impl SamlClient {
     /// Generate SAML AuthnRequest form data
-    pub fn generate_authn_request_form(&self, relay_state: &str) -> Result<HashMap<String, String>, SsoError> {
+    pub fn generate_authn_request_form(
+        &self,
+        relay_state: &str,
+    ) -> Result<HashMap<String, String>, SsoError> {
         let request = AuthnRequest {
             id: format!("_{}", uuid::Uuid::new_v4().to_string().replace("-", "")),
             issue_instant: chrono::Utc::now().to_rfc3339(),
@@ -387,7 +399,9 @@ impl SsoClient for SamlClient {
     async fn init(&mut self) -> Result<(), SsoError> {
         // Validate configuration
         if self.config.idp_certificate.is_empty() {
-            return Err(SsoError::InvalidConfig("IdP certificate is required".to_string()));
+            return Err(SsoError::InvalidConfig(
+                "IdP certificate is required".to_string(),
+            ));
         }
 
         Ok(())
@@ -403,21 +417,23 @@ impl SsoClient for SamlClient {
         // SAML doesn't use authorization code flow
         // The response is received directly at ACS
         Err(SsoError::SamlError(
-            "SAML uses direct POST response, not authorization code flow".to_string()
+            "SAML uses direct POST response, not authorization code flow".to_string(),
         ))
     }
 
     async fn validate_token(&self, token: &str) -> Result<SsoUserInfo, SsoError> {
         // In SAML, the "token" is the SAMLResponse
         let response = self.parse_response(token)?;
-        
+
         if response.status.status_code.value != "urn:oasis:names:tc:SAML:2.0:status:Success" {
-            return Err(SsoError::AuthenticationFailed(
-                format!("SAML authentication failed: {}", response.status.status_code.value)
-            ));
+            return Err(SsoError::AuthenticationFailed(format!(
+                "SAML authentication failed: {}",
+                response.status.status_code.value
+            )));
         }
 
-        let assertion = response.assertion
+        let assertion = response
+            .assertion
             .ok_or_else(|| SsoError::SamlError("No assertion in response".to_string()))?;
 
         Ok(self.extract_user_info(&assertion))
@@ -425,7 +441,9 @@ impl SsoClient for SamlClient {
 
     async fn refresh_token(&self, _refresh_token: &str) -> Result<SsoTokens, SsoError> {
         // SAML doesn't support token refresh
-        Err(SsoError::SamlError("SAML doesn't support token refresh".to_string()))
+        Err(SsoError::SamlError(
+            "SAML doesn't support token refresh".to_string(),
+        ))
     }
 
     async fn logout(&self, _token: &str) -> Result<(), SsoError> {

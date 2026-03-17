@@ -7,10 +7,10 @@ use chrono::Utc;
 use dashmap::DashMap;
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use tokio::sync::{broadcast, RwLock};
-use tokio::time::{interval, Duration};
+use std::sync::atomic::{AtomicU64, Ordering};
+use tokio::sync::{RwLock, broadcast};
+use tokio::time::{Duration, interval};
 use tracing::{info, warn};
 use uuid::Uuid;
 
@@ -74,7 +74,10 @@ pub enum ClusterEvent {
         new_state: ClusterState,
     },
     /// Node metrics updated.
-    MetricsUpdated { node_id: NodeId, metrics: NodeMetrics },
+    MetricsUpdated {
+        node_id: NodeId,
+        metrics: NodeMetrics,
+    },
     /// Split brain detected.
     SplitBrainDetected { conflicting_leaders: Vec<NodeId> },
 }
@@ -156,12 +159,9 @@ impl Cluster {
         let mut current = self.leader_id.write().await;
         let old_leader = current.clone();
         *current = leader_id.clone();
-        
+
         if old_leader != leader_id {
-            info!(
-                "Leader changed from {:?} to {:?}",
-                old_leader, leader_id
-            );
+            info!("Leader changed from {:?} to {:?}", old_leader, leader_id);
             let _ = self.event_tx.send(ClusterEvent::LeaderChanged {
                 old_leader,
                 new_leader: leader_id,
@@ -179,7 +179,7 @@ impl Cluster {
         let mut state = self.state.write().await;
         let old_state = *state;
         *state = new_state;
-        
+
         if old_state != new_state {
             info!("Cluster state changed from {} to {}", old_state, new_state);
             let _ = self.event_tx.send(ClusterEvent::ClusterStateChanged {
@@ -207,7 +207,7 @@ impl Cluster {
     /// Add or update a node in the cluster.
     pub async fn upsert_node(&self, mut info: NodeInfo) {
         let node_id = info.id.clone();
-        
+
         // Don't modify our own node info
         if node_id == self.local_id() {
             return;
@@ -216,13 +216,13 @@ impl Cluster {
         if let Some(mut existing) = self.nodes.get_mut(&node_id) {
             let old_state = existing.state;
             let old_role = existing.role;
-            
+
             existing.last_heartbeat = Utc::now();
             existing.state = info.state;
             existing.role = info.role;
             existing.metadata = info.metadata.clone();
             existing.term = info.term;
-            
+
             if old_state != info.state {
                 let _ = self.event_tx.send(ClusterEvent::NodeStateChanged {
                     node_id: node_id.clone(),
@@ -230,7 +230,7 @@ impl Cluster {
                     new_state: info.state,
                 });
             }
-            
+
             if old_role != info.role {
                 let _ = self.event_tx.send(ClusterEvent::NodeRoleChanged {
                     node_id: node_id.clone(),
@@ -241,9 +241,12 @@ impl Cluster {
         } else {
             info.joined_at = Utc::now();
             info.last_heartbeat = Utc::now();
-            
-            info!("Node {} joined the cluster at {}", node_id, info.cluster_addr);
-            
+
+            info!(
+                "Node {} joined the cluster at {}",
+                node_id, info.cluster_addr
+            );
+
             self.nodes.insert(node_id.clone(), info.clone());
             let _ = self.event_tx.send(ClusterEvent::NodeJoined(info));
         }
@@ -313,7 +316,9 @@ impl Cluster {
     /// Update node metrics.
     pub fn update_metrics(&self, node_id: NodeId, metrics: NodeMetrics) {
         self.metrics.insert(node_id.clone(), metrics.clone());
-        let _ = self.event_tx.send(ClusterEvent::MetricsUpdated { node_id, metrics });
+        let _ = self
+            .event_tx
+            .send(ClusterEvent::MetricsUpdated { node_id, metrics });
     }
 
     /// Get node metrics.
@@ -342,16 +347,16 @@ impl Cluster {
     /// Bootstrap the cluster as leader.
     pub async fn bootstrap(&self) -> Result<()> {
         info!("Bootstrapping cluster as leader");
-        
+
         self.local_node.set_role(NodeRole::Leader).await;
         self.local_node.set_state(NodeState::Healthy).await;
         self.set_leader(Some(self.local_id())).await;
         self.set_state(ClusterState::Active).await;
-        
+
         // Update local node info in nodes map
         let local_info = self.local_node.info().await;
         self.nodes.insert(self.local_id(), local_info);
-        
+
         info!("Cluster {} bootstrapped successfully", self.cluster_id);
         Ok(())
     }
@@ -359,14 +364,14 @@ impl Cluster {
     /// Join an existing cluster.
     pub async fn join_cluster(&self, leader_addr: SocketAddr) -> Result<()> {
         info!("Joining cluster via leader at {}", leader_addr);
-        
+
         self.local_node.set_state(NodeState::Joining).await;
-        
+
         // This will be implemented with actual gRPC call in coordinator
         // For now, just set state
         self.local_node.set_role(NodeRole::Worker).await;
         self.local_node.set_state(NodeState::Healthy).await;
-        
+
         info!("Successfully joined cluster");
         Ok(())
     }
@@ -374,16 +379,16 @@ impl Cluster {
     /// Leave the cluster gracefully.
     pub async fn leave(&self) -> Result<()> {
         info!("Leaving cluster gracefully");
-        
+
         self.set_state(ClusterState::ShuttingDown).await;
         self.local_node.set_state(NodeState::Leaving).await;
-        
+
         // If we're the leader, transfer leadership
         if self.is_leader().await {
             warn!("Leader is leaving - triggering election");
             self.set_leader(None).await;
         }
-        
+
         Ok(())
     }
 
@@ -395,14 +400,14 @@ impl Cluster {
     /// Run maintenance tasks.
     async fn run_maintenance(self: Arc<Self>) {
         let mut interval = interval(Duration::from_secs(5));
-        
+
         loop {
             interval.tick().await;
-            
+
             if matches!(self.state().await, ClusterState::ShuttingDown) {
                 break;
             }
-            
+
             self.cleanup_dead_nodes().await;
             self.check_cluster_health().await;
         }
@@ -412,13 +417,13 @@ impl Cluster {
     async fn cleanup_dead_nodes(&self) {
         let dead_threshold = self.config.health.dead_node_timeout_secs as i64;
         let mut dead_nodes = Vec::new();
-        
+
         for entry in self.nodes.iter() {
             let node = entry.value();
             if node.id == self.local_id() {
                 continue;
             }
-            
+
             let elapsed = Utc::now().signed_duration_since(node.last_heartbeat);
             if elapsed.num_seconds() > dead_threshold {
                 warn!(
@@ -429,7 +434,7 @@ impl Cluster {
                 dead_nodes.push(node.id.clone());
             }
         }
-        
+
         for node_id in dead_nodes {
             self.remove_node(&node_id).await;
         }
@@ -439,7 +444,7 @@ impl Cluster {
     async fn check_cluster_health(&self) {
         let healthy_count = self.healthy_nodes().len();
         let total_count = self.node_count();
-        
+
         let current_state = self.state().await;
         let new_state = if healthy_count == total_count {
             ClusterState::Active
@@ -448,7 +453,7 @@ impl Cluster {
         } else {
             ClusterState::Partitioned
         };
-        
+
         if current_state != new_state {
             warn!(
                 "Cluster health changed: {}/{} nodes healthy, state: {} -> {}",
@@ -506,13 +511,7 @@ mod tests {
 
     fn create_test_local_node(id: &str) -> Arc<LocalNode> {
         let addr: SocketAddr = "127.0.0.1:50051".parse().unwrap();
-        let info = NodeInfo::new(
-            id,
-            format!("node-{}", id),
-            addr,
-            addr,
-            NodeRole::Worker,
-        );
+        let info = NodeInfo::new(id, format!("node-{}", id), addr, addr, NodeRole::Worker);
         Arc::new(LocalNode::new(info))
     }
 

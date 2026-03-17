@@ -2,9 +2,9 @@
 //!
 //! Tests the full flow: User Message → Gateway → Agent → LLM → Response
 
-use openrustclaw_e2e_tests::common::*;
 use openrustclaw_core::traits::LlmProvider;
 use openrustclaw_core::types::{CompletionRequest, Message};
+use openrustclaw_e2e_tests::common::*;
 
 /// Test: Simple chat without tools
 ///
@@ -37,7 +37,7 @@ async fn test_simple_chat_journey() {
 
 /// Test: Chat with tool calling
 ///
-/// Journey: User asks for calculation → Agent detects tool need → 
+/// Journey: User asks for calculation → Agent detects tool need →
 ///          LLM requests tool → Tool executes → LLM formats response
 #[tokio::test]
 async fn test_chat_with_tool_journey() {
@@ -62,7 +62,10 @@ async fn test_chat_with_tool_journey() {
         stream: false,
     };
 
-    let response1 = provider.complete(request1).await.expect("First turn failed");
+    let response1 = provider
+        .complete(request1)
+        .await
+        .expect("First turn failed");
 
     // Verify tool was requested
     E2eAssertions::response_has_tool_calls(&response1);
@@ -89,7 +92,10 @@ async fn test_chat_with_tool_journey() {
         stream: false,
     };
 
-    let response2 = provider2.complete(request2).await.expect("Second turn failed");
+    let response2 = provider2
+        .complete(request2)
+        .await
+        .expect("Second turn failed");
 
     // Verify final response
     E2eAssertions::response_contains(&response2, "4");
@@ -101,7 +107,7 @@ async fn test_chat_with_tool_journey() {
 #[tokio::test]
 async fn test_multi_turn_conversation_journey() {
     let _env = TestEnvironment::new().await;
-    let _session = TestSessions::new();
+    let _session = TestSessions::create();
 
     // Provider with multiple responses
     let provider = MockConversationalProvider::new(
@@ -214,6 +220,9 @@ async fn test_provider_fallback_journey() {
     assert!(result.is_err(), "Primary should fail");
 
     // Test fallback succeeds
-    let response = fallback.complete(request).await.expect("Fallback should succeed");
+    let response = fallback
+        .complete(request)
+        .await
+        .expect("Fallback should succeed");
     E2eAssertions::response_contains(&response, "fallback");
 }

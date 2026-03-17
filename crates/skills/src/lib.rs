@@ -9,8 +9,8 @@ pub mod registry;
 pub mod sandbox;
 
 pub use loader::SkillLoader;
-pub use registry::{
-    ClawHubRegistry, InstalledSkill, InstallResult, SearchFilters, SkillCache,
-    SkillDependency, SkillMetadata, SkillRegistry, SortBy, UpdateResult,
-};
 pub use marketplace::{MarketplaceClient, MarketplaceListing};
+pub use registry::{
+    ClawHubRegistry, InstallResult, InstalledSkill, SearchFilters, SkillCache, SkillDependency,
+    SkillMetadata, SkillRegistry, SortBy, UpdateResult,
+};

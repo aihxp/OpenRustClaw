@@ -79,11 +79,7 @@ impl<'a> Tokenize<'a> {
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn detokenize(
-        &self,
-        model: impl Into<String>,
-        tokens: &[i64],
-    ) -> Result<String> {
+    pub async fn detokenize(&self, model: impl Into<String>, tokens: &[i64]) -> Result<String> {
         let request = DetokenizeRequest {
             model: model.into(),
             tokens: tokens.to_vec(),

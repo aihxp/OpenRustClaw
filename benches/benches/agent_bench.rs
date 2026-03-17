@@ -8,17 +8,13 @@
 
 use std::collections::HashMap;
 
-use criterion::{
-    criterion_group, criterion_main, BenchmarkId, Criterion, Throughput,
-};
-use openrustclaw_agent::{
-    prompt::build_system_prompt, tools::ToolRegistry,
-};
-use openrustclaw_core::types::{
-    CoreEntry, Message, Role, Session, Platform, ToolCall, ToolDefinition, 
-    ToolOutput, MemoryType, MemoryQuery,
-};
+use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
+use openrustclaw_agent::{prompt::build_system_prompt, tools::ToolRegistry};
 use openrustclaw_core::traits::ToolContext;
+use openrustclaw_core::types::{
+    CoreEntry, MemoryQuery, MemoryType, Message, Platform, Role, Session, ToolCall, ToolDefinition,
+    ToolOutput,
+};
 use serde_json::json;
 use uuid::Uuid;
 
@@ -38,22 +34,16 @@ fn bench_tool_registry_lookup(c: &mut Criterion) {
 
         group.throughput(Throughput::Elements(tool_count as u64));
 
-        group.bench_with_input(
-            BenchmarkId::from_parameter(tool_count),
-            &map,
-            |b, m| {
-                let keys: Vec<String> = (0..tool_count)
-                    .map(|i| format!("tool_{}", i))
-                    .collect();
-                let mut key_iter = keys.iter().cycle();
+        group.bench_with_input(BenchmarkId::from_parameter(tool_count), &map, |b, m| {
+            let keys: Vec<String> = (0..tool_count).map(|i| format!("tool_{}", i)).collect();
+            let mut key_iter = keys.iter().cycle();
 
-                b.iter(|| {
-                    let key = key_iter.next().unwrap();
-                    let result = m.get(key);
-                    criterion::black_box(result);
-                });
-            },
-        );
+            b.iter(|| {
+                let key = key_iter.next().unwrap();
+                let result = m.get(key);
+                criterion::black_box(result);
+            });
+        });
     }
 
     group.finish();
@@ -164,10 +154,8 @@ fn bench_message_processing(c: &mut Criterion) {
                     // 1. Filter relevant messages
                     // 2. Extract tool calls
                     // 3. Build conversation context
-                    let user_msgs: usize = msgs
-                        .iter()
-                        .filter(|m| matches!(m.role, Role::User))
-                        .count();
+                    let user_msgs: usize =
+                        msgs.iter().filter(|m| matches!(m.role, Role::User)).count();
                     let tool_calls: usize = msgs
                         .iter()
                         .filter_map(|m| m.tool_calls.as_ref())
@@ -248,7 +236,11 @@ fn bench_context_building(c: &mut Criterion) {
                     // Add messages
                     context.push_str("[Conversation]\n");
                     for msg in msgs.iter() {
-                        context.push_str(&format!("{:?}: {}\n", msg.role, &msg.content[..msg.content.len().min(100)]));
+                        context.push_str(&format!(
+                            "{:?}: {}\n",
+                            msg.role,
+                            &msg.content[..msg.content.len().min(100)]
+                        ));
                     }
 
                     criterion::black_box(context);
@@ -269,20 +261,15 @@ fn bench_session_creation(c: &mut Criterion) {
 
     group.bench_function("new_dm", |b| {
         b.iter(|| {
-            let session = Session::new_dm(
-                format!("user_{}", Uuid::new_v4()),
-                Platform::WebChat,
-            );
+            let session = Session::new_dm(format!("user_{}", Uuid::new_v4()), Platform::WebChat);
             criterion::black_box(session);
         });
     });
 
     group.bench_function("new_with_metadata", |b| {
         b.iter(|| {
-            let mut session = Session::new_dm(
-                format!("user_{}", Uuid::new_v4()),
-                Platform::WebChat,
-            );
+            let mut session =
+                Session::new_dm(format!("user_{}", Uuid::new_v4()), Platform::WebChat);
             session.workspace_id = Some("workspace_123".to_string());
             session.metadata = json!({
                 "theme": "dark",
@@ -377,30 +364,24 @@ fn bench_memory_query_building(c: &mut Criterion) {
     let mut group = c.benchmark_group("agent/memory_query_building");
 
     for query_len in [10, 50, 100, 500] {
-        let text: String = (0..query_len)
-            .map(|i| format!("word{} ", i))
-            .collect();
+        let text: String = (0..query_len).map(|i| format!("word{} ", i)).collect();
 
         group.throughput(Throughput::Bytes(query_len as u64));
 
-        group.bench_with_input(
-            BenchmarkId::from_parameter(query_len),
-            &text,
-            |b, txt| {
-                b.iter(|| {
-                    let query = MemoryQuery {
-                        text: txt.clone(),
-                        memory_types: vec![MemoryType::Semantic, MemoryType::Episodic],
-                        source_types: vec![],
-                        namespace: Some("default".to_string()),
-                        limit: 10,
-                        min_confidence: 0.5,
-                        recency_weight: 0.3,
-                    };
-                    criterion::black_box(query);
-                });
-            },
-        );
+        group.bench_with_input(BenchmarkId::from_parameter(query_len), &text, |b, txt| {
+            b.iter(|| {
+                let query = MemoryQuery {
+                    text: txt.clone(),
+                    memory_types: vec![MemoryType::Semantic, MemoryType::Episodic],
+                    source_types: vec![],
+                    namespace: Some("default".to_string()),
+                    limit: 10,
+                    min_confidence: 0.5,
+                    recency_weight: 0.3,
+                };
+                criterion::black_box(query);
+            });
+        });
     }
 
     group.finish();
@@ -455,8 +436,12 @@ fn bench_json_argument_processing(c: &mut Criterion) {
             let string_val = args.get("string_arg").and_then(|v| v.as_str());
             let number_val = args.get("number_arg").and_then(|v| v.as_i64());
             let bool_val = args.get("bool_arg").and_then(|v| v.as_bool());
-            let array_len = args.get("array_arg").and_then(|v| v.as_array()).map(|a| a.len());
-            let nested = args.get("object_arg")
+            let array_len = args
+                .get("array_arg")
+                .and_then(|v| v.as_array())
+                .map(|a| a.len());
+            let nested = args
+                .get("object_arg")
                 .and_then(|v| v.as_object())
                 .and_then(|o| o.get("deep"))
                 .and_then(|v| v.as_object())

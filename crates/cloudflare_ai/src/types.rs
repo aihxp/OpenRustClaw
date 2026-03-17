@@ -209,7 +209,7 @@ impl TextToImageResponse {
 
     /// Decode the base64 image data to bytes.
     pub fn decode_image(&self) -> Result<Vec<u8>, base64::DecodeError> {
-        use base64::{engine::general_purpose::STANDARD, Engine};
+        use base64::{Engine, engine::general_purpose::STANDARD};
         match &self.image {
             Some(img) => STANDARD.decode(img),
             None => Ok(Vec::new()),
@@ -321,7 +321,9 @@ impl std::str::FromStr for CloudflareModel {
             "@cf/qwen/qwen1.5-7b-chat-awq" => Ok(CloudflareModel::Qwen15_7bChatAwq),
             "@cf/tinyllama/tinyllama-1.1b-chat-v1.0" => Ok(CloudflareModel::TinyLlama11bChat),
             "@cf/openai/whisper" => Ok(CloudflareModel::Whisper),
-            "@cf/stabilityai/stable-diffusion-xl-base-1.0" => Ok(CloudflareModel::StableDiffusionXl),
+            "@cf/stabilityai/stable-diffusion-xl-base-1.0" => {
+                Ok(CloudflareModel::StableDiffusionXl)
+            }
             _ => Err(format!("Unknown Cloudflare model: {s}")),
         }
     }
@@ -406,10 +408,7 @@ mod tests {
             CloudflareModel::Mistral7bInstruct.as_str(),
             "@cf/mistral/mistral-7b-instruct-v0.1"
         );
-        assert_eq!(
-            CloudflareModel::Whisper.as_str(),
-            "@cf/openai/whisper"
-        );
+        assert_eq!(CloudflareModel::Whisper.as_str(), "@cf/openai/whisper");
     }
 
     #[test]

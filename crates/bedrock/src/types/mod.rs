@@ -19,9 +19,7 @@ pub use content::{
 // Re-export GuardrailTrace from converse module
 pub use crate::converse::{ConverseTrace as GuardrailTrace, GuardrailTrace as GuardrailTraceInner};
 
-pub use conversation::{
-    ConversationRole, InlineConversation, Message, StopReason, TokenUsage,
-};
+pub use conversation::{ConversationRole, InlineConversation, Message, StopReason, TokenUsage};
 
 pub use inference::{
     GuardrailConfiguration, InferenceConfiguration, PerformanceConfiguration, PromptVariable,
@@ -85,7 +83,11 @@ impl AdditionalModelRequestFields {
     }
 
     /// Add a field.
-    pub fn with_field(mut self, key: impl Into<String>, value: impl Into<serde_json::Value>) -> Self {
+    pub fn with_field(
+        mut self,
+        key: impl Into<String>,
+        value: impl Into<serde_json::Value>,
+    ) -> Self {
         self.fields.insert(key.into(), value.into());
         self
     }

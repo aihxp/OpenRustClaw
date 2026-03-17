@@ -356,7 +356,10 @@ mod tests {
         let config = SyncConfig::default();
         assert_eq!(config.sync_mode, SyncMode::Automatic);
         assert_eq!(config.priority, SyncPriority::Normal);
-        assert_eq!(config.conflict_resolution, ConflictResolution::LastWriteWins);
+        assert_eq!(
+            config.conflict_resolution,
+            ConflictResolution::LastWriteWins
+        );
         assert_eq!(config.max_sync_interval_secs, 300);
         assert_eq!(config.min_battery_percent, 20);
     }

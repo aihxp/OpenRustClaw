@@ -11,7 +11,7 @@
 //! cargo run --example cross_region
 //! ```
 
-use aws_bedrock::{InferenceProfile, BedrockClient, ConverseRequest};
+use aws_bedrock::{BedrockClient, ConverseRequest, InferenceProfile};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

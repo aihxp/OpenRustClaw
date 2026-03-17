@@ -46,7 +46,7 @@ pub struct TestUser {
 pub struct TestSessions;
 
 impl TestSessions {
-    pub fn new() -> Session {
+    pub fn create() -> Session {
         Session {
             id: Uuid::new_v4(),
             user_id: TestUsers::alice().id,
@@ -215,20 +215,18 @@ impl TestRequests {
             model: Some("mock-model".to_string()),
             max_tokens: Some(100),
             temperature: Some(0.7),
-            tools: Some(vec![
-                ToolDefinition {
-                    name: "calculator".to_string(),
-                    description: "Performs calculations".to_string(),
-                    parameters: json!({
-                        "type": "object",
-                        "properties": {
-                            "expression": {"type": "string"}
-                        },
-                        "required": ["expression"]
-                    }),
-                    strict: false,
-                }
-            ]),
+            tools: Some(vec![ToolDefinition {
+                name: "calculator".to_string(),
+                description: "Performs calculations".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "expression": {"type": "string"}
+                    },
+                    "required": ["expression"]
+                }),
+                strict: false,
+            }]),
             system_prompt: None,
             stream: false,
         }

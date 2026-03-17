@@ -5,10 +5,10 @@ use crate::config::ConsensusConfig;
 use crate::error::{DistributedError, Result};
 use crate::node::{LocalNode, NodeId, NodeInfo, NodeRole};
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
-use tokio::sync::{oneshot, RwLock};
-use tokio::time::{interval, Instant};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use tokio::sync::{RwLock, oneshot};
+use tokio::time::{Instant, interval};
 use tracing::{debug, error, info, warn};
 
 /// Raft role for a node.
@@ -60,7 +60,7 @@ pub struct RaftNode {
     cluster: Arc<Cluster>,
     /// Configuration.
     config: ConsensusConfig,
-    
+
     // Persistent state
     /// Current term.
     current_term: AtomicU64,
@@ -68,7 +68,7 @@ pub struct RaftNode {
     voted_for: RwLock<Option<NodeId>>,
     /// Log entries.
     log: RwLock<Vec<LogEntry>>,
-    
+
     // Volatile state
     /// Current Raft role.
     role: RwLock<RaftRole>,
@@ -77,13 +77,13 @@ pub struct RaftNode {
     /// Last applied index (highest log entry applied to state machine).
     #[allow(dead_code)]
     last_applied: AtomicU64,
-    
+
     // Leader state (reinitialized after election)
     /// For each server, index of next log entry to send.
     next_index: RwLock<HashMap<NodeId, u64>>,
     /// For each server, index of highest log entry known to be replicated.
     match_index: RwLock<HashMap<NodeId, u64>>,
-    
+
     // Control
     /// Running flag.
     running: AtomicBool,
@@ -123,13 +123,13 @@ impl RaftNode {
         if self.running.load(Ordering::SeqCst) {
             return Ok(());
         }
-        
+
         info!("Starting Raft consensus node");
         self.running.store(true, Ordering::SeqCst);
-        
+
         // Start the main event loop
         tokio::spawn(self.clone().run_event_loop());
-        
+
         Ok(())
     }
 
@@ -137,7 +137,7 @@ impl RaftNode {
     pub async fn stop(&self) {
         info!("Stopping Raft consensus node");
         self.running.store(false, Ordering::SeqCst);
-        
+
         // Signal leader to step down if we are leader
         if let Some(tx) = self.step_down_tx.write().await.take() {
             let _ = tx.send(());
@@ -163,18 +163,18 @@ impl RaftNode {
     async fn run_event_loop(self: Arc<Self>) {
         let election_timeout = self.config.election_timeout();
         let mut election_timer = interval(election_timeout);
-        
+
         while self.running.load(Ordering::SeqCst) {
             election_timer.tick().await;
-            
+
             let role = self.role().await;
-            
+
             match role {
                 RaftRole::Follower | RaftRole::Candidate => {
                     // Check if election timeout has passed
                     let last_hb = *self.last_heartbeat.read().await;
                     let elapsed = last_hb.elapsed();
-                    
+
                     if elapsed >= election_timeout {
                         info!(
                             "Election timeout elapsed ({}ms), starting election",
@@ -198,40 +198,40 @@ impl RaftNode {
         let mut role = self.role.write().await;
         *role = RaftRole::Candidate;
         drop(role);
-        
+
         // Increment term
         let term = self.current_term.fetch_add(1, Ordering::SeqCst) + 1;
         self.local_node.set_term(term);
-        
+
         // Vote for self
         *self.voted_for.write().await = Some(self.local_node.id());
         let mut votes_received = 1;
         let votes_needed = self.cluster.quorum_size();
-        
+
         info!(
             "Starting election for term {} (need {} votes)",
             term, votes_needed
         );
-        
+
         // Request votes from all other nodes
         let nodes = self.cluster.healthy_nodes();
         let local_id = self.local_node.id();
-        
+
         let last_log_index = self.last_log_index();
         let last_log_term = self.last_log_term();
-        
+
         for node in nodes {
             if node.id == local_id {
                 continue;
             }
-            
+
             let request = VoteRequest {
                 term,
                 candidate_id: local_id.clone(),
                 last_log_index,
                 last_log_term,
             };
-            
+
             // Send vote request (will be implemented with gRPC)
             match self.request_vote(&node, request).await {
                 Ok(response) => {
@@ -250,15 +250,21 @@ impl RaftNode {
                 }
             }
         }
-        
+
         // Check if we won
         if votes_received >= votes_needed {
-            info!("Won election with {} votes, becoming leader", votes_received);
+            info!(
+                "Won election with {} votes, becoming leader",
+                votes_received
+            );
             self.become_leader().await?;
         } else {
-            debug!("Election lost: {} votes received, {} needed", votes_received, votes_needed);
+            debug!(
+                "Election lost: {} votes received, {} needed",
+                votes_received, votes_needed
+            );
         }
-        
+
         Ok(())
     }
 
@@ -267,15 +273,15 @@ impl RaftNode {
         let mut role = self.role.write().await;
         *role = RaftRole::Leader;
         drop(role);
-        
+
         // Update cluster state
         self.cluster.set_leader(Some(self.local_node.id())).await;
         self.local_node.set_role(NodeRole::Leader).await;
-        
+
         // Initialize leader state
         let mut next_index = self.next_index.write().await;
         let mut match_index = self.match_index.write().await;
-        
+
         let last_log = self.last_log_index() + 1;
         for node in self.cluster.healthy_nodes() {
             if node.id != self.local_node.id() {
@@ -283,41 +289,44 @@ impl RaftNode {
                 match_index.insert(node.id.clone(), 0);
             }
         }
-        
+
         // Create step down channel
         let (tx, _rx) = oneshot::channel();
         *self.step_down_tx.write().await = Some(tx);
-        
+
         // Append no-op entry
         self.append_entry(EntryType::NoOp, vec![]).await?;
-        
+
         info!("Became leader for term {}", self.current_term());
-        
+
         // Notify cluster
-        let _ = self.cluster.event_sender().send(ClusterEvent::LeaderChanged {
-            old_leader: None,
-            new_leader: Some(self.local_node.id()),
-        });
-        
+        let _ = self
+            .cluster
+            .event_sender()
+            .send(ClusterEvent::LeaderChanged {
+                old_leader: None,
+                new_leader: Some(self.local_node.id()),
+            });
+
         Ok(())
     }
 
     /// Step down to follower.
     async fn step_down(&self, new_term: u64) {
         warn!("Stepping down to follower for term {}", new_term);
-        
+
         let mut role = self.role.write().await;
         *role = RaftRole::Follower;
         drop(role);
-        
+
         self.current_term.store(new_term, Ordering::SeqCst);
         self.local_node.set_term(new_term);
         self.local_node.set_role(NodeRole::Worker).await;
-        
+
         // Clear leader state
         self.next_index.write().await.clear();
         self.match_index.write().await.clear();
-        
+
         // Signal any ongoing leader operations to stop
         if let Some(tx) = self.step_down_tx.write().await.take() {
             let _ = tx.send(());
@@ -327,7 +336,7 @@ impl RaftNode {
     /// Handle a vote request from another node.
     pub async fn handle_vote_request(&self, request: VoteRequest) -> VoteResponse {
         let current_term = self.current_term();
-        
+
         // Reply false if term < currentTerm
         if request.term < current_term {
             return VoteResponse {
@@ -336,32 +345,34 @@ impl RaftNode {
                 voter_id: self.local_node.id(),
             };
         }
-        
+
         // If term > currentTerm, update currentTerm and become follower
         if request.term > current_term {
             self.step_down(request.term).await;
         }
-        
+
         let voted_for = self.voted_for.read().await.clone();
         let last_log_index = self.last_log_index();
         let last_log_term = self.last_log_term();
-        
+
         // Check if candidate's log is at least as up-to-date
         let log_ok = request.last_log_term > last_log_term
-            || (request.last_log_term == last_log_term
-                && request.last_log_index >= last_log_index);
-        
+            || (request.last_log_term == last_log_term && request.last_log_index >= last_log_index);
+
         // Grant vote if we haven't voted or voted for this candidate, and log is ok
-        let vote_granted = log_ok
-            && (voted_for.is_none() || voted_for == Some(request.candidate_id.clone()));
-        
+        let vote_granted =
+            log_ok && (voted_for.is_none() || voted_for == Some(request.candidate_id.clone()));
+
         if vote_granted {
             *self.voted_for.write().await = Some(request.candidate_id.clone());
             // Reset heartbeat timer
             *self.last_heartbeat.write().await = Instant::now();
-            info!("Granted vote to {} for term {}", request.candidate_id, request.term);
+            info!(
+                "Granted vote to {} for term {}",
+                request.candidate_id, request.term
+            );
         }
-        
+
         VoteResponse {
             term: self.current_term(),
             vote_granted,
@@ -370,9 +381,12 @@ impl RaftNode {
     }
 
     /// Handle append entries (heartbeat or log replication) from leader.
-    pub async fn handle_append_entries(&self, request: AppendEntriesRequest) -> AppendEntriesResponse {
+    pub async fn handle_append_entries(
+        &self,
+        request: AppendEntriesRequest,
+    ) -> AppendEntriesResponse {
         let current_term = self.current_term();
-        
+
         // Reply false if term < currentTerm
         if request.term < current_term {
             return AppendEntriesResponse {
@@ -383,10 +397,10 @@ impl RaftNode {
                 conflict_term: 0,
             };
         }
-        
+
         // Reset heartbeat timer
         *self.last_heartbeat.write().await = Instant::now();
-        
+
         // If term > currentTerm, become follower
         if request.term > current_term {
             self.step_down(request.term).await;
@@ -395,12 +409,14 @@ impl RaftNode {
             let mut role = self.role.write().await;
             *role = RaftRole::Follower;
         }
-        
+
         // Update cluster leader if known
         if self.cluster.leader_id().await != Some(request.leader_id.clone()) {
-            self.cluster.set_leader(Some(request.leader_id.clone())).await;
+            self.cluster
+                .set_leader(Some(request.leader_id.clone()))
+                .await;
         }
-        
+
         // Reply false if log doesn't contain an entry at prevLogIndex with prevLogTerm
         if request.prev_log_index > 0 {
             let log = self.log.read().await;
@@ -424,10 +440,10 @@ impl RaftNode {
                 };
             }
         }
-        
+
         // TODO: Append any new entries not already in the log
         // TODO: Update commit index
-        
+
         AppendEntriesResponse {
             term: self.current_term(),
             success: true,
@@ -444,12 +460,12 @@ impl RaftNode {
         let term = self.current_term();
         let last_log_index = self.last_log_index();
         let commit_index = self.commit_index();
-        
+
         for node in nodes {
             if node.id == local_id {
                 continue;
             }
-            
+
             let next_idx = self
                 .next_index
                 .read()
@@ -457,14 +473,14 @@ impl RaftNode {
                 .get(&node.id)
                 .copied()
                 .unwrap_or(last_log_index + 1);
-            
+
             let prev_log_index = next_idx - 1;
             let prev_log_term = if prev_log_index > 0 {
                 self.log_term_at(prev_log_index).await.unwrap_or(0)
             } else {
                 0
             };
-            
+
             let request = AppendEntriesRequest {
                 term,
                 leader_id: local_id.clone(),
@@ -473,7 +489,7 @@ impl RaftNode {
                 entries: vec![], // Empty for heartbeat
                 leader_commit: commit_index,
             };
-            
+
             // Send heartbeat (will be implemented with gRPC)
             match self.send_append_entries(&node, request).await {
                 Ok(response) => {
@@ -493,7 +509,7 @@ impl RaftNode {
                             .await
                             .insert(node.id.clone(), response.match_index + 1);
                     }
-                    
+
                     if response.term > term {
                         self.step_down(response.term).await;
                         return;
@@ -511,24 +527,24 @@ impl RaftNode {
         if !self.is_leader().await {
             return Err(DistributedError::NotLeader(self.cluster.leader_id().await));
         }
-        
+
         let index = self.last_log_index() + 1;
         let term = self.current_term();
-        
+
         let entry = LogEntry {
             index,
             term,
             data,
             entry_type,
         };
-        
+
         self.log.write().await.push(entry.clone());
-        
+
         info!(
             "Appended entry at index {} (term {}), type {:?}",
             index, term, entry_type
         );
-        
+
         Ok(entry)
     }
 
@@ -539,11 +555,7 @@ impl RaftNode {
 
     /// Get the term of the last log entry.
     pub fn last_log_term(&self) -> u64 {
-        self.log
-            .blocking_read()
-            .last()
-            .map(|e| e.term)
-            .unwrap_or(0)
+        self.log.blocking_read().last().map(|e| e.term).unwrap_or(0)
     }
 
     /// Get term at specific log index.
@@ -635,13 +647,7 @@ mod tests {
 
     fn create_test_node(id: &str) -> (Arc<LocalNode>, Arc<Cluster>) {
         let addr: SocketAddr = "127.0.0.1:50051".parse().unwrap();
-        let info = NodeInfo::new(
-            id,
-            format!("node-{}", id),
-            addr,
-            addr,
-            NodeRole::Worker,
-        );
+        let info = NodeInfo::new(id, format!("node-{}", id), addr, addr, NodeRole::Worker);
         let local = Arc::new(LocalNode::new(info));
         let config = DistributedConfig::default();
         let cluster = Cluster::new(local.clone(), config);

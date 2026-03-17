@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
+use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue};
 use tracing::{debug, trace};
 
 use crate::error::{OllamaError, Result};
@@ -84,7 +84,7 @@ impl OllamaClient {
     pub fn with_config(config: ClientConfig) -> Self {
         let mut headers = HeaderMap::new();
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-        
+
         // Add custom headers
         for (key, value) in config.custom_headers {
             headers.insert(key, value);
@@ -191,11 +191,7 @@ impl OllamaClient {
     }
 
     /// Make a POST request to the API.
-    pub(crate) async fn post(
-        &self,
-        path: &str,
-        body: impl Serialize,
-    ) -> Result<reqwest::Response> {
+    pub(crate) async fn post(&self, path: &str, body: impl Serialize) -> Result<reqwest::Response> {
         let url = format!("{}{}", self.inner.base_url, path);
         let json_body = serde_json::to_value(&body)?;
         trace!(url = %url, body = %json_body, "Making POST request");
@@ -236,17 +232,17 @@ impl OllamaClient {
         let status = response.status();
 
         if status.is_success() {
-            let body = response.json::<T>().await.map_err(|e| {
-                OllamaError::Internal {
+            let body = response
+                .json::<T>()
+                .await
+                .map_err(|e| OllamaError::Internal {
                     message: format!("Failed to parse JSON response: {e}"),
-                }
-            })?;
+                })?;
             Ok(body)
         } else {
             Err(OllamaError::from_response(response).await)
         }
     }
-
 }
 
 /// Configuration for the Ollama client.
@@ -295,9 +291,11 @@ impl ClientConfig {
         name: impl AsRef<str>,
         value: impl AsRef<str>,
     ) -> crate::error::Result<Self> {
-        let name = reqwest::header::HeaderName::from_bytes(name.as_ref().as_bytes())
-            .map_err(|e| OllamaError::Config {
-                message: format!("Invalid header name: {e}"),
+        let name =
+            reqwest::header::HeaderName::from_bytes(name.as_ref().as_bytes()).map_err(|e| {
+                OllamaError::Config {
+                    message: format!("Invalid header name: {e}"),
+                }
             })?;
         let value = HeaderValue::from_str(value.as_ref()).map_err(|e| OllamaError::Config {
             message: format!("Invalid header value: {e}"),
@@ -338,7 +336,7 @@ mod tests {
     #[test]
     fn test_custom_header() {
         use reqwest::header::HeaderName;
-        
+
         let config = ClientConfig::new("http://localhost:11434")
             .header("X-Custom", "value")
             .unwrap();
@@ -346,7 +344,12 @@ mod tests {
         let header_name = HeaderName::from_bytes(b"x-custom").unwrap();
         assert!(config.custom_headers.contains_key(&header_name));
         assert_eq!(
-            config.custom_headers.get(&header_name).unwrap().to_str().unwrap(),
+            config
+                .custom_headers
+                .get(&header_name)
+                .unwrap()
+                .to_str()
+                .unwrap(),
             "value"
         );
     }

@@ -3,7 +3,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
+use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue};
 use secrecy::{ExposeSecret, SecretString};
 use tracing::{debug, trace};
 
@@ -267,11 +267,12 @@ impl ReplicateClient {
         let status = response.status();
 
         if status.is_success() {
-            let body = response.json::<T>().await.map_err(|e| {
-                ReplicateError::Internal {
+            let body = response
+                .json::<T>()
+                .await
+                .map_err(|e| ReplicateError::Internal {
                     message: format!("Failed to parse JSON response: {e}"),
-                }
-            })?;
+                })?;
             Ok(body)
         } else if status == reqwest::StatusCode::NOT_FOUND {
             let body = response.text().await.unwrap_or_default();

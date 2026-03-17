@@ -9,7 +9,7 @@ pub mod migrate;
 pub mod models;
 pub mod pool;
 
-pub use core_memory_store::{CoreEntryBuilder, SqliteCoreMemoryStore, DEFAULT_CORE_MEMORY_BUDGET};
+pub use core_memory_store::{CoreEntryBuilder, DEFAULT_CORE_MEMORY_BUDGET, SqliteCoreMemoryStore};
 pub use memory_store::{EmbeddingProvider, SqliteMemoryStore};
 pub use migrate::run_migrations;
 pub use pool::init_pool;

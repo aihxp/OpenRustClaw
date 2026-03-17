@@ -140,22 +140,29 @@ impl StreamCollector {
             StreamEvent::MessageStart { message } => {
                 self.role = Some(message.role);
             }
-            StreamEvent::ContentBlockStart { content_block_index, start } => {
+            StreamEvent::ContentBlockStart {
+                content_block_index,
+                start,
+            } => {
                 while self.content_blocks.len() <= *content_block_index as usize {
                     self.content_blocks.push(PartialBlock::Text(String::new()));
                 }
 
                 if let Some(start) = start {
                     if let Some(tool_use) = &start.tool_use {
-                        self.content_blocks[*content_block_index as usize] = PartialBlock::ToolUse {
-                            id: tool_use.tool_use_id.clone(),
-                            name: tool_use.name.clone(),
-                            input: String::new(),
-                        };
+                        self.content_blocks[*content_block_index as usize] =
+                            PartialBlock::ToolUse {
+                                id: tool_use.tool_use_id.clone(),
+                                name: tool_use.name.clone(),
+                                input: String::new(),
+                            };
                     }
                 }
             }
-            StreamEvent::ContentBlockDelta { content_block_index, delta } => {
+            StreamEvent::ContentBlockDelta {
+                content_block_index,
+                delta,
+            } => {
                 if let Some(block) = self.content_blocks.get_mut(*content_block_index as usize) {
                     match block {
                         PartialBlock::Text(text) => {

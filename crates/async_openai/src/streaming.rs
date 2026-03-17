@@ -23,7 +23,9 @@ pub struct ChatCompletionChunk {
 impl ChatCompletionChunk {
     /// Check if this is the final chunk.
     pub fn is_done(&self) -> bool {
-        self.choices.iter().all(|c| c.delta.is_empty() && c.finish_reason.is_some())
+        self.choices
+            .iter()
+            .all(|c| c.delta.is_empty() && c.finish_reason.is_some())
     }
 
     /// Create a done chunk.
@@ -40,12 +42,16 @@ impl ChatCompletionChunk {
 
     /// Get the content delta from the first choice.
     pub fn content(&self) -> Option<&str> {
-        self.choices.first().and_then(|c| c.delta.content.as_deref())
+        self.choices
+            .first()
+            .and_then(|c| c.delta.content.as_deref())
     }
 
     /// Get tool call deltas from the first choice.
     pub fn tool_calls(&self) -> Option<&Vec<ToolCallDelta>> {
-        self.choices.first().and_then(|c| c.delta.tool_calls.as_ref())
+        self.choices
+            .first()
+            .and_then(|c| c.delta.tool_calls.as_ref())
     }
 
     /// Check if the first choice has finished.

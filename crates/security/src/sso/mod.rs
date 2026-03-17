@@ -152,34 +152,34 @@ impl Default for SsoConfig {
 pub enum SsoError {
     #[error("SSO is not enabled")]
     NotEnabled,
-    
+
     #[error("Invalid configuration: {0}")]
     InvalidConfig(String),
-    
+
     #[error("Authentication failed: {0}")]
     AuthenticationFailed(String),
-    
+
     #[error("Token validation failed: {0}")]
     TokenValidationFailed(String),
-    
+
     #[error("User not found")]
     UserNotFound,
-    
+
     #[error("Domain not allowed: {0}")]
     DomainNotAllowed(String),
-    
+
     #[error("Network error: {0}")]
     NetworkError(#[from] reqwest::Error),
-    
+
     #[error("JSON error: {0}")]
     JsonError(#[from] serde_json::Error),
-    
+
     #[error("SAML error: {0}")]
     SamlError(String),
-    
+
     #[error("OIDC error: {0}")]
     OidcError(String),
-    
+
     #[error("Internal error: {0}")]
     Internal(String),
 }
@@ -219,7 +219,7 @@ impl SsoRegistry {
         if self.config.allowed_domains.is_empty() {
             return true;
         }
-        
+
         email
             .split('@')
             .nth(1)

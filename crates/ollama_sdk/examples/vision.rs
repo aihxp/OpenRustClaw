@@ -34,7 +34,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Load and encode the image
     let image = ImageInput::from_path(&image_path);
-    
+
     // Build a chat request with image
     let request = ChatRequest::builder("llava")
         .message_with_images(
@@ -51,7 +51,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Ok(response) => {
             println!("Model: {}", response.model);
             println!("Response:\n{}\n", response.content());
-            
+
             if let Some(eval_count) = response.eval_count {
                 println!("Tokens generated: {}", eval_count);
             }

@@ -126,21 +126,21 @@ mod client;
 mod error;
 mod types;
 
-#[cfg(feature = "predictions")]
-pub mod predictions;
-#[cfg(feature = "models")]
-pub mod models;
 #[cfg(feature = "deployments")]
 pub mod deployments;
+#[cfg(feature = "models")]
+pub mod models;
+#[cfg(feature = "predictions")]
+pub mod predictions;
+#[cfg(feature = "streaming")]
+pub mod streaming;
 #[cfg(feature = "trainings")]
 pub mod trainings;
 #[cfg(feature = "webhooks")]
 pub mod webhooks;
-#[cfg(feature = "streaming")]
-pub mod streaming;
 
 // Re-export main types
-pub use client::{ReplicateClient, ClientConfig, DEFAULT_BASE_URL};
+pub use client::{ClientConfig, DEFAULT_BASE_URL, ReplicateClient};
 pub use error::{ReplicateError, Result};
 pub use types::*;
 
@@ -150,23 +150,23 @@ pub use predictions::{PredictionRequest, PredictionRequestBuilder, Predictions};
 
 // Re-export model types
 #[cfg(feature = "models")]
-pub use models::{Models, ModelInfo};
+pub use models::{ModelInfo, Models};
 
 // Re-export deployment types
 #[cfg(feature = "deployments")]
-pub use deployments::{Deployments, DeploymentConfig};
+pub use deployments::{DeploymentConfig, Deployments};
 
 // Re-export training types
 #[cfg(feature = "trainings")]
-pub use trainings::{Trainings, TrainingRequest};
+pub use trainings::{TrainingRequest, Trainings};
 
 // Re-export webhook types
 #[cfg(feature = "webhooks")]
-pub use webhooks::{WebhookVerifier, WebhookEvent};
+pub use webhooks::{WebhookEvent, WebhookVerifier};
 
 // Re-export streaming types
 #[cfg(feature = "streaming")]
-pub use streaming::{Streaming, StreamEvent};
+pub use streaming::{StreamEvent, Streaming};
 
 /// The version of this crate.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -212,6 +212,9 @@ mod tests {
     #[test]
     fn test_model_constants() {
         assert_eq!(models_list::FLUX_SCHNELL, "black-forest-labs/flux-schnell");
-        assert_eq!(models_list::META_LLAMA_3_70B_INSTRUCT, "meta/meta-llama-3-70b-instruct");
+        assert_eq!(
+            models_list::META_LLAMA_3_70B_INSTRUCT,
+            "meta/meta-llama-3-70b-instruct"
+        );
     }
 }

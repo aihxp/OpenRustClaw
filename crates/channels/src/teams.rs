@@ -25,12 +25,12 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
 use governor::{Quota, RateLimiter};
-use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
+use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode, decode_header};
 use serde::{Deserialize, Serialize};
 use std::num::NonZeroU32;
-use tokio::sync::{mpsc, Mutex, RwLock};
+use tokio::sync::{Mutex, RwLock, mpsc};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
@@ -49,7 +49,14 @@ pub struct TeamsChannel {
     config: TeamsConfig,
     incoming_tx: mpsc::Sender<IncomingMessage>,
     incoming_rx: Mutex<mpsc::Receiver<IncomingMessage>>,
-    rate_limiter: Arc<RateLimiter<governor::state::NotKeyed, governor::state::InMemoryState, governor::clock::DefaultClock, governor::middleware::NoOpMiddleware>>,
+    rate_limiter: Arc<
+        RateLimiter<
+            governor::state::NotKeyed,
+            governor::state::InMemoryState,
+            governor::clock::DefaultClock,
+            governor::middleware::NoOpMiddleware,
+        >,
+    >,
     is_connected: RwLock<bool>,
     /// Cached access token for Microsoft Graph/Bot Framework APIs
     token: RwLock<Option<AccessToken>>,
@@ -199,7 +206,7 @@ impl TeamsChannel {
         // Create rate limiter (Bot Framework allows ~10+ requests per second)
         let quota = Quota::per_second(
             NonZeroU32::new(config.rate_limit_requests_per_second.max(1))
-                .unwrap_or(NonZeroU32::new(10).unwrap())
+                .unwrap_or(NonZeroU32::new(10).unwrap()),
         );
         let rate_limiter = Arc::new(RateLimiter::direct(quota));
 
@@ -250,7 +257,8 @@ impl TeamsChannel {
             ("scope", "https://api.botframework.com/.default"),
         ];
 
-        let response = self.http
+        let response = self
+            .http
             .post(&token_url)
             .form(&params)
             .send()
@@ -265,26 +273,28 @@ impl TeamsChannel {
             return Err(ChannelError::AuthFailed {
                 platform: "teams".to_string(),
                 message: format!("Token request failed: {}", error_text),
-            }.into());
+            }
+            .into());
         }
 
-        let token_data: serde_json::Value = response.json().await.map_err(|e| {
-            ChannelError::AuthFailed {
-                platform: "teams".to_string(),
-                message: format!("Failed to parse token response: {}", e),
-            }
-        })?;
+        let token_data: serde_json::Value =
+            response
+                .json()
+                .await
+                .map_err(|e| ChannelError::AuthFailed {
+                    platform: "teams".to_string(),
+                    message: format!("Failed to parse token response: {}", e),
+                })?;
 
-        let access_token = token_data["access_token"]
-            .as_str()
-            .ok_or_else(|| ChannelError::AuthFailed {
-                platform: "teams".to_string(),
-                message: "No access_token in response".to_string(),
-            })?;
+        let access_token =
+            token_data["access_token"]
+                .as_str()
+                .ok_or_else(|| ChannelError::AuthFailed {
+                    platform: "teams".to_string(),
+                    message: "No access_token in response".to_string(),
+                })?;
 
-        let expires_in = token_data["expires_in"]
-            .as_u64()
-            .unwrap_or(3600);
+        let expires_in = token_data["expires_in"].as_u64().unwrap_or(3600);
 
         let token = AccessToken {
             token: access_token.to_string(),
@@ -300,13 +310,13 @@ impl TeamsChannel {
     /// Get a valid access token, refreshing if necessary.
     async fn get_token(&self) -> Result<String> {
         let token_guard = self.token.read().await;
-        
-        if let Some(token) = token_guard.as_ref() {
-            if !token.is_expired() {
-                return Ok(token.token.clone());
-            }
+
+        if let Some(token) = token_guard.as_ref()
+            && !token.is_expired()
+        {
+            return Ok(token.token.clone());
         }
-        
+
         drop(token_guard);
         self.refresh_token().await
     }
@@ -316,7 +326,7 @@ impl TeamsChannel {
     /// This shows "<Bot> is typing..." in the Teams client.
     async fn send_typing_indicator(&self, service_url: &str, conversation_id: &str) -> Result<()> {
         let token = self.get_token().await?;
-        
+
         let typing_activity = serde_json::json!({
             "type": "typing",
             "from": {
@@ -328,9 +338,13 @@ impl TeamsChannel {
             }
         });
 
-        let url = format!("{}/conversations/{}/activities", service_url, conversation_id);
+        let url = format!(
+            "{}/conversations/{}/activities",
+            service_url, conversation_id
+        );
 
-        let response = self.http
+        let response = self
+            .http
             .post(&url)
             .header("Authorization", format!("Bearer {}", token))
             .json(&typing_activity)
@@ -359,24 +373,24 @@ impl TeamsChannel {
         let mut clean_text = text.to_string();
 
         for entity in entities {
-            if let Some(entity_type) = entity.get("type").and_then(|t| t.as_str()) {
-                if entity_type == "mention" {
-                    if let Some(mentioned) = entity.get("mentioned") {
-                        if let Some(id) = mentioned.get("id").and_then(|i| i.as_str()) {
-                            mentioned_users.push(id.to_string());
-                        }
-                        if let Some(name) = mentioned.get("name").and_then(|n| n.as_str()) {
-                            // Check if this is the bot mention
-                            if name.to_lowercase().contains("openrustclaw") {
-                                bot_mentioned = true;
-                            }
+            if let Some(entity_type) = entity.get("type").and_then(|t| t.as_str())
+                && entity_type == "mention"
+            {
+                if let Some(mentioned) = entity.get("mentioned") {
+                    if let Some(id) = mentioned.get("id").and_then(|i| i.as_str()) {
+                        mentioned_users.push(id.to_string());
+                    }
+                    if let Some(name) = mentioned.get("name").and_then(|n| n.as_str()) {
+                        // Check if this is the bot mention
+                        if name.to_lowercase().contains("openrustclaw") {
+                            bot_mentioned = true;
                         }
                     }
-                    
-                    // Remove the mention text from the message
-                    if let Some(text_val) = entity.get("text").and_then(|t| t.as_str()) {
-                        clean_text = clean_text.replace(text_val, "").trim().to_string();
-                    }
+                }
+
+                // Remove the mention text from the message
+                if let Some(text_val) = entity.get("text").and_then(|t| t.as_str()) {
+                    clean_text = clean_text.replace(text_val, "").trim().to_string();
                 }
             }
         }
@@ -395,17 +409,17 @@ impl TeamsChannel {
         }
 
         let normalized_id = user_id.to_lowercase();
-        
+
         for allowed in &self.config.allowlist {
             let normalized_allowed = allowed.to_lowercase();
             if normalized_id == normalized_allowed {
                 return true;
             }
             // Also check email if provided
-            if let Some(email) = user_email {
-                if email.to_lowercase() == normalized_allowed {
-                    return true;
-                }
+            if let Some(email) = user_email
+                && email.to_lowercase() == normalized_allowed
+            {
+                return true;
             }
         }
 
@@ -416,8 +430,6 @@ impl TeamsChannel {
     ///
     /// Teams uses a mix of markdown and HTML for formatting.
     fn markdown_to_teams(text: &str) -> String {
-        let result = text.to_string();
-
         // Convert bold (**text** -> **text** - Teams supports standard markdown)
         // Teams markdown is mostly standard, but we ensure compatibility
 
@@ -427,7 +439,7 @@ impl TeamsChannel {
         // Convert mentions from @user format
         // Teams mentions need to be in the entities array, not just text
 
-        result
+        text.to_string()
     }
 
     /// Build an Adaptive Card attachment for rich responses.
@@ -477,8 +489,12 @@ impl TeamsChannel {
     ///
     /// This method processes incoming webhook payloads, validates them,
     /// and converts them to internal message format.
-    pub async fn handle_activity(&self, activity: serde_json::Value) -> Result<Option<IncomingMessage>> {
-        let activity_type = activity.get("type")
+    pub async fn handle_activity(
+        &self,
+        activity: serde_json::Value,
+    ) -> Result<Option<IncomingMessage>> {
+        let activity_type = activity
+            .get("type")
             .and_then(|t| t.as_str())
             .unwrap_or("message");
 
@@ -489,17 +505,20 @@ impl TeamsChannel {
         }
 
         // Extract user info
-        let from = activity.get("from").ok_or_else(|| ChannelError::InvalidFormat {
-            platform: "teams".to_string(),
-            message: "Missing 'from' field in activity".to_string(),
-        })?;
-
-        let user_id = from.get("id")
-            .and_then(|i| i.as_str())
+        let from = activity
+            .get("from")
             .ok_or_else(|| ChannelError::InvalidFormat {
                 platform: "teams".to_string(),
-                message: "Missing user ID in activity".to_string(),
+                message: "Missing 'from' field in activity".to_string(),
             })?;
+
+        let user_id =
+            from.get("id")
+                .and_then(|i| i.as_str())
+                .ok_or_else(|| ChannelError::InvalidFormat {
+                    platform: "teams".to_string(),
+                    message: "Missing user ID in activity".to_string(),
+                })?;
 
         let user_email = from.get("email").and_then(|e| e.as_str());
 
@@ -510,12 +529,11 @@ impl TeamsChannel {
         }
 
         // Extract message text
-        let text = activity.get("text")
-            .and_then(|t| t.as_str())
-            .unwrap_or("");
+        let text = activity.get("text").and_then(|t| t.as_str()).unwrap_or("");
 
         // Parse mentions
-        let entities = activity.get("entities")
+        let entities = activity
+            .get("entities")
             .and_then(|e| e.as_array())
             .map(|a| a.as_slice())
             .unwrap_or(&[]);
@@ -530,20 +548,26 @@ impl TeamsChannel {
         }
 
         // Extract conversation info
-        let conversation = activity.get("conversation").ok_or_else(|| ChannelError::InvalidFormat {
-            platform: "teams".to_string(),
-            message: "Missing 'conversation' field in activity".to_string(),
-        })?;
+        let conversation =
+            activity
+                .get("conversation")
+                .ok_or_else(|| ChannelError::InvalidFormat {
+                    platform: "teams".to_string(),
+                    message: "Missing 'conversation' field in activity".to_string(),
+                })?;
 
-        let conversation_id = conversation.get("id")
+        let conversation_id = conversation
+            .get("id")
             .and_then(|i| i.as_str())
             .unwrap_or("");
 
-        let conversation_type = conversation.get("conversationType")
+        let conversation_type = conversation
+            .get("conversationType")
             .and_then(|t| t.as_str())
             .unwrap_or("personal");
 
-        let service_url = activity.get("serviceUrl")
+        let service_url = activity
+            .get("serviceUrl")
             .and_then(|s| s.as_str())
             .unwrap_or("https://smba.trafficmanager.net/emea/");
 
@@ -564,7 +588,9 @@ impl TeamsChannel {
         });
 
         // Send typing indicator
-        let _ = self.send_typing_indicator(service_url, conversation_id).await;
+        let _ = self
+            .send_typing_indicator(service_url, conversation_id)
+            .await;
 
         let incoming = IncomingMessage {
             session_id,
@@ -582,18 +608,24 @@ impl TeamsChannel {
         let token = self.get_token().await?;
 
         // Extract required metadata
-        let service_url = msg.metadata.get("teams_service_url")
+        let service_url = msg
+            .metadata
+            .get("teams_service_url")
             .and_then(|v| v.as_str())
             .unwrap_or("https://smba.trafficmanager.net/emea/");
 
-        let conversation_id = msg.metadata.get("teams_conversation_id")
+        let conversation_id = msg
+            .metadata
+            .get("teams_conversation_id")
             .and_then(|v| v.as_str())
             .ok_or_else(|| ChannelError::InvalidFormat {
                 platform: "teams".to_string(),
                 message: "Missing teams_conversation_id in metadata".to_string(),
             })?;
 
-        let reply_to_id = msg.metadata.get("teams_activity_id")
+        let reply_to_id = msg
+            .metadata
+            .get("teams_activity_id")
             .and_then(|v| v.as_str());
 
         // Build the activity
@@ -615,12 +647,16 @@ impl TeamsChannel {
         }
 
         // Check if we should use an Adaptive Card
-        let use_card = msg.metadata.get("teams_use_adaptive_card")
+        let use_card = msg
+            .metadata
+            .get("teams_use_adaptive_card")
             .and_then(|v| v.as_bool())
             .unwrap_or(self.config.adaptive_cards_enabled);
 
         if use_card {
-            let title = msg.metadata.get("teams_card_title")
+            let title = msg
+                .metadata
+                .get("teams_card_title")
                 .and_then(|v| v.as_str());
 
             if let Some(card) = self.build_adaptive_card(&msg.content, title) {
@@ -631,9 +667,13 @@ impl TeamsChannel {
         }
 
         // Send the activity
-        let url = format!("{}/conversations/{}/activities", service_url, conversation_id);
+        let url = format!(
+            "{}/conversations/{}/activities",
+            service_url, conversation_id
+        );
 
-        let response = self.http
+        let response = self
+            .http
             .post(&url)
             .header("Authorization", format!("Bearer {}", token))
             .json(&activity)
@@ -649,10 +689,14 @@ impl TeamsChannel {
             return Err(ChannelError::SendFailed {
                 platform: "teams".to_string(),
                 message: format!("API error: {}", error_text),
-            }.into());
+            }
+            .into());
         }
 
-        debug!("Successfully sent message to Teams conversation {}", conversation_id);
+        debug!(
+            "Successfully sent message to Teams conversation {}",
+            conversation_id
+        );
         Ok(())
     }
 }
@@ -676,7 +720,8 @@ impl Channel for TeamsChannel {
             ChannelError::Connection {
                 platform: "teams".to_string(),
                 message: "Incoming message channel closed".to_string(),
-            }.into()
+            }
+            .into()
         })
     }
 
@@ -692,14 +737,16 @@ impl Channel for TeamsChannel {
             return Err(ChannelError::Config {
                 platform: "teams".to_string(),
                 message: "Microsoft App ID is required".to_string(),
-            }.into());
+            }
+            .into());
         }
 
         if self.config.app_password.is_empty() {
             return Err(ChannelError::Config {
                 platform: "teams".to_string(),
                 message: "Microsoft App Password is required".to_string(),
-            }.into());
+            }
+            .into());
         }
 
         // Test authentication by fetching initial token
@@ -747,11 +794,11 @@ impl TeamsWebhookHandler {
     }
 
     /// Microsoft's OpenID configuration URL.
-    const OPENID_CONFIG_URL: &str = "https://login.botframework.com/v1/.well-known/openidconfiguration";
-    
+    const OPENID_CONFIG_URL: &str =
+        "https://login.botframework.com/v1/.well-known/openidconfiguration";
+
     /// Cache for JWKS response to avoid fetching on every request.
     /// In production, this should be a shared cache with TTL.
-    
     /// Verify the JWT token from Microsoft Bot Framework.
     ///
     /// This implements the full JWT verification flow:
@@ -803,7 +850,8 @@ impl TeamsWebhookHandler {
                     return Err(ChannelError::AuthFailed {
                         platform: "teams".to_string(),
                         message: format!("Failed to parse OpenID config: {}", e),
-                    }.into());
+                    }
+                    .into());
                 }
             },
             Err(e) => {
@@ -811,7 +859,8 @@ impl TeamsWebhookHandler {
                 return Err(ChannelError::AuthFailed {
                     platform: "teams".to_string(),
                     message: format!("Failed to fetch OpenID config: {}", e),
-                }.into());
+                }
+                .into());
             }
         };
 
@@ -824,7 +873,8 @@ impl TeamsWebhookHandler {
                     return Err(ChannelError::AuthFailed {
                         platform: "teams".to_string(),
                         message: format!("Failed to parse JWKS: {}", e),
-                    }.into());
+                    }
+                    .into());
                 }
             },
             Err(e) => {
@@ -832,7 +882,8 @@ impl TeamsWebhookHandler {
                 return Err(ChannelError::AuthFailed {
                     platform: "teams".to_string(),
                     message: format!("Failed to fetch JWKS: {}", e),
-                }.into());
+                }
+                .into());
             }
         };
 
@@ -849,11 +900,9 @@ impl TeamsWebhookHandler {
         // Use x5c certificate if available, otherwise use n/e for RSA
         let decoding_key = if let Some(certs) = &jwk.x5c {
             if let Some(cert) = certs.first() {
-                let cert_der = BASE64.decode(cert).map_err(|e| {
-                    ChannelError::AuthFailed {
-                        platform: "teams".to_string(),
-                        message: format!("Failed to decode certificate: {}", e),
-                    }
+                let cert_der = BASE64.decode(cert).map_err(|e| ChannelError::AuthFailed {
+                    platform: "teams".to_string(),
+                    message: format!("Failed to decode certificate: {}", e),
                 })?;
                 DecodingKey::from_rsa_der(&cert_der)
             } else {
@@ -881,7 +930,10 @@ impl TeamsWebhookHandler {
 
         match decode::<BotFrameworkClaims>(token, &decoding_key, &validation) {
             Ok(token_data) => {
-                debug!("Successfully verified JWT for app: {}", token_data.claims.appid);
+                debug!(
+                    "Successfully verified JWT for app: {}",
+                    token_data.claims.appid
+                );
                 Ok(true)
             }
             Err(e) => {
@@ -963,16 +1015,14 @@ mod tests {
     #[test]
     fn test_parse_mentions() {
         let text = "<at>OpenRustClaw</at> Hello there!";
-        let entities = vec![
-            serde_json::json!({
-                "type": "mention",
-                "text": "<at>OpenRustClaw</at>",
-                "mentioned": {
-                    "id": "28:app-id",
-                    "name": "OpenRustClaw"
-                }
-            })
-        ];
+        let entities = vec![serde_json::json!({
+            "type": "mention",
+            "text": "<at>OpenRustClaw</at>",
+            "mentioned": {
+                "id": "28:app-id",
+                "name": "OpenRustClaw"
+            }
+        })];
 
         let info = TeamsChannel::parse_mentions(text, &entities);
         assert!(info.bot_mentioned);

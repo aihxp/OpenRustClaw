@@ -75,9 +75,7 @@ impl ChatRequest {
 
     /// Create a simple request.
     pub fn simple(model: impl Into<String>, message: impl Into<String>) -> Self {
-        Self::builder(model)
-            .message(Role::User, message)
-            .build()
+        Self::builder(model).message(Role::User, message).build()
     }
 }
 

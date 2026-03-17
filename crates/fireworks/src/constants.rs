@@ -77,16 +77,19 @@ pub mod models {
     pub const LLAMA_3_2_3B_INSTRUCT: &str = "accounts/fireworks/models/llama-v3p2-3b-instruct";
 
     /// Llama 3.2 11B Vision Instruct.
-    pub const LLAMA_3_2_11B_VISION_INSTRUCT: &str = "accounts/fireworks/models/llama-v3p2-11b-vision-instruct";
+    pub const LLAMA_3_2_11B_VISION_INSTRUCT: &str =
+        "accounts/fireworks/models/llama-v3p2-11b-vision-instruct";
 
     /// Llama 3.2 90B Vision Instruct.
-    pub const LLAMA_3_2_90B_VISION_INSTRUCT: &str = "accounts/fireworks/models/llama-v3p2-90b-vision-instruct";
+    pub const LLAMA_3_2_90B_VISION_INSTRUCT: &str =
+        "accounts/fireworks/models/llama-v3p2-90b-vision-instruct";
 
     /// Qwen 2.5 72B Instruct.
     pub const QWEN_2_5_72B_INSTRUCT: &str = "accounts/fireworks/models/qwen2p5-72b-instruct";
 
     /// Qwen 2.5 Coder 32B Instruct.
-    pub const QWEN_2_5_CODER_32B_INSTRUCT: &str = "accounts/fireworks/models/qwen2p5-coder-32b-instruct";
+    pub const QWEN_2_5_CODER_32B_INSTRUCT: &str =
+        "accounts/fireworks/models/qwen2p5-coder-32b-instruct";
 
     /// DeepSeek V3.
     pub const DEEPSEEK_V3: &str = "accounts/fireworks/models/deepseek-v3";
@@ -95,19 +98,23 @@ pub mod models {
     pub const DEEPSEEK_R1: &str = "accounts/fireworks/models/deepseek-r1";
 
     /// Nous Hermes 2 Pro Llama 3 8B.
-    pub const NOUS_HERMES_2_PRO_LLAMA_3_8B: &str = "accounts/fireworks/models/nous-hermes-2-pro-llama-3-8b";
+    pub const NOUS_HERMES_2_PRO_LLAMA_3_8B: &str =
+        "accounts/fireworks/models/nous-hermes-2-pro-llama-3-8b";
 
     /// Nous Hermes 2 Mixtral 8x7B DPO.
-    pub const NOUS_HERMES_2_MIXTRAL_8X7B_DPO: &str = "accounts/fireworks/models/nous-hermes-2-mixtral-8x7b-dpo";
+    pub const NOUS_HERMES_2_MIXTRAL_8X7B_DPO: &str =
+        "accounts/fireworks/models/nous-hermes-2-mixtral-8x7b-dpo";
 
     /// SDXL (image generation).
     pub const SDXL: &str = "accounts/fireworks/models/sdxl";
 
     /// Stable Diffusion 3 Medium (image generation).
-    pub const STABLE_DIFFUSION_3_MEDIUM: &str = "accounts/fireworks/models/stable-diffusion-3-medium";
+    pub const STABLE_DIFFUSION_3_MEDIUM: &str =
+        "accounts/fireworks/models/stable-diffusion-3-medium";
 
     /// Stable Diffusion 3.5 Large (image generation).
-    pub const STABLE_DIFFUSION_3_5_LARGE: &str = "accounts/fireworks/models/stable-diffusion-3-5-large";
+    pub const STABLE_DIFFUSION_3_5_LARGE: &str =
+        "accounts/fireworks/models/stable-diffusion-3-5-large";
 
     /// Playground v2.5 (image generation).
     pub const PLAYGROUND_V2_5: &str = "accounts/fireworks/models/playground-v2-5-1024px-aesthetic";

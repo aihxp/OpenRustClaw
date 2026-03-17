@@ -4,7 +4,7 @@
 //!     REPLICATE_API_TOKEN=your_token cargo run --example streaming
 
 use futures::StreamExt;
-use replicate::{ReplicateClient, PredictionRequest};
+use replicate::{PredictionRequest, ReplicateClient};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -28,10 +28,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Check if streaming is available
     if let Some(stream_url) = &prediction.urls.stream {
         println!("\nStreaming from: {}", stream_url);
-        
+
         // Stream the output
         let mut stream = client.streaming().stream_output(&prediction.id).await?;
-        
+
         println!("Streaming output:");
         while let Some(event) = stream.next().await {
             match event {
@@ -47,8 +47,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         println!("Streaming not available for this prediction.");
         println!("Polling for completion instead...");
-        
-        let completed = client.predictions().wait_for_completion(&prediction.id).await?;
+
+        let completed = client
+            .predictions()
+            .wait_for_completion(&prediction.id)
+            .await?;
         println!("Prediction completed!");
         println!("Output: {:?}", completed.output);
     }

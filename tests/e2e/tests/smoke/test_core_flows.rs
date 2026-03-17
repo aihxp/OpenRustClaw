@@ -2,9 +2,9 @@
 //!
 //! Critical user flows that must work for the system to be usable.
 
-use openrustclaw_e2e_tests::common::*;
 use openrustclaw_core::traits::LlmProvider;
 use openrustclaw_core::types::{CompletionRequest, Message};
+use openrustclaw_e2e_tests::common::*;
 
 /// CRITICAL: Simple chat flow
 #[tokio::test]
@@ -24,7 +24,7 @@ async fn smoke_chat_flow() {
     };
 
     let response = provider.complete(request).await.expect("Chat flow failed");
-    
+
     assert!(!response.message.content.is_empty());
 }
 
@@ -51,7 +51,7 @@ async fn smoke_tool_execution_flow() {
     };
 
     let response = provider.complete(request).await.expect("Tool flow failed");
-    
+
     assert!(response.message.tool_calls.is_some());
 }
 
@@ -71,13 +71,23 @@ async fn smoke_memory_recall_flow() {
 
     // Search for it using keywords that will match (FTS works better with present keywords)
     let query = create_memory_query("Alice Rust programming");
-    let results = env.memory_store.search(&query).await.expect("Search failed");
+    let results = env
+        .memory_store
+        .search(&query)
+        .await
+        .expect("Search failed");
 
-    assert!(!results.is_empty(), "Memory recall not working - no results found");
-    
+    assert!(
+        !results.is_empty(),
+        "Memory recall not working - no results found"
+    );
+
     // Verify the content is what we stored
     let found = results.iter().any(|r| r.entry.content.contains("Alice"));
-    assert!(found, "Memory recall not working - content not found in results");
+    assert!(
+        found,
+        "Memory recall not working - content not found in results"
+    );
 }
 
 /// CRITICAL: Provider fallback

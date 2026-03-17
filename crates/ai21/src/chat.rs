@@ -59,7 +59,10 @@ impl<'a> ChatEndpoint<'a> {
             .inner
             .http
             .post(&url)
-            .header(AUTHORIZATION, format!("Bearer {}", self.client.inner.api_key.expose_secret()))
+            .header(
+                AUTHORIZATION,
+                format!("Bearer {}", self.client.inner.api_key.expose_secret()),
+            )
             .json(&body)
             .send()
             .await
@@ -73,26 +76,24 @@ impl<'a> ChatEndpoint<'a> {
         let stream = response
             .bytes_stream()
             .eventsource()
-            .map(|event| {
-                match event {
-                    Ok(event) => {
-                        if event.data == "[DONE]" {
-                            return Ok(StreamEvent::End {
-                                finish_reason: Some(FinishReason::Stop),
-                            });
-                        }
-
-                        match serde_json::from_str::<StreamEvent>(&event.data) {
-                            Ok(stream_event) => Ok(stream_event),
-                            Err(e) => Err(Ai21Error::Stream {
-                                message: format!("Failed to parse SSE event: {e}"),
-                            }),
-                        }
+            .map(|event| match event {
+                Ok(event) => {
+                    if event.data == "[DONE]" {
+                        return Ok(StreamEvent::End {
+                            finish_reason: Some(FinishReason::Stop),
+                        });
                     }
-                    Err(e) => Err(Ai21Error::Stream {
-                        message: format!("SSE error: {e}"),
-                    }),
+
+                    match serde_json::from_str::<StreamEvent>(&event.data) {
+                        Ok(stream_event) => Ok(stream_event),
+                        Err(e) => Err(Ai21Error::Stream {
+                            message: format!("Failed to parse SSE event: {e}"),
+                        }),
+                    }
                 }
+                Err(e) => Err(Ai21Error::Stream {
+                    message: format!("SSE error: {e}"),
+                }),
             });
 
         Ok(stream)

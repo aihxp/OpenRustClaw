@@ -3,13 +3,13 @@
 use crate::error::{CursorError, Result};
 use crate::types::{CursorTool, TerminalState};
 use async_trait::async_trait;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::process::Stdio;
 use std::sync::Arc;
 use tokio::process::Command;
 use tokio::sync::RwLock;
-use tokio::time::{timeout, Duration};
+use tokio::time::{Duration, timeout};
 use tracing::{debug, error, info};
 use uuid::Uuid;
 
@@ -150,8 +150,15 @@ impl TerminalManager {
     }
 
     /// Run a command with timeout.
-    async fn run_command(&self, command: &str, timeout_duration: Duration) -> Result<CommandResult> {
-        debug!("Executing command: {} (timeout: {:?})", command, timeout_duration);
+    async fn run_command(
+        &self,
+        command: &str,
+        timeout_duration: Duration,
+    ) -> Result<CommandResult> {
+        debug!(
+            "Executing command: {} (timeout: {:?})",
+            command, timeout_duration
+        );
 
         let output = timeout(
             timeout_duration,
@@ -192,7 +199,11 @@ impl TerminalManager {
     }
 
     /// Get recent output from a terminal session.
-    pub async fn get_recent_output(&self, session_id: &str, lines: Option<usize>) -> Option<String> {
+    pub async fn get_recent_output(
+        &self,
+        session_id: &str,
+        lines: Option<usize>,
+    ) -> Option<String> {
         let sessions = self.sessions.read().await;
         sessions.get(session_id).map(|session| {
             if let Some(n) = lines {
@@ -301,7 +312,7 @@ impl CursorTool for RunCommandTool {
             .ok_or_else(|| input_validation_error(self.name(), "Missing 'command' parameter"))?;
 
         let terminal_id = params.get("terminal_id").and_then(|t| t.as_str());
-        let timeout = params.get("timeout").and_then(|t| t.as_u64()).map(|t| t as u64);
+        let timeout = params.get("timeout").and_then(|t| t.as_u64());
 
         let result = self
             .terminal_manager
@@ -372,9 +383,14 @@ impl CursorTool for ReadTerminalTool {
         let terminal_id = params
             .get("terminal_id")
             .and_then(|t| t.as_str())
-            .ok_or_else(|| input_validation_error(self.name(), "Missing 'terminal_id' parameter"))?;
+            .ok_or_else(|| {
+                input_validation_error(self.name(), "Missing 'terminal_id' parameter")
+            })?;
 
-        let lines = params.get("lines").and_then(|l| l.as_u64()).map(|l| l as usize);
+        let lines = params
+            .get("lines")
+            .and_then(|l| l.as_u64())
+            .map(|l| l as usize);
         let include_history = params
             .get("include_history")
             .and_then(|h| h.as_bool())
@@ -384,7 +400,9 @@ impl CursorTool for ReadTerminalTool {
             .terminal_manager
             .get_state(terminal_id)
             .await
-            .ok_or_else(|| CursorError::Terminal(format!("Terminal session not found: {}", terminal_id)))?;
+            .ok_or_else(|| {
+                CursorError::Terminal(format!("Terminal session not found: {}", terminal_id))
+            })?;
 
         let output = self
             .terminal_manager
@@ -472,9 +490,7 @@ mod tests {
     async fn test_command_timeout() {
         let manager = TerminalManager::new(1); // 1 second timeout
 
-        let result = manager
-            .execute_command(None, "sleep 5", None)
-            .await;
+        let result = manager.execute_command(None, "sleep 5", None).await;
 
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), CursorError::Timeout(_)));

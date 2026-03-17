@@ -147,7 +147,9 @@ impl RerankRequestBuilder {
     /// Build the request.
     pub fn build(self) -> RerankRequest {
         RerankRequest {
-            model: self.model.unwrap_or_else(|| "rerank-english-v3.0".to_string()),
+            model: self
+                .model
+                .unwrap_or_else(|| "rerank-english-v3.0".to_string()),
             query: self.query,
             documents: self.documents,
             top_n: self.top_n,

@@ -22,12 +22,9 @@ pub use sidecar::SidecarManager;
 mod tests {
     use super::*;
     use crate::proto::orchestration::{
-        WorkflowRequest, WorkflowResponse,
-        StatusRequest, StatusResponse,
+        StatusRequest, StatusResponse, WorkflowRequest, WorkflowResponse,
     };
-    use crate::proto::tracing::{
-        TraceRequest, TraceResponse,
-    };
+    use crate::proto::tracing::{TraceRequest, TraceResponse};
 
     // --- Proto type construction tests ---
 
@@ -183,9 +180,8 @@ mod tests {
 
     #[test]
     fn test_sidecar_error_invalid_address() {
-        let err = openrustclaw_core::error::Error::Sidecar(
-            "Invalid address: missing scheme".to_string(),
-        );
+        let err =
+            openrustclaw_core::error::Error::Sidecar("Invalid address: missing scheme".to_string());
         assert!(err.to_string().contains("Invalid address"));
     }
 }

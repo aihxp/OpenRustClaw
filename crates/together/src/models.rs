@@ -36,7 +36,7 @@ impl<'a> Models<'a> {
     /// Get a specific model by ID.
     pub async fn get(&self, model_id: impl AsRef<str>) -> Result<ModelInfo> {
         let path = format!("{}/{}", endpoints::MODELS, model_id.as_ref());
-        
+
         self.client
             .execute_with_retry(|| {
                 let client = self.client.clone();
@@ -104,9 +104,9 @@ impl ModelInfo {
 
     /// Get pricing per million tokens.
     pub fn pricing_per_million(&self) -> Option<(f64, f64)> {
-        self.pricing.as_ref().map(|p| {
-            (p.input * 1_000_000.0, p.output * 1_000_000.0)
-        })
+        self.pricing
+            .as_ref()
+            .map(|p| (p.input * 1_000_000.0, p.output * 1_000_000.0))
     }
 }
 
@@ -147,16 +147,29 @@ impl ModelsResponse {
 
     /// Get embedding models.
     pub fn embedding_models(&self) -> Vec<&ModelInfo> {
-        self.data.iter().filter(|m| m.is_embedding_model()).collect()
+        self.data
+            .iter()
+            .filter(|m| m.is_embedding_model())
+            .collect()
     }
 
     /// Get sorted models by price (cheapest first).
     pub fn by_price(&self) -> Vec<&ModelInfo> {
         let mut models: Vec<_> = self.data.iter().collect();
         models.sort_by(|a, b| {
-            let a_price = a.pricing.as_ref().map(|p| p.input + p.output).unwrap_or(f64::MAX);
-            let b_price = b.pricing.as_ref().map(|p| p.input + p.output).unwrap_or(f64::MAX);
-            a_price.partial_cmp(&b_price).unwrap_or(std::cmp::Ordering::Equal)
+            let a_price = a
+                .pricing
+                .as_ref()
+                .map(|p| p.input + p.output)
+                .unwrap_or(f64::MAX);
+            let b_price = b
+                .pricing
+                .as_ref()
+                .map(|p| p.input + p.output)
+                .unwrap_or(f64::MAX);
+            a_price
+                .partial_cmp(&b_price)
+                .unwrap_or(std::cmp::Ordering::Equal)
         });
         models
     }

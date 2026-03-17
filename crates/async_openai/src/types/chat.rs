@@ -93,10 +93,7 @@ impl ChatMessage {
     }
 
     /// Create an assistant message with tool calls.
-    pub fn assistant_with_tools(
-        content: impl Into<String>,
-        tool_calls: Vec<ToolCall>,
-    ) -> Self {
+    pub fn assistant_with_tools(content: impl Into<String>, tool_calls: Vec<ToolCall>) -> Self {
         Self {
             role: Role::Assistant,
             content: Some(content.into()),
@@ -349,7 +346,9 @@ pub struct ChatResponse {
 impl ChatResponse {
     /// Get the content of the first choice.
     pub fn content(&self) -> Option<&str> {
-        self.choices.first().and_then(|c| c.message.content.as_deref())
+        self.choices
+            .first()
+            .and_then(|c| c.message.content.as_deref())
     }
 
     /// Get the message of the first choice.
@@ -408,7 +407,12 @@ mod tests {
     fn test_function_builder() {
         let func = Function::builder("get_weather", "Get weather")
             .string_property("location", "City name", true)
-            .enum_property("unit", "Temperature unit", vec!["celsius", "fahrenheit"], false)
+            .enum_property(
+                "unit",
+                "Temperature unit",
+                vec!["celsius", "fahrenheit"],
+                false,
+            )
             .build();
 
         assert_eq!(func.name, "get_weather");

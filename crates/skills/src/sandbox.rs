@@ -157,10 +157,8 @@ mod tests {
             ..Default::default()
         });
 
-        let result = sandbox.check_capabilities(&[
-            SkillCapability::FileRead,
-            SkillCapability::FileWrite,
-        ]);
+        let result =
+            sandbox.check_capabilities(&[SkillCapability::FileRead, SkillCapability::FileWrite]);
         assert!(result.is_ok());
     }
 
@@ -173,7 +171,11 @@ mod tests {
 
         let err = result.unwrap_err();
         let err_str = err.to_string();
-        assert!(err_str.contains("capability"), "Error should mention capability: {}", err_str);
+        assert!(
+            err_str.contains("capability"),
+            "Error should mention capability: {}",
+            err_str
+        );
     }
 
     #[test]
@@ -187,10 +189,8 @@ mod tests {
         });
 
         // FileRead is granted, but ShellExec is not
-        let result = sandbox.check_capabilities(&[
-            SkillCapability::FileRead,
-            SkillCapability::ShellExec,
-        ]);
+        let result =
+            sandbox.check_capabilities(&[SkillCapability::FileRead, SkillCapability::ShellExec]);
         assert!(result.is_err());
     }
 
@@ -228,9 +228,7 @@ mod tests {
     #[tokio::test]
     async fn test_sandbox_execute_returns_not_implemented() {
         let sandbox = WasmSandbox::new(SandboxConfig::default());
-        let result = sandbox
-            .execute(&[], serde_json::json!({}))
-            .await;
+        let result = sandbox.execute(&[], serde_json::json!({})).await;
 
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();

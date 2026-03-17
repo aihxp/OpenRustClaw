@@ -22,7 +22,8 @@ impl<T> CacheEntry<T> {
     fn new(value: T, ttl: Duration) -> Self {
         Self {
             value,
-            expires_at: Utc::now() + chrono::Duration::from_std(ttl).unwrap_or(chrono::Duration::hours(1)),
+            expires_at: Utc::now()
+                + chrono::Duration::from_std(ttl).unwrap_or(chrono::Duration::hours(1)),
         }
     }
 
@@ -250,17 +251,17 @@ mod tests {
     #[tokio::test]
     async fn test_cache_get_or_insert() {
         let cache = ToolCache::new(Duration::from_secs(60));
-        
+
         let result = cache
             .get_or_insert("test", || async {
                 Ok(vec![ToolSummary::new("tool1", "Description")])
             })
             .await
             .unwrap();
-        
+
         assert_eq!(result.tools.len(), 1);
         assert_eq!(result.tools[0].name, "tool1");
-        
+
         // Second call should hit cache - the closure body should not be executed
         let result2 = cache
             .get_or_insert("test", || async {
@@ -269,9 +270,9 @@ mod tests {
             })
             .await
             .unwrap();
-        
+
         assert_eq!(result2.tools.len(), 1);
-        
+
         let stats = cache.stats();
         assert_eq!(stats.hits, 1);
         assert_eq!(stats.misses, 1);
@@ -280,16 +281,16 @@ mod tests {
     #[tokio::test]
     async fn test_cache_invalidate() {
         let cache = ToolCache::new(Duration::from_secs(60));
-        
+
         cache
             .get_or_insert("key1", || async {
                 Ok(vec![ToolSummary::new("tool1", "Desc")])
             })
             .await
             .unwrap();
-        
+
         cache.invalidate("key1");
-        
+
         let stats = cache.stats();
         assert_eq!(stats.entry_count, 0);
     }
@@ -297,16 +298,16 @@ mod tests {
     #[tokio::test]
     async fn test_cache_clear() {
         let cache = ToolCache::new(Duration::from_secs(60));
-        
+
         cache
             .get_or_insert("key1", || async {
                 Ok(vec![ToolSummary::new("tool1", "Desc")])
             })
             .await
             .unwrap();
-        
+
         cache.clear();
-        
+
         let stats = cache.stats();
         assert_eq!(stats.entry_count, 0);
     }
@@ -318,7 +319,7 @@ mod tests {
             hits: 90,
             misses: 10,
         };
-        
+
         assert!((stats.hit_rate() - 0.9).abs() < 0.001);
         assert!((stats.miss_rate() - 0.1).abs() < 0.001);
     }

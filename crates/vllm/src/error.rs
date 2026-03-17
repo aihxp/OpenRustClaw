@@ -103,9 +103,15 @@ impl fmt::Display for VllmError {
             VllmError::Authentication { message } => {
                 write!(f, "Authentication failed: {message}")
             }
-            VllmError::RateLimit { retry_after, message } => {
+            VllmError::RateLimit {
+                retry_after,
+                message,
+            } => {
                 if let Some(duration) = retry_after {
-                    write!(f, "Rate limit exceeded (retry after {duration:?}): {message}")
+                    write!(
+                        f,
+                        "Rate limit exceeded (retry after {duration:?}): {message}"
+                    )
                 } else {
                     write!(f, "Rate limit exceeded: {message}")
                 }

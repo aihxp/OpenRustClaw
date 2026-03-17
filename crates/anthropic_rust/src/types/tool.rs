@@ -197,7 +197,12 @@ impl ToolBuilder {
     }
 
     /// Add a custom property.
-    pub fn property(mut self, name: &'static str, schema: serde_json::Value, required: bool) -> Self {
+    pub fn property(
+        mut self,
+        name: &'static str,
+        schema: serde_json::Value,
+        required: bool,
+    ) -> Self {
         self.properties.push((name, schema));
         if required {
             self.required.push(name);
@@ -326,10 +331,12 @@ mod tests {
 
         assert_eq!(tool.name, "get_weather");
         assert_eq!(tool.input_schema.schema["type"], "object");
-        assert!(tool.input_schema.schema["required"]
-            .as_array()
-            .unwrap()
-            .contains(&serde_json::json!("location")));
+        assert!(
+            tool.input_schema.schema["required"]
+                .as_array()
+                .unwrap()
+                .contains(&serde_json::json!("location"))
+        );
     }
 
     #[test]

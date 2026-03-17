@@ -74,51 +74,58 @@ pub mod streaming;
 // API endpoint modules
 #[cfg(feature = "chat")]
 pub mod chat;
-#[cfg(feature = "generate")]
-pub mod generate;
-#[cfg(feature = "embeddings")]
-pub mod embeddings;
-#[cfg(feature = "rerank")]
-pub mod rerank;
 #[cfg(feature = "classify")]
 pub mod classify;
+#[cfg(feature = "embeddings")]
+pub mod embeddings;
+#[cfg(feature = "generate")]
+pub mod generate;
+#[cfg(feature = "rerank")]
+pub mod rerank;
 #[cfg(feature = "summarize")]
 pub mod summarize;
 #[cfg(feature = "tokenize")]
 pub mod tokenize;
 
-pub use client::{CohereClient, ClientConfig};
-pub use constants::{endpoints, headers, retry, Model, EmbeddingModel, DEFAULT_BASE_URL, DEFAULT_API_VERSION};
+pub use client::{ClientConfig, CohereClient};
+pub use constants::{
+    DEFAULT_API_VERSION, DEFAULT_BASE_URL, EmbeddingModel, Model, endpoints, headers, retry,
+};
 pub use error::{CohereError, Result};
 
 // Re-export commonly used types
-pub use types::{
-    ApiMeta, BilledUnits, Message, MessageRole, Document, FinishReason,
-};
+pub use types::{ApiMeta, BilledUnits, Document, FinishReason, Message, MessageRole};
 
 #[cfg(feature = "chat")]
-pub use chat::{ChatRequest, ChatRequestBuilder, ChatResponse, ChatStreamResponse, Tool, ToolCall, ToolResult};
+pub use chat::{
+    ChatRequest, ChatRequestBuilder, ChatResponse, ChatStreamResponse, Tool, ToolCall, ToolResult,
+};
 
 #[cfg(feature = "generate")]
 pub use generate::{GenerateRequest, GenerateRequestBuilder, GenerateResponse, Generation};
 
 #[cfg(feature = "embeddings")]
-pub use embeddings::{EmbedRequest, EmbedRequestBuilder, EmbedResponse, Embedding, InputType, TruncateMode, EmbeddingType};
+pub use embeddings::{
+    EmbedRequest, EmbedRequestBuilder, EmbedResponse, Embedding, EmbeddingType, InputType,
+    TruncateMode,
+};
 
 #[cfg(feature = "rerank")]
 pub use rerank::{RerankRequest, RerankRequestBuilder, RerankResponse, RerankResult};
 
 #[cfg(feature = "classify")]
-pub use classify::{ClassifyRequest, ClassifyRequestBuilder, ClassifyResponse, Classification, Example};
+pub use classify::{
+    Classification, ClassifyRequest, ClassifyRequestBuilder, ClassifyResponse, Example,
+};
 
 #[cfg(feature = "summarize")]
 pub use summarize::{SummarizeRequest, SummarizeRequestBuilder, SummarizeResponse};
 
 #[cfg(feature = "tokenize")]
-pub use tokenize::{TokenizeRequest, TokenizeResponse, DetokenizeRequest, DetokenizeResponse};
+pub use tokenize::{DetokenizeRequest, DetokenizeResponse, TokenizeRequest, TokenizeResponse};
 
 #[cfg(feature = "streaming")]
-pub use streaming::{StreamEvent, StreamResult, StreamCollector};
+pub use streaming::{StreamCollector, StreamEvent, StreamResult};
 
 /// The version of this crate.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

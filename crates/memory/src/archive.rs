@@ -56,7 +56,11 @@ mod tests {
         let entry = ArchiveEntry {
             id: "archive-001".to_string(),
             summary: "User prefers dark mode and Rust programming.".to_string(),
-            source_memory_ids: vec!["mem-1".to_string(), "mem-2".to_string(), "mem-3".to_string()],
+            source_memory_ids: vec![
+                "mem-1".to_string(),
+                "mem-2".to_string(),
+                "mem-3".to_string(),
+            ],
             source_type: Some("conversation".to_string()),
             namespace: "default".to_string(),
             importance: 0.85,
@@ -67,7 +71,10 @@ mod tests {
         let deserialized: ArchiveEntry = serde_json::from_str(&json).unwrap();
 
         assert_eq!(deserialized.id, "archive-001");
-        assert_eq!(deserialized.summary, "User prefers dark mode and Rust programming.");
+        assert_eq!(
+            deserialized.summary,
+            "User prefers dark mode and Rust programming."
+        );
         assert_eq!(deserialized.source_memory_ids.len(), 3);
         assert_eq!(deserialized.source_type, Some("conversation".to_string()));
         assert_eq!(deserialized.namespace, "default");

@@ -8,7 +8,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use governor::{Quota, RateLimiter};
 use std::num::NonZeroU32;
-use tokio::sync::{mpsc, Mutex, RwLock};
+use tokio::sync::{Mutex, RwLock, mpsc};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
@@ -23,7 +23,14 @@ pub struct ViberChannel {
     incoming_tx: mpsc::Sender<IncomingMessage>,
     incoming_rx: Mutex<mpsc::Receiver<IncomingMessage>>,
     http: reqwest::Client,
-    rate_limiter: Arc<RateLimiter<governor::state::NotKeyed, governor::state::InMemoryState, governor::clock::DefaultClock, governor::middleware::NoOpMiddleware>>,
+    rate_limiter: Arc<
+        RateLimiter<
+            governor::state::NotKeyed,
+            governor::state::InMemoryState,
+            governor::clock::DefaultClock,
+            governor::middleware::NoOpMiddleware,
+        >,
+    >,
     is_connected: RwLock<bool>,
     bot_info: RwLock<Option<ViberBotInfo>>,
 }
@@ -155,10 +162,11 @@ impl ViberChannel {
     /// Create a new Viber channel with the given configuration.
     pub fn new(config: ViberConfig) -> Self {
         let (incoming_tx, incoming_rx) = mpsc::channel(256);
-        
+
         // Create rate limiter (Viber: 300 messages/minute per bot)
         let quota = Quota::per_minute(
-            NonZeroU32::new(config.rate_limit_per_minute.max(1)).unwrap_or(NonZeroU32::new(300).unwrap())
+            NonZeroU32::new(config.rate_limit_per_minute.max(1))
+                .unwrap_or(NonZeroU32::new(300).unwrap()),
         );
         let rate_limiter = Arc::new(RateLimiter::direct(quota));
 
@@ -189,12 +197,13 @@ impl ViberChannel {
     /// Get bot information from Viber API.
     pub async fn get_account_info(&self) -> Result<ViberBotInfo> {
         let url = "https://chatapi.viber.com/pa/get_account_info";
-        
+
         let payload = serde_json::json!({
             "auth_token": self.config.auth_token
         });
 
-        let response = self.http
+        let response = self
+            .http
             .post(url)
             .json(&payload)
             .send()
@@ -204,16 +213,21 @@ impl ViberChannel {
                 message: e.to_string(),
             })?;
 
-        let info: ViberBotInfo = response.json().await.map_err(|e| ChannelError::InvalidFormat {
-            platform: "viber".to_string(),
-            message: e.to_string(),
-        })?;
+        let info: ViberBotInfo =
+            response
+                .json()
+                .await
+                .map_err(|e| ChannelError::InvalidFormat {
+                    platform: "viber".to_string(),
+                    message: e.to_string(),
+                })?;
 
         if info.status != 0 {
             return Err(ChannelError::AuthFailed {
                 platform: "viber".to_string(),
                 message: info.status_message,
-            }.into());
+            }
+            .into());
         }
 
         Ok(info)
@@ -222,11 +236,18 @@ impl ViberChannel {
     /// Set webhook URL for receiving callbacks.
     pub async fn set_webhook(&self, url: &str, event_types: Option<Vec<&str>>) -> Result<()> {
         let endpoint = "https://chatapi.viber.com/pa/set_webhook";
-        
-        let events = event_types.unwrap_or_else(|| vec![
-            "delivered", "seen", "failed", "subscribed", "unsubscribed", 
-            "conversation_started", "message"
-        ]);
+
+        let events = event_types.unwrap_or_else(|| {
+            vec![
+                "delivered",
+                "seen",
+                "failed",
+                "subscribed",
+                "unsubscribed",
+                "conversation_started",
+                "message",
+            ]
+        });
 
         let payload = serde_json::json!({
             "auth_token": self.config.auth_token,
@@ -236,7 +257,8 @@ impl ViberChannel {
             "send_photo": true
         });
 
-        let response = self.http
+        let response = self
+            .http
             .post(endpoint)
             .json(&payload)
             .send()
@@ -246,16 +268,21 @@ impl ViberChannel {
                 message: e.to_string(),
             })?;
 
-        let result: ViberApiResponse = response.json().await.map_err(|e| ChannelError::InvalidFormat {
-            platform: "viber".to_string(),
-            message: e.to_string(),
-        })?;
+        let result: ViberApiResponse =
+            response
+                .json()
+                .await
+                .map_err(|e| ChannelError::InvalidFormat {
+                    platform: "viber".to_string(),
+                    message: e.to_string(),
+                })?;
 
         if result.status != 0 {
             return Err(ChannelError::Config {
                 platform: "viber".to_string(),
                 message: result.status_message,
-            }.into());
+            }
+            .into());
         }
 
         info!(webhook_url = %url, "Viber webhook set successfully");
@@ -312,7 +339,7 @@ impl ViberChannel {
                 // User opened chat for the first time
                 if let Some(user) = callback.user {
                     info!(user_id = %user.id, name = %user.name, "Viber conversation started");
-                    
+
                     // Send welcome message if configured
                     if let Some(ref welcome) = self.config.welcome_message {
                         let _ = self.send_to_user(&user.id, welcome, None).await;
@@ -347,11 +374,16 @@ impl ViberChannel {
     }
 
     /// Send a message to a user.
-    async fn send_to_user(&self, user_id: &str, text: &str, keyboard: Option<ViberKeyboard>) -> Result<()> {
+    async fn send_to_user(
+        &self,
+        user_id: &str,
+        text: &str,
+        keyboard: Option<ViberKeyboard>,
+    ) -> Result<()> {
         self.rate_limiter.until_ready().await;
 
         let url = "https://chatapi.viber.com/pa/send_message";
-        
+
         let mut payload = serde_json::json!({
             "auth_token": self.config.auth_token,
             "receiver": user_id,
@@ -361,13 +393,15 @@ impl ViberChannel {
         });
 
         if let Some(kb) = keyboard {
-            payload["keyboard"] = serde_json::to_value(kb).map_err(|e| ChannelError::InvalidFormat {
-                platform: "viber".to_string(),
-                message: e.to_string(),
-            })?;
+            payload["keyboard"] =
+                serde_json::to_value(kb).map_err(|e| ChannelError::InvalidFormat {
+                    platform: "viber".to_string(),
+                    message: e.to_string(),
+                })?;
         }
 
-        let response = self.http
+        let response = self
+            .http
             .post(url)
             .json(&payload)
             .send()
@@ -377,27 +411,37 @@ impl ViberChannel {
                 message: e.to_string(),
             })?;
 
-        let result: ViberApiResponse = response.json().await.map_err(|e| ChannelError::InvalidFormat {
-            platform: "viber".to_string(),
-            message: e.to_string(),
-        })?;
+        let result: ViberApiResponse =
+            response
+                .json()
+                .await
+                .map_err(|e| ChannelError::InvalidFormat {
+                    platform: "viber".to_string(),
+                    message: e.to_string(),
+                })?;
 
         if result.status != 0 {
             return Err(ChannelError::SendFailed {
                 platform: "viber".to_string(),
                 message: result.status_message,
-            }.into());
+            }
+            .into());
         }
 
         Ok(())
     }
 
     /// Send a picture message.
-    pub async fn send_picture(&self, user_id: &str, image_url: &str, caption: Option<&str>) -> Result<()> {
+    pub async fn send_picture(
+        &self,
+        user_id: &str,
+        image_url: &str,
+        caption: Option<&str>,
+    ) -> Result<()> {
         self.rate_limiter.until_ready().await;
 
         let url = "https://chatapi.viber.com/pa/send_message";
-        
+
         let payload = serde_json::json!({
             "auth_token": self.config.auth_token,
             "receiver": user_id,
@@ -407,7 +451,8 @@ impl ViberChannel {
             "min_api_version": 1
         });
 
-        let response = self.http
+        let response = self
+            .http
             .post(url)
             .json(&payload)
             .send()
@@ -417,16 +462,21 @@ impl ViberChannel {
                 message: e.to_string(),
             })?;
 
-        let result: ViberApiResponse = response.json().await.map_err(|e| ChannelError::InvalidFormat {
-            platform: "viber".to_string(),
-            message: e.to_string(),
-        })?;
+        let result: ViberApiResponse =
+            response
+                .json()
+                .await
+                .map_err(|e| ChannelError::InvalidFormat {
+                    platform: "viber".to_string(),
+                    message: e.to_string(),
+                })?;
 
         if result.status != 0 {
             return Err(ChannelError::SendFailed {
                 platform: "viber".to_string(),
                 message: result.status_message,
-            }.into());
+            }
+            .into());
         }
 
         Ok(())
@@ -438,13 +488,14 @@ impl ViberChannel {
             return Err(ChannelError::PermissionDenied {
                 platform: "viber".to_string(),
                 message: "Broadcast not enabled for this bot".to_string(),
-            }.into());
+            }
+            .into());
         }
 
         self.rate_limiter.until_ready().await;
 
         let url = "https://chatapi.viber.com/pa/broadcast_message";
-        
+
         let payload = serde_json::json!({
             "auth_token": self.config.auth_token,
             "type": "text",
@@ -452,7 +503,8 @@ impl ViberChannel {
             "min_api_version": 1
         });
 
-        let response = self.http
+        let response = self
+            .http
             .post(url)
             .json(&payload)
             .send()
@@ -462,16 +514,21 @@ impl ViberChannel {
                 message: e.to_string(),
             })?;
 
-        let result: ViberApiResponse = response.json().await.map_err(|e| ChannelError::InvalidFormat {
-            platform: "viber".to_string(),
-            message: e.to_string(),
-        })?;
+        let result: ViberApiResponse =
+            response
+                .json()
+                .await
+                .map_err(|e| ChannelError::InvalidFormat {
+                    platform: "viber".to_string(),
+                    message: e.to_string(),
+                })?;
 
         if result.status != 0 {
             return Err(ChannelError::SendFailed {
                 platform: "viber".to_string(),
                 message: result.status_message,
-            }.into());
+            }
+            .into());
         }
 
         Ok(())
@@ -484,7 +541,8 @@ impl ViberChannel {
         }
 
         metadata.get("keyboard").and_then(|kb| {
-            let buttons: Vec<ViberButton> = kb.get("buttons")?
+            let buttons: Vec<ViberButton> = kb
+                .get("buttons")?
                 .as_array()?
                 .iter()
                 .filter_map(|btn| {
@@ -492,8 +550,12 @@ impl ViberChannel {
                         action_type: btn.get("action_type")?.as_str()?.to_string(),
                         action_body: btn.get("action_body")?.as_str()?.to_string(),
                         text: btn.get("text")?.as_str()?.to_string(),
-                        text_size: btn.get("text_size").and_then(|v| v.as_str().map(String::from)),
-                        bg_color: btn.get("bg_color").and_then(|v| v.as_str().map(String::from)),
+                        text_size: btn
+                            .get("text_size")
+                            .and_then(|v| v.as_str().map(String::from)),
+                        bg_color: btn
+                            .get("bg_color")
+                            .and_then(|v| v.as_str().map(String::from)),
                     })
                 })
                 .collect();
@@ -504,7 +566,10 @@ impl ViberChannel {
 
             Some(ViberKeyboard {
                 keyboard_type: kb.get("type")?.as_str()?.to_string(),
-                default_height: kb.get("default_height").and_then(|v| v.as_bool()).unwrap_or(true),
+                default_height: kb
+                    .get("default_height")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(true),
                 buttons,
             })
         })
@@ -522,7 +587,9 @@ impl Channel for ViberChannel {
         self.rate_limiter.until_ready().await;
 
         // Extract recipient ID from metadata
-        let recipient_id = msg.metadata.get("viber_user_id")
+        let recipient_id = msg
+            .metadata
+            .get("viber_user_id")
             .and_then(|v| v.as_str())
             .or_else(|| msg.metadata.get("recipient_id").and_then(|v| v.as_str()))
             .ok_or_else(|| ChannelError::InvalidFormat {
@@ -534,7 +601,8 @@ impl Channel for ViberChannel {
         let keyboard = self.build_keyboard(&msg.metadata);
 
         // Send message
-        self.send_to_user(recipient_id, &msg.content, keyboard).await
+        self.send_to_user(recipient_id, &msg.content, keyboard)
+            .await
     }
 
     async fn receive(&self) -> Result<IncomingMessage> {
@@ -543,7 +611,8 @@ impl Channel for ViberChannel {
             ChannelError::Connection {
                 platform: "viber".to_string(),
                 message: "Incoming message channel closed".to_string(),
-            }.into()
+            }
+            .into()
         })
     }
 
@@ -559,7 +628,8 @@ impl Channel for ViberChannel {
             return Err(ChannelError::Config {
                 platform: "viber".to_string(),
                 message: "Viber auth token is required".to_string(),
-            }.into());
+            }
+            .into());
         }
 
         // Get account info to verify token
@@ -580,7 +650,7 @@ impl Channel for ViberChannel {
 
     async fn disconnect(&mut self) -> Result<()> {
         info!("Disconnecting from Viber...");
-        
+
         // Remove webhook
         if self.config.webhook_url.is_some() {
             let _ = self.set_webhook("", None).await;
@@ -588,7 +658,7 @@ impl Channel for ViberChannel {
 
         *self.is_connected.write().await = false;
         *self.bot_info.write().await = None;
-        
+
         info!("Viber channel disconnected");
         Ok(())
     }

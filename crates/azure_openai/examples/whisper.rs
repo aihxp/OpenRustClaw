@@ -18,8 +18,8 @@ fn main() {
 #[cfg(feature = "audio")]
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    use azure_openai::{AzureOpenAIClient, TranscriptionRequest, TtsRequest, TtsVoice};
     use azure_openai::audio::{AudioResponseFormat, TimestampGranularity};
+    use azure_openai::{AzureOpenAIClient, TranscriptionRequest, TtsRequest, TtsVoice};
     // Load configuration from environment
     let api_key = std::env::var("AZURE_OPENAI_API_KEY")
         .expect("AZURE_OPENAI_API_KEY environment variable not set");
@@ -31,11 +31,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let audio_file = std::env::var("AUDIO_FILE").unwrap_or_else(|_| "audio.mp3".to_string());
 
     // Create the client for Whisper
-    let client = AzureOpenAIClient::new(
-        &resource_name,
-        &whisper_deployment,
-        api_key.clone(),
-    )?;
+    let client = AzureOpenAIClient::new(&resource_name, &whisper_deployment, api_key.clone())?;
 
     println!("Azure OpenAI Whisper Audio Example\n");
 
@@ -52,8 +48,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Basic transcription
     println!("1. Basic Transcription:");
-    let request = TranscriptionRequest::new(&audio_file)
-        .response_format(AudioResponseFormat::Json);
+    let request = TranscriptionRequest::new(&audio_file).response_format(AudioResponseFormat::Json);
 
     let response = client.audio().transcribe(request).await?;
     println!("   Text: {}", response.text);
@@ -71,7 +66,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .timestamp_granularity(TimestampGranularity::Word);
 
     let response_ts = client.audio().transcribe(request_timestamps).await?;
-    
+
     if let Some(words) = response_ts.words {
         println!("   Words detected: {}", words.len());
         for word in words.iter().take(10) {
@@ -91,22 +86,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Try TTS if we have a TTS deployment
     if let Ok(tts_deployment) = std::env::var("AZURE_OPENAI_TTS_DEPLOYMENT") {
         println!("\n4. Text-to-Speech:");
-        
-        let tts_client = AzureOpenAIClient::new(
-            &resource_name,
-            &tts_deployment,
-            api_key.clone(),
-        )?;
+
+        let tts_client = AzureOpenAIClient::new(&resource_name, &tts_deployment, api_key.clone())?;
 
         let tts_request = TtsRequest::new(
             "Hello! This is a test of Azure OpenAI text to speech.",
-            TtsVoice::Alloy
+            TtsVoice::Alloy,
         )
         .response_format(TtsResponseFormat::Mp3)
         .speed(1.0);
 
         let audio_bytes = tts_client.audio().speech(tts_request).await?;
-        
+
         let output_file = "tts_output.mp3";
         tokio::fs::write(output_file, audio_bytes).await?;
         println!("   Generated speech saved to: {}", output_file);

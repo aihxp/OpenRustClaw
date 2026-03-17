@@ -5,12 +5,12 @@
 //! OPENAI_API_KEY=your-key cargo run --example chat_completion
 //! ```
 
-use async_openai::{OpenAIClient, ChatRequest};
+use async_openai::{ChatRequest, OpenAIClient};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let api_key = std::env::var("OPENAI_API_KEY")
-        .expect("OPENAI_API_KEY environment variable not set");
+    let api_key =
+        std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY environment variable not set");
 
     let client = OpenAIClient::new(api_key)?;
 

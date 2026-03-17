@@ -37,7 +37,7 @@ pub enum AcpPayload {
     /// A request from the agent to the IDE.
     Request(AcpRequest),
     /// A response from the IDE to the agent.
-    Response(AcpResponse),
+    Response(Box<AcpResponse>),
     /// A notification (one-way message).
     Notification(AcpNotification),
 }
@@ -174,7 +174,7 @@ impl AcpProtocol {
                 Ok(Some(AcpMessage {
                     version: ACP_PROTOCOL_VERSION.to_string(),
                     id: message.id,
-                    payload: AcpPayload::Response(response),
+                    payload: AcpPayload::Response(Box::new(response)),
                 }))
             }
             AcpPayload::Response(_) => {
@@ -198,9 +198,7 @@ impl AcpProtocol {
                 terminal_id,
             } => self.handle_execute_command(command, terminal_id).await,
             AcpRequest::ReadFile { path } => self.handle_read_file(path).await,
-            AcpRequest::WriteFile { path, content } => {
-                self.handle_write_file(path, content).await
-            }
+            AcpRequest::WriteFile { path, content } => self.handle_write_file(path, content).await,
             AcpRequest::EditFile {
                 path,
                 old_text,
@@ -210,7 +208,10 @@ impl AcpProtocol {
                 query,
                 path_pattern,
                 max_results,
-            } => self.handle_search_code(query, path_pattern, max_results).await,
+            } => {
+                self.handle_search_code(query, path_pattern, max_results)
+                    .await
+            }
             AcpRequest::ListFiles { path, recursive } => {
                 self.handle_list_files(path, recursive).await
             }
@@ -255,8 +256,10 @@ impl AcpProtocol {
     async fn handle_get_state(&self) -> Result<AcpResponse> {
         let state = self.state.read().await;
         match state.as_ref() {
-            Some(ide_state) => Ok(AcpResponse::State(ide_state.clone())),
-            None => Err(CursorError::InvalidContext("No IDE state available".to_string())),
+            Some(ide_state) => Ok(AcpResponse::State(Box::new(ide_state.clone()))),
+            None => Err(CursorError::InvalidContext(
+                "No IDE state available".to_string(),
+            )),
         }
     }
 
@@ -267,7 +270,7 @@ impl AcpProtocol {
         _terminal_id: Option<String>,
     ) -> Result<AcpResponse> {
         let config = self.config.read().await;
-        
+
         // Execute command with timeout
         let output = tokio::time::timeout(
             tokio::time::Duration::from_secs(config.terminal_timeout),
@@ -301,7 +304,7 @@ impl AcpProtocol {
         let metadata = tokio::fs::metadata(&full_path)
             .await
             .map_err(|e| CursorError::FileOperation(e.to_string()))?;
-        
+
         if metadata.len() > config.max_file_size as u64 {
             return Err(CursorError::FileOperation(format!(
                 "File too large: {} bytes (max: {})",
@@ -369,7 +372,7 @@ impl AcpProtocol {
             .map_err(|e| CursorError::FileOperation(e.to_string()))?;
 
         let new_content = content.replace(&old_text, &new_text);
-        
+
         if new_content == content {
             return Err(CursorError::FileOperation(
                 "Old text not found in file".to_string(),
@@ -400,8 +403,8 @@ impl AcpProtocol {
         let mut matches = Vec::new();
 
         // Use grep-like search with regex
-        let pattern = regex::Regex::new(&query)
-            .map_err(|e| CursorError::PatternError(e.to_string()))?;
+        let pattern =
+            regex::Regex::new(&query).map_err(|e| CursorError::PatternError(e.to_string()))?;
 
         // Walk directory and search files
         let walker = walkdir::WalkDir::new(&config.project_root)
@@ -410,13 +413,13 @@ impl AcpProtocol {
 
         for entry in walker {
             let entry = entry.map_err(|e| CursorError::FileOperation(e.to_string()))?;
-            
+
             if !entry.file_type().is_file() {
                 continue;
             }
 
             let path = entry.path();
-            
+
             // Check include/exclude patterns
             let path_str = path.to_string_lossy();
             if !self.should_include_file(&path_str, &config) {
@@ -424,10 +427,10 @@ impl AcpProtocol {
             }
 
             // Check path pattern if specified
-            if let Some(ref pat) = path_pattern {
-                if !path_str.contains(pat) {
-                    continue;
-                }
+            if let Some(ref pat) = path_pattern
+                && !path_str.contains(pat)
+            {
+                continue;
             }
 
             // Search file content
@@ -483,13 +486,13 @@ impl AcpProtocol {
 
         for entry in walker {
             let entry = entry.map_err(|e| CursorError::FileOperation(e.to_string()))?;
-            
+
             if entry.path() == full_path {
                 continue;
             }
 
             let metadata = entry.metadata().ok();
-            
+
             entries.push(DirEntry {
                 name: entry.file_name().to_string_lossy().to_string(),
                 path: entry.path().to_path_buf(),
@@ -497,7 +500,7 @@ impl AcpProtocol {
                 size: metadata.as_ref().map(|m| m.len()),
                 modified_at: metadata
                     .and_then(|m| m.modified().ok())
-                    .map(|t| chrono::DateTime::from(std::time::SystemTime::from(t))),
+                    .map(chrono::DateTime::from),
             });
         }
 
@@ -510,9 +513,9 @@ impl AcpProtocol {
     /// Handle GitStatus request.
     async fn handle_git_status(&self) -> Result<AcpResponse> {
         let config = self.config.read().await;
-        
+
         let output = tokio::process::Command::new("git")
-            .args(&["status", "--porcelain", "-b"])
+            .args(["status", "--porcelain", "-b"])
             .current_dir(&config.project_root)
             .output()
             .await
@@ -539,10 +542,10 @@ impl AcpProtocol {
         for line in stdout.lines() {
             if line.starts_with("##") {
                 // Parse branch info
-                if let Some(branch_part) = line.strip_prefix("## ") {
-                    if let Some(branch) = branch_part.split("...").next() {
-                        status.branch = branch.to_string();
-                    }
+                if let Some(branch_part) = line.strip_prefix("## ")
+                    && let Some(branch) = branch_part.split("...").next()
+                {
+                    status.branch = branch.to_string();
                 }
             } else if line.len() >= 3 {
                 let index_status = &line[0..1];
@@ -567,7 +570,7 @@ impl AcpProtocol {
     /// Handle GitDiff request.
     async fn handle_git_diff(&self, staged: bool) -> Result<AcpResponse> {
         let config = self.config.read().await;
-        
+
         let mut args = vec!["diff"];
         if staged {
             args.push("--staged");
@@ -580,13 +583,15 @@ impl AcpProtocol {
             .await
             .map_err(|e| CursorError::GitOperation(e.to_string()))?;
 
-        Ok(AcpResponse::GitDiff(String::from_utf8_lossy(&output.stdout).to_string()))
+        Ok(AcpResponse::GitDiff(
+            String::from_utf8_lossy(&output.stdout).to_string(),
+        ))
     }
 
     /// Handle GitCommand request.
     async fn handle_git_command(&self, args: Vec<String>) -> Result<AcpResponse> {
         let config = self.config.read().await;
-        
+
         let output = tokio::process::Command::new("git")
             .args(&args)
             .current_dir(&config.project_root)
@@ -608,9 +613,12 @@ impl AcpProtocol {
         _path: Option<std::path::PathBuf>,
     ) -> Result<AcpResponse> {
         let config = self.config.read().await;
-        
+
         let (command, args) = match tool.as_str() {
-            "clippy" => ("cargo", vec!["clippy", "--all-targets", "--", "-D", "warnings"]),
+            "clippy" => (
+                "cargo",
+                vec!["clippy", "--all-targets", "--", "-D", "warnings"],
+            ),
             "rustfmt" => ("cargo", vec!["fmt", "--check"]),
             "cargo-check" => ("cargo", vec!["check"]),
             "cargo-test" => ("cargo", vec!["test"]),
@@ -685,11 +693,9 @@ impl AcpProtocol {
 
         // Simple regex-based parsing for rustc/clippy style errors
         // Format: file.rs:line:col: severity: message
+        let re = regex::Regex::new(r"^(.+):(\d+):(\d+):\s*(error|warning|info):\s*(.+)$");
         for line in output.lines() {
-            if let Some(caps) = regex::Regex::new(r"^(.+):(\d+):(\d+):\s*(error|warning|info):\s*(.+)$")
-                .ok()
-                .and_then(|re| re.captures(line))
-            {
+            if let Some(caps) = re.as_ref().ok().and_then(|re| re.captures(line)) {
                 let file_path = project_root.join(&caps[1]);
                 let line_num: usize = caps[2].parse().unwrap_or(0);
                 let col: usize = caps[3].parse().unwrap_or(0);
@@ -719,7 +725,7 @@ impl AcpProtocol {
     pub async fn create_tool_context(&self) -> ToolContext {
         let config = self.config.read().await.clone();
         let state = self.state.read().await.clone();
-        
+
         let mut ctx = ToolContext::new(config.project_root.clone(), config);
         if let Some(s) = state {
             ctx = ctx.with_ide_state(s);
@@ -739,7 +745,7 @@ mod tests {
             id: "test-123".to_string(),
             payload: AcpPayload::Request(AcpRequest::GetState),
         };
-        
+
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("test-123"));
         assert!(json.contains("get_state"));

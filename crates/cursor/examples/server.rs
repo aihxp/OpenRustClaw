@@ -16,7 +16,7 @@
 use clap::{Parser, ValueEnum};
 use openrustclaw_cursor::{CursorConfig, CursorServer, CursorServerConfig, ServerTransport};
 use std::path::PathBuf;
-use tracing::{info, Level};
+use tracing::{Level, info};
 use tracing_subscriber;
 
 #[derive(Parser)]
@@ -40,8 +40,7 @@ struct Cli {
     log_level: String,
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
-#[derive(Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]
 enum TransportType {
     /// JSON-RPC over stdio (MCP compatible)
     Stdio,

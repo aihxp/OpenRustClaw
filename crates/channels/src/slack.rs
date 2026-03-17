@@ -15,7 +15,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use governor::{Quota, RateLimiter};
 use std::num::NonZeroU32;
-use tokio::sync::{mpsc, Mutex, RwLock};
+use tokio::sync::{Mutex, RwLock, mpsc};
 use tracing::{debug, info, warn};
 
 use openrustclaw_core::config::{SlackConfig, SlackMode};
@@ -28,7 +28,14 @@ pub struct SlackChannel {
     config: SlackConfig,
     _incoming_tx: mpsc::Sender<IncomingMessage>,
     incoming_rx: Mutex<mpsc::Receiver<IncomingMessage>>,
-    rate_limiter: Arc<RateLimiter<governor::state::NotKeyed, governor::state::InMemoryState, governor::clock::DefaultClock, governor::middleware::NoOpMiddleware>>,
+    rate_limiter: Arc<
+        RateLimiter<
+            governor::state::NotKeyed,
+            governor::state::InMemoryState,
+            governor::clock::DefaultClock,
+            governor::middleware::NoOpMiddleware,
+        >,
+    >,
     is_connected: RwLock<bool>,
 }
 
@@ -39,7 +46,8 @@ impl SlackChannel {
 
         // Create rate limiter (Slack allows ~10+ requests per second for most endpoints)
         let quota = Quota::per_second(
-            NonZeroU32::new(config.rate_limit_requests_per_second.max(1)).unwrap_or(NonZeroU32::new(10).unwrap())
+            NonZeroU32::new(config.rate_limit_requests_per_second.max(1))
+                .unwrap_or(NonZeroU32::new(10).unwrap()),
         );
         let rate_limiter = Arc::new(RateLimiter::direct(quota));
 
@@ -57,15 +65,15 @@ impl SlackChannel {
     fn slack_to_markdown(text: &str) -> String {
         // Slack uses special mrkdwn syntax
         let mut result = text.to_string();
-        
+
         // Convert user mentions
         result = result.replace("<@", "@").replace(">", "");
-        
+
         // Convert special mentions
         result = result.replace("<!channel>", "@channel");
         result = result.replace("<!here>", "@here");
         result = result.replace("<!everyone>", "@everyone");
-        
+
         result
     }
 
@@ -73,10 +81,10 @@ impl SlackChannel {
     fn markdown_to_slack(text: &str) -> String {
         // Convert standard markdown to Slack mrkdwn
         let mut result = text.to_string();
-        
+
         // Convert bold
         result = result.replace("**", "*");
-        
+
         result
     }
 
@@ -97,7 +105,9 @@ impl Channel for SlackChannel {
         self.rate_limiter.until_ready().await;
 
         // Get channel from metadata
-        let _channel_str = msg.metadata.get("slack_channel")
+        let _channel_str = msg
+            .metadata
+            .get("slack_channel")
             .and_then(|v| v.as_str())
             .ok_or_else(|| ChannelError::InvalidFormat {
                 platform: "slack".to_string(),
@@ -108,8 +118,7 @@ impl Channel for SlackChannel {
         let _formatted_content = Self::markdown_to_slack(&msg.content);
 
         // Check for thread_ts
-        let _thread_ts = msg.metadata.get("slack_thread_ts")
-            .and_then(|v| v.as_str());
+        let _thread_ts = msg.metadata.get("slack_thread_ts").and_then(|v| v.as_str());
 
         // Check for blocks in metadata
         let _blocks = Self::parse_blocks(&msg.metadata);
@@ -130,7 +139,8 @@ impl Channel for SlackChannel {
             ChannelError::Connection {
                 platform: "slack".to_string(),
                 message: "Incoming message channel closed".to_string(),
-            }.into()
+            }
+            .into()
         })
     }
 
@@ -146,7 +156,8 @@ impl Channel for SlackChannel {
             return Err(ChannelError::Config {
                 platform: "slack".to_string(),
                 message: "Slack bot token is required".to_string(),
-            }.into());
+            }
+            .into());
         }
 
         // In a full implementation, this would:

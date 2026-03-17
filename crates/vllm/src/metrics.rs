@@ -127,7 +127,8 @@ impl MetricsInfo {
             // Parse counter metrics
             else if line.starts_with("vllm:num_preemption_total") && !line.contains("_created") {
                 info.num_preemption_total = parse_counter_value(line);
-            } else if line.starts_with("vllm:generation_tokens_total") && !line.contains("_created") {
+            } else if line.starts_with("vllm:generation_tokens_total") && !line.contains("_created")
+            {
                 info.generation_tokens_total = parse_counter_value(line);
             } else if line.starts_with("vllm:prompt_tokens_total") && !line.contains("_created") {
                 info.prompt_tokens_total = parse_counter_value(line);

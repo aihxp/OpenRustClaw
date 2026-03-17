@@ -3,7 +3,7 @@
 //! Run with:
 //!     REPLICATE_API_TOKEN=your_token cargo run --example predictions
 
-use replicate::{ReplicateClient, PredictionRequest};
+use replicate::{PredictionRequest, ReplicateClient};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -31,7 +31,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\nRecent predictions:");
     let predictions = client.predictions().list(None).await?;
     for pred in predictions.results.iter().take(5) {
-        println!("  {} - {:?} - {}", pred.id, pred.status, pred.model.as_deref().unwrap_or("unknown"));
+        println!(
+            "  {} - {:?} - {}",
+            pred.id,
+            pred.status,
+            pred.model.as_deref().unwrap_or("unknown")
+        );
     }
 
     // Example 3: Get a specific prediction

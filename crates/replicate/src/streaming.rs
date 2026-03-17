@@ -54,16 +54,16 @@ impl<'a> Streaming<'a> {
         let prediction = crate::predictions::Predictions::new(self.client)
             .get(prediction_id)
             .await?;
-        
+
         let stream_url = prediction
             .urls
             .stream
             .ok_or_else(|| ReplicateError::Stream {
                 message: "Prediction does not support streaming".to_string(),
             })?;
-        
+
         debug!(stream_url = %stream_url, "Starting stream");
-        
+
         self.stream_from_url(&stream_url).await
     }
 
@@ -85,17 +85,17 @@ impl<'a> Streaming<'a> {
                 })
             })
             .await?;
-        
+
         if !response.status().is_success() {
             return Err(ReplicateError::Stream {
                 message: format!("Failed to start stream: {}", response.status()),
             });
         }
-        
+
         let stream = response
             .bytes_stream()
             .map(|result| result.map_err(ReplicateError::from));
-        
+
         Ok(PredictionStream::new(stream))
     }
 }
@@ -124,7 +124,7 @@ impl PredictionStream {
                 Err(e) => Err(e),
             }
         }));
-        
+
         Self {
             inner,
             buffer: String::new(),
@@ -175,27 +175,27 @@ pub struct StreamError {
 /// Parse a Server-Sent Events (SSE) message.
 fn parse_sse_event(text: &str) -> Result<StreamEvent> {
     trace!(text = %text, "Parsing SSE event");
-    
+
     let mut event_type = None;
     let mut data = None;
-    
+
     for line in text.lines() {
         if line.is_empty() {
             continue;
         }
-        
+
         if let Some(value) = line.strip_prefix("event: ") {
             event_type = Some(value.trim());
         } else if let Some(value) = line.strip_prefix("data: ") {
             data = Some(value.trim());
         }
     }
-    
+
     let event_type = event_type.unwrap_or("output");
     let data = data.ok_or_else(|| ReplicateError::Stream {
         message: "Missing data in SSE event".to_string(),
     })?;
-    
+
     match event_type {
         "output" => {
             let value = serde_json::from_str(data).map_err(|e| ReplicateError::Stream {
@@ -254,10 +254,10 @@ where
     S: Stream<Item = Result<StreamEvent>> + Unpin,
 {
     use serde_json::Value;
-    
+
     let mut outputs: Vec<Value> = Vec::new();
     let mut logs = String::new();
-    
+
     while let Some(event) = stream.next().await {
         match event? {
             StreamEvent::Output(value) => {
@@ -269,13 +269,11 @@ where
             }
             StreamEvent::Completed(_) => break,
             StreamEvent::Error(e) => {
-                return Err(ReplicateError::Stream {
-                    message: e.message,
-                });
+                return Err(ReplicateError::Stream { message: e.message });
             }
         }
     }
-    
+
     // Combine outputs
     if outputs.is_empty() {
         Ok(Value::Null)
@@ -294,7 +292,7 @@ mod tests {
     fn test_parse_sse_output() {
         let text = "event: output\ndata: \"Hello world\"\n\n";
         let event = parse_sse_event(text).unwrap();
-        
+
         match event {
             StreamEvent::Output(value) => {
                 assert_eq!(value, serde_json::json!("Hello world"));
@@ -307,7 +305,7 @@ mod tests {
     fn test_parse_sse_logs() {
         let text = "event: logs\ndata: Processing...\n\n";
         let event = parse_sse_event(text).unwrap();
-        
+
         match event {
             StreamEvent::Logs(logs) => {
                 assert_eq!(logs, "Processing...");
@@ -322,7 +320,7 @@ mod tests {
 data: {"message": "Something went wrong"}
 "#;
         let event = parse_sse_event(text).unwrap();
-        
+
         match event {
             StreamEvent::Error(error) => {
                 assert_eq!(error.message, "Something went wrong");

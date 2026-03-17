@@ -1,8 +1,8 @@
 //! Per-session rate limiting.
 
+use openrustclaw_core::error::{Error, GatewayError, Result};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
-use openrustclaw_core::error::{GatewayError, Error, Result};
 
 /// Per-session rate limiter using a sliding window.
 pub struct RateLimiter {

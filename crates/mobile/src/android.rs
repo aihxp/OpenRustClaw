@@ -1,10 +1,10 @@
 //! Android-specific bindings
 
 use crate::{MobileError, MobileNodeHandle, NodeConfig, NodeStatus, SyncConfig};
+use jnix::jni::JNIEnv;
 use jnix::jni::objects::JString;
 use jnix::jni::signature::JavaType;
 use jnix::jni::strings::JNIString;
-use jnix::jni::JNIEnv;
 use jnix::{FromJava, IntoJava, JnixEnv};
 use std::sync::Arc;
 use std::sync::Mutex;

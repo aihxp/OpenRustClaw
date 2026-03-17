@@ -54,7 +54,7 @@ impl<'a> FineTuning<'a> {
     /// Get a fine-tuning job by ID.
     pub async fn get_job(&self, job_id: impl AsRef<str>) -> Result<FineTuneJob> {
         let path = format!("{}/{}", endpoints::FINE_TUNING, job_id.as_ref());
-        
+
         self.client
             .execute_with_retry(|| {
                 let client = self.client.clone();
@@ -72,7 +72,7 @@ impl<'a> FineTuning<'a> {
     /// Cancel a fine-tuning job.
     pub async fn cancel_job(&self, job_id: impl AsRef<str>) -> Result<FineTuneJob> {
         let path = format!("{}/{}/cancel", endpoints::FINE_TUNING, job_id.as_ref());
-        
+
         self.client
             .execute_with_retry(|| {
                 let client = self.client.clone();
@@ -90,7 +90,7 @@ impl<'a> FineTuning<'a> {
     /// List events for a fine-tuning job.
     pub async fn list_events(&self, job_id: impl AsRef<str>) -> Result<FineTuneEventList> {
         let path = format!("{}/{}/events", endpoints::FINE_TUNING, job_id.as_ref());
-        
+
         self.client
             .execute_with_retry(|| {
                 let client = self.client.clone();
@@ -106,26 +106,31 @@ impl<'a> FineTuning<'a> {
     }
 
     /// Upload a file for fine-tuning.
-    pub async fn upload_file(&self, file_path: impl AsRef<Path>, purpose: &str) -> Result<UploadedFile> {
+    pub async fn upload_file(
+        &self,
+        file_path: impl AsRef<Path>,
+        purpose: &str,
+    ) -> Result<UploadedFile> {
         let file_path = file_path.as_ref().to_path_buf();
         let purpose = purpose.to_string();
-        
+
         self.client
             .execute_with_retry(|| {
                 let client = self.client.clone();
                 let file_path = file_path.clone();
                 let purpose = purpose.clone();
-                
+
                 Box::pin(async move {
-                    let file_name = file_path
-                        .file_name()
-                        .and_then(|n| n.to_str())
-                        .ok_or_else(|| TogetherError::Config {
-                            message: "Invalid file path".to_string(),
-                        })?;
+                    let file_name =
+                        file_path
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .ok_or_else(|| TogetherError::Config {
+                                message: "Invalid file path".to_string(),
+                            })?;
 
                     let file_content = tokio::fs::read(&file_path).await?;
-                    
+
                     let part = reqwest::multipart::Part::bytes(file_content)
                         .file_name(file_name.to_string())
                         .mime_str("application/jsonl")?;
@@ -161,7 +166,7 @@ impl<'a> FineTuning<'a> {
     /// Get an uploaded file.
     pub async fn get_file(&self, file_id: impl AsRef<str>) -> Result<UploadedFile> {
         let path = format!("{}/{}", endpoints::FILES, file_id.as_ref());
-        
+
         self.client
             .execute_with_retry(|| {
                 let client = self.client.clone();
@@ -179,7 +184,7 @@ impl<'a> FineTuning<'a> {
     /// Delete an uploaded file.
     pub async fn delete_file(&self, file_id: impl AsRef<str>) -> Result<serde_json::Value> {
         let path = format!("{}/{}", endpoints::FILES, file_id.as_ref());
-        
+
         self.client
             .execute_with_retry(|| {
                 let client = self.client.clone();
@@ -403,12 +408,18 @@ impl JobStatus {
 
     /// Check if the job is in a terminal state.
     pub fn is_terminal(&self) -> bool {
-        matches!(self, JobStatus::Succeeded | JobStatus::Failed | JobStatus::Cancelled)
+        matches!(
+            self,
+            JobStatus::Succeeded | JobStatus::Failed | JobStatus::Cancelled
+        )
     }
 
     /// Check if the job is running.
     pub fn is_running(&self) -> bool {
-        matches!(self, JobStatus::Running | JobStatus::Queued | JobStatus::ValidatingFiles)
+        matches!(
+            self,
+            JobStatus::Running | JobStatus::Queued | JobStatus::ValidatingFiles
+        )
     }
 }
 

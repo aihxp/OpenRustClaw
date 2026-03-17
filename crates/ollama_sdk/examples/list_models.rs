@@ -33,7 +33,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let size_mb = model.size as f64 / 1_048_576.0;
                     println!("📦 {}", model.name);
                     println!("   Size: {:.1} MB", size_mb);
-                    
+
                     if let Some(details) = &model.details {
                         if let Some(family) = &details.family {
                             println!("   Family: {}", family);
@@ -81,7 +81,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Ok(models) = client.models().list().await {
         if let Some(first_model) = models.first() {
             println!("Showing info for: {}\n", first_model.name);
-            
+
             match client.models().show(&first_model.name).await {
                 Ok(info) => {
                     if let Some(template) = info.template {

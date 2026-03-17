@@ -26,7 +26,7 @@ use serde::{Deserialize, Serialize};
 use std::num::NonZeroU32;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
-use tokio::sync::{mpsc, Mutex, RwLock};
+use tokio::sync::{Mutex, RwLock, mpsc};
 use tokio::time::interval;
 use tracing::{debug, error, info, trace, warn};
 use uuid::Uuid;
@@ -170,7 +170,14 @@ pub struct WhatsAppChannel {
     config: WhatsAppConfig,
     incoming_tx: mpsc::Sender<IncomingMessage>,
     incoming_rx: Mutex<mpsc::Receiver<IncomingMessage>>,
-    rate_limiter: Arc<RateLimiter<governor::state::NotKeyed, governor::state::InMemoryState, governor::clock::DefaultClock, governor::middleware::NoOpMiddleware>>,
+    rate_limiter: Arc<
+        RateLimiter<
+            governor::state::NotKeyed,
+            governor::state::InMemoryState,
+            governor::clock::DefaultClock,
+            governor::middleware::NoOpMiddleware,
+        >,
+    >,
     state: Arc<RwLock<ConnectionState>>,
     baileys_process: Arc<Mutex<Option<Child>>>,
     bridge_stdin: Arc<Mutex<Option<tokio::process::ChildStdin>>>,
@@ -187,8 +194,9 @@ impl WhatsAppChannel {
 
         // Create rate limiter (WhatsApp allows ~15 messages per minute in groups, ~60 in DMs)
         let quota = Quota::with_period(Duration::from_millis(
-            1000 / config.rate_limit_per_second.max(1) as u64
-        )).unwrap_or_else(|| Quota::per_second(NonZeroU32::new(10).unwrap()));
+            1000 / config.rate_limit_per_second.max(1) as u64,
+        ))
+        .unwrap_or_else(|| Quota::per_second(NonZeroU32::new(10).unwrap()));
         let rate_limiter = Arc::new(RateLimiter::direct(quota));
 
         Self {
@@ -223,17 +231,11 @@ impl WhatsAppChannel {
             return true;
         }
         // Normalize phone number (remove spaces, dashes, etc.)
-        let normalized = phone_number
-            .replace(' ', "")
-            .replace('-', "")
-            .replace('+', "");
-        self.config.allowlist.iter().any(|allowed| {
-            allowed
-                .replace(' ', "")
-                .replace('-', "")
-                .replace('+', "")
-                == normalized
-        })
+        let normalized = phone_number.replace([' ', '-', '+'], "");
+        self.config
+            .allowlist
+            .iter()
+            .any(|allowed| allowed.replace([' ', '-', '+'], "") == normalized)
     }
 
     /// Validate DM allowlist - returns true if allowed or if it's a group message.
@@ -255,25 +257,24 @@ impl WhatsAppChannel {
     /// Start the Baileys bridge process.
     async fn start_bridge_process(&self) -> Result<()> {
         let bridge_path = PathBuf::from(&self.config.bridge_path);
-        
+
         if !bridge_path.exists() {
             return Err(ChannelError::Config {
                 platform: "whatsapp".to_string(),
                 message: format!("Baileys bridge not found at: {}", bridge_path.display()),
-            }.into());
+            }
+            .into());
         }
 
         // Check if node is available
-        let node_check = Command::new("node")
-            .arg("--version")
-            .output()
-            .await;
-        
+        let node_check = Command::new("node").arg("--version").output().await;
+
         if node_check.is_err() {
             return Err(ChannelError::Config {
                 platform: "whatsapp".to_string(),
                 message: "Node.js is required but not found in PATH".to_string(),
-            }.into());
+            }
+            .into());
         }
 
         info!(bridge_path = %bridge_path.display(), "Starting Baileys bridge process");
@@ -290,13 +291,14 @@ impl WhatsAppChannel {
                 message: format!("Failed to start bridge process: {}", e),
             })?;
 
-        let stdin = child.stdin.take()
-            .ok_or_else(|| ChannelError::Connection {
-                platform: "whatsapp".to_string(),
-                message: "Failed to capture stdin".to_string(),
-            })?;
+        let stdin = child.stdin.take().ok_or_else(|| ChannelError::Connection {
+            platform: "whatsapp".to_string(),
+            message: "Failed to capture stdin".to_string(),
+        })?;
 
-        let stdout = child.stdout.take()
+        let stdout = child
+            .stdout
+            .take()
             .ok_or_else(|| ChannelError::Connection {
                 platform: "whatsapp".to_string(),
                 message: "Failed to capture stdout".to_string(),
@@ -310,10 +312,10 @@ impl WhatsAppChannel {
         self.start_stdout_reader(stdout).await;
 
         // Start stderr logger task
-        if let Some(process) = self.baileys_process.lock().await.as_mut() {
-            if let Some(stderr) = process.stderr.take() {
-                self.start_stderr_logger(stderr).await;
-            }
+        if let Some(process) = self.baileys_process.lock().await.as_mut()
+            && let Some(stderr) = process.stderr.take()
+        {
+            self.start_stderr_logger(stderr).await;
         }
 
         Ok(())
@@ -347,12 +349,12 @@ impl WhatsAppChannel {
                             BridgeMessage::QrCode { qr_code } => {
                                 info!("Received QR code for pairing");
                                 *state.write().await = ConnectionState::AwaitingQrCode;
-                                
+
                                 // Send QR code to callback if set
                                 if let Some(tx) = qr_code_tx.read().await.as_ref() {
                                     let _ = tx.send(qr_code.clone()).await;
                                 }
-                                
+
                                 // Also log it for terminal users
                                 info!("\n{}", create_qr_code_display(qr_code));
                             }
@@ -372,14 +374,24 @@ impl WhatsAppChannel {
                                 warn!(reason = ?reason, "WhatsApp disconnected");
                                 *state.write().await = ConnectionState::Disconnected;
                             }
-                            BridgeMessage::Message { id, from, from_name, content, timestamp, is_group, group_id, group_name, .. } => {
+                            BridgeMessage::Message {
+                                id,
+                                from,
+                                from_name,
+                                content,
+                                timestamp,
+                                is_group,
+                                group_id,
+                                group_name,
+                                ..
+                            } => {
                                 // Validate DM allowlist
                                 if !allowlist.is_empty() && !is_group {
-                                    let normalized = from
-                                        .replace(' ', "")
-                                        .replace('-', "")
-                                        .replace('+', "");
-                                    if !allowlist.iter().any(|a| a.replace(' ', "").replace('-', "").replace('+', "") == normalized) {
+                                    let normalized = from.replace([' ', '-', '+'], "");
+                                    if !allowlist
+                                        .iter()
+                                        .any(|a| a.replace([' ', '-', '+'], "") == normalized)
+                                    {
                                         debug!(from = %from, "Message from non-allowlisted number, ignoring");
                                         continue;
                                     }
@@ -407,14 +419,23 @@ impl WhatsAppChannel {
                                     error!(error = %e, "Failed to forward incoming message");
                                 }
                             }
-                            BridgeMessage::MediaMessage { id, from, from_name, media, timestamp, is_group, group_id, group_name } => {
+                            BridgeMessage::MediaMessage {
+                                id,
+                                from,
+                                from_name,
+                                media,
+                                timestamp,
+                                is_group,
+                                group_id,
+                                group_name,
+                            } => {
                                 // Validate DM allowlist
                                 if !allowlist.is_empty() && !is_group {
-                                    let normalized = from
-                                        .replace(' ', "")
-                                        .replace('-', "")
-                                        .replace('+', "");
-                                    if !allowlist.iter().any(|a| a.replace(' ', "").replace('-', "").replace('+', "") == normalized) {
+                                    let normalized = from.replace([' ', '-', '+'], "");
+                                    if !allowlist
+                                        .iter()
+                                        .any(|a| a.replace([' ', '-', '+'], "") == normalized)
+                                    {
                                         debug!(from = %from, "Media message from non-allowlisted number, ignoring");
                                         continue;
                                     }
@@ -450,19 +471,27 @@ impl WhatsAppChannel {
                                     error!(error = %e, "Failed to forward incoming media message");
                                 }
                             }
-                            BridgeMessage::MessageSent { request_id, message_id } => {
+                            BridgeMessage::MessageSent {
+                                request_id,
+                                message_id,
+                            } => {
                                 debug!(%request_id, %message_id, "Message confirmed sent");
                                 // Resolve pending request
-                                if let Some(tx) = pending_requests.write().await.remove(request_id) {
+                                if let Some(tx) = pending_requests.write().await.remove(request_id)
+                                {
                                     let _ = tx.send(msg);
                                 }
                             }
-                            BridgeMessage::Error { request_id, code, message } => {
+                            BridgeMessage::Error {
+                                request_id,
+                                code,
+                                message,
+                            } => {
                                 error!(%code, %message, "Bridge error");
-                                if let Some(req_id) = request_id {
-                                    if let Some(tx) = pending_requests.write().await.remove(req_id) {
-                                        let _ = tx.send(msg);
-                                    }
+                                if let Some(req_id) = request_id
+                                    && let Some(tx) = pending_requests.write().await.remove(req_id)
+                                {
+                                    let _ = tx.send(msg);
                                 }
                             }
                             BridgeMessage::Pong => {
@@ -497,30 +526,33 @@ impl WhatsAppChannel {
     /// Send a message to the bridge process.
     async fn send_to_bridge(&self, msg: BridgeMessage) -> Result<()> {
         let mut stdin = self.bridge_stdin.lock().await;
-        let stdin = stdin.as_mut()
-            .ok_or_else(|| ChannelError::NotConnected { platform: "whatsapp".to_string() })?;
+        let stdin = stdin.as_mut().ok_or_else(|| ChannelError::NotConnected {
+            platform: "whatsapp".to_string(),
+        })?;
 
-        let json = serde_json::to_string(&msg)
-            .map_err(|e| ChannelError::InvalidFormat {
-                platform: "whatsapp".to_string(),
-                message: format!("Failed to serialize message: {}", e),
-            })?;
+        let json = serde_json::to_string(&msg).map_err(|e| ChannelError::InvalidFormat {
+            platform: "whatsapp".to_string(),
+            message: format!("Failed to serialize message: {}", e),
+        })?;
 
-        stdin.write_all(json.as_bytes()).await
+        stdin
+            .write_all(json.as_bytes())
+            .await
             .map_err(|e| ChannelError::SendFailed {
                 platform: "whatsapp".to_string(),
                 message: format!("Failed to write to bridge: {}", e),
             })?;
-        stdin.write_all(b"\n").await
+        stdin
+            .write_all(b"\n")
+            .await
             .map_err(|e| ChannelError::SendFailed {
                 platform: "whatsapp".to_string(),
                 message: format!("Failed to write newline: {}", e),
             })?;
-        stdin.flush().await
-            .map_err(|e| ChannelError::SendFailed {
-                platform: "whatsapp".to_string(),
-                message: format!("Failed to flush: {}", e),
-            })?;
+        stdin.flush().await.map_err(|e| ChannelError::SendFailed {
+            platform: "whatsapp".to_string(),
+            message: format!("Failed to flush: {}", e),
+        })?;
 
         Ok(())
     }
@@ -531,7 +563,6 @@ impl WhatsAppChannel {
         let should_reconnect = Arc::clone(&self.should_reconnect);
         let reconnect_attempts = Arc::clone(&self.reconnect_attempts);
         let config = self.config.clone();
-        let _me = Arc::new(self as *const Self);
 
         tokio::spawn(async move {
             let mut check_interval = interval(Duration::from_secs(5));
@@ -544,20 +575,19 @@ impl WhatsAppChannel {
                 }
 
                 let current_state = *state.read().await;
-                
+
                 if current_state == ConnectionState::Disconnected {
                     let attempts = *reconnect_attempts.read().await;
-                    
+
                     if attempts >= config.max_reconnect_attempts {
                         error!("Max reconnection attempts reached, giving up");
                         *should_reconnect.write().await = false;
                         break;
                     }
 
-                    let delay = Duration::from_secs(
-                        config.reconnect_delay_secs * (attempts as u64 + 1)
-                    );
-                    
+                    let delay =
+                        Duration::from_secs(config.reconnect_delay_secs * (attempts as u64 + 1));
+
                     warn!(attempt = attempts + 1, ?delay, "Reconnecting to WhatsApp");
                     *reconnect_attempts.write().await = attempts + 1;
                     *state.write().await = ConnectionState::Reconnecting;
@@ -590,12 +620,14 @@ impl WhatsAppChannel {
 
     /// Extract WhatsApp JID from metadata.
     fn extract_jid(metadata: &serde_json::Value) -> Option<String> {
-        metadata.get("whatsapp_jid")
+        metadata
+            .get("whatsapp_jid")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string())
             .or_else(|| {
                 // Try to construct from other fields
-                metadata.get("whatsapp_chat_id")
+                metadata
+                    .get("whatsapp_chat_id")
                     .and_then(|v| v.as_str())
                     .map(|s| format!("{}@s.whatsapp.net", s))
             })
@@ -613,19 +645,24 @@ impl Channel for WhatsAppChannel {
         self.rate_limiter.until_ready().await;
 
         // Get target JID from metadata
-        let to = Self::extract_jid(&msg.metadata)
-            .ok_or_else(|| ChannelError::InvalidFormat {
-                platform: "whatsapp".to_string(),
-                message: "Missing whatsapp_jid or whatsapp_chat_id in metadata".to_string(),
-            })?;
+        let to = Self::extract_jid(&msg.metadata).ok_or_else(|| ChannelError::InvalidFormat {
+            platform: "whatsapp".to_string(),
+            message: "Missing whatsapp_jid or whatsapp_chat_id in metadata".to_string(),
+        })?;
 
         // Check for reply_to
-        let reply_to = msg.metadata.get("whatsapp_reply_to")
+        let reply_to = msg
+            .metadata
+            .get("whatsapp_reply_to")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
         // Check if this is a media message
-        if let Some(media_type_str) = msg.metadata.get("whatsapp_media_type").and_then(|v| v.as_str()) {
+        if let Some(media_type_str) = msg
+            .metadata
+            .get("whatsapp_media_type")
+            .and_then(|v| v.as_str())
+        {
             let media_type = match media_type_str {
                 "image" => MediaType::Image,
                 "video" => MediaType::Video,
@@ -633,13 +670,18 @@ impl Channel for WhatsAppChannel {
                 "document" => MediaType::Document,
                 "sticker" => MediaType::Sticker,
                 "voice" => MediaType::Voice,
-                _ => return Err(ChannelError::InvalidFormat {
-                    platform: "whatsapp".to_string(),
-                    message: format!("Unknown media type: {}", media_type_str),
-                }.into()),
+                _ => {
+                    return Err(ChannelError::InvalidFormat {
+                        platform: "whatsapp".to_string(),
+                        message: format!("Unknown media type: {}", media_type_str),
+                    }
+                    .into());
+                }
             };
 
-            let url_or_path = msg.metadata.get("whatsapp_media_url")
+            let url_or_path = msg
+                .metadata
+                .get("whatsapp_media_url")
                 .or_else(|| msg.metadata.get("whatsapp_media_path"))
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| ChannelError::InvalidFormat {
@@ -647,7 +689,11 @@ impl Channel for WhatsAppChannel {
                     message: "Missing whatsapp_media_url or whatsapp_media_path".to_string(),
                 })?;
 
-            let caption = if msg.content.is_empty() { None } else { Some(msg.content) };
+            let caption = if msg.content.is_empty() {
+                None
+            } else {
+                Some(msg.content)
+            };
 
             let request_id = Uuid::new_v4().to_string();
             let bridge_msg = BridgeMessage::SendMedia {
@@ -683,13 +729,16 @@ impl Channel for WhatsAppChannel {
             ChannelError::Connection {
                 platform: "whatsapp".to_string(),
                 message: "Incoming message channel closed".to_string(),
-            }.into()
+            }
+            .into()
         })
     }
 
     async fn connect(&mut self) -> Result<()> {
         let current_state = *self.state.read().await;
-        if current_state == ConnectionState::Connected || current_state == ConnectionState::Connecting {
+        if current_state == ConnectionState::Connected
+            || current_state == ConnectionState::Connecting
+        {
             return Ok(());
         }
 
@@ -763,7 +812,7 @@ impl Channel for WhatsAppChannel {
 impl Drop for WhatsAppChannel {
     fn drop(&mut self) {
         // Best effort cleanup
-        let _ = futures::executor::block_on(self.stop_bridge_process());
+        futures::executor::block_on(self.stop_bridge_process());
     }
 }
 
@@ -822,7 +871,7 @@ mod tests {
         let mut config = create_test_config();
         config.allowlist = vec![];
         let channel = WhatsAppChannel::new(config);
-        
+
         assert!(channel.is_number_allowed("+1234567890"));
         assert!(channel.is_number_allowed("0987654321"));
     }
@@ -831,7 +880,7 @@ mod tests {
     fn test_is_number_allowed_with_list() {
         let config = create_test_config();
         let channel = WhatsAppChannel::new(config);
-        
+
         assert!(channel.is_number_allowed("1234567890"));
         assert!(channel.is_number_allowed("+1 234-567-890"));
         assert!(!channel.is_number_allowed("5555555555"));
@@ -841,13 +890,13 @@ mod tests {
     fn test_validate_dm_access() {
         let config = create_test_config();
         let channel = WhatsAppChannel::new(config);
-        
+
         // DMs with allowlisted number should pass
         assert!(channel.validate_dm_access("1234567890", false));
-        
+
         // DMs with non-allowlisted number should fail
         assert!(!channel.validate_dm_access("5555555555", false));
-        
+
         // Group messages should always pass
         assert!(channel.validate_dm_access("5555555555", true));
     }
@@ -875,7 +924,10 @@ mod tests {
     fn test_connection_state_display() {
         assert_eq!(ConnectionState::Connected.to_string(), "connected");
         assert_eq!(ConnectionState::Disconnected.to_string(), "disconnected");
-        assert_eq!(ConnectionState::AwaitingQrCode.to_string(), "awaiting_qr_code");
+        assert_eq!(
+            ConnectionState::AwaitingQrCode.to_string(),
+            "awaiting_qr_code"
+        );
     }
 
     #[test]

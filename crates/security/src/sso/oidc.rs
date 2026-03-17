@@ -2,7 +2,7 @@
 
 use super::{SsoClient, SsoError, SsoMetadata, SsoTokens, SsoUserInfo};
 use async_trait::async_trait;
-use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
+use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode, decode_header};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -12,16 +12,18 @@ use url::Url;
 /// Validate that a URL does not point to a private/internal network address.
 /// Prevents SSRF attacks by rejecting loopback, private, and link-local IPs.
 fn validate_url_not_private(url_str: &str) -> Result<(), SsoError> {
-    let parsed = Url::parse(url_str)
-        .map_err(|e| SsoError::InvalidConfig(format!("Invalid URL: {}", e)))?;
+    let parsed =
+        Url::parse(url_str).map_err(|e| SsoError::InvalidConfig(format!("Invalid URL: {}", e)))?;
 
-    let host = parsed.host_str()
+    let host = parsed
+        .host_str()
         .ok_or_else(|| SsoError::InvalidConfig("URL has no host".to_string()))?;
 
     // Reject localhost by name
     if host == "localhost" || host == "127.0.0.1" || host == "::1" || host == "[::1]" {
         return Err(SsoError::InvalidConfig(format!(
-            "SSRF protection: URL host '{}' resolves to loopback address", host
+            "SSRF protection: URL host '{}' resolves to loopback address",
+            host
         )));
     }
 
@@ -45,7 +47,8 @@ fn validate_url_not_private(url_str: &str) -> Result<(), SsoError> {
 
         if is_private {
             return Err(SsoError::InvalidConfig(format!(
-                "SSRF protection: URL host '{}' is a private/internal address", host
+                "SSRF protection: URL host '{}' is a private/internal address",
+                host
             )));
         }
     }
@@ -82,7 +85,12 @@ pub struct OidcConfig {
 
 impl OidcConfig {
     /// Create a new OIDC configuration
-    pub fn new(name: impl Into<String>, client_id: impl Into<String>, client_secret: impl Into<String>, issuer: impl Into<String>) -> Self {
+    pub fn new(
+        name: impl Into<String>,
+        client_id: impl Into<String>,
+        client_secret: impl Into<String>,
+        issuer: impl Into<String>,
+    ) -> Self {
         Self {
             name: name.into(),
             client_id: client_id.into(),
@@ -93,7 +101,11 @@ impl OidcConfig {
             userinfo_endpoint: None,
             jwks_uri: None,
             end_session_endpoint: None,
-            scopes: vec!["openid".to_string(), "email".to_string(), "profile".to_string()],
+            scopes: vec![
+                "openid".to_string(),
+                "email".to_string(),
+                "profile".to_string(),
+            ],
             claims: None,
         }
     }
@@ -169,16 +181,18 @@ impl OidcClient {
         let discovery_url = format!("{}/.well-known/openid-configuration", self.config.issuer);
         validate_url_not_private(&discovery_url)?;
 
-        let response = self.http_client
+        let response = self
+            .http_client
             .get(&discovery_url)
             .send()
             .await
             .map_err(|e| SsoError::OidcError(format!("Failed to fetch discovery: {}", e)))?;
 
         if !response.status().is_success() {
-            return Err(SsoError::OidcError(
-                format!("Discovery failed: {}", response.status())
-            ));
+            return Err(SsoError::OidcError(format!(
+                "Discovery failed: {}",
+                response.status()
+            )));
         }
 
         let doc: DiscoveryDocument = response.json().await?;
@@ -187,14 +201,14 @@ impl OidcClient {
 
     /// Fetch JWKS
     async fn fetch_jwks(&mut self) -> Result<(), SsoError> {
-        let jwks_uri = self.metadata.jwks_uri.as_ref()
+        let jwks_uri = self
+            .metadata
+            .jwks_uri
+            .as_ref()
             .ok_or_else(|| SsoError::OidcError("JWKS URI not available".to_string()))?;
         validate_url_not_private(jwks_uri)?;
 
-        let response = self.http_client
-            .get(jwks_uri)
-            .send()
-            .await?;
+        let response = self.http_client.get(jwks_uri).send().await?;
 
         self.jwks = Some(response.json().await?);
         Ok(())
@@ -205,24 +219,33 @@ impl OidcClient {
         let header = decode_header(token)
             .map_err(|e| SsoError::TokenValidationFailed(format!("Invalid header: {}", e)))?;
 
-        let kid = header.kid
+        let kid = header
+            .kid
             .ok_or_else(|| SsoError::TokenValidationFailed("No kid in header".to_string()))?;
 
-        let jwks = self.jwks.as_ref()
+        let jwks = self
+            .jwks
+            .as_ref()
             .ok_or_else(|| SsoError::TokenValidationFailed("JWKS not loaded".to_string()))?;
 
         // Find matching key
-        let keys = jwks.get("keys")
+        let keys = jwks
+            .get("keys")
             .and_then(|k| k.as_array())
             .ok_or_else(|| SsoError::TokenValidationFailed("Invalid JWKS format".to_string()))?;
 
-        let key = keys.iter()
+        let key = keys
+            .iter()
             .find(|k| k.get("kid").and_then(|k| k.as_str()) == Some(&kid))
             .ok_or_else(|| SsoError::TokenValidationFailed("Key not found in JWKS".to_string()))?;
 
-        let n = key.get("n").and_then(|n| n.as_str())
+        let n = key
+            .get("n")
+            .and_then(|n| n.as_str())
             .ok_or_else(|| SsoError::TokenValidationFailed("Invalid key format".to_string()))?;
-        let e = key.get("e").and_then(|e| e.as_str())
+        let e = key
+            .get("e")
+            .and_then(|e| e.as_str())
             .ok_or_else(|| SsoError::TokenValidationFailed("Invalid key format".to_string()))?;
 
         let decoding_key = DecodingKey::from_rsa_components(n, e)
@@ -232,8 +255,10 @@ impl OidcClient {
         validation.set_issuer(&[&self.config.issuer]);
         validation.set_audience(&[&self.config.client_id]);
 
-        let token_data = decode::<serde_json::Value>(token, &decoding_key, &validation)
-            .map_err(|e| SsoError::TokenValidationFailed(format!("Token verification failed: {}", e)))?;
+        let token_data =
+            decode::<serde_json::Value>(token, &decoding_key, &validation).map_err(|e| {
+                SsoError::TokenValidationFailed(format!("Token verification failed: {}", e))
+            })?;
 
         Ok(token_data.claims)
     }
@@ -245,13 +270,13 @@ impl SsoClient for OidcClient {
         // Discover endpoints if not provided
         if self.config.authorization_endpoint.is_none() {
             let discovery = self.discover().await?;
-            
+
             self.metadata.authorization_endpoint = discovery.authorization_endpoint;
             self.metadata.token_endpoint = discovery.token_endpoint;
             self.metadata.userinfo_endpoint = discovery.userinfo_endpoint;
             self.metadata.jwks_uri = discovery.jwks_uri;
             self.metadata.end_session_endpoint = discovery.end_session_endpoint;
-            
+
             if let Some(scopes) = discovery.scopes_supported {
                 self.metadata.scopes_supported = scopes;
             }
@@ -276,13 +301,16 @@ impl SsoClient for OidcClient {
         );
 
         if !self.config.scopes.is_empty() {
-            url.push_str(&format!("&scope={}", urlencoding::encode(&self.config.scopes.join(" "))));
+            url.push_str(&format!(
+                "&scope={}",
+                urlencoding::encode(&self.config.scopes.join(" "))
+            ));
         }
 
-        if let Some(claims) = &self.config.claims {
-            if let Ok(claims_json) = serde_json::to_string(claims) {
-                url.push_str(&format!("&claims={}", urlencoding::encode(&claims_json)));
-            }
+        if let Some(claims) = &self.config.claims
+            && let Ok(claims_json) = serde_json::to_string(claims)
+        {
+            url.push_str(&format!("&claims={}", urlencoding::encode(&claims_json)));
         }
 
         url
@@ -298,7 +326,8 @@ impl SsoClient for OidcClient {
         params.insert("client_id", &self.config.client_id);
         params.insert("client_secret", &self.config.client_secret);
 
-        let response = self.http_client
+        let response = self
+            .http_client
             .post(&self.metadata.token_endpoint)
             .form(&params)
             .send()
@@ -327,40 +356,80 @@ impl SsoClient for OidcClient {
             claims
         } else {
             // Fall back to userinfo endpoint
-            let userinfo_url = self.metadata.userinfo_endpoint.as_ref()
+            let userinfo_url = self
+                .metadata
+                .userinfo_endpoint
+                .as_ref()
                 .ok_or_else(|| SsoError::OidcError("No userinfo endpoint".to_string()))?;
             validate_url_not_private(userinfo_url)?;
 
-            let response = self.http_client
+            let response = self
+                .http_client
                 .get(userinfo_url)
                 .bearer_auth(token)
                 .send()
                 .await?;
 
             if !response.status().is_success() {
-                return Err(SsoError::TokenValidationFailed("Userinfo request failed".to_string()));
+                return Err(SsoError::TokenValidationFailed(
+                    "Userinfo request failed".to_string(),
+                ));
             }
 
             response.json().await?
         };
 
-        let groups = claims.get("groups")
+        let groups = claims
+            .get("groups")
             .and_then(|g| g.as_array())
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_default();
 
         Ok(SsoUserInfo {
-            sub: claims.get("sub").and_then(|s| s.as_str()).unwrap_or("").to_string(),
-            email: claims.get("email").and_then(|e| e.as_str()).map(String::from),
+            sub: claims
+                .get("sub")
+                .and_then(|s| s.as_str())
+                .unwrap_or("")
+                .to_string(),
+            email: claims
+                .get("email")
+                .and_then(|e| e.as_str())
+                .map(String::from),
             email_verified: claims.get("email_verified").and_then(|v| v.as_bool()),
-            name: claims.get("name").and_then(|n| n.as_str()).map(String::from),
-            given_name: claims.get("given_name").and_then(|n| n.as_str()).map(String::from),
-            family_name: claims.get("family_name").and_then(|n| n.as_str()).map(String::from),
-            preferred_username: claims.get("preferred_username").and_then(|u| u.as_str()).map(String::from),
+            name: claims
+                .get("name")
+                .and_then(|n| n.as_str())
+                .map(String::from),
+            given_name: claims
+                .get("given_name")
+                .and_then(|n| n.as_str())
+                .map(String::from),
+            family_name: claims
+                .get("family_name")
+                .and_then(|n| n.as_str())
+                .map(String::from),
+            preferred_username: claims
+                .get("preferred_username")
+                .and_then(|u| u.as_str())
+                .map(String::from),
             groups,
-            organization: claims.get("org_name").or_else(|| claims.get("organization")).and_then(|o| o.as_str()).map(String::from),
-            department: claims.get("department").and_then(|d| d.as_str()).map(String::from),
-            extra_claims: claims.as_object().map(|o| o.iter().map(|(k, v)| (k.clone(), v.clone())).collect()).unwrap_or_default(),
+            organization: claims
+                .get("org_name")
+                .or_else(|| claims.get("organization"))
+                .and_then(|o| o.as_str())
+                .map(String::from),
+            department: claims
+                .get("department")
+                .and_then(|d| d.as_str())
+                .map(String::from),
+            extra_claims: claims
+                .as_object()
+                .map(|o| o.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
+                .unwrap_or_default(),
         })
     }
 
@@ -373,7 +442,8 @@ impl SsoClient for OidcClient {
         params.insert("client_id", &self.config.client_id);
         params.insert("client_secret", &self.config.client_secret);
 
-        let response = self.http_client
+        let response = self
+            .http_client
             .post(&self.metadata.token_endpoint)
             .form(&params)
             .send()
@@ -413,7 +483,9 @@ mod tests {
 
     #[test]
     fn ssrf_rejects_localhost() {
-        assert!(validate_url_not_private("http://localhost/.well-known/openid-configuration").is_err());
+        assert!(
+            validate_url_not_private("http://localhost/.well-known/openid-configuration").is_err()
+        );
         assert!(validate_url_not_private("http://127.0.0.1/token").is_err());
         assert!(validate_url_not_private("http://[::1]/token").is_err());
     }
@@ -428,7 +500,12 @@ mod tests {
 
     #[test]
     fn ssrf_allows_public_urls() {
-        assert!(validate_url_not_private("https://accounts.google.com/.well-known/openid-configuration").is_ok());
+        assert!(
+            validate_url_not_private(
+                "https://accounts.google.com/.well-known/openid-configuration"
+            )
+            .is_ok()
+        );
         assert!(validate_url_not_private("https://login.microsoftonline.com/token").is_ok());
     }
 

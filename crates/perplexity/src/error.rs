@@ -93,9 +93,15 @@ impl fmt::Display for PerplexityError {
             PerplexityError::Authentication { message } => {
                 write!(f, "Authentication failed: {message}")
             }
-            PerplexityError::RateLimit { retry_after, message } => {
+            PerplexityError::RateLimit {
+                retry_after,
+                message,
+            } => {
                 if let Some(duration) = retry_after {
-                    write!(f, "Rate limit exceeded (retry after {duration:?}): {message}")
+                    write!(
+                        f,
+                        "Rate limit exceeded (retry after {duration:?}): {message}"
+                    )
                 } else {
                     write!(f, "Rate limit exceeded: {message}")
                 }
@@ -124,7 +130,10 @@ impl fmt::Display for PerplexityError {
             PerplexityError::Timeout { operation } => {
                 write!(f, "Timeout during {operation}")
             }
-            PerplexityError::RetryExhausted { attempts, last_error } => {
+            PerplexityError::RetryExhausted {
+                attempts,
+                last_error,
+            } => {
                 write!(f, "Retry exhausted after {attempts} attempts: {last_error}")
             }
             PerplexityError::Internal { message } => {

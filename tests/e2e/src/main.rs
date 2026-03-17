@@ -18,11 +18,11 @@ async fn main() -> ExitCode {
 
     // Check environment
     let live_mode = std::env::var("E2E_LIVE").is_ok_and(|v| v == "1" || v == "true");
-    
+
     if live_mode {
         println!("🌐 Running in LIVE provider mode");
         println!("   (requires API keys for providers)");
-        
+
         // Check for API keys
         let providers = vec!["OPENAI", "ANTHROPIC", "OLLAMA"];
         for provider in &providers {
@@ -37,7 +37,7 @@ async fn main() -> ExitCode {
         println!("🔧 Running in MOCK mode (default)");
         println!("   Use E2E_LIVE=1 for live provider tests");
     }
-    
+
     println!();
     println!("To run tests, use: cargo test --test e2e");
     println!();

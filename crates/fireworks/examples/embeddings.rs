@@ -1,6 +1,9 @@
 //! Embeddings example for Fireworks AI.
 
-use fireworks_ai::{embeddings::{cosine_similarity, EmbeddingRequest}, FireworksClient};
+use fireworks_ai::{
+    FireworksClient,
+    embeddings::{EmbeddingRequest, cosine_similarity},
+};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -23,7 +26,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Generating embedding for single text...");
     let response = client.embeddings().create(request).await?;
-    
+
     let embedding = response.first_embedding().expect("Expected an embedding");
     println!("Model: {}", response.model);
     println!("Embedding dimensions: {}", embedding.len());
@@ -36,15 +39,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "Deep learning transforms AI",
         "The weather is nice today",
     ];
-    
-    let request = EmbeddingRequest::new(
-        "accounts/fireworks/models/nomic-embed-text-v1-5",
-        texts,
-    );
+
+    let request = EmbeddingRequest::new("accounts/fireworks/models/nomic-embed-text-v1-5", texts);
 
     let response = client.embeddings().create(request).await?;
     println!("Generated {} embeddings", response.data.len());
-    
+
     for (i, emb) in response.data.iter().enumerate() {
         println!("Embedding {}: {} dimensions", i + 1, emb.embedding.len());
     }
@@ -56,21 +56,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "AI and ML technologies",
         "Cooking recipes and food",
     ];
-    
-    let request = EmbeddingRequest::new(
-        "accounts/fireworks/models/nomic-embed-text-v1-5",
-        texts,
-    );
+
+    let request = EmbeddingRequest::new("accounts/fireworks/models/nomic-embed-text-v1-5", texts);
 
     let response = client.embeddings().create(request).await?;
     let embeddings: Vec<_> = response.all_embeddings();
-    
+
     if embeddings.len() >= 3 {
         let sim_0_1 = cosine_similarity(embeddings[0], embeddings[1]);
         let sim_0_2 = cosine_similarity(embeddings[0], embeddings[2]);
-        
+
         println!("Similarity between 'AI/ML' texts: {:.4}", sim_0_1);
-        println!("Similarity between 'AI' and 'Cooking' texts: {:.4}", sim_0_2);
+        println!(
+            "Similarity between 'AI' and 'Cooking' texts: {:.4}",
+            sim_0_2
+        );
         println!("(Higher similarity = more similar meaning)");
     }
 

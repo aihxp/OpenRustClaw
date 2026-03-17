@@ -2,9 +2,9 @@
 
 use crate::config::{DiscoveryBackend, DiscoveryConfig};
 use crate::error::{DistributedError, Result};
-use crate::node::{NodeId, NodeInfo};
 #[cfg(any(feature = "etcd", feature = "mdns"))]
 use crate::node::NodeRole;
+use crate::node::{NodeId, NodeInfo};
 use async_trait::async_trait;
 #[cfg(feature = "etcd")]
 use etcd_client::Client as EtcdClient;
@@ -41,7 +41,9 @@ pub trait DiscoveryStream: Send {
     /// Get the next discovery event.
     fn next<'a>(
         &'a mut self,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Option<DiscoveryEvent>>> + Send + 'a>>;
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<Option<DiscoveryEvent>>> + Send + 'a>,
+    >;
 }
 
 /// Discovery events.
@@ -55,8 +57,7 @@ pub enum DiscoveryEvent {
 /// Discovery factory.
 pub async fn create_discovery(
     config: &DiscoveryConfig,
-    #[allow(unused_variables)]
-    local_id: NodeId,
+    #[allow(unused_variables)] local_id: NodeId,
 ) -> Result<Arc<dyn Discovery>> {
     match config.backend {
         #[cfg(feature = "etcd")]
@@ -65,33 +66,27 @@ pub async fn create_discovery(
             Ok(Arc::new(discovery))
         }
         #[cfg(not(feature = "etcd"))]
-        DiscoveryBackend::Etcd => {
-            Err(DistributedError::Config(
-                "etcd discovery requires the 'etcd' feature to be enabled".to_string(),
-            ))
-        }
+        DiscoveryBackend::Etcd => Err(DistributedError::Config(
+            "etcd discovery requires the 'etcd' feature to be enabled".to_string(),
+        )),
         #[cfg(feature = "consul")]
         DiscoveryBackend::Consul => {
             let discovery = ConsulDiscovery::new(config, local_id)?;
             Ok(Arc::new(discovery))
         }
         #[cfg(not(feature = "consul"))]
-        DiscoveryBackend::Consul => {
-            Err(DistributedError::Config(
-                "Consul discovery requires the 'consul' feature to be enabled".to_string(),
-            ))
-        }
+        DiscoveryBackend::Consul => Err(DistributedError::Config(
+            "Consul discovery requires the 'consul' feature to be enabled".to_string(),
+        )),
         #[cfg(feature = "mdns")]
         DiscoveryBackend::Gossip => {
             let discovery = GossipDiscovery::new(config, local_id)?;
             Ok(Arc::new(discovery))
         }
         #[cfg(not(feature = "mdns"))]
-        DiscoveryBackend::Gossip => {
-            Err(DistributedError::Config(
-                "Gossip discovery requires the 'mdns' feature to be enabled".to_string(),
-            ))
-        }
+        DiscoveryBackend::Gossip => Err(DistributedError::Config(
+            "Gossip discovery requires the 'mdns' feature to be enabled".to_string(),
+        )),
         DiscoveryBackend::Static => {
             let discovery = StaticDiscovery::new(config)?;
             Ok(Arc::new(discovery))
@@ -118,7 +113,9 @@ impl EtcdDiscovery {
 
         let client = EtcdClient::connect(config.etcd_endpoints.clone(), None)
             .await
-            .map_err(|e| DistributedError::Discovery(format!("Failed to connect to etcd: {}", e)))?;
+            .map_err(|e| {
+                DistributedError::Discovery(format!("Failed to connect to etcd: {}", e))
+            })?;
 
         let prefix = format!("/openrustclaw/{}/nodes", config.cluster_name);
 
@@ -148,11 +145,19 @@ impl Discovery for EtcdDiscovery {
             .map_err(|e| DistributedError::Discovery(format!("Failed to create lease: {}", e)))?;
 
         client
-            .put(key, value, Some(etcd_client::PutOptions::new().with_lease(lease.id())))
+            .put(
+                key,
+                value,
+                Some(etcd_client::PutOptions::new().with_lease(lease.id())),
+            )
             .await
             .map_err(|e| DistributedError::Discovery(format!("Failed to register: {}", e)))?;
 
-        info!("Registered node {} with etcd (lease: {})", node.id, lease.id());
+        info!(
+            "Registered node {} with etcd (lease: {})",
+            node.id,
+            lease.id()
+        );
         Ok(())
     }
 
@@ -172,7 +177,10 @@ impl Discovery for EtcdDiscovery {
     async fn discover(&self) -> Result<Vec<NodeInfo>> {
         let mut client = self.client.clone();
         let response = client
-            .get(self.prefix.clone(), Some(etcd_client::GetOptions::new().with_prefix()))
+            .get(
+                self.prefix.clone(),
+                Some(etcd_client::GetOptions::new().with_prefix()),
+            )
             .await
             .map_err(|e| DistributedError::Discovery(format!("Failed to discover: {}", e)))?;
 
@@ -293,8 +301,9 @@ pub struct GossipDiscovery {
 #[cfg(feature = "mdns")]
 impl GossipDiscovery {
     pub fn new(config: &DiscoveryConfig, local_id: NodeId) -> Result<Self> {
-        let mdns = ServiceDaemon::new()
-            .map_err(|e| DistributedError::Discovery(format!("Failed to create mDNS daemon: {}", e)))?;
+        let mdns = ServiceDaemon::new().map_err(|e| {
+            DistributedError::Discovery(format!("Failed to create mDNS daemon: {}", e))
+        })?;
 
         let service_type = format!("_{}._tcp.local.", config.cluster_name);
 
@@ -325,7 +334,9 @@ impl Discovery for GossipDiscovery {
             node.cluster_addr.port(),
             &properties[..],
         )
-        .map_err(|e| DistributedError::Discovery(format!("Failed to create service info: {}", e)))?;
+        .map_err(|e| {
+            DistributedError::Discovery(format!("Failed to create service info: {}", e))
+        })?;
 
         self.mdns
             .register(service_info)
@@ -453,10 +464,12 @@ struct ChannelDiscoveryStream {
 }
 
 impl DiscoveryStream for ChannelDiscoveryStream {
-    fn next<'a>(&'a mut self) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Option<DiscoveryEvent>>> + Send + 'a>> {
-        Box::pin(async move {
-            Ok(self.rx.recv().await)
-        })
+    fn next<'a>(
+        &'a mut self,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<Option<DiscoveryEvent>>> + Send + 'a>,
+    > {
+        Box::pin(async move { Ok(self.rx.recv().await) })
     }
 }
 
@@ -472,7 +485,8 @@ fn service_info_to_node(info: ServiceInfo) -> Option<NodeInfo> {
         _ => NodeRole::Worker,
     };
 
-    let cluster_addr = SocketAddr::new(info.get_addresses().iter().next()?.clone(), info.get_port());
+    let cluster_addr =
+        SocketAddr::new(info.get_addresses().iter().next()?.clone(), info.get_port());
     let api_addr: SocketAddr = api_addr_str.parse().ok()?;
 
     Some(NodeInfo::new(id, id, cluster_addr, api_addr, role))

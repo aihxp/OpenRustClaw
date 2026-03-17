@@ -29,7 +29,7 @@ impl<'a> Summarization<'a> {
     /// let text = "Long text to summarize...".to_string();
     /// let request = SummarizationRequest::new(text);
     /// let response = client.summarization().summarize(request).await?;
-    /// 
+    ///
     /// if let Some(summary) = response.summary() {
     ///     println!("Summary: {}", summary);
     /// }
@@ -67,17 +67,14 @@ impl<'a> Summarization<'a> {
     /// let response = client.summarization()
     ///     .summarize_text("Long text to summarize...")
     ///     .await?;
-    /// 
+    ///
     /// if let Some(summary) = response.summary() {
     ///     println!("Summary: {}", summary);
     /// }
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn summarize_text(
-        &self,
-        text: impl Into<String>,
-    ) -> Result<SummarizationResponse> {
+    pub async fn summarize_text(&self, text: impl Into<String>) -> Result<SummarizationResponse> {
         let request = SummarizationRequest::new(text);
         self.summarize(request).await
     }
@@ -95,7 +92,7 @@ impl<'a> Summarization<'a> {
     /// let response = client.summarization()
     ///     .summarize_with_max_length("Long text to summarize...", 100)
     ///     .await?;
-    /// 
+    ///
     /// if let Some(summary) = response.summary() {
     ///     println!("Summary: {}", summary);
     /// }
@@ -278,8 +275,7 @@ mod tests {
 
     #[test]
     fn test_summarization_request_with_model() {
-        let req = SummarizationRequest::new("Long text...")
-            .with_model("@cf/custom/model");
+        let req = SummarizationRequest::new("Long text...").with_model("@cf/custom/model");
         assert_eq!(req.model, "@cf/custom/model");
     }
 
@@ -301,8 +297,9 @@ mod tests {
         let response: SummarizationResponse = serde_json::from_str(
             r#"{
                 "summary": "Short summary."
-            }"#
-        ).unwrap();
+            }"#,
+        )
+        .unwrap();
 
         assert_eq!(response.summary(), Some("Short summary."));
     }

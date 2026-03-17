@@ -6,7 +6,7 @@ use serde_json::json;
 use tracing::info;
 
 use crate::browser::{Browser, PdfOptions};
-use crate::tools::{success_response, AutomationTool, ToolContext};
+use crate::tools::{AutomationTool, ToolContext, success_response};
 
 /// Generate a PDF from the current page.
 pub struct PdfTool {
@@ -121,21 +121,19 @@ impl AutomationTool for PdfTool {
         })
     }
 
-    async fn execute(
-        &self,
-        input: serde_json::Value,
-        ctx: &ToolContext,
-    ) -> anyhow::Result<String> {
+    async fn execute(&self, input: serde_json::Value, ctx: &ToolContext) -> anyhow::Result<String> {
         let args: PdfArgs = serde_json::from_value(input)?;
-        
-        let pages = self.browser.pages().await.map_err(|e| {
-            anyhow::anyhow!("Failed to get pages: {}", e)
-        })?;
-        
-        let page = pages.first().ok_or_else(|| {
-            anyhow::anyhow!("No pages available")
-        })?;
-        
+
+        let pages = self
+            .browser
+            .pages()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to get pages: {}", e))?;
+
+        let page = pages
+            .first()
+            .ok_or_else(|| anyhow::anyhow!("No pages available"))?;
+
         // Resolve path
         let path = if args.path.starts_with('/') {
             args.path.clone()
@@ -144,12 +142,12 @@ impl AutomationTool for PdfTool {
         } else {
             args.path.clone()
         };
-        
+
         info!(path = %path, "Generating PDF");
-        
+
         // Build PDF options
         let mut options = PdfOptions::default();
-        
+
         // Format or custom dimensions
         if let Some(width) = args.width {
             options.width = Some(parse_dimension(&width)?);
@@ -160,10 +158,10 @@ impl AutomationTool for PdfTool {
         if options.width.is_none() && options.height.is_none() {
             options.format = args.format.or_else(|| Some("A4".to_string()));
         }
-        
+
         options.print_background = args.print_background.unwrap_or(true);
         options.scale = args.scale;
-        
+
         // Margins
         if let Some(margin) = args.margin {
             options.margin_top = margin.top.map(|s| parse_dimension(&s)).transpose()?;
@@ -171,22 +169,22 @@ impl AutomationTool for PdfTool {
             options.margin_left = margin.left.map(|s| parse_dimension(&s)).transpose()?;
             options.margin_right = margin.right.map(|s| parse_dimension(&s)).transpose()?;
         }
-        
+
         options.display_header_footer = args.display_header_footer.unwrap_or(false);
         options.header_template = args.header_template;
         options.footer_template = args.footer_template;
         options.page_ranges = args.page_ranges;
-        
+
         // Generate PDF
-        let pdf_data = page.pdf(options).await.map_err(|e| {
-            anyhow::anyhow!("Failed to generate PDF: {}", e)
-        })?;
-        
+        let pdf_data = page
+            .pdf(options)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to generate PDF: {}", e))?;
+
         // Save PDF
-        std::fs::write(&path, &pdf_data).map_err(|e| {
-            anyhow::anyhow!("Failed to save PDF: {}", e)
-        })?;
-        
+        std::fs::write(&path, &pdf_data)
+            .map_err(|e| anyhow::anyhow!("Failed to save PDF: {}", e))?;
+
         let file_size = pdf_data.len();
         let file_size_str = if file_size > 1024 * 1024 {
             format!("{:.2} MB", file_size as f64 / (1024.0 * 1024.0))
@@ -195,7 +193,7 @@ impl AutomationTool for PdfTool {
         } else {
             format!("{} B", file_size)
         };
-        
+
         Ok(success_response(format!(
             "PDF generated successfully\nSaved to: {}\nFile size: {}",
             path, file_size_str
@@ -206,30 +204,31 @@ impl AutomationTool for PdfTool {
 /// Parse dimension string (e.g., "8.5in", "210mm") to inches.
 fn parse_dimension(s: &str) -> anyhow::Result<f64> {
     let s = s.trim();
-    
+
     if let Some(idx) = s.find("in") {
         let num: f64 = s[..idx].parse()?;
         return Ok(num);
     }
-    
+
     if let Some(idx) = s.find("mm") {
         let num: f64 = s[..idx].parse()?;
         return Ok(num / 25.4);
     }
-    
+
     if let Some(idx) = s.find("cm") {
         let num: f64 = s[..idx].parse()?;
         return Ok(num / 2.54);
     }
-    
+
     if let Some(idx) = s.find("px") {
         let num: f64 = s[..idx].parse()?;
         // Assume 96 DPI
         return Ok(num / 96.0);
     }
-    
+
     // Assume inches if no unit
-    s.parse().map_err(|e| anyhow::anyhow!("Invalid dimension '{}': {}", s, e))
+    s.parse()
+        .map_err(|e| anyhow::anyhow!("Invalid dimension '{}': {}", s, e))
 }
 
 /// Arguments for PDF tool.

@@ -1,8 +1,8 @@
 //! Mobile node implementation
 
 use crate::{MobileError, NodeConfig, NodeStatus};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tokio::runtime::Runtime;
 use tokio::sync::RwLock;
@@ -211,10 +211,10 @@ impl NodeInner {
                 interval.tick().await;
 
                 let client_guard = client.read().await;
-                if let Some(client_ref) = client_guard.as_ref() {
-                    if let Err(e) = client_ref.heartbeat().await {
-                        warn!("Heartbeat failed for node {}: {}", node_id, e);
-                    }
+                if let Some(client_ref) = client_guard.as_ref()
+                    && let Err(e) = client_ref.heartbeat().await
+                {
+                    warn!("Heartbeat failed for node {}: {}", node_id, e);
                 }
             }
         });

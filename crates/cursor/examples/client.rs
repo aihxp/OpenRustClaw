@@ -90,7 +90,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     info!("\n=== Running Command ===");
-    match conn.execute_command("echo 'Hello from OpenRustClaw!'", None::<&str>)
+    match conn
+        .execute_command("echo 'Hello from OpenRustClaw!'", None::<&str>)
         .await
     {
         Ok((stdout, stderr, exit_code)) => {
@@ -123,7 +124,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Ok(entries) => {
             info!("Found {} entries", entries.len());
             for entry in entries.iter().take(10) {
-                let entry_type = if entry.is_directory { "[DIR]" } else { "[FILE]" };
+                let entry_type = if entry.is_directory {
+                    "[DIR]"
+                } else {
+                    "[FILE]"
+                };
                 info!("  {} {}", entry_type, entry.name);
             }
             if entries.len() > 10 {
@@ -140,7 +145,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Ok(matches) => {
             info!("Found {} matches", matches.len());
             for m in matches.iter().take(5) {
-                info!("  {:?}:{} - {}", m.file_path, m.line + 1, m.line_content.trim());
+                info!(
+                    "  {:?}:{} - {}",
+                    m.file_path,
+                    m.line + 1,
+                    m.line_content.trim()
+                );
             }
         }
         Err(e) => {
@@ -154,7 +164,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             info!("Linter completed with {} diagnostics", diagnostics.len());
             if !diagnostics.is_empty() {
                 for diag in diagnostics.iter().take(5) {
-                    info!("  [{:?}] {:?}:{} - {}",
+                    info!(
+                        "  [{:?}] {:?}:{} - {}",
                         diag.severity,
                         diag.file_path,
                         diag.line + 1,

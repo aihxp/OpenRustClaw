@@ -2,9 +2,9 @@
 //!
 //! Comprehensive tests for all LLM provider configurations.
 
-use openrustclaw_e2e_tests::common::*;
 use openrustclaw_core::traits::LlmProvider;
 use openrustclaw_core::types::{CompletionRequest, Message};
+use openrustclaw_e2e_tests::common::*;
 
 /// Test: All mock provider types work
 #[tokio::test]
@@ -13,8 +13,16 @@ async fn test_all_mock_providers() {
         Box::new(MockSuccessProvider::new("success", "Hello")),
         Box::new(MockRateLimitedProvider::new("limited")),
         Box::new(MockUnavailableProvider::new("unavailable", "Error")),
-        Box::new(MockConversationalProvider::new("convo", vec!["A".to_string(), "B".to_string()])),
-        Box::new(MockToolCallingProvider::new("tools", "test", serde_json::json!({}), "Done")),
+        Box::new(MockConversationalProvider::new(
+            "convo",
+            vec!["A".to_string(), "B".to_string()],
+        )),
+        Box::new(MockToolCallingProvider::new(
+            "tools",
+            "test",
+            serde_json::json!({}),
+            "Done",
+        )),
     ];
 
     let request = CompletionRequest {
@@ -96,7 +104,11 @@ async fn test_provider_token_usage_scenarios() {
     let long_content = "x".repeat(1000);
     let scenarios: Vec<(&str, &str, u32)> = vec![
         ("short", "Hi", 10u32),
-        ("medium", "This is a medium length message for testing", 20u32),
+        (
+            "medium",
+            "This is a medium length message for testing",
+            20u32,
+        ),
         ("long", &long_content, 100u32),
     ];
 
@@ -112,10 +124,17 @@ async fn test_provider_token_usage_scenarios() {
             stream: false,
         };
 
-        let response = provider.complete(request).await.expect(&format!("{} failed", name));
-        
+        let response = provider
+            .complete(request)
+            .await
+            .expect(&format!("{} failed", name));
+
         // Mock provider returns fixed values
-        assert!(response.usage.total_tokens > 0, "{}: Should have token usage", name);
+        assert!(
+            response.usage.total_tokens > 0,
+            "{}: Should have token usage",
+            name
+        );
     }
 }
 
@@ -127,9 +146,9 @@ async fn test_provider_tool_format_consistency() {
     // Verify tool format
     let format = provider.native_tool_format();
     assert!(
-        matches!(format, openrustclaw_core::types::ToolFormat::OpenAi) ||
-        matches!(format, openrustclaw_core::types::ToolFormat::Anthropic) ||
-        matches!(format, openrustclaw_core::types::ToolFormat::Mcp)
+        matches!(format, openrustclaw_core::types::ToolFormat::OpenAi)
+            || matches!(format, openrustclaw_core::types::ToolFormat::Anthropic)
+            || matches!(format, openrustclaw_core::types::ToolFormat::Mcp)
     );
 
     // Verify strict tool support flag

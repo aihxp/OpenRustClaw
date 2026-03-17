@@ -5,8 +5,8 @@ use ai21::{Ai21Client, ChatRequest, Message};
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Get API key from environment
-    let api_key = std::env::var("AI21_API_KEY")
-        .expect("AI21_API_KEY environment variable must be set");
+    let api_key =
+        std::env::var("AI21_API_KEY").expect("AI21_API_KEY environment variable must be set");
 
     // Create client
     let client = Ai21Client::new(api_key)?;

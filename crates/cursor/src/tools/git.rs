@@ -3,7 +3,7 @@
 use crate::error::{CursorError, Result};
 use crate::types::{CursorTool, GitStatus};
 use async_trait::async_trait;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::path::PathBuf;
 use tokio::process::Command;
 use tracing::{info, warn};
@@ -36,13 +36,17 @@ impl CursorTool for GitStatusTool {
     }
 
     async fn execute(&self, params: Value) -> Result<Value> {
-        let short = params.get("short").and_then(|s| s.as_bool()).unwrap_or(false);
+        let short = params
+            .get("short")
+            .and_then(|s| s.as_bool())
+            .unwrap_or(false);
 
-        let project_root = std::env::current_dir().map_err(|e| CursorError::GitOperation(e.to_string()))?;
+        let project_root =
+            std::env::current_dir().map_err(|e| CursorError::GitOperation(e.to_string()))?;
 
         // Get status
         let output = Command::new("git")
-            .args(&["status", "--porcelain", "-b"])
+            .args(["status", "--porcelain", "-b"])
             .current_dir(&project_root)
             .output()
             .await
@@ -59,7 +63,7 @@ impl CursorTool for GitStatusTool {
 
         // Get branch info
         let branch_output = Command::new("git")
-            .args(&["branch", "-vv"])
+            .args(["branch", "-vv"])
             .current_dir(&project_root)
             .output()
             .await
@@ -69,7 +73,7 @@ impl CursorTool for GitStatusTool {
 
         // Get ahead/behind info
         let ahead_behind_output = Command::new("git")
-            .args(&["rev-list", "--left-right", "--count", "HEAD...@{upstream}"])
+            .args(["rev-list", "--left-right", "--count", "HEAD...@{upstream}"])
             .current_dir(&project_root)
             .output()
             .await;
@@ -77,12 +81,9 @@ impl CursorTool for GitStatusTool {
         let (ahead, behind) = if let Ok(output) = ahead_behind_output {
             if output.status.success() {
                 let stdout = String::from_utf8_lossy(&output.stdout);
-                let parts: Vec<&str> = stdout.trim().split_whitespace().collect();
+                let parts: Vec<&str> = stdout.split_whitespace().collect();
                 if parts.len() == 2 {
-                    (
-                        parts[0].parse().unwrap_or(0),
-                        parts[1].parse().unwrap_or(0),
-                    )
+                    (parts[0].parse().unwrap_or(0), parts[1].parse().unwrap_or(0))
                 } else {
                     (0, 0)
                 }
@@ -177,11 +178,21 @@ impl CursorTool for GitDiffTool {
     }
 
     async fn execute(&self, params: Value) -> Result<Value> {
-        let project_root = std::env::current_dir().map_err(|e| CursorError::GitOperation(e.to_string()))?;
+        let project_root =
+            std::env::current_dir().map_err(|e| CursorError::GitOperation(e.to_string()))?;
 
-        let staged = params.get("staged").and_then(|s| s.as_bool()).unwrap_or(false)
-            || params.get("cached").and_then(|c| c.as_bool()).unwrap_or(false);
-        let stat = params.get("stat").and_then(|s| s.as_bool()).unwrap_or(false);
+        let staged = params
+            .get("staged")
+            .and_then(|s| s.as_bool())
+            .unwrap_or(false)
+            || params
+                .get("cached")
+                .and_then(|c| c.as_bool())
+                .unwrap_or(false);
+        let stat = params
+            .get("stat")
+            .and_then(|s| s.as_bool())
+            .unwrap_or(false);
         let path = params.get("path").and_then(|p| p.as_str());
         let from = params.get("from").and_then(|f| f.as_str());
         let to = params.get("to").and_then(|t| t.as_str());
@@ -279,7 +290,10 @@ impl CursorTool for GitCommitTool {
             .ok_or_else(|| input_validation_error(self.name(), "Missing 'message' parameter"))?;
 
         let all = params.get("all").and_then(|a| a.as_bool()).unwrap_or(false);
-        let amend = params.get("amend").and_then(|a| a.as_bool()).unwrap_or(false);
+        let amend = params
+            .get("amend")
+            .and_then(|a| a.as_bool())
+            .unwrap_or(false);
         let files: Vec<String> = params
             .get("files")
             .and_then(|f| f.as_array())
@@ -290,7 +304,8 @@ impl CursorTool for GitCommitTool {
             })
             .unwrap_or_default();
 
-        let project_root = std::env::current_dir().map_err(|e| CursorError::GitOperation(e.to_string()))?;
+        let project_root =
+            std::env::current_dir().map_err(|e| CursorError::GitOperation(e.to_string()))?;
 
         // Stage files if specified
         if !files.is_empty() {
@@ -313,7 +328,7 @@ impl CursorTool for GitCommitTool {
             }
         } else if all {
             let output = Command::new("git")
-                .args(&["add", "-u"])
+                .args(["add", "-u"])
                 .current_dir(&project_root)
                 .output()
                 .await
@@ -351,13 +366,15 @@ impl CursorTool for GitCommitTool {
 
         // Get the commit hash
         let hash_output = Command::new("git")
-            .args(&["rev-parse", "HEAD"])
+            .args(["rev-parse", "HEAD"])
             .current_dir(&project_root)
             .output()
             .await
             .map_err(|e| CursorError::GitOperation(e.to_string()))?;
 
-        let commit_hash = String::from_utf8_lossy(&hash_output.stdout).trim().to_string();
+        let commit_hash = String::from_utf8_lossy(&hash_output.stdout)
+            .trim()
+            .to_string();
 
         Ok(json!({
             "success": true,
@@ -422,10 +439,17 @@ impl CursorTool for GitBranchTool {
 
         let branch = params.get("branch").and_then(|b| b.as_str());
         let from = params.get("from").and_then(|f| f.as_str());
-        let force = params.get("force").and_then(|f| f.as_bool()).unwrap_or(false);
-        let remote = params.get("remote").and_then(|r| r.as_bool()).unwrap_or(false);
+        let force = params
+            .get("force")
+            .and_then(|f| f.as_bool())
+            .unwrap_or(false);
+        let remote = params
+            .get("remote")
+            .and_then(|r| r.as_bool())
+            .unwrap_or(false);
 
-        let project_root = std::env::current_dir().map_err(|e| CursorError::GitOperation(e.to_string()))?;
+        let project_root =
+            std::env::current_dir().map_err(|e| CursorError::GitOperation(e.to_string()))?;
 
         match action {
             "list" => {
@@ -446,7 +470,11 @@ impl CursorTool for GitBranchTool {
                     .lines()
                     .map(|line| {
                         let current = line.starts_with('*');
-                        let name = line.trim_start_matches('*').trim().split_whitespace().next().unwrap_or("");
+                        let name = line
+                            .trim_start_matches('*')
+                            .split_whitespace()
+                            .next()
+                            .unwrap_or("");
                         json!({
                             "name": name,
                             "current": current,
@@ -458,7 +486,7 @@ impl CursorTool for GitBranchTool {
 
                 // Get current branch
                 let current_output = Command::new("git")
-                    .args(&["branch", "--show-current"])
+                    .args(["branch", "--show-current"])
                     .current_dir(&project_root)
                     .output()
                     .await;
@@ -548,7 +576,7 @@ impl CursorTool for GitBranchTool {
                 })?;
 
                 let output = Command::new("git")
-                    .args(&["checkout", branch_name])
+                    .args(["checkout", branch_name])
                     .current_dir(&project_root)
                     .output()
                     .await
@@ -596,22 +624,19 @@ fn parse_git_status(output: &str) -> Result<GitStatus> {
                 // Handle branch with upstream info: main...origin/main
                 let branch_name = branch_part.split("...").next().unwrap_or(branch_part);
                 // Handle initial commit state: No commits yet on main
-                let branch_name = branch_name
-                    .split_whitespace()
-                    .last()
-                    .unwrap_or(branch_name);
+                let branch_name = branch_name.split_whitespace().last().unwrap_or(branch_name);
                 status.branch = branch_name.to_string();
 
                 // Parse ahead/behind if present
-                if let Some(upstream_idx) = branch_part.find("[") {
-                    if let Some(end_idx) = branch_part.find("]") {
-                        let upstream_info = &branch_part[upstream_idx + 1..end_idx];
-                        for part in upstream_info.split(", ") {
-                            if part.starts_with("ahead ") {
-                                status.ahead = part[6..].parse().unwrap_or(0);
-                            } else if part.starts_with("behind ") {
-                                status.behind = part[7..].parse().unwrap_or(0);
-                            }
+                if let Some(upstream_idx) = branch_part.find("[")
+                    && let Some(end_idx) = branch_part.find("]")
+                {
+                    let upstream_info = &branch_part[upstream_idx + 1..end_idx];
+                    for part in upstream_info.split(", ") {
+                        if let Some(ahead) = part.strip_prefix("ahead ") {
+                            status.ahead = ahead.parse().unwrap_or(0);
+                        } else if let Some(behind) = part.strip_prefix("behind ") {
+                            status.behind = behind.parse().unwrap_or(0);
                         }
                     }
                 }
@@ -706,7 +731,7 @@ R  renamed.txt"#;
         // This test requires a git repository
         // Skip if not in a git repo
         let output = Command::new("git")
-            .args(&["rev-parse", "--git-dir"])
+            .args(["rev-parse", "--git-dir"])
             .output()
             .await;
 
@@ -726,7 +751,7 @@ R  renamed.txt"#;
     async fn test_git_branch_tool_list() {
         // This test requires a git repository
         let output = Command::new("git")
-            .args(&["rev-parse", "--git-dir"])
+            .args(["rev-parse", "--git-dir"])
             .output()
             .await;
 

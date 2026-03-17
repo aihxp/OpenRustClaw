@@ -1,9 +1,9 @@
 //! Session manager.
 
+use openrustclaw_core::error::{Error, GatewayError, Result};
+use openrustclaw_core::types::{Platform, Session, SessionType};
 use std::collections::HashMap;
 use tokio::sync::RwLock;
-use openrustclaw_core::types::{Session, SessionType, Platform};
-use openrustclaw_core::error::{GatewayError, Error, Result};
 use tracing::info;
 
 /// Manages active sessions.
@@ -27,14 +27,19 @@ impl SessionManager {
     ) -> Result<Session> {
         let session = Session::new(session_type, user_id, platform);
         let id = session.id.to_string();
-        self.sessions.write().await.insert(id.clone(), session.clone());
+        self.sessions
+            .write()
+            .await
+            .insert(id.clone(), session.clone());
         info!(session_id = %id, user_id = %user_id, "Session created");
         Ok(session)
     }
 
     /// Get a session by ID.
     pub async fn get_session(&self, id: &str) -> Result<Session> {
-        self.sessions.read().await
+        self.sessions
+            .read()
+            .await
             .get(id)
             .cloned()
             .ok_or_else(|| Error::Gateway(GatewayError::SessionNotFound(id.to_string())))

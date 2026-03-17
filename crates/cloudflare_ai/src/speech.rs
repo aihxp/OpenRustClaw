@@ -53,7 +53,8 @@ impl<'a> Speech<'a> {
                 let model = model.clone();
                 Box::pin(async move {
                     let response = client.post(&model, body).await?;
-                    let result: SpeechRecognitionResponse = client.handle_response(response).await?;
+                    let result: SpeechRecognitionResponse =
+                        client.handle_response(response).await?;
                     Ok(result)
                 })
             })
@@ -327,7 +328,7 @@ pub mod languages {
 
 /// Module for base64 serialization of audio bytes.
 mod base64_serde {
-    use base64::{engine::general_purpose::STANDARD, Engine};
+    use base64::{Engine, engine::general_purpose::STANDARD};
     use serde::{Deserialize, Deserializer, Serializer};
 
     pub fn serialize<S>(bytes: &[u8], serializer: S) -> Result<S::Ok, S::Error>
@@ -372,8 +373,7 @@ mod tests {
 
     #[test]
     fn test_speech_recognition_with_model() {
-        let req = SpeechRecognitionRequest::new(vec![1, 2, 3])
-            .with_model("@cf/custom/model");
+        let req = SpeechRecognitionRequest::new(vec![1, 2, 3]).with_model("@cf/custom/model");
         assert_eq!(req.model, "@cf/custom/model");
     }
 
@@ -405,9 +405,7 @@ mod tests {
 
     #[test]
     fn test_builder_missing_audio() {
-        let result = SpeechRecognitionRequest::builder()
-            .language("en")
-            .build();
+        let result = SpeechRecognitionRequest::builder().language("en").build();
 
         assert!(result.is_err());
     }
@@ -420,8 +418,9 @@ mod tests {
                 "word_count": 2,
                 "language": "en",
                 "duration": 3.5
-            }"#
-        ).unwrap();
+            }"#,
+        )
+        .unwrap();
 
         assert_eq!(response.text(), Some("Hello world"));
         assert_eq!(response.word_count, Some(2));

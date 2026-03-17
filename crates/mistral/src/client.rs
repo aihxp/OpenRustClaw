@@ -3,7 +3,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
+use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue};
 use secrecy::{ExposeSecret, SecretString};
 use tracing::{debug, trace};
 
@@ -65,10 +65,11 @@ impl MistralClient {
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
         headers.insert(
             AUTHORIZATION,
-            HeaderValue::from_str(&format!("Bearer {}", config.api_key.expose_secret()))
-                .map_err(|_| MistralError::Config {
+            HeaderValue::from_str(&format!("Bearer {}", config.api_key.expose_secret())).map_err(
+                |_| MistralError::Config {
                     message: "Invalid API key".to_string(),
-                })?,
+                },
+            )?,
         );
 
         let http = reqwest::Client::builder()
@@ -181,7 +182,11 @@ impl MistralClient {
     }
 
     /// Make a POST request to the API.
-    pub(crate) async fn post(&self, path: &str, body: serde_json::Value) -> Result<reqwest::Response> {
+    pub(crate) async fn post(
+        &self,
+        path: &str,
+        body: serde_json::Value,
+    ) -> Result<reqwest::Response> {
         let url = format!("{}{}", self.inner.base_url, path);
         trace!(url = %url, body = %body, "Making POST request");
 
@@ -215,15 +220,20 @@ impl MistralClient {
     }
 
     /// Parse a response or return an error.
-    pub(crate) async fn handle_response(&self, response: reqwest::Response) -> Result<serde_json::Value> {
+    pub(crate) async fn handle_response(
+        &self,
+        response: reqwest::Response,
+    ) -> Result<serde_json::Value> {
         let status = response.status();
 
         if status.is_success() {
-            let body = response.json::<serde_json::Value>().await.map_err(|e| {
-                MistralError::Internal {
-                    message: format!("Failed to parse JSON response: {e}"),
-                }
-            })?;
+            let body =
+                response
+                    .json::<serde_json::Value>()
+                    .await
+                    .map_err(|e| MistralError::Internal {
+                        message: format!("Failed to parse JSON response: {e}"),
+                    })?;
             Ok(body)
         } else if status == reqwest::StatusCode::NOT_FOUND {
             let body = response.text().await.unwrap_or_default();

@@ -8,10 +8,7 @@ use clap::Subcommand;
 use std::time::Duration;
 
 use openrustclaw_mcp2cli::{
-    adapters::ToolSource,
-    cache::ToolCache,
-    discovery::ToolDiscovery,
-    token_counter::TokenCounter,
+    adapters::ToolSource, cache::ToolCache, discovery::ToolDiscovery, token_counter::TokenCounter,
     toon,
 };
 
@@ -127,46 +124,54 @@ pub async fn list(
     format: OutputFormat,
 ) -> Result<()> {
     let source = resolve_source(mcp, mcp_stdio, spec, base_url)?;
-    
+
     let discovery = ToolDiscovery::with_ttl(Duration::from_secs(3600));
-    
+
     if refresh {
         discovery.clear_cache(&source);
     }
-    
-    let tools = discovery.list_tools(&source).await
+
+    let tools = discovery
+        .list_tools(&source)
+        .await
         .context("Failed to list tools")?;
-    
+
     let total_tokens: usize = tools.iter().map(|t| t.token_cost).sum();
-    
+
     match format {
         OutputFormat::Table => {
             println!("╔══════════════════════════════════════════════════════════╗");
-            println!("║           Available Tools ({:>3} found)              ║", tools.len());
+            println!(
+                "║           Available Tools ({:>3} found)              ║",
+                tools.len()
+            );
             println!("╚══════════════════════════════════════════════════════════╝");
             println!();
             println!("{:<30} {:<50} {:>10}", "Name", "Description", "Tokens");
             println!("{}", "─".repeat(95));
-            
+
             for tool in &tools {
                 let desc = if tool.description.len() > 47 {
                     format!("{}...", &tool.description[..47])
                 } else {
                     tool.description.clone()
                 };
-                println!("{:<30} {:<50} {:>10}", 
+                println!(
+                    "{:<30} {:<50} {:>10}",
                     truncate(&tool.name, 30),
                     desc,
                     tool.token_cost
                 );
             }
-            
+
             println!();
             println!("Total: {} tools, ~{} tokens", tools.len(), total_tokens);
             println!("Native MCP would cost: ~{} tokens", tools.len() * 121);
-            let savings = if tools.len() > 0 {
+            let savings = if !tools.is_empty() {
                 ((tools.len() * 121) - total_tokens) as f64 / (tools.len() * 121) as f64 * 100.0
-            } else { 0.0 };
+            } else {
+                0.0
+            };
             println!("Savings: {:.1}% with mcp2cli", savings);
         }
         OutputFormat::Json => {
@@ -192,7 +197,7 @@ pub async fn list(
             println!("{}", toon::encode_toon(&json));
         }
     }
-    
+
     Ok(())
 }
 
@@ -204,12 +209,14 @@ pub async fn help_cmd(
     format: OutputFormat,
 ) -> Result<()> {
     let source = resolve_source(mcp, None, spec, None)?;
-    
+
     let discovery = ToolDiscovery::with_ttl(Duration::from_secs(3600));
-    
-    let help = discovery.get_help(&source, &tool_name).await
+
+    let help = discovery
+        .get_help(&source, &tool_name)
+        .await
         .context(format!("Failed to get help for tool '{}'", tool_name))?;
-    
+
     match format {
         OutputFormat::Table | OutputFormat::Json => {
             println!("╔══════════════════════════════════════════════════════════╗");
@@ -219,13 +226,17 @@ pub async fn help_cmd(
             println!("Description: {}", help.description);
             println!("Token cost: ~{} tokens", help.token_cost);
             println!();
-            
+
             if !help.parameters.is_empty() {
                 println!("Parameters:");
-                println!("{:<20} {:<15} {:<10} {}", "Name", "Type", "Required", "Description");
+                println!(
+                    "{:<20} {:<15} {:<10} Description",
+                    "Name", "Type", "Required"
+                );
                 println!("{}", "─".repeat(80));
                 for param in &help.parameters {
-                    println!("{:<20} {:<15} {:<10} {}",
+                    println!(
+                        "{:<20} {:<15} {:<10} {}",
                         param.name,
                         &param.type_name,
                         if param.required { "yes" } else { "no" },
@@ -233,7 +244,7 @@ pub async fn help_cmd(
                     );
                 }
             }
-            
+
             println!();
             println!("Usage:");
             println!("  {}", help.usage);
@@ -256,7 +267,7 @@ pub async fn help_cmd(
             println!("{}", toon::encode_toon(&json));
         }
     }
-    
+
     Ok(())
 }
 
@@ -270,7 +281,7 @@ pub async fn run(
     format: OutputFormat,
 ) -> Result<()> {
     let source = resolve_source(mcp, None, spec, None)?;
-    
+
     let args_json = if stdin {
         let mut input = String::new();
         std::io::stdin().read_line(&mut input)?;
@@ -280,12 +291,14 @@ pub async fn run(
     } else {
         serde_json::json!({})
     };
-    
+
     let discovery = ToolDiscovery::with_ttl(Duration::from_secs(3600));
-    
-    let result = discovery.execute(&source, &tool_name, args_json).await
+
+    let result = discovery
+        .execute(&source, &tool_name, args_json)
+        .await
         .context(format!("Failed to execute tool '{}'", tool_name))?;
-    
+
     match format {
         OutputFormat::Table | OutputFormat::Json => {
             println!("{}", result);
@@ -296,71 +309,101 @@ pub async fn run(
             println!("{}", toon::encode_toon(&json));
         }
     }
-    
+
     Ok(())
 }
 
 /// Run token cost analysis
 pub async fn analyze(tools: usize, turns: usize, used: usize) -> Result<()> {
     let comparison = TokenCounter::compare_costs(tools, turns, used);
-    
+
     println!("╔══════════════════════════════════════════════════════════╗");
     println!("║         Token Cost Analysis: Native MCP vs mcp2cli       ║");
     println!("╚══════════════════════════════════════════════════════════╝");
     println!();
-    println!("Scenario: {} tools, {} turns, {} unique tools used", tools, turns, used);
+    println!(
+        "Scenario: {} tools, {} turns, {} unique tools used",
+        tools, turns, used
+    );
     println!();
     println!("┌─────────────────────────────────────────────────────────┐");
     println!("│ Native MCP (full schemas every turn):                   │");
-    println!("│   {:>10} tokens                                      │", comparison.native_tokens);
+    println!(
+        "│   {:>10} tokens                                      │",
+        comparison.native_tokens
+    );
     println!("├─────────────────────────────────────────────────────────┤");
     println!("│ mcp2cli (on-demand discovery):                          │");
-    println!("│   {:>10} tokens                                      │", comparison.mcp2cli_tokens);
+    println!(
+        "│   {:>10} tokens                                      │",
+        comparison.mcp2cli_tokens
+    );
     println!("├─────────────────────────────────────────────────────────┤");
-    println!("│ Savings: {:>5.1}%                                        │", comparison.savings_percent);
+    println!(
+        "│ Savings: {:>5.1}%                                        │",
+        comparison.savings_percent
+    );
     println!("└─────────────────────────────────────────────────────────┘");
     println!();
-    
+
     // Show breakdown
     let list_cost = tools * 16;
     let help_cost = used * 120;
     let system_prompt = turns * 67;
-    
+
     println!("mcp2cli cost breakdown:");
-    println!("  --list ({} tools × 16 tokens):    {} tokens", tools, list_cost);
-    println!("  --help ({} tools × 120 tokens):  {} tokens", used, help_cost);
-    println!("  System prompt ({} turns):        {} tokens", turns, system_prompt);
+    println!(
+        "  --list ({} tools × 16 tokens):    {} tokens",
+        tools, list_cost
+    );
+    println!(
+        "  --help ({} tools × 120 tokens):  {} tokens",
+        used, help_cost
+    );
+    println!(
+        "  System prompt ({} turns):        {} tokens",
+        turns, system_prompt
+    );
     println!("  ─────────────────────────────────────────");
-    println!("  Total:                             {} tokens", list_cost + help_cost + system_prompt);
-    
+    println!(
+        "  Total:                             {} tokens",
+        list_cost + help_cost + system_prompt
+    );
+
     Ok(())
 }
 
 /// Convert to/from TOON format
 pub async fn toon_cmd(input: Option<String>, decode: bool) -> Result<()> {
     let content = if let Some(path) = input {
-        tokio::fs::read_to_string(path).await.context("Failed to read input file")?
+        tokio::fs::read_to_string(path)
+            .await
+            .context("Failed to read input file")?
     } else {
         let mut buf = String::new();
         std::io::stdin().read_line(&mut buf)?;
         buf
     };
-    
+
     if decode {
         let decoded = toon::decode_toon(&content).context("Failed to decode TOON")?;
         println!("{}", serde_json::to_string_pretty(&decoded)?);
     } else {
-        let json: serde_json::Value = serde_json::from_str(&content).context("Invalid JSON input")?;
+        let json: serde_json::Value =
+            serde_json::from_str(&content).context("Invalid JSON input")?;
         let encoded = toon::encode_toon(&json);
         println!("{}", encoded);
-        
+
         // Show savings
         let json_tokens = content.split_whitespace().count();
         let toon_tokens = encoded.split_whitespace().count();
         let savings = (json_tokens - toon_tokens) as f64 / json_tokens as f64 * 100.0;
-        eprintln!("Token savings: {:.1}% ({} → {} tokens)", savings, json_tokens, toon_tokens);
+        eprintln!(
+            "Token savings: {:.1}% ({} → {} tokens)",
+            savings, json_tokens, toon_tokens
+        );
     }
-    
+
     Ok(())
 }
 
@@ -394,7 +437,7 @@ fn resolve_source(
 ) -> Result<ToolSource> {
     match (mcp, mcp_stdio, spec) {
         (Some(url), None, None) => Ok(ToolSource::McpUrl { url }),
-        (None, Some(cmd), None) => Ok(ToolSource::McpStdio { 
+        (None, Some(cmd), None) => Ok(ToolSource::McpStdio {
             command: cmd,
             args: Vec::new(),
         }),
@@ -451,12 +494,7 @@ mod tests {
 
     #[test]
     fn test_resolve_source_mcp_url() {
-        let result = resolve_source(
-            Some("http://localhost:8080".to_string()),
-            None,
-            None,
-            None,
-        );
+        let result = resolve_source(Some("http://localhost:8080".to_string()), None, None, None);
         assert!(result.is_ok());
         match result.unwrap() {
             ToolSource::McpUrl { url } => assert_eq!(url, "http://localhost:8080"),
@@ -466,12 +504,7 @@ mod tests {
 
     #[test]
     fn test_resolve_source_mcp_stdio() {
-        let result = resolve_source(
-            None,
-            Some("npx some-server".to_string()),
-            None,
-            None,
-        );
+        let result = resolve_source(None, Some("npx some-server".to_string()), None, None);
         assert!(result.is_ok());
         match result.unwrap() {
             ToolSource::McpStdio { command, args } => {
@@ -501,12 +534,7 @@ mod tests {
 
     #[test]
     fn test_resolve_source_openapi_file() {
-        let result = resolve_source(
-            None,
-            None,
-            Some("./spec.yaml".to_string()),
-            None,
-        );
+        let result = resolve_source(None, None, Some("./spec.yaml".to_string()), None);
         assert!(result.is_ok());
         match result.unwrap() {
             ToolSource::OpenApiFile { path } => assert_eq!(path, "./spec.yaml"),
@@ -518,7 +546,12 @@ mod tests {
     fn test_resolve_source_no_source() {
         let result = resolve_source(None, None, None, None);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Exactly one source required"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Exactly one source required")
+        );
     }
 
     #[test]

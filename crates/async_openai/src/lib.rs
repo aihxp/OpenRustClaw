@@ -53,14 +53,12 @@ pub mod files;
 #[cfg(feature = "fine-tuning")]
 pub mod fine_tuning;
 
-pub use client::{OpenAIClient, ClientConfig};
+pub use client::{ClientConfig, OpenAIClient};
 pub use constants::*;
 pub use error::{OpenAIError, Result};
 
 // Re-export commonly used types
-pub use types::{
-    ChatChoice, ChatMessage, ChatResponse, Function, FunctionCall, Role, TokenUsage,
-};
+pub use types::{ChatChoice, ChatMessage, ChatResponse, Function, FunctionCall, Role, TokenUsage};
 
 pub use chat::{ChatRequest, ChatRequestBuilder};
 pub use embeddings::EmbeddingRequest;
@@ -69,7 +67,7 @@ pub use embeddings::EmbeddingRequest;
 pub use streaming::{ChatCompletionChunk, StreamChoice, StreamDelta};
 
 #[cfg(feature = "assistants")]
-pub use assistants::{Assistant, AssistantRequest, Thread, ThreadMessage, Run};
+pub use assistants::{Assistant, AssistantRequest, Run, Thread, ThreadMessage};
 
 /// The version of this crate.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

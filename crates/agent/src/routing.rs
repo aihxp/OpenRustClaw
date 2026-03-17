@@ -346,7 +346,8 @@ impl AgentRouter {
         debug!(rule = %rule.name, priority = rule.priority, "Adding routing rule");
         self.routing_rules.push(rule);
         // Sort by priority (highest first)
-        self.routing_rules.sort_by(|a, b| b.priority.cmp(&a.priority));
+        self.routing_rules
+            .sort_by(|a, b| b.priority.cmp(&a.priority));
     }
 
     /// Remove a routing rule by name
@@ -362,7 +363,11 @@ impl AgentRouter {
     }
 
     /// Route a message to the appropriate agent
-    pub async fn route(&self, message: &Message, context: &RoutingContext) -> anyhow::Result<RoutingResult> {
+    pub async fn route(
+        &self,
+        message: &Message,
+        context: &RoutingContext,
+    ) -> anyhow::Result<RoutingResult> {
         trace!(content = %message.content, channel = %context.channel, "Routing message");
 
         // Check rules in priority order
@@ -395,9 +400,13 @@ impl AgentRouter {
     }
 
     /// Route and send a message to the appropriate agent
-    pub async fn route_and_send(&self, message: Message, context: &RoutingContext) -> anyhow::Result<()> {
+    pub async fn route_and_send(
+        &self,
+        message: Message,
+        context: &RoutingContext,
+    ) -> anyhow::Result<()> {
         let result = self.route(&message, context).await?;
-        
+
         if let Some(agent) = self.agents.get(&result.agent_id) {
             agent.sender.send(message).await?;
             Ok(())
@@ -408,7 +417,8 @@ impl AgentRouter {
 
     /// Get or create a workspace
     pub fn workspace(&mut self, name: &str) -> &mut Workspace {
-        self.workspaces.entry(name.to_string())
+        self.workspaces
+            .entry(name.to_string())
             .or_insert_with(|| Workspace::new(name))
     }
 
@@ -446,7 +456,11 @@ impl AgentRouter {
     pub fn find_by_capability(&self, capability: &str) -> Vec<&AgentHandle> {
         self.agents
             .values()
-            .filter(|a| a.capabilities.iter().any(|c| c.eq_ignore_ascii_case(capability)))
+            .filter(|a| {
+                a.capabilities
+                    .iter()
+                    .any(|c| c.eq_ignore_ascii_case(capability))
+            })
             .collect()
     }
 
@@ -701,7 +715,10 @@ impl CapabilityMatcher {
     /// Create a matcher that requires ANY of the capabilities
     pub fn any(capabilities: &[impl AsRef<str>]) -> Self {
         Self {
-            required_capabilities: capabilities.iter().map(|c| c.as_ref().to_string()).collect(),
+            required_capabilities: capabilities
+                .iter()
+                .map(|c| c.as_ref().to_string())
+                .collect(),
             require_all: false,
         }
     }
@@ -709,7 +726,10 @@ impl CapabilityMatcher {
     /// Create a matcher that requires ALL of the capabilities
     pub fn all(capabilities: &[impl AsRef<str>]) -> Self {
         Self {
-            required_capabilities: capabilities.iter().map(|c| c.as_ref().to_string()).collect(),
+            required_capabilities: capabilities
+                .iter()
+                .map(|c| c.as_ref().to_string())
+                .collect(),
             require_all: true,
         }
     }
@@ -721,24 +741,32 @@ impl RouteMatcher for CapabilityMatcher {
         // This matcher checks message content for capability indicators
         // For example, code-related keywords indicate "code" capability
         let content_lower = message.content.to_lowercase();
-        
+
         let matches_iter = self.required_capabilities.iter().map(|cap| {
             let cap_lower = cap.to_lowercase();
             // Check for capability keywords in the message
             match cap_lower.as_str() {
-                "code" => content_lower.contains("code") 
-                    || content_lower.contains("program")
-                    || content_lower.contains("function")
-                    || content_lower.contains("bug"),
-                "git" => content_lower.contains("git") 
-                    || content_lower.contains("commit")
-                    || content_lower.contains("branch"),
-                "sql" | "database" => content_lower.contains("sql")
-                    || content_lower.contains("database")
-                    || content_lower.contains("query"),
-                "shell" => content_lower.contains("shell")
-                    || content_lower.contains("command")
-                    || content_lower.contains("terminal"),
+                "code" => {
+                    content_lower.contains("code")
+                        || content_lower.contains("program")
+                        || content_lower.contains("function")
+                        || content_lower.contains("bug")
+                }
+                "git" => {
+                    content_lower.contains("git")
+                        || content_lower.contains("commit")
+                        || content_lower.contains("branch")
+                }
+                "sql" | "database" => {
+                    content_lower.contains("sql")
+                        || content_lower.contains("database")
+                        || content_lower.contains("query")
+                }
+                "shell" => {
+                    content_lower.contains("shell")
+                        || content_lower.contains("command")
+                        || content_lower.contains("terminal")
+                }
                 _ => content_lower.contains(&cap_lower),
             }
         });
@@ -796,19 +824,19 @@ impl AgentRouterBuilder {
     /// Build the router
     pub fn build(self) -> AgentRouter {
         let mut router = AgentRouter::new(self.default_agent);
-        
+
         for agent in self.agents {
             router.register_agent(agent);
         }
-        
+
         for rule in self.rules {
             router.add_rule(rule);
         }
-        
+
         for workspace in self.workspaces {
             router.workspaces.insert(workspace.name.clone(), workspace);
         }
-        
+
         router
     }
 }
@@ -826,28 +854,56 @@ mod tests {
     async fn test_keyword_matcher_any() {
         let matcher = KeywordMatcher::any(&["code", "program"]);
         let ctx = RoutingContext::default();
-        
-        assert!(matcher.matches(&create_test_message("I need help with code"), &ctx).await);
-        assert!(matcher.matches(&create_test_message("Program something"), &ctx).await);
-        assert!(!matcher.matches(&create_test_message("Hello world"), &ctx).await);
+
+        assert!(
+            matcher
+                .matches(&create_test_message("I need help with code"), &ctx)
+                .await
+        );
+        assert!(
+            matcher
+                .matches(&create_test_message("Program something"), &ctx)
+                .await
+        );
+        assert!(
+            !matcher
+                .matches(&create_test_message("Hello world"), &ctx)
+                .await
+        );
     }
 
     #[tokio::test]
     async fn test_keyword_matcher_all() {
         let matcher = KeywordMatcher::all(&["code", "review"]);
         let ctx = RoutingContext::default();
-        
-        assert!(matcher.matches(&create_test_message("code review please"), &ctx).await);
-        assert!(!matcher.matches(&create_test_message("code something"), &ctx).await);
+
+        assert!(
+            matcher
+                .matches(&create_test_message("code review please"), &ctx)
+                .await
+        );
+        assert!(
+            !matcher
+                .matches(&create_test_message("code something"), &ctx)
+                .await
+        );
     }
 
     #[tokio::test]
     async fn test_regex_matcher() {
         let matcher = RegexMatcher::new(r"\b\w+\.rs\b").unwrap();
         let ctx = RoutingContext::default();
-        
-        assert!(matcher.matches(&create_test_message("Check main.rs file"), &ctx).await);
-        assert!(!matcher.matches(&create_test_message("Check main.py file"), &ctx).await);
+
+        assert!(
+            matcher
+                .matches(&create_test_message("Check main.rs file"), &ctx)
+                .await
+        );
+        assert!(
+            !matcher
+                .matches(&create_test_message("Check main.py file"), &ctx)
+                .await
+        );
     }
 
     #[tokio::test]
@@ -855,7 +911,7 @@ mod tests {
         let matcher = ChannelMatcher::single("discord");
         let ctx = RoutingContext::new("discord", "user1");
         let ctx2 = RoutingContext::new("slack", "user1");
-        
+
         assert!(matcher.matches(&create_test_message("Hello"), &ctx).await);
         assert!(!matcher.matches(&create_test_message("Hello"), &ctx2).await);
     }
@@ -865,7 +921,7 @@ mod tests {
         let matcher = WorkspaceMatcher::new("dev");
         let ctx = RoutingContext::new("web", "user1").with_workspace("dev");
         let ctx2 = RoutingContext::new("web", "user1").with_workspace("prod");
-        
+
         assert!(matcher.matches(&create_test_message("Hello"), &ctx).await);
         assert!(!matcher.matches(&create_test_message("Hello"), &ctx2).await);
     }
@@ -875,7 +931,7 @@ mod tests {
         let matcher = DmMatcher::new();
         let ctx = RoutingContext::new("web", "user1").with_dm(true);
         let ctx2 = RoutingContext::new("web", "user1").with_dm(false);
-        
+
         assert!(matcher.matches(&create_test_message("Hello"), &ctx).await);
         assert!(!matcher.matches(&create_test_message("Hello"), &ctx2).await);
     }
@@ -884,15 +940,18 @@ mod tests {
     async fn test_router_basic() {
         let (tx, _rx) = mpsc::channel(10);
         let mut router = AgentRouter::new(AgentId::new("main"));
-        
+
         // Register a dev agent
-        router.register_agent(AgentHandle::new(
-            AgentId::new("dev"),
-            "Developer Agent",
-            "default",
-            SessionType::Dm,
-            tx,
-        ).with_capability("code"));
+        router.register_agent(
+            AgentHandle::new(
+                AgentId::new("dev"),
+                "Developer Agent",
+                "default",
+                SessionType::Dm,
+                tx,
+            )
+            .with_capability("code"),
+        );
 
         // Add routing rule
         router.add_rule(RoutingRule::new(
@@ -903,14 +962,20 @@ mod tests {
         ));
 
         let ctx = RoutingContext::new("web", "user1");
-        
+
         // Should route to dev
-        let result = router.route(&create_test_message("Help with code"), &ctx).await.unwrap();
+        let result = router
+            .route(&create_test_message("Help with code"), &ctx)
+            .await
+            .unwrap();
         assert_eq!(result.agent_id.0, "dev");
         assert!(!result.is_default);
-        
+
         // Should use default
-        let result = router.route(&create_test_message("Hello"), &ctx).await.unwrap();
+        let result = router
+            .route(&create_test_message("Hello"), &ctx)
+            .await
+            .unwrap();
         assert_eq!(result.agent_id.0, "main");
         assert!(result.is_default);
     }
@@ -918,15 +983,15 @@ mod tests {
     #[tokio::test]
     async fn test_workspace_management() {
         let mut router = AgentRouter::new(AgentId::new("main"));
-        
+
         // Create workspace
         let workspace = router.workspace("dev");
         workspace.add_agent(AgentId::new("agent1"));
         workspace.shared_memory = true;
-        
+
         assert!(router.has_workspace("dev"));
         assert!(!router.has_workspace("prod"));
-        
+
         let ws = router.get_workspace("dev").unwrap();
         assert!(ws.shared_memory);
         assert_eq!(ws.agents.len(), 1);
@@ -938,13 +1003,21 @@ mod tests {
             Box::new(DmMatcher::new()),
             Box::new(KeywordMatcher::any(&["code"])),
         ]);
-        
+
         let ctx = RoutingContext::new("web", "user1").with_dm(true);
         let ctx2 = RoutingContext::new("web", "user1").with_dm(false);
-        
+
         // Both conditions must match
-        assert!(matcher.matches(&create_test_message("Help with code"), &ctx).await);
-        assert!(!matcher.matches(&create_test_message("Help with code"), &ctx2).await);
+        assert!(
+            matcher
+                .matches(&create_test_message("Help with code"), &ctx)
+                .await
+        );
+        assert!(
+            !matcher
+                .matches(&create_test_message("Help with code"), &ctx2)
+                .await
+        );
         assert!(!matcher.matches(&create_test_message("Hello"), &ctx).await);
     }
 }

@@ -5,9 +5,9 @@
 //! wire format expected by the target provider, and parses provider-specific
 //! tool call responses back into the unified [`ToolCall`] type.
 
+use openrustclaw_core::error::{Error, ProviderError, Result};
 use openrustclaw_core::types::{ToolCall, ToolDefinition, ToolFormat};
 use serde_json::Value;
-use openrustclaw_core::error::{Error, ProviderError, Result};
 
 /// Translate a unified [`ToolDefinition`] to a provider-specific JSON value.
 pub fn translate_tool_definition(tool: &ToolDefinition, target: ToolFormat) -> Value {
@@ -56,13 +56,10 @@ fn to_anthropic_tool(tool: &ToolDefinition) -> Value {
 fn to_openai_tool(tool: &ToolDefinition) -> Value {
     let mut params = tool.parameters.clone();
     // OpenAI strict mode requires additionalProperties: false on all objects
-    if tool.strict {
-        if let Some(obj) = params.as_object_mut() {
-            obj.insert(
-                "additionalProperties".to_string(),
-                Value::Bool(false),
-            );
-        }
+    if tool.strict
+        && let Some(obj) = params.as_object_mut()
+    {
+        obj.insert("additionalProperties".to_string(), Value::Bool(false));
     }
     serde_json::json!({
         "type": "function",
@@ -107,9 +104,7 @@ fn to_mcp_tool(tool: &ToolDefinition) -> Value {
 pub fn parse_anthropic_tool_calls(content_blocks: &[Value]) -> Vec<ToolCall> {
     content_blocks
         .iter()
-        .filter(|block| {
-            block.get("type").and_then(|t| t.as_str()) == Some("tool_use")
-        })
+        .filter(|block| block.get("type").and_then(|t| t.as_str()) == Some("tool_use"))
         .filter_map(|block| {
             Some(ToolCall {
                 id: block.get("id")?.as_str()?.to_string(),
@@ -144,15 +139,12 @@ pub fn parse_openai_tool_calls(tool_calls: &[Value]) -> Result<Vec<ToolCall>> {
                 })
             })?;
 
-            let id = tc
-                .get("id")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| {
-                    Error::Provider(ProviderError::InvalidToolCall {
-                        provider: "openai".to_string(),
-                        message: "Missing tool call id".to_string(),
-                    })
-                })?;
+            let id = tc.get("id").and_then(|v| v.as_str()).ok_or_else(|| {
+                Error::Provider(ProviderError::InvalidToolCall {
+                    provider: "openai".to_string(),
+                    message: "Missing tool call id".to_string(),
+                })
+            })?;
 
             let name = function
                 .get("name")

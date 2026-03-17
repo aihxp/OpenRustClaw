@@ -48,10 +48,7 @@ pub struct ContextualAnswersRequest {
 
 impl ContextualAnswersRequest {
     /// Create a new contextual answers request.
-    pub fn new(
-        question: impl Into<String>,
-        documents: Vec<Document>,
-    ) -> Self {
+    pub fn new(question: impl Into<String>, documents: Vec<Document>) -> Self {
         Self {
             question: question.into(),
             context: documents,

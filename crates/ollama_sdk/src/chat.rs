@@ -3,7 +3,9 @@
 use crate::client::OllamaClient;
 use crate::client::endpoints;
 use crate::error::{OllamaError, Result};
-use crate::types::{ChatMessage, ChatResponse, FormatType, ImageInput, KeepAlive, Options, Role, Tool};
+use crate::types::{
+    ChatMessage, ChatResponse, FormatType, ImageInput, KeepAlive, Options, Role, Tool,
+};
 
 /// Client for the chat API.
 #[derive(Debug)]
@@ -101,32 +103,26 @@ impl<'a> Chat<'a> {
         // Ollama uses NDJSON (newline-delimited JSON) for streaming
         let stream = response
             .bytes_stream()
-            .map(|bytes| {
-                match bytes {
-                    Ok(bytes) => {
-                        let text = String::from_utf8_lossy(&bytes);
-                        let lines: Vec<&str> = text.lines().collect();
-                        let results: Vec<Result<ChatStreamChunk>> = lines
-                            .into_iter()
-                            .filter(|line| !line.is_empty())
-                            .map(|line| {
-                                match serde_json::from_str::<ChatStreamChunk>(line) {
-                                    Ok(chunk) => Ok(chunk),
-                                    Err(e) => Err(OllamaError::Stream {
-                                        message: format!("Failed to parse NDJSON: {e}"),
-                                    }),
-                                }
-                            })
-                            .collect();
-                        
-                        futures::stream::iter(results)
-                    }
-                    Err(e) => {
-                        futures::stream::iter(vec![Err(OllamaError::Stream {
-                            message: format!("Stream error: {e}"),
-                        })])
-                    }
+            .map(|bytes| match bytes {
+                Ok(bytes) => {
+                    let text = String::from_utf8_lossy(&bytes);
+                    let lines: Vec<&str> = text.lines().collect();
+                    let results: Vec<Result<ChatStreamChunk>> = lines
+                        .into_iter()
+                        .filter(|line| !line.is_empty())
+                        .map(|line| match serde_json::from_str::<ChatStreamChunk>(line) {
+                            Ok(chunk) => Ok(chunk),
+                            Err(e) => Err(OllamaError::Stream {
+                                message: format!("Failed to parse NDJSON: {e}"),
+                            }),
+                        })
+                        .collect();
+
+                    futures::stream::iter(results)
                 }
+                Err(e) => futures::stream::iter(vec![Err(OllamaError::Stream {
+                    message: format!("Stream error: {e}"),
+                })]),
             })
             .flatten();
 
@@ -254,11 +250,7 @@ impl ChatRequestBuilder {
     }
 
     /// Add a user message with images for vision models.
-    pub fn user_with_images(
-        self,
-        content: impl Into<String>,
-        images: Vec<ImageInput>,
-    ) -> Self {
+    pub fn user_with_images(self, content: impl Into<String>, images: Vec<ImageInput>) -> Self {
         self.message_with_images(Role::User, content, images)
     }
 

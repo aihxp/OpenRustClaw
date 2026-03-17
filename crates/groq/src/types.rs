@@ -375,7 +375,9 @@ pub struct ChatResponse {
 impl ChatResponse {
     /// Get the content of the first choice.
     pub fn content(&self) -> Option<&str> {
-        self.choices.first().and_then(|c| c.message.content.as_deref())
+        self.choices
+            .first()
+            .and_then(|c| c.message.content.as_deref())
     }
 
     /// Get the message of the first choice.
@@ -588,7 +590,12 @@ mod tests {
     fn test_function_builder() {
         let func = Function::builder("get_weather", "Get weather")
             .string_property("location", "City name", true)
-            .enum_property("unit", "Temperature unit", vec!["celsius", "fahrenheit"], false)
+            .enum_property(
+                "unit",
+                "Temperature unit",
+                vec!["celsius", "fahrenheit"],
+                false,
+            )
             .build();
 
         assert_eq!(func.name, "get_weather");
@@ -629,7 +636,10 @@ mod tests {
     #[test]
     fn test_model_as_str() {
         assert_eq!(GroqModel::Llama3_8b.as_str(), "llama3-8b-8192");
-        assert_eq!(GroqModel::Llama3_1_70bVersatile.as_str(), "llama-3.1-70b-versatile");
+        assert_eq!(
+            GroqModel::Llama3_1_70bVersatile.as_str(),
+            "llama-3.1-70b-versatile"
+        );
         assert_eq!(GroqModel::Mixtral8x7b.as_str(), "mixtral-8x7b-32768");
         assert_eq!(GroqModel::WhisperLargeV3.as_str(), "whisper-large-v3");
     }

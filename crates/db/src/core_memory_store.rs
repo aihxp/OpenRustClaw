@@ -51,7 +51,10 @@ impl SqliteCoreMemoryStore {
     fn row_to_entry(row: &CoreMemoryRow) -> Result<CoreEntry> {
         let updated_at = chrono::DateTime::parse_from_rfc3339(&row.updated_at)
             .map_err(|e| {
-                Error::Database(DatabaseError::Query(format!("Invalid updated_at date: {}", e)))
+                Error::Database(DatabaseError::Query(format!(
+                    "Invalid updated_at date: {}",
+                    e
+                )))
             })?
             .with_timezone(&Utc);
 
@@ -197,10 +200,7 @@ impl CoreMemoryStoreTrait for SqliteCoreMemoryStore {
             )))
         })?;
 
-        debug!(
-            "Set core memory entry '{}' for user {}",
-            entry.key, user_id
-        );
+        debug!("Set core memory entry '{}' for user {}", entry.key, user_id);
         Ok(())
     }
 
@@ -320,7 +320,10 @@ mod tests {
     fn test_estimate_tokens() {
         // Roughly 4 chars per token (using integer division)
         assert_eq!(SqliteCoreMemoryStore::estimate_tokens("hello"), 1);
-        assert_eq!(SqliteCoreMemoryStore::estimate_tokens("this is a longer sentence"), 6);
+        assert_eq!(
+            SqliteCoreMemoryStore::estimate_tokens("this is a longer sentence"),
+            6
+        );
         // Single character is still 1 token due to max(1, ...)
         assert_eq!(SqliteCoreMemoryStore::estimate_tokens("x"), 1);
     }

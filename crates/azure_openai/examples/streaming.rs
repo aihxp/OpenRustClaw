@@ -22,11 +22,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .expect("AZURE_OPENAI_DEPLOYMENT environment variable not set");
 
     // Create the client
-    let client = AzureOpenAIClient::new(
-        &resource_name,
-        &deployment_name,
-        api_key.clone(),
-    )?;
+    let client = AzureOpenAIClient::new(&resource_name, &deployment_name, api_key.clone())?;
 
     println!("Sending streaming chat completion request...\n");
 

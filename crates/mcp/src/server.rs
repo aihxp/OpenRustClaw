@@ -50,10 +50,7 @@ impl McpServer {
 
     /// Handle a JSON-RPC request.
     pub fn handle_request(&self, request: &Value) -> Value {
-        let method = request
-            .get("method")
-            .and_then(|m| m.as_str())
-            .unwrap_or("");
+        let method = request.get("method").and_then(|m| m.as_str()).unwrap_or("");
         let id = request.get("id").cloned().unwrap_or(Value::Null);
         let params = request
             .get("params")
@@ -118,10 +115,7 @@ impl McpServer {
     }
 
     fn handle_tools_call(&self, params: &Value) -> Result<Value> {
-        let tool_name = params
-            .get("name")
-            .and_then(|n| n.as_str())
-            .unwrap_or("");
+        let tool_name = params.get("name").and_then(|n| n.as_str()).unwrap_or("");
         let arguments = params
             .get("arguments")
             .cloned()
@@ -281,10 +275,7 @@ mod tests {
         });
         let resp = server.handle_request(&req);
         let tools = resp["result"]["tools"].as_array().unwrap();
-        let names: Vec<&str> = tools
-            .iter()
-            .map(|t| t["name"].as_str().unwrap())
-            .collect();
+        let names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
         assert!(names.contains(&"echo"));
         assert!(names.contains(&"add"));
     }

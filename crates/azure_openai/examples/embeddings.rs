@@ -8,8 +8,8 @@
 //! cargo run --example embeddings
 //! ```
 
-use azure_openai::{AzureOpenAIClient, EmbeddingRequest};
 use azure_openai::embeddings::EmbeddingExt;
+use azure_openai::{AzureOpenAIClient, EmbeddingRequest};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -22,11 +22,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .expect("AZURE_OPENAI_EMBEDDING_DEPLOYMENT environment variable not set");
 
     // Create the client
-    let client = AzureOpenAIClient::new(
-        &resource_name,
-        &deployment_name,
-        api_key.clone(),
-    )?;
+    let client = AzureOpenAIClient::new(&resource_name, &deployment_name, api_key.clone())?;
 
     println!("Azure OpenAI Embeddings Example\n");
 
@@ -36,7 +32,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let embedding = client.embeddings().embed(text).await?;
     println!("   Text: {}", text);
     println!("   Dimensions: {}", embedding.len());
-    println!("   First 5 values: {:?}", &embedding[..5.min(embedding.len())]);
+    println!(
+        "   First 5 values: {:?}",
+        &embedding[..5.min(embedding.len())]
+    );
 
     // Multiple embeddings
     println!("\n2. Multiple Embeddings:");

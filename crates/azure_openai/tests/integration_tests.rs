@@ -6,8 +6,8 @@
 //! - AZURE_OPENAI_DEPLOYMENT
 
 use azure_openai::{
-    AzureOpenAIClient, AzureConfig, AzureRegion, ChatRequest,
-    EmbeddingRequest, AzureOpenAIModel, AzureOpenAIError, ContentFilterResults,
+    AzureConfig, AzureOpenAIClient, AzureOpenAIError, AzureOpenAIModel, AzureRegion, ChatRequest,
+    ContentFilterResults, EmbeddingRequest,
 };
 
 fn create_test_client() -> Option<AzureOpenAIClient> {
@@ -26,17 +26,17 @@ fn test_client_creation() {
     let client = client.unwrap();
     assert_eq!(client.resource_name(), "test-resource");
     assert_eq!(client.deployment_name(), "test-deployment");
-    assert_eq!(client.base_url(), "https://test-resource.openai.azure.com".to_string());
+    assert_eq!(
+        client.base_url(),
+        "https://test-resource.openai.azure.com".to_string()
+    );
     assert!(!client.is_azure_ad());
 }
 
 #[test]
 fn test_azure_ad_client_creation() {
-    let client = AzureOpenAIClient::with_azure_ad_token(
-        "test-resource",
-        "test-deployment",
-        "test-token",
-    );
+    let client =
+        AzureOpenAIClient::with_azure_ad_token("test-resource", "test-deployment", "test-token");
     assert!(client.is_ok());
 
     let client = client.unwrap();
@@ -132,8 +132,6 @@ fn test_azure_region() {
 
 #[test]
 fn test_error_types() {
-
-
     let auth_error = AzureOpenAIError::Authentication {
         message: "Invalid key".to_string(),
     };
@@ -169,7 +167,10 @@ fn test_tool_choice() {
 
     let function = ToolChoice::function("get_weather");
     match function {
-        ToolChoice::Specific { tool_type, function } => {
+        ToolChoice::Specific {
+            tool_type,
+            function,
+        } => {
             assert_eq!(tool_type, "function");
             assert_eq!(function.name, "get_weather");
         }
@@ -180,7 +181,7 @@ fn test_tool_choice() {
 #[test]
 fn test_build_url() {
     let client = AzureOpenAIClient::new("test-resource", "test-deployment", "test-key").unwrap();
-    
+
     // build_url is private, verify through base_url instead
     let base_url = client.base_url();
     assert!(base_url.contains("https://test-resource.openai.azure.com"));
@@ -198,8 +199,12 @@ async fn test_chat_completion() {
         .max_tokens(50)
         .build();
 
-    let response = client.chat().complete(request).await.expect("Request failed");
-    
+    let response = client
+        .chat()
+        .complete(request)
+        .await
+        .expect("Request failed");
+
     assert!(!response.id.is_empty());
     assert!(!response.model.is_empty());
     assert_eq!(response.choices.len(), 1);
@@ -211,11 +216,15 @@ async fn test_embeddings() {
     let client = create_test_client().expect("Failed to create client");
 
     let request = EmbeddingRequest::single("Hello world");
-    let response = client.embeddings().create(request).await.expect("Request failed");
-    
+    let response = client
+        .embeddings()
+        .create(request)
+        .await
+        .expect("Request failed");
+
     assert!(!response.data.is_empty());
     assert!(!response.model.is_empty());
-    
+
     let embedding = response.first().expect("No embedding returned");
     assert!(!embedding.embedding.is_empty());
 }
@@ -227,14 +236,11 @@ async fn test_streaming_chat() {
 
     let client = create_test_client().expect("Failed to create client");
 
-    let request = ChatRequest::builder()
-        .user("Hi")
-        .max_tokens(20)
-        .build();
+    let request = ChatRequest::builder().user("Hi").max_tokens(20).build();
 
     let chat = client.chat();
     let mut stream = chat.stream(request).await.expect("Failed to create stream");
-    
+
     let mut received_content = false;
     while let Some(chunk) = stream.next().await {
         if let Ok(chunk) = chunk {
@@ -246,6 +252,6 @@ async fn test_streaming_chat() {
             }
         }
     }
-    
+
     assert!(received_content);
 }

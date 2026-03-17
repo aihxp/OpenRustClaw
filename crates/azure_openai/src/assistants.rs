@@ -53,11 +53,7 @@ impl<'a> Assistants<'a> {
     }
 
     /// Update an assistant.
-    pub async fn update(
-        &self,
-        assistant_id: &str,
-        request: AssistantRequest,
-    ) -> Result<Assistant> {
+    pub async fn update(&self, assistant_id: &str, request: AssistantRequest) -> Result<Assistant> {
         let body = serde_json::to_value(&request)?;
         let path = format!("{}/{}", "/openai/assistants", assistant_id);
 

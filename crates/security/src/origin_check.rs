@@ -4,7 +4,7 @@
 //! without authentication. OpenRustClaw requires mandatory origin validation
 //! on ALL connections, including localhost.
 
-use openrustclaw_core::error::{SecurityError, Error, Result};
+use openrustclaw_core::error::{Error, Result, SecurityError};
 use tracing::warn;
 
 /// Validates WebSocket connection origins against an allow-list.
@@ -22,9 +22,11 @@ impl OriginValidator {
         // Parse and normalize the origin
         let normalized = self.normalize_origin(origin);
 
-        if self.allowed_origins.iter().any(|allowed| {
-            self.normalize_origin(allowed) == normalized
-        }) {
+        if self
+            .allowed_origins
+            .iter()
+            .any(|allowed| self.normalize_origin(allowed) == normalized)
+        {
             Ok(())
         } else {
             warn!(origin = %origin, "Rejected WebSocket connection from unauthorized origin");

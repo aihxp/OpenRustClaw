@@ -100,9 +100,7 @@ impl SqliteMemoryStore {
             .map(|dt| dt.with_timezone(&Utc));
 
         let created_at = DateTime::parse_from_rfc3339(&row.created_at)
-            .map_err(|e| {
-                Error::Database(DatabaseError::Query(format!("Invalid date: {}", e)))
-            })?
+            .map_err(|e| Error::Database(DatabaseError::Query(format!("Invalid date: {}", e))))?
             .with_timezone(&Utc);
 
         let metadata = row
@@ -125,7 +123,10 @@ impl SqliteMemoryStore {
             source_type,
             session_id,
             user_id: row.user_id.clone(),
-            namespace: row.namespace.clone().unwrap_or_else(|| "global".to_string()),
+            namespace: row
+                .namespace
+                .clone()
+                .unwrap_or_else(|| "global".to_string()),
             importance: row.importance.map(|f| f as f32).unwrap_or(0.5),
             confidence: row.confidence.map(|f| f as f32).unwrap_or(1.0),
             access_count: row.access_count.map(|i| i as u32).unwrap_or(0),
@@ -159,10 +160,7 @@ impl SqliteMemoryStore {
 
     /// Serialize a vector of f32 to bytes for BLOB storage.
     fn vector_to_blob(vector: &[f32]) -> Vec<u8> {
-        vector
-            .iter()
-            .flat_map(|f| f.to_le_bytes())
-            .collect()
+        vector.iter().flat_map(|f| f.to_le_bytes()).collect()
     }
 
     /// Deserialize bytes to a vector of f32.
@@ -208,10 +206,7 @@ impl SqliteMemoryStore {
     }
 
     /// Fetch vectors for a batch of memory entries.
-    async fn fetch_vectors(
-        &self,
-        memory_ids: &[String],
-    ) -> Result<HashMap<String, Vec<f32>>> {
+    async fn fetch_vectors(&self, memory_ids: &[String]) -> Result<HashMap<String, Vec<f32>>> {
         if memory_ids.is_empty() {
             return Ok(HashMap::new());
         }
@@ -321,10 +316,7 @@ impl SqliteMemoryStore {
                 .iter()
                 .map(|t| format!("'{}'", Self::memory_type_to_string(*t)))
                 .collect();
-            filters.push(format!(
-                "e.memory_type IN ({})",
-                types.join(", ")
-            ));
+            filters.push(format!("e.memory_type IN ({})", types.join(", ")));
         }
 
         if !query.source_types.is_empty() {
@@ -333,10 +325,7 @@ impl SqliteMemoryStore {
                 .iter()
                 .map(|t| format!("'{}'", Self::source_type_to_string(t)))
                 .collect();
-            filters.push(format!(
-                "e.source_type IN ({})",
-                types.join(", ")
-            ));
+            filters.push(format!("e.source_type IN ({})", types.join(", ")));
         }
 
         if let Some(ref namespace) = query.namespace {
@@ -380,9 +369,10 @@ impl SqliteMemoryStore {
 
         sql_query = sql_query.bind(fetch_limit as i64);
 
-        let rows: Vec<MemoryEntryRow> = sql_query.fetch_all(&self.pool).await.map_err(|e| {
-            Error::Database(DatabaseError::Query(format!("Search failed: {}", e)))
-        })?;
+        let rows: Vec<MemoryEntryRow> = sql_query
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| Error::Database(DatabaseError::Query(format!("Search failed: {}", e))))?;
 
         // Convert to MemoryEntry and apply scoring
         let mut candidates: Vec<(MemoryEntry, f32)> = Vec::new();
@@ -396,8 +386,7 @@ impl SqliteMemoryStore {
             // Apply temporal decay if recency weight is set
             let temporal_score = if query.recency_weight > 0.0 {
                 let decay = Self::temporal_decay(entry.created_at, now);
-                bm25_score * (1.0 - query.recency_weight)
-                    + decay * query.recency_weight
+                bm25_score * (1.0 - query.recency_weight) + decay * query.recency_weight
             } else {
                 bm25_score
             };
@@ -409,10 +398,7 @@ impl SqliteMemoryStore {
         }
 
         // Do vector similarity scoring
-        let memory_ids: Vec<String> = candidates
-            .iter()
-            .map(|(e, _)| e.id.to_string())
-            .collect();
+        let memory_ids: Vec<String> = candidates.iter().map(|(e, _)| e.id.to_string()).collect();
 
         let vectors = self.fetch_vectors(&memory_ids).await?;
 
@@ -522,7 +508,7 @@ impl MemoryStoreTrait for SqliteMemoryStore {
             .execute(&self.pool)
             .await
             .ok();
-        
+
         // Insert into FTS5 (this creates the rowid automatically)
         let result = sqlx::query(
             r#"
@@ -539,7 +525,7 @@ impl MemoryStoreTrait for SqliteMemoryStore {
                 e
             )))
         })?;
-        
+
         // Store the mapping from FTS rowid to memory_id
         let fts_rowid = result.last_insert_rowid();
         sqlx::query(
@@ -580,10 +566,7 @@ impl MemoryStoreTrait for SqliteMemoryStore {
                 .iter()
                 .map(|t| format!("'{}'", Self::memory_type_to_string(*t)))
                 .collect();
-            filters.push(format!(
-                "e.memory_type IN ({})",
-                types.join(", ")
-            ));
+            filters.push(format!("e.memory_type IN ({})", types.join(", ")));
         }
 
         if !query.source_types.is_empty() {
@@ -592,10 +575,7 @@ impl MemoryStoreTrait for SqliteMemoryStore {
                 .iter()
                 .map(|t| format!("'{}'", Self::source_type_to_string(t)))
                 .collect();
-            filters.push(format!(
-                "e.source_type IN ({})",
-                types.join(", ")
-            ));
+            filters.push(format!("e.source_type IN ({})", types.join(", ")));
         }
 
         if let Some(ref namespace) = query.namespace {
@@ -639,9 +619,10 @@ impl MemoryStoreTrait for SqliteMemoryStore {
 
         sql_query = sql_query.bind(fetch_limit as i64);
 
-        let rows: Vec<MemoryEntryRow> = sql_query.fetch_all(&self.pool).await.map_err(|e| {
-            Error::Database(DatabaseError::Query(format!("Search failed: {}", e)))
-        })?;
+        let rows: Vec<MemoryEntryRow> = sql_query
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| Error::Database(DatabaseError::Query(format!("Search failed: {}", e))))?;
 
         // Convert to MemoryEntry and apply scoring
         let mut candidates: Vec<(MemoryEntry, f32)> = Vec::new();
@@ -655,8 +636,7 @@ impl MemoryStoreTrait for SqliteMemoryStore {
             // Apply temporal decay if recency weight is set
             let temporal_score = if query.recency_weight > 0.0 {
                 let decay = Self::temporal_decay(entry.created_at, now);
-                bm25_score * (1.0 - query.recency_weight)
-                    + decay * query.recency_weight
+                bm25_score * (1.0 - query.recency_weight) + decay * query.recency_weight
             } else {
                 bm25_score
             };
@@ -1029,7 +1009,11 @@ mod tests {
         let results = store.search(&query).await.expect("search failed");
         assert_eq!(results.len(), 2, "Should find 2 entries containing 'fox'");
         let contents: Vec<&str> = results.iter().map(|r| r.entry.content.as_str()).collect();
-        assert!(contents.iter().all(|c| c.contains("fox") || c.contains("Fox")));
+        assert!(
+            contents
+                .iter()
+                .all(|c| c.contains("fox") || c.contains("Fox"))
+        );
 
         // Search for "rust" -- should match only entry 2
         let query_rust = MemoryQuery {
@@ -1128,7 +1112,10 @@ mod tests {
         // Second get -- the UPDATE already ran during the first get, so this
         // should see access_count = 1
         let second = store.get(&entry_id).await.unwrap().unwrap();
-        assert_eq!(second.access_count, 1, "Second retrieval should see count=1");
+        assert_eq!(
+            second.access_count, 1,
+            "Second retrieval should see count=1"
+        );
 
         // Third get
         let third = store.get(&entry_id).await.unwrap().unwrap();
@@ -1145,7 +1132,10 @@ mod tests {
         store.store(entry).await.expect("store failed");
 
         // Should find the existing entry by content hash
-        let result = store.dedupe_check(&hash).await.expect("dedupe_check failed");
+        let result = store
+            .dedupe_check(&hash)
+            .await
+            .expect("dedupe_check failed");
         assert_eq!(result, Some(entry_id));
 
         // Nonexistent hash
@@ -1195,27 +1185,54 @@ mod tests {
         // Create an entry that already expired
         let mut expired_entry = make_entry("This entry has expired");
         expired_entry.expires_at = Some(Utc::now() - chrono::Duration::hours(1));
-        store.store(expired_entry.clone()).await.expect("store failed");
+        store
+            .store(expired_entry.clone())
+            .await
+            .expect("store failed");
 
         // Create an entry that has not expired
         let mut fresh_entry = make_entry("This entry is still fresh");
         fresh_entry.expires_at = Some(Utc::now() + chrono::Duration::hours(24));
-        store.store(fresh_entry.clone()).await.expect("store failed");
+        store
+            .store(fresh_entry.clone())
+            .await
+            .expect("store failed");
 
         // Create an entry with no expiration
         let permanent_entry = make_entry("This entry never expires");
-        store.store(permanent_entry.clone()).await.expect("store failed");
+        store
+            .store(permanent_entry.clone())
+            .await
+            .expect("store failed");
 
         // Run expire_stale
         let expired_count = store.expire_stale().await.expect("expire_stale failed");
         assert_eq!(expired_count, 1, "Should expire exactly 1 entry");
 
         // Expired entry should be gone
-        assert!(store.get(&expired_entry.id.to_string()).await.unwrap().is_none());
+        assert!(
+            store
+                .get(&expired_entry.id.to_string())
+                .await
+                .unwrap()
+                .is_none()
+        );
 
         // Fresh and permanent entries should remain
-        assert!(store.get(&fresh_entry.id.to_string()).await.unwrap().is_some());
-        assert!(store.get(&permanent_entry.id.to_string()).await.unwrap().is_some());
+        assert!(
+            store
+                .get(&fresh_entry.id.to_string())
+                .await
+                .unwrap()
+                .is_some()
+        );
+        assert!(
+            store
+                .get(&permanent_entry.id.to_string())
+                .await
+                .unwrap()
+                .is_some()
+        );
     }
 
     #[tokio::test]
@@ -1231,11 +1248,7 @@ mod tests {
         entry.content_hash = format!("{:x}", sha2::Sha256::digest(b"Updated content"));
         store.store(entry).await.expect("upsert failed");
 
-        let retrieved = store
-            .get(&entry_id.to_string())
-            .await
-            .unwrap()
-            .unwrap();
+        let retrieved = store.get(&entry_id.to_string()).await.unwrap().unwrap();
         assert_eq!(retrieved.content, "Updated content");
     }
 
@@ -1255,6 +1268,10 @@ mod tests {
             ..Default::default()
         };
         let results = store.search(&query).await.expect("search failed");
-        assert!(results.len() <= 2, "Should respect limit of 2, got {}", results.len());
+        assert!(
+            results.len() <= 2,
+            "Should respect limit of 2, got {}",
+            results.len()
+        );
     }
 }

@@ -6,22 +6,25 @@
 //! ```
 
 use anthropic_rust::{
-    AnthropicClient, ContentBlock, Message, MessageRequest, Role, Tool, ToolResult,
-    ToolUse,
+    AnthropicClient, ContentBlock, Message, MessageRequest, Role, Tool, ToolResult, ToolUse,
 };
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Load API key from environment
-    let api_key = std::env::var("ANTHROPIC_API_KEY")
-        .expect("ANTHROPIC_API_KEY environment variable not set");
+    let api_key =
+        std::env::var("ANTHROPIC_API_KEY").expect("ANTHROPIC_API_KEY environment variable not set");
 
     // Create client
     let client = AnthropicClient::new(api_key)?;
 
     // Define a weather tool
     let weather_tool = Tool::builder("get_weather", "Get the current weather for a location")
-        .string_property("location", "The city and state, e.g. San Francisco, CA", true)
+        .string_property(
+            "location",
+            "The city and state, e.g. San Francisco, CA",
+            true,
+        )
         .enum_property(
             "unit",
             "The temperature unit to use",
@@ -32,7 +35,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Create a request with the tool
     let request = MessageRequest::builder("claude-3-5-sonnet-20241022")
-        .system("You are a helpful assistant. Use the get_weather tool when users ask about weather.")
+        .system(
+            "You are a helpful assistant. Use the get_weather tool when users ask about weather.",
+        )
         .user("What's the weather like in Tokyo?")
         .tool(weather_tool)
         .max_tokens(1024)
@@ -59,7 +64,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         for tool_use in &tool_uses {
             println!("\n  Tool: {} (ID: {})", tool_use.name, tool_use.id);
-            println!("  Input: {}", serde_json::to_string_pretty(&tool_use.input)?);
+            println!(
+                "  Input: {}",
+                serde_json::to_string_pretty(&tool_use.input)?
+            );
 
             // Simulate executing the tool
             let result = execute_weather_tool(tool_use);
@@ -77,10 +85,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let follow_up_request = MessageRequest::builder("claude-3-5-sonnet-20241022")
             .system("You are a helpful assistant.")
-            .tools(vec![Tool::builder("get_weather", "Get weather")
-                .string_property("location", "City name", true)
-                .enum_property("unit", "Unit", vec!["celsius", "fahrenheit"], false)
-                .build()])
+            .tools(vec![
+                Tool::builder("get_weather", "Get weather")
+                    .string_property("location", "City name", true)
+                    .enum_property("unit", "Unit", vec!["celsius", "fahrenheit"], false)
+                    .build(),
+            ])
             .message(Role::User, "Continue with the weather information.")
             .max_tokens(1024)
             .build();

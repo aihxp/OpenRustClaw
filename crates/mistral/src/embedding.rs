@@ -47,7 +47,11 @@ impl<'a> Embeddings<'a> {
     }
 
     /// Create a single embedding.
-    pub async fn embed(&self, model: impl Into<String>, input: impl Into<String>) -> Result<Vec<f32>> {
+    pub async fn embed(
+        &self,
+        model: impl Into<String>,
+        input: impl Into<String>,
+    ) -> Result<Vec<f32>> {
         let request = EmbeddingRequest::single(model, input);
         let response = self.create(request).await?;
         response
@@ -101,9 +105,9 @@ impl EmbeddingRequest {
     }
 
     /// Set the encoding format.
-    /// 
+    ///
     /// # Arguments
-    /// 
+    ///
     /// * `format` - Either "float" or "base64"
     pub fn encoding_format(mut self, format: impl Into<String>) -> Self {
         self.encoding_format = Some(format.into());

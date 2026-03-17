@@ -28,7 +28,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("Model: {}", response.model);
             println!("Prompt: 'The quick brown fox'");
             println!("Completion: {}", response.response);
-            
+
             if let Some(eval_count) = response.eval_count {
                 println!("\nTokens generated: {}", eval_count);
             }
@@ -51,7 +51,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     match client.generate().text(request).await {
         Ok(response) => {
             println!("Response: {}", response.response);
-            
+
             // Try to parse as JSON
             match serde_json::from_str::<serde_json::Value>(&response.response) {
                 Ok(json) => println!("Parsed JSON: {}", serde_json::to_string_pretty(&json)?),

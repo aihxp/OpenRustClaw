@@ -6,9 +6,9 @@
 use std::fmt;
 use std::time::SystemTime;
 
-use aws_sigv4::http_request::{sign, SignableBody, SignableRequest, SigningSettings};
-use aws_sigv4::sign::v4;
 use aws_credential_types::Credentials;
+use aws_sigv4::http_request::{SignableBody, SignableRequest, SigningSettings, sign};
+use aws_sigv4::sign::v4;
 use reqwest::header::{HeaderMap, HeaderValue};
 use tracing::{debug, trace};
 
@@ -145,7 +145,7 @@ impl SigV4Signer {
             "aws-bedrock",
         );
         let identity: aws_smithy_runtime_api::client::identity::Identity = credentials.into();
-        
+
         let signing_params = v4::SigningParams::builder()
             .identity(&identity)
             .region(self.region.name())
@@ -166,7 +166,7 @@ impl SigV4Signer {
                 Some((key, value))
             })
             .collect();
-        
+
         let signable_request = SignableRequest::new(
             method,
             uri,
@@ -179,22 +179,23 @@ impl SigV4Signer {
 
         // Sign the request
         let signing_params: aws_sigv4::http_request::SigningParams<'_> = signing_params.into();
-        let signing_output = sign(signable_request, &signing_params)
-            .map_err(|e| BedrockError::SigV4 {
+        let signing_output =
+            sign(signable_request, &signing_params).map_err(|e| BedrockError::SigV4 {
                 message: e.to_string(),
             })?;
         let signing_instructions = signing_output.output();
 
         // Apply signing instructions to headers
         for (name, value) in signing_instructions.headers() {
-            let header_name = reqwest::header::HeaderName::from_bytes(name.as_bytes())
-                .map_err(|e| BedrockError::SigV4 {
-                    message: format!("Invalid header name: {e}"),
+            let header_name =
+                reqwest::header::HeaderName::from_bytes(name.as_bytes()).map_err(|e| {
+                    BedrockError::SigV4 {
+                        message: format!("Invalid header name: {e}"),
+                    }
                 })?;
-            let header_value = HeaderValue::from_str(value)
-                .map_err(|e| BedrockError::SigV4 {
-                    message: format!("Invalid header value: {e}"),
-                })?;
+            let header_value = HeaderValue::from_str(value).map_err(|e| BedrockError::SigV4 {
+                message: format!("Invalid header value: {e}"),
+            })?;
             headers.insert(header_name, header_value);
         }
 
@@ -225,7 +226,8 @@ impl AuthMiddleware {
         headers: &mut HeaderMap,
         body: &[u8],
     ) -> Result<()> {
-        self.signer.sign_request(method, uri, headers, body, self.service)
+        self.signer
+            .sign_request(method, uri, headers, body, self.service)
     }
 }
 
@@ -246,7 +248,10 @@ pub fn bedrock_agent_endpoint(region: &Region) -> String {
 
 /// Create the base URL for Bedrock Agent Runtime in a region.
 pub fn bedrock_agent_runtime_endpoint(region: &Region) -> String {
-    format!("https://bedrock-agent-runtime.{}.amazonaws.com", region.name())
+    format!(
+        "https://bedrock-agent-runtime.{}.amazonaws.com",
+        region.name()
+    )
 }
 
 /// Get the appropriate endpoint for a service.
@@ -281,7 +286,10 @@ mod tests {
         assert_eq!(Service::Bedrock.as_str(), "bedrock");
         assert_eq!(Service::BedrockRuntime.as_str(), "bedrock-runtime");
         assert_eq!(Service::BedrockAgent.as_str(), "bedrock-agent");
-        assert_eq!(Service::BedrockAgentRuntime.as_str(), "bedrock-agent-runtime");
+        assert_eq!(
+            Service::BedrockAgentRuntime.as_str(),
+            "bedrock-agent-runtime"
+        );
     }
 
     #[test]

@@ -3,10 +3,10 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
+use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue};
 use secrecy::{ExposeSecret, SecretString};
 
-use crate::constants::{retry, DEFAULT_APP_NAME, DEFAULT_BASE_URL, DEFAULT_REFERER};
+use crate::constants::{DEFAULT_APP_NAME, DEFAULT_BASE_URL, DEFAULT_REFERER, retry};
 use crate::error::{OpenRouterError, Result};
 
 /// A client for the OpenRouter API.
@@ -38,24 +38,23 @@ impl OpenRouterClient {
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
         headers.insert(
             AUTHORIZATION,
-            HeaderValue::from_str(&format!("Bearer {}", config.api_key.expose_secret()))
-                .map_err(|_| OpenRouterError::Config {
+            HeaderValue::from_str(&format!("Bearer {}", config.api_key.expose_secret())).map_err(
+                |_| OpenRouterError::Config {
                     message: "Invalid API key".to_string(),
-                })?,
+                },
+            )?,
         );
         headers.insert(
             "HTTP-Referer",
-            HeaderValue::from_str(&config.referer)
-                .map_err(|_| OpenRouterError::Config {
-                    message: "Invalid referer".to_string(),
-                })?,
+            HeaderValue::from_str(&config.referer).map_err(|_| OpenRouterError::Config {
+                message: "Invalid referer".to_string(),
+            })?,
         );
         headers.insert(
             "X-Title",
-            HeaderValue::from_str(&config.app_name)
-                .map_err(|_| OpenRouterError::Config {
-                    message: "Invalid app name".to_string(),
-                })?,
+            HeaderValue::from_str(&config.app_name).map_err(|_| OpenRouterError::Config {
+                message: "Invalid app name".to_string(),
+            })?,
         );
 
         let http = reqwest::Client::builder()
@@ -136,7 +135,11 @@ impl OpenRouterClient {
     }
 
     /// Make a POST request.
-    pub(crate) async fn post(&self, path: &str, body: serde_json::Value) -> Result<reqwest::Response> {
+    pub(crate) async fn post(
+        &self,
+        path: &str,
+        body: serde_json::Value,
+    ) -> Result<reqwest::Response> {
         let url = format!("{}{}", self.inner.base_url, path);
         let response = self
             .inner
@@ -150,7 +153,10 @@ impl OpenRouterClient {
     }
 
     /// Parse a response or return an error.
-    pub(crate) async fn handle_response(&self, response: reqwest::Response) -> Result<serde_json::Value> {
+    pub(crate) async fn handle_response(
+        &self,
+        response: reqwest::Response,
+    ) -> Result<serde_json::Value> {
         let status = response.status();
 
         if status.is_success() {

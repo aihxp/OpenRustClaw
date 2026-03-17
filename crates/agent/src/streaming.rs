@@ -55,14 +55,13 @@ impl ToolCallBuffer {
     pub fn flush(&mut self) -> Vec<ToolCall> {
         self.calls
             .drain(..)
-            .filter_map(|call| {
-                let arguments: Value =
-                    serde_json::from_str(&call.arguments).unwrap_or(Value::Null);
-                Some(ToolCall {
+            .map(|call| {
+                let arguments: Value = serde_json::from_str(&call.arguments).unwrap_or(Value::Null);
+                ToolCall {
                     id: call.id,
                     name: call.name,
                     arguments,
-                })
+                }
             })
             .collect()
     }

@@ -1,19 +1,18 @@
 //! Basic usage example for Google Gemini SDK
-//! 
+//!
 //! Run with: cargo run --example basic_usage
 
-use google_gemini::{GeminiClient, GeminiModel, Content, GenerateContentRequest, GenerationConfig};
+use google_gemini::{Content, GeminiClient, GeminiModel, GenerateContentRequest, GenerationConfig};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Get API key from environment
-    let api_key = std::env::var("GEMINI_API_KEY")
-        .expect("GEMINI_API_KEY environment variable must be set");
-    
+    let api_key =
+        std::env::var("GEMINI_API_KEY").expect("GEMINI_API_KEY environment variable must be set");
+
     // Create client
-    let client = GeminiClient::new(api_key)
-        .with_model(GeminiModel::Gemini15Flash);
-    
+    let client = GeminiClient::new(api_key).with_model(GeminiModel::Gemini15Flash);
+
     // Simple text generation
     println!("=== Simple Text Generation ===");
     let request = GenerateContentRequest {
@@ -28,7 +27,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         tool_config: None,
         safety_settings: None,
     };
-    
+
     match client.generate_content(request).await {
         Ok(response) => {
             for candidate in response.candidates {
@@ -38,36 +37,38 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
             }
-            
+
             if let Some(usage) = response.usage_metadata {
-                println!("\nToken usage: {} prompt, {} completion, {} total",
-                    usage.prompt_token_count,
-                    usage.candidates_token_count,
-                    usage.total_token_count
+                println!(
+                    "\nToken usage: {} prompt, {} completion, {} total",
+                    usage.prompt_token_count, usage.candidates_token_count, usage.total_token_count
                 );
             }
         }
         Err(e) => eprintln!("Error: {}", e),
     }
-    
+
     // Chat session
     println!("\n=== Chat Session ===");
     let mut chat = client
         .chat()
         .with_system_instruction("You are a helpful coding assistant.");
-    
-    match chat.send_message("What is Rust programming language?").await {
+
+    match chat
+        .send_message("What is Rust programming language?")
+        .await
+    {
         Ok(response) => println!("Response: {}", response),
         Err(e) => eprintln!("Error: {}", e),
     }
-    
+
     match chat.send_message("What are its key features?").await {
         Ok(response) => println!("Follow-up: {}", response),
         Err(e) => eprintln!("Error: {}", e),
     }
-    
+
     println!("\nChat history has {} messages", chat.history().len());
-    
+
     // List available models
     println!("\n=== Available Models ===");
     match client.list_models().await {
@@ -78,6 +79,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Err(e) => eprintln!("Error listing models: {}", e),
     }
-    
+
     Ok(())
 }

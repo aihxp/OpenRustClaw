@@ -20,9 +20,9 @@ use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::{RwLock, mpsc};
 use tokio::time::timeout;
-use tokio_stream::{wrappers::ReceiverStream, Stream, StreamExt};
+use tokio_stream::{Stream, StreamExt, wrappers::ReceiverStream};
 use tonic::transport::{Channel, Server};
 use tonic::{Request, Response, Status, Streaming};
 use tracing::{info, warn};
@@ -54,7 +54,7 @@ impl GrpcClientPool {
         node: &NodeInfo,
     ) -> crate::error::Result<ClusterServiceClient<Channel>> {
         let mut clients = self.clients.write().await;
-        
+
         if let Some(client) = clients.get(&node.id) {
             return Ok(client.clone());
         }
@@ -71,15 +71,18 @@ impl GrpcClientPool {
 
         let client = ClusterServiceClient::new(channel);
         clients.insert(node.id.clone(), client.clone());
-        
+
         info!("Created gRPC client for node {} at {}", node.id, addr);
         Ok(client)
     }
 
     /// Get or create a Raft service client for a node.
-    pub async fn get_raft_client(&self, node: &NodeInfo) -> crate::error::Result<RaftServiceClient<Channel>> {
+    pub async fn get_raft_client(
+        &self,
+        node: &NodeInfo,
+    ) -> crate::error::Result<RaftServiceClient<Channel>> {
         let mut clients = self.raft_clients.write().await;
-        
+
         if let Some(client) = clients.get(&node.id) {
             return Ok(client.clone());
         }
@@ -96,7 +99,7 @@ impl GrpcClientPool {
 
         let client = RaftServiceClient::new(channel);
         clients.insert(node.id.clone(), client.clone());
-        
+
         Ok(client)
     }
 
@@ -130,10 +133,16 @@ impl ClusterServiceImpl {
 
 #[tonic::async_trait]
 impl ClusterService for ClusterServiceImpl {
-    async fn join(&self, request: Request<proto::JoinRequest>) -> Result<Response<proto::JoinResponse>, Status> {
+    async fn join(
+        &self,
+        request: Request<proto::JoinRequest>,
+    ) -> Result<Response<proto::JoinResponse>, Status> {
         let req = request.into_inner();
-        
-        info!("Node {} attempting to join from {}", req.node_id, req.node_addr);
+
+        info!(
+            "Node {} attempting to join from {}",
+            req.node_id, req.node_addr
+        );
 
         // Only leader should handle joins
         if !self.cluster.is_leader().await {
@@ -141,7 +150,9 @@ impl ClusterService for ClusterServiceImpl {
             return Ok(Response::new(proto::JoinResponse {
                 success: false,
                 leader_id: leader_id.clone().unwrap_or_default(),
-                leader_addr: self.cluster.get_node(&leader_id.unwrap_or_default())
+                leader_addr: self
+                    .cluster
+                    .get_node(&leader_id.unwrap_or_default())
                     .map(|n| n.cluster_addr.to_string())
                     .unwrap_or_default(),
                 nodes: vec![],
@@ -150,14 +161,15 @@ impl ClusterService for ClusterServiceImpl {
         }
 
         // Parse node address
-        let cluster_addr: SocketAddr = req.node_addr
+        let cluster_addr: SocketAddr = req
+            .node_addr
             .parse()
             .map_err(|e| Status::invalid_argument(format!("Invalid address: {}", e)))?;
 
         // Create node info
         let node_type = proto::NodeType::try_from(req.node_type)
             .map_err(|_| Status::invalid_argument("Invalid node type"))?;
-        
+
         let role = match node_type {
             proto::NodeType::Leader => NodeRole::Leader,
             proto::NodeType::Worker => NodeRole::Worker,
@@ -176,13 +188,15 @@ impl ClusterService for ClusterServiceImpl {
         self.cluster.upsert_node(node_info.clone()).await;
 
         // Build response with all nodes
-        let nodes: Vec<proto::NodeInfo> = self.cluster.all_nodes()
+        let nodes: Vec<proto::NodeInfo> = self
+            .cluster
+            .all_nodes()
             .into_iter()
-            .map(|n| node_info_to_proto(n))
+            .map(node_info_to_proto)
             .collect();
 
         let local_info = self.cluster.local_node().info().await;
-        
+
         Ok(Response::new(proto::JoinResponse {
             success: true,
             leader_id: local_info.id,
@@ -192,16 +206,17 @@ impl ClusterService for ClusterServiceImpl {
         }))
     }
 
-    async fn leave(&self, request: Request<proto::LeaveRequest>) -> Result<Response<proto::LeaveResponse>, Status> {
+    async fn leave(
+        &self,
+        request: Request<proto::LeaveRequest>,
+    ) -> Result<Response<proto::LeaveResponse>, Status> {
         let req = request.into_inner();
-        
+
         info!("Node {} leaving: {}", req.node_id, req.reason);
-        
+
         self.cluster.remove_node(&req.node_id).await;
-        
-        Ok(Response::new(proto::LeaveResponse {
-            success: true,
-        }))
+
+        Ok(Response::new(proto::LeaveResponse { success: true }))
     }
 
     async fn get_cluster_status(
@@ -209,7 +224,7 @@ impl ClusterService for ClusterServiceImpl {
         _request: Request<proto::ClusterStatusRequest>,
     ) -> Result<Response<proto::ClusterStatusResponse>, Status> {
         let status = self.cluster.status().await;
-        
+
         let proto_state = match status.state {
             crate::cluster::ClusterState::Active => proto::ClusterState::Active,
             crate::cluster::ClusterState::Degraded => proto::ClusterState::Degraded,
@@ -217,9 +232,11 @@ impl ClusterService for ClusterServiceImpl {
             _ => proto::ClusterState::Initializing,
         };
 
-        let nodes: Vec<proto::NodeInfo> = self.cluster.all_nodes()
+        let nodes: Vec<proto::NodeInfo> = self
+            .cluster
+            .all_nodes()
             .into_iter()
-            .map(|n| node_info_to_proto(n))
+            .map(node_info_to_proto)
             .collect();
 
         Ok(Response::new(proto::ClusterStatusResponse {
@@ -239,9 +256,9 @@ impl ClusterService for ClusterServiceImpl {
     ) -> Result<Response<Self::HeartbeatStream>, Status> {
         let mut stream = request.into_inner();
         let cluster = self.cluster.clone();
-        
+
         let (tx, rx) = mpsc::channel(100);
-        
+
         tokio::spawn(async move {
             while let Some(msg) = stream.next().await {
                 match msg {
@@ -260,7 +277,7 @@ impl ClusterService for ClusterServiceImpl {
                             term: cluster.current_term(),
                             accepted: true,
                         };
-                        
+
                         if tx.send(Ok(ack)).await.is_err() {
                             break;
                         }
@@ -274,7 +291,9 @@ impl ClusterService for ClusterServiceImpl {
         });
 
         let output_stream = ReceiverStream::new(rx);
-        Ok(Response::new(Box::pin(output_stream) as Self::HeartbeatStream))
+        Ok(Response::new(
+            Box::pin(output_stream) as Self::HeartbeatStream
+        ))
     }
 }
 
@@ -296,7 +315,7 @@ impl RaftService for RaftServiceImpl {
         request: Request<proto::VoteRequest>,
     ) -> Result<Response<proto::VoteResponse>, Status> {
         let req = request.into_inner();
-        
+
         let vote_request = VoteRequest {
             term: req.term,
             candidate_id: req.candidate_id,
@@ -305,7 +324,7 @@ impl RaftService for RaftServiceImpl {
         };
 
         let response = self.raft.handle_vote_request(vote_request).await;
-        
+
         Ok(Response::new(proto::VoteResponse {
             term: response.term,
             vote_granted: response.vote_granted,
@@ -318,8 +337,9 @@ impl RaftService for RaftServiceImpl {
         request: Request<proto::AppendEntriesRequest>,
     ) -> Result<Response<proto::AppendEntriesResponse>, Status> {
         let req = request.into_inner();
-        
-        let entries: Vec<crate::consensus::LogEntry> = req.entries
+
+        let entries: Vec<crate::consensus::LogEntry> = req
+            .entries
             .into_iter()
             .map(|e| crate::consensus::LogEntry {
                 index: e.index,
@@ -343,7 +363,7 @@ impl RaftService for RaftServiceImpl {
         };
 
         let response = self.raft.handle_append_entries(append_request).await;
-        
+
         Ok(Response::new(proto::AppendEntriesResponse {
             term: response.term,
             success: response.success,
@@ -359,7 +379,7 @@ impl RaftService for RaftServiceImpl {
     ) -> Result<Response<proto::InstallSnapshotResponse>, Status> {
         // TODO: Implement snapshot installation
         let _stream = request.into_inner();
-        
+
         Ok(Response::new(proto::InstallSnapshotResponse {
             term: 0,
             success: true,
@@ -386,7 +406,8 @@ impl GrpcServer {
 
     /// Start the gRPC server.
     pub async fn start(&self) -> crate::error::Result<()> {
-        let cluster_service = ClusterServiceServer::new(ClusterServiceImpl::new(self.cluster.clone()));
+        let cluster_service =
+            ClusterServiceServer::new(ClusterServiceImpl::new(self.cluster.clone()));
         let raft_service = RaftServiceServer::new(RaftServiceImpl::new(self.raft.clone()));
 
         info!("Starting gRPC server on {}", self.addr);
@@ -448,9 +469,9 @@ pub async fn send_heartbeat(
     state: NodeState,
 ) -> crate::error::Result<proto::HeartbeatAck> {
     let (tx, rx) = mpsc::channel(1);
-    
+
     let request = tonic::Request::new(ReceiverStream::new(rx));
-    
+
     let heartbeat = proto::HeartbeatMessage {
         node_id: node_id.to_string(),
         term,
@@ -461,11 +482,11 @@ pub async fn send_heartbeat(
         metrics: HashMap::new(),
         timestamp: datetime_to_timestamp(Utc::now()),
     };
-    
+
     let _ = tx.send(heartbeat).await;
-    
+
     let mut stream = client.heartbeat(request).await?.into_inner();
-    
+
     if let Some(ack) = stream.next().await {
         ack.map_err(|e| e.into())
     } else {
@@ -504,15 +525,9 @@ mod tests {
     #[test]
     fn test_node_info_conversion() {
         use std::net::SocketAddr;
-        
+
         let addr: SocketAddr = "127.0.0.1:50051".parse().unwrap();
-        let info = NodeInfo::new(
-            "test-1",
-            "test-node",
-            addr,
-            addr,
-            NodeRole::Worker,
-        );
+        let info = NodeInfo::new("test-1", "test-node", addr, addr, NodeRole::Worker);
 
         let proto = node_info_to_proto(info);
         assert_eq!(proto.node_id, "test-1");

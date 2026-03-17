@@ -224,7 +224,10 @@ mod tests {
             server_name: "db-server".to_string(),
         };
         let json = serde_json::to_value(&tool).unwrap();
-        assert_eq!(json["input_schema"]["properties"]["params"]["type"], "array");
+        assert_eq!(
+            json["input_schema"]["properties"]["params"]["type"],
+            "array"
+        );
         assert_eq!(
             json["input_schema"]["properties"]["options"]["properties"]["timeout"]["type"],
             "integer"

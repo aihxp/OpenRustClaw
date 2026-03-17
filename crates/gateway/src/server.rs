@@ -1,18 +1,18 @@
 //! Axum WebSocket server with observability integration.
 
-use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
+use crate::auth::extract_token;
 use axum::extract::State;
+use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::{Router, routing::get};
 use futures::StreamExt;
+use openrustclaw_core::error::{Error, Result as CoreResult, SecurityError};
 use openrustclaw_observability::metrics::{
-    decrement_active_connections, increment_active_connections,
-    record_websocket_message, SimpleTimer,
+    SimpleTimer, decrement_active_connections, increment_active_connections,
+    record_websocket_message,
 };
 use openrustclaw_security::OriginValidator;
-use crate::auth::extract_token;
-use openrustclaw_core::error::{Error, Result as CoreResult, SecurityError};
 use serde_json::json;
 use std::sync::Arc;
 use tracing::{info, warn};
@@ -56,27 +56,30 @@ async fn ws_handler(
     headers: HeaderMap,
 ) -> Response {
     let timer = SimpleTimer::new();
-    
+
     if let Err(err) = validate_ws_request(&state, &headers) {
         warn!(error = %err, "Rejected websocket connection");
         openrustclaw_observability::metrics::record_request(
-            "websocket", "/ws", 
+            "websocket",
+            "/ws",
             match err {
                 Error::Security(SecurityError::AuthRequired) => "401",
                 Error::Security(SecurityError::TokenInvalid(_)) => "401",
                 Error::Security(SecurityError::InvalidOrigin { .. }) => "403",
                 _ => "400",
-            }
+            },
         );
         openrustclaw_observability::metrics::record_request_duration(
-            "websocket", "/ws", timer.elapsed_secs()
+            "websocket",
+            "/ws",
+            timer.elapsed_secs(),
         );
         return gateway_error_response(err);
     }
 
     // Track successful connection
     increment_active_connections();
-    
+
     ws.on_upgrade(move |socket| {
         async move {
             handle_socket(socket).await;
@@ -94,9 +97,11 @@ fn validate_ws_request(state: &GatewayState, headers: &HeaderMap) -> CoreResult<
     let origin = headers
         .get(axum::http::header::ORIGIN)
         .and_then(|value| value.to_str().ok())
-        .ok_or_else(|| Error::Security(SecurityError::InvalidOrigin {
-            origin: "<missing>".to_string(),
-        }))?;
+        .ok_or_else(|| {
+            Error::Security(SecurityError::InvalidOrigin {
+                origin: "<missing>".to_string(),
+            })
+        })?;
     state.origin_validator.validate(origin)?;
 
     if state.require_auth {
@@ -111,9 +116,10 @@ fn validate_ws_request(state: &GatewayState, headers: &HeaderMap) -> CoreResult<
 
 fn gateway_error_response(err: Error) -> Response {
     let (status, message) = match err {
-        Error::Security(SecurityError::AuthRequired) => {
-            (StatusCode::UNAUTHORIZED, "authorization required".to_string())
-        }
+        Error::Security(SecurityError::AuthRequired) => (
+            StatusCode::UNAUTHORIZED,
+            "authorization required".to_string(),
+        ),
         Error::Security(SecurityError::TokenInvalid(message)) => {
             (StatusCode::UNAUTHORIZED, message)
         }
@@ -183,7 +189,7 @@ async fn handle_socket(mut socket: WebSocket) {
             }
         }
     }
-    
+
     info!("WebSocket connection closed");
 }
 
@@ -210,15 +216,24 @@ mod tests {
     #[test]
     fn validate_ws_request_rejects_missing_auth() {
         let mut headers = HeaderMap::new();
-        headers.insert(axum::http::header::ORIGIN, "http://localhost:3000".parse().unwrap());
+        headers.insert(
+            axum::http::header::ORIGIN,
+            "http://localhost:3000".parse().unwrap(),
+        );
         assert!(validate_ws_request(&test_state(), &headers).is_err());
     }
 
     #[test]
     fn validate_ws_request_accepts_valid_headers() {
         let mut headers = HeaderMap::new();
-        headers.insert(axum::http::header::ORIGIN, "http://localhost:3000".parse().unwrap());
-        headers.insert(axum::http::header::AUTHORIZATION, "Bearer test-token".parse().unwrap());
+        headers.insert(
+            axum::http::header::ORIGIN,
+            "http://localhost:3000".parse().unwrap(),
+        );
+        headers.insert(
+            axum::http::header::AUTHORIZATION,
+            "Bearer test-token".parse().unwrap(),
+        );
         assert!(validate_ws_request(&test_state(), &headers).is_ok());
     }
 }

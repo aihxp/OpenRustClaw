@@ -306,13 +306,14 @@ impl Tool for SessionsHistoryTool {
 
         debug!(session_id = %session_id, limit = limit, "Fetching session history");
 
-        let history = if let Some(before_id) = input.get("before_message_id").and_then(|b| b.as_str()) {
-            self.session_store
-                .get_history_before(session_id, before_id, limit)
-                .await?
-        } else {
-            self.session_store.get_history(session_id, limit).await?
-        };
+        let history =
+            if let Some(before_id) = input.get("before_message_id").and_then(|b| b.as_str()) {
+                self.session_store
+                    .get_history_before(session_id, before_id, limit)
+                    .await?
+            } else {
+                self.session_store.get_history(session_id, limit).await?
+            };
 
         info!(
             session_id = %session_id,

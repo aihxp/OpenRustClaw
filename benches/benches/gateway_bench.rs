@@ -7,10 +7,8 @@
 
 use std::collections::HashMap;
 
-use criterion::{
-    criterion_group, criterion_main, BenchmarkId, Criterion, Throughput,
-};
-use openrustclaw_core::types::{SessionType, Platform};
+use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
+use openrustclaw_core::types::{Platform, SessionType};
 use openrustclaw_gateway::{auth, sessions::SessionManager};
 use tokio::runtime::Runtime;
 
@@ -56,14 +54,10 @@ fn bench_auth_token_validation_simulation(c: &mut Criterion) {
     let mut group = c.benchmark_group("gateway/auth_token_validation");
 
     // Simulate JWT validation without actual crypto (for benchmark consistency)
-    let valid_tokens: Vec<String> = (0..100)
-        .map(|i| format!("valid_token_{}", i))
-        .collect();
+    let valid_tokens: Vec<String> = (0..100).map(|i| format!("valid_token_{}", i)).collect();
 
-    let valid_set: std::collections::HashSet<&str> = valid_tokens
-        .iter()
-        .map(|s| s.as_str())
-        .collect();
+    let valid_set: std::collections::HashSet<&str> =
+        valid_tokens.iter().map(|s| s.as_str()).collect();
 
     group.bench_function("hashset_lookup", |b| {
         let mut i = 0;
@@ -134,7 +128,8 @@ fn bench_session_manager_get(c: &mut Criterion) {
                     let idx = std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap()
-                        .as_nanos() as usize % session_ids.len();
+                        .as_nanos() as usize
+                        % session_ids.len();
                     let result = manager.get_session(&session_ids[idx]).await;
                     criterion::black_box(result);
                 });
@@ -231,11 +226,13 @@ fn bench_websocket_message_serialize(c: &mut Criterion) {
 
     // Batch message
     let messages: Vec<_> = (0..50)
-        .map(|i| serde_json::json!({
-            "id": uuid::Uuid::new_v4().to_string(),
-            "content": format!("Message {}", i),
-            "timestamp": "2024-01-01T00:00:00Z"
-        }))
+        .map(|i| {
+            serde_json::json!({
+                "id": uuid::Uuid::new_v4().to_string(),
+                "content": format!("Message {}", i),
+                "timestamp": "2024-01-01T00:00:00Z"
+            })
+        })
         .collect();
 
     let batch_msg = serde_json::json!({
@@ -258,7 +255,8 @@ fn bench_websocket_message_serialize(c: &mut Criterion) {
 fn bench_websocket_message_deserialize(c: &mut Criterion) {
     let mut group = c.benchmark_group("gateway/ws_message_deserialize");
 
-    let json_text = r#"{"type":"message","payload":{"content":"Hello","timestamp":"2024-01-01T00:00:00Z"}}"#;
+    let json_text =
+        r#"{"type":"message","payload":{"content":"Hello","timestamp":"2024-01-01T00:00:00Z"}}"#;
 
     group.throughput(Throughput::Bytes(json_text.len() as u64));
 
@@ -283,7 +281,8 @@ fn bench_websocket_message_deserialize(c: &mut Criterion) {
                 "features": ["streaming", "tools", "memory"]
             }
         }
-    })).unwrap();
+    }))
+    .unwrap();
 
     group.throughput(Throughput::Bytes(large_json.len() as u64));
 
@@ -339,10 +338,7 @@ fn bench_rate_limit_check(c: &mut Criterion) {
 
     // Pre-populate with rate limit entries
     for i in 0..1000 {
-        limits.insert(
-            format!("user_{}", i),
-            (0, Instant::now()),
-        );
+        limits.insert(format!("user_{}", i), (0, Instant::now()));
     }
 
     group.bench_function("check_and_increment", |b| {
@@ -398,9 +394,7 @@ fn bench_session_lookup_by_user(c: &mut Criterion) {
                 .await
                 .unwrap();
 
-            map.entry(user_id)
-                .or_default()
-                .push(session.id.to_string());
+            map.entry(user_id).or_default().push(session.id.to_string());
         }
 
         map
@@ -445,9 +439,15 @@ fn bench_message_routing(c: &mut Criterion) {
 
     // Simulate platform routing
     let platform_routes: HashMap<Platform, Vec<String>> = [
-        (Platform::WebChat, vec!["handler_1".to_string(), "handler_2".to_string()]),
+        (
+            Platform::WebChat,
+            vec!["handler_1".to_string(), "handler_2".to_string()],
+        ),
         (Platform::Discord, vec!["handler_3".to_string()]),
-        (Platform::Slack, vec!["handler_4".to_string(), "handler_5".to_string()]),
+        (
+            Platform::Slack,
+            vec!["handler_4".to_string(), "handler_5".to_string()],
+        ),
     ]
     .into_iter()
     .collect();

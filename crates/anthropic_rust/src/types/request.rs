@@ -50,8 +50,6 @@ pub struct MessageRequest {
     /// Metadata about the request.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<Metadata>,
-
-
 }
 
 impl MessageRequest {
@@ -62,7 +60,9 @@ impl MessageRequest {
 
     /// Create a simple request with a single user message.
     pub fn simple(model: impl Into<String>, message: impl Into<String>) -> Self {
-        Self::builder(model).message(super::MessageRole::User, message).build()
+        Self::builder(model)
+            .message(super::MessageRole::User, message)
+            .build()
     }
 
     /// Add a message to this request.
@@ -243,7 +243,6 @@ impl MessageRequestBuilder {
             top_k: self.top_k,
             stop_sequences: self.stop_sequences,
             metadata: self.metadata,
-
         }
     }
 }
@@ -266,10 +265,11 @@ impl Metadata {
 }
 
 /// Tool choice options.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ToolChoice {
     /// Let the model decide whether to use tools.
+    #[default]
     Auto,
     /// Force the model to use any tool.
     Any,
@@ -280,12 +280,6 @@ pub enum ToolChoice {
     },
     /// Prevent the model from using tools.
     None,
-}
-
-impl Default for ToolChoice {
-    fn default() -> Self {
-        ToolChoice::Auto
-    }
 }
 
 impl ToolChoice {

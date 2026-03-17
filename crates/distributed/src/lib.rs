@@ -48,13 +48,16 @@ pub mod worker;
 
 // Re-export main types from their defining modules
 pub use cluster::{Cluster, ClusterEvent, ClusterState, ClusterStatus};
-pub use config::{ConsensusConfig, DiscoveryBackend, DiscoveryConfig, DistributedConfig, GossipConfig, HealthConfig, LoadBalanceStrategy, LoadBalancerConfig, MemoryBackend, MemoryConfig};
+pub use config::{
+    ConsensusConfig, DiscoveryBackend, DiscoveryConfig, DistributedConfig, GossipConfig,
+    HealthConfig, LoadBalanceStrategy, LoadBalancerConfig, MemoryBackend, MemoryConfig,
+};
 pub use consensus::{RaftNode, RaftRole};
 pub use coordinator::{Coordinator, CoordinatorStatus};
-pub use discovery::{create_discovery, Discovery, DiscoveryEvent, DiscoveryStream};
+pub use discovery::{Discovery, DiscoveryEvent, DiscoveryStream, create_discovery};
 pub use error::{DistributedError, Result};
 pub use load_balancer::{LoadBalancer, SessionRouter};
-pub use memory::{create_memory, DistributedMemory};
+pub use memory::{DistributedMemory, create_memory};
 pub use messaging::{GrpcClientPool, GrpcServer};
 pub use node::{LocalNode, NodeId, NodeInfo, NodeMetrics, NodeRole, NodeState};
 pub use session::{DistributedSession, SessionManager, SessionState};
@@ -247,11 +250,9 @@ impl ClusterManager {
     async fn start_as_worker(self: Arc<Self>) -> Result<()> {
         info!("Starting as worker node");
 
-        let leader_addr = self
-            .config
-            .distributed
-            .leader_addr
-            .ok_or_else(|| DistributedError::Config("Leader address required for worker".to_string()))?;
+        let leader_addr = self.config.distributed.leader_addr.ok_or_else(|| {
+            DistributedError::Config("Leader address required for worker".to_string())
+        })?;
 
         // Create a simple task executor (would be provided by the application)
         let executor = Arc::new(DefaultTaskExecutor);
@@ -385,10 +386,10 @@ struct DefaultTaskExecutor;
 impl TaskExecutor for DefaultTaskExecutor {
     async fn execute(&self, task: Task) -> Result<TaskResult> {
         info!("Executing task {} of type {}", task.id, task.task_type);
-        
+
         // Simulate work
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-        
+
         Ok(TaskResult::success(
             format!("Completed task {}", task.id).into_bytes(),
             100,

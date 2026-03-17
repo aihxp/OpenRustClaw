@@ -3,8 +3,8 @@
 //! Note: This example demonstrates the API usage. To actually generate images,
 //! you need sufficient credits in your Fireworks account.
 
-use fireworks_ai::image_generation::{ImageGenerationRequest, ImageSize};
 use fireworks_ai::FireworksClient;
+use fireworks_ai::image_generation::{ImageGenerationRequest, ImageSize};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -23,19 +23,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Generating image with Flux.1 Dev...");
     let request = ImageGenerationRequest::builder(
         "accounts/fireworks/models/flux-1-dev",
-        "A serene mountain landscape at sunset, with snow-capped peaks reflecting golden light"
+        "A serene mountain landscape at sunset, with snow-capped peaks reflecting golden light",
     )
-        .size(ImageSize::S1024x1024)
-        .n(1)
-        .seed(42)
-        .cfg_scale(7.5)
-        .num_inference_steps(50)
-        .build();
+    .size(ImageSize::S1024x1024)
+    .n(1)
+    .seed(42)
+    .cfg_scale(7.5)
+    .num_inference_steps(50)
+    .build();
 
     match client.images().generate(request).await {
         Ok(response) => {
             println!("Generated {} image(s)", response.data.len());
-            
+
             for (i, image) in response.data.iter().enumerate() {
                 if let Some(url) = &image.url {
                     println!("Image {} URL: {}", i + 1, url);
@@ -58,13 +58,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\nGenerating image with SDXL...");
     let request = ImageGenerationRequest::builder(
         "accounts/fireworks/models/sdxl",
-        "A futuristic cityscape with flying cars and neon lights, cyberpunk style"
+        "A futuristic cityscape with flying cars and neon lights, cyberpunk style",
     )
-        .negative_prompt("blurry, low quality, distorted, ugly")
-        .size(ImageSize::S1024x1024)
-        .guidance_scale(8.0)
-        .num_inference_steps(30)
-        .build();
+    .negative_prompt("blurry, low quality, distorted, ugly")
+    .size(ImageSize::S1024x1024)
+    .guidance_scale(8.0)
+    .num_inference_steps(30)
+    .build();
 
     match client.images().generate(request).await {
         Ok(response) => {
@@ -86,11 +86,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     for (name, size) in sizes {
         let request = ImageGenerationRequest::builder(
             "accounts/fireworks/models/flux-1-dev",
-            "A cute robot reading a book in a cozy library"
+            "A cute robot reading a book in a cozy library",
         )
-            .size(size)
-            .n(1)
-            .build();
+        .size(size)
+        .n(1)
+        .build();
 
         match client.images().generate(request).await {
             Ok(_) => println!("  {}: Success", name),

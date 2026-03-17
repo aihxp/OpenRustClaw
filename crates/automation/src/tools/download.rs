@@ -6,7 +6,7 @@ use serde_json::json;
 use tracing::info;
 
 use crate::browser::Browser;
-use crate::tools::{error_response, success_response, AutomationTool, ToolContext};
+use crate::tools::{AutomationTool, ToolContext, error_response, success_response};
 
 /// Download a file from the browser.
 pub struct DownloadTool {
@@ -76,21 +76,19 @@ impl AutomationTool for DownloadTool {
         })
     }
 
-    async fn execute(
-        &self,
-        input: serde_json::Value,
-        ctx: &ToolContext,
-    ) -> anyhow::Result<String> {
+    async fn execute(&self, input: serde_json::Value, ctx: &ToolContext) -> anyhow::Result<String> {
         let args: DownloadArgs = serde_json::from_value(input)?;
-        
-        let pages = self.browser.pages().await.map_err(|e| {
-            anyhow::anyhow!("Failed to get pages: {}", e)
-        })?;
-        
-        let page = pages.first().ok_or_else(|| {
-            anyhow::anyhow!("No pages available")
-        })?;
-        
+
+        let pages = self
+            .browser
+            .pages()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to get pages: {}", e))?;
+
+        let page = pages
+            .first()
+            .ok_or_else(|| anyhow::anyhow!("No pages available"))?;
+
         // Determine download path
         let download_dir = if let Some(path) = args.path {
             if path.starts_with('/') {
@@ -107,12 +105,12 @@ impl AutomationTool for DownloadTool {
         } else {
             std::path::PathBuf::from("./downloads")
         };
-        
+
         // Ensure download directory exists
-        tokio::fs::create_dir_all(&download_dir).await.map_err(|e| {
-            anyhow::anyhow!("Failed to create download directory: {}", e)
-        })?;
-        
+        tokio::fs::create_dir_all(&download_dir)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to create download directory: {}", e))?;
+
         let url = if let Some(url) = args.url {
             // Direct URL download
             info!(url = %url, "Downloading from URL");
@@ -120,21 +118,22 @@ impl AutomationTool for DownloadTool {
         } else if let Some(selector) = args.selector {
             // Click to download
             info!(selector = %selector, "Clicking element to download");
-            
-            let element = page.query_selector(&selector).await.map_err(|e| {
-                anyhow::anyhow!("Failed to find element: {}", e)
-            })?;
-            
+
+            let element = page
+                .query_selector(&selector)
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to find element: {}", e))?;
+
             match element {
                 Some(el) => {
                     // Get href if it's a link
                     let href = el.get_attribute("href").await.ok().flatten();
-                    
+
                     // Click the element
-                    el.click().await.map_err(|e| {
-                        anyhow::anyhow!("Failed to click element: {}", e)
-                    })?;
-                    
+                    el.click()
+                        .await
+                        .map_err(|e| anyhow::anyhow!("Failed to click element: {}", e))?;
+
                     // If we got an href, use it
                     if let Some(href) = href {
                         if href.starts_with("http") || href.starts_with("//") {
@@ -150,7 +149,7 @@ impl AutomationTool for DownloadTool {
                             let _timeout = args.timeout.unwrap_or(30000);
                             tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
                         }
-                        
+
                         return Ok(success_response(
                             "Download initiated by clicking element. File should be in downloads directory.".to_string()
                         ));
@@ -161,14 +160,16 @@ impl AutomationTool for DownloadTool {
                 }
             }
         } else {
-            return Ok(error_response("Either 'url' or 'selector' must be provided"));
+            return Ok(error_response(
+                "Either 'url' or 'selector' must be provided",
+            ));
         };
-        
+
         // Download the file using HTTP client
-        let response = reqwest::get(&url).await.map_err(|e| {
-            anyhow::anyhow!("Failed to download file: {}", e)
-        })?;
-        
+        let response = reqwest::get(&url)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to download file: {}", e))?;
+
         let status = response.status();
         if !status.is_success() {
             return Ok(error_response(format!(
@@ -177,7 +178,7 @@ impl AutomationTool for DownloadTool {
                 status.canonical_reason().unwrap_or("Unknown")
             )));
         }
-        
+
         // Determine filename
         let filename = if let Some(name) = args.filename {
             name
@@ -185,19 +186,20 @@ impl AutomationTool for DownloadTool {
             // Extract from URL or Content-Disposition header
             extract_filename(&url, response.headers())
         };
-        
+
         let filepath = download_dir.join(&filename);
-        
+
         // Download content
-        let content = response.bytes().await.map_err(|e| {
-            anyhow::anyhow!("Failed to read download content: {}", e)
-        })?;
-        
+        let content = response
+            .bytes()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to read download content: {}", e))?;
+
         // Save file
-        tokio::fs::write(&filepath, &content).await.map_err(|e| {
-            anyhow::anyhow!("Failed to save file: {}", e)
-        })?;
-        
+        tokio::fs::write(&filepath, &content)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to save file: {}", e))?;
+
         let file_size = content.len();
         let file_size_str = if file_size > 1024 * 1024 {
             format!("{:.2} MB", file_size as f64 / (1024.0 * 1024.0))
@@ -206,7 +208,7 @@ impl AutomationTool for DownloadTool {
         } else {
             format!("{} B", file_size)
         };
-        
+
         Ok(success_response(format!(
             "File downloaded successfully\nURL: {}\nSaved to: {}\nFilename: {}\nSize: {}",
             url,
@@ -220,25 +222,22 @@ impl AutomationTool for DownloadTool {
 /// Extract filename from URL and headers.
 fn extract_filename(url: &str, headers: &reqwest::header::HeaderMap) -> String {
     // Try Content-Disposition header first
-    if let Some(cd) = headers.get(reqwest::header::CONTENT_DISPOSITION) {
-        if let Ok(cd_str) = cd.to_str() {
-            if let Some(filename) = parse_content_disposition(cd_str) {
-                return filename;
-            }
-        }
+    if let Some(cd) = headers.get(reqwest::header::CONTENT_DISPOSITION)
+        && let Ok(cd_str) = cd.to_str()
+        && let Some(filename) = parse_content_disposition(cd_str)
+    {
+        return filename;
     }
-    
+
     // Extract from URL path
-    if let Ok(parsed) = url::Url::parse(url) {
-        if let Some(segments) = parsed.path_segments() {
-            if let Some(last) = segments.last() {
-                if !last.is_empty() {
-                    return sanitize_filename(last);
-                }
-            }
-        }
+    if let Ok(parsed) = url::Url::parse(url)
+        && let Some(mut segments) = parsed.path_segments()
+        && let Some(last) = segments.next_back()
+        && !last.is_empty()
+    {
+        return sanitize_filename(last);
     }
-    
+
     // Default filename
     "download".to_string()
 }
@@ -248,19 +247,22 @@ fn parse_content_disposition(header: &str) -> Option<String> {
     // Simple parser for filename="name" or filename*=UTF-8''name
     if let Some(pos) = header.find("filename*=UTF-8'") {
         let start = pos + "filename*=UTF-8'".len();
-        if let Some(end) = header[start..].find('"').or_else(|| header[start..].find(';')) {
+        if let Some(end) = header[start..]
+            .find('"')
+            .or_else(|| header[start..].find(';'))
+        {
             return Some(sanitize_filename(&header[start..start + end]));
         }
         return Some(sanitize_filename(&header[start..]));
     }
-    
+
     if let Some(pos) = header.find("filename=\"") {
         let start = pos + "filename=\"".len();
         if let Some(end) = header[start..].find('"') {
             return Some(sanitize_filename(&header[start..start + end]));
         }
     }
-    
+
     None
 }
 
@@ -276,10 +278,10 @@ fn sanitize_filename(name: &str) -> String {
 
 /// Resolve a relative URL against a base URL.
 fn resolve_url(base: &str, relative: &str) -> String {
-    if let Ok(base_url) = url::Url::parse(base) {
-        if let Ok(resolved) = base_url.join(relative) {
-            return resolved.to_string();
-        }
+    if let Ok(base_url) = url::Url::parse(base)
+        && let Ok(resolved) = base_url.join(relative)
+    {
+        return resolved.to_string();
     }
     relative.to_string()
 }

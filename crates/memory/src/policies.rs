@@ -111,7 +111,11 @@ mod tests {
     #[test]
     fn content_hash_empty_string() {
         let hash = MemoryPolicies::content_hash("");
-        assert_eq!(hash.len(), 64, "Empty string still produces a valid SHA-256 hash");
+        assert_eq!(
+            hash.len(),
+            64,
+            "Empty string still produces a valid SHA-256 hash"
+        );
         // Known SHA-256 of empty string
         assert_eq!(
             hash,
@@ -123,7 +127,10 @@ mod tests {
     fn content_hash_whitespace_sensitivity() {
         let h1 = MemoryPolicies::content_hash("foo bar");
         let h2 = MemoryPolicies::content_hash("foo  bar");
-        assert_ne!(h1, h2, "Whitespace differences must produce different hashes");
+        assert_ne!(
+            h1, h2,
+            "Whitespace differences must produce different hashes"
+        );
     }
 
     // ── Importance scoring tests ──
@@ -174,7 +181,10 @@ mod tests {
             MemorySource::ConversationSummary,
             MemorySource::BackgroundIngestion,
         ];
-        let scores: Vec<f32> = sources.iter().map(MemoryPolicies::score_importance).collect();
+        let scores: Vec<f32> = sources
+            .iter()
+            .map(MemoryPolicies::score_importance)
+            .collect();
         for i in 1..scores.len() {
             assert!(
                 scores[i - 1] > scores[i],
@@ -296,7 +306,11 @@ mod tests {
         let a = vec![3.0, -1.0, 2.0, 5.0];
         let b = vec![-2.0, 4.0, 1.0, -3.0];
         let sim = MemoryPolicies::cosine_similarity(&a, &b);
-        assert!(sim >= -1.0 && sim <= 1.0, "Cosine similarity must be in [-1, 1], got {}", sim);
+        assert!(
+            sim >= -1.0 && sim <= 1.0,
+            "Cosine similarity must be in [-1, 1], got {}",
+            sim
+        );
     }
 
     #[test]
@@ -375,7 +389,11 @@ mod tests {
         let a = vec![1.0, 0.0, 0.0];
         let b = vec![1.0, 0.05, 0.0]; // very close to a
         let sim = MemoryPolicies::cosine_similarity(&a, &b);
-        assert!(sim > 0.95, "These vectors should have similarity > 0.95, got {}", sim);
+        assert!(
+            sim > 0.95,
+            "These vectors should have similarity > 0.95, got {}",
+            sim
+        );
         assert!(policies.is_duplicate(&a, &b));
     }
 

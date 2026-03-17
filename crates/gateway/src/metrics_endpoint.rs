@@ -16,12 +16,12 @@
 //! ```
 
 use axum::{
+    Router,
     body::Body,
     extract::State,
-    http::{header::CONTENT_TYPE, StatusCode},
+    http::{StatusCode, header::CONTENT_TYPE},
     response::{IntoResponse, Response},
     routing::get,
-    Router,
 };
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 use metrics_util::MetricKindMask;
@@ -84,8 +84,7 @@ pub fn install_metrics() -> Arc<PrometheusHandle> {
     let handle = Arc::new(recorder.handle());
 
     // Install the recorder as the global metrics recorder
-    metrics::set_global_recorder(recorder)
-        .expect("Failed to set global metrics recorder");
+    metrics::set_global_recorder(recorder).expect("Failed to set global metrics recorder");
 
     handle
 }
@@ -95,9 +94,7 @@ pub fn install_metrics() -> Arc<PrometheusHandle> {
 /// # Arguments
 ///
 /// * `idle_timeout` - How long to keep idle metrics before removing them
-pub fn install_metrics_with_config(
-    idle_timeout: Option<Duration>,
-) -> Arc<PrometheusHandle> {
+pub fn install_metrics_with_config(idle_timeout: Option<Duration>) -> Arc<PrometheusHandle> {
     let mut builder = PrometheusBuilder::new()
         .set_buckets_for_metric(
             metrics_exporter_prometheus::Matcher::Suffix("_duration_seconds".to_string()),
@@ -108,17 +105,13 @@ pub fn install_metrics_with_config(
         .expect("Failed to set duration buckets");
 
     if let Some(timeout) = idle_timeout {
-        builder = builder.idle_timeout(
-            MetricKindMask::ALL,
-            Some(timeout),
-        );
+        builder = builder.idle_timeout(MetricKindMask::ALL, Some(timeout));
     }
 
     let recorder = builder.build_recorder();
     let handle = Arc::new(recorder.handle());
 
-    metrics::set_global_recorder(recorder)
-        .expect("Failed to set global metrics recorder");
+    metrics::set_global_recorder(recorder).expect("Failed to set global metrics recorder");
 
     handle
 }
@@ -182,8 +175,10 @@ pub struct MetricsService<S> {
 
 impl<S, ReqBody, ResBody> tower::Service<axum::extract::Request<ReqBody>> for MetricsService<S>
 where
-    S: tower::Service<axum::extract::Request<ReqBody>, Response = axum::response::Response<ResBody>>
-        + Clone
+    S: tower::Service<
+            axum::extract::Request<ReqBody>,
+            Response = axum::response::Response<ResBody>,
+        > + Clone
         + Send
         + 'static,
     S::Error: Into<axum::BoxError>,
@@ -217,11 +212,7 @@ where
             let duration = start.elapsed();
 
             // Record metrics
-            openrustclaw_observability::metrics::record_request(
-                &method,
-                &path,
-                &status,
-            );
+            openrustclaw_observability::metrics::record_request(&method, &path, &status);
             openrustclaw_observability::metrics::record_request_duration(
                 &method,
                 &path,

@@ -49,10 +49,10 @@ impl CanvasServerState {
         } else {
             // Check for default canvas
             let default = *self.default_canvas.read().await;
-            if let Some(default_id) = default {
-                if let Some(canvas) = self.canvases.get(&default_id) {
-                    return canvas.clone();
-                }
+            if let Some(default_id) = default
+                && let Some(canvas) = self.canvases.get(&default_id)
+            {
+                return canvas.clone();
             }
 
             // Create new default canvas
@@ -176,11 +176,11 @@ async fn handle_socket(socket: WebSocket, state: CanvasServerState, canvas_id: O
     let snapshot = CanvasSnapshot::new(canvas_id, canvas.title(), canvas.elements().to_vec());
     let snapshot_msg = CanvasMessage::Snapshot { canvas: snapshot };
 
-    if let Ok(json) = serde_json::to_string(&snapshot_msg) {
-        if sender.send(Message::Text(json.into())).await.is_err() {
-            warn!(canvas_id = %canvas_id, "Failed to send initial snapshot");
-            return;
-        }
+    if let Ok(json) = serde_json::to_string(&snapshot_msg)
+        && sender.send(Message::Text(json.into())).await.is_err()
+    {
+        warn!(canvas_id = %canvas_id, "Failed to send initial snapshot");
+        return;
     }
 
     // Store canvas reference for updates
@@ -192,11 +192,11 @@ async fn handle_socket(socket: WebSocket, state: CanvasServerState, canvas_id: O
             match update_rx.recv().await {
                 Ok(update) => {
                     let msg = CanvasMessage::Update { update };
-                    if let Ok(json) = serde_json::to_string(&msg) {
-                        if sender.send(Message::Text(json.into())).await.is_err() {
-                            trace!("Client disconnected, stopping update forward");
-                            break;
-                        }
+                    if let Ok(json) = serde_json::to_string(&msg)
+                        && sender.send(Message::Text(json.into())).await.is_err()
+                    {
+                        trace!("Client disconnected, stopping update forward");
+                        break;
                     }
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Closed) => {
@@ -328,8 +328,6 @@ async fn handle_command(
     canvas_id: Uuid,
     command: CanvasCommand,
 ) -> CanvasResult<()> {
-    
-
     let mut entry = state
         .canvases
         .entry(canvas_id)

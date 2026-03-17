@@ -26,7 +26,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match client.chat().complete(request).await {
         Ok(response) => {
-            println!("Response:\n{}\n", response.content().unwrap_or("No content"));
+            println!(
+                "Response:\n{}\n",
+                response.content().unwrap_or("No content")
+            );
 
             if response.has_citations() {
                 println!("Sources:");
@@ -58,7 +61,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match client.chat().complete(request).await {
         Ok(response) => {
-            println!("Response:\n{}\n", response.content().unwrap_or("No content"));
+            println!(
+                "Response:\n{}\n",
+                response.content().unwrap_or("No content")
+            );
 
             if response.has_citations() {
                 println!("Sources:");
@@ -86,7 +92,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match client.chat().complete(request).await {
         Ok(response) => {
-            println!("Response:\n{}\n", response.content().unwrap_or("No content"));
+            println!(
+                "Response:\n{}\n",
+                response.content().unwrap_or("No content")
+            );
 
             // Chat models don't have citations
             if !response.has_citations() {

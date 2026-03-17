@@ -1,7 +1,7 @@
 //! OpenRustClaw CLI entry point.
 
-use clap::{Parser, Subcommand};
 use anyhow::Result;
+use clap::{Parser, Subcommand};
 
 mod commands;
 
@@ -327,17 +327,23 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Start { config, channels } => commands::start::run(&config, channels.as_deref()).await,
-        Commands::Chat { provider, model } => commands::chat::run(&provider, model.as_deref()).await,
+        Commands::Start { config, channels } => {
+            commands::start::run(&config, channels.as_deref()).await
+        }
+        Commands::Chat { provider, model } => {
+            commands::chat::run(&provider, model.as_deref()).await
+        }
         Commands::Models { action } => match action {
             ModelsAction::List => commands::models::list().await,
             ModelsAction::Info { name } => commands::models::info(&name).await,
         },
         Commands::Skills { action } => match action {
             SkillsAction::List => commands::skills::list().await,
-            SkillsAction::Search { query, category, sort } => {
-                commands::skills::search(&query, category.as_deref(), &sort).await
-            }
+            SkillsAction::Search {
+                query,
+                category,
+                sort,
+            } => commands::skills::search(&query, category.as_deref(), &sort).await,
             SkillsAction::Install { name } => commands::skills::install(&name).await,
             SkillsAction::Update { name } => commands::skills::update(&name).await,
             SkillsAction::Uninstall { name } => commands::skills::uninstall(&name).await,
@@ -347,7 +353,9 @@ async fn main() -> Result<()> {
         },
         Commands::Schedule { action } => match action {
             ScheduleAction::List => commands::schedule::list().await,
-            ScheduleAction::Create { name, workflow } => commands::schedule::create(&name, &workflow).await,
+            ScheduleAction::Create { name, workflow } => {
+                commands::schedule::create(&name, &workflow).await
+            }
             ScheduleAction::Pause { id } => commands::schedule::pause(&id).await,
             ScheduleAction::Resume { id } => commands::schedule::resume(&id).await,
         },
@@ -356,8 +364,12 @@ async fn main() -> Result<()> {
             SecurityAction::GenerateKeys => commands::security::generate_keys().await,
         },
         Commands::Memory { action } => match action {
-            MemoryAction::Export { output, user_id } => commands::memory::export(&output, user_id.as_deref()).await,
-            MemoryAction::Import { file, user_id } => commands::memory::import(&file, &user_id).await,
+            MemoryAction::Export { output, user_id } => {
+                commands::memory::export(&output, user_id.as_deref()).await
+            }
+            MemoryAction::Import { file, user_id } => {
+                commands::memory::import(&file, &user_id).await
+            }
             MemoryAction::Stats => commands::memory::stats().await,
         },
         Commands::Doctor => commands::doctor::run().await,
@@ -365,20 +377,45 @@ async fn main() -> Result<()> {
         #[cfg(feature = "cursor")]
         Commands::Cursor { action } => match action {
             CursorAction::Setup => commands::cursor::setup().await,
-            CursorAction::Start { transport, port } => commands::cursor::start(&transport, port).await,
+            CursorAction::Start { transport, port } => {
+                commands::cursor::start(&transport, port).await
+            }
             CursorAction::Status => commands::cursor::status().await,
         },
         Commands::McpServer { transport } => commands::start::run_mcp_server(&transport).await,
         Commands::Mcp2Cli { action } => match action {
-            Mcp2CliAction::List { mcp, mcp_stdio, spec, base_url, refresh, format } => {
-                commands::mcp2cli::list(mcp, mcp_stdio, spec, base_url, refresh, parse_format(&format)).await
+            Mcp2CliAction::List {
+                mcp,
+                mcp_stdio,
+                spec,
+                base_url,
+                refresh,
+                format,
+            } => {
+                commands::mcp2cli::list(
+                    mcp,
+                    mcp_stdio,
+                    spec,
+                    base_url,
+                    refresh,
+                    parse_format(&format),
+                )
+                .await
             }
-            Mcp2CliAction::Help { mcp, spec, tool, format } => {
-                commands::mcp2cli::help_cmd(mcp, spec, tool, parse_format(&format)).await
-            }
-            Mcp2CliAction::Run { mcp, spec, tool, args, stdin, format } => {
-                commands::mcp2cli::run(mcp, spec, tool, args, stdin, parse_format(&format)).await
-            }
+            Mcp2CliAction::Help {
+                mcp,
+                spec,
+                tool,
+                format,
+            } => commands::mcp2cli::help_cmd(mcp, spec, tool, parse_format(&format)).await,
+            Mcp2CliAction::Run {
+                mcp,
+                spec,
+                tool,
+                args,
+                stdin,
+                format,
+            } => commands::mcp2cli::run(mcp, spec, tool, args, stdin, parse_format(&format)).await,
             Mcp2CliAction::Analyze { tools, turns, used } => {
                 commands::mcp2cli::analyze(tools, turns, used).await
             }
@@ -391,8 +428,23 @@ async fn main() -> Result<()> {
             },
         },
         #[cfg(feature = "voice")]
-        Commands::Talk { provider, model, wake_word, silence_timeout, max_utterance, barge_in } => {
-            commands::talk::run(&provider, model.as_deref(), &wake_word, silence_timeout, max_utterance, barge_in).await
+        Commands::Talk {
+            provider,
+            model,
+            wake_word,
+            silence_timeout,
+            max_utterance,
+            barge_in,
+        } => {
+            commands::talk::run(
+                &provider,
+                model.as_deref(),
+                &wake_word,
+                silence_timeout,
+                max_utterance,
+                barge_in,
+            )
+            .await
         }
         Commands::Webhooks { action } => match action {
             WebhooksAction::List => commands::webhooks::list().await,
@@ -438,7 +490,10 @@ mod tests {
 
     #[test]
     fn test_parse_format_table() {
-        matches!(parse_format("table"), commands::mcp2cli::OutputFormat::Table);
+        matches!(
+            parse_format("table"),
+            commands::mcp2cli::OutputFormat::Table
+        );
     }
 
     #[test]
@@ -481,9 +536,8 @@ mod tests {
 
     #[test]
     fn test_cli_parse_start_with_config() {
-        let cli = Cli::try_parse_from([
-            "openrustclaw", "start", "--config", "my_config.toml"
-        ]).unwrap();
+        let cli =
+            Cli::try_parse_from(["openrustclaw", "start", "--config", "my_config.toml"]).unwrap();
         match cli.command {
             Commands::Start { config, channels } => {
                 assert_eq!(config, "my_config.toml");
@@ -495,11 +549,12 @@ mod tests {
 
     #[test]
     fn test_cli_parse_start_with_channels() {
-        let cli = Cli::try_parse_from([
-            "openrustclaw", "start", "-C", "telegram,discord"
-        ]).unwrap();
+        let cli = Cli::try_parse_from(["openrustclaw", "start", "-C", "telegram,discord"]).unwrap();
         match cli.command {
-            Commands::Start { config: _, channels } => {
+            Commands::Start {
+                config: _,
+                channels,
+            } => {
                 assert_eq!(channels.as_deref(), Some("telegram,discord"));
             }
             _ => panic!("Expected Start command"),
@@ -520,9 +575,7 @@ mod tests {
 
     #[test]
     fn test_cli_parse_chat_with_provider() {
-        let cli = Cli::try_parse_from([
-            "openrustclaw", "chat", "--provider", "openai"
-        ]).unwrap();
+        let cli = Cli::try_parse_from(["openrustclaw", "chat", "--provider", "openai"]).unwrap();
         match cli.command {
             Commands::Chat { provider, model } => {
                 assert_eq!(provider, "openai");
@@ -535,8 +588,14 @@ mod tests {
     #[test]
     fn test_cli_parse_chat_with_model() {
         let cli = Cli::try_parse_from([
-            "openrustclaw", "chat", "--provider", "ollama", "--model", "llama3.2"
-        ]).unwrap();
+            "openrustclaw",
+            "chat",
+            "--provider",
+            "ollama",
+            "--model",
+            "llama3.2",
+        ])
+        .unwrap();
         match cli.command {
             Commands::Chat { provider, model } => {
                 assert_eq!(provider, "ollama");
@@ -549,14 +608,21 @@ mod tests {
     #[test]
     fn test_cli_parse_models_list() {
         let cli = Cli::try_parse_from(["openrustclaw", "models", "list"]).unwrap();
-        matches!(cli.command, Commands::Models { action: ModelsAction::List });
+        matches!(
+            cli.command,
+            Commands::Models {
+                action: ModelsAction::List
+            }
+        );
     }
 
     #[test]
     fn test_cli_parse_models_info() {
         let cli = Cli::try_parse_from(["openrustclaw", "models", "info", "gpt-4o"]).unwrap();
         match cli.command {
-            Commands::Models { action: ModelsAction::Info { name } } => {
+            Commands::Models {
+                action: ModelsAction::Info { name },
+            } => {
                 assert_eq!(name, "gpt-4o");
             }
             _ => panic!("Expected Models Info command"),
@@ -566,28 +632,44 @@ mod tests {
     #[test]
     fn test_cli_parse_security_audit() {
         let cli = Cli::try_parse_from(["openrustclaw", "security", "audit"]).unwrap();
-        matches!(cli.command, Commands::Security { action: SecurityAction::Audit });
+        matches!(
+            cli.command,
+            Commands::Security {
+                action: SecurityAction::Audit
+            }
+        );
     }
 
     #[test]
     fn test_cli_parse_security_generate_keys() {
         let cli = Cli::try_parse_from(["openrustclaw", "security", "generate-keys"]).unwrap();
-        matches!(cli.command, Commands::Security { action: SecurityAction::GenerateKeys });
+        matches!(
+            cli.command,
+            Commands::Security {
+                action: SecurityAction::GenerateKeys
+            }
+        );
     }
 
     #[test]
     fn test_cli_parse_memory_stats() {
         let cli = Cli::try_parse_from(["openrustclaw", "memory", "stats"]).unwrap();
-        matches!(cli.command, Commands::Memory { action: MemoryAction::Stats });
+        matches!(
+            cli.command,
+            Commands::Memory {
+                action: MemoryAction::Stats
+            }
+        );
     }
 
     #[test]
     fn test_cli_parse_memory_export() {
-        let cli = Cli::try_parse_from([
-            "openrustclaw", "memory", "export", "--output", "dump.md"
-        ]).unwrap();
+        let cli = Cli::try_parse_from(["openrustclaw", "memory", "export", "--output", "dump.md"])
+            .unwrap();
         match cli.command {
-            Commands::Memory { action: MemoryAction::Export { output, user_id } } => {
+            Commands::Memory {
+                action: MemoryAction::Export { output, user_id },
+            } => {
                 assert_eq!(output, "dump.md");
                 assert!(user_id.is_none());
             }
@@ -598,10 +680,19 @@ mod tests {
     #[test]
     fn test_cli_parse_memory_import() {
         let cli = Cli::try_parse_from([
-            "openrustclaw", "memory", "import", "--file", "MEMORY.md", "--user-id", "user1"
-        ]).unwrap();
+            "openrustclaw",
+            "memory",
+            "import",
+            "--file",
+            "MEMORY.md",
+            "--user-id",
+            "user1",
+        ])
+        .unwrap();
         match cli.command {
-            Commands::Memory { action: MemoryAction::Import { file, user_id } } => {
+            Commands::Memory {
+                action: MemoryAction::Import { file, user_id },
+            } => {
                 assert_eq!(file, "MEMORY.md");
                 assert_eq!(user_id, "user1");
             }
@@ -612,16 +703,30 @@ mod tests {
     #[test]
     fn test_cli_parse_schedule_list() {
         let cli = Cli::try_parse_from(["openrustclaw", "schedule", "list"]).unwrap();
-        matches!(cli.command, Commands::Schedule { action: ScheduleAction::List });
+        matches!(
+            cli.command,
+            Commands::Schedule {
+                action: ScheduleAction::List
+            }
+        );
     }
 
     #[test]
     fn test_cli_parse_schedule_create() {
         let cli = Cli::try_parse_from([
-            "openrustclaw", "schedule", "create", "--name", "daily-check", "--workflow", "health_check"
-        ]).unwrap();
+            "openrustclaw",
+            "schedule",
+            "create",
+            "--name",
+            "daily-check",
+            "--workflow",
+            "health_check",
+        ])
+        .unwrap();
         match cli.command {
-            Commands::Schedule { action: ScheduleAction::Create { name, workflow } } => {
+            Commands::Schedule {
+                action: ScheduleAction::Create { name, workflow },
+            } => {
                 assert_eq!(name, "daily-check");
                 assert_eq!(workflow, "health_check");
             }
@@ -632,16 +737,26 @@ mod tests {
     #[test]
     fn test_cli_parse_skills_list() {
         let cli = Cli::try_parse_from(["openrustclaw", "skills", "list"]).unwrap();
-        matches!(cli.command, Commands::Skills { action: SkillsAction::List });
+        matches!(
+            cli.command,
+            Commands::Skills {
+                action: SkillsAction::List
+            }
+        );
     }
 
     #[test]
     fn test_cli_parse_skills_search() {
-        let cli = Cli::try_parse_from([
-            "openrustclaw", "skills", "search", "web"
-        ]).unwrap();
+        let cli = Cli::try_parse_from(["openrustclaw", "skills", "search", "web"]).unwrap();
         match cli.command {
-            Commands::Skills { action: SkillsAction::Search { query, category, sort } } => {
+            Commands::Skills {
+                action:
+                    SkillsAction::Search {
+                        query,
+                        category,
+                        sort,
+                    },
+            } => {
                 assert_eq!(query, "web");
                 assert!(category.is_none());
                 assert_eq!(sort, "relevance");
@@ -654,7 +769,9 @@ mod tests {
     fn test_cli_parse_skills_install() {
         let cli = Cli::try_parse_from(["openrustclaw", "skills", "install", "web_search"]).unwrap();
         match cli.command {
-            Commands::Skills { action: SkillsAction::Install { name } } => {
+            Commands::Skills {
+                action: SkillsAction::Install { name },
+            } => {
                 assert_eq!(name, "web_search");
             }
             _ => panic!("Expected Skills Install command"),
@@ -664,14 +781,21 @@ mod tests {
     #[test]
     fn test_cli_parse_webhooks_list() {
         let cli = Cli::try_parse_from(["openrustclaw", "webhooks", "list"]).unwrap();
-        matches!(cli.command, Commands::Webhooks { action: WebhooksAction::List });
+        matches!(
+            cli.command,
+            Commands::Webhooks {
+                action: WebhooksAction::List
+            }
+        );
     }
 
     #[test]
     fn test_cli_parse_webhooks_create() {
         let cli = Cli::try_parse_from(["openrustclaw", "webhooks", "create", "github"]).unwrap();
         match cli.command {
-            Commands::Webhooks { action: WebhooksAction::Create { path } } => {
+            Commands::Webhooks {
+                action: WebhooksAction::Create { path },
+            } => {
                 assert_eq!(path, "github");
             }
             _ => panic!("Expected Webhooks Create command"),

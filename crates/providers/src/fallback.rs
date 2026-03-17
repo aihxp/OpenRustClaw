@@ -62,11 +62,11 @@ impl ProviderChain {
             let name = provider.provider_name().to_string();
 
             // Skip if in cooldown.
-            if let Some(cooldown_until) = self.cooldowns.get(&name) {
-                if Instant::now() < *cooldown_until {
-                    info!(provider = %name, "Skipping provider (in cooldown)");
-                    continue;
-                }
+            if let Some(cooldown_until) = self.cooldowns.get(&name)
+                && Instant::now() < *cooldown_until
+            {
+                info!(provider = %name, "Skipping provider (in cooldown)");
+                continue;
             }
 
             match provider.complete(request.clone()).await {
@@ -136,9 +136,7 @@ mod tests {
 
     use async_trait::async_trait;
     use futures::Stream;
-    use openrustclaw_core::types::{
-        FinishReason, Message, StreamChunk, TokenUsage, ToolFormat,
-    };
+    use openrustclaw_core::types::{FinishReason, Message, StreamChunk, TokenUsage, ToolFormat};
 
     /// A mock provider that always succeeds with a fixed response.
     struct MockSuccessProvider {

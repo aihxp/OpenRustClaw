@@ -21,11 +21,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .expect("AZURE_OPENAI_DEPLOYMENT environment variable not set");
 
     // Create the client
-    let client = AzureOpenAIClient::new(
-        &resource_name,
-        &deployment_name,
-        api_key.clone(),
-    )?;
+    let client = AzureOpenAIClient::new(&resource_name, &deployment_name, api_key.clone())?;
 
     println!("Sending chat completion request...\n");
 
@@ -45,7 +41,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\nContent:\n{}", response.content().unwrap_or("No content"));
     println!("\nUsage: {} tokens", response.usage.total_tokens);
     println!("  - Prompt tokens: {}", response.usage.prompt_tokens);
-    println!("  - Completion tokens: {}", response.usage.completion_tokens);
+    println!(
+        "  - Completion tokens: {}",
+        response.usage.completion_tokens
+    );
 
     // Check for content filter results
     if let Some(filter_results) = response
@@ -55,16 +54,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         println!("\nContent Filter Results:");
         if let Some(hate) = &filter_results.hate {
-            println!("  Hate: filtered={}, severity={:?}", hate.filtered, hate.severity);
+            println!(
+                "  Hate: filtered={}, severity={:?}",
+                hate.filtered, hate.severity
+            );
         }
         if let Some(self_harm) = &filter_results.self_harm {
-            println!("  Self-harm: filtered={}, severity={:?}", self_harm.filtered, self_harm.severity);
+            println!(
+                "  Self-harm: filtered={}, severity={:?}",
+                self_harm.filtered, self_harm.severity
+            );
         }
         if let Some(sexual) = &filter_results.sexual {
-            println!("  Sexual: filtered={}, severity={:?}", sexual.filtered, sexual.severity);
+            println!(
+                "  Sexual: filtered={}, severity={:?}",
+                sexual.filtered, sexual.severity
+            );
         }
         if let Some(violence) = &filter_results.violence {
-            println!("  Violence: filtered={}, severity={:?}", violence.filtered, violence.severity);
+            println!(
+                "  Violence: filtered={}, severity={:?}",
+                violence.filtered, violence.severity
+            );
         }
     }
 

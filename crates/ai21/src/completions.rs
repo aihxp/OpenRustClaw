@@ -271,7 +271,10 @@ impl CompletionResponse {
 
     /// Get all completion texts.
     pub fn all_texts(&self) -> Vec<&str> {
-        self.completions.iter().map(|c| c.data.text.as_str()).collect()
+        self.completions
+            .iter()
+            .map(|c| c.data.text.as_str())
+            .collect()
     }
 }
 
@@ -402,15 +405,13 @@ mod tests {
                 text: "Hello".to_string(),
                 tokens: vec![],
             },
-            completions: vec![
-                Completion {
-                    data: CompletionData {
-                        text: " World!".to_string(),
-                        tokens: vec![],
-                    },
+            completions: vec![Completion {
+                data: CompletionData {
+                    text: " World!".to_string(),
                     tokens: vec![],
                 },
-            ],
+                tokens: vec![],
+            }],
         };
 
         assert_eq!(response.text(), Some(" World!"));

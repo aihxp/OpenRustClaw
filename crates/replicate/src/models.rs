@@ -4,10 +4,8 @@ use tracing::trace;
 
 use crate::client::ReplicateClient;
 use crate::error::Result;
-use crate::types::{
-    Model, ModelVersion, PaginatedResponse, Prediction,
-};
 use crate::predictions::PredictionRequest;
+use crate::types::{Model, ModelVersion, PaginatedResponse, Prediction};
 
 /// Models API client.
 #[derive(Debug)]
@@ -45,19 +43,19 @@ impl<'a> Models<'a> {
     ) -> Result<PaginatedResponse<Model>> {
         let mut path = "/models".to_string();
         let mut params = vec![];
-        
+
         if let Some(cursor) = cursor {
             params.push(format!("cursor={}", cursor));
         }
         if let Some(per_page) = per_page {
             params.push(format!("per_page={}", per_page));
         }
-        
+
         if !params.is_empty() {
-            path.push_str("?");
+            path.push('?');
             path.push_str(&params.join("&"));
         }
-        
+
         let response = self.client.get(&path).await?;
         self.client.handle_response(response).await
     }
@@ -139,7 +137,7 @@ impl<'a> Models<'a> {
     ) -> Result<Model> {
         let path = format!("/models/{}/{}", owner, name);
         let mut body = serde_json::Map::new();
-        
+
         if let Some(desc) = description {
             body.insert("description".to_string(), serde_json::json!(desc));
         }
@@ -152,17 +150,16 @@ impl<'a> Models<'a> {
         if let Some(url) = license_url {
             body.insert("license_url".to_string(), serde_json::json!(url));
         }
-        
-        let response = self.client.patch(&path, serde_json::Value::Object(body)).await?;
+
+        let response = self
+            .client
+            .patch(&path, serde_json::Value::Object(body))
+            .await?;
         self.client.handle_response(response).await
     }
 
     /// List versions of a model.
-    pub async fn list_versions(
-        &self,
-        owner: &str,
-        name: &str,
-    ) -> Result<Vec<ModelVersion>> {
+    pub async fn list_versions(&self, owner: &str, name: &str) -> Result<Vec<ModelVersion>> {
         let path = format!("/models/{}/{}/versions", owner, name);
         let response = self.client.get(&path).await?;
         self.client.handle_response(response).await
@@ -183,12 +180,7 @@ impl<'a> Models<'a> {
     /// Delete a model version.
     ///
     /// Note: This has restrictions - see API documentation.
-    pub async fn delete_version(
-        &self,
-        owner: &str,
-        name: &str,
-        version_id: &str,
-    ) -> Result<()> {
+    pub async fn delete_version(&self, owner: &str, name: &str, version_id: &str) -> Result<()> {
         let path = format!("/models/{}/{}/versions/{}", owner, name, version_id);
         let response = self.client.delete(&path).await?;
         self.client.handle_empty_response(response).await
@@ -223,30 +215,33 @@ impl<'a> Models<'a> {
     ) -> Result<Prediction> {
         let path = format!("/models/{}/{}/predictions", owner, name);
         let mut body = serde_json::to_value(&request)?;
-        
+
         // Remove model/version from body as they're in the URL
         if let Some(obj) = body.as_object_mut() {
             obj.remove("model");
             obj.remove("version");
         }
-        
+
         let mut headers = reqwest::header::HeaderMap::new();
-        
+
         // Handle sync mode with Prefer header
         if let Some(wait_secs) = request.wait {
             headers.insert(
                 "Prefer",
-                reqwest::header::HeaderValue::from_str(&format!("wait={}", wait_secs))
-                    .map_err(|e| crate::error::ReplicateError::InvalidHeader { message: e.to_string() })?,
+                reqwest::header::HeaderValue::from_str(&format!("wait={}", wait_secs)).map_err(
+                    |e| crate::error::ReplicateError::InvalidHeader {
+                        message: e.to_string(),
+                    },
+                )?,
             );
         }
-        
+
         let response = if headers.is_empty() {
             self.client.post(&path, body).await?
         } else {
             self.client.post_with_headers(&path, body, headers).await?
         };
-        
+
         self.client.handle_response(response).await
     }
 
@@ -260,12 +255,13 @@ impl<'a> Models<'a> {
         request: PredictionRequest,
     ) -> Result<Prediction> {
         let prediction = self.create_prediction(owner, name, request.clone()).await?;
-        
+
         // Poll for completion
         let poll_interval = request.poll_interval;
         let timeout = request.timeout;
-        
-        self.wait_for_completion(owner, name, &prediction.id, poll_interval, timeout).await
+
+        self.wait_for_completion(owner, name, &prediction.id, poll_interval, timeout)
+            .await
     }
 
     /// Wait for a prediction on an official model to complete.
@@ -319,7 +315,10 @@ impl<'a> Models<'a> {
     pub async fn get_readme(&self, owner: &str, name: &str) -> Result<String> {
         let path = format!("/models/{}/{}/readme", owner, name);
         let response = self.client.get(&path).await?;
-        let text = response.text().await.map_err(crate::error::ReplicateError::from)?;
+        let text = response
+            .text()
+            .await
+            .map_err(crate::error::ReplicateError::from)?;
         Ok(text)
     }
 
@@ -330,11 +329,11 @@ impl<'a> Models<'a> {
         per_page: Option<u32>,
     ) -> Result<PaginatedResponse<Model>> {
         let mut path = format!("/models?query={}", urlencoding::encode(query));
-        
+
         if let Some(per_page) = per_page {
             path.push_str(&format!("&per_page={}", per_page));
         }
-        
+
         let response = self.client.get(&path).await?;
         self.client.handle_response(response).await
     }
@@ -365,7 +364,12 @@ pub struct ModelInfo {
 
 impl ModelInfo {
     /// Create a new model info with required fields.
-    pub fn new(owner: impl Into<String>, name: impl Into<String>, visibility: &str, hardware: &str) -> Self {
+    pub fn new(
+        owner: impl Into<String>,
+        name: impl Into<String>,
+        visibility: &str,
+        hardware: &str,
+    ) -> Self {
         Self {
             owner: owner.into(),
             name: name.into(),
@@ -425,6 +429,9 @@ mod tests {
         assert_eq!(info.visibility, "public");
         assert_eq!(info.hardware, "gpu-a100");
         assert_eq!(info.description, Some("My awesome model".to_string()));
-        assert_eq!(info.github_url, Some("https://github.com/myuser/mymodel".to_string()));
+        assert_eq!(
+            info.github_url,
+            Some("https://github.com/myuser/mymodel".to_string())
+        );
     }
 }

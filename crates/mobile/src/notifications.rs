@@ -4,36 +4,26 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// Notification priority
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum NotificationPriority {
     Low,
+    #[default]
     Normal,
     High,
     Critical,
 }
 
-impl Default for NotificationPriority {
-    fn default() -> Self {
-        NotificationPriority::Normal
-    }
-}
-
 /// Notification type
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum NotificationType {
+    #[default]
     Message,
     Alert,
     Update,
     System,
     Custom,
-}
-
-impl Default for NotificationType {
-    fn default() -> Self {
-        NotificationType::Message
-    }
 }
 
 /// Push notification
@@ -96,8 +86,8 @@ impl Notification {
 #[derive(Debug, Clone)]
 pub struct NotificationConfig {
     pub enabled: bool,
-    pub apns_enabled: bool,    // Apple Push Notification Service
-    pub fcm_enabled: bool,     // Firebase Cloud Messaging
+    pub apns_enabled: bool, // Apple Push Notification Service
+    pub fcm_enabled: bool,  // Firebase Cloud Messaging
     pub show_badge: bool,
     pub play_sound: bool,
     pub sound_name: Option<String>,
@@ -268,7 +258,9 @@ impl NotificationManager {
 
         // Validate notification
         if notification.id.is_empty() {
-            return Err(NotificationError::Invalid("Missing notification ID".to_string()));
+            return Err(NotificationError::Invalid(
+                "Missing notification ID".to_string(),
+            ));
         }
 
         Ok(notification)

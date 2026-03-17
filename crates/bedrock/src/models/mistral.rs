@@ -66,15 +66,15 @@ impl MistralRequest {
     }
 
     /// Format messages into Mistral prompt format.
-    /// 
+    ///
     /// Mistral format: `<s>[INST] {system_prompt}\n{user_message} [/INST] {assistant_response}</s>[INST] {user_message} [/INST]`
     pub fn format_prompt(system: Option<&str>, messages: &[MistralMessage]) -> String {
         let mut prompt = String::from("<s>");
-        
+
         let mut i = 0;
         while i < messages.len() {
             let msg = &messages[i];
-            
+
             match msg.role {
                 MistralRole::User => {
                     prompt.push_str("[INST] ");
@@ -93,7 +93,7 @@ impl MistralRequest {
             }
             i += 1;
         }
-        
+
         prompt
     }
 }

@@ -46,7 +46,7 @@ pub mod headers {
     /// Amz Bedrock Guardrail version.
     pub const AMZ_BEDROCK_GUARDRAIL_VERSION: &str = "x-amzn-bedrock-guardrailversion";
     /// Amz Bedrock Trace.
-pub const AMZ_BEDROCK_TRACE: &str = "x-amzn-bedrock-trace";
+    pub const AMZ_BEDROCK_TRACE: &str = "x-amzn-bedrock-trace";
 }
 
 /// API endpoints.
@@ -70,7 +70,8 @@ pub mod endpoints {
     /// Get agent endpoint.
     pub const GET_AGENT: &str = "/agents/{agentId}";
     /// Invoke agent endpoint.
-    pub const INVOKE_AGENT: &str = "/agents/{agentId}/agentAliases/{agentAliasId}/sessions/{sessionId}/text";
+    pub const INVOKE_AGENT: &str =
+        "/agents/{agentId}/agentAliases/{agentAliasId}/sessions/{sessionId}/text";
     /// Retrieve knowledge base endpoint.
     pub const RETRIEVE_KNOWLEDGE: &str = "/knowledgebases/{knowledgeBaseId}/retrieve";
 }
@@ -646,7 +647,10 @@ mod tests {
             Model::Claude3Sonnet.as_str(),
             "anthropic.claude-3-sonnet-20240229-v1:0"
         );
-        assert_eq!(Model::Llama38BInstruct.as_str(), "meta.llama3-8b-instruct-v1:0");
+        assert_eq!(
+            Model::Llama38BInstruct.as_str(),
+            "meta.llama3-8b-instruct-v1:0"
+        );
     }
 
     #[test]
@@ -669,7 +673,9 @@ mod tests {
     #[test]
     fn test_model_from_str() {
         assert_eq!(
-            "anthropic.claude-3-opus-20240229-v1:0".parse::<Model>().unwrap(),
+            "anthropic.claude-3-opus-20240229-v1:0"
+                .parse::<Model>()
+                .unwrap(),
             Model::Claude3Opus
         );
         assert_eq!(

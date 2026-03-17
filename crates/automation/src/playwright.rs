@@ -42,11 +42,14 @@ impl PlaywrightBackend {
                 info!("Playwright CLI is available");
             }
             _ => {
-                warn!("Playwright CLI not found. Please install with: npm install -g @playwright/test");
+                warn!(
+                    "Playwright CLI not found. Please install with: npm install -g @playwright/test"
+                );
                 return Err(AutomationError::LaunchFailed {
                     browser: "playwright".to_string(),
-                    reason: "Playwright CLI not found. Install with: npm install -g @playwright/test"
-                        .to_string(),
+                    reason:
+                        "Playwright CLI not found. Install with: npm install -g @playwright/test"
+                            .to_string(),
                 });
             }
         }
@@ -153,10 +156,7 @@ impl BrowserContextBackend for PlaywrightContext {
         Ok(())
     }
 
-    async fn grant_permissions(
-        &self,
-        _permissions: Vec<crate::config::Permission>,
-    ) -> Result<()> {
+    async fn grant_permissions(&self, _permissions: Vec<crate::config::Permission>) -> Result<()> {
         debug!("Granting permissions in Playwright context");
         Ok(())
     }
@@ -207,7 +207,7 @@ impl PageBackend for PlaywrightPage {
 
         let mut title = self.title.write().await;
         *title = format!("Page at {}", url);
-        
+
         info!(url = %url, "Navigation complete");
         Ok(())
     }
@@ -259,14 +259,18 @@ impl PageBackend for PlaywrightPage {
 
     async fn screenshot(&self, options: ScreenshotOptions) -> Result<Screenshot> {
         debug!("Taking screenshot with Playwright");
-        
+
         // Generate a simple placeholder image
         let width = self.config.automation.viewport.width;
-        let height = if options.full_page { 3000 } else { self.config.automation.viewport.height };
-        
+        let height = if options.full_page {
+            3000
+        } else {
+            self.config.automation.viewport.height
+        };
+
         // Create a simple PNG (placeholder implementation)
-        let data = create_placeholder_png(width as u32, height)?;
-        
+        let data = create_placeholder_png(width, height)?;
+
         Ok(Screenshot {
             data,
             width,
@@ -354,7 +358,10 @@ impl PageBackend for PlaywrightPage {
     }
 
     async fn viewport_size(&self) -> Result<(u32, u32)> {
-        Ok((self.config.automation.viewport.width, self.config.automation.viewport.height))
+        Ok((
+            self.config.automation.viewport.width,
+            self.config.automation.viewport.height,
+        ))
     }
 
     async fn set_viewport_size(&self, width: u32, height: u32) -> Result<()> {
@@ -552,14 +559,14 @@ impl FrameBackend for PlaywrightFrame {
 fn create_placeholder_png(width: u32, height: u32) -> Result<Vec<u8>> {
     // Create a simple gradient image
     let mut img = image::RgbImage::new(width, height);
-    
+
     for (x, y, pixel) in img.enumerate_pixels_mut() {
         let r = ((x as f32 / width as f32) * 255.0) as u8;
         let g = ((y as f32 / height as f32) * 255.0) as u8;
         let b = 128;
         *pixel = image::Rgb([r, g, b]);
     }
-    
+
     let mut buf = Vec::new();
     let encoder = image::codecs::png::PngEncoder::new(&mut buf);
     encoder
@@ -567,6 +574,6 @@ fn create_placeholder_png(width: u32, height: u32) -> Result<Vec<u8>> {
         .map_err(|e| AutomationError::ScreenshotFailed {
             reason: format!("Failed to encode PNG: {}", e),
         })?;
-    
+
     Ok(buf)
 }

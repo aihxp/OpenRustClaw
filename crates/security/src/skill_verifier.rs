@@ -2,9 +2,9 @@
 //!
 //! Marketplace skills must be signed. Workspace/bundled skills are exempt.
 
-use ed25519_dalek::{Signature, Verifier, VerifyingKey, SigningKey, Signer};
-use sha2::{Sha256, Digest};
-use openrustclaw_core::error::{SecurityError, Error, Result};
+use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
+use openrustclaw_core::error::{Error, Result, SecurityError};
+use sha2::{Digest, Sha256};
 use tracing::info;
 
 /// Verifies skill signatures using Ed25519.

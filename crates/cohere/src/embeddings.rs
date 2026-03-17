@@ -63,10 +63,7 @@ impl EmbedRequest {
 
     /// Create a simple request for a single text.
     pub fn simple(model: impl Into<String>, text: impl Into<String>) -> Self {
-        Self::builder()
-            .model(model)
-            .add_text(text)
-            .build()
+        Self::builder().model(model).add_text(text).build()
     }
 
     /// Create a request for multiple texts.
@@ -137,7 +134,9 @@ impl EmbedRequestBuilder {
     pub fn build(self) -> EmbedRequest {
         EmbedRequest {
             texts: self.texts,
-            model: self.model.unwrap_or_else(|| "embed-english-v3.0".to_string()),
+            model: self
+                .model
+                .unwrap_or_else(|| "embed-english-v3.0".to_string()),
             input_type: self.input_type,
             truncate: self.truncate,
             embedding_types: self.embedding_types,
@@ -224,7 +223,9 @@ impl EmbedResponse {
 
     /// Get the first embedding.
     pub fn first(&self) -> Option<&[f32]> {
-        self.embeddings.as_ref().and_then(|e| e.first().map(|v| v.as_slice()))
+        self.embeddings
+            .as_ref()
+            .and_then(|e| e.first().map(|v| v.as_slice()))
     }
 
     /// Get the number of embeddings.

@@ -6,7 +6,7 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use tokio::process::Command;
-use tokio::sync::{mpsc, Mutex, RwLock};
+use tokio::sync::{Mutex, RwLock, mpsc};
 use tracing::{debug, info};
 use uuid::Uuid;
 
@@ -209,7 +209,10 @@ impl IMessageChannel {
         tapback: TapbackType,
     ) -> Result<()> {
         match &self.config.bridge_mode {
-            IMessageBridgeMode::BlueBubbles { server_url, password } => {
+            IMessageBridgeMode::BlueBubbles {
+                server_url,
+                password,
+            } => {
                 let client = reqwest::Client::new();
                 let url = format!("{}/api/v1/message/react", server_url);
 
@@ -267,7 +270,10 @@ impl Channel for IMessageChannel {
             })?;
 
         match &self.config.bridge_mode {
-            IMessageBridgeMode::BlueBubbles { server_url, password } => {
+            IMessageBridgeMode::BlueBubbles {
+                server_url,
+                password,
+            } => {
                 self.send_bluebubbles(server_url, password, chat_guid, &msg.content)
                     .await
             }
@@ -500,7 +506,10 @@ mod tests {
 
         let msg: BlueBubblesMessage = serde_json::from_str(json).unwrap();
         assert_eq!(msg.guid, "reaction-guid-789");
-        assert_eq!(msg.associated_message_guid, Some("original-msg-guid".to_string()));
+        assert_eq!(
+            msg.associated_message_guid,
+            Some("original-msg-guid".to_string())
+        );
         assert_eq!(msg.associated_message_type, Some(0));
     }
 }

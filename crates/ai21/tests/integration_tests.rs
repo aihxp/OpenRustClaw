@@ -9,7 +9,7 @@ use ai21::{
 #[cfg(test)]
 mod mock_tests {
     use super::*;
-    use wiremock::{matchers::*, Mock, MockServer, ResponseTemplate};
+    use wiremock::{Mock, MockServer, ResponseTemplate, matchers::*};
 
     #[tokio::test]
     async fn test_chat_request() {
@@ -41,8 +41,7 @@ mod mock_tests {
             .await;
 
         let client = Ai21Client::with_config(
-            ai21::ClientConfig::new("test-key")
-                .base_url(&mock_server.uri()),
+            ai21::ClientConfig::new("test-key").base_url(&mock_server.uri()),
         )
         .unwrap();
 
@@ -83,8 +82,7 @@ mod mock_tests {
             .await;
 
         let client = Ai21Client::with_config(
-            ai21::ClientConfig::new("test-key")
-                .base_url(&mock_server.uri()),
+            ai21::ClientConfig::new("test-key").base_url(&mock_server.uri()),
         )
         .unwrap();
 
@@ -115,8 +113,7 @@ mod mock_tests {
             .await;
 
         let client = Ai21Client::with_config(
-            ai21::ClientConfig::new("test-key")
-                .base_url(&mock_server.uri()),
+            ai21::ClientConfig::new("test-key").base_url(&mock_server.uri()),
         )
         .unwrap();
 
@@ -148,8 +145,7 @@ mod mock_tests {
             .await;
 
         let client = Ai21Client::with_config(
-            ai21::ClientConfig::new("test-key")
-                .base_url(&mock_server.uri()),
+            ai21::ClientConfig::new("test-key").base_url(&mock_server.uri()),
         )
         .unwrap();
 
@@ -174,8 +170,7 @@ mod mock_tests {
             .await;
 
         let client = Ai21Client::with_config(
-            ai21::ClientConfig::new("invalid-key")
-                .base_url(&mock_server.uri()),
+            ai21::ClientConfig::new("invalid-key").base_url(&mock_server.uri()),
         )
         .unwrap();
 
@@ -240,8 +235,8 @@ mod unit_tests {
 
     #[test]
     fn test_document_creation() {
-        let doc = Document::new("id1", "content")
-            .with_metadata(serde_json::json!({"key": "value"}));
+        let doc =
+            Document::new("id1", "content").with_metadata(serde_json::json!({"key": "value"}));
 
         assert_eq!(doc.id, Some("id1".to_string()));
         assert_eq!(doc.text, "content");
@@ -263,8 +258,7 @@ mod unit_tests {
 
     #[test]
     fn test_message_creation() {
-        let msg = Message::user("Hello")
-            .with_name("Alice");
+        let msg = Message::user("Hello").with_name("Alice");
 
         assert_eq!(msg.role, ai21::MessageRole::User);
         assert_eq!(msg.content, "Hello");

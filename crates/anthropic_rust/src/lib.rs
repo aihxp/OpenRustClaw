@@ -79,8 +79,8 @@ pub use error::{AnthropicError, Result};
 // Re-export commonly used types
 pub use types::{
     ContentBlock, ContentBlockDelta, ImageContent, ImageSource, Message, MessageRequest,
-    MessageResponse, MessageRole as Role, TextBlock, TextDelta, Tool, ToolChoice,
-    ToolResult, ToolUse, Usage,
+    MessageResponse, MessageRole as Role, TextBlock, TextDelta, Tool, ToolChoice, ToolResult,
+    ToolUse, Usage,
 };
 
 #[cfg(feature = "streaming")]

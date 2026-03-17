@@ -92,36 +92,33 @@
 mod client;
 mod error;
 
-pub mod chat;
 pub mod audio;
+pub mod chat;
 pub mod types;
 
-pub use client::{GroqClient, ClientConfig, DEFAULT_BASE_URL, endpoints};
+pub use client::{ClientConfig, DEFAULT_BASE_URL, GroqClient, endpoints};
 pub use error::{GroqError, Result};
 
 // Re-export commonly used types
 pub use types::{
-    ChatChoice, ChatMessage, ChatResponse, Function, FunctionCall, 
-    Role, TokenUsage, Tool, ToolCall, GroqModel,
-    FinishReason,
+    ChatChoice, ChatMessage, ChatResponse, FinishReason, Function, FunctionCall, GroqModel, Role,
+    TokenUsage, Tool, ToolCall,
 };
 
-pub use chat::{ChatRequest, ChatRequestBuilder, ToolChoice, ResponseFormat};
+pub use chat::{ChatRequest, ChatRequestBuilder, ResponseFormat, ToolChoice};
 
 // Audio types
 #[cfg(feature = "audio")]
 pub use audio::{
-    AudioTranscriptionRequest, AudioTranscriptionRequestBuilder,
-    AudioTranslationRequest, AudioTranslationRequestBuilder,
-    TranscriptionResponse, TranslationResponse,
-    AudioSegment, TranscriptionVerboseResponse,
+    AudioSegment, AudioTranscriptionRequest, AudioTranscriptionRequestBuilder,
+    AudioTranslationRequest, AudioTranslationRequestBuilder, TranscriptionResponse,
+    TranscriptionVerboseResponse, TranslationResponse,
 };
 
 // Streaming types
 #[cfg(feature = "streaming")]
 pub use chat::{
-    ChatCompletionChunk, StreamChoice, StreamDelta, 
-    StreamCollector, ToolCallDelta, FunctionDelta,
+    ChatCompletionChunk, FunctionDelta, StreamChoice, StreamCollector, StreamDelta, ToolCallDelta,
 };
 
 /// The version of this crate.

@@ -6,7 +6,7 @@ use tracing::trace;
 
 use crate::client::ReplicateClient;
 use crate::error::{ReplicateError, Result};
-use crate::types::{Prediction, PaginatedResponse, WebhookEvents};
+use crate::types::{PaginatedResponse, Prediction, WebhookEvents};
 
 /// Predictions API client.
 #[derive(Debug)]
@@ -47,15 +47,20 @@ impl<'a> Predictions<'a> {
         if let Some(wait_secs) = request.wait {
             headers.insert(
                 "Prefer",
-                reqwest::header::HeaderValue::from_str(&format!("wait={}", wait_secs))
-                    .map_err(|e| ReplicateError::InvalidHeader { message: e.to_string() })?,
+                reqwest::header::HeaderValue::from_str(&format!("wait={}", wait_secs)).map_err(
+                    |e| ReplicateError::InvalidHeader {
+                        message: e.to_string(),
+                    },
+                )?,
             );
         }
 
         let response = if headers.is_empty() {
             self.client.post("/predictions", body).await?
         } else {
-            self.client.post_with_headers("/predictions", body, headers).await?
+            self.client
+                .post_with_headers("/predictions", body, headers)
+                .await?
         };
 
         self.client.handle_response(response).await
@@ -99,10 +104,7 @@ impl<'a> Predictions<'a> {
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn list(
-        &self,
-        cursor: Option<&str>,
-    ) -> Result<PaginatedResponse<Prediction>> {
+    pub async fn list(&self, cursor: Option<&str>) -> Result<PaginatedResponse<Prediction>> {
         let mut path = "/predictions".to_string();
         if let Some(cursor) = cursor {
             path.push_str(&format!("?cursor={}", cursor));
@@ -223,7 +225,8 @@ impl<'a> Predictions<'a> {
         let poll_interval = request.poll_interval;
         let timeout = request.timeout;
         let prediction = self.create(request).await?;
-        self.wait_for_completion_with_options(&prediction.id, poll_interval, timeout).await
+        self.wait_for_completion_with_options(&prediction.id, poll_interval, timeout)
+            .await
     }
 
     /// Create a prediction using sync mode (wait for completion).
@@ -248,7 +251,11 @@ impl<'a> Predictions<'a> {
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn run_sync(&self, request: PredictionRequest, wait_secs: Option<u8>) -> Result<Prediction> {
+    pub async fn run_sync(
+        &self,
+        request: PredictionRequest,
+        wait_secs: Option<u8>,
+    ) -> Result<Prediction> {
         let wait_secs = wait_secs.unwrap_or(60).clamp(1, 60);
         let request = request.wait(wait_secs);
         self.create(request).await
@@ -454,7 +461,10 @@ mod tests {
             .input("prompt", "A cat")
             .input("width", 1024);
 
-        assert_eq!(request.model, Some("black-forest-labs/flux-schnell".to_string()));
+        assert_eq!(
+            request.model,
+            Some("black-forest-labs/flux-schnell".to_string())
+        );
         assert_eq!(request.input["prompt"], "A cat");
         assert_eq!(request.input["width"], 1024);
     }
@@ -475,24 +485,26 @@ mod tests {
             .webhook("https://example.com/webhook")
             .webhook_events(vec![WebhookEvents::Completed]);
 
-        assert_eq!(request.webhook, Some("https://example.com/webhook".to_string()));
-        assert_eq!(request.webhook_events_filter, Some(vec![WebhookEvents::Completed]));
+        assert_eq!(
+            request.webhook,
+            Some("https://example.com/webhook".to_string())
+        );
+        assert_eq!(
+            request.webhook_events_filter,
+            Some(vec![WebhookEvents::Completed])
+        );
     }
 
     #[test]
     fn test_prediction_request_wait() {
-        let request = PredictionRequest::new()
-            .model("test")
-            .wait(30);
+        let request = PredictionRequest::new().model("test").wait(30);
 
         assert_eq!(request.wait, Some(30));
     }
 
     #[test]
     fn test_prediction_request_wait_clamped() {
-        let request = PredictionRequest::new()
-            .model("test")
-            .wait(100);
+        let request = PredictionRequest::new().model("test").wait(100);
 
         assert_eq!(request.wait, Some(60));
     }

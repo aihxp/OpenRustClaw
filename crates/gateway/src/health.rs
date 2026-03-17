@@ -48,11 +48,11 @@
 //! ```
 
 use axum::{
+    Router,
     extract::State,
     http::StatusCode,
     response::{IntoResponse, Json},
     routing::get,
-    Router,
 };
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
@@ -86,9 +86,9 @@ impl HealthStatus {
     /// Merge multiple statuses into one.
     /// Returns Unhealthy if any is unhealthy, Degraded if any is degraded, Healthy otherwise.
     pub fn merge(statuses: &[HealthStatus]) -> Self {
-        if statuses.iter().any(|s| *s == HealthStatus::Unhealthy) {
+        if statuses.contains(&HealthStatus::Unhealthy) {
             HealthStatus::Unhealthy
-        } else if statuses.iter().any(|s| *s == HealthStatus::Degraded) {
+        } else if statuses.contains(&HealthStatus::Degraded) {
             HealthStatus::Degraded
         } else {
             HealthStatus::Healthy
@@ -250,11 +250,8 @@ impl HealthCheckRegistry {
     }
 
     /// Register a simple health check from a closure.
-    pub fn register_fn<F, Fut>(
-        &mut self,
-        name: impl Into<String>,
-        check_fn: F,
-    ) where
+    pub fn register_fn<F, Fut>(&mut self, name: impl Into<String>, check_fn: F)
+    where
         F: Fn() -> Fut + Send + Sync + 'static,
         Fut: std::future::Future<Output = ComponentHealth> + Send + 'static,
     {
@@ -333,7 +330,7 @@ impl HealthState {
         Self {
             registry,
             db_pool: None,
-            provider_health: Arc::new(|| HashMap::new()),
+            provider_health: Arc::new(HashMap::new),
         }
     }
 
@@ -416,7 +413,10 @@ async fn readiness_handler(State(state): State<HealthState>) -> impl IntoRespons
             }
             Err(e) => {
                 warn!(error = %e, "Database health check failed");
-                checks.insert("database".to_string(), ComponentHealth::unhealthy(e.to_string()));
+                checks.insert(
+                    "database".to_string(),
+                    ComponentHealth::unhealthy(e.to_string()),
+                );
             }
         }
     } else {
@@ -549,10 +549,7 @@ async fn deep_health_handler(State(state): State<HealthState>) -> impl IntoRespo
     );
 
     // Add scheduler check
-    components.insert(
-        "scheduler".to_string(),
-        check_scheduler().await,
-    );
+    components.insert("scheduler".to_string(), check_scheduler().await);
 
     let overall_status = state.registry.overall_status(&components);
     let duration_ms = start.elapsed().as_millis() as u64;
@@ -571,9 +568,7 @@ async fn deep_health_handler(State(state): State<HealthState>) -> impl IntoRespo
 /// Basic database connectivity check.
 async fn check_database(pool: &openrustclaw_db::SqlitePool) -> anyhow::Result<()> {
     // Perform a simple query to verify connectivity
-    sqlx::query("SELECT 1")
-        .fetch_one(pool)
-        .await?;
+    sqlx::query("SELECT 1").fetch_one(pool).await?;
     Ok(())
 }
 
@@ -679,9 +674,7 @@ mod tests {
         let mut registry = HealthCheckRegistry::new();
         assert_eq!(registry.checks.len(), 0);
 
-        registry.register_fn("test_check", || async {
-            ComponentHealth::healthy()
-        });
+        registry.register_fn("test_check", || async { ComponentHealth::healthy() });
         assert_eq!(registry.checks.len(), 1);
 
         // Test uptime

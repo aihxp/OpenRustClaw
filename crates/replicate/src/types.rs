@@ -72,13 +72,24 @@ pub struct Prediction {
     /// URLs for interacting with the prediction.
     pub urls: PredictionUrls,
     /// When the prediction was created.
-    #[serde(serialize_with = "serialize_datetime", deserialize_with = "deserialize_datetime")]
+    #[serde(
+        serialize_with = "serialize_datetime",
+        deserialize_with = "deserialize_datetime"
+    )]
     pub created_at: DateTime<Utc>,
     /// When the prediction started processing.
-    #[serde(serialize_with = "serialize_datetime_opt", deserialize_with = "deserialize_datetime_opt", default)]
+    #[serde(
+        serialize_with = "serialize_datetime_opt",
+        deserialize_with = "deserialize_datetime_opt",
+        default
+    )]
     pub started_at: Option<DateTime<Utc>>,
     /// When the prediction completed.
-    #[serde(serialize_with = "serialize_datetime_opt", deserialize_with = "deserialize_datetime_opt", default)]
+    #[serde(
+        serialize_with = "serialize_datetime_opt",
+        deserialize_with = "deserialize_datetime_opt",
+        default
+    )]
     pub completed_at: Option<DateTime<Utc>>,
     /// The source of the prediction ("web" or "api").
     pub source: Option<String>,
@@ -192,7 +203,10 @@ pub struct ModelVersion {
     /// Unique identifier for the version.
     pub id: String,
     /// When the version was created.
-    #[serde(serialize_with = "serialize_datetime", deserialize_with = "deserialize_datetime")]
+    #[serde(
+        serialize_with = "serialize_datetime",
+        deserialize_with = "deserialize_datetime"
+    )]
     pub created_at: DateTime<Utc>,
     /// The OpenAPI schema for the version.
     pub openapi_schema: Option<serde_json::Value>,
@@ -229,7 +243,10 @@ pub struct DeploymentRelease {
     /// Maximum number of instances.
     pub max_instances: u32,
     /// When the release was created.
-    #[serde(serialize_with = "serialize_datetime", deserialize_with = "deserialize_datetime")]
+    #[serde(
+        serialize_with = "serialize_datetime",
+        deserialize_with = "deserialize_datetime"
+    )]
     pub created_at: DateTime<Utc>,
 }
 
@@ -251,13 +268,24 @@ pub struct Training {
     /// URLs for interacting with the training.
     pub urls: PredictionUrls,
     /// When the training was created.
-    #[serde(serialize_with = "serialize_datetime", deserialize_with = "deserialize_datetime")]
+    #[serde(
+        serialize_with = "serialize_datetime",
+        deserialize_with = "deserialize_datetime"
+    )]
     pub created_at: DateTime<Utc>,
     /// When the training started processing.
-    #[serde(serialize_with = "serialize_datetime_opt", deserialize_with = "deserialize_datetime_opt", default)]
+    #[serde(
+        serialize_with = "serialize_datetime_opt",
+        deserialize_with = "deserialize_datetime_opt",
+        default
+    )]
     pub started_at: Option<DateTime<Utc>>,
     /// When the training completed.
-    #[serde(serialize_with = "serialize_datetime_opt", deserialize_with = "deserialize_datetime_opt", default)]
+    #[serde(
+        serialize_with = "serialize_datetime_opt",
+        deserialize_with = "deserialize_datetime_opt",
+        default
+    )]
     pub completed_at: Option<DateTime<Utc>>,
 }
 
@@ -358,7 +386,9 @@ impl PredictionInput {
     pub fn number(mut self, key: impl Into<String>, value: impl Into<f64>) -> Self {
         self.inner.insert(
             key.into(),
-            serde_json::Value::Number(serde_json::Number::from_f64(value.into()).unwrap_or_else(|| 0.into())),
+            serde_json::Value::Number(
+                serde_json::Number::from_f64(value.into()).unwrap_or_else(|| 0.into()),
+            ),
         );
         self
     }

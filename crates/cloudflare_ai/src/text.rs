@@ -120,9 +120,7 @@ impl<'a> Text<'a> {
         model: impl Into<String>,
         prompt: impl Into<String>,
     ) -> Result<TextGenerationResponse> {
-        let request = TextGenerationRequest::builder(model)
-            .prompt(prompt)
-            .build();
+        let request = TextGenerationRequest::builder(model).prompt(prompt).build();
         self.generate(request).await
     }
 
@@ -169,7 +167,10 @@ impl<'a> Text<'a> {
 
         let response = reqwest::Client::new()
             .post(&url)
-            .header("Authorization", format!("Bearer {}", self.client.account_id()))
+            .header(
+                "Authorization",
+                format!("Bearer {}", self.client.account_id()),
+            )
             .header("Content-Type", "application/json")
             .json(&body)
             .send()
@@ -184,26 +185,24 @@ impl<'a> Text<'a> {
         let stream = response
             .bytes_stream()
             .eventsource()
-            .map(|event| {
-                match event {
-                    Ok(event) => {
-                        if event.data == "[DONE]" {
-                            return Ok(TextGenerationStreamResponse {
-                                response: String::new(),
-                            });
-                        }
-
-                        match serde_json::from_str::<TextGenerationStreamResponse>(&event.data) {
-                            Ok(chunk) => Ok(chunk),
-                            Err(e) => Err(CloudflareAiError::Stream {
-                                message: format!("Failed to parse SSE event: {e}"),
-                            }),
-                        }
+            .map(|event| match event {
+                Ok(event) => {
+                    if event.data == "[DONE]" {
+                        return Ok(TextGenerationStreamResponse {
+                            response: String::new(),
+                        });
                     }
-                    Err(e) => Err(CloudflareAiError::Stream {
-                        message: format!("SSE error: {e}"),
-                    }),
+
+                    match serde_json::from_str::<TextGenerationStreamResponse>(&event.data) {
+                        Ok(chunk) => Ok(chunk),
+                        Err(e) => Err(CloudflareAiError::Stream {
+                            message: format!("Failed to parse SSE event: {e}"),
+                        }),
+                    }
                 }
+                Err(e) => Err(CloudflareAiError::Stream {
+                    message: format!("SSE error: {e}"),
+                }),
             })
             .filter(|chunk| {
                 // Filter out empty chunks
@@ -339,7 +338,9 @@ impl TextGenerationRequestBuilder {
 
     /// Add a single message.
     pub fn message(mut self, role: crate::types::Role, content: impl Into<String>) -> Self {
-        self.messages.get_or_insert_with(Vec::new).push(ChatMessage::new(role, content));
+        self.messages
+            .get_or_insert_with(Vec::new)
+            .push(ChatMessage::new(role, content));
         self.prompt = None;
         self
     }

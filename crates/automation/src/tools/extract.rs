@@ -6,7 +6,7 @@ use serde_json::json;
 use tracing::info;
 
 use crate::browser::Browser;
-use crate::tools::{error_response, success_response, AutomationTool, ToolContext};
+use crate::tools::{AutomationTool, ToolContext, error_response, success_response};
 
 /// Extract content from the page.
 pub struct ExtractContentTool {
@@ -71,17 +71,19 @@ impl AutomationTool for ExtractContentTool {
         _ctx: &ToolContext,
     ) -> anyhow::Result<String> {
         let args: ExtractArgs = serde_json::from_value(input)?;
-        
-        let pages = self.browser.pages().await.map_err(|e| {
-            anyhow::anyhow!("Failed to get pages: {}", e)
-        })?;
-        
-        let page = pages.first().ok_or_else(|| {
-            anyhow::anyhow!("No pages available")
-        })?;
-        
+
+        let pages = self
+            .browser
+            .pages()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to get pages: {}", e))?;
+
+        let page = pages
+            .first()
+            .ok_or_else(|| anyhow::anyhow!("No pages available"))?;
+
         info!(what = ?args.what, "Extracting content");
-        
+
         let result = match args.what.as_deref() {
             Some("text") | None => {
                 // Extract all visible text
@@ -104,36 +106,44 @@ impl AutomationTool for ExtractContentTool {
                         return text.trim().replace(/\s+/g, ' ');
                     })()
                 "#;
-                let text = page.evaluate(script).await.map_err(|e| {
-                    anyhow::anyhow!("Failed to extract text: {}", e)
-                })?;
-                
+                let text = page
+                    .evaluate(script)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("Failed to extract text: {}", e))?;
+
                 let text_str = text.as_str().unwrap_or("");
                 let preview: String = text_str.chars().take(2000).collect();
-                
+
                 if text_str.len() > 2000 {
-                    format!("Extracted text (first 2000 chars):\n{}...\n\n[{} characters total]", 
-                        preview, text_str.len())
+                    format!(
+                        "Extracted text (first 2000 chars):\n{}...\n\n[{} characters total]",
+                        preview,
+                        text_str.len()
+                    )
                 } else {
                     format!("Extracted text:\n{}", text_str)
                 }
             }
-            
+
             Some("html") => {
-                let html = page.content().await.map_err(|e| {
-                    anyhow::anyhow!("Failed to get HTML: {}", e)
-                })?;
-                
+                let html = page
+                    .content()
+                    .await
+                    .map_err(|e| anyhow::anyhow!("Failed to get HTML: {}", e))?;
+
                 let preview: String = html.chars().take(2000).collect();
-                
+
                 if html.len() > 2000 {
-                    format!("HTML content (first 2000 chars):\n{}...\n\n[{} characters total]", 
-                        preview, html.len())
+                    format!(
+                        "HTML content (first 2000 chars):\n{}...\n\n[{} characters total]",
+                        preview,
+                        html.len()
+                    )
                 } else {
                     format!("HTML content:\n{}", html)
                 }
             }
-            
+
             Some("links") => {
                 let script = r#"
                     Array.from(document.querySelectorAll('a[href]')).map(a => ({
@@ -142,15 +152,18 @@ impl AutomationTool for ExtractContentTool {
                         title: a.title || ''
                     }))
                 "#;
-                let links = page.evaluate(script).await.map_err(|e| {
-                    anyhow::anyhow!("Failed to extract links: {}", e)
-                })?;
-                
+                let links = page
+                    .evaluate(script)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("Failed to extract links: {}", e))?;
+
                 let _max = args.max_results.unwrap_or(100);
-                format!("Extracted links:\n{}", 
-                    serde_json::to_string_pretty(&links).unwrap_or_default())
+                format!(
+                    "Extracted links:\n{}",
+                    serde_json::to_string_pretty(&links).unwrap_or_default()
+                )
             }
-            
+
             Some("images") => {
                 let script = r#"
                     Array.from(document.querySelectorAll('img')).map(img => ({
@@ -160,14 +173,17 @@ impl AutomationTool for ExtractContentTool {
                         height: img.naturalHeight
                     })).filter(img => img.src)
                 "#;
-                let images = page.evaluate(script).await.map_err(|e| {
-                    anyhow::anyhow!("Failed to extract images: {}", e)
-                })?;
-                
-                format!("Extracted images:\n{}", 
-                    serde_json::to_string_pretty(&images).unwrap_or_default())
+                let images = page
+                    .evaluate(script)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("Failed to extract images: {}", e))?;
+
+                format!(
+                    "Extracted images:\n{}",
+                    serde_json::to_string_pretty(&images).unwrap_or_default()
+                )
             }
-            
+
             Some("headings") => {
                 let script = r#"
                     Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, h6')).map(h => ({
@@ -175,14 +191,17 @@ impl AutomationTool for ExtractContentTool {
                         text: h.textContent.trim()
                     }))
                 "#;
-                let headings = page.evaluate(script).await.map_err(|e| {
-                    anyhow::anyhow!("Failed to extract headings: {}", e)
-                })?;
-                
-                format!("Extracted headings:\n{}", 
-                    serde_json::to_string_pretty(&headings).unwrap_or_default())
+                let headings = page
+                    .evaluate(script)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("Failed to extract headings: {}", e))?;
+
+                format!(
+                    "Extracted headings:\n{}",
+                    serde_json::to_string_pretty(&headings).unwrap_or_default()
+                )
             }
-            
+
             Some("tables") => {
                 let script = r#"
                     Array.from(document.querySelectorAll('table')).map((table, i) => ({
@@ -193,14 +212,17 @@ impl AutomationTool for ExtractContentTool {
                         )
                     }))
                 "#;
-                let tables = page.evaluate(script).await.map_err(|e| {
-                    anyhow::anyhow!("Failed to extract tables: {}", e)
-                })?;
-                
-                format!("Extracted tables:\n{}", 
-                    serde_json::to_string_pretty(&tables).unwrap_or_default())
+                let tables = page
+                    .evaluate(script)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("Failed to extract tables: {}", e))?;
+
+                format!(
+                    "Extracted tables:\n{}",
+                    serde_json::to_string_pretty(&tables).unwrap_or_default()
+                )
             }
-            
+
             Some("forms") => {
                 let script = r#"
                     Array.from(document.querySelectorAll('form')).map((form, i) => ({
@@ -215,19 +237,22 @@ impl AutomationTool for ExtractContentTool {
                         }))
                     }))
                 "#;
-                let forms = page.evaluate(script).await.map_err(|e| {
-                    anyhow::anyhow!("Failed to extract forms: {}", e)
-                })?;
-                
-                format!("Extracted forms:\n{}", 
-                    serde_json::to_string_pretty(&forms).unwrap_or_default())
+                let forms = page
+                    .evaluate(script)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("Failed to extract forms: {}", e))?;
+
+                format!(
+                    "Extracted forms:\n{}",
+                    serde_json::to_string_pretty(&forms).unwrap_or_default()
+                )
             }
-            
+
             Some("selector") => {
                 let selector = args.selector.ok_or_else(|| {
                     anyhow::anyhow!("'selector' parameter required when 'what' is 'selector'")
                 })?;
-                
+
                 let script = format!(
                     r#"Array.from(document.querySelectorAll('{}')).map(el => ({{
                         tag: el.tagName.toLowerCase(),
@@ -236,21 +261,27 @@ impl AutomationTool for ExtractContentTool {
                     }}))"#,
                     selector.replace('\\', "\\\\").replace('\'', "\\'")
                 );
-                
-                let elements = page.evaluate(&script).await.map_err(|e| {
-                    anyhow::anyhow!("Failed to extract elements: {}", e)
-                })?;
-                
-                format!("Extracted elements matching '{}':\n{}", 
+
+                let elements = page
+                    .evaluate(&script)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("Failed to extract elements: {}", e))?;
+
+                format!(
+                    "Extracted elements matching '{}':\n{}",
                     selector,
-                    serde_json::to_string_pretty(&elements).unwrap_or_default())
+                    serde_json::to_string_pretty(&elements).unwrap_or_default()
+                )
             }
-            
+
             _ => {
-                return Ok(error_response(format!("Unknown extraction type: {:?}", args.what)));
+                return Ok(error_response(format!(
+                    "Unknown extraction type: {:?}",
+                    args.what
+                )));
             }
         };
-        
+
         Ok(success_response(result))
     }
 }

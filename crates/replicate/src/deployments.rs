@@ -4,8 +4,8 @@
 
 use crate::client::ReplicateClient;
 use crate::error::Result;
-use crate::types::{Deployment, PaginatedResponse, Prediction};
 use crate::predictions::PredictionRequest;
+use crate::types::{Deployment, PaginatedResponse, Prediction};
 
 /// Deployments API client.
 #[derive(Debug)]
@@ -182,30 +182,33 @@ impl<'a> Deployments<'a> {
     ) -> Result<Prediction> {
         let path = format!("/deployments/{}/{}/predictions", owner, name);
         let mut body = serde_json::to_value(&request)?;
-        
+
         // Remove model/version from body as they're determined by the deployment
         if let Some(obj) = body.as_object_mut() {
             obj.remove("model");
             obj.remove("version");
         }
-        
+
         let mut headers = reqwest::header::HeaderMap::new();
-        
+
         // Handle sync mode with Prefer header
         if let Some(wait_secs) = request.wait {
             headers.insert(
                 "Prefer",
-                reqwest::header::HeaderValue::from_str(&format!("wait={}", wait_secs))
-                    .map_err(|e| crate::error::ReplicateError::InvalidHeader { message: e.to_string() })?,
+                reqwest::header::HeaderValue::from_str(&format!("wait={}", wait_secs)).map_err(
+                    |e| crate::error::ReplicateError::InvalidHeader {
+                        message: e.to_string(),
+                    },
+                )?,
             );
         }
-        
+
         let response = if headers.is_empty() {
             self.client.post(&path, body).await?
         } else {
             self.client.post_with_headers(&path, body, headers).await?
         };
-        
+
         self.client.handle_response(response).await
     }
 
@@ -219,12 +222,13 @@ impl<'a> Deployments<'a> {
         request: PredictionRequest,
     ) -> Result<Prediction> {
         let prediction = self.create_prediction(owner, name, request.clone()).await?;
-        
+
         // Poll for completion
         let poll_interval = request.poll_interval;
         let timeout = request.timeout;
-        
-        self.wait_for_completion(owner, name, &prediction.id, poll_interval, timeout).await
+
+        self.wait_for_completion(owner, name, &prediction.id, poll_interval, timeout)
+            .await
     }
 
     /// Wait for a prediction on a deployment to complete.
@@ -237,7 +241,7 @@ impl<'a> Deployments<'a> {
         timeout: Option<std::time::Duration>,
     ) -> Result<Prediction> {
         use tracing::trace;
-        
+
         let poll_interval = poll_interval.unwrap_or(std::time::Duration::from_secs(1));
         let timeout = timeout.unwrap_or(std::time::Duration::from_secs(3600));
         let start = std::time::Instant::now();
@@ -336,13 +340,8 @@ mod tests {
 
     #[test]
     fn test_deployment_config_builder() {
-        let config = DeploymentConfig::new(
-            "stability-ai/sdxl",
-            "abc123...",
-            "gpu-a100-large",
-            1,
-            5,
-        );
+        let config =
+            DeploymentConfig::new("stability-ai/sdxl", "abc123...", "gpu-a100-large", 1, 5);
 
         assert_eq!(config.model, "stability-ai/sdxl");
         assert_eq!(config.version, "abc123...");

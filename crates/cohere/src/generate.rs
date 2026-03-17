@@ -296,9 +296,11 @@ pub struct GenerateResponse {
 impl GenerateResponse {
     /// Get the generated text (works for single or multiple generations).
     pub fn text(&self) -> Option<&str> {
-        self.text
-            .as_deref()
-            .or_else(|| self.generations.as_ref().and_then(|g| g.first().map(|g| g.text.as_str())))
+        self.text.as_deref().or_else(|| {
+            self.generations
+                .as_ref()
+                .and_then(|g| g.first().map(|g| g.text.as_str()))
+        })
     }
 
     /// Get all generations.

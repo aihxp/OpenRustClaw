@@ -127,9 +127,7 @@ impl CliGenerator {
             param.description.clone()
         };
 
-        let mut arg = Arg::new(name)
-            .long(name)
-            .help(help_text);
+        let mut arg = Arg::new(name).long(name).help(help_text);
 
         // Set required status
         if param.required {
@@ -140,9 +138,7 @@ impl CliGenerator {
 
         // Set value parser based on type
         arg = match param.type_name.as_str() {
-            "number" | "integer" | "float" | "double" => {
-                arg.value_parser(clap::value_parser!(f64))
-            }
+            "number" | "integer" | "float" | "double" => arg.value_parser(clap::value_parser!(f64)),
             "boolean" | "bool" => arg
                 .value_parser(["true", "false"])
                 .num_args(0..=1)
@@ -151,12 +147,12 @@ impl CliGenerator {
         };
 
         // Set default value if present
-        if let Some(ref default) = param.default {
-            if let Some(s) = default.as_str() {
-                // Leak the default value to get 'static lifetime
-                let default_static: &'static str = Box::leak(s.to_string().into_boxed_str());
-                arg = arg.default_value(default_static);
-            }
+        if let Some(ref default) = param.default
+            && let Some(s) = default.as_str()
+        {
+            // Leak the default value to get 'static lifetime
+            let default_static: &'static str = Box::leak(s.to_string().into_boxed_str());
+            arg = arg.default_value(default_static);
         }
 
         arg
@@ -213,7 +209,8 @@ impl CliGenerator {
     /// Parse arguments for a specific subcommand
     pub fn parse_subcommand_args(cmd: &Command, args: &[String]) -> Result<(String, Value)> {
         let cmd = cmd.clone();
-        let matches = cmd.try_get_matches_from(args)
+        let matches = cmd
+            .try_get_matches_from(args)
             .map_err(|e| Mcp2CliError::cli(format!("Failed to parse arguments: {}", e)))?;
 
         let (subcommand_name, sub_matches) = matches
@@ -280,7 +277,10 @@ pub fn format_tool_help(tool: &ToolHelp) -> String {
         }
     }
 
-    output.push_str(&format!("\nEstimated token cost: {} tokens\n", tool.token_cost));
+    output.push_str(&format!(
+        "\nEstimated token cost: {} tokens\n",
+        tool.token_cost
+    ));
 
     output
 }
@@ -298,7 +298,7 @@ mod tests {
         ];
 
         let cmd = CliGenerator::generate_command("test-cli", &tools);
-        
+
         assert_eq!(cmd.get_name(), "test-cli");
         // Check that subcommands were added
         let subcommands: Vec<_> = cmd.get_subcommands().collect();
@@ -321,7 +321,7 @@ mod tests {
         );
 
         let cmd = CliGenerator::generate_subcommand(&tool_help);
-        
+
         assert_eq!(cmd.get_name(), "search");
         // Check that arguments were added
         let args: Vec<_> = cmd.get_arguments().collect();
@@ -336,7 +336,7 @@ mod tests {
         ];
 
         let output = generate_list_cli(&tools);
-        
+
         assert!(output.contains("Available tools"));
         assert!(output.contains("search"));
         assert!(output.contains("create"));
@@ -358,7 +358,7 @@ mod tests {
         );
 
         let output = format_tool_help(&tool_help);
-        
+
         assert!(output.contains("Tool: search"));
         assert!(output.contains("Parameters:"));
         assert!(output.contains("--query"));

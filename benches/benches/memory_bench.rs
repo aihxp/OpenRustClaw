@@ -9,14 +9,12 @@
 use std::collections::HashMap;
 
 use chrono::Utc;
-use criterion::{
-    criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion, Throughput,
-};
+use criterion::{BatchSize, BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use openrustclaw_core::types::{
     CoreEntry, MemoryEntry, MemoryQuery, MemorySource, MemoryType, ScoredMemory, SourceType,
 };
 use openrustclaw_memory::{
-    core_memory::CoreMemoryManager, policies::MemoryPolicies, search, ContextManager, RecallMemory,
+    ContextManager, RecallMemory, core_memory::CoreMemoryManager, policies::MemoryPolicies, search,
 };
 use uuid::Uuid;
 
@@ -268,19 +266,15 @@ fn bench_cosine_similarity(c: &mut Criterion) {
     for dim in [128, 512, 1024, 4096] {
         group.throughput(Throughput::Elements(dim as u64));
 
-        group.bench_with_input(
-            BenchmarkId::from_parameter(dim),
-            &dim,
-            |b, &d| {
-                let vec_a: Vec<f32> = (0..d).map(|i| (i as f32).sin()).collect();
-                let vec_b: Vec<f32> = (0..d).map(|i| (i as f32).cos()).collect();
+        group.bench_with_input(BenchmarkId::from_parameter(dim), &dim, |b, &d| {
+            let vec_a: Vec<f32> = (0..d).map(|i| (i as f32).sin()).collect();
+            let vec_b: Vec<f32> = (0..d).map(|i| (i as f32).cos()).collect();
 
-                b.iter(|| {
-                    let similarity = MemoryPolicies::cosine_similarity(&vec_a, &vec_b);
-                    criterion::black_box(similarity);
-                });
-            },
-        );
+            b.iter(|| {
+                let similarity = MemoryPolicies::cosine_similarity(&vec_a, &vec_b);
+                criterion::black_box(similarity);
+            });
+        });
     }
 
     group.finish();
@@ -324,7 +318,8 @@ fn bench_context_build(c: &mut Criterion) {
                     .collect();
 
                 b.iter(|| {
-                    let ctx = manager.build("You are a helpful assistant.", &core_memory, &[], &messages);
+                    let ctx =
+                        manager.build("You are a helpful assistant.", &core_memory, &[], &messages);
                     criterion::black_box(ctx);
                 });
             },

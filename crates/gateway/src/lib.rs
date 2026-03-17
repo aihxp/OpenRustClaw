@@ -9,11 +9,11 @@ pub mod server;
 pub mod sessions;
 pub mod webhooks;
 
-pub use health::{health_routes, HealthCheck, HealthCheckRegistry, HealthState};
-pub use metrics_endpoint::{install_metrics, metrics_routes, MetricsState};
+pub use health::{HealthCheck, HealthCheckRegistry, HealthState, health_routes};
+pub use metrics_endpoint::{MetricsState, install_metrics, metrics_routes};
 pub use server::GatewayServer;
 pub use sessions::SessionManager;
 pub use webhooks::{
-    handlers, AgentTarget, RateLimitConfig, WebhookAction, WebhookConfig, WebhookError,
-    WebhookHandler, WebhookManager, WebhookPayload, WebhookSource, WebhookState,
+    AgentTarget, RateLimitConfig, WebhookAction, WebhookConfig, WebhookError, WebhookHandler,
+    WebhookManager, WebhookPayload, WebhookSource, WebhookState, handlers,
 };

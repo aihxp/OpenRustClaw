@@ -1,9 +1,9 @@
 //! gRPC client to the Python sidecar.
 
-use tonic::transport::Channel;
-use openrustclaw_core::error::{Error, Result};
 use crate::proto::orchestration::orchestration_service_client::OrchestrationServiceClient;
 use crate::proto::orchestration::{WorkflowRequest, WorkflowResponse};
+use openrustclaw_core::error::{Error, Result};
+use tonic::transport::Channel;
 use tracing::info;
 
 /// gRPC client for the Python LangGraph sidecar.
@@ -37,12 +37,12 @@ impl LangBridgeClient {
         let request = tonic::Request::new(WorkflowRequest {
             workflow_id: workflow_id.to_string(),
             thread_id: thread_id.to_string(),
-            input: serde_json::to_string(&input)
-                .map_err(|e| Error::Sidecar(e.to_string()))?,
+            input: serde_json::to_string(&input).map_err(|e| Error::Sidecar(e.to_string()))?,
             metadata: std::collections::HashMap::new(),
         });
 
-        let response = self.orchestration
+        let response = self
+            .orchestration
             .execute_workflow(request)
             .await
             .map_err(|e| Error::Sidecar(format!("Workflow execution failed: {}", e)))?;
@@ -55,8 +55,7 @@ impl LangBridgeClient {
 mod tests {
     use super::*;
     use crate::proto::orchestration::{
-        WorkflowRequest, WorkflowResponse, WorkflowUpdate,
-        StatusRequest, StatusResponse,
+        StatusRequest, StatusResponse, WorkflowRequest, WorkflowResponse, WorkflowUpdate,
     };
 
     // --- WorkflowRequest construction tests ---

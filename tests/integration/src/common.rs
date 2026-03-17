@@ -12,8 +12,8 @@ use openrustclaw_core::error::{Error, ProviderError, Result};
 use openrustclaw_core::traits::{LlmProvider, Tool, ToolContext};
 use openrustclaw_core::types::{
     CompletionRequest, CompletionResponse, CoreEntry, FinishReason, MemoryEntry, MemoryQuery,
-    MemorySource, MemoryType, Message, Role, SkillCapability, StreamChunk,
-    TokenUsage, ToolCall, ToolFormat, ToolOutput,
+    MemorySource, MemoryType, Message, Role, SkillCapability, StreamChunk, TokenUsage, ToolCall,
+    ToolFormat, ToolOutput,
 };
 use serde_json::Value;
 use sqlx::SqlitePool;
@@ -31,18 +31,18 @@ pub fn init_test_tracing() {
 
 /// Create a temporary SQLite database pool for testing.
 pub async fn create_test_db() -> SqlitePool {
-    let db_url = format!("sqlite::memory:");
+    let db_url = "sqlite::memory:".to_string();
     let pool = sqlx::sqlite::SqlitePoolOptions::new()
         .max_connections(5)
         .connect(&db_url)
         .await
         .expect("Failed to create test database pool");
-    
+
     // Run migrations
     openrustclaw_db::run_migrations(&pool)
         .await
         .expect("Failed to run migrations");
-    
+
     pool
 }
 
@@ -51,18 +51,18 @@ pub async fn create_test_db_file() -> (SqlitePool, tempfile::TempDir) {
     let temp_dir = tempfile::tempdir().expect("Failed to create temp dir");
     let db_path = temp_dir.path().join("test.db");
     let db_url = format!("sqlite://{}?mode=rwc", db_path.display());
-    
+
     let pool = sqlx::sqlite::SqlitePoolOptions::new()
         .max_connections(5)
         .connect(&db_url)
         .await
         .expect("Failed to create test database pool");
-    
+
     // Run migrations
     openrustclaw_db::run_migrations(&pool)
         .await
         .expect("Failed to run migrations");
-    
+
     (pool, temp_dir)
 }
 
@@ -97,7 +97,7 @@ impl LlmProvider for MockSuccessProvider {
     async fn complete(&self, _request: CompletionRequest) -> Result<CompletionResponse> {
         let mut message = Message::assistant(&self.response_content);
         message.tool_calls = self.tool_calls.clone();
-        
+
         Ok(CompletionResponse {
             id: format!("{}-response", self.name),
             message,
@@ -122,10 +122,10 @@ impl LlmProvider for MockSuccessProvider {
         _request: CompletionRequest,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<StreamChunk>> + Send>>> {
         use futures::stream;
-        
+
         let content = self.response_content.clone();
         let name = self.name.clone();
-        
+
         let stream = stream::unfold(0, move |state| {
             let content = content.clone();
             let name = name.clone();
@@ -327,18 +327,18 @@ impl LlmProvider for MockConversationalProvider {
     async fn complete(&self, request: CompletionRequest) -> Result<CompletionResponse> {
         let mut count = self.call_count.lock().await;
         let responses = self.responses.lock().await;
-        
+
         let response_text = if *count < responses.len() {
             responses[*count].clone()
         } else {
             "I have nothing more to say.".to_string()
         };
-        
+
         *count += 1;
-        
+
         // Check if there are tool results in the messages
         let has_tool_results = request.messages.iter().any(|m| m.role == Role::Tool);
-        
+
         Ok(CompletionResponse {
             id: format!("{}-response-{}", self.name, count),
             message: Message::assistant(response_text),
@@ -432,7 +432,7 @@ impl Tool for EchoTool {
             .get("message")
             .and_then(|v| v.as_str())
             .unwrap_or("No message provided");
-        
+
         Ok(ToolOutput {
             tool_call_id: String::new(),
             content: format!("Echo: {}", message),
@@ -481,10 +481,13 @@ impl Tool for CalculatorTool {
     }
 
     async fn execute(&self, input: Value, _ctx: &ToolContext) -> Result<ToolOutput> {
-        let operation = input.get("operation").and_then(|v| v.as_str()).unwrap_or("");
+        let operation = input
+            .get("operation")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
         let a = input.get("a").and_then(|v| v.as_f64()).unwrap_or(0.0);
         let b = input.get("b").and_then(|v| v.as_f64()).unwrap_or(0.0);
-        
+
         let result = match operation {
             "add" => a + b,
             "subtract" => a - b,
@@ -504,10 +507,10 @@ impl Tool for CalculatorTool {
                     tool_call_id: String::new(),
                     content: format!("Error: Unknown operation '{}'", operation),
                     is_error: true,
-                })
+                });
             }
         };
-        
+
         Ok(ToolOutput {
             tool_call_id: String::new(),
             content: format!("Result: {}", result),
@@ -631,7 +634,7 @@ impl MemoryEntryBuilder {
 
     pub fn build(self) -> MemoryEntry {
         use sha2::{Digest, Sha256};
-        
+
         let content_hash = {
             let mut hasher = Sha256::new();
             hasher.update(self.content.as_bytes());
@@ -779,13 +782,13 @@ where
 {
     let start = tokio::time::Instant::now();
     let timeout = Duration::from_millis(timeout_ms);
-    
+
     while start.elapsed() < timeout {
         if condition().await {
             return;
         }
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
-    
+
     panic!("Timeout waiting for condition");
 }

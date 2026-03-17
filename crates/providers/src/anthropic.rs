@@ -8,9 +8,9 @@ use std::pin::Pin;
 use async_trait::async_trait;
 use eventsource_stream::Eventsource;
 use futures::{Stream, StreamExt};
-use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
-use serde_json::Value;
+use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue};
 use secrecy::{ExposeSecret, SecretString};
+use serde_json::Value;
 use tracing::{debug, warn};
 
 use openrustclaw_core::error::{Error, ProviderError, Result};
@@ -79,23 +79,17 @@ impl AnthropicProvider {
     /// Build the request body for the Anthropic Messages API from a
     /// [`CompletionRequest`].
     fn build_request_body(&self, request: &CompletionRequest) -> Value {
-        let model = request
-            .model
-            .as_deref()
-            .unwrap_or(&self.model);
+        let model = request.model.as_deref().unwrap_or(&self.model);
 
         // Separate system messages from conversation messages.
         // Anthropic uses a top-level `system` field rather than a system role message.
-        let system_prompt = request
-            .system_prompt
-            .clone()
-            .or_else(|| {
-                request
-                    .messages
-                    .iter()
-                    .find(|m| m.role == Role::System)
-                    .map(|m| m.content.clone())
-            });
+        let system_prompt = request.system_prompt.clone().or_else(|| {
+            request
+                .messages
+                .iter()
+                .find(|m| m.role == Role::System)
+                .map(|m| m.content.clone())
+        });
 
         // Build the messages array (excluding system messages).
         let messages: Vec<Value> = request
@@ -121,14 +115,14 @@ impl AnthropicProvider {
             body["temperature"] = serde_json::json!(temp);
         }
 
-        if let Some(tools) = &request.tools {
-            if !tools.is_empty() {
-                let tool_defs: Vec<Value> = tools
-                    .iter()
-                    .map(|t| translate_tool_definition(t, ToolFormat::Anthropic))
-                    .collect();
-                body["tools"] = Value::Array(tool_defs);
-            }
+        if let Some(tools) = &request.tools
+            && !tools.is_empty()
+        {
+            let tool_defs: Vec<Value> = tools
+                .iter()
+                .map(|t| translate_tool_definition(t, ToolFormat::Anthropic))
+                .collect();
+            body["tools"] = Value::Array(tool_defs);
         }
 
         body
@@ -144,49 +138,48 @@ impl AnthropicProvider {
         };
 
         // Handle tool result messages: wrap in a tool_result content block.
-        if msg.role == Role::Tool {
-            if let Some(ref tool_call_id) = msg.tool_call_id {
-                return serde_json::json!({
-                    "role": "user",
-                    "content": [{
-                        "type": "tool_result",
-                        "tool_use_id": tool_call_id,
-                        "content": msg.content,
-                    }]
-                });
-            }
+        if msg.role == Role::Tool
+            && let Some(ref tool_call_id) = msg.tool_call_id
+        {
+            return serde_json::json!({
+                "role": "user",
+                "content": [{
+                    "type": "tool_result",
+                    "tool_use_id": tool_call_id,
+                    "content": msg.content,
+                }]
+            });
         }
 
         // Handle assistant messages with tool calls: include content blocks.
-        if msg.role == Role::Assistant {
-            if let Some(ref tool_calls) = msg.tool_calls {
-                if !tool_calls.is_empty() {
-                    let mut content_blocks: Vec<Value> = Vec::new();
+        if msg.role == Role::Assistant
+            && let Some(ref tool_calls) = msg.tool_calls
+            && !tool_calls.is_empty()
+        {
+            let mut content_blocks: Vec<Value> = Vec::new();
 
-                    // Add text content if present.
-                    if !msg.content.is_empty() {
-                        content_blocks.push(serde_json::json!({
-                            "type": "text",
-                            "text": msg.content,
-                        }));
-                    }
-
-                    // Add tool_use blocks.
-                    for tc in tool_calls {
-                        content_blocks.push(serde_json::json!({
-                            "type": "tool_use",
-                            "id": tc.id,
-                            "name": tc.name,
-                            "input": tc.arguments,
-                        }));
-                    }
-
-                    return serde_json::json!({
-                        "role": "assistant",
-                        "content": content_blocks,
-                    });
-                }
+            // Add text content if present.
+            if !msg.content.is_empty() {
+                content_blocks.push(serde_json::json!({
+                    "type": "text",
+                    "text": msg.content,
+                }));
             }
+
+            // Add tool_use blocks.
+            for tc in tool_calls {
+                content_blocks.push(serde_json::json!({
+                    "type": "tool_use",
+                    "id": tc.id,
+                    "name": tc.name,
+                    "input": tc.arguments,
+                }));
+            }
+
+            return serde_json::json!({
+                "role": "assistant",
+                "content": content_blocks,
+            });
         }
 
         serde_json::json!({
@@ -231,9 +224,7 @@ impl AnthropicProvider {
         // Extract text content from text blocks.
         let text_content: String = content_blocks
             .iter()
-            .filter(|block| {
-                block.get("type").and_then(|t| t.as_str()) == Some("text")
-            })
+            .filter(|block| block.get("type").and_then(|t| t.as_str()) == Some("text"))
             .filter_map(|block| block.get("text").and_then(|t| t.as_str()))
             .collect::<Vec<&str>>()
             .join("");
@@ -288,10 +279,7 @@ impl AnthropicProvider {
     /// Build default headers for Anthropic API requests.
     fn default_headers(&self) -> HeaderMap {
         let mut headers = HeaderMap::new();
-        headers.insert(
-            CONTENT_TYPE,
-            HeaderValue::from_static("application/json"),
-        );
+        headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
         headers.insert(
             "x-api-key",
             HeaderValue::from_str(self.api_key.expose_secret())
@@ -467,65 +455,77 @@ impl LlmProvider for AnthropicProvider {
         let stream = response
             .bytes_stream()
             .eventsource()
-            .map(move |event: std::result::Result<eventsource_stream::Event, eventsource_stream::EventStreamError<reqwest::Error>>| {
-                match event {
-                    Ok(event) => {
-                        // Parse the SSE data
-                        if event.data == "[DONE]" {
-                            // End of stream marker (not used by Anthropic but good to handle)
-                            return Ok(StreamChunk::Done {
-                                response: CompletionResponse {
-                                    id: "streamed".to_string(),
-                                    message: Message::assistant(""),
-                                    model: model.clone(),
-                                    usage: TokenUsage::default(),
-                                    provider: provider_name.clone(),
-                                    finish_reason: FinishReason::Stop,
-                                },
-                            });
-                        }
-
-                        let data: Value = match serde_json::from_str(&event.data) {
-                            Ok(v) => v,
-                            Err(e) => {
-                                return Err(Error::Provider(ProviderError::StreamError {
-                                    provider: "anthropic".to_string(),
-                                    message: format!("Failed to parse SSE data: {e}"),
-                                }));
+            .map(
+                move |event: std::result::Result<
+                    eventsource_stream::Event,
+                    eventsource_stream::EventStreamError<reqwest::Error>,
+                >| {
+                    match event {
+                        Ok(event) => {
+                            // Parse the SSE data
+                            if event.data == "[DONE]" {
+                                // End of stream marker (not used by Anthropic but good to handle)
+                                return Ok(StreamChunk::Done {
+                                    response: CompletionResponse {
+                                        id: "streamed".to_string(),
+                                        message: Message::assistant(""),
+                                        model: model.clone(),
+                                        usage: TokenUsage::default(),
+                                        provider: provider_name.clone(),
+                                        finish_reason: FinishReason::Stop,
+                                    },
+                                });
                             }
-                        };
 
-                        let event_type = data
-                            .get("type")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("");
+                            let data: Value = match serde_json::from_str(&event.data) {
+                                Ok(v) => v,
+                                Err(e) => {
+                                    return Err(Error::Provider(ProviderError::StreamError {
+                                        provider: "anthropic".to_string(),
+                                        message: format!("Failed to parse SSE data: {e}"),
+                                    }));
+                                }
+                            };
 
-                        match event_type {
-                            "content_block_delta" => {
-                                // Content delta (text or tool_use)
-                                if let Some(delta) = data.get("delta") {
-                                    if let Some(text) = delta.get("text").and_then(|v| v.as_str()) {
-                                        return Ok(StreamChunk::ContentDelta {
-                                            delta: text.to_string(),
-                                        });
-                                    }
-                                    if let Some(partial_json) = delta.get("partial_json").and_then(|v| v.as_str()) {
-                                        // Tool call argument delta - need to get the block index
-                                        if let Some(index) = data.get("index").and_then(|v| v.as_u64()) {
-                                            return Ok(StreamChunk::ToolCallDelta {
-                                                id: format!("tool_{}", index),
-                                                name: None,
-                                                arguments_delta: partial_json.to_string(),
+                            let event_type =
+                                data.get("type").and_then(|v| v.as_str()).unwrap_or("");
+
+                            match event_type {
+                                "content_block_delta" => {
+                                    // Content delta (text or tool_use)
+                                    if let Some(delta) = data.get("delta") {
+                                        if let Some(text) =
+                                            delta.get("text").and_then(|v| v.as_str())
+                                        {
+                                            return Ok(StreamChunk::ContentDelta {
+                                                delta: text.to_string(),
                                             });
                                         }
+                                        if let Some(partial_json) =
+                                            delta.get("partial_json").and_then(|v| v.as_str())
+                                        {
+                                            // Tool call argument delta - need to get the block index
+                                            if let Some(index) =
+                                                data.get("index").and_then(|v| v.as_u64())
+                                            {
+                                                return Ok(StreamChunk::ToolCallDelta {
+                                                    id: format!("tool_{}", index),
+                                                    name: None,
+                                                    arguments_delta: partial_json.to_string(),
+                                                });
+                                            }
+                                        }
                                     }
+                                    Ok(StreamChunk::ContentDelta {
+                                        delta: String::new(),
+                                    })
                                 }
-                                Ok(StreamChunk::ContentDelta { delta: String::new() })
-                            }
-                            "content_block_start" => {
-                                // New content block started (could be tool_use)
-                                if let Some(content_block) = data.get("content_block") {
-                                    if content_block.get("type").and_then(|v| v.as_str()) == Some("tool_use") {
+                                "content_block_start" => {
+                                    // New content block started (could be tool_use)
+                                    if let Some(content_block) = data.get("content_block")
+                                        && content_block.get("type").and_then(|v| v.as_str())
+                                            == Some("tool_use")
+                                    {
                                         let id = content_block
                                             .get("id")
                                             .and_then(|v| v.as_str())
@@ -541,83 +541,89 @@ impl LlmProvider for AnthropicProvider {
                                             arguments_delta: String::new(),
                                         });
                                     }
+                                    Ok(StreamChunk::ContentDelta {
+                                        delta: String::new(),
+                                    })
                                 }
-                                Ok(StreamChunk::ContentDelta { delta: String::new() })
-                            }
-                            "message_delta" => {
-                                // Message-level delta with stop_reason and usage
-                                if let Some(usage) = data.get("usage") {
-                                    // Return the final response when we have usage data
-                                    let finish_reason = data
-                                        .get("delta")
-                                        .and_then(|d| d.get("stop_reason"))
-                                        .and_then(|v| v.as_str())
-                                        .map(|s| match s {
-                                            "end_turn" | "stop" => FinishReason::Stop,
-                                            "tool_use" => FinishReason::ToolUse,
-                                            "max_tokens" => FinishReason::MaxTokens,
-                                            _ => FinishReason::Stop,
-                                        })
-                                        .unwrap_or(FinishReason::Stop);
+                                "message_delta" => {
+                                    // Message-level delta with stop_reason and usage
+                                    if let Some(usage) = data.get("usage") {
+                                        // Return the final response when we have usage data
+                                        let finish_reason = data
+                                            .get("delta")
+                                            .and_then(|d| d.get("stop_reason"))
+                                            .and_then(|v| v.as_str())
+                                            .map(|s| match s {
+                                                "end_turn" | "stop" => FinishReason::Stop,
+                                                "tool_use" => FinishReason::ToolUse,
+                                                "max_tokens" => FinishReason::MaxTokens,
+                                                _ => FinishReason::Stop,
+                                            })
+                                            .unwrap_or(FinishReason::Stop);
 
-                                    let prompt_tokens = usage
-                                        .get("input_tokens")
-                                        .and_then(|v| v.as_u64())
-                                        .unwrap_or(0) as usize;
-                                    let completion_tokens = usage
-                                        .get("output_tokens")
-                                        .and_then(|v| v.as_u64())
-                                        .unwrap_or(0) as usize;
+                                        let prompt_tokens = usage
+                                            .get("input_tokens")
+                                            .and_then(|v| v.as_u64())
+                                            .unwrap_or(0)
+                                            as usize;
+                                        let completion_tokens = usage
+                                            .get("output_tokens")
+                                            .and_then(|v| v.as_u64())
+                                            .unwrap_or(0)
+                                            as usize;
 
-                                    return Ok(StreamChunk::Done {
+                                        return Ok(StreamChunk::Done {
+                                            response: CompletionResponse {
+                                                id: "streamed".to_string(),
+                                                message: Message::assistant(""),
+                                                model: model.clone(),
+                                                usage: TokenUsage {
+                                                    prompt_tokens,
+                                                    completion_tokens,
+                                                    total_tokens: prompt_tokens + completion_tokens,
+                                                    cost_usd: None,
+                                                },
+                                                provider: provider_name.clone(),
+                                                finish_reason,
+                                            },
+                                        });
+                                    }
+                                    Ok(StreamChunk::ContentDelta {
+                                        delta: String::new(),
+                                    })
+                                }
+                                "message_stop" => {
+                                    // Stream is complete
+                                    Ok(StreamChunk::Done {
                                         response: CompletionResponse {
                                             id: "streamed".to_string(),
                                             message: Message::assistant(""),
                                             model: model.clone(),
-                                            usage: TokenUsage {
-                                                prompt_tokens,
-                                                completion_tokens,
-                                                total_tokens: prompt_tokens + completion_tokens,
-                                                cost_usd: None,
-                                            },
+                                            usage: TokenUsage::default(),
                                             provider: provider_name.clone(),
-                                            finish_reason,
+                                            finish_reason: FinishReason::Stop,
                                         },
-                                    });
+                                    })
                                 }
-                                Ok(StreamChunk::ContentDelta { delta: String::new() })
-                            }
-                            "message_stop" => {
-                                // Stream is complete
-                                Ok(StreamChunk::Done {
-                                    response: CompletionResponse {
-                                        id: "streamed".to_string(),
-                                        message: Message::assistant(""),
-                                        model: model.clone(),
-                                        usage: TokenUsage::default(),
-                                        provider: provider_name.clone(),
-                                        finish_reason: FinishReason::Stop,
-                                    },
-                                })
-                            }
-                            _ => {
-                                // Ignore other event types (ping, message_start, content_block_stop)
-                                Ok(StreamChunk::ContentDelta { delta: String::new() })
+                                _ => {
+                                    // Ignore other event types (ping, message_start, content_block_stop)
+                                    Ok(StreamChunk::ContentDelta {
+                                        delta: String::new(),
+                                    })
+                                }
                             }
                         }
+                        Err(e) => Err(Error::Provider(ProviderError::StreamError {
+                            provider: "anthropic".to_string(),
+                            message: format!("SSE stream error: {e}"),
+                        })),
                     }
-                    Err(e) => Err(Error::Provider(ProviderError::StreamError {
-                        provider: "anthropic".to_string(),
-                        message: format!("SSE stream error: {e}"),
-                    })),
-                }
-            })
+                },
+            )
             .filter(|chunk| {
                 // Filter out empty content deltas to reduce noise
-                let should_keep = match chunk {
-                    Ok(StreamChunk::ContentDelta { delta }) if delta.is_empty() => false,
-                    _ => true,
-                };
+                let should_keep =
+                    !matches!(chunk, Ok(StreamChunk::ContentDelta { delta }) if delta.is_empty());
                 std::future::ready(should_keep)
             });
 
@@ -655,7 +661,10 @@ mod tests {
     use openrustclaw_core::types::ToolDefinition;
 
     fn make_provider() -> AnthropicProvider {
-        AnthropicProvider::new("test-key".to_string(), "claude-sonnet-4-20250514".to_string())
+        AnthropicProvider::new(
+            "test-key".to_string(),
+            "claude-sonnet-4-20250514".to_string(),
+        )
     }
 
     #[test]
@@ -800,10 +809,21 @@ mod tests {
             message: r#"{"error":{"type":"authentication_error","message":"invalid x-api-key"}}"#
                 .to_string(),
         });
-        assert!(matches!(err, Error::Provider(ProviderError::AuthFailed { .. })));
+        assert!(matches!(
+            err,
+            Error::Provider(ProviderError::AuthFailed { .. })
+        ));
         let msg = err.to_string();
-        assert!(msg.contains("anthropic"), "Error should name the provider: {}", msg);
-        assert!(msg.contains("Authentication failed"), "Error should describe auth failure: {}", msg);
+        assert!(
+            msg.contains("anthropic"),
+            "Error should name the provider: {}",
+            msg
+        );
+        assert!(
+            msg.contains("Authentication failed"),
+            "Error should describe auth failure: {}",
+            msg
+        );
     }
 
     #[test]
@@ -817,8 +837,16 @@ mod tests {
             Error::Provider(ProviderError::RateLimited { .. })
         ));
         let msg = err.to_string();
-        assert!(msg.contains("Rate limited"), "Error should describe rate limiting: {}", msg);
-        assert!(msg.contains("30"), "Error should include retry_after: {}", msg);
+        assert!(
+            msg.contains("Rate limited"),
+            "Error should describe rate limiting: {}",
+            msg
+        );
+        assert!(
+            msg.contains("30"),
+            "Error should include retry_after: {}",
+            msg
+        );
     }
 
     #[test]
@@ -847,8 +875,16 @@ mod tests {
             Error::Provider(ProviderError::Unavailable { .. })
         ));
         let msg = err.to_string();
-        assert!(msg.contains("unavailable"), "Error should describe unavailability: {}", msg);
-        assert!(msg.contains("overloaded"), "Error should include server message: {}", msg);
+        assert!(
+            msg.contains("unavailable"),
+            "Error should describe unavailability: {}",
+            msg
+        );
+        assert!(
+            msg.contains("overloaded"),
+            "Error should include server message: {}",
+            msg
+        );
     }
 
     #[test]
@@ -862,7 +898,11 @@ mod tests {
             Error::Provider(ProviderError::ModelNotFound { .. })
         ));
         let msg = err.to_string();
-        assert!(msg.contains("claude-nonexistent"), "Error should name the model: {}", msg);
+        assert!(
+            msg.contains("claude-nonexistent"),
+            "Error should name the model: {}",
+            msg
+        );
     }
 
     #[test]
@@ -922,10 +962,7 @@ mod tests {
     fn build_request_body_filters_system_messages() {
         let p = make_provider();
         let request = CompletionRequest {
-            messages: vec![
-                Message::system("Be helpful"),
-                Message::user("Hello"),
-            ],
+            messages: vec![Message::system("Be helpful"), Message::user("Hello")],
             model: None,
             max_tokens: None,
             temperature: None,

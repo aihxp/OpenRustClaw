@@ -11,8 +11,8 @@ use together_ai::{ChatRequest, TogetherClient};
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Get API key from environment
-    let api_key = std::env::var("TOGETHER_API_KEY")
-        .expect("TOGETHER_API_KEY environment variable not set");
+    let api_key =
+        std::env::var("TOGETHER_API_KEY").expect("TOGETHER_API_KEY environment variable not set");
 
     // Create client
     let client = TogetherClient::new(api_key)?;
@@ -28,12 +28,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build();
 
     println!("🤖 Response: ");
-    
+
     let stream = client.chat().complete_stream(request).await?;
     futures::pin_mut!(stream);
 
     let mut full_response = String::new();
-    
+
     while let Some(chunk) = stream.next().await {
         match chunk {
             Ok(chunk) => {
@@ -41,7 +41,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 print!("{}", content);
                 std::io::Write::flush(&mut std::io::stdout())?;
                 full_response.push_str(content);
-                
+
                 if chunk.is_final() {
                     if let Some(reason) = chunk.finish_reason() {
                         println!("\n\n[Finished: {}]", reason);
@@ -55,7 +55,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    println!("\n📊 Full response length: {} characters", full_response.len());
+    println!(
+        "\n📊 Full response length: {} characters",
+        full_response.len()
+    );
 
     // Streaming with early termination
     println!("\n📝 Streaming with early termination (first 50 chars):");
@@ -74,7 +77,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             print!("{}", content);
             std::io::Write::flush(&mut std::io::stdout())?;
             count += content.len();
-            
+
             if count >= 50 {
                 println!("\n\n[Stopped after 50 characters]");
                 break;

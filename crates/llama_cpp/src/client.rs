@@ -3,7 +3,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
+use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue};
 use secrecy::{ExposeSecret, SecretString};
 use tracing::{debug, trace};
 
@@ -76,10 +76,11 @@ impl LlamaCppClient {
         if let Some(ref api_key) = config.api_key {
             headers.insert(
                 reqwest::header::AUTHORIZATION,
-                HeaderValue::from_str(&format!("Bearer {}", api_key.expose_secret()))
-                    .map_err(|_| LlamaCppError::Config {
+                HeaderValue::from_str(&format!("Bearer {}", api_key.expose_secret())).map_err(
+                    |_| LlamaCppError::Config {
                         message: "Invalid API key".to_string(),
-                    })?,
+                    },
+                )?,
             );
         }
 
@@ -224,7 +225,10 @@ impl LlamaCppClient {
     }
 
     /// Parse a response or return an error.
-    pub(crate) async fn handle_response(&self, response: reqwest::Response) -> Result<serde_json::Value> {
+    pub(crate) async fn handle_response(
+        &self,
+        response: reqwest::Response,
+    ) -> Result<serde_json::Value> {
         let status = response.status();
 
         if status.is_success() {

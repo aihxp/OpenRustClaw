@@ -74,7 +74,9 @@ impl Message {
 
     /// Check if this message contains any tool use blocks.
     pub fn has_tool_use(&self) -> bool {
-        self.content.iter().any(|block| matches!(block, ContentBlock::ToolUse(_)))
+        self.content
+            .iter()
+            .any(|block| matches!(block, ContentBlock::ToolUse(_)))
     }
 
     /// Get all tool use blocks from this message.
@@ -123,7 +125,11 @@ impl ContentBlock {
     }
 
     /// Create a tool use block.
-    pub fn tool_use(id: impl Into<String>, name: impl Into<String>, input: serde_json::Value) -> Self {
+    pub fn tool_use(
+        id: impl Into<String>,
+        name: impl Into<String>,
+        input: serde_json::Value,
+    ) -> Self {
         ContentBlock::ToolUse(super::ToolUse {
             id: id.into(),
             name: name.into(),

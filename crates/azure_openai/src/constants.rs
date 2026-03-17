@@ -475,8 +475,14 @@ mod tests {
 
     #[test]
     fn test_model_from_str() {
-        assert_eq!("gpt-4o".parse::<AzureOpenAIModel>().unwrap(), AzureOpenAIModel::Gpt4O);
-        assert_eq!("gpt-35-turbo".parse::<AzureOpenAIModel>().unwrap(), AzureOpenAIModel::Gpt35Turbo);
+        assert_eq!(
+            "gpt-4o".parse::<AzureOpenAIModel>().unwrap(),
+            AzureOpenAIModel::Gpt4O
+        );
+        assert_eq!(
+            "gpt-35-turbo".parse::<AzureOpenAIModel>().unwrap(),
+            AzureOpenAIModel::Gpt35Turbo
+        );
     }
 
     #[test]

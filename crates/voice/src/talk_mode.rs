@@ -19,10 +19,10 @@ use crate::stt::{SpeechToText, Transcription};
 use crate::tts::TextToSpeech;
 use crate::wake::{WakeDetector, WakeWordConfig};
 use std::collections::VecDeque;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
-use tokio::sync::{mpsc, Mutex, Notify, RwLock};
+use tokio::sync::{Mutex, Notify, RwLock, mpsc};
 use tracing::{debug, error, info, warn};
 
 /// Configuration for Talk Mode.
@@ -368,10 +368,13 @@ impl TalkMode {
 
         // For now, we simulate the listening process
         // In a real implementation, this would record audio until silence
-        
+
         tokio::time::sleep(Duration::from_secs(2)).await;
 
-        self.emit_event(TalkEvent::SpeechEnded { duration: Duration::from_secs(2) }).await;
+        self.emit_event(TalkEvent::SpeechEnded {
+            duration: Duration::from_secs(2),
+        })
+        .await;
 
         // Transition to processing
         self.transition_to(TalkState::Processing).await;
@@ -390,14 +393,16 @@ impl TalkMode {
         self.emit_event(TalkEvent::Transcription {
             text: transcription.text.clone(),
             confidence: transcription.confidence,
-        }).await;
+        })
+        .await;
 
         // Simulate agent response
         let response = format!("You said: {}", transcription.text);
 
         self.emit_event(TalkEvent::AgentResponse {
             text: response.clone(),
-        }).await;
+        })
+        .await;
 
         // Store in history
         {
@@ -439,7 +444,8 @@ impl TalkMode {
             self.emit_event(TalkEvent::StateChanged {
                 from: old_state,
                 to: new_state,
-            }).await;
+            })
+            .await;
         }
     }
 
@@ -452,7 +458,8 @@ impl TalkMode {
     async fn handle_error(&self, error: VoiceError) {
         self.emit_event(TalkEvent::Error {
             message: error.to_string(),
-        }).await;
+        })
+        .await;
         self.transition_to(TalkState::Error).await;
     }
 
@@ -519,15 +526,15 @@ impl TalkModeBuilder {
 
     /// Build the TalkMode.
     pub fn build(self) -> VoiceResult<TalkMode> {
-        let wake = self.wake.ok_or_else(|| {
-            VoiceError::Config("Wake word detector is required".to_string())
-        })?;
-        let stt = self.stt.ok_or_else(|| {
-            VoiceError::Config("Speech-to-text is required".to_string())
-        })?;
-        let tts = self.tts.ok_or_else(|| {
-            VoiceError::Config("Text-to-speech is required".to_string())
-        })?;
+        let wake = self
+            .wake
+            .ok_or_else(|| VoiceError::Config("Wake word detector is required".to_string()))?;
+        let stt = self
+            .stt
+            .ok_or_else(|| VoiceError::Config("Speech-to-text is required".to_string()))?;
+        let tts = self
+            .tts
+            .ok_or_else(|| VoiceError::Config("Text-to-speech is required".to_string()))?;
 
         Ok(TalkMode::new(wake, stt, tts, self.config))
     }

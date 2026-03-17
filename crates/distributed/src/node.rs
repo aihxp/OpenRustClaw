@@ -302,7 +302,7 @@ impl NodeMetrics {
         let memory_score = 100.0 - self.memory_usage;
         let load_factor = (self.active_sessions as f64 + self.running_tasks as f64) / 100.0;
         let load_score = (100.0 - load_factor * 10.0).max(0.0);
-        
+
         (cpu_score + memory_score + load_score) / 3.0
     }
 

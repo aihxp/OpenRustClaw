@@ -125,14 +125,14 @@ pub mod chat;
 
 pub use client::{ClientConfig, PerplexityClient};
 pub use constants::{
-    endpoints, headers, retry, Model, SearchRecencyFilter, DEFAULT_API_VERSION, DEFAULT_BASE_URL,
+    DEFAULT_API_VERSION, DEFAULT_BASE_URL, Model, SearchRecencyFilter, endpoints, headers, retry,
 };
 pub use error::{PerplexityError, Result};
 
 // Re-export commonly used types
 pub use types::{
-    Citation, FinishReason, Function, FunctionCall, Message, RelatedQuestion, ResponseFormat,
-    Role, TokenUsage, Tool, ToolCall,
+    Citation, FinishReason, Function, FunctionCall, Message, RelatedQuestion, ResponseFormat, Role,
+    TokenUsage, Tool, ToolCall,
 };
 
 #[cfg(feature = "chat")]

@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Routing strategy for model selection.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RouteStrategy {
     /// Optimize for lowest price.
@@ -11,6 +11,7 @@ pub enum RouteStrategy {
     /// Optimize for highest throughput.
     Throughput,
     /// Default quality routing.
+    #[default]
     Quality,
     /// Include web search results.
     Online,
@@ -35,12 +36,6 @@ impl RouteStrategy {
         } else {
             format!("{}{}", model, suffix)
         }
-    }
-}
-
-impl Default for RouteStrategy {
-    fn default() -> Self {
-        RouteStrategy::Quality
     }
 }
 
@@ -104,10 +99,7 @@ mod tests {
 
     #[test]
     fn test_fallback_config() {
-        let config = FallbackConfig::new(vec![
-            "model-a".to_string(),
-            "model-b".to_string(),
-        ]);
+        let config = FallbackConfig::new(vec!["model-a".to_string(), "model-b".to_string()]);
         assert_eq!(config.models.len(), 2);
         assert!(config.include_original);
     }

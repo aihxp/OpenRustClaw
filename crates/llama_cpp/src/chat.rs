@@ -69,24 +69,22 @@ impl<'a> Chat<'a> {
         let stream = response
             .bytes_stream()
             .eventsource()
-            .map(|event| {
-                match event {
-                    Ok(event) => {
-                        if event.data == "[DONE]" {
-                            return Ok(ChatCompletionChunk::done());
-                        }
-
-                        match serde_json::from_str::<ChatCompletionChunk>(&event.data) {
-                            Ok(chunk) => Ok(chunk),
-                            Err(e) => Err(LlamaCppError::Stream {
-                                message: format!("Failed to parse SSE event: {e}"),
-                            }),
-                        }
+            .map(|event| match event {
+                Ok(event) => {
+                    if event.data == "[DONE]" {
+                        return Ok(ChatCompletionChunk::done());
                     }
-                    Err(e) => Err(LlamaCppError::Stream {
-                        message: format!("SSE error: {e}"),
-                    }),
+
+                    match serde_json::from_str::<ChatCompletionChunk>(&event.data) {
+                        Ok(chunk) => Ok(chunk),
+                        Err(e) => Err(LlamaCppError::Stream {
+                            message: format!("Failed to parse SSE event: {e}"),
+                        }),
+                    }
                 }
+                Err(e) => Err(LlamaCppError::Stream {
+                    message: format!("SSE error: {e}"),
+                }),
             });
 
         Ok(stream)
@@ -380,7 +378,11 @@ pub struct ChatCompletionChunk {
 impl ChatCompletionChunk {
     /// Check if this is the final chunk.
     pub fn is_done(&self) -> bool {
-        self.choices.is_empty() || self.choices.iter().all(|c| c.delta.content.is_none() && c.finish_reason.is_some())
+        self.choices.is_empty()
+            || self
+                .choices
+                .iter()
+                .all(|c| c.delta.content.is_none() && c.finish_reason.is_some())
     }
 
     /// Create a done chunk.
@@ -396,7 +398,9 @@ impl ChatCompletionChunk {
 
     /// Get the content delta from the first choice.
     pub fn content(&self) -> Option<&str> {
-        self.choices.first().and_then(|c| c.delta.content.as_deref())
+        self.choices
+            .first()
+            .and_then(|c| c.delta.content.as_deref())
     }
 
     /// Check if the first choice has finished.
@@ -538,10 +542,7 @@ mod tests {
 
     #[test]
     fn test_slot_id() {
-        let request = ChatRequest::builder()
-            .user("Hello")
-            .slot_id(0)
-            .build();
+        let request = ChatRequest::builder().user("Hello").slot_id(0).build();
 
         assert_eq!(request.slot_id, Some(0));
     }

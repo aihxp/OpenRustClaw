@@ -1,8 +1,8 @@
 //! Sidecar process lifecycle management.
 
-use std::process::Stdio;
-use tokio::process::{Command, Child};
 use openrustclaw_core::error::{Error, Result};
+use std::process::Stdio;
+use tokio::process::{Child, Command};
 use tracing::info;
 
 /// Manages the Python sidecar process lifecycle.
@@ -52,7 +52,7 @@ impl SidecarManager {
     pub fn is_running(&mut self) -> bool {
         if let Some(ref mut child) = self.child {
             match child.try_wait() {
-                Ok(None) => true,  // Still running
+                Ok(None) => true, // Still running
                 _ => false,
             }
         } else {

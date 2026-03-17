@@ -20,13 +20,14 @@
 //! ```
 
 use axum::{
+    Router,
     body::Bytes,
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
     response::IntoResponse,
     routing::post,
-    Router,
 };
+use chrono;
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
 use std::collections::HashMap;
@@ -36,7 +37,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn};
-use chrono;
 
 use openrustclaw_agent::routing::{AgentId, AgentRouter};
 use openrustclaw_core::types::Message;
@@ -195,7 +195,11 @@ pub enum WebhookAction {
     Custom {
         /// Custom handler function
         #[allow(clippy::type_complexity)]
-        handler: Arc<dyn Fn(WebhookPayload) -> Pin<Box<dyn Future<Output = Result<(), WebhookError>> + Send>> + Send + Sync>,
+        handler: Arc<
+            dyn Fn(WebhookPayload) -> Pin<Box<dyn Future<Output = Result<(), WebhookError>> + Send>>
+                + Send
+                + Sync,
+        >,
     },
     /// Emit event to event bus
     EmitEvent {
@@ -212,7 +216,10 @@ impl std::fmt::Debug for WebhookAction {
                 .field("target", target)
                 .field("template", template)
                 .finish(),
-            WebhookAction::TriggerSkill { skill_name, input_template } => f
+            WebhookAction::TriggerSkill {
+                skill_name,
+                input_template,
+            } => f
                 .debug_struct("TriggerSkill")
                 .field("skill_name", skill_name)
                 .field("input_template", input_template)
@@ -247,9 +254,7 @@ impl WebhookPayload {
     /// Get a field from the JSON body using dot notation
     pub fn get(&self, path: &str) -> Option<&serde_json::Value> {
         let json = self.json_body.as_ref()?;
-        path.split('.').fold(Some(json), |acc, key| {
-            acc.and_then(|v| v.get(key))
-        })
+        path.split('.').try_fold(json, |acc, key| acc.get(key))
     }
 
     /// Get string value from path
@@ -415,7 +420,10 @@ impl WebhookManager {
                 let message = self.render_template(template, &payload)?;
                 self.send_to_agent(target, &message).await?;
             }
-            WebhookAction::TriggerSkill { skill_name, input_template } => {
+            WebhookAction::TriggerSkill {
+                skill_name,
+                input_template,
+            } => {
                 let input = self.render_template(input_template, &payload)?;
                 self.trigger_skill(skill_name, &input).await?;
             }
@@ -460,7 +468,9 @@ impl WebhookManager {
                 }
                 WebhookSource::Stripe => {
                     if let Some(sig_header) = headers.get("stripe-signature") {
-                        let sig_str = sig_header.to_str().map_err(|_| WebhookError::InvalidSignature)?;
+                        let sig_str = sig_header
+                            .to_str()
+                            .map_err(|_| WebhookError::InvalidSignature)?;
 
                         // Parse Stripe signature header: t=timestamp,v1=signature
                         let mut timestamp_str = None;
@@ -473,10 +483,8 @@ impl WebhookManager {
                             }
                         }
 
-                        let timestamp_str = timestamp_str
-                            .ok_or(WebhookError::InvalidSignature)?;
-                        let signature_hex = signature_hex
-                            .ok_or(WebhookError::InvalidSignature)?;
+                        let timestamp_str = timestamp_str.ok_or(WebhookError::InvalidSignature)?;
+                        let signature_hex = signature_hex.ok_or(WebhookError::InvalidSignature)?;
 
                         // Replay protection: reject if timestamp is older than 300 seconds
                         let timestamp: i64 = timestamp_str
@@ -489,11 +497,8 @@ impl WebhookManager {
                         }
 
                         // Reconstruct signed payload: "{timestamp}.{body}"
-                        let signed_payload = format!(
-                            "{}.{}",
-                            timestamp_str,
-                            String::from_utf8_lossy(body)
-                        );
+                        let signed_payload =
+                            format!("{}.{}", timestamp_str, String::from_utf8_lossy(body));
 
                         let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
                             .map_err(|_| WebhookError::InvalidSecret)?;
@@ -588,11 +593,7 @@ impl WebhookManager {
         Ok(result)
     }
 
-    async fn send_to_agent(
-        &self,
-        target: &AgentTarget,
-        message: &str,
-    ) -> Result<(), WebhookError> {
+    async fn send_to_agent(&self, target: &AgentTarget, message: &str) -> Result<(), WebhookError> {
         if let Some(router) = &self.agent_router {
             let agent_id = target.to_agent_id();
             let msg = Message::user(message);
@@ -624,7 +625,11 @@ impl WebhookManager {
         Ok(())
     }
 
-    async fn emit_event(&self, event_type: &str, _payload: &WebhookPayload) -> Result<(), WebhookError> {
+    async fn emit_event(
+        &self,
+        event_type: &str,
+        _payload: &WebhookPayload,
+    ) -> Result<(), WebhookError> {
         // This would integrate with the event bus
         debug!(event_type = %event_type, "Emitting event");
         // Placeholder - actual implementation would emit to event bus
@@ -679,7 +684,8 @@ pub mod handlers {
             sources: vec![WebhookSource::GitHub],
             action: WebhookAction::AgentMessage {
                 target: AgentTarget::Main,
-                template: "🔔 GitHub: {{action}} on {{repository.full_name}} by {{sender.login}}".to_string(),
+                template: "🔔 GitHub: {{action}} on {{repository.full_name}} by {{sender.login}}"
+                    .to_string(),
             },
             rate_limit: Some(RateLimitConfig::new(100, 60)),
             enabled: true,
@@ -694,7 +700,8 @@ pub mod handlers {
             sources: vec![WebhookSource::GitLab],
             action: WebhookAction::AgentMessage {
                 target: AgentTarget::Main,
-                template: "🔔 GitLab: {{object_kind}} on {{project.name}} by {{user_name}}".to_string(),
+                template: "🔔 GitLab: {{object_kind}} on {{project.name}} by {{user_name}}"
+                    .to_string(),
             },
             rate_limit: Some(RateLimitConfig::new(100, 60)),
             enabled: true,
@@ -827,7 +834,10 @@ mod tests {
         assert_eq!(WebhookSource::GitHub.to_string(), "github");
         assert_eq!(WebhookSource::Generic.to_string(), "generic");
         assert_eq!(
-            WebhookSource::Custom { name: "test".to_string() }.to_string(),
+            WebhookSource::Custom {
+                name: "test".to_string()
+            }
+            .to_string(),
             "custom:test"
         );
     }
@@ -835,10 +845,7 @@ mod tests {
     #[test]
     fn test_agent_target_to_id() {
         assert_eq!(AgentTarget::Main.to_agent_id().0, "main");
-        assert_eq!(
-            AgentTarget::Agent("dev".to_string()).to_agent_id().0,
-            "dev"
-        );
+        assert_eq!(AgentTarget::Agent("dev".to_string()).to_agent_id().0, "dev");
     }
 
     #[tokio::test]

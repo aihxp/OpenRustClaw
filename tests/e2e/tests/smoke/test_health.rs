@@ -14,7 +14,7 @@ async fn smoke_gateway_health() {
     let response = client.get("/health").await.expect("Health check failed");
 
     response.assert_success();
-    
+
     // The gateway returns plain text "ok" for basic health
     let body = response.text().await.expect("Failed to read body");
     assert_eq!(body.trim(), "ok", "Health endpoint should return 'ok'");
@@ -26,9 +26,7 @@ async fn smoke_database_connectivity() {
     let env = TestEnvironment::new().await;
 
     // Simple query to verify DB is working
-    let result: Result<i64, _> = sqlx::query_scalar("SELECT 1")
-        .fetch_one(&env.db_pool)
-        .await;
+    let result: Result<i64, _> = sqlx::query_scalar("SELECT 1").fetch_one(&env.db_pool).await;
 
     assert_eq!(result.expect("DB query failed"), 1);
 }
@@ -45,11 +43,18 @@ async fn smoke_memory_store() {
         .build();
 
     // Store
-    env.memory_store.store(entry.clone()).await.expect("Store failed");
+    env.memory_store
+        .store(entry.clone())
+        .await
+        .expect("Store failed");
 
     // Retrieve
     let query = create_memory_query("smoke test");
-    let results = env.memory_store.search(&query).await.expect("Search failed");
+    let results = env
+        .memory_store
+        .search(&query)
+        .await
+        .expect("Search failed");
 
     assert!(!results.is_empty(), "Memory store not working");
 }
@@ -61,10 +66,17 @@ async fn smoke_session_manager() {
     let user_id = TestUsers::alice().id;
 
     // Create session
-    use openrustclaw_core::types::{SessionType, Platform};
-    let session = env.session_manager.create_session(&user_id, SessionType::Dm, Platform::WebChat).await.expect("Create failed");
+    use openrustclaw_core::types::{Platform, SessionType};
+    let session = env
+        .session_manager
+        .create_session(&user_id, SessionType::Dm, Platform::WebChat)
+        .await
+        .expect("Create failed");
 
     // Verify
-    let retrieved = env.session_manager.get_session(&session.id.to_string()).await;
+    let retrieved = env
+        .session_manager
+        .get_session(&session.id.to_string())
+        .await;
     assert!(retrieved.is_ok(), "Session manager not working");
 }

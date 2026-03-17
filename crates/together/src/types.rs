@@ -124,7 +124,11 @@ pub struct Tool {
 
 impl Tool {
     /// Create a new function tool.
-    pub fn function(name: impl Into<String>, description: impl Into<String>, parameters: serde_json::Value) -> Self {
+    pub fn function(
+        name: impl Into<String>,
+        description: impl Into<String>,
+        parameters: serde_json::Value,
+    ) -> Self {
         Self {
             tool_type: "function".to_string(),
             function: Function {
@@ -236,10 +240,7 @@ pub struct CompletionResponse {
 impl CompletionResponse {
     /// Get the text of the first choice.
     pub fn text(&self) -> &str {
-        self.choices
-            .first()
-            .map(|c| c.text.as_str())
-            .unwrap_or("")
+        self.choices.first().map(|c| c.text.as_str()).unwrap_or("")
     }
 }
 

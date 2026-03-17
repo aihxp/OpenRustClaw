@@ -7,7 +7,7 @@ use std::pin::Pin;
 
 use async_trait::async_trait;
 use futures::{Stream, StreamExt};
-use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
+use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue};
 use serde_json::Value;
 use tracing::{debug, warn};
 
@@ -72,10 +72,7 @@ impl OllamaProvider {
     /// - `stream`: always `false` for non-streaming
     /// - `options`: object with parameters like `temperature`, `num_predict`
     fn build_request_body(&self, request: &CompletionRequest) -> Value {
-        let model = request
-            .model
-            .as_deref()
-            .unwrap_or(&self.model);
+        let model = request.model.as_deref().unwrap_or(&self.model);
 
         let mut messages: Vec<Value> = Vec::new();
 
@@ -110,14 +107,14 @@ impl OllamaProvider {
         }
 
         // Add tools (Ollama supports OpenAI-format tool definitions).
-        if let Some(tools) = &request.tools {
-            if !tools.is_empty() {
-                let tool_defs: Vec<Value> = tools
-                    .iter()
-                    .map(|t| translate_tool_definition(t, ToolFormat::OpenAi))
-                    .collect();
-                body["tools"] = Value::Array(tool_defs);
-            }
+        if let Some(tools) = &request.tools
+            && !tools.is_empty()
+        {
+            let tool_defs: Vec<Value> = tools
+                .iter()
+                .map(|t| translate_tool_definition(t, ToolFormat::OpenAi))
+                .collect();
+            body["tools"] = Value::Array(tool_defs);
         }
 
         body
@@ -133,35 +130,34 @@ impl OllamaProvider {
         };
 
         // Handle assistant messages with tool calls.
-        if msg.role == Role::Assistant {
-            if let Some(ref tool_calls) = msg.tool_calls {
-                if !tool_calls.is_empty() {
-                    let tc_values: Vec<Value> = tool_calls
-                        .iter()
-                        .map(|tc| {
-                            serde_json::json!({
-                                "function": {
-                                    "name": tc.name,
-                                    "arguments": tc.arguments,
-                                }
-                            })
-                        })
-                        .collect();
+        if msg.role == Role::Assistant
+            && let Some(ref tool_calls) = msg.tool_calls
+            && !tool_calls.is_empty()
+        {
+            let tc_values: Vec<Value> = tool_calls
+                .iter()
+                .map(|tc| {
+                    serde_json::json!({
+                        "function": {
+                            "name": tc.name,
+                            "arguments": tc.arguments,
+                        }
+                    })
+                })
+                .collect();
 
-                    let mut result = serde_json::json!({
-                        "role": "assistant",
-                        "content": msg.content,
-                        "tool_calls": tc_values,
-                    });
+            let mut result = serde_json::json!({
+                "role": "assistant",
+                "content": msg.content,
+                "tool_calls": tc_values,
+            });
 
-                    // Ollama may expect empty content as empty string.
-                    if msg.content.is_empty() {
-                        result["content"] = Value::String(String::new());
-                    }
-
-                    return result;
-                }
+            // Ollama may expect empty content as empty string.
+            if msg.content.is_empty() {
+                result["content"] = Value::String(String::new());
             }
+
+            return result;
         }
 
         serde_json::json!({
@@ -202,10 +198,7 @@ impl OllamaProvider {
                     .filter_map(|(i, tc)| {
                         let function = tc.get("function")?;
                         let name = function.get("name")?.as_str()?.to_string();
-                        let arguments = function
-                            .get("arguments")
-                            .cloned()
-                            .unwrap_or(Value::Null);
+                        let arguments = function.get("arguments").cloned().unwrap_or(Value::Null);
                         Some(openrustclaw_core::types::ToolCall {
                             id: format!("ollama_call_{i}"),
                             name,
@@ -215,15 +208,13 @@ impl OllamaProvider {
                     .collect::<Vec<_>>()
             });
 
-        let has_tool_calls = tool_calls
-            .as_ref()
-            .is_some_and(|calls| !calls.is_empty());
+        let has_tool_calls = tool_calls.as_ref().is_some_and(|calls| !calls.is_empty());
 
         let mut message = Message::assistant(text_content);
-        if let Some(ref calls) = tool_calls {
-            if !calls.is_empty() {
-                message.tool_calls = Some(calls.clone());
-            }
+        if let Some(ref calls) = tool_calls
+            && !calls.is_empty()
+        {
+            message.tool_calls = Some(calls.clone());
         }
 
         let finish_reason = if has_tool_calls {
@@ -239,10 +230,8 @@ impl OllamaProvider {
             .get("prompt_eval_count")
             .and_then(|v| v.as_u64())
             .unwrap_or(0) as usize;
-        let completion_tokens = body
-            .get("eval_count")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0) as usize;
+        let completion_tokens =
+            body.get("eval_count").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
 
         let usage = TokenUsage {
             prompt_tokens,
@@ -272,10 +261,7 @@ impl OllamaProvider {
     /// Build default headers for Ollama API requests.
     fn default_headers(&self) -> HeaderMap {
         let mut headers = HeaderMap::new();
-        headers.insert(
-            CONTENT_TYPE,
-            HeaderValue::from_static("application/json"),
-        );
+        headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
         headers
     }
 }
@@ -424,18 +410,21 @@ impl LlmProvider for OllamaProvider {
                                 };
 
                                 // Check if stream is done
-                                let done = data.get("done").and_then(|v| v.as_bool()).unwrap_or(false);
+                                let done =
+                                    data.get("done").and_then(|v| v.as_bool()).unwrap_or(false);
 
                                 if done {
                                     // Extract usage statistics if available
                                     let prompt_tokens = data
                                         .get("prompt_eval_count")
                                         .and_then(|v| v.as_u64())
-                                        .unwrap_or(0) as usize;
+                                        .unwrap_or(0)
+                                        as usize;
                                     let completion_tokens = data
                                         .get("eval_count")
                                         .and_then(|v| v.as_u64())
-                                        .unwrap_or(0) as usize;
+                                        .unwrap_or(0)
+                                        as usize;
 
                                     // Check for tool calls in the final message
                                     let message_obj = data.get("message");
@@ -443,9 +432,8 @@ impl LlmProvider for OllamaProvider {
                                         .and_then(|m| m.get("tool_calls"))
                                         .and_then(|v| v.as_array());
 
-                                    let has_tool_calls = tool_calls
-                                        .as_ref()
-                                        .is_some_and(|calls| !calls.is_empty());
+                                    let has_tool_calls =
+                                        tool_calls.as_ref().is_some_and(|calls| !calls.is_empty());
 
                                     let finish_reason = if has_tool_calls {
                                         FinishReason::ToolUse
@@ -462,7 +450,11 @@ impl LlmProvider for OllamaProvider {
                                                     .unwrap_or("streamed")
                                             ),
                                             message: Message::assistant(""),
-                                            model: data.get("model").and_then(|v| v.as_str()).unwrap_or(&model).to_string(),
+                                            model: data
+                                                .get("model")
+                                                .and_then(|v| v.as_str())
+                                                .unwrap_or(&model)
+                                                .to_string(),
                                             usage: TokenUsage {
                                                 prompt_tokens,
                                                 completion_tokens,
@@ -476,37 +468,37 @@ impl LlmProvider for OllamaProvider {
                                 }
 
                                 // Extract content delta from message
-                                if let Some(message) = data.get("message") {
-                                    if let Some(content) = message.get("content").and_then(|v| v.as_str()) {
-                                        if !content.is_empty() {
-                                            return Ok(StreamChunk::ContentDelta {
-                                                delta: content.to_string(),
-                                            });
-                                        }
-                                    }
+                                if let Some(message) = data.get("message")
+                                    && let Some(content) =
+                                        message.get("content").and_then(|v| v.as_str())
+                                    && !content.is_empty()
+                                {
+                                    return Ok(StreamChunk::ContentDelta {
+                                        delta: content.to_string(),
+                                    });
                                 }
 
-                                Ok(StreamChunk::ContentDelta { delta: String::new() })
+                                Ok(StreamChunk::ContentDelta {
+                                    delta: String::new(),
+                                })
                             })
                             .collect();
-                        
+
                         futures::stream::iter(results)
                     }
-                    Err(e) => {
-                        futures::stream::iter(vec![Err(Error::Provider(ProviderError::StreamError {
+                    Err(e) => futures::stream::iter(vec![Err(Error::Provider(
+                        ProviderError::StreamError {
                             provider: "ollama".to_string(),
                             message: format!("Stream error: {e}"),
-                        }))])
-                    }
+                        },
+                    ))]),
                 }
             })
             .flatten()
             .filter(|chunk| {
                 // Filter out empty content deltas to reduce noise
-                let should_keep = match chunk {
-                    Ok(StreamChunk::ContentDelta { delta }) if delta.is_empty() => false,
-                    _ => true,
-                };
+                let should_keep =
+                    !matches!(chunk, Ok(StreamChunk::ContentDelta { delta }) if delta.is_empty());
                 std::future::ready(should_keep)
             });
 

@@ -159,7 +159,10 @@ mod tests {
         // When overlap >= chunk_size, step should be 1 (guaranteed progress)
         let chunks = chunk_text("a b c d", 2, 5);
         // step = max(2 - 5, 1) = max(-3, 1) = 1 (saturating_sub gives 0, then max(0,1) = 1)
-        assert!(chunks.len() >= 3, "Should still make progress with large overlap");
+        assert!(
+            chunks.len() >= 3,
+            "Should still make progress with large overlap"
+        );
     }
 
     // ── grade_results tests ──
@@ -178,20 +181,14 @@ mod tests {
 
     #[test]
     fn grade_results_zero_threshold_keeps_all() {
-        let results = vec![
-            make_scored_memory("a", 0.1),
-            make_scored_memory("b", 0.01),
-        ];
+        let results = vec![make_scored_memory("a", 0.1), make_scored_memory("b", 0.01)];
         let graded = grade_results(results, 0.0);
         assert_eq!(graded.len(), 2);
     }
 
     #[test]
     fn grade_results_high_threshold_filters_all() {
-        let results = vec![
-            make_scored_memory("a", 0.5),
-            make_scored_memory("b", 0.8),
-        ];
+        let results = vec![make_scored_memory("a", 0.5), make_scored_memory("b", 0.8)];
         let graded = grade_results(results, 0.99);
         assert!(graded.is_empty());
     }
@@ -206,7 +203,11 @@ mod tests {
     fn grade_results_exact_threshold_included() {
         let results = vec![make_scored_memory("exact", 0.5)];
         let graded = grade_results(results, 0.5);
-        assert_eq!(graded.len(), 1, "Score exactly at threshold should be included");
+        assert_eq!(
+            graded.len(),
+            1,
+            "Score exactly at threshold should be included"
+        );
     }
 
     // ── ChunkConfig tests ──

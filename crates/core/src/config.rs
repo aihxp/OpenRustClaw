@@ -569,7 +569,7 @@ pub struct IMessageConfig {
 }
 
 /// Bridge mode for iMessage integration.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "mode")]
 pub enum IMessageBridgeMode {
     /// BlueBubbles server (works remotely)
@@ -580,15 +580,10 @@ pub enum IMessageBridgeMode {
         password: String,
     },
     /// Direct macOS AppleScript (local only, requires macOS)
+    #[default]
     MacOSDirect,
     /// macOS Messages.app private API (advanced)
     PrivateApi,
-}
-
-impl Default for IMessageBridgeMode {
-    fn default() -> Self {
-        IMessageBridgeMode::MacOSDirect
-    }
 }
 
 impl AppConfig {

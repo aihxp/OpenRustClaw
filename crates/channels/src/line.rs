@@ -8,7 +8,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use governor::{Quota, RateLimiter};
 use std::num::NonZeroU32;
-use tokio::sync::{mpsc, Mutex, RwLock};
+use tokio::sync::{Mutex, RwLock, mpsc};
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
@@ -23,7 +23,14 @@ pub struct LineChannel {
     incoming_tx: mpsc::Sender<IncomingMessage>,
     incoming_rx: Mutex<mpsc::Receiver<IncomingMessage>>,
     http: reqwest::Client,
-    rate_limiter: Arc<RateLimiter<governor::state::NotKeyed, governor::state::InMemoryState, governor::clock::DefaultClock, governor::middleware::NoOpMiddleware>>,
+    rate_limiter: Arc<
+        RateLimiter<
+            governor::state::NotKeyed,
+            governor::state::InMemoryState,
+            governor::clock::DefaultClock,
+            governor::middleware::NoOpMiddleware,
+        >,
+    >,
     is_connected: RwLock<bool>,
 }
 
@@ -54,9 +61,17 @@ pub struct LineEvent {
 #[derive(Debug, Clone, serde::Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum LineSource {
-    User { user_id: String },
-    Group { group_id: String, user_id: Option<String> },
-    Room { room_id: String, user_id: Option<String> },
+    User {
+        user_id: String,
+    },
+    Group {
+        group_id: String,
+        user_id: Option<String>,
+    },
+    Room {
+        room_id: String,
+        user_id: Option<String>,
+    },
 }
 
 /// LINE message.
@@ -98,10 +113,11 @@ impl LineChannel {
     /// Create a new LINE channel with the given configuration.
     pub fn new(config: LineConfig) -> Self {
         let (incoming_tx, incoming_rx) = mpsc::channel(256);
-        
+
         // Create rate limiter (LINE default: 1000 messages/second)
         let quota = Quota::per_second(
-            NonZeroU32::new(config.rate_limit_per_second.max(1)).unwrap_or(NonZeroU32::new(1000).unwrap())
+            NonZeroU32::new(config.rate_limit_per_second.max(1))
+                .unwrap_or(NonZeroU32::new(1000).unwrap()),
         );
         let rate_limiter = Arc::new(RateLimiter::direct(quota));
 
@@ -135,10 +151,12 @@ impl LineChannel {
 
         type HmacSha256 = Hmac<Sha256>;
 
-        let mut mac = HmacSha256::new_from_slice(self.config.channel_secret.as_bytes())
-            .map_err(|_| ChannelError::AuthFailed {
-                platform: "line".to_string(),
-                message: "Invalid channel secret".to_string(),
+        let mut mac =
+            HmacSha256::new_from_slice(self.config.channel_secret.as_bytes()).map_err(|_| {
+                ChannelError::AuthFailed {
+                    platform: "line".to_string(),
+                    message: "Invalid channel secret".to_string(),
+                }
             })?;
         mac.update(body);
 
@@ -149,7 +167,8 @@ impl LineChannel {
             return Err(ChannelError::AuthFailed {
                 platform: "line".to_string(),
                 message: "Invalid webhook signature".to_string(),
-            }.into());
+            }
+            .into());
         }
 
         Ok(())
@@ -158,10 +177,14 @@ impl LineChannel {
     /// Get user profile from LINE API.
     pub async fn get_profile(&self, user_id: &str) -> Result<LineProfile> {
         let url = format!("https://api.line.me/v2/bot/profile/{}", user_id);
-        
-        let response = self.http
+
+        let response = self
+            .http
             .get(&url)
-            .header("Authorization", format!("Bearer {}", self.config.channel_access_token))
+            .header(
+                "Authorization",
+                format!("Bearer {}", self.config.channel_access_token),
+            )
             .send()
             .await
             .map_err(|e| ChannelError::Connection {
@@ -174,13 +197,18 @@ impl LineChannel {
             return Err(ChannelError::AuthFailed {
                 platform: "line".to_string(),
                 message: error_text,
-            }.into());
+            }
+            .into());
         }
 
-        let profile: LineProfile = response.json().await.map_err(|e| ChannelError::InvalidFormat {
-            platform: "line".to_string(),
-            message: e.to_string(),
-        })?;
+        let profile: LineProfile =
+            response
+                .json()
+                .await
+                .map_err(|e| ChannelError::InvalidFormat {
+                    platform: "line".to_string(),
+                    message: e.to_string(),
+                })?;
 
         Ok(profile)
     }
@@ -190,7 +218,7 @@ impl LineChannel {
         self.rate_limiter.until_ready().await;
 
         let url = "https://api.line.me/v2/bot/message/reply";
-        
+
         let payload = serde_json::json!({
             "replyToken": reply_token,
             "messages": [
@@ -201,9 +229,13 @@ impl LineChannel {
             ]
         });
 
-        let response = self.http
+        let response = self
+            .http
             .post(url)
-            .header("Authorization", format!("Bearer {}", self.config.channel_access_token))
+            .header(
+                "Authorization",
+                format!("Bearer {}", self.config.channel_access_token),
+            )
             .header("Content-Type", "application/json")
             .json(&payload)
             .send()
@@ -218,7 +250,8 @@ impl LineChannel {
             return Err(ChannelError::SendFailed {
                 platform: "line".to_string(),
                 message: error,
-            }.into());
+            }
+            .into());
         }
 
         Ok(())
@@ -230,12 +263,14 @@ impl LineChannel {
             // Get user ID based on source
             let (user_id, group_id) = match &event.source {
                 LineSource::User { user_id } => (user_id.clone(), None),
-                LineSource::Group { group_id, user_id } => {
-                    (user_id.clone().unwrap_or_else(|| group_id.clone()), Some(group_id.clone()))
-                }
-                LineSource::Room { room_id, user_id } => {
-                    (user_id.clone().unwrap_or_else(|| room_id.clone()), Some(room_id.clone()))
-                }
+                LineSource::Group { group_id, user_id } => (
+                    user_id.clone().unwrap_or_else(|| group_id.clone()),
+                    Some(group_id.clone()),
+                ),
+                LineSource::Room { room_id, user_id } => (
+                    user_id.clone().unwrap_or_else(|| room_id.clone()),
+                    Some(room_id.clone()),
+                ),
             };
 
             // Check allowlist
@@ -245,73 +280,73 @@ impl LineChannel {
             }
 
             // Handle message events
-            if event.event_type == "message" {
-                if let Some(message) = event.message {
-                    let content = match message.message_type.as_str() {
-                        "text" => message.text.unwrap_or_default(),
-                        "image" => "[Image]".to_string(),
-                        "video" => "[Video]".to_string(),
-                        "audio" => "[Audio]".to_string(),
-                        "file" => "[File]".to_string(),
-                        "location" => "[Location]".to_string(),
-                        "sticker" => "[Sticker]".to_string(),
-                        _ => "[Unknown message type]".to_string(),
-                    };
+            if event.event_type == "message"
+                && let Some(message) = event.message
+            {
+                let content = match message.message_type.as_str() {
+                    "text" => message.text.unwrap_or_default(),
+                    "image" => "[Image]".to_string(),
+                    "video" => "[Video]".to_string(),
+                    "audio" => "[Audio]".to_string(),
+                    "file" => "[File]".to_string(),
+                    "location" => "[Location]".to_string(),
+                    "sticker" => "[Sticker]".to_string(),
+                    _ => "[Unknown message type]".to_string(),
+                };
 
-                    let session_id = Uuid::new_v4();
-                    let mut metadata = serde_json::json!({
-                        "line_message_id": message.id,
-                        "line_webhook_event_id": event.webhook_event_id,
-                        "line_event_type": event.event_type,
-                    });
+                let session_id = Uuid::new_v4();
+                let mut metadata = serde_json::json!({
+                    "line_message_id": message.id,
+                    "line_webhook_event_id": event.webhook_event_id,
+                    "line_event_type": event.event_type,
+                });
 
-                    if let Some(token) = &event.reply_token {
-                        metadata["line_reply_token"] = serde_json::json!(token);
-                    }
+                if let Some(token) = &event.reply_token {
+                    metadata["line_reply_token"] = serde_json::json!(token);
+                }
 
-                    if let Some(group) = &group_id {
-                        metadata["line_group_id"] = serde_json::json!(group);
-                    }
+                if let Some(group) = &group_id {
+                    metadata["line_group_id"] = serde_json::json!(group);
+                }
 
-                    let msg = IncomingMessage {
-                        session_id,
-                        user_id: user_id.clone(),
-                        content,
-                        platform: Platform::Line,
-                        metadata,
-                    };
+                let msg = IncomingMessage {
+                    session_id,
+                    user_id: user_id.clone(),
+                    content,
+                    platform: Platform::Line,
+                    metadata,
+                };
 
-                    if let Err(e) = self.incoming_tx.send(msg).await {
-                        error!("Failed to send incoming message: {}", e);
-                    }
+                if let Err(e) = self.incoming_tx.send(msg).await {
+                    error!("Failed to send incoming message: {}", e);
                 }
             }
 
             // Handle postback (button click)
-            if event.event_type == "postback" {
-                if let Some(postback) = event.postback {
-                    let session_id = Uuid::new_v4();
-                    let mut metadata = serde_json::json!({
-                        "line_webhook_event_id": event.webhook_event_id,
-                        "line_event_type": "postback",
-                        "line_postback_data": &postback.data,
-                    });
+            if event.event_type == "postback"
+                && let Some(postback) = event.postback
+            {
+                let session_id = Uuid::new_v4();
+                let mut metadata = serde_json::json!({
+                    "line_webhook_event_id": event.webhook_event_id,
+                    "line_event_type": "postback",
+                    "line_postback_data": &postback.data,
+                });
 
-                    if let Some(token) = &event.reply_token {
-                        metadata["line_reply_token"] = serde_json::json!(token);
-                    }
+                if let Some(token) = &event.reply_token {
+                    metadata["line_reply_token"] = serde_json::json!(token);
+                }
 
-                    let msg = IncomingMessage {
-                        session_id,
-                        user_id: user_id.clone(),
-                        content: format!("[Postback: {}]", postback.data),
-                        platform: Platform::Line,
-                        metadata,
-                    };
+                let msg = IncomingMessage {
+                    session_id,
+                    user_id: user_id.clone(),
+                    content: format!("[Postback: {}]", postback.data),
+                    platform: Platform::Line,
+                    metadata,
+                };
 
-                    if let Err(e) = self.incoming_tx.send(msg).await {
-                        error!("Failed to send incoming postback: {}", e);
-                    }
+                if let Err(e) = self.incoming_tx.send(msg).await {
+                    error!("Failed to send incoming postback: {}", e);
                 }
             }
         }
@@ -324,7 +359,7 @@ impl LineChannel {
         self.rate_limiter.until_ready().await;
 
         let url = "https://api.line.me/v2/bot/message/push";
-        
+
         let payload = serde_json::json!({
             "to": to,
             "messages": [
@@ -336,9 +371,13 @@ impl LineChannel {
             ]
         });
 
-        let response = self.http
+        let response = self
+            .http
             .post(url)
-            .header("Authorization", format!("Bearer {}", self.config.channel_access_token))
+            .header(
+                "Authorization",
+                format!("Bearer {}", self.config.channel_access_token),
+            )
             .header("Content-Type", "application/json")
             .json(&payload)
             .send()
@@ -353,14 +392,20 @@ impl LineChannel {
             return Err(ChannelError::SendFailed {
                 platform: "line".to_string(),
                 message: error,
-            }.into());
+            }
+            .into());
         }
 
         Ok(())
     }
 
     /// Send a quick reply message.
-    pub async fn send_quick_reply(&self, to: &str, text: &str, items: Vec<QuickReplyItem>) -> Result<()> {
+    pub async fn send_quick_reply(
+        &self,
+        to: &str,
+        text: &str,
+        items: Vec<QuickReplyItem>,
+    ) -> Result<()> {
         if !self.config.enable_quick_replies {
             return self.send_to_user(to, text).await;
         }
@@ -368,17 +413,20 @@ impl LineChannel {
         self.rate_limiter.until_ready().await;
 
         let url = "https://api.line.me/v2/bot/message/push";
-        
-        let quick_reply_items: Vec<_> = items.iter().map(|item| {
-            serde_json::json!({
-                "type": "action",
-                "action": {
-                    "type": "message",
-                    "label": item.label,
-                    "text": item.text
-                }
+
+        let quick_reply_items: Vec<_> = items
+            .iter()
+            .map(|item| {
+                serde_json::json!({
+                    "type": "action",
+                    "action": {
+                        "type": "message",
+                        "label": item.label,
+                        "text": item.text
+                    }
+                })
             })
-        }).collect();
+            .collect();
 
         let payload = serde_json::json!({
             "to": to,
@@ -393,9 +441,13 @@ impl LineChannel {
             ]
         });
 
-        let response = self.http
+        let response = self
+            .http
             .post(url)
-            .header("Authorization", format!("Bearer {}", self.config.channel_access_token))
+            .header(
+                "Authorization",
+                format!("Bearer {}", self.config.channel_access_token),
+            )
             .header("Content-Type", "application/json")
             .json(&payload)
             .send()
@@ -410,7 +462,8 @@ impl LineChannel {
             return Err(ChannelError::SendFailed {
                 platform: "line".to_string(),
                 message: error,
-            }.into());
+            }
+            .into());
         }
 
         Ok(())
@@ -421,7 +474,7 @@ impl LineChannel {
         self.rate_limiter.until_ready().await;
 
         let url = "https://api.line.me/v2/bot/message/push";
-        
+
         let payload = serde_json::json!({
             "to": to,
             "messages": [
@@ -432,9 +485,13 @@ impl LineChannel {
             ]
         });
 
-        let response = self.http
+        let response = self
+            .http
             .post(url)
-            .header("Authorization", format!("Bearer {}", self.config.channel_access_token))
+            .header(
+                "Authorization",
+                format!("Bearer {}", self.config.channel_access_token),
+            )
             .header("Content-Type", "application/json")
             .json(&payload)
             .send()
@@ -449,7 +506,8 @@ impl LineChannel {
             return Err(ChannelError::SendFailed {
                 platform: "line".to_string(),
                 message: error,
-            }.into());
+            }
+            .into());
         }
 
         Ok(())
@@ -474,7 +532,9 @@ impl Channel for LineChannel {
         self.rate_limiter.until_ready().await;
 
         // Extract recipient ID from metadata
-        let recipient_id = msg.metadata.get("line_user_id")
+        let recipient_id = msg
+            .metadata
+            .get("line_user_id")
             .and_then(|v| v.as_str())
             .or_else(|| msg.metadata.get("recipient_id").and_then(|v| v.as_str()))
             .ok_or_else(|| ChannelError::InvalidFormat {
@@ -483,20 +543,23 @@ impl Channel for LineChannel {
             })?;
 
         // Check if we have quick replies
-        if let Some(quick_replies) = msg.metadata.get("quick_replies") {
-            if let Some(items) = quick_replies.as_array() {
-                let qr_items: Vec<QuickReplyItem> = items.iter()
-                    .filter_map(|item| {
-                        Some(QuickReplyItem {
-                            label: item.get("label")?.as_str()?.to_string(),
-                            text: item.get("text")?.as_str()?.to_string(),
-                        })
+        if let Some(quick_replies) = msg.metadata.get("quick_replies")
+            && let Some(items) = quick_replies.as_array()
+        {
+            let qr_items: Vec<QuickReplyItem> = items
+                .iter()
+                .filter_map(|item| {
+                    Some(QuickReplyItem {
+                        label: item.get("label")?.as_str()?.to_string(),
+                        text: item.get("text")?.as_str()?.to_string(),
                     })
-                    .collect();
-                
-                if !qr_items.is_empty() {
-                    return self.send_quick_reply(recipient_id, &msg.content, qr_items).await;
-                }
+                })
+                .collect();
+
+            if !qr_items.is_empty() {
+                return self
+                    .send_quick_reply(recipient_id, &msg.content, qr_items)
+                    .await;
             }
         }
 
@@ -510,7 +573,8 @@ impl Channel for LineChannel {
             ChannelError::Connection {
                 platform: "line".to_string(),
                 message: "Incoming message channel closed".to_string(),
-            }.into()
+            }
+            .into()
         })
     }
 
@@ -526,22 +590,28 @@ impl Channel for LineChannel {
             return Err(ChannelError::Config {
                 platform: "line".to_string(),
                 message: "LINE channel access token is required".to_string(),
-            }.into());
+            }
+            .into());
         }
 
         if self.config.channel_secret.is_empty() {
             return Err(ChannelError::Config {
                 platform: "line".to_string(),
                 message: "LINE channel secret is required".to_string(),
-            }.into());
+            }
+            .into());
         }
 
         // Verify credentials by getting bot info
         let url = "https://api.line.me/v2/bot/info";
-        
-        let response = self.http
+
+        let response = self
+            .http
             .get(url)
-            .header("Authorization", format!("Bearer {}", self.config.channel_access_token))
+            .header(
+                "Authorization",
+                format!("Bearer {}", self.config.channel_access_token),
+            )
             .send()
             .await
             .map_err(|e| ChannelError::Connection {
@@ -553,13 +623,18 @@ impl Channel for LineChannel {
             return Err(ChannelError::AuthFailed {
                 platform: "line".to_string(),
                 message: "Invalid channel access token".to_string(),
-            }.into());
+            }
+            .into());
         }
 
-        let info: serde_json::Value = response.json().await.map_err(|e| ChannelError::InvalidFormat {
-            platform: "line".to_string(),
-            message: e.to_string(),
-        })?;
+        let info: serde_json::Value =
+            response
+                .json()
+                .await
+                .map_err(|e| ChannelError::InvalidFormat {
+                    platform: "line".to_string(),
+                    message: e.to_string(),
+                })?;
 
         info!(bot_name = ?info.get("displayName"), "Connected to LINE Messaging API");
 
@@ -569,9 +644,9 @@ impl Channel for LineChannel {
 
     async fn disconnect(&mut self) -> Result<()> {
         info!("Disconnecting from LINE...");
-        
+
         *self.is_connected.write().await = false;
-        
+
         info!("LINE channel disconnected");
         Ok(())
     }

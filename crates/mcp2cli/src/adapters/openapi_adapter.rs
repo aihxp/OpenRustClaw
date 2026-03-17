@@ -129,20 +129,23 @@ impl OpenApiAdapter {
     /// Extract base URL from spec
     fn extract_base_url(spec: &OpenAPI, source_url: Option<&str>) -> String {
         // Try servers array first
-        if !spec.servers.is_empty() {
-            if let Some(server) = spec.servers.first() {
-                return server.url.clone();
-            }
+        if !spec.servers.is_empty()
+            && let Some(server) = spec.servers.first()
+        {
+            return server.url.clone();
         }
 
         // Fall back to source URL
         if let Some(url) = source_url {
             // Extract base URL from spec URL
             if let Ok(parsed) = url::Url::parse(url) {
-                let base = format!("{}://{}{}", 
+                let base = format!(
+                    "{}://{}{}",
                     parsed.scheme(),
                     parsed.host_str().unwrap_or("localhost"),
-                    parsed.port().map_or_else(String::new, |p| format!(":{}", p))
+                    parsed
+                        .port()
+                        .map_or_else(String::new, |p| format!(":{}", p))
                 );
                 return base;
             }
@@ -176,10 +179,10 @@ impl OpenApiAdapter {
             ];
 
             for (method, operation_opt) in operations {
-                if let Some(operation) = operation_opt {
-                    if let Some(endpoint) = Self::extract_endpoint(path, method, operation) {
-                        endpoints.push(endpoint);
-                    }
+                if let Some(operation) = operation_opt
+                    && let Some(endpoint) = Self::extract_endpoint(path, method, operation)
+                {
+                    endpoints.push(endpoint);
                 }
             }
         }
@@ -188,18 +191,21 @@ impl OpenApiAdapter {
     }
 
     /// Extract a single endpoint
-    fn extract_endpoint(path: &str, method: HttpMethod, operation: &Operation) -> Option<EndpointInfo> {
-        let operation_id = operation.operation_id.clone()
-            .or_else(|| {
-                // Generate operation ID from method and path
-                let clean_path = path.replace('/', "_").replace(['{', '}'], "");
-                Some(format!("{:?}_{}", method, clean_path).to_lowercase())
-            })?;
+    fn extract_endpoint(
+        path: &str,
+        method: HttpMethod,
+        operation: &Operation,
+    ) -> Option<EndpointInfo> {
+        let operation_id = operation.operation_id.clone().or_else(|| {
+            // Generate operation ID from method and path
+            let clean_path = path.replace('/', "_").replace(['{', '}'], "");
+            Some(format!("{:?}_{}", method, clean_path).to_lowercase())
+        })?;
 
         let parameters: Vec<ParameterInfo> = operation
             .parameters
             .iter()
-            .filter_map(|p| Self::extract_parameter(p))
+            .filter_map(Self::extract_parameter)
             .collect();
 
         Some(EndpointInfo {
@@ -209,15 +215,15 @@ impl OpenApiAdapter {
             summary: operation.summary.clone(),
             description: operation.description.clone(),
             parameters,
-            request_body: None, // Simplified for now
+            request_body: None,        // Simplified for now
             responses: HashMap::new(), // Simplified for now
         })
     }
 
     /// Extract parameter info
     fn extract_parameter(param_ref: &ReferenceOr<Parameter>) -> Option<ParameterInfo> {
-        use openapiv3::Parameter::{Header, Path, Query, Cookie};
-        
+        use openapiv3::Parameter::{Cookie, Header, Path, Query};
+
         let param = match param_ref {
             ReferenceOr::Item(p) => p,
             ReferenceOr::Reference { .. } => return None,
@@ -232,14 +238,10 @@ impl OpenApiAdapter {
         };
 
         let schema = match &param.clone().parameter_data().format {
-            ParameterSchemaOrContent::Schema(schema_ref) => {
-                match schema_ref {
-                    ReferenceOr::Item(schema) => {
-                        Some(serde_json::to_value(schema).unwrap_or_default())
-                    }
-                    ReferenceOr::Reference { .. } => None,
-                }
-            }
+            ParameterSchemaOrContent::Schema(schema_ref) => match schema_ref {
+                ReferenceOr::Item(schema) => Some(serde_json::to_value(schema).unwrap_or_default()),
+                ReferenceOr::Reference { .. } => None,
+            },
             _ => None,
         };
 
@@ -276,9 +278,7 @@ impl OpenApiAdapter {
         // Build usage string
         let usage = format!(
             "{} {} {}",
-            endpoint.operation_id,
-            endpoint.method,
-            endpoint.path
+            endpoint.operation_id, endpoint.method, endpoint.path
         );
 
         // Convert parameters
@@ -293,7 +293,12 @@ impl OpenApiAdapter {
                     .unwrap_or("string")
                     .to_string();
 
-                ParamHelp::new(&p.name, p.description.clone().unwrap_or_default(), type_name, p.required)
+                ParamHelp::new(
+                    &p.name,
+                    p.description.clone().unwrap_or_default(),
+                    type_name,
+                    p.required,
+                )
             })
             .collect();
 
@@ -302,7 +307,9 @@ impl OpenApiAdapter {
 
     /// Get endpoint by operation ID
     fn get_endpoint(&self, operation_id: &str) -> Option<&EndpointInfo> {
-        self.endpoints.iter().find(|e| e.operation_id == operation_id)
+        self.endpoints
+            .iter()
+            .find(|e| e.operation_id == operation_id)
     }
 
     /// Build full URL for an endpoint
@@ -375,7 +382,11 @@ impl OpenApiAdapter {
 #[async_trait]
 impl ToolSourceAdapter for OpenApiAdapter {
     async fn list_tools(&self) -> Result<Vec<ToolSummary>> {
-        Ok(self.endpoints.iter().map(Self::endpoint_to_summary).collect())
+        Ok(self
+            .endpoints
+            .iter()
+            .map(Self::endpoint_to_summary)
+            .collect())
     }
 
     async fn get_tool_help(&self, operation_id: &str) -> Result<ToolHelp> {
@@ -435,22 +446,13 @@ impl ToolSourceAdapter for OpenApiAdapter {
 impl OpenApiAdapter {
     /// Send HTTP request and return response
     async fn send_request(&self, request: reqwest::RequestBuilder) -> Result<String> {
-        let response = request
-            .send()
-            .await
-            .map_err(|e| Mcp2CliError::Http(e))?;
+        let response = request.send().await.map_err(Mcp2CliError::Http)?;
 
         let status = response.status();
-        let text = response
-            .text()
-            .await
-            .map_err(|e| Mcp2CliError::Http(e))?;
+        let text = response.text().await.map_err(Mcp2CliError::Http)?;
 
         if !status.is_success() {
-            return Err(Mcp2CliError::other(format!(
-                "HTTP {}: {}",
-                status, text
-            )));
+            return Err(Mcp2CliError::other(format!("HTTP {}: {}", status, text)));
         }
 
         Ok(text)
@@ -531,8 +533,12 @@ mod tests {
     #[test]
     fn test_list_endpoints() {
         let adapter = OpenApiAdapter::from_string(SAMPLE_OPENAPI, None).unwrap();
-        let summaries: Vec<_> = adapter.endpoints.iter().map(OpenApiAdapter::endpoint_to_summary).collect();
-        
+        let summaries: Vec<_> = adapter
+            .endpoints
+            .iter()
+            .map(OpenApiAdapter::endpoint_to_summary)
+            .collect();
+
         assert_eq!(summaries.len(), 3);
         assert!(summaries.iter().any(|s| s.name == "listUsers"));
         assert!(summaries.iter().any(|s| s.name == "createUser"));
@@ -543,10 +549,10 @@ mod tests {
     fn test_build_url_with_path_param() {
         let adapter = OpenApiAdapter::from_string(SAMPLE_OPENAPI, None).unwrap();
         let endpoint = adapter.get_endpoint("getUser").unwrap();
-        
+
         let args = serde_json::json!({"id": "123"});
         let url = adapter.build_url(endpoint, &args);
-        
+
         assert!(url.contains("/users/123"));
     }
 
@@ -554,10 +560,10 @@ mod tests {
     fn test_build_url_with_query_param() {
         let adapter = OpenApiAdapter::from_string(SAMPLE_OPENAPI, None).unwrap();
         let endpoint = adapter.get_endpoint("listUsers").unwrap();
-        
+
         let args = serde_json::json!({"limit": 10});
         let url = adapter.build_url(endpoint, &args);
-        
+
         assert!(url.contains("?limit=10"));
     }
 }

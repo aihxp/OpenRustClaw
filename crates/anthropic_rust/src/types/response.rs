@@ -49,7 +49,9 @@ impl MessageResponse {
 
     /// Check if this response contains any tool use blocks.
     pub fn has_tool_use(&self) -> bool {
-        self.content.iter().any(|block| matches!(block, ContentBlock::ToolUse(_)))
+        self.content
+            .iter()
+            .any(|block| matches!(block, ContentBlock::ToolUse(_)))
     }
 
     /// Get all tool use blocks from this response.
@@ -190,10 +192,7 @@ mod tests {
             id: "msg_123".to_string(),
             message_type: MessageType::Message,
             role: super::super::MessageRole::Assistant,
-            content: vec![
-                ContentBlock::text("Hello "),
-                ContentBlock::text("world!"),
-            ],
+            content: vec![ContentBlock::text("Hello "), ContentBlock::text("world!")],
             model: "claude-3".to_string(),
             stop_reason: Some(StopReason::EndTurn),
             stop_sequence: None,

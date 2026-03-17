@@ -206,7 +206,10 @@ impl ModelsResponse {
 
     /// Get embedding models.
     pub fn embedding_models(&self) -> Vec<&ModelInfo> {
-        self.data.iter().filter(|m| m.is_embedding_model()).collect()
+        self.data
+            .iter()
+            .filter(|m| m.is_embedding_model())
+            .collect()
     }
 
     /// Get all model IDs.

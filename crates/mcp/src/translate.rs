@@ -44,13 +44,10 @@ pub fn translate(tool: &ToolDefinition, _from: ToolFormat, to: ToolFormat) -> Va
         }),
         ToolFormat::OpenAi => {
             let mut params = tool.parameters.clone();
-            if tool.strict {
-                if let Some(obj) = params.as_object_mut() {
-                    obj.insert(
-                        "additionalProperties".to_string(),
-                        Value::Bool(false),
-                    );
-                }
+            if tool.strict
+                && let Some(obj) = params.as_object_mut()
+            {
+                obj.insert("additionalProperties".to_string(), Value::Bool(false));
             }
             serde_json::json!({
                 "type": "function",
@@ -276,9 +273,11 @@ mod tests {
     fn translate_to_openai_non_strict_does_not_set_additional_properties() {
         let tool = sample_tool();
         let result = translate(&tool, ToolFormat::Mcp, ToolFormat::OpenAi);
-        assert!(result["function"]["parameters"]
-            .get("additionalProperties")
-            .is_none());
+        assert!(
+            result["function"]["parameters"]
+                .get("additionalProperties")
+                .is_none()
+        );
     }
 
     #[test]

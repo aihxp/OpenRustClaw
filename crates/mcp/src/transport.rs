@@ -11,8 +11,7 @@ use tracing::{debug, warn};
 
 /// Commands allowed to be spawned as MCP server subprocesses.
 const ALLOWED_COMMANDS: &[&str] = &[
-    "npx", "uvx", "node", "python3", "python", "docker",
-    "deno", "bun", "cargo", "go",
+    "npx", "uvx", "node", "python3", "python", "docker", "deno", "bun", "cargo", "go",
 ];
 
 /// A stdio transport connection to an MCP server subprocess.
@@ -40,7 +39,9 @@ impl StdioTransport {
         }
 
         // Reject commands with shell metacharacters
-        let shell_chars = ['|', '&', ';', '$', '`', '(', ')', '{', '}', '<', '>', '!', '\n'];
+        let shell_chars = [
+            '|', '&', ';', '$', '`', '(', ')', '{', '}', '<', '>', '!', '\n',
+        ];
         if command.chars().any(|c| shell_chars.contains(&c)) {
             warn!(command = %command, "MCP server command rejected: contains shell metacharacters");
             return Err(Error::Mcp(McpError::Transport(format!(
@@ -119,10 +120,7 @@ impl StdioTransport {
             .map_err(|e| Error::Mcp(McpError::Transport(e.to_string())))?;
 
         let response: Value = serde_json::from_str(&line).map_err(|e| {
-            Error::Mcp(McpError::Transport(format!(
-                "Invalid JSON response: {}",
-                e
-            )))
+            Error::Mcp(McpError::Transport(format!("Invalid JSON response: {}", e)))
         })?;
 
         if let Some(error) = response.get("error") {

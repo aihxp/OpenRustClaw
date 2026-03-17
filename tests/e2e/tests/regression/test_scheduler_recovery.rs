@@ -2,11 +2,11 @@
 //!
 //! Tests job scheduling, execution, failure recovery, and retries.
 
-use openrustclaw_e2e_tests::common::*;
 #[allow(unused_imports)]
 use openrustclaw_core::traits::LlmProvider;
 #[allow(unused_imports)]
 use openrustclaw_core::types::{CompletionRequest, Message};
+use openrustclaw_e2e_tests::common::*;
 
 /// Test: Basic job scheduling
 #[tokio::test]
@@ -18,9 +18,7 @@ async fn test_scheduler_basic_job() {
     // which would require the scheduler to be running
 
     // For now, verify the database supports scheduled jobs
-    let result: Result<i64, _> = sqlx::query_scalar("SELECT 1")
-        .fetch_one(&env.db_pool)
-        .await;
+    let result: Result<i64, _> = sqlx::query_scalar("SELECT 1").fetch_one(&env.db_pool).await;
 
     assert!(result.is_ok(), "Database should be available for scheduler");
 }
@@ -36,7 +34,7 @@ async fn test_job_retry_logic() {
 
     loop {
         attempts += 1;
-        
+
         // Simulate work that fails initially
         if attempts < max_retries {
             continue; // Simulate failure
@@ -45,7 +43,10 @@ async fn test_job_retry_logic() {
         break; // Success
     }
 
-    assert_eq!(attempts, max_retries, "Should retry correct number of times");
+    assert_eq!(
+        attempts, max_retries,
+        "Should retry correct number of times"
+    );
 }
 
 /// Test: Scheduled job timing
@@ -105,7 +106,7 @@ async fn test_job_dependencies() {
     });
 
     let (result_a, result_b) = tokio::join!(job_a, job_b);
-    
+
     assert_eq!(result_a.expect("Job A failed"), "Job A done");
     assert_eq!(result_b.expect("Job B failed"), "Job B done");
 }
@@ -124,13 +125,16 @@ async fn test_scheduler_recovery() {
         || async {
             let count = attempts_clone.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             if count < 2 {
-                Err(openrustclaw_core::error::Error::Internal("Temporary failure".to_string()))
+                Err(openrustclaw_core::error::Error::Internal(
+                    "Temporary failure".to_string(),
+                ))
             } else {
                 Ok("Success")
             }
         },
         5,
-    ).await;
+    )
+    .await;
 
     assert!(result.is_ok(), "Should recover after retries");
     assert_eq!(
@@ -149,10 +153,7 @@ async fn test_job_timeout_handling() {
     });
 
     // Timeout after 100ms
-    let result = tokio::time::timeout(
-        std::time::Duration::from_millis(100),
-        slow_job
-    ).await;
+    let result = tokio::time::timeout(std::time::Duration::from_millis(100), slow_job).await;
 
     assert!(result.is_err(), "Should timeout");
 }

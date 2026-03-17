@@ -4,9 +4,9 @@
 //! via WebSocket connections.
 
 use async_trait::async_trait;
-use openrustclaw_core::traits::Channel;
-use openrustclaw_core::types::{Platform, IncomingMessage, OutgoingMessage};
 use openrustclaw_core::error::{Error, Result};
+use openrustclaw_core::traits::Channel;
+use openrustclaw_core::types::{IncomingMessage, OutgoingMessage, Platform};
 use tokio::sync::mpsc;
 
 /// WebChat channel that communicates via the gateway WebSocket.
@@ -17,7 +17,11 @@ pub struct WebChatChannel {
 }
 
 impl WebChatChannel {
-    pub fn new() -> (Self, mpsc::Sender<IncomingMessage>, mpsc::Receiver<OutgoingMessage>) {
+    pub fn new() -> (
+        Self,
+        mpsc::Sender<IncomingMessage>,
+        mpsc::Receiver<OutgoingMessage>,
+    ) {
         let (incoming_tx, incoming_rx) = mpsc::channel(256);
         let (outgoing_tx, outgoing_rx) = mpsc::channel(256);
 
@@ -37,7 +41,9 @@ impl Channel for WebChatChannel {
     }
 
     async fn send(&self, msg: OutgoingMessage) -> Result<()> {
-        self.outgoing_tx.send(msg).await
+        self.outgoing_tx
+            .send(msg)
+            .await
             .map_err(|e| Error::Internal(format!("WebChat send error: {}", e)))
     }
 

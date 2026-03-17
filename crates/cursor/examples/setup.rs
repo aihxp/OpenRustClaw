@@ -17,7 +17,7 @@
 //! ```
 
 use clap::Parser;
-use openrustclaw_cursor::{check_cursor_setup, setup_cursor_integration, generate_mcp_config};
+use openrustclaw_cursor::{check_cursor_setup, generate_mcp_config, setup_cursor_integration};
 use std::path::PathBuf;
 use tracing::{error, info, warn};
 
@@ -91,7 +91,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Perform setup
     info!("\nSetting up Cursor integration...");
-    
+
     match setup_cursor_integration(project_root.clone()).await {
         Ok(_) => {
             info!("✓ Setup complete!");
@@ -100,7 +100,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             info!("2. Go to Settings > MCP");
             info!("3. Verify 'openrustclaw' and 'openrustclaw-cursor' servers are enabled");
             info!("4. Restart Cursor if needed");
-            
+
             // Check status again
             let new_status = check_cursor_setup(&project_root).await;
             if new_status.all_ready {

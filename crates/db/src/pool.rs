@@ -4,8 +4,8 @@
 //! for concurrent read/write performance. The pool is the primary async
 //! database handle used throughout the application.
 
-use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
 use sqlx::SqlitePool;
+use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
 use std::str::FromStr;
 use tracing::info;
 

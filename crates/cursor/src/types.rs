@@ -186,7 +186,10 @@ pub enum AcpRequest {
     /// Get the current IDE state.
     GetState,
     /// Execute a command in the terminal.
-    ExecuteCommand { command: String, terminal_id: Option<String> },
+    ExecuteCommand {
+        command: String,
+        terminal_id: Option<String>,
+    },
     /// Read a file's content.
     ReadFile { path: PathBuf },
     /// Write content to a file.
@@ -221,7 +224,7 @@ pub enum AcpRequest {
 #[allow(missing_docs)]
 pub enum AcpResponse {
     /// Current IDE state.
-    State(IdeState),
+    State(Box<IdeState>),
     /// Command execution result.
     CommandResult {
         stdout: String,
@@ -229,15 +232,9 @@ pub enum AcpResponse {
         exit_code: i32,
     },
     /// File content.
-    FileContent {
-        path: PathBuf,
-        content: String,
-    },
+    FileContent { path: PathBuf, content: String },
     /// File operation success.
-    FileOperationSuccess {
-        path: PathBuf,
-        operation: String,
-    },
+    FileOperationSuccess { path: PathBuf, operation: String },
     /// Search results.
     SearchResults {
         matches: Vec<SearchMatch>,

@@ -332,10 +332,8 @@ mod tests {
 
     #[test]
     fn test_penalty_builder() {
-        let penalty = Penalty::new(2.0)
-            .with_numbers(true)
-            .with_punctuation(false);
-        
+        let penalty = Penalty::new(2.0).with_numbers(true).with_punctuation(false);
+
         assert_eq!(penalty.scale, Some(2.0));
         assert_eq!(penalty.apply_to_numbers, Some(true));
         assert_eq!(penalty.apply_to_punctuation, Some(false));

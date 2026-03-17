@@ -6,7 +6,7 @@ use serde_json::json;
 use tracing::info;
 
 use crate::browser::Browser;
-use crate::tools::{success_response, AutomationTool, ToolContext};
+use crate::tools::{AutomationTool, ToolContext, success_response};
 
 /// Navigate to a URL.
 pub struct NavigateTool {
@@ -67,40 +67,42 @@ impl AutomationTool for NavigateTool {
         _ctx: &ToolContext,
     ) -> anyhow::Result<String> {
         let args: NavigateArgs = serde_json::from_value(input)?;
-        
+
         info!(url = %args.url, "Navigating to URL");
-        
+
         // Validate URL
         let url = if args.url.starts_with("http://") || args.url.starts_with("https://") {
             args.url
         } else {
             format!("https://{}", args.url)
         };
-        
+
         // Navigate
-        let page = self.browser.new_page().await.map_err(|e| {
-            anyhow::anyhow!("Failed to create page: {}", e)
-        })?;
-        
-        page.goto(&url).await.map_err(|e| {
-            anyhow::anyhow!("Failed to navigate: {}", e)
-        })?;
-        
+        let page = self
+            .browser
+            .new_page()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to create page: {}", e))?;
+
+        page.goto(&url)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to navigate: {}", e))?;
+
         // Wait for specified load state
         let load_state = match args.wait_until.as_deref() {
             Some("domcontentloaded") => crate::browser::LoadState::DomContentLoaded,
             Some("networkidle") => crate::browser::LoadState::NetworkIdle,
             _ => crate::browser::LoadState::Load,
         };
-        
-        page.wait_for_load_state(load_state).await.map_err(|e| {
-            anyhow::anyhow!("Failed to wait for load state: {}", e)
-        })?;
-        
+
+        page.wait_for_load_state(load_state)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to wait for load state: {}", e))?;
+
         // Get page info
         let title = page.title().await.unwrap_or_default();
         let final_url = page.url().await.unwrap_or_default();
-        
+
         Ok(success_response(format!(
             "Successfully navigated to: {}\nTitle: {}",
             final_url, title

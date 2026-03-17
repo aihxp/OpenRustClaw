@@ -71,20 +71,20 @@ pub mod embeddings;
 pub mod streaming;
 pub mod types;
 
-#[cfg(feature = "images")]
-pub mod images;
-#[cfg(feature = "audio")]
-pub mod audio;
 #[cfg(feature = "assistants")]
 pub mod assistants;
+#[cfg(feature = "audio")]
+pub mod audio;
 #[cfg(feature = "batch")]
 pub mod batch;
+#[cfg(feature = "content-safety")]
+pub mod content_safety;
 #[cfg(feature = "files")]
 pub mod files;
 #[cfg(feature = "fine-tuning")]
 pub mod fine_tuning;
-#[cfg(feature = "content-safety")]
-pub mod content_safety;
+#[cfg(feature = "images")]
+pub mod images;
 
 pub use client::AzureOpenAIClient;
 pub use config::{AzureConfig, AzureCredential};
@@ -94,8 +94,8 @@ pub use error::{AzureOpenAIError, ContentFilterResults, Result};
 
 // Re-export commonly used types
 pub use types::{
-    ChatChoice, ChatMessage, ChatResponse, Function, FunctionCall, Role, Tool, ToolCall,
-    TokenUsage, FinishReason,
+    ChatChoice, ChatMessage, ChatResponse, FinishReason, Function, FunctionCall, Role, TokenUsage,
+    Tool, ToolCall,
 };
 
 pub use chat::{ChatRequest, ChatRequestBuilder};
@@ -105,16 +105,16 @@ pub use embeddings::EmbeddingRequest;
 pub use streaming::{ChatCompletionChunk, StreamChoice, StreamDelta};
 
 #[cfg(feature = "assistants")]
-pub use assistants::{Assistant, AssistantRequest, Thread, ThreadMessage, Run};
+pub use assistants::{Assistant, AssistantRequest, Run, Thread, ThreadMessage};
 
 #[cfg(feature = "images")]
-pub use images::{ImageRequest, ImageResponse, ImageSize, ImageQuality, ImageStyle};
+pub use images::{ImageQuality, ImageRequest, ImageResponse, ImageSize, ImageStyle};
 
 #[cfg(feature = "audio")]
-pub use audio::{TranscriptionRequest, TtsRequest, TtsVoice, AudioResponseFormat};
+pub use audio::{AudioResponseFormat, TranscriptionRequest, TtsRequest, TtsVoice};
 
 /// The version of this crate.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Re-export auth types
-pub use auth::{TokenCredential, AzureADToken, ManagedIdentityCredential};
+pub use auth::{AzureADToken, ManagedIdentityCredential, TokenCredential};

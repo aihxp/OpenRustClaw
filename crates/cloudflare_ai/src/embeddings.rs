@@ -28,7 +28,7 @@ impl<'a> Embeddings<'a> {
     ///
     /// let request = EmbeddingsRequest::new("@cf/baai/bge-base-en-v1.5", "Hello world");
     /// let response = client.embeddings().create(request).await?;
-    /// 
+    ///
     /// if let Some(embedding) = response.first() {
     ///     println!("Embedding dimension: {}", embedding.embedding.len());
     /// }
@@ -121,12 +121,12 @@ pub enum EmbeddingsBody {
     /// Single text input.
     Single {
         /// The text to embed.
-        text: String
+        text: String,
     },
     /// Multiple text inputs.
     Multiple {
         /// The texts to embed.
-        texts: Vec<String>
+        texts: Vec<String>,
     },
 }
 
@@ -157,9 +157,7 @@ impl EmbeddingsRequest {
     pub fn new(model: impl Into<String>, input: impl Into<String>) -> Self {
         Self {
             model: model.into(),
-            body: EmbeddingsBody::Single {
-                text: input.into(),
-            },
+            body: EmbeddingsBody::Single { text: input.into() },
         }
     }
 
@@ -265,9 +263,7 @@ impl EmbeddingsRequestBuilder {
         } else {
             EmbeddingsRequest {
                 model: self.model,
-                body: EmbeddingsBody::Multiple {
-                    texts: self.inputs,
-                },
+                body: EmbeddingsBody::Multiple { texts: self.inputs },
             }
         }
     }
@@ -337,8 +333,9 @@ mod tests {
                     {"embedding": [0.4, 0.5, 0.6]}
                 ],
                 "shape": [2, 3]
-            }"#
-        ).unwrap();
+            }"#,
+        )
+        .unwrap();
 
         assert_eq!(response.data.len(), 2);
         assert_eq!(response.first().unwrap().embedding, vec![0.1, 0.2, 0.3]);

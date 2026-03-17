@@ -1,7 +1,7 @@
 //! Chat Commands - Power user commands in chat
 
-use openrustclaw_core::types::{IncomingMessage, OutgoingMessage};
 use async_trait::async_trait;
+use openrustclaw_core::types::{IncomingMessage, OutgoingMessage};
 use std::collections::HashMap;
 
 /// Command parser for chat messages
@@ -74,7 +74,10 @@ impl std::fmt::Display for CommandError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             CommandError::InvalidArgs(msg) => write!(f, "Invalid arguments: {}", msg),
-            CommandError::Unauthorized => write!(f, "Unauthorized: You don't have permission to use this command"),
+            CommandError::Unauthorized => write!(
+                f,
+                "Unauthorized: You don't have permission to use this command"
+            ),
             CommandError::ExecutionError(msg) => write!(f, "Execution error: {}", msg),
         }
     }
@@ -261,7 +264,7 @@ impl ChatCommand for ThinkCommand {
     }
 
     async fn execute(&self, args: &[String], _ctx: CommandContext) -> CommandResult {
-        let level = args.get(0).ok_or(CommandError::InvalidArgs(
+        let level = args.first().ok_or(CommandError::InvalidArgs(
             "Usage: /think <level>".to_string(),
         ))?;
 
@@ -294,7 +297,7 @@ impl ChatCommand for VerboseCommand {
     }
 
     async fn execute(&self, args: &[String], _ctx: CommandContext) -> CommandResult {
-        let mode = args.get(0).ok_or(CommandError::InvalidArgs(
+        let mode = args.first().ok_or(CommandError::InvalidArgs(
             "Usage: /verbose on|off".to_string(),
         ))?;
 
@@ -322,7 +325,7 @@ impl ChatCommand for UsageCommand {
     }
 
     async fn execute(&self, args: &[String], _ctx: CommandContext) -> CommandResult {
-        let mode = args.get(0).ok_or(CommandError::InvalidArgs(
+        let mode = args.first().ok_or(CommandError::InvalidArgs(
             "Usage: /usage off|tokens|full".to_string(),
         ))?;
 
@@ -377,16 +380,14 @@ impl ChatCommand for ActivationCommand {
     }
 
     async fn execute(&self, args: &[String], _ctx: CommandContext) -> CommandResult {
-        let mode = args.get(0).ok_or(CommandError::InvalidArgs(
+        let mode = args.first().ok_or(CommandError::InvalidArgs(
             "Usage: /activation mention|always".to_string(),
         ))?;
 
         match mode.as_str() {
             "mention" => Ok("👋 Group activation: only on mention".to_string()),
             "always" => Ok("👋 Group activation: always respond".to_string()),
-            _ => Err(CommandError::InvalidArgs(
-                "Use: mention|always".to_string(),
-            )),
+            _ => Err(CommandError::InvalidArgs("Use: mention|always".to_string())),
         }
     }
 }

@@ -244,15 +244,12 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
             if trimmed.is_empty() {
                 continue;
             }
-            sqlx::query(trimmed)
-                .execute(pool)
-                .await
-                .map_err(|e| {
-                    Error::Database(DatabaseError::Migration(format!(
-                        "Migration '{}' failed: {}",
-                        migration.name, e
-                    )))
-                })?;
+            sqlx::query(trimmed).execute(pool).await.map_err(|e| {
+                Error::Database(DatabaseError::Migration(format!(
+                    "Migration '{}' failed: {}",
+                    migration.name, e
+                )))
+            })?;
         }
         info!("Applied migration: {}", migration.name);
     }

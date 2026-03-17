@@ -12,13 +12,15 @@ async fn test_api_health_endpoint() {
     let (addr, _server) = env.start_gateway(false).await;
 
     let client = TestHttpClient::new(format!("http://{}", addr));
-    
+
     let response = client.get("/health").await.expect("Request failed");
-    
+
     response.assert_success();
     response.assert_content_type("application/json");
 
-    let health: serde_json::Value = TestHttpClient::parse_json(response).await.expect("Parse failed");
+    let health: serde_json::Value = TestHttpClient::parse_json(response)
+        .await
+        .expect("Parse failed");
     E2eAssertions::is_healthy(&health);
 }
 
@@ -38,7 +40,7 @@ async fn test_api_cors_headers() {
         .expect("Request failed");
 
     assert_eq!(response.status(), StatusCode::OK);
-    
+
     let cors_header = response.headers().get("access-control-allow-origin");
     assert!(cors_header.is_some(), "CORS header missing");
 }
@@ -50,9 +52,9 @@ async fn test_api_404_handling() {
     let (addr, _server) = env.start_gateway(false).await;
 
     let client = TestHttpClient::new(format!("http://{}", addr));
-    
+
     let response = client.get("/nonexistent").await.expect("Request failed");
-    
+
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
 
@@ -78,7 +80,7 @@ async fn test_api_timeout() {
     // This would test timeout configuration
     // For now, just verify the client timeout works
     let client = TestHttpClient::with_timeout("http://localhost:9999", 1);
-    
+
     // This should timeout quickly
     let start = std::time::Instant::now();
     let result = client.get("/").await;
@@ -113,7 +115,8 @@ async fn test_api_json_serialization() {
     assert!(json.contains("model"));
 
     // Test deserialization
-    let deserialized: CompletionRequest = serde_json::from_str(&json).expect("Deserialization failed");
+    let deserialized: CompletionRequest =
+        serde_json::from_str(&json).expect("Deserialization failed");
     assert_eq!(deserialized.model, request.model);
 }
 
@@ -125,9 +128,9 @@ async fn test_api_large_payload() {
 
     // Create a large message (100KB of text)
     let large_content = "x".repeat(100_000);
-    
+
     let client = TestHttpClient::new(format!("http://{}", addr));
-    
+
     // Most servers have payload limits - this tests that behavior
     // In a real test, we'd verify the actual limit
     let body = serde_json::json!({
@@ -136,7 +139,7 @@ async fn test_api_large_payload() {
     });
 
     let response = client.post("/v1/chat/completions", &body).await;
-    
+
     // Should either succeed or return 413 (Payload Too Large)
     match response {
         Ok(resp) => {
@@ -161,9 +164,7 @@ async fn test_api_concurrent_requests() {
     let mut handles = vec![];
     for _ in 0..10 {
         let client = TestHttpClient::new(format!("http://{}", addr));
-        handles.push(tokio::spawn(async move {
-            client.get("/health").await
-        }));
+        handles.push(tokio::spawn(async move { client.get("/health").await }));
     }
 
     // All should succeed

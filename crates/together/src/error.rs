@@ -91,9 +91,15 @@ impl fmt::Display for TogetherError {
             TogetherError::Authentication { message } => {
                 write!(f, "Authentication failed: {message}")
             }
-            TogetherError::RateLimit { retry_after, message } => {
+            TogetherError::RateLimit {
+                retry_after,
+                message,
+            } => {
                 if let Some(duration) = retry_after {
-                    write!(f, "Rate limit exceeded (retry after {duration:?}): {message}")
+                    write!(
+                        f,
+                        "Rate limit exceeded (retry after {duration:?}): {message}"
+                    )
                 } else {
                     write!(f, "Rate limit exceeded: {message}")
                 }
@@ -216,10 +222,7 @@ impl TogetherError {
             }
 
             // Alternative error format (message at root)
-            if let Some(message) = error_json
-                .get("message")
-                .and_then(|v| v.as_str())
-            {
+            if let Some(message) = error_json.get("message").and_then(|v| v.as_str()) {
                 if status == reqwest::StatusCode::UNAUTHORIZED {
                     return TogetherError::Authentication {
                         message: message.to_string(),

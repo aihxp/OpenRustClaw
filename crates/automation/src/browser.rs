@@ -35,11 +35,14 @@ impl Browser {
                     field: "browser".to_string(),
                     reason: "No browser backend enabled. Enable 'playwright' or 'cdp' feature."
                         .to_string(),
-                })
+                });
             }
         };
 
-        Ok(Self { inner: backend, config })
+        Ok(Self {
+            inner: backend,
+            config,
+        })
     }
 
     /// Create a new browser page (tab).
@@ -122,7 +125,10 @@ impl BrowserContext {
     }
 
     /// Grant permissions to this context.
-    pub async fn grant_permissions(&self, permissions: Vec<crate::config::Permission>) -> Result<()> {
+    pub async fn grant_permissions(
+        &self,
+        permissions: Vec<crate::config::Permission>,
+    ) -> Result<()> {
         self.inner.grant_permissions(permissions).await
     }
 
@@ -132,7 +138,10 @@ impl BrowserContext {
     }
 
     /// Set geolocation for this context.
-    pub async fn set_geolocation(&self, geolocation: Option<crate::config::Geolocation>) -> Result<()> {
+    pub async fn set_geolocation(
+        &self,
+        geolocation: Option<crate::config::Geolocation>,
+    ) -> Result<()> {
         self.inner.set_geolocation(geolocation).await
     }
 
@@ -210,7 +219,8 @@ impl Page {
 
     /// Take a screenshot of the page.
     pub async fn screenshot(&self) -> Result<Screenshot> {
-        self.screenshot_with_options(ScreenshotOptions::default()).await
+        self.screenshot_with_options(ScreenshotOptions::default())
+            .await
     }
 
     /// Take a screenshot with options.

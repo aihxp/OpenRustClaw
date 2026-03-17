@@ -127,8 +127,14 @@ mod tests {
     fn test_tool_source_mcp_stdio() {
         let source = ToolSource::mcp_stdio("npx");
         assert!(matches!(source, ToolSource::McpStdio { .. }));
-        
-        let source = ToolSource::mcp_stdio_with_args("npx", vec!["-y".to_string(), "@modelcontextprotocol/server-filesystem".to_string()]);
+
+        let source = ToolSource::mcp_stdio_with_args(
+            "npx",
+            vec![
+                "-y".to_string(),
+                "@modelcontextprotocol/server-filesystem".to_string(),
+            ],
+        );
         assert!(source.cache_key().contains("npx"));
     }
 

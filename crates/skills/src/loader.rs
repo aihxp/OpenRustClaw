@@ -334,11 +334,7 @@ author: "Quoted Author"
     fn test_discover_skips_dirs_without_skill_md() {
         let tmp = tempfile::tempdir().unwrap();
         // Create a dir with SKILL.md
-        create_skill_dir(
-            tmp.path(),
-            "with-skill",
-            "---\nname: with-skill\n---\n",
-        );
+        create_skill_dir(tmp.path(), "with-skill", "---\nname: with-skill\n---\n");
         // Create a dir without SKILL.md
         fs::create_dir_all(tmp.path().join("without-skill")).unwrap();
         fs::write(
@@ -377,10 +373,7 @@ author: "Quoted Author"
         create_skill_dir(tmp1.path(), "skill-a", "---\nname: skill-a\n---\n");
         create_skill_dir(tmp2.path(), "skill-b", "---\nname: skill-b\n---\n");
 
-        let loader = SkillLoader::new(vec![
-            tmp1.path().to_path_buf(),
-            tmp2.path().to_path_buf(),
-        ]);
+        let loader = SkillLoader::new(vec![tmp1.path().to_path_buf(), tmp2.path().to_path_buf()]);
         let skills = loader.discover().unwrap();
 
         assert_eq!(skills.len(), 2);

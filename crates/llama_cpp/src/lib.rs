@@ -193,35 +193,38 @@ pub mod types;
 pub mod chat;
 #[cfg(feature = "completion")]
 pub mod completion;
-#[cfg(feature = "tokenize")]
-pub mod tokenize;
 #[cfg(feature = "embeddings")]
 pub mod embeddings;
 #[cfg(feature = "health")]
 pub mod health;
 #[cfg(feature = "slots")]
 pub mod slots;
+#[cfg(feature = "tokenize")]
+pub mod tokenize;
 
-pub use client::{LlamaCppClient, ClientConfig, DEFAULT_BASE_URL, endpoints};
+pub use client::{ClientConfig, DEFAULT_BASE_URL, LlamaCppClient, endpoints};
 pub use error::{LlamaCppError, Result};
 
 // Re-export commonly used types
 pub use types::{
-    ChatChoice, ChatMessage, ChatResponse, 
-    Role, TokenUsage, FinishReason,
-    CompletionChoice, CompletionResponse,
-    EmbeddingResponse, TokenizeResponse,
-    HealthResponse, SlotInfo, SlotState, SlotsResponse,
-    GgufArchitecture, SamplingParams,
+    ChatChoice, ChatMessage, ChatResponse, CompletionChoice, CompletionResponse, EmbeddingResponse,
+    FinishReason, GgufArchitecture, HealthResponse, Role, SamplingParams, SlotInfo, SlotState,
+    SlotsResponse, TokenUsage, TokenizeResponse,
 };
 
 // Chat types
 #[cfg(feature = "chat")]
-pub use chat::{ChatRequest, ChatRequestBuilder, ChatCompletionChunk, StreamChoice, StreamDelta, StreamCollector};
+pub use chat::{
+    ChatCompletionChunk, ChatRequest, ChatRequestBuilder, StreamChoice, StreamCollector,
+    StreamDelta,
+};
 
 // Completion types
 #[cfg(feature = "completion")]
-pub use completion::{CompletionRequest, CompletionRequestBuilder, CompletionChunk, CompletionStreamChoice, StreamCollector as CompletionStreamCollector};
+pub use completion::{
+    CompletionChunk, CompletionRequest, CompletionRequestBuilder, CompletionStreamChoice,
+    StreamCollector as CompletionStreamCollector,
+};
 
 // Tokenize types
 #[cfg(feature = "tokenize")]

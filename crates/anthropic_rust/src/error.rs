@@ -103,9 +103,15 @@ impl fmt::Display for AnthropicError {
             AnthropicError::Authentication { message } => {
                 write!(f, "Authentication failed: {message}")
             }
-            AnthropicError::RateLimit { retry_after, message } => {
+            AnthropicError::RateLimit {
+                retry_after,
+                message,
+            } => {
                 if let Some(duration) = retry_after {
-                    write!(f, "Rate limit exceeded (retry after {duration:?}): {message}")
+                    write!(
+                        f,
+                        "Rate limit exceeded (retry after {duration:?}): {message}"
+                    )
                 } else {
                     write!(f, "Rate limit exceeded: {message}")
                 }
@@ -151,7 +157,10 @@ impl fmt::Display for AnthropicError {
             AnthropicError::Timeout { operation } => {
                 write!(f, "Timeout during {operation}")
             }
-            AnthropicError::RetryExhausted { attempts, last_error } => {
+            AnthropicError::RetryExhausted {
+                attempts,
+                last_error,
+            } => {
                 write!(f, "Retry exhausted after {attempts} attempts: {last_error}")
             }
             AnthropicError::Internal { message } => {
@@ -177,10 +186,6 @@ impl From<reqwest::Error> for AnthropicError {
         if err.is_timeout() {
             AnthropicError::Timeout {
                 operation: "HTTP request".to_string(),
-            }
-        } else if err.is_connect() {
-            AnthropicError::Http {
-                source: err,
             }
         } else {
             AnthropicError::Http { source: err }
@@ -233,9 +238,7 @@ impl AnthropicError {
     }
 
     /// Create an error from an HTTP response.
-    pub(crate) async fn from_response(
-        response: reqwest::Response,
-    ) -> Self {
+    pub(crate) async fn from_response(response: reqwest::Response) -> Self {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
 

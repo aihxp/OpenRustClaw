@@ -14,15 +14,14 @@ use openrustclaw_agent::tools::ToolRegistry;
 use openrustclaw_core::error::Error;
 use openrustclaw_core::traits::{LlmProvider, Tool, ToolContext};
 use openrustclaw_core::types::{
-    SkillCapability,
-    CompletionRequest, CoreEntry, FinishReason, Message, Role, StreamChunk,
+    CompletionRequest, CoreEntry, FinishReason, Message, Role, SkillCapability, StreamChunk,
     TokenUsage, ToolCall, ToolOutput,
 };
 use serde_json::Value;
 
 use crate::common::{
-    create_test_tool_registry, init_test_tracing, CalculatorTool, EchoTool, FailingTool,
-    MockConversationalProvider, MockSuccessProvider,
+    CalculatorTool, EchoTool, FailingTool, MockConversationalProvider, MockSuccessProvider,
+    create_test_tool_registry, init_test_tracing,
 };
 
 #[tokio::test]
@@ -88,9 +87,8 @@ async fn tool_calling_workflow() {
     };
 
     let provider: Arc<dyn LlmProvider> = Arc::new(
-        MockSuccessProvider::new("test", "I'll echo that for you").with_tool_calls(vec![
-            tool_call.clone(),
-        ]),
+        MockSuccessProvider::new("test", "I'll echo that for you")
+            .with_tool_calls(vec![tool_call.clone()]),
     );
 
     let mut tools = ToolRegistry::new();
@@ -347,10 +345,8 @@ async fn streaming_response() {
 async fn max_tokens_response() {
     init_test_tracing();
 
-    let provider: Arc<dyn LlmProvider> = Arc::new(MockSuccessProvider::new(
-        "test",
-        "Truncated response",
-    ));
+    let provider: Arc<dyn LlmProvider> =
+        Arc::new(MockSuccessProvider::new("test", "Truncated response"));
 
     let request = CompletionRequest {
         messages: vec![Message::user("Long prompt")],
@@ -398,10 +394,8 @@ async fn conversation_with_history() {
 async fn empty_messages_handled() {
     init_test_tracing();
 
-    let provider: Arc<dyn LlmProvider> = Arc::new(MockSuccessProvider::new(
-        "test",
-        "How can I help?",
-    ));
+    let provider: Arc<dyn LlmProvider> =
+        Arc::new(MockSuccessProvider::new("test", "How can I help?"));
     let tools = Arc::new(ToolRegistry::new());
     let runtime = AgentRuntime::new(provider, tools, "TestAgent".to_string());
 

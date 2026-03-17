@@ -9,7 +9,7 @@ use async_trait::async_trait;
 use governor::{Quota, RateLimiter};
 use serde::{Deserialize, Serialize};
 use std::num::NonZeroU32;
-use tokio::sync::{mpsc, Mutex, RwLock};
+use tokio::sync::{Mutex, RwLock, mpsc};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
@@ -24,7 +24,14 @@ pub struct MetaChannel {
     incoming_tx: mpsc::Sender<IncomingMessage>,
     incoming_rx: Mutex<mpsc::Receiver<IncomingMessage>>,
     http: reqwest::Client,
-    rate_limiter: Arc<RateLimiter<governor::state::NotKeyed, governor::state::InMemoryState, governor::clock::DefaultClock, governor::middleware::NoOpMiddleware>>,
+    rate_limiter: Arc<
+        RateLimiter<
+            governor::state::NotKeyed,
+            governor::state::InMemoryState,
+            governor::clock::DefaultClock,
+            governor::middleware::NoOpMiddleware,
+        >,
+    >,
     is_connected: RwLock<bool>,
 }
 
@@ -205,7 +212,9 @@ impl MetaChannel {
                     let sender_id = event.sender.id.clone();
 
                     // Check allowlist
-                    if !self.config.allowlist.is_empty() && !self.config.allowlist.contains(&sender_id) {
+                    if !self.config.allowlist.is_empty()
+                        && !self.config.allowlist.contains(&sender_id)
+                    {
                         warn!(sender_id = %sender_id, "Sender not in allowlist");
                         continue;
                     }
@@ -238,7 +247,8 @@ impl MetaChannel {
 
                         // Add attachments to metadata if present
                         if let Some(attachments) = &message.attachments {
-                            metadata["attachments"] = serde_json::to_value(attachments).unwrap_or_default();
+                            metadata["attachments"] =
+                                serde_json::to_value(attachments).unwrap_or_default();
                         }
 
                         let msg = IncomingMessage {
@@ -305,19 +315,24 @@ impl MetaChannel {
             "sender_action": "typing_on"
         });
 
-        let response = self.http.post(&url).json(&payload).send().await.map_err(|e| {
-            ChannelError::Connection {
+        let response = self
+            .http
+            .post(&url)
+            .json(&payload)
+            .send()
+            .await
+            .map_err(|e| ChannelError::Connection {
                 platform: "meta".to_string(),
                 message: e.to_string(),
-            }
-        })?;
+            })?;
 
         if !response.status().is_success() {
             let error_text = response.text().await.unwrap_or_default();
             return Err(ChannelError::SendFailed {
                 platform: "meta".to_string(),
                 message: error_text,
-            }.into());
+            }
+            .into());
         }
 
         Ok(())
@@ -356,19 +371,24 @@ impl MetaChannel {
             }
         });
 
-        let response = self.http.post(&url).json(&payload).send().await.map_err(|e| {
-            ChannelError::Connection {
+        let response = self
+            .http
+            .post(&url)
+            .json(&payload)
+            .send()
+            .await
+            .map_err(|e| ChannelError::Connection {
                 platform: "meta".to_string(),
                 message: e.to_string(),
-            }
-        })?;
+            })?;
 
         if !response.status().is_success() {
             let error_text = response.text().await.unwrap_or_default();
             return Err(ChannelError::SendFailed {
                 platform: "meta".to_string(),
                 message: error_text,
-            }.into());
+            }
+            .into());
         }
 
         Ok(())
@@ -393,19 +413,24 @@ impl MetaChannel {
             }
         });
 
-        let response = self.http.post(&url).json(&payload).send().await.map_err(|e| {
-            ChannelError::Connection {
+        let response = self
+            .http
+            .post(&url)
+            .json(&payload)
+            .send()
+            .await
+            .map_err(|e| ChannelError::Connection {
                 platform: "meta".to_string(),
                 message: e.to_string(),
-            }
-        })?;
+            })?;
 
         if !response.status().is_success() {
             let error_text = response.text().await.unwrap_or_default();
             return Err(ChannelError::SendFailed {
                 platform: "meta".to_string(),
                 message: error_text,
-            }.into());
+            }
+            .into());
         }
 
         Ok(())
@@ -418,27 +443,33 @@ impl MetaChannel {
             user_id, self.config.page_access_token
         );
 
-        let response = self.http.get(&url).send().await.map_err(|e| {
-            ChannelError::Connection {
+        let response = self
+            .http
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| ChannelError::Connection {
                 platform: "meta".to_string(),
                 message: e.to_string(),
-            }
-        })?;
+            })?;
 
         if !response.status().is_success() {
             let error_text = response.text().await.unwrap_or_default();
             return Err(ChannelError::SendFailed {
                 platform: "meta".to_string(),
                 message: error_text,
-            }.into());
+            }
+            .into());
         }
 
-        let profile: UserProfile = response.json().await.map_err(|e| {
-            ChannelError::InvalidFormat {
-                platform: "meta".to_string(),
-                message: format!("Failed to parse user profile: {}", e),
-            }
-        })?;
+        let profile: UserProfile =
+            response
+                .json()
+                .await
+                .map_err(|e| ChannelError::InvalidFormat {
+                    platform: "meta".to_string(),
+                    message: format!("Failed to parse user profile: {}", e),
+                })?;
 
         Ok(profile)
     }
@@ -533,12 +564,16 @@ impl Channel for MetaChannel {
             "messaging_type": "RESPONSE"
         });
 
-        let response = self.http.post(&url).json(&payload).send().await.map_err(|e| {
-            ChannelError::Connection {
+        let response = self
+            .http
+            .post(&url)
+            .json(&payload)
+            .send()
+            .await
+            .map_err(|e| ChannelError::Connection {
                 platform: "meta".to_string(),
                 message: e.to_string(),
-            }
-        })?;
+            })?;
 
         if !response.status().is_success() {
             let error_text = response.text().await.unwrap_or_default();
@@ -594,12 +629,15 @@ impl Channel for MetaChannel {
             self.config.page_access_token
         );
 
-        let response = self.http.get(&url).send().await.map_err(|e| {
-            ChannelError::Connection {
+        let response = self
+            .http
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| ChannelError::Connection {
                 platform: "meta".to_string(),
                 message: e.to_string(),
-            }
-        })?;
+            })?;
 
         if !response.status().is_success() {
             let error_text = response.text().await.unwrap_or_default();
@@ -610,12 +648,14 @@ impl Channel for MetaChannel {
             .into());
         }
 
-        let info: serde_json::Value = response.json().await.map_err(|e| {
-            ChannelError::InvalidFormat {
-                platform: "meta".to_string(),
-                message: format!("Failed to parse response: {}", e),
-            }
-        })?;
+        let info: serde_json::Value =
+            response
+                .json()
+                .await
+                .map_err(|e| ChannelError::InvalidFormat {
+                    platform: "meta".to_string(),
+                    message: format!("Failed to parse response: {}", e),
+                })?;
 
         info!(
             page_name = %info.get("name").and_then(|v| v.as_str()).unwrap_or("unknown"),
@@ -754,7 +794,12 @@ mod tests {
 
         let json = template.to_json();
         assert_eq!(json["template_type"], "generic");
-        assert!(!json["elements"][0].as_object().unwrap().contains_key("image_url"));
+        assert!(
+            !json["elements"][0]
+                .as_object()
+                .unwrap()
+                .contains_key("image_url")
+        );
     }
 
     #[test]

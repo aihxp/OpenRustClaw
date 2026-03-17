@@ -59,10 +59,7 @@ impl<'a> Embeddings<'a> {
     }
 
     /// Create embeddings for multiple inputs.
-    pub async fn create_many(
-        &self,
-        inputs: Vec<String>,
-    ) -> Result<Vec<Vec<f32>>> {
+    pub async fn create_many(&self, inputs: Vec<String>) -> Result<Vec<Vec<f32>>> {
         let request = EmbeddingRequest::new(inputs);
         let response = self.create(request).await?;
         Ok(response.embeddings())

@@ -47,7 +47,7 @@ impl E2eAssertions {
             .as_ref()
             .expect("No tool calls in response");
 
-        let found = tool_calls
+        tool_calls
             .iter()
             .find(|tc| tc.name == tool_name)
             .unwrap_or_else(|| {
@@ -56,9 +56,7 @@ impl E2eAssertions {
                     tool_name,
                     tool_calls.iter().map(|tc| &tc.name).collect::<Vec<_>>()
                 )
-            });
-
-        found
+            })
     }
 
     /// Assert that a tool call has specific arguments
@@ -73,7 +71,10 @@ impl E2eAssertions {
     /// Assert that a memory entry contains expected content
     pub fn memory_contains(entry: &MemoryEntry, expected: &str) {
         assert!(
-            entry.content.to_lowercase().contains(&expected.to_lowercase()),
+            entry
+                .content
+                .to_lowercase()
+                .contains(&expected.to_lowercase()),
             "Expected memory to contain '{}', but got: {}",
             expected,
             entry.content
@@ -85,8 +86,7 @@ impl E2eAssertions {
         assert_eq!(
             entry.namespace, namespace,
             "Expected memory in namespace '{}', but got: {}",
-            namespace,
-            entry.namespace
+            namespace, entry.namespace
         );
     }
 
@@ -94,9 +94,11 @@ impl E2eAssertions {
     pub fn message_has_role(message: &Message, role: &str) {
         let role_str = format!("{:?}", message.role).to_lowercase();
         assert_eq!(
-            role_str, role.to_lowercase(),
+            role_str,
+            role.to_lowercase(),
             "Expected message role '{}', but got: {:?}",
-            role, message.role
+            role,
+            message.role
         );
     }
 
@@ -212,7 +214,10 @@ impl E2eAssertions {
 
         match last {
             openrustclaw_core::types::StreamChunk::Done { .. } => {}
-            _ => panic!("Expected stream to end with Done chunk, but got: {:?}", last),
+            _ => panic!(
+                "Expected stream to end with Done chunk, but got: {:?}",
+                last
+            ),
         }
     }
 }

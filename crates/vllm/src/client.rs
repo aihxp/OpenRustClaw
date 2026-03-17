@@ -3,11 +3,11 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
+use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue};
 use secrecy::{ExposeSecret, SecretString};
 
-use crate::constants::retry::{MAX_DELAY_MS, MAX_RETRIES};
 use crate::constants::DEFAULT_APP_NAME;
+use crate::constants::retry::{MAX_DELAY_MS, MAX_RETRIES};
 use crate::error::{Result, VllmError};
 
 /// A client for the vLLM API.
@@ -50,7 +50,10 @@ impl VllmClient {
     ///
     /// let client = VllmClient::with_api_key("http://localhost:8000", "sk-xxx").unwrap();
     /// ```
-    pub fn with_api_key(base_url: impl Into<String>, api_key: impl Into<SecretString>) -> Result<Self> {
+    pub fn with_api_key(
+        base_url: impl Into<String>,
+        api_key: impl Into<SecretString>,
+    ) -> Result<Self> {
         let config = ClientConfig::new(base_url).with_api_key(api_key);
         Self::with_config(config)
     }
@@ -64,11 +67,11 @@ impl VllmClient {
         if let Some(ref api_key) = config.api_key {
             headers.insert(
                 AUTHORIZATION,
-                HeaderValue::from_str(&format!("Bearer {}", api_key.expose_secret())).map_err(|_| {
-                    VllmError::Config {
+                HeaderValue::from_str(&format!("Bearer {}", api_key.expose_secret())).map_err(
+                    |_| VllmError::Config {
                         message: "Invalid API key".to_string(),
-                    }
-                })?,
+                    },
+                )?,
             );
         }
 
@@ -149,7 +152,13 @@ impl VllmClient {
         use crate::constants::endpoints;
 
         let url = format!("{}{}", self.inner.base_url, endpoints::HEALTH);
-        let response = self.inner.http.get(&url).send().await.map_err(VllmError::from)?;
+        let response = self
+            .inner
+            .http
+            .get(&url)
+            .send()
+            .await
+            .map_err(VllmError::from)?;
 
         if response.status().is_success() {
             Ok(())
@@ -197,10 +206,7 @@ impl VllmClient {
 
                     attempts += 1;
                     tokio::time::sleep(delay).await;
-                    delay = std::cmp::min(
-                        delay.mul_f64(2.0),
-                        Duration::from_millis(MAX_DELAY_MS),
-                    );
+                    delay = std::cmp::min(delay.mul_f64(2.0), Duration::from_millis(MAX_DELAY_MS));
                 }
             }
         }
@@ -220,7 +226,11 @@ impl VllmClient {
     }
 
     /// Make a POST request.
-    pub(crate) async fn post(&self, path: &str, body: serde_json::Value) -> Result<reqwest::Response> {
+    pub(crate) async fn post(
+        &self,
+        path: &str,
+        body: serde_json::Value,
+    ) -> Result<reqwest::Response> {
         let url = format!("{}{}", self.inner.base_url, path);
         let response = self
             .inner
@@ -247,15 +257,20 @@ impl VllmClient {
     }
 
     /// Parse a response or return an error.
-    pub(crate) async fn handle_response(&self, response: reqwest::Response) -> Result<serde_json::Value> {
+    pub(crate) async fn handle_response(
+        &self,
+        response: reqwest::Response,
+    ) -> Result<serde_json::Value> {
         let status = response.status();
 
         if status.is_success() {
-            let body = response.json::<serde_json::Value>().await.map_err(|e| {
-                VllmError::Internal {
-                    message: format!("Failed to parse JSON response: {e}"),
-                }
-            })?;
+            let body =
+                response
+                    .json::<serde_json::Value>()
+                    .await
+                    .map_err(|e| VllmError::Internal {
+                        message: format!("Failed to parse JSON response: {e}"),
+                    })?;
             Ok(body)
         } else {
             Err(VllmError::from_response(response).await)
@@ -267,10 +282,8 @@ impl VllmClient {
         let status = response.status();
 
         if status.is_success() {
-            let body = response.text().await.map_err(|e| {
-                VllmError::Internal {
-                    message: format!("Failed to read text response: {e}"),
-                }
+            let body = response.text().await.map_err(|e| VllmError::Internal {
+                message: format!("Failed to read text response: {e}"),
             })?;
             Ok(body)
         } else {

@@ -178,14 +178,23 @@ impl fmt::Display for BedrockError {
             BedrockError::AccessDenied { message } => {
                 write!(f, "Access denied: {message}")
             }
-            BedrockError::RateLimit { retry_after, message } => {
+            BedrockError::RateLimit {
+                retry_after,
+                message,
+            } => {
                 if let Some(duration) = retry_after {
-                    write!(f, "Rate limit exceeded (retry after {duration:?}): {message}")
+                    write!(
+                        f,
+                        "Rate limit exceeded (retry after {duration:?}): {message}"
+                    )
                 } else {
                     write!(f, "Rate limit exceeded: {message}")
                 }
             }
-            BedrockError::Throttling { retry_after, message } => {
+            BedrockError::Throttling {
+                retry_after,
+                message,
+            } => {
                 if let Some(duration) = retry_after {
                     write!(f, "Throttling (retry after {duration:?}): {message}")
                 } else {
@@ -218,7 +227,10 @@ impl fmt::Display for BedrockError {
                     write!(f, "Validation error: {message}")
                 }
             }
-            BedrockError::ServiceQuotaExceeded { quota_code, message } => {
+            BedrockError::ServiceQuotaExceeded {
+                quota_code,
+                message,
+            } => {
                 if let Some(code) = quota_code {
                     write!(f, "Service quota exceeded ({code}): {message}")
                 } else {
@@ -262,7 +274,10 @@ impl fmt::Display for BedrockError {
             BedrockError::Timeout { operation } => {
                 write!(f, "Timeout during {operation}")
             }
-            BedrockError::RetryExhausted { attempts, last_error } => {
+            BedrockError::RetryExhausted {
+                attempts,
+                last_error,
+            } => {
                 write!(f, "Retry exhausted after {attempts} attempts: {last_error}")
             }
             BedrockError::GuardrailIntervention {
@@ -303,8 +318,6 @@ impl From<reqwest::Error> for BedrockError {
             BedrockError::Timeout {
                 operation: "HTTP request".to_string(),
             }
-        } else if err.is_connect() {
-            BedrockError::Http { source: err }
         } else {
             BedrockError::Http { source: err }
         }

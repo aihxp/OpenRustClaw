@@ -72,8 +72,7 @@ pub trait AutomationTool: Send + Sync {
 
 /// Parse and validate input against a schema.
 pub fn parse_input<T: serde::de::DeserializeOwned>(input: Value) -> anyhow::Result<T> {
-    serde_json::from_value(input)
-        .map_err(|e| anyhow::anyhow!("Invalid input: {}", e))
+    serde_json::from_value(input).map_err(|e| anyhow::anyhow!("Invalid input: {}", e))
 }
 
 /// Helper to create a success response.

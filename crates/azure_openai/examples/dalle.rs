@@ -17,7 +17,7 @@ fn main() {
 #[cfg(feature = "images")]
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    use azure_openai::{AzureOpenAIClient, ImageRequest, ImageSize, ImageQuality, ImageStyle};
+    use azure_openai::{AzureOpenAIClient, ImageQuality, ImageRequest, ImageSize, ImageStyle};
     // Load configuration from environment
     let api_key = std::env::var("AZURE_OPENAI_API_KEY")
         .expect("AZURE_OPENAI_API_KEY environment variable not set");
@@ -27,11 +27,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .expect("AZURE_OPENAI_DALLE_DEPLOYMENT environment variable not set");
 
     // Create the client
-    let client = AzureOpenAIClient::new(
-        &resource_name,
-        &deployment_name,
-        api_key.clone(),
-    )?;
+    let client = AzureOpenAIClient::new(&resource_name, &deployment_name, api_key.clone())?;
 
     println!("Azure OpenAI DALL-E Image Generation Example\n");
 

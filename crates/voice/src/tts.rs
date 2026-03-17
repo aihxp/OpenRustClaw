@@ -41,10 +41,11 @@ fn default_volume() -> f32 {
 }
 
 /// TTS backend selection.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum TtsBackend {
     /// System TTS (platform-native).
+    #[default]
     System,
     /// ElevenLabs API.
     ElevenLabs {
@@ -53,12 +54,6 @@ pub enum TtsBackend {
         /// Voice ID to use.
         voice_id: String,
     },
-}
-
-impl Default for TtsBackend {
-    fn default() -> Self {
-        TtsBackend::System
-    }
 }
 
 /// ElevenLabs voice settings.

@@ -148,11 +148,7 @@ pub struct Session {
 
 impl Session {
     /// Create a new session with the given type, user, and platform.
-    pub fn new(
-        session_type: SessionType,
-        user_id: impl Into<String>,
-        channel: Platform,
-    ) -> Self {
+    pub fn new(session_type: SessionType, user_id: impl Into<String>, channel: Platform) -> Self {
         let now = Utc::now();
         Self {
             id: Uuid::new_v4(),

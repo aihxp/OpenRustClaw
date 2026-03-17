@@ -13,7 +13,7 @@ use openrustclaw_core::types::{CompletionRequest, Message};
 use openrustclaw_providers::ProviderChain;
 
 use crate::common::{
-    init_test_tracing, MockRateLimitedProvider, MockSuccessProvider, MockUnavailableProvider,
+    MockRateLimitedProvider, MockSuccessProvider, MockUnavailableProvider, init_test_tracing,
 };
 
 fn make_request() -> CompletionRequest {
@@ -126,10 +126,7 @@ async fn empty_chain_returns_exhausted() {
     let chain = ProviderChain::new(vec![]);
     let err = chain.complete(make_request()).await.unwrap_err();
     assert!(
-        matches!(
-            err,
-            Error::Provider(ProviderError::AllProvidersExhausted)
-        ),
+        matches!(err, Error::Provider(ProviderError::AllProvidersExhausted)),
         "Expected AllProvidersExhausted, got: {err}"
     );
 }
@@ -244,16 +241,10 @@ async fn provider_count_and_names() {
 async fn preserves_request_parameters() {
     init_test_tracing();
 
-    let chain = ProviderChain::new(vec![Arc::new(MockSuccessProvider::new(
-        "test",
-        "Response",
-    ))]);
+    let chain = ProviderChain::new(vec![Arc::new(MockSuccessProvider::new("test", "Response"))]);
 
     let request = CompletionRequest {
-        messages: vec![
-            Message::system("You are helpful"),
-            Message::user("Hello"),
-        ],
+        messages: vec![Message::system("You are helpful"), Message::user("Hello")],
         model: Some("gpt-4".to_string()),
         max_tokens: Some(100),
         temperature: Some(0.5),
@@ -264,5 +255,8 @@ async fn preserves_request_parameters() {
 
     let response = chain.complete(request).await.unwrap();
     assert_eq!(response.provider, "test");
-    assert_eq!(response.finish_reason, openrustclaw_core::types::FinishReason::Stop);
+    assert_eq!(
+        response.finish_reason,
+        openrustclaw_core::types::FinishReason::Stop
+    );
 }

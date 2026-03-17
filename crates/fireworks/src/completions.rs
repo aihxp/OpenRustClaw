@@ -42,21 +42,18 @@ impl<'a> Completions<'a> {
         request: CompletionRequest,
     ) -> Result<crate::streaming::CompletionStream> {
         use crate::streaming::CompletionStream;
-        
+
         let mut request = request;
         request.stream = Some(true);
-        
+
         let body = serde_json::to_value(&request)?;
-        
-        let response = self
-            .client
-            .post(endpoints::COMPLETIONS, body)
-            .await?;
-        
+
+        let response = self.client.post(endpoints::COMPLETIONS, body).await?;
+
         if !response.status().is_success() {
             return Err(crate::error::FireworksError::from_response(response).await);
         }
-        
+
         Ok(CompletionStream::new(response))
     }
 }
@@ -117,7 +114,10 @@ pub struct CompletionRequest {
 
 impl CompletionRequest {
     /// Create a new builder.
-    pub fn builder(model: impl Into<String>, prompt: impl Into<String>) -> CompletionRequestBuilder {
+    pub fn builder(
+        model: impl Into<String>,
+        prompt: impl Into<String>,
+    ) -> CompletionRequestBuilder {
         CompletionRequestBuilder::new(model, prompt)
     }
 

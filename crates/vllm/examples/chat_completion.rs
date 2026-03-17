@@ -8,7 +8,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
 
     // Create client
-    let base_url = std::env::var("VLLM_URL").unwrap_or_else(|_| "http://localhost:8000".to_string());
+    let base_url =
+        std::env::var("VLLM_URL").unwrap_or_else(|_| "http://localhost:8000".to_string());
     let client = VllmClient::new(&base_url)?;
 
     println!("Connected to vLLM at: {}", client.base_url());
@@ -28,7 +29,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let request = ChatRequest::builder(&model)
         .system("You are a helpful AI assistant running on vLLM.")
-        .message(Role::User, "What is PagedAttention and how does it help with LLM inference?")
+        .message(
+            Role::User,
+            "What is PagedAttention and how does it help with LLM inference?",
+        )
         .max_tokens(256)
         .temperature(0.7)
         .build();
@@ -43,17 +47,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Response:");
     println!("{}", response.content());
     println!("\n---");
-    println!("Usage: {} prompt tokens, {} completion tokens (total: {})",
-        response.usage.prompt_tokens,
-        response.usage.completion_tokens,
-        response.usage.total_tokens
+    println!(
+        "Usage: {} prompt tokens, {} completion tokens (total: {})",
+        response.usage.prompt_tokens, response.usage.completion_tokens, response.usage.total_tokens
     );
 
     // Check if the model used tool calls
     if response.has_tool_calls() {
         println!("\nTool calls:");
         for tool_call in response.tool_calls().unwrap() {
-            println!("  - {}: {}", tool_call.function.name, tool_call.function.arguments);
+            println!(
+                "  - {}: {}",
+                tool_call.function.name, tool_call.function.arguments
+            );
         }
     }
 

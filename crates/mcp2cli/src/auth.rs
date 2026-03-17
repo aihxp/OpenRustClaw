@@ -7,7 +7,7 @@ use crate::error::{Mcp2CliError, Result};
 use chrono::{DateTime, Duration, Utc};
 use dashmap::DashMap;
 use rand::distributions::Alphanumeric;
-use rand::{thread_rng, Rng};
+use rand::{Rng, thread_rng};
 use serde::{Deserialize, Serialize};
 
 use tracing::{info, warn};
@@ -153,7 +153,10 @@ impl PkcePair {
     pub fn generate() -> Self {
         let verifier = generate_code_verifier();
         let challenge = generate_code_challenge(&verifier);
-        Self { verifier, challenge }
+        Self {
+            verifier,
+            challenge,
+        }
     }
 }
 
@@ -186,10 +189,9 @@ impl AuthManager {
     ///
     /// Returns the authorization URL to redirect the user to
     pub fn start_oauth_flow(&self, server_url: &str) -> Result<String> {
-        let config = self
-            .configs
-            .get(server_url)
-            .ok_or_else(|| Mcp2CliError::auth(format!("No OAuth config for server: {}", server_url)))?;
+        let config = self.configs.get(server_url).ok_or_else(|| {
+            Mcp2CliError::auth(format!("No OAuth config for server: {}", server_url))
+        })?;
 
         let state = generate_state();
         let pkce = if config.use_pkce {
@@ -198,15 +200,18 @@ impl AuthManager {
             None
         };
 
-        let auth_url = config.build_auth_url(
-            &state,
-            pkce.as_ref().map(|p| p.challenge.as_str()),
-        );
+        let auth_url = config.build_auth_url(&state, pkce.as_ref().map(|p| p.challenge.as_str()));
 
         // Store pending flow
         self.pending_flows.insert(
             state.clone(),
-            (server_url.to_string(), pkce.unwrap_or_else(|| PkcePair { verifier: String::new(), challenge: String::new() })),
+            (
+                server_url.to_string(),
+                pkce.unwrap_or_else(|| PkcePair {
+                    verifier: String::new(),
+                    challenge: String::new(),
+                }),
+            ),
         );
 
         info!(server_url = %server_url, "Started OAuth flow");
@@ -239,7 +244,12 @@ impl AuthManager {
     }
 
     /// Exchange authorization code for token
-    async fn exchange_code(&self, config: &OAuthConfig, code: &str, code_verifier: &str) -> Result<Token> {
+    async fn exchange_code(
+        &self,
+        config: &OAuthConfig,
+        code: &str,
+        code_verifier: &str,
+    ) -> Result<Token> {
         let client = reqwest::Client::new();
 
         let mut params = vec![
@@ -262,7 +272,7 @@ impl AuthManager {
             .form(&params)
             .send()
             .await
-            .map_err(|e| Mcp2CliError::Http(e))?;
+            .map_err(Mcp2CliError::Http)?;
 
         if !response.status().is_success() {
             let error_text = response
@@ -275,10 +285,8 @@ impl AuthManager {
             )));
         }
 
-        let mut token_response: serde_json::Value = response
-            .json()
-            .await
-            .map_err(|e| Mcp2CliError::Http(e))?;
+        let mut token_response: serde_json::Value =
+            response.json().await.map_err(Mcp2CliError::Http)?;
 
         // Calculate expires_at from expires_in
         if let Some(expires_in) = token_response.get("expires_in").and_then(|v| v.as_i64()) {
@@ -286,8 +294,7 @@ impl AuthManager {
             token_response["expires_at"] = serde_json::json!(expires_at);
         }
 
-        let token: Token = serde_json::from_value(token_response)
-            .map_err(|e| Mcp2CliError::Json(e))?;
+        let token: Token = serde_json::from_value(token_response).map_err(Mcp2CliError::Json)?;
 
         Ok(token)
     }
@@ -342,7 +349,7 @@ impl AuthManager {
             .form(&params)
             .send()
             .await
-            .map_err(|e| Mcp2CliError::Http(e))?;
+            .map_err(Mcp2CliError::Http)?;
 
         if !response.status().is_success() {
             let error_text = response
@@ -355,10 +362,8 @@ impl AuthManager {
             )));
         }
 
-        let mut token_response: serde_json::Value = response
-            .json()
-            .await
-            .map_err(|e| Mcp2CliError::Http(e))?;
+        let mut token_response: serde_json::Value =
+            response.json().await.map_err(Mcp2CliError::Http)?;
 
         // Calculate expires_at from expires_in
         if let Some(expires_in) = token_response.get("expires_in").and_then(|v| v.as_i64()) {
@@ -366,8 +371,7 @@ impl AuthManager {
             token_response["expires_at"] = serde_json::json!(expires_at);
         }
 
-        let token: Token = serde_json::from_value(token_response)
-            .map_err(|e| Mcp2CliError::Json(e))?;
+        let token: Token = serde_json::from_value(token_response).map_err(Mcp2CliError::Json)?;
 
         // Store the new token
         self.tokens.insert(server_url.to_string(), token.clone());
@@ -451,11 +455,9 @@ fn generate_code_challenge(verifier: &str) -> String {
 
 /// Base64url encoding (URL-safe base64 without padding)
 fn base64_url_encode(input: &[u8]) -> String {
-    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+    use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
     URL_SAFE_NO_PAD.encode(input)
 }
-
-
 
 #[cfg(test)]
 mod tests {
@@ -486,11 +488,11 @@ mod tests {
     #[test]
     fn test_pkce_generation() {
         let pkce = PkcePair::generate();
-        
+
         assert!(!pkce.verifier.is_empty());
         assert!(!pkce.challenge.is_empty());
         assert_ne!(pkce.verifier, pkce.challenge);
-        
+
         // Verifier should be reproducible
         let challenge2 = generate_code_challenge(&pkce.verifier);
         assert_eq!(pkce.challenge, challenge2);
@@ -505,9 +507,9 @@ mod tests {
             expires_at: Some(Utc::now() + Duration::hours(1)),
             scope: None,
         };
-        
+
         assert!(!token.is_expired());
-        
+
         let expired_token = Token {
             access_token: "test".to_string(),
             token_type: "Bearer".to_string(),
@@ -515,23 +517,23 @@ mod tests {
             expires_at: Some(Utc::now() - Duration::hours(1)),
             scope: None,
         };
-        
+
         assert!(expired_token.is_expired());
     }
 
     #[test]
     fn test_auth_manager() {
         let manager = AuthManager::new();
-        
+
         // Set a token
         manager.set_bearer_token("https://api.example.com", "token123");
-        
+
         assert!(manager.has_token("https://api.example.com"));
-        
+
         let token = manager.get_token("https://api.example.com").unwrap();
         assert_eq!(token.access_token, "token123");
         assert_eq!(token.auth_header(), "Bearer token123");
-        
+
         // Clear token
         manager.clear_token("https://api.example.com");
         assert!(!manager.has_token("https://api.example.com"));
@@ -542,7 +544,7 @@ mod tests {
         let data = b"hello world";
         let encoded = base64_url_encode(data);
         // Test encoding is correct by decoding with standard base64
-        use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+        use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
         let decoded = URL_SAFE_NO_PAD.decode(&encoded).unwrap();
         assert_eq!(data.to_vec(), decoded);
     }

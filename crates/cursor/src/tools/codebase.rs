@@ -3,7 +3,7 @@
 use crate::error::{CursorError, Result};
 use crate::types::{CursorTool, SearchMatch};
 use async_trait::async_trait;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::path::PathBuf;
 use tracing::{debug, info};
 
@@ -54,15 +54,22 @@ impl CursorTool for SearchCodeTool {
             .ok_or_else(|| input_validation_error(self.name(), "Missing 'query' parameter"))?;
 
         let path_pattern = params.get("path_pattern").and_then(|p| p.as_str());
-        let max_results = params.get("max_results").and_then(|m| m.as_u64()).unwrap_or(50) as usize;
-        let include_context = params.get("include_context").and_then(|c| c.as_bool()).unwrap_or(true);
+        let max_results = params
+            .get("max_results")
+            .and_then(|m| m.as_u64())
+            .unwrap_or(50) as usize;
+        let include_context = params
+            .get("include_context")
+            .and_then(|c| c.as_bool())
+            .unwrap_or(true);
 
         debug!("Searching for '{}' with pattern {:?}", query, path_pattern);
 
-        let pattern = regex::Regex::new(query)
-            .map_err(|e| CursorError::PatternError(e.to_string()))?;
+        let pattern =
+            regex::Regex::new(query).map_err(|e| CursorError::PatternError(e.to_string()))?;
 
-        let project_root = std::env::current_dir().map_err(|e| CursorError::FileOperation(e.to_string()))?;
+        let project_root =
+            std::env::current_dir().map_err(|e| CursorError::FileOperation(e.to_string()))?;
         let mut matches = Vec::new();
 
         let walker = walkdir::WalkDir::new(&project_root)
@@ -89,13 +96,12 @@ impl CursorTool for SearchCodeTool {
             let path_str = path.to_string_lossy();
 
             // Apply path pattern filter
-            if let Some(pattern_str) = path_pattern {
-                if !glob::Pattern::new(pattern_str)
+            if let Some(pattern_str) = path_pattern
+                && !glob::Pattern::new(pattern_str)
                     .map(|p| p.matches(&path_str))
                     .unwrap_or(true)
-                {
-                    continue;
-                }
+            {
+                continue;
             }
 
             // Search file content
@@ -237,7 +243,10 @@ impl CursorTool for ReadFileTool {
         let total_lines = lines.len();
 
         // Apply line range if specified
-        let start_line = params.get("start_line").and_then(|s| s.as_u64()).unwrap_or(0) as usize;
+        let start_line = params
+            .get("start_line")
+            .and_then(|s| s.as_u64())
+            .unwrap_or(0) as usize;
         let end_line = params
             .get("end_line")
             .and_then(|e| e.as_u64())
@@ -316,7 +325,10 @@ impl CursorTool for EditFileTool {
             .and_then(|n| n.as_str())
             .ok_or_else(|| input_validation_error(self.name(), "Missing 'new_text' parameter"))?;
 
-        let dry_run = params.get("dry_run").and_then(|d| d.as_bool()).unwrap_or(false);
+        let dry_run = params
+            .get("dry_run")
+            .and_then(|d| d.as_bool())
+            .unwrap_or(false);
 
         let path = PathBuf::from(path_str);
         let full_path = if path.is_absolute() {
@@ -406,7 +418,10 @@ impl CursorTool for CreateFileTool {
             .and_then(|c| c.as_str())
             .ok_or_else(|| input_validation_error(self.name(), "Missing 'content' parameter"))?;
 
-        let overwrite = params.get("overwrite").and_then(|o| o.as_bool()).unwrap_or(false);
+        let overwrite = params
+            .get("overwrite")
+            .and_then(|o| o.as_bool())
+            .unwrap_or(false);
 
         let path = PathBuf::from(path_str);
         let full_path = if path.is_absolute() {
@@ -488,8 +503,14 @@ impl CursorTool for DeleteFileTool {
             .and_then(|p| p.as_str())
             .ok_or_else(|| input_validation_error(self.name(), "Missing 'path' parameter"))?;
 
-        let recursive = params.get("recursive").and_then(|r| r.as_bool()).unwrap_or(false);
-        let confirm = params.get("confirm").and_then(|c| c.as_bool()).unwrap_or(false);
+        let recursive = params
+            .get("recursive")
+            .and_then(|r| r.as_bool())
+            .unwrap_or(false);
+        let confirm = params
+            .get("confirm")
+            .and_then(|c| c.as_bool())
+            .unwrap_or(false);
 
         if !confirm {
             return Err(input_validation_error(
@@ -577,14 +598,17 @@ impl CursorTool for ListFilesTool {
     }
 
     async fn execute(&self, params: Value) -> Result<Value> {
-        let path_str = params
-            .get("path")
-            .and_then(|p| p.as_str())
-            .unwrap_or(".");
+        let path_str = params.get("path").and_then(|p| p.as_str()).unwrap_or(".");
 
-        let recursive = params.get("recursive").and_then(|r| r.as_bool()).unwrap_or(false);
+        let recursive = params
+            .get("recursive")
+            .and_then(|r| r.as_bool())
+            .unwrap_or(false);
         let pattern = params.get("pattern").and_then(|p| p.as_str());
-        let include_hidden = params.get("include_hidden").and_then(|h| h.as_bool()).unwrap_or(false);
+        let include_hidden = params
+            .get("include_hidden")
+            .and_then(|h| h.as_bool())
+            .unwrap_or(false);
 
         let path = PathBuf::from(path_str);
         let full_path = if path.is_absolute() {
@@ -619,13 +643,12 @@ impl CursorTool for ListFilesTool {
             let name = entry.file_name().to_string_lossy().to_string();
 
             // Apply pattern filter
-            if let Some(pat) = pattern {
-                if !glob::Pattern::new(pat)
+            if let Some(pat) = pattern
+                && !glob::Pattern::new(pat)
                     .map(|p| p.matches(&name))
                     .unwrap_or(true)
-                {
-                    continue;
-                }
+            {
+                continue;
             }
 
             let metadata = entry.metadata().ok();

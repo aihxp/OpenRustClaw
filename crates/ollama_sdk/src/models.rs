@@ -5,8 +5,8 @@ use crate::client::endpoints;
 use crate::error::{OllamaError, Result};
 use crate::types::{
     CopyModelRequest, CreateModelRequest, CreateModelStatus, DeleteModelRequest,
-    ListModelsResponse, ModelInfo, PullStatus, PushStatus, RunningModelsResponse,
-    ShowModelRequest, ShowModelResponse, VersionResponse,
+    ListModelsResponse, ModelInfo, PullStatus, PushStatus, RunningModelsResponse, ShowModelRequest,
+    ShowModelResponse, VersionResponse,
 };
 
 /// Client for the models API.
@@ -140,32 +140,26 @@ impl<'a> Models<'a> {
 
         let stream = response
             .bytes_stream()
-            .map(|bytes| {
-                match bytes {
-                    Ok(bytes) => {
-                        let text = String::from_utf8_lossy(&bytes);
-                        let lines: Vec<&str> = text.lines().collect();
-                        let results: Vec<Result<PullStatus>> = lines
-                            .into_iter()
-                            .filter(|line| !line.is_empty())
-                            .map(|line| {
-                                match serde_json::from_str::<PullStatus>(line) {
-                                    Ok(status) => Ok(status),
-                                    Err(e) => Err(OllamaError::Stream {
-                                        message: format!("Failed to parse NDJSON: {e}"),
-                                    }),
-                                }
-                            })
-                            .collect();
-                        
-                        futures::stream::iter(results)
-                    }
-                    Err(e) => {
-                        futures::stream::iter(vec![Err(OllamaError::Stream {
-                            message: format!("Stream error: {e}"),
-                        })])
-                    }
+            .map(|bytes| match bytes {
+                Ok(bytes) => {
+                    let text = String::from_utf8_lossy(&bytes);
+                    let lines: Vec<&str> = text.lines().collect();
+                    let results: Vec<Result<PullStatus>> = lines
+                        .into_iter()
+                        .filter(|line| !line.is_empty())
+                        .map(|line| match serde_json::from_str::<PullStatus>(line) {
+                            Ok(status) => Ok(status),
+                            Err(e) => Err(OllamaError::Stream {
+                                message: format!("Failed to parse NDJSON: {e}"),
+                            }),
+                        })
+                        .collect();
+
+                    futures::stream::iter(results)
                 }
+                Err(e) => futures::stream::iter(vec![Err(OllamaError::Stream {
+                    message: format!("Stream error: {e}"),
+                })]),
             })
             .flatten();
 
@@ -187,7 +181,9 @@ impl<'a> Models<'a> {
                 let body = request.clone();
                 Box::pin(async move {
                     let response = client.post(endpoints::PULL, body).await?;
-                    client.handle_response::<serde_json::Value>(response).await?;
+                    client
+                        .handle_response::<serde_json::Value>(response)
+                        .await?;
                     Ok(())
                 })
             })
@@ -243,32 +239,26 @@ impl<'a> Models<'a> {
 
         let stream = response
             .bytes_stream()
-            .map(|bytes| {
-                match bytes {
-                    Ok(bytes) => {
-                        let text = String::from_utf8_lossy(&bytes);
-                        let lines: Vec<&str> = text.lines().collect();
-                        let results: Vec<Result<PushStatus>> = lines
-                            .into_iter()
-                            .filter(|line| !line.is_empty())
-                            .map(|line| {
-                                match serde_json::from_str::<PushStatus>(line) {
-                                    Ok(status) => Ok(status),
-                                    Err(e) => Err(OllamaError::Stream {
-                                        message: format!("Failed to parse NDJSON: {e}"),
-                                    }),
-                                }
-                            })
-                            .collect();
-                        
-                        futures::stream::iter(results)
-                    }
-                    Err(e) => {
-                        futures::stream::iter(vec![Err(OllamaError::Stream {
-                            message: format!("Stream error: {e}"),
-                        })])
-                    }
+            .map(|bytes| match bytes {
+                Ok(bytes) => {
+                    let text = String::from_utf8_lossy(&bytes);
+                    let lines: Vec<&str> = text.lines().collect();
+                    let results: Vec<Result<PushStatus>> = lines
+                        .into_iter()
+                        .filter(|line| !line.is_empty())
+                        .map(|line| match serde_json::from_str::<PushStatus>(line) {
+                            Ok(status) => Ok(status),
+                            Err(e) => Err(OllamaError::Stream {
+                                message: format!("Failed to parse NDJSON: {e}"),
+                            }),
+                        })
+                        .collect();
+
+                    futures::stream::iter(results)
                 }
+                Err(e) => futures::stream::iter(vec![Err(OllamaError::Stream {
+                    message: format!("Stream error: {e}"),
+                })]),
             })
             .flatten();
 
@@ -336,32 +326,28 @@ impl<'a> Models<'a> {
 
         let stream = response
             .bytes_stream()
-            .map(|bytes| {
-                match bytes {
-                    Ok(bytes) => {
-                        let text = String::from_utf8_lossy(&bytes);
-                        let lines: Vec<&str> = text.lines().collect();
-                        let results: Vec<Result<CreateModelStatus>> = lines
-                            .into_iter()
-                            .filter(|line| !line.is_empty())
-                            .map(|line| {
-                                match serde_json::from_str::<CreateModelStatus>(line) {
-                                    Ok(status) => Ok(status),
-                                    Err(e) => Err(OllamaError::Stream {
-                                        message: format!("Failed to parse NDJSON: {e}"),
-                                    }),
-                                }
-                            })
-                            .collect();
-                        
-                        futures::stream::iter(results)
-                    }
-                    Err(e) => {
-                        futures::stream::iter(vec![Err(OllamaError::Stream {
-                            message: format!("Stream error: {e}"),
-                        })])
-                    }
+            .map(|bytes| match bytes {
+                Ok(bytes) => {
+                    let text = String::from_utf8_lossy(&bytes);
+                    let lines: Vec<&str> = text.lines().collect();
+                    let results: Vec<Result<CreateModelStatus>> = lines
+                        .into_iter()
+                        .filter(|line| !line.is_empty())
+                        .map(
+                            |line| match serde_json::from_str::<CreateModelStatus>(line) {
+                                Ok(status) => Ok(status),
+                                Err(e) => Err(OllamaError::Stream {
+                                    message: format!("Failed to parse NDJSON: {e}"),
+                                }),
+                            },
+                        )
+                        .collect();
+
+                    futures::stream::iter(results)
                 }
+                Err(e) => futures::stream::iter(vec![Err(OllamaError::Stream {
+                    message: format!("Stream error: {e}"),
+                })]),
             })
             .flatten();
 
@@ -383,11 +369,7 @@ impl<'a> Models<'a> {
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn copy(
-        &self,
-        source: impl AsRef<str>,
-        destination: impl AsRef<str>,
-    ) -> Result<()> {
+    pub async fn copy(&self, source: impl AsRef<str>, destination: impl AsRef<str>) -> Result<()> {
         let request = CopyModelRequest {
             source: source.as_ref().to_string(),
             destination: destination.as_ref().to_string(),

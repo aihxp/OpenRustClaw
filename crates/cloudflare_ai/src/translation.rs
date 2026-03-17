@@ -28,7 +28,7 @@ impl<'a> Translation<'a> {
     ///
     /// let request = TranslationRequest::new("Hello world", "english", "french");
     /// let response = client.translation().translate(request).await?;
-    /// 
+    ///
     /// if let Some(text) = response.text() {
     ///     println!("Translated: {}", text);
     /// }
@@ -66,7 +66,7 @@ impl<'a> Translation<'a> {
     /// let response = client.translation()
     ///     .auto_translate("Bonjour le monde", "english")
     ///     .await?;
-    /// 
+    ///
     /// if let Some(text) = response.text() {
     ///     println!("Translated: {}", text);
     /// }
@@ -98,7 +98,7 @@ impl<'a> Translation<'a> {
     /// let response = client.translation()
     ///     .from_to("Hello world", "english", "spanish")
     ///     .await?;
-    /// 
+    ///
     /// if let Some(text) = response.text() {
     ///     println!("Translated: {}", text);
     /// }
@@ -242,12 +242,16 @@ impl TranslationRequestBuilder {
 
     /// Build the request.
     pub fn build(self) -> Result<TranslationRequest> {
-        let text = self.text.ok_or_else(|| crate::error::CloudflareAiError::Config {
-            message: "Text is required".to_string(),
-        })?;
-        let target_lang = self.target_lang.ok_or_else(|| crate::error::CloudflareAiError::Config {
-            message: "Target language is required".to_string(),
-        })?;
+        let text = self
+            .text
+            .ok_or_else(|| crate::error::CloudflareAiError::Config {
+                message: "Text is required".to_string(),
+            })?;
+        let target_lang =
+            self.target_lang
+                .ok_or_else(|| crate::error::CloudflareAiError::Config {
+                    message: "Target language is required".to_string(),
+                })?;
 
         Ok(TranslationRequest {
             model: self.model,
@@ -311,8 +315,8 @@ mod tests {
 
     #[test]
     fn test_translation_request_with_model() {
-        let req = TranslationRequest::new("Hello", "english", "french")
-            .with_model("@cf/custom/model");
+        let req =
+            TranslationRequest::new("Hello", "english", "french").with_model("@cf/custom/model");
         assert_eq!(req.model, "@cf/custom/model");
     }
 
@@ -345,8 +349,9 @@ mod tests {
             r#"{
                 "translated_text": "Bonjour le monde",
                 "detected_language": "english"
-            }"#
-        ).unwrap();
+            }"#,
+        )
+        .unwrap();
 
         assert_eq!(response.text(), Some("Bonjour le monde"));
         assert_eq!(response.detected_language, Some("english".to_string()));

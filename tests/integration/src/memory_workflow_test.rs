@@ -7,8 +7,6 @@
 //! - TTL expiration
 //! - Core memory budget enforcement
 
-
-
 use chrono::{Duration, Utc};
 
 use openrustclaw_core::traits::{CoreMemoryStore, MemoryStore};
@@ -16,10 +14,7 @@ use openrustclaw_core::types::{CoreEntry, MemoryQuery, MemorySource, MemoryType}
 use openrustclaw_db::{SqliteCoreMemoryStore, SqliteMemoryStore};
 use openrustclaw_memory::{CoreMemoryManager, MemoryPolicies, RecallMemory};
 
-
-use crate::common::{
-    create_test_db, init_test_tracing, CoreEntryBuilder, MemoryEntryBuilder,
-};
+use crate::common::{CoreEntryBuilder, MemoryEntryBuilder, create_test_db, init_test_tracing};
 
 // ═════════════════════════════════════════════════════════════════════════════
 // Recall Memory Tests
@@ -42,7 +37,7 @@ async fn store_and_retrieve_memory() {
 
     let retrieved = store.get(&entry_id.to_string()).await.unwrap();
     assert!(retrieved.is_some());
-    
+
     let retrieved = retrieved.unwrap();
     assert_eq!(retrieved.content, "Test memory content");
     assert_eq!(retrieved.memory_type, MemoryType::Semantic);
@@ -140,7 +135,7 @@ async fn delete_memory() {
     let entry_id = entry.id;
 
     store.store(entry).await.unwrap();
-    
+
     // Verify it exists
     assert!(store.get(&entry_id.to_string()).await.unwrap().is_some());
 
@@ -190,10 +185,10 @@ async fn search_memories_by_text() {
     };
 
     let results = store.search(&query).await.unwrap();
-    
+
     // Should find at least 2 results containing "programming"
     assert!(results.len() >= 2);
-    
+
     // Results should contain "programming"
     for result in &results {
         assert!(result.entry.content.contains("programming"));
@@ -228,7 +223,7 @@ async fn search_with_memory_type_filter() {
     };
 
     let results = store.search(&query).await.unwrap();
-    
+
     for result in &results {
         assert_eq!(result.entry.memory_type, MemoryType::Episodic);
     }
@@ -262,7 +257,7 @@ async fn search_with_namespace_filter() {
     };
 
     let results = store.search(&query).await.unwrap();
-    
+
     for result in &results {
         assert_eq!(result.entry.namespace, "private");
     }
@@ -428,9 +423,15 @@ fn core_memory_manager_entry_limit() {
 #[test]
 fn core_memory_manager_eviction_candidate() {
     let entries = vec![
-        CoreEntryBuilder::new("important", "value").importance(0.9).build(),
-        CoreEntryBuilder::new("less_important", "value").importance(0.3).build(),
-        CoreEntryBuilder::new("medium", "value").importance(0.6).build(),
+        CoreEntryBuilder::new("important", "value")
+            .importance(0.9)
+            .build(),
+        CoreEntryBuilder::new("less_important", "value")
+            .importance(0.3)
+            .build(),
+        CoreEntryBuilder::new("medium", "value")
+            .importance(0.6)
+            .build(),
     ];
 
     let candidate = CoreMemoryManager::eviction_candidate(&entries);
@@ -581,15 +582,13 @@ fn recall_memory_apply_decay() {
     let policies = MemoryPolicies::default();
     let recall = RecallMemory::new(policies);
 
-    let mut results = vec![
-        openrustclaw_core::types::ScoredMemory {
-            entry: MemoryEntryBuilder::new("recent").build(),
-            score: 1.0,
-        },
-    ];
+    let mut results = vec![openrustclaw_core::types::ScoredMemory {
+        entry: MemoryEntryBuilder::new("recent").build(),
+        score: 1.0,
+    }];
 
     recall.apply_decay(&mut results);
-    
+
     // Score should be unchanged (no last_accessed)
     assert!((results[0].score - 1.0).abs() < 0.001);
 }

@@ -76,7 +76,9 @@ impl<'a> Completions<'a> {
         request.stream = Some(true);
         let body = serde_json::to_value(&request)?;
         let deployment = self.client.deployment_name().to_string();
-        let url = self.client.build_url(&format!("/openai/deployments/{}/completions", deployment));
+        let url = self
+            .client
+            .build_url(&format!("/openai/deployments/{}/completions", deployment));
 
         tracing::debug!("Initiating streaming completion request");
 
@@ -88,10 +90,8 @@ impl<'a> Completions<'a> {
         if self.client.is_azure_ad() {
             let auth_header = self.client.config().authorization_header().await?;
             request_builder = request_builder.header("Authorization", auth_header);
-        } else {
-            if let crate::AzureCredential::ApiKey(key) = &self.client.config().credential {
-                request_builder = request_builder.header("api-key", key.expose_secret());
-            }
+        } else if let crate::AzureCredential::ApiKey(key) = &self.client.config().credential {
+            request_builder = request_builder.header("api-key", key.expose_secret());
         }
 
         let response = request_builder
@@ -108,24 +108,22 @@ impl<'a> Completions<'a> {
         let stream = response
             .bytes_stream()
             .eventsource()
-            .map(|event| {
-                match event {
-                    Ok(event) => {
-                        if event.data == "[DONE]" {
-                            return Ok(CompletionStreamChunk::done());
-                        }
-
-                        match serde_json::from_str::<CompletionStreamChunk>(&event.data) {
-                            Ok(chunk) => Ok(chunk),
-                            Err(e) => Err(crate::error::AzureOpenAIError::Stream {
-                                message: format!("Failed to parse SSE event: {e}"),
-                            }),
-                        }
+            .map(|event| match event {
+                Ok(event) => {
+                    if event.data == "[DONE]" {
+                        return Ok(CompletionStreamChunk::done());
                     }
-                    Err(e) => Err(crate::error::AzureOpenAIError::Stream {
-                        message: format!("SSE error: {e}"),
-                    }),
+
+                    match serde_json::from_str::<CompletionStreamChunk>(&event.data) {
+                        Ok(chunk) => Ok(chunk),
+                        Err(e) => Err(crate::error::AzureOpenAIError::Stream {
+                            message: format!("Failed to parse SSE event: {e}"),
+                        }),
+                    }
                 }
+                Err(e) => Err(crate::error::AzureOpenAIError::Stream {
+                    message: format!("SSE error: {e}"),
+                }),
             });
 
         Ok(stream)

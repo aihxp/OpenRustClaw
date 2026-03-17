@@ -12,8 +12,8 @@
 //! All metrics include appropriate labels for dimensional analysis.
 
 use serde::{Deserialize, Serialize};
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::time::Instant;
 
 // ──────────────────────────────────────────────
@@ -118,12 +118,16 @@ impl MetricsCollector {
 
     /// Increment active connections.
     pub fn increment_active_connections(&self) {
-        self.inner.active_connections.fetch_add(1, Ordering::Relaxed);
+        self.inner
+            .active_connections
+            .fetch_add(1, Ordering::Relaxed);
     }
 
     /// Decrement active connections.
     pub fn decrement_active_connections(&self) {
-        self.inner.active_connections.fetch_sub(1, Ordering::Relaxed);
+        self.inner
+            .active_connections
+            .fetch_sub(1, Ordering::Relaxed);
     }
 }
 
@@ -203,7 +207,10 @@ pub fn get_collector() -> &'static MetricsCollector {
 /// * `endpoint` - Request path
 /// * `status` - Response status code as string
 pub fn record_request(method: &str, endpoint: &str, status: &str) {
-    global_collector().inner.total_requests.fetch_add(1, Ordering::Relaxed);
+    global_collector()
+        .inner
+        .total_requests
+        .fetch_add(1, Ordering::Relaxed);
     // When using metrics crate with prometheus exporter:
     // metrics::counter!("openrustclaw_requests_total", "method" => method, "endpoint" => endpoint, "status" => status).increment(1);
     let _ = (method, endpoint, status);
@@ -286,8 +293,14 @@ pub fn record_provider_duration(provider: &str, model: &str, duration_secs: f64)
 /// * `prompt_tokens" - Number of prompt tokens
 /// * `completion_tokens" - Number of completion tokens
 pub fn record_token_usage(provider: &str, model: &str, prompt_tokens: u64, completion_tokens: u64) {
-    global_collector().inner.total_prompt_tokens.fetch_add(prompt_tokens, Ordering::Relaxed);
-    global_collector().inner.total_completion_tokens.fetch_add(completion_tokens, Ordering::Relaxed);
+    global_collector()
+        .inner
+        .total_prompt_tokens
+        .fetch_add(prompt_tokens, Ordering::Relaxed);
+    global_collector()
+        .inner
+        .total_completion_tokens
+        .fetch_add(completion_tokens, Ordering::Relaxed);
     let _ = (provider, model);
 }
 
@@ -299,7 +312,10 @@ pub fn record_token_usage(provider: &str, model: &str, prompt_tokens: u64, compl
 /// * `cost_usd" - Cost in USD
 pub fn record_cost(provider: &str, model: &str, cost_usd: f64) {
     let micro = (cost_usd * 1_000_000.0) as u64;
-    global_collector().inner.total_cost_micro_usd.fetch_add(micro, Ordering::Relaxed);
+    global_collector()
+        .inner
+        .total_cost_micro_usd
+        .fetch_add(micro, Ordering::Relaxed);
     let _ = (provider, model);
 }
 
@@ -560,7 +576,7 @@ mod tests {
     fn test_metrics_collector() {
         let collector = MetricsCollector::new();
         collector.record_request(100, 50, Some(0.001));
-        
+
         let snapshot = collector.snapshot();
         assert_eq!(snapshot.total_prompt_tokens, 100);
         assert_eq!(snapshot.total_completion_tokens, 50);
@@ -579,13 +595,13 @@ mod tests {
     #[test]
     fn test_active_connections() {
         let collector = MetricsCollector::new();
-        
+
         collector.set_active_connections(10);
         assert_eq!(collector.snapshot().active_connections, 10);
-        
+
         collector.increment_active_connections();
         assert_eq!(collector.snapshot().active_connections, 11);
-        
+
         collector.decrement_active_connections();
         assert_eq!(collector.snapshot().active_connections, 10);
     }
@@ -595,7 +611,7 @@ mod tests {
         init_metrics();
         record_request("GET", "/test", "200");
         record_token_usage("test", "model", 100, 50);
-        
+
         // These should not panic
         increment_active_connections();
         decrement_active_connections();

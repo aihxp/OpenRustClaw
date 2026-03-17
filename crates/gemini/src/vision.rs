@@ -1,6 +1,6 @@
 //! Vision capabilities for image understanding
 
-use crate::{GeminiClient, Content, GenerateContentRequest, GeminiError, GenerationConfig, Part};
+use crate::{Content, GeminiClient, GeminiError, GenerateContentRequest, GenerationConfig, Part};
 use async_trait::async_trait;
 
 /// Image format
@@ -23,7 +23,7 @@ impl ImageFormat {
             ImageFormat::Heif => "image/heif",
         }
     }
-    
+
     pub fn from_path(path: &str) -> Option<Self> {
         let ext = path.rsplit('.').next()?.to_lowercase();
         match ext.as_str() {
@@ -35,7 +35,7 @@ impl ImageFormat {
             _ => None,
         }
     }
-    
+
     pub fn from_bytes(data: &[u8]) -> Option<Self> {
         // Check magic bytes
         if data.starts_with(&[0x89, 0x50, 0x4E, 0x47]) {
@@ -90,13 +90,13 @@ impl<'a> VisionBuilder<'a> {
             generation_config: None,
         }
     }
-    
+
     /// Set generation config
     pub fn with_generation_config(mut self, config: GenerationConfig) -> Self {
         self.generation_config = Some(config);
         self
     }
-    
+
     /// Analyze image from bytes
     pub async fn analyze_image(
         &self,
@@ -105,7 +105,7 @@ impl<'a> VisionBuilder<'a> {
         image_data: Vec<u8>,
     ) -> Result<String, GeminiError> {
         let content = Content::user(prompt).with_image(mime_type, image_data);
-        
+
         let request = GenerateContentRequest {
             contents: vec![content],
             system_instruction: None,
@@ -114,23 +114,26 @@ impl<'a> VisionBuilder<'a> {
             tool_config: None,
             safety_settings: None,
         };
-        
+
         let response = self.client.generate_content(request).await?;
-        
-        Ok(response.candidates
+
+        Ok(response
+            .candidates
             .into_iter()
             .filter_map(|c| {
-                c.content.parts.into_iter().filter_map(|p| {
-                    match p {
+                c.content
+                    .parts
+                    .into_iter()
+                    .filter_map(|p| match p {
                         Part::Text { text } => Some(text),
                         _ => None,
-                    }
-                }).next()
+                    })
+                    .next()
             })
             .collect::<Vec<_>>()
             .join(""))
     }
-    
+
     /// Analyze image from file path (reads file)
     pub async fn analyze_image_file(
         &self,
@@ -138,18 +141,18 @@ impl<'a> VisionBuilder<'a> {
         path: &std::path::Path,
     ) -> Result<String, GeminiError> {
         use std::fs;
-        
+
         let data = fs::read(path).map_err(|e| {
             GeminiError::InvalidRequest(format!("Failed to read image file: {}", e))
         })?;
-        
+
         let format = ImageFormat::from_path(path.to_str().unwrap_or(""))
             .or_else(|| ImageFormat::from_bytes(&data))
             .ok_or_else(|| GeminiError::InvalidRequest("Unknown image format".to_string()))?;
-        
+
         self.analyze_image(prompt, format.mime_type(), data).await
     }
-    
+
     /// Analyze multiple images
     pub async fn analyze_multiple_images(
         &self,
@@ -157,11 +160,11 @@ impl<'a> VisionBuilder<'a> {
         images: Vec<(&str, Vec<u8>)>,
     ) -> Result<String, GeminiError> {
         let mut content = Content::user(prompt);
-        
+
         for (mime_type, data) in images {
             content = content.with_image(mime_type, data);
         }
-        
+
         let request = GenerateContentRequest {
             contents: vec![content],
             system_instruction: None,
@@ -170,39 +173,44 @@ impl<'a> VisionBuilder<'a> {
             tool_config: None,
             safety_settings: None,
         };
-        
+
         let response = self.client.generate_content(request).await?;
-        
-        Ok(response.candidates
+
+        Ok(response
+            .candidates
             .into_iter()
             .filter_map(|c| {
-                c.content.parts.into_iter().filter_map(|p| {
-                    match p {
+                c.content
+                    .parts
+                    .into_iter()
+                    .filter_map(|p| match p {
                         Part::Text { text } => Some(text),
                         _ => None,
-                    }
-                }).next()
+                    })
+                    .next()
             })
             .collect::<Vec<_>>()
             .join(""))
     }
-    
+
     /// OCR - Extract text from image
     pub async fn ocr(&self, mime_type: &str, image_data: Vec<u8>) -> Result<String, GeminiError> {
         self.analyze_image(
             "Extract all text visible in this image. Return only the text, no explanations.",
             mime_type,
             image_data,
-        ).await
+        )
+        .await
     }
-    
+
     /// Describe image
-    pub async fn describe(&self, mime_type: &str, image_data: Vec<u8>) -> Result<String, GeminiError> {
-        self.analyze_image(
-            "Describe this image in detail.",
-            mime_type,
-            image_data,
-        ).await
+    pub async fn describe(
+        &self,
+        mime_type: &str,
+        image_data: Vec<u8>,
+    ) -> Result<String, GeminiError> {
+        self.analyze_image("Describe this image in detail.", mime_type, image_data)
+            .await
     }
 }
 
@@ -211,7 +219,7 @@ impl<'a> VisionBuilder<'a> {
 pub trait VisionExt {
     /// Create vision builder
     fn vision(&self) -> VisionBuilder<'_>;
-    
+
     /// Quick image analysis
     async fn analyze_image(
         &self,
@@ -219,7 +227,7 @@ pub trait VisionExt {
         mime_type: &str,
         image_data: Vec<u8>,
     ) -> Result<String, GeminiError>;
-    
+
     /// OCR shortcut
     async fn ocr(&self, mime_type: &str, image_data: Vec<u8>) -> Result<String, GeminiError>;
 }
@@ -229,16 +237,18 @@ impl VisionExt for GeminiClient {
     fn vision(&self) -> VisionBuilder<'_> {
         VisionBuilder::new(self)
     }
-    
+
     async fn analyze_image(
         &self,
         prompt: impl Into<String> + Send,
         mime_type: &str,
         image_data: Vec<u8>,
     ) -> Result<String, GeminiError> {
-        VisionBuilder::new(self).analyze_image(prompt, mime_type, image_data).await
+        VisionBuilder::new(self)
+            .analyze_image(prompt, mime_type, image_data)
+            .await
     }
-    
+
     async fn ocr(&self, mime_type: &str, image_data: Vec<u8>) -> Result<String, GeminiError> {
         VisionBuilder::new(self).ocr(mime_type, image_data).await
     }
@@ -247,25 +257,34 @@ impl VisionExt for GeminiClient {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_image_format_from_path() {
         assert_eq!(ImageFormat::from_path("image.png"), Some(ImageFormat::Png));
         assert_eq!(ImageFormat::from_path("image.jpg"), Some(ImageFormat::Jpeg));
-        assert_eq!(ImageFormat::from_path("image.jpeg"), Some(ImageFormat::Jpeg));
-        assert_eq!(ImageFormat::from_path("image.webp"), Some(ImageFormat::Webp));
+        assert_eq!(
+            ImageFormat::from_path("image.jpeg"),
+            Some(ImageFormat::Jpeg)
+        );
+        assert_eq!(
+            ImageFormat::from_path("image.webp"),
+            Some(ImageFormat::Webp)
+        );
         assert_eq!(ImageFormat::from_path("image.txt"), None);
     }
-    
+
     #[test]
     fn test_image_format_from_bytes() {
         let png_bytes = vec![0x89, 0x50, 0x4E, 0x47];
         assert_eq!(ImageFormat::from_bytes(&png_bytes), Some(ImageFormat::Png));
-        
+
         let jpeg_bytes = vec![0xFF, 0xD8, 0xFF];
-        assert_eq!(ImageFormat::from_bytes(&jpeg_bytes), Some(ImageFormat::Jpeg));
+        assert_eq!(
+            ImageFormat::from_bytes(&jpeg_bytes),
+            Some(ImageFormat::Jpeg)
+        );
     }
-    
+
     #[test]
     fn test_mime_types() {
         assert_eq!(ImageFormat::Png.mime_type(), "image/png");

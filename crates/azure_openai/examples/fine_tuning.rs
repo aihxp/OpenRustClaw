@@ -28,11 +28,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .expect("AZURE_OPENAI_DEPLOYMENT environment variable not set");
 
     // Create the client
-    let client = AzureOpenAIClient::new(
-        &resource_name,
-        &deployment_name,
-        api_key.clone(),
-    )?;
+    let client = AzureOpenAIClient::new(&resource_name, &deployment_name, api_key.clone())?;
 
     println!("Azure OpenAI Fine-tuning API Example\n");
 
@@ -40,23 +36,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("1. Listing existing fine-tuning jobs...");
     let jobs = client.fine_tuning().list(Some(10)).await?;
     println!("   Found {} jobs", jobs.data.len());
-    
+
     for job in &jobs.data {
-        println!(
-            "   - {}: {:?} (model: {})",
-            job.id,
-            job.status,
-            job.model
-        );
+        println!("   - {}: {:?} (model: {})", job.id, job.status, job.model);
     }
 
     // Create a fine-tuning job if training file is provided
     if let Ok(training_file_id) = std::env::var("TRAINING_FILE_ID") {
         println!("\n2. Creating Fine-tuning Job...");
-        
-        let hyperparameters = Hyperparameters::auto()
-            .n_epochs(3)
-            .batch_size(4);
+
+        let hyperparameters = Hyperparameters::auto().n_epochs(3).batch_size(4);
 
         let job_request = FineTuningJobRequest::new(&training_file_id)
             .model("gpt-35-turbo-0613")
@@ -74,10 +63,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("\n3. Polling job status...");
         loop {
             tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
-            
+
             let current_job = client.fine_tuning().retrieve(&job.id).await?;
             println!("   Status: {:?}", current_job.status);
-            
+
             if current_job.status.is_terminal() {
                 if let Some(model) = &current_job.fine_tuned_model {
                     println!("   Fine-tuned model: {}", model);
@@ -93,13 +82,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("\n4. Listing job events...");
         let events = client.fine_tuning().list_events(&job.id).await?;
         println!("   Found {} events", events.data.len());
-        
+
         for event in events.data.iter().take(5) {
             println!(
                 "   [{}] {} - {}",
-                event.created_at,
-                event.level,
-                event.message
+                event.created_at, event.level, event.message
             );
         }
 
@@ -107,7 +94,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("\n5. Listing checkpoints...");
         let checkpoints = client.fine_tuning().list_checkpoints(&job.id).await?;
         println!("   Found {} checkpoints", checkpoints.data.len());
-        
+
         for checkpoint in &checkpoints.data {
             println!(
                 "   - Step {}: {} (train_loss: {:.4})",

@@ -47,7 +47,11 @@ impl<'a> Embeddings<'a> {
     }
 
     /// Create a single embedding.
-    pub async fn embed(&self, model: impl Into<String>, input: impl Into<String>) -> Result<Vec<f32>> {
+    pub async fn embed(
+        &self,
+        model: impl Into<String>,
+        input: impl Into<String>,
+    ) -> Result<Vec<f32>> {
         let request = EmbeddingRequest::single(model, input);
         let response = self.create(request).await?;
         response

@@ -18,7 +18,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use governor::{Quota, RateLimiter};
 use std::num::NonZeroU32;
-use tokio::sync::{mpsc, Mutex, RwLock};
+use tokio::sync::{Mutex, RwLock, mpsc};
 use tracing::{debug, info};
 use uuid::Uuid;
 
@@ -35,7 +35,14 @@ pub struct MatrixChannel {
     config: MatrixConfig,
     _incoming_tx: mpsc::Sender<IncomingMessage>,
     incoming_rx: Mutex<mpsc::Receiver<IncomingMessage>>,
-    rate_limiter: Arc<RateLimiter<governor::state::NotKeyed, governor::state::InMemoryState, governor::clock::DefaultClock, governor::middleware::NoOpMiddleware>>,
+    rate_limiter: Arc<
+        RateLimiter<
+            governor::state::NotKeyed,
+            governor::state::InMemoryState,
+            governor::clock::DefaultClock,
+            governor::middleware::NoOpMiddleware,
+        >,
+    >,
     is_connected: RwLock<bool>,
     /// Maps session_id to event_id for reply threading
     _message_cache: Arc<RwLock<HashMap<Uuid, String>>>,
@@ -50,7 +57,8 @@ impl MatrixChannel {
 
         // Create rate limiter (Matrix recommends ~10 requests per second)
         let quota = Quota::per_second(
-            NonZeroU32::new(config.rate_limit_per_second.max(1)).unwrap_or(NonZeroU32::new(10).unwrap())
+            NonZeroU32::new(config.rate_limit_per_second.max(1))
+                .unwrap_or(NonZeroU32::new(10).unwrap()),
         );
         let rate_limiter = Arc::new(RateLimiter::direct(quota));
 
@@ -119,14 +127,15 @@ impl MatrixChannel {
             .replace('&', "&amp;")
             .replace('<', "&lt;")
             .replace('>', "&gt;");
-        
+
         // Convert newlines to <br>
         escaped.replace('\n', "<br>")
     }
 
     /// Parse formatted body from metadata.
     fn parse_formatted_body(metadata: &serde_json::Value) -> Option<String> {
-        metadata.get("formatted_body")
+        metadata
+            .get("formatted_body")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string())
     }
@@ -148,7 +157,9 @@ impl Channel for MatrixChannel {
         self.rate_limiter.until_ready().await;
 
         // Get room ID from metadata
-        let room_id = msg.metadata.get("matrix_room_id")
+        let room_id = msg
+            .metadata
+            .get("matrix_room_id")
             .and_then(|v| v.as_str())
             .ok_or_else(|| ChannelError::InvalidFormat {
                 platform: "matrix".to_string(),
@@ -157,12 +168,10 @@ impl Channel for MatrixChannel {
 
         // Check if we should send as formatted message
         let formatted_body = Self::parse_formatted_body(&msg.metadata);
-        let _html_content = formatted_body
-            .unwrap_or_else(|| Self::text_to_html(&msg.content));
+        let _html_content = formatted_body.unwrap_or_else(|| Self::text_to_html(&msg.content));
 
         // Check for reply to thread
-        let _reply_to_event_id = msg.metadata.get("matrix_reply_to")
-            .and_then(|v| v.as_str());
+        let _reply_to_event_id = msg.metadata.get("matrix_reply_to").and_then(|v| v.as_str());
 
         // In a full implementation, this would use matrix-sdk to:
         // 1. Get the room by ID
@@ -181,7 +190,8 @@ impl Channel for MatrixChannel {
             ChannelError::Connection {
                 platform: "matrix".to_string(),
                 message: "Incoming message channel closed".to_string(),
-            }.into()
+            }
+            .into()
         })
     }
 
@@ -197,14 +207,16 @@ impl Channel for MatrixChannel {
             return Err(ChannelError::Config {
                 platform: "matrix".to_string(),
                 message: "Matrix homeserver URL is required".to_string(),
-            }.into());
+            }
+            .into());
         }
 
         if self.config.user_id.is_empty() {
             return Err(ChannelError::Config {
                 platform: "matrix".to_string(),
                 message: "Matrix user_id is required".to_string(),
-            }.into());
+            }
+            .into());
         }
 
         // Validate authentication
@@ -212,18 +224,19 @@ impl Channel for MatrixChannel {
             return Err(ChannelError::Config {
                 platform: "matrix".to_string(),
                 message: "Either access_token or password must be provided".to_string(),
-            }.into());
+            }
+            .into());
         }
 
         // Ensure data directory exists
         let data_dir = self.data_dir();
         if !data_dir.exists() {
-            tokio::fs::create_dir_all(&data_dir).await.map_err(|e| {
-                ChannelError::Config {
+            tokio::fs::create_dir_all(&data_dir)
+                .await
+                .map_err(|e| ChannelError::Config {
                     platform: "matrix".to_string(),
                     message: format!("Failed to create data directory: {}", e),
-                }
-            })?;
+                })?;
         }
 
         // In a full implementation, this would:
@@ -275,7 +288,8 @@ impl MatrixChannel {
             return Err(ChannelError::Connection {
                 platform: "matrix".to_string(),
                 message: "Not connected".to_string(),
-            }.into());
+            }
+            .into());
         }
 
         // In a full implementation, this would use matrix_sdk to:
@@ -292,7 +306,8 @@ impl MatrixChannel {
             return Err(ChannelError::Connection {
                 platform: "matrix".to_string(),
                 message: "Not connected".to_string(),
-            }.into());
+            }
+            .into());
         }
 
         // In a full implementation, this would:
@@ -342,7 +357,12 @@ impl MatrixChannel {
     /// * `room_id` - The target room
     /// * `file_path` - Path to the file
     /// * `filename` - Optional display name for the file
-    pub async fn send_file(&self, room_id: &str, file_path: &str, filename: Option<&str>) -> Result<()> {
+    pub async fn send_file(
+        &self,
+        room_id: &str,
+        file_path: &str,
+        filename: Option<&str>,
+    ) -> Result<()> {
         // Apply rate limiting
         self.rate_limiter.until_ready().await;
 
@@ -361,7 +381,8 @@ impl MatrixChannel {
             return Err(ChannelError::Connection {
                 platform: "matrix".to_string(),
                 message: "Not connected".to_string(),
-            }.into());
+            }
+            .into());
         }
 
         // In a full implementation, this would:
@@ -391,7 +412,12 @@ impl MatrixChannel {
     /// * `room_id` - The room containing the message
     /// * `event_id` - The event ID to redact
     /// * `reason` - Optional reason for redaction
-    pub async fn redact_message(&self, room_id: &str, event_id: &str, reason: Option<&str>) -> Result<()> {
+    pub async fn redact_message(
+        &self,
+        room_id: &str,
+        event_id: &str,
+        reason: Option<&str>,
+    ) -> Result<()> {
         // Apply rate limiting
         self.rate_limiter.until_ready().await;
 
@@ -438,7 +464,10 @@ mod tests {
             password: None,
             device_id: None,
             data_dir: "./data/matrix".to_string(),
-            allowlist: vec!["@alice:matrix.org".to_string(), "@bob:matrix.org".to_string()],
+            allowlist: vec![
+                "@alice:matrix.org".to_string(),
+                "@bob:matrix.org".to_string(),
+            ],
             room_allowlist: vec![],
             auto_join_rooms: true,
             enable_encryption: true,
@@ -481,7 +510,10 @@ mod tests {
             device_id: None,
             data_dir: "./data/matrix".to_string(),
             allowlist: vec![],
-            room_allowlist: vec!["!room1:matrix.org".to_string(), "!room2:matrix.org".to_string()],
+            room_allowlist: vec![
+                "!room1:matrix.org".to_string(),
+                "!room2:matrix.org".to_string(),
+            ],
             auto_join_rooms: true,
             enable_encryption: true,
             rate_limit_per_second: 10,

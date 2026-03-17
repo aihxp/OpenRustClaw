@@ -119,9 +119,15 @@ impl fmt::Display for DeepSeekError {
             DeepSeekError::Authentication { message } => {
                 write!(f, "Authentication failed: {message}")
             }
-            DeepSeekError::RateLimit { retry_after, message } => {
+            DeepSeekError::RateLimit {
+                retry_after,
+                message,
+            } => {
                 if let Some(duration) = retry_after {
-                    write!(f, "Rate limit exceeded (retry after {duration:?}): {message}")
+                    write!(
+                        f,
+                        "Rate limit exceeded (retry after {duration:?}): {message}"
+                    )
                 } else {
                     write!(f, "Rate limit exceeded: {message}")
                 }
@@ -171,7 +177,10 @@ impl fmt::Display for DeepSeekError {
             DeepSeekError::Timeout { operation } => {
                 write!(f, "Timeout during {operation}")
             }
-            DeepSeekError::RetryExhausted { attempts, last_error } => {
+            DeepSeekError::RetryExhausted {
+                attempts,
+                last_error,
+            } => {
                 write!(f, "Retry exhausted after {attempts} attempts: {last_error}")
             }
             DeepSeekError::NotFound { resource, id } => {

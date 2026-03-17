@@ -3,8 +3,9 @@
 use anyhow::{Context, Result};
 use std::sync::Arc;
 use tokio::signal;
-use tracing::{info, warn, error};
+use tracing::{error, info, warn};
 
+use openrustclaw_channels::{ChannelFactory, ChannelType, parse_channels_list};
 use openrustclaw_core::config::AppConfig;
 use openrustclaw_core::traits::Channel;
 use openrustclaw_db::{init_pool, run_migrations};
@@ -12,28 +13,27 @@ use openrustclaw_gateway::server::{GatewayServer, GatewayState};
 use openrustclaw_gateway::sessions::SessionManager;
 use openrustclaw_langbridge::sidecar::SidecarManager;
 use openrustclaw_security::OriginValidator;
-use openrustclaw_channels::{ChannelFactory, ChannelType, parse_channels_list};
 
 /// Run the start command - load config, init DB, start sidecar, start gateway.
 pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
     // Initialize tracing
     tracing_subscriber::fmt::init();
-    
+
     info!("Starting OpenRustClaw...");
-    
+
     // Load configuration
     let mut config = AppConfig::load_from(config_path)
         .with_context(|| format!("Failed to load config from {}", config_path))?;
-    
+
     info!(config_path = %config_path, "Configuration loaded");
 
     // Parse and enable channels from CLI argument
     if let Some(channels_str) = channels {
         let channel_types = parse_channels_list(channels_str)
             .map_err(|e| anyhow::anyhow!("Invalid channels argument: {}", e))?;
-        
+
         info!(channels = %channels_str, "Enabling channels from CLI");
-        
+
         // Enable specified channels in config
         for channel_type in &channel_types {
             match channel_type {
@@ -71,40 +71,47 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
                 }
                 _ => {
                     // Other channels not yet fully implemented in CLI
-                    info!("Channel {:?} not yet fully implemented in CLI", channel_type);
+                    info!(
+                        "Channel {:?} not yet fully implemented in CLI",
+                        channel_type
+                    );
                 }
             }
         }
     }
-    
+
     // Ensure data directory exists
     let db_path = config.database.url.replace("sqlite://", "");
     if let Some(parent) = std::path::Path::new(&db_path).parent() {
-        tokio::fs::create_dir_all(parent).await
+        tokio::fs::create_dir_all(parent)
+            .await
             .with_context(|| format!("Failed to create data directory: {:?}", parent))?;
     }
-    
+
     // Initialize database pool
     let pool = init_pool(&config.database.url, config.database.max_connections)
         .await
         .context("Failed to initialize database pool")?;
-    
+
     info!(url = %config.database.url, "Database pool initialized");
-    
+
     // Run migrations
-    run_migrations(&pool).await.context("Failed to run database migrations")?;
-    
+    run_migrations(&pool)
+        .await
+        .context("Failed to run database migrations")?;
+
     // Start Python sidecar if auto_start is enabled
     let mut sidecar: Option<SidecarManager> = None;
     if config.sidecar.auto_start {
-        let mut manager = SidecarManager::new(
-            config.sidecar.python_path.clone(),
-            config.sidecar.grpc_port,
-        );
-        
+        let mut manager =
+            SidecarManager::new(config.sidecar.python_path.clone(), config.sidecar.grpc_port);
+
         match manager.start().await {
             Ok(()) => {
-                info!(grpc_port = config.sidecar.grpc_port, "Python sidecar started");
+                info!(
+                    grpc_port = config.sidecar.grpc_port,
+                    "Python sidecar started"
+                );
                 sidecar = Some(manager);
             }
             Err(e) => {
@@ -115,36 +122,31 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
             }
         }
     }
-    
+
     // Create session manager
     let session_manager = Arc::new(SessionManager::new());
-    
+
     // Create origin validator
-    let origin_validator = Arc::new(OriginValidator::new(
-        config.gateway.allowed_origins.clone(),
-    ));
-    
+    let origin_validator = Arc::new(OriginValidator::new(config.gateway.allowed_origins.clone()));
+
     // Build gateway state
     let gateway_state = GatewayState {
         session_manager,
         origin_validator,
         require_auth: config.security.require_auth,
     };
-    
+
     // Create and start gateway server
-    let gateway = GatewayServer::new(
-        config.gateway.host.clone(),
-        config.gateway.port,
-    );
-    
+    let gateway = GatewayServer::new(config.gateway.host.clone(), config.gateway.port);
+
     let app = gateway.router(gateway_state);
     let addr = gateway.addr();
-    
+
     info!(addr = %addr, "Starting gateway server");
-    
+
     // Initialize enabled channels
     let mut channel_tasks: Vec<tokio::task::JoinHandle<()>> = Vec::new();
-    
+
     // Start Telegram if enabled
     if config.channels.telegram.enabled {
         if config.channels.telegram.token.is_empty() {
@@ -173,7 +175,7 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
             channel_tasks.push(handle);
         }
     }
-    
+
     // Start Discord if enabled
     if config.channels.discord.enabled {
         if config.channels.discord.token.is_empty() {
@@ -202,7 +204,7 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
             channel_tasks.push(handle);
         }
     }
-    
+
     // Start Slack if enabled
     if config.channels.slack.enabled {
         if config.channels.slack.token.is_empty() {
@@ -231,7 +233,7 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
             channel_tasks.push(handle);
         }
     }
-    
+
     // Create shutdown signal handler
     let shutdown = async {
         let mut sigterm = match signal::unix::signal(signal::unix::SignalKind::terminate()) {
@@ -248,22 +250,26 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
                 return;
             }
         };
-        
+
         tokio::select! {
             _ = sigterm.recv() => info!("Received SIGTERM, shutting down..."),
             _ = sigint.recv() => info!("Received SIGINT, shutting down..."),
         }
     };
-    
+
     // Start server with graceful shutdown
-    let listener = tokio::net::TcpListener::bind(&addr).await
+    let listener = tokio::net::TcpListener::bind(&addr)
+        .await
         .with_context(|| format!("Failed to bind to {}", addr))?;
-    
+
     info!("OpenRustClaw is ready!");
     info!("Gateway: http://{}", addr);
     info!("WebSocket: ws://{}/ws", addr);
     if sidecar.is_some() {
-        info!("Sidecar gRPC: http://127.0.0.1:{}", config.sidecar.grpc_port);
+        info!(
+            "Sidecar gRPC: http://127.0.0.1:{}",
+            config.sidecar.grpc_port
+        );
     }
     if config.channels.telegram.enabled {
         info!("Telegram: enabled");
@@ -274,7 +280,7 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
     if config.channels.slack.enabled {
         info!("Slack: enabled");
     }
-    
+
     // Run server with graceful shutdown
     tokio::select! {
         result = axum::serve(listener, app) => {
@@ -284,13 +290,13 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
             info!("Shutdown signal received, stopping server...");
         }
     }
-    
+
     // Cleanup channel tasks
     info!("Stopping channel tasks...");
     for task in channel_tasks {
         task.abort();
     }
-    
+
     // Cleanup
     if let Some(mut sidecar) = sidecar {
         info!("Stopping Python sidecar...");
@@ -298,7 +304,7 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
             error!(error = %e, "Error stopping sidecar");
         }
     }
-    
+
     info!("OpenRustClaw shutdown complete");
     Ok(())
 }
@@ -306,14 +312,14 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
 /// Run MCP server (stdio transport).
 pub async fn run_mcp_server(_transport: &str) -> Result<()> {
     info!("Starting MCP server (stdio transport)");
-    
+
     // For now, we just print a message that MCP server is available
     // Full implementation would set up stdio transport and handle JSON-RPC
     println!("MCP server is starting...");
     println!("Note: Full MCP server implementation requires integration with the McpServer");
-    
+
     // TODO: Implement full MCP server with stdio transport
     // The transport needs to be adapted from the client-side StdioTransport
-    
+
     Ok(())
 }

@@ -9,7 +9,10 @@
 use crate::adapters::ToolSource;
 use crate::cache::ToolCache;
 use crate::error::Result;
-use crate::{DEFAULT_CACHE_TTL, DEFAULT_HELP_TOKEN_COST_MAX, DEFAULT_HELP_TOKEN_COST_MIN, DEFAULT_LIST_TOKEN_COST};
+use crate::{
+    DEFAULT_CACHE_TTL, DEFAULT_HELP_TOKEN_COST_MAX, DEFAULT_HELP_TOKEN_COST_MIN,
+    DEFAULT_LIST_TOKEN_COST,
+};
 use serde::{Deserialize, Serialize};
 
 use std::time::Duration;
@@ -38,7 +41,7 @@ impl ToolDiscovery {
     /// suitable for presenting to an LLM as a tool catalog.
     pub async fn list_tools(&self, source: &ToolSource) -> Result<Vec<ToolSummary>> {
         let cache_key = format!("list:{}", source.cache_key());
-        
+
         self.cache
             .get_or_insert(&cache_key, || async {
                 let adapter = source.create_adapter().await?;
@@ -54,7 +57,7 @@ impl ToolDiscovery {
     /// including parameter descriptions and usage examples.
     pub async fn get_help(&self, source: &ToolSource, tool_name: &str) -> Result<ToolHelp> {
         let cache_key = format!("help:{}:{}", source.cache_key(), tool_name);
-        
+
         self.cache
             .get_or_insert_tool_help(&cache_key, || async {
                 let adapter = source.create_adapter().await?;
@@ -64,7 +67,12 @@ impl ToolDiscovery {
     }
 
     /// Execute a tool with the given arguments
-    pub async fn execute(&self, source: &ToolSource, tool_name: &str, args: serde_json::Value) -> Result<String> {
+    pub async fn execute(
+        &self,
+        source: &ToolSource,
+        tool_name: &str,
+        args: serde_json::Value,
+    ) -> Result<String> {
         let adapter = source.create_adapter().await?;
         adapter.execute_tool(tool_name, args).await
     }
@@ -118,7 +126,7 @@ impl ToolSummary {
         let description = description.into();
         // Estimate token cost: ~4 chars per token on average
         let token_cost = (name.len() + description.len()) / 4;
-        
+
         Self {
             name,
             description,
@@ -166,15 +174,15 @@ impl ToolHelp {
         let name = name.into();
         let description = description.into();
         let usage = usage.into();
-        
+
         // Estimate token cost
-        let param_tokens: usize = parameters.iter().map(|p| {
-            (p.name.len() + p.description.len() + p.type_name.len()) / 4
-        }).sum();
+        let param_tokens: usize = parameters
+            .iter()
+            .map(|p| (p.name.len() + p.description.len() + p.type_name.len()) / 4)
+            .sum();
         let token_cost = ((name.len() + description.len() + usage.len()) / 4 + param_tokens)
-            .max(DEFAULT_HELP_TOKEN_COST_MIN)
-            .min(DEFAULT_HELP_TOKEN_COST_MAX);
-        
+            .clamp(DEFAULT_HELP_TOKEN_COST_MIN, DEFAULT_HELP_TOKEN_COST_MAX);
+
         Self {
             name,
             description,
@@ -191,12 +199,18 @@ impl ToolHelp {
         } else {
             self.parameters
                 .iter()
-                .map(|p| format!("{} ({}){}", p.name, p.type_name, 
-                    if p.required { "" } else { " [optional]" }))
+                .map(|p| {
+                    format!(
+                        "{} ({}){}",
+                        p.name,
+                        p.type_name,
+                        if p.required { "" } else { " [optional]" }
+                    )
+                })
                 .collect::<Vec<_>>()
                 .join(", ")
         };
-        
+
         format!(
             "Tool: {}\nDescription: {}\nUsage: {}\nParameters: {}",
             self.name, self.description, self.usage, params
@@ -267,7 +281,7 @@ mod tests {
         assert_eq!(summary.name, "search");
         assert_eq!(summary.description, "Search for documents");
         assert!(summary.token_cost >= DEFAULT_LIST_TOKEN_COST);
-        
+
         let compact = summary.to_compact_string();
         assert!(compact.contains("search"));
         assert!(compact.contains("Search for documents"));
@@ -277,7 +291,7 @@ mod tests {
     fn test_param_help() {
         let param = ParamHelp::new("query", "Search query", "string", true)
             .with_example("rust programming");
-        
+
         assert_eq!(param.name, "query");
         assert_eq!(param.example, Some("rust programming".to_string()));
         assert!(param.required);
@@ -290,17 +304,17 @@ mod tests {
             ParamHelp::new("limit", "Max results", "number", false)
                 .with_default(serde_json::json!(10)),
         ];
-        
+
         let help = ToolHelp::new(
             "search",
             "Search for documents",
             "search --query <query> [--limit <n>]",
             params,
         );
-        
+
         assert_eq!(help.name, "search");
         assert_eq!(help.parameters.len(), 2);
-        
+
         let compact = help.to_compact_string();
         assert!(compact.contains("search"));
         assert!(compact.contains("query"));

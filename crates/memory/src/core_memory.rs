@@ -242,7 +242,8 @@ mod tests {
     #[test]
     fn new_entry_long_value_has_larger_token_count() {
         let short = CoreMemoryManager::new_entry("k", "hi", 1.0);
-        let long = CoreMemoryManager::new_entry("k", "this is a much longer value with many words", 1.0);
+        let long =
+            CoreMemoryManager::new_entry("k", "this is a much longer value with many words", 1.0);
         assert!(
             long.token_count > short.token_count,
             "Longer values should produce higher token counts"

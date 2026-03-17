@@ -152,23 +152,22 @@ mod client;
 mod error;
 
 pub mod chat;
+pub mod embeddings;
 pub mod generate;
 pub mod models;
-pub mod embeddings;
 pub mod types;
 
-pub use client::{OllamaClient, ClientConfig, DEFAULT_BASE_URL};
+pub use client::{ClientConfig, DEFAULT_BASE_URL, OllamaClient};
 pub use error::{OllamaError, Result};
 
 // Re-export commonly used types
 pub use types::{
-    ChatMessage, ChatResponse, GenerateResponse, Role, Tool, ToolCall,
-    Function, FunctionCall, MessageRole, ModelInfo, ListModelsResponse,
-    PullStatus, PushStatus, ProgressStatus, EmbeddingResponse,
-    RunningModel, RunningModelsResponse, VersionResponse, FormatType,
-    KeepAlive, ModelDetails, CreateModelRequest, CreateModelStatus,
-    CopyModelRequest, DeleteModelRequest, ShowModelResponse, ShowModelRequest,
-    Options, ToolCallFunction, ImageInput, ToolResult,
+    ChatMessage, ChatResponse, CopyModelRequest, CreateModelRequest, CreateModelStatus,
+    DeleteModelRequest, EmbeddingResponse, FormatType, Function, FunctionCall, GenerateResponse,
+    ImageInput, KeepAlive, ListModelsResponse, MessageRole, ModelDetails, ModelInfo, Options,
+    ProgressStatus, PullStatus, PushStatus, Role, RunningModel, RunningModelsResponse,
+    ShowModelRequest, ShowModelResponse, Tool, ToolCall, ToolCallFunction, ToolResult,
+    VersionResponse,
 };
 
 pub use chat::{ChatRequest, ChatRequestBuilder};
@@ -176,19 +175,13 @@ pub use generate::{GenerateRequest, GenerateRequestBuilder};
 
 // Streaming types
 #[cfg(feature = "streaming")]
-pub use chat::{
-    ChatStream, ChatStreamChunk,
-};
+pub use chat::{ChatStream, ChatStreamChunk};
 
 #[cfg(feature = "streaming")]
-pub use generate::{
-    GenerateStream, GenerateStreamChunk,
-};
+pub use generate::{GenerateStream, GenerateStreamChunk};
 
 #[cfg(feature = "streaming")]
-pub use models::{
-    PullStream, PushStream, CreateModelStream,
-};
+pub use models::{CreateModelStream, PullStream, PushStream};
 
 /// The version of this crate.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

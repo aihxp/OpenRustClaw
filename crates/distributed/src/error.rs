@@ -80,7 +80,11 @@ pub type Result<T> = std::result::Result<T, DistributedError>;
 
 impl From<tonic::Status> for DistributedError {
     fn from(status: tonic::Status) -> Self {
-        DistributedError::Rpc(format!("gRPC error: {} - {}", status.code(), status.message()))
+        DistributedError::Rpc(format!(
+            "gRPC error: {} - {}",
+            status.code(),
+            status.message()
+        ))
     }
 }
 

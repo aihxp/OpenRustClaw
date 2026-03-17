@@ -26,7 +26,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Ok(response) => {
             println!("Model: {}", response.model);
             println!("Response: {}", response.content());
-            
+
             if let Some(eval_count) = response.eval_count {
                 println!("\nTokens generated: {}", eval_count);
             }

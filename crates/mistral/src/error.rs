@@ -113,9 +113,15 @@ impl fmt::Display for MistralError {
             MistralError::Authentication { message } => {
                 write!(f, "Authentication failed: {message}")
             }
-            MistralError::RateLimit { retry_after, message } => {
+            MistralError::RateLimit {
+                retry_after,
+                message,
+            } => {
                 if let Some(duration) = retry_after {
-                    write!(f, "Rate limit exceeded (retry after {duration:?}): {message}")
+                    write!(
+                        f,
+                        "Rate limit exceeded (retry after {duration:?}): {message}"
+                    )
                 } else {
                     write!(f, "Rate limit exceeded: {message}")
                 }
@@ -165,7 +171,10 @@ impl fmt::Display for MistralError {
             MistralError::Timeout { operation } => {
                 write!(f, "Timeout during {operation}")
             }
-            MistralError::RetryExhausted { attempts, last_error } => {
+            MistralError::RetryExhausted {
+                attempts,
+                last_error,
+            } => {
                 write!(f, "Retry exhausted after {attempts} attempts: {last_error}")
             }
             MistralError::NotFound { resource, id } => {

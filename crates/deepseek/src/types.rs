@@ -397,7 +397,9 @@ pub struct ChatResponse {
 impl ChatResponse {
     /// Get the content of the first choice.
     pub fn content(&self) -> Option<&str> {
-        self.choices.first().and_then(|c| c.message.content.as_deref())
+        self.choices
+            .first()
+            .and_then(|c| c.message.content.as_deref())
     }
 
     /// Get the message of the first choice.
@@ -630,14 +632,22 @@ mod tests {
         );
         assert_eq!(msg.role, Role::Assistant);
         assert_eq!(msg.content, Some("The answer is 42.".to_string()));
-        assert_eq!(msg.reasoning_content, Some("Let me think step by step...".to_string()));
+        assert_eq!(
+            msg.reasoning_content,
+            Some("Let me think step by step...".to_string())
+        );
     }
 
     #[test]
     fn test_function_builder() {
         let func = Function::builder("get_weather", "Get weather")
             .string_property("location", "City name", true)
-            .enum_property("unit", "Temperature unit", vec!["celsius", "fahrenheit"], false)
+            .enum_property(
+                "unit",
+                "Temperature unit",
+                vec!["celsius", "fahrenheit"],
+                false,
+            )
             .build();
 
         assert_eq!(func.name, "get_weather");
@@ -702,7 +712,10 @@ mod tests {
     #[test]
     fn test_model_as_str() {
         assert_eq!(DeepSeekModel::DeepSeekChat.as_str(), "deepseek-chat");
-        assert_eq!(DeepSeekModel::DeepSeekReasoner.as_str(), "deepseek-reasoner");
+        assert_eq!(
+            DeepSeekModel::DeepSeekReasoner.as_str(),
+            "deepseek-reasoner"
+        );
         assert_eq!(DeepSeekModel::DeepSeekCoder.as_str(), "deepseek-coder");
     }
 

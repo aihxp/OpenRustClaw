@@ -174,7 +174,10 @@ pub struct CompletionRequest {
 
 impl CompletionRequest {
     /// Create a new builder.
-    pub fn builder(model: impl Into<String>, prompt: impl Into<String>) -> CompletionRequestBuilder {
+    pub fn builder(
+        model: impl Into<String>,
+        prompt: impl Into<String>,
+    ) -> CompletionRequestBuilder {
         CompletionRequestBuilder::new(model, prompt)
     }
 

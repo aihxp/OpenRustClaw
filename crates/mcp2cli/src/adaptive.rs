@@ -24,16 +24,16 @@ use crate::discovery::ToolDiscovery;
 pub struct AdaptiveMcpRegistry {
     /// Native MCP clients
     native_clients: HashMap<String, McpClient>,
-    
+
     /// mcp2cli wrappers for efficient mode
     efficient_clients: HashMap<String, EfficientClient>,
-    
+
     /// Server configurations
     configs: Vec<McpServerEntry>,
-    
+
     /// Adaptive configuration
     config: AdaptiveConfig,
-    
+
     /// Usage statistics for auto mode
     stats: UsageStats,
 }
@@ -43,13 +43,13 @@ pub struct AdaptiveMcpRegistry {
 pub struct AdaptiveConfig {
     /// Mode selection strategy
     pub mode: AdaptiveMode,
-    
+
     /// Threshold for switching to efficient mode (number of tools)
     pub efficient_threshold: usize,
-    
+
     /// Whether to use TOON format for large responses
     pub use_toon: bool,
-    
+
     /// Cache TTL for tool discovery
     pub cache_ttl_secs: u64,
 }
@@ -70,10 +70,10 @@ impl Default for AdaptiveConfig {
 pub enum AdaptiveMode {
     /// Always use native MCP
     Native,
-    
+
     /// Always use mcp2cli (efficient mode)
     Efficient,
-    
+
     /// Automatically choose based on usage patterns
     Auto,
 }
@@ -98,7 +98,7 @@ impl AdaptiveMcpRegistry {
     pub fn new(configs: Vec<McpServerEntry>) -> Self {
         Self::with_config(configs, AdaptiveConfig::default())
     }
-    
+
     /// Create new adaptive registry with custom config
     pub fn with_config(configs: Vec<McpServerEntry>, config: AdaptiveConfig) -> Self {
         info!(
@@ -106,7 +106,7 @@ impl AdaptiveMcpRegistry {
             threshold = config.efficient_threshold,
             "Creating adaptive MCP registry"
         );
-        
+
         Self {
             native_clients: HashMap::new(),
             efficient_clients: HashMap::new(),
@@ -115,52 +115,52 @@ impl AdaptiveMcpRegistry {
             stats: UsageStats::default(),
         }
     }
-    
+
     /// Connect to all configured MCP servers
     #[instrument(skip(self))]
     pub async fn connect_all(&mut self) -> Result<()> {
         // Clone configs to avoid borrow issues
         let configs: Vec<McpServerEntry> = self.configs.clone();
-        
+
         for config in &configs {
             if !config.enabled {
                 continue;
             }
-            
+
             match self.connect_server(config).await {
                 Ok(()) => info!(server = %config.name, "Connected to MCP server"),
                 Err(e) => warn!(server = %config.name, error = %e, "Failed to connect"),
             }
         }
-        
+
         Ok(())
     }
-    
+
     /// Connect to a single server with automatic mode selection
     async fn connect_server(&mut self, config: &McpServerEntry) -> Result<()> {
         let args: Vec<&str> = config.args.iter().map(|s| s.as_str()).collect();
-        
+
         // Always connect native first to get tool count
         let mut native_client = McpClient::connect(&config.name, &config.command, &args).await?;
-        
+
         // Quick discovery to count tools
         let tools = native_client.discover_tools().await?;
         let tool_count = tools.len();
-        
+
         // Decide which mode to use
         let use_efficient = self.should_use_efficient(tool_count);
-        
+
         if use_efficient {
             info!(
                 server = %config.name,
                 tool_count = tool_count,
                 "Using efficient mode (mcp2cli)"
             );
-            
+
             // Create mcp2cli wrapper
             let source = ToolSource::mcp_stdio(&config.command);
             let discovery = ToolDiscovery::new();
-            
+
             self.efficient_clients.insert(
                 config.name.clone(),
                 EfficientClient {
@@ -169,23 +169,25 @@ impl AdaptiveMcpRegistry {
                     tool_count,
                 },
             );
-            
+
             // Keep native client as fallback
-            self.native_clients.insert(config.name.clone(), native_client);
+            self.native_clients
+                .insert(config.name.clone(), native_client);
         } else {
             info!(
                 server = %config.name,
                 tool_count = tool_count,
                 "Using native mode"
             );
-            self.native_clients.insert(config.name.clone(), native_client);
+            self.native_clients
+                .insert(config.name.clone(), native_client);
         }
-        
+
         self.stats.total_tools_discovered += tool_count;
-        
+
         Ok(())
     }
-    
+
     /// Determine if we should use efficient mode for this server
     fn should_use_efficient(&self, tool_count: usize) -> bool {
         match self.config.mode {
@@ -200,14 +202,14 @@ impl AdaptiveMcpRegistry {
             }
         }
     }
-    
+
     /// Discover all tools from all connected servers
-    /// 
+    ///
     /// In efficient mode, this returns compact summaries instead of full schemas
     #[instrument(skip(self))]
     pub async fn discover_all_tools(&mut self) -> Result<Vec<McpToolDef>> {
         let mut all_tools = Vec::new();
-        
+
         // For each server, use the appropriate discovery method
         for (name, client) in &mut self.native_clients {
             if let Some(efficient) = self.efficient_clients.get(name) {
@@ -231,7 +233,7 @@ impl AdaptiveMcpRegistry {
                     }
                 }
             }
-            
+
             // Native discovery (fallback or native mode)
             match client.discover_tools().await {
                 Ok(tools) => {
@@ -243,19 +245,23 @@ impl AdaptiveMcpRegistry {
                 }
             }
         }
-        
+
         Ok(all_tools)
     }
-    
+
     /// Get detailed tool schema (used when model wants to call a tool)
-    /// 
+    ///
     /// In efficient mode, this fetches the schema on-demand
     #[instrument(skip(self))]
     pub async fn get_tool_schema(&self, server_name: &str, tool_name: &str) -> Result<Value> {
         // Check efficient clients first
         let efficient_result = if let Some(efficient) = self.efficient_clients.get(server_name) {
             // Fetch help on-demand
-            match efficient.discovery.get_help(&efficient.source, tool_name).await {
+            match efficient
+                .discovery
+                .get_help(&efficient.source, tool_name)
+                .await
+            {
                 Ok(help) => {
                     debug!(tool = %tool_name, "Fetched schema on-demand (efficient)");
                     Some(Ok(help_to_schema(&help)))
@@ -268,26 +274,26 @@ impl AdaptiveMcpRegistry {
         } else {
             None
         };
-        
+
         if let Some(result) = efficient_result {
             return result;
         }
-        
+
         // Fallback to native client
         if self.native_clients.contains_key(server_name) {
             // In native mode, we need to find the tool in the client's discovered tools
             // This is a simplified version - full impl would cache this
             return Ok(minimal_schema());
         }
-        
+
         Err(Error::Mcp(McpError::ToolNotFound {
             server: server_name.to_string(),
             tool: tool_name.to_string(),
         }))
     }
-    
+
     /// Execute a tool call
-    /// 
+    ///
     /// Automatically uses the appropriate client (native or efficient)
     #[instrument(skip(self, args))]
     pub async fn execute_tool(
@@ -299,15 +305,19 @@ impl AdaptiveMcpRegistry {
         // Track usage for auto mode
         self.stats.tools_actually_used.insert(tool_name.to_string());
         self.stats.conversation_turns += 1;
-        
+
         // Check if we have an efficient client for this server
         let efficient_result = if let Some(efficient) = self.efficient_clients.get(server_name) {
             // Clone args for efficient attempt
             let args_clone = args.clone();
-            match efficient.discovery.execute(&efficient.source, tool_name, args_clone).await {
+            match efficient
+                .discovery
+                .execute(&efficient.source, tool_name, args_clone)
+                .await
+            {
                 Ok(result) => {
                     debug!(tool = %tool_name, "Executed via efficient mode");
-                    
+
                     // Optionally convert to TOON
                     let content = if self.config.use_toon {
                         if let Ok(json) = serde_json::from_str::<Value>(&result) {
@@ -318,7 +328,7 @@ impl AdaptiveMcpRegistry {
                     } else {
                         result
                     };
-                    
+
                     Some(Ok(ToolOutput {
                         tool_call_id: format!("{}:{}", server_name, tool_name),
                         content,
@@ -333,12 +343,12 @@ impl AdaptiveMcpRegistry {
         } else {
             None
         };
-        
+
         // Return efficient result if successful
         if let Some(result) = efficient_result {
             return result;
         }
-        
+
         // Fallback to native
         if let Some(client) = self.native_clients.get_mut(server_name) {
             debug!(tool = %tool_name, "Executing via native mode");
@@ -350,7 +360,7 @@ impl AdaptiveMcpRegistry {
             }))
         }
     }
-    
+
     /// Get current mode statistics
     pub fn stats(&self) -> AdaptiveStats {
         AdaptiveStats {
@@ -362,23 +372,25 @@ impl AdaptiveMcpRegistry {
             estimated_tokens_saved: self.estimate_token_savings(),
         }
     }
-    
+
     /// Estimate tokens saved vs native MCP
     fn estimate_token_savings(&self) -> usize {
-        let efficient_count = self.efficient_clients.values()
+        let efficient_count = self
+            .efficient_clients
+            .values()
             .map(|c| c.tool_count)
             .sum::<usize>();
-        
+
         // Native: ~121 tokens per tool per turn
         // Efficient: ~16 tokens per tool (list) + ~120 per used tool (help)
         let native_cost = efficient_count * 121 * self.stats.conversation_turns.max(1);
-        let efficient_cost = efficient_count * 16 
-            + self.stats.tools_actually_used.len() * 120 
+        let efficient_cost = efficient_count * 16
+            + self.stats.tools_actually_used.len() * 120
             + self.stats.conversation_turns * 67; // system prompt
-        
+
         native_cost.saturating_sub(efficient_cost)
     }
-    
+
     /// Shut down all connections
     pub async fn shutdown_all(&mut self) -> Result<()> {
         for (_, client) in self.native_clients.iter_mut() {
@@ -386,7 +398,7 @@ impl AdaptiveMcpRegistry {
         }
         self.native_clients.clear();
         self.efficient_clients.clear();
-        
+
         Ok(())
     }
 }
@@ -412,8 +424,10 @@ fn minimal_schema() -> Value {
 
 fn help_to_schema(help: &crate::discovery::ToolHelp) -> Value {
     use std::collections::HashMap;
-    
-    let properties: HashMap<String, Value> = help.parameters.iter()
+
+    let properties: HashMap<String, Value> = help
+        .parameters
+        .iter()
         .map(|p| {
             let schema = serde_json::json!({
                 "type": &p.type_name,
@@ -422,12 +436,14 @@ fn help_to_schema(help: &crate::discovery::ToolHelp) -> Value {
             (p.name.clone(), schema)
         })
         .collect();
-    
-    let required: Vec<String> = help.parameters.iter()
+
+    let required: Vec<String> = help
+        .parameters
+        .iter()
         .filter(|p| p.required)
         .map(|p| p.name.clone())
         .collect();
-    
+
     serde_json::json!({
         "type": "object",
         "description": &help.description,
@@ -447,22 +463,22 @@ impl AdaptiveConfigBuilder {
             config: AdaptiveConfig::default(),
         }
     }
-    
+
     pub fn mode(mut self, mode: AdaptiveMode) -> Self {
         self.config.mode = mode;
         self
     }
-    
+
     pub fn efficient_threshold(mut self, threshold: usize) -> Self {
         self.config.efficient_threshold = threshold;
         self
     }
-    
+
     pub fn use_toon(mut self, use_toon: bool) -> Self {
         self.config.use_toon = use_toon;
         self
     }
-    
+
     pub fn build(self) -> AdaptiveConfig {
         self.config
     }

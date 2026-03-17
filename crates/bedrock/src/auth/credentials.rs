@@ -28,10 +28,7 @@ pub struct AwsCredentials {
 
 impl AwsCredentials {
     /// Create new AWS credentials.
-    pub fn new(
-        access_key_id: impl Into<String>,
-        secret_access_key: impl Into<String>,
-    ) -> Self {
+    pub fn new(access_key_id: impl Into<String>, secret_access_key: impl Into<String>) -> Self {
         Self {
             access_key_id: access_key_id.into(),
             secret_access_key: secret_access_key.into(),
@@ -215,9 +212,7 @@ impl ProfileCredentialProvider {
         env::var("AWS_CONFIG_FILE")
             .ok()
             .map(PathBuf::from)
-            .or_else(|| {
-                home::home_dir().map(|home| home.join(".aws").join("config"))
-            })
+            .or_else(|| home::home_dir().map(|home| home.join(".aws").join("config")))
     }
 
     /// Get the default AWS credentials file path.
@@ -225,18 +220,18 @@ impl ProfileCredentialProvider {
         env::var("AWS_SHARED_CREDENTIALS_FILE")
             .ok()
             .map(PathBuf::from)
-            .or_else(|| {
-                home::home_dir().map(|home| home.join(".aws").join("credentials"))
-            })
+            .or_else(|| home::home_dir().map(|home| home.join(".aws").join("credentials")))
     }
 
     /// Parse an AWS config file.
     #[allow(dead_code)]
-    fn parse_config_file(&self, path: &PathBuf) -> Result<HashMap<String, HashMap<String, String>>> {
-        let content = fs::read_to_string(path)
-            .map_err(|e| BedrockError::Credential {
-                message: format!("Failed to read config file: {e}"),
-            })?;
+    fn parse_config_file(
+        &self,
+        path: &PathBuf,
+    ) -> Result<HashMap<String, HashMap<String, String>>> {
+        let content = fs::read_to_string(path).map_err(|e| BedrockError::Credential {
+            message: format!("Failed to read config file: {e}"),
+        })?;
 
         let mut profiles = HashMap::new();
         let mut current_profile: Option<String> = None;
@@ -258,8 +253,8 @@ impl ProfileCredentialProvider {
                 }
 
                 let profile_name = line[1..line.len() - 1].trim();
-                let profile_name = if profile_name.starts_with("profile ") {
-                    profile_name[8..].to_string()
+                let profile_name = if let Some(stripped) = profile_name.strip_prefix("profile ") {
+                    stripped.to_string()
                 } else {
                     profile_name.to_string()
                 };
@@ -286,10 +281,9 @@ impl ProfileCredentialProvider {
         &self,
         path: &PathBuf,
     ) -> Result<HashMap<String, HashMap<String, String>>> {
-        let content = fs::read_to_string(path)
-            .map_err(|e| BedrockError::Credential {
-                message: format!("Failed to read credentials file: {e}"),
-            })?;
+        let content = fs::read_to_string(path).map_err(|e| BedrockError::Credential {
+            message: format!("Failed to read credentials file: {e}"),
+        })?;
 
         let mut profiles = HashMap::new();
         let mut current_profile: Option<String> = None;
@@ -337,24 +331,31 @@ impl CredentialProvider for ProfileCredentialProvider {
         let credentials_path = self
             .credentials_path
             .clone()
-            .or_else(|| Self::default_credentials_path())
+            .or_else(Self::default_credentials_path)
             .ok_or_else(|| BedrockError::Credential {
                 message: "Could not determine credentials file path".to_string(),
             })?;
 
         let profiles = self.parse_credentials_file(&credentials_path)?;
 
-        let credentials = profiles.get(&self.profile_name).ok_or_else(|| {
-            BedrockError::Credential {
-                message: format!("Profile '{}' not found in credentials file", self.profile_name),
-            }
-        })?;
+        let credentials =
+            profiles
+                .get(&self.profile_name)
+                .ok_or_else(|| BedrockError::Credential {
+                    message: format!(
+                        "Profile '{}' not found in credentials file",
+                        self.profile_name
+                    ),
+                })?;
 
         let access_key_id = credentials
             .get("aws_access_key_id")
             .cloned()
             .ok_or_else(|| BedrockError::Credential {
-                message: format!("aws_access_key_id not found for profile '{}'", self.profile_name),
+                message: format!(
+                    "aws_access_key_id not found for profile '{}'",
+                    self.profile_name
+                ),
             })?;
 
         let secret_access_key = credentials
@@ -383,7 +384,7 @@ impl CredentialProvider for ProfileCredentialProvider {
         let credentials_path = self
             .credentials_path
             .clone()
-            .or_else(|| Self::default_credentials_path());
+            .or_else(Self::default_credentials_path);
 
         credentials_path.map(|p| p.exists()).unwrap_or(false)
     }
@@ -419,38 +420,43 @@ impl CredentialProvider for ContainerCredentialProvider {
         trace!("Fetching credentials from container endpoint");
 
         let client = reqwest::Client::new();
-        let response = client
-            .get(&endpoint)
-            .send()
-            .await
-            .map_err(|e| BedrockError::Credential {
-                message: format!("Failed to fetch container credentials: {e}"),
-            })?;
+        let response =
+            client
+                .get(&endpoint)
+                .send()
+                .await
+                .map_err(|e| BedrockError::Credential {
+                    message: format!("Failed to fetch container credentials: {e}"),
+                })?;
 
-        let creds_json: serde_json::Value = response.json().await.map_err(|e| {
-            BedrockError::Credential {
-                message: format!("Failed to parse container credentials: {e}"),
-            }
-        })?;
+        let creds_json: serde_json::Value =
+            response
+                .json()
+                .await
+                .map_err(|e| BedrockError::Credential {
+                    message: format!("Failed to parse container credentials: {e}"),
+                })?;
 
-        let access_key_id = creds_json["AccessKeyId"]
-            .as_str()
-            .ok_or_else(|| BedrockError::Credential {
-                message: "AccessKeyId not found in container credentials".to_string(),
-            })?;
+        let access_key_id =
+            creds_json["AccessKeyId"]
+                .as_str()
+                .ok_or_else(|| BedrockError::Credential {
+                    message: "AccessKeyId not found in container credentials".to_string(),
+                })?;
 
-        let secret_access_key = creds_json["SecretAccessKey"]
-            .as_str()
-            .ok_or_else(|| BedrockError::Credential {
-                message: "SecretAccessKey not found in container credentials".to_string(),
-            })?;
+        let secret_access_key =
+            creds_json["SecretAccessKey"]
+                .as_str()
+                .ok_or_else(|| BedrockError::Credential {
+                    message: "SecretAccessKey not found in container credentials".to_string(),
+                })?;
 
         let session_token = creds_json["Token"].as_str().map(|s| s.to_string());
 
         let expires_at = creds_json["Expiration"]
             .as_str()
             .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
-            .map(|dt| SystemTime::from(dt));
+            .map(SystemTime::from);
 
         debug!("Loaded credentials from container endpoint");
 
@@ -515,9 +521,12 @@ impl InstanceMetadataCredentialProvider {
                 message: format!("Failed to get IMDSv2 token: {e}"),
             })?;
 
-        let token = response.text().await.map_err(|e| BedrockError::Credential {
-            message: format!("Failed to read IMDSv2 token: {e}"),
-        })?;
+        let token = response
+            .text()
+            .await
+            .map_err(|e| BedrockError::Credential {
+                message: format!("Failed to read IMDSv2 token: {e}"),
+            })?;
 
         Ok(token)
     }
@@ -536,11 +545,10 @@ impl CredentialProvider for InstanceMetadataCredentialProvider {
 
         let client = reqwest::Client::new();
 
-        let mut request = client
-            .get(format!(
-                "{}/latest/meta-data/iam/security-credentials/",
-                self.endpoint
-            ));
+        let mut request = client.get(format!(
+            "{}/latest/meta-data/iam/security-credentials/",
+            self.endpoint
+        ));
 
         // Use IMDSv2 token if available
         let token = if self.version == ImdsVersion::V2 {
@@ -557,11 +565,12 @@ impl CredentialProvider for InstanceMetadataCredentialProvider {
             message: format!("Failed to fetch role name from IMDS: {e}"),
         })?;
 
-        let role_name = role_response.text().await.map_err(|e| {
-            BedrockError::Credential {
+        let role_name = role_response
+            .text()
+            .await
+            .map_err(|e| BedrockError::Credential {
                 message: format!("Failed to read role name from IMDS: {e}"),
-            }
-        })?;
+            })?;
 
         // Fetch credentials for the role
         let mut creds_request = client.get(format!(
@@ -573,36 +582,41 @@ impl CredentialProvider for InstanceMetadataCredentialProvider {
             creds_request = creds_request.header("X-aws-ec2-metadata-token", token);
         }
 
-        let creds_response = creds_request.send().await.map_err(|e| {
-            BedrockError::Credential {
+        let creds_response = creds_request
+            .send()
+            .await
+            .map_err(|e| BedrockError::Credential {
                 message: format!("Failed to fetch credentials from IMDS: {e}"),
-            }
-        })?;
-
-        let creds_json: serde_json::Value = creds_response.json().await.map_err(|e| {
-            BedrockError::Credential {
-                message: format!("Failed to parse IMDS credentials: {e}"),
-            }
-        })?;
-
-        let access_key_id = creds_json["AccessKeyId"]
-            .as_str()
-            .ok_or_else(|| BedrockError::Credential {
-                message: "AccessKeyId not found in IMDS credentials".to_string(),
             })?;
 
-        let secret_access_key = creds_json["SecretAccessKey"]
-            .as_str()
-            .ok_or_else(|| BedrockError::Credential {
-                message: "SecretAccessKey not found in IMDS credentials".to_string(),
-            })?;
+        let creds_json: serde_json::Value =
+            creds_response
+                .json()
+                .await
+                .map_err(|e| BedrockError::Credential {
+                    message: format!("Failed to parse IMDS credentials: {e}"),
+                })?;
+
+        let access_key_id =
+            creds_json["AccessKeyId"]
+                .as_str()
+                .ok_or_else(|| BedrockError::Credential {
+                    message: "AccessKeyId not found in IMDS credentials".to_string(),
+                })?;
+
+        let secret_access_key =
+            creds_json["SecretAccessKey"]
+                .as_str()
+                .ok_or_else(|| BedrockError::Credential {
+                    message: "SecretAccessKey not found in IMDS credentials".to_string(),
+                })?;
 
         let session_token = creds_json["Token"].as_str().map(|s| s.to_string());
 
         let expires_at = creds_json["Expiration"]
             .as_str()
             .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
-            .map(|dt| SystemTime::from(dt));
+            .map(SystemTime::from);
 
         debug!("Loaded credentials from EC2 instance metadata");
 
@@ -673,13 +687,11 @@ impl CredentialChain {
     /// 3. Container credentials (ECS/EKS)
     /// 4. EC2 instance metadata service (IMDS)
     pub fn default_chain() -> Self {
-        let chain = Self::new()
+        Self::new()
             .add_provider(EnvironmentCredentialProvider::new())
             .add_provider(ProfileCredentialProvider::default_profile())
             .add_provider(ContainerCredentialProvider::new())
-            .add_provider(InstanceMetadataCredentialProvider::new());
-
-        chain
+            .add_provider(InstanceMetadataCredentialProvider::new())
     }
 
     /// Create a chain from environment and profile.
@@ -726,7 +738,10 @@ mod tests {
 
     #[test]
     fn test_aws_credentials() {
-        let creds = AwsCredentials::new("AKIAIOSFODNN7EXAMPLE", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY");
+        let creds = AwsCredentials::new(
+            "AKIAIOSFODNN7EXAMPLE",
+            "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+        );
         assert_eq!(creds.access_key_id(), "AKIAIOSFODNN7EXAMPLE");
         assert!(!creds.is_temporary());
         assert!(!creds.is_expired());
@@ -743,7 +758,10 @@ mod tests {
 
     #[test]
     fn test_static_provider() {
-        let creds = AwsCredentials::new("AKIAIOSFODNN7EXAMPLE", "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY");
+        let creds = AwsCredentials::new(
+            "AKIAIOSFODNN7EXAMPLE",
+            "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+        );
         let provider = StaticCredentialProvider::new(creds.clone());
 
         // Can't test async here easily, but we can verify structure

@@ -134,7 +134,7 @@ impl ImageInput {
     /// Convert the image to base64 encoding.
     pub fn to_base64(&self) -> crate::error::Result<String> {
         use base64::{Engine as _, engine::general_purpose::STANDARD};
-        
+
         match self {
             Self::Base64(s) => Ok(s.clone()),
             Self::Bytes(bytes) => Ok(STANDARD.encode(bytes)),
@@ -148,7 +148,7 @@ impl ImageInput {
     /// Load the image asynchronously and convert to base64.
     pub async fn to_base64_async(&self) -> crate::error::Result<String> {
         use base64::{Engine as _, engine::general_purpose::STANDARD};
-        
+
         match self {
             Self::Base64(s) => Ok(s.clone()),
             Self::Bytes(bytes) => Ok(STANDARD.encode(bytes)),
@@ -1034,7 +1034,12 @@ mod tests {
     fn test_function_builder() {
         let func = Function::builder("get_weather", "Get weather")
             .string_property("location", "City name", true)
-            .enum_property("unit", "Temperature unit", vec!["celsius", "fahrenheit"], false)
+            .enum_property(
+                "unit",
+                "Temperature unit",
+                vec!["celsius", "fahrenheit"],
+                false,
+            )
             .build();
 
         assert_eq!(func.name, "get_weather");

@@ -31,7 +31,12 @@ impl<'a> ContentSafety<'a> {
             .client
             .config()
             .region
-            .map(|r| format!("https://{}.api.cognitive.microsoft.com/contentsafety", r.as_str()))
+            .map(|r| {
+                format!(
+                    "https://{}.api.cognitive.microsoft.com/contentsafety",
+                    r.as_str()
+                )
+            })
             .unwrap_or_else(|| {
                 // Fallback to using the OpenAI resource
                 format!(
@@ -40,7 +45,10 @@ impl<'a> ContentSafety<'a> {
                 )
             });
 
-        let url = format!("{}/text:analyze?api-version=2023-10-01", content_safety_endpoint);
+        let url = format!(
+            "{}/text:analyze?api-version=2023-10-01",
+            content_safety_endpoint
+        );
 
         let body = serde_json::to_value(&request)?;
 
@@ -52,7 +60,8 @@ impl<'a> ContentSafety<'a> {
             request_builder = request_builder.header("Authorization", auth_header);
         } else {
             if let crate::AzureCredential::ApiKey(key) = &self.client.config().credential {
-                request_builder = request_builder.header("Ocp-Apim-Subscription-Key", key.expose_secret());
+                request_builder =
+                    request_builder.header("Ocp-Apim-Subscription-Key", key.expose_secret());
             }
         }
 
@@ -66,11 +75,10 @@ impl<'a> ContentSafety<'a> {
             return Err(crate::error::AzureOpenAIError::from_response(response).await);
         }
 
-        let analysis_response: TextAnalysisResponse = response.json().await.map_err(|e| {
-            crate::error::AzureOpenAIError::Http {
-                source: e,
-            }
-        })?;
+        let analysis_response: TextAnalysisResponse = response
+            .json()
+            .await
+            .map_err(|e| crate::error::AzureOpenAIError::Http { source: e })?;
 
         Ok(analysis_response)
     }

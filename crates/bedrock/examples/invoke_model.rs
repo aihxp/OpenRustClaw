@@ -59,7 +59,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
-        println!("Stop reason: {}\n", body["stop_reason"].as_str().unwrap_or("unknown"));
+        println!(
+            "Stop reason: {}\n",
+            body["stop_reason"].as_str().unwrap_or("unknown")
+        );
     } else {
         println!("Error: {:?}\n", response.text().await?);
     }
@@ -86,7 +89,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         if let Some(generation) = body["generation"].as_str() {
             println!("Llama: {}", generation);
         }
-        println!("Stop reason: {}\n", body["stop_reason"].as_str().unwrap_or("unknown"));
+        println!(
+            "Stop reason: {}\n",
+            body["stop_reason"].as_str().unwrap_or("unknown")
+        );
     } else {
         println!("Error: {:?}\n", response.text().await?);
     }

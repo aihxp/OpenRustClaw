@@ -6,7 +6,7 @@ use serde_json::json;
 use tracing::{debug, info};
 
 use crate::browser::Browser;
-use crate::tools::{error_response, success_response, AutomationTool, ToolContext};
+use crate::tools::{AutomationTool, ToolContext, error_response, success_response};
 
 /// Type text into an element.
 pub struct TypeTool {
@@ -81,17 +81,19 @@ impl AutomationTool for TypeTool {
         _ctx: &ToolContext,
     ) -> anyhow::Result<String> {
         let args: TypeArgs = serde_json::from_value(input)?;
-        
-        let pages = self.browser.pages().await.map_err(|e| {
-            anyhow::anyhow!("Failed to get pages: {}", e)
-        })?;
-        
-        let page = pages.first().ok_or_else(|| {
-            anyhow::anyhow!("No pages available")
-        })?;
-        
+
+        let pages = self
+            .browser
+            .pages()
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to get pages: {}", e))?;
+
+        let page = pages
+            .first()
+            .ok_or_else(|| anyhow::anyhow!("No pages available"))?;
+
         info!(selector = %args.selector, text_len = args.text.len(), "Typing text");
-        
+
         // Wait for element if requested
         if args.wait_for {
             match page.wait_for_selector(&args.selector).await {
@@ -104,59 +106,67 @@ impl AutomationTool for TypeTool {
                 }
             }
         }
-        
+
         // Get element
         let element = match page.query_selector(&args.selector).await {
             Ok(Some(el)) => el,
             Ok(None) => {
-                return Ok(error_response(format!("Element not found: {}", args.selector)));
+                return Ok(error_response(format!(
+                    "Element not found: {}",
+                    args.selector
+                )));
             }
             Err(e) => {
                 return Ok(error_response(format!("Failed to find element: {}", e)));
             }
         };
-        
+
         // Check if it's an input element
         let tag_name = element.tag_name().await.unwrap_or_default();
         let input_type = element.get_attribute("type").await.ok().flatten();
-        
+
         // Clear existing content if requested
         if args.clear {
-            element.clear().await.map_err(|e| {
-                anyhow::anyhow!("Failed to clear element: {}", e)
-            })?;
+            element
+                .clear()
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to clear element: {}", e))?;
             debug!("Cleared existing content");
         }
-        
+
         // Type the text
         if let Some(delay) = args.delay {
             if delay > 0 {
                 // Type with delay (character by character)
                 for ch in args.text.chars() {
-                    element.type_text(&ch.to_string()).await.map_err(|e| {
-                        anyhow::anyhow!("Failed to type character: {}", e)
-                    })?;
+                    element
+                        .type_text(&ch.to_string())
+                        .await
+                        .map_err(|e| anyhow::anyhow!("Failed to type character: {}", e))?;
                     tokio::time::sleep(tokio::time::Duration::from_millis(delay)).await;
                 }
             } else {
-                element.type_text(&args.text).await.map_err(|e| {
-                    anyhow::anyhow!("Failed to type text: {}", e)
-                })?;
+                element
+                    .type_text(&args.text)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("Failed to type text: {}", e))?;
             }
         } else {
-            element.type_text(&args.text).await.map_err(|e| {
-                anyhow::anyhow!("Failed to type text: {}", e)
-            })?;
+            element
+                .type_text(&args.text)
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to type text: {}", e))?;
         }
-        
+
         // Submit form if requested
         if args.submit {
-            element.press("Enter").await.map_err(|e| {
-                anyhow::anyhow!("Failed to submit form: {}", e)
-            })?;
+            element
+                .press("Enter")
+                .await
+                .map_err(|e| anyhow::anyhow!("Failed to submit form: {}", e))?;
             info!("Form submitted");
         }
-        
+
         Ok(success_response(format!(
             "Successfully typed '{}' into {} element (type: {:?})",
             args.text, tag_name, input_type

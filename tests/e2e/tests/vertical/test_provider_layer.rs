@@ -2,15 +2,15 @@
 //!
 //! Tests LLM provider implementations, fallback logic, and retry mechanisms.
 
-use openrustclaw_e2e_tests::common::*;
 use openrustclaw_core::traits::LlmProvider;
+use openrustclaw_e2e_tests::common::*;
 
 /// Test: Provider creation
 #[tokio::test]
 async fn test_provider_creation() {
     // Test that we can create mock providers
     let provider = MockSuccessProvider::new("test", "Hello");
-    
+
     assert_eq!(provider.provider_name(), "test");
     assert_eq!(provider.model_id(), "mock-model");
 }
@@ -19,10 +19,10 @@ async fn test_provider_creation() {
 #[tokio::test]
 async fn test_provider_completion() {
     let provider = MockSuccessProvider::new("mock", "Test response");
-    
+
     let request = TestRequests::simple_chat();
     let response = provider.complete(request).await.expect("Completion failed");
-    
+
     E2eAssertions::response_contains(&response, "Test response");
     assert_eq!(response.provider, "mock");
 }
@@ -31,13 +31,13 @@ async fn test_provider_completion() {
 #[tokio::test]
 async fn test_provider_streaming() {
     let provider = MockSuccessProvider::new("mock", "Streamed content");
-    
+
     let request = TestRequests::streaming();
     let stream = provider.stream(request).await.expect("Streaming failed");
 
     use futures::StreamExt;
     let chunks: Vec<_> = stream.collect().await;
-    
+
     assert!(!chunks.is_empty(), "Should receive stream chunks");
 }
 
@@ -45,12 +45,12 @@ async fn test_provider_streaming() {
 #[tokio::test]
 async fn test_provider_rate_limit() {
     let provider = MockRateLimitedProvider::new("limited").with_retry_after(30);
-    
+
     let request = TestRequests::simple_chat();
     let result = provider.complete(request).await;
-    
+
     assert!(result.is_err(), "Should return rate limit error");
-    
+
     let error = result.unwrap_err();
     let error_string = format!("{}", error);
     assert!(error_string.contains("rate limit") || error_string.contains("RateLimit"));
@@ -60,10 +60,10 @@ async fn test_provider_rate_limit() {
 #[tokio::test]
 async fn test_provider_unavailable() {
     let provider = MockUnavailableProvider::new("down", "Service unavailable");
-    
+
     let request = TestRequests::simple_chat();
     let result = provider.complete(request).await;
-    
+
     assert!(result.is_err(), "Should return unavailable error");
 }
 
@@ -71,10 +71,10 @@ async fn test_provider_unavailable() {
 #[tokio::test]
 async fn test_provider_token_usage() {
     let provider = MockSuccessProvider::new("mock", "Response");
-    
+
     let request = TestRequests::simple_chat();
     let response = provider.complete(request).await.expect("Completion failed");
-    
+
     // Mock provider returns fixed token counts
     assert_eq!(response.usage.prompt_tokens, 10);
     assert_eq!(response.usage.completion_tokens, 10);
@@ -85,9 +85,12 @@ async fn test_provider_token_usage() {
 #[tokio::test]
 async fn test_provider_tool_support() {
     let provider = MockSuccessProvider::new("mock", "Hello");
-    
+
     assert!(provider.supports_strict_tools());
-    assert_eq!(provider.native_tool_format(), openrustclaw_core::types::ToolFormat::OpenAi);
+    assert_eq!(
+        provider.native_tool_format(),
+        openrustclaw_core::types::ToolFormat::OpenAi
+    );
 }
 
 /// Test: Multi-provider fallback simulation
@@ -99,7 +102,7 @@ async fn test_multi_provider_fallback_simulation() {
 
     // Simulate fallback chain
     let request = TestRequests::simple_chat();
-    
+
     // Try primary
     let result = primary.complete(request.clone()).await;
     assert!(result.is_err());
@@ -117,13 +120,16 @@ async fn test_multi_provider_fallback_simulation() {
 #[tokio::test]
 async fn test_provider_response_format() {
     let provider = MockSuccessProvider::new("mock", "Test response");
-    
+
     let request = TestRequests::simple_chat();
     let response = provider.complete(request).await.expect("Completion failed");
-    
+
     // Verify response structure
     assert!(!response.id.is_empty(), "Response should have ID");
-    assert!(!response.message.content.is_empty(), "Response should have content");
+    assert!(
+        !response.message.content.is_empty(),
+        "Response should have content"
+    );
     assert!(!response.model.is_empty(), "Response should specify model");
 }
 
@@ -136,13 +142,15 @@ async fn test_provider_tool_calls() {
         arguments: serde_json::json!({"a": 1, "b": 2}),
     };
 
-    let provider = MockSuccessProvider::new("mock", "Result is 3")
-        .with_tool_calls(vec![tool_call]);
-    
+    let provider = MockSuccessProvider::new("mock", "Result is 3").with_tool_calls(vec![tool_call]);
+
     let request = TestRequests::simple_chat();
     let response = provider.complete(request).await.expect("Completion failed");
-    
-    assert_eq!(response.finish_reason, openrustclaw_core::types::FinishReason::ToolUse);
+
+    assert_eq!(
+        response.finish_reason,
+        openrustclaw_core::types::FinishReason::ToolUse
+    );
     assert!(response.message.tool_calls.is_some());
 }
 

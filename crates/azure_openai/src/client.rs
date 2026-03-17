@@ -3,7 +3,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
+use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue};
 use secrecy::{ExposeSecret, SecretString};
 use tracing::{debug, trace};
 
@@ -80,8 +80,10 @@ impl AzureOpenAIClient {
             if let crate::AzureCredential::ApiKey(key) = &config.credential {
                 headers.insert(
                     "api-key",
-                    HeaderValue::from_str(key.expose_secret()).map_err(|_| AzureOpenAIError::Config {
-                        message: "Invalid API key".to_string(),
+                    HeaderValue::from_str(key.expose_secret()).map_err(|_| {
+                        AzureOpenAIError::Config {
+                            message: "Invalid API key".to_string(),
+                        }
                     })?,
                 );
             }
@@ -312,7 +314,11 @@ impl AzureOpenAIClient {
     }
 
     /// Make a POST request to the API.
-    pub(crate) async fn post(&self, path: &str, body: serde_json::Value) -> Result<reqwest::Response> {
+    pub(crate) async fn post(
+        &self,
+        path: &str,
+        body: serde_json::Value,
+    ) -> Result<reqwest::Response> {
         let url = self.build_url(path);
         trace!(url = %url, body = %body, "Making POST request");
 
@@ -350,7 +356,10 @@ impl AzureOpenAIClient {
     }
 
     /// Parse a response or return an error.
-    pub(crate) async fn handle_response(&self, response: reqwest::Response) -> Result<serde_json::Value> {
+    pub(crate) async fn handle_response(
+        &self,
+        response: reqwest::Response,
+    ) -> Result<serde_json::Value> {
         let status = response.status();
 
         if status.is_success() {
@@ -402,12 +411,8 @@ mod tests {
 
     #[test]
     fn test_client_creation() {
-        let client = AzureOpenAIClient::new(
-            "test-resource",
-            "test-deployment",
-            "test-api-key",
-        )
-        .unwrap();
+        let client =
+            AzureOpenAIClient::new("test-resource", "test-deployment", "test-api-key").unwrap();
 
         assert_eq!(client.resource_name(), "test-resource");
         assert_eq!(client.deployment_name(), "test-deployment");
@@ -439,12 +444,8 @@ mod tests {
 
     #[test]
     fn test_build_url() {
-        let client = AzureOpenAIClient::new(
-            "test-resource",
-            "test-deployment",
-            "test-api-key",
-        )
-        .unwrap();
+        let client =
+            AzureOpenAIClient::new("test-resource", "test-deployment", "test-api-key").unwrap();
 
         let url = client.build_url("/openai/deployments/test-deployment/chat/completions");
         assert!(url.contains("api-version="));

@@ -9,21 +9,13 @@ pub type Result<T> = std::result::Result<T, AutomationError>;
 #[derive(Debug)]
 pub enum AutomationError {
     /// Browser failed to launch.
-    LaunchFailed {
-        browser: String,
-        reason: String,
-    },
+    LaunchFailed { browser: String, reason: String },
 
     /// Navigation failed.
-    NavigationFailed {
-        url: String,
-        reason: String,
-    },
+    NavigationFailed { url: String, reason: String },
 
     /// Element not found.
-    ElementNotFound {
-        selector: String,
-    },
+    ElementNotFound { selector: String },
 
     /// Element interaction failed.
     InteractionFailed {
@@ -33,15 +25,10 @@ pub enum AutomationError {
     },
 
     /// Screenshot failed.
-    ScreenshotFailed {
-        reason: String,
-    },
+    ScreenshotFailed { reason: String },
 
     /// JavaScript execution failed.
-    JavaScriptError {
-        code: String,
-        error: String,
-    },
+    JavaScriptError { code: String, error: String },
 
     /// Network error.
     NetworkError {
@@ -51,33 +38,20 @@ pub enum AutomationError {
     },
 
     /// Timeout error.
-    Timeout {
-        operation: String,
-        duration_ms: u64,
-    },
+    Timeout { operation: String, duration_ms: u64 },
 
     /// CDP-specific error.
-    CdpError {
-        method: String,
-        error: String,
-    },
+    CdpError { method: String, error: String },
 
     /// Playwright-specific error.
     #[cfg(feature = "playwright")]
-    PlaywrightError {
-        message: String,
-    },
+    PlaywrightError { message: String },
 
     /// Configuration error.
-    ConfigError {
-        field: String,
-        reason: String,
-    },
+    ConfigError { field: String, reason: String },
 
     /// PDF generation error.
-    PdfError {
-        reason: String,
-    },
+    PdfError { reason: String },
 
     /// Generic IO error.
     Io(std::io::Error),

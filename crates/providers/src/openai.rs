@@ -8,9 +8,9 @@ use std::pin::Pin;
 use async_trait::async_trait;
 use eventsource_stream::Eventsource;
 use futures::{Stream, StreamExt};
-use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
-use serde_json::Value;
+use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue};
 use secrecy::{ExposeSecret, SecretString};
+use serde_json::Value;
 use tracing::{debug, warn};
 
 use openrustclaw_core::error::{Error, ProviderError, Result};
@@ -49,7 +49,11 @@ impl OpenAiProvider {
     }
 
     /// Create a new OpenAI provider with a custom base URL.
-    pub fn with_base_url(api_key: impl Into<SecretString>, model: String, base_url: String) -> Self {
+    pub fn with_base_url(
+        api_key: impl Into<SecretString>,
+        model: String,
+        base_url: String,
+    ) -> Self {
         Self {
             client: reqwest::Client::builder()
                 .connect_timeout(std::time::Duration::from_secs(10))
@@ -64,10 +68,7 @@ impl OpenAiProvider {
 
     /// Build the request body for the OpenAI Chat Completions API.
     fn build_request_body(&self, request: &CompletionRequest) -> Value {
-        let model = request
-            .model
-            .as_deref()
-            .unwrap_or(&self.model);
+        let model = request.model.as_deref().unwrap_or(&self.model);
 
         // Build the messages array.
         let mut messages: Vec<Value> = Vec::new();
@@ -97,14 +98,14 @@ impl OpenAiProvider {
             body["temperature"] = serde_json::json!(temp);
         }
 
-        if let Some(tools) = &request.tools {
-            if !tools.is_empty() {
-                let tool_defs: Vec<Value> = tools
-                    .iter()
-                    .map(|t| translate_tool_definition(t, ToolFormat::OpenAi))
-                    .collect();
-                body["tools"] = Value::Array(tool_defs);
-            }
+        if let Some(tools) = &request.tools
+            && !tools.is_empty()
+        {
+            let tool_defs: Vec<Value> = tools
+                .iter()
+                .map(|t| translate_tool_definition(t, ToolFormat::OpenAi))
+                .collect();
+            body["tools"] = Value::Array(tool_defs);
         }
 
         body
@@ -129,36 +130,35 @@ impl OpenAiProvider {
         }
 
         // Handle assistant messages with tool calls.
-        if msg.role == Role::Assistant {
-            if let Some(ref tool_calls) = msg.tool_calls {
-                if !tool_calls.is_empty() {
-                    let tc_values: Vec<Value> = tool_calls
-                        .iter()
-                        .map(|tc| {
-                            serde_json::json!({
-                                "id": tc.id,
-                                "type": "function",
-                                "function": {
-                                    "name": tc.name,
-                                    "arguments": serde_json::to_string(&tc.arguments)
-                                        .unwrap_or_else(|_| "{}".to_string()),
-                                }
-                            })
-                        })
-                        .collect();
+        if msg.role == Role::Assistant
+            && let Some(ref tool_calls) = msg.tool_calls
+            && !tool_calls.is_empty()
+        {
+            let tc_values: Vec<Value> = tool_calls
+                .iter()
+                .map(|tc| {
+                    serde_json::json!({
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {
+                            "name": tc.name,
+                            "arguments": serde_json::to_string(&tc.arguments)
+                                .unwrap_or_else(|_| "{}".to_string()),
+                        }
+                    })
+                })
+                .collect();
 
-                    let mut result = serde_json::json!({
-                        "role": "assistant",
-                        "tool_calls": tc_values,
-                    });
+            let mut result = serde_json::json!({
+                "role": "assistant",
+                "tool_calls": tc_values,
+            });
 
-                    if !msg.content.is_empty() {
-                        result["content"] = Value::String(msg.content.clone());
-                    }
-
-                    return result;
-                }
+            if !msg.content.is_empty() {
+                result["content"] = Value::String(msg.content.clone());
             }
+
+            return result;
         }
 
         serde_json::json!({
@@ -205,13 +205,11 @@ impl OpenAiProvider {
             _ => FinishReason::Stop,
         };
 
-        let assistant_msg = choice
-            .get("message")
-            .ok_or_else(|| {
-                Error::Provider(ProviderError::Parse(
-                    "No message in OpenAI choice".to_string(),
-                ))
-            })?;
+        let assistant_msg = choice.get("message").ok_or_else(|| {
+            Error::Provider(ProviderError::Parse(
+                "No message in OpenAI choice".to_string(),
+            ))
+        })?;
 
         let text_content = assistant_msg
             .get("content")
@@ -227,10 +225,10 @@ impl OpenAiProvider {
             .transpose()?;
 
         let mut message = Message::assistant(text_content);
-        if let Some(ref calls) = tool_calls {
-            if !calls.is_empty() {
-                message.tool_calls = Some(calls.clone());
-            }
+        if let Some(ref calls) = tool_calls
+            && !calls.is_empty()
+        {
+            message.tool_calls = Some(calls.clone());
         }
 
         // Parse usage.
@@ -267,10 +265,7 @@ impl OpenAiProvider {
     /// Build default headers for OpenAI API requests.
     fn default_headers(&self) -> HeaderMap {
         let mut headers = HeaderMap::new();
-        headers.insert(
-            CONTENT_TYPE,
-            HeaderValue::from_static("application/json"),
-        );
+        headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
         headers.insert(
             AUTHORIZATION,
             HeaderValue::from_str(&format!("Bearer {}", self.api_key.expose_secret()))
@@ -440,43 +435,49 @@ impl LlmProvider for OpenAiProvider {
         let stream = response
             .bytes_stream()
             .eventsource()
-            .map(move |event: std::result::Result<eventsource_stream::Event, eventsource_stream::EventStreamError<reqwest::Error>>| {
-                match event {
-                    Ok(event) => {
-                        // Check for [DONE] marker
-                        if event.data == "[DONE]" {
-                            return Ok(StreamChunk::Done {
-                                response: CompletionResponse {
-                                    id: "streamed".to_string(),
-                                    message: Message::assistant(""),
-                                    model: model.clone(),
-                                    usage: TokenUsage::default(),
-                                    provider: provider_name.clone(),
-                                    finish_reason: FinishReason::Stop,
-                                },
-                            });
-                        }
-
-                        let data: Value = match serde_json::from_str(&event.data) {
-                            Ok(v) => v,
-                            Err(e) => {
-                                return Err(Error::Provider(ProviderError::StreamError {
-                                    provider: "openai".to_string(),
-                                    message: format!("Failed to parse SSE data: {e}"),
-                                }));
+            .map(
+                move |event: std::result::Result<
+                    eventsource_stream::Event,
+                    eventsource_stream::EventStreamError<reqwest::Error>,
+                >| {
+                    match event {
+                        Ok(event) => {
+                            // Check for [DONE] marker
+                            if event.data == "[DONE]" {
+                                return Ok(StreamChunk::Done {
+                                    response: CompletionResponse {
+                                        id: "streamed".to_string(),
+                                        message: Message::assistant(""),
+                                        model: model.clone(),
+                                        usage: TokenUsage::default(),
+                                        provider: provider_name.clone(),
+                                        finish_reason: FinishReason::Stop,
+                                    },
+                                });
                             }
-                        };
 
-                        // Extract the delta from the first choice
-                        let choice = data
-                            .get("choices")
-                            .and_then(|v| v.as_array())
-                            .and_then(|arr| arr.first());
+                            let data: Value = match serde_json::from_str(&event.data) {
+                                Ok(v) => v,
+                                Err(e) => {
+                                    return Err(Error::Provider(ProviderError::StreamError {
+                                        provider: "openai".to_string(),
+                                        message: format!("Failed to parse SSE data: {e}"),
+                                    }));
+                                }
+                            };
 
-                        if let Some(choice) = choice {
-                            // Check for finish_reason
-                            if let Some(finish_reason) = choice.get("finish_reason").and_then(|v| v.as_str()) {
-                                if !finish_reason.is_empty() {
+                            // Extract the delta from the first choice
+                            let choice = data
+                                .get("choices")
+                                .and_then(|v| v.as_array())
+                                .and_then(|arr| arr.first());
+
+                            if let Some(choice) = choice {
+                                // Check for finish_reason
+                                if let Some(finish_reason) =
+                                    choice.get("finish_reason").and_then(|v| v.as_str())
+                                    && !finish_reason.is_empty()
+                                {
                                     let reason = match finish_reason {
                                         "stop" => FinishReason::Stop,
                                         "tool_calls" => FinishReason::ToolUse,
@@ -486,31 +487,41 @@ impl LlmProvider for OpenAiProvider {
                                     };
                                     return Ok(StreamChunk::Done {
                                         response: CompletionResponse {
-                                            id: data.get("id").and_then(|v| v.as_str()).unwrap_or("streamed").to_string(),
+                                            id: data
+                                                .get("id")
+                                                .and_then(|v| v.as_str())
+                                                .unwrap_or("streamed")
+                                                .to_string(),
                                             message: Message::assistant(""),
-                                            model: data.get("model").and_then(|v| v.as_str()).unwrap_or(&model).to_string(),
+                                            model: data
+                                                .get("model")
+                                                .and_then(|v| v.as_str())
+                                                .unwrap_or(&model)
+                                                .to_string(),
                                             usage: TokenUsage::default(),
                                             provider: provider_name.clone(),
                                             finish_reason: reason,
                                         },
                                     });
                                 }
-                            }
 
-                            // Process delta
-                            if let Some(delta) = choice.get("delta") {
-                                // Check for content delta
-                                if let Some(content) = delta.get("content").and_then(|v| v.as_str()) {
-                                    if !content.is_empty() {
+                                // Process delta
+                                if let Some(delta) = choice.get("delta") {
+                                    // Check for content delta
+                                    if let Some(content) =
+                                        delta.get("content").and_then(|v| v.as_str())
+                                        && !content.is_empty()
+                                    {
                                         return Ok(StreamChunk::ContentDelta {
                                             delta: content.to_string(),
                                         });
                                     }
-                                }
 
-                                // Check for tool_calls delta
-                                if let Some(tool_calls) = delta.get("tool_calls").and_then(|v| v.as_array()) {
-                                    if let Some(tool_call) = tool_calls.first() {
+                                    // Check for tool_calls delta
+                                    if let Some(tool_calls) =
+                                        delta.get("tool_calls").and_then(|v| v.as_array())
+                                        && let Some(tool_call) = tool_calls.first()
+                                    {
                                         let id = tool_call
                                             .get("id")
                                             .and_then(|v| v.as_str())
@@ -528,7 +539,8 @@ impl LlmProvider for OpenAiProvider {
                                             .unwrap_or("")
                                             .to_string();
 
-                                        if !id.is_empty() || name.is_some() || !arguments.is_empty() {
+                                        if !id.is_empty() || name.is_some() || !arguments.is_empty()
+                                        {
                                             return Ok(StreamChunk::ToolCallDelta {
                                                 id,
                                                 name,
@@ -538,23 +550,23 @@ impl LlmProvider for OpenAiProvider {
                                     }
                                 }
                             }
-                        }
 
-                        // Empty delta - return a no-op chunk that will be filtered
-                        Ok(StreamChunk::ContentDelta { delta: String::new() })
+                            // Empty delta - return a no-op chunk that will be filtered
+                            Ok(StreamChunk::ContentDelta {
+                                delta: String::new(),
+                            })
+                        }
+                        Err(e) => Err(Error::Provider(ProviderError::StreamError {
+                            provider: "openai".to_string(),
+                            message: format!("SSE stream error: {e}"),
+                        })),
                     }
-                    Err(e) => Err(Error::Provider(ProviderError::StreamError {
-                        provider: "openai".to_string(),
-                        message: format!("SSE stream error: {e}"),
-                    })),
-                }
-            })
+                },
+            )
             .filter(|chunk| {
                 // Filter out empty content deltas to reduce noise
-                let should_keep = match chunk {
-                    Ok(StreamChunk::ContentDelta { delta }) if delta.is_empty() => false,
-                    _ => true,
-                };
+                let should_keep =
+                    !matches!(chunk, Ok(StreamChunk::ContentDelta { delta }) if delta.is_empty());
                 std::future::ready(should_keep)
             });
 

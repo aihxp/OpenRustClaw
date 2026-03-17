@@ -52,11 +52,7 @@ impl VisionCapabilities {
 
     /// Find text on the page by OCR.
     #[cfg(feature = "ocr")]
-    pub async fn find_text(
-        &self,
-        screenshot: &Screenshot,
-        text: &str,
-    ) -> Result<Vec<TextRegion>> {
+    pub async fn find_text(&self, screenshot: &Screenshot, text: &str) -> Result<Vec<TextRegion>> {
         ocr::find_text(&screenshot.data, text).await
     }
 
@@ -88,10 +84,12 @@ impl VisionCapabilities {
         }
 
         // Decode images
-        let baseline_img = image::load_from_memory(&baseline.data)
-            .map_err(|e| crate::error::AutomationError::Other(format!("Failed to decode baseline image: {}", e)))?;
-        let current_img = image::load_from_memory(&current.data)
-            .map_err(|e| crate::error::AutomationError::Other(format!("Failed to decode current image: {}", e)))?;
+        let baseline_img = image::load_from_memory(&baseline.data).map_err(|e| {
+            crate::error::AutomationError::Other(format!("Failed to decode baseline image: {}", e))
+        })?;
+        let current_img = image::load_from_memory(&current.data).map_err(|e| {
+            crate::error::AutomationError::Other(format!("Failed to decode current image: {}", e))
+        })?;
 
         let mut diff_pixels = 0u64;
         let total_pixels = (baseline.width * baseline.height) as u64;
@@ -231,7 +229,11 @@ impl VisualMatcher {
     }
 
     /// Find a button by its label.
-    pub async fn find_button(&self, screenshot: &Screenshot, label: &str) -> Result<Option<VisualElement>> {
+    pub async fn find_button(
+        &self,
+        screenshot: &Screenshot,
+        label: &str,
+    ) -> Result<Option<VisualElement>> {
         if !self.vision.ocr_enabled() {
             return Ok(None);
         }

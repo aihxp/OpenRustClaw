@@ -9,8 +9,8 @@ use async_trait::async_trait;
 use eventsource_stream::Eventsource;
 use futures::{Stream, StreamExt};
 use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue};
-use serde_json::Value;
 use secrecy::{ExposeSecret, SecretString};
+use serde_json::Value;
 use tracing::{debug, warn};
 
 use openrustclaw_core::error::{Error, ProviderError, Result};
@@ -47,7 +47,11 @@ impl GeminiProvider {
     }
 
     /// Create a new Gemini provider with a custom base URL.
-    pub fn with_base_url(api_key: impl Into<SecretString>, model: String, base_url: String) -> Self {
+    pub fn with_base_url(
+        api_key: impl Into<SecretString>,
+        model: String,
+        base_url: String,
+    ) -> Self {
         Self {
             client: reqwest::Client::builder()
                 .connect_timeout(std::time::Duration::from_secs(10))
@@ -120,14 +124,14 @@ impl GeminiProvider {
         }
 
         // Add tools if present
-        if let Some(tools) = &request.tools {
-            if !tools.is_empty() {
-                let function_declarations: Vec<Value> =
-                    tools.iter().map(|t| self.tool_to_gemini(t)).collect();
-                body["tools"] = serde_json::json!([{
-                    "function_declarations": function_declarations
-                }]);
-            }
+        if let Some(tools) = &request.tools
+            && !tools.is_empty()
+        {
+            let function_declarations: Vec<Value> =
+                tools.iter().map(|t| self.tool_to_gemini(t)).collect();
+            body["tools"] = serde_json::json!([{
+                "function_declarations": function_declarations
+            }]);
         }
 
         body
@@ -143,51 +147,50 @@ impl GeminiProvider {
         };
 
         // Handle tool result messages
-        if msg.role == Role::Tool {
-            if let Some(ref tool_call_id) = msg.tool_call_id {
-                return serde_json::json!({
-                    "role": "user",
-                    "parts": [{
-                        "function_response": {
-                            "name": tool_call_id, // Gemini uses function name, not call ID
-                            "response": {
-                                "result": msg.content
-                            }
+        if msg.role == Role::Tool
+            && let Some(ref tool_call_id) = msg.tool_call_id
+        {
+            return serde_json::json!({
+                "role": "user",
+                "parts": [{
+                    "function_response": {
+                        "name": tool_call_id, // Gemini uses function name, not call ID
+                        "response": {
+                            "result": msg.content
                         }
-                    }]
-                });
-            }
+                    }
+                }]
+            });
         }
 
         // Handle assistant messages with tool calls
-        if msg.role == Role::Assistant {
-            if let Some(ref tool_calls) = msg.tool_calls {
-                if !tool_calls.is_empty() {
-                    let mut parts: Vec<Value> = Vec::new();
+        if msg.role == Role::Assistant
+            && let Some(ref tool_calls) = msg.tool_calls
+            && !tool_calls.is_empty()
+        {
+            let mut parts: Vec<Value> = Vec::new();
 
-                    // Add text content if present
-                    if !msg.content.is_empty() {
-                        parts.push(serde_json::json!({
-                            "text": msg.content,
-                        }));
-                    }
-
-                    // Add function calls
-                    for tc in tool_calls {
-                        parts.push(serde_json::json!({
-                            "function_call": {
-                                "name": tc.name,
-                                "args": tc.arguments,
-                            }
-                        }));
-                    }
-
-                    return serde_json::json!({
-                        "role": "model",
-                        "parts": parts,
-                    });
-                }
+            // Add text content if present
+            if !msg.content.is_empty() {
+                parts.push(serde_json::json!({
+                    "text": msg.content,
+                }));
             }
+
+            // Add function calls
+            for tc in tool_calls {
+                parts.push(serde_json::json!({
+                    "function_call": {
+                        "name": tc.name,
+                        "args": tc.arguments,
+                    }
+                }));
+            }
+
+            return serde_json::json!({
+                "role": "model",
+                "parts": parts,
+            });
         }
 
         // Standard text message
@@ -209,13 +212,13 @@ impl GeminiProvider {
     /// Parse the Gemini API response JSON into a [`CompletionResponse`].
     fn parse_response(&self, body: Value) -> Result<CompletionResponse> {
         // Check for prompt feedback (safety blocks, etc.)
-        if let Some(feedback) = body.get("promptFeedback") {
-            if let Some(block_reason) = feedback.get("blockReason") {
-                return Err(Error::Provider(ProviderError::Request(format!(
-                    "Prompt blocked: {}",
-                    block_reason.as_str().unwrap_or("unknown")
-                ))));
-            }
+        if let Some(feedback) = body.get("promptFeedback")
+            && let Some(block_reason) = feedback.get("blockReason")
+        {
+            return Err(Error::Provider(ProviderError::Request(format!(
+                "Prompt blocked: {}",
+                block_reason.as_str().unwrap_or("unknown")
+            ))));
         }
 
         // Get candidates array
@@ -356,7 +359,9 @@ impl LlmProvider for GeminiProvider {
     async fn complete(&self, request: CompletionRequest) -> Result<CompletionResponse> {
         let url = format!(
             "{}/v1beta/models/{}:generateContent?key={}",
-            self.base_url, self.model, self.api_key.expose_secret()
+            self.base_url,
+            self.model,
+            self.api_key.expose_secret()
         );
         let body = self.build_request_body(&request);
 
@@ -482,7 +487,9 @@ impl LlmProvider for GeminiProvider {
     ) -> Result<Pin<Box<dyn Stream<Item = Result<StreamChunk>> + Send>>> {
         let url = format!(
             "{}/v1beta/models/{}:streamGenerateContent?key={}&alt=sse",
-            self.base_url, self.model, self.api_key.expose_secret()
+            self.base_url,
+            self.model,
+            self.api_key.expose_secret()
         );
         let body = self.build_request_body(&request);
 
@@ -580,19 +587,19 @@ impl LlmProvider for GeminiProvider {
                             };
 
                             // Check for prompt feedback (blocking)
-                            if let Some(feedback) = data.get("promptFeedback") {
-                                if feedback.get("blockReason").is_some() {
-                                    return Ok(StreamChunk::Done {
-                                        response: CompletionResponse {
-                                            id: "streamed".to_string(),
-                                            message: Message::assistant(""),
-                                            model: model.clone(),
-                                            usage: TokenUsage::default(),
-                                            provider: provider_name.clone(),
-                                            finish_reason: FinishReason::ContentFilter,
-                                        },
-                                    });
-                                }
+                            if let Some(feedback) = data.get("promptFeedback")
+                                && feedback.get("blockReason").is_some()
+                            {
+                                return Ok(StreamChunk::Done {
+                                    response: CompletionResponse {
+                                        id: "streamed".to_string(),
+                                        message: Message::assistant(""),
+                                        model: model.clone(),
+                                        usage: TokenUsage::default(),
+                                        provider: provider_name.clone(),
+                                        finish_reason: FinishReason::ContentFilter,
+                                    },
+                                });
                             }
 
                             // Get candidates
@@ -624,59 +631,54 @@ impl LlmProvider for GeminiProvider {
                             // Check finish reason
                             if let Some(finish_reason) =
                                 candidate.get("finishReason").and_then(|v| v.as_str())
+                                && finish_reason != "FINISH_REASON_UNSPECIFIED"
+                                && finish_reason != "STOP"
                             {
-                                if finish_reason != "FINISH_REASON_UNSPECIFIED"
-                                    && finish_reason != "STOP"
-                                {
-                                    let reason = match finish_reason {
-                                        "MAX_TOKENS" => FinishReason::MaxTokens,
-                                        "SAFETY" | "RECITATION" => FinishReason::ContentFilter,
-                                        _ => FinishReason::Stop,
-                                    };
-                                    return Ok(StreamChunk::Done {
-                                        response: CompletionResponse {
-                                            id: "streamed".to_string(),
-                                            message: Message::assistant(""),
-                                            model: model.clone(),
-                                            usage: TokenUsage::default(),
-                                            provider: provider_name.clone(),
-                                            finish_reason: reason,
-                                        },
-                                    });
-                                }
+                                let reason = match finish_reason {
+                                    "MAX_TOKENS" => FinishReason::MaxTokens,
+                                    "SAFETY" | "RECITATION" => FinishReason::ContentFilter,
+                                    _ => FinishReason::Stop,
+                                };
+                                return Ok(StreamChunk::Done {
+                                    response: CompletionResponse {
+                                        id: "streamed".to_string(),
+                                        message: Message::assistant(""),
+                                        model: model.clone(),
+                                        usage: TokenUsage::default(),
+                                        provider: provider_name.clone(),
+                                        finish_reason: reason,
+                                    },
+                                });
                             }
 
                             // Extract content delta
-                            if let Some(content) = candidate.get("content") {
-                                if let Some(parts) = content.get("parts").and_then(|v| v.as_array())
-                                {
-                                    for part in parts {
-                                        // Text content
-                                        if let Some(text) =
-                                            part.get("text").and_then(|v| v.as_str())
-                                        {
-                                            return Ok(StreamChunk::ContentDelta {
-                                                delta: text.to_string(),
-                                            });
-                                        }
+                            if let Some(content) = candidate.get("content")
+                                && let Some(parts) = content.get("parts").and_then(|v| v.as_array())
+                            {
+                                for part in parts {
+                                    // Text content
+                                    if let Some(text) = part.get("text").and_then(|v| v.as_str()) {
+                                        return Ok(StreamChunk::ContentDelta {
+                                            delta: text.to_string(),
+                                        });
+                                    }
 
-                                        // Function call (tool call)
-                                        if let Some(function_call) = part.get("functionCall") {
-                                            let name = function_call
-                                                .get("name")
-                                                .and_then(|v| v.as_str())
-                                                .map(|s| s.to_string());
-                                            let args = function_call
-                                                .get("args")
-                                                .cloned()
-                                                .unwrap_or_else(|| serde_json::json!({}));
+                                    // Function call (tool call)
+                                    if let Some(function_call) = part.get("functionCall") {
+                                        let name = function_call
+                                            .get("name")
+                                            .and_then(|v| v.as_str())
+                                            .map(|s| s.to_string());
+                                        let args = function_call
+                                            .get("args")
+                                            .cloned()
+                                            .unwrap_or_else(|| serde_json::json!({}));
 
-                                            return Ok(StreamChunk::ToolCallDelta {
-                                                id: name.clone().unwrap_or_default(),
-                                                name,
-                                                arguments_delta: args.to_string(),
-                                            });
-                                        }
+                                        return Ok(StreamChunk::ToolCallDelta {
+                                            id: name.clone().unwrap_or_default(),
+                                            name,
+                                            arguments_delta: args.to_string(),
+                                        });
                                     }
                                 }
                             }
@@ -694,10 +696,8 @@ impl LlmProvider for GeminiProvider {
             )
             .filter(|chunk| {
                 // Filter out empty content deltas to reduce noise
-                let should_keep = match chunk {
-                    Ok(StreamChunk::ContentDelta { delta }) if delta.is_empty() => false,
-                    _ => true,
-                };
+                let should_keep =
+                    !matches!(chunk, Ok(StreamChunk::ContentDelta { delta }) if delta.is_empty());
                 std::future::ready(should_keep)
             });
 

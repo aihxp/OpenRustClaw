@@ -158,7 +158,9 @@ pub fn decode_toon(input: &str) -> Result<Value> {
     if let Ok(n) = input.parse::<f64>() {
         return serde_json::Number::from_f64(n)
             .map(Value::Number)
-            .ok_or_else(|| crate::error::Mcp2CliError::toon(format!("Invalid float value: {}", n)));
+            .ok_or_else(|| {
+                crate::error::Mcp2CliError::toon(format!("Invalid float value: {}", n))
+            });
     }
 
     // Try to parse as array
@@ -373,7 +375,10 @@ mod tests {
 
     #[test]
     fn test_encode_quoted_string() {
-        assert_eq!(encode_toon(&Value::String("hello world".to_string())), "\"hello world\"");
+        assert_eq!(
+            encode_toon(&Value::String("hello world".to_string())),
+            "\"hello world\""
+        );
         assert_eq!(encode_toon(&Value::String("a:b".to_string())), "\"a:b\"");
         assert_eq!(encode_toon(&Value::String("a;b".to_string())), "\"a;b\"");
     }

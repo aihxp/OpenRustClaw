@@ -198,9 +198,7 @@ mod tests {
             Model::Llama31SonarSmall128kOnline
         );
         assert_eq!(
-            "llama-3.1-sonar-huge-128k-online"
-                .parse::<Model>()
-                .unwrap(),
+            "llama-3.1-sonar-huge-128k-online".parse::<Model>().unwrap(),
             Model::Llama31SonarHuge128kOnline
         );
     }

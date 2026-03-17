@@ -162,10 +162,7 @@ impl<'a> TextToImage<'a> {
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn generate_prompt(
-        &self,
-        prompt: impl Into<String>,
-    ) -> Result<TextToImageResponse> {
+    pub async fn generate_prompt(&self, prompt: impl Into<String>) -> Result<TextToImageResponse> {
         let request = TextToImageRequest::new(prompt);
         self.generate(request).await
     }
@@ -512,7 +509,7 @@ impl TextToImageRequestBuilder {
 
 /// Module for base64 serialization of image bytes.
 mod base64_serde {
-    use base64::{engine::general_purpose::STANDARD, Engine};
+    use base64::{Engine, engine::general_purpose::STANDARD};
     use serde::{Deserialize, Deserializer, Serializer};
 
     pub fn serialize<S>(bytes: &[u8], serializer: S) -> Result<S::Ok, S::Error>
@@ -545,8 +542,7 @@ mod tests {
 
     #[test]
     fn test_image_classification_with_model() {
-        let req = ImageClassificationRequest::new(vec![1, 2, 3])
-            .with_model("@cf/custom/model");
+        let req = ImageClassificationRequest::new(vec![1, 2, 3]).with_model("@cf/custom/model");
         assert_eq!(req.model, "@cf/custom/model");
     }
 
@@ -606,8 +602,9 @@ mod tests {
                     {"label": "dog", "score": 0.04},
                     {"label": "bird", "score": 0.01}
                 ]
-            }"#
-        ).unwrap();
+            }"#,
+        )
+        .unwrap();
 
         assert_eq!(response.results.len(), 3);
         let top = response.top_prediction().unwrap();

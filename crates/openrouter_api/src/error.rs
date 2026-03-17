@@ -99,9 +99,15 @@ impl fmt::Display for OpenRouterError {
             OpenRouterError::Authentication { message } => {
                 write!(f, "Authentication failed: {message}")
             }
-            OpenRouterError::RateLimit { retry_after, message } => {
+            OpenRouterError::RateLimit {
+                retry_after,
+                message,
+            } => {
                 if let Some(duration) = retry_after {
-                    write!(f, "Rate limit exceeded (retry after {duration:?}): {message}")
+                    write!(
+                        f,
+                        "Rate limit exceeded (retry after {duration:?}): {message}"
+                    )
                 } else {
                     write!(f, "Rate limit exceeded: {message}")
                 }
@@ -116,7 +122,11 @@ impl fmt::Display for OpenRouterError {
                 write!(f, "Provider error ({provider}): {message}")
             }
             OpenRouterError::FallbackExhausted { errors } => {
-                write!(f, "All providers failed: {:?}", errors.iter().map(|(p, _)| p).collect::<Vec<_>>())
+                write!(
+                    f,
+                    "All providers failed: {:?}",
+                    errors.iter().map(|(p, _)| p).collect::<Vec<_>>()
+                )
             }
             OpenRouterError::Api { status, message } => {
                 write!(f, "API error ({status}): {message}")
@@ -175,9 +185,9 @@ impl OpenRouterError {
     /// Check if this error is retryable.
     pub fn is_retryable(&self) -> bool {
         match self {
-            OpenRouterError::RateLimit { .. } 
-                | OpenRouterError::Http { .. } 
-                | OpenRouterError::Provider { .. } => true,
+            OpenRouterError::RateLimit { .. }
+            | OpenRouterError::Http { .. }
+            | OpenRouterError::Provider { .. } => true,
             OpenRouterError::Api { status, .. } => {
                 status.is_server_error() || *status == reqwest::StatusCode::TOO_MANY_REQUESTS
             }

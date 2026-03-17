@@ -3,7 +3,7 @@
 use crate::client::GroqClient;
 use crate::client::endpoints;
 use crate::error::{GroqError, Result};
-use crate::types::{ChatMessage, ChatResponse, Function, Role, Tool, FinishReason};
+use crate::types::{ChatMessage, ChatResponse, FinishReason, Function, Role, Tool};
 
 /// Client for the chat completions API.
 #[derive(Debug)]
@@ -68,24 +68,22 @@ impl<'a> Chat<'a> {
         let stream = response
             .bytes_stream()
             .eventsource()
-            .map(|event| {
-                match event {
-                    Ok(event) => {
-                        if event.data == "[DONE]" {
-                            return Ok(ChatCompletionChunk::done());
-                        }
-
-                        match serde_json::from_str::<ChatCompletionChunk>(&event.data) {
-                            Ok(chunk) => Ok(chunk),
-                            Err(e) => Err(GroqError::Stream {
-                                message: format!("Failed to parse SSE event: {e}"),
-                            }),
-                        }
+            .map(|event| match event {
+                Ok(event) => {
+                    if event.data == "[DONE]" {
+                        return Ok(ChatCompletionChunk::done());
                     }
-                    Err(e) => Err(GroqError::Stream {
-                        message: format!("SSE error: {e}"),
-                    }),
+
+                    match serde_json::from_str::<ChatCompletionChunk>(&event.data) {
+                        Ok(chunk) => Ok(chunk),
+                        Err(e) => Err(GroqError::Stream {
+                            message: format!("Failed to parse SSE event: {e}"),
+                        }),
+                    }
                 }
+                Err(e) => Err(GroqError::Stream {
+                    message: format!("SSE error: {e}"),
+                }),
             });
 
         Ok(stream)
@@ -245,9 +243,7 @@ impl ChatRequest {
 
     /// Create a simple chat request.
     pub fn simple(model: impl Into<String>, message: impl Into<String>) -> Self {
-        Self::builder(model)
-            .message(Role::User, message)
-            .build()
+        Self::builder(model).message(Role::User, message).build()
     }
 
     /// Add a message to the conversation.
@@ -473,7 +469,11 @@ pub struct ChatCompletionChunk {
 impl ChatCompletionChunk {
     /// Check if this is the final chunk.
     pub fn is_done(&self) -> bool {
-        self.choices.is_empty() || self.choices.iter().all(|c| c.delta.is_empty() && c.finish_reason.is_some())
+        self.choices.is_empty()
+            || self
+                .choices
+                .iter()
+                .all(|c| c.delta.is_empty() && c.finish_reason.is_some())
     }
 
     /// Create a done chunk.
@@ -489,12 +489,16 @@ impl ChatCompletionChunk {
 
     /// Get the content delta from the first choice.
     pub fn content(&self) -> Option<&str> {
-        self.choices.first().and_then(|c| c.delta.content.as_deref())
+        self.choices
+            .first()
+            .and_then(|c| c.delta.content.as_deref())
     }
 
     /// Get tool call deltas from the first choice.
     pub fn tool_calls(&self) -> Option<&Vec<ToolCallDelta>> {
-        self.choices.first().and_then(|c| c.delta.tool_calls.as_ref())
+        self.choices
+            .first()
+            .and_then(|c| c.delta.tool_calls.as_ref())
     }
 
     /// Check if the first choice has finished.
@@ -691,7 +695,10 @@ mod tests {
         let none = ToolChoice::none();
 
         match func {
-            ToolChoice::Specific { tool_type, function } => {
+            ToolChoice::Specific {
+                tool_type,
+                function,
+            } => {
                 assert_eq!(tool_type, "function");
                 assert_eq!(function.name, "get_weather");
             }

@@ -13,8 +13,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
 
     // Get API key from environment
-    let api_key = std::env::var("TOGETHER_API_KEY")
-        .expect("TOGETHER_API_KEY environment variable not set");
+    let api_key =
+        std::env::var("TOGETHER_API_KEY").expect("TOGETHER_API_KEY environment variable not set");
 
     // Create client
     let client = TogetherClient::new(api_key)?;
@@ -29,10 +29,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let response = client.chat().complete(request).await?;
     println!("🤖 Response: {}", response.content());
-    println!("📊 Tokens used: {} prompt, {} completion, {} total",
-        response.usage.prompt_tokens,
-        response.usage.completion_tokens,
-        response.usage.total_tokens
+    println!(
+        "📊 Tokens used: {} prompt, {} completion, {} total",
+        response.usage.prompt_tokens, response.usage.completion_tokens, response.usage.total_tokens
     );
 
     // Multi-turn conversation with system prompt

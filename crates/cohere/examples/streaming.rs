@@ -6,8 +6,8 @@ use futures::StreamExt;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Get API key from environment
-    let api_key = std::env::var("COHERE_API_KEY")
-        .expect("COHERE_API_KEY environment variable must be set");
+    let api_key =
+        std::env::var("COHERE_API_KEY").expect("COHERE_API_KEY environment variable must be set");
 
     // Create client
     let client = CohereClient::new(api_key)?;
@@ -19,7 +19,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Send streaming request
     println!("Streaming response:\n");
-    
+
     // Fix for Rust 2024 impl Trait lifetime capture rules
     let chat = client.chat();
     let mut stream = chat.stream(request).await?;

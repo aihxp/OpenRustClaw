@@ -173,26 +173,38 @@ mod tests {
     #[test]
     fn needs_compression_below_threshold() {
         let ctx = ContextManager::new(1000);
-        assert!(!ctx.needs_compression(800), "80% usage should not trigger compression at 85% threshold");
+        assert!(
+            !ctx.needs_compression(800),
+            "80% usage should not trigger compression at 85% threshold"
+        );
     }
 
     #[test]
     fn needs_compression_above_threshold() {
         let ctx = ContextManager::new(1000);
-        assert!(ctx.needs_compression(860), "86% usage should trigger compression at 85% threshold");
+        assert!(
+            ctx.needs_compression(860),
+            "86% usage should trigger compression at 85% threshold"
+        );
     }
 
     #[test]
     fn needs_compression_exactly_at_threshold() {
         let ctx = ContextManager::new(1000);
         // 85% of 1000 = 850
-        assert!(!ctx.needs_compression(850), "Exactly at threshold should not trigger (not strictly greater)");
+        assert!(
+            !ctx.needs_compression(850),
+            "Exactly at threshold should not trigger (not strictly greater)"
+        );
     }
 
     #[test]
     fn needs_compression_over_max() {
         let ctx = ContextManager::new(1000);
-        assert!(ctx.needs_compression(1200), "Over max should definitely trigger compression");
+        assert!(
+            ctx.needs_compression(1200),
+            "Over max should definitely trigger compression"
+        );
     }
 
     // ── build_system_prompt tests ──
@@ -249,10 +261,7 @@ mod tests {
     #[test]
     fn select_messages_fits_all() {
         let ctx = ContextManager::new(10000);
-        let messages = vec![
-            Message::user("Hello"),
-            Message::assistant("Hi there!"),
-        ];
+        let messages = vec![Message::user("Hello"), Message::assistant("Hi there!")];
         let selected = ctx.select_messages(&messages, 100);
         assert_eq!(selected.len(), 2, "All messages should fit");
     }
@@ -320,7 +329,9 @@ mod tests {
         let built = ctx.build("Short.", &[], &[], &[Message::user("Hello")]);
 
         let sys_tokens = ContextManager::estimate_tokens(&built.system_prompt);
-        let msg_tokens: usize = built.messages.iter()
+        let msg_tokens: usize = built
+            .messages
+            .iter()
             .map(|m| ContextManager::estimate_tokens(&m.content))
             .sum();
         assert_eq!(built.estimated_tokens, sys_tokens + msg_tokens);

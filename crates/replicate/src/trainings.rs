@@ -45,7 +45,10 @@ impl<'a> Trainings<'a> {
         version_id: &str,
         request: TrainingRequest,
     ) -> Result<Training> {
-        let path = format!("/models/{}/{}/versions/{}/trainings", model_owner, model_name, version_id);
+        let path = format!(
+            "/models/{}/{}/versions/{}/trainings",
+            model_owner, model_name, version_id
+        );
         let body = serde_json::to_value(&request)?;
         let response = self.client.post(&path, body).await?;
         self.client.handle_response(response).await
@@ -89,10 +92,7 @@ impl<'a> Trainings<'a> {
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn list(
-        &self,
-        cursor: Option<&str>,
-    ) -> Result<PaginatedResponse<Training>> {
+    pub async fn list(&self, cursor: Option<&str>) -> Result<PaginatedResponse<Training>> {
         let mut path = "/trainings".to_string();
         if let Some(cursor) = cursor {
             path.push_str(&format!("?cursor={}", cursor));
@@ -312,7 +312,10 @@ mod tests {
             .webhook("https://example.com/webhook")
             .webhook_events(vec![WebhookEvents::Completed, WebhookEvents::Logs]);
 
-        assert_eq!(request.webhook, Some("https://example.com/webhook".to_string()));
+        assert_eq!(
+            request.webhook,
+            Some("https://example.com/webhook".to_string())
+        );
         assert_eq!(
             request.webhook_events_filter,
             Some(vec![WebhookEvents::Completed, WebhookEvents::Logs])

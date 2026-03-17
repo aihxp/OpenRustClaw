@@ -4,8 +4,8 @@
 //! processing ACP requests from Cursor IDE and responding with results.
 
 use crate::acp::{
-    AcpCapabilities, AcpInitializeRequest, AcpMessage, AcpPayload,
-    AcpProtocol, AcpServerInfo, ACP_PROTOCOL_VERSION,
+    ACP_PROTOCOL_VERSION, AcpCapabilities, AcpInitializeRequest, AcpMessage, AcpPayload,
+    AcpProtocol, AcpServerInfo,
 };
 use crate::error::{CursorError, Result};
 use crate::tools::ToolRegistry;
@@ -323,9 +323,7 @@ impl CursorServer {
     async fn process_message(&self, message: &str) -> Result<Option<AcpMessage>> {
         // Try to parse as ACP message
         match serde_json::from_str::<AcpMessage>(message) {
-            Ok(acp_message) => {
-                self.protocol.handle_message(acp_message).await
-            }
+            Ok(acp_message) => self.protocol.handle_message(acp_message).await,
             Err(_) => {
                 // Try to parse as JSON-RPC (for MCP compatibility)
                 self.process_jsonrpc(message).await
@@ -338,10 +336,7 @@ impl CursorServer {
         let request: Value =
             serde_json::from_str(message).map_err(|e| CursorError::Protocol(e.to_string()))?;
 
-        let method = request
-            .get("method")
-            .and_then(|m| m.as_str())
-            .unwrap_or("");
+        let method = request.get("method").and_then(|m| m.as_str()).unwrap_or("");
         let id = request.get("id").cloned().unwrap_or(Value::Null);
 
         let result = match method {
@@ -370,10 +365,7 @@ impl CursorServer {
             }
             "tools/call" => {
                 let params = request.get("params").cloned().unwrap_or(Value::Null);
-                let tool_name = params
-                    .get("name")
-                    .and_then(|n| n.as_str())
-                    .unwrap_or("");
+                let tool_name = params.get("name").and_then(|n| n.as_str()).unwrap_or("");
                 let tool_params = params.get("arguments").cloned().unwrap_or(Value::Null);
 
                 match self.tool_registry.execute(tool_name, tool_params).await {
@@ -402,11 +394,11 @@ impl CursorServer {
         Ok(Some(AcpMessage {
             version: ACP_PROTOCOL_VERSION.to_string(),
             id: Uuid::new_v4().to_string(),
-            payload: AcpPayload::Response(crate::types::AcpResponse::CommandResult {
+            payload: AcpPayload::Response(Box::new(crate::types::AcpResponse::CommandResult {
                 stdout: response.to_string(),
                 stderr: String::new(),
                 exit_code: 0,
-            }),
+            })),
         }))
     }
 
@@ -486,7 +478,11 @@ mod tests {
         let mcp_config = server.create_mcp_config();
 
         assert!(mcp_config.get("mcpServers").is_some());
-        assert!(mcp_config["mcpServers"].get("openrustclaw-cursor").is_some());
+        assert!(
+            mcp_config["mcpServers"]
+                .get("openrustclaw-cursor")
+                .is_some()
+        );
     }
 
     #[tokio::test]

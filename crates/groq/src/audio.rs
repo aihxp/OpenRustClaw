@@ -40,11 +40,17 @@ impl<'a> Audio<'a> {
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn transcribe(&self, request: AudioTranscriptionRequest) -> Result<TranscriptionResponse> {
+    pub async fn transcribe(
+        &self,
+        request: AudioTranscriptionRequest,
+    ) -> Result<TranscriptionResponse> {
         let form = request.build_form()?;
-        
-        let response = self.client.post_multipart(endpoints::AUDIO_TRANSCRIPTIONS, form).await?;
-        
+
+        let response = self
+            .client
+            .post_multipart(endpoints::AUDIO_TRANSCRIPTIONS, form)
+            .await?;
+
         if response.status().is_success() {
             let body = response.text().await.map_err(GroqError::from)?;
             let transcription: TranscriptionResponse = serde_json::from_str(&body)?;
@@ -55,12 +61,18 @@ impl<'a> Audio<'a> {
     }
 
     /// Transcribe audio with verbose output (includes segments).
-    pub async fn transcribe_verbose(&self, mut request: AudioTranscriptionRequest) -> Result<TranscriptionVerboseResponse> {
+    pub async fn transcribe_verbose(
+        &self,
+        mut request: AudioTranscriptionRequest,
+    ) -> Result<TranscriptionVerboseResponse> {
         request.response_format = Some("verbose_json".to_string());
         let form = request.build_form()?;
-        
-        let response = self.client.post_multipart(endpoints::AUDIO_TRANSCRIPTIONS, form).await?;
-        
+
+        let response = self
+            .client
+            .post_multipart(endpoints::AUDIO_TRANSCRIPTIONS, form)
+            .await?;
+
         if response.status().is_success() {
             let body = response.text().await.map_err(GroqError::from)?;
             let transcription: TranscriptionVerboseResponse = serde_json::from_str(&body)?;
@@ -92,9 +104,12 @@ impl<'a> Audio<'a> {
     /// ```
     pub async fn translate(&self, request: AudioTranslationRequest) -> Result<TranslationResponse> {
         let form = request.build_form()?;
-        
-        let response = self.client.post_multipart(endpoints::AUDIO_TRANSLATIONS, form).await?;
-        
+
+        let response = self
+            .client
+            .post_multipart(endpoints::AUDIO_TRANSLATIONS, form)
+            .await?;
+
         if response.status().is_success() {
             let body = response.text().await.map_err(GroqError::from)?;
             let translation: TranslationResponse = serde_json::from_str(&body)?;
@@ -498,7 +513,7 @@ pub struct TranslationResponse {
 fn guess_mime_type(filename: &str) -> String {
     let ext = filename
         .split('.')
-        .last()
+        .next_back()
         .map(|e| e.to_lowercase())
         .unwrap_or_default();
 
@@ -564,7 +579,8 @@ mod tests {
 
     #[test]
     fn test_transcription_response() {
-        let response: TranscriptionResponse = serde_json::from_str(r#"{"text": "Hello world"}"#).unwrap();
+        let response: TranscriptionResponse =
+            serde_json::from_str(r#"{"text": "Hello world"}"#).unwrap();
         assert_eq!(response.text, "Hello world");
     }
 
@@ -583,7 +599,7 @@ mod tests {
                 }
             ]
         }"#;
-        
+
         let response: TranscriptionVerboseResponse = serde_json::from_str(json).unwrap();
         assert_eq!(response.text, "Hello world");
         assert_eq!(response.language, "en");
