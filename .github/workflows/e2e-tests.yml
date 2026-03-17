@@ -1,0 +1,201 @@
+name: E2E Tests
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  schedule:
+    # Run full regression suite nightly
+    - cron: '0 2 * * *'
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  # ═════════════════════════════════════════════════════════════════════════════
+  # Smoke Tests - Run on every commit (fast ~60 seconds)
+  # ═════════════════════════════════════════════════════════════════════════════
+  smoke-tests:
+    name: Smoke Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: e2e-smoke
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsqlite3-dev
+
+      - name: Build E2E tests
+        run: cargo build --test e2e --release
+
+      - name: Run smoke tests
+        run: cargo test --test e2e smoke --release -- --nocapture
+
+  # ═════════════════════════════════════════════════════════════════════════════
+  # Horizontal Tests - Full user journeys (~5-10 minutes)
+  # ═════════════════════════════════════════════════════════════════════════════
+  horizontal-tests:
+    name: Horizontal E2E Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: smoke-tests
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: e2e-horizontal
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsqlite3-dev
+
+      - name: Run horizontal tests
+        run: cargo test --test e2e horizontal --release -- --nocapture
+
+  # ═════════════════════════════════════════════════════════════════════════════
+  # Vertical Tests - Layer-specific tests (~3-5 minutes)
+  # ═════════════════════════════════════════════════════════════════════════════
+  vertical-tests:
+    name: Vertical E2E Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: smoke-tests
+
+    strategy:
+      matrix:
+        layer: [api, db, provider, gateway]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: e2e-vertical-${{ matrix.layer }}
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsqlite3-dev
+
+      - name: Run vertical tests - ${{ matrix.layer }}
+        run: cargo test --test e2e vertical::test_${{ matrix.layer }}_layer --release -- --nocapture
+
+  # ═════════════════════════════════════════════════════════════════════════════
+  # Regression Tests - Full suite on schedule or manual trigger (~15-20 minutes)
+  # ═════════════════════════════════════════════════════════════════════════════
+  regression-tests:
+    name: Regression E2E Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [smoke-tests, horizontal-tests, vertical-tests]
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: e2e-regression
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsqlite3-dev
+
+      - name: Run regression tests
+        run: cargo test --test e2e regression --release -- --nocapture
+
+  # ═════════════════════════════════════════════════════════════════════════════
+  # Live Provider Tests - Run only with API keys
+  # ═════════════════════════════════════════════════════════════════════════════
+  live-provider-tests:
+    name: Live Provider E2E Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: smoke-tests
+    if: github.event_name == 'workflow_dispatch' || (github.ref == 'refs/heads/main' && github.event_name == 'push')
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: e2e-live
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsqlite3-dev
+
+      - name: Run live provider tests
+        env:
+          E2E_LIVE: 1
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          if [ -n "$OPENAI_API_KEY" ] || [ -n "$ANTHROPIC_API_KEY" ]; then
+            cargo test --test e2e test_live --release -- --nocapture
+          else
+            echo "No API keys configured, skipping live tests"
+          fi
+
+  # ═════════════════════════════════════════════════════════════════════════════
+  # Test Report - Aggregate results
+  # ═════════════════════════════════════════════════════════════════════════════
+  test-report:
+    name: Test Report
+    runs-on: ubuntu-latest
+    needs: [smoke-tests, horizontal-tests, vertical-tests]
+    if: always()
+
+    steps:
+      - name: Report Status
+        run: |
+          echo "E2E Test Results:"
+          echo "  Smoke Tests: ${{ needs.smoke-tests.result }}"
+          echo "  Horizontal Tests: ${{ needs.horizontal-tests.result }}"
+          echo "  Vertical Tests: ${{ needs.vertical-tests.result }}"
+
+          if [ "${{ needs.smoke-tests.result }}" == "failure" ] || \
+             [ "${{ needs.horizontal-tests.result }}" == "failure" ] || \
+             [ "${{ needs.vertical-tests.result }}" == "failure" ]; then
+            echo "❌ Some E2E tests failed"
+            exit 1
+          else
+            echo "✅ All E2E tests passed"
+          fi

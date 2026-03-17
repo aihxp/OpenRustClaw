@@ -15,7 +15,7 @@ use openrustclaw_core::traits::{LlmProvider, Tool, ToolContext};
 use openrustclaw_core::types::{
     CompletionRequest, CompletionResponse, CoreEntry, FinishReason, MemoryEntry, MemoryQuery,
     MemorySource, MemoryType, Message, Role, SkillCapability, StreamChunk,
-    TokenUsage, ToolCall, ToolFormat, ToolOutput,
+    TokenUsage, ToolCall, ToolFormat, ToolOutput, ToolDefinition,
 };
 use openrustclaw_db::memory_store::SqliteMemoryStore;
 use openrustclaw_db::core_memory_store::SqliteCoreMemoryStore;
@@ -34,6 +34,14 @@ use tokio::sync::Mutex;
 use tracing_subscriber::EnvFilter;
 use uuid::Uuid;
 use wiremock::MockServer;
+
+pub mod fixtures;
+pub mod assertions;
+pub mod http_client;
+
+pub use fixtures::*;
+pub use assertions::E2eAssertions;
+pub use http_client::{TestHttpClient, TestWebSocketClient, ResponseExt, TestError};
 
 /// Initialize tracing subscriber for tests.
 pub fn init_test_tracing() {
@@ -797,7 +805,7 @@ pub struct MemoryEntryBuilder {
     namespace: String,
     importance: f32,
     confidence: f32,
-    expires_at: Option<chrono::DateTime<Utc>>,
+    expires_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 impl MemoryEntryBuilder {
@@ -850,7 +858,7 @@ impl MemoryEntryBuilder {
         self
     }
 
-    pub fn expires_at(mut self, expires_at: chrono::DateTime<Utc>) -> Self {
+    pub fn expires_at(mut self, expires_at: chrono::DateTime<chrono::Utc>) -> Self {
         self.expires_at = Some(expires_at);
         self
     }
@@ -999,16 +1007,23 @@ pub fn create_test_jwt(sub: &str, secret: &str) -> String {
 
     let claims = Claims {
         sub: sub.to_string(),
-        exp: (Utc::now() + chrono::Duration::hours(1)).timestamp() as usize,
+        exp: (chrono::Utc::now() + chrono::Duration::hours(1)).timestamp() as usize,
     };
 
     let header = Header::new(Algorithm::HS256);
-    let key = EncodingKey::from_secret(secret.as_bytes());
-
-    encode(&header, &claims, &key).expect("Failed to create JWT")
+    encode(&header, &claims, &EncodingKey::from_secret(secret.as_ref()))
+        .expect("Failed to encode JWT")
 }
 
-/// Create a test bearer token header value.
-pub fn create_auth_header(secret: &str) -> String {
-    format!("Bearer {}", create_test_jwt("test_user", secret))
+/// Check if running in CI environment.
+pub fn is_ci() -> bool {
+    std::env::var("CI").is_ok() || std::env::var("GITHUB_ACTIONS").is_ok()
+}
+
+/// Get test timeout from environment.
+pub fn test_timeout_secs() -> u64 {
+    std::env::var("E2E_TIMEOUT_SECS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(300)
 }

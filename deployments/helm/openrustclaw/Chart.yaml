@@ -1,0 +1,20 @@
+apiVersion: v2
+name: openrustclaw
+description: A Helm chart for OpenRustClaw AI Agent Gateway
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://openrustclaw.io
+sources:
+  - https://github.com/openrustclaw/openrustclaw
+maintainers:
+  - name: OpenRustClaw Team
+    email: team@openrustclaw.io
+keywords:
+  - ai
+  - agent
+  - llm
+  - rust
+  - mcp
+annotations:
+  category: AI/ML

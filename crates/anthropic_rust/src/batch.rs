@@ -12,6 +12,16 @@ use crate::constants::endpoints;
 use crate::error::{AnthropicError, Result};
 use crate::types::{MessageRequest, MessageResponse};
 
+/// Generate a unique ID for batch requests.
+fn generate_id() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis();
+    format!("batch-{}", timestamp)
+}
+
 /// A client for the Batch API.
 #[derive(Debug, Clone)]
 pub struct BatchClient<'a> {
@@ -26,7 +36,7 @@ impl<'a> BatchClient<'a> {
 
     /// Create a new batch request.
     pub async fn create(&self, requests: Vec<BatchRequest>) -> Result<Batch> {
-        let custom_id = uuid::Uuid::new_v4().to_string();
+        let custom_id = generate_id();
         self.create_with_id(&custom_id, requests).await
     }
 

@@ -1,0 +1,311 @@
+# Default values for OpenRustClaw
+# This is a YAML-formatted file.
+
+# -- Number of replicas for the gateway
+replicaCount: 2
+
+image:
+  # -- Repository for the OpenRustClaw image
+  repository: ghcr.io/openrustclaw/openrustclaw
+  # -- Pull policy
+  pullPolicy: IfNotPresent
+  # -- Tag (defaults to Chart appVersion)
+  tag: ""
+
+# -- Image pull secrets
+imagePullSecrets: []
+
+# -- String to override the chart name
+nameOverride: ""
+
+# -- String to override the full release name
+fullnameOverride: ""
+
+# -- Service account configuration
+serviceAccount:
+  # -- Specifies whether a service account should be created
+  create: true
+  # -- Annotations to add to the service account
+  annotations: {}
+  # -- The name of the service account to use
+  name: ""
+
+# -- Pod annotations
+podAnnotations: {}
+  # prometheus.io/scrape: "true"
+  # prometheus.io/port: "8080"
+  # prometheus.io/path: "/metrics"
+
+# -- Pod security context
+podSecurityContext:
+  fsGroup: 1000
+  runAsNonRoot: true
+  runAsUser: 1000
+
+# -- Security context for containers
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+# -- Service configuration
+service:
+  type: ClusterIP
+  port: 8080
+  targetPort: 8080
+  annotations: {}
+
+# -- Ingress configuration
+ingress:
+  enabled: false
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+  hosts:
+    - host: openrustclaw.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: openrustclaw-tls
+      hosts:
+        - openrustclaw.example.com
+
+# -- Resource requests and limits
+resources:
+  limits:
+    cpu: 2000m
+    memory: 4Gi
+  requests:
+    cpu: 500m
+    memory: 1Gi
+
+# -- Horizontal Pod Autoscaler configuration
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 50
+          periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 15
+        - type: Pods
+          value: 4
+          periodSeconds: 15
+      selectPolicy: Max
+
+# -- Node selector
+nodeSelector: {}
+
+# -- Tolerations
+tolerations: []
+
+# -- Affinity rules
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - openrustclaw
+          topologyKey: kubernetes.io/hostname
+
+# -- Pod Disruption Budget
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# -- Liveness probe configuration
+livenessProbe:
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+# -- Readiness probe configuration
+readinessProbe:
+  httpGet:
+    path: /health/ready
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+# -- Startup probe configuration
+startupProbe:
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 30
+
+# -- Configuration for OpenRustClaw
+config:
+  # -- Log level
+  logLevel: info
+  
+  # -- Gateway configuration
+  gateway:
+    host: 0.0.0.0
+    port: 8080
+    workers: 4
+  
+  # -- Database configuration
+  database:
+    # -- Database type: sqlite or postgresql
+    type: sqlite
+    # -- SQLite configuration
+    sqlite:
+      # -- Path to SQLite database (relative to persistence mount)
+      path: /data/openrustclaw.db
+      poolSize: 10
+    # -- PostgreSQL configuration (when type is postgresql)
+    postgresql:
+      host: postgres
+      port: 5432
+      database: openrustclaw
+      user: openrustclaw
+      password: ""
+      poolSize: 10
+      sslMode: require
+  
+  # -- Security configuration
+  security:
+    # -- Require authentication
+    requireAuth: true
+    # -- JWT expiry in hours
+    jwtExpiryHours: 24
+    # -- Rate limit (requests per second)
+    rateLimitRps: 100
+    # -- Rate limit burst
+    rateLimitBurst: 150
+    # -- Allowed origins (comma-separated)
+    originWhitelist: ""
+  
+  # -- LLM Provider configuration
+  providers:
+    # -- Anthropic configuration
+    anthropic:
+      enabled: false
+      apiKey: ""
+      model: claude-3-5-sonnet-20241022
+      maxTokens: 4096
+    # -- OpenAI configuration
+    openai:
+      enabled: false
+      apiKey: ""
+      model: gpt-4o
+      maxTokens: 4096
+    # -- OpenRouter configuration
+    openrouter:
+      enabled: false
+      apiKey: ""
+      model: anthropic/claude-3.5-sonnet
+      maxTokens: 4096
+    # -- Ollama configuration
+    ollama:
+      enabled: false
+      host: http://ollama:11434
+      model: llama3.2
+      maxTokens: 4096
+  
+  # -- Memory configuration
+  memory:
+    # -- Core memory max tokens
+    coreMaxTokens: 500
+    # -- Recall memory top-k
+    recallTopK: 10
+    # -- Vector search enabled
+    vectorSearch: true
+  
+  # -- Observability configuration
+  observability:
+    # -- Prometheus metrics enabled
+    metricsEnabled: true
+    # -- OpenTelemetry endpoint
+    otlpEndpoint: ""
+    # -- Jaeger endpoint
+    jaegerEndpoint: ""
+
+# -- Secrets configuration (use external secrets for production)
+secrets:
+  # -- Use external secret (recommended for production)
+  useExternal: false
+  # -- Name of external secret
+  externalSecretName: ""
+  # -- JWT secret (auto-generated if not provided)
+  jwtSecret: ""
+
+# -- Persistence configuration
+persistence:
+  # -- Enable persistence
+  enabled: true
+  # -- Storage class name (empty = default)
+  storageClass: ""
+  # -- Access mode
+  accessMode: ReadWriteOnce
+  # -- Storage size
+  size: 10Gi
+  # -- Existing claim name (if using existing PVC)
+  existingClaim: ""
+  # -- Annotations for PVC
+  annotations: {}
+
+# -- Network policy configuration
+networkPolicy:
+  enabled: false
+  ingress: []
+  egress: []
+
+# -- Monitoring configuration
+monitoring:
+  # -- ServiceMonitor for Prometheus Operator
+  serviceMonitor:
+    enabled: false
+    namespace: ""
+    interval: 30s
+    scrapeTimeout: 10s
+    labels: {}
+  
+  # -- PrometheusRule for alerts
+  prometheusRule:
+    enabled: false
+    namespace: ""
+    labels: {}
+    rules: []
+
+# -- Pod topology spread constraints
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: ScheduleAnyway
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/name: openrustclaw

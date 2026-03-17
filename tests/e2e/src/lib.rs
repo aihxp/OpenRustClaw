@@ -1,43 +1,25 @@
-//! End-to-End (E2E) tests for OpenRustClaw.
+//! OpenRustClaw E2E Testing Framework - Common Utilities
 //!
-//! This crate contains comprehensive end-to-end tests that verify the entire
-//! system works together correctly. Tests cover:
-//!
-//! - Chat workflows with tool calling
-//! - Memory storage, retrieval, and search
-//! - Scheduler job execution and retries
-//! - Security (auth, origin validation, rate limiting)
-//! - Provider fallback and resilience
+//! This crate provides shared utilities for E2E tests.
+//! The actual tests are in the `tests/` directory.
 //!
 //! ## Running Tests
 //!
-//! ### Mock-based tests (default):
 //! ```bash
-//! cargo test --test e2e
-//! ```
+//! # Smoke tests (fast)
+//! cargo test --test e2e_tests smoke
 //!
-//! ### Live provider tests (requires API keys):
-//! ```bash
-//! export E2E_LIVE=1
-//! export OPENAI_API_KEY=sk-...
-//! export ANTHROPIC_API_KEY=sk-ant-...
-//! cargo test --test e2e
-//! ```
+//! # Horizontal tests (user journeys)
+//! cargo test --test e2e_tests horizontal
 //!
-//! ### Run specific test file:
-//! ```bash
-//! cargo test --test e2e test_chat_workflow
-//! ```
+//! # Vertical tests (layer-specific)
+//! cargo test --test e2e_tests vertical
 //!
-//! ### Run with output:
-//! ```bash
-//! cargo test --test e2e -- --nocapture
+//! # Regression tests (full suite)
+//! cargo test --test e2e_tests regression
 //! ```
 
 pub mod common;
 
-mod test_chat_workflow;
-mod test_memory_workflow;
-mod test_provider_fallback;
-mod test_scheduler_workflow;
-mod test_security_workflow;
+// Re-export commonly used items
+pub use common::*;

@@ -320,13 +320,24 @@ All v2.0 features are now implemented:
 - [x] **Cursor ACP** - Deep IDE integration with code/terminal/git tools
 - [x] **Multi-node Distributed** - Raft consensus, horizontal scaling
 
-### v2.1 - Platform Hardening (Next)
-- [ ] Production deployment guides
-- [ ] Kubernetes Helm charts
-- [ ] Terraform modules
-- [ ] AWS/GCP/Azure marketplace
-- [ ] SOC 2 compliance documentation
-- [ ] Enterprise SSO (OIDC/SAML)
+### v2.1 - Platform Hardening ✅ COMPLETE
+
+All v2.1 features are now implemented:
+
+- [x] **Production deployment guides** - Docker Compose, K8s, Bare Metal
+- [x] **Kubernetes Helm charts** - Production-ready with HPA, PDB, monitoring
+- [x] **Terraform modules** - AWS, GCP, Azure infrastructure as code
+- [x] **AWS/GCP/Azure marketplace** - Ready for submission
+- [x] **SOC 2 compliance documentation** - Security controls documented
+- [x] **Enterprise SSO (OIDC/SAML)** - Okta, Azure AD, Auth0 support
+
+### v2.2 - Scale & Reliability (Next)
+- [ ] Multi-region deployment
+- [ ] Database read replicas
+- [ ] CDN integration
+- [ ] DDoS protection
+- [ ] Advanced monitoring
+- [ ] Cost optimization tools
 
 ### v3+ - Advanced Features
 - [ ] Canvas/A2UI visual workspace

@@ -134,7 +134,7 @@ impl AnthropicClient {
     }
 
     /// Make a POST request to the API.
-    async fn post(&self, path: &str, body: serde_json::Value) -> Result<reqwest::Response> {
+    pub(crate) async fn post(&self, path: &str, body: serde_json::Value) -> Result<reqwest::Response> {
         let url = format!("{}{}", self.inner.base_url, path);
 
         trace!(url = %url, body = %body, "Making POST request");
@@ -152,7 +152,7 @@ impl AnthropicClient {
     }
 
     /// Parse a response or return an error.
-    async fn handle_response(&self, response: reqwest::Response) -> Result<serde_json::Value> {
+    pub(crate) async fn handle_response(&self, response: reqwest::Response) -> Result<serde_json::Value> {
         let status = response.status();
 
         if status.is_success() {

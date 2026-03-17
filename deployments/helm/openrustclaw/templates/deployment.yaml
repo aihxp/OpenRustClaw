@@ -1,0 +1,120 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "openrustclaw.fullname" . }}
+  labels:
+    {{- include "openrustclaw.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "openrustclaw.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secrets: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "openrustclaw.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "openrustclaw.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.config.gateway.port }}
+              protocol: TCP
+          env:
+            - name: RUST_LOG
+              value: {{ .Values.config.logLevel }}
+            - name: GATEWAY_HOST
+              value: {{ .Values.config.gateway.host | quote }}
+            - name: GATEWAY_PORT
+              value: {{ .Values.config.gateway.port | quote }}
+            - name: GATEWAY_WORKERS
+              value: {{ .Values.config.gateway.workers | quote }}
+            - name: DATABASE_URL
+              value: {{ include "openrustclaw.databaseUrl" . | quote }}
+            - name: DATABASE_POOL_SIZE
+              value: {{ .Values.config.database.sqlite.poolSize | quote }}
+            - name: REQUIRE_AUTH
+              value: {{ .Values.config.security.requireAuth | quote }}
+            - name: JWT_EXPIRY_HOURS
+              value: {{ .Values.config.security.jwtExpiryHours | quote }}
+            - name: RATE_LIMIT_RPS
+              value: {{ .Values.config.security.rateLimitRps | quote }}
+            - name: RATE_LIMIT_BURST
+              value: {{ .Values.config.security.rateLimitBurst | quote }}
+            - name: ORIGIN_WHITELIST
+              value: {{ .Values.config.security.originWhitelist | quote }}
+            - name: METRICS_ENABLED
+              value: {{ .Values.config.observability.metricsEnabled | quote }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.config.observability.otlpEndpoint | quote }}
+            - name: MEMORY_CORE_MAX_TOKENS
+              value: {{ .Values.config.memory.coreMaxTokens | quote }}
+            - name: MEMORY_RECALL_TOP_K
+              value: {{ .Values.config.memory.recallTopK | quote }}
+            - name: MEMORY_VECTOR_SEARCH
+              value: {{ .Values.config.memory.vectorSearch | quote }}
+          envFrom:
+            - secretRef:
+                name: {{ if .Values.secrets.useExternal }}{{ .Values.secrets.externalSecretName }}{{ else }}{{ include "openrustclaw.fullname" . }}{{ end }}
+          livenessProbe:
+            {{- toYaml .Values.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.readinessProbe | nindent 12 }}
+          startupProbe:
+            {{- toYaml .Values.startupProbe | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: data
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            {{- if .Values.persistence.existingClaim }}
+            claimName: {{ .Values.persistence.existingClaim }}
+            {{- else }}
+            claimName: {{ include "openrustclaw.fullname" . }}
+            {{- end }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: tmp
+          emptyDir: {}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

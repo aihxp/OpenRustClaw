@@ -1,0 +1,629 @@
+# Production Deployment Guide
+
+This guide covers deploying OpenRustClaw in production environments with high availability, security, and observability.
+
+## Table of Contents
+
+- [Prerequisites](#prerequisites)
+- [Architecture Overview](#architecture-overview)
+- [Deployment Options](#deployment-options)
+  - [Option 1: Docker Compose (Single Node)](#option-1-docker-compose-single-node)
+  - [Option 2: Kubernetes (Recommended)](#option-2-kubernetes-recommended)
+  - [Option 3: Bare Metal / VM](#option-3-bare-metal--vm)
+- [Configuration](#configuration)
+- [Security Hardening](#security-hardening)
+- [Monitoring & Observability](#monitoring--observability)
+- [Backup & Disaster Recovery](#backup--disaster-recovery)
+- [Troubleshooting](#troubleshooting)
+
+---
+
+## Prerequisites
+
+### System Requirements
+
+| Component | Minimum | Recommended |
+|-----------|---------|-------------|
+| CPU | 2 cores | 4+ cores |
+| RAM | 4 GB | 8+ GB |
+| Disk | 20 GB SSD | 100+ GB NVMe |
+| Network | 100 Mbps | 1 Gbps |
+
+### Software Requirements
+
+- **Docker** 24.0+ (for containerized deployment)
+- **Kubernetes** 1.28+ (for K8s deployment)
+- **PostgreSQL** 15+ (optional, for advanced use cases)
+- **Redis** 7+ (optional, for caching/sessions)
+
+### API Keys
+
+Required for LLM providers:
+
+```bash
+# At least one provider required
+export ANTHROPIC_API_KEY=sk-ant-...
+export OPENAI_API_KEY=sk-...
+export OPENROUTER_API_KEY=sk-or-...
+```
+
+---
+
+## Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         LOAD BALANCER                            │
+│                    (nginx / AWS ALB / Traefik)                   │
+└───────────────────────┬─────────────────────────────────────────┘
+                        │
+        ┌───────────────┼───────────────┐
+        ▼               ▼               ▼
+┌──────────────┐ ┌──────────────┐ ┌──────────────┐
+│  OpenRust    │ │  OpenRust    │ │  OpenRust    │
+│  Claw Node 1 │ │  Claw Node 2 │ │  Claw Node N │
+│  (Gateway)   │ │  (Gateway)   │ │  (Gateway)   │
+└──────┬───────┘ └──────┬───────┘ └──────┬───────┘
+       │                │                │
+       └────────────────┼────────────────┘
+                        ▼
+              ┌──────────────────┐
+              │   SQLite (R/W)   │
+              │   or PostgreSQL  │
+              └──────────────────┘
+```
+
+---
+
+## Deployment Options
+
+### Option 1: Docker Compose (Single Node)
+
+Best for: Small deployments, development, testing
+
+#### 1. Create Project Directory
+
+```bash
+mkdir -p /opt/openrustclaw
+cd /opt/openrustclaw
+```
+
+#### 2. Create Environment File
+
+```bash
+cat > .env << 'EOF'
+# Required: API Keys
+ANTHROPIC_API_KEY=your-key-here
+OPENAI_API_KEY=your-key-here
+
+# Optional: Additional providers
+OPENROUTER_API_KEY=your-key-here
+OLLAMA_HOST=http://localhost:11434
+
+# Database
+DATABASE_URL=sqlite:///data/openrustclaw.db
+DATABASE_POOL_SIZE=10
+
+# Security
+JWT_SECRET=$(openssl rand -hex 32)
+ORIGIN_WHITELIST=https://yourdomain.com,https://app.yourdomain.com
+REQUIRE_AUTH=true
+
+# Gateway
+GATEWAY_HOST=0.0.0.0
+GATEWAY_PORT=8080
+GATEWAY_WORKERS=4
+
+# Logging
+RUST_LOG=info,openrustclaw=debug
+LOG_FORMAT=json
+
+# Observability
+OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4317
+METRICS_ENABLED=true
+EOF
+```
+
+#### 3. Create Docker Compose File
+
+```yaml
+version: '3.8'
+
+services:
+  openrustclaw:
+    image: ghcr.io/openrustclaw/openrustclaw:latest
+    container_name: openrustclaw
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/data
+      - ./config:/etc/openrustclaw
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 2G
+    networks:
+      - openrustclaw
+
+  # Optional: Prometheus for metrics
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    restart: unless-stopped
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - openrustclaw
+
+  # Optional: Grafana for dashboards
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards
+    ports:
+      - "3000:3000"
+    networks:
+      - openrustclaw
+
+  # Optional: Jaeger for tracing
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: jaeger
+    restart: unless-stopped
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    ports:
+      - "16686:16686"
+      - "4317:4317"
+    networks:
+      - openrustclaw
+
+volumes:
+  prometheus-data:
+  grafana-data:
+
+networks:
+  openrustclaw:
+    driver: bridge
+```
+
+#### 4. Deploy
+
+```bash
+# Pull latest images
+docker-compose pull
+
+# Start services
+docker-compose up -d
+
+# Check status
+docker-compose ps
+docker-compose logs -f openrustclaw
+```
+
+#### 5. Verify Deployment
+
+```bash
+# Health check
+curl http://localhost:8080/health
+
+# Check metrics
+curl http://localhost:8080/metrics
+```
+
+---
+
+### Option 2: Kubernetes (Recommended)
+
+Best for: Production workloads, high availability, auto-scaling
+
+See [Kubernetes Deployment](./kubernetes.md) for detailed Helm chart instructions.
+
+Quick start:
+
+```bash
+# Add Helm repository
+helm repo add openrustclaw https://openrustclaw.github.io/charts
+helm repo update
+
+# Install with custom values
+helm install openrustclaw openrustclaw/openrustclaw \
+  --namespace openrustclaw \
+  --create-namespace \
+  --values values-production.yaml
+```
+
+---
+
+### Option 3: Bare Metal / VM
+
+Best for: Air-gapped environments, maximum performance
+
+#### 1. Install Dependencies
+
+```bash
+# Ubuntu/Debian
+sudo apt-get update
+sudo apt-get install -y sqlite3 libsqlite3-dev
+
+# RHEL/CentOS/Fedora
+sudo dnf install -y sqlite sqlite-devel
+
+# Install Rust
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source $HOME/.cargo/env
+```
+
+#### 2. Create System User
+
+```bash
+sudo useradd -r -s /bin/false openrustclaw
+sudo mkdir -p /opt/openrustclaw /var/lib/openrustclaw
+sudo chown openrustclaw:openrustclaw /opt/openrustclaw /var/lib/openrustclaw
+```
+
+#### 3. Build from Source
+
+```bash
+cd /opt/openrustclaw
+sudo -u openrustclaw git clone https://github.com/openrustclaw/openrustclaw.git .
+sudo -u openrustclaw cargo build --release
+```
+
+#### 4. Create Systemd Service
+
+```bash
+sudo tee /etc/systemd/system/openrustclaw.service > /dev/null << 'EOF'
+[Unit]
+Description=OpenRustClaw AI Agent Gateway
+After=network.target
+
+[Service]
+Type=simple
+User=openrustclaw
+Group=openrustclaw
+WorkingDirectory=/opt/openrustclaw
+EnvironmentFile=/etc/openrustclaw/environment
+ExecStart=/opt/openrustclaw/target/release/openrustclaw-gateway
+Restart=on-failure
+RestartSec=5
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/openrustclaw
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+
+# Resource limits
+LimitNOFILE=65536
+LimitNPROC=4096
+
+[Install]
+WantedBy=multi-user.target
+EOF
+```
+
+#### 5. Create Environment File
+
+```bash
+sudo mkdir -p /etc/openrustclaw
+sudo tee /etc/openrustclaw/environment > /dev/null << 'EOF'
+RUST_LOG=info
+DATABASE_URL=sqlite:///var/lib/openrustclaw/openrustclaw.db
+GATEWAY_HOST=0.0.0.0
+GATEWAY_PORT=8080
+ANTHROPIC_API_KEY=your-key-here
+JWT_SECRET=your-secret-here
+EOF
+
+sudo chmod 600 /etc/openrustclaw/environment
+sudo chown openrustclaw:openrustclaw /etc/openrustclaw/environment
+```
+
+#### 6. Start Service
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable openrustclaw
+sudo systemctl start openrustclaw
+sudo systemctl status openrustclaw
+```
+
+---
+
+## Configuration
+
+### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `RUST_LOG` | Log level (error/warn/info/debug/trace) | `info` |
+| `DATABASE_URL` | SQLite or PostgreSQL connection string | `sqlite://./openrustclaw.db` |
+| `GATEWAY_HOST` | Gateway bind address | `127.0.0.1` |
+| `GATEWAY_PORT` | Gateway port | `8080` |
+| `GATEWAY_WORKERS` | Number of worker threads | `num_cpus` |
+| `JWT_SECRET` | Secret for JWT signing | **Required** |
+| `JWT_EXPIRY_HOURS` | JWT token expiry | `24` |
+| `ORIGIN_WHITELIST` | Comma-separated allowed origins | **Required** |
+| `REQUIRE_AUTH` | Require authentication | `true` |
+| `RATE_LIMIT_RPS` | Rate limit (requests per second) | `100` |
+| `RATE_LIMIT_BURST` | Rate limit burst size | `150` |
+
+### Provider Configuration
+
+```bash
+# Anthropic
+ANTHROPIC_API_KEY=sk-ant-...
+ANTHROPIC_MODEL=claude-3-5-sonnet-20241022
+ANTHROPIC_MAX_TOKENS=4096
+
+# OpenAI
+OPENAI_API_KEY=sk-...
+OPENAI_MODEL=gpt-4o
+OPENAI_MAX_TOKENS=4096
+
+# OpenRouter
+OPENROUTER_API_KEY=sk-or-...
+OPENROUTER_MODEL=anthropic/claude-3.5-sonnet
+
+# Ollama (local)
+OLLAMA_HOST=http://localhost:11434
+OLLAMA_MODEL=llama3.2
+```
+
+---
+
+## Security Hardening
+
+### 1. Network Security
+
+```bash
+# UFW firewall rules (Ubuntu)
+sudo ufw default deny incoming
+sudo ufw default allow outgoing
+sudo ufw allow 22/tcp    # SSH
+sudo ufw allow 80/tcp    # HTTP (redirect to HTTPS)
+sudo ufw allow 443/tcp   # HTTPS
+sudo ufw enable
+```
+
+### 2. TLS/SSL Configuration
+
+Using Let's Encrypt with certbot:
+
+```bash
+# Install certbot
+sudo apt-get install -y certbot
+
+# Obtain certificate
+sudo certbot certonly --standalone -d yourdomain.com
+
+# Auto-renewal
+sudo systemctl enable certbot.timer
+```
+
+### 3. JWT Secret Rotation
+
+```bash
+# Generate strong secret
+openssl rand -base64 64
+
+# Rotate secrets periodically (e.g., monthly)
+# Update JWT_SECRET and restart service
+```
+
+### 4. Database Encryption
+
+```bash
+# Enable SQLite encryption (SQLCipher)
+export DATABASE_URL="sqlite:///data/openrustclaw.db?key=mysecretkey"
+```
+
+---
+
+## Monitoring & Observability
+
+### Metrics Endpoints
+
+| Endpoint | Description |
+|----------|-------------|
+| `/health` | Basic health check |
+| `/health/ready` | Readiness probe |
+| `/health/deep` | Deep health check (includes dependencies) |
+| `/metrics` | Prometheus metrics |
+
+### Key Metrics to Monitor
+
+```promql
+# Request rate
+rate(openrustclaw_requests_total[5m])
+
+# Error rate
+rate(openrustclaw_errors_total[5m])
+
+# Response time (p99)
+histogram_quantile(0.99, rate(openrustclaw_request_duration_seconds_bucket[5m]))
+
+# Active connections
+openrustclaw_active_connections
+
+# Database pool utilization
+openrustclaw_db_pool_connections{state="in_use"}
+```
+
+### Alerting Rules (Prometheus)
+
+```yaml
+groups:
+  - name: openrustclaw
+    rules:
+      - alert: HighErrorRate
+        expr: rate(openrustclaw_errors_total[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High error rate detected"
+
+      - alert: HighLatency
+        expr: histogram_quantile(0.99, rate(openrustclaw_request_duration_seconds_bucket[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High latency detected"
+
+      - alert: ServiceDown
+        expr: up{job="openrustclaw"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "OpenRustClaw service is down"
+```
+
+---
+
+## Backup & Disaster Recovery
+
+### Automated Backups
+
+```bash
+#!/bin/bash
+# /opt/openrustclaw/backup.sh
+
+BACKUP_DIR="/backup/openrustclaw"
+DATE=$(date +%Y%m%d_%H%M%S)
+
+# Create backup
+sqlite3 /var/lib/openrustclaw/openrustclaw.db ".backup '${BACKUP_DIR}/backup_${DATE}.db'"
+
+# Compress
+gzip "${BACKUP_DIR}/backup_${DATE}.db"
+
+# Keep only last 30 days
+find ${BACKUP_DIR} -name "backup_*.db.gz" -mtime +30 -delete
+
+# Sync to S3 (optional)
+aws s3 sync ${BACKUP_DIR} s3://your-backup-bucket/openrustclaw/
+```
+
+Add to crontab:
+
+```bash
+# Daily backup at 2 AM
+0 2 * * * /opt/openrustclaw/backup.sh
+```
+
+### Point-in-Time Recovery
+
+```bash
+# Stop service
+sudo systemctl stop openrustclaw
+
+# Restore from backup
+sudo cp /backup/openrustclaw/backup_20240115_020000.db.gz /tmp/
+gunzip /tmp/backup_20240115_020000.db.gz
+sudo mv /tmp/backup_20240115_020000.db /var/lib/openrustclaw/openrustclaw.db
+sudo chown openrustclaw:openrustclaw /var/lib/openrustclaw/openrustclaw.db
+
+# Start service
+sudo systemctl start openrustclaw
+```
+
+---
+
+## Troubleshooting
+
+### Common Issues
+
+#### 1. Service Won't Start
+
+```bash
+# Check logs
+sudo journalctl -u openrustclaw -f
+
+# Verify configuration
+sudo -u openrustclaw /opt/openrustclaw/target/release/openrustclaw-gateway --check-config
+
+# Check file permissions
+ls -la /var/lib/openrustclaw/
+ls -la /etc/openrustclaw/
+```
+
+#### 2. Database Connection Issues
+
+```bash
+# Test database connectivity
+sqlite3 /var/lib/openrustclaw/openrustclaw.db "SELECT 1;"
+
+# Check disk space
+df -h /var/lib/openrustclaw/
+
+# Verify WAL mode
+sqlite3 /var/lib/openrustclaw/openrustclaw.db "PRAGMA journal_mode;"
+```
+
+#### 3. High Memory Usage
+
+```bash
+# Check memory usage
+ps aux | grep openrustclaw
+
+# Profile memory (if built with debug symbols)
+sudo perf top -p $(pgrep openrustclaw-gateway)
+
+# Enable memory profiling
+export RUST_LOG=info,openrustclaw=debug
+```
+
+#### 4. Rate Limiting Issues
+
+```bash
+# Check current rate limits
+curl http://localhost:8080/metrics | grep rate_limit
+
+# Adjust in configuration
+export RATE_LIMIT_RPS=200
+export RATE_LIMIT_BURST=300
+```
+
+### Getting Help
+
+- **Documentation**: https://docs.openrustclaw.io
+- **GitHub Issues**: https://github.com/openrustclaw/openrustclaw/issues
+- **Discord**: https://discord.gg/openrustclaw
+- **Email**: support@openrustclaw.io
+
+---
+
+## Next Steps
+
+- [Kubernetes Deployment](./kubernetes.md) - For HA deployments
+- [Terraform Modules](./terraform.md) - For cloud infrastructure
+- [Enterprise SSO](./sso.md) - For OIDC/SAML authentication
+- [Monitoring Setup](./monitoring.md) - Complete observability guide

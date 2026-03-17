@@ -9,8 +9,10 @@ pub mod input_sanitizer;
 pub mod isolation;
 pub mod origin_check;
 pub mod skill_verifier;
+pub mod sso;
 
 pub use auth::AuthManager;
 pub use origin_check::OriginValidator;
 pub use input_sanitizer::InputSanitizer;
 pub use skill_verifier::SkillVerifier;
+pub use sso::{SsoClient, SsoConfig, SsoError, SsoProvider, SsoRegistry, SsoTokens, SsoUserInfo};

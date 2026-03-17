@@ -87,7 +87,7 @@ pub use types::{
 pub use streaming::{StreamEvent, StreamResult};
 
 #[cfg(feature = "batch")]
-pub use batch::{BatchClient, BatchRequest, BatchResponse};
+pub use batch::{Batch, BatchClient, BatchRequest};
 
 /// The version of this crate.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

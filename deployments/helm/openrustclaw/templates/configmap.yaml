@@ -1,0 +1,45 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "openrustclaw.fullname" . }}-config
+  labels:
+    {{- include "openrustclaw.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    gateway:
+      host: {{ .Values.config.gateway.host }}
+      port: {{ .Values.config.gateway.port }}
+      workers: {{ .Values.config.gateway.workers }}
+    
+    database:
+      type: {{ .Values.config.database.type }}
+      {{- if eq .Values.config.database.type "sqlite" }}
+      sqlite:
+        path: {{ .Values.config.database.sqlite.path }}
+        pool_size: {{ .Values.config.database.sqlite.poolSize }}
+      {{- else }}
+      postgresql:
+        host: {{ .Values.config.database.postgresql.host }}
+        port: {{ .Values.config.database.postgresql.port }}
+        database: {{ .Values.config.database.postgresql.database }}
+        pool_size: {{ .Values.config.database.postgresql.poolSize }}
+        ssl_mode: {{ .Values.config.database.postgresql.sslMode }}
+      {{- end }}
+    
+    security:
+      require_auth: {{ .Values.config.security.requireAuth }}
+      jwt_expiry_hours: {{ .Values.config.security.jwtExpiryHours }}
+      rate_limit_rps: {{ .Values.config.security.rateLimitRps }}
+      rate_limit_burst: {{ .Values.config.security.rateLimitBurst }}
+      origin_whitelist: {{ .Values.config.security.originWhitelist | quote }}
+    
+    memory:
+      core_max_tokens: {{ .Values.config.memory.coreMaxTokens }}
+      recall_top_k: {{ .Values.config.memory.recallTopK }}
+      vector_search: {{ .Values.config.memory.vectorSearch }}
+    
+    observability:
+      metrics_enabled: {{ .Values.config.observability.metricsEnabled }}
+      {{- if .Values.config.observability.otlpEndpoint }}
+      otlp_endpoint: {{ .Values.config.observability.otlpEndpoint }}
+      {{- end }}
