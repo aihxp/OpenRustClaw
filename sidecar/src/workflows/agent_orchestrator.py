@@ -59,7 +59,7 @@ class PreprocessNode:
             if not messages:
                 return {"error": "No messages provided", "output": None}
 
-            # Load memory context (placeholder - would integrate with memory system)
+            # Load memory/context hints from the workflow configuration.
             memory_context = await self._load_memory_context(messages, config)
 
             return {
@@ -76,17 +76,49 @@ class PreprocessNode:
         config: Optional[RunnableConfig],
     ) -> str:
         """Load relevant memory context for the conversation."""
-        # Placeholder: In production, this would query the memory system
-        thread_id = config.get("configurable", {}).get("thread_id", "") if config else ""
+        configurable = config.get("configurable", {}) if config else {}
+        context_lines: List[str] = []
 
-        # Simulate memory retrieval
-        memory_context = f"Thread: {thread_id}\n"
+        thread_id = configurable.get("thread_id", "")
+        if thread_id:
+            context_lines.append(f"Thread: {thread_id}")
 
-        # Extract any relevant past context from previous messages
+        user_id = configurable.get("user_id", "")
+        if user_id:
+            context_lines.append(f"User: {user_id}")
+
+        provided_context = configurable.get("memory_context", "")
+        if isinstance(provided_context, str) and provided_context.strip():
+            context_lines.append(f"Memory:\n{provided_context.strip()}")
+
+        session_summary = configurable.get("session_summary", "")
+        if isinstance(session_summary, str) and session_summary.strip():
+            context_lines.append(f"Session summary: {session_summary.strip()}")
+
+        memory_entries = configurable.get("memory_entries", "")
+        if isinstance(memory_entries, str) and memory_entries.strip():
+            try:
+                parsed_entries = json.loads(memory_entries)
+            except json.JSONDecodeError:
+                parsed_entries = None
+
+            if isinstance(parsed_entries, list):
+                rendered_entries = [
+                    entry.strip()
+                    for entry in parsed_entries
+                    if isinstance(entry, str) and entry.strip()
+                ]
+                if rendered_entries:
+                    context_lines.append(
+                        "Memory entries:\n- " + "\n- ".join(rendered_entries[:10])
+                    )
+            else:
+                context_lines.append(f"Memory entries: {memory_entries.strip()}")
+
         if len(messages) > 1:
-            memory_context += f"Previous turns: {len(messages) - 1}\n"
+            context_lines.append(f"Previous turns: {len(messages) - 1}")
 
-        return memory_context
+        return "\n".join(context_lines)
 
 
 class CallLLMNode:
@@ -377,9 +409,13 @@ class PostprocessNode:
         config: Optional[RunnableConfig],
     ) -> None:
         """Store the interaction in memory."""
-        # Placeholder - would integrate with memory system
         thread_id = config.get("configurable", {}).get("thread_id", "") if config else ""
-        logger.debug(f"Storing interaction for thread: {thread_id}")
+        message_count = len(messages)
+        logger.debug(
+            "Interaction completed for thread %s with %s messages",
+            thread_id,
+            message_count,
+        )
 
 
 def should_execute_tools(state: AgentState) -> str:

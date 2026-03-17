@@ -156,7 +156,12 @@ class OrchestrationServicer(orchestration_pb2_grpc.OrchestrationServiceServicer)
                 self.registry.update(thread_id, current_step="executing")
 
                 # Execute workflow
-                config = {"configurable": {"thread_id": thread_id}}
+                config = {
+                    "configurable": {
+                        "thread_id": thread_id,
+                        **dict(request.metadata),
+                    }
+                }
                 result = await self._execute_graph(graph, input_data, config, thread_id)
 
             # Determine status
@@ -260,7 +265,12 @@ class OrchestrationServicer(orchestration_pb2_grpc.OrchestrationServiceServicer)
 
             # Build and stream workflow execution
             graph = workflow_builder()
-            config = {"configurable": {"thread_id": thread_id}}
+            config = {
+                "configurable": {
+                    "thread_id": thread_id,
+                    **dict(request.metadata),
+                }
+            }
 
             with self.langsmith.trace(request.workflow_id, thread_id, dict(request.metadata)):
                 async for event in graph.astream(input_data, config=config):

@@ -7,12 +7,11 @@ use async_trait::async_trait;
 use openrustclaw_core::error::{Error, Result};
 use openrustclaw_core::traits::Channel;
 use openrustclaw_core::types::{IncomingMessage, OutgoingMessage, Platform};
-use tokio::sync::mpsc;
+use tokio::sync::{Mutex, mpsc};
 
 /// WebChat channel that communicates via the gateway WebSocket.
 pub struct WebChatChannel {
-    #[allow(dead_code)]
-    incoming_rx: mpsc::Receiver<IncomingMessage>,
+    incoming_rx: Mutex<mpsc::Receiver<IncomingMessage>>,
     outgoing_tx: mpsc::Sender<OutgoingMessage>,
 }
 
@@ -26,7 +25,7 @@ impl WebChatChannel {
         let (outgoing_tx, outgoing_rx) = mpsc::channel(256);
 
         let channel = Self {
-            incoming_rx,
+            incoming_rx: Mutex::new(incoming_rx),
             outgoing_tx,
         };
 
@@ -48,8 +47,10 @@ impl Channel for WebChatChannel {
     }
 
     async fn receive(&self) -> Result<IncomingMessage> {
-        // Note: this is simplified - real impl needs &mut self or interior mutability
-        Err(Error::Internal("Use incoming_rx directly".to_string()))
+        let mut rx = self.incoming_rx.lock().await;
+        rx.recv()
+            .await
+            .ok_or_else(|| Error::Internal("WebChat receive channel closed".to_string()))
     }
 
     async fn connect(&mut self) -> Result<()> {

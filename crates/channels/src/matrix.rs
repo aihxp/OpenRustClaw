@@ -153,6 +153,13 @@ impl Channel for MatrixChannel {
     }
 
     async fn send(&self, msg: OutgoingMessage) -> Result<()> {
+        if !*self.is_connected.read().await {
+            return Err(ChannelError::NotConnected {
+                platform: "matrix".to_string(),
+            }
+            .into());
+        }
+
         // Apply rate limiting
         self.rate_limiter.until_ready().await;
 
@@ -173,15 +180,13 @@ impl Channel for MatrixChannel {
         // Check for reply to thread
         let _reply_to_event_id = msg.metadata.get("matrix_reply_to").and_then(|v| v.as_str());
 
-        // In a full implementation, this would use matrix-sdk to:
-        // 1. Get the room by ID
-        // 2. Send plain text or formatted (HTML) message
-        // 3. Handle replies via m.relates_to
-        // 4. Cache the sent event ID for potential edits
+        debug!(room_id = %room_id, content = %msg.content, "Matrix send requested before matrix-sdk client was implemented");
 
-        debug!(room_id = %room_id, content = %msg.content, "Would send Matrix message");
-
-        Ok(())
+        Err(ChannelError::SendFailed {
+            platform: "matrix".to_string(),
+            message: "Matrix send path is not implemented yet".to_string(),
+        }
+        .into())
     }
 
     async fn receive(&self) -> Result<IncomingMessage> {
@@ -239,27 +244,18 @@ impl Channel for MatrixChannel {
                 })?;
         }
 
-        // In a full implementation, this would:
-        // 1. Create a matrix_sdk::Client with the homeserver URL
-        // 2. Configure the SQLite crypto store for E2EE
-        // 3. Restore session from access_token or login with password
-        // 4. Register event handlers for:
-        //    - OriginalSyncRoomMessageEvent (text messages)
-        //    - StrippedRoomMemberEvent (invites for auto-join)
-        //    - Other timeline events for reactions, edits, etc.
-        // 5. Start the sync loop with SyncSettings
-
         info!(
             user_id = %self.config.user_id,
             encryption = self.config.enable_encryption,
             auto_join = self.config.auto_join_rooms,
-            "Matrix bot would start here"
+            "Matrix channel configuration validated"
         );
 
-        *self.is_connected.write().await = true;
-
-        info!("Matrix channel connected");
-        Ok(())
+        Err(ChannelError::Connection {
+            platform: "matrix".to_string(),
+            message: "Matrix runtime client is not implemented yet".to_string(),
+        }
+        .into())
     }
 
     async fn disconnect(&mut self) -> Result<()> {

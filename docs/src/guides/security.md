@@ -91,7 +91,7 @@ match checker.check(origin_header) {
 
 ### JWT Token Authentication
 
-All WebSocket connections require valid JWT tokens:
+WebSocket authentication is enabled by default and can require valid JWT tokens when `require_auth = true`:
 
 ```toml
 [auth]

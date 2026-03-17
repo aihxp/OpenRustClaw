@@ -288,7 +288,7 @@ cargo test --workspace
 - Memory writes go through crates/memory/src/policies.rs
 - No cron jobs — all scheduling via LangGraph workflows in sidecar/
 - MCP tools defined in crates/mcp/server.rs
-- Security: mandatory auth on all WebSocket connections
+- Security: WebSocket auth enabled by default in the gateway configuration
 - 3-tier memory: Core → Recall → Archive
 - Recall-only memory: NEVER inject full memory files
 

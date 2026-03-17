@@ -51,6 +51,21 @@ def test_imports():
         raise
 
     try:
+        from src.evaluators import (
+            evaluate_memory_recall,
+            evaluate_rag_accuracy,
+            evaluate_reminder_timing,
+            evaluate_tool_use,
+        )
+        print("  ✓ Evaluator modules")
+    except ModuleNotFoundError as e:
+        print(f"  ✗ Evaluator modules: {e}")
+        _skip_missing_dependency(e)
+    except Exception as e:
+        print(f"  ✗ Evaluator modules: {e}")
+        raise
+
+    try:
         from src.server import OrchestrationServicer, WorkflowRegistry
         print("  ✓ Server module")
     except ModuleNotFoundError as e:
@@ -173,6 +188,99 @@ def test_workflow_registry():
         _skip_missing_dependency(e)
     except Exception as e:
         print(f"  ✗ Workflow registry: {e}")
+        raise
+
+
+def test_evaluators():
+    """Test evaluator helpers."""
+    print("\nTesting evaluators...")
+
+    try:
+        from src.evaluators import (
+            evaluate_memory_recall,
+            evaluate_rag_accuracy,
+            evaluate_reminder_timing,
+            evaluate_tool_use,
+        )
+
+        tool_result = evaluate_tool_use(
+            ["search_memory"],
+            [{"name": "search_memory"}],
+        )
+        assert tool_result.passed
+        print("  ✓ Tool use evaluator")
+
+        rag_result = evaluate_rag_accuracy(
+            answer="Rust uses ownership for memory safety.",
+            expected_facts=["ownership memory safety"],
+            cited_source_ids=["doc-1"],
+            required_source_ids=["doc-1"],
+        )
+        assert rag_result.passed
+        print("  ✓ RAG accuracy evaluator")
+
+        reminder_result = evaluate_reminder_timing(
+            "2026-01-01T10:00:00Z",
+            "2026-01-01T10:00:20Z",
+            allowed_drift_seconds=60,
+        )
+        assert reminder_result.passed
+        print("  ✓ Reminder timing evaluator")
+
+        memory_result = evaluate_memory_recall(
+            recalled_text="User prefers Rust and concise code reviews.",
+            expected_memories=["prefers Rust", "concise code reviews"],
+        )
+        assert memory_result.passed
+        print("  ✓ Memory recall evaluator")
+    except ModuleNotFoundError as e:
+        print(f"  ✗ Evaluators: {e}")
+        _skip_missing_dependency(e)
+    except Exception as e:
+        print(f"  ✗ Evaluators: {e}")
+        raise
+
+
+def test_preprocess_memory_context_uses_metadata():
+    """Test preprocess node uses configurable memory metadata."""
+    print("\nTesting preprocess memory context...")
+
+    try:
+        from langchain_core.messages import HumanMessage
+        from langchain_core.runnables import RunnableConfig
+        from src.workflows.agent_orchestrator import PreprocessNode
+
+        node = PreprocessNode()
+        state = {
+            "messages": [HumanMessage(content="hello"), HumanMessage(content="follow-up")],
+            "memory_context": "",
+            "tool_calls": [],
+            "pending_approval": False,
+            "approval_status": None,
+            "output": None,
+            "error": None,
+        }
+        config = RunnableConfig(
+            configurable={
+                "thread_id": "thread-123",
+                "user_id": "user-456",
+                "memory_context": "Prefers terse responses",
+                "memory_entries": '["Uses Rust", "Works on OpenRustClaw"]',
+            }
+        )
+
+        result = asyncio.run(node(state, config=config))
+        context = result["memory_context"]
+        assert "Thread: thread-123" in context
+        assert "User: user-456" in context
+        assert "Prefers terse responses" in context
+        assert "Uses Rust" in context
+        print("  ✓ Preprocess memory metadata")
+    except ModuleNotFoundError as e:
+        print(f"  ✗ Preprocess memory context: {e}")
+        _skip_missing_dependency(e)
+    except Exception as e:
+        print(f"  ✗ Preprocess memory context: {e}")
         raise
 
 
@@ -334,6 +442,8 @@ def main():
     results.append(test_langsmith_bridge())
     results.append(test_workflow_registry())
     results.append(test_protobuf_messages())
+    results.append(test_evaluators())
+    results.append(test_preprocess_memory_context_uses_metadata())
 
     # Run async tests
     results.append(asyncio.run(run_async_tests()))

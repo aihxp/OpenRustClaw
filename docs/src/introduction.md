@@ -172,7 +172,7 @@ OpenRustClaw/
 
 | Challenge | OpenRustClaw Solution | Impact |
 |-----------|----------------------|--------|
-| Unauthenticated WebSocket access | Mandatory origin validation + token auth on ALL connections | 🔒 Eliminates unauthorized access |
+| Unauthenticated WebSocket access | Mandatory origin validation + token auth enabled by default | 🔒 Reduces unauthorized access by default |
 | Large memory files injected every turn | 3-tier recall-only memory: Core (~500 tokens) + on-demand search | 💰 90% token cost reduction |
 | Weak prompt injection defense | Multi-layer: sandwich defense, canary tokens, classification | 🛡️ 95%+ defense rate |
 | Unverified third-party skills | Ed25519 cryptographic signatures + planned WASM sandboxing | 🔐 Safer third-party skill handling |
@@ -213,20 +213,20 @@ OpenRustClaw/
 | WebChat | ✅ Ready | WebSocket-based web interface |
 | CLI | ✅ Ready | Terminal/TUI interface |
 | REST API | ✅ Ready | Headless API access |
-| Telegram | 🔄 Planned | Coming in v2 |
-| Discord | 🔄 Planned | Coming in v2 |
-| Slack | 🔄 Planned | Coming in v2 |
+| Telegram | ⚠️ Partial | Channel module present; runtime client/send path not implemented |
+| Discord | ⚠️ Partial | Channel module present; runtime client/send path not implemented |
+| Slack | ⚠️ Partial | Channel module present; runtime client/send path not implemented |
 
 ### 🔒 Security Features
 
 | Feature | Implementation | Status |
 |---------|---------------|--------|
 | WebSocket Origin Validation | `crates/security/origin_check.rs` | ✅ |
-| JWT Authentication | `crates/gateway/auth.rs` | ✅ |
-| Prompt Injection Defense | Multi-layer with canary tokens | ✅ |
-| Ed25519 Skill Verification | `crates/security/skill_verifier.rs` | ✅ |
-| WASM Sandboxing | `wasmtime` integration | ✅ |
-| Session Isolation | Per-session filesystem namespaces | ✅ |
+| JWT Authentication | `crates/gateway/auth.rs` | ✅ Optional |
+| Prompt Injection Defense | Input validation and runtime guardrails | ✅ Basic |
+| Ed25519 Skill Verification | `crates/security/skill_verifier.rs` | ✅ Configurable |
+| WASM Sandboxing | `crates/skills/src/sandbox.rs` | Planned |
+| Session Isolation | Per-thread session state in gateway/runtime | ✅ Basic |
 | Audit Logging | `crates/security/audit.rs` | ✅ |
 
 ---
@@ -253,13 +253,13 @@ OpenRustClaw/
 ## 🎓 Design Philosophy
 
 ### 1. **Security by Default**
-Every connection is authenticated. Every skill is verified. Every prompt is sanitized.
+Authentication, origin checks, and skill verification are supported, but some protections remain optional or planned depending on deployment mode.
 
 ### 2. **Recall-Only Memory**
 Never auto-inject large memory files. The agent must actively search for relevant context.
 
 ### 3. **Durable Execution**
-No cron jobs. All scheduling uses distributed leases and idempotency keys.
+Avoid external cron jobs where possible. Scheduling and retries are modeled as application-owned workflows with idempotency support.
 
 ### 4. **Provider Agnostic**
 Support multiple LLM providers with automatic fallback chains.
@@ -271,25 +271,25 @@ Every operation is traced. Every decision is logged. Every metric is tracked.
 
 ## 📋 Extended Feature Reference
 
-### 📡 Channel Integrations (20 Channels)
+### 📡 Channel Integrations
 
 | Channel | Status | Notes |
 |---------|--------|-------|
-| Telegram | Planned | Polling & webhook modes, rate limiting |
-| Discord | Planned | Slash commands, DMs, Socket Mode |
-| Slack | Planned | App Home, Socket Mode, thread support |
-| WhatsApp | Planned | Via Baileys bridge, QR/pairing auth |
-| Microsoft Teams | Planned | Bot Framework, Azure AD auth |
-| Google Chat | Planned | Service account, Pub/Sub support |
-| Gmail Pub/Sub | Planned | Real-time email notifications |
+| Telegram | Partial | Config/model scaffolding present; Bot API runtime client not implemented |
+| Discord | Partial | Config/model scaffolding present; Gateway/API runtime client not implemented |
+| Slack | Partial | Config/model scaffolding present; Web API runtime client not implemented |
+| WhatsApp | Available | Via Baileys bridge, QR/pairing auth |
+| Microsoft Teams | Available | Bot Framework integration |
+| Google Chat | Partial | Channel scaffolding present; service-account auth/send path incomplete |
+| Gmail Pub/Sub | Partial | Channel scaffolding present; service-account auth incomplete |
 | Signal | Planned | signal-cli bridge |
-| Matrix | Planned | matrix-rust-sdk |
-| iMessage | Planned | BlueBubbles server or macOS AppleScript |
-| LINE | Planned | Messaging API |
-| Viber | Planned | Bot API |
-| WeChat | Planned | Work + Official Accounts |
-| Messenger | Planned | Meta Graph API |
-| Instagram | Planned | Meta Graph API |
+| Matrix | Partial | Config/model scaffolding present; matrix-sdk runtime client not implemented |
+| iMessage | Partial | Channel module present; private API mode incomplete |
+| LINE | Available | Messaging API channel module |
+| Viber | Available | Bot API channel module |
+| WeChat | Available | Work and Official Accounts channel module |
+| Messenger | Available | Meta Graph API channel module |
+| Instagram | Available | Meta Graph API channel module |
 | SMS (Twilio) | Planned | Twilio API |
 | X (Twitter) | Planned | X API v2 |
 | WebChat | Ready | Built-in web interface |

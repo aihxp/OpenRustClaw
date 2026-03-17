@@ -432,6 +432,13 @@ impl Channel for GoogleChatChannel {
     }
 
     async fn send(&self, msg: OutgoingMessage) -> Result<()> {
+        if !*self.is_connected.read().await {
+            return Err(ChannelError::NotConnected {
+                platform: "google_chat".to_string(),
+            }
+            .into());
+        }
+
         // Apply rate limiting
         self.rate_limiter.until_ready().await;
 
@@ -472,36 +479,29 @@ impl Channel for GoogleChatChannel {
         };
 
         // Get access token
-        let _token = {
+        let token = {
             let token_guard = self.access_token.read().await;
             token_guard
                 .clone()
-                .unwrap_or_else(|| "placeholder".to_string())
+                .ok_or_else(|| ChannelError::AuthFailed {
+                    platform: "google_chat".to_string(),
+                    message: "Missing access token for Google Chat API".to_string(),
+                })?
         };
-
-        // In a full implementation, this would:
-        // 1. POST to spaces.messages.create endpoint
-        // 2. Handle rate limits and retries
-        // 3. Cache the sent message ID for potential updates
-        //
-        // Real implementation:
-        // ```rust
-        // let url = format!("{}/spaces/{}/messages", GOOGLE_CHAT_API_BASE, space_id);
-        // let response = self.http_client
-        //     .post(&url)
-        //     .bearer_auth(&token)
-        //     .json(&message_payload)
-        //     .send().await?;
-        // ```
 
         debug!(
             space = %space_name,
+            token_length = token.len(),
             content = %msg.content,
             has_cards = message_payload.cards_v2.is_some(),
-            "Would send Google Chat message"
+            "Google Chat send requested before API send path was implemented"
         );
 
-        Ok(())
+        Err(ChannelError::SendFailed {
+            platform: "google_chat".to_string(),
+            message: "Google Chat API send path is not implemented yet".to_string(),
+        }
+        .into())
     }
 
     async fn receive(&self) -> Result<IncomingMessage> {

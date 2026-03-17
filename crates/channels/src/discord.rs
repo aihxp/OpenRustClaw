@@ -84,6 +84,13 @@ impl Channel for DiscordChannel {
     }
 
     async fn send(&self, msg: OutgoingMessage) -> Result<()> {
+        if !*self.is_connected.read().await {
+            return Err(ChannelError::NotConnected {
+                platform: "discord".to_string(),
+            }
+            .into());
+        }
+
         // Apply rate limiting
         self.rate_limiter.until_ready().await;
 
@@ -101,14 +108,13 @@ impl Channel for DiscordChannel {
         let _formatted_content = Self::format_for_discord(&msg.content);
         let _embed = Self::parse_embed(&msg.metadata);
 
-        // In a real implementation, this would use serenity to:
-        // 1. Split long messages (Discord limit is 2000 chars)
-        // 2. Send with or without embeds
-        // 3. Cache the message for potential edits
+        debug!(content = %msg.content, "Discord send requested before Gateway/API client was implemented");
 
-        debug!(content = %msg.content, "Would send Discord message");
-
-        Ok(())
+        Err(ChannelError::SendFailed {
+            platform: "discord".to_string(),
+            message: "Discord send path is not implemented yet".to_string(),
+        }
+        .into())
     }
 
     async fn receive(&self) -> Result<IncomingMessage> {
@@ -138,18 +144,13 @@ impl Channel for DiscordChannel {
             .into());
         }
 
-        // In a full implementation, this would:
-        // 1. Create a serenity Client with GatewayIntents
-        // 2. Set up an EventHandler for message and interaction events
-        // 3. Register slash commands
-        // 4. Start the client which connects to the Discord Gateway
+        info!("Discord channel configuration validated");
 
-        info!("Discord bot would start here");
-
-        *self.is_connected.write().await = true;
-
-        info!("Discord channel connected");
-        Ok(())
+        Err(ChannelError::Connection {
+            platform: "discord".to_string(),
+            message: "Discord runtime client is not implemented yet".to_string(),
+        }
+        .into())
     }
 
     async fn disconnect(&mut self) -> Result<()> {

@@ -29,15 +29,15 @@ impl MarketplaceClient {
 
     /// Search marketplace for skills.
     pub async fn search(&self, _query: &str) -> Result<Vec<MarketplaceListing>> {
-        // TODO: Implement HTTP client for marketplace API
-        Ok(vec![])
+        Err(openrustclaw_core::error::Error::Internal(
+            "MarketplaceClient search is not implemented; use ClawHubRegistry for live registry access".to_string(),
+        ))
     }
 
     /// Download a skill from the marketplace.
     pub async fn download(&self, _name: &str, _version: &str) -> Result<Vec<u8>> {
-        // TODO: Implement skill download with signature verification
         Err(openrustclaw_core::error::Error::Internal(
-            "Marketplace not yet implemented".to_string(),
+            "MarketplaceClient download is not implemented; use ClawHubRegistry for live registry access".to_string(),
         ))
     }
 }
@@ -137,10 +137,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_marketplace_search_returns_empty() {
+    async fn test_marketplace_search_returns_error() {
         let client = MarketplaceClient::new("https://marketplace.example.com".to_string());
-        let results = client.search("anything").await.unwrap();
-        assert!(results.is_empty());
+        let result = client.search("anything").await;
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("ClawHubRegistry"),
+            "Expected ClawHubRegistry guidance, got: {}",
+            err
+        );
     }
 
     #[tokio::test]
@@ -150,8 +156,8 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         assert!(
-            err.contains("not yet implemented"),
-            "Expected 'not yet implemented' error, got: {}",
+            err.contains("ClawHubRegistry"),
+            "Expected ClawHubRegistry guidance, got: {}",
             err
         );
     }

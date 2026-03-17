@@ -7,14 +7,14 @@ Messaging platform integrations for the OpenRustClaw AI agent.
 | Channel | Status | Features |
 |---------|--------|----------|
 | WebChat | ✅ Ready | WebSocket-based chat |
-| Telegram | ✅ Ready | Bot API, commands, file sharing |
-| Discord | ✅ Ready | Gateway, slash commands, embeds |
-| Slack | ✅ Ready | App API, Socket Mode |
+| Telegram | ⚠️ Partial | Config/model scaffolding present; runtime client/send path not implemented |
+| Discord | ⚠️ Partial | Config/model scaffolding present; runtime client/send path not implemented |
+| Slack | ⚠️ Partial | Config/model scaffolding present; runtime client/send path not implemented |
 | Microsoft Teams | ✅ Ready | Bot Framework, Adaptive Cards |
 | Google Chat | ⚠️ Partial | Channel scaffolding present; service-account auth not implemented |
 | WhatsApp | ✅ Ready | Web bridge, media |
 | Gmail Pub/Sub | ⚠️ Partial | Channel scaffolding present; service-account auth not implemented |
-| Matrix | ✅ Ready | Matrix protocol |
+| Matrix | ⚠️ Partial | Config/model scaffolding present; matrix-sdk runtime client not implemented |
 | Meta (Messenger/Instagram) | ✅ Ready | Graph API |
 | LINE | ✅ Ready | Messaging API |
 | Viber | ✅ Ready | Bot API |

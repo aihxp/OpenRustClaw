@@ -88,7 +88,7 @@ Current channel modules available in the repo and startup path:
 
 Telegram, Discord, Slack, WhatsApp (Baileys bridge), Microsoft Teams, Google Chat, Gmail (Pub/Sub), Matrix, iMessage, LINE, Viber, WeChat, Messenger, Instagram DMs, WebChat
 
-Not all of these modules are feature-complete. Google Chat and Gmail Pub/Sub still have authentication scaffolding only, and additional channel modules such as Signal, Twilio, and X/Twitter are present in the repo but are not fully integrated into the current startup path.
+Not all of these modules are feature-complete. Telegram, Discord, Slack, Matrix, Google Chat, and Gmail Pub/Sub still include scaffolding or partial runtime implementations, and additional channel modules such as Signal, Twilio, and X/Twitter are present in the repo but are not fully integrated into the current startup path.
 
 ## Memory System
 
@@ -124,7 +124,7 @@ Defense-in-depth across every layer:
 |-------|-----------|
 | **Authentication** | JWT with session tracking, Enterprise SSO (OIDC/SAML) |
 | **API Keys** | `secrecy::SecretString` -- zeroized on drop, redacted in logs |
-| **Transport** | Mandatory origin validation on all WebSocket connections |
+| **Transport** | Origin validation on all WebSocket connections; token auth enabled by default |
 | **Webhooks** | HMAC-SHA256 with constant-time comparison, Stripe replay protection |
 | **Sessions** | Filesystem isolation with path traversal prevention |
 | **Skills** | Ed25519 signature verification support, capability model; WASM sandbox executor planned |

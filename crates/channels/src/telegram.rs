@@ -82,6 +82,13 @@ impl Channel for TelegramChannel {
     }
 
     async fn send(&self, msg: OutgoingMessage) -> Result<()> {
+        if !*self.is_connected.read().await {
+            return Err(ChannelError::NotConnected {
+                platform: "telegram".to_string(),
+            }
+            .into());
+        }
+
         // Apply rate limiting
         self.rate_limiter.until_ready().await;
 
@@ -98,11 +105,13 @@ impl Channel for TelegramChannel {
         // Parse inline keyboard from metadata
         let _reply_markup = Self::parse_inline_keyboard(&msg.metadata);
 
-        // In a real implementation, this would use the Telegram Bot API
-        // For now, we just log the message
-        debug!(content = %msg.content, "Would send Telegram message");
+        debug!(content = %msg.content, "Telegram send requested before Bot API client was implemented");
 
-        Ok(())
+        Err(ChannelError::SendFailed {
+            platform: "telegram".to_string(),
+            message: "Telegram Bot API send path is not implemented yet".to_string(),
+        }
+        .into())
     }
 
     async fn receive(&self) -> Result<IncomingMessage> {
@@ -132,18 +141,13 @@ impl Channel for TelegramChannel {
             .into());
         }
 
-        // In a full implementation, this would:
-        // 1. Create a teloxide Bot instance
-        // 2. Test the connection by calling get_me()
-        // 3. Start a Dispatcher in polling or webhook mode
-        // 4. Handle incoming messages via the UpdateHandler
+        info!(mode = ?self.config.mode, "Telegram channel configuration validated");
 
-        info!(mode = ?self.config.mode, "Telegram bot would start here");
-
-        *self.is_connected.write().await = true;
-
-        info!("Telegram channel connected");
-        Ok(())
+        Err(ChannelError::Connection {
+            platform: "telegram".to_string(),
+            message: "Telegram runtime client is not implemented yet".to_string(),
+        }
+        .into())
     }
 
     async fn disconnect(&mut self) -> Result<()> {

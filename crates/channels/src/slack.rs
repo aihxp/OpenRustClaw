@@ -101,6 +101,13 @@ impl Channel for SlackChannel {
     }
 
     async fn send(&self, msg: OutgoingMessage) -> Result<()> {
+        if !*self.is_connected.read().await {
+            return Err(ChannelError::NotConnected {
+                platform: "slack".to_string(),
+            }
+            .into());
+        }
+
         // Apply rate limiting
         self.rate_limiter.until_ready().await;
 
@@ -123,14 +130,13 @@ impl Channel for SlackChannel {
         // Check for blocks in metadata
         let _blocks = Self::parse_blocks(&msg.metadata);
 
-        // In a real implementation, this would use slack_morphism to:
-        // 1. Build SlackMessageContent with text and/or blocks
-        // 2. Call chat.postMessage API
-        // 3. Handle rate limits and retries
+        debug!(content = %msg.content, "Slack send requested before Web API client was implemented");
 
-        debug!(content = %msg.content, "Would send Slack message");
-
-        Ok(())
+        Err(ChannelError::SendFailed {
+            platform: "slack".to_string(),
+            message: "Slack send path is not implemented yet".to_string(),
+        }
+        .into())
     }
 
     async fn receive(&self) -> Result<IncomingMessage> {
@@ -168,21 +174,20 @@ impl Channel for SlackChannel {
 
         match self.config.mode {
             SlackMode::SocketMode => {
-                if self.config.app_token.is_some() {
-                    info!("Slack Socket Mode would start here");
-                } else {
+                if self.config.app_token.is_none() {
                     warn!("Socket Mode enabled but no app_token provided");
                 }
             }
-            SlackMode::Http => {
-                info!("Slack HTTP mode - events will be received via webhooks");
-            }
+            SlackMode::Http => {}
         }
 
-        *self.is_connected.write().await = true;
+        info!(mode = ?self.config.mode, "Slack channel configuration validated");
 
-        info!("Slack channel connected");
-        Ok(())
+        Err(ChannelError::Connection {
+            platform: "slack".to_string(),
+            message: "Slack runtime client is not implemented yet".to_string(),
+        }
+        .into())
     }
 
     async fn disconnect(&mut self) -> Result<()> {
