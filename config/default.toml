@@ -59,6 +59,7 @@ require_auth = true
 origin_validation = true
 prompt_injection_defense = true
 skill_signature_required = false  # marketplace only; workspace skills exempt
+skill_verifying_key = null        # 32-byte Ed25519 public key as lowercase hex
 
 [sidecar]
 grpc_port = 50051

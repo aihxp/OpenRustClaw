@@ -1,7 +1,7 @@
 //! Diagnostics command - Check system health.
 
 use anyhow::Result;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Run diagnostics.
 pub async fn run() -> Result<()> {
@@ -241,21 +241,33 @@ async fn check_sidecar() -> Result<()> {
 
     match output {
         Ok(output) if output.status.success() => {
-            let version = String::from_utf8_lossy(&output.stdout);
-            let version = version.trim();
+            let version = if output.stdout.is_empty() {
+                String::from_utf8_lossy(&output.stderr).trim().to_string()
+            } else {
+                String::from_utf8_lossy(&output.stdout).trim().to_string()
+            };
 
-            // Check if sidecar module is available
-            let check_module = tokio::process::Command::new(&config.sidecar.python_path)
-                .args(["-c", "import openrustclaw_sidecar"])
-                .output()
-                .await;
+            // Check the sidecar using the same source-tree execution model as runtime startup.
+            let sidecar_dir = sidecar_source_dir();
+            let check_module = if sidecar_dir.exists() {
+                tokio::process::Command::new(&config.sidecar.python_path)
+                    .args(["-c", "import src.server"])
+                    .current_dir(&sidecar_dir)
+                    .output()
+                    .await
+            } else {
+                tokio::process::Command::new(&config.sidecar.python_path)
+                    .args(["-c", "import src.server"])
+                    .output()
+                    .await
+            };
 
             match check_module {
                 Ok(output) if output.status.success() => Ok(()),
                 _ => {
                     anyhow::bail!(
-                        "Python {} found, but openrustclaw_sidecar module is not installed. \
-                        The sidecar will not be available.",
+                        "Python {} found, but the sidecar source environment is not runnable. \
+                        Install sidecar dependencies before starting OpenRustClaw.",
                         version
                     )
                 }
@@ -269,6 +281,10 @@ async fn check_sidecar() -> Result<()> {
             )
         }
     }
+}
+
+fn sidecar_source_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../sidecar")
 }
 
 /// Check configuration files.

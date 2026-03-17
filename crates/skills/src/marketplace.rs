@@ -1,4 +1,4 @@
-//! Verified marketplace client.
+//! Marketplace client scaffolding.
 
 use serde::{Deserialize, Serialize};
 

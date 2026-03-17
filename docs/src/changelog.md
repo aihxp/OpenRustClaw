@@ -51,7 +51,7 @@ First stable release of OpenRustClaw, a hybrid Rust + Python AI agent framework.
 - **JWT authentication** on all connections
 - **Multi-layer prompt injection defense** — Sandwich defense, canary tokens, classification
 - **Ed25519 cryptographic skill verification**
-- **WASM sandboxing** for untrusted skills (wasmtime)
+- **WASM sandbox scaffolding** for untrusted skills (wasmtime integration in progress)
 - **Per-session filesystem isolation**
 - **Audit logging** for security events
 
@@ -78,7 +78,7 @@ First stable release of OpenRustClaw, a hybrid Rust + Python AI agent framework.
 - Mandatory origin validation on all WebSocket connections
 - Multi-layer prompt injection defense (95%+ detection rate)
 - Ed25519 skill signing prevents malicious skills
-- WASM sandboxing for untrusted code execution
+- WASM sandbox executor planned for untrusted code execution
 - Per-session filesystem isolation
 
 ### 📊 Performance Improvements
@@ -126,7 +126,7 @@ First stable release of OpenRustClaw, a hybrid Rust + Python AI agent framework.
 | `openrustclaw-agent` | Runtime, tool registry |
 | `openrustclaw-gateway` | Axum WebSocket server |
 | `openrustclaw-channels` | Platform integrations |
-| `openrustclaw-skills` | SKILL.md, WASM sandbox |
+| `openrustclaw-skills` | SKILL.md, sandbox scaffolding |
 | `openrustclaw-scheduler` | Durable scheduling |
 | `openrustclaw-security` | Auth, sandbox, audit |
 | `openrustclaw-langbridge` | gRPC bridge to Python |

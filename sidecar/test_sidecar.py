@@ -3,13 +3,8 @@
 
 import asyncio
 import json
-import sys
-from pathlib import Path
 
 import pytest
-
-# Add src to path
-sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 
 def _skip_missing_dependency(error: ModuleNotFoundError) -> None:
@@ -21,8 +16,8 @@ def test_imports():
     print("Testing imports...")
 
     try:
-        from proto import orchestration_pb2
-        from proto import orchestration_pb2_grpc
+        from src.proto import orchestration_pb2
+        from src.proto import orchestration_pb2_grpc
         print("  ✓ Protobuf modules")
     except ModuleNotFoundError as e:
         print(f"  ✗ Protobuf modules: {e}")
@@ -32,7 +27,7 @@ def test_imports():
         raise
 
     try:
-        from langsmith_bridge import LangSmithBridge
+        from src.langsmith_bridge import LangSmithBridge
         print("  ✓ LangSmith bridge")
     except ModuleNotFoundError as e:
         print(f"  ✗ LangSmith bridge: {e}")
@@ -42,11 +37,11 @@ def test_imports():
         raise
 
     try:
-        from workflows.agent_orchestrator import build_agent_graph
-        from workflows.memory_maintenance import build_memory_maintenance_graph
-        from workflows.rag_pipeline import build_rag_graph
-        from workflows.scheduler import build_scheduler_graph
-        from workflows.reminder import build_reminder_graph
+        from src.workflows.agent_orchestrator import build_agent_graph
+        from src.workflows.memory_maintenance import build_memory_maintenance_graph
+        from src.workflows.rag_pipeline import build_rag_graph
+        from src.workflows.scheduler import build_scheduler_graph
+        from src.workflows.reminder import build_reminder_graph
         print("  ✓ Workflow modules")
     except ModuleNotFoundError as e:
         print(f"  ✗ Workflow modules: {e}")
@@ -56,7 +51,7 @@ def test_imports():
         raise
 
     try:
-        from server import OrchestrationServicer, WorkflowRegistry
+        from src.server import OrchestrationServicer, WorkflowRegistry
         print("  ✓ Server module")
     except ModuleNotFoundError as e:
         print(f"  ✗ Server module: {e}")
@@ -71,7 +66,7 @@ def test_workflow_graphs():
     print("\nTesting workflow graph construction...")
 
     try:
-        from workflows.agent_orchestrator import build_agent_graph
+        from src.workflows.agent_orchestrator import build_agent_graph
         graph = build_agent_graph()
         print("  ✓ Agent orchestrator graph")
     except ModuleNotFoundError as e:
@@ -82,7 +77,7 @@ def test_workflow_graphs():
         raise
 
     try:
-        from workflows.memory_maintenance import build_memory_maintenance_graph
+        from src.workflows.memory_maintenance import build_memory_maintenance_graph
         graph = build_memory_maintenance_graph()
         print("  ✓ Memory maintenance graph")
     except ModuleNotFoundError as e:
@@ -93,7 +88,7 @@ def test_workflow_graphs():
         raise
 
     try:
-        from workflows.rag_pipeline import build_rag_graph
+        from src.workflows.rag_pipeline import build_rag_graph
         graph = build_rag_graph()
         print("  ✓ RAG pipeline graph")
     except ModuleNotFoundError as e:
@@ -104,7 +99,7 @@ def test_workflow_graphs():
         raise
 
     try:
-        from workflows.scheduler import build_scheduler_graph
+        from src.workflows.scheduler import build_scheduler_graph
         graph = build_scheduler_graph()
         print("  ✓ Scheduler graph")
     except ModuleNotFoundError as e:
@@ -115,7 +110,7 @@ def test_workflow_graphs():
         raise
 
     try:
-        from workflows.reminder import build_reminder_graph
+        from src.workflows.reminder import build_reminder_graph
         graph = build_reminder_graph()
         print("  ✓ Reminder graph")
     except ModuleNotFoundError as e:
@@ -131,7 +126,7 @@ def test_langsmith_bridge():
     print("\nTesting LangSmith bridge...")
 
     try:
-        from langsmith_bridge import LangSmithBridge
+        from src.langsmith_bridge import LangSmithBridge
 
         bridge = LangSmithBridge()
         print(f"  ✓ LangSmith bridge created (enabled: {bridge.enabled})")
@@ -154,7 +149,7 @@ def test_workflow_registry():
     print("\nTesting workflow registry...")
 
     try:
-        from server import WorkflowRegistry
+        from src.server import WorkflowRegistry
 
         registry = WorkflowRegistry()
         registry.register("thread-123", "agent")
@@ -186,7 +181,7 @@ def test_protobuf_messages():
     print("\nTesting protobuf messages...")
 
     try:
-        from proto.orchestration_pb2 import (
+        from src.proto.orchestration_pb2 import (
             StatusRequest,
             StatusResponse,
             WorkflowRequest,

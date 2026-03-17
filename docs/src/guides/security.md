@@ -356,28 +356,10 @@ signature = "3f2a1b4c5d..."
 
 ---
 
-## 🔒 WASM Sandboxing
+## 🔒 WASM Sandbox Status
 
-Untrusted skills run in a WebAssembly sandbox:
-
-```rust
-use openrustclaw_skills::sandbox::WasmSandbox;
-
-let sandbox = WasmSandbox::builder()
-    // Memory limit: 128 MB
-    .memory_limit(128 * 1024 * 1024)
-    // CPU fuel limit: ~10 seconds
-    .fuel_limit(10_000_000_000)
-    // No network access
-    .allow_network(false)
-    // Read-only filesystem
-    .filesystem_mode(FilesystemMode::ReadOnly)
-    .build();
-
-// Load and execute untrusted skill
-let wasm_bytes = fs::read("skills/untrusted/skill.wasm").await?;
-let result = sandbox.execute(&wasm_bytes, "process", input).await?;
-```
+The crate contains WASM sandbox scaffolding and capability checks, but the executor is not yet implemented.
+Do not assume untrusted skills are currently runnable inside a hardened WASM runtime.
 
 ### Capability Checking
 

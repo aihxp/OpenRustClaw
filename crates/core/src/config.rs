@@ -126,6 +126,7 @@ pub struct SecurityConfig {
     pub origin_validation: bool,
     pub prompt_injection_defense: bool,
     pub skill_signature_required: bool,
+    pub skill_verifying_key: Option<String>,
 }
 
 /// Python sidecar configuration.
@@ -690,6 +691,7 @@ impl Default for AppConfig {
                 origin_validation: true,
                 prompt_injection_defense: true,
                 skill_signature_required: false,
+                skill_verifying_key: None,
             },
             sidecar: SidecarConfig {
                 grpc_port: 50051,

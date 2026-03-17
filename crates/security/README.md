@@ -64,8 +64,8 @@ Configurable rate limits per user, IP, and endpoint.
 
 ### Encryption
 
-- AES-256-GCM for data at rest
-- TLS 1.3 for data in transit
+- Encryption helpers for sensitive data
+- Transport security should be provided by your deployment boundary (TLS proxy / ingress)
 
 ## License
 

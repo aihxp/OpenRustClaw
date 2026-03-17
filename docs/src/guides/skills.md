@@ -317,29 +317,10 @@ impl Tool for FileSearchTool {
 
 ---
 
-## 🔒 WASM Sandboxing
+## 🔒 WASM Sandbox Status
 
-Untrusted skills run in a WebAssembly sandbox:
-
-```rust
-use openrustclaw_skills::sandbox::WasmSandbox;
-
-// Create sandbox with resource limits
-let sandbox = WasmSandbox::builder()
-    .memory_limit(128 * 1024 * 1024)  // 128 MB
-    .fuel_limit(10_000_000_000)        // ~10s CPU time
-    .build();
-
-// Load WASM module
-let module = fs::read("skills/untrusted/skill.wasm").await?;
-
-// Execute with input
-let result = sandbox.execute(
-    &module,
-    "process_data",
-    json!({"input": "hello"}),
-).await?;
-```
+WASM skill execution is planned, but the current sandbox module is still scaffolding.
+Today, use this section as design guidance rather than an available execution path.
 
 ### WASM Skill Example (Rust)
 

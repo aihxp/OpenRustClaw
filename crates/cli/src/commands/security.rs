@@ -85,8 +85,18 @@ pub async fn audit() -> Result<()> {
 
     // 3. Check sandbox policies
     println!("[3/5] Checking sandbox configuration...");
-    println!("  \x1b[90m○ WASM sandbox: Enabled (default)\x1b[0m");
-    println!("  \x1b[90m○ Skill capabilities: Enforced\x1b[0m");
+    println!("  \x1b[33m⚠ WASM sandbox: Planned, executor not yet implemented\x1b[0m");
+    warnings += 1;
+    println!("  \x1b[90m○ Capability model: Defined in skill metadata\x1b[0m");
+    match config.security.skill_verifying_key.as_deref() {
+        Some(key) if !key.trim().is_empty() => {
+            println!("  \x1b[32m✓ Skill verifying key configured\x1b[0m");
+        }
+        _ => {
+            println!("  \x1b[33m⚠ Skill verifying key not configured\x1b[0m");
+            warnings += 1;
+        }
+    }
     println!();
 
     // 4. Check origin validation
@@ -204,7 +214,7 @@ pub async fn generate_keys() -> Result<()> {
         println!();
         println!("  \x1b[1mIMPORTANT:\x1b[0m");
         println!("  - Move signing_key.pem to a secure location");
-        println!("  - Add verifying_key.pem to your OpenRustClaw config");
+        println!("  - Set [security].skill_verifying_key = \"{}\"", verifying_key_hex);
         println!("  - Never commit signing_key.pem to version control!");
     }
 

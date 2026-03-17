@@ -45,7 +45,7 @@ OpenRustClaw was created to solve these fundamental problems while maintaining t
 - ✅ **JWT authentication** on all connections
 - ✅ **Multi-layer prompt injection defense**
 - ✅ **Ed25519 cryptographic skill verification**
-- ✅ **WASM sandboxing** for untrusted skills
+- ⚠️ **WASM sandbox executor planned** for untrusted skills
 - ✅ **Per-session filesystem isolation**
 
 ### 🧠 **3-Tier Memory System**
@@ -144,7 +144,7 @@ OpenRustClaw/
 │   ├── agent/                  # Runtime, tool registry, streaming
 │   ├── gateway/                # Axum WebSocket server
 │   ├── channels/               # WebChat (v1)
-│   ├── skills/                 # SKILL.md, WASM sandbox, marketplace
+│   ├── skills/                 # SKILL.md, sandbox scaffolding, marketplace
 │   ├── scheduler/              # Durable scheduler (no cron)
 │   ├── security/               # Auth, origin check, injection defense
 │   ├── langbridge/             # gRPC bridge to Python sidecar
@@ -175,7 +175,7 @@ OpenRustClaw/
 | Unauthenticated WebSocket access | Mandatory origin validation + token auth on ALL connections | 🔒 Eliminates unauthorized access |
 | Large memory files injected every turn | 3-tier recall-only memory: Core (~500 tokens) + on-demand search | 💰 90% token cost reduction |
 | Weak prompt injection defense | Multi-layer: sandwich defense, canary tokens, classification | 🛡️ 95%+ defense rate |
-| Unverified third-party skills | Ed25519 cryptographic signatures + WASM sandboxing | 🔐 Trustless skill execution |
+| Unverified third-party skills | Ed25519 cryptographic signatures + planned WASM sandboxing | 🔐 Safer third-party skill handling |
 | Synchronous memory indexing blocks startup | Fully async embedding pipeline with bounded concurrency | ⚡ 10x faster startup |
 | Unreliable cron-based scheduling | Durable scheduler: idempotency, leases, dead-letter, timezone-safe | ✅ 99.9% task reliability |
 | Single-writer SQLite, no isolation | WAL mode + per-session filesystem namespaces | 🏗️ Production concurrency |

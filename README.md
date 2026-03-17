@@ -4,7 +4,7 @@
 [![Rust](https://img.shields.io/badge/rust-2024_edition-orange.svg)](https://www.rust-lang.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-A high-performance AI agent platform written in Rust. 43 crates, 20 LLM providers, 20 messaging channels, and a Python sidecar for LangGraph workflows.
+A high-performance AI agent platform written in Rust. 43 crates, 20 LLM providers, 14 CLI-startable messaging channels, and a Python sidecar for LangGraph workflows.
 
 ## Quick Start
 
@@ -28,7 +28,7 @@ openrustclaw start --channels=telegram,discord,slack
                          └────────────┬─────────────┘
         ┌─────────────┬──────────────┼──────────────┬─────────────┐
         │  Channels   │    Voice     │   Canvas     │   Cursor    │
-        │ (20 integr) │  Wake/STT/TTS│   A2UI       │  IDE (ACP)  │
+        │ (14 current)│  Wake/STT/TTS│   A2UI       │  IDE (ACP)  │
         └──────┬──────┴──────┬───────┴──────┬───────┴──────┬──────┘
                └─────────────┴──────────────┴──────────────┘
                          ┌──────────┴──────────┐
@@ -84,9 +84,11 @@ Provider fallback chain with configurable cooldowns routes requests through avai
 
 ## Messaging Channels
 
-20 channel integrations via the `Channel` trait:
+Current channel integrations available via the `Channel` trait and CLI startup:
 
-Telegram, Discord, Slack, WhatsApp (Baileys bridge), Microsoft Teams, Google Chat, Gmail (Pub/Sub), Signal, Matrix (E2E encryption), iMessage (BlueBubbles), LINE, Viber, WeChat, Messenger, Instagram DMs, SMS (Twilio), X/Twitter, WebChat, Email (IMAP/SMTP), IRC
+Telegram, Discord, Slack, WhatsApp (Baileys bridge), Microsoft Teams, Google Chat, Gmail (Pub/Sub), Matrix, iMessage, LINE, Viber, WeChat, Messenger, Instagram DMs, WebChat
+
+Additional channel modules such as Signal, Twilio, and X/Twitter are present in the repo but are not fully integrated into the current startup path.
 
 ## Memory System
 
@@ -110,9 +112,6 @@ Both client and server support over JSON-RPC stdio transport:
 ```bash
 # Expose tools to MCP clients
 openrustclaw mcp-server
-
-# Connect to external MCP servers
-openrustclaw start --mcp-servers="npx @modelcontextprotocol/server-filesystem ."
 ```
 
 Command allowlist enforced on subprocess spawning (`npx`, `uvx`, `node`, `python3`, `docker`, `deno`, `bun`, `cargo`, `go`).
@@ -128,7 +127,7 @@ Defense-in-depth across every layer:
 | **Transport** | Mandatory origin validation on all WebSocket connections |
 | **Webhooks** | HMAC-SHA256 with constant-time comparison, Stripe replay protection |
 | **Sessions** | Filesystem isolation with path traversal prevention |
-| **Skills** | Ed25519 signature verification, WASM sandbox |
+| **Skills** | Ed25519 signature verification support, capability model; WASM sandbox executor planned |
 | **Input** | Prompt injection detection (34+ patterns), canary tokens |
 | **Network** | SSRF prevention on OIDC/SAML endpoints (private IP rejection) |
 | **Subprocess** | MCP command allowlist, shell metacharacter rejection |
@@ -206,9 +205,9 @@ crates/
   providers/     # LLM provider trait + Anthropic/OpenAI/Gemini/OpenRouter/Ollama
   mcp/           # MCP client/server over JSON-RPC stdio
   agent/         # Agent runtime with tool execution loop
-  gateway/       # Axum WebSocket server with auth and rate limiting
+  gateway/       # Axum WebSocket server with auth, sessions, and webhook integrations
   channels/      # 20 messaging channel integrations
-  skills/        # Skill registry, loader, marketplace, WASM sandbox
+  skills/        # Skill registry, loader, marketplace, sandbox scaffolding
   scheduler/     # Durable job scheduling (no cron -- app-owned polling)
   security/      # Auth, SSO, isolation, input sanitization, skill verification
   langbridge/    # gRPC bridge to Python LangGraph sidecar

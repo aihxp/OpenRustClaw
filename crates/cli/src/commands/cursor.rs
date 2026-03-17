@@ -296,7 +296,7 @@ When working with the OpenRustClaw codebase:
 - **Database-first**: All state is persisted to SQLite, not held in memory
 - **Three-tier memory**: Core (~500 tokens), Recall (searchable), Archive (consolidated)
 - **Tool-first design**: Agent capabilities through tools, not system prompts
-- **Security**: Origin validation, Ed25519 skill verification, WASM sandboxing
+- **Security**: Origin validation, Ed25519 skill verification, planned WASM sandboxing
 
 ## Code Style
 - Use `anyhow` for error handling in CLI/binaries
@@ -478,13 +478,11 @@ openrustclaw security generate-keys
 openrustclaw skills sign my_skill --key signing_key.pem
 ```
 
-## WASM Sandboxing
+## WASM Sandbox Status
 
-Untrusted skills run in WASM sandbox:
-- File access: Restricted to workspace
-- Network: Explicitly declared
-- Time: Limited execution time
-- Memory: Bounded memory usage
+The WASM sandbox is planned, but the executor is not yet implemented:
+- Capability requirements are modeled in code
+- Future execution will bound file, network, time, and memory access
 "#
     .to_string()
 }

@@ -7,6 +7,46 @@ use sqlx::Row;
 use openrustclaw_security::SkillVerifier;
 use openrustclaw_skills::{ClawHubRegistry, SearchFilters, SortBy};
 
+fn parse_hex_bytes(input: &str) -> Result<Vec<u8>> {
+    let trimmed = input.trim();
+    if trimmed.len() % 2 != 0 {
+        anyhow::bail!("hex value must contain an even number of characters");
+    }
+
+    let mut bytes = Vec::with_capacity(trimmed.len() / 2);
+    let chars: Vec<char> = trimmed.chars().collect();
+    for pair in chars.chunks(2) {
+        let hi = pair[0]
+            .to_digit(16)
+            .ok_or_else(|| anyhow::anyhow!("invalid hex character '{}'", pair[0]))?;
+        let lo = pair[1]
+            .to_digit(16)
+            .ok_or_else(|| anyhow::anyhow!("invalid hex character '{}'", pair[1]))?;
+        bytes.push(((hi << 4) | lo) as u8);
+    }
+
+    Ok(bytes)
+}
+
+fn load_configured_skill_verifier(
+    config: &openrustclaw_core::config::AppConfig,
+    required: bool,
+) -> Result<SkillVerifier> {
+    let Some(key_hex) = config.security.skill_verifying_key.as_deref() else {
+        anyhow::bail!(
+            "No skill verifying key configured. Set [security].skill_verifying_key to the Ed25519 public key hex before verifying external skills."
+        );
+    };
+
+    let key_bytes = parse_hex_bytes(key_hex).context("Invalid skill verifying key hex")?;
+    let key_bytes: [u8; 32] = key_bytes
+        .try_into()
+        .map_err(|_| anyhow::anyhow!("Skill verifying key must be exactly 32 bytes"))?;
+
+    SkillVerifier::new(Some(&key_bytes), required)
+        .context("Failed to construct skill verifier from configured key")
+}
+
 /// List installed skills from database.
 pub async fn list() -> Result<()> {
     // Load configuration to get DB path
@@ -504,8 +544,8 @@ pub async fn verify(name: &str) -> Result<()> {
 
     let content = tokio::fs::read(&skill_file).await?;
 
-    // Create verifier
-    let verifier = SkillVerifier::disabled(); // In production, load from config
+    // External skills require a configured public key for real verification.
+    let verifier = load_configured_skill_verifier(&config, true)?;
 
     // Check if skill has signature
     let Some(sig_hex) = signature else {

@@ -8,8 +8,8 @@ The skills crate provides:
 
 - **Skill Registry**: Manage available skills
 - **Skill Loader**: Load skills from various sources
-- **Skill Sandbox**: Secure WASM-based execution
-- **Skill Marketplace**: Integration with skill marketplace
+- **Skill Sandbox**: WASM sandbox scaffolding and capability checks
+- **Skill Marketplace**: ClawHub registry integration plus marketplace scaffolding
 
 ## Skill Structure
 
@@ -43,11 +43,8 @@ let skill = Skill::new(manifest, wasm_bytes)?;
 
 ## Security
 
-Skills run in a WebAssembly sandbox with:
-- Memory isolation
-- CPU time limits
-- Capability-based permissions
-- Network access controls
+The crate currently provides capability metadata and verification plumbing.
+The WASM executor is planned, but not yet implemented.
 
 ## License
 

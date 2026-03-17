@@ -38,28 +38,27 @@ We will acknowledge receipt within 48 hours and provide a timeline for a fix wit
 
 - **Prompt Injection Detection**: Automated scanning for known prompt injection patterns
 - **Input Sanitization**: All user inputs are sanitized before processing
-- **Rate Limiting**: Per-user and per-channel rate limits to prevent abuse
-- **Request Size Limits**: Configurable maximum request sizes
+- **Selective Rate Limiting**: Webhook and session rate limit components exist, but not every endpoint is rate-limited uniformly
+- **Origin Validation**: WebSocket origins are validated before upgrade when enabled
 
 ### Data Protection
 
-- **Encryption at Rest**: All stored messages and memories are encrypted
-- **Encryption in Transit**: TLS 1.3 for all network communications
-- **Memory Isolation**: Secure sandboxing for skill execution
+- **Deployment-Provided Transport Security**: TLS should be terminated by your reverse proxy or service mesh
+- **Session Isolation**: Workspace and session boundaries are enforced in application logic
 - **Audit Logging**: Comprehensive audit logs for security events
 
 ### Skill Security
 
-- **Ed25519 Signature Verification**: All skills from the marketplace are cryptographically signed
-- **WASM Sandboxing**: Skills run in a WebAssembly sandbox with limited capabilities
-- **Capability-Based Permissions**: Skills only have access to explicitly granted capabilities
-- **Resource Limits**: CPU, memory, and execution time limits for skills
+- **Ed25519 Signature Verification**: Signed external skills can be verified when a public key is configured
+- **WASM Sandbox Executor**: Planned, but not yet implemented
+- **Capability Metadata**: Skills declare required capabilities for policy checks
+- **Resource Limit Targets**: CPU, memory, and execution limits are design targets for the future executor
 
 ### Network Security
 
-- **mTLS Support**: Mutual TLS for service-to-service communication
-- **Certificate Pinning**: Optional certificate pinning for external APIs
-- **CORS Configuration**: Strict CORS policies for web endpoints
+- **Origin Validation**: Configurable origin validation for WebSocket endpoints
+- **CORS Configuration**: CORS handling for the current HTTP surface
+- **SSRF Defenses**: SSO-related networking paths reject private IP targets
 
 ## Security Hardening
 
@@ -124,7 +123,7 @@ security:
 │           (Web, Mobile, CLI, Third-party bots)              │
 └─────────────────────────────────────────────────────────────┘
                               │
-                              ▼ TLS 1.3
+                              ▼ Deployment TLS boundary
 ┌─────────────────────────────────────────────────────────────┐
 │                      Gateway Layer                           │
 │    ┌──────────────┐  ┌──────────────┐  ┌──────────────┐    │
@@ -132,7 +131,7 @@ security:
 │    └──────────────┘  └──────────────┘  └──────────────┘    │
 └─────────────────────────────────────────────────────────────┘
                               │
-                              ▼ mTLS
+                              ▼ In-process / internal transport
 ┌─────────────────────────────────────────────────────────────┐
 │                      Core Services                           │
 │    ┌──────────────┐  ┌──────────────┐  ┌──────────────┐    │

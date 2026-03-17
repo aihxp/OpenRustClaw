@@ -12,16 +12,16 @@ from typing import Any, AsyncIterator, Callable, Dict, Optional
 
 import grpc
 
-from proto import orchestration_pb2
-from proto import orchestration_pb2_grpc
-from langsmith_bridge import LangSmithBridge
+from .proto import orchestration_pb2
+from .proto import orchestration_pb2_grpc
+from .langsmith_bridge import LangSmithBridge
 
 # Import workflow builders
-from workflows.agent_orchestrator import build_agent_graph
-from workflows.memory_maintenance import build_memory_maintenance_graph
-from workflows.rag_pipeline import build_rag_graph
-from workflows.scheduler import build_scheduler_graph
-from workflows.reminder import build_reminder_graph
+from .workflows.agent_orchestrator import build_agent_graph
+from .workflows.memory_maintenance import build_memory_maintenance_graph
+from .workflows.rag_pipeline import build_rag_graph
+from .workflows.scheduler import build_scheduler_graph
+from .workflows.reminder import build_reminder_graph
 
 logger = logging.getLogger(__name__)
 

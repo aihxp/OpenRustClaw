@@ -3,8 +3,11 @@
 use openrustclaw_core::error::{Error, Result};
 use std::path::PathBuf;
 use std::process::Stdio;
+use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::net::TcpStream;
 use tokio::process::{Child, Command};
-use tracing::info;
+use tokio::time::{Duration, Instant, sleep};
+use tracing::{info, warn};
 
 /// Manages the Python sidecar process lifecycle.
 pub struct SidecarManager {
@@ -25,7 +28,7 @@ impl SidecarManager {
     /// Start the sidecar process.
     pub async fn start(&mut self) -> Result<()> {
         let sidecar_dir = sidecar_dir();
-        let child = Command::new(&self.python_path)
+        let mut child = Command::new(&self.python_path)
             .arg("-m")
             .arg("src.server")
             .arg("--port")
@@ -35,6 +38,15 @@ impl SidecarManager {
             .stderr(Stdio::piped())
             .spawn()
             .map_err(|e| Error::Sidecar(format!("Failed to start sidecar: {}", e)))?;
+
+        if let Some(stdout) = child.stdout.take() {
+            tokio::spawn(pipe_sidecar_output(stdout, false));
+        }
+        if let Some(stderr) = child.stderr.take() {
+            tokio::spawn(pipe_sidecar_output(stderr, true));
+        }
+
+        wait_for_sidecar_ready(&mut child, self.grpc_port).await?;
 
         info!(port = self.grpc_port, "Python sidecar started");
         self.child = Some(child);
@@ -86,6 +98,55 @@ impl SidecarManager {
 
 fn sidecar_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../sidecar")
+}
+
+async fn wait_for_sidecar_ready(child: &mut Child, grpc_port: u16) -> Result<()> {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                return Err(Error::Sidecar(format!(
+                    "Sidecar exited before becoming ready (status: {})",
+                    status
+                )));
+            }
+            Ok(None) => {}
+            Err(e) => {
+                return Err(Error::Sidecar(format!(
+                    "Failed to poll sidecar process state: {}",
+                    e
+                )));
+            }
+        }
+
+        if TcpStream::connect(("127.0.0.1", grpc_port)).await.is_ok() {
+            return Ok(());
+        }
+
+        if Instant::now() >= deadline {
+            let _ = child.kill().await;
+            return Err(Error::Sidecar(format!(
+                "Sidecar did not become ready on 127.0.0.1:{} within 5s",
+                grpc_port
+            )));
+        }
+
+        sleep(Duration::from_millis(100)).await;
+    }
+}
+
+async fn pipe_sidecar_output<T>(stream: T, is_stderr: bool)
+where
+    T: tokio::io::AsyncRead + Unpin,
+{
+    let mut lines = BufReader::new(stream).lines();
+    while let Ok(Some(line)) = lines.next_line().await {
+        if is_stderr {
+            warn!(target: "openrustclaw_sidecar", "{}", line);
+        } else {
+            info!(target: "openrustclaw_sidecar", "{}", line);
+        }
+    }
 }
 
 #[cfg(test)]

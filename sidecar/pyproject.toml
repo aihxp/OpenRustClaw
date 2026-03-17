@@ -29,12 +29,14 @@ dev = [
 ]
 
 [project.scripts]
-openrustclaw-sidecar = "server:main"
+openrustclaw-sidecar = "src.server:main"
 
 [tool.setuptools]
-package-dir = {"" = "src"}
-packages = ["workflows", "evaluators", "proto"]
-py-modules = ["server", "langsmith_bridge"]
+package-dir = {"" = "."}
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
 
 [tool.mypy]
 python_version = "3.11"
