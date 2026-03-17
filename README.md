@@ -1,187 +1,163 @@
-# OpenRustClaw 🦀
+# OpenRustClaw
 
-[![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://www.rust-lang.org)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-300%2B-brightgreen.svg)]()
+[![CI](https://github.com/aihxp/OpenRustClaw/actions/workflows/ci.yml/badge.svg)](https://github.com/aihxp/OpenRustClaw/actions/workflows/ci.yml)
+[![Rust](https://img.shields.io/badge/rust-2024_edition-orange.svg)](https://www.rust-lang.org)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-> **A powerful Rust-based AI agent platform with extensive channel support.**
+A high-performance AI agent platform written in Rust. 43 crates, 20 LLM providers, 20 messaging channels, and a Python sidecar for LangGraph workflows.
 
-## 🚀 Quick Start
+## Quick Start
 
 ```bash
-# Clone and build
-git clone https://github.com/yourusername/OpenRustClaw.git
+git clone https://github.com/aihxp/OpenRustClaw.git
 cd OpenRustClaw
 cargo build --release
 
-# Interactive onboarding
+# Interactive setup -- configures providers, channels, and security
 ./target/release/openrustclaw onboard
 
-# Start with your favorite channels
+# Start the agent with your configured channels
 openrustclaw start --channels=telegram,discord,slack
 ```
 
-## ✨ Features
+## Architecture
 
-### 20 Messaging Channels
+```
+                         ┌─────────────────────────┐
+                         │          CLI             │
+                         └────────────┬─────────────┘
+        ┌─────────────┬──────────────┼──────────────┬─────────────┐
+        │  Channels   │    Voice     │   Canvas     │   Cursor    │
+        │ (20 integr) │  Wake/STT/TTS│   A2UI       │  IDE (ACP)  │
+        └──────┬──────┴──────┬───────┴──────┬───────┴──────┬──────┘
+               └─────────────┴──────────────┴──────────────┘
+                         ┌──────────┴──────────┐
+                         │   Gateway (Axum WS) │
+                         └──────────┬──────────┘
+        ┌──────────┬────────────┬───┴───┬────────────┬────────────┐
+        │  Agent   │  Memory    │ Skills│ Scheduler  │  Security  │
+        │ Runtime  │  3-Tier    │ WASM  │ Durable    │ SSO/JWT    │
+        └────┬─────┴─────┬──────┴───┬───┴─────┬──────┴─────┬──────┘
+             │           │          │         │            │
+        ┌────┴───┐  ┌────┴───┐  ┌──┴──┐  ┌───┴────┐  ┌───┴──────┐
+        │Providers│  │   DB   │  │ MCP │  │Langbrdg│  │Observabil│
+        │ 20 LLMs │  │SQLite  │  │JSON │  │ gRPC   │  │OTel/Prom │
+        └─────────┘  └────────┘  │-RPC │  └───┬────┘  └──────────┘
+                                 └─────┘      │
+                                    ┌─────────┴─────────┐
+                                    │  Python Sidecar   │
+                                    │  LangGraph/Smith  │
+                                    └───────────────────┘
+```
 
-| Channel | Status | Features |
-|---------|--------|----------|
-| Telegram | ✅ | Polling, Webhooks, Commands |
-| Discord | ✅ | Gateway, Socket Mode, Reactions |
-| Slack | ✅ | App Home, Socket Mode |
-| WhatsApp | ✅ | Baileys Bridge, Groups |
-| Microsoft Teams | ✅ | Bot Framework, Cards |
-| Google Chat | ✅ | Service Account, Threads |
-| Gmail | ✅ | Pub/Sub, Label Filters |
-| Signal | ✅ | signal-cli Bridge |
-| Matrix | ✅ | E2E Encryption, SDK |
-| iMessage | ✅ | BlueBubbles, AppleScript |
-| LINE | ✅ | Stickers, Rich Menu |
-| Viber | ✅ | Keyboard, Welcome Msg |
-| WeChat | ✅ | Work + Official Accounts |
-| Messenger | ✅ | Templates, Quick Replies |
-| Instagram | ✅ | DMs, Story Mentions |
-| SMS (Twilio) | ✅ | MMS, Webhooks |
-| X/Twitter | ✅ | Mentions, DMs, API v2 |
-| WebChat | ✅ | Built-in Interface |
-| Email | ✅ | IMAP/SMTP |
-| IRC | ✅ | Multi-server |
+**Crate dependency order:**
+`core` -> `db` -> `memory`, `providers`, `mcp`, `observability`, `security` -> `agent` -> `gateway`, `channels` -> `skills`, `scheduler` -> `langbridge` -> `cli`
 
-### Voice System
+## LLM Providers
+
+20 providers with native SDK crates. All keys protected with `secrecy::SecretString`, all HTTP clients configured with connect/request timeouts.
+
+| Provider | Crate | Streaming | Tool Use |
+|----------|-------|-----------|----------|
+| Anthropic (Claude) | `anthropic-rust` | Yes | Yes |
+| OpenAI (GPT-4o) | `async-openai` | Yes | Yes |
+| Google Gemini | `google-gemini` | Yes | Yes |
+| OpenRouter | `openrouter-api` | Yes | Yes |
+| AWS Bedrock | `aws-bedrock` | Yes | Yes |
+| Azure OpenAI | `azure-openai` | Yes | Yes |
+| Ollama (local) | `ollama-sdk` | Yes | Yes |
+| Mistral | `mistral` | Yes | Yes |
+| Cohere | `cohere` | Yes | Yes |
+| Groq | `groq` | Yes | Yes |
+| DeepSeek | `deepseek` | Yes | Yes |
+| Together AI | `together-ai` | Yes | Yes |
+| Fireworks AI | `fireworks-ai` | Yes | Yes |
+| Replicate | `replicate` | Yes | Yes |
+| Perplexity | `perplexity` | Yes | Yes |
+| AI21 | `ai21` | Yes | Yes |
+| Cloudflare AI | `cloudflare-ai` | Yes | Yes |
+| vLLM | `vllm` | Yes | Yes |
+| llama.cpp | `llama-cpp` | Yes | Yes |
+| Ollama SDK | `ollama-sdk` | Yes | Yes |
+
+Provider fallback chain with configurable cooldowns routes requests through available providers automatically.
+
+## Messaging Channels
+
+20 channel integrations via the `Channel` trait:
+
+Telegram, Discord, Slack, WhatsApp (Baileys bridge), Microsoft Teams, Google Chat, Gmail (Pub/Sub), Signal, Matrix (E2E encryption), iMessage (BlueBubbles), LINE, Viber, WeChat, Messenger, Instagram DMs, SMS (Twilio), X/Twitter, WebChat, Email (IMAP/SMTP), IRC
+
+## Memory System
+
+Three-tier architecture -- no full memory files injected into prompts:
+
+- **Core Memory** (~500 tokens, always loaded) -- persistent user/system facts
+- **Recall Memory** (on-demand search) -- hybrid BM25 + vector similarity + temporal decay
+- **Archive Memory** (consolidated) -- long-term storage with automatic compaction
+
+```toml
+[memory]
+core_max_tokens = 500
+recall_search_limit = 20
+archive_after_days = 30
+```
+
+## MCP (Model Context Protocol)
+
+Both client and server support over JSON-RPC stdio transport:
+
+```bash
+# Expose tools to MCP clients
+openrustclaw mcp-server
+
+# Connect to external MCP servers
+openrustclaw start --mcp-servers="npx @modelcontextprotocol/server-filesystem ."
+```
+
+Command allowlist enforced on subprocess spawning (`npx`, `uvx`, `node`, `python3`, `docker`, `deno`, `bun`, `cargo`, `go`).
+
+## Security
+
+Defense-in-depth across every layer:
+
+| Layer | Mechanism |
+|-------|-----------|
+| **Authentication** | JWT with session tracking, Enterprise SSO (OIDC/SAML) |
+| **API Keys** | `secrecy::SecretString` -- zeroized on drop, redacted in logs |
+| **Transport** | Mandatory origin validation on all WebSocket connections |
+| **Webhooks** | HMAC-SHA256 with constant-time comparison, Stripe replay protection |
+| **Sessions** | Filesystem isolation with path traversal prevention |
+| **Skills** | Ed25519 signature verification, WASM sandbox |
+| **Input** | Prompt injection detection (34+ patterns), canary tokens |
+| **Network** | SSRF prevention on OIDC/SAML endpoints (private IP rejection) |
+| **Subprocess** | MCP command allowlist, shell metacharacter rejection |
+| **Audit** | Structured audit events with severity levels |
+
+See [SECURITY.md](SECURITY.md) for the full security policy.
+
+## Voice
 
 ```bash
 openrustclaw talk --wake-word "Hey Assistant"
 ```
 
-- ✅ **Wake Word** - Porcupine engine
-- ✅ **Speech-to-Text** - Whisper integration
-- ✅ **Text-to-Speech** - OpenAI, ElevenLabs
-- ✅ **Talk Mode** - Continuous conversation
+Wake word detection (Porcupine), speech-to-text (Whisper), text-to-speech (OpenAI, ElevenLabs), continuous talk mode. Audio dependencies are feature-gated behind `audio`.
 
-### Live Canvas (A2UI)
-
-```rust
-let canvas = Canvas::new("Workspace");
-canvas.push(vec![
-    CanvasElement::text("Hello"),
-    CanvasElement::chart(data),
-    CanvasElement::form(fields),
-]);
-```
-
-- Real-time collaboration via WebSocket
-- 8+ element types (Text, Image, Chart, Form, Code, etc.)
-- Multi-user sessions
-
-### Multi-Agent System
-
-```rust
-// Priority-based routing
-let router = AgentRouter::new(agent_id)
-    .with_rule("Code Requests", KeywordMatcher::new(vec!["code", "function"]))
-    .with_rule("Urgent", ChannelMatcher::new(vec!["slack"]));
-```
-
-- Agent Router with 9+ matchers
-- Inter-agent communication (`sessions_send`, `sessions_spawn`)
-- Heartbeat Scheduler for automation
-- Workspace isolation
-
-### LLM Providers
-
-Current LLM support:
-- ✅ Anthropic (Claude) via `anthropic_rust` crate
-- ✅ OpenAI (GPT-4) via `async_openai` crate
-- ✅ OpenRouter via `openrouter_api` crate
-- ✅ Ollama (local models)
-
-> **Note**: Additional LLM providers and native SDKs are planned for future releases.
-
-### Chat Commands (All Channels)
-
-```
-/status - Session info
-/new, /reset - Fresh session
-/compact - Compress context
-/think <level> - Thinking mode
-/verbose on|off - Output level
-/help - Show all commands
-```
-
-### ClawHub Skills Registry
-
-```bash
-# Search and install skills
-openrustclaw skills search "github"
-openrustclaw skills install github
-openrustclaw skills list
-
-# With progress bars and verification
-openrustclaw skills install memory --verify
-```
-
-### Webhooks
-
-```bash
-# GitHub integration
-openrustclaw webhooks create github \
-  --secret $GITHUB_SECRET \
-  --template "{{action}} on {{repository.name}}"
-
-# Test it
-openrustclaw webhooks test github --event push
-```
-
-### Mobile SDK
-
-```swift
-// iOS
-let node = MobileNode(config: .init(
-    gatewayUrl: "wss://...",
-    authToken: "..."
-))
-try await node.start()
-```
-
-```kotlin
-// Android
-val node = MobileNode(config)
-node.start()
-```
-
-## 📦 Architecture
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     OpenRustClaw                            │
-├─────────────┬─────────────┬─────────────┬───────────────────┤
-│   Channels  │    Voice    │   Canvas    │    Multi-Agent    │
-│  (20 total) │  Wake/STT   │   A2UI      │   Router/Sessions │
-├─────────────┴─────────────┴─────────────┴───────────────────┤
-│                      Gateway (Axum)                          │
-├─────────────────────────────────────────────────────────────┤
-│  Agent  │  Skills  │  Memory  │  Scheduler  │  Security     │
-├─────────────────────────────────────────────────────────────┤
-│  LLM Providers (Claude, GPT, Ollama, OpenRouter)           │
-├─────────────────────────────────────────────────────────────┤
-│  MCP Client/Server  │  Tools  │  Native SDKs               │
-└─────────────────────────────────────────────────────────────┘
-```
-
-## 🔧 Configuration
+## Configuration
 
 ```toml
-[channels]
-telegram = { enabled = true, token = "${TG_TOKEN}" }
-discord = { enabled = true, token = "${DISCORD_TOKEN}" }
-slack = { enabled = true, bot_token = "${SLACK_TOKEN}" }
-whatsapp = { enabled = true, session_path = "./data/whatsapp" }
-
 [llm]
 provider = "anthropic"
-api_key = "${ANTHROPIC_KEY}"
-model = "claude-3-5-sonnet"
+model = "claude-sonnet-4-20250514"
+
+[channels]
+telegram = { enabled = true, token = "${TG_TOKEN}" }
+discord  = { enabled = true, token = "${DISCORD_TOKEN}" }
+
+[security]
+require_auth = true
+allowed_origins = ["https://app.example.com"]
 
 [voice]
 wake_word = "Hey Assistant"
@@ -189,66 +165,72 @@ stt_provider = "whisper"
 tts_provider = "openai"
 ```
 
-## 🧪 Testing
+## Building and Testing
 
 ```bash
-# Run all tests
+# Build
+cargo build --workspace
+
+# Test (769 tests)
 cargo test --workspace
 
-# Run specific crate tests
-cargo test -p openrustclaw-channels
-cargo test -p openrustclaw-agent
+# Lint
+cargo clippy --workspace -- -D warnings
 
-# E2E tests
-cargo test --test e2e
+# Format
+cargo fmt --all -- --check
+
+# Build without optional subsystems
+cargo build -p openrustclaw-cli --no-default-features
 ```
 
-**Current Status**: 300+ tests passing ✅
+### Feature Flags
 
-## 📚 Documentation
+Heavy dependencies are opt-in:
 
-- [FEATURES.md](docs/FEATURES.md) - Complete feature matrix
-- [CHANNELS.md](docs/CHANNELS.md) - Channel setup guide
-- [DEPLOYMENT.md](docs/DEPLOYMENT.md) - Production deployment
-- [SECURITY.md](docs/SECURITY.md) - Security best practices
+| Crate | Feature | Dependencies |
+|-------|---------|-------------|
+| `distributed` | `raft-consensus`, `etcd`, `consul`, `redis`, `mdns` | Raft, etcd-client, Consul, Redis, mDNS |
+| `voice` | `audio` | cpal, rodio, rubato, hound |
+| `cli` | `voice`, `cursor` (default on) | Voice subsystem, Cursor IDE integration |
+| `mobile` | `ios`, `android` | Platform-specific FFI |
+| `automation` | `chrome` | headless_chrome |
 
-## 🔒 Security
+## Project Structure
 
-- ✅ Enterprise SSO (OIDC/SAML)
-- ✅ HMAC Webhook Verification
-- ✅ JWT Authentication
-- ✅ Channel Allowlists
-- ✅ Rate Limiting
-- ✅ Ed25519 Skill Signing
-- ✅ Secret Scanning (GitLeaks)
+```
+crates/
+  core/          # Types, traits, error hierarchy (thiserror)
+  db/            # SQLite via sqlx, libSQL for vectors, rusqlite for CLI
+  memory/        # 3-tier memory system with policies and search
+  providers/     # LLM provider trait + Anthropic/OpenAI/Gemini/OpenRouter/Ollama
+  mcp/           # MCP client/server over JSON-RPC stdio
+  agent/         # Agent runtime with tool execution loop
+  gateway/       # Axum WebSocket server with auth and rate limiting
+  channels/      # 20 messaging channel integrations
+  skills/        # Skill registry, loader, marketplace, WASM sandbox
+  scheduler/     # Durable job scheduling (no cron -- app-owned polling)
+  security/      # Auth, SSO, isolation, input sanitization, skill verification
+  langbridge/    # gRPC bridge to Python LangGraph sidecar
+  observability/ # OpenTelemetry, Prometheus metrics, tracing
+  cli/           # Terminal UI (ratatui), all CLI commands
+  + 16 native LLM SDK crates
+  + canvas, cursor, voice, automation, mobile, distributed
+sidecar/         # Python LangGraph workflows + LangSmith observability
+```
 
-## 🤝 Contributing
+## Contributing
 
 ```bash
-# Setup
-git clone https://github.com/yourusername/OpenRustClaw.git
+git clone https://github.com/aihxp/OpenRustClaw.git
 cd OpenRustClaw
-cargo build
-
-# Run tests
-cargo test
-
-# Check formatting
-cargo fmt --check
-
-# Run clippy
-cargo clippy -- -D warnings
+cargo build --workspace
+cargo test --workspace
+cargo clippy --workspace -- -D warnings
 ```
 
-## 📄 License
+All async code uses tokio. Errors use `thiserror` for libraries, `anyhow` for the CLI. Logging via `tracing` macros (`info!`, `warn!`, `error!`) -- never `println!` outside the CLI crate. See [CLAUDE.md](CLAUDE.md) for the full conventions guide.
 
-MIT License - See [LICENSE](LICENSE)
+## License
 
-## 🙏 Acknowledgments
-
-- Built with [Rust](https://www.rust-lang.org)
-- LLM integrations: Anthropic, OpenAI, Ollama, OpenRouter
-
----
-
-**🦀 OpenRustClaw - A powerful Rust-based AI agent platform** 🚀
+MIT -- see [LICENSE](LICENSE).
