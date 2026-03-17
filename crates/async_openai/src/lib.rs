@@ -16,7 +16,7 @@
 //! ## Quick Start
 //!
 //! ```no_run
-//! use async_openai::{OpenAIClient, ChatRequest, Message, Role};
+//! use async_openai::{OpenAIClient, ChatRequest, Role};
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! let client = OpenAIClient::new("your-api-key")?;
@@ -26,7 +26,7 @@
 //!     .build();
 //!
 //! let response = client.chat().complete(request).await?;
-//! println!("{}", response.content);
+//! println!("{}", response.content().unwrap_or_default());
 //! # Ok(())
 //! # }
 //! ```

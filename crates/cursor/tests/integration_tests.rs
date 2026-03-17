@@ -141,8 +141,6 @@ async fn test_tool_execution_list_files() {
         .unwrap();
     tokio::fs::create_dir(path.join("subdir")).await.unwrap();
 
-    std::env::set_current_dir(&path).unwrap();
-
     let ctx = ToolContext::new(path.clone(), CursorConfig::default());
     let registry = ToolRegistry::new(ctx);
 
@@ -163,8 +161,6 @@ async fn test_tool_execution_read_file() {
     tokio::fs::write(path.join("test.txt"), "Hello, World!")
         .await
         .unwrap();
-    std::env::set_current_dir(&path).unwrap();
-
     let ctx = ToolContext::new(path.clone(), CursorConfig::default());
     let registry = ToolRegistry::new(ctx);
 
@@ -180,8 +176,6 @@ async fn test_tool_execution_read_file() {
 async fn test_tool_execution_create_and_delete_file() {
     let temp_dir = TempDir::new().unwrap();
     let path = temp_dir.path().to_path_buf();
-    std::env::set_current_dir(&path).unwrap();
-
     let ctx = ToolContext::new(path.clone(), CursorConfig::default());
     let registry = ToolRegistry::new(ctx);
 
@@ -231,8 +225,6 @@ async fn test_tool_execution_edit_file() {
     tokio::fs::write(path.join("test.txt"), "Hello, World!")
         .await
         .unwrap();
-    std::env::set_current_dir(&path).unwrap();
-
     let ctx = ToolContext::new(path.clone(), CursorConfig::default());
     let registry = ToolRegistry::new(ctx);
 
@@ -268,8 +260,6 @@ async fn test_tool_execution_search_code() {
     tokio::fs::write(path.join("file2.rs"), "fn helper() {}")
         .await
         .unwrap();
-    std::env::set_current_dir(&path).unwrap();
-
     let ctx = ToolContext::new(path.clone(), CursorConfig::default());
     let registry = ToolRegistry::new(ctx);
 
@@ -293,8 +283,6 @@ async fn test_tool_execution_search_code() {
 async fn test_tool_execution_run_command() {
     let temp_dir = TempDir::new().unwrap();
     let path = temp_dir.path().to_path_buf();
-    std::env::set_current_dir(&path).unwrap();
-
     let ctx = ToolContext::new(path.clone(), CursorConfig::default());
     let registry = ToolRegistry::new(ctx);
 
@@ -302,14 +290,14 @@ async fn test_tool_execution_run_command() {
         .execute(
             "run_command",
             serde_json::json!({
-                "command": "echo 'test output'"
+                "command": "echo test-output"
             }),
         )
         .await
         .unwrap();
 
     assert!(result["success"].as_bool().unwrap());
-    assert!(result["stdout"].as_str().unwrap().contains("test output"));
+    assert!(result["stdout"].as_str().unwrap().contains("test-output"));
     assert_eq!(result["exit_code"], 0);
 }
 

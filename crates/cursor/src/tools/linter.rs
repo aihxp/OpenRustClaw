@@ -1,7 +1,7 @@
 //! Linter and formatter tools for code quality.
 
 use crate::error::{CursorError, Result};
-use crate::types::{CursorTool, Diagnostic, Severity};
+use crate::types::{CursorTool, Diagnostic, Severity, ToolContext};
 use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::path::Path;
@@ -49,7 +49,7 @@ impl CursorTool for RunLinterTool {
         })
     }
 
-    async fn execute(&self, params: Value) -> Result<Value> {
+    async fn execute(&self, params: Value, context: &ToolContext) -> Result<Value> {
         let tool_name = params
             .get("tool")
             .and_then(|t| t.as_str())
@@ -62,8 +62,7 @@ impl CursorTool for RunLinterTool {
             .and_then(|a| a.as_bool())
             .unwrap_or(true);
 
-        let project_root =
-            std::env::current_dir().map_err(|e| CursorError::Linter(e.to_string()))?;
+        let project_root = context.project_root.clone();
 
         info!("Running linter: {} (fix: {})", tool_name, fix);
 
@@ -221,7 +220,7 @@ impl CursorTool for FormatCodeTool {
         })
     }
 
-    async fn execute(&self, params: Value) -> Result<Value> {
+    async fn execute(&self, params: Value, context: &ToolContext) -> Result<Value> {
         let language = params
             .get("language")
             .and_then(|l| l.as_str())
@@ -232,8 +231,7 @@ impl CursorTool for FormatCodeTool {
             .and_then(|c| c.as_bool())
             .unwrap_or(false);
 
-        let project_root =
-            std::env::current_dir().map_err(|e| CursorError::Linter(e.to_string()))?;
+        let project_root = context.project_root.clone();
 
         info!("Formatting code: {} (check: {})", language, check);
 

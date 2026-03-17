@@ -14,13 +14,13 @@
 //! ## Quick Start
 //!
 //! ```no_run
-//! use aws_bedrock::{BedrockClient, ConverseRequest, Message, Role};
+//! use aws_bedrock::{BedrockClient, ConverseRequest, Message};
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! let client = BedrockClient::new("us-east-1").await?;
 //!
 //! let request = ConverseRequest::builder("anthropic.claude-3-sonnet-20240229-v1:0")
-//!     .message(Role::User, "Hello, Claude!")
+//!     .message(Message::user_text("Hello, Claude!"))
 //!     .build();
 //!
 //! let response = client.converse().invoke(request).await?;
@@ -32,14 +32,14 @@
 //! ## Streaming Example
 //!
 //! ```no_run
-//! use aws_bedrock::{BedrockClient, ConverseRequest, Role};
+//! use aws_bedrock::{BedrockClient, ConverseRequest, Message};
 //! use futures::StreamExt;
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! let client = BedrockClient::new("us-east-1").await?;
 //!
 //! let request = ConverseRequest::builder("anthropic.claude-3-sonnet-20240229-v1:0")
-//!     .message(Role::User, "Tell me a story")
+//!     .message(Message::user_text("Tell me a story"))
 //!     .build();
 //!
 //! let mut stream = client.converse().stream(request).await?;
@@ -48,7 +48,7 @@
 //!         aws_bedrock::StreamEvent::ContentBlockDelta { delta, .. } => {
 //!             print!("{}", delta.text().unwrap_or_default());
 //!         }
-//!         aws_bedrock::StreamEvent::MessageStop => break,
+//!         aws_bedrock::StreamEvent::MessageStop { stop_reason: _ } => break,
 //!         _ => {}
 //!     }
 //! }

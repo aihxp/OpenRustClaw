@@ -44,7 +44,7 @@ async fn test_sql_injection_prevention() {
     env.store_memory(entry).await.expect("Store should succeed");
 
     // Verify table still exists
-    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM memories")
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM memory_entries")
         .fetch_one(&env.db_pool)
         .await
         .expect("Query failed");

@@ -6,8 +6,14 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
+
+
+def _skip_missing_dependency(error: ModuleNotFoundError) -> None:
+    pytest.skip(f"Optional sidecar dependency not installed: {error}")
 
 
 def test_imports():
@@ -18,16 +24,22 @@ def test_imports():
         from proto import orchestration_pb2
         from proto import orchestration_pb2_grpc
         print("  ✓ Protobuf modules")
+    except ModuleNotFoundError as e:
+        print(f"  ✗ Protobuf modules: {e}")
+        _skip_missing_dependency(e)
     except Exception as e:
         print(f"  ✗ Protobuf modules: {e}")
-        return False
+        raise
 
     try:
         from langsmith_bridge import LangSmithBridge
         print("  ✓ LangSmith bridge")
+    except ModuleNotFoundError as e:
+        print(f"  ✗ LangSmith bridge: {e}")
+        _skip_missing_dependency(e)
     except Exception as e:
         print(f"  ✗ LangSmith bridge: {e}")
-        return False
+        raise
 
     try:
         from workflows.agent_orchestrator import build_agent_graph
@@ -36,18 +48,22 @@ def test_imports():
         from workflows.scheduler import build_scheduler_graph
         from workflows.reminder import build_reminder_graph
         print("  ✓ Workflow modules")
+    except ModuleNotFoundError as e:
+        print(f"  ✗ Workflow modules: {e}")
+        _skip_missing_dependency(e)
     except Exception as e:
         print(f"  ✗ Workflow modules: {e}")
-        return False
+        raise
 
     try:
         from server import OrchestrationServicer, WorkflowRegistry
         print("  ✓ Server module")
+    except ModuleNotFoundError as e:
+        print(f"  ✗ Server module: {e}")
+        _skip_missing_dependency(e)
     except Exception as e:
         print(f"  ✗ Server module: {e}")
-        return False
-
-    return True
+        raise
 
 
 def test_workflow_graphs():
@@ -58,43 +74,56 @@ def test_workflow_graphs():
         from workflows.agent_orchestrator import build_agent_graph
         graph = build_agent_graph()
         print("  ✓ Agent orchestrator graph")
+    except ModuleNotFoundError as e:
+        print(f"  ✗ Agent orchestrator graph: {e}")
+        _skip_missing_dependency(e)
     except Exception as e:
         print(f"  ✗ Agent orchestrator graph: {e}")
-        return False
+        raise
 
     try:
         from workflows.memory_maintenance import build_memory_maintenance_graph
         graph = build_memory_maintenance_graph()
         print("  ✓ Memory maintenance graph")
+    except ModuleNotFoundError as e:
+        print(f"  ✗ Memory maintenance graph: {e}")
+        _skip_missing_dependency(e)
     except Exception as e:
         print(f"  ✗ Memory maintenance graph: {e}")
-        return False
+        raise
 
     try:
         from workflows.rag_pipeline import build_rag_graph
         graph = build_rag_graph()
         print("  ✓ RAG pipeline graph")
+    except ModuleNotFoundError as e:
+        print(f"  ✗ RAG pipeline graph: {e}")
+        _skip_missing_dependency(e)
     except Exception as e:
         print(f"  ✗ RAG pipeline graph: {e}")
-        return False
+        raise
 
     try:
         from workflows.scheduler import build_scheduler_graph
         graph = build_scheduler_graph()
         print("  ✓ Scheduler graph")
+    except ModuleNotFoundError as e:
+        print(f"  ✗ Scheduler graph: {e}")
+        _skip_missing_dependency(e)
     except Exception as e:
         print(f"  ✗ Scheduler graph: {e}")
-        return False
+        raise
 
     try:
         from workflows.reminder import build_reminder_graph
         graph = build_reminder_graph()
         print("  ✓ Reminder graph")
+    except ModuleNotFoundError as e:
+        print(f"  ✗ Reminder graph: {e}")
+        _skip_missing_dependency(e)
     except Exception as e:
         print(f"  ✗ Reminder graph: {e}")
-        return False
-
-    return True
+        raise
 
 
 def test_langsmith_bridge():
@@ -112,11 +141,12 @@ def test_langsmith_bridge():
 
         metrics = bridge.get_metrics()
         print(f"  ✓ Metrics: {metrics}")
-
-        return True
+    except ModuleNotFoundError as e:
+        print(f"  ✗ LangSmith bridge: {e}")
+        _skip_missing_dependency(e)
     except Exception as e:
         print(f"  ✗ LangSmith bridge: {e}")
-        return False
+        raise
 
 
 def test_workflow_registry():
@@ -143,11 +173,12 @@ def test_workflow_registry():
         status = registry.get("thread-123")
         assert status is None
         print("  ✓ Workflow removal")
-
-        return True
+    except ModuleNotFoundError as e:
+        print(f"  ✗ Workflow registry: {e}")
+        _skip_missing_dependency(e)
     except Exception as e:
         print(f"  ✗ Workflow registry: {e}")
-        return False
+        raise
 
 
 def test_protobuf_messages():
@@ -198,11 +229,12 @@ def test_protobuf_messages():
         )
         assert status_resp.steps_completed == 2
         print("  ✓ StatusRequest/StatusResponse")
-
-        return True
+    except ModuleNotFoundError as e:
+        print(f"  ✗ Protobuf messages: {e}")
+        _skip_missing_dependency(e)
     except Exception as e:
         print(f"  ✗ Protobuf messages: {e}")
-        return False
+        raise
 
 
 async def test_agent_workflow():

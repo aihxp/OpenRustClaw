@@ -5,7 +5,10 @@ use axum::extract::State;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
-use axum::{Router, routing::get};
+use axum::{
+    Json, Router,
+    routing::{get, post},
+};
 use futures::StreamExt;
 use openrustclaw_core::error::{Error, Result as CoreResult, SecurityError};
 use openrustclaw_observability::metrics::{
@@ -15,6 +18,7 @@ use openrustclaw_observability::metrics::{
 use openrustclaw_security::OriginValidator;
 use serde_json::json;
 use std::sync::Arc;
+use tower_http::cors::{Any, CorsLayer};
 use tracing::{info, warn};
 
 /// Shared gateway state.
@@ -40,7 +44,23 @@ impl GatewayServer {
     pub fn router(&self, state: GatewayState) -> Router {
         Router::new()
             .route("/ws", get(ws_handler))
-            .route("/health", get(health_handler))
+            .route(
+                "/health",
+                get(health_handler)
+                    .post(health_handler)
+                    .options(cors_preflight_handler),
+            )
+            .route("/v1/chat/completions", post(chat_completions_handler))
+            .layer(
+                CorsLayer::new()
+                    .allow_origin(Any)
+                    .allow_methods([
+                        axum::http::Method::GET,
+                        axum::http::Method::POST,
+                        axum::http::Method::OPTIONS,
+                    ])
+                    .allow_headers(Any),
+            )
             .with_state(state)
     }
 
@@ -89,8 +109,55 @@ async fn ws_handler(
     })
 }
 
-async fn health_handler() -> &'static str {
-    "ok"
+async fn health_handler() -> Json<serde_json::Value> {
+    Json(json!({
+        "status": "healthy",
+        "service": "openrustclaw-gateway",
+        "version": env!("CARGO_PKG_VERSION"),
+    }))
+}
+
+async fn cors_preflight_handler() -> StatusCode {
+    StatusCode::OK
+}
+
+async fn chat_completions_handler(
+    Json(payload): Json<serde_json::Value>,
+) -> Json<serde_json::Value> {
+    let content = payload
+        .get("messages")
+        .and_then(|messages| messages.as_array())
+        .and_then(|messages| {
+            messages.iter().rev().find_map(|message| {
+                let role = message.get("role").and_then(|role| role.as_str());
+                if role == Some("user") {
+                    message.get("content").and_then(|content| content.as_str())
+                } else {
+                    None
+                }
+            })
+        })
+        .unwrap_or("");
+
+    Json(json!({
+        "id": format!("chatcmpl-{}", uuid::Uuid::new_v4()),
+        "object": "chat.completion",
+        "created": chrono::Utc::now().timestamp(),
+        "model": payload.get("model").and_then(|model| model.as_str()).unwrap_or("openrustclaw-mock"),
+        "choices": [{
+            "index": 0,
+            "message": {
+                "role": "assistant",
+                "content": format!("Echo: {}", content),
+            },
+            "finish_reason": "stop",
+        }],
+        "usage": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+        }
+    }))
 }
 
 fn validate_ws_request(state: &GatewayState, headers: &HeaderMap) -> CoreResult<()> {

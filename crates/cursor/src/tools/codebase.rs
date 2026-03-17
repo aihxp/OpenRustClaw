@@ -1,7 +1,7 @@
 //! Codebase tools for searching, reading, and modifying code files.
 
 use crate::error::{CursorError, Result};
-use crate::types::{CursorTool, SearchMatch};
+use crate::types::{CursorTool, SearchMatch, ToolContext};
 use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::path::PathBuf;
@@ -47,7 +47,7 @@ impl CursorTool for SearchCodeTool {
         })
     }
 
-    async fn execute(&self, params: Value) -> Result<Value> {
+    async fn execute(&self, params: Value, context: &ToolContext) -> Result<Value> {
         let query = params
             .get("query")
             .and_then(|q| q.as_str())
@@ -68,8 +68,7 @@ impl CursorTool for SearchCodeTool {
         let pattern =
             regex::Regex::new(query).map_err(|e| CursorError::PatternError(e.to_string()))?;
 
-        let project_root =
-            std::env::current_dir().map_err(|e| CursorError::FileOperation(e.to_string()))?;
+        let project_root = canonical_project_root(context)?;
         let mut matches = Vec::new();
 
         let walker = walkdir::WalkDir::new(&project_root)
@@ -205,35 +204,13 @@ impl CursorTool for ReadFileTool {
         })
     }
 
-    async fn execute(&self, params: Value) -> Result<Value> {
+    async fn execute(&self, params: Value, context: &ToolContext) -> Result<Value> {
         let path_str = params
             .get("path")
             .and_then(|p| p.as_str())
             .ok_or_else(|| input_validation_error(self.name(), "Missing 'path' parameter"))?;
 
-        let path = PathBuf::from(path_str);
-        let full_path = if path.is_absolute() {
-            path
-        } else {
-            std::env::current_dir()
-                .map_err(|e| CursorError::FileOperation(e.to_string()))?
-                .join(path)
-        };
-
-        // Security check: ensure path is within project
-        let canonical_path = full_path
-            .canonicalize()
-            .map_err(|e| CursorError::FileOperation(e.to_string()))?;
-        let project_root = std::env::current_dir()
-            .map_err(|e| CursorError::FileOperation(e.to_string()))?
-            .canonicalize()
-            .map_err(|e| CursorError::FileOperation(e.to_string()))?;
-
-        if !canonical_path.starts_with(&project_root) {
-            return Err(CursorError::FileOperation(
-                "Path is outside project root".to_string(),
-            ));
-        }
+        let canonical_path = canonical_existing_path(context, path_str)?;
 
         let content = tokio::fs::read_to_string(&canonical_path)
             .await
@@ -309,7 +286,7 @@ impl CursorTool for EditFileTool {
         })
     }
 
-    async fn execute(&self, params: Value) -> Result<Value> {
+    async fn execute(&self, params: Value, context: &ToolContext) -> Result<Value> {
         let path_str = params
             .get("path")
             .and_then(|p| p.as_str())
@@ -330,14 +307,7 @@ impl CursorTool for EditFileTool {
             .and_then(|d| d.as_bool())
             .unwrap_or(false);
 
-        let path = PathBuf::from(path_str);
-        let full_path = if path.is_absolute() {
-            path
-        } else {
-            std::env::current_dir()
-                .map_err(|e| CursorError::FileOperation(e.to_string()))?
-                .join(path)
-        };
+        let full_path = resolve_path(context, path_str)?;
 
         let content = tokio::fs::read_to_string(&full_path)
             .await
@@ -407,7 +377,7 @@ impl CursorTool for CreateFileTool {
         })
     }
 
-    async fn execute(&self, params: Value) -> Result<Value> {
+    async fn execute(&self, params: Value, context: &ToolContext) -> Result<Value> {
         let path_str = params
             .get("path")
             .and_then(|p| p.as_str())
@@ -423,14 +393,7 @@ impl CursorTool for CreateFileTool {
             .and_then(|o| o.as_bool())
             .unwrap_or(false);
 
-        let path = PathBuf::from(path_str);
-        let full_path = if path.is_absolute() {
-            path
-        } else {
-            std::env::current_dir()
-                .map_err(|e| CursorError::FileOperation(e.to_string()))?
-                .join(path)
-        };
+        let full_path = resolve_path(context, path_str)?;
 
         // Check if file exists
         if full_path.exists() && !overwrite {
@@ -497,7 +460,7 @@ impl CursorTool for DeleteFileTool {
         })
     }
 
-    async fn execute(&self, params: Value) -> Result<Value> {
+    async fn execute(&self, params: Value, context: &ToolContext) -> Result<Value> {
         let path_str = params
             .get("path")
             .and_then(|p| p.as_str())
@@ -519,14 +482,7 @@ impl CursorTool for DeleteFileTool {
             ));
         }
 
-        let path = PathBuf::from(path_str);
-        let full_path = if path.is_absolute() {
-            path
-        } else {
-            std::env::current_dir()
-                .map_err(|e| CursorError::FileOperation(e.to_string()))?
-                .join(path)
-        };
+        let full_path = resolve_path(context, path_str)?;
 
         let metadata = tokio::fs::metadata(&full_path)
             .await
@@ -597,7 +553,7 @@ impl CursorTool for ListFilesTool {
         })
     }
 
-    async fn execute(&self, params: Value) -> Result<Value> {
+    async fn execute(&self, params: Value, context: &ToolContext) -> Result<Value> {
         let path_str = params.get("path").and_then(|p| p.as_str()).unwrap_or(".");
 
         let recursive = params
@@ -610,14 +566,7 @@ impl CursorTool for ListFilesTool {
             .and_then(|h| h.as_bool())
             .unwrap_or(false);
 
-        let path = PathBuf::from(path_str);
-        let full_path = if path.is_absolute() {
-            path
-        } else {
-            std::env::current_dir()
-                .map_err(|e| CursorError::FileOperation(e.to_string()))?
-                .join(path)
-        };
+        let full_path = resolve_path(context, path_str)?;
 
         let max_depth = if recursive { 100 } else { 1 };
 
@@ -626,6 +575,9 @@ impl CursorTool for ListFilesTool {
             .max_depth(max_depth)
             .into_iter()
             .filter_entry(|e| {
+                if e.depth() == 0 {
+                    return true;
+                }
                 let name = e.file_name().to_string_lossy();
                 include_hidden || !name.starts_with('.')
             });
@@ -683,6 +635,73 @@ fn input_validation_error(tool: impl Into<String>, message: impl Into<String>) -
     }
 }
 
+fn canonical_project_root(context: &ToolContext) -> Result<PathBuf> {
+    context
+        .project_root
+        .canonicalize()
+        .map_err(|e| CursorError::FileOperation(e.to_string()))
+}
+
+fn resolve_path(context: &ToolContext, path_str: &str) -> Result<PathBuf> {
+    let path = PathBuf::from(path_str);
+    let project_root = canonical_project_root(context)?;
+    let full_path = if path.is_absolute() {
+        path
+    } else {
+        project_root.join(path)
+    };
+
+    if full_path == project_root {
+        return Ok(project_root);
+    }
+
+    if full_path.exists() {
+        let canonical = full_path
+            .canonicalize()
+            .map_err(|e| CursorError::FileOperation(e.to_string()))?;
+        if canonical.starts_with(&project_root) {
+            return Ok(canonical);
+        }
+        return Err(CursorError::FileOperation(
+            "Path is outside project root".to_string(),
+        ));
+    }
+
+    if let Some(parent) = full_path.parent() {
+        let canonical_parent = parent
+            .canonicalize()
+            .map_err(|e| CursorError::FileOperation(e.to_string()))?;
+        if !canonical_parent.starts_with(&project_root) {
+            return Err(CursorError::FileOperation(
+                "Path is outside project root".to_string(),
+            ));
+        }
+        Ok(canonical_parent.join(
+            full_path
+                .file_name()
+                .ok_or_else(|| CursorError::FileOperation("Invalid file path".to_string()))?,
+        ))
+    } else {
+        Err(CursorError::FileOperation("Invalid file path".to_string()))
+    }
+}
+
+fn canonical_existing_path(context: &ToolContext, path_str: &str) -> Result<PathBuf> {
+    let full_path = resolve_path(context, path_str)?;
+    let canonical_path = full_path
+        .canonicalize()
+        .map_err(|e| CursorError::FileOperation(e.to_string()))?;
+    let project_root = canonical_project_root(context)?;
+
+    if canonical_path.starts_with(&project_root) {
+        Ok(canonical_path)
+    } else {
+        Err(CursorError::FileOperation(
+            "Path is outside project root".to_string(),
+        ))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -693,29 +712,39 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let file_path = temp_dir.path().join("test.txt");
         tokio::fs::write(&file_path, "Hello, World!").await.unwrap();
-
-        std::env::set_current_dir(&temp_dir).unwrap();
+        let context = ToolContext::new(
+            temp_dir.path().to_path_buf(),
+            crate::types::CursorConfig::default(),
+        );
 
         let tool = ReadFileTool;
-        let result = tool.execute(json!({"path": "test.txt"})).await.unwrap();
+        let result = tool
+            .execute(json!({"path": "test.txt"}), &context)
+            .await
+            .unwrap();
 
         assert_eq!(result["content"], "Hello, World!");
         assert_eq!(result["total_lines"], 1);
     }
 
     #[tokio::test]
-    #[ignore] // Requires exclusive cwd access -- not safe with parallel test runners
     async fn test_create_and_delete_file() {
         let temp_dir = TempDir::new().unwrap();
-        std::env::set_current_dir(&temp_dir).unwrap();
+        let context = ToolContext::new(
+            temp_dir.path().to_path_buf(),
+            crate::types::CursorConfig::default(),
+        );
 
         // Create file
         let create_tool = CreateFileTool;
         let result = create_tool
-            .execute(json!({
-                "path": "new_file.txt",
-                "content": "Test content"
-            }))
+            .execute(
+                json!({
+                    "path": "new_file.txt",
+                    "content": "Test content"
+                }),
+                &context,
+            )
             .await
             .unwrap();
 
@@ -730,10 +759,13 @@ mod tests {
         // Delete file
         let delete_tool = DeleteFileTool;
         let result = delete_tool
-            .execute(json!({
-                "path": "new_file.txt",
-                "confirm": true
-            }))
+            .execute(
+                json!({
+                    "path": "new_file.txt",
+                    "confirm": true
+                }),
+                &context,
+            )
             .await
             .unwrap();
 
@@ -745,16 +777,21 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let file_path = temp_dir.path().join("test.txt");
         tokio::fs::write(&file_path, "Hello, World!").await.unwrap();
-
-        std::env::set_current_dir(&temp_dir).unwrap();
+        let context = ToolContext::new(
+            temp_dir.path().to_path_buf(),
+            crate::types::CursorConfig::default(),
+        );
 
         let tool = EditFileTool;
         let result = tool
-            .execute(json!({
-                "path": "test.txt",
-                "old_text": "World",
-                "new_text": "Rust"
-            }))
+            .execute(
+                json!({
+                    "path": "test.txt",
+                    "old_text": "World",
+                    "new_text": "Rust"
+                }),
+                &context,
+            )
             .await
             .unwrap();
 
@@ -765,10 +802,10 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore] // Temp dir path resolution varies across CI environments
     async fn test_list_files() {
         let temp_dir = TempDir::new().unwrap();
         let abs_path = temp_dir.path().canonicalize().unwrap();
+        let context = ToolContext::new(abs_path.clone(), crate::types::CursorConfig::default());
         tokio::fs::write(abs_path.join("file1.txt"), "content1")
             .await
             .unwrap();
@@ -778,7 +815,7 @@ mod tests {
 
         let tool = ListFilesTool;
         let result = tool
-            .execute(json!({"path": abs_path.to_str().unwrap()}))
+            .execute(json!({"path": abs_path.to_str().unwrap()}), &context)
             .await
             .unwrap();
 

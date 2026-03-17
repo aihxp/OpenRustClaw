@@ -1,7 +1,7 @@
 //! Git operations tools for repository management.
 
 use crate::error::{CursorError, Result};
-use crate::types::{CursorTool, GitStatus};
+use crate::types::{CursorTool, GitStatus, ToolContext};
 use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::path::PathBuf;
@@ -35,14 +35,13 @@ impl CursorTool for GitStatusTool {
         })
     }
 
-    async fn execute(&self, params: Value) -> Result<Value> {
+    async fn execute(&self, params: Value, context: &ToolContext) -> Result<Value> {
         let short = params
             .get("short")
             .and_then(|s| s.as_bool())
             .unwrap_or(false);
 
-        let project_root =
-            std::env::current_dir().map_err(|e| CursorError::GitOperation(e.to_string()))?;
+        let project_root = context.project_root.clone();
 
         // Get status
         let output = Command::new("git")
@@ -177,9 +176,8 @@ impl CursorTool for GitDiffTool {
         })
     }
 
-    async fn execute(&self, params: Value) -> Result<Value> {
-        let project_root =
-            std::env::current_dir().map_err(|e| CursorError::GitOperation(e.to_string()))?;
+    async fn execute(&self, params: Value, context: &ToolContext) -> Result<Value> {
+        let project_root = context.project_root.clone();
 
         let staged = params
             .get("staged")
@@ -283,7 +281,7 @@ impl CursorTool for GitCommitTool {
         })
     }
 
-    async fn execute(&self, params: Value) -> Result<Value> {
+    async fn execute(&self, params: Value, context: &ToolContext) -> Result<Value> {
         let message = params
             .get("message")
             .and_then(|m| m.as_str())
@@ -304,8 +302,7 @@ impl CursorTool for GitCommitTool {
             })
             .unwrap_or_default();
 
-        let project_root =
-            std::env::current_dir().map_err(|e| CursorError::GitOperation(e.to_string()))?;
+        let project_root = context.project_root.clone();
 
         // Stage files if specified
         if !files.is_empty() {
@@ -431,7 +428,7 @@ impl CursorTool for GitBranchTool {
         })
     }
 
-    async fn execute(&self, params: Value) -> Result<Value> {
+    async fn execute(&self, params: Value, context: &ToolContext) -> Result<Value> {
         let action = params
             .get("action")
             .and_then(|a| a.as_str())
@@ -448,8 +445,7 @@ impl CursorTool for GitBranchTool {
             .and_then(|r| r.as_bool())
             .unwrap_or(false);
 
-        let project_root =
-            std::env::current_dir().map_err(|e| CursorError::GitOperation(e.to_string()))?;
+        let project_root = context.project_root.clone();
 
         match action {
             "list" => {
@@ -699,6 +695,7 @@ fn input_validation_error(tool: impl Into<String>, message: impl Into<String>) -
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::CursorConfig;
 
     #[test]
     fn test_parse_git_status() {
@@ -742,8 +739,9 @@ R  renamed.txt"#;
             return; // Skip test
         }
 
+        let context = ToolContext::new(std::env::current_dir().unwrap(), CursorConfig::default());
         let tool = GitStatusTool;
-        let result = tool.execute(json!({})).await.unwrap();
+        let result = tool.execute(json!({}), &context).await.unwrap();
 
         assert!(result.get("branch").is_some());
         assert!(result.get("modified").is_some());
@@ -762,8 +760,12 @@ R  renamed.txt"#;
             return; // Skip test
         }
 
+        let context = ToolContext::new(std::env::current_dir().unwrap(), CursorConfig::default());
         let tool = GitBranchTool;
-        let result = tool.execute(json!({"action": "list"})).await.unwrap();
+        let result = tool
+            .execute(json!({"action": "list"}), &context)
+            .await
+            .unwrap();
 
         assert!(result.get("branches").is_some());
         assert!(result.get("current").is_some());

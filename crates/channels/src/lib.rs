@@ -69,10 +69,10 @@ impl ChannelFactory {
     ///
     /// ```rust,no_run
     /// use openrustclaw_channels::ChannelFactory;
-    /// use openrustclaw_core::config::ChannelsConfig;
+    /// use openrustclaw_core::config::AppConfig;
     ///
-    /// let config = ChannelsConfig::default();
-    /// let channels = ChannelFactory::create_channels(&config);
+    /// let config = AppConfig::default();
+    /// let channels = ChannelFactory::create_channels(&config.channels);
     /// ```
     pub fn create_channels(config: &ChannelsConfig) -> Vec<Box<dyn Channel>> {
         let mut channels: Vec<Box<dyn Channel>> = Vec::new();

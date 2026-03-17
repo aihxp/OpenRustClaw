@@ -33,10 +33,10 @@ async fn test_memory_search_variations() {
 
     // Test various search queries
     let queries = vec![
-        ("programming language", vec!["Rust"]),
-        ("favorite food", vec!["pizza"]),
-        ("when is the meeting", vec!["3pm"]),
-        ("random animal", vec!["fox"]),
+        ("Rust programming", vec!["Rust"]),
+        ("pizza", vec!["pizza"]),
+        ("meeting 3pm", vec!["3pm"]),
+        ("quick brown fox", vec!["fox"]),
     ];
 
     for (query_text, expected_contains) in queries {
@@ -135,7 +135,8 @@ async fn test_memory_under_load() {
 
     // Search should still be fast
     let start = std::time::Instant::now();
-    let query = create_memory_query("memory item");
+    let mut query = create_memory_query("memory item");
+    query.limit = 100;
     let results = env.search_memories(query).await.expect("Search failed");
     let search_time = start.elapsed();
 

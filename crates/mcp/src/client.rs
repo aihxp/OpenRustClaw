@@ -14,6 +14,7 @@ use crate::transport::StdioTransport;
 pub struct McpToolDef {
     pub name: String,
     pub description: String,
+    #[serde(alias = "inputSchema")]
     pub input_schema: Value,
     pub server_name: String,
 }

@@ -1,6 +1,7 @@
 //! Sidecar process lifecycle management.
 
 use openrustclaw_core::error::{Error, Result};
+use std::path::PathBuf;
 use std::process::Stdio;
 use tokio::process::{Child, Command};
 use tracing::info;
@@ -23,11 +24,13 @@ impl SidecarManager {
 
     /// Start the sidecar process.
     pub async fn start(&mut self) -> Result<()> {
+        let sidecar_dir = sidecar_dir();
         let child = Command::new(&self.python_path)
             .arg("-m")
-            .arg("openrustclaw_sidecar.server")
+            .arg("src.server")
             .arg("--port")
             .arg(self.grpc_port.to_string())
+            .current_dir(&sidecar_dir)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
@@ -79,6 +82,10 @@ impl SidecarManager {
     pub fn grpc_port(&self) -> u16 {
         self.grpc_port
     }
+}
+
+fn sidecar_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../sidecar")
 }
 
 #[cfg(test)]

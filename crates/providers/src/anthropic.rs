@@ -838,7 +838,7 @@ mod tests {
         ));
         let msg = err.to_string();
         assert!(
-            msg.contains("Rate limited"),
+            msg.contains("rate limit"),
             "Error should describe rate limiting: {}",
             msg
         );

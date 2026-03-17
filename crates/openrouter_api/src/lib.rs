@@ -24,7 +24,7 @@
 //!     .build();
 //!
 //! let response = client.chat().complete(request).await?;
-//! println!("{}", response.content);
+//! println!("{}", response.content());
 //! # Ok(())
 //! # }
 //! ```

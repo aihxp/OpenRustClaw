@@ -1,7 +1,9 @@
 //! Start command - Initialize and run the OpenRustClaw server.
 
 use anyhow::{Context, Result};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::signal;
 use tracing::{error, info, warn};
 
@@ -12,6 +14,7 @@ use openrustclaw_db::{init_pool, run_migrations};
 use openrustclaw_gateway::server::{GatewayServer, GatewayState};
 use openrustclaw_gateway::sessions::SessionManager;
 use openrustclaw_langbridge::sidecar::SidecarManager;
+use openrustclaw_mcp::server::{McpServer, McpServerConfig, McpServerTool};
 use openrustclaw_security::OriginValidator;
 
 /// Run the start command - load config, init DB, start sidecar, start gateway.
@@ -69,12 +72,29 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
                     config.channels.gmail_pubsub.enabled = true;
                     info!("Gmail Pub/Sub channel enabled");
                 }
-                _ => {
-                    // Other channels not yet fully implemented in CLI
-                    info!(
-                        "Channel {:?} not yet fully implemented in CLI",
-                        channel_type
-                    );
+                ChannelType::Matrix => {
+                    config.channels.matrix.enabled = true;
+                    info!("Matrix channel enabled");
+                }
+                ChannelType::IMessage => {
+                    config.channels.imessage.enabled = true;
+                    info!("iMessage channel enabled");
+                }
+                ChannelType::Line => {
+                    config.channels.line.enabled = true;
+                    info!("LINE channel enabled");
+                }
+                ChannelType::Viber => {
+                    config.channels.viber.enabled = true;
+                    info!("Viber channel enabled");
+                }
+                ChannelType::WeChat => {
+                    config.channels.wechat.enabled = true;
+                    info!("WeChat channel enabled");
+                }
+                ChannelType::Messenger | ChannelType::Instagram => {
+                    config.channels.meta.enabled = true;
+                    info!("Meta channel enabled");
                 }
             }
         }
@@ -147,91 +167,14 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
     // Initialize enabled channels
     let mut channel_tasks: Vec<tokio::task::JoinHandle<()>> = Vec::new();
 
-    // Start Telegram if enabled
-    if config.channels.telegram.enabled {
-        if config.channels.telegram.token.is_empty() {
-            warn!("Telegram channel enabled but no token provided");
-        } else {
-            info!("Starting Telegram channel...");
-            let telegram_config = config.channels.telegram.clone();
-            let handle = tokio::spawn(async move {
-                match ChannelFactory::create_telegram(telegram_config) {
-                    Ok(mut channel) => {
-                        if let Err(e) = channel.connect().await {
-                            error!(error = %e, "Failed to connect Telegram channel");
-                        } else {
-                            info!("Telegram channel connected");
-                            // Keep the channel alive
-                            loop {
-                                tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        error!(error = %e, "Failed to create Telegram channel");
-                    }
-                }
-            });
-            channel_tasks.push(handle);
-        }
-    }
+    let enabled_channels = ChannelFactory::create_channels(&config.channels);
+    let enabled_platforms: Vec<_> = enabled_channels
+        .iter()
+        .map(|channel| channel.platform())
+        .collect();
 
-    // Start Discord if enabled
-    if config.channels.discord.enabled {
-        if config.channels.discord.token.is_empty() {
-            warn!("Discord channel enabled but no token provided");
-        } else {
-            info!("Starting Discord channel...");
-            let discord_config = config.channels.discord.clone();
-            let handle = tokio::spawn(async move {
-                match ChannelFactory::create_discord(discord_config) {
-                    Ok(mut channel) => {
-                        if let Err(e) = channel.connect().await {
-                            error!(error = %e, "Failed to connect Discord channel");
-                        } else {
-                            info!("Discord channel connected");
-                            // Keep the channel alive
-                            loop {
-                                tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        error!(error = %e, "Failed to create Discord channel");
-                    }
-                }
-            });
-            channel_tasks.push(handle);
-        }
-    }
-
-    // Start Slack if enabled
-    if config.channels.slack.enabled {
-        if config.channels.slack.token.is_empty() {
-            warn!("Slack channel enabled but no token provided");
-        } else {
-            info!("Starting Slack channel...");
-            let slack_config = config.channels.slack.clone();
-            let handle = tokio::spawn(async move {
-                match ChannelFactory::create_slack(slack_config) {
-                    Ok(mut channel) => {
-                        if let Err(e) = channel.connect().await {
-                            error!(error = %e, "Failed to connect Slack channel");
-                        } else {
-                            info!("Slack channel connected");
-                            // Keep the channel alive
-                            loop {
-                                tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        error!(error = %e, "Failed to create Slack channel");
-                    }
-                }
-            });
-            channel_tasks.push(handle);
-        }
+    for channel in enabled_channels {
+        channel_tasks.push(spawn_channel_task(channel));
     }
 
     // Create shutdown signal handler
@@ -271,14 +214,8 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
             config.sidecar.grpc_port
         );
     }
-    if config.channels.telegram.enabled {
-        info!("Telegram: enabled");
-    }
-    if config.channels.discord.enabled {
-        info!("Discord: enabled");
-    }
-    if config.channels.slack.enabled {
-        info!("Slack: enabled");
+    for platform in enabled_platforms {
+        info!(platform = ?platform, "Channel enabled");
     }
 
     // Run server with graceful shutdown
@@ -310,16 +247,194 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
 }
 
 /// Run MCP server (stdio transport).
-pub async fn run_mcp_server(_transport: &str) -> Result<()> {
+pub async fn run_mcp_server(transport: &str) -> Result<()> {
+    if transport != "stdio" {
+        return Err(anyhow::anyhow!(
+            "Unsupported MCP transport '{}'; only 'stdio' is currently implemented",
+            transport
+        ));
+    }
+
     info!("Starting MCP server (stdio transport)");
+    let workspace_root =
+        std::env::current_dir().context("Failed to determine current directory")?;
+    let server = build_mcp_server(workspace_root.clone());
 
-    // For now, we just print a message that MCP server is available
-    // Full implementation would set up stdio transport and handle JSON-RPC
-    println!("MCP server is starting...");
-    println!("Note: Full MCP server implementation requires integration with the McpServer");
+    let stdin = tokio::io::stdin();
+    let stdout = tokio::io::stdout();
+    let mut reader = BufReader::new(stdin).lines();
+    let mut writer = stdout;
 
-    // TODO: Implement full MCP server with stdio transport
-    // The transport needs to be adapted from the client-side StdioTransport
+    while let Some(line) = reader
+        .next_line()
+        .await
+        .context("Failed to read MCP stdin")?
+    {
+        if line.trim().is_empty() {
+            continue;
+        }
+
+        let request: serde_json::Value = serde_json::from_str(&line)
+            .with_context(|| format!("Invalid MCP JSON request: {}", line))?;
+        let response = server.handle_request(&request);
+        let response_line =
+            serde_json::to_string(&response).context("Failed to serialize MCP response")?;
+        writer
+            .write_all(response_line.as_bytes())
+            .await
+            .context("Failed to write MCP response")?;
+        writer
+            .write_all(b"\n")
+            .await
+            .context("Failed to write MCP newline")?;
+        writer
+            .flush()
+            .await
+            .context("Failed to flush MCP response")?;
+    }
 
     Ok(())
+}
+
+fn spawn_channel_task(mut channel: Box<dyn Channel>) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        let platform = channel.platform();
+        info!(platform = ?platform, "Starting channel");
+        match channel.connect().await {
+            Ok(()) => {
+                info!(platform = ?platform, "Channel connected");
+                loop {
+                    tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+                }
+            }
+            Err(e) => {
+                error!(platform = ?platform, error = %e, "Failed to connect channel");
+            }
+        }
+    })
+}
+
+fn build_mcp_server(workspace_root: PathBuf) -> McpServer {
+    let mut server = McpServer::new(McpServerConfig {
+        name: "openrustclaw".to_string(),
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        tools: vec![
+            McpServerTool {
+                name: "health".to_string(),
+                description: "Return basic OpenRustClaw workspace health".to_string(),
+                input_schema: serde_json::json!({"type": "object", "properties": {}}),
+            },
+            McpServerTool {
+                name: "list_files".to_string(),
+                description: "List files under the current workspace root".to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "path": {"type": "string"},
+                        "recursive": {"type": "boolean"}
+                    }
+                }),
+            },
+            McpServerTool {
+                name: "read_file".to_string(),
+                description: "Read a UTF-8 file from the current workspace root".to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "path": {"type": "string"}
+                    },
+                    "required": ["path"]
+                }),
+            },
+        ],
+    });
+
+    let root_for_health = workspace_root.clone();
+    server.register_handler("health", move |_| {
+        Ok(serde_json::json!({
+            "status": "healthy",
+            "workspace_root": root_for_health,
+        }))
+    });
+
+    let root_for_list = workspace_root.clone();
+    server.register_handler("list_files", move |args| {
+        let path = args.get("path").and_then(|v| v.as_str()).unwrap_or(".");
+        let recursive = args
+            .get("recursive")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let resolved = resolve_workspace_path(&root_for_list, path)?;
+        let max_depth = if recursive { usize::MAX } else { 1 };
+        let entries: Vec<_> = walkdir::WalkDir::new(&resolved)
+            .max_depth(max_depth)
+            .into_iter()
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| entry.path() != resolved)
+            .map(|entry| {
+                serde_json::json!({
+                    "path": entry.path(),
+                    "is_directory": entry.file_type().is_dir(),
+                })
+            })
+            .collect();
+        Ok(serde_json::json!({
+            "path": resolved,
+            "entries": entries,
+        }))
+    });
+
+    let root_for_read = workspace_root;
+    server.register_handler("read_file", move |args| {
+        let path = args.get("path").and_then(|v| v.as_str()).ok_or_else(|| {
+            openrustclaw_core::error::Error::Mcp(openrustclaw_core::error::McpError::ToolExecution(
+                "Missing 'path' parameter".to_string(),
+            ))
+        })?;
+        let resolved = resolve_workspace_path(&root_for_read, path)?;
+        let content = std::fs::read_to_string(&resolved).map_err(|e| {
+            openrustclaw_core::error::Error::Mcp(openrustclaw_core::error::McpError::ToolExecution(
+                e.to_string(),
+            ))
+        })?;
+        Ok(serde_json::json!({
+            "path": resolved,
+            "content": content,
+        }))
+    });
+
+    server
+}
+
+fn resolve_workspace_path(
+    workspace_root: &Path,
+    path: &str,
+) -> openrustclaw_core::error::Result<PathBuf> {
+    let root = workspace_root.canonicalize().map_err(|e| {
+        openrustclaw_core::error::Error::Mcp(openrustclaw_core::error::McpError::ToolExecution(
+            e.to_string(),
+        ))
+    })?;
+    let requested = PathBuf::from(path);
+    let candidate = if requested.is_absolute() {
+        requested
+    } else {
+        root.join(requested)
+    };
+
+    let canonical = candidate.canonicalize().map_err(|e| {
+        openrustclaw_core::error::Error::Mcp(openrustclaw_core::error::McpError::ToolExecution(
+            e.to_string(),
+        ))
+    })?;
+
+    if canonical.starts_with(&root) {
+        Ok(canonical)
+    } else {
+        Err(openrustclaw_core::error::Error::Mcp(
+            openrustclaw_core::error::McpError::ToolExecution(
+                "Path is outside workspace root".to_string(),
+            ),
+        ))
+    }
 }

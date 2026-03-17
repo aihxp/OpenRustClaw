@@ -15,20 +15,20 @@ async fn test_db_migrations() {
     let env = TestEnvironment::new().await;
 
     // Verify tables exist by running a simple query
-    let result: Result<i64, _> = sqlx::query_scalar("SELECT COUNT(*) FROM memories")
-        .fetch_one(&env.db_pool)
-        .await;
-
-    assert!(result.is_ok(), "Migrations should create memories table");
-
-    let result: Result<i64, _> = sqlx::query_scalar("SELECT COUNT(*) FROM core_memories")
+    let result: Result<i64, _> = sqlx::query_scalar("SELECT COUNT(*) FROM memory_entries")
         .fetch_one(&env.db_pool)
         .await;
 
     assert!(
         result.is_ok(),
-        "Migrations should create core_memories table"
+        "Migrations should create memory_entries table"
     );
+
+    let result: Result<i64, _> = sqlx::query_scalar("SELECT COUNT(*) FROM core_memory")
+        .fetch_one(&env.db_pool)
+        .await;
+
+    assert!(result.is_ok(), "Migrations should create core_memory table");
 }
 
 /// Test: Memory store and retrieve
@@ -197,7 +197,7 @@ async fn test_db_transaction_handling() {
 
     // Insert within transaction
     let result: Result<(), sqlx::Error> = sqlx::query(
-        "INSERT INTO memories (id, content, content_hash, namespace, memory_type, created_at) 
+        "INSERT INTO memory_entries (id, content, content_hash, namespace, memory_type, created_at) 
          VALUES ($1, $2, $3, $4, $5, $6)",
     )
     .bind(Uuid::new_v4().to_string())
@@ -217,7 +217,7 @@ async fn test_db_transaction_handling() {
 
     // Verify data was not persisted
     let count: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM memories WHERE content_hash = 'hash123'")
+        sqlx::query_scalar("SELECT COUNT(*) FROM memory_entries WHERE content_hash = 'hash123'")
             .fetch_one(&env.db_pool)
             .await
             .expect("Query failed");
@@ -241,7 +241,7 @@ async fn test_db_concurrent_operations() {
                 .build();
 
             let _ = sqlx::query(
-                "INSERT INTO memories (id, content, content_hash, namespace, memory_type, created_at) 
+                "INSERT INTO memory_entries (id, content, content_hash, namespace, memory_type, created_at) 
                  VALUES ($1, $2, $3, $4, $5, $6)"
             )
             .bind(entry.id.to_string())

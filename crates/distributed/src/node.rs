@@ -147,6 +147,8 @@ impl NodeInfo {
 
 /// Local node state and management.
 pub struct LocalNode {
+    /// Stable node ID cache.
+    node_id: NodeId,
     /// Node information.
     info: RwLock<NodeInfo>,
     /// Current Raft term.
@@ -163,6 +165,7 @@ impl LocalNode {
     /// Create a new local node.
     pub fn new(info: NodeInfo) -> Self {
         Self {
+            node_id: info.id.clone(),
             info: RwLock::new(info),
             current_term: AtomicU64::new(0),
             voted_for: RwLock::new(None),
@@ -173,7 +176,7 @@ impl LocalNode {
 
     /// Get the node ID.
     pub fn id(&self) -> NodeId {
-        self.info.blocking_read().id.clone()
+        self.node_id.clone()
     }
 
     /// Get a clone of the node info (async).
@@ -183,7 +186,15 @@ impl LocalNode {
 
     /// Get a clone of the node info (blocking).
     pub fn info_blocking(&self) -> NodeInfo {
-        self.info.blocking_read().clone()
+        if let Ok(info) = self.info.try_read() {
+            return info.clone();
+        }
+
+        if tokio::runtime::Handle::try_current().is_ok() {
+            tokio::task::block_in_place(|| self.info.blocking_read().clone())
+        } else {
+            self.info.blocking_read().clone()
+        }
     }
 
     /// Update node state.

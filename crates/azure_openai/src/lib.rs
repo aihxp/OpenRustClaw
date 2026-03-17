@@ -21,21 +21,21 @@
 //! ## Quick Start
 //!
 //! ```no_run
-//! use azure_openai::{AzureOpenAIClient, ChatRequest, Message, Role, AzureConfig};
+//! use azure_openai::{AzureOpenAIClient, ChatRequest};
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 //! let client = AzureOpenAIClient::new(
 //!     "your-resource-name",
 //!     "your-deployment-name",
-//!     AzureConfig::api_key("your-api-key"),
+//!     "your-api-key",
 //! )?;
 //!
 //! let request = ChatRequest::builder()
-//!     .message(Role::User, "Hello, Azure OpenAI!")
+//!     .user("Hello, Azure OpenAI!")
 //!     .build();
 //!
 //! let response = client.chat().complete(request).await?;
-//! println!("{}", response.content);
+//! println!("{}", response.content().unwrap_or_default());
 //! # Ok(())
 //! # }
 //! ```
@@ -46,10 +46,10 @@
 //! use azure_openai::{AzureOpenAIClient, AzureConfig};
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-//! let client = AzureOpenAIClient::new(
+//! let client = AzureOpenAIClient::with_azure_ad_token(
 //!     "your-resource-name",
 //!     "your-deployment-name",
-//!     AzureConfig::azure_ad_token("your-aad-token"),
+//!     "your-aad-token",
 //! )?;
 //! # Ok(())
 //! # }

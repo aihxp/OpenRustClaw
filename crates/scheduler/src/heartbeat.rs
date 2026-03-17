@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
@@ -22,6 +22,49 @@ pub struct HeartbeatScheduler {
     tasks: Arc<RwLock<HashMap<TaskId, HeartbeatTask>>>,
     triggers: broadcast::Sender<HeartbeatEvent>,
     check_interval: Duration,
+    file_state: Arc<Mutex<HashMap<(PathBuf, bool), FileFingerprint>>>,
+    last_activity: Arc<Mutex<DateTime<Utc>>>,
+    recent_emails: Arc<Mutex<Vec<EmailEvent>>>,
+    recent_system_events: Arc<Mutex<HashMap<SystemEventType, DateTime<Utc>>>>,
+    handlers: Arc<Mutex<HeartbeatHandlers>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct FileFingerprint {
+    modified_at: Option<std::time::SystemTime>,
+    size_bytes: u64,
+}
+
+#[derive(Debug, Clone)]
+struct EmailEvent {
+    mailbox: String,
+    subject: String,
+    body: String,
+    received_at: DateTime<Utc>,
+}
+
+type AgentMessageHandler = Arc<
+    dyn Fn(AgentTarget, String) -> Pin<Box<dyn Future<Output = Result<()>> + Send>> + Send + Sync,
+>;
+type ToolCallHandler = Arc<
+    dyn Fn(String, serde_json::Value) -> Pin<Box<dyn Future<Output = Result<()>> + Send>>
+        + Send
+        + Sync,
+>;
+type SkillHandler =
+    Arc<dyn Fn(String, String) -> Pin<Box<dyn Future<Output = Result<()>> + Send>> + Send + Sync>;
+type NotificationHandler = Arc<
+    dyn Fn(String, String, Urgency) -> Pin<Box<dyn Future<Output = Result<()>> + Send>>
+        + Send
+        + Sync,
+>;
+
+#[derive(Default)]
+struct HeartbeatHandlers {
+    agent_message: Option<AgentMessageHandler>,
+    tool_call: Option<ToolCallHandler>,
+    skill: Option<SkillHandler>,
+    notification: Option<NotificationHandler>,
 }
 
 /// Unique identifier for heartbeat tasks
@@ -101,7 +144,7 @@ pub enum HeartbeatCondition {
 }
 
 /// System event types for triggering
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SystemEventType {
     /// User logged in
     UserLogin,
@@ -259,6 +302,24 @@ impl HeartbeatScheduler {
             tasks: Arc::new(RwLock::new(HashMap::new())),
             triggers: tx,
             check_interval,
+            file_state: Arc::new(Mutex::new(HashMap::new())),
+            last_activity: Arc::new(Mutex::new(Utc::now())),
+            recent_emails: Arc::new(Mutex::new(Vec::new())),
+            recent_system_events: Arc::new(Mutex::new(HashMap::new())),
+            handlers: Arc::new(Mutex::new(HeartbeatHandlers {
+                notification: Some(Arc::new(|title, body, urgency| {
+                    Box::pin(async move {
+                        match urgency {
+                            Urgency::Critical => tracing::error!("[CRITICAL] {}: {}", title, body),
+                            Urgency::High => tracing::warn!("[HIGH] {}: {}", title, body),
+                            Urgency::Normal => tracing::info!("[NORMAL] {}: {}", title, body),
+                            Urgency::Low => tracing::debug!("[LOW] {}: {}", title, body),
+                        }
+                        Ok(())
+                    })
+                })),
+                ..HeartbeatHandlers::default()
+            })),
         }
     }
 
@@ -381,7 +442,17 @@ impl HeartbeatScheduler {
                     }
 
                     // Check condition
-                    self.check_condition(&task.condition).await
+                    match self.check_condition(&task.condition).await {
+                        Ok(result) => result,
+                        Err(e) => {
+                            tracing::error!(
+                                "Heartbeat condition failed for task '{}': {}",
+                                task.name,
+                                e
+                            );
+                            false
+                        }
+                    }
                 } else {
                     false
                 }
@@ -434,7 +505,7 @@ impl HeartbeatScheduler {
     /// Check if a condition is met
     ///
     /// This function is not async to avoid recursion issues with Box::pin
-    fn check_condition_sync(&self, condition: &HeartbeatCondition) -> bool {
+    fn check_condition_sync(&self, condition: &HeartbeatCondition) -> Result<bool> {
         match condition {
             HeartbeatCondition::Cron { schedule } => {
                 let now = Utc::now();
@@ -443,68 +514,57 @@ impl HeartbeatScheduler {
                 for datetime in schedule.upcoming(Utc).take(1) {
                     let diff = datetime - now;
                     if diff.num_seconds().abs() <= 1 {
-                        return true;
+                        return Ok(true);
                     }
                 }
-                false
+                Ok(false)
             }
-            HeartbeatCondition::FileChanged {
-                path: _,
-                recursive: _,
-            } => {
-                // File change detection requires setting up a watcher
-                // This is a placeholder - actual implementation would use notify crate
-                tracing::debug!("FileChanged condition check not yet implemented");
-                false
+            HeartbeatCondition::FileChanged { path, recursive } => {
+                self.check_file_changed(path, *recursive)
             }
             HeartbeatCondition::EmailReceived { query, mailbox } => {
-                // Email checking would require integration with email providers
-                tracing::debug!(
-                    "EmailReceived condition check not yet implemented: {} in {}",
-                    query,
-                    mailbox
-                );
-                false
+                Ok(self.check_email_received(query, mailbox))
             }
-            HeartbeatCondition::IdleDuration { duration: _ } => {
-                // Idle detection requires system-specific implementations
-                tracing::debug!("IdleDuration condition check not yet implemented");
-                false
+            HeartbeatCondition::IdleDuration { duration } => {
+                if let Some(last_activity) = self.last_activity.lock().ok().map(|guard| *guard) {
+                    if let Ok(idle_for) = ChronoDuration::from_std(*duration) {
+                        Ok(Utc::now() - last_activity >= idle_for)
+                    } else {
+                        Ok(false)
+                    }
+                } else {
+                    Ok(false)
+                }
             }
             HeartbeatCondition::SystemEvent { event_type } => {
-                // System event detection requires platform-specific hooks
-                tracing::debug!(
-                    "SystemEvent condition check not yet implemented: {:?}",
-                    event_type
-                );
-                false
+                Ok(self.check_system_event(*event_type))
             }
             HeartbeatCondition::Custom { name, check } => {
                 let result = check();
                 tracing::trace!("Custom condition '{}' returned: {}", name, result);
-                result
+                Ok(result)
             }
             HeartbeatCondition::All(conditions) => {
                 for c in conditions {
-                    if !self.check_condition_sync(c) {
-                        return false;
+                    if !self.check_condition_sync(c)? {
+                        return Ok(false);
                     }
                 }
-                true
+                Ok(true)
             }
             HeartbeatCondition::Any(conditions) => {
                 for c in conditions {
-                    if self.check_condition_sync(c) {
-                        return true;
+                    if self.check_condition_sync(c)? {
+                        return Ok(true);
                     }
                 }
-                false
+                Ok(false)
             }
         }
     }
 
     /// Check if a condition is met (async wrapper)
-    async fn check_condition(&self, condition: &HeartbeatCondition) -> bool {
+    async fn check_condition(&self, condition: &HeartbeatCondition) -> Result<bool> {
         self.check_condition_sync(condition)
     }
 
@@ -512,36 +572,81 @@ impl HeartbeatScheduler {
     async fn execute_action(&self, action: &HeartbeatAction) -> Result<()> {
         match action {
             HeartbeatAction::AgentMessage { target, message } => {
-                tracing::info!("Sending heartbeat message to {:?}: {}", target, message);
-                // TODO: Route message to target agent(s) via agent router
-                Ok(())
+                if let Some(handler) = self
+                    .handlers
+                    .lock()
+                    .ok()
+                    .and_then(|handlers| handlers.agent_message.clone())
+                {
+                    handler(target.clone(), message.clone()).await
+                } else {
+                    Err(
+                        openrustclaw_core::error::SchedulerError::HeartbeatActionFailed(
+                            "No agent message handler configured".to_string(),
+                        )
+                        .into(),
+                    )
+                }
             }
             HeartbeatAction::ToolCall {
                 tool_name,
                 arguments,
             } => {
-                tracing::info!("Calling tool {} with {:?}", tool_name, arguments);
-                // TODO: Execute tool via tool registry
-                Ok(())
+                if let Some(handler) = self
+                    .handlers
+                    .lock()
+                    .ok()
+                    .and_then(|handlers| handlers.tool_call.clone())
+                {
+                    handler(tool_name.clone(), arguments.clone()).await
+                } else {
+                    Err(
+                        openrustclaw_core::error::SchedulerError::HeartbeatActionFailed(format!(
+                            "No tool call handler configured for {}",
+                            tool_name
+                        ))
+                        .into(),
+                    )
+                }
             }
             HeartbeatAction::RunSkill { skill_name, input } => {
-                tracing::info!("Running skill {} with input: {}", skill_name, input);
-                // TODO: Execute skill via skill runner
-                Ok(())
+                if let Some(handler) = self
+                    .handlers
+                    .lock()
+                    .ok()
+                    .and_then(|handlers| handlers.skill.clone())
+                {
+                    handler(skill_name.clone(), input.clone()).await
+                } else {
+                    Err(
+                        openrustclaw_core::error::SchedulerError::HeartbeatActionFailed(format!(
+                            "No skill handler configured for {}",
+                            skill_name
+                        ))
+                        .into(),
+                    )
+                }
             }
             HeartbeatAction::Notify {
                 title,
                 body,
                 urgency,
             } => {
-                match urgency {
-                    Urgency::Critical => tracing::error!("[CRITICAL] {}: {}", title, body),
-                    Urgency::High => tracing::warn!("[HIGH] {}: {}", title, body),
-                    Urgency::Normal => tracing::info!("[NORMAL] {}: {}", title, body),
-                    Urgency::Low => tracing::debug!("[LOW] {}: {}", title, body),
+                if let Some(handler) = self
+                    .handlers
+                    .lock()
+                    .ok()
+                    .and_then(|handlers| handlers.notification.clone())
+                {
+                    handler(title.clone(), body.clone(), *urgency).await
+                } else {
+                    Err(
+                        openrustclaw_core::error::SchedulerError::HeartbeatActionFailed(
+                            "No notification handler configured".to_string(),
+                        )
+                        .into(),
+                    )
                 }
-                // TODO: Send actual notification via notification system
-                Ok(())
             }
             HeartbeatAction::Custom { name, execute } => {
                 tracing::info!("Executing custom action: {}", name);
@@ -557,6 +662,183 @@ impl HeartbeatScheduler {
     pub fn subscribe(&self) -> broadcast::Receiver<HeartbeatEvent> {
         self.triggers.subscribe()
     }
+
+    /// Record user activity for idle-duration conditions.
+    pub fn record_activity(&self) {
+        if let Ok(mut last_activity) = self.last_activity.lock() {
+            *last_activity = Utc::now();
+        }
+    }
+
+    /// Record a recent system event.
+    pub fn record_system_event(&self, event_type: SystemEventType) {
+        if let Ok(mut events) = self.recent_system_events.lock() {
+            events.insert(event_type, Utc::now());
+        }
+    }
+
+    /// Record a received email for mailbox-based conditions.
+    pub fn record_email(
+        &self,
+        mailbox: impl Into<String>,
+        subject: impl Into<String>,
+        body: impl Into<String>,
+    ) {
+        if let Ok(mut emails) = self.recent_emails.lock() {
+            emails.push(EmailEvent {
+                mailbox: mailbox.into(),
+                subject: subject.into(),
+                body: body.into(),
+                received_at: Utc::now(),
+            });
+            let cutoff = Utc::now() - ChronoDuration::minutes(10);
+            emails.retain(|email| email.received_at >= cutoff);
+        }
+    }
+
+    /// Set the async handler for agent-message heartbeat actions.
+    pub fn set_agent_message_handler<F, Fut>(&self, handler: F)
+    where
+        F: Fn(AgentTarget, String) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<()>> + Send + 'static,
+    {
+        if let Ok(mut handlers) = self.handlers.lock() {
+            handlers.agent_message = Some(Arc::new(move |target, message| {
+                Box::pin(handler(target, message))
+            }));
+        }
+    }
+
+    /// Set the async handler for tool-call heartbeat actions.
+    pub fn set_tool_call_handler<F, Fut>(&self, handler: F)
+    where
+        F: Fn(String, serde_json::Value) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<()>> + Send + 'static,
+    {
+        if let Ok(mut handlers) = self.handlers.lock() {
+            handlers.tool_call = Some(Arc::new(move |tool_name, arguments| {
+                Box::pin(handler(tool_name, arguments))
+            }));
+        }
+    }
+
+    /// Set the async handler for skill heartbeat actions.
+    pub fn set_skill_handler<F, Fut>(&self, handler: F)
+    where
+        F: Fn(String, String) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<()>> + Send + 'static,
+    {
+        if let Ok(mut handlers) = self.handlers.lock() {
+            handlers.skill = Some(Arc::new(move |skill_name, input| {
+                Box::pin(handler(skill_name, input))
+            }));
+        }
+    }
+
+    /// Set the async handler for notifications.
+    pub fn set_notification_handler<F, Fut>(&self, handler: F)
+    where
+        F: Fn(String, String, Urgency) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<()>> + Send + 'static,
+    {
+        if let Ok(mut handlers) = self.handlers.lock() {
+            handlers.notification = Some(Arc::new(move |title, body, urgency| {
+                Box::pin(handler(title, body, urgency))
+            }));
+        }
+    }
+
+    fn check_file_changed(&self, path: &PathBuf, recursive: bool) -> Result<bool> {
+        let fingerprint = compute_file_fingerprint(path, recursive)?;
+        let key = (path.clone(), recursive);
+        let mut state = self.file_state.lock().map_err(|_| {
+            openrustclaw_core::error::SchedulerError::FileWatchError(
+                "Failed to lock file watcher state".to_string(),
+            )
+        })?;
+
+        match state.get(&key) {
+            Some(previous) if previous != &fingerprint => {
+                state.insert(key, fingerprint);
+                Ok(true)
+            }
+            Some(_) => Ok(false),
+            None => {
+                state.insert(key, fingerprint);
+                Ok(false)
+            }
+        }
+    }
+
+    fn check_email_received(&self, query: &str, mailbox: &str) -> bool {
+        let query = query.to_lowercase();
+        let cutoff = Utc::now()
+            - ChronoDuration::from_std(self.check_interval)
+                .unwrap_or_else(|_| ChronoDuration::seconds(1));
+        self.recent_emails
+            .lock()
+            .ok()
+            .map(|emails| {
+                emails.iter().any(|email| {
+                    email.mailbox.eq_ignore_ascii_case(mailbox)
+                        && email.received_at >= cutoff
+                        && format!("{} {}", email.subject, email.body)
+                            .to_lowercase()
+                            .contains(&query)
+                })
+            })
+            .unwrap_or(false)
+    }
+
+    fn check_system_event(&self, event_type: SystemEventType) -> bool {
+        let cutoff = Utc::now()
+            - ChronoDuration::from_std(self.check_interval)
+                .unwrap_or_else(|_| ChronoDuration::seconds(1));
+        self.recent_system_events
+            .lock()
+            .ok()
+            .and_then(|events| events.get(&event_type).copied())
+            .map(|timestamp| timestamp >= cutoff)
+            .unwrap_or(false)
+    }
+}
+
+fn compute_file_fingerprint(path: &PathBuf, recursive: bool) -> Result<FileFingerprint> {
+    let metadata = std::fs::metadata(path)
+        .map_err(|e| openrustclaw_core::error::SchedulerError::FileWatchError(e.to_string()))?;
+
+    if metadata.is_file() {
+        return Ok(FileFingerprint {
+            modified_at: metadata.modified().ok(),
+            size_bytes: metadata.len(),
+        });
+    }
+
+    let mut latest_modified = metadata.modified().ok();
+    let mut total_size = 0_u64;
+    let max_depth = if recursive { usize::MAX } else { 1 };
+
+    for entry in walkdir::WalkDir::new(path)
+        .max_depth(max_depth)
+        .into_iter()
+        .filter_map(|entry| entry.ok())
+    {
+        let entry_metadata = entry
+            .metadata()
+            .map_err(|e| openrustclaw_core::error::SchedulerError::FileWatchError(e.to_string()))?;
+        total_size = total_size.saturating_add(entry_metadata.len());
+        if let Ok(modified) = entry_metadata.modified() {
+            latest_modified = Some(match latest_modified {
+                Some(current) if current > modified => current,
+                _ => modified,
+            });
+        }
+    }
+
+    Ok(FileFingerprint {
+        modified_at: latest_modified,
+        size_bytes: total_size,
+    })
 }
 
 impl Default for HeartbeatScheduler {
@@ -887,6 +1169,9 @@ impl HeartbeatTaskBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use tempfile::TempDir;
+    use tokio::time::sleep;
 
     #[test]
     fn test_task_id_generation() {
@@ -1002,5 +1287,91 @@ mod tests {
 
         // Just verify subscription works - receiver was created successfully
         assert!(true);
+    }
+
+    #[tokio::test]
+    async fn test_file_change_condition_triggers_after_change() {
+        let scheduler = HeartbeatScheduler::new(Duration::from_secs(60));
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("watched.txt");
+        tokio::fs::write(&file_path, b"v1").await.unwrap();
+
+        let task = HeartbeatTaskBuilder::new("Watch File")
+            .on_file_change(&file_path)
+            .notify("changed", "file updated")
+            .build()
+            .unwrap();
+        let id = scheduler.add_task(task).await;
+
+        scheduler.check_and_trigger().await;
+        tokio::fs::write(&file_path, b"v2").await.unwrap();
+        scheduler.check_and_trigger().await;
+
+        let task = scheduler.get_task(&id).await.unwrap();
+        assert_eq!(task.trigger_count, 1);
+    }
+
+    #[tokio::test]
+    async fn test_idle_duration_condition_uses_activity_state() {
+        let scheduler = HeartbeatScheduler::new(Duration::from_secs(60));
+        scheduler.record_activity();
+
+        let task = HeartbeatTaskBuilder::new("Idle Check")
+            .on_idle(Duration::from_millis(10))
+            .notify("idle", "user idle")
+            .build()
+            .unwrap();
+        let id = scheduler.add_task(task).await;
+
+        sleep(Duration::from_millis(20)).await;
+        scheduler.check_and_trigger().await;
+
+        let task = scheduler.get_task(&id).await.unwrap();
+        assert_eq!(task.trigger_count, 1);
+    }
+
+    #[tokio::test]
+    async fn test_tool_call_requires_handler_and_succeeds_when_configured() {
+        let scheduler = HeartbeatScheduler::new(Duration::from_secs(60));
+        let calls = Arc::new(AtomicUsize::new(0));
+        let calls_clone = calls.clone();
+        scheduler.set_tool_call_handler(move |tool_name, arguments| {
+            let calls = calls_clone.clone();
+            async move {
+                assert_eq!(tool_name, "refresh_index");
+                assert_eq!(arguments["force"], true);
+                calls.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            }
+        });
+
+        let task = HeartbeatTaskBuilder::new("Run Tool")
+            .on_custom("always", || true)
+            .call_tool("refresh_index", serde_json::json!({"force": true}))
+            .build()
+            .unwrap();
+        let id = scheduler.add_task(task).await;
+
+        scheduler.check_and_trigger().await;
+
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        let task = scheduler.get_task(&id).await.unwrap();
+        assert_eq!(task.trigger_count, 1);
+    }
+
+    #[tokio::test]
+    async fn test_agent_message_without_handler_does_not_report_success() {
+        let scheduler = HeartbeatScheduler::new(Duration::from_secs(60));
+        let task = HeartbeatTaskBuilder::new("Needs Handler")
+            .on_custom("always", || true)
+            .send_to_agent(AgentTarget::Main, "hello")
+            .build()
+            .unwrap();
+        let id = scheduler.add_task(task).await;
+
+        scheduler.check_and_trigger().await;
+
+        let task = scheduler.get_task(&id).await.unwrap();
+        assert_eq!(task.trigger_count, 0);
     }
 }

@@ -3,6 +3,7 @@
 //! Receives a message, builds context, calls LLM, processes tool calls,
 //! and returns the response.
 
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use openrustclaw_core::error::Result;
@@ -127,6 +128,7 @@ impl AgentRuntime {
 
         let mut conversation: Vec<Message> = messages.to_vec();
         let mut total_tool_calls = 0;
+        let mut executed_tool_call_ids = HashSet::new();
 
         loop {
             let request = CompletionRequest {
@@ -160,7 +162,22 @@ impl AgentRuntime {
                     });
                 }
                 FinishReason::ToolUse => {
-                    total_tool_calls += 1;
+                    let tool_calls = response.message.tool_calls.clone().unwrap_or_default();
+                    let new_tool_calls: Vec<_> = tool_calls
+                        .into_iter()
+                        .filter(|call| executed_tool_call_ids.insert(call.id.clone()))
+                        .collect();
+
+                    if new_tool_calls.is_empty() {
+                        info!("Provider reported tool use but no new tool calls were available");
+                        return Ok(AgentResponse {
+                            message: response.message,
+                            usage: response.usage,
+                            tool_calls_made: total_tool_calls,
+                        });
+                    }
+
+                    total_tool_calls += new_tool_calls.len();
                     if total_tool_calls > self.max_tool_iterations {
                         info!("Max tool iterations reached");
                         return Ok(AgentResponse {
@@ -174,12 +191,17 @@ impl AgentRuntime {
                     conversation.push(response.message.clone());
 
                     // Execute tool calls
-                    if let Some(ref tool_calls) = response.message.tool_calls {
-                        for call in tool_calls {
-                            debug!(tool = %call.name, "Executing tool call");
-                            let output = self.tool_registry.execute(call, &ctx).await?;
-                            conversation.push(Message::tool(&output.tool_call_id, &output.content));
-                        }
+                    for call in &new_tool_calls {
+                        debug!(tool = %call.name, "Executing tool call");
+                        let output = match self.tool_registry.execute(call, &ctx).await {
+                            Ok(output) => output,
+                            Err(err) => openrustclaw_core::types::ToolOutput {
+                                tool_call_id: call.id.clone(),
+                                content: format!("Error: {}", err),
+                                is_error: true,
+                            },
+                        };
+                        conversation.push(Message::tool(&output.tool_call_id, &output.content));
                     }
                 }
             }

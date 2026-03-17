@@ -48,6 +48,7 @@ console.workspace = true
 async-trait.workspace = true
 rand.workspace = true
 base64.workspace = true
+walkdir.workspace = true
 dirs = "5"
 
 [features]

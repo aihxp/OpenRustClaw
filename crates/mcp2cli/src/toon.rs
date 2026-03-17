@@ -20,7 +20,7 @@
 //! ```
 //!
 //! TOON:
-//! ```
+//! ```text
 //! name:John;age:30;active:true
 //! ```
 
@@ -45,7 +45,7 @@ use serde_json::Value;
 ///
 /// let json = json!({"name": "test", "count": 42});
 /// let toon = encode_toon(&json);
-/// assert_eq!(toon, "name:test;count:42");
+/// assert!(toon == "name:test;count:42" || toon == "count:42;name:test");
 /// ```
 pub fn encode_toon(value: &Value) -> String {
     match value {

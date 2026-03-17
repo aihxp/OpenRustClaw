@@ -550,12 +550,24 @@ impl RaftNode {
 
     /// Get the last log index.
     pub fn last_log_index(&self) -> u64 {
-        self.log.blocking_read().len() as u64
+        self.read_log_snapshot().len() as u64
     }
 
     /// Get the term of the last log entry.
     pub fn last_log_term(&self) -> u64 {
-        self.log.blocking_read().last().map(|e| e.term).unwrap_or(0)
+        self.read_log_snapshot().last().map(|e| e.term).unwrap_or(0)
+    }
+
+    fn read_log_snapshot(&self) -> Vec<LogEntry> {
+        if let Ok(log) = self.log.try_read() {
+            return log.clone();
+        }
+
+        if tokio::runtime::Handle::try_current().is_ok() {
+            tokio::task::block_in_place(|| self.log.blocking_read().clone())
+        } else {
+            self.log.blocking_read().clone()
+        }
     }
 
     /// Get term at specific log index.

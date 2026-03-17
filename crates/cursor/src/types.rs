@@ -370,7 +370,11 @@ pub trait CursorTool: Send + Sync {
     /// Get the JSON schema for tool parameters.
     fn parameters_schema(&self) -> serde_json::Value;
     /// Execute the tool with the given parameters.
-    async fn execute(&self, params: serde_json::Value) -> crate::error::Result<serde_json::Value>;
+    async fn execute(
+        &self,
+        params: serde_json::Value,
+        context: &ToolContext,
+    ) -> crate::error::Result<serde_json::Value>;
 }
 
 /// Tool execution context passed to tools.

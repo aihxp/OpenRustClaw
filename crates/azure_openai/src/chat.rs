@@ -79,7 +79,8 @@ impl<'a> Chat<'a> {
     ///     .message(Role::User, "Hello, Azure OpenAI!")
     ///     .build();
     ///
-    /// let mut stream = client.chat().stream(request).await?;
+    /// let chat = client.chat();
+    /// let mut stream = chat.stream(request).await?;
     /// while let Some(chunk) = stream.next().await {
     ///     match chunk {
     ///         Ok(chunk) => {

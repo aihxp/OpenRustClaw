@@ -53,7 +53,7 @@ pub enum Error {
 /// LLM provider errors.
 #[derive(Debug, Error)]
 pub enum ProviderError {
-    #[error("Rate limited by {provider} (retry after {retry_after_secs:?}s)")]
+    #[error("rate limit from {provider} (retry after {retry_after_secs:?}s)")]
     RateLimited {
         provider: String,
         retry_after_secs: Option<u64>,

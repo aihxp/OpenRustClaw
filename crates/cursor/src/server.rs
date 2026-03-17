@@ -488,7 +488,6 @@ mod tests {
     #[tokio::test]
     async fn test_server_execute_tool() {
         let temp_dir = TempDir::new().unwrap();
-        std::env::set_current_dir(&temp_dir).unwrap();
 
         let mut config = CursorServerConfig::default();
         config.cursor_config.project_root = temp_dir.path().to_path_buf();

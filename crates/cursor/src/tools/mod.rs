@@ -23,7 +23,7 @@ pub use codebase::{
 };
 pub use git::{GitBranchTool, GitCommitTool, GitDiffTool, GitStatusTool};
 pub use linter::{FormatCodeTool, RunLinterTool};
-pub use terminal::{ReadTerminalTool, RunCommandTool};
+pub use terminal::{ReadTerminalTool, RunCommandTool, TerminalManager};
 
 /// Registry of available Cursor tools.
 pub struct ToolRegistry {
@@ -34,6 +34,7 @@ pub struct ToolRegistry {
 impl ToolRegistry {
     /// Create a new tool registry with all default tools.
     pub fn new(context: ToolContext) -> Self {
+        let terminal_manager = Arc::new(TerminalManager::new(context.config.terminal_timeout));
         let mut registry = Self {
             tools: HashMap::new(),
             context: Arc::new(RwLock::new(context)),
@@ -48,8 +49,8 @@ impl ToolRegistry {
         registry.register(Arc::new(ListFilesTool));
 
         // Register terminal tools
-        registry.register(Arc::new(RunCommandTool::default()));
-        registry.register(Arc::new(ReadTerminalTool::default()));
+        registry.register(Arc::new(RunCommandTool::new(terminal_manager.clone())));
+        registry.register(Arc::new(ReadTerminalTool::new(terminal_manager)));
 
         // Register git tools
         registry.register(Arc::new(GitStatusTool));
@@ -89,8 +90,9 @@ impl ToolRegistry {
         let tool = self
             .get(name)
             .ok_or_else(|| CursorError::ToolNotFound(name.to_string()))?;
+        let context = self.context.read().await.clone();
 
-        tool.execute(params).await
+        tool.execute(params, &context).await
     }
 
     /// Get all tool definitions for MCP/ACP registration.

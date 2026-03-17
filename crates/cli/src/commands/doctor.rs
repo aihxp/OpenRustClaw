@@ -195,6 +195,13 @@ async fn check_migrations() -> Result<()> {
 
 /// Check API key configuration.
 fn check_api_keys() -> Result<()> {
+    check_api_keys_with(|env_var| std::env::var(env_var).ok())
+}
+
+fn check_api_keys_with<F>(mut get_env: F) -> Result<()>
+where
+    F: FnMut(&str) -> Option<String>,
+{
     let keys = vec![
         ("ANTHROPIC_API_KEY", "Anthropic"),
         ("OPENAI_API_KEY", "OpenAI"),
@@ -204,7 +211,7 @@ fn check_api_keys() -> Result<()> {
     let mut configured = 0;
 
     for (env_var, _name) in &keys {
-        if std::env::var(env_var).is_ok() {
+        if get_env(env_var).is_some() {
             configured += 1;
         }
     }
@@ -330,75 +337,28 @@ mod tests {
 
     #[test]
     fn test_check_api_keys_no_keys_set() {
-        // Temporarily remove any API keys that might be set
-        let anthropic = std::env::var("ANTHROPIC_API_KEY").ok();
-        let openai = std::env::var("OPENAI_API_KEY").ok();
-        let openrouter = std::env::var("OPENROUTER_API_KEY").ok();
-
-        // SAFETY: Tests run single-threaded (or serialized) so env mutation is safe
-        unsafe {
-            std::env::remove_var("ANTHROPIC_API_KEY");
-            std::env::remove_var("OPENAI_API_KEY");
-            std::env::remove_var("OPENROUTER_API_KEY");
-        }
-
-        let result = check_api_keys();
+        let result = check_api_keys_with(|_| None);
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("No LLM provider API keys configured"));
-
-        // Restore
-        unsafe {
-            if let Some(v) = anthropic {
-                std::env::set_var("ANTHROPIC_API_KEY", v);
-            }
-            if let Some(v) = openai {
-                std::env::set_var("OPENAI_API_KEY", v);
-            }
-            if let Some(v) = openrouter {
-                std::env::set_var("OPENROUTER_API_KEY", v);
-            }
-        }
     }
 
     #[test]
     fn test_check_api_keys_with_anthropic_key() {
-        let original = std::env::var("ANTHROPIC_API_KEY").ok();
-        // SAFETY: Tests run single-threaded (or serialized) so env mutation is safe
-        unsafe {
-            std::env::set_var("ANTHROPIC_API_KEY", "sk-ant-test-key-12345678901234567890");
-        }
-
-        let result = check_api_keys();
+        let result = check_api_keys_with(|env_var| match env_var {
+            "ANTHROPIC_API_KEY" => Some("sk-ant-test-key-12345678901234567890".to_string()),
+            _ => None,
+        });
         assert!(result.is_ok());
-
-        // Restore
-        unsafe {
-            match original {
-                Some(v) => std::env::set_var("ANTHROPIC_API_KEY", v),
-                None => std::env::remove_var("ANTHROPIC_API_KEY"),
-            }
-        }
     }
 
     #[test]
     fn test_check_api_keys_with_openai_key() {
-        let original = std::env::var("OPENAI_API_KEY").ok();
-        // SAFETY: Tests run single-threaded (or serialized) so env mutation is safe
-        unsafe {
-            std::env::set_var("OPENAI_API_KEY", "sk-test-key-123456789012345678901234");
-        }
-
-        let result = check_api_keys();
+        let result = check_api_keys_with(|env_var| match env_var {
+            "OPENAI_API_KEY" => Some("sk-test-key-123456789012345678901234".to_string()),
+            _ => None,
+        });
         assert!(result.is_ok());
-
-        // Restore
-        unsafe {
-            match original {
-                Some(v) => std::env::set_var("OPENAI_API_KEY", v),
-                None => std::env::remove_var("OPENAI_API_KEY"),
-            }
-        }
     }
 
     #[test]

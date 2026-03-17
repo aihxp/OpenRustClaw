@@ -476,9 +476,13 @@ impl DistributedMemory for GossipMemory {
     async fn release_lock(&self, lock_name: &str, holder: &str) -> Result<bool> {
         self.cleanup_locks();
 
-        if let Some(entry) = self.locks.get(lock_name)
-            && entry.value().0 == holder
-        {
+        let should_remove = self
+            .locks
+            .get(lock_name)
+            .map(|entry| entry.value().0 == holder)
+            .unwrap_or(false);
+
+        if should_remove {
             self.locks.remove(lock_name);
             return Ok(true);
         }

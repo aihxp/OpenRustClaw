@@ -205,6 +205,22 @@ impl SqliteMemoryStore {
         (-age_days / 30.0).exp()
     }
 
+    /// Build a permissive FTS query that matches any meaningful term.
+    fn build_fts_query(text: &str) -> String {
+        let terms: Vec<String> = text
+            .split_whitespace()
+            .map(|term| term.trim_matches(|c: char| !c.is_alphanumeric()))
+            .filter(|term| term.len() >= 2)
+            .map(|term| format!("\"{}\"", term.replace('"', "\"\"")))
+            .collect();
+
+        if terms.is_empty() {
+            "\"\"".to_string()
+        } else {
+            terms.join(" OR ")
+        }
+    }
+
     /// Fetch vectors for a batch of memory entries.
     async fn fetch_vectors(&self, memory_ids: &[String]) -> Result<HashMap<String, Vec<f32>>> {
         if memory_ids.is_empty() {
@@ -304,7 +320,7 @@ impl SqliteMemoryStore {
         let now = Utc::now();
 
         // Build the FTS5 query
-        let fts_query = query.text.replace('"', "\"\"");
+        let fts_query = Self::build_fts_query(&query.text);
 
         // Build filter conditions
         let mut filters = Vec::new();
@@ -337,6 +353,9 @@ impl SqliteMemoryStore {
             filters.push("e.confidence >= ?".to_string());
             params.push(query.min_confidence.to_string());
         }
+
+        filters.push("(e.expires_at IS NULL OR e.expires_at > ?)".to_string());
+        params.push(now.to_rfc3339());
 
         let filter_clause = if filters.is_empty() {
             String::new()
@@ -554,7 +573,7 @@ impl MemoryStoreTrait for SqliteMemoryStore {
         let now = Utc::now();
 
         // Build the FTS5 query
-        let fts_query = query.text.replace('"', "\"\"");
+        let fts_query = Self::build_fts_query(&query.text);
 
         // Build filter conditions
         let mut filters = Vec::new();
@@ -587,6 +606,9 @@ impl MemoryStoreTrait for SqliteMemoryStore {
             filters.push("e.confidence >= ?".to_string());
             params.push(query.min_confidence.to_string());
         }
+
+        filters.push("(e.expires_at IS NULL OR e.expires_at > ?)".to_string());
+        params.push(now.to_rfc3339());
 
         let filter_clause = if filters.is_empty() {
             String::new()
@@ -679,10 +701,13 @@ impl MemoryStoreTrait for SqliteMemoryStore {
     async fn get(&self, id: &str) -> Result<Option<MemoryEntry>> {
         let row: Option<MemoryEntryRow> = sqlx::query_as(
             r#"
-            SELECT * FROM memory_entries WHERE id = ?
+            SELECT * FROM memory_entries
+            WHERE id = ?
+              AND (expires_at IS NULL OR expires_at > ?)
             "#,
         )
         .bind(id)
+        .bind(Utc::now().to_rfc3339())
         .fetch_optional(&self.pool)
         .await
         .map_err(|e| {

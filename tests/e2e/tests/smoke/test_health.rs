@@ -15,9 +15,10 @@ async fn smoke_gateway_health() {
 
     response.assert_success();
 
-    // The gateway returns plain text "ok" for basic health
-    let body = response.text().await.expect("Failed to read body");
-    assert_eq!(body.trim(), "ok", "Health endpoint should return 'ok'");
+    let health: serde_json::Value = TestHttpClient::parse_json(response)
+        .await
+        .expect("Failed to parse health response");
+    assert_eq!(health["status"], "healthy");
 }
 
 /// CRITICAL: Database connectivity

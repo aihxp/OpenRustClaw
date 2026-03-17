@@ -26,9 +26,11 @@ impl<'a> Completions<'a> {
     /// # Example
     ///
     /// ```no_run
-    /// use azure_openai::{AzureOpenAIClient, CompletionRequest};
-    ///
+    /// # #[cfg(feature = "completions")]
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// use azure_openai::AzureOpenAIClient;
+    /// use azure_openai::completions::CompletionRequest;
+    ///
     /// let client = AzureOpenAIClient::new(
     ///     "my-resource",
     ///     "my-deployment",

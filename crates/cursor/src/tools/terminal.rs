@@ -1,10 +1,11 @@
 //! Terminal integration tools for running commands and reading output.
 
 use crate::error::{CursorError, Result};
-use crate::types::{CursorTool, TerminalState};
+use crate::types::{CursorTool, TerminalState, ToolContext};
 use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::Arc;
 use tokio::process::Command;
@@ -12,6 +13,16 @@ use tokio::sync::RwLock;
 use tokio::time::{Duration, timeout};
 use tracing::{debug, error, info};
 use uuid::Uuid;
+
+const ALLOWED_COMMANDS: &[&str] = &[
+    "cargo", "git", "rg", "grep", "fd", "find", "ls", "cat", "sed", "head", "tail", "wc", "pwd",
+    "echo", "rustc", "rustfmt", "clippy", "npx", "node", "npm", "pnpm", "yarn", "python",
+    "python3", "pytest", "mypy", "ruff", "go",
+];
+
+const DISALLOWED_SHELL_CHARS: &[char] = &[
+    '|', '&', ';', '$', '`', '(', ')', '{', '}', '<', '>', '!', '\n',
+];
 
 /// Shared state for terminal sessions.
 pub struct TerminalManager {
@@ -54,7 +65,7 @@ impl TerminalManager {
     }
 
     /// Create a new terminal session.
-    pub async fn create_session(&self, cwd: Option<std::path::PathBuf>) -> String {
+    pub async fn create_session(&self, cwd: Option<PathBuf>) -> String {
         let id = Uuid::new_v4().to_string();
         let cwd = cwd.unwrap_or_else(|| {
             std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
@@ -86,31 +97,44 @@ impl TerminalManager {
         session_id: Option<&str>,
         command: &str,
         timeout_secs: Option<u64>,
-    ) -> Result<CommandResult> {
+        cwd: Option<PathBuf>,
+    ) -> Result<(String, CommandResult)> {
         let timeout_duration = timeout_secs
             .map(Duration::from_secs)
             .unwrap_or(self.default_timeout);
+        validate_command(command)?;
 
         // Get or create session
         let session_id = if let Some(id) = session_id {
             id.to_string()
         } else {
-            self.create_session(None).await
+            self.create_session(cwd.clone()).await
         };
 
         // Update session state
-        {
+        let session_cwd = {
             let mut sessions = self.sessions.write().await;
             if let Some(session) = sessions.get_mut(&session_id) {
+                if let Some(cwd) = cwd.clone() {
+                    session.cwd = cwd;
+                }
                 session.is_running = true;
                 session.last_command = Some(command.to_string());
+                session.cwd.clone()
+            } else {
+                return Err(CursorError::Terminal(format!(
+                    "Terminal session not found: {}",
+                    session_id
+                )));
             }
-        }
+        };
 
         let start_time = std::time::Instant::now();
 
         // Execute command
-        let result = self.run_command(command, timeout_duration).await;
+        let result = self
+            .run_command(command, timeout_duration, &session_cwd)
+            .await;
 
         // Update session state with results
         let duration_ms = start_time.elapsed().as_millis() as u64;
@@ -146,7 +170,7 @@ impl TerminalManager {
             }
         }
 
-        result
+        result.map(|result| (session_id, result))
     }
 
     /// Run a command with timeout.
@@ -154,6 +178,7 @@ impl TerminalManager {
         &self,
         command: &str,
         timeout_duration: Duration,
+        cwd: &Path,
     ) -> Result<CommandResult> {
         debug!(
             "Executing command: {} (timeout: {:?})",
@@ -165,6 +190,7 @@ impl TerminalManager {
             Command::new("sh")
                 .arg("-c")
                 .arg(command)
+                .current_dir(cwd)
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .output(),
@@ -305,7 +331,7 @@ impl CursorTool for RunCommandTool {
         })
     }
 
-    async fn execute(&self, params: Value) -> Result<Value> {
+    async fn execute(&self, params: Value, context: &ToolContext) -> Result<Value> {
         let command = params
             .get("command")
             .and_then(|c| c.as_str())
@@ -313,10 +339,12 @@ impl CursorTool for RunCommandTool {
 
         let terminal_id = params.get("terminal_id").and_then(|t| t.as_str());
         let timeout = params.get("timeout").and_then(|t| t.as_u64());
+        let working_dir = params.get("working_dir").and_then(|d| d.as_str());
+        let resolved_working_dir = resolve_working_dir(context, working_dir)?;
 
-        let result = self
+        let (terminal_id, result) = self
             .terminal_manager
-            .execute_command(terminal_id, command, timeout)
+            .execute_command(terminal_id, command, timeout, Some(resolved_working_dir))
             .await?;
 
         Ok(json!({
@@ -379,7 +407,7 @@ impl CursorTool for ReadTerminalTool {
         })
     }
 
-    async fn execute(&self, params: Value) -> Result<Value> {
+    async fn execute(&self, params: Value, _context: &ToolContext) -> Result<Value> {
         let terminal_id = params
             .get("terminal_id")
             .and_then(|t| t.as_str())
@@ -437,30 +465,87 @@ fn input_validation_error(tool: impl Into<String>, message: impl Into<String>) -
     }
 }
 
+fn validate_command(command: &str) -> Result<()> {
+    if command.chars().any(|c| DISALLOWED_SHELL_CHARS.contains(&c)) {
+        return Err(CursorError::Terminal(
+            "Command contains disallowed shell metacharacters".to_string(),
+        ));
+    }
+
+    let base_command = command
+        .split_whitespace()
+        .next()
+        .ok_or_else(|| CursorError::Terminal("Command cannot be empty".to_string()))?;
+    let binary = Path::new(base_command)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(base_command);
+
+    if !ALLOWED_COMMANDS.contains(&binary) {
+        return Err(CursorError::Terminal(format!(
+            "Command '{}' is not allowed",
+            binary
+        )));
+    }
+
+    Ok(())
+}
+
+fn resolve_working_dir(context: &ToolContext, working_dir: Option<&str>) -> Result<PathBuf> {
+    let project_root = context
+        .project_root
+        .canonicalize()
+        .map_err(|e| CursorError::Terminal(e.to_string()))?;
+    let requested = working_dir.map(PathBuf::from);
+    let candidate = match requested {
+        Some(path) if path.is_absolute() => path,
+        Some(path) => project_root.join(path),
+        None => project_root.clone(),
+    };
+
+    let canonical = candidate
+        .canonicalize()
+        .map_err(|e| CursorError::Terminal(e.to_string()))?;
+
+    if canonical.starts_with(&project_root) {
+        Ok(canonical)
+    } else {
+        Err(CursorError::Terminal(
+            "Working directory is outside project root".to_string(),
+        ))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    fn test_root() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+    }
+
     #[tokio::test]
     async fn test_terminal_manager() {
         let manager = TerminalManager::new(5);
+        let cwd = test_root();
 
         // Create session
-        let session_id = manager.create_session(None).await;
+        let session_id = manager.create_session(Some(cwd.clone())).await;
         assert!(!session_id.is_empty());
 
         // Execute command
-        let result = manager
-            .execute_command(Some(&session_id), "echo 'Hello, World!'", None)
+        let (returned_session_id, result) = manager
+            .execute_command(Some(&session_id), "echo Hello-World", None, Some(cwd))
             .await
             .unwrap();
 
-        assert!(result.stdout.contains("Hello, World!"));
+        assert_eq!(returned_session_id, session_id);
+        assert!(result.stdout.contains("Hello-World"));
         assert_eq!(result.exit_code, 0);
 
         // Get state
         let state = manager.get_state(&session_id).await.unwrap();
-        assert_eq!(state.last_command, Some("echo 'Hello, World!'".to_string()));
+        assert_eq!(state.last_command, Some("echo Hello-World".to_string()));
         assert_eq!(state.last_exit_code, Some(0));
 
         // List sessions
@@ -475,24 +560,51 @@ mod tests {
     #[tokio::test]
     async fn test_run_command_tool() {
         let tool = RunCommandTool::default();
+        let context = ToolContext::new(test_root(), crate::types::CursorConfig::default());
 
         let result = tool
-            .execute(json!({"command": "echo 'test output'"}))
+            .execute(json!({"command": "echo test-output"}), &context)
             .await
             .unwrap();
 
         assert!(result["success"].as_bool().unwrap());
-        assert!(result["stdout"].as_str().unwrap().contains("test output"));
+        assert!(result["stdout"].as_str().unwrap().contains("test-output"));
         assert_eq!(result["exit_code"], 0);
     }
 
     #[tokio::test]
     async fn test_command_timeout() {
         let manager = TerminalManager::new(1); // 1 second timeout
+        let cwd = test_root();
+        let script_path = cwd.join("target/terminal_timeout_test.py");
+        tokio::fs::create_dir_all(script_path.parent().unwrap())
+            .await
+            .unwrap();
+        tokio::fs::write(&script_path, b"import time\ntime.sleep(5)\n")
+            .await
+            .unwrap();
 
-        let result = manager.execute_command(None, "sleep 5", None).await;
+        let result = manager
+            .execute_command(
+                None,
+                &format!("python3 {}", script_path.display()),
+                None,
+                Some(cwd),
+            )
+            .await;
 
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), CursorError::Timeout(_)));
+    }
+
+    #[tokio::test]
+    async fn test_disallowed_command_rejected() {
+        let tool = RunCommandTool::default();
+        let context = ToolContext::new(test_root(), crate::types::CursorConfig::default());
+
+        let result = tool
+            .execute(json!({"command": "curl https://example.com"}), &context)
+            .await;
+        assert!(result.is_err());
     }
 }

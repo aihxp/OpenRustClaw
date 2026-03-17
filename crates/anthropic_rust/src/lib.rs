@@ -25,7 +25,7 @@
 //!     .build();
 //!
 //! let response = client.messages().create(request).await?;
-//! println!("{}", response.content.text());
+//! println!("{}", response.text());
 //! # Ok(())
 //! # }
 //! ```
@@ -44,7 +44,8 @@
 //!     .stream(true)
 //!     .build();
 //!
-//! let mut stream = client.messages().stream(request).await?;
+//! let messages = client.messages();
+//! let mut stream = messages.stream(request).await?;
 //! while let Some(chunk) = stream.next().await {
 //!     match chunk? {
 //!         anthropic_rust::StreamEvent::ContentBlockDelta { delta, .. } => {

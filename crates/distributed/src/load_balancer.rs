@@ -222,7 +222,13 @@ impl LoadBalancer {
     fn consistent_hash(&self, nodes: &[NodeInfo], key: &str) -> Result<NodeInfo> {
         let hash = self.hash_key(key);
 
-        let ring = self.consistent_hash_ring.blocking_read();
+        let ring = if let Ok(ring) = self.consistent_hash_ring.try_read() {
+            ring
+        } else if tokio::runtime::Handle::try_current().is_ok() {
+            tokio::task::block_in_place(|| self.consistent_hash_ring.blocking_read())
+        } else {
+            self.consistent_hash_ring.blocking_read()
+        };
         if ring.is_empty() {
             // Fallback to round-robin
             return self.round_robin(nodes);

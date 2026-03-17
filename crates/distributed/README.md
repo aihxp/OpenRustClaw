@@ -15,29 +15,29 @@ Provides distributed capabilities for horizontal scaling:
 
 ### Raft Consensus
 
-```rust
-use openrustclaw_distributed::consensus::{RaftNode, RaftConfig};
+```ignore
+use std::sync::Arc;
 
-let config = RaftConfig {
-    node_id: "node-1".to_string(),
-    peers: vec!["node-2".to_string(), "node-3".to_string()],
-    ..Default::default()
-};
+use openrustclaw_distributed::{Cluster, ConsensusConfig, DistributedConfig, LocalNode, NodeInfo, NodeRole, RaftNode};
 
-let node = RaftNode::new(config).await?;
+let addr = "127.0.0.1:50051".parse().unwrap();
+let local = Arc::new(LocalNode::new(NodeInfo::new("node-1", "Node 1", addr, addr, NodeRole::Worker)));
+let cluster = Cluster::new(local.clone(), DistributedConfig::default());
+let node = RaftNode::new(local, cluster, ConsensusConfig::default());
 ```
 
 ### Distributed Memory
 
-```rust
-use openrustclaw_distributed::memory::{GossipMemory, MemoryConfig};
+```ignore
+use openrustclaw_distributed::{DistributedMemory, GossipConfig, GossipMemory, MemoryBackend, MemoryConfig};
 
 let config = MemoryConfig {
-    node_id: "node-1".to_string(),
-    seeds: vec!["node-2:7946".to_string()],
+    backend: MemoryBackend::Gossip,
+    gossip: GossipConfig::default(),
+    ..MemoryConfig::default()
 };
 
-let memory = GossipMemory::new(&config).await?;
+let memory = GossipMemory::new(&config)?;
 memory.set("key", b"value".to_vec(), None).await?;
 ```
 

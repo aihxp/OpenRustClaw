@@ -8,13 +8,14 @@
 //! ```rust,no_run
 //! use openrustclaw_automation::tools::*;
 //! use openrustclaw_automation::Browser;
-//! use openrustclaw_skills::SkillRegistry;
 //!
-//! async fn setup_tools(browser: &Browser, registry: &mut SkillRegistry) {
-//!     registry.register(Box::new(NavigateTool::new(browser)));
-//!     registry.register(Box::new(ClickTool::new(browser)));
-//!     registry.register(Box::new(TypeTool::new(browser)));
-//!     registry.register(Box::new(ScreenshotTool::new(browser)));
+//! async fn setup_tools(browser: &Browser) -> Vec<Box<dyn AutomationTool>> {
+//!     vec![
+//!         Box::new(NavigateTool::new(browser)),
+//!         Box::new(ClickTool::new(browser)),
+//!         Box::new(TypeTool::new(browser)),
+//!         Box::new(ScreenshotTool::new(browser)),
+//!     ]
 //! }
 //! ```
 

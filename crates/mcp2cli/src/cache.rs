@@ -8,8 +8,10 @@ use crate::error::Result;
 use chrono::{DateTime, Utc};
 use dashmap::DashMap;
 use std::future::Future;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
+use tokio::sync::Mutex;
 
 /// Cache entry with expiration
 #[derive(Debug, Clone)]
@@ -51,6 +53,8 @@ pub struct ToolCache {
     ttl: Duration,
     tool_lists: DashMap<String, CacheEntry<CachedToolList>>,
     tool_helps: DashMap<String, CacheEntry<CachedToolHelp>>,
+    list_locks: DashMap<String, Arc<Mutex<()>>>,
+    help_locks: DashMap<String, Arc<Mutex<()>>>,
     hits: AtomicU64,
     misses: AtomicU64,
 }
@@ -62,6 +66,8 @@ impl ToolCache {
             ttl,
             tool_lists: DashMap::new(),
             tool_helps: DashMap::new(),
+            list_locks: DashMap::new(),
+            help_locks: DashMap::new(),
             hits: AtomicU64::new(0),
             misses: AtomicU64::new(0),
         }
@@ -84,7 +90,22 @@ impl ToolCache {
             self.tool_lists.remove(key);
         }
 
-        // Cache miss - fetch the data
+        let lock = self
+            .list_locks
+            .entry(key.to_string())
+            .or_insert_with(|| Arc::new(Mutex::new(())))
+            .clone();
+        let _guard = lock.lock().await;
+
+        if let Some(entry) = self.tool_lists.get(key) {
+            if !entry.is_expired() {
+                self.hits.fetch_add(1, Ordering::Relaxed);
+                return Ok(entry.value.clone());
+            }
+            drop(entry);
+            self.tool_lists.remove(key);
+        }
+
         self.misses.fetch_add(1, Ordering::Relaxed);
         let tools = f().await?;
         let cached = CachedToolList {
@@ -116,7 +137,22 @@ impl ToolCache {
             self.tool_helps.remove(key);
         }
 
-        // Cache miss - fetch the data
+        let lock = self
+            .help_locks
+            .entry(key.to_string())
+            .or_insert_with(|| Arc::new(Mutex::new(())))
+            .clone();
+        let _guard = lock.lock().await;
+
+        if let Some(entry) = self.tool_helps.get(key) {
+            if !entry.is_expired() {
+                self.hits.fetch_add(1, Ordering::Relaxed);
+                return Ok(entry.value.help.clone());
+            }
+            drop(entry);
+            self.tool_helps.remove(key);
+        }
+
         self.misses.fetch_add(1, Ordering::Relaxed);
         let help = f().await?;
         let cached = CachedToolHelp {
@@ -135,6 +171,8 @@ impl ToolCache {
     pub fn invalidate(&self, key: &str) {
         self.tool_lists.remove(key);
         self.tool_helps.remove(key);
+        self.list_locks.remove(key);
+        self.help_locks.remove(key);
     }
 
     /// Invalidate all entries with the given prefix
@@ -148,6 +186,7 @@ impl ToolCache {
             .collect();
         for key in keys_to_remove {
             self.tool_lists.remove(&key);
+            self.list_locks.remove(&key);
         }
 
         // Remove matching tool helps
@@ -159,6 +198,7 @@ impl ToolCache {
             .collect();
         for key in keys_to_remove {
             self.tool_helps.remove(&key);
+            self.help_locks.remove(&key);
         }
     }
 
@@ -166,6 +206,8 @@ impl ToolCache {
     pub fn clear(&self) {
         self.tool_lists.clear();
         self.tool_helps.clear();
+        self.list_locks.clear();
+        self.help_locks.clear();
     }
 
     /// Get cache statistics
@@ -195,6 +237,7 @@ impl ToolCache {
             .collect();
         for key in expired_keys {
             self.tool_lists.remove(&key);
+            self.list_locks.remove(&key);
         }
 
         // Clean up expired tool helps
@@ -206,6 +249,7 @@ impl ToolCache {
             .collect();
         for key in expired_keys {
             self.tool_helps.remove(&key);
+            self.help_locks.remove(&key);
         }
     }
 }

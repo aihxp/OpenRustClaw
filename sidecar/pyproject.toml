@@ -34,6 +34,7 @@ openrustclaw-sidecar = "server:main"
 [tool.setuptools]
 package-dir = {"" = "src"}
 packages = ["workflows", "evaluators", "proto"]
+py-modules = ["server", "langsmith_bridge"]
 
 [tool.mypy]
 python_version = "3.11"
@@ -51,4 +52,4 @@ ignore = ["D100", "D104"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-testpaths = ["tests"]
+testpaths = ["."]
