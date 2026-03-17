@@ -1,0 +1,67 @@
+[package]
+name = "openrouter-api"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Native Rust SDK for OpenRouter's API with routing strategies and fallback support"
+readme = "README.md"
+keywords = ["openrouter", "ai", "llm", "api", "routing"]
+categories = ["api-bindings", "asynchronous", "science"]
+rust-version = "1.85"
+
+[features]
+default = ["rustls-tls", "streaming", "routing"]
+rustls-tls = ["reqwest/rustls-tls"]
+native-tls = ["reqwest/native-tls"]
+streaming = ["eventsource-stream", "futures"]
+routing = []
+fallback = []
+models = []
+
+[dependencies]
+# HTTP client
+reqwest = { workspace = true, features = ["json", "stream"] }
+
+# Async runtime
+tokio = { workspace = true, features = ["time"] }
+async-trait = { workspace = true }
+futures = { workspace = true, optional = true }
+pin-project-lite = { workspace = true }
+
+# Serialization
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+
+# Utilities
+chrono = { workspace = true, features = ["serde"] }
+uuid = { workspace = true, features = ["v4", "serde"] }
+bytes = { workspace = true }
+tracing = { workspace = true }
+backoff = { workspace = true }
+url = { workspace = true }
+
+# Streaming support
+eventsource-stream = { workspace = true, optional = true }
+
+[dev-dependencies]
+tokio-test = { workspace = true }
+wiremock = { workspace = true }
+tempfile = { workspace = true }
+serial_test = { workspace = true }
+
+[[example]]
+name = "chat_completion"
+path = "examples/chat_completion.rs"
+
+[[example]]
+name = "routing"
+path = "examples/routing.rs"
+
+[[example]]
+name = "fallback"
+path = "examples/fallback.rs"

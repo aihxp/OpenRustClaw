@@ -307,13 +307,26 @@ All v1 features are now implemented:
 - [ ] Metrics and observability dashboards
 - [ ] Documentation complete (API reference)
 
-### v2 - Ecosystem Expansion
-- [ ] Native SDK crates (anthropic_rust, async-openai, openrouter_api)
-- [ ] Telegram, Discord, Slack channels
-- [ ] Browser automation (Playwright/CDP)
-- [ ] Gemini provider
-- [ ] Cursor ACP deep integration
-- [ ] Multi-node distributed mode
+### v2.0 - Ecosystem Expansion ✅ COMPLETE
+
+All v2.0 features are now implemented:
+
+- [x] **Native SDK crates** - `anthropic_rust`, `async_openai`, `openrouter_api`
+- [x] **Telegram Bot** - Full bot API integration
+- [x] **Discord Bot** - Gateway + slash commands
+- [x] **Slack App** - Socket Mode + HTTP mode
+- [x] **Browser Automation** - Playwright + CDP backends
+- [x] **Gemini Provider** - Google Gemini API support
+- [x] **Cursor ACP** - Deep IDE integration with code/terminal/git tools
+- [x] **Multi-node Distributed** - Raft consensus, horizontal scaling
+
+### v2.1 - Platform Hardening (Next)
+- [ ] Production deployment guides
+- [ ] Kubernetes Helm charts
+- [ ] Terraform modules
+- [ ] AWS/GCP/Azure marketplace
+- [ ] SOC 2 compliance documentation
+- [ ] Enterprise SSO (OIDC/SAML)
 
 ### v3+ - Advanced Features
 - [ ] Canvas/A2UI visual workspace

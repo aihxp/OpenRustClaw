@@ -1,0 +1,40 @@
+{
+  "cursor": {
+    "agent": {
+      "enabled": true,
+      "autoRun": false,
+      "context": {
+        "includeOpenFiles": true,
+        "includeGitStatus": true,
+        "includeDiagnostics": true,
+        "includeTerminalOutput": true
+      }
+    },
+    "tools": {
+      "openrustclaw": {
+        "projectRoot": ".",
+        "includePatterns": [
+          "src/**/*.rs",
+          "crates/**/*.rs",
+          "*.toml",
+          "*.md",
+          "proto/**/*.proto"
+        ],
+        "excludePatterns": [
+          "target/**",
+          ".git/**",
+          "node_modules/**",
+          "**/*.lock"
+        ],
+        "terminalTimeout": 30,
+        "maxFileSize": 1048576,
+        "autoFormat": true,
+        "linters": [
+          "clippy",
+          "cargo-check",
+          "rustfmt"
+        ]
+      }
+    }
+  }
+}

@@ -21,6 +21,9 @@ enum Commands {
         /// Config file path
         #[arg(short, long, default_value = "config/default.toml")]
         config: String,
+        /// Channels to enable (comma-separated: telegram,discord,slack)
+        #[arg(short, long, value_name = "CHANNELS")]
+        channels: Option<String>,
     },
     /// Interactive chat with the agent
     Chat {
@@ -143,6 +146,17 @@ enum MemoryAction {
 enum CursorAction {
     /// Generate .cursor/mcp.json and .cursor/rules/
     Setup,
+    /// Start the Cursor ACP server
+    Start {
+        /// Transport type (stdio or tcp)
+        #[arg(short, long, default_value = "stdio")]
+        transport: String,
+        /// Port for TCP transport
+        #[arg(short, long, default_value = "9000")]
+        port: u16,
+    },
+    /// Check Cursor IDE integration status
+    Status,
 }
 
 #[derive(Subcommand)]
@@ -222,7 +236,7 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Start { config } => commands::start::run(&config).await,
+        Commands::Start { config, channels } => commands::start::run(&config, channels.as_deref()).await,
         Commands::Chat { provider, model } => commands::chat::run(&provider, model.as_deref()).await,
         Commands::Models { action } => match action {
             ModelsAction::List => commands::models::list().await,
@@ -251,6 +265,8 @@ async fn main() -> Result<()> {
         Commands::Doctor => commands::doctor::run().await,
         Commands::Cursor { action } => match action {
             CursorAction::Setup => commands::cursor::setup().await,
+            CursorAction::Start { transport, port } => commands::cursor::start(&transport, port).await,
+            CursorAction::Status => commands::cursor::status().await,
         },
         Commands::McpServer { transport } => commands::start::run_mcp_server(&transport).await,
         Commands::Mcp2Cli { action } => match action {

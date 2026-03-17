@@ -5,6 +5,7 @@
 
 pub mod anthropic;
 pub mod fallback;
+pub mod gemini;
 pub mod ollama;
 pub mod openai;
 pub mod openrouter;
@@ -12,6 +13,7 @@ pub mod tool_formats;
 
 pub use anthropic::AnthropicProvider;
 pub use fallback::ProviderChain;
+pub use gemini::{create_gemini_provider, GeminiProvider};
 pub use ollama::OllamaProvider;
 pub use openai::OpenAiProvider;
 pub use openrouter::OpenRouterProvider;

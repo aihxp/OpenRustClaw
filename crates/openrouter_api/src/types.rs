@@ -1,0 +1,202 @@
+//! Type definitions for the OpenRouter API.
+
+use serde::{Deserialize, Serialize};
+
+/// The role of a message author.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Role {
+    /// System message.
+    System,
+    /// User message.
+    User,
+    /// Assistant message.
+    Assistant,
+    /// Tool message.
+    Tool,
+}
+
+impl std::fmt::Display for Role {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Role::System => write!(f, "system"),
+            Role::User => write!(f, "user"),
+            Role::Assistant => write!(f, "assistant"),
+            Role::Tool => write!(f, "tool"),
+        }
+    }
+}
+
+/// A chat message.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatMessage {
+    /// The role of the message author.
+    pub role: Role,
+    /// The content of the message.
+    pub content: String,
+    /// The name of the author (for tool messages).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// Tool calls (for assistant messages).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_calls: Option<Vec<ToolCall>>,
+    /// Tool call ID (for tool messages).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_call_id: Option<String>,
+}
+
+impl ChatMessage {
+    /// Create a new message.
+    pub fn new(role: Role, content: impl Into<String>) -> Self {
+        Self {
+            role,
+            content: content.into(),
+            name: None,
+            tool_calls: None,
+            tool_call_id: None,
+        }
+    }
+
+    /// Create a system message.
+    pub fn system(content: impl Into<String>) -> Self {
+        Self::new(Role::System, content)
+    }
+
+    /// Create a user message.
+    pub fn user(content: impl Into<String>) -> Self {
+        Self::new(Role::User, content)
+    }
+
+    /// Create an assistant message.
+    pub fn assistant(content: impl Into<String>) -> Self {
+        Self::new(Role::Assistant, content)
+    }
+
+    /// Create a tool message.
+    pub fn tool(tool_call_id: impl Into<String>, content: impl Into<String>) -> Self {
+        Self {
+            role: Role::Tool,
+            content: content.into(),
+            name: None,
+            tool_calls: None,
+            tool_call_id: Some(tool_call_id.into()),
+        }
+    }
+}
+
+/// A tool call.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolCall {
+    /// The ID of the tool call.
+    pub id: String,
+    /// The type of the tool call.
+    #[serde(rename = "type")]
+    pub call_type: String,
+    /// The function to call.
+    pub function: FunctionCall,
+}
+
+/// A function call.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FunctionCall {
+    /// The name of the function.
+    pub name: String,
+    /// The arguments (JSON string).
+    pub arguments: String,
+}
+
+/// A tool definition.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Tool {
+    /// The type of tool.
+    #[serde(rename = "type")]
+    pub tool_type: String,
+    /// The function definition.
+    pub function: Function,
+}
+
+impl Tool {
+    /// Create a new function tool.
+    pub fn function(name: impl Into<String>, description: impl Into<String>, parameters: serde_json::Value) -> Self {
+        Self {
+            tool_type: "function".to_string(),
+            function: Function {
+                name: name.into(),
+                description: description.into(),
+                parameters,
+            },
+        }
+    }
+}
+
+/// A function definition.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Function {
+    /// The name of the function.
+    pub name: String,
+    /// A description of the function.
+    pub description: String,
+    /// The parameters schema.
+    pub parameters: serde_json::Value,
+}
+
+/// Token usage statistics.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+pub struct TokenUsage {
+    /// Tokens in the prompt.
+    #[serde(rename = "prompt_tokens")]
+    pub prompt_tokens: usize,
+    /// Tokens in the completion.
+    #[serde(rename = "completion_tokens")]
+    pub completion_tokens: usize,
+    /// Total tokens.
+    #[serde(rename = "total_tokens")]
+    pub total_tokens: usize,
+}
+
+/// A chat completion response.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatResponse {
+    /// Unique identifier.
+    pub id: String,
+    /// The object type.
+    pub object: String,
+    /// Unix timestamp.
+    pub created: i64,
+    /// The model used.
+    pub model: String,
+    /// The choices.
+    pub choices: Vec<ChatChoice>,
+    /// Usage statistics.
+    pub usage: TokenUsage,
+}
+
+impl ChatResponse {
+    /// Get the content of the first choice.
+    pub fn content(&self) -> &str {
+        self.choices
+            .first()
+            .map(|c| c.message.content.as_str())
+            .unwrap_or("")
+    }
+
+    /// Check if the response has tool calls.
+    pub fn has_tool_calls(&self) -> bool {
+        self.choices
+            .first()
+            .and_then(|c| c.message.tool_calls.as_ref())
+            .map(|t| !t.is_empty())
+            .unwrap_or(false)
+    }
+}
+
+/// A chat choice.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatChoice {
+    /// The index.
+    pub index: usize,
+    /// The message.
+    pub message: ChatMessage,
+    /// Finish reason.
+    pub finish_reason: Option<String>,
+}

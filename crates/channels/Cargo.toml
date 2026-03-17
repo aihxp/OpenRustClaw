@@ -14,3 +14,25 @@ serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+
+# Rate limiting
+governor = "0.8"
+
+# The following dependencies are for full implementations.
+# Uncomment and add the correct versions when implementing full bot functionality:
+
+# Telegram
+# teloxide = { version = "0.17", features = ["macros"] }
+
+# Discord  
+# serenity = { version = "0.12", default-features = false, features = ["client", "gateway", "rustls_backend", "model"] }
+
+# Slack
+# slack-morphism = { version = "2.19", features = ["hyper", "axum"] }
+# slack-morphism-hyper = "0.41"
+
+[dev-dependencies]
+tokio-test.workspace = true
+wiremock.workspace = true

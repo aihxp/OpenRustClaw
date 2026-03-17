@@ -71,3 +71,36 @@ langsmith_enabled = false
 tracing_enabled = true
 metrics_enabled = true
 metrics_port = 9090
+
+[channels]
+# Telegram Bot Configuration
+[channels.telegram]
+enabled = false
+token = ""  # Bot token from @BotFather
+mode = "polling"  # "polling" or "webhook"
+webhook_url = null  # Required for webhook mode (e.g., "https://yourdomain.com/webhook")
+webhook_port = null  # Port to listen on for webhooks (e.g., 8080)
+allowed_users = []  # List of allowed user IDs (empty = allow all)
+rate_limit_per_second = 30  # Telegram allows ~30 msg/sec
+
+# Discord Bot Configuration
+[channels.discord]
+enabled = false
+token = ""  # Bot token from Discord Developer Portal
+application_id = ""  # Application ID for slash commands
+rate_limit_requests_per_second = 5  # Discord global rate limit
+allowed_guilds = []  # List of allowed server IDs (empty = allow all)
+allowed_channels = []  # List of allowed channel IDs (empty = allow all)
+dm_enabled = true  # Allow direct messages
+
+# Slack App Configuration
+[channels.slack]
+enabled = false
+token = ""  # Bot User OAuth Token (xoxb-...)
+app_token = null  # App-Level Token (xapp-...) for Socket Mode
+signing_secret = null  # Signing secret for HTTP mode webhook verification
+mode = "socket_mode"  # "socket_mode" or "http"
+socket_mode = true  # Use Socket Mode (recommended)
+rate_limit_requests_per_second = 10  # Slack rate limit
+allowed_workspaces = []  # List of allowed team IDs (empty = allow all)
+app_home_enabled = true  # Enable App Home tab

@@ -1,0 +1,34 @@
+[package]
+name = "openrustclaw-cursor"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Cursor IDE Agent Context Protocol (ACP) integration for OpenRustClaw"
+
+[dependencies]
+openrustclaw-core.workspace = true
+openrustclaw-agent.workspace = true
+openrustclaw-mcp.workspace = true
+tokio.workspace = true
+futures.workspace = true
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml.workspace = true
+toml.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+regex.workspace = true
+glob.workspace = true
+walkdir.workspace = true
+tokio-test.workspace = true
+tempfile.workspace = true
+
+[dev-dependencies]
+tokio-test.workspace = true
+tempfile.workspace = true
+wiremock.workspace = true
+clap.workspace = true
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

@@ -31,6 +31,12 @@ pub enum Error {
     #[error("Gateway error: {0}")]
     Gateway(#[from] GatewayError),
 
+    #[error("Channel error: {0}")]
+    Channel(#[from] ChannelError),
+
+    #[error("Distributed error: {0}")]
+    Distributed(#[from] DistributedError),
+
     #[error("Configuration error: {0}")]
     Config(String),
 
@@ -224,6 +230,92 @@ pub enum GatewayError {
 
     #[error("Connection closed: {0}")]
     ConnectionClosed(String),
+}
+
+/// Distributed mode errors.
+#[derive(Debug, Error)]
+pub enum DistributedError {
+    #[error("Cluster error: {0}")]
+    Cluster(String),
+
+    #[error("Node error: {0}")]
+    Node(String),
+
+    #[error("Consensus error: {0}")]
+    Consensus(String),
+
+    #[error("Discovery error: {0}")]
+    Discovery(String),
+
+    #[error("Messaging error: {0}")]
+    Messaging(String),
+
+    #[error("Session error: {0}")]
+    Session(String),
+
+    #[error("Memory error: {0}")]
+    Memory(String),
+
+    #[error("Lock error: {lock_name}: {message}")]
+    Lock { lock_name: String, message: String },
+
+    #[error("Task error: {0}")]
+    Task(String),
+
+    #[error("Leader not available")]
+    LeaderNotAvailable,
+
+    #[error("Not leader: current leader is {0:?}")]
+    NotLeader(Option<String>),
+
+    #[error("Node not found: {0}")]
+    NodeNotFound(String),
+
+    #[error("Session not found: {0}")]
+    SessionNotFound(String),
+
+    #[error("Task not found: {0}")]
+    TaskNotFound(String),
+
+    #[error("Split brain detected: conflicting leader {0}")]
+    SplitBrain(String),
+
+    #[error("Quorum not reached: {0} of {1} nodes available")]
+    QuorumNotReached(usize, usize),
+
+    #[error("Timeout: {0}")]
+    Timeout(String),
+
+    #[error("Serialization error: {0}")]
+    Serialization(String),
+
+    #[error("Invalid state transition from {from} to {to}")]
+    InvalidStateTransition { from: String, to: String },
+}
+
+/// Channel integration errors.
+#[derive(Debug, Error)]
+pub enum ChannelError {
+    #[error("{platform} authentication failed: {message}")]
+    AuthFailed { platform: String, message: String },
+
+    #[error("{platform} rate limited (retry after {retry_after_secs:?}s)")]
+    RateLimited { platform: String, retry_after_secs: Option<u64> },
+
+    #[error("{platform} connection error: {message}")]
+    Connection { platform: String, message: String },
+
+    #[error("{platform} message send failed: {message}")]
+    SendFailed { platform: String, message: String },
+
+    #[error("{platform} invalid message format: {message}")]
+    InvalidFormat { platform: String, message: String },
+
+    #[error("{platform} configuration error: {message}")]
+    Config { platform: String, message: String },
+
+    #[error("{platform} not connected")]
+    NotConnected { platform: String },
 }
 
 /// Convenient Result type alias.

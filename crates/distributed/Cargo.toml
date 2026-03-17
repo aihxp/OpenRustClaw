@@ -1,0 +1,76 @@
+[package]
+name = "openrustclaw-distributed"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Multi-node distributed mode for OpenRustClaw - horizontal scaling across machines"
+
+[dependencies]
+# Internal crates
+openrustclaw-core.workspace = true
+openrustclaw-agent.workspace = true
+openrustclaw-gateway.workspace = true
+openrustclaw-memory.workspace = true
+openrustclaw-observability.workspace = true
+
+# Async runtime
+tokio.workspace = true
+futures.workspace = true
+async-trait.workspace = true
+pin-project-lite.workspace = true
+tokio-stream = "0.1"
+tokio-util = { version = "0.7", features = ["codec", "time"] }
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+bytes.workspace = true
+
+# gRPC
+tonic.workspace = true
+prost.workspace = true
+tower.workspace = true
+
+# Error handling
+thiserror.workspace = true
+anyhow.workspace = true
+
+# Consensus
+raft = "0.7"
+raft-proto = "0.7"
+
+# Service discovery
+etcd-client = { version = "0.14", features = ["tls"] }
+consul = "0.4"
+mdns-sd = "0.11"
+
+# Distributed state
+redis = { version = "0.28", features = ["tokio-comp", "cluster-async", "connection-manager"] }
+
+# Health checks
+tonic-health = "0.12"
+
+# Utilities
+uuid.workspace = true
+chrono.workspace = true
+tracing.workspace = true
+dashmap.workspace = true
+config.workspace = true
+
+# Hashing for consistent hashing
+siphasher = "1"
+
+# HTTP client
+reqwest.workspace = true
+
+# Metrics
+metrics.workspace = true
+
+[build-dependencies]
+tonic-build.workspace = true
+
+[dev-dependencies]
+tokio-test.workspace = true
+tempfile.workspace = true
+serial_test.workspace = true
+wiremock.workspace = true

@@ -16,6 +16,7 @@ pub struct AppConfig {
     pub security: SecurityConfig,
     pub sidecar: SidecarConfig,
     pub observability: ObservabilityConfig,
+    pub channels: ChannelsConfig,
 }
 
 /// Gateway (WebSocket server) configuration.
@@ -143,6 +144,68 @@ pub struct ObservabilityConfig {
     pub metrics_port: u16,
 }
 
+/// Channel integrations configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChannelsConfig {
+    pub telegram: TelegramConfig,
+    pub discord: DiscordConfig,
+    pub slack: SlackConfig,
+}
+
+/// Telegram bot configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TelegramConfig {
+    pub enabled: bool,
+    pub token: String,
+    pub mode: TelegramMode,
+    pub webhook_url: Option<String>,
+    pub webhook_port: Option<u16>,
+    pub allowed_users: Vec<String>,
+    pub rate_limit_per_second: u32,
+}
+
+/// Telegram connection mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TelegramMode {
+    Polling,
+    Webhook,
+}
+
+/// Discord bot configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiscordConfig {
+    pub enabled: bool,
+    pub token: String,
+    pub application_id: String,
+    pub rate_limit_requests_per_second: u32,
+    pub allowed_guilds: Vec<String>,
+    pub allowed_channels: Vec<String>,
+    pub dm_enabled: bool,
+}
+
+/// Slack app configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SlackConfig {
+    pub enabled: bool,
+    pub token: String,
+    pub app_token: Option<String>,
+    pub signing_secret: Option<String>,
+    pub mode: SlackMode,
+    pub socket_mode: bool,
+    pub rate_limit_requests_per_second: u32,
+    pub allowed_workspaces: Vec<String>,
+    pub app_home_enabled: bool,
+}
+
+/// Slack connection mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SlackMode {
+    Http,
+    SocketMode,
+}
+
 impl AppConfig {
     /// Load configuration from default.toml, then overlay environment variables.
     ///
@@ -259,6 +322,37 @@ impl Default for AppConfig {
                 tracing_enabled: true,
                 metrics_enabled: true,
                 metrics_port: 9090,
+            },
+            channels: ChannelsConfig {
+                telegram: TelegramConfig {
+                    enabled: false,
+                    token: String::new(),
+                    mode: TelegramMode::Polling,
+                    webhook_url: None,
+                    webhook_port: None,
+                    allowed_users: Vec::new(),
+                    rate_limit_per_second: 30,
+                },
+                discord: DiscordConfig {
+                    enabled: false,
+                    token: String::new(),
+                    application_id: String::new(),
+                    rate_limit_requests_per_second: 5,
+                    allowed_guilds: Vec::new(),
+                    allowed_channels: Vec::new(),
+                    dm_enabled: true,
+                },
+                slack: SlackConfig {
+                    enabled: false,
+                    token: String::new(),
+                    app_token: None,
+                    signing_secret: None,
+                    mode: SlackMode::SocketMode,
+                    socket_mode: true,
+                    rate_limit_requests_per_second: 10,
+                    allowed_workspaces: Vec::new(),
+                    app_home_enabled: true,
+                },
             },
         }
     }

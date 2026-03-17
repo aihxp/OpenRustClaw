@@ -8,6 +8,31 @@
       },
       "description": "OpenRustClaw AI Agent Framework MCP Server",
       "enabled": true
+    },
+    "openrustclaw-cursor": {
+      "command": "cargo",
+      "args": ["run", "--package", "openrustclaw-cursor", "--example", "server", "--", "--transport", "stdio"],
+      "env": {
+        "RUST_LOG": "info"
+      },
+      "description": "OpenRustClaw Cursor ACP Server - Deep IDE Integration",
+      "enabled": true,
+      "tools": [
+        "search_code",
+        "read_file",
+        "edit_file",
+        "create_file",
+        "delete_file",
+        "list_files",
+        "run_command",
+        "read_terminal",
+        "git_status",
+        "git_diff",
+        "git_commit",
+        "git_branch",
+        "run_linter",
+        "format_code"
+      ]
     }
   }
 }

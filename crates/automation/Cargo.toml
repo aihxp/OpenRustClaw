@@ -1,0 +1,67 @@
+[package]
+name = "openrustclaw-automation"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Browser automation capabilities for OpenRustClaw with Playwright and CDP support"
+
+[features]
+default = ["playwright"]
+playwright = []
+cdp = ["tokio-tungstenite"]
+ocr = ["base64"]
+
+[dependencies]
+openrustclaw-core.workspace = true
+openrustclaw-skills.workspace = true
+
+# Async runtime
+tokio.workspace = true
+async-trait.workspace = true
+futures.workspace = true
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+
+# Error handling
+thiserror.workspace = true
+anyhow.workspace = true
+
+# HTTP
+reqwest = { workspace = true }
+url.workspace = true
+
+# WebSocket for CDP
+tokio-tungstenite = { version = "0.26", optional = true }
+
+# CDP protocol types
+serde_repr = "0.1"
+
+# Tracing
+tracing.workspace = true
+
+# Utilities
+uuid.workspace = true
+chrono.workspace = true
+dashmap = "6"
+
+# Image processing for screenshots/vision
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+base64 = { version = "0.22", optional = true }
+
+# Configuration
+config.workspace = true
+
+# PDF generation
+headless_chrome = { version = "1", optional = true }
+
+[dev-dependencies]
+tokio-test.workspace = true
+tempfile.workspace = true
+wiremock.workspace = true
+serial_test.workspace = true
+
+[[test]]
+name = "integration"
+path = "tests/integration_tests.rs"

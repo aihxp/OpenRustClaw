@@ -1,0 +1,457 @@
+syntax = "proto3";
+package openrustclaw.distributed;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
+
+// ============================================================================
+// Cluster Management Service
+// ============================================================================
+
+service ClusterService {
+    // Join the cluster
+    rpc Join(JoinRequest) returns (JoinResponse);
+    // Leave the cluster gracefully
+    rpc Leave(LeaveRequest) returns (LeaveResponse);
+    // Get cluster status
+    rpc GetClusterStatus(ClusterStatusRequest) returns (ClusterStatusResponse);
+    // Stream heartbeat updates
+    rpc Heartbeat(stream HeartbeatMessage) returns (stream HeartbeatAck);
+}
+
+message JoinRequest {
+    string node_id = 1;
+    string node_addr = 2;
+    NodeType node_type = 3;
+    map<string, string> metadata = 4;
+}
+
+message JoinResponse {
+    bool success = 1;
+    string leader_id = 2;
+    string leader_addr = 3;
+    repeated NodeInfo nodes = 4;
+    string error = 5;
+}
+
+message LeaveRequest {
+    string node_id = 1;
+    string reason = 2;
+}
+
+message LeaveResponse {
+    bool success = 1;
+}
+
+message ClusterStatusRequest {}
+
+message ClusterStatusResponse {
+    string cluster_id = 1;
+    string leader_id = 2;
+    repeated NodeInfo nodes = 3;
+    ClusterState state = 4;
+    uint64 term = 5;
+}
+
+message HeartbeatMessage {
+    string node_id = 1;
+    uint64 term = 2;
+    NodeState state = 3;
+    map<string, MetricValue> metrics = 4;
+    google.protobuf.Timestamp timestamp = 5;
+}
+
+message HeartbeatAck {
+    string leader_id = 1;
+    uint64 term = 2;
+    bool accepted = 3;
+}
+
+// ============================================================================
+// Node Types and Info
+// ============================================================================
+
+enum NodeType {
+    NODE_TYPE_UNSPECIFIED = 0;
+    NODE_TYPE_LEADER = 1;
+    NODE_TYPE_WORKER = 2;
+    NODE_TYPE_CANDIDATE = 3;
+}
+
+enum NodeState {
+    NODE_STATE_UNSPECIFIED = 0;
+    NODE_STATE_HEALTHY = 1;
+    NODE_STATE_DEGRADED = 2;
+    NODE_STATE_UNHEALTHY = 3;
+    NODE_STATE_OFFLINE = 4;
+    NODE_STATE_JOINING = 5;
+    NODE_STATE_LEAVING = 6;
+}
+
+enum ClusterState {
+    CLUSTER_STATE_UNSPECIFIED = 0;
+    CLUSTER_STATE_INITIALIZING = 1;
+    CLUSTER_STATE_ACTIVE = 2;
+    CLUSTER_STATE_DEGRADED = 3;
+    CLUSTER_STATE_PARTITIONED = 4;
+    CLUSTER_STATE_RECOVERING = 5;
+}
+
+message NodeInfo {
+    string node_id = 1;
+    string node_addr = 2;
+    NodeType node_type = 3;
+    NodeState state = 4;
+    map<string, string> metadata = 5;
+    google.protobuf.Timestamp joined_at = 6;
+    google.protobuf.Timestamp last_heartbeat = 7;
+}
+
+message MetricValue {
+    oneof value {
+        int64 int_value = 1;
+        double float_value = 2;
+        string string_value = 3;
+        bool bool_value = 4;
+    }
+}
+
+// ============================================================================
+// Raft Consensus Service
+// ============================================================================
+
+service RaftService {
+    // RequestVote RPC for leader election
+    rpc RequestVote(VoteRequest) returns (VoteResponse);
+    // AppendEntries RPC for log replication
+    rpc AppendEntries(AppendEntriesRequest) returns (AppendEntriesResponse);
+    // InstallSnapshot RPC for state transfer
+    rpc InstallSnapshot(stream SnapshotChunk) returns (InstallSnapshotResponse);
+}
+
+message VoteRequest {
+    uint64 term = 1;
+    string candidate_id = 2;
+    uint64 last_log_index = 3;
+    uint64 last_log_term = 4;
+}
+
+message VoteResponse {
+    uint64 term = 1;
+    bool vote_granted = 2;
+    string voter_id = 3;
+}
+
+message LogEntry {
+    uint64 index = 1;
+    uint64 term = 2;
+    bytes data = 3;
+    EntryType entry_type = 4;
+}
+
+enum EntryType {
+    ENTRY_TYPE_UNSPECIFIED = 0;
+    ENTRY_TYPE_COMMAND = 1;
+    ENTRY_TYPE_CONFIG_CHANGE = 2;
+    ENTRY_TYPE_NOOP = 3;
+}
+
+message AppendEntriesRequest {
+    uint64 term = 1;
+    string leader_id = 2;
+    uint64 prev_log_index = 3;
+    uint64 prev_log_term = 4;
+    repeated LogEntry entries = 5;
+    uint64 leader_commit = 6;
+}
+
+message AppendEntriesResponse {
+    uint64 term = 1;
+    bool success = 2;
+    uint64 match_index = 3;
+    uint64 conflict_index = 4;
+    uint64 conflict_term = 5;
+}
+
+message SnapshotChunk {
+    string node_id = 1;
+    uint64 term = 2;
+    uint64 offset = 3;
+    bytes data = 4;
+    bool done = 5;
+}
+
+message InstallSnapshotResponse {
+    uint64 term = 1;
+    bool success = 2;
+}
+
+// ============================================================================
+// Task Distribution Service
+// ============================================================================
+
+service TaskService {
+    // Submit a task to the cluster
+    rpc SubmitTask(TaskSubmitRequest) returns (TaskSubmitResponse);
+    // Get task status
+    rpc GetTaskStatus(TaskStatusRequest) returns (TaskStatusResponse);
+    // Stream task updates
+    rpc StreamTaskUpdates(TaskStreamRequest) returns (stream TaskUpdate);
+    // Cancel a task
+    rpc CancelTask(TaskCancelRequest) returns (TaskCancelResponse);
+}
+
+message TaskSubmitRequest {
+    string task_id = 1;
+    string task_type = 2;
+    bytes payload = 3;
+    TaskPriority priority = 4;
+    map<string, string> labels = 5;
+    google.protobuf.Duration timeout = 6;
+    string session_id = 7;
+}
+
+enum TaskPriority {
+    TASK_PRIORITY_UNSPECIFIED = 0;
+    TASK_PRIORITY_LOW = 1;
+    TASK_PRIORITY_NORMAL = 2;
+    TASK_PRIORITY_HIGH = 3;
+    TASK_PRIORITY_CRITICAL = 4;
+}
+
+message TaskSubmitResponse {
+    bool accepted = 1;
+    string assigned_node = 2;
+    string error = 3;
+}
+
+message TaskStatusRequest {
+    string task_id = 1;
+}
+
+message TaskStatusResponse {
+    string task_id = 1;
+    TaskState state = 2;
+    string assigned_node = 3;
+    string result = 4;
+    string error = 5;
+    google.protobuf.Timestamp created_at = 6;
+    google.protobuf.Timestamp started_at = 7;
+    google.protobuf.Timestamp completed_at = 8;
+}
+
+enum TaskState {
+    TASK_STATE_UNSPECIFIED = 0;
+    TASK_STATE_PENDING = 1;
+    TASK_STATE_SCHEDULED = 2;
+    TASK_STATE_RUNNING = 3;
+    TASK_STATE_COMPLETED = 4;
+    TASK_STATE_FAILED = 5;
+    TASK_STATE_CANCELLED = 6;
+    TASK_STATE_TIMED_OUT = 7;
+}
+
+message TaskStreamRequest {
+    string task_id = 1;
+}
+
+message TaskUpdate {
+    string task_id = 1;
+    TaskState state = 2;
+    string message = 3;
+    float progress = 4;
+    google.protobuf.Timestamp timestamp = 5;
+}
+
+message TaskCancelRequest {
+    string task_id = 1;
+    string reason = 2;
+}
+
+message TaskCancelResponse {
+    bool success = 1;
+    TaskState previous_state = 2;
+}
+
+// ============================================================================
+// Session Management Service
+// ============================================================================
+
+service SessionService {
+    // Create a distributed session
+    rpc CreateSession(CreateSessionRequest) returns (CreateSessionResponse);
+    // Get session info
+    rpc GetSession(GetSessionRequest) returns (SessionInfo);
+    // Migrate session to another node
+    rpc MigrateSession(MigrateSessionRequest) returns (MigrateSessionResponse);
+    // Delete session
+    rpc DeleteSession(DeleteSessionRequest) returns (DeleteSessionResponse);
+}
+
+message CreateSessionRequest {
+    string session_id = 1;
+    string user_id = 2;
+    string workspace_id = 3;
+    map<string, string> metadata = 4;
+}
+
+message CreateSessionResponse {
+    bool success = 1;
+    string assigned_node = 2;
+    string error = 3;
+}
+
+message GetSessionRequest {
+    string session_id = 1;
+}
+
+message SessionInfo {
+    string session_id = 1;
+    string user_id = 2;
+    string workspace_id = 3;
+    string assigned_node = 4;
+    SessionState state = 5;
+    map<string, string> metadata = 6;
+    google.protobuf.Timestamp created_at = 7;
+    google.protobuf.Timestamp last_accessed = 8;
+}
+
+enum SessionState {
+    SESSION_STATE_UNSPECIFIED = 0;
+    SESSION_STATE_ACTIVE = 1;
+    SESSION_STATE_MIGRATING = 2;
+    SESSION_STATE_CLOSED = 3;
+}
+
+message MigrateSessionRequest {
+    string session_id = 1;
+    string target_node = 2;
+    bool force = 3;
+}
+
+message MigrateSessionResponse {
+    bool success = 1;
+    string new_node = 2;
+    string error = 3;
+}
+
+message DeleteSessionRequest {
+    string session_id = 1;
+}
+
+message DeleteSessionResponse {
+    bool success = 1;
+}
+
+// ============================================================================
+// Distributed Lock Service
+// ============================================================================
+
+service LockService {
+    // Acquire a distributed lock
+    rpc AcquireLock(AcquireLockRequest) returns (AcquireLockResponse);
+    // Release a lock
+    rpc ReleaseLock(ReleaseLockRequest) returns (ReleaseLockResponse);
+    // Renew lock lease
+    rpc RenewLock(RenewLockRequest) returns (RenewLockResponse);
+}
+
+message AcquireLockRequest {
+    string lock_name = 1;
+    string holder_id = 2;
+    google.protobuf.Duration ttl = 3;
+    bool blocking = 4;
+    google.protobuf.Duration blocking_timeout = 5;
+}
+
+message AcquireLockResponse {
+    bool acquired = 1;
+    string lock_token = 2;
+    string current_holder = 3;
+    google.protobuf.Timestamp expires_at = 4;
+}
+
+message ReleaseLockRequest {
+    string lock_name = 1;
+    string lock_token = 2;
+}
+
+message ReleaseLockResponse {
+    bool released = 1;
+}
+
+message RenewLockRequest {
+    string lock_name = 1;
+    string lock_token = 2;
+    google.protobuf.Duration ttl = 3;
+}
+
+message RenewLockResponse {
+    bool renewed = 1;
+    google.protobuf.Timestamp expires_at = 2;
+}
+
+// ============================================================================
+// Gossip Protocol Messages
+// ============================================================================
+
+service GossipService {
+    // Exchange gossip messages
+    rpc Gossip(stream GossipMessage) returns (stream GossipMessage);
+}
+
+message GossipMessage {
+    string sender_id = 1;
+    uint64 sequence = 2;
+    GossipType gossip_type = 3;
+    bytes payload = 4;
+    map<string, uint64> vector_clock = 5;
+    google.protobuf.Timestamp timestamp = 6;
+}
+
+enum GossipType {
+    GOSSIP_TYPE_UNSPECIFIED = 0;
+    GOSSIP_TYPE_NODE_STATUS = 1;
+    GOSSIP_TYPE_USER_EVENT = 2;
+    GOSSIP_TYPE_STATE_SYNC = 3;
+    GOSSIP_TYPE_FAILURE_DETECTION = 4;
+}
+
+// ============================================================================
+// Health Check Service
+// ============================================================================
+
+service HealthService {
+    // Simple health check
+    rpc Check(HealthCheckRequest) returns (HealthCheckResponse);
+    // Streaming health monitoring
+    rpc Watch(HealthWatchRequest) returns (stream HealthCheckResponse);
+}
+
+message HealthCheckRequest {
+    string service = 1;
+}
+
+message HealthCheckResponse {
+    ServingStatus status = 1;
+    map<string, ComponentHealth> components = 2;
+    string message = 3;
+}
+
+enum ServingStatus {
+    SERVING_STATUS_UNSPECIFIED = 0;
+    SERVING_STATUS_SERVING = 1;
+    SERVING_STATUS_NOT_SERVING = 2;
+    SERVING_STATUS_SERVICE_UNKNOWN = 3;
+}
+
+message ComponentHealth {
+    string name = 1;
+    bool healthy = 2;
+    string message = 3;
+    google.protobuf.Timestamp checked_at = 4;
+}
+
+message HealthWatchRequest {
+    string service = 1;
+}

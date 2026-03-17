@@ -6,24 +6,56 @@ use tokio::signal;
 use tracing::{info, warn, error};
 
 use openrustclaw_core::config::AppConfig;
+use openrustclaw_core::traits::Channel;
 use openrustclaw_db::{init_pool, run_migrations};
 use openrustclaw_gateway::server::{GatewayServer, GatewayState};
 use openrustclaw_gateway::sessions::SessionManager;
 use openrustclaw_langbridge::sidecar::SidecarManager;
 use openrustclaw_security::OriginValidator;
+use openrustclaw_channels::{ChannelFactory, ChannelType, parse_channels_list};
 
 /// Run the start command - load config, init DB, start sidecar, start gateway.
-pub async fn run(config_path: &str) -> Result<()> {
+pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
     // Initialize tracing
     tracing_subscriber::fmt::init();
     
     info!("Starting OpenRustClaw...");
     
     // Load configuration
-    let config = AppConfig::load_from(config_path)
+    let mut config = AppConfig::load_from(config_path)
         .with_context(|| format!("Failed to load config from {}", config_path))?;
     
     info!(config_path = %config_path, "Configuration loaded");
+
+    // Parse and enable channels from CLI argument
+    if let Some(channels_str) = channels {
+        let channel_types = parse_channels_list(channels_str)
+            .map_err(|e| anyhow::anyhow!("Invalid channels argument: {}", e))?;
+        
+        info!(channels = %channels_str, "Enabling channels from CLI");
+        
+        // Enable specified channels in config
+        for channel_type in &channel_types {
+            match channel_type {
+                ChannelType::Telegram => {
+                    config.channels.telegram.enabled = true;
+                    info!("Telegram channel enabled");
+                }
+                ChannelType::Discord => {
+                    config.channels.discord.enabled = true;
+                    info!("Discord channel enabled");
+                }
+                ChannelType::Slack => {
+                    config.channels.slack.enabled = true;
+                    info!("Slack channel enabled");
+                }
+                ChannelType::WebChat => {
+                    // WebChat is always enabled via gateway
+                    info!("WebChat is always enabled via gateway");
+                }
+            }
+        }
+    }
     
     // Ensure data directory exists
     let db_path = config.database.url.replace("sqlite://", "");
@@ -90,6 +122,78 @@ pub async fn run(config_path: &str) -> Result<()> {
     
     info!(addr = %addr, "Starting gateway server");
     
+    // Initialize enabled channels
+    let mut channel_tasks: Vec<tokio::task::JoinHandle<()>> = Vec::new();
+    
+    // Start Telegram if enabled
+    if config.channels.telegram.enabled {
+        if config.channels.telegram.token.is_empty() {
+            warn!("Telegram channel enabled but no token provided");
+        } else {
+            info!("Starting Telegram channel...");
+            let telegram_config = config.channels.telegram.clone();
+            let handle = tokio::spawn(async move {
+                let mut channel = ChannelFactory::create_telegram(telegram_config);
+                if let Err(e) = channel.connect().await {
+                    error!(error = %e, "Failed to connect Telegram channel");
+                } else {
+                    info!("Telegram channel connected");
+                    // Keep the channel alive
+                    loop {
+                        tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+                    }
+                }
+            });
+            channel_tasks.push(handle);
+        }
+    }
+    
+    // Start Discord if enabled
+    if config.channels.discord.enabled {
+        if config.channels.discord.token.is_empty() {
+            warn!("Discord channel enabled but no token provided");
+        } else {
+            info!("Starting Discord channel...");
+            let discord_config = config.channels.discord.clone();
+            let handle = tokio::spawn(async move {
+                let mut channel = ChannelFactory::create_discord(discord_config);
+                if let Err(e) = channel.connect().await {
+                    error!(error = %e, "Failed to connect Discord channel");
+                } else {
+                    info!("Discord channel connected");
+                    // Keep the channel alive
+                    loop {
+                        tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+                    }
+                }
+            });
+            channel_tasks.push(handle);
+        }
+    }
+    
+    // Start Slack if enabled
+    if config.channels.slack.enabled {
+        if config.channels.slack.token.is_empty() {
+            warn!("Slack channel enabled but no token provided");
+        } else {
+            info!("Starting Slack channel...");
+            let slack_config = config.channels.slack.clone();
+            let handle = tokio::spawn(async move {
+                let mut channel = ChannelFactory::create_slack(slack_config);
+                if let Err(e) = channel.connect().await {
+                    error!(error = %e, "Failed to connect Slack channel");
+                } else {
+                    info!("Slack channel connected");
+                    // Keep the channel alive
+                    loop {
+                        tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+                    }
+                }
+            });
+            channel_tasks.push(handle);
+        }
+    }
+    
     // Create shutdown signal handler
     let shutdown = async {
         let mut sigterm = match signal::unix::signal(signal::unix::SignalKind::terminate()) {
@@ -123,6 +227,15 @@ pub async fn run(config_path: &str) -> Result<()> {
     if sidecar.is_some() {
         info!("Sidecar gRPC: http://127.0.0.1:{}", config.sidecar.grpc_port);
     }
+    if config.channels.telegram.enabled {
+        info!("Telegram: enabled");
+    }
+    if config.channels.discord.enabled {
+        info!("Discord: enabled");
+    }
+    if config.channels.slack.enabled {
+        info!("Slack: enabled");
+    }
     
     // Run server with graceful shutdown
     tokio::select! {
@@ -132,6 +245,12 @@ pub async fn run(config_path: &str) -> Result<()> {
         _ = shutdown => {
             info!("Shutdown signal received, stopping server...");
         }
+    }
+    
+    // Cleanup channel tasks
+    info!("Stopping channel tasks...");
+    for task in channel_tasks {
+        task.abort();
     }
     
     // Cleanup
