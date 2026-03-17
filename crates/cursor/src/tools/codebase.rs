@@ -766,24 +766,21 @@ mod tests {
     #[tokio::test]
     async fn test_list_files() {
         let temp_dir = TempDir::new().unwrap();
-        tokio::fs::write(temp_dir.path().join("file1.txt"), "content1")
+        let abs_path = temp_dir.path().canonicalize().unwrap();
+        tokio::fs::write(abs_path.join("file1.txt"), "content1")
             .await
             .unwrap();
-        tokio::fs::write(temp_dir.path().join("file2.txt"), "content2")
+        tokio::fs::write(abs_path.join("file2.txt"), "content2")
             .await
             .unwrap();
 
         let tool = ListFilesTool;
         let result = tool
-            .execute(json!({"path": temp_dir.path().to_str().unwrap()}))
+            .execute(json!({"path": abs_path.to_str().unwrap()}))
             .await
             .unwrap();
 
         let entries = result["entries"].as_array().unwrap();
-        assert!(
-            entries.len() >= 2,
-            "Expected at least 2 entries, got {}",
-            entries.len()
-        );
+        assert_eq!(entries.len(), 2);
     }
 }
