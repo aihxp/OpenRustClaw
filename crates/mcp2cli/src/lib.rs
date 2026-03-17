@@ -23,7 +23,12 @@ pub mod error;
 pub mod integration;
 pub mod token_counter;
 pub mod toon;
+pub mod adaptive;
 
+// Re-export mcp for unified API
+pub use openrustclaw_mcp as mcp;
+
+// Core mcp2cli exports
 pub use adapters::{mcp_adapter::McpAdapter, openapi_adapter::OpenApiAdapter, ToolSource};
 pub use auth::{AuthManager, OAuthConfig, Token};
 pub use cache::{ToolCache, CachedToolList};
@@ -33,6 +38,12 @@ pub use error::{Mcp2CliError, Result};
 pub use integration::{Mcp2CliTool, Mcp2CliFactory};
 pub use token_counter::{TokenCounter, CostComparison};
 pub use toon::{encode_toon, decode_toon, calculate_savings};
+
+// Unified adaptive MCP exports - transparent mcp2cli optimization
+pub use adaptive::{
+    AdaptiveConfig, AdaptiveConfigBuilder, AdaptiveMcpRegistry, 
+    AdaptiveMode, AdaptiveStats,
+};
 
 use std::time::Duration;
 
