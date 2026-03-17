@@ -74,6 +74,9 @@ enum Commands {
         /// Transport type (stdio or sse)
         #[arg(short, long, default_value = "stdio")]
         transport: String,
+        /// Config file path for database-backed MCP tools
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
     },
     /// mcp2cli - Token-efficient MCP tool discovery (96-99% savings)
     Mcp2Cli {
@@ -412,7 +415,9 @@ async fn main() -> Result<()> {
             }
             CursorAction::Status => commands::cursor::status().await,
         },
-        Commands::McpServer { transport } => commands::start::run_mcp_server(&transport).await,
+        Commands::McpServer { transport, config } => {
+            commands::start::run_mcp_server(&transport, &config).await
+        }
         Commands::Mcp2Cli { action } => match action {
             Mcp2CliAction::List {
                 mcp,
@@ -862,8 +867,29 @@ mod tests {
     fn test_cli_parse_mcp_server_default() {
         let cli = Cli::try_parse_from(["openrustclaw", "mcp-server"]).unwrap();
         match cli.command {
-            Commands::McpServer { transport } => {
+            Commands::McpServer { transport, config } => {
                 assert_eq!(transport, "stdio");
+                assert_eq!(config, "config/default.toml");
+            }
+            _ => panic!("Expected McpServer command"),
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_mcp_server_with_config() {
+        let cli = Cli::try_parse_from([
+            "openrustclaw",
+            "mcp-server",
+            "--transport",
+            "stdio",
+            "--config",
+            "config/dev.toml",
+        ])
+        .unwrap();
+        match cli.command {
+            Commands::McpServer { transport, config } => {
+                assert_eq!(transport, "stdio");
+                assert_eq!(config, "config/dev.toml");
             }
             _ => panic!("Expected McpServer command"),
         }

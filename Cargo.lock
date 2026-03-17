@@ -5728,6 +5728,7 @@ dependencies = [
  "serde_json",
  "shlex",
  "sqlx",
+ "tempfile",
  "tokio",
  "tower-http 0.6.8",
  "tracing",

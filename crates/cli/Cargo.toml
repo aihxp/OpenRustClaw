@@ -52,6 +52,9 @@ walkdir.workspace = true
 dirs = "5"
 shlex = "1"
 
+[dev-dependencies]
+tempfile.workspace = true
+
 [features]
 default = ["voice", "cursor"]
 voice = ["dep:openrustclaw-voice"]
