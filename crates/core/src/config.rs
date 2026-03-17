@@ -184,6 +184,8 @@ pub struct SkillsConfig {
 pub struct TelegramConfig {
     pub enabled: bool,
     pub token: String,
+    #[serde(default)]
+    pub api_base_url: Option<String>,
     pub mode: TelegramMode,
     pub webhook_url: Option<String>,
     pub webhook_port: Option<u16>,
@@ -205,6 +207,8 @@ pub struct DiscordConfig {
     pub enabled: bool,
     pub token: String,
     pub application_id: String,
+    #[serde(default)]
+    pub api_base_url: Option<String>,
     pub rate_limit_requests_per_second: u32,
     pub allowed_guilds: Vec<String>,
     pub allowed_channels: Vec<String>,
@@ -216,6 +220,8 @@ pub struct DiscordConfig {
 pub struct SlackConfig {
     pub enabled: bool,
     pub token: String,
+    #[serde(default)]
+    pub api_base_url: Option<String>,
     pub app_token: Option<String>,
     pub signing_secret: Option<String>,
     pub mode: SlackMode,
@@ -709,6 +715,7 @@ impl Default for AppConfig {
                 telegram: TelegramConfig {
                     enabled: false,
                     token: String::new(),
+                    api_base_url: None,
                     mode: TelegramMode::Polling,
                     webhook_url: None,
                     webhook_port: None,
@@ -719,6 +726,7 @@ impl Default for AppConfig {
                     enabled: false,
                     token: String::new(),
                     application_id: String::new(),
+                    api_base_url: None,
                     rate_limit_requests_per_second: 5,
                     allowed_guilds: Vec::new(),
                     allowed_channels: Vec::new(),
@@ -727,6 +735,7 @@ impl Default for AppConfig {
                 slack: SlackConfig {
                     enabled: false,
                     token: String::new(),
+                    api_base_url: None,
                     app_token: None,
                     signing_secret: None,
                     mode: SlackMode::SocketMode,

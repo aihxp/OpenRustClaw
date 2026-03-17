@@ -14,6 +14,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use governor::{Quota, RateLimiter};
+use reqwest::Client;
 use std::num::NonZeroU32;
 use tokio::sync::{Mutex, RwLock, mpsc};
 use tracing::{debug, info, warn};
@@ -26,6 +27,7 @@ use openrustclaw_core::types::{IncomingMessage, OutgoingMessage, Platform};
 /// Slack channel implementation.
 pub struct SlackChannel {
     config: SlackConfig,
+    client: Client,
     _incoming_tx: mpsc::Sender<IncomingMessage>,
     incoming_rx: Mutex<mpsc::Receiver<IncomingMessage>>,
     rate_limiter: Arc<
@@ -53,6 +55,7 @@ impl SlackChannel {
 
         Self {
             config,
+            client: Client::new(),
             _incoming_tx: incoming_tx,
             incoming_rx: Mutex::new(incoming_rx),
             rate_limiter,
@@ -92,6 +95,25 @@ impl SlackChannel {
     fn parse_blocks(metadata: &serde_json::Value) -> Option<Vec<serde_json::Value>> {
         metadata.get("blocks")?.as_array().cloned()
     }
+
+    fn api_base_url(&self) -> String {
+        self.config
+            .api_base_url
+            .clone()
+            .unwrap_or_else(|| "https://slack.com/api".to_string())
+            .trim_end_matches('/')
+            .to_string()
+    }
+
+    fn workspace_allowed(&self, workspace_id: Option<&str>) -> bool {
+        if self.config.allowed_workspaces.is_empty() {
+            return true;
+        }
+
+        workspace_id
+            .map(|id| self.config.allowed_workspaces.contains(&id.to_string()))
+            .unwrap_or(false)
+    }
 }
 
 #[async_trait]
@@ -112,31 +134,101 @@ impl Channel for SlackChannel {
         self.rate_limiter.until_ready().await;
 
         // Get channel from metadata
-        let _channel_str = msg
+        let channel_id = msg
             .metadata
             .get("slack_channel")
             .and_then(|v| v.as_str())
             .ok_or_else(|| ChannelError::InvalidFormat {
                 platform: "slack".to_string(),
                 message: "Missing channel in metadata".to_string(),
-            })?;
+            })?
+            .to_string();
 
         // Format content for Slack
-        let _formatted_content = Self::markdown_to_slack(&msg.content);
+        let formatted_content = Self::markdown_to_slack(&msg.content);
 
         // Check for thread_ts
-        let _thread_ts = msg.metadata.get("slack_thread_ts").and_then(|v| v.as_str());
+        let thread_ts = msg
+            .metadata
+            .get("slack_thread_ts")
+            .and_then(|v| v.as_str())
+            .map(ToString::to_string);
 
         // Check for blocks in metadata
-        let _blocks = Self::parse_blocks(&msg.metadata);
-
-        debug!(content = %msg.content, "Slack send requested before Web API client was implemented");
-
-        Err(ChannelError::SendFailed {
-            platform: "slack".to_string(),
-            message: "Slack send path is not implemented yet".to_string(),
+        let blocks = Self::parse_blocks(&msg.metadata);
+        let workspace_id = msg.metadata.get("slack_team_id").and_then(|v| v.as_str());
+        if !self.workspace_allowed(workspace_id) {
+            return Err(ChannelError::PermissionDenied {
+                platform: "slack".to_string(),
+                message: format!(
+                    "workspace {} is not allowed",
+                    workspace_id.unwrap_or("<missing>")
+                ),
+            }
+            .into());
         }
-        .into())
+
+        let url = format!("{}/chat.postMessage", self.api_base_url());
+        let mut payload = serde_json::json!({
+            "channel": channel_id,
+            "text": formatted_content,
+        });
+        if let Some(thread_ts) = thread_ts {
+            payload["thread_ts"] = serde_json::json!(thread_ts);
+        }
+        if let Some(blocks) = blocks {
+            payload["blocks"] = serde_json::json!(blocks);
+        }
+
+        let response = self
+            .client
+            .post(url)
+            .bearer_auth(&self.config.token)
+            .json(&payload)
+            .send()
+            .await
+            .map_err(|e| ChannelError::SendFailed {
+                platform: "slack".to_string(),
+                message: e.to_string(),
+            })?;
+
+        let status = response.status();
+        let body: serde_json::Value = response.json().await.unwrap_or_else(|_| serde_json::json!({}));
+
+        if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+            return Err(ChannelError::RateLimited {
+                platform: "slack".to_string(),
+                retry_after_secs: None,
+            }
+            .into());
+        }
+
+        if status == reqwest::StatusCode::UNAUTHORIZED {
+            return Err(ChannelError::AuthFailed {
+                platform: "slack".to_string(),
+                message: body
+                    .get("error")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unauthorized")
+                    .to_string(),
+            }
+            .into());
+        }
+
+        if !status.is_success() || body.get("ok").and_then(|v| v.as_bool()) != Some(true) {
+            return Err(ChannelError::SendFailed {
+                platform: "slack".to_string(),
+                message: body
+                    .get("error")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Slack send failed")
+                    .to_string(),
+            }
+            .into());
+        }
+
+        debug!("Slack message sent");
+        Ok(())
     }
 
     async fn receive(&self) -> Result<IncomingMessage> {
@@ -181,13 +273,57 @@ impl Channel for SlackChannel {
             SlackMode::Http => {}
         }
 
-        info!(mode = ?self.config.mode, "Slack channel configuration validated");
+        let url = format!("{}/auth.test", self.api_base_url());
+        let response = self
+            .client
+            .post(url)
+            .bearer_auth(&self.config.token)
+            .send()
+            .await
+            .map_err(|e| ChannelError::Connection {
+                platform: "slack".to_string(),
+                message: e.to_string(),
+            })?;
 
-        Err(ChannelError::Connection {
-            platform: "slack".to_string(),
-            message: "Slack runtime client is not implemented yet".to_string(),
+        let status = response.status();
+        let body: serde_json::Value = response.json().await.unwrap_or_else(|_| serde_json::json!({}));
+
+        if status == reqwest::StatusCode::UNAUTHORIZED {
+            return Err(ChannelError::AuthFailed {
+                platform: "slack".to_string(),
+                message: body
+                    .get("error")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unauthorized")
+                    .to_string(),
+            }
+            .into());
         }
-        .into())
+
+        if !status.is_success() || body.get("ok").and_then(|v| v.as_bool()) != Some(true) {
+            return Err(ChannelError::Connection {
+                platform: "slack".to_string(),
+                message: body
+                    .get("error")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Slack auth probe failed")
+                    .to_string(),
+            }
+            .into());
+        }
+
+        let team_id = body.get("team_id").and_then(|v| v.as_str());
+        if !self.workspace_allowed(team_id) {
+            return Err(ChannelError::PermissionDenied {
+                platform: "slack".to_string(),
+                message: format!("workspace {} is not allowed", team_id.unwrap_or("<missing>")),
+            }
+            .into());
+        }
+
+        *self.is_connected.write().await = true;
+        info!(mode = ?self.config.mode, "Slack channel connected");
+        Ok(())
     }
 
     async fn disconnect(&mut self) -> Result<()> {
@@ -216,5 +352,57 @@ mod tests {
         let text = "Hello **world**";
         let result = SlackChannel::markdown_to_slack(text);
         assert_eq!(result, "Hello *world*");
+    }
+
+    #[tokio::test]
+    async fn test_connect_and_send_slack_message() {
+        use wiremock::matchers::{bearer_token, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/auth.test"))
+            .and(bearer_token("xoxb-test"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "ok": true,
+                "team_id": "T123"
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/chat.postMessage"))
+            .and(bearer_token("xoxb-test"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "ok": true,
+                "ts": "1.23"
+            })))
+            .mount(&server)
+            .await;
+
+        let config = SlackConfig {
+            enabled: true,
+            token: "xoxb-test".to_string(),
+            api_base_url: Some(server.uri()),
+            app_token: None,
+            signing_secret: None,
+            mode: SlackMode::Http,
+            socket_mode: false,
+            rate_limit_requests_per_second: 10,
+            allowed_workspaces: vec!["T123".to_string()],
+            app_home_enabled: true,
+        };
+        let mut channel = SlackChannel::new(config);
+        channel.connect().await.unwrap();
+        channel
+            .send(OutgoingMessage {
+                session_id: uuid::Uuid::new_v4(),
+                content: "hello slack".to_string(),
+                metadata: serde_json::json!({
+                    "slack_channel": "C123",
+                    "slack_team_id": "T123"
+                }),
+            })
+            .await
+            .unwrap();
     }
 }
