@@ -15,7 +15,7 @@ use openrustclaw_core::error::Error;
 use openrustclaw_core::traits::{LlmProvider, Tool, ToolContext};
 use openrustclaw_core::types::{
     CompletionRequest, CoreEntry, FinishReason, Message, Role, SkillCapability, StreamChunk,
-    TokenUsage, ToolCall, ToolOutput,
+    ToolCall, ToolOutput,
 };
 use serde_json::Value;
 

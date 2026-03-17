@@ -252,7 +252,7 @@ mod tests {
         let recorder = builder.build_recorder();
         let handle = Arc::new(recorder.handle());
 
-        let state = MetricsState::new(handle.clone());
+        let _state = MetricsState::new(handle.clone());
         assert!(Arc::strong_count(&handle) > 1);
     }
 
@@ -262,8 +262,6 @@ mod tests {
     #[tokio::test]
     async fn test_metrics_layer_service() {
         // This is a simplified test - in reality you'd test with an actual service
-        use axum::{body::Body, response::Response};
-
         // Just verify the layer can be created
         let _layer = MetricsLayer::new();
     }

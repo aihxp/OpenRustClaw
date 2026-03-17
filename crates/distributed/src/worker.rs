@@ -553,7 +553,6 @@ fn node_from_proto(proto: proto::NodeInfo) -> Option<crate::node::NodeInfo> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::net::SocketAddr;
 
     #[test]
     fn test_worker_status_display() {

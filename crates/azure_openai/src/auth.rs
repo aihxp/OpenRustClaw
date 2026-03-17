@@ -475,7 +475,7 @@ mod tests {
 
     #[test]
     fn test_azure_ad_token_new() {
-        let token = AzureADToken::new("test-token");
+        let _token = AzureADToken::new("test-token");
         // Cannot directly test async get_token without runtime
     }
 

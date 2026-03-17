@@ -8,8 +8,6 @@
 
 use std::sync::Arc;
 
-use axum::http::{HeaderMap, HeaderValue};
-use openrustclaw_core::error::Error;
 use openrustclaw_gateway::server::{GatewayServer, GatewayState};
 use openrustclaw_gateway::sessions::SessionManager;
 use openrustclaw_security::OriginValidator;

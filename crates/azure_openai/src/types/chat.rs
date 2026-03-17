@@ -551,7 +551,7 @@ mod tests {
 
     #[test]
     fn test_tool_choice() {
-        let auto = ToolChoice::auto();
+        let _auto = ToolChoice::auto();
         let func = ToolChoice::function("get_weather");
         let none = ToolChoice::none();
 

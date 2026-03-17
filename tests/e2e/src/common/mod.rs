@@ -987,7 +987,7 @@ where
     for attempt in 0..max_retries {
         match operation().await {
             Ok(result) => return Ok(result),
-            Err(e) if attempt < max_retries - 1 => {
+            Err(_) if attempt < max_retries - 1 => {
                 tokio::time::sleep(delay).await;
                 delay *= 2;
             }

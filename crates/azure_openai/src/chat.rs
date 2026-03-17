@@ -503,7 +503,7 @@ mod tests {
 
     #[test]
     fn test_tool_choice() {
-        let auto = crate::types::ToolChoice::auto();
+        let _auto = crate::types::ToolChoice::auto();
         let func = crate::types::ToolChoice::function("get_weather");
         let none = crate::types::ToolChoice::none();
 

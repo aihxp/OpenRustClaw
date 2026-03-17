@@ -782,7 +782,7 @@ mod tests {
 
     #[test]
     fn test_profile_provider_validity() {
-        let provider = ProfileCredentialProvider::default_profile();
+        let _provider = ProfileCredentialProvider::default_profile();
         // Depends on whether ~/.aws/credentials exists
         // Can't make assumptions in tests
     }

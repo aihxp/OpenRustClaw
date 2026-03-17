@@ -462,7 +462,6 @@ async fn list_canvases(State(state): State<CanvasServerState>) -> Json<ListCanva
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::elements::TextStyle;
 
     #[test]
     fn test_server_state_new() {

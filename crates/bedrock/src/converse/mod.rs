@@ -405,7 +405,6 @@ use serde::{Deserialize, Serialize};
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::ConversationRole;
 
     #[test]
     fn test_converse_request_builder() {
