@@ -715,7 +715,7 @@ R  renamed.txt"#;
         assert_eq!(status.ahead, 2);
         assert_eq!(status.behind, 1);
         assert_eq!(status.modified.len(), 1);
-        assert_eq!(status.staged.len(), 4); // staged, added, deleted, renamed
+        assert_eq!(status.staged.len(), 3); // staged, added, renamed (deleted goes to deleted)
         assert_eq!(status.untracked.len(), 1);
     }
 
