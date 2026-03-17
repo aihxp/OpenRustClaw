@@ -38,13 +38,13 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libsqlite3-dev
+          sudo apt-get install -y libsqlite3-dev protobuf-compiler
 
       - name: Build E2E tests
-        run: cargo build --test e2e --release
+        run: cargo build -p openrustclaw-e2e-tests --release
 
       - name: Run smoke tests
-        run: cargo test --test e2e smoke --release -- --nocapture
+        run: cargo test -p openrustclaw-e2e-tests --release -- --nocapture smoke
 
   # ═════════════════════════════════════════════════════════════════════════════
   # Horizontal Tests - Full user journeys (~5-10 minutes)
@@ -69,10 +69,10 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libsqlite3-dev
+          sudo apt-get install -y libsqlite3-dev protobuf-compiler
 
       - name: Run horizontal tests
-        run: cargo test --test e2e horizontal --release -- --nocapture
+        run: cargo test -p openrustclaw-e2e-tests --release -- --nocapture horizontal
 
   # ═════════════════════════════════════════════════════════════════════════════
   # Vertical Tests - Layer-specific tests (~3-5 minutes)
@@ -101,10 +101,10 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libsqlite3-dev
+          sudo apt-get install -y libsqlite3-dev protobuf-compiler
 
       - name: Run vertical tests - ${{ matrix.layer }}
-        run: cargo test --test e2e vertical::test_${{ matrix.layer }}_layer --release -- --nocapture
+        run: cargo test -p openrustclaw-e2e-tests --release -- --nocapture test_${{ matrix.layer }}_layer
 
   # ═════════════════════════════════════════════════════════════════════════════
   # Regression Tests - Full suite on schedule or manual trigger (~15-20 minutes)
@@ -130,10 +130,10 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libsqlite3-dev
+          sudo apt-get install -y libsqlite3-dev protobuf-compiler
 
       - name: Run regression tests
-        run: cargo test --test e2e regression --release -- --nocapture
+        run: cargo test -p openrustclaw-e2e-tests --release -- --nocapture regression
 
   # ═════════════════════════════════════════════════════════════════════════════
   # Live Provider Tests - Run only with API keys
@@ -159,7 +159,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libsqlite3-dev
+          sudo apt-get install -y libsqlite3-dev protobuf-compiler
 
       - name: Run live provider tests
         env:
@@ -169,7 +169,7 @@ jobs:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: |
           if [ -n "$OPENAI_API_KEY" ] || [ -n "$ANTHROPIC_API_KEY" ]; then
-            cargo test --test e2e test_live --release -- --nocapture
+            cargo test -p openrustclaw-e2e-tests --release -- --nocapture test_live
           else
             echo "No API keys configured, skipping live tests"
           fi
