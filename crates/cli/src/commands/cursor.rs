@@ -1,7 +1,6 @@
 //! Cursor IDE ACP integration commands.
 
 use anyhow::{Context, Result};
-use std::path::Path;
 
 /// Set up Cursor IDE integration.
 pub async fn setup() -> Result<()> {

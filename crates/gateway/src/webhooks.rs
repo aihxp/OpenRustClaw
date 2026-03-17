@@ -259,7 +259,7 @@ impl WebhookPayload {
 
 /// Rate limit tracker
 #[derive(Debug)]
-struct RateLimitTracker {
+pub struct RateLimitTracker {
     requests: Vec<std::time::Instant>,
     config: RateLimitConfig,
 }

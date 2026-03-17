@@ -3,7 +3,7 @@
 use crate::client::OpenAIClient;
 use crate::constants::endpoints;
 use crate::error::Result;
-use crate::types::{Embedding, EmbeddingsResponse};
+use crate::types::EmbeddingsResponse;
 
 /// Client for the embeddings API.
 #[derive(Debug)]

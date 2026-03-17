@@ -46,25 +46,27 @@ pub mod session;
 pub mod task;
 pub mod worker;
 
-// Re-export main types
+// Re-export main types from their defining modules
 pub use cluster::{Cluster, ClusterEvent, ClusterState, ClusterStatus};
-pub use config::{DiscoveryConfig, DistributedConfig, NodeConfig};
+pub use config::{ConsensusConfig, DiscoveryBackend, DiscoveryConfig, DistributedConfig, GossipConfig, HealthConfig, LoadBalanceStrategy, LoadBalancerConfig, MemoryBackend, MemoryConfig};
 pub use consensus::{RaftNode, RaftRole};
 pub use coordinator::{Coordinator, CoordinatorStatus};
-pub use discovery::{create_discovery, Discovery, DiscoveryBackend, DiscoveryEvent};
+pub use discovery::{create_discovery, Discovery, DiscoveryEvent, DiscoveryStream};
 pub use error::{DistributedError, Result};
-pub use load_balancer::{LoadBalancer, LoadBalancerConfig, SessionRouter};
-pub use memory::{create_memory, DistributedMemory, MemoryBackend, MemoryConfig};
+pub use load_balancer::{LoadBalancer, SessionRouter};
+pub use memory::{create_memory, DistributedMemory};
 pub use messaging::{GrpcClientPool, GrpcServer};
 pub use node::{LocalNode, NodeId, NodeInfo, NodeMetrics, NodeRole, NodeState};
 pub use session::{DistributedSession, SessionManager, SessionState};
 pub use task::{Task, TaskExecutor, TaskManager, TaskPriority, TaskResult, TaskState};
 pub use worker::{Worker, WorkerStatus};
 
+// NodeConfig is defined in this module (lib.rs), not in config.rs
+
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{error, info, warn};
+use tracing::{error, info};
 
 /// The main cluster manager that orchestrates distributed operations.
 pub struct ClusterManager {
@@ -234,7 +236,8 @@ impl ClusterManager {
         )
         .await?;
 
-        coordinator.start().await?;
+        let coordinator_clone = coordinator.clone();
+        coordinator_clone.start().await?;
         *self.coordinator.write().await = Some(coordinator);
 
         Ok(())
@@ -264,7 +267,8 @@ impl ClusterManager {
         )
         .await?;
 
-        worker.start().await?;
+        let worker_clone = worker.clone();
+        worker_clone.start().await?;
         *self.worker.write().await = Some(worker);
 
         Ok(())
@@ -275,7 +279,7 @@ impl ClusterManager {
         info!("Starting as follower, waiting for leader election");
 
         // Start Raft to participate in elections
-        self.raft.start().await?;
+        self.raft.clone().start().await?;
 
         // Wait for leader to be elected
         let mut attempts = 0;
@@ -361,11 +365,11 @@ impl ClusterManager {
     }
 
     /// Get session manager.
-    pub fn session_manager(&self) -> Option<Arc<SessionManager>> {
+    pub async fn session_manager(&self) -> Option<Arc<SessionManager>> {
         // Try worker first, then coordinator
         if let Some(worker) = self.worker.read().await.as_ref() {
             Some(worker.session_manager())
-        } else if let Some(coordinator) = self.coordinator.read().await.as_ref() {
+        } else if let Some(_coordinator) = self.coordinator.read().await.as_ref() {
             // Coordinator doesn't have sessions directly, but could access them
             None
         } else {
@@ -392,7 +396,7 @@ impl TaskExecutor for DefaultTaskExecutor {
         ))
     }
 
-    fn can_handle(&self, task_type: &str) -> bool {
+    fn can_handle(&self, _task_type: &str) -> bool {
         true // Can handle any task type
     }
 

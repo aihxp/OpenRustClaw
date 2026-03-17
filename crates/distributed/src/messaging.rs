@@ -4,31 +4,28 @@ pub mod proto {
     tonic::include_proto!("openrustclaw.distributed");
 }
 
-use crate::cluster::{Cluster, ClusterEvent};
-use crate::consensus::{AppendEntriesRequest, AppendEntriesResponse, RaftNode, VoteRequest, VoteResponse};
-use crate::error::{DistributedError, Result};
-use crate::node::{NodeId, NodeInfo, NodeMetrics, NodeRole, NodeState};
-use crate::session::DistributedSession;
+use crate::cluster::Cluster;
+use crate::consensus::{AppendEntriesRequest, RaftNode, VoteRequest};
+use crate::error::DistributedError;
+use crate::node::{NodeId, NodeInfo, NodeRole, NodeState};
 use chrono::Utc;
 use proto::cluster_service_client::ClusterServiceClient;
 use proto::cluster_service_server::{ClusterService, ClusterServiceServer};
 use proto::raft_service_client::RaftServiceClient;
 use proto::raft_service_server::{RaftService, RaftServiceServer};
 use proto::session_service_client::SessionServiceClient;
-use proto::session_service_server::{SessionService, SessionServiceServer};
 use proto::task_service_client::TaskServiceClient;
-use proto::task_service_server::{TaskService, TaskServiceServer};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{mpsc, RwLock};
-use tokio::time::{interval, timeout};
+use tokio::time::timeout;
 use tokio_stream::{wrappers::ReceiverStream, Stream, StreamExt};
 use tonic::transport::{Channel, Server};
 use tonic::{Request, Response, Status, Streaming};
-use tracing::{debug, error, info, warn};
+use tracing::{info, warn};
 
 /// gRPC client pool for connecting to other nodes.
 pub struct GrpcClientPool {
@@ -55,7 +52,7 @@ impl GrpcClientPool {
     pub async fn get_cluster_client(
         &self,
         node: &NodeInfo,
-    ) -> Result<ClusterServiceClient<Channel>> {
+    ) -> crate::error::Result<ClusterServiceClient<Channel>> {
         let mut clients = self.clients.write().await;
         
         if let Some(client) = clients.get(&node.id) {
@@ -80,7 +77,7 @@ impl GrpcClientPool {
     }
 
     /// Get or create a Raft service client for a node.
-    pub async fn get_raft_client(&self, node: &NodeInfo) -> Result<RaftServiceClient<Channel>> {
+    pub async fn get_raft_client(&self, node: &NodeInfo) -> crate::error::Result<RaftServiceClient<Channel>> {
         let mut clients = self.raft_clients.write().await;
         
         if let Some(client) = clients.get(&node.id) {
@@ -356,24 +353,17 @@ impl RaftService for RaftServiceImpl {
         }))
     }
 
-    type InstallSnapshotStream = Pin<Box<dyn Stream<Item = Result<proto::InstallSnapshotResponse, Status>> + Send>>;
-
     async fn install_snapshot(
         &self,
         request: Request<Streaming<proto::SnapshotChunk>>,
-    ) -> Result<Response<Self::InstallSnapshotStream>, Status> {
+    ) -> Result<Response<proto::InstallSnapshotResponse>, Status> {
         // TODO: Implement snapshot installation
-        let (tx, rx) = mpsc::channel(1);
+        let _stream = request.into_inner();
         
-        tokio::spawn(async move {
-            let _ = tx.send(Ok(proto::InstallSnapshotResponse {
-                term: 0,
-                success: true,
-            })).await;
-        });
-
-        let output_stream = ReceiverStream::new(rx);
-        Ok(Response::new(Box::pin(output_stream) as Self::InstallSnapshotStream))
+        Ok(Response::new(proto::InstallSnapshotResponse {
+            term: 0,
+            success: true,
+        }))
     }
 }
 
@@ -395,7 +385,7 @@ impl GrpcServer {
     }
 
     /// Start the gRPC server.
-    pub async fn start(&self) -> Result<()> {
+    pub async fn start(&self) -> crate::error::Result<()> {
         let cluster_service = ClusterServiceServer::new(ClusterServiceImpl::new(self.cluster.clone()));
         let raft_service = RaftServiceServer::new(RaftServiceImpl::new(self.raft.clone()));
 
@@ -410,6 +400,14 @@ impl GrpcServer {
 
         Ok(())
     }
+}
+
+/// Convert DateTime<Utc> to prost_types::Timestamp
+pub fn datetime_to_timestamp(dt: chrono::DateTime<chrono::Utc>) -> Option<prost_types::Timestamp> {
+    Some(prost_types::Timestamp {
+        seconds: dt.timestamp(),
+        nanos: dt.timestamp_subsec_nanos() as i32,
+    })
 }
 
 /// Helper function to convert NodeInfo to proto NodeInfo.
@@ -437,8 +435,8 @@ fn node_info_to_proto(info: NodeInfo) -> proto::NodeInfo {
         node_type: node_type as i32,
         state: node_state as i32,
         metadata: info.metadata,
-        joined_at: Some(info.joined_at.into()),
-        last_heartbeat: Some(info.last_heartbeat.into()),
+        joined_at: datetime_to_timestamp(info.joined_at),
+        last_heartbeat: datetime_to_timestamp(info.last_heartbeat),
     }
 }
 
@@ -448,8 +446,8 @@ pub async fn send_heartbeat(
     node_id: &str,
     term: u64,
     state: NodeState,
-) -> Result<proto::HeartbeatAck> {
-    let (tx, mut rx) = mpsc::channel(1);
+) -> crate::error::Result<proto::HeartbeatAck> {
+    let (tx, rx) = mpsc::channel(1);
     
     let request = tonic::Request::new(ReceiverStream::new(rx));
     
@@ -461,7 +459,7 @@ pub async fn send_heartbeat(
             _ => proto::NodeState::Unspecified,
         } as i32,
         metrics: HashMap::new(),
-        timestamp: Some(Utc::now().into()),
+        timestamp: datetime_to_timestamp(Utc::now()),
     };
     
     let _ = tx.send(heartbeat).await;
@@ -481,7 +479,7 @@ pub async fn join_cluster(
     node_id: &str,
     node_addr: &str,
     role: NodeRole,
-) -> Result<proto::JoinResponse> {
+) -> crate::error::Result<proto::JoinResponse> {
     let node_type = match role {
         NodeRole::Leader => proto::NodeType::Leader,
         NodeRole::Worker => proto::NodeType::Worker,

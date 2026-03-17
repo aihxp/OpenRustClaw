@@ -8,7 +8,7 @@ use wiremock::{
 };
 
 use anthropic_rust::{
-    AnthropicClient, Message, MessageRequest, MessageResponse, MessageRole, Tool, ToolResult,
+    AnthropicClient, Message, MessageRequest, Role, Tool, ToolResult,
 };
 
 async fn setup_mock_server() -> (MockServer, AnthropicClient) {
@@ -224,10 +224,10 @@ async fn test_conversation_thread() {
 #[tokio::test]
 async fn test_message_roles() {
     let msg_user = Message::user("Hello");
-    assert_eq!(msg_user.role, MessageRole::User);
+    assert_eq!(msg_user.role, Role::User);
 
     let msg_assistant = Message::assistant("Hi there!");
-    assert_eq!(msg_assistant.role, MessageRole::Assistant);
+    assert_eq!(msg_assistant.role, Role::Assistant);
 }
 
 #[tokio::test]

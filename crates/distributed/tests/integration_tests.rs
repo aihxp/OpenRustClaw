@@ -77,7 +77,8 @@ async fn test_node_info() {
 /// Test load balancer strategies.
 #[tokio::test]
 async fn test_load_balancer_round_robin() {
-    use openrustclaw_distributed::load_balancer::{LoadBalancer, LoadBalancerConfig, LoadBalanceStrategy};
+    use openrustclaw_distributed::load_balancer::LoadBalancer;
+    use openrustclaw_distributed::{LoadBalancerConfig, LoadBalanceStrategy};
     use openrustclaw_distributed::node::{NodeInfo, NodeRole};
 
     let config = LoadBalancerConfig {
@@ -105,7 +106,8 @@ async fn test_load_balancer_round_robin() {
 /// Test consistent hashing.
 #[tokio::test]
 async fn test_consistent_hashing() {
-    use openrustclaw_distributed::load_balancer::{LoadBalancer, LoadBalancerConfig, LoadBalanceStrategy};
+    use openrustclaw_distributed::load_balancer::LoadBalancer;
+    use openrustclaw_distributed::{LoadBalancerConfig, LoadBalanceStrategy};
     use openrustclaw_distributed::node::{NodeInfo, NodeRole};
 
     let config = LoadBalancerConfig {
@@ -159,7 +161,8 @@ async fn test_cluster_state() {
 /// Test session affinity.
 #[tokio::test]
 async fn test_session_affinity() {
-    use openrustclaw_distributed::load_balancer::{LoadBalancer, LoadBalancerConfig};
+    use openrustclaw_distributed::load_balancer::LoadBalancer;
+    use openrustclaw_distributed::LoadBalancerConfig;
     use openrustclaw_distributed::node::{NodeInfo, NodeRole};
 
     let config = LoadBalancerConfig {
@@ -283,7 +286,8 @@ async fn test_config_defaults() {
 /// Test memory backends.
 #[tokio::test]
 async fn test_memory_backends() {
-    use openrustclaw_distributed::memory::{GossipMemory, MemoryConfig, MemoryBackend};
+    use openrustclaw_distributed::memory::GossipMemory;
+    use openrustclaw_distributed::{MemoryConfig, MemoryBackend};
 
     let config = MemoryConfig::default();
     let memory = GossipMemory::new(&config);
@@ -294,7 +298,8 @@ async fn test_memory_backends() {
 /// Test discovery backends.
 #[tokio::test]
 async fn test_discovery_backends() {
-    use openrustclaw_distributed::discovery::{StaticDiscovery, DiscoveryConfig, DiscoveryBackend};
+    use openrustclaw_distributed::discovery::StaticDiscovery;
+    use openrustclaw_distributed::{DiscoveryConfig, DiscoveryBackend};
 
     let config = DiscoveryConfig {
         backend: DiscoveryBackend::Static,

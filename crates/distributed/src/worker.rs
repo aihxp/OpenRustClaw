@@ -7,14 +7,13 @@ use crate::error::{DistributedError, Result};
 use crate::load_balancer::LoadBalancer;
 use crate::memory::DistributedMemory;
 use crate::messaging::proto;
-use crate::messaging::{join_cluster, send_heartbeat, GrpcClientPool};
+use crate::messaging::{datetime_to_timestamp, GrpcClientPool};
 use crate::node::{LocalNode, NodeId, NodeMetrics, NodeRole, NodeState};
 use crate::session::SessionManager;
-use crate::task::{Task, TaskExecutor, TaskManager, TaskResult, TaskState};
+use crate::task::{Task, TaskExecutor, TaskManager};
 use chrono::Utc;
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tokio::time::{interval, sleep, Duration};
@@ -29,13 +28,15 @@ pub struct Worker {
     cluster: Arc<Cluster>,
     /// Raft consensus node.
     raft: Arc<RaftNode>,
-    /// Configuration.
+    /// Configuration (reserved for future use).
+    #[allow(dead_code)]
     config: DistributedConfig,
     /// Leader address.
     leader_addr: SocketAddr,
     /// Leader client.
     leader_client: RwLock<Option<proto::cluster_service_client::ClusterServiceClient<Channel>>>,
-    /// Load balancer.
+    /// Load balancer (reserved for future use).
+    #[allow(dead_code)]
     load_balancer: Arc<LoadBalancer>,
     /// Session manager.
     session_manager: Arc<SessionManager>,
@@ -43,7 +44,8 @@ pub struct Worker {
     task_manager: Arc<TaskManager>,
     /// Distributed memory.
     memory: Arc<dyn DistributedMemory>,
-    /// gRPC client pool.
+    /// gRPC client pool (reserved for future use).
+    #[allow(dead_code)]
     client_pool: Arc<GrpcClientPool>,
     /// Running flag.
     running: Arc<RwLock<bool>>,
@@ -102,7 +104,7 @@ impl Worker {
         *self.running.write().await = true;
 
         // Start Raft (as follower)
-        self.raft.start().await?;
+        self.raft.clone().start().await?;
 
         // Join the cluster
         self.join_cluster().await?;
@@ -242,13 +244,13 @@ impl Worker {
             }
 
             // Send heartbeat
-            if let Some(client) = self.leader_client.write().await.as_mut() {
-                let heartbeat = proto::HeartbeatMessage {
+            if let Some(_client) = self.leader_client.write().await.as_mut() {
+                let _heartbeat = proto::HeartbeatMessage {
                     node_id: self.local_node.id(),
                     term: self.raft.current_term(),
                     state: proto::NodeState::Healthy as i32,
                     metrics: self.collect_metrics().await,
-                    timestamp: Some(Utc::now().into()),
+                    timestamp: datetime_to_timestamp(Utc::now()),
                 };
 
                 // For streaming heartbeat, we'd need to maintain a long-lived stream
@@ -261,7 +263,8 @@ impl Worker {
     /// Reconnect to the leader.
     async fn reconnect_leader(&self) -> Result<()> {
         let addr = format!("http://{}", self.leader_addr);
-        let channel = Channel::from_shared(addr)?
+        let channel = Channel::from_shared(addr)
+            .map_err(|e| DistributedError::Network(format!("Invalid address: {}", e)))?
             .connect()
             .await
             .map_err(|e| DistributedError::Network(e.to_string()))?;
@@ -454,6 +457,7 @@ impl std::fmt::Display for WorkerStatus {
 pub struct WorkerManager {
     cluster: Arc<Cluster>,
     load_balancer: Arc<LoadBalancer>,
+    #[allow(dead_code)]
     client_pool: Arc<GrpcClientPool>,
 }
 
@@ -524,10 +528,11 @@ fn node_from_proto(proto: proto::NodeInfo) -> Option<crate::node::NodeInfo> {
     };
 
     let cluster_addr: SocketAddr = proto.node_addr.parse().ok()?;
+    let node_id = proto.node_id.clone();
 
     Some(crate::node::NodeInfo::new(
+        node_id,
         proto.node_id,
-        proto.node_id.clone(),
         cluster_addr,
         cluster_addr,
         role,

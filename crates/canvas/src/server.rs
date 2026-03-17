@@ -2,7 +2,7 @@
 //!
 //! Provides HTTP routes and WebSocket handlers for canvas connections.
 
-use crate::canvas::{Canvas, CanvasAction, CanvasUpdate};
+use crate::canvas::Canvas;
 use crate::error::{CanvasError, CanvasResult};
 use crate::protocol::{CanvasCommand, CanvasMessage, CanvasSnapshot, Interaction};
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
@@ -15,7 +15,7 @@ use futures::{sink::SinkExt, stream::StreamExt};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, info, trace, warn};
 use uuid::Uuid;
 
 /// Shared state for the canvas server
@@ -281,7 +281,7 @@ async fn handle_message(
 
 /// Handle user interaction
 async fn handle_interaction(
-    state: &CanvasServerState,
+    _state: &CanvasServerState,
     canvas_id: Uuid,
     element_id: Uuid,
     interaction: Interaction,
@@ -328,7 +328,7 @@ async fn handle_command(
     canvas_id: Uuid,
     command: CanvasCommand,
 ) -> CanvasResult<()> {
-    use dashmap::mapref::entry::Entry;
+    
 
     let mut entry = state
         .canvases

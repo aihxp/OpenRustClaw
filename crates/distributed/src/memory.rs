@@ -4,16 +4,12 @@ use crate::config::{MemoryBackend, MemoryConfig};
 use crate::error::{DistributedError, Result};
 use async_trait::async_trait;
 use dashmap::DashMap;
-use redis::aio::{ConnectionLike, ConnectionManager, MultiplexedConnection};
-use redis::{AsyncCommands, Client as RedisClient, RedisError, Value};
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
+use redis::aio::ConnectionManager;
+use redis::{AsyncCommands, Client as RedisClient};
+use tokio_stream::StreamExt;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::RwLock;
-use tokio::time::timeout;
-use tracing::{debug, error, info, warn};
+use tracing::info;
 
 /// Distributed memory backend trait.
 #[async_trait]
@@ -87,10 +83,12 @@ pub async fn create_memory(config: &MemoryConfig) -> Result<Arc<dyn DistributedM
 }
 
 /// Redis-backed distributed memory.
+/// 
+/// Uses `ConnectionManager` which provides interior mutability and is
+/// designed to be cheaply cloneable for concurrent operations.
 pub struct RedisMemory {
     client: RedisClient,
-    connection: RwLock<ConnectionManager>,
-    config: MemoryConfig,
+    connection: ConnectionManager,
 }
 
 impl RedisMemory {
@@ -100,9 +98,9 @@ impl RedisMemory {
             RedisClient::open(config.redis_url.clone())
                 .map_err(|e| DistributedError::Memory(format!("Failed to connect to Redis: {}", e)))?
         } else {
-            // Cluster mode
-            let nodes: Vec<_> = config.redis_cluster.iter().map(|s| s.as_str()).collect();
-            RedisClient::open(nodes)
+            // Cluster mode - use the first node as the connection point
+            // In production, you'd use redis::cluster::ClusterClient here
+            RedisClient::open(config.redis_cluster[0].clone())
                 .map_err(|e| DistributedError::Memory(format!("Failed to connect to Redis cluster: {}", e)))?
         };
 
@@ -115,34 +113,35 @@ impl RedisMemory {
 
         Ok(Self {
             client,
-            connection: RwLock::new(connection),
-            config: config.clone(),
+            connection,
         })
     }
 
-    /// Get the connection.
-    async fn conn(&self) -> tokio::sync::RwLockReadGuard<'_, ConnectionManager> {
-        self.connection.read().await
+    /// Get a clone of the connection.
+    /// 
+    /// `ConnectionManager` uses interior mutability and is cheap to clone.
+    fn conn(&self) -> ConnectionManager {
+        self.connection.clone()
     }
 }
 
 #[async_trait]
 impl DistributedMemory for RedisMemory {
     async fn get(&self, key: &str) -> Result<Option<Vec<u8>>> {
-        let mut conn = self.conn().await;
+        let mut conn = self.conn();
         let value: Option<Vec<u8>> = conn.get(key).await
             .map_err(|e| DistributedError::Memory(format!("Redis get error: {}", e)))?;
         Ok(value)
     }
 
     async fn set(&self, key: &str, value: Vec<u8>, ttl_secs: Option<u64>) -> Result<()> {
-        let mut conn = self.conn().await;
+        let mut conn = self.conn();
         
         if let Some(ttl) = ttl_secs {
-            conn.set_ex(key, value, ttl as usize).await
+            let _: () = conn.set_ex(key, value, ttl).await
                 .map_err(|e| DistributedError::Memory(format!("Redis set error: {}", e)))?;
         } else {
-            conn.set(key, value).await
+            let _: () = conn.set(key, value).await
                 .map_err(|e| DistributedError::Memory(format!("Redis set error: {}", e)))?;
         }
         
@@ -150,49 +149,50 @@ impl DistributedMemory for RedisMemory {
     }
 
     async fn delete(&self, key: &str) -> Result<bool> {
-        let mut conn = self.conn().await;
+        let mut conn = self.conn();
         let deleted: i32 = conn.del(key).await
             .map_err(|e| DistributedError::Memory(format!("Redis delete error: {}", e)))?;
         Ok(deleted > 0)
     }
 
     async fn exists(&self, key: &str) -> Result<bool> {
-        let mut conn = self.conn().await;
+        let mut conn = self.conn();
         let exists: bool = conn.exists(key).await
             .map_err(|e| DistributedError::Memory(format!("Redis exists error: {}", e)))?;
         Ok(exists)
     }
 
     async fn mget(&self, keys: &[&str]) -> Result<Vec<Option<Vec<u8>>>> {
-        let mut conn = self.conn().await;
+        let mut conn = self.conn();
         let values: Vec<Option<Vec<u8>>> = conn.get(keys).await
             .map_err(|e| DistributedError::Memory(format!("Redis mget error: {}", e)))?;
         Ok(values)
     }
 
     async fn mset(&self, items: &[(String, Vec<u8>)], ttl_secs: Option<u64>) -> Result<()> {
-        let mut conn = self.conn().await;
+        let mut conn = self.conn();
         
         // Use pipeline for efficiency
-        let pipeline = redis::pipe();
+        let _pipeline = redis::pipe();
         
         if let Some(ttl) = ttl_secs {
             // Use atomic MSET with TTL
-            redis::cmd("MSET")
+            // Use MSET with pipelined EXPIRE
+            let _: () = redis::cmd("MSET")
                 .arg(items.iter().map(|(k, v)| (k.clone(), v.clone())).collect::<Vec<_>>())
-                .query_async(&mut *conn)
+                .query_async(&mut conn)
                 .await
                 .map_err(|e| DistributedError::Memory(format!("Redis mset error: {}", e)))?;
             
             // Set TTLs individually
             for (key, _) in items {
-                conn.expire(key, ttl as i64).await
+                let _: () = conn.expire(key, ttl as i64).await
                     .map_err(|e| DistributedError::Memory(format!("Redis expire error: {}", e)))?;
             }
         } else {
-            redis::cmd("MSET")
+            let _: () = redis::cmd("MSET")
                 .arg(items.iter().map(|(k, v)| (k.clone(), v.clone())).collect::<Vec<_>>())
-                .query_async(&mut *conn)
+                .query_async(&mut conn)
                 .await
                 .map_err(|e| DistributedError::Memory(format!("Redis mset error: {}", e)))?;
         }
@@ -201,7 +201,7 @@ impl DistributedMemory for RedisMemory {
     }
 
     async fn keys(&self, prefix: &str) -> Result<Vec<String>> {
-        let mut conn = self.conn().await;
+        let mut conn = self.conn();
         let pattern = format!("{}*", prefix);
         let keys: Vec<String> = conn.keys(&pattern).await
             .map_err(|e| DistributedError::Memory(format!("Redis keys error: {}", e)))?;
@@ -210,7 +210,7 @@ impl DistributedMemory for RedisMemory {
 
     async fn acquire_lock(&self, lock_name: &str, holder: &str, ttl_secs: u64) -> Result<bool> {
         let key = format!("lock:{}", lock_name);
-        let mut conn = self.conn().await;
+        let mut conn = self.conn();
         
         // Use SET with NX (only if not exists) and EX (expire)
         let result: Option<String> = redis::cmd("SET")
@@ -219,7 +219,7 @@ impl DistributedMemory for RedisMemory {
             .arg("NX")
             .arg("EX")
             .arg(ttl_secs)
-            .query_async(&mut *conn)
+            .query_async(&mut conn)
             .await
             .map_err(|e| DistributedError::Memory(format!("Redis lock error: {}", e)))?;
         
@@ -228,7 +228,7 @@ impl DistributedMemory for RedisMemory {
 
     async fn release_lock(&self, lock_name: &str, holder: &str) -> Result<bool> {
         let key = format!("lock:{}", lock_name);
-        let mut conn = self.conn().await;
+        let mut conn = self.conn();
         
         // Use Lua script for atomic check-and-delete
         let script = r#"
@@ -242,7 +242,7 @@ impl DistributedMemory for RedisMemory {
         let result: i32 = redis::Script::new(script)
             .key(&key)
             .arg(holder)
-            .invoke_async(&mut *conn)
+            .invoke_async(&mut conn)
             .await
             .map_err(|e| DistributedError::Memory(format!("Redis unlock error: {}", e)))?;
         
@@ -251,7 +251,7 @@ impl DistributedMemory for RedisMemory {
 
     async fn renew_lock(&self, lock_name: &str, holder: &str, ttl_secs: u64) -> Result<bool> {
         let key = format!("lock:{}", lock_name);
-        let mut conn = self.conn().await;
+        let mut conn = self.conn();
         
         // Check if we still hold the lock and renew it
         let script = r#"
@@ -266,7 +266,7 @@ impl DistributedMemory for RedisMemory {
             .key(&key)
             .arg(holder)
             .arg(ttl_secs)
-            .invoke_async(&mut *conn)
+            .invoke_async(&mut conn)
             .await
             .map_err(|e| DistributedError::Memory(format!("Redis renew error: {}", e)))?;
         
@@ -274,14 +274,14 @@ impl DistributedMemory for RedisMemory {
     }
 
     async fn publish(&self, channel: &str, message: Vec<u8>) -> Result<u64> {
-        let mut conn = self.conn().await;
+        let mut conn = self.conn();
         let receivers: i64 = conn.publish(channel, message).await
             .map_err(|e| DistributedError::Memory(format!("Redis publish error: {}", e)))?;
         Ok(receivers as u64)
     }
 
     async fn subscribe(&self, channel: &str) -> Result<Box<dyn MemorySubscription>> {
-        let pubsub = self.client.get_async_pubsub().await
+        let mut pubsub = self.client.get_async_pubsub().await
             .map_err(|e| DistributedError::Memory(format!("Redis subscribe error: {}", e)))?;
         
         pubsub.subscribe(channel).await
@@ -322,6 +322,7 @@ impl MemorySubscription for RedisSubscription {
 pub struct GossipMemory {
     data: DashMap<String, (Vec<u8>, u64)>, // key -> (value, version)
     locks: DashMap<String, (String, std::time::Instant)>, // lock_name -> (holder, expiry)
+    #[allow(dead_code)]
     config: MemoryConfig,
 }
 
@@ -357,10 +358,10 @@ impl DistributedMemory for GossipMemory {
         Ok(self.data.get(key).map(|entry| entry.value().0.clone()))
     }
 
-    async fn set(&self, key: &str, value: Vec<u8>, ttl_secs: Option<u64>) -> Result<()> {
+    async fn set(&self, key: &str, value: Vec<u8>, _ttl_secs: Option<u64>) -> Result<()> {
         let version = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
+            .expect("System time should be after UNIX epoch")
             .as_secs();
         
         // Simple conflict resolution: higher version wins
@@ -465,6 +466,7 @@ impl DistributedMemory for GossipMemory {
 /// etcd-based distributed memory.
 pub struct EtcdMemory {
     client: etcd_client::Client,
+    #[allow(dead_code)]
     config: MemoryConfig,
 }
 
@@ -591,7 +593,7 @@ impl DistributedMemory for EtcdMemory {
         Ok(false)
     }
 
-    async fn renew_lock(&self, lock_name: &str, holder: &str, ttl_secs: u64) -> Result<bool> {
+    async fn renew_lock(&self, lock_name: &str, holder: &str, _ttl_secs: u64) -> Result<bool> {
         let key = format!("/locks/{}", lock_name);
         
         // In etcd, we need to keep the lease alive

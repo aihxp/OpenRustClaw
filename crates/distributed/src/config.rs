@@ -107,7 +107,7 @@ pub struct DiscoveryConfig {
 impl Default for DiscoveryConfig {
     fn default() -> Self {
         Self {
-            backend: DiscoveryBackend::Gossip,
+            backend: DiscoveryBackend::default(),
             seed_nodes: Vec::new(),
             etcd_endpoints: Vec::new(),
             consul_addr: None,
@@ -120,14 +120,15 @@ impl Default for DiscoveryConfig {
 }
 
 /// Discovery backend type.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum DiscoveryBackend {
+    /// Use gossip protocol (SWIM-based) - default.
+    #[default]
     /// Use etcd for service discovery.
     Etcd,
     /// Use Consul for service discovery.
     Consul,
-    /// Use gossip protocol (SWIM-based).
     Gossip,
     /// Static configuration only.
     Static,
@@ -300,7 +301,7 @@ pub struct LoadBalancerConfig {
 impl Default for LoadBalancerConfig {
     fn default() -> Self {
         Self {
-            strategy: LoadBalanceStrategy::RoundRobin,
+            strategy: LoadBalanceStrategy::default(),
             sticky_sessions: default_sticky_sessions(),
             session_timeout_secs: default_session_timeout_secs(),
             consistent_hashing: default_consistent_hashing(),
@@ -310,9 +311,11 @@ impl Default for LoadBalancerConfig {
 }
 
 /// Load balancing strategy.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum LoadBalanceStrategy {
+    /// Round-robin distribution - default.
+    #[default]
     /// Round-robin distribution.
     RoundRobin,
     /// Least connections.
@@ -372,7 +375,7 @@ pub struct MemoryConfig {
 impl Default for MemoryConfig {
     fn default() -> Self {
         Self {
-            backend: MemoryBackend::Redis,
+            backend: MemoryBackend::default(),
             redis_url: default_redis_url(),
             redis_cluster: Vec::new(),
             cache_ttl_secs: default_cache_ttl_secs(),
@@ -384,9 +387,11 @@ impl Default for MemoryConfig {
 }
 
 /// Memory backend type.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum MemoryBackend {
+    /// Use Redis for distributed memory - default.
+    #[default]
     /// Use Redis for distributed memory.
     Redis,
     /// Use in-memory with gossip replication.

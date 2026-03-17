@@ -5,7 +5,7 @@ use crate::error::{CanvasError, CanvasResult};
 use serde_json::Value;
 use std::collections::HashMap;
 use tokio::sync::broadcast;
-use tracing::{debug, trace, warn};
+use tracing::{debug, trace};
 use uuid::Uuid;
 
 /// Default channel capacity for broadcast updates

@@ -5,13 +5,19 @@
 //! AZURE_OPENAI_API_KEY=your-key \
 //! AZURE_OPENAI_RESOURCE=your-resource \
 //! AZURE_OPENAI_DEPLOYMENT=your-deployment \
-//! cargo run --example assistants
+//! cargo run --example assistants --features assistants
 //! ```
 
-use azure_openai::{AzureOpenAIClient, assistants::*};
+#[cfg(not(feature = "assistants"))]
+fn main() {
+    println!("This example requires the 'assistants' feature.");
+    println!("Run with: cargo run --example assistants --features assistants");
+}
 
+#[cfg(feature = "assistants")]
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    use azure_openai::{AzureOpenAIClient, assistants::*};
     // Load configuration from environment
     let api_key = std::env::var("AZURE_OPENAI_API_KEY")
         .expect("AZURE_OPENAI_API_KEY environment variable not set");

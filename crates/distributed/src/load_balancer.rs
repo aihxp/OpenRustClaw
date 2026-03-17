@@ -2,17 +2,18 @@
 
 use crate::config::{LoadBalanceStrategy, LoadBalancerConfig};
 use crate::error::{DistributedError, Result};
-use crate::node::{NodeId, NodeInfo, NodeMetrics};
+use crate::node::{NodeId, NodeInfo};
 use dashmap::DashMap;
 use siphasher::sip::SipHasher13;
-use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
-use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tracing::{debug, trace, warn};
+use tracing::{debug, info, trace, warn};
+
+#[cfg(test)]
+use futures::FutureExt;
 
 /// Load balancer for distributing requests across nodes.
 pub struct LoadBalancer {
@@ -24,7 +25,7 @@ pub struct LoadBalancer {
     /// Response times per node.
     response_times: DashMap<NodeId, RwLock<Vec<f64>>>,
     /// Session affinity mapping (session_id -> node_id).
-    session_affinity: DashMap<String, NodeId>,
+    pub session_affinity: DashMap<String, NodeId>,
     /// Round-robin counter.
     round_robin_counter: AtomicU64,
 }
@@ -276,7 +277,8 @@ pub struct SessionRouter {
     load_balancer: Arc<LoadBalancer>,
     /// Local node ID.
     local_id: NodeId,
-    /// Proxy configuration for routing to other nodes.
+    /// Proxy configuration for routing to other nodes (reserved for future use).
+    #[allow(dead_code)]
     proxy_config: ProxyConfig,
 }
 

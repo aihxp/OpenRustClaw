@@ -69,6 +69,10 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
                     config.channels.gmail_pubsub.enabled = true;
                     info!("Gmail Pub/Sub channel enabled");
                 }
+                _ => {
+                    // Other channels not yet fully implemented in CLI
+                    info!("Channel {:?} not yet fully implemented in CLI", channel_type);
+                }
             }
         }
     }
@@ -149,14 +153,20 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
             info!("Starting Telegram channel...");
             let telegram_config = config.channels.telegram.clone();
             let handle = tokio::spawn(async move {
-                let mut channel = ChannelFactory::create_telegram(telegram_config);
-                if let Err(e) = channel.connect().await {
-                    error!(error = %e, "Failed to connect Telegram channel");
-                } else {
-                    info!("Telegram channel connected");
-                    // Keep the channel alive
-                    loop {
-                        tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+                match ChannelFactory::create_telegram(telegram_config) {
+                    Ok(mut channel) => {
+                        if let Err(e) = channel.connect().await {
+                            error!(error = %e, "Failed to connect Telegram channel");
+                        } else {
+                            info!("Telegram channel connected");
+                            // Keep the channel alive
+                            loop {
+                                tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        error!(error = %e, "Failed to create Telegram channel");
                     }
                 }
             });
@@ -172,14 +182,20 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
             info!("Starting Discord channel...");
             let discord_config = config.channels.discord.clone();
             let handle = tokio::spawn(async move {
-                let mut channel = ChannelFactory::create_discord(discord_config);
-                if let Err(e) = channel.connect().await {
-                    error!(error = %e, "Failed to connect Discord channel");
-                } else {
-                    info!("Discord channel connected");
-                    // Keep the channel alive
-                    loop {
-                        tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+                match ChannelFactory::create_discord(discord_config) {
+                    Ok(mut channel) => {
+                        if let Err(e) = channel.connect().await {
+                            error!(error = %e, "Failed to connect Discord channel");
+                        } else {
+                            info!("Discord channel connected");
+                            // Keep the channel alive
+                            loop {
+                                tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        error!(error = %e, "Failed to create Discord channel");
                     }
                 }
             });
@@ -195,14 +211,20 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
             info!("Starting Slack channel...");
             let slack_config = config.channels.slack.clone();
             let handle = tokio::spawn(async move {
-                let mut channel = ChannelFactory::create_slack(slack_config);
-                if let Err(e) = channel.connect().await {
-                    error!(error = %e, "Failed to connect Slack channel");
-                } else {
-                    info!("Slack channel connected");
-                    // Keep the channel alive
-                    loop {
-                        tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+                match ChannelFactory::create_slack(slack_config) {
+                    Ok(mut channel) => {
+                        if let Err(e) = channel.connect().await {
+                            error!(error = %e, "Failed to connect Slack channel");
+                        } else {
+                            info!("Slack channel connected");
+                            // Keep the channel alive
+                            loop {
+                                tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        error!(error = %e, "Failed to create Slack channel");
                     }
                 }
             });

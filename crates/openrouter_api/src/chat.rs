@@ -4,7 +4,7 @@ use crate::client::OpenRouterClient;
 use crate::constants::endpoints;
 use crate::error::Result;
 use crate::routing::RouteStrategy;
-use crate::types::{ChatMessage, ChatResponse, Role, Tool, ToolCall};
+use crate::types::{ChatMessage, ChatResponse, Role, Tool};
 
 /// Client for chat completions.
 #[derive(Debug)]

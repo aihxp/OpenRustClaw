@@ -6,7 +6,7 @@
 //! ```
 
 use anthropic_rust::{
-    AnthropicClient, ContentBlock, Message, MessageRequest, MessageRole, Tool, ToolResult,
+    AnthropicClient, ContentBlock, Message, MessageRequest, Role, Tool, ToolResult,
     ToolUse,
 };
 
@@ -48,16 +48,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Check if Claude wants to use a tool
     if response.has_tool_use() {
-        let tool_uses = response.tool_uses();
+        let tool_uses = response.tool_uses().to_vec();
         println!("\nClaude wants to use {} tool(s):", tool_uses.len());
 
         // Build the next message with tool results
         let mut messages = vec![
             Message::user("What's the weather like in Tokyo?"),
-            Message::with_content(MessageRole::Assistant, response.content),
+            Message::with_content(Role::Assistant, response.content.clone()),
         ];
 
-        for tool_use in tool_uses {
+        for tool_use in &tool_uses {
             println!("\n  Tool: {} (ID: {})", tool_use.name, tool_use.id);
             println!("  Input: {}", serde_json::to_string_pretty(&tool_use.input)?);
 
@@ -66,10 +66,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("  Result: {}", result.content);
 
             // Add tool result to messages
-            messages.push(Message {
-                role: MessageRole::User,
-                content: vec![ContentBlock::ToolResult(result)],
-            });
+            messages.push(Message::with_content(
+                Role::User,
+                vec![ContentBlock::ToolResult(result)],
+            ));
         }
 
         // Send follow-up request with tool results
@@ -81,7 +81,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .string_property("location", "City name", true)
                 .enum_property("unit", "Unit", vec!["celsius", "fahrenheit"], false)
                 .build()])
-            .messages(messages)
+            .message(Role::User, "Continue with the weather information.")
             .max_tokens(1024)
             .build();
 

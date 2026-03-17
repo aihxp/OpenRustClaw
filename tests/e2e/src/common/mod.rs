@@ -15,7 +15,7 @@ use openrustclaw_core::traits::{LlmProvider, Tool, ToolContext};
 use openrustclaw_core::types::{
     CompletionRequest, CompletionResponse, CoreEntry, FinishReason, MemoryEntry, MemoryQuery,
     MemorySource, MemoryType, Message, Role, SkillCapability, StreamChunk,
-    TokenUsage, ToolCall, ToolFormat, ToolOutput, ToolDefinition,
+    TokenUsage, ToolCall, ToolFormat, ToolOutput,
 };
 use openrustclaw_db::memory_store::SqliteMemoryStore;
 use openrustclaw_db::core_memory_store::SqliteCoreMemoryStore;

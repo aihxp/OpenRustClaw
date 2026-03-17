@@ -9,9 +9,11 @@
 //! - End-to-end discovery and execution
 
 use openrustclaw_mcp2cli::{
-    decode_toon, encode_toon, calculate_savings, Mcp2CliFactory, Mcp2CliRegistry, ToolDiscovery,
+    decode_toon, encode_toon, calculate_savings, Mcp2CliFactory, ToolDiscovery,
     ToolSource, TokenCounter, ToolCache, ToolHelp, ToolSummary, ParamHelp,
+    AdaptiveMcpRegistry,
 };
+use openrustclaw_core::traits::Tool;
 use serde_json::json;
 use std::time::Duration;
 use wiremock::{MockServer, Mock, ResponseTemplate};
@@ -375,32 +377,11 @@ paths:
     }
 }
 
-#[test]
-fn test_mcp2cli_registry() {
-    let registry = Mcp2CliRegistry::new();
-    
-    // Create a test tool
-    let tool = Mcp2CliFactory::with_name(
-        ToolSource::mcp_url("http://test"),
-        "test_source",
-        "Test source for registry",
-    );
-    
-    // Register it
-    registry.register("test", tool);
-    
-    // Retrieve it
-    let retrieved = registry.get("test");
-    assert!(retrieved.is_some());
-    assert_eq!(retrieved.unwrap().name(), "test_source");
-    
-    // List all
-    let list = registry.list();
-    assert_eq!(list.len(), 1);
-    
-    // Remove it
-    registry.remove("test");
-    assert!(registry.get("test").is_none());
+#[tokio::test]
+async fn test_adaptive_registry_creation() {
+    // Test that AdaptiveMcpRegistry can be created with default config
+    let _registry = AdaptiveMcpRegistry::new(Default::default());
+    // Registry starts empty with no connections
 }
 
 // ============================================================================

@@ -23,7 +23,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Streaming response:\n");
 
-    let mut stream = client.chat().stream(request).await?;
+    let chat = client.chat();
+    let mut stream = chat.stream(request).await?;
     while let Some(result) = stream.next().await {
         match result {
             Ok(chunk) => {

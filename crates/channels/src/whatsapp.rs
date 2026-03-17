@@ -27,7 +27,7 @@ use std::num::NonZeroU32;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::sync::{mpsc, Mutex, RwLock};
-use tokio::time::{interval, timeout};
+use tokio::time::interval;
 use tracing::{debug, error, info, trace, warn};
 use uuid::Uuid;
 
@@ -529,7 +529,7 @@ impl WhatsAppChannel {
         let should_reconnect = Arc::clone(&self.should_reconnect);
         let reconnect_attempts = Arc::clone(&self.reconnect_attempts);
         let config = self.config.clone();
-        let me = Arc::new(self as *const Self);
+        let _me = Arc::new(self as *const Self);
 
         tokio::spawn(async move {
             let mut check_interval = interval(Duration::from_secs(5));

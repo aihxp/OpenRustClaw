@@ -1,10 +1,15 @@
 //! Integration tests for the Cohere SDK.
 
 use cohere::{
-    CohereClient, ChatRequest, EmbedRequest, RerankRequest,
-    Message, MessageRole, Document, Example, InputType, ClientConfig,
+    CohereClient, ChatRequest, EmbedRequest,
+    Message, MessageRole, Document,
+    InputType, ClientConfig,
     Model, EmbeddingModel,
 };
+#[cfg(feature = "rerank")]
+use cohere::RerankRequest;
+#[cfg(feature = "classify")]
+use cohere::Example;
 use std::time::Duration;
 
 #[test]
@@ -77,6 +82,7 @@ fn test_embed_request_builder() {
     assert_eq!(request.input_type, Some(InputType::SearchDocument));
 }
 
+#[cfg(feature = "rerank")]
 #[test]
 fn test_rerank_request_builder() {
     let docs = vec!["doc1".to_string(), "doc2".to_string(), "doc3".to_string()];
@@ -121,6 +127,7 @@ fn test_document_creation() {
     assert!(doc.extra.is_some());
 }
 
+#[cfg(feature = "classify")]
 #[test]
 fn test_example_creation() {
     let example = Example::new("This is great!", "positive");

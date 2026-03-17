@@ -11,8 +11,6 @@ use crate::messaging::GrpcClientPool;
 use crate::node::{LocalNode, NodeId, NodeInfo, NodeMetrics, NodeRole, NodeState};
 use crate::session::SessionManager;
 use crate::worker::WorkerManager;
-use chrono::Utc;
-use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tokio::time::{interval, sleep, Duration};
@@ -32,7 +30,8 @@ pub struct Coordinator {
     load_balancer: Arc<LoadBalancer>,
     /// Session manager.
     session_manager: Arc<SessionManager>,
-    /// Worker manager.
+    /// Worker manager (reserved for future use).
+    #[allow(dead_code)]
     worker_manager: Arc<WorkerManager>,
     /// Distributed memory.
     memory: Arc<dyn DistributedMemory>,
@@ -63,13 +62,13 @@ impl Coordinator {
             config.clone(),
         );
 
+        let client_pool = Arc::new(GrpcClientPool::new(5));
+
         let worker_manager = WorkerManager::new(
             cluster.clone(),
             load_balancer.clone(),
             client_pool.clone(),
         );
-
-        let client_pool = Arc::new(GrpcClientPool::new(5));
 
         Ok(Arc::new(Self {
             local_node,
@@ -93,7 +92,7 @@ impl Coordinator {
         *self.running.write().await = true;
 
         // Start Raft consensus
-        self.raft.start().await?;
+        self.raft.clone().start().await?;
 
         // Bootstrap cluster if configured
         if self.config.bootstrap_leader {
@@ -227,7 +226,7 @@ impl Coordinator {
     }
 
     /// Handle a node joining.
-    async fn on_node_joined(&self, node: NodeInfo) {
+    async fn on_node_joined(&self, _node: NodeInfo) {
         // Rebalance sessions if needed
         self.rebalance_sessions().await;
         
@@ -432,7 +431,7 @@ impl Coordinator {
     }
 
     /// Collect metrics from a specific node.
-    async fn collect_node_metrics(&self, node: &NodeInfo) -> Result<NodeMetrics> {
+    async fn collect_node_metrics(&self, _node: &NodeInfo) -> Result<NodeMetrics> {
         // This would use gRPC to collect metrics from the node
         // For now, return default
         Ok(NodeMetrics::default())

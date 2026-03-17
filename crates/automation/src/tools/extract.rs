@@ -3,7 +3,7 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use tracing::{debug, info};
+use tracing::info;
 
 use crate::browser::Browser;
 use crate::tools::{error_response, success_response, AutomationTool, ToolContext};
@@ -146,7 +146,7 @@ impl AutomationTool for ExtractContentTool {
                     anyhow::anyhow!("Failed to extract links: {}", e)
                 })?;
                 
-                let max = args.max_results.unwrap_or(100);
+                let _max = args.max_results.unwrap_or(100);
                 format!("Extracted links:\n{}", 
                     serde_json::to_string_pretty(&links).unwrap_or_default())
             }

@@ -5,9 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
 use tokio::sync::RwLock;
-use uuid::Uuid;
 
 /// Unique identifier for a node in the cluster.
 pub type NodeId = String;
@@ -178,9 +176,14 @@ impl LocalNode {
         self.info.blocking_read().id.clone()
     }
 
-    /// Get a clone of the node info.
+    /// Get a clone of the node info (async).
     pub async fn info(&self) -> NodeInfo {
         self.info.read().await.clone()
+    }
+
+    /// Get a clone of the node info (blocking).
+    pub fn info_blocking(&self) -> NodeInfo {
+        self.info.blocking_read().clone()
     }
 
     /// Update node state.
@@ -268,23 +271,7 @@ impl LocalNode {
     }
 }
 
-impl Clone for NodeInfo {
-    fn clone(&self) -> Self {
-        Self {
-            id: self.id.clone(),
-            name: self.name.clone(),
-            cluster_addr: self.cluster_addr,
-            api_addr: self.api_addr,
-            role: self.role,
-            state: self.state,
-            metadata: self.metadata.clone(),
-            joined_at: self.joined_at,
-            last_heartbeat: self.last_heartbeat,
-            term: self.term,
-            log_index: self.log_index,
-        }
-    }
-}
+// Note: NodeInfo derives Clone via serde, no manual impl needed
 
 /// Metrics for a node.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

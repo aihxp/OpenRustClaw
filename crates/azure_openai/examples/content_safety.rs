@@ -5,13 +5,19 @@
 //! AZURE_OPENAI_API_KEY=your-key \
 //! AZURE_OPENAI_RESOURCE=your-resource \
 //! AZURE_OPENAI_DEPLOYMENT=your-deployment \
-//! cargo run --example content_safety
+//! cargo run --example content_safety --features content-safety
 //! ```
 
-use azure_openai::{AzureOpenAIClient, content_safety::*};
+#[cfg(not(feature = "content-safety"))]
+fn main() {
+    println!("This example requires the 'content-safety' feature.");
+    println!("Run with: cargo run --example content_safety --features content-safety");
+}
 
+#[cfg(feature = "content-safety")]
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    use azure_openai::{AzureOpenAIClient, content_safety::*};
     // Load configuration from environment
     let api_key = std::env::var("AZURE_OPENAI_API_KEY")
         .expect("AZURE_OPENAI_API_KEY environment variable not set");

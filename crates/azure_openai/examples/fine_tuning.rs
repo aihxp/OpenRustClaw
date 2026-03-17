@@ -6,13 +6,19 @@
 //! AZURE_OPENAI_RESOURCE=your-resource \
 //! AZURE_OPENAI_DEPLOYMENT=your-deployment \
 //! TRAINING_FILE_ID=your-training-file-id \
-//! cargo run --example fine_tuning
+//! cargo run --example fine_tuning --features fine-tuning
 //! ```
 
-use azure_openai::{AzureOpenAIClient, fine_tuning::*};
+#[cfg(not(feature = "fine-tuning"))]
+fn main() {
+    println!("This example requires the 'fine-tuning' feature.");
+    println!("Run with: cargo run --example fine_tuning --features fine-tuning");
+}
 
+#[cfg(feature = "fine-tuning")]
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    use azure_openai::{AzureOpenAIClient, fine_tuning::*};
     // Load configuration from environment
     let api_key = std::env::var("AZURE_OPENAI_API_KEY")
         .expect("AZURE_OPENAI_API_KEY environment variable not set");

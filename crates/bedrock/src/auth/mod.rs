@@ -4,7 +4,7 @@
 //! for authenticating requests to AWS Bedrock.
 
 use std::fmt;
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 
 use aws_sigv4::http_request::{sign, SignableBody, SignableRequest, SigningSettings};
 use aws_sigv4::sign::v4;

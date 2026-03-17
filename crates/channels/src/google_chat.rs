@@ -27,7 +27,7 @@ use async_trait::async_trait;
 use governor::{Quota, RateLimiter};
 use std::num::NonZeroU32;
 use tokio::sync::{mpsc, Mutex, RwLock};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 use openrustclaw_core::config::{GoogleChatConfig, GoogleChatResponseMode};
@@ -438,7 +438,7 @@ impl Channel for GoogleChatChannel {
         };
 
         // Get access token
-        let token = {
+        let _token = {
             let token_guard = self.access_token.read().await;
             token_guard.clone().unwrap_or_else(|| "placeholder".to_string())
         };
@@ -644,7 +644,7 @@ impl GoogleChatWebhookHandler {
         Ok(None)
     }
 
-    async fn handle_card_click_event(&self, event: ChatEvent) -> Result<Option<serde_json::Value>> {
+    async fn handle_card_click_event(&self, _event: ChatEvent) -> Result<Option<serde_json::Value>> {
         // Handle card button clicks
         debug!("Card clicked event received");
         // In a full implementation, this would parse the action and route it appropriately

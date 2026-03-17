@@ -79,7 +79,7 @@ impl CdpBackend {
     }
 
     /// Send a CDP command.
-    async fn send_command(&self, method: &str, params: Value) -> Result<Value> {
+    async fn send_command(&self, method: &str, _params: Value) -> Result<Value> {
         trace!(method = %method, "Sending CDP command");
         
         // In a real implementation, this would:
@@ -211,7 +211,7 @@ impl BrowserContextBackend for CdpContext {
         debug!(count = cookies.len(), "Adding cookies via CDP");
         
         for cookie in cookies {
-            let params = serde_json::json!({
+            let _params = serde_json::json!({
                 "name": cookie.name,
                 "value": cookie.value,
                 "domain": cookie.domain,
@@ -275,7 +275,7 @@ pub struct CdpPage {
 }
 
 impl CdpPage {
-    fn new(websocket_url: &str, target_id: &str, config: &BrowserConfig) -> Result<Self> {
+    fn new(_websocket_url: &str, target_id: &str, config: &BrowserConfig) -> Result<Self> {
         Ok(Self {
             target_id: target_id.to_string(),
             session_id: uuid::Uuid::new_v4().to_string(),
@@ -283,7 +283,7 @@ impl CdpPage {
         })
     }
 
-    async fn send_command(&self, method: &str, params: Value) -> Result<Value> {
+    async fn send_command(&self, method: &str, _params: Value) -> Result<Value> {
         trace!(target_id = %self.target_id, method = %method, "Sending CDP page command");
         Ok(Value::Null)
     }
@@ -295,7 +295,7 @@ impl PageBackend for CdpPage {
         debug!(url = %url, "Navigating via CDP");
         
         // Page.navigate
-        let result = self
+        let _result = self
             .send_command("Page.navigate", serde_json::json!({ "url": url }))
             .await?;
         
@@ -328,7 +328,7 @@ impl PageBackend for CdpPage {
         Ok(Some(Arc::new(CdpElement::new(selector, &self.session_id))))
     }
 
-    async fn query_selector_all(&self, selector: &str) -> Result<Vec<Arc<dyn ElementBackend>>> {
+    async fn query_selector_all(&self, _selector: &str) -> Result<Vec<Arc<dyn ElementBackend>>> {
         // DOM.querySelectorAll
         Ok(vec![])
     }
@@ -339,7 +339,7 @@ impl PageBackend for CdpPage {
         Ok(())
     }
 
-    async fn type_text(&self, selector: &str, text: &str) -> Result<()> {
+    async fn type_text(&self, selector: &str, _text: &str) -> Result<()> {
         debug!(selector = %selector, "Typing via CDP");
         // DOM.querySelector + Input.insertText / Input.dispatchKeyEvent
         Ok(())
@@ -365,7 +365,7 @@ impl PageBackend for CdpPage {
             crate::browser::ScreenshotFormat::Jpeg => "jpeg",
         };
         
-        let params = serde_json::json!({
+        let _params = serde_json::json!({
             "format": format,
             "quality": options.quality,
             "fullPage": options.full_page,
@@ -603,7 +603,7 @@ impl ElementBackend for CdpElement {
         Ok(())
     }
 
-    async fn type_text(&self, text: &str) -> Result<()> {
+    async fn type_text(&self, _text: &str) -> Result<()> {
         debug!(selector = %self.selector, "Typing via CDP");
         // Focus element, then Input.insertText
         Ok(())
@@ -639,7 +639,7 @@ impl ElementBackend for CdpElement {
         Ok(String::new())
     }
 
-    async fn get_attribute(&self, name: &str) -> Result<Option<String>> {
+    async fn get_attribute(&self, _name: &str) -> Result<Option<String>> {
         // DOM.getAttributes
         Ok(None)
     }
@@ -689,7 +689,7 @@ impl ElementBackend for CdpElement {
         Ok(Some(Arc::new(CdpElement::new(selector, &self.session_id))))
     }
 
-    async fn query_selector_all(&self, selector: &str) -> Result<Vec<Arc<dyn ElementBackend>>> {
+    async fn query_selector_all(&self, _selector: &str) -> Result<Vec<Arc<dyn ElementBackend>>> {
         Ok(vec![])
     }
 
@@ -697,7 +697,7 @@ impl ElementBackend for CdpElement {
         Ok(None)
     }
 
-    async fn evaluate(&self, script: &str) -> Result<Value> {
+    async fn evaluate(&self, _script: &str) -> Result<Value> {
         // Runtime.callFunctionOn with element as this
         Ok(Value::Null)
     }
@@ -738,7 +738,7 @@ impl FrameBackend for CdpFrame {
         Ok(Some(Arc::new(CdpElement::new(selector, &self.session_id))))
     }
 
-    async fn evaluate(&self, script: &str) -> Result<Value> {
+    async fn evaluate(&self, _script: &str) -> Result<Value> {
         Ok(Value::Null)
     }
 

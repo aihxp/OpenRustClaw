@@ -46,9 +46,10 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
+use base64::{engine::general_purpose::STANDARD, Engine};
 use chrono;
 use governor::{Quota, RateLimiter};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::num::NonZeroU32;
 use tokio::sync::{mpsc, Mutex, RwLock};
 use tracing::{debug, error, info, warn};
@@ -333,7 +334,7 @@ impl GmailPubSub {
     fn decode_base64(data: &str) -> Option<Vec<u8>> {
         // Gmail uses URL-safe base64 with possible padding issues
         let data = data.replace('-', "+").replace('_', "/");
-        base64::decode(&data).ok()
+        STANDARD.decode(&data).ok()
     }
 
     /// Parse a Gmail API message into an EmailMessage.
@@ -448,13 +449,13 @@ impl GmailPubSub {
     }
 
     /// Setup Gmail watch for this user.
-    async fn setup_watch(&self, token: &str) -> Result<WatchResponse> {
-        let url = format!(
+    async fn setup_watch(&self, _token: &str) -> Result<WatchResponse> {
+        let _url = format!(
             "https://gmail.googleapis.com/gmail/v1/users/{}/watch",
             self.config.user_email
         );
 
-        let body = serde_json::json!({
+        let _body = serde_json::json!({
             "labelIds": ["INBOX"],
             "topicName": format!("projects/{}/topics/{}-topic", self.config.project_id, self.config.subscription_name),
             "labelFilterBehavior": "INCLUDE"
@@ -470,7 +471,7 @@ impl GmailPubSub {
     }
 
     /// Get new messages since history_id.
-    async fn get_new_messages(&self, history_id: u64, token: &str) -> Result<Vec<MessageMetadata>> {
+    async fn get_new_messages(&self, history_id: u64, _token: &str) -> Result<Vec<MessageMetadata>> {
         // Placeholder implementation
         // Real implementation would call:
         // GET https://gmail.googleapis.com/gmail/v1/users/{userId}/history
@@ -483,7 +484,7 @@ impl GmailPubSub {
     }
 
     /// Get full message by ID.
-    async fn get_message(&self, id: &str, token: &str) -> Result<Option<EmailMessage>> {
+    async fn get_message(&self, id: &str, _token: &str) -> Result<Option<EmailMessage>> {
         // Placeholder implementation
         // Real implementation would call:
         // GET https://gmail.googleapis.com/gmail/v1/users/{userId}/messages/{id}
@@ -593,21 +594,21 @@ impl GmailPubSub {
     }
 
     /// Reply to a message.
-    async fn reply_to_message(&self, email_id: &str, body: &str, token: &str) -> Result<()> {
+    async fn reply_to_message(&self, email_id: &str, _body: &str, _token: &str) -> Result<()> {
         debug!(email_id = %email_id, "Replying to message");
         // POST https://gmail.googleapis.com/gmail/v1/users/{userId}/messages/{id}/send
         Ok(())
     }
 
     /// Add a label to a message.
-    async fn add_label(&self, email_id: &str, label: &str, token: &str) -> Result<()> {
+    async fn add_label(&self, email_id: &str, label: &str, _token: &str) -> Result<()> {
         debug!(email_id = %email_id, label = %label, "Adding label");
         // POST https://gmail.googleapis.com/gmail/v1/users/{userId}/messages/{id}/modify
         Ok(())
     }
 
     /// Remove a label from a message.
-    async fn remove_label(&self, email_id: &str, label: &str, token: &str) -> Result<()> {
+    async fn remove_label(&self, email_id: &str, label: &str, _token: &str) -> Result<()> {
         debug!(email_id = %email_id, label = %label, "Removing label");
         // POST https://gmail.googleapis.com/gmail/v1/users/{userId}/messages/{id}/modify
         Ok(())
@@ -620,21 +621,21 @@ impl GmailPubSub {
     }
 
     /// Delete a message.
-    async fn delete_message(&self, email_id: &str, token: &str) -> Result<()> {
+    async fn delete_message(&self, email_id: &str, _token: &str) -> Result<()> {
         debug!(email_id = %email_id, "Deleting message");
         // DELETE https://gmail.googleapis.com/gmail/v1/users/{userId}/messages/{id}
         Ok(())
     }
 
     /// Forward a message.
-    async fn forward_message(&self, email_id: &str, to: &str, body: &str, token: &str) -> Result<()> {
+    async fn forward_message(&self, email_id: &str, to: &str, _body: &str, _token: &str) -> Result<()> {
         debug!(email_id = %email_id, to = %to, "Forwarding message");
         // POST https://gmail.googleapis.com/gmail/v1/users/{userId}/messages/send
         Ok(())
     }
 
     /// Check if the email sender is in the allowlist.
-    fn is_sender_allowed(&self, from: &str) -> bool {
+    fn is_sender_allowed(&self, _from: &str) -> bool {
         // For now, all senders are allowed
         // In a full implementation, check against config.allowlist
         true
@@ -657,7 +658,7 @@ impl Channel for GmailPubSub {
             .get("gmail_message_id")
             .and_then(|v| v.as_str());
 
-        let thread_id = msg
+        let _thread_id = msg
             .metadata
             .get("gmail_thread_id")
             .and_then(|v| v.as_str());
@@ -796,7 +797,7 @@ impl GmailWebhookHandler {
             })?;
 
         // Decode base64 data
-        let decoded = base64::decode(data).map_err(|e| ChannelError::InvalidFormat {
+        let decoded = STANDARD.decode(data).map_err(|e| ChannelError::InvalidFormat {
             platform: "gmail".to_string(),
             message: format!("Failed to decode message data: {}", e),
         })?;

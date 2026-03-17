@@ -11,14 +11,12 @@
 //! - Event handling
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use async_trait::async_trait;
 use governor::{Quota, RateLimiter};
 use std::num::NonZeroU32;
 use tokio::sync::{mpsc, Mutex, RwLock};
-use tracing::{debug, error, info, warn};
-use uuid::Uuid;
+use tracing::{debug, info, warn};
 
 use openrustclaw_core::config::{SlackConfig, SlackMode};
 use openrustclaw_core::error::{ChannelError, Result};

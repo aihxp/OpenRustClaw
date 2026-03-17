@@ -6,14 +6,20 @@
 //! AZURE_OPENAI_RESOURCE=your-resource \
 //! AZURE_OPENAI_WHISPER_DEPLOYMENT=your-whisper-deployment \
 //! AUDIO_FILE=audio.mp3 \
-//! cargo run --example whisper
+//! cargo run --example whisper --features audio
 //! ```
 
-use azure_openai::{AzureOpenAIClient, TranscriptionRequest, TtsRequest, TtsVoice, TtsResponseFormat};
-use azure_openai::audio::{AudioResponseFormat, TimestampGranularity};
+#[cfg(not(feature = "audio"))]
+fn main() {
+    println!("This example requires the 'audio' feature.");
+    println!("Run with: cargo run --example whisper --features audio");
+}
 
+#[cfg(feature = "audio")]
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    use azure_openai::{AzureOpenAIClient, TranscriptionRequest, TtsRequest, TtsVoice};
+    use azure_openai::audio::{AudioResponseFormat, TimestampGranularity};
     // Load configuration from environment
     let api_key = std::env::var("AZURE_OPENAI_API_KEY")
         .expect("AZURE_OPENAI_API_KEY environment variable not set");

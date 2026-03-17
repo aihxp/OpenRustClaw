@@ -4,16 +4,13 @@ use crate::config::{DiscoveryBackend, DiscoveryConfig};
 use crate::error::{DistributedError, Result};
 use crate::node::{NodeId, NodeInfo, NodeRole};
 use async_trait::async_trait;
-use etcd_client::{Client as EtcdClient, WatchStream, Watcher};
+use etcd_client::Client as EtcdClient;
 use mdns_sd::{ServiceDaemon, ServiceEvent, ServiceInfo};
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use std::time::Duration;
 use tokio::sync::RwLock;
-use tokio::time::interval;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info};
 
 /// Service discovery trait.
 #[async_trait]
@@ -33,7 +30,10 @@ pub trait Discovery: Send + Sync {
 
 /// Stream of discovery events.
 pub trait DiscoveryStream: Send {
-    async fn next(&mut self) -> Result<Option<DiscoveryEvent>>;
+    /// Get the next discovery event.
+    fn next<'a>(
+        &'a mut self,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Option<DiscoveryEvent>>> + Send + 'a>>;
 }
 
 /// Discovery events.
@@ -199,7 +199,9 @@ impl Discovery for EtcdDiscovery {
 
 /// Consul-based discovery.
 pub struct ConsulDiscovery {
+    #[allow(dead_code)]
     config: DiscoveryConfig,
+    #[allow(dead_code)]
     local_id: NodeId,
 }
 
@@ -247,6 +249,7 @@ pub struct GossipDiscovery {
     mdns: ServiceDaemon,
     service_type: String,
     local_id: NodeId,
+    #[allow(dead_code)]
     nodes: Arc<RwLock<HashMap<NodeId, NodeInfo>>>,
 }
 
@@ -368,6 +371,7 @@ impl Discovery for GossipDiscovery {
 
 /// Static discovery using seed nodes.
 pub struct StaticDiscovery {
+    #[allow(dead_code)]
     seed_nodes: Vec<String>,
 }
 
@@ -409,10 +413,11 @@ struct ChannelDiscoveryStream {
     rx: tokio::sync::mpsc::Receiver<DiscoveryEvent>,
 }
 
-#[async_trait]
 impl DiscoveryStream for ChannelDiscoveryStream {
-    async fn next(&mut self) -> Result<Option<DiscoveryEvent>> {
-        Ok(self.rx.recv().await)
+    fn next<'a>(&'a mut self) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Option<DiscoveryEvent>>> + Send + 'a>> {
+        Box::pin(async move {
+            Ok(self.rx.recv().await)
+        })
     }
 }
 

@@ -113,7 +113,7 @@ impl ToolInputSchema {
 
         self.properties
             .as_mut()
-            .unwrap()
+            .expect("properties always initialized in object()")
             .insert(name.clone(), prop.into());
         self
     }
@@ -131,7 +131,7 @@ impl ToolInputSchema {
 
         self.properties
             .as_mut()
-            .unwrap()
+            .expect("properties always initialized in object()")
             .insert(name.clone(), prop.into());
         self
     }
@@ -149,7 +149,7 @@ impl ToolInputSchema {
 
         self.properties
             .as_mut()
-            .unwrap()
+            .expect("properties always initialized in object()")
             .insert(name.clone(), prop.into());
         self
     }
@@ -167,14 +167,17 @@ impl ToolInputSchema {
 
         self.properties
             .as_mut()
-            .unwrap()
+            .expect("properties always initialized in object()")
             .insert(name.clone(), prop.into());
         self
     }
 
     /// Make a property required.
     pub fn required(mut self, name: impl Into<String>) -> Self {
-        self.required.as_mut().unwrap().push(name.into());
+        self.required
+            .as_mut()
+            .expect("required always initialized in object()")
+            .push(name.into());
         self
     }
 
@@ -197,7 +200,7 @@ impl ToolInputSchema {
 
         self.properties
             .as_mut()
-            .unwrap()
+            .expect("properties always initialized in object()")
             .insert(name.clone(), prop.into());
         self
     }

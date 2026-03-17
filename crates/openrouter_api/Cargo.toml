@@ -62,6 +62,4 @@ path = "examples/chat_completion.rs"
 name = "routing"
 path = "examples/routing.rs"
 
-[[example]]
-name = "fallback"
-path = "examples/fallback.rs"
+

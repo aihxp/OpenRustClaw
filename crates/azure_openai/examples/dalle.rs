@@ -5,13 +5,19 @@
 //! AZURE_OPENAI_API_KEY=your-key \
 //! AZURE_OPENAI_RESOURCE=your-resource \
 //! AZURE_OPENAI_DALLE_DEPLOYMENT=your-dalle-deployment \
-//! cargo run --example dalle
+//! cargo run --example dalle --features images
 //! ```
 
-use azure_openai::{AzureOpenAIClient, ImageRequest, ImageSize, ImageQuality, ImageStyle};
+#[cfg(not(feature = "images"))]
+fn main() {
+    println!("This example requires the 'images' feature.");
+    println!("Run with: cargo run --example dalle --features images");
+}
 
+#[cfg(feature = "images")]
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    use azure_openai::{AzureOpenAIClient, ImageRequest, ImageSize, ImageQuality, ImageStyle};
     // Load configuration from environment
     let api_key = std::env::var("AZURE_OPENAI_API_KEY")
         .expect("AZURE_OPENAI_API_KEY environment variable not set");

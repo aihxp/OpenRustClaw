@@ -3,10 +3,9 @@
 use anyhow::{Context, Result};
 use dialoguer::{Confirm, Input, Select};
 use sqlx::Row;
-use std::time::Duration;
 
 use openrustclaw_gateway::webhooks::{
-    handlers, AgentTarget, RateLimitConfig, WebhookAction, WebhookHandler, WebhookSource,
+    handlers, WebhookHandler, WebhookSource,
 };
 
 /// List configured webhooks.

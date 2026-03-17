@@ -4,17 +4,14 @@ use crate::cluster::Cluster;
 use crate::config::DistributedConfig;
 use crate::error::{DistributedError, Result};
 use crate::load_balancer::{LoadBalancer, RouteResult, SessionRouter};
-use crate::node::{NodeId, NodeInfo, NodeRole};
+use crate::node::{NodeId, NodeInfo};
 use chrono::{DateTime, Utc};
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::net::SocketAddr;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use tokio::sync::RwLock;
 use tokio::time::{interval, Duration};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 /// A distributed session that can be migrated between nodes.
@@ -77,7 +74,8 @@ pub struct SessionManager {
     local_sessions: DashMap<String, DistributedSession>,
     /// Session router.
     router: SessionRouter,
-    /// Configuration.
+    /// Configuration (reserved for future use).
+    #[allow(dead_code)]
     config: DistributedConfig,
     /// Session timeout in seconds.
     session_timeout_secs: u64,
@@ -231,7 +229,7 @@ impl SessionManager {
     ) -> Result<DistributedSession> {
         let mut session = self.get_session(session_id).await?;
 
-        if session.assigned_node == target_node_id {
+        if session.assigned_node == *target_node_id {
             return Ok(session); // Already on target node
         }
 
@@ -376,24 +374,24 @@ impl SessionManager {
     }
 
     // Placeholder methods for forwarding to remote nodes
-    async fn forward_create_session(&self, node: &NodeInfo, session: &DistributedSession) -> Result<()> {
+    async fn forward_create_session(&self, node: &NodeInfo, _session: &DistributedSession) -> Result<()> {
         // This would use gRPC to forward to the target node
         // For now, just simulate success
         debug!("Forwarding session creation to node {}", node.id);
         Ok(())
     }
 
-    async fn forward_get_session(&self, node: &NodeInfo, session_id: &str) -> Result<DistributedSession> {
+    async fn forward_get_session(&self, _node: &NodeInfo, session_id: &str) -> Result<DistributedSession> {
         // This would use gRPC to fetch from the target node
         Err(DistributedError::SessionNotFound(session_id.to_string()))
     }
 
-    async fn forward_update_session(&self, node: &NodeInfo, session: &DistributedSession) -> Result<DistributedSession> {
+    async fn forward_update_session(&self, _node: &NodeInfo, session: &DistributedSession) -> Result<DistributedSession> {
         // This would use gRPC to update on the target node
         Ok(session.clone())
     }
 
-    async fn forward_delete_session(&self, node: &NodeInfo, session_id: &str) -> Result<()> {
+    async fn forward_delete_session(&self, _node: &NodeInfo, _session_id: &str) -> Result<()> {
         // This would use gRPC to delete on the target node
         Ok(())
     }
@@ -471,6 +469,7 @@ impl SessionReplication {
 mod tests {
     use super::*;
     use crate::cluster::Cluster;
+    use crate::NodeRole;
     use std::net::SocketAddr;
 
     fn create_test_cluster() -> (Arc<Cluster>, Arc<LoadBalancer>) {

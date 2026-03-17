@@ -3,13 +3,12 @@
 use crate::cluster::{Cluster, ClusterEvent};
 use crate::config::ConsensusConfig;
 use crate::error::{DistributedError, Result};
-use crate::node::{LocalNode, NodeId, NodeInfo, NodeRole, NodeState};
+use crate::node::{LocalNode, NodeId, NodeInfo, NodeRole};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
-use tokio::sync::{mpsc, oneshot, RwLock};
-use tokio::time::{interval, sleep, timeout, Instant};
+use tokio::sync::{oneshot, RwLock};
+use tokio::time::{interval, Instant};
 use tracing::{debug, error, info, warn};
 
 /// Raft role for a node.
@@ -76,6 +75,7 @@ pub struct RaftNode {
     /// Commit index (highest log entry known to be committed).
     commit_index: AtomicU64,
     /// Last applied index (highest log entry applied to state machine).
+    #[allow(dead_code)]
     last_applied: AtomicU64,
     
     // Leader state (reinitialized after election)
@@ -206,7 +206,7 @@ impl RaftNode {
         // Vote for self
         *self.voted_for.write().await = Some(self.local_node.id());
         let mut votes_received = 1;
-        let mut votes_needed = self.cluster.quorum_size();
+        let votes_needed = self.cluster.quorum_size();
         
         info!(
             "Starting election for term {} (need {} votes)",
@@ -574,7 +574,7 @@ impl RaftNode {
     // Placeholder for gRPC append entries
     async fn send_append_entries(
         &self,
-        node: &NodeInfo,
+        _node: &NodeInfo,
         request: AppendEntriesRequest,
     ) -> Result<AppendEntriesResponse> {
         // This will be implemented with actual gRPC client

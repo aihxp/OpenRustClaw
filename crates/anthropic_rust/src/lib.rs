@@ -72,7 +72,7 @@ pub mod types;
 #[cfg(feature = "batch")]
 pub mod batch;
 
-pub use client::{AnthropicClient, Messages};
+pub use client::{AnthropicClient, ClientConfig, Messages};
 pub use constants::*;
 pub use error::{AnthropicError, Result};
 

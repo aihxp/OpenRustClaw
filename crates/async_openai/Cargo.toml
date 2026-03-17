@@ -67,6 +67,4 @@ path = "examples/chat_completion.rs"
 name = "streaming"
 path = "examples/streaming.rs"
 
-[[example]]
-name = "assistants"
-path = "examples/assistants.rs"
+

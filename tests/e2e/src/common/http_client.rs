@@ -182,7 +182,7 @@ impl TestWebSocketClient {
     /// Connect to WebSocket endpoint
     pub async fn connect(
         &self,
-    ) -> Result<(tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>), TestError> {
+    ) -> Result<tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>, TestError> {
         use tokio_tungstenite::connect_async;
 
         let (ws_stream, _) = connect_async(&self.url)

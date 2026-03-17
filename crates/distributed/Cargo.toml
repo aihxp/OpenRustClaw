@@ -29,6 +29,7 @@ bytes.workspace = true
 # gRPC
 tonic.workspace = true
 prost.workspace = true
+prost-types = "0.13"
 tower.workspace = true
 
 # Error handling
@@ -74,3 +75,4 @@ tokio-test.workspace = true
 tempfile.workspace = true
 serial_test.workspace = true
 wiremock.workspace = true
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

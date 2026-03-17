@@ -3,7 +3,7 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use tracing::{debug, info, warn};
+use tracing::info;
 
 use crate::browser::{Browser, ScreenshotOptions};
 use crate::tools::{error_response, success_response, AutomationTool, ToolContext};

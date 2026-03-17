@@ -39,7 +39,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build();
 
     // Send the streaming request
-    let mut stream = client.chat().stream(request).await?;
+    let chat = client.chat();
+    let mut stream = chat.stream(request).await?;
 
     println!("Response:\n");
     let mut full_content = String::new();

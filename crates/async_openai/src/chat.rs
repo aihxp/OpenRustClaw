@@ -3,7 +3,7 @@
 use crate::client::OpenAIClient;
 use crate::constants::endpoints;
 use crate::error::{OpenAIError, Result};
-use crate::types::{ChatMessage, ChatResponse, Function, Role, TokenUsage, Tool};
+use crate::types::{ChatMessage, ChatResponse, Function, Role, Tool};
 
 /// Client for the chat completions API.
 #[derive(Debug)]

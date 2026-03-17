@@ -3,10 +3,10 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use tracing::{debug, info};
+use tracing::info;
 
 use crate::browser::{Browser, PdfOptions};
-use crate::tools::{error_response, success_response, AutomationTool, ToolContext};
+use crate::tools::{success_response, AutomationTool, ToolContext};
 
 /// Generate a PDF from the current page.
 pub struct PdfTool {

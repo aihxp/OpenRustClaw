@@ -1,7 +1,7 @@
 //! Cluster management for distributed OpenRustClaw.
 
 use crate::config::DistributedConfig;
-use crate::error::{DistributedError, Result};
+use crate::error::Result;
 use crate::node::{LocalNode, NodeId, NodeInfo, NodeMetrics, NodeRole, NodeState};
 use chrono::Utc;
 use dashmap::DashMap;
@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::sync::{broadcast, RwLock};
 use tokio::time::{interval, Duration};
-use tracing::{debug, error, info, warn};
+use tracing::{info, warn};
 use uuid::Uuid;
 
 /// The state of the entire cluster.
@@ -119,8 +119,8 @@ impl Cluster {
             current_term: AtomicU64::new(0),
         });
 
-        // Add local node to the cluster
-        let local_info = cluster.local_node.info();
+        // Add local node to the cluster (blocking read since we're in a non-async context)
+        let local_info = cluster.local_node.info_blocking();
         cluster.nodes.insert(local_info.id.clone(), local_info);
 
         cluster

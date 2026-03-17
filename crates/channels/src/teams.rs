@@ -25,7 +25,9 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use governor::{Quota, RateLimiter};
+use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, TokenData, Validation};
 use serde::{Deserialize, Serialize};
 use std::num::NonZeroU32;
 use tokio::sync::{mpsc, Mutex, RwLock};
@@ -94,6 +96,51 @@ impl std::str::FromStr for ActivityType {
             _ => Err(format!("Unknown activity type: {}", s)),
         }
     }
+}
+
+/// JWT claims for Microsoft Bot Framework authentication.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct BotFrameworkClaims {
+    /// The app ID that the token was issued for
+    pub appid: String,
+    /// The service URL
+    #[serde(rename = "serviceurl")]
+    pub service_url: Option<String>,
+    /// Issued at timestamp
+    pub iat: i64,
+    /// Expiration timestamp
+    pub exp: i64,
+    /// Issuer (should be https://api.botframework.com)
+    pub iss: String,
+    /// Audience (should match our app ID)
+    pub aud: String,
+}
+
+/// Microsoft's OpenID configuration document.
+#[derive(Debug, Clone, Deserialize)]
+struct OpenIdConfig {
+    #[serde(rename = "jwks_uri")]
+    pub jwks_uri: String,
+    #[serde(rename = "token_endpoint")]
+    pub token_endpoint: Option<String>,
+}
+
+/// JSON Web Key for signature verification.
+#[derive(Debug, Clone, Deserialize)]
+struct Jwk {
+    pub kty: String,
+    pub kid: String,
+    #[serde(rename = "use")]
+    pub use_: Option<String>,
+    pub n: Option<String>,
+    pub e: Option<String>,
+    pub x5c: Option<Vec<String>>,
+}
+
+/// JWKS response from Microsoft.
+#[derive(Debug, Clone, Deserialize)]
+struct JwksResponse {
+    pub keys: Vec<Jwk>,
 }
 
 /// Represents an Adaptive Card attachment.
@@ -696,16 +743,149 @@ impl TeamsWebhookHandler {
         Self { channel }
     }
 
-    /// Verify the JWT token from Microsoft.
+    /// Microsoft's OpenID configuration URL.
+    const OPENID_CONFIG_URL: &str = "https://login.botframework.com/v1/.well-known/openidconfiguration";
+    
+    /// Cache for JWKS response to avoid fetching on every request.
+    /// In production, this should be a shared cache with TTL.
+    
+    /// Verify the JWT token from Microsoft Bot Framework.
     ///
-    /// In production, this should:
-    /// 1. Fetch the OpenID configuration from Microsoft
-    /// 2. Validate the JWT signature against Microsoft's public keys
-    /// 3. Validate claims (audience, issuer, expiration)
-    pub async fn verify_token(&self, _token: &str) -> Result<bool> {
-        // TODO: Implement proper JWT verification
-        // For now, we trust the token (implement in production)
-        Ok(true)
+    /// This implements the full JWT verification flow:
+    /// 1. Decode the token header to get the key ID (kid)
+    /// 2. Fetch Microsoft's OpenID configuration
+    /// 3. Fetch the JWKS (JSON Web Key Set) from the jwks_uri
+    /// 4. Find the key matching the kid and verify the signature
+    /// 5. Validate claims (issuer, audience, expiration)
+    ///
+    /// # Arguments
+    ///
+    /// * `token` - The JWT token from the Authorization header
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(true)` if the token is valid, `Ok(false)` if invalid,
+    /// or an error if verification failed due to network/config issues.
+    pub async fn verify_token(&self, token: &str) -> Result<bool> {
+        // Skip verification if no app_id is configured (development mode)
+        let app_id = &self.channel.config.app_id;
+        if app_id.is_empty() {
+            warn!("Teams app_id not configured, skipping JWT verification");
+            return Ok(true);
+        }
+
+        // Step 1: Decode the header to get the key ID
+        let header = match decode_header(token) {
+            Ok(h) => h,
+            Err(e) => {
+                warn!("Failed to decode JWT header: {}", e);
+                return Ok(false);
+            }
+        };
+
+        let kid = match header.kid {
+            Some(k) => k,
+            None => {
+                warn!("JWT header missing kid");
+                return Ok(false);
+            }
+        };
+
+        // Step 2: Fetch OpenID configuration
+        let openid_config: OpenIdConfig = match reqwest::get(Self::OPENID_CONFIG_URL).await {
+            Ok(resp) => match resp.json().await {
+                Ok(config) => config,
+                Err(e) => {
+                    error!("Failed to parse OpenID configuration: {}", e);
+                    return Err(ChannelError::AuthFailed {
+                        platform: "teams".to_string(),
+                        message: format!("Failed to parse OpenID config: {}", e),
+                    }.into());
+                }
+            },
+            Err(e) => {
+                error!("Failed to fetch OpenID configuration: {}", e);
+                return Err(ChannelError::AuthFailed {
+                    platform: "teams".to_string(),
+                    message: format!("Failed to fetch OpenID config: {}", e),
+                }.into());
+            }
+        };
+
+        // Step 3: Fetch JWKS
+        let jwks: JwksResponse = match reqwest::get(&openid_config.jwks_uri).await {
+            Ok(resp) => match resp.json().await {
+                Ok(keys) => keys,
+                Err(e) => {
+                    error!("Failed to parse JWKS: {}", e);
+                    return Err(ChannelError::AuthFailed {
+                        platform: "teams".to_string(),
+                        message: format!("Failed to parse JWKS: {}", e),
+                    }.into());
+                }
+            },
+            Err(e) => {
+                error!("Failed to fetch JWKS: {}", e);
+                return Err(ChannelError::AuthFailed {
+                    platform: "teams".to_string(),
+                    message: format!("Failed to fetch JWKS: {}", e),
+                }.into());
+            }
+        };
+
+        // Step 4: Find the matching key
+        let jwk = match jwks.keys.iter().find(|k| k.kid == kid) {
+            Some(k) => k,
+            None => {
+                warn!("No matching key found for kid: {}", kid);
+                return Ok(false);
+            }
+        };
+
+        // Step 5: Verify the token
+        // Use x5c certificate if available, otherwise use n/e for RSA
+        let decoding_key = if let Some(certs) = &jwk.x5c {
+            if let Some(cert) = certs.first() {
+                let cert_der = BASE64.decode(cert).map_err(|e| {
+                    ChannelError::AuthFailed {
+                        platform: "teams".to_string(),
+                        message: format!("Failed to decode certificate: {}", e),
+                    }
+                })?;
+                DecodingKey::from_rsa_der(&cert_der)
+            } else {
+                warn!("Empty x5c certificate chain");
+                return Ok(false);
+            }
+        } else if let (Some(n), Some(e)) = (&jwk.n, &jwk.e) {
+            match DecodingKey::from_rsa_components(n, e) {
+                Ok(key) => key,
+                Err(err) => {
+                    warn!("Failed to create decoding key from components: {}", err);
+                    return Ok(false);
+                }
+            }
+        } else {
+            warn!("JWK missing both x5c and n/e components");
+            return Ok(false);
+        };
+
+        let mut validation = Validation::new(Algorithm::RS256);
+        // Bot Framework tokens are issued by login.botframework.com
+        validation.set_issuer(&["https://api.botframework.com"]);
+        // The audience should match our app ID
+        validation.set_audience(&[app_id.as_str()]);
+
+        match decode::<BotFrameworkClaims>(token, &decoding_key, &validation) {
+            Ok(token_data) => {
+                debug!("Successfully verified JWT for app: {}", token_data.claims.appid);
+                Ok(true)
+            }
+            Err(e) => {
+                warn!("JWT verification failed: {}", e);
+                Ok(false)
+            }
+        }
     }
 
     /// Handle an incoming webhook request.

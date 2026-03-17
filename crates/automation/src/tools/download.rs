@@ -147,7 +147,7 @@ impl AutomationTool for DownloadTool {
                     } else {
                         // Wait for download to start
                         if args.wait_for_download {
-                            let timeout = args.timeout.unwrap_or(30000);
+                            let _timeout = args.timeout.unwrap_or(30000);
                             tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
                         }
                         

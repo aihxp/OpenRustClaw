@@ -398,7 +398,7 @@ impl ViberChannel {
 
         let url = "https://chatapi.viber.com/pa/send_message";
         
-        let mut payload = serde_json::json!({
+        let payload = serde_json::json!({
             "auth_token": self.config.auth_token,
             "receiver": user_id,
             "type": "picture",

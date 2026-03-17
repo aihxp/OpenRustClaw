@@ -7,9 +7,9 @@ use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::path::PathBuf;
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 
-use tracing::{debug, trace, warn};
+use tracing::{debug, trace};
 
 use crate::error::{BedrockError, Result};
 
@@ -720,6 +720,7 @@ impl Default for CredentialChain {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
 
     #[test]
     fn test_aws_credentials() {

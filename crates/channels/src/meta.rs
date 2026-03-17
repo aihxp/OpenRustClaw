@@ -4,7 +4,6 @@
 //! Supports both Messenger and Instagram Direct messaging.
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use async_trait::async_trait;
 use governor::{Quota, RateLimiter};

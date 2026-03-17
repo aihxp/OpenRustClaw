@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use crate::constants::{retry, DEFAULT_API_VERSION};
 use crate::error::{AzureOpenAIError, Result};
-use crate::{AzureADToken, AzureRegion, ManagedIdentityCredential};
+use crate::{AzureADToken, AzureRegion};
 
 /// Azure OpenAI client configuration.
 #[derive(Debug, Clone)]

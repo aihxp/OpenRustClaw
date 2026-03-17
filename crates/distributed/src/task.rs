@@ -9,8 +9,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use tokio::sync::{mpsc, Mutex, RwLock};
-use tokio::time::{interval, sleep, Duration};
+use tokio::sync::{Mutex, RwLock};
+use tokio::time::{interval, Duration};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
@@ -156,7 +156,8 @@ pub struct TaskManager {
     node_id: NodeId,
     /// Distributed memory for task storage.
     memory: Arc<dyn DistributedMemory>,
-    /// Task executor.
+    /// Task executor (reserved for future use).
+    #[allow(dead_code)]
     executor: Arc<dyn TaskExecutor>,
     /// Local task queue.
     queue: Mutex<Vec<Task>>,
@@ -205,19 +206,21 @@ impl TaskManager {
 
     /// Submit a task to the queue.
     pub async fn submit_task(&self, task: Task) -> Result<()> {
+        let task_id = task.id.clone();
+        
         if task.assigned_node.as_ref() == Some(&self.node_id) {
             // Task is for us, add to local queue
             let mut queue = self.queue.lock().await;
             queue.push(task);
             // Sort by priority (higher first)
             queue.sort_by(|a, b| b.priority.value().cmp(&a.priority.value()));
-            debug!("Added task {} to local queue", task.id);
+            debug!("Added task {} to local queue", task_id);
         } else {
             // Store in distributed memory for the assigned node
-            let key = format!("task:{}", task.id);
+            let key = format!("task:{}", task_id);
             let value = serde_json::to_vec(&task)?;
             self.memory.set(&key, value, Some(3600)).await?;
-            debug!("Stored task {} in distributed memory", task.id);
+            debug!("Stored task {} in distributed memory", task_id);
         }
 
         Ok(())
@@ -285,23 +288,25 @@ impl TaskManager {
                 let result_value = serde_json::to_vec(&result)?;
                 self.memory.set(&result_key, result_value, Some(3600)).await?;
 
-                self.completed_tasks
+                let retry_count = task.retry_count;
+            self.completed_tasks
                     .write()
                     .await
                     .insert(task_id.to_string(), (task, result));
 
                 self.tasks_failed.fetch_add(1, Ordering::SeqCst);
-                error!("Task {} failed after {} retries", task_id, task.retry_count);
+                error!("Task {} failed after {} retries", task_id, retry_count);
             } else {
                 // Retry the task
                 task.state = TaskState::Pending;
                 task.started_at = None;
                 
+                let retry_count = task.retry_count;
                 let mut queue = self.queue.lock().await;
                 queue.push(task);
                 queue.sort_by(|a, b| b.priority.value().cmp(&a.priority.value()));
                 
-                warn!("Task {} failed, retrying (attempt {})", task_id, task.retry_count);
+                warn!("Task {} failed, retrying (attempt {})", task_id, retry_count);
             }
         }
 
