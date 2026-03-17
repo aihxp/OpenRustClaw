@@ -32,6 +32,7 @@ class SchedulerState(TypedDict):
     error: Optional[str]
     execution_time_ms: float
     previous_attempts: List[Dict[str, Any]]
+    next_retry_at: Optional[str]
 
 
 def create_default_state() -> SchedulerState:
@@ -51,6 +52,7 @@ def create_default_state() -> SchedulerState:
         "error": None,
         "execution_time_ms": 0.0,
         "previous_attempts": [],
+        "next_retry_at": None,
     }
 
 
@@ -315,15 +317,14 @@ class RetryLogicNode:
 
             logger.info(f"Retrying job, attempt {retry_count + 1}/{max_retries} after {delay}s delay")
 
-            # In production, this would schedule a retry via message queue
-            # For now, we simulate the delay
-            await self._schedule_retry(state, delay)
+            next_retry_at = await self._schedule_retry(state, delay)
 
             return {
                 "retry_count": retry_count + 1,
                 "status": "retrying",
                 "previous_attempts": previous_attempts,
                 "retry_after_seconds": delay,
+                "next_retry_at": next_retry_at,
             }
 
         except Exception as e:
@@ -333,11 +334,15 @@ class RetryLogicNode:
                 "status": "failed",
             }
 
-    async def _schedule_retry(self, state: SchedulerState, delay: float) -> None:
-        """Schedule a job retry after delay."""
-        # In production, use a message queue or scheduler
-        # This is a placeholder
-        logger.debug(f"Would schedule retry after {delay}s")
+    async def _schedule_retry(self, state: SchedulerState, delay: float) -> str:
+        """Record the next retry time for the caller to persist."""
+        next_retry_at = datetime.utcnow() + timedelta(seconds=delay)
+        logger.debug(
+            "Retry scheduled for job %s at %s",
+            state.get("job_id", ""),
+            next_retry_at.isoformat(),
+        )
+        return next_retry_at.isoformat()
 
 
 class CompletionNode:

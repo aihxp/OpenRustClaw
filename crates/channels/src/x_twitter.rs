@@ -595,7 +595,9 @@ impl Channel for XChannel {
         // Note: In a full implementation, polling would run in a background task.
         // The channel needs to be wrapped in Arc<Mutex<Self>> to allow concurrent
         // access between polling and send/receive operations.
-        info!("X channel polling would start here (use Arc<Mutex<XChannel>> for full implementation)");
+        warn!(
+            "X channel polling loop is not implemented yet; channel is configured for outbound/API operations only"
+        );
 
         Ok(())
     }

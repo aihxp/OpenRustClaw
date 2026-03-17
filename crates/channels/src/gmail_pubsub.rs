@@ -480,13 +480,11 @@ impl GmailPubSub {
             "labelFilterBehavior": "INCLUDE"
         });
 
-        // Placeholder - in real implementation, would make actual HTTP request
-        debug!("Setting up Gmail watch for {}", self.config.user_email);
-
-        Ok(WatchResponse {
-            history_id: "0".to_string(),
-            expiration: (chrono::Utc::now() + chrono::Duration::days(7)).to_rfc3339(),
-        })
+        Err(ChannelError::Connection {
+            platform: "gmail".to_string(),
+            message: "Gmail watch setup is not implemented yet".to_string(),
+        }
+        .into())
     }
 
     /// Get new messages since history_id.
@@ -495,22 +493,40 @@ impl GmailPubSub {
         history_id: u64,
         _token: &str,
     ) -> Result<Vec<MessageMetadata>> {
-        // Placeholder implementation
-        // Real implementation would call:
-        // GET https://gmail.googleapis.com/gmail/v1/users/{userId}/history
         debug!("Fetching new messages since history_id: {}", history_id);
-
-        Ok(vec![])
+        Err(ChannelError::Connection {
+            platform: "gmail".to_string(),
+            message: "Gmail history polling is not implemented yet".to_string(),
+        }
+        .into())
     }
 
     /// Get full message by ID.
     async fn get_message(&self, id: &str, _token: &str) -> Result<Option<EmailMessage>> {
-        // Placeholder implementation
-        // Real implementation would call:
-        // GET https://gmail.googleapis.com/gmail/v1/users/{userId}/messages/{id}
         debug!("Fetching message: {}", id);
+        Err(ChannelError::Connection {
+            platform: "gmail".to_string(),
+            message: "Gmail message retrieval is not implemented yet".to_string(),
+        }
+        .into())
+    }
 
-        Ok(None)
+    async fn require_access_token(&self) -> Result<String> {
+        if !*self.is_connected.read().await {
+            return Err(ChannelError::NotConnected {
+                platform: "gmail".to_string(),
+            }
+            .into());
+        }
+
+        let token_guard = self.access_token.read().await;
+        token_guard.clone().ok_or_else(|| {
+            ChannelError::AuthFailed {
+                platform: "gmail".to_string(),
+                message: "Missing access token for Gmail API".to_string(),
+            }
+            .into()
+        })
     }
 
     /// Process a Pub/Sub notification message.
@@ -521,12 +537,7 @@ impl GmailPubSub {
         );
 
         // Get access token
-        let token = {
-            let token_guard = self.access_token.read().await;
-            token_guard
-                .clone()
-                .unwrap_or_else(|| "placeholder".to_string())
-        };
+        let token = self.require_access_token().await?;
 
         // Fetch new messages using history API
         let new_messages = self
@@ -578,12 +589,7 @@ impl GmailPubSub {
     /// Take action on an email.
     pub async fn take_action(&self, email_id: &str, action: EmailAction) -> Result<()> {
         // Get access token
-        let token = {
-            let token_guard = self.access_token.read().await;
-            token_guard
-                .clone()
-                .unwrap_or_else(|| "placeholder".to_string())
-        };
+        let token = self.require_access_token().await?;
 
         match action {
             EmailAction::Reply { body } => {
@@ -617,22 +623,31 @@ impl GmailPubSub {
     /// Reply to a message.
     async fn reply_to_message(&self, email_id: &str, _body: &str, _token: &str) -> Result<()> {
         debug!(email_id = %email_id, "Replying to message");
-        // POST https://gmail.googleapis.com/gmail/v1/users/{userId}/messages/{id}/send
-        Ok(())
+        Err(ChannelError::SendFailed {
+            platform: "gmail".to_string(),
+            message: "Gmail reply path is not implemented yet".to_string(),
+        }
+        .into())
     }
 
     /// Add a label to a message.
     async fn add_label(&self, email_id: &str, label: &str, _token: &str) -> Result<()> {
         debug!(email_id = %email_id, label = %label, "Adding label");
-        // POST https://gmail.googleapis.com/gmail/v1/users/{userId}/messages/{id}/modify
-        Ok(())
+        Err(ChannelError::SendFailed {
+            platform: "gmail".to_string(),
+            message: "Gmail label mutation is not implemented yet".to_string(),
+        }
+        .into())
     }
 
     /// Remove a label from a message.
     async fn remove_label(&self, email_id: &str, label: &str, _token: &str) -> Result<()> {
         debug!(email_id = %email_id, label = %label, "Removing label");
-        // POST https://gmail.googleapis.com/gmail/v1/users/{userId}/messages/{id}/modify
-        Ok(())
+        Err(ChannelError::SendFailed {
+            platform: "gmail".to_string(),
+            message: "Gmail label mutation is not implemented yet".to_string(),
+        }
+        .into())
     }
 
     /// Archive a message (remove INBOX label).
@@ -644,8 +659,11 @@ impl GmailPubSub {
     /// Delete a message.
     async fn delete_message(&self, email_id: &str, _token: &str) -> Result<()> {
         debug!(email_id = %email_id, "Deleting message");
-        // DELETE https://gmail.googleapis.com/gmail/v1/users/{userId}/messages/{id}
-        Ok(())
+        Err(ChannelError::SendFailed {
+            platform: "gmail".to_string(),
+            message: "Gmail delete path is not implemented yet".to_string(),
+        }
+        .into())
     }
 
     /// Forward a message.
@@ -657,8 +675,11 @@ impl GmailPubSub {
         _token: &str,
     ) -> Result<()> {
         debug!(email_id = %email_id, to = %to, "Forwarding message");
-        // POST https://gmail.googleapis.com/gmail/v1/users/{userId}/messages/send
-        Ok(())
+        Err(ChannelError::SendFailed {
+            platform: "gmail".to_string(),
+            message: "Gmail forward path is not implemented yet".to_string(),
+        }
+        .into())
     }
 
     /// Check if the email sender is in the allowlist.
@@ -677,6 +698,13 @@ impl Channel for GmailPubSub {
     }
 
     async fn send(&self, msg: OutgoingMessage) -> Result<()> {
+        if !*self.is_connected.read().await {
+            return Err(ChannelError::NotConnected {
+                platform: "gmail".to_string(),
+            }
+            .into());
+        }
+
         // Apply rate limiting
         self.rate_limiter.until_ready().await;
 
@@ -689,20 +717,17 @@ impl Channel for GmailPubSub {
         let _thread_id = msg.metadata.get("gmail_thread_id").and_then(|v| v.as_str());
 
         // Get access token
-        let token = {
-            let token_guard = self.access_token.read().await;
-            token_guard
-                .clone()
-                .unwrap_or_else(|| "placeholder".to_string())
-        };
+        let token = self.require_access_token().await?;
 
         if let Some(msg_id) = message_id {
             // Reply to the message
             self.reply_to_message(msg_id, &msg.content, &token).await?;
-            info!(message_id = %msg_id, "Sent Gmail reply");
         } else {
-            // Send as new message (would need recipient in metadata)
-            warn!("No message_id in metadata, cannot send Gmail reply");
+            return Err(ChannelError::InvalidFormat {
+                platform: "gmail".to_string(),
+                message: "Missing gmail_message_id in metadata for Gmail reply".to_string(),
+            }
+            .into());
         }
 
         Ok(())
@@ -975,5 +1000,33 @@ mod tests {
         let notification: GmailNotification = serde_json::from_str(json).unwrap();
         assert_eq!(notification.email_address, "user@example.com");
         assert_eq!(notification.history_id, 12345);
+    }
+
+    #[tokio::test]
+    async fn test_send_requires_connection() {
+        let config = GmailPubSubConfig {
+            enabled: true,
+            project_id: "test".to_string(),
+            subscription_name: "test".to_string(),
+            service_account_key_path: "/tmp/key.json".to_string(),
+            user_email: "test@example.com".to_string(),
+            label_filters: vec![],
+            query_filter: None,
+            auto_reply: false,
+            max_history_fetch: 100,
+            rate_limit_requests_per_second: 10,
+        };
+
+        let gmail = GmailPubSub::new(config);
+        let result = gmail
+            .send(OutgoingMessage {
+                session_id: Uuid::new_v4(),
+                content: "hello".to_string(),
+                metadata: serde_json::json!({}),
+            })
+            .await;
+
+        let err = result.expect_err("send should fail when Gmail channel is not connected");
+        assert!(err.to_string().to_lowercase().contains("not connected"));
     }
 }

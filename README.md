@@ -4,7 +4,7 @@
 [![Rust](https://img.shields.io/badge/rust-2024_edition-orange.svg)](https://www.rust-lang.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-A high-performance AI agent platform written in Rust. 43 crates, 20 LLM providers, 14 CLI-startable messaging channels, and a Python sidecar for LangGraph workflows.
+A high-performance AI agent platform written in Rust. 43 crates, 20 LLM providers, 15 CLI-startable messaging channels, and a Python sidecar for LangGraph workflows.
 
 ## Quick Start
 
@@ -28,7 +28,7 @@ openrustclaw start --channels=telegram,discord,slack
                          └────────────┬─────────────┘
         ┌─────────────┬──────────────┼──────────────┬─────────────┐
         │  Channels   │    Voice     │   Canvas     │   Cursor    │
-        │ (14 current)│  Wake/STT/TTS│   A2UI       │  IDE (ACP)  │
+        │ (15 current)│  Wake/STT/TTS│   A2UI       │  IDE (ACP)  │
         └──────┬──────┴──────┬───────┴──────┬───────┴──────┬──────┘
                └─────────────┴──────────────┴──────────────┘
                          ┌──────────┴──────────┐

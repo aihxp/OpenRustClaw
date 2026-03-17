@@ -284,6 +284,82 @@ def test_preprocess_memory_context_uses_metadata():
         raise
 
 
+def test_memory_maintenance_uses_configurable_memories():
+    """Test memory maintenance nodes consume configurable old memories."""
+    print("\nTesting memory maintenance workflow metadata...")
+
+    try:
+        from langchain_core.runnables import RunnableConfig
+        from src.workflows.memory_maintenance import IdentifyOldMemoriesNode
+
+        node = IdentifyOldMemoriesNode(age_threshold_days=30)
+        config = RunnableConfig(
+            configurable={
+                "old_memories": [
+                    {
+                        "id": "memory-1",
+                        "content": "Old memory",
+                        "timestamp": "2025-01-01T00:00:00Z",
+                    },
+                    {
+                        "id": "memory-2",
+                        "content": "Recent memory",
+                        "timestamp": "2030-01-01T00:00:00Z",
+                    },
+                ]
+            }
+        )
+
+        result = asyncio.run(node({"messages": [], "old_memories": [], "summaries": [], "archived_count": 0, "consolidated_count": 0, "archive_entries": [], "archived_memory_ids": [], "errors": [], "status": "pending"}, config=config))
+        assert len(result["old_memories"]) == 1
+        assert result["old_memories"][0]["id"] == "memory-1"
+        print("  ✓ Memory maintenance metadata")
+    except ModuleNotFoundError as e:
+        print(f"  ✗ Memory maintenance metadata: {e}")
+        _skip_missing_dependency(e)
+    except Exception as e:
+        print(f"  ✗ Memory maintenance metadata: {e}")
+        raise
+
+
+def test_scheduler_retry_records_next_run():
+    """Test scheduler retry logic records the next retry timestamp."""
+    print("\nTesting scheduler retry scheduling...")
+
+    try:
+        from src.workflows.scheduler import RetryNode
+
+        node = RetryNode()
+        state = {
+            "messages": [],
+            "job_id": "job-123",
+            "job_type": "test",
+            "payload": {},
+            "scheduled_time": "",
+            "idempotency_key": "idem-1",
+            "retry_count": 0,
+            "max_retries": 3,
+            "retry_delay_base": 1.0,
+            "status": "failed",
+            "result": None,
+            "error": "boom",
+            "execution_time_ms": 0.0,
+            "previous_attempts": [],
+            "next_retry_at": None,
+        }
+
+        result = asyncio.run(node(state))
+        assert result["status"] == "retrying"
+        assert result["next_retry_at"]
+        print("  ✓ Scheduler retry scheduling")
+    except ModuleNotFoundError as e:
+        print(f"  ✗ Scheduler retry scheduling: {e}")
+        _skip_missing_dependency(e)
+    except Exception as e:
+        print(f"  ✗ Scheduler retry scheduling: {e}")
+        raise
+
+
 def test_protobuf_messages():
     """Test protobuf message creation."""
     print("\nTesting protobuf messages...")
@@ -444,6 +520,8 @@ def main():
     results.append(test_protobuf_messages())
     results.append(test_evaluators())
     results.append(test_preprocess_memory_context_uses_metadata())
+    results.append(test_memory_maintenance_uses_configurable_memories())
+    results.append(test_scheduler_retry_records_next_run())
 
     # Run async tests
     results.append(asyncio.run(run_async_tests()))

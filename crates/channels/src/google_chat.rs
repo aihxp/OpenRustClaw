@@ -549,7 +549,9 @@ impl Channel for GoogleChatChannel {
         // 3. Handle events: MESSAGE, CARD_CLICKED, SLASH_COMMAND
 
         if self.config.pubsub_subscription.is_some() {
-            info!("Google Chat Pub/Sub mode would start here");
+            warn!(
+                "Google Chat Pub/Sub receive loop is not implemented yet; outbound configuration loaded only"
+            );
         } else if self.config.webhook_url.is_some() {
             info!("Google Chat HTTP webhook mode - events will be received via webhooks");
         } else {

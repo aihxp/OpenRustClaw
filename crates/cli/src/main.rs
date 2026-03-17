@@ -21,7 +21,7 @@ enum Commands {
         /// Config file path
         #[arg(short, long, default_value = "config/default.toml")]
         config: String,
-        /// Channels to enable (comma-separated: telegram,discord,slack)
+        /// Channels to enable (comma-separated, e.g. webchat,telegram,discord,slack,teams)
         #[arg(short = 'C', long, value_name = "CHANNELS")]
         channels: Option<String>,
     },

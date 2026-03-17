@@ -209,6 +209,8 @@ class ExecuteToolsNode:
         self.name = "execute_tools"
         self.tools = tools or []
         self._tool_node: Optional[ToolNode] = None
+        self._memory_records: List[Dict[str, str]] = []
+        self._scheduled_reminders: List[Dict[str, str]] = []
 
     def _get_tool_node(self) -> ToolNode:
         """Get or create tool node."""
@@ -227,13 +229,25 @@ class ExecuteToolsNode:
         @tool
         def search_memory(query: str) -> str:
             """Search the memory system for relevant information."""
-            # Placeholder - would integrate with actual memory system
-            return f"Memory search results for: {query}"
+            query_lower = query.strip().lower()
+            matches = [
+                f"[{record['category']}] {record['content']}"
+                for record in self._memory_records
+                if query_lower and query_lower in record["content"].lower()
+            ]
+            if not matches:
+                return f"No stored memories matched: {query}"
+            return "\n".join(matches[:5])
 
         @tool
         def store_memory(content: str, category: str = "episodic") -> str:
             """Store information in memory."""
-            # Placeholder - would integrate with actual memory system
+            self._memory_records.append(
+                {
+                    "content": content.strip(),
+                    "category": category.strip() or "episodic",
+                }
+            )
             return f"Stored in {category}: {content[:50]}..."
 
         @tool
@@ -243,6 +257,13 @@ class ExecuteToolsNode:
             timezone: str = "UTC",
         ) -> str:
             """Schedule a reminder for a specific time."""
+            self._scheduled_reminders.append(
+                {
+                    "content": content.strip(),
+                    "datetime": datetime_str.strip(),
+                    "timezone": timezone.strip() or "UTC",
+                }
+            )
             return f"Reminder scheduled for {datetime_str} ({timezone}): {content[:50]}..."
 
         return [search_memory, store_memory, schedule_reminder]

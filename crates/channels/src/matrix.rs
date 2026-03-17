@@ -46,7 +46,7 @@ pub struct MatrixChannel {
     is_connected: RwLock<bool>,
     /// Maps session_id to event_id for reply threading
     _message_cache: Arc<RwLock<HashMap<Uuid, String>>>,
-    /// Client handle (placeholder for actual matrix-sdk Client)
+    /// Reserved client handle for a future matrix-sdk integration.
     _client: Arc<RwLock<Option<Arc<()>>>>,
 }
 

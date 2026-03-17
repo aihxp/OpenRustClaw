@@ -21,6 +21,8 @@ class MemoryMaintenanceState(TypedDict):
     summaries: List[Dict[str, Any]]
     archived_count: int
     consolidated_count: int
+    archive_entries: List[Dict[str, Any]]
+    archived_memory_ids: List[str]
     errors: List[str]
     status: Literal["pending", "running", "completed", "error"]
 
@@ -33,9 +35,31 @@ def create_default_state() -> MemoryMaintenanceState:
         "summaries": [],
         "archived_count": 0,
         "consolidated_count": 0,
+        "archive_entries": [],
+        "archived_memory_ids": [],
         "errors": [],
         "status": "pending",
     }
+
+
+def _load_configurable_payload(
+    config: Optional[RunnableConfig],
+    key: str,
+) -> Optional[Any]:
+    """Extract structured workflow metadata from RunnableConfig."""
+    if not config:
+        return None
+
+    configurable = config.get("configurable", {})
+    value = configurable.get(key)
+
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            return value
+
+    return value
 
 
 class IdentifyOldMemoriesNode:
@@ -57,13 +81,10 @@ class IdentifyOldMemoriesNode:
             # Calculate cutoff date
             cutoff_date = datetime.utcnow() - timedelta(days=self.age_threshold_days)
 
-            # In production, this would query the memory database
-            # For now, simulate with placeholder data or use provided state
             old_memories = state.get("old_memories", [])
 
             if not old_memories:
-                # Simulate fetching from database
-                old_memories = await self._fetch_old_memories(cutoff_date)
+                old_memories = await self._fetch_old_memories(cutoff_date, config)
 
             logger.info(f"Found {len(old_memories)} old memories for consolidation")
 
@@ -82,11 +103,43 @@ class IdentifyOldMemoriesNode:
     async def _fetch_old_memories(
         self,
         cutoff_date: datetime,
+        config: Optional[RunnableConfig],
     ) -> List[Dict[str, Any]]:
-        """Fetch memories older than the cutoff date."""
-        # Placeholder - would integrate with memory database
-        # Simulating returned memories
-        return []
+        """Fetch memories older than the cutoff date from workflow metadata."""
+        configured_memories = _load_configurable_payload(config, "old_memories")
+        if not isinstance(configured_memories, list):
+            configured_memories = _load_configurable_payload(config, "memory_entries")
+
+        if not isinstance(configured_memories, list):
+            return []
+
+        old_memories: List[Dict[str, Any]] = []
+        for index, item in enumerate(configured_memories):
+            if isinstance(item, str):
+                memory = {
+                    "id": f"memory-{index}",
+                    "content": item,
+                    "timestamp": cutoff_date.isoformat(),
+                }
+            elif isinstance(item, dict):
+                memory = {
+                    "id": item.get("id", f"memory-{index}"),
+                    "content": item.get("content", ""),
+                    "timestamp": item.get("timestamp", cutoff_date.isoformat()),
+                }
+            else:
+                continue
+
+            timestamp = memory.get("timestamp", cutoff_date.isoformat())
+            try:
+                parsed_timestamp = datetime.fromisoformat(str(timestamp).replace("Z", "+00:00"))
+            except Exception:
+                parsed_timestamp = cutoff_date
+
+            if parsed_timestamp <= cutoff_date:
+                old_memories.append(memory)
+
+        return old_memories
 
 
 class SummarizeMemoriesNode:
@@ -337,27 +390,27 @@ class ArchiveMemoriesNode:
 
             archived_count = 0
 
-            # In production, this would:
-            # 1. Store summaries in archive collection
-            # 2. Mark original memories as archived
-            # 3. Update vector store with new embeddings
-
+            stored_archive_entries = list(state.get("archive_entries", []))
             for summary in summaries:
                 try:
-                    await self._store_archive_entry(summary)
+                    stored_archive_entries.append(await self._store_archive_entry(summary))
                     archived_count += 1
                 except Exception as e:
                     logger.error(f"Failed to store archive entry: {e}")
 
-            # Archive original memories
+            archived_memory_ids = list(state.get("archived_memory_ids", []))
             for memory in old_memories:
                 try:
-                    await self._mark_memory_archived(memory.get("id"))
+                    archived_id = await self._mark_memory_archived(memory.get("id"))
+                    if archived_id:
+                        archived_memory_ids.append(archived_id)
                 except Exception as e:
                     logger.error(f"Failed to mark memory as archived: {e}")
 
             return {
                 "archived_count": archived_count,
+                "archive_entries": stored_archive_entries,
+                "archived_memory_ids": archived_memory_ids,
                 "status": "completed" if not state.get("errors") else "error",
             }
 
@@ -368,16 +421,22 @@ class ArchiveMemoriesNode:
                 "status": "error",
             }
 
-    async def _store_archive_entry(self, summary: Dict[str, Any]) -> None:
-        """Store a consolidated summary in the archive."""
-        # Placeholder - would integrate with memory database
+    async def _store_archive_entry(self, summary: Dict[str, Any]) -> Dict[str, Any]:
+        """Return a normalized archive entry for the caller to persist."""
         logger.debug(f"Storing archive entry: {summary.get('id')}")
+        return {
+            "id": summary.get("id"),
+            "summary": summary.get("summary", ""),
+            "key_points": summary.get("key_points", []),
+            "time_range": summary.get("time_range", {}),
+            "embedding": summary.get("embedding"),
+        }
 
-    async def _mark_memory_archived(self, memory_id: Optional[str]) -> None:
-        """Mark an original memory as archived."""
-        # Placeholder - would integrate with memory database
+    async def _mark_memory_archived(self, memory_id: Optional[str]) -> Optional[str]:
+        """Return the memory id that should be marked archived by the caller."""
         if memory_id:
             logger.debug(f"Marking memory as archived: {memory_id}")
+        return memory_id
 
 
 def has_memories_to_process(state: MemoryMaintenanceState) -> str:
