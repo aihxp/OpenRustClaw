@@ -121,3 +121,208 @@ impl ContextManager {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+    use openrustclaw_core::types::{CoreEntry, Role};
+
+    fn make_core_entry(key: &str, value: &str) -> CoreEntry {
+        CoreEntry {
+            key: key.to_string(),
+            value: value.to_string(),
+            importance: 1.0,
+            token_count: 10,
+            updated_at: Utc::now(),
+        }
+    }
+
+    fn make_tool_def(name: &str, desc: &str) -> ToolDefinition {
+        ToolDefinition {
+            name: name.to_string(),
+            description: desc.to_string(),
+            parameters: serde_json::json!({}),
+            strict: false,
+        }
+    }
+
+    // ── estimate_tokens tests ──
+
+    #[test]
+    fn estimate_tokens_short_text() {
+        let tokens = ContextManager::estimate_tokens("hi");
+        assert_eq!(tokens, 1, "Short text should be at least 1 token");
+    }
+
+    #[test]
+    fn estimate_tokens_longer_text() {
+        // 20 chars / 4 = 5 tokens
+        let tokens = ContextManager::estimate_tokens("12345678901234567890");
+        assert_eq!(tokens, 5);
+    }
+
+    #[test]
+    fn estimate_tokens_empty_string() {
+        let tokens = ContextManager::estimate_tokens("");
+        assert_eq!(tokens, 1, "Empty string should return at least 1");
+    }
+
+    // ── needs_compression tests ──
+
+    #[test]
+    fn needs_compression_below_threshold() {
+        let ctx = ContextManager::new(1000);
+        assert!(!ctx.needs_compression(800), "80% usage should not trigger compression at 85% threshold");
+    }
+
+    #[test]
+    fn needs_compression_above_threshold() {
+        let ctx = ContextManager::new(1000);
+        assert!(ctx.needs_compression(860), "86% usage should trigger compression at 85% threshold");
+    }
+
+    #[test]
+    fn needs_compression_exactly_at_threshold() {
+        let ctx = ContextManager::new(1000);
+        // 85% of 1000 = 850
+        assert!(!ctx.needs_compression(850), "Exactly at threshold should not trigger (not strictly greater)");
+    }
+
+    #[test]
+    fn needs_compression_over_max() {
+        let ctx = ContextManager::new(1000);
+        assert!(ctx.needs_compression(1200), "Over max should definitely trigger compression");
+    }
+
+    // ── build_system_prompt tests ──
+
+    #[test]
+    fn build_system_prompt_includes_base() {
+        let ctx = ContextManager::new(4096);
+        let prompt = ctx.build_system_prompt("You are a helpful assistant.", &[], &[]);
+        assert!(prompt.contains("You are a helpful assistant."));
+    }
+
+    #[test]
+    fn build_system_prompt_includes_core_memory() {
+        let ctx = ContextManager::new(4096);
+        let entries = vec![make_core_entry("user_name", "Alice")];
+        let prompt = ctx.build_system_prompt("Base.", &entries, &[]);
+        assert!(prompt.contains("[Core Memory]"));
+        assert!(prompt.contains("user_name: Alice"));
+    }
+
+    #[test]
+    fn build_system_prompt_no_core_memory_section_when_empty() {
+        let ctx = ContextManager::new(4096);
+        let prompt = ctx.build_system_prompt("Base.", &[], &[]);
+        assert!(!prompt.contains("[Core Memory]"));
+    }
+
+    #[test]
+    fn build_system_prompt_includes_tools() {
+        let ctx = ContextManager::new(4096);
+        let tools = vec![make_tool_def("memory_search", "Search memory")];
+        let prompt = ctx.build_system_prompt("Base.", &[], &tools);
+        assert!(prompt.contains("[Available Tools]"));
+        assert!(prompt.contains("memory_search: Search memory"));
+    }
+
+    #[test]
+    fn build_system_prompt_no_tools_section_when_empty() {
+        let ctx = ContextManager::new(4096);
+        let prompt = ctx.build_system_prompt("Base.", &[], &[]);
+        assert!(!prompt.contains("[Available Tools]"));
+    }
+
+    #[test]
+    fn build_system_prompt_includes_memory_instruction() {
+        let ctx = ContextManager::new(4096);
+        let prompt = ctx.build_system_prompt("Base.", &[], &[]);
+        assert!(prompt.contains("memory_search"));
+        assert!(prompt.contains("Don't guess"));
+    }
+
+    // ── select_messages tests ──
+
+    #[test]
+    fn select_messages_fits_all() {
+        let ctx = ContextManager::new(10000);
+        let messages = vec![
+            Message::user("Hello"),
+            Message::assistant("Hi there!"),
+        ];
+        let selected = ctx.select_messages(&messages, 100);
+        assert_eq!(selected.len(), 2, "All messages should fit");
+    }
+
+    #[test]
+    fn select_messages_truncates_oldest() {
+        // Very tight budget: only room for ~10 tokens beyond system prompt
+        let ctx = ContextManager::new(120);
+        let messages = vec![
+            Message::user("This is a somewhat long first message that should be truncated"),
+            Message::assistant("Short reply"),
+        ];
+        let selected = ctx.select_messages(&messages, 100);
+        // Only the most recent messages should be included (working backwards)
+        assert!(selected.len() <= 2);
+        if selected.len() == 1 {
+            // The last message should be kept (most recent)
+            assert_eq!(selected[0].role, Role::Assistant);
+        }
+    }
+
+    #[test]
+    fn select_messages_empty_input() {
+        let ctx = ContextManager::new(4096);
+        let selected = ctx.select_messages(&[], 100);
+        assert!(selected.is_empty());
+    }
+
+    #[test]
+    fn select_messages_preserves_order() {
+        let ctx = ContextManager::new(10000);
+        let messages = vec![
+            Message::user("First"),
+            Message::assistant("Second"),
+            Message::user("Third"),
+        ];
+        let selected = ctx.select_messages(&messages, 100);
+        assert_eq!(selected.len(), 3);
+        assert_eq!(selected[0].content, "First");
+        assert_eq!(selected[1].content, "Second");
+        assert_eq!(selected[2].content, "Third");
+    }
+
+    // ── build tests ──
+
+    #[test]
+    fn build_returns_complete_context() {
+        let ctx = ContextManager::new(10000);
+        let entries = vec![make_core_entry("name", "Bob")];
+        let tools = vec![make_tool_def("search", "Search things")];
+        let messages = vec![Message::user("Hello"), Message::assistant("Hi!")];
+
+        let built = ctx.build("You are helpful.", &entries, &tools, &messages);
+
+        assert!(built.system_prompt.contains("You are helpful."));
+        assert!(built.system_prompt.contains("name: Bob"));
+        assert!(built.system_prompt.contains("search: Search things"));
+        assert_eq!(built.messages.len(), 2);
+        assert!(built.estimated_tokens > 0);
+    }
+
+    #[test]
+    fn build_estimated_tokens_includes_system_and_messages() {
+        let ctx = ContextManager::new(10000);
+        let built = ctx.build("Short.", &[], &[], &[Message::user("Hello")]);
+
+        let sys_tokens = ContextManager::estimate_tokens(&built.system_prompt);
+        let msg_tokens: usize = built.messages.iter()
+            .map(|m| ContextManager::estimate_tokens(&m.content))
+            .sum();
+        assert_eq!(built.estimated_tokens, sys_tokens + msg_tokens);
+    }
+}

@@ -896,6 +896,10 @@ impl Default for SkillRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::loader::SkillMetadata as LoaderSkillMetadata;
+    use openrustclaw_core::types::SkillSource;
+
+    // ── SortBy tests ────────────────────────────────────────────────────
 
     #[test]
     fn test_sort_by_display() {
@@ -906,9 +910,384 @@ mod tests {
     }
 
     #[test]
+    fn test_sort_by_default_is_relevance() {
+        let sort: SortBy = Default::default();
+        assert_eq!(sort.to_string(), "relevance");
+    }
+
+    // ── SkillCache tests ────────────────────────────────────────────────
+
+    #[test]
     fn test_skill_cache_sanitize_filename() {
         assert_eq!(SkillCache::sanitize_filename("hello world"), "hello_world");
         assert_eq!(SkillCache::sanitize_filename("test/skill"), "test_skill");
         assert_eq!(SkillCache::sanitize_filename("skill.name"), "skill_name");
+    }
+
+    #[test]
+    fn test_skill_cache_sanitize_preserves_alphanumeric() {
+        assert_eq!(SkillCache::sanitize_filename("abc123"), "abc123");
+    }
+
+    #[test]
+    fn test_skill_cache_sanitize_preserves_hyphens_and_underscores() {
+        assert_eq!(SkillCache::sanitize_filename("my-skill_v2"), "my-skill_v2");
+    }
+
+    #[test]
+    fn test_skill_cache_sanitize_replaces_special_chars() {
+        assert_eq!(
+            SkillCache::sanitize_filename("@scope/package!"),
+            "_scope_package_"
+        );
+    }
+
+    #[test]
+    fn test_skill_cache_sanitize_empty_string() {
+        assert_eq!(SkillCache::sanitize_filename(""), "");
+    }
+
+    // ── SearchFilters tests ─────────────────────────────────────────────
+
+    #[test]
+    fn test_search_filters_default() {
+        let filters = SearchFilters::default();
+        assert!(filters.category.is_none());
+        assert!(matches!(filters.sort_by, SortBy::Relevance));
+        assert!(filters.min_rating.is_none());
+        assert!(!filters.verified_only);
+    }
+
+    #[test]
+    fn test_search_filters_with_category() {
+        let filters = SearchFilters {
+            category: Some("automation".to_string()),
+            sort_by: SortBy::Downloads,
+            min_rating: Some(4.0),
+            verified_only: true,
+        };
+        assert_eq!(filters.category.as_deref(), Some("automation"));
+        assert!(matches!(filters.sort_by, SortBy::Downloads));
+        assert_eq!(filters.min_rating, Some(4.0));
+        assert!(filters.verified_only);
+    }
+
+    // ── InstallResult tests ─────────────────────────────────────────────
+
+    #[test]
+    fn test_install_result_already_installed_debug() {
+        let result = InstallResult::AlreadyInstalled;
+        let debug = format!("{:?}", result);
+        assert!(debug.contains("AlreadyInstalled"));
+    }
+
+    #[test]
+    fn test_install_result_installed_debug() {
+        let result = InstallResult::Installed {
+            name: "test-skill".to_string(),
+            version: Version::new(1, 2, 3),
+            path: PathBuf::from("/tmp/skills/test"),
+        };
+        let debug = format!("{:?}", result);
+        assert!(debug.contains("test-skill"));
+        assert!(debug.contains("Installed"));
+        // Version field is present (semver Debug uses struct-style output)
+        assert!(debug.contains("major: 1"));
+        assert!(debug.contains("minor: 2"));
+        assert!(debug.contains("patch: 3"));
+    }
+
+    // ── UpdateResult tests ──────────────────────────────────────────────
+
+    #[test]
+    fn test_update_result_up_to_date_debug() {
+        let result = UpdateResult::UpToDate;
+        let debug = format!("{:?}", result);
+        assert!(debug.contains("UpToDate"));
+    }
+
+    #[test]
+    fn test_update_result_updated_debug() {
+        let result = UpdateResult::Updated {
+            from: Version::new(1, 0, 0),
+            to: Version::new(2, 0, 0),
+        };
+        let debug = format!("{:?}", result);
+        assert!(debug.contains("Updated"));
+        assert!(debug.contains("from"));
+        assert!(debug.contains("to"));
+        // Verify both versions are represented
+        assert!(debug.contains("major: 1"));
+        assert!(debug.contains("major: 2"));
+    }
+
+    // ── InstalledSkill tests ────────────────────────────────────────────
+
+    #[test]
+    fn test_installed_skill_clone() {
+        let skill = InstalledSkill {
+            name: "test-skill".to_string(),
+            version: Version::new(1, 0, 0),
+            description: "A test skill".to_string(),
+            author: "tester".to_string(),
+            install_path: PathBuf::from("/tmp/skills/test-skill"),
+            installed_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        let cloned = skill.clone();
+        assert_eq!(cloned.name, "test-skill");
+        assert_eq!(cloned.version, Version::new(1, 0, 0));
+        assert_eq!(cloned.description, "A test skill");
+        assert_eq!(cloned.author, "tester");
+    }
+
+    // ── SkillMetadata (registry) tests ──────────────────────────────────
+
+    #[test]
+    fn test_skill_metadata_serialization_roundtrip() {
+        let metadata = SkillMetadata {
+            name: "my-skill".to_string(),
+            version: Version::new(1, 2, 3),
+            description: "A cool skill".to_string(),
+            author: "author".to_string(),
+            repository: "https://github.com/test/skill".to_string(),
+            license: "MIT".to_string(),
+            keywords: vec!["test".to_string(), "automation".to_string()],
+            categories: vec!["tools".to_string()],
+            downloads: 1000,
+            rating: 4.5,
+            rating_count: 50,
+            signature: Some("abc123".to_string()),
+            published_at: Utc::now(),
+            updated_at: Utc::now(),
+            dependencies: vec![],
+            capabilities: vec!["file_read".to_string()],
+            min_openrustclaw_version: Some(Version::new(0, 1, 0)),
+        };
+
+        let json = serde_json::to_string(&metadata).expect("serialize");
+        let deserialized: SkillMetadata =
+            serde_json::from_str(&json).expect("deserialize");
+
+        assert_eq!(deserialized.name, "my-skill");
+        assert_eq!(deserialized.version, Version::new(1, 2, 3));
+        assert_eq!(deserialized.description, "A cool skill");
+        assert_eq!(deserialized.downloads, 1000);
+        assert_eq!(deserialized.rating, 4.5);
+        assert_eq!(deserialized.rating_count, 50);
+        assert_eq!(deserialized.signature, Some("abc123".to_string()));
+        assert_eq!(deserialized.keywords, vec!["test", "automation"]);
+        assert_eq!(deserialized.categories, vec!["tools"]);
+        assert_eq!(
+            deserialized.min_openrustclaw_version,
+            Some(Version::new(0, 1, 0))
+        );
+    }
+
+    #[test]
+    fn test_skill_metadata_without_optional_fields() {
+        let metadata = SkillMetadata {
+            name: "minimal".to_string(),
+            version: Version::new(0, 1, 0),
+            description: "".to_string(),
+            author: "".to_string(),
+            repository: "".to_string(),
+            license: "".to_string(),
+            keywords: vec![],
+            categories: vec![],
+            downloads: 0,
+            rating: 0.0,
+            rating_count: 0,
+            signature: None,
+            published_at: Utc::now(),
+            updated_at: Utc::now(),
+            dependencies: vec![],
+            capabilities: vec![],
+            min_openrustclaw_version: None,
+        };
+
+        let json = serde_json::to_string(&metadata).expect("serialize");
+        let deserialized: SkillMetadata =
+            serde_json::from_str(&json).expect("deserialize");
+        assert!(deserialized.signature.is_none());
+        assert!(deserialized.min_openrustclaw_version.is_none());
+        assert!(deserialized.dependencies.is_empty());
+    }
+
+    // ── SkillDependency tests ───────────────────────────────────────────
+
+    #[test]
+    fn test_skill_dependency_serialization() {
+        let dep = SkillDependency {
+            name: "base-skill".to_string(),
+            version_req: VersionReq::parse(">=1.0.0").unwrap(),
+            optional: false,
+        };
+
+        let json = serde_json::to_string(&dep).expect("serialize");
+        let deserialized: SkillDependency =
+            serde_json::from_str(&json).expect("deserialize");
+
+        assert_eq!(deserialized.name, "base-skill");
+        assert!(!deserialized.optional);
+    }
+
+    #[test]
+    fn test_skill_dependency_optional() {
+        let dep = SkillDependency {
+            name: "optional-dep".to_string(),
+            version_req: VersionReq::parse("^2.0").unwrap(),
+            optional: true,
+        };
+        assert!(dep.optional);
+        assert_eq!(dep.name, "optional-dep");
+    }
+
+    #[test]
+    fn test_skill_dependency_version_req_matching() {
+        let dep = SkillDependency {
+            name: "dep".to_string(),
+            version_req: VersionReq::parse(">=1.0.0, <2.0.0").unwrap(),
+            optional: false,
+        };
+        assert!(dep.version_req.matches(&Version::new(1, 0, 0)));
+        assert!(dep.version_req.matches(&Version::new(1, 5, 3)));
+        assert!(!dep.version_req.matches(&Version::new(2, 0, 0)));
+        assert!(!dep.version_req.matches(&Version::new(0, 9, 0)));
+    }
+
+    // ── Legacy SkillRegistry tests ──────────────────────────────────────
+
+    #[test]
+    fn test_legacy_registry_new_is_empty() {
+        let registry = SkillRegistry::new();
+        assert!(registry.is_empty());
+        assert_eq!(registry.len(), 0);
+    }
+
+    #[test]
+    fn test_legacy_registry_default_is_empty() {
+        let registry = SkillRegistry::default();
+        assert!(registry.is_empty());
+        assert_eq!(registry.len(), 0);
+    }
+
+    #[test]
+    fn test_legacy_registry_register_skill() {
+        let mut registry = SkillRegistry::new();
+        let skill = LoaderSkillMetadata {
+            name: "test-skill".to_string(),
+            description: "A test skill".to_string(),
+            version: "1.0.0".to_string(),
+            source: SkillSource::Workspace,
+            capabilities: vec![],
+            author: Some("tester".to_string()),
+        };
+
+        registry.register(skill);
+        assert_eq!(registry.len(), 1);
+        assert!(!registry.is_empty());
+    }
+
+    #[test]
+    fn test_legacy_registry_get_skill_by_name() {
+        let mut registry = SkillRegistry::new();
+        let skill = LoaderSkillMetadata {
+            name: "my-skill".to_string(),
+            description: "Description".to_string(),
+            version: "2.0.0".to_string(),
+            source: SkillSource::Bundled,
+            capabilities: vec!["cap1".to_string()],
+            author: None,
+        };
+
+        registry.register(skill);
+        let found = registry.get("my-skill");
+        assert!(found.is_some());
+
+        let found = found.unwrap();
+        assert_eq!(found.name, "my-skill");
+        assert_eq!(found.version, "2.0.0");
+        assert!(found.author.is_none());
+    }
+
+    #[test]
+    fn test_legacy_registry_get_nonexistent_skill() {
+        let registry = SkillRegistry::new();
+        assert!(registry.get("nonexistent").is_none());
+    }
+
+    #[test]
+    fn test_legacy_registry_list_skills() {
+        let mut registry = SkillRegistry::new();
+        for i in 0..3 {
+            registry.register(LoaderSkillMetadata {
+                name: format!("skill-{}", i),
+                description: format!("Skill {}", i),
+                version: "1.0.0".to_string(),
+                source: SkillSource::Workspace,
+                capabilities: vec![],
+                author: None,
+            });
+        }
+
+        let skills = registry.list();
+        assert_eq!(skills.len(), 3);
+    }
+
+    #[test]
+    fn test_legacy_registry_duplicate_overwrites() {
+        let mut registry = SkillRegistry::new();
+
+        registry.register(LoaderSkillMetadata {
+            name: "same-name".to_string(),
+            description: "First version".to_string(),
+            version: "1.0.0".to_string(),
+            source: SkillSource::Workspace,
+            capabilities: vec![],
+            author: None,
+        });
+
+        registry.register(LoaderSkillMetadata {
+            name: "same-name".to_string(),
+            description: "Second version".to_string(),
+            version: "2.0.0".to_string(),
+            source: SkillSource::Managed,
+            capabilities: vec![],
+            author: None,
+        });
+
+        // Should still be 1 skill (HashMap replaces)
+        assert_eq!(registry.len(), 1);
+        let skill = registry.get("same-name").unwrap();
+        assert_eq!(skill.description, "Second version");
+        assert_eq!(skill.version, "2.0.0");
+    }
+
+    #[test]
+    fn test_legacy_registry_multiple_unique_skills() {
+        let mut registry = SkillRegistry::new();
+        let sources = [
+            SkillSource::Workspace,
+            SkillSource::Managed,
+            SkillSource::Bundled,
+            SkillSource::Marketplace,
+        ];
+
+        for (i, source) in sources.iter().enumerate() {
+            registry.register(LoaderSkillMetadata {
+                name: format!("skill-{}", i),
+                description: format!("Skill from {:?}", source),
+                version: "1.0.0".to_string(),
+                source: source.clone(),
+                capabilities: vec![],
+                author: None,
+            });
+        }
+
+        assert_eq!(registry.len(), 4);
+        for i in 0..4 {
+            assert!(registry.get(&format!("skill-{}", i)).is_some());
+        }
     }
 }

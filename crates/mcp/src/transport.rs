@@ -179,4 +179,111 @@ mod tests {
         assert!(StdioTransport::validate_command("node | cat").is_err());
         assert!(StdioTransport::validate_command("$(whoami)").is_err());
     }
+
+    // --- additional allowed commands ---
+
+    #[test]
+    fn validate_command_allows_deno_and_bun() {
+        assert!(StdioTransport::validate_command("deno").is_ok());
+        assert!(StdioTransport::validate_command("bun").is_ok());
+    }
+
+    #[test]
+    fn validate_command_allows_cargo_and_go() {
+        assert!(StdioTransport::validate_command("cargo").is_ok());
+        assert!(StdioTransport::validate_command("go").is_ok());
+    }
+
+    #[test]
+    fn validate_command_allows_python_variants() {
+        assert!(StdioTransport::validate_command("python").is_ok());
+        assert!(StdioTransport::validate_command("python3").is_ok());
+    }
+
+    // --- additional rejections ---
+
+    #[test]
+    fn validate_command_rejects_common_dangerous_commands() {
+        assert!(StdioTransport::validate_command("wget").is_err());
+        assert!(StdioTransport::validate_command("nc").is_err());
+        assert!(StdioTransport::validate_command("cat").is_err());
+        assert!(StdioTransport::validate_command("chmod").is_err());
+    }
+
+    #[test]
+    fn validate_command_rejects_empty_string() {
+        assert!(StdioTransport::validate_command("").is_err());
+    }
+
+    // --- path-based commands ---
+
+    #[test]
+    fn validate_command_allows_absolute_path_to_permitted_binary() {
+        assert!(StdioTransport::validate_command("/opt/homebrew/bin/npx").is_ok());
+        assert!(StdioTransport::validate_command("/usr/local/bin/python3").is_ok());
+    }
+
+    #[test]
+    fn validate_command_rejects_absolute_path_to_forbidden_binary() {
+        assert!(StdioTransport::validate_command("/usr/bin/bash").is_err());
+        assert!(StdioTransport::validate_command("/bin/sh").is_err());
+    }
+
+    // --- shell metacharacters ---
+
+    #[test]
+    fn validate_command_rejects_backtick_injection() {
+        assert!(StdioTransport::validate_command("node`whoami`").is_err());
+    }
+
+    #[test]
+    fn validate_command_rejects_redirect_characters() {
+        assert!(StdioTransport::validate_command("node > /tmp/out").is_err());
+        assert!(StdioTransport::validate_command("node < /etc/passwd").is_err());
+    }
+
+    #[test]
+    fn validate_command_rejects_ampersand() {
+        assert!(StdioTransport::validate_command("node & sleep 10").is_err());
+    }
+
+    #[test]
+    fn validate_command_rejects_newline() {
+        assert!(StdioTransport::validate_command("node\nrm -rf /").is_err());
+    }
+
+    #[test]
+    fn validate_command_rejects_exclamation() {
+        assert!(StdioTransport::validate_command("node!").is_err());
+    }
+
+    #[test]
+    fn validate_command_rejects_curly_braces() {
+        assert!(StdioTransport::validate_command("node{1,2}").is_err());
+    }
+
+    #[test]
+    fn validate_command_rejects_parentheses() {
+        assert!(StdioTransport::validate_command("node(test)").is_err());
+    }
+
+    // --- error message quality ---
+
+    #[test]
+    fn rejected_command_error_mentions_allowlist() {
+        let result = StdioTransport::validate_command("evil-binary");
+        let err = result.unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("not in the allowed"));
+    }
+
+    #[test]
+    fn shell_metachar_error_mentions_metacharacters() {
+        // Use a path where the basename is in the allowlist but the full path
+        // contains shell metacharacters (semicolon in a directory name).
+        let result = StdioTransport::validate_command("/tmp/evil;dir/node");
+        let err = result.unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("metacharacters"));
+    }
 }

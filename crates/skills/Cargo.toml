@@ -27,3 +27,6 @@ base64.workspace = true
 flate2.workspace = true
 tar = "0.4"
 dirs = "5"
+
+[dev-dependencies]
+tempfile.workspace = true

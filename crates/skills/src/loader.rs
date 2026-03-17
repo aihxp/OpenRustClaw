@@ -119,3 +119,285 @@ impl SkillLoader {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    /// Helper: create a temp directory with a skill sub-directory containing a SKILL.md
+    fn create_skill_dir(base: &Path, skill_name: &str, content: &str) -> PathBuf {
+        let skill_dir = base.join(skill_name);
+        fs::create_dir_all(&skill_dir).unwrap();
+        fs::write(skill_dir.join("SKILL.md"), content).unwrap();
+        skill_dir
+    }
+
+    // ── SkillMetadata tests ─────────────────────────────────────────────
+
+    #[test]
+    fn test_skill_metadata_serialization_roundtrip() {
+        let meta = SkillMetadata {
+            name: "test-skill".to_string(),
+            description: "A test".to_string(),
+            version: "1.2.3".to_string(),
+            source: SkillSource::Workspace,
+            capabilities: vec!["cap1".to_string(), "cap2".to_string()],
+            author: Some("Author".to_string()),
+        };
+
+        let json = serde_json::to_string(&meta).unwrap();
+        let deserialized: SkillMetadata = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(deserialized.name, "test-skill");
+        assert_eq!(deserialized.description, "A test");
+        assert_eq!(deserialized.version, "1.2.3");
+        assert_eq!(deserialized.capabilities.len(), 2);
+        assert_eq!(deserialized.author, Some("Author".to_string()));
+    }
+
+    #[test]
+    fn test_skill_metadata_without_author() {
+        let meta = SkillMetadata {
+            name: "anon-skill".to_string(),
+            description: "No author".to_string(),
+            version: "0.1.0".to_string(),
+            source: SkillSource::Bundled,
+            capabilities: vec![],
+            author: None,
+        };
+
+        let json = serde_json::to_string(&meta).unwrap();
+        let deserialized: SkillMetadata = serde_json::from_str(&json).unwrap();
+        assert!(deserialized.author.is_none());
+    }
+
+    #[test]
+    fn test_skill_metadata_clone() {
+        let meta = SkillMetadata {
+            name: "cloneable".to_string(),
+            description: "Can be cloned".to_string(),
+            version: "1.0.0".to_string(),
+            source: SkillSource::Managed,
+            capabilities: vec!["network".to_string()],
+            author: Some("dev".to_string()),
+        };
+
+        let cloned = meta.clone();
+        assert_eq!(cloned.name, meta.name);
+        assert_eq!(cloned.description, meta.description);
+        assert_eq!(cloned.version, meta.version);
+        assert_eq!(cloned.capabilities, meta.capabilities);
+    }
+
+    // ── SkillLoader construction tests ──────────────────────────────────
+
+    #[test]
+    fn test_loader_new_with_empty_dirs() {
+        let loader = SkillLoader::new(vec![]);
+        let skills = loader.discover().unwrap();
+        assert!(skills.is_empty());
+    }
+
+    #[test]
+    fn test_loader_new_with_nonexistent_dirs() {
+        let loader = SkillLoader::new(vec![
+            PathBuf::from("/nonexistent/path/1"),
+            PathBuf::from("/nonexistent/path/2"),
+        ]);
+        let skills = loader.discover().unwrap();
+        assert!(skills.is_empty());
+    }
+
+    // ── SKILL.md parsing tests ──────────────────────────────────────────
+
+    #[test]
+    fn test_parse_skill_md_full_frontmatter() {
+        let tmp = tempfile::tempdir().unwrap();
+        let content = r#"---
+name: "my-awesome-skill"
+description: "Does awesome things"
+version: "2.1.0"
+author: "Jane Doe"
+---
+
+# My Awesome Skill
+
+This skill does awesome things.
+"#;
+        create_skill_dir(tmp.path(), "my-awesome-skill", content);
+
+        let loader = SkillLoader::new(vec![tmp.path().to_path_buf()]);
+        let skills = loader.discover().unwrap();
+
+        assert_eq!(skills.len(), 1);
+        let skill = &skills[0];
+        assert_eq!(skill.name, "my-awesome-skill");
+        assert_eq!(skill.description, "Does awesome things");
+        assert_eq!(skill.version, "2.1.0");
+        assert_eq!(skill.author, Some("Jane Doe".to_string()));
+    }
+
+    #[test]
+    fn test_parse_skill_md_minimal_frontmatter() {
+        let tmp = tempfile::tempdir().unwrap();
+        let content = r#"---
+name: minimal-skill
+---
+"#;
+        create_skill_dir(tmp.path(), "minimal-skill", content);
+
+        let loader = SkillLoader::new(vec![tmp.path().to_path_buf()]);
+        let skills = loader.discover().unwrap();
+
+        assert_eq!(skills.len(), 1);
+        let skill = &skills[0];
+        assert_eq!(skill.name, "minimal-skill");
+        assert_eq!(skill.version, "0.1.0"); // default version
+        assert!(skill.author.is_none());
+    }
+
+    #[test]
+    fn test_parse_skill_md_no_name_uses_dir_name() {
+        let tmp = tempfile::tempdir().unwrap();
+        let content = r#"---
+description: "A skill without a name field"
+version: "1.0.0"
+---
+"#;
+        create_skill_dir(tmp.path(), "dir-based-name", content);
+
+        let loader = SkillLoader::new(vec![tmp.path().to_path_buf()]);
+        let skills = loader.discover().unwrap();
+
+        assert_eq!(skills.len(), 1);
+        assert_eq!(skills[0].name, "dir-based-name");
+    }
+
+    #[test]
+    fn test_parse_skill_md_no_frontmatter_uses_dir_name() {
+        let tmp = tempfile::tempdir().unwrap();
+        let content = "# Just a markdown file\n\nNo front matter here.\n";
+        create_skill_dir(tmp.path(), "fallback-name", content);
+
+        let loader = SkillLoader::new(vec![tmp.path().to_path_buf()]);
+        let skills = loader.discover().unwrap();
+
+        assert_eq!(skills.len(), 1);
+        assert_eq!(skills[0].name, "fallback-name");
+        assert_eq!(skills[0].version, "0.1.0");
+    }
+
+    #[test]
+    fn test_parse_skill_md_quoted_values() {
+        let tmp = tempfile::tempdir().unwrap();
+        let content = r#"---
+name: "quoted-name"
+description: "A quoted description"
+version: "3.0.0"
+author: "Quoted Author"
+---
+"#;
+        create_skill_dir(tmp.path(), "quoted", content);
+
+        let loader = SkillLoader::new(vec![tmp.path().to_path_buf()]);
+        let skills = loader.discover().unwrap();
+
+        assert_eq!(skills.len(), 1);
+        let skill = &skills[0];
+        assert_eq!(skill.name, "quoted-name");
+        assert_eq!(skill.description, "A quoted description");
+        assert_eq!(skill.version, "3.0.0");
+        assert_eq!(skill.author, Some("Quoted Author".to_string()));
+    }
+
+    // ── discover() tests ────────────────────────────────────────────────
+
+    #[test]
+    fn test_discover_multiple_skills() {
+        let tmp = tempfile::tempdir().unwrap();
+        for i in 0..5 {
+            let content = format!(
+                "---\nname: skill-{}\ndescription: Skill number {}\nversion: 1.0.{}\n---\n",
+                i, i, i
+            );
+            create_skill_dir(tmp.path(), &format!("skill-{}", i), &content);
+        }
+
+        let loader = SkillLoader::new(vec![tmp.path().to_path_buf()]);
+        let skills = loader.discover().unwrap();
+
+        assert_eq!(skills.len(), 5);
+    }
+
+    #[test]
+    fn test_discover_skips_dirs_without_skill_md() {
+        let tmp = tempfile::tempdir().unwrap();
+        // Create a dir with SKILL.md
+        create_skill_dir(
+            tmp.path(),
+            "with-skill",
+            "---\nname: with-skill\n---\n",
+        );
+        // Create a dir without SKILL.md
+        fs::create_dir_all(tmp.path().join("without-skill")).unwrap();
+        fs::write(
+            tmp.path().join("without-skill").join("README.md"),
+            "Not a skill",
+        )
+        .unwrap();
+
+        let loader = SkillLoader::new(vec![tmp.path().to_path_buf()]);
+        let skills = loader.discover().unwrap();
+
+        assert_eq!(skills.len(), 1);
+        assert_eq!(skills[0].name, "with-skill");
+    }
+
+    #[test]
+    fn test_discover_skips_files_at_root_level() {
+        let tmp = tempfile::tempdir().unwrap();
+        // SKILL.md at root level (not inside a subdirectory) should be ignored
+        fs::write(tmp.path().join("SKILL.md"), "---\nname: root\n---\n").unwrap();
+        // Also add a valid one inside a subdir
+        create_skill_dir(tmp.path(), "valid", "---\nname: valid\n---\n");
+
+        let loader = SkillLoader::new(vec![tmp.path().to_path_buf()]);
+        let skills = loader.discover().unwrap();
+
+        assert_eq!(skills.len(), 1);
+        assert_eq!(skills[0].name, "valid");
+    }
+
+    #[test]
+    fn test_discover_from_multiple_directories() {
+        let tmp1 = tempfile::tempdir().unwrap();
+        let tmp2 = tempfile::tempdir().unwrap();
+
+        create_skill_dir(tmp1.path(), "skill-a", "---\nname: skill-a\n---\n");
+        create_skill_dir(tmp2.path(), "skill-b", "---\nname: skill-b\n---\n");
+
+        let loader = SkillLoader::new(vec![
+            tmp1.path().to_path_buf(),
+            tmp2.path().to_path_buf(),
+        ]);
+        let skills = loader.discover().unwrap();
+
+        assert_eq!(skills.len(), 2);
+        let names: Vec<&str> = skills.iter().map(|s| s.name.as_str()).collect();
+        assert!(names.contains(&"skill-a"));
+        assert!(names.contains(&"skill-b"));
+    }
+
+    #[test]
+    fn test_discover_all_skills_have_workspace_source() {
+        let tmp = tempfile::tempdir().unwrap();
+        create_skill_dir(tmp.path(), "ws-skill", "---\nname: ws-skill\n---\n");
+
+        let loader = SkillLoader::new(vec![tmp.path().to_path_buf()]);
+        let skills = loader.discover().unwrap();
+
+        assert_eq!(skills.len(), 1);
+        assert!(matches!(skills[0].source, SkillSource::Workspace));
+    }
+}

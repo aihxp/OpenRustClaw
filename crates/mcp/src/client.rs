@@ -143,3 +143,105 @@ impl McpClient {
         self.transport.shutdown().await
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // --- McpToolDef ---
+
+    #[test]
+    fn mcp_tool_def_serialization_roundtrip() {
+        let tool = McpToolDef {
+            name: "read_file".to_string(),
+            description: "Read a file from disk".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string" }
+                },
+                "required": ["path"]
+            }),
+            server_name: "filesystem".to_string(),
+        };
+        let json = serde_json::to_string(&tool).unwrap();
+        let deserialized: McpToolDef = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.name, "read_file");
+        assert_eq!(deserialized.description, "Read a file from disk");
+        assert_eq!(deserialized.server_name, "filesystem");
+        assert_eq!(deserialized.input_schema["type"], "object");
+    }
+
+    #[test]
+    fn mcp_tool_def_clone_is_independent() {
+        let tool = McpToolDef {
+            name: "tool".to_string(),
+            description: "desc".to_string(),
+            input_schema: serde_json::json!({}),
+            server_name: "srv".to_string(),
+        };
+        let cloned = tool.clone();
+        assert_eq!(cloned.name, tool.name);
+        assert_eq!(cloned.server_name, tool.server_name);
+    }
+
+    #[test]
+    fn mcp_tool_def_debug_format() {
+        let tool = McpToolDef {
+            name: "test".to_string(),
+            description: "test desc".to_string(),
+            input_schema: serde_json::json!({}),
+            server_name: "srv".to_string(),
+        };
+        let debug = format!("{:?}", tool);
+        assert!(debug.contains("test"));
+        assert!(debug.contains("srv"));
+    }
+
+    #[test]
+    fn mcp_tool_def_with_complex_schema() {
+        let tool = McpToolDef {
+            name: "query".to_string(),
+            description: "Query database".to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "sql": { "type": "string" },
+                    "params": {
+                        "type": "array",
+                        "items": { "type": "string" }
+                    },
+                    "options": {
+                        "type": "object",
+                        "properties": {
+                            "timeout": { "type": "integer" },
+                            "readonly": { "type": "boolean" }
+                        }
+                    }
+                },
+                "required": ["sql"]
+            }),
+            server_name: "db-server".to_string(),
+        };
+        let json = serde_json::to_value(&tool).unwrap();
+        assert_eq!(json["input_schema"]["properties"]["params"]["type"], "array");
+        assert_eq!(
+            json["input_schema"]["properties"]["options"]["properties"]["timeout"]["type"],
+            "integer"
+        );
+    }
+
+    // --- connect rejects disallowed commands ---
+
+    #[tokio::test]
+    async fn connect_rejects_disallowed_command() {
+        let result = McpClient::connect("test", "bash", &["-c", "echo"]).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn connect_rejects_shell_injection() {
+        let result = McpClient::connect("test", "node; rm -rf /", &[]).await;
+        assert!(result.is_err());
+    }
+}

@@ -73,4 +73,325 @@ impl MemoryPolicies {
         }
         dot / (mag_a * mag_b)
     }
+
+    /// Check whether a candidate embedding is a duplicate of an existing one.
+    pub fn is_duplicate(&self, candidate: &[f32], existing: &[f32]) -> bool {
+        Self::cosine_similarity(candidate, existing) >= self.dedupe_cosine_threshold
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── Content hash tests ──
+
+    #[test]
+    fn content_hash_deterministic_same_input() {
+        let h1 = MemoryPolicies::content_hash("the quick brown fox");
+        let h2 = MemoryPolicies::content_hash("the quick brown fox");
+        assert_eq!(h1, h2, "Same input must produce identical hashes");
+    }
+
+    #[test]
+    fn content_hash_different_inputs_differ() {
+        let h1 = MemoryPolicies::content_hash("hello world");
+        let h2 = MemoryPolicies::content_hash("hello World");
+        assert_ne!(h1, h2, "Different inputs must produce different hashes");
+    }
+
+    #[test]
+    fn content_hash_is_hex_sha256_length() {
+        let hash = MemoryPolicies::content_hash("test");
+        // SHA-256 produces 64 hex chars
+        assert_eq!(hash.len(), 64);
+        assert!(hash.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn content_hash_empty_string() {
+        let hash = MemoryPolicies::content_hash("");
+        assert_eq!(hash.len(), 64, "Empty string still produces a valid SHA-256 hash");
+        // Known SHA-256 of empty string
+        assert_eq!(
+            hash,
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
+    }
+
+    #[test]
+    fn content_hash_whitespace_sensitivity() {
+        let h1 = MemoryPolicies::content_hash("foo bar");
+        let h2 = MemoryPolicies::content_hash("foo  bar");
+        assert_ne!(h1, h2, "Whitespace differences must produce different hashes");
+    }
+
+    // ── Importance scoring tests ──
+
+    #[test]
+    fn importance_explicit_user_statement_is_highest() {
+        let score = MemoryPolicies::score_importance(&MemorySource::ExplicitUserStatement);
+        assert_eq!(score, 1.0);
+    }
+
+    #[test]
+    fn importance_user_correction_is_very_high() {
+        let score = MemoryPolicies::score_importance(&MemorySource::UserCorrection);
+        assert_eq!(score, 0.95);
+    }
+
+    #[test]
+    fn importance_tool_result() {
+        let score = MemoryPolicies::score_importance(&MemorySource::ToolResult);
+        assert_eq!(score, 0.8);
+    }
+
+    #[test]
+    fn importance_agent_inference() {
+        let score = MemoryPolicies::score_importance(&MemorySource::AgentInference);
+        assert_eq!(score, 0.7);
+    }
+
+    #[test]
+    fn importance_conversation_summary() {
+        let score = MemoryPolicies::score_importance(&MemorySource::ConversationSummary);
+        assert_eq!(score, 0.6);
+    }
+
+    #[test]
+    fn importance_background_ingestion_is_lowest() {
+        let score = MemoryPolicies::score_importance(&MemorySource::BackgroundIngestion);
+        assert_eq!(score, 0.5);
+    }
+
+    #[test]
+    fn importance_ordering_preserved() {
+        let sources = [
+            MemorySource::ExplicitUserStatement,
+            MemorySource::UserCorrection,
+            MemorySource::ToolResult,
+            MemorySource::AgentInference,
+            MemorySource::ConversationSummary,
+            MemorySource::BackgroundIngestion,
+        ];
+        let scores: Vec<f32> = sources.iter().map(MemoryPolicies::score_importance).collect();
+        for i in 1..scores.len() {
+            assert!(
+                scores[i - 1] > scores[i],
+                "Scores must be strictly decreasing: {:?}",
+                scores
+            );
+        }
+    }
+
+    // ── Decay score tests ──
+
+    #[test]
+    fn decay_zero_days_returns_base_score() {
+        let policies = MemoryPolicies::default();
+        let result = policies.decay_score(1.0, 0.0);
+        assert!((result - 1.0).abs() < 1e-6, "No decay at day 0");
+    }
+
+    #[test]
+    fn decay_at_half_life_returns_half() {
+        let policies = MemoryPolicies::default();
+        // default half life is 30 days
+        let result = policies.decay_score(1.0, 30.0);
+        assert!(
+            (result - 0.5).abs() < 0.01,
+            "Score should be ~0.5 at half-life, got {}",
+            result
+        );
+    }
+
+    #[test]
+    fn decay_at_two_half_lives_returns_quarter() {
+        let policies = MemoryPolicies::default();
+        let result = policies.decay_score(1.0, 60.0);
+        assert!(
+            (result - 0.25).abs() < 0.01,
+            "Score should be ~0.25 at two half-lives, got {}",
+            result
+        );
+    }
+
+    #[test]
+    fn decay_scales_with_base_score() {
+        let policies = MemoryPolicies::default();
+        let base = 0.8;
+        let result = policies.decay_score(base, 30.0);
+        assert!(
+            (result - 0.4).abs() < 0.01,
+            "0.8 * 0.5 should be ~0.4, got {}",
+            result
+        );
+    }
+
+    #[test]
+    fn decay_custom_half_life() {
+        let policies = MemoryPolicies {
+            decay_half_life_days: 10.0,
+            ..Default::default()
+        };
+        let result = policies.decay_score(1.0, 10.0);
+        assert!(
+            (result - 0.5).abs() < 0.01,
+            "Custom half-life of 10 days: score at 10 days should be ~0.5, got {}",
+            result
+        );
+    }
+
+    // ── Cosine similarity tests ──
+
+    #[test]
+    fn cosine_identical_vectors() {
+        let v = vec![1.0, 2.0, 3.0];
+        let sim = MemoryPolicies::cosine_similarity(&v, &v);
+        assert!(
+            (sim - 1.0).abs() < 1e-6,
+            "Self-similarity should be 1.0, got {}",
+            sim
+        );
+    }
+
+    #[test]
+    fn cosine_opposite_vectors() {
+        let a = vec![1.0, 0.0, 0.0];
+        let b = vec![-1.0, 0.0, 0.0];
+        let sim = MemoryPolicies::cosine_similarity(&a, &b);
+        assert!(
+            (sim - (-1.0)).abs() < 1e-6,
+            "Opposite vectors should have similarity -1.0, got {}",
+            sim
+        );
+    }
+
+    #[test]
+    fn cosine_orthogonal_vectors() {
+        let a = vec![1.0, 0.0];
+        let b = vec![0.0, 1.0];
+        let sim = MemoryPolicies::cosine_similarity(&a, &b);
+        assert!(
+            sim.abs() < 1e-6,
+            "Orthogonal vectors should have similarity 0.0, got {}",
+            sim
+        );
+    }
+
+    #[test]
+    fn cosine_symmetry() {
+        let a = vec![1.0, 2.0, 3.0];
+        let b = vec![4.0, 5.0, 6.0];
+        let sim_ab = MemoryPolicies::cosine_similarity(&a, &b);
+        let sim_ba = MemoryPolicies::cosine_similarity(&b, &a);
+        assert!(
+            (sim_ab - sim_ba).abs() < 1e-6,
+            "Cosine similarity must be symmetric"
+        );
+    }
+
+    #[test]
+    fn cosine_bounded() {
+        let a = vec![3.0, -1.0, 2.0, 5.0];
+        let b = vec![-2.0, 4.0, 1.0, -3.0];
+        let sim = MemoryPolicies::cosine_similarity(&a, &b);
+        assert!(sim >= -1.0 && sim <= 1.0, "Cosine similarity must be in [-1, 1], got {}", sim);
+    }
+
+    #[test]
+    fn cosine_zero_vector_returns_zero() {
+        let a = vec![0.0, 0.0, 0.0];
+        let b = vec![1.0, 2.0, 3.0];
+        assert_eq!(MemoryPolicies::cosine_similarity(&a, &b), 0.0);
+        assert_eq!(MemoryPolicies::cosine_similarity(&b, &a), 0.0);
+    }
+
+    #[test]
+    fn cosine_both_zero_vectors() {
+        let a = vec![0.0, 0.0];
+        let b = vec![0.0, 0.0];
+        assert_eq!(MemoryPolicies::cosine_similarity(&a, &b), 0.0);
+    }
+
+    #[test]
+    fn cosine_mismatched_lengths_returns_zero() {
+        let a = vec![1.0, 2.0];
+        let b = vec![1.0, 2.0, 3.0];
+        assert_eq!(MemoryPolicies::cosine_similarity(&a, &b), 0.0);
+    }
+
+    #[test]
+    fn cosine_empty_vectors_returns_zero() {
+        let a: Vec<f32> = vec![];
+        let b: Vec<f32> = vec![];
+        assert_eq!(MemoryPolicies::cosine_similarity(&a, &b), 0.0);
+    }
+
+    #[test]
+    fn cosine_parallel_scaled_vectors() {
+        let a = vec![1.0, 2.0, 3.0];
+        let b = vec![2.0, 4.0, 6.0]; // 2x of a
+        let sim = MemoryPolicies::cosine_similarity(&a, &b);
+        assert!(
+            (sim - 1.0).abs() < 1e-6,
+            "Parallel vectors (scaled) should have similarity 1.0, got {}",
+            sim
+        );
+    }
+
+    // ── Dedup threshold tests ──
+
+    #[test]
+    fn is_duplicate_above_threshold() {
+        let policies = MemoryPolicies {
+            dedupe_cosine_threshold: 0.9,
+            ..Default::default()
+        };
+        // Identical vectors have similarity 1.0 >= 0.9
+        let v = vec![1.0, 2.0, 3.0];
+        assert!(policies.is_duplicate(&v, &v));
+    }
+
+    #[test]
+    fn is_duplicate_below_threshold() {
+        let policies = MemoryPolicies {
+            dedupe_cosine_threshold: 0.9,
+            ..Default::default()
+        };
+        // Orthogonal vectors have similarity 0.0 < 0.9
+        let a = vec![1.0, 0.0];
+        let b = vec![0.0, 1.0];
+        assert!(!policies.is_duplicate(&a, &b));
+    }
+
+    #[test]
+    fn is_duplicate_exactly_at_threshold() {
+        let policies = MemoryPolicies {
+            dedupe_cosine_threshold: 0.95,
+            ..Default::default()
+        };
+        // Two nearly identical vectors with similarity just above 0.95
+        let a = vec![1.0, 0.0, 0.0];
+        let b = vec![1.0, 0.05, 0.0]; // very close to a
+        let sim = MemoryPolicies::cosine_similarity(&a, &b);
+        assert!(sim > 0.95, "These vectors should have similarity > 0.95, got {}", sim);
+        assert!(policies.is_duplicate(&a, &b));
+    }
+
+    // ── Default policy values ──
+
+    #[test]
+    fn default_policies_have_expected_values() {
+        let p = MemoryPolicies::default();
+        assert_eq!(p.dedupe_cosine_threshold, 0.92);
+        assert_eq!(p.max_core_tokens, 500);
+        assert_eq!(p.max_core_entries, 20);
+        assert_eq!(p.embedding_concurrency, 4);
+        assert_eq!(p.ttl_episodic_days, 90);
+        assert_eq!(p.ttl_procedural_days, None);
+        assert_eq!(p.ttl_semantic_days, None);
+        assert_eq!(p.consolidation_threshold, 1000);
+        assert!((p.decay_half_life_days - 30.0).abs() < 1e-6);
+    }
 }
