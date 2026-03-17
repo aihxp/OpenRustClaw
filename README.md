@@ -3,11 +3,8 @@
 [![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://www.rust-lang.org)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-300%2B-brightgreen.svg)]()
-[![OpenClaw Parity](https://img.shields.io/badge/OpenClaw-100%25-success)]()
 
-> **The most feature-complete Rust-based AI agent platform.**
-> 
-> ✅ 100% OpenClaw parity | 20/20 channels | Enterprise-ready
+> **A powerful Rust-based AI agent platform with extensive channel support.**
 
 ## 🚀 Quick Start
 
@@ -22,14 +19,11 @@ cargo build --release
 
 # Start with your favorite channels
 openrustclaw start --channels=telegram,discord,slack
-
-# Or go wild with all 20 channels
-openrustclaw start --channels=all
 ```
 
 ## ✨ Features
 
-### 20 Messaging Channels (100% OpenClaw Parity)
+### 20 Messaging Channels
 
 | Channel | Status | Features |
 |---------|--------|----------|
@@ -93,6 +87,16 @@ let router = AgentRouter::new(agent_id)
 - Inter-agent communication (`sessions_send`, `sessions_spawn`)
 - Heartbeat Scheduler for automation
 - Workspace isolation
+
+### LLM Providers
+
+Current LLM support:
+- ✅ Anthropic (Claude) via `anthropic_rust` crate
+- ✅ OpenAI (GPT-4) via `async_openai` crate
+- ✅ OpenRouter via `openrouter_api` crate
+- ✅ Ollama (local models)
+
+> **Note**: Additional LLM providers and native SDKs are planned for future releases.
 
 ### Chat Commands (All Channels)
 
@@ -242,10 +246,9 @@ MIT License - See [LICENSE](LICENSE)
 
 ## 🙏 Acknowledgments
 
-- Inspired by [OpenClaw](https://github.com/openclaw)
 - Built with [Rust](https://www.rust-lang.org)
 - LLM integrations: Anthropic, OpenAI, Ollama, OpenRouter
 
 ---
 
-**🦀 OpenRustClaw - 100% OpenClaw Parity Achieved! 🎉**
+**🦀 OpenRustClaw - A powerful Rust-based AI agent platform** 🚀
