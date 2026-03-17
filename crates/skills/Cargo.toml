@@ -30,3 +30,4 @@ dirs = "5"
 
 [dev-dependencies]
 tempfile.workspace = true
+wiremock.workspace = true
