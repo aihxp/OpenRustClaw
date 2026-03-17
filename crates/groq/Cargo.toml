@@ -1,0 +1,56 @@
+[package]
+name = "groq"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Native Rust SDK for Groq API (Ultra-fast LLM inference with Chat Completions, Audio Transcription, Translations)"
+readme = "README.md"
+keywords = ["groq", "ai", "llm", "api", "whisper"]
+categories = ["api-bindings", "asynchronous", "science"]
+rust-version = "1.85"
+
+[features]
+default = ["rustls-tls", "streaming", "chat", "audio"]
+rustls-tls = ["reqwest/rustls-tls"]
+native-tls = ["reqwest/native-tls"]
+streaming = ["eventsource-stream", "futures"]
+chat = []
+audio = []
+
+[dependencies]
+# HTTP client
+reqwest = { workspace = true, features = ["json", "stream", "multipart"] }
+
+# Async runtime
+tokio = { workspace = true, features = ["time", "fs"] }
+async-trait = { workspace = true }
+futures = { workspace = true, optional = true }
+pin-project-lite = { workspace = true }
+
+# Serialization
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+
+# Utilities
+chrono = { workspace = true, features = ["serde"] }
+uuid = { workspace = true, features = ["v4", "serde"] }
+bytes = { workspace = true }
+tracing = { workspace = true }
+backoff = { workspace = true }
+
+# Streaming support
+eventsource-stream = { workspace = true, optional = true }
+
+# MIME types for audio files
+mime = { workspace = true }
+
+[dev-dependencies]
+tokio-test = { workspace = true }
+wiremock = { workspace = true }
+tempfile = { workspace = true }
+serial_test = { workspace = true }

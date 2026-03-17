@@ -1,6 +1,16 @@
 [workspace]
 resolver = "2"
 members = [
+    "crates/cloudflare_ai",
+    "crates/deepseek",
+    "crates/ollama_sdk",
+    "crates/fireworks",
+    "crates/gemini",
+    "crates/groq",
+    "crates/mistral",
+    "crates/llama_cpp",
+    "crates/bedrock",
+    "crates/replicate",
     "crates/core",
     "crates/distributed",
     "crates/db",
@@ -24,6 +34,12 @@ members = [
     "crates/anthropic_rust",
     "crates/async_openai",
     "crates/openrouter_api",
+    "crates/together",
+    "crates/cohere",
+    "crates/perplexity",
+    "crates/azure_openai",
+    "crates/ai21",
+    "crates/vllm",
     "crates/cli",
     "tests/integration",
     "tests/e2e",
@@ -115,6 +131,7 @@ glob = "0.3"
 walkdir = "2"
 
 # Internal crates
+cloudflare-ai = { path = "crates/cloudflare_ai" }
 openrustclaw-core = { path = "crates/core" }
 openrustclaw-db = { path = "crates/db" }
 openrustclaw-memory = { path = "crates/memory" }
@@ -137,9 +154,24 @@ openrustclaw-voice = { path = "crates/voice" }
 openrustclaw-mobile = { path = "crates/mobile" }
 
 # Native SDK crates
+deepseek = { path = "crates/deepseek" }
+ollama-sdk = { path = "crates/ollama_sdk" }
+fireworks-ai = { path = "crates/fireworks" }
+google-gemini = { path = "crates/gemini" }
+groq = { path = "crates/groq" }
+mistral = { path = "crates/mistral" }
+llama-cpp = { path = "crates/llama_cpp" }
+replicate = { path = "crates/replicate" }
 anthropic-rust = { path = "crates/anthropic_rust" }
 async-openai = { path = "crates/async_openai" }
 openrouter-api = { path = "crates/openrouter_api" }
+together-ai = { path = "crates/together" }
+cohere = { path = "crates/cohere" }
+perplexity = { path = "crates/perplexity" }
+azure-openai = { path = "crates/azure_openai" }
+aws-bedrock = { path = "crates/bedrock" }
+ai21 = { path = "crates/ai21" }
+vllm = { path = "crates/vllm" }
 
 # OpenAPI parsing
 openapiv3 = "2.0"
@@ -149,6 +181,12 @@ cached = { version = "0.54", features = ["async", "tokio"] }
 
 # Base64 (for OAuth)
 base64 = "0.22"
+
+# MIME types
+mime = "0.3"
+
+# Testing
+mockito = "1"
 
 # URL encoding
 urlencoding = "2"

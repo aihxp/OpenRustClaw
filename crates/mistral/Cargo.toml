@@ -1,0 +1,54 @@
+[package]
+name = "mistral"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Native Rust SDK for Mistral AI's API (Chat Completions, Embeddings, Agents)"
+readme = "README.md"
+keywords = ["mistral", "ai", "llm", "api", "embeddings"]
+categories = ["api-bindings", "asynchronous", "science"]
+rust-version = "1.85"
+
+[features]
+default = ["rustls-tls", "streaming", "chat", "embeddings", "agents"]
+rustls-tls = ["reqwest/rustls-tls"]
+native-tls = ["reqwest/native-tls"]
+streaming = ["eventsource-stream", "futures"]
+chat = []
+embeddings = []
+agents = []
+
+[dependencies]
+# HTTP client
+reqwest = { workspace = true, features = ["json", "stream"] }
+
+# Async runtime
+tokio = { workspace = true, features = ["time"] }
+async-trait = { workspace = true }
+futures = { workspace = true, optional = true }
+pin-project-lite = { workspace = true }
+
+# Serialization
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+
+# Utilities
+chrono = { workspace = true, features = ["serde"] }
+uuid = { workspace = true, features = ["v4", "serde"] }
+bytes = { workspace = true }
+tracing = { workspace = true }
+backoff = { workspace = true }
+
+# Streaming support
+eventsource-stream = { workspace = true, optional = true }
+
+[dev-dependencies]
+tokio-test = { workspace = true }
+wiremock = { workspace = true }
+tempfile = { workspace = true }
+serial_test = { workspace = true }

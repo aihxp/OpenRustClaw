@@ -1,0 +1,80 @@
+[package]
+name = "replicate"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Native Rust SDK for Replicate API - Run ML models in the cloud"
+readme = "README.md"
+keywords = ["replicate", "ai", "ml", "api", "predictions"]
+categories = ["api-bindings", "asynchronous", "science"]
+rust-version = "1.85"
+
+[features]
+default = ["rustls-tls", "predictions", "models", "webhooks", "streaming", "trainings", "deployments"]
+rustls-tls = ["reqwest/rustls-tls"]
+native-tls = ["reqwest/native-tls"]
+predictions = []
+models = []
+webhooks = []
+streaming = ["eventsource-stream", "futures"]
+trainings = []
+deployments = []
+
+[dependencies]
+# HTTP client
+reqwest = { workspace = true, features = ["json", "stream", "multipart"] }
+
+# Async runtime
+tokio = { workspace = true, features = ["time", "fs"] }
+async-trait = { workspace = true }
+futures = { workspace = true, optional = true }
+pin-project-lite = { workspace = true }
+
+# Serialization
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+
+# Utilities
+chrono = { workspace = true, features = ["serde"] }
+uuid = { workspace = true, features = ["v4", "serde"] }
+bytes = { workspace = true }
+tracing = { workspace = true }
+backoff = { workspace = true }
+url = { workspace = true }
+hex = { workspace = true }
+
+# Streaming support
+eventsource-stream = { workspace = true, optional = true }
+
+# Webhook verification
+hmac = { version = "0.12", features = ["reset"] }
+sha2 = { workspace = true }
+urlencoding = "2"
+
+[dev-dependencies]
+tokio-test = { workspace = true }
+wiremock = { workspace = true }
+tempfile = { workspace = true }
+serial_test = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+[[example]]
+name = "predictions"
+path = "examples/predictions.rs"
+
+[[example]]
+name = "webhooks"
+path = "examples/webhooks.rs"
+
+[[example]]
+name = "streaming"
+path = "examples/streaming.rs"
+
+[[example]]
+name = "models"
+path = "examples/models.rs"

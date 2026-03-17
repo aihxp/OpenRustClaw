@@ -1,0 +1,108 @@
+[package]
+name = "azure-openai"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Enterprise-grade Azure OpenAI Service SDK for Rust with Azure AD, regional endpoints, and content filtering"
+readme = "README.md"
+keywords = ["azure", "openai", "azure-openai", "ai", "llm", "enterprise"]
+categories = ["api-bindings", "asynchronous", "science"]
+rust-version = "1.85"
+
+[features]
+default = ["rustls-tls", "streaming", "chat", "embeddings", "azure-ad"]
+rustls-tls = ["reqwest/rustls-tls"]
+native-tls = ["reqwest/native-tls"]
+streaming = ["eventsource-stream", "futures"]
+chat = []
+completions = []
+embeddings = []
+images = []
+audio = ["dep:mime"]
+fine-tuning = []
+assistants = []
+batch = []
+files = []
+azure-ad = ["dep:jsonwebtoken", "dep:base64"]
+managed-identity = ["azure-ad"]
+content-safety = []
+
+[dependencies]
+# HTTP client
+reqwest = { workspace = true, features = ["json", "stream", "multipart"] }
+
+# Async runtime
+tokio = { workspace = true, features = ["time", "fs"] }
+async-trait = { workspace = true }
+futures = { workspace = true, optional = true }
+pin-project-lite = { workspace = true }
+
+# Serialization
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+
+# Utilities
+chrono = { workspace = true, features = ["serde"] }
+uuid = { workspace = true, features = ["v4", "serde"] }
+bytes = { workspace = true }
+tracing = { workspace = true }
+backoff = { workspace = true }
+url = { workspace = true }
+urlencoding = { workspace = true }
+
+# Streaming support
+eventsource-stream = { workspace = true, optional = true }
+
+# Azure AD Authentication (optional)
+jsonwebtoken = { workspace = true, optional = true }
+base64 = { workspace = true, optional = true }
+
+# MIME types for file uploads
+mime = { workspace = true, optional = true }
+
+[dev-dependencies]
+tokio-test = { workspace = true }
+wiremock = { workspace = true }
+tempfile = { workspace = true }
+serial_test = { workspace = true }
+
+[[example]]
+name = "chat_completion"
+path = "examples/chat_completion.rs"
+
+[[example]]
+name = "azure_ad_auth"
+path = "examples/azure_ad_auth.rs"
+
+[[example]]
+name = "embeddings"
+path = "examples/embeddings.rs"
+
+[[example]]
+name = "streaming"
+path = "examples/streaming.rs"
+
+[[example]]
+name = "dalle"
+path = "examples/dalle.rs"
+
+[[example]]
+name = "whisper"
+path = "examples/whisper.rs"
+
+[[example]]
+name = "assistants"
+path = "examples/assistants.rs"
+
+[[example]]
+name = "fine_tuning"
+path = "examples/fine_tuning.rs"
+
+[[example]]
+name = "content_safety"
+path = "examples/content_safety.rs"

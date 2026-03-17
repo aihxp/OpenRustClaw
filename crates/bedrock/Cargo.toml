@@ -1,0 +1,100 @@
+[package]
+name = "aws-bedrock"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "AWS Bedrock SDK for Rust with Converse API, InvokeModel, streaming, and all Bedrock models support"
+readme = "README.md"
+keywords = ["aws", "bedrock", "ai", "llm", "claude"]
+categories = ["api-bindings", "asynchronous", "science"]
+rust-version = "1.85"
+
+[features]
+default = ["rustls-tls", "streaming", "converse", "all-models"]
+rustls-tls = ["reqwest/rustls-tls"]
+native-tls = ["reqwest/native-tls"]
+streaming = ["eventsource-stream", "futures"]
+converse = []
+invoke-model = []
+agents = []
+guardrails = []
+knowledge-bases = []
+cross-region = []
+
+# Model-specific features
+all-models = ["anthropic", "amazon", "meta", "mistral", "cohere", "ai21", "stability"]
+anthropic = []
+amazon = []
+meta = []
+mistral = []
+cohere = []
+ai21 = []
+stability = []
+
+[dependencies]
+# HTTP client
+reqwest = { workspace = true, features = ["json", "stream"] }
+
+# Async runtime
+tokio = { workspace = true, features = ["time", "fs"] }
+async-trait = { workspace = true }
+futures = { workspace = true, optional = true }
+pin-project-lite = { workspace = true }
+
+# Serialization
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+serde_with = "3"
+
+# AWS SigV4 signing
+aws-sigv4 = "1"
+aws-credential-types = "1"
+aws-smithy-runtime-api = "1"
+aws-smithy-types = "1"
+
+# Error handling
+thiserror = { workspace = true }
+
+# Utilities
+chrono = { workspace = true, features = ["serde"] }
+uuid = { workspace = true, features = ["v4", "serde"] }
+bytes = { workspace = true }
+tracing = { workspace = true }
+backoff = { workspace = true }
+url = { workspace = true }
+base64 = { workspace = true }
+hex = { workspace = true }
+sha2 = { workspace = true }
+hmac = "0.12"
+http = { workspace = true }
+
+# Streaming support
+eventsource-stream = { workspace = true, optional = true }
+
+# Credential handling
+home = "0.5"
+
+[dev-dependencies]
+tokio-test = { workspace = true }
+wiremock = { workspace = true }
+tempfile = { workspace = true }
+serial_test = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+
+[[example]]
+name = "simple_converse"
+path = "examples/simple_converse.rs"
+
+[[example]]
+name = "streaming"
+path = "examples/streaming.rs"
+
+[[example]]
+name = "invoke_model"
+path = "examples/invoke_model.rs"
+
+[[example]]
+name = "cross_region"
+path = "examples/cross_region.rs"

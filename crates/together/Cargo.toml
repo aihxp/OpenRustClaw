@@ -1,0 +1,74 @@
+[package]
+name = "together-ai"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Native Rust SDK for Together AI's inference API"
+readme = "README.md"
+keywords = ["together-ai", "ai", "llm", "api", "inference"]
+categories = ["api-bindings", "asynchronous", "science"]
+rust-version = "1.85"
+
+[features]
+default = ["rustls-tls", "streaming", "chat", "completions", "embeddings", "fine-tuning", "models"]
+rustls-tls = ["reqwest/rustls-tls"]
+native-tls = ["reqwest/native-tls"]
+streaming = ["eventsource-stream", "futures"]
+chat = []
+completions = []
+embeddings = []
+fine-tuning = []
+models = []
+
+[dependencies]
+# HTTP client
+reqwest = { workspace = true, features = ["json", "stream", "multipart"] }
+
+# Async runtime
+tokio = { workspace = true, features = ["time"] }
+async-trait = { workspace = true }
+futures = { workspace = true, optional = true }
+pin-project-lite = { workspace = true }
+
+# Serialization
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+
+# Utilities
+chrono = { workspace = true, features = ["serde"] }
+uuid = { workspace = true, features = ["v4", "serde"] }
+bytes = { workspace = true }
+tracing = { workspace = true }
+backoff = { workspace = true }
+url = { workspace = true }
+
+# Streaming support
+eventsource-stream = { workspace = true, optional = true }
+
+[dev-dependencies]
+tokio-test = { workspace = true }
+wiremock = { workspace = true }
+tempfile = { workspace = true }
+serial_test = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+[[example]]
+name = "chat_completion"
+path = "examples/chat_completion.rs"
+
+[[example]]
+name = "streaming_chat"
+path = "examples/streaming_chat.rs"
+
+[[example]]
+name = "embeddings"
+path = "examples/embeddings.rs"
+
+[[example]]
+name = "fine_tuning"
+path = "examples/fine_tuning.rs"
