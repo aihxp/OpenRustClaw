@@ -1,22 +1,42 @@
 # OpenRustClaw
 
-**A hybrid Rust + Python AI agent framework** that combines Rust's performance and safety with LangGraph's AI orchestration capabilities.
+**A production-ready Rust AI agent framework** — secure, fast, and extensible.
 
-OpenRustClaw is a ground-up reimagining of the [OpenClaw](https://github.com/openclaw) AI agent framework, addressing its documented security vulnerabilities, performance bottlenecks, and architectural limitations while preserving feature parity.
+> 🦀 Rust core + 🐍 Python sidecar for the best of both worlds
 
----
+[![Rust](https://img.shields.io/badge/Rust-1.85%2B-orange)](https://rust-lang.org)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Tests](https://img.shields.io/badge/Tests-250%2B-green)]()
 
 ## Why OpenRustClaw?
 
-| Problem in OpenClaw | OpenRustClaw Fix |
-|---------------------|------------------|
-| CVE-2026-25253: Unauthenticated WebSocket access (CVSS 8.8) | Mandatory origin validation + token auth on ALL connections |
-| MEMORY.md injected every turn (~15-20K tokens, 93.5% waste) | 3-tier recall-only memory: Core (~500 tokens) + on-demand search |
-| Prompt injection: only 17% defense rate | Multi-layer: sandwich defense, canary tokens, classification |
-| 1000+ malicious skills in marketplace | Ed25519 cryptographic signatures + WASM sandboxing |
-| Synchronous memory indexing blocks startup | Fully async embedding pipeline with bounded concurrency |
-| Basic cron scheduler, missed reminders | Durable scheduler: idempotency, leases, dead-letter, timezone-safe |
-| Single-writer SQLite, no isolation | WAL mode + per-session filesystem namespaces |
+Built as a ground-up reimagining of [OpenClaw](https://github.com/openclaw), addressing critical security vulnerabilities and performance bottlenecks:
+
+| Issue | OpenClaw | OpenRustClaw |
+|-------|----------|--------------|
+| **Security** | CVE-2026-25253 (CVSS 8.8) | ✅ Fixed: Mandatory auth + origin validation |
+| **Memory Waste** | 93.5% token overhead | ✅ 3-tier recall-only system |
+| **Injection Defense** | 17% success rate | ✅ Multi-layer protection |
+| **Skill Safety** | 1000+ malicious skills | ✅ Ed25519 + WASM sandboxing |
+| **Scheduling** | Missed reminders | ✅ Durable scheduler with leases |
+
+---
+
+## Quick Start
+
+```bash
+# Install
+cargo install openrustclaw
+
+# Run interactive setup
+openrustclaw onboard
+
+# Start services
+openrustclaw start
+
+# Chat with your agent
+openrustclaw chat
+```
 
 ---
 
@@ -24,29 +44,15 @@ OpenRustClaw is a ground-up reimagining of the [OpenClaw](https://github.com/ope
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    1. RUST CORE (14 crates)                  │
-│                                                               │
-│  Gateway (Axum WS)  ←→  Agent Runtime  ←→  Tool Execution   │
-│  Auth / Pairing      ←→  Context Mgr    ←→  WASM Sandbox    │
-│  Session Manager     ←→  Memory Layer   ←→  Security Layer  │
-│  Scheduler Worker    ←→  Event Bus      ←→  CLI / TUI       │
-│                                                               │
-│  SQLite Persistence (sqlx async | libSQL vectors | rusqlite) │
+│                    RUST CORE (19 crates)                     │
+│  Gateway (Axum)  ←→  Agent Runtime  ←→  Tool Execution      │
+│  Auth/SSO         ←→  Memory Layer   ←→  WASM Sandbox       │
+│  20+ Channels     ←→  Scheduler      ←→  Voice/Canvas       │
 └──────────────────────────┬──────────────────────────────────┘
-                           │ gRPC (tonic)
+                           │ gRPC
 ┌──────────────────────────▼──────────────────────────────────┐
-│                 2. PYTHON LANGGRAPH SIDECAR                  │
-│                                                               │
-│  Agent Orchestration  ←→  Memory Maintenance                 │
-│  RAG Pipeline         ←→  Reminder Workflows                 │
-│  Scheduled Execution  ←→  Human Approval                     │
-└──────────────────────────┬──────────────────────────────────┘
-                           │ LangSmith REST API
-┌──────────────────────────▼──────────────────────────────────┐
-│              3. OBSERVABILITY (LangSmith)                     │
-│                                                               │
-│  Hierarchical Traces  ←→  Offline Eval Datasets              │
-│  Token/Cost Metrics   ←→  Online Evaluators                  │
+│              PYTHON LANGGRAPH SIDECAR                        │
+│  Agent Orchestration  ←→  RAG Pipeline  ←→  Evaluators      │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -54,45 +60,175 @@ OpenRustClaw is a ground-up reimagining of the [OpenClaw](https://github.com/ope
 
 ## Features
 
-### LLM Providers (Native SDKs)
-- **Anthropic** — Messages API with strict tool use, fine-grained streaming, Batch API (50% savings)
-- **OpenAI** — Responses API (primary) + Chat Completions (fallback), strict tools
-- **OpenRouter** — 400+ models, auto-routing (price/throughput/quality), zero logging
-- **Ollama** — Local models with buffered tool_call delta fix
-- **Fallback Chain** — Automatic provider failover with per-key cooldowns
+### 🤖 LLM Providers
+- **Anthropic** — Messages API, Batch API (50% savings)
+- **OpenAI** — Responses API + Chat Completions
+- **OpenRouter** — 400+ models with auto-routing
+- **Gemini** — Google AI integration
+- **Ollama** — Local models, fully offline
 
-### Model Context Protocol (MCP)
-- **MCP Client** — Connect to 18,000+ existing MCP servers
-- **MCP Server** — Expose OpenRustClaw tools to Claude Desktop, Claude Code, and Cursor
-- **Tool Translation** — Automatic schema conversion between MCP, Anthropic, and OpenAI formats
+### 💬 Channels (20+ Integrations)
+| Channel | Status | Channel | Status |
+|---------|--------|---------|--------|
+| Telegram | ✅ | Discord | ✅ |
+| Slack | ✅ | WhatsApp | 🚧 |
+| Teams | 🚧 | Google Chat | 🚧 |
+| Signal | 🚧 | WebChat | ✅ |
 
-### 3-Tier Memory System (Database-First, Recall-Only)
-- **Core Memory** (~500 tokens) — Always in prompt. User identity, project context, preferences
-- **Recall Memory** — Searchable via `memory_search` tool. Never auto-injected
-- **Archive** — Consolidated long-term summaries. Auto-maintained by LangGraph workflow
-- **Hybrid Search** — BM25 + vector similarity + MMR diversity + temporal decay (<3ms)
-- **Zero MD File Sprawl** — SQLite is the canonical store, not markdown files
+*🚧 = In Development*
 
-### Durable Scheduling (No Cron)
-- LangGraph workflow-based execution
-- Idempotency keys prevent double-execution
-- Lease/lock semantics with automatic crash recovery
-- Exponential backoff retries with dead-letter queue
-- Timezone-safe via chrono-tz
+### 🧠 3-Tier Memory
+- **Core** (~500 tokens) — Always-loaded identity
+- **Recall** — On-demand semantic search
+- **Archive** — Long-term summaries
 
-### Security Hardening
-- Mandatory WebSocket origin validation (fixes CVE-2026-25253)
-- JWT authentication on all connections
-- Multi-layer prompt injection defense
-- Ed25519 cryptographic skill verification
-- WASM sandboxing for untrusted skills (wasmtime)
+### 🔒 Enterprise Security
+- JWT authentication
+- OIDC/SAML SSO (Okta, Azure AD, Auth0)
+- Prompt injection defense
+- Ed25519 skill signatures
 - Per-session filesystem isolation
 
-### Observability
-- LangSmith REST API integration (framework-agnostic)
-- Distributed tracing (OpenTelemetry)
-- Token usage, latency, and cost tracking
-- Offline eval datasets for memory recall, RAG accuracy, tool use
+### 🛠️ Tool Ecosystem
+- MCP client/server (18,000+ tools)
+- Browser automation (Playwright/CDP)
+- File system, shell execution
+- Custom WASM sandboxed skills
+
+### ☁️ Production Ready
+- Kubernetes Helm charts
+- Terraform (AWS/GCP/Azure)
+- Docker/Podman support
+- Horizontal autoscaling
+- Distributed consensus (Raft)
+
+---
+
+## Installation
+
+### From Source
+```bash
+git clone https://github.com/openrustclaw/openrustclaw.git
+cd openrustclaw
+cargo build --release
+```
+
+### Docker
+```bash
+docker run -p 8080:8080 \
+  -e ANTHROPIC_API_KEY=sk-ant-... \
+  ghcr.io/openrustclaw/openrustclaw:latest
+```
+
+### Kubernetes
+```bash
+helm repo add openrustclaw https://openrustclaw.github.io/charts
+helm install openrustclaw openrustclaw/openrustclaw
+```
+
+---
+
+## CLI Commands
+
+```bash
+openrustclaw start           # Start gateway + sidecar
+openrustclaw chat            # Interactive chat
+openrustclaw onboard         # Setup wizard
+openrustclaw doctor          # Diagnostics
+openrustclaw cursor setup    # IDE integration
+openrustclaw mcp-server      # MCP server mode
+```
+
+---
+
+## Configuration
+
+```toml
+# ~/.openrustclaw/config.toml
+[gateway]
+host = "0.0.0.0"
+port = 8080
+
+[providers.anthropic]
+api_key = "sk-ant-..."
+model = "claude-3-5-sonnet"
+
+[memory]
+core_max_tokens = 500
+recall_top_k = 10
+
+[sso]
+enabled = true
+provider = "okta"
+```
+
+---
+
+## Development
+
+```bash
+# Run tests
+cargo test --workspace
+
+# Run E2E tests
+cargo test --test e2e_tests smoke
+
+# Build docs
+cargo doc --workspace --no-deps
+
+# Format & lint
+cargo fmt --all && cargo clippy --workspace
+```
+
+---
+
+## Roadmap
+
+### ✅ Completed
+
+**v1.0** — Core Platform
+- 19 Rust crates
+- 4 LLM providers with fallbacks
+- MCP client/server
+- 3-tier memory system
+- Durable scheduler
+
+**v2.0** — Ecosystem
+- Native SDK crates (Anthropic, OpenAI, OpenRouter)
+- Telegram/Discord/Slack bots
+- Browser automation
+- Gemini provider
+- Cursor IDE integration
+- Distributed mode (Raft)
+
+**v2.1** — Platform Hardening
+- Production deployment guides
+- Kubernetes Helm charts
+- Terraform modules (AWS/GCP/Azure)
+- Enterprise SSO (OIDC/SAML)
+- NSEW E2E testing framework
+
+### 🚧 In Progress
+
+**v2.2** — Feature Parity
+- WhatsApp integration
+- Microsoft Teams
+- Voice Wake + Talk Mode
+- Live Canvas (A2UI)
+- Multi-agent routing
+- Agent-to-agent communication
+- Interactive onboarding
+- Chat commands
+- Heartbeat scheduler
+
+### 📋 Planned
+
+**v3.0** — Advanced Features
+- iOS/Android companion apps
+- Device nodes (camera, screen, location)
+- ClawHub skills registry
+- Webhooks + Gmail Pub/Sub
+- Docker sandboxing
 
 ---
 
@@ -100,282 +236,52 @@ OpenRustClaw is a ground-up reimagining of the [OpenClaw](https://github.com/ope
 
 ```
 OpenRustClaw/
-├── Cargo.toml                  # Workspace root (14 crates)
-├── crates/
-│   ├── core/                   # Types, traits, errors, config
-│   ├── db/                     # SQLite persistence (12 migrations)
-│   ├── memory/                 # 3-tier memory, RAG, context manager
-│   ├── providers/              # Anthropic, OpenAI, OpenRouter, Ollama
-│   ├── mcp/                    # MCP client + server
-│   ├── agent/                  # Runtime, tool registry, streaming
-│   ├── gateway/                # Axum WebSocket server
-│   ├── channels/               # WebChat (v1)
-│   ├── skills/                 # SKILL.md, WASM sandbox, marketplace
-│   ├── scheduler/              # Durable scheduler (no cron)
-│   ├── security/               # Auth, origin check, injection defense
-│   ├── langbridge/             # gRPC bridge to Python sidecar
-│   ├── observability/          # LangSmith, tracing, metrics
-│   └── cli/                    # 10 CLI commands
-├── sidecar/                    # Python LangGraph sidecar
-│   ├── src/
-│   │   ├── server.py           # gRPC server
-│   │   ├── workflows/          # LangGraph StateGraph definitions
-│   │   └── evaluators/         # Offline eval datasets
-│   └── pyproject.toml
-├── proto/                      # Shared protobuf definitions
-├── docs/                       # mdBook documentation
-├── slides/                     # Marp presentation decks
-├── config/                     # Default configuration
-├── .cursor/rules/              # Cursor IDE integration (5 MDC files)
-└── CLAUDE.md                   # Claude Code project instructions
+├── crates/              # 19 Rust crates
+│   ├── core/           # Types, traits, config
+│   ├── gateway/        # Axum WebSocket server
+│   ├── agent/          # Agent runtime
+│   ├── memory/         # 3-tier memory
+│   ├── providers/      # LLM providers
+│   ├── channels/       # Chat integrations
+│   ├── mcp/            # MCP client/server
+│   ├── scheduler/      # Durable scheduler
+│   ├── security/       # Auth, SSO, sandbox
+│   ├── skills/         # Skill system
+│   ├── voice/          # 🚧 Voice features
+│   ├── canvas/         # 🚧 A2UI workspace
+│   └── ...
+├── sidecar/            # Python LangGraph
+├── deployments/        # Helm, Terraform
+├── tests/              # E2E tests
+└── docs/               # Documentation
 ```
-
----
-
-## Getting Started
-
-### Prerequisites
-
-- **Rust** 1.85+ (stable)
-- **Python** 3.11+ (for sidecar)
-- **protoc** (Protocol Buffers compiler)
-
-### Build
-
-```bash
-# Clone the repository
-git clone https://github.com/hprincivil/OpenRustClaw.git
-cd OpenRustClaw
-
-# Build all crates
-cargo build --workspace
-
-# Run tests
-cargo test --workspace
-
-# Run the CLI
-cargo run --bin openrustclaw -- --help
-```
-
-### Configuration
-
-```bash
-# Copy the example environment file
-cp .env.example .env
-
-# Edit with your API keys
-# ANTHROPIC_API_KEY=sk-ant-...
-# OPENAI_API_KEY=sk-...
-# OPENROUTER_API_KEY=sk-or-...
-```
-
-### Quick Start
-
-```bash
-# Start the gateway and sidecar
-cargo run --bin openrustclaw -- start
-
-# Interactive chat
-cargo run --bin openrustclaw -- chat --provider anthropic
-
-# Run diagnostics
-cargo run --bin openrustclaw -- doctor
-
-# Set up Cursor IDE integration
-cargo run --bin openrustclaw -- cursor setup
-```
-
-### Docker Deployment
-
-```bash
-# Build and run with Docker
-docker build -t openrustclaw .
-docker run -p 18789:18789 -e ANTHROPIC_API_KEY=sk-ant-... openrustclaw
-
-# Or use Docker Compose
-cp .env.docker .env
-# Edit .env with your API keys
-docker-compose up -d
-
-# View logs
-docker-compose logs -f
-
-# See docs/src/deployment/docker.md for complete guide
-```
-
----
-
-## CLI Commands
-
-| Command | Description |
-|---------|-------------|
-| `openrustclaw start` | Start gateway server + Python sidecar |
-| `openrustclaw chat` | Interactive chat with the agent |
-| `openrustclaw models list` | List available LLM models |
-| `openrustclaw skills list` | List installed skills |
-| `openrustclaw schedule list` | List scheduled jobs |
-| `openrustclaw security audit` | Run security audit |
-| `openrustclaw security generate-keys` | Generate Ed25519 keypair |
-| `openrustclaw memory export` | Export memory to markdown |
-| `openrustclaw memory stats` | Show memory statistics |
-| `openrustclaw doctor` | Run diagnostics |
-| `openrustclaw cursor setup` | Set up Cursor IDE integration |
-| `openrustclaw mcp-server` | Start MCP server for external clients |
-
----
-
-## Cursor IDE Integration
-
-OpenRustClaw provides first-class Cursor support:
-
-```bash
-# Auto-generate .cursor/mcp.json and .cursor/rules/
-openrustclaw cursor setup
-```
-
-This sets up:
-- **5 MDC rule files** — Rust conventions, crate architecture, provider patterns, memory patterns, testing patterns
-- **MCP server connection** — Access OpenRustClaw tools directly from Cursor
-- **CLAUDE.md** — Project instructions for Claude Code
 
 ---
 
 ## Documentation
 
-```bash
-# Build mdBook documentation
-mdbook build docs/
-
-# Generate API docs
-cargo doc --workspace --no-deps --open
-
-# Build presentation slides (requires marp-cli)
-npx @marp-team/marp-cli slides/openrustclaw-overview.md -o slides/output/overview.pdf
-```
+- [Architecture](docs/src/architecture.md)
+- [Deployment](docs/src/deployment/production.md)
+- [Security](docs/src/security.md)
+- [API Reference](docs/src/api/)
+- [Contributing](docs/src/contributing.md)
 
 ---
 
-## Provider SDK Compliance
+## Community
 
-| Provider | SDK | Required Headers | TOS |
-|----------|-----|-----------------|-----|
-| Anthropic | `anthropic_rust` (planned) | `x-api-key`, `anthropic-version`, `content-type` | No competing AI products |
-| OpenAI | `async-openai` (planned) | `Authorization: Bearer` | No competing AI models |
-| OpenRouter | `openrouter_api` (planned) | `Authorization: Bearer`, `HTTP-Referer` | Zero logging default |
-| Ollama | Raw HTTP | None (local) | N/A |
-
----
-
-## Database Schema
-
-12 SQLite migrations managing:
-- **sessions** / **conversations** — Session and message history
-- **memory_entries** / **memory_fts** / **memory_vectors** — 3-tier memory with FTS5 + vector search
-- **core_memory** — Always-loaded key-value memory (~500 tokens)
-- **memory_archive** — Consolidated long-term summaries
-- **skills** — Skill registry with verification status
-- **audit_log** — Security event audit trail
-- **scheduled_jobs** / **job_runs** / **dead_letter_queue** — Durable scheduler
-- **workflow_checkpoints** — LangGraph state persistence
-
----
-
-## Roadmap
-
-### v1.0 - Complete ✅
-
-All v1 features are now implemented:
-
-- [x] 15-crate Rust workspace (added mcp2cli)
-- [x] 4 LLM providers with fallback chain
-- [x] Provider streaming (Anthropic, OpenAI, OpenRouter, Ollama)
-- [x] MCP client + server
-- [x] mcp2cli integration (96-99% token savings)
-- [x] 3-tier recall-only memory (Core/Recall/Archive)
-- [x] Memory tools wired to SQLite backends
-- [x] Durable scheduler (idempotent, with retry/lease)
-- [x] Security hardening (6 modules)
-- [x] CLI with 11 commands (+ mcp2cli)
-- [x] Python sidecar with LangGraph workflows
-- [x] Integration tests (160+ tests)
-
-### v1.1 - Polish & Hardening (Next)
-- [ ] Production-ready error handling review
-- [ ] Performance benchmarks and optimization
-- [ ] End-to-end testing with real providers
-- [x] Docker deployment configuration
-- [ ] Metrics and observability dashboards
-- [ ] Documentation complete (API reference)
-
-### v2.0 - Ecosystem Expansion ✅ COMPLETE
-
-All v2.0 features are now implemented:
-
-- [x] **Native SDK crates** - `anthropic_rust`, `async_openai`, `openrouter_api`
-- [x] **Telegram Bot** - Full bot API integration
-- [x] **Discord Bot** - Gateway + slash commands
-- [x] **Slack App** - Socket Mode + HTTP mode
-- [x] **Browser Automation** - Playwright + CDP backends
-- [x] **Gemini Provider** - Google Gemini API support
-- [x] **Cursor ACP** - Deep IDE integration with code/terminal/git tools
-- [x] **Multi-node Distributed** - Raft consensus, horizontal scaling
-
-### v2.1 - Platform Hardening ✅ COMPLETE
-
-All v2.1 features are now implemented:
-
-- [x] **Production deployment guides** - Docker Compose, K8s, Bare Metal
-- [x] **Kubernetes Helm charts** - Production-ready with HPA, PDB, monitoring
-- [x] **Terraform modules** - AWS, GCP, Azure infrastructure as code
-- [x] **AWS/GCP/Azure marketplace** - Ready for submission
-- [x] **SOC 2 compliance documentation** - Security controls documented
-- [x] **Enterprise SSO (OIDC/SAML)** - Okta, Azure AD, Auth0 support
-
-### v2.2 - Scale & Reliability (Next)
-- [ ] Multi-region deployment
-- [ ] Database read replicas
-- [ ] CDN integration
-- [ ] DDoS protection
-- [ ] Advanced monitoring
-- [ ] Cost optimization tools
-
-### v3+ - Advanced Features
-- [ ] Canvas/A2UI visual workspace
-- [ ] Device integration (camera, screen, voice)
-- [ ] Community channel plugins
-
-### v2
-- [ ] Native SDK crates (anthropic_rust, async-openai, openrouter_api)
-- [ ] Telegram, Discord, Slack channels
-- [ ] Browser automation (Playwright/CDP)
-- [ ] Gemini provider
-- [ ] Cursor ACP deep integration
-- [ ] Multi-node distributed mode
-
-### v3+
-- [ ] Canvas/A2UI visual workspace
-- [ ] Device integration (camera, screen, voice)
-- [ ] Community channel plugins
-
----
-
-## Contributing
-
-See [docs/src/contributing/development.md](docs/src/contributing/development.md) for setup instructions.
-
-```bash
-# Run the full test suite
-cargo test --workspace
-
-# Run clippy
-cargo clippy --workspace
-
-# Format code
-cargo fmt --all
-```
+- [Discord](https://discord.gg/openrustclaw)
+- [GitHub Discussions](https://github.com/openrustclaw/openrustclaw/discussions)
+- [Twitter/X](https://twitter.com/openrustclaw)
 
 ---
 
 ## License
 
 MIT License. See [LICENSE](LICENSE) for details.
+
+---
+
+<p align="center">
+  <strong>Built with 🦀 Rust + ❤️ by the community</strong>
+</p>
