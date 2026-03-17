@@ -4,9 +4,11 @@
 //! Capabilities are enforced: a skill without NetworkAccess cannot make HTTP calls.
 
 use std::collections::HashSet;
+use std::time::Duration;
 
 use openrustclaw_core::error::{Error, Result, ToolError};
 use openrustclaw_core::types::SkillCapability;
+use wasmtime::{Config, Engine, Instance, Memory, Module, Store, StoreLimits, StoreLimitsBuilder, TypedFunc};
 
 /// WASM sandbox configuration.
 pub struct SandboxConfig {
@@ -31,6 +33,10 @@ impl Default for SandboxConfig {
 /// WASM sandbox for executing untrusted skill code.
 pub struct WasmSandbox {
     config: SandboxConfig,
+}
+
+struct SandboxStore {
+    limits: StoreLimits,
 }
 
 impl WasmSandbox {
@@ -62,17 +68,165 @@ impl WasmSandbox {
     }
 
     /// Execute WASM bytes in the sandbox.
-    ///
-    /// TODO: Implement actual wasmtime execution.
     pub async fn execute(
         &self,
-        _wasm_bytes: &[u8],
-        _input: serde_json::Value,
+        wasm_bytes: &[u8],
+        input: serde_json::Value,
     ) -> Result<serde_json::Value> {
-        // Placeholder - actual wasmtime integration deferred
-        Err(Error::Internal(
-            "WASM execution not yet implemented".to_string(),
-        ))
+        let wasm = wasm_bytes.to_vec();
+        let config = SandboxConfig {
+            max_memory_bytes: self.config.max_memory_bytes,
+            max_execution_ms: self.config.max_execution_ms,
+            capabilities: self.config.capabilities.clone(),
+        };
+
+        tokio::task::spawn_blocking(move || Self::execute_blocking(config, &wasm, input))
+            .await
+            .map_err(|e| Error::Internal(format!("WASM sandbox task failed: {}", e)))?
+    }
+
+    fn execute_blocking(
+        config: SandboxConfig,
+        wasm_bytes: &[u8],
+        input: serde_json::Value,
+    ) -> Result<serde_json::Value> {
+        let mut engine_config = Config::new();
+        engine_config.epoch_interruption(true);
+        let engine = Engine::new(&engine_config)
+            .map_err(|e| Error::Internal(format!("Failed to initialize wasmtime engine: {}", e)))?;
+
+        let module = Module::new(&engine, wasm_bytes)
+            .map_err(|e| Error::Internal(format!("Failed to compile wasm module: {}", e)))?;
+
+        if module.imports().next().is_some() {
+            return Err(Error::Tool(ToolError::SandboxViolation(
+                "WASM sandbox does not allow module imports".to_string(),
+            )));
+        }
+
+        let store_limits = StoreLimitsBuilder::new()
+            .memory_size(config.max_memory_bytes)
+            .instances(1)
+            .tables(0)
+            .memories(1)
+            .build();
+        let mut store = Store::new(
+            &engine,
+            SandboxStore {
+                limits: store_limits,
+            },
+        );
+        store.limiter(|state| &mut state.limits);
+        store.set_epoch_deadline(1);
+
+        let timer_engine = engine.clone();
+        let timeout = config.max_execution_ms;
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(timeout));
+            timer_engine.increment_epoch();
+        });
+
+        let instance = Instance::new(&mut store, &module, &[])
+            .map_err(|e| Error::Internal(format!("Failed to instantiate wasm module: {}", e)))?;
+
+        let memory = instance
+            .get_memory(&mut store, "memory")
+            .ok_or_else(|| Error::Tool(ToolError::SandboxViolation(
+                "WASM module must export memory".to_string(),
+            )))?;
+        let alloc: TypedFunc<i32, i32> = instance
+            .get_typed_func(&mut store, "alloc")
+            .map_err(|e| Error::Tool(ToolError::SandboxViolation(format!(
+                "WASM module must export alloc(i32) -> i32: {}",
+                e
+            ))))?;
+        let run: TypedFunc<(i32, i32), i64> = instance
+            .get_typed_func(&mut store, "run")
+            .map_err(|e| Error::Tool(ToolError::SandboxViolation(format!(
+                "WASM module must export run(i32, i32) -> i64: {}",
+                e
+            ))))?;
+
+        let input_bytes = serde_json::to_vec(&input)
+            .map_err(|e| Error::Internal(format!("Failed to serialize sandbox input: {}", e)))?;
+        if input_bytes.len() > i32::MAX as usize {
+            return Err(Error::Tool(ToolError::InputValidation {
+                tool: "wasm_sandbox".to_string(),
+                message: "Input payload is too large for wasm ABI".to_string(),
+            }));
+        }
+
+        let input_ptr = alloc
+            .call(&mut store, input_bytes.len() as i32)
+            .map_err(|e| map_wasm_trap("alloc", e, config.max_execution_ms))?;
+        write_memory(&mut store, &memory, input_ptr, &input_bytes)?;
+
+        let packed = run
+            .call(&mut store, (input_ptr, input_bytes.len() as i32))
+            .map_err(|e| map_wasm_trap("run", e, config.max_execution_ms))? as u64;
+
+        let output_ptr = (packed >> 32) as usize;
+        let output_len = (packed & 0xFFFF_FFFF) as usize;
+        let output_bytes = read_memory(&store, &memory, output_ptr, output_len)?;
+        serde_json::from_slice(&output_bytes).map_err(|e| {
+            Error::Tool(ToolError::ExecutionFailed {
+                tool: "wasm_sandbox".to_string(),
+                message: format!("WASM output is not valid JSON: {}", e),
+            })
+        })
+    }
+}
+
+fn write_memory(
+    store: &mut Store<SandboxStore>,
+    memory: &Memory,
+    ptr: i32,
+    bytes: &[u8],
+) -> Result<()> {
+    if ptr < 0 {
+        return Err(Error::Tool(ToolError::SandboxViolation(
+            "WASM alloc returned a negative pointer".to_string(),
+        )));
+    }
+
+    memory
+        .write(store, ptr as usize, bytes)
+        .map_err(|e| Error::Tool(ToolError::SandboxViolation(format!(
+            "Failed to write input into wasm memory: {}",
+            e
+        ))))
+}
+
+fn read_memory(
+    store: &Store<SandboxStore>,
+    memory: &Memory,
+    ptr: usize,
+    len: usize,
+) -> Result<Vec<u8>> {
+    let mut buffer = vec![0u8; len];
+    memory
+        .read(store, ptr, &mut buffer)
+        .map_err(|e| Error::Tool(ToolError::SandboxViolation(format!(
+            "Failed to read output from wasm memory: {}",
+            e
+        ))))?;
+    Ok(buffer)
+}
+
+fn map_wasm_trap(stage: &str, error: wasmtime::Error, timeout_ms: u64) -> Error {
+    if matches!(
+        error.downcast_ref::<wasmtime::Trap>(),
+        Some(wasmtime::Trap::Interrupt)
+    ) {
+        Error::Tool(ToolError::Timeout {
+            tool: "wasm_sandbox".to_string(),
+            timeout_ms,
+        })
+    } else {
+        Error::Tool(ToolError::ExecutionFailed {
+            tool: "wasm_sandbox".to_string(),
+            message: format!("WASM {} failed: {}", stage, error),
+        })
     }
 }
 
@@ -226,17 +380,74 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_sandbox_execute_returns_not_implemented() {
+    async fn test_sandbox_execute_round_trips_json_input() {
         let sandbox = WasmSandbox::new(SandboxConfig::default());
-        let result = sandbox.execute(&[], serde_json::json!({})).await;
+        let module = br#"
+            (module
+              (memory (export "memory") 1 1)
+              (global $heap (mut i32) (i32.const 4096))
+              (func (export "alloc") (param $len i32) (result i32)
+                (local $ptr i32)
+                global.get $heap
+                local.set $ptr
+                global.get $heap
+                local.get $len
+                i32.add
+                global.set $heap
+                local.get $ptr)
+              (func (export "run") (param $ptr i32) (param $len i32) (result i64)
+                local.get $ptr
+                i64.extend_i32_u
+                i64.const 32
+                i64.shl
+                local.get $len
+                i64.extend_i32_u
+                i64.or))
+        "#;
 
+        let input = serde_json::json!({"echo": "hello", "count": 2});
+        let result = sandbox.execute(module, input.clone()).await.unwrap();
+        assert_eq!(result, input);
+    }
+
+    #[tokio::test]
+    async fn test_sandbox_rejects_imports() {
+        let sandbox = WasmSandbox::new(SandboxConfig::default());
+        let module = br#"
+            (module
+              (import "env" "noop" (func $noop))
+              (memory (export "memory") 1 1)
+              (func (export "alloc") (param i32) (result i32) i32.const 0)
+              (func (export "run") (param i32 i32) (result i64)
+                call $noop
+                i64.const 0))
+        "#;
+
+        let result = sandbox.execute(module, serde_json::json!({})).await;
         assert!(result.is_err());
-        let err = result.unwrap_err().to_string();
-        assert!(
-            err.contains("not yet implemented"),
-            "Expected 'not yet implemented', got: {}",
-            err
-        );
+        assert!(result.unwrap_err().to_string().contains("does not allow module imports"));
+    }
+
+    #[tokio::test]
+    async fn test_sandbox_times_out_infinite_loop() {
+        let sandbox = WasmSandbox::new(SandboxConfig {
+            max_execution_ms: 25,
+            ..Default::default()
+        });
+        let module = br#"
+            (module
+              (memory (export "memory") 1 1)
+              (func (export "alloc") (param i32) (result i32) i32.const 0)
+              (func (export "run") (param i32 i32) (result i64)
+                (loop $spin
+                  br $spin)
+                i64.const 0))
+        "#;
+
+        let result = sandbox.execute(module, serde_json::json!({})).await;
+        assert!(result.is_err());
+        let error = result.unwrap_err().to_string();
+        assert!(error.contains("exceeded 25ms"));
     }
 
     #[test]
