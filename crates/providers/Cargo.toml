@@ -34,3 +34,6 @@ pin-project-lite.workspace = true
 anthropic-rust = { workspace = true, optional = true, features = ["streaming", "batch"] }
 async-openai = { workspace = true, optional = true, features = ["streaming", "chat", "embeddings"] }
 openrouter-api = { workspace = true, optional = true, features = ["streaming", "routing"] }
+
+[dev-dependencies]
+proptest.workspace = true

@@ -20,3 +20,6 @@ chrono.workspace = true
 sha2.workspace = true
 tiktoken-rs.workspace = true
 dashmap.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true

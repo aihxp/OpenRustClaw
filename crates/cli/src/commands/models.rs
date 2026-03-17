@@ -272,3 +272,111 @@ fn format_number(n: usize) -> String {
         .unwrap()
         .join(",")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_format_features_both() {
+        let result = format_features(true, true);
+        assert!(result.contains("tools"));
+        assert!(result.contains("vision"));
+    }
+
+    #[test]
+    fn test_format_features_tools_only() {
+        let result = format_features(true, false);
+        assert!(result.contains("tools"));
+        assert!(!result.contains("vision"));
+    }
+
+    #[test]
+    fn test_format_features_vision_only() {
+        let result = format_features(false, true);
+        assert!(!result.contains("tools"));
+        assert!(result.contains("vision"));
+    }
+
+    #[test]
+    fn test_format_features_none() {
+        let result = format_features(false, false);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_format_number_small() {
+        assert_eq!(format_number(0), "0");
+        assert_eq!(format_number(1), "1");
+        assert_eq!(format_number(999), "999");
+    }
+
+    #[test]
+    fn test_format_number_thousands() {
+        assert_eq!(format_number(1000), "1,000");
+        assert_eq!(format_number(12345), "12,345");
+    }
+
+    #[test]
+    fn test_format_number_millions() {
+        assert_eq!(format_number(1000000), "1,000,000");
+        assert_eq!(format_number(200000), "200,000");
+    }
+
+    #[test]
+    fn test_get_default_models_has_all_providers() {
+        let models = get_default_models();
+        assert!(models.contains_key("anthropic"));
+        assert!(models.contains_key("openai"));
+        assert!(models.contains_key("openrouter"));
+        assert!(models.contains_key("ollama"));
+    }
+
+    #[test]
+    fn test_get_default_models_anthropic_has_models() {
+        let models = get_default_models();
+        let anthropic = models.get("anthropic").unwrap();
+        assert!(!anthropic.is_empty());
+        // All Anthropic models should support tools and vision
+        for model in anthropic {
+            assert_eq!(model.provider, "anthropic");
+            assert!(model.supports_tools);
+            assert!(model.supports_vision);
+            assert!(model.context_window > 0);
+        }
+    }
+
+    #[test]
+    fn test_get_default_models_openai_has_models() {
+        let models = get_default_models();
+        let openai = models.get("openai").unwrap();
+        assert!(!openai.is_empty());
+        for model in openai {
+            assert_eq!(model.provider, "openai");
+            assert!(model.context_window > 0);
+        }
+    }
+
+    #[test]
+    fn test_get_default_models_ollama_has_models() {
+        let models = get_default_models();
+        let ollama = models.get("ollama").unwrap();
+        assert!(!ollama.is_empty());
+        for model in ollama {
+            assert_eq!(model.provider, "ollama");
+        }
+    }
+
+    #[test]
+    fn test_model_info_fields_populated() {
+        let models = get_default_models();
+        for (_provider, model_list) in &models {
+            for model in model_list {
+                assert!(!model.name.is_empty());
+                assert!(!model.provider.is_empty());
+                assert!(!model.description.is_empty());
+                assert!(model.context_window > 0);
+            }
+        }
+    }
+}

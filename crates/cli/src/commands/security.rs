@@ -214,3 +214,43 @@ mod hex {
             .collect()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::hex;
+
+    #[test]
+    fn test_hex_encode_empty() {
+        assert_eq!(hex::encode(&[]), "");
+    }
+
+    #[test]
+    fn test_hex_encode_single_byte() {
+        assert_eq!(hex::encode(&[0x00]), "00");
+        assert_eq!(hex::encode(&[0xff]), "ff");
+        assert_eq!(hex::encode(&[0x0a]), "0a");
+    }
+
+    #[test]
+    fn test_hex_encode_multiple_bytes() {
+        assert_eq!(hex::encode(&[0x48, 0x65, 0x6c, 0x6c, 0x6f]), "48656c6c6f");
+    }
+
+    #[test]
+    fn test_hex_encode_all_zeros() {
+        assert_eq!(hex::encode(&[0, 0, 0, 0]), "00000000");
+    }
+
+    #[test]
+    fn test_hex_encode_all_ff() {
+        assert_eq!(hex::encode(&[0xff, 0xff, 0xff]), "ffffff");
+    }
+
+    #[test]
+    fn test_hex_encode_lowercase() {
+        let encoded = hex::encode(&[0xAB, 0xCD, 0xEF]);
+        assert_eq!(encoded, "abcdef");
+        // Verify all lowercase
+        assert!(encoded.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()));
+    }
+}

@@ -418,3 +418,136 @@ fn truncate(s: &str, max_len: usize) -> String {
         format!("{}...", &s[..max_len.saturating_sub(3)])
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // --- truncate tests ---
+
+    #[test]
+    fn test_truncate_short_string() {
+        assert_eq!(truncate("hello", 10), "hello");
+    }
+
+    #[test]
+    fn test_truncate_exact_length() {
+        assert_eq!(truncate("hello", 5), "hello");
+    }
+
+    #[test]
+    fn test_truncate_long_string() {
+        let result = truncate("hello world, this is a long string", 10);
+        assert!(result.len() <= 10);
+        assert!(result.ends_with("..."));
+    }
+
+    #[test]
+    fn test_truncate_empty_string() {
+        assert_eq!(truncate("", 5), "");
+    }
+
+    // --- resolve_source tests ---
+
+    #[test]
+    fn test_resolve_source_mcp_url() {
+        let result = resolve_source(
+            Some("http://localhost:8080".to_string()),
+            None,
+            None,
+            None,
+        );
+        assert!(result.is_ok());
+        match result.unwrap() {
+            ToolSource::McpUrl { url } => assert_eq!(url, "http://localhost:8080"),
+            _ => panic!("Expected McpUrl"),
+        }
+    }
+
+    #[test]
+    fn test_resolve_source_mcp_stdio() {
+        let result = resolve_source(
+            None,
+            Some("npx some-server".to_string()),
+            None,
+            None,
+        );
+        assert!(result.is_ok());
+        match result.unwrap() {
+            ToolSource::McpStdio { command, args } => {
+                assert_eq!(command, "npx some-server");
+                assert!(args.is_empty());
+            }
+            _ => panic!("Expected McpStdio"),
+        }
+    }
+
+    #[test]
+    fn test_resolve_source_openapi_url() {
+        let result = resolve_source(
+            None,
+            None,
+            Some("https://api.example.com/openapi.json".to_string()),
+            None,
+        );
+        assert!(result.is_ok());
+        match result.unwrap() {
+            ToolSource::OpenApiUrl { url } => {
+                assert_eq!(url, "https://api.example.com/openapi.json");
+            }
+            _ => panic!("Expected OpenApiUrl"),
+        }
+    }
+
+    #[test]
+    fn test_resolve_source_openapi_file() {
+        let result = resolve_source(
+            None,
+            None,
+            Some("./spec.yaml".to_string()),
+            None,
+        );
+        assert!(result.is_ok());
+        match result.unwrap() {
+            ToolSource::OpenApiFile { path } => assert_eq!(path, "./spec.yaml"),
+            _ => panic!("Expected OpenApiFile"),
+        }
+    }
+
+    #[test]
+    fn test_resolve_source_no_source() {
+        let result = resolve_source(None, None, None, None);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Exactly one source required"));
+    }
+
+    #[test]
+    fn test_resolve_source_http_spec_is_url() {
+        let result = resolve_source(
+            None,
+            None,
+            Some("http://localhost:3000/openapi.json".to_string()),
+            None,
+        );
+        assert!(result.is_ok());
+        match result.unwrap() {
+            ToolSource::OpenApiUrl { .. } => {}
+            _ => panic!("http:// spec should resolve to OpenApiUrl"),
+        }
+    }
+
+    // --- OutputFormat tests ---
+
+    #[test]
+    fn test_output_format_default() {
+        let fmt = OutputFormat::default();
+        matches!(fmt, OutputFormat::Table);
+    }
+
+    #[test]
+    fn test_output_format_variants_exist() {
+        let _table = OutputFormat::Table;
+        let _json = OutputFormat::Json;
+        let _toon = OutputFormat::Toon;
+    }
+}

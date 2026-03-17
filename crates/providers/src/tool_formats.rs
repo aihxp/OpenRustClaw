@@ -301,4 +301,99 @@ mod tests {
         let err = parse_openai_tool_calls(&tool_calls).unwrap_err();
         assert!(err.to_string().contains("Invalid arguments"));
     }
+
+    // ── Property-based tests ──
+
+    mod proptest_tool_formats {
+        use super::*;
+        use proptest::prelude::*;
+
+        /// Generate a valid tool name (alphanumeric + underscore, 1-50 chars).
+        fn tool_name() -> impl Strategy<Value = String> {
+            "[a-z][a-z0-9_]{0,49}".prop_map(|s| s)
+        }
+
+        /// Generate a tool description.
+        fn tool_description() -> impl Strategy<Value = String> {
+            "[A-Za-z ]{1,100}".prop_map(|s| s)
+        }
+
+        proptest! {
+            #[test]
+            fn anthropic_format_preserves_name_and_description(
+                name in tool_name(),
+                desc in tool_description(),
+            ) {
+                let tool = ToolDefinition {
+                    name: name.clone(),
+                    description: desc.clone(),
+                    parameters: serde_json::json!({"type": "object"}),
+                    strict: false,
+                };
+                let result = translate_tool_definition(&tool, ToolFormat::Anthropic);
+                prop_assert_eq!(result["name"].as_str().unwrap(), &name);
+                prop_assert_eq!(result["description"].as_str().unwrap(), &desc);
+            }
+
+            #[test]
+            fn openai_format_preserves_name_and_description(
+                name in tool_name(),
+                desc in tool_description(),
+            ) {
+                let tool = ToolDefinition {
+                    name: name.clone(),
+                    description: desc.clone(),
+                    parameters: serde_json::json!({"type": "object"}),
+                    strict: false,
+                };
+                let result = translate_tool_definition(&tool, ToolFormat::OpenAi);
+                prop_assert_eq!(result["type"].as_str().unwrap(), "function");
+                prop_assert_eq!(result["function"]["name"].as_str().unwrap(), &name);
+                prop_assert_eq!(result["function"]["description"].as_str().unwrap(), &desc);
+            }
+
+            #[test]
+            fn mcp_format_preserves_name_and_description(
+                name in tool_name(),
+                desc in tool_description(),
+            ) {
+                let tool = ToolDefinition {
+                    name: name.clone(),
+                    description: desc.clone(),
+                    parameters: serde_json::json!({"type": "object"}),
+                    strict: false,
+                };
+                let result = translate_tool_definition(&tool, ToolFormat::Mcp);
+                prop_assert_eq!(result["name"].as_str().unwrap(), &name);
+                prop_assert_eq!(result["description"].as_str().unwrap(), &desc);
+            }
+
+            #[test]
+            fn all_formats_preserve_parameters_type(
+                name in tool_name(),
+            ) {
+                let params = serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "x": {"type": "string"}
+                    }
+                });
+                let tool = ToolDefinition {
+                    name,
+                    description: "test".to_string(),
+                    parameters: params.clone(),
+                    strict: false,
+                };
+
+                let anthropic = translate_tool_definition(&tool, ToolFormat::Anthropic);
+                prop_assert_eq!(&anthropic["input_schema"]["type"], "object");
+
+                let openai = translate_tool_definition(&tool, ToolFormat::OpenAi);
+                prop_assert_eq!(&openai["function"]["parameters"]["type"], "object");
+
+                let mcp = translate_tool_definition(&tool, ToolFormat::Mcp);
+                prop_assert_eq!(&mcp["inputSchema"]["type"], "object");
+            }
+        }
+    }
 }

@@ -858,4 +858,403 @@ mod tests {
         assert!(recent_score > old_score);
         assert!(old_score > very_old_score);
     }
+
+    // ── Integration tests with in-memory SQLite ──
+
+    /// Create an in-memory SQLite database with the schema applied and return
+    /// a SqliteMemoryStore backed by it.
+    async fn setup_in_memory_store() -> SqliteMemoryStore {
+        use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+
+        let options = SqliteConnectOptions::new()
+            .filename(":memory:")
+            .create_if_missing(true);
+
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(options)
+            .await
+            .expect("Failed to create in-memory SQLite pool");
+
+        // Apply necessary schema
+        let schema = r#"
+            CREATE TABLE IF NOT EXISTS memory_entries (
+                id TEXT PRIMARY KEY,
+                memory_type TEXT NOT NULL,
+                content TEXT NOT NULL,
+                content_hash TEXT NOT NULL,
+                source TEXT,
+                source_type TEXT,
+                session_id TEXT,
+                user_id TEXT,
+                namespace TEXT DEFAULT 'global',
+                importance REAL DEFAULT 0.5,
+                confidence REAL DEFAULT 1.0,
+                access_count INTEGER DEFAULT 0,
+                last_accessed TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                expires_at TEXT,
+                metadata TEXT DEFAULT '{}'
+            );
+            CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts USING fts5(
+                content,
+                tokenize='porter unicode61'
+            );
+            CREATE TABLE IF NOT EXISTS memory_fts_mapping (
+                fts_rowid INTEGER PRIMARY KEY,
+                memory_id TEXT NOT NULL UNIQUE
+            );
+            CREATE TABLE IF NOT EXISTS memory_vectors (
+                memory_id TEXT PRIMARY KEY,
+                vector BLOB NOT NULL,
+                dimensions INTEGER NOT NULL,
+                model_id TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+        "#;
+
+        for statement in schema.split(';') {
+            let trimmed = statement.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            sqlx::query(trimmed)
+                .execute(&pool)
+                .await
+                .expect("Schema creation failed");
+        }
+
+        SqliteMemoryStore::new(pool)
+    }
+
+    /// Helper to build a MemoryEntry for testing.
+    fn make_entry(content: &str) -> MemoryEntry {
+        MemoryEntry {
+            id: Uuid::new_v4(),
+            memory_type: MemoryType::Semantic,
+            content: content.to_string(),
+            content_hash: format!("{:x}", sha2::Sha256::digest(content.as_bytes())),
+            source: Some("test".to_string()),
+            source_type: Some(SourceType::Document),
+            session_id: None,
+            user_id: Some("test_user".to_string()),
+            namespace: "global".to_string(),
+            importance: 0.8,
+            confidence: 1.0,
+            access_count: 0,
+            last_accessed: None,
+            created_at: Utc::now(),
+            expires_at: None,
+            metadata: serde_json::json!({}),
+        }
+    }
+
+    use sha2::Digest;
+
+    #[tokio::test]
+    async fn integration_store_and_get() {
+        let store = setup_in_memory_store().await;
+        let entry = make_entry("Rust is a systems programming language.");
+        let entry_id = entry.id.to_string();
+
+        // Store the entry
+        store.store(entry.clone()).await.expect("store failed");
+
+        // Retrieve it by ID
+        let retrieved = store
+            .get(&entry_id)
+            .await
+            .expect("get failed")
+            .expect("entry should exist");
+
+        assert_eq!(retrieved.id.to_string(), entry_id);
+        assert_eq!(retrieved.content, "Rust is a systems programming language.");
+        assert_eq!(retrieved.memory_type, MemoryType::Semantic);
+        assert_eq!(retrieved.namespace, "global");
+    }
+
+    #[tokio::test]
+    async fn integration_get_nonexistent_returns_none() {
+        let store = setup_in_memory_store().await;
+        let result = store
+            .get(&Uuid::new_v4().to_string())
+            .await
+            .expect("get failed");
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn integration_store_and_delete() {
+        let store = setup_in_memory_store().await;
+        let entry = make_entry("Memory to be deleted");
+        let entry_id = entry.id.to_string();
+
+        store.store(entry).await.expect("store failed");
+
+        // Verify it exists
+        assert!(store.get(&entry_id).await.unwrap().is_some());
+
+        // Delete it
+        store.delete(&entry_id).await.expect("delete failed");
+
+        // Verify it's gone
+        assert!(store.get(&entry_id).await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn integration_delete_nonexistent_returns_error() {
+        let store = setup_in_memory_store().await;
+        let result = store.delete(&Uuid::new_v4().to_string()).await;
+        assert!(result.is_err(), "Deleting nonexistent entry should error");
+    }
+
+    #[tokio::test]
+    async fn integration_fts5_search_by_keyword() {
+        let store = setup_in_memory_store().await;
+
+        let entry1 = make_entry("The quick brown fox jumps over the lazy dog");
+        let entry2 = make_entry("Rust programming language offers memory safety");
+        let entry3 = make_entry("The fox was cunning and clever");
+
+        store.store(entry1).await.expect("store 1 failed");
+        store.store(entry2).await.expect("store 2 failed");
+        store.store(entry3).await.expect("store 3 failed");
+
+        // Search for "fox" -- should match entries 1 and 3 but not 2
+        let query = MemoryQuery {
+            text: "fox".to_string(),
+            limit: 10,
+            ..Default::default()
+        };
+        let results = store.search(&query).await.expect("search failed");
+        assert_eq!(results.len(), 2, "Should find 2 entries containing 'fox'");
+        let contents: Vec<&str> = results.iter().map(|r| r.entry.content.as_str()).collect();
+        assert!(contents.iter().all(|c| c.contains("fox") || c.contains("Fox")));
+
+        // Search for "rust" -- should match only entry 2
+        let query_rust = MemoryQuery {
+            text: "rust".to_string(),
+            limit: 10,
+            ..Default::default()
+        };
+        let results_rust = store.search(&query_rust).await.expect("search failed");
+        assert_eq!(results_rust.len(), 1);
+        assert!(results_rust[0].entry.content.contains("Rust"));
+    }
+
+    #[tokio::test]
+    async fn integration_fts5_search_no_matches() {
+        let store = setup_in_memory_store().await;
+        let entry = make_entry("The quick brown fox");
+        store.store(entry).await.expect("store failed");
+
+        let query = MemoryQuery {
+            text: "elephant".to_string(),
+            limit: 10,
+            ..Default::default()
+        };
+        let results = store.search(&query).await.expect("search failed");
+        assert!(results.is_empty(), "Should find no entries for 'elephant'");
+    }
+
+    #[tokio::test]
+    async fn integration_vector_store_and_retrieve() {
+        let store = setup_in_memory_store().await;
+        let entry = make_entry("Vector test entry");
+        let entry_id = entry.id.to_string();
+
+        store.store(entry).await.expect("store failed");
+
+        // Store a vector embedding
+        let embedding = vec![0.1, 0.2, 0.3, 0.4, 0.5];
+        store
+            .store_vector(&entry_id, embedding.clone(), "test-model")
+            .await
+            .expect("store_vector failed");
+
+        // Retrieve the vector via fetch_vectors
+        let vectors = store
+            .fetch_vectors(&[entry_id.clone()])
+            .await
+            .expect("fetch_vectors failed");
+
+        assert!(vectors.contains_key(&entry_id));
+        let retrieved = &vectors[&entry_id];
+        assert_eq!(retrieved.len(), 5);
+        for (a, b) in retrieved.iter().zip(embedding.iter()) {
+            assert!((a - b).abs() < 1e-6, "Vector values should match");
+        }
+    }
+
+    #[tokio::test]
+    async fn integration_vector_upsert_overwrites() {
+        let store = setup_in_memory_store().await;
+        let entry = make_entry("Vector upsert test");
+        let entry_id = entry.id.to_string();
+        store.store(entry).await.expect("store failed");
+
+        // Store initial vector
+        store
+            .store_vector(&entry_id, vec![1.0, 2.0, 3.0], "model-v1")
+            .await
+            .expect("store_vector failed");
+
+        // Overwrite with new vector
+        store
+            .store_vector(&entry_id, vec![4.0, 5.0, 6.0], "model-v2")
+            .await
+            .expect("store_vector upsert failed");
+
+        let vectors = store
+            .fetch_vectors(&[entry_id.clone()])
+            .await
+            .expect("fetch_vectors failed");
+        let v = &vectors[&entry_id];
+        assert_eq!(v, &vec![4.0, 5.0, 6.0]);
+    }
+
+    #[tokio::test]
+    async fn integration_access_count_increments_on_get() {
+        let store = setup_in_memory_store().await;
+        let entry = make_entry("Access count test");
+        let entry_id = entry.id.to_string();
+
+        store.store(entry).await.expect("store failed");
+
+        // First get increments from 0 to 1
+        let first = store.get(&entry_id).await.unwrap().unwrap();
+        assert_eq!(first.access_count, 0, "First retrieval sees initial count");
+
+        // Second get -- the UPDATE already ran during the first get, so this
+        // should see access_count = 1
+        let second = store.get(&entry_id).await.unwrap().unwrap();
+        assert_eq!(second.access_count, 1, "Second retrieval should see count=1");
+
+        // Third get
+        let third = store.get(&entry_id).await.unwrap().unwrap();
+        assert_eq!(third.access_count, 2, "Third retrieval should see count=2");
+    }
+
+    #[tokio::test]
+    async fn integration_dedupe_check() {
+        let store = setup_in_memory_store().await;
+        let entry = make_entry("Unique content for dedup check");
+        let hash = entry.content_hash.clone();
+        let entry_id = entry.id.to_string();
+
+        store.store(entry).await.expect("store failed");
+
+        // Should find the existing entry by content hash
+        let result = store.dedupe_check(&hash).await.expect("dedupe_check failed");
+        assert_eq!(result, Some(entry_id));
+
+        // Nonexistent hash
+        let result_none = store
+            .dedupe_check("nonexistent_hash")
+            .await
+            .expect("dedupe_check failed");
+        assert!(result_none.is_none());
+    }
+
+    #[tokio::test]
+    async fn integration_multiple_entries_management() {
+        let store = setup_in_memory_store().await;
+
+        // Store multiple entries
+        let entries: Vec<MemoryEntry> = (0..5)
+            .map(|i| make_entry(&format!("Entry number {} with unique content", i)))
+            .collect();
+
+        let ids: Vec<String> = entries.iter().map(|e| e.id.to_string()).collect();
+
+        for entry in entries {
+            store.store(entry).await.expect("store failed");
+        }
+
+        // All entries should be retrievable
+        for id in &ids {
+            let result = store.get(id).await.expect("get failed");
+            assert!(result.is_some(), "Entry {} should exist", id);
+        }
+
+        // Delete the middle entry
+        store.delete(&ids[2]).await.expect("delete failed");
+
+        // Verify the middle entry is gone
+        assert!(store.get(&ids[2]).await.unwrap().is_none());
+
+        // Verify others still exist
+        assert!(store.get(&ids[0]).await.unwrap().is_some());
+        assert!(store.get(&ids[4]).await.unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn integration_expire_stale_removes_expired_entries() {
+        let store = setup_in_memory_store().await;
+
+        // Create an entry that already expired
+        let mut expired_entry = make_entry("This entry has expired");
+        expired_entry.expires_at = Some(Utc::now() - chrono::Duration::hours(1));
+        store.store(expired_entry.clone()).await.expect("store failed");
+
+        // Create an entry that has not expired
+        let mut fresh_entry = make_entry("This entry is still fresh");
+        fresh_entry.expires_at = Some(Utc::now() + chrono::Duration::hours(24));
+        store.store(fresh_entry.clone()).await.expect("store failed");
+
+        // Create an entry with no expiration
+        let permanent_entry = make_entry("This entry never expires");
+        store.store(permanent_entry.clone()).await.expect("store failed");
+
+        // Run expire_stale
+        let expired_count = store.expire_stale().await.expect("expire_stale failed");
+        assert_eq!(expired_count, 1, "Should expire exactly 1 entry");
+
+        // Expired entry should be gone
+        assert!(store.get(&expired_entry.id.to_string()).await.unwrap().is_none());
+
+        // Fresh and permanent entries should remain
+        assert!(store.get(&fresh_entry.id.to_string()).await.unwrap().is_some());
+        assert!(store.get(&permanent_entry.id.to_string()).await.unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn integration_store_upsert_updates_content() {
+        let store = setup_in_memory_store().await;
+        let mut entry = make_entry("Original content");
+        let entry_id = entry.id;
+
+        store.store(entry.clone()).await.expect("store failed");
+
+        // Update the content (same ID, different content)
+        entry.content = "Updated content".to_string();
+        entry.content_hash = format!("{:x}", sha2::Sha256::digest(b"Updated content"));
+        store.store(entry).await.expect("upsert failed");
+
+        let retrieved = store
+            .get(&entry_id.to_string())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(retrieved.content, "Updated content");
+    }
+
+    #[tokio::test]
+    async fn integration_search_respects_limit() {
+        let store = setup_in_memory_store().await;
+
+        // Store 5 entries all containing "database"
+        for i in 0..5 {
+            let entry = make_entry(&format!("Database concept number {}", i));
+            store.store(entry).await.expect("store failed");
+        }
+
+        let query = MemoryQuery {
+            text: "database".to_string(),
+            limit: 2,
+            ..Default::default()
+        };
+        let results = store.search(&query).await.expect("search failed");
+        assert!(results.len() <= 2, "Should respect limit of 2, got {}", results.len());
+    }
 }

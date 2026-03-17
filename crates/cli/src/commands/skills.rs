@@ -740,3 +740,95 @@ mod hex {
 }
 
 use tracing::debug;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // --- hex module tests ---
+
+    #[test]
+    fn test_hex_decode_valid() {
+        let result = hex::decode("48656c6c6f").unwrap();
+        assert_eq!(result, b"Hello");
+    }
+
+    #[test]
+    fn test_hex_decode_empty() {
+        let result = hex::decode("").unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_hex_decode_all_zeros() {
+        let result = hex::decode("000000").unwrap();
+        assert_eq!(result, vec![0, 0, 0]);
+    }
+
+    #[test]
+    fn test_hex_decode_all_ff() {
+        let result = hex::decode("ffffff").unwrap();
+        assert_eq!(result, vec![0xff, 0xff, 0xff]);
+    }
+
+    #[test]
+    fn test_hex_decode_invalid_char() {
+        let result = hex::decode("zz");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_hex_decode_odd_length() {
+        let result = hex::decode("abc");
+        // odd length: last chunk is 1 char, so it should fail
+        assert!(result.is_err());
+    }
+
+    // --- parse_skill_metadata tests ---
+
+    #[test]
+    fn test_parse_skill_metadata_basic() {
+        let content = "# My Skill\n\nThis is a great skill.\n";
+        let metadata = parse_skill_metadata(content).unwrap();
+        assert_eq!(metadata.name, "My Skill");
+        assert_eq!(metadata.description.as_deref(), Some("This is a great skill."));
+    }
+
+    #[test]
+    fn test_parse_skill_metadata_with_version() {
+        let content = "# Test Skill\n\nA test.\n\nversion: 1.2.3\n";
+        let metadata = parse_skill_metadata(content).unwrap();
+        assert_eq!(metadata.name, "Test Skill");
+        assert_eq!(metadata.version.as_deref(), Some("1.2.3"));
+    }
+
+    #[test]
+    fn test_parse_skill_metadata_with_capabilities() {
+        let content = "# Net Skill\n\nA net skill.\n\ncapabilities: network_access, file_read\n";
+        let metadata = parse_skill_metadata(content).unwrap();
+        assert_eq!(metadata.capabilities.as_deref(), Some("network_access, file_read"));
+    }
+
+    #[test]
+    fn test_parse_skill_metadata_with_json_schema() {
+        let content = "# Schema Skill\n\nHas schema.\n\n```json\n{\"type\": \"object\"}\n```\n";
+        let metadata = parse_skill_metadata(content).unwrap();
+        assert_eq!(metadata.schema.as_deref(), Some("{\"type\": \"object\"}"));
+    }
+
+    #[test]
+    fn test_parse_skill_metadata_no_title() {
+        let content = "No title here\n\nJust text.\n";
+        let metadata = parse_skill_metadata(content).unwrap();
+        assert_eq!(metadata.name, "unknown");
+    }
+
+    #[test]
+    fn test_parse_skill_metadata_empty_content() {
+        let content = "";
+        let metadata = parse_skill_metadata(content).unwrap();
+        assert_eq!(metadata.name, "unknown");
+        assert!(metadata.description.is_none());
+        assert!(metadata.version.is_none());
+    }
+}

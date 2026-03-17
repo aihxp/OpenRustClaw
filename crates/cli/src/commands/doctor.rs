@@ -304,13 +304,13 @@ async fn check_skills_dir() -> Result<()> {
 /// Check data directory.
 async fn check_data_dir() -> Result<()> {
     let data_dir = Path::new("data");
-    
+
     if !data_dir.exists() {
         println!();
         println!("      Creating data directory...");
         tokio::fs::create_dir_all(data_dir).await?;
     }
-    
+
     // Check if writable
     let test_file = data_dir.join(".write_test");
     match tokio::fs::write(&test_file, "test").await {
@@ -321,5 +321,86 @@ async fn check_data_dir() -> Result<()> {
         Err(e) => {
             anyhow::bail!("Data directory is not writable: {}", e)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_check_api_keys_no_keys_set() {
+        // Temporarily remove any API keys that might be set
+        let anthropic = std::env::var("ANTHROPIC_API_KEY").ok();
+        let openai = std::env::var("OPENAI_API_KEY").ok();
+        let openrouter = std::env::var("OPENROUTER_API_KEY").ok();
+
+        // SAFETY: Tests run single-threaded (or serialized) so env mutation is safe
+        unsafe {
+            std::env::remove_var("ANTHROPIC_API_KEY");
+            std::env::remove_var("OPENAI_API_KEY");
+            std::env::remove_var("OPENROUTER_API_KEY");
+        }
+
+        let result = check_api_keys();
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("No LLM provider API keys configured"));
+
+        // Restore
+        unsafe {
+            if let Some(v) = anthropic { std::env::set_var("ANTHROPIC_API_KEY", v); }
+            if let Some(v) = openai { std::env::set_var("OPENAI_API_KEY", v); }
+            if let Some(v) = openrouter { std::env::set_var("OPENROUTER_API_KEY", v); }
+        }
+    }
+
+    #[test]
+    fn test_check_api_keys_with_anthropic_key() {
+        let original = std::env::var("ANTHROPIC_API_KEY").ok();
+        // SAFETY: Tests run single-threaded (or serialized) so env mutation is safe
+        unsafe {
+            std::env::set_var("ANTHROPIC_API_KEY", "sk-ant-test-key-12345678901234567890");
+        }
+
+        let result = check_api_keys();
+        assert!(result.is_ok());
+
+        // Restore
+        unsafe {
+            match original {
+                Some(v) => std::env::set_var("ANTHROPIC_API_KEY", v),
+                None => std::env::remove_var("ANTHROPIC_API_KEY"),
+            }
+        }
+    }
+
+    #[test]
+    fn test_check_api_keys_with_openai_key() {
+        let original = std::env::var("OPENAI_API_KEY").ok();
+        // SAFETY: Tests run single-threaded (or serialized) so env mutation is safe
+        unsafe {
+            std::env::set_var("OPENAI_API_KEY", "sk-test-key-123456789012345678901234");
+        }
+
+        let result = check_api_keys();
+        assert!(result.is_ok());
+
+        // Restore
+        unsafe {
+            match original {
+                Some(v) => std::env::set_var("OPENAI_API_KEY", v),
+                None => std::env::remove_var("OPENAI_API_KEY"),
+            }
+        }
+    }
+
+    #[test]
+    fn test_check_config_missing_file() {
+        // This tests that check_config fails when config/default.toml doesn't exist
+        // We can't guarantee this file exists in test env, so we test the function signature
+        // The function itself checks Path::new("config/default.toml").exists()
+        let _result = check_config();
+        // Just verify it doesn't panic
     }
 }

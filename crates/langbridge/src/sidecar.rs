@@ -60,8 +60,88 @@ impl SidecarManager {
         }
     }
 
+    /// Check if the sidecar has a child process (without polling it).
+    pub fn is_running_stateless(&self) -> bool {
+        self.child.is_some()
+    }
+
     /// Get the gRPC address.
     pub fn grpc_addr(&self) -> String {
         format!("http://127.0.0.1:{}", self.grpc_port)
+    }
+
+    /// Get the configured Python path.
+    pub fn python_path(&self) -> &str {
+        &self.python_path
+    }
+
+    /// Get the configured gRPC port.
+    pub fn grpc_port(&self) -> u16 {
+        self.grpc_port
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sidecar_manager_new() {
+        let manager = SidecarManager::new("python3".to_string(), 50051);
+        assert_eq!(manager.python_path(), "python3");
+        assert_eq!(manager.grpc_port(), 50051);
+        assert!(!manager.is_running_stateless());
+    }
+
+    #[test]
+    fn test_sidecar_manager_grpc_addr_default_port() {
+        let manager = SidecarManager::new("python3".to_string(), 50051);
+        assert_eq!(manager.grpc_addr(), "http://127.0.0.1:50051");
+    }
+
+    #[test]
+    fn test_sidecar_manager_grpc_addr_custom_port() {
+        let manager = SidecarManager::new("python3".to_string(), 9999);
+        assert_eq!(manager.grpc_addr(), "http://127.0.0.1:9999");
+    }
+
+    #[test]
+    fn test_sidecar_manager_grpc_addr_zero_port() {
+        let manager = SidecarManager::new("python3".to_string(), 0);
+        assert_eq!(manager.grpc_addr(), "http://127.0.0.1:0");
+    }
+
+    #[test]
+    fn test_sidecar_manager_grpc_addr_max_port() {
+        let manager = SidecarManager::new("python3".to_string(), u16::MAX);
+        assert_eq!(manager.grpc_addr(), "http://127.0.0.1:65535");
+    }
+
+    #[test]
+    fn test_sidecar_manager_custom_python_path() {
+        let manager = SidecarManager::new("/usr/bin/python3.11".to_string(), 50051);
+        assert_eq!(manager.python_path(), "/usr/bin/python3.11");
+    }
+
+    #[test]
+    fn test_sidecar_manager_not_running_initially() {
+        let manager = SidecarManager::new("python3".to_string(), 50051);
+        assert!(!manager.is_running_stateless());
+    }
+
+    #[test]
+    fn test_sidecar_manager_grpc_addr_format() {
+        let manager = SidecarManager::new("python3".to_string(), 8080);
+        let addr = manager.grpc_addr();
+        assert!(addr.starts_with("http://"));
+        assert!(addr.contains("127.0.0.1"));
+        assert!(addr.ends_with(":8080"));
+    }
+
+    #[test]
+    fn test_sidecar_manager_different_ports_different_addrs() {
+        let m1 = SidecarManager::new("python3".to_string(), 50051);
+        let m2 = SidecarManager::new("python3".to_string(), 50052);
+        assert_ne!(m1.grpc_addr(), m2.grpc_addr());
     }
 }

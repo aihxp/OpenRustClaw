@@ -394,4 +394,100 @@ mod tests {
         assert_eq!(p.consolidation_threshold, 1000);
         assert!((p.decay_half_life_days - 30.0).abs() < 1e-6);
     }
+
+    // ── Property-based tests ──
+
+    mod proptest_policies {
+        use super::*;
+        use proptest::prelude::*;
+
+        /// Generate a non-zero-length vector of finite f32 values.
+        fn finite_vec(len: usize) -> impl Strategy<Value = Vec<f32>> {
+            prop::collection::vec(-1e6_f32..1e6_f32, len..=len)
+        }
+
+        proptest! {
+            #[test]
+            fn cosine_similarity_is_symmetric(
+                a in finite_vec(8),
+                b in finite_vec(8),
+            ) {
+                let sim_ab = MemoryPolicies::cosine_similarity(&a, &b);
+                let sim_ba = MemoryPolicies::cosine_similarity(&b, &a);
+                prop_assert!(
+                    (sim_ab - sim_ba).abs() < 1e-5,
+                    "sim(a,b)={} != sim(b,a)={}", sim_ab, sim_ba
+                );
+            }
+
+            #[test]
+            fn cosine_similarity_is_bounded(
+                a in finite_vec(8),
+                b in finite_vec(8),
+            ) {
+                let sim = MemoryPolicies::cosine_similarity(&a, &b);
+                prop_assert!(
+                    sim >= -1.0 - 1e-6 && sim <= 1.0 + 1e-6,
+                    "cosine similarity {} is out of [-1, 1] bounds", sim
+                );
+            }
+
+            #[test]
+            fn content_hash_is_deterministic(s in ".*") {
+                let h1 = MemoryPolicies::content_hash(&s);
+                let h2 = MemoryPolicies::content_hash(&s);
+                prop_assert_eq!(h1, h2, "Same input must always produce the same hash");
+            }
+
+            #[test]
+            fn content_hash_is_valid_hex_sha256(s in ".*") {
+                let hash = MemoryPolicies::content_hash(&s);
+                prop_assert_eq!(hash.len(), 64, "SHA-256 hex should be 64 chars");
+                prop_assert!(
+                    hash.chars().all(|c| c.is_ascii_hexdigit()),
+                    "Hash should only contain hex digits: {}", hash
+                );
+            }
+
+            #[test]
+            fn cosine_self_similarity_is_one(
+                v in finite_vec(4).prop_filter(
+                    "non-zero vector",
+                    |v| v.iter().any(|x| *x != 0.0)
+                ),
+            ) {
+                let sim = MemoryPolicies::cosine_similarity(&v, &v);
+                prop_assert!(
+                    (sim - 1.0).abs() < 1e-4,
+                    "Self-similarity should be ~1.0, got {}", sim
+                );
+            }
+
+            #[test]
+            fn decay_score_is_non_negative(
+                base in 0.0_f32..10.0_f32,
+                days in 0.0_f64..1000.0_f64,
+            ) {
+                let policies = MemoryPolicies::default();
+                let score = policies.decay_score(base, days);
+                prop_assert!(score >= 0.0, "Decay score should be non-negative, got {}", score);
+            }
+
+            #[test]
+            fn decay_score_decreases_over_time(
+                base in 0.01_f32..10.0_f32,
+                day1 in 0.0_f64..500.0_f64,
+            ) {
+                let day2 = day1 + 1.0;
+                let policies = MemoryPolicies::default();
+                let score1 = policies.decay_score(base, day1);
+                let score2 = policies.decay_score(base, day2);
+                prop_assert!(
+                    score1 >= score2,
+                    "Score should not increase over time: day {} -> {}, day {} -> {}",
+                    day1, score1, day2, score2
+                );
+            }
+        }
+    }
 }

@@ -615,3 +615,78 @@ pub fn get_preset_handler(source: &str, secret: Option<String>) -> Option<Webhoo
         _ => None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_get_preset_handler_github() {
+        let handler = get_preset_handler("github", None);
+        assert!(handler.is_some());
+    }
+
+    #[test]
+    fn test_get_preset_handler_github_with_secret() {
+        let handler = get_preset_handler("github", Some("mysecret".to_string()));
+        assert!(handler.is_some());
+    }
+
+    #[test]
+    fn test_get_preset_handler_gitlab() {
+        let handler = get_preset_handler("gitlab", None);
+        assert!(handler.is_some());
+    }
+
+    #[test]
+    fn test_get_preset_handler_gmail() {
+        let handler = get_preset_handler("gmail", None);
+        assert!(handler.is_some());
+    }
+
+    #[test]
+    fn test_get_preset_handler_stripe_without_secret() {
+        // Stripe requires a secret
+        let handler = get_preset_handler("stripe", None);
+        assert!(handler.is_none());
+    }
+
+    #[test]
+    fn test_get_preset_handler_stripe_with_secret() {
+        let handler = get_preset_handler("stripe", Some("whsec_test".to_string()));
+        assert!(handler.is_some());
+    }
+
+    #[test]
+    fn test_get_preset_handler_slack() {
+        let handler = get_preset_handler("slack", None);
+        assert!(handler.is_some());
+    }
+
+    #[test]
+    fn test_get_preset_handler_discord() {
+        let handler = get_preset_handler("discord", None);
+        assert!(handler.is_some());
+    }
+
+    #[test]
+    fn test_get_preset_handler_telegram() {
+        let handler = get_preset_handler("telegram", None);
+        assert!(handler.is_some());
+    }
+
+    #[test]
+    fn test_get_preset_handler_unknown_source() {
+        let handler = get_preset_handler("unknown_service", None);
+        assert!(handler.is_none());
+    }
+
+    #[test]
+    fn test_get_preset_handler_case_insensitive() {
+        let handler = get_preset_handler("GITHUB", None);
+        assert!(handler.is_some());
+
+        let handler = get_preset_handler("GitHub", None);
+        assert!(handler.is_some());
+    }
+}

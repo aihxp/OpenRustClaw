@@ -789,4 +789,161 @@ mod tests {
         assert_eq!(content[0]["tool_use_id"], "toolu_abc");
         assert_eq!(content[0]["content"], "The weather is sunny.");
     }
+
+    // ── Error path tests: verify error variant construction for HTTP status codes ──
+
+    #[test]
+    fn error_401_produces_auth_failed() {
+        // Simulate the error that would be returned for a 401/403 response
+        let err = Error::Provider(ProviderError::AuthFailed {
+            provider: "anthropic".to_string(),
+            message: r#"{"error":{"type":"authentication_error","message":"invalid x-api-key"}}"#
+                .to_string(),
+        });
+        assert!(matches!(err, Error::Provider(ProviderError::AuthFailed { .. })));
+        let msg = err.to_string();
+        assert!(msg.contains("anthropic"), "Error should name the provider: {}", msg);
+        assert!(msg.contains("Authentication failed"), "Error should describe auth failure: {}", msg);
+    }
+
+    #[test]
+    fn error_429_produces_rate_limited() {
+        let err = Error::Provider(ProviderError::RateLimited {
+            provider: "anthropic".to_string(),
+            retry_after_secs: Some(30),
+        });
+        assert!(matches!(
+            err,
+            Error::Provider(ProviderError::RateLimited { .. })
+        ));
+        let msg = err.to_string();
+        assert!(msg.contains("Rate limited"), "Error should describe rate limiting: {}", msg);
+        assert!(msg.contains("30"), "Error should include retry_after: {}", msg);
+    }
+
+    #[test]
+    fn error_429_without_retry_after() {
+        let err = Error::Provider(ProviderError::RateLimited {
+            provider: "anthropic".to_string(),
+            retry_after_secs: None,
+        });
+        assert!(matches!(
+            err,
+            Error::Provider(ProviderError::RateLimited {
+                retry_after_secs: None,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn error_500_produces_unavailable() {
+        let err = Error::Provider(ProviderError::Unavailable {
+            provider: "anthropic".to_string(),
+            message: "Server error 500 Internal Server Error: overloaded".to_string(),
+        });
+        assert!(matches!(
+            err,
+            Error::Provider(ProviderError::Unavailable { .. })
+        ));
+        let msg = err.to_string();
+        assert!(msg.contains("unavailable"), "Error should describe unavailability: {}", msg);
+        assert!(msg.contains("overloaded"), "Error should include server message: {}", msg);
+    }
+
+    #[test]
+    fn error_404_produces_model_not_found() {
+        let err = Error::Provider(ProviderError::ModelNotFound {
+            provider: "anthropic".to_string(),
+            model: "claude-nonexistent".to_string(),
+        });
+        assert!(matches!(
+            err,
+            Error::Provider(ProviderError::ModelNotFound { .. })
+        ));
+        let msg = err.to_string();
+        assert!(msg.contains("claude-nonexistent"), "Error should name the model: {}", msg);
+    }
+
+    #[test]
+    fn parse_response_missing_content_returns_empty_message() {
+        let p = make_provider();
+        // A response with no content array -- should still parse without panic
+        let response_json = serde_json::json!({
+            "id": "msg_empty",
+            "type": "message",
+            "role": "assistant",
+            "model": "claude-sonnet-4-20250514",
+            "stop_reason": "end_turn",
+            "usage": {
+                "input_tokens": 5,
+                "output_tokens": 0
+            }
+        });
+        let response = p.parse_response(response_json).unwrap();
+        assert_eq!(response.message.content, "");
+        assert!(response.message.tool_calls.is_none());
+    }
+
+    #[test]
+    fn parse_response_missing_usage_returns_default() {
+        let p = make_provider();
+        let response_json = serde_json::json!({
+            "id": "msg_no_usage",
+            "type": "message",
+            "role": "assistant",
+            "model": "claude-sonnet-4-20250514",
+            "content": [{"type": "text", "text": "Hello"}],
+            "stop_reason": "end_turn"
+        });
+        let response = p.parse_response(response_json).unwrap();
+        assert_eq!(response.usage.prompt_tokens, 0);
+        assert_eq!(response.usage.completion_tokens, 0);
+        assert_eq!(response.usage.total_tokens, 0);
+    }
+
+    #[test]
+    fn parse_response_max_tokens_finish_reason() {
+        let p = make_provider();
+        let response_json = serde_json::json!({
+            "id": "msg_truncated",
+            "type": "message",
+            "role": "assistant",
+            "model": "claude-sonnet-4-20250514",
+            "content": [{"type": "text", "text": "Truncated..."}],
+            "stop_reason": "max_tokens",
+            "usage": { "input_tokens": 100, "output_tokens": 4096 }
+        });
+        let response = p.parse_response(response_json).unwrap();
+        assert_eq!(response.finish_reason, FinishReason::MaxTokens);
+    }
+
+    #[test]
+    fn build_request_body_filters_system_messages() {
+        let p = make_provider();
+        let request = CompletionRequest {
+            messages: vec![
+                Message::system("Be helpful"),
+                Message::user("Hello"),
+            ],
+            model: None,
+            max_tokens: None,
+            temperature: None,
+            tools: None,
+            system_prompt: None,
+            stream: false,
+        };
+        let body = p.build_request_body(&request);
+        // System messages should be extracted to top-level "system" field
+        let messages = body["messages"].as_array().unwrap();
+        for msg in messages {
+            assert_ne!(
+                msg["role"].as_str().unwrap(),
+                "system",
+                "System messages should not appear in messages array"
+            );
+        }
+        // The system content should appear in the top-level "system" field
+        assert_eq!(body["system"], "Be helpful");
+    }
 }

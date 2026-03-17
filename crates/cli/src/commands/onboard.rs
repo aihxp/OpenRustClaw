@@ -549,3 +549,100 @@ pub async fn run() -> Result<()> {
     let mut wizard = OnboardingWizard::new();
     wizard.run().await
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_onboarding_state_default() {
+        let state = OnboardingState::default();
+        assert!(!state.gateway_configured);
+        assert!(state.channels_configured.is_empty());
+        assert!(!state.model_configured);
+        assert!(!state.daemon_installed);
+        assert!(state.skills_installed.is_empty());
+    }
+
+    #[test]
+    fn test_onboarding_wizard_new() {
+        let wizard = OnboardingWizard::new();
+        assert!(!wizard.state.gateway_configured);
+        assert!(wizard.state.channels_configured.is_empty());
+        assert!(!wizard.state.model_configured);
+        assert!(!wizard.state.daemon_installed);
+        assert!(wizard.state.skills_installed.is_empty());
+    }
+
+    #[test]
+    fn test_onboarding_step_names() {
+        assert_eq!(OnboardingStep::Gateway.name(), "Gateway Setup");
+        assert_eq!(OnboardingStep::Channel.name(), "Channel Setup");
+        assert_eq!(OnboardingStep::Model.name(), "AI Model Setup");
+        assert_eq!(OnboardingStep::Skill.name(), "Skills Setup");
+        assert_eq!(OnboardingStep::Daemon.name(), "System Service");
+    }
+
+    #[test]
+    fn test_onboarding_step_descriptions() {
+        assert!(!OnboardingStep::Gateway.description().is_empty());
+        assert!(!OnboardingStep::Channel.description().is_empty());
+        assert!(!OnboardingStep::Model.description().is_empty());
+        assert!(!OnboardingStep::Skill.description().is_empty());
+        assert!(!OnboardingStep::Daemon.description().is_empty());
+    }
+
+    #[test]
+    fn test_generate_jwt_secret_is_nonempty() {
+        let secret = generate_jwt_secret();
+        assert!(!secret.is_empty());
+    }
+
+    #[test]
+    fn test_generate_jwt_secret_is_unique() {
+        let secret1 = generate_jwt_secret();
+        let secret2 = generate_jwt_secret();
+        assert_ne!(secret1, secret2);
+    }
+
+    #[test]
+    fn test_generate_jwt_secret_is_base64() {
+        let secret = generate_jwt_secret();
+        // Should be valid base64
+        let decoded = base64::Engine::decode(
+            &base64::engine::general_purpose::STANDARD,
+            &secret,
+        );
+        assert!(decoded.is_ok());
+        // Should be 32 bytes when decoded
+        assert_eq!(decoded.unwrap().len(), 32);
+    }
+
+    #[test]
+    fn test_onboarding_state_channels_can_be_modified() {
+        let mut state = OnboardingState::default();
+        state.channels_configured.push("telegram".to_string());
+        state.channels_configured.push("discord".to_string());
+        assert_eq!(state.channels_configured.len(), 2);
+        assert!(state.channels_configured.contains(&"telegram".to_string()));
+        assert!(state.channels_configured.contains(&"discord".to_string()));
+    }
+
+    #[test]
+    fn test_onboarding_state_skills_can_be_modified() {
+        let mut state = OnboardingState::default();
+        state.skills_installed.push("memory".to_string());
+        assert_eq!(state.skills_installed.len(), 1);
+    }
+
+    #[test]
+    fn test_onboarding_state_flags_can_be_set() {
+        let mut state = OnboardingState::default();
+        state.gateway_configured = true;
+        state.model_configured = true;
+        state.daemon_installed = true;
+        assert!(state.gateway_configured);
+        assert!(state.model_configured);
+        assert!(state.daemon_installed);
+    }
+}

@@ -360,10 +360,49 @@ pub async fn stats() -> Result<()> {
 fn sha256_hex(input: &str) -> String {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
-    
+
     // Note: In production, use a proper SHA-256 implementation
     // This is a simplified version for the CLI
     let mut hasher = DefaultHasher::new();
     input.hash(&mut hasher);
     format!("{:016x}", hasher.finish())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sha256_hex_nonempty() {
+        let hash = sha256_hex("hello world");
+        assert!(!hash.is_empty());
+    }
+
+    #[test]
+    fn test_sha256_hex_deterministic() {
+        let hash1 = sha256_hex("test input");
+        let hash2 = sha256_hex("test input");
+        assert_eq!(hash1, hash2);
+    }
+
+    #[test]
+    fn test_sha256_hex_different_inputs_differ() {
+        let hash1 = sha256_hex("input one");
+        let hash2 = sha256_hex("input two");
+        assert_ne!(hash1, hash2);
+    }
+
+    #[test]
+    fn test_sha256_hex_is_hex_string() {
+        let hash = sha256_hex("some data");
+        assert_eq!(hash.len(), 16); // 16 hex chars = 8 bytes
+        assert!(hash.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn test_sha256_hex_empty_input() {
+        let hash = sha256_hex("");
+        assert!(!hash.is_empty());
+        assert!(hash.chars().all(|c| c.is_ascii_hexdigit()));
+    }
 }

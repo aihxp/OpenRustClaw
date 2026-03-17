@@ -22,7 +22,7 @@ enum Commands {
         #[arg(short, long, default_value = "config/default.toml")]
         config: String,
         /// Channels to enable (comma-separated: telegram,discord,slack)
-        #[arg(short, long, value_name = "CHANNELS")]
+        #[arg(short = 'C', long, value_name = "CHANNELS")]
         channels: Option<String>,
     },
     /// Interactive chat with the agent
@@ -411,5 +411,293 @@ fn parse_format(s: &str) -> commands::mcp2cli::OutputFormat {
         "json" => commands::mcp2cli::OutputFormat::Json,
         "toon" => commands::mcp2cli::OutputFormat::Toon,
         _ => commands::mcp2cli::OutputFormat::Table,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+
+    // --- parse_format tests ---
+
+    #[test]
+    fn test_parse_format_json() {
+        matches!(parse_format("json"), commands::mcp2cli::OutputFormat::Json);
+    }
+
+    #[test]
+    fn test_parse_format_json_uppercase() {
+        matches!(parse_format("JSON"), commands::mcp2cli::OutputFormat::Json);
+    }
+
+    #[test]
+    fn test_parse_format_toon() {
+        matches!(parse_format("toon"), commands::mcp2cli::OutputFormat::Toon);
+    }
+
+    #[test]
+    fn test_parse_format_table() {
+        matches!(parse_format("table"), commands::mcp2cli::OutputFormat::Table);
+    }
+
+    #[test]
+    fn test_parse_format_unknown_defaults_to_table() {
+        matches!(parse_format("xyz"), commands::mcp2cli::OutputFormat::Table);
+    }
+
+    #[test]
+    fn test_parse_format_empty_defaults_to_table() {
+        matches!(parse_format(""), commands::mcp2cli::OutputFormat::Table);
+    }
+
+    // --- CLI argument parsing tests ---
+
+    #[test]
+    fn test_cli_parse_doctor() {
+        let cli = Cli::try_parse_from(["openrustclaw", "doctor"]);
+        assert!(cli.is_ok());
+        matches!(cli.unwrap().command, Commands::Doctor);
+    }
+
+    #[test]
+    fn test_cli_parse_onboard() {
+        let cli = Cli::try_parse_from(["openrustclaw", "onboard"]);
+        assert!(cli.is_ok());
+        matches!(cli.unwrap().command, Commands::Onboard);
+    }
+
+    #[test]
+    fn test_cli_parse_start_defaults() {
+        let cli = Cli::try_parse_from(["openrustclaw", "start"]).unwrap();
+        match cli.command {
+            Commands::Start { config, channels } => {
+                assert_eq!(config, "config/default.toml");
+                assert!(channels.is_none());
+            }
+            _ => panic!("Expected Start command"),
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_start_with_config() {
+        let cli = Cli::try_parse_from([
+            "openrustclaw", "start", "--config", "my_config.toml"
+        ]).unwrap();
+        match cli.command {
+            Commands::Start { config, channels } => {
+                assert_eq!(config, "my_config.toml");
+                assert!(channels.is_none());
+            }
+            _ => panic!("Expected Start command"),
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_start_with_channels() {
+        let cli = Cli::try_parse_from([
+            "openrustclaw", "start", "-C", "telegram,discord"
+        ]).unwrap();
+        match cli.command {
+            Commands::Start { config: _, channels } => {
+                assert_eq!(channels.as_deref(), Some("telegram,discord"));
+            }
+            _ => panic!("Expected Start command"),
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_chat_defaults() {
+        let cli = Cli::try_parse_from(["openrustclaw", "chat"]).unwrap();
+        match cli.command {
+            Commands::Chat { provider, model } => {
+                assert_eq!(provider, "anthropic");
+                assert!(model.is_none());
+            }
+            _ => panic!("Expected Chat command"),
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_chat_with_provider() {
+        let cli = Cli::try_parse_from([
+            "openrustclaw", "chat", "--provider", "openai"
+        ]).unwrap();
+        match cli.command {
+            Commands::Chat { provider, model } => {
+                assert_eq!(provider, "openai");
+                assert!(model.is_none());
+            }
+            _ => panic!("Expected Chat command"),
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_chat_with_model() {
+        let cli = Cli::try_parse_from([
+            "openrustclaw", "chat", "--provider", "ollama", "--model", "llama3.2"
+        ]).unwrap();
+        match cli.command {
+            Commands::Chat { provider, model } => {
+                assert_eq!(provider, "ollama");
+                assert_eq!(model.as_deref(), Some("llama3.2"));
+            }
+            _ => panic!("Expected Chat command"),
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_models_list() {
+        let cli = Cli::try_parse_from(["openrustclaw", "models", "list"]).unwrap();
+        matches!(cli.command, Commands::Models { action: ModelsAction::List });
+    }
+
+    #[test]
+    fn test_cli_parse_models_info() {
+        let cli = Cli::try_parse_from(["openrustclaw", "models", "info", "gpt-4o"]).unwrap();
+        match cli.command {
+            Commands::Models { action: ModelsAction::Info { name } } => {
+                assert_eq!(name, "gpt-4o");
+            }
+            _ => panic!("Expected Models Info command"),
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_security_audit() {
+        let cli = Cli::try_parse_from(["openrustclaw", "security", "audit"]).unwrap();
+        matches!(cli.command, Commands::Security { action: SecurityAction::Audit });
+    }
+
+    #[test]
+    fn test_cli_parse_security_generate_keys() {
+        let cli = Cli::try_parse_from(["openrustclaw", "security", "generate-keys"]).unwrap();
+        matches!(cli.command, Commands::Security { action: SecurityAction::GenerateKeys });
+    }
+
+    #[test]
+    fn test_cli_parse_memory_stats() {
+        let cli = Cli::try_parse_from(["openrustclaw", "memory", "stats"]).unwrap();
+        matches!(cli.command, Commands::Memory { action: MemoryAction::Stats });
+    }
+
+    #[test]
+    fn test_cli_parse_memory_export() {
+        let cli = Cli::try_parse_from([
+            "openrustclaw", "memory", "export", "--output", "dump.md"
+        ]).unwrap();
+        match cli.command {
+            Commands::Memory { action: MemoryAction::Export { output, user_id } } => {
+                assert_eq!(output, "dump.md");
+                assert!(user_id.is_none());
+            }
+            _ => panic!("Expected Memory Export command"),
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_memory_import() {
+        let cli = Cli::try_parse_from([
+            "openrustclaw", "memory", "import", "--file", "MEMORY.md", "--user-id", "user1"
+        ]).unwrap();
+        match cli.command {
+            Commands::Memory { action: MemoryAction::Import { file, user_id } } => {
+                assert_eq!(file, "MEMORY.md");
+                assert_eq!(user_id, "user1");
+            }
+            _ => panic!("Expected Memory Import command"),
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_schedule_list() {
+        let cli = Cli::try_parse_from(["openrustclaw", "schedule", "list"]).unwrap();
+        matches!(cli.command, Commands::Schedule { action: ScheduleAction::List });
+    }
+
+    #[test]
+    fn test_cli_parse_schedule_create() {
+        let cli = Cli::try_parse_from([
+            "openrustclaw", "schedule", "create", "--name", "daily-check", "--workflow", "health_check"
+        ]).unwrap();
+        match cli.command {
+            Commands::Schedule { action: ScheduleAction::Create { name, workflow } } => {
+                assert_eq!(name, "daily-check");
+                assert_eq!(workflow, "health_check");
+            }
+            _ => panic!("Expected Schedule Create command"),
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_skills_list() {
+        let cli = Cli::try_parse_from(["openrustclaw", "skills", "list"]).unwrap();
+        matches!(cli.command, Commands::Skills { action: SkillsAction::List });
+    }
+
+    #[test]
+    fn test_cli_parse_skills_search() {
+        let cli = Cli::try_parse_from([
+            "openrustclaw", "skills", "search", "web"
+        ]).unwrap();
+        match cli.command {
+            Commands::Skills { action: SkillsAction::Search { query, category, sort } } => {
+                assert_eq!(query, "web");
+                assert!(category.is_none());
+                assert_eq!(sort, "relevance");
+            }
+            _ => panic!("Expected Skills Search command"),
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_skills_install() {
+        let cli = Cli::try_parse_from(["openrustclaw", "skills", "install", "web_search"]).unwrap();
+        match cli.command {
+            Commands::Skills { action: SkillsAction::Install { name } } => {
+                assert_eq!(name, "web_search");
+            }
+            _ => panic!("Expected Skills Install command"),
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_webhooks_list() {
+        let cli = Cli::try_parse_from(["openrustclaw", "webhooks", "list"]).unwrap();
+        matches!(cli.command, Commands::Webhooks { action: WebhooksAction::List });
+    }
+
+    #[test]
+    fn test_cli_parse_webhooks_create() {
+        let cli = Cli::try_parse_from(["openrustclaw", "webhooks", "create", "github"]).unwrap();
+        match cli.command {
+            Commands::Webhooks { action: WebhooksAction::Create { path } } => {
+                assert_eq!(path, "github");
+            }
+            _ => panic!("Expected Webhooks Create command"),
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_mcp_server_default() {
+        let cli = Cli::try_parse_from(["openrustclaw", "mcp-server"]).unwrap();
+        match cli.command {
+            Commands::McpServer { transport } => {
+                assert_eq!(transport, "stdio");
+            }
+            _ => panic!("Expected McpServer command"),
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_invalid_command() {
+        let cli = Cli::try_parse_from(["openrustclaw", "nonexistent"]);
+        assert!(cli.is_err());
+    }
+
+    #[test]
+    fn test_cli_parse_no_args() {
+        let cli = Cli::try_parse_from(["openrustclaw"]);
+        assert!(cli.is_err());
     }
 }
