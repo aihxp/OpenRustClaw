@@ -391,7 +391,21 @@ fn spawn_channel_task(mut channel: Box<dyn Channel>) -> tokio::task::JoinHandle<
             Ok(()) => {
                 info!(platform = ?platform, "Channel connected");
                 loop {
-                    tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+                    match channel.receive().await {
+                        Ok(message) => {
+                            info!(
+                                platform = ?platform,
+                                user_id = %message.user_id,
+                                session_id = %message.session_id,
+                                content = %message.content,
+                                "Channel received incoming message"
+                            );
+                        }
+                        Err(e) => {
+                            error!(platform = ?platform, error = %e, "Channel receive failed");
+                            break;
+                        }
+                    }
                 }
             }
             Err(e) => {

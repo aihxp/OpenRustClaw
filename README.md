@@ -95,6 +95,12 @@ Telegram, Discord, Slack, WhatsApp (Baileys bridge), Microsoft Teams, Google Cha
 
 Not all of these modules are feature-complete. Telegram, Discord, Slack, Matrix, Google Chat, and Gmail Pub/Sub still include scaffolding or partial runtime implementations, and additional channel modules such as Signal, Twilio, and X/Twitter are present in the repo but are not fully integrated into the current startup path.
 
+Current tier-1 status:
+
+- Telegram: auth probe, outbound send, and Bot API polling receive path are implemented
+- Discord: auth probe and outbound send path are implemented; inbound runtime remains incomplete
+- Slack: auth probe and outbound send path are implemented; inbound runtime remains incomplete
+
 ## Memory System
 
 Three-tier architecture -- no full memory files injected into prompts:
@@ -132,7 +138,7 @@ Defense-in-depth across every layer:
 | **Transport** | Origin validation on all WebSocket connections; token auth enabled by default |
 | **Webhooks** | HMAC-SHA256 with constant-time comparison, Stripe replay protection |
 | **Sessions** | Filesystem isolation with path traversal prevention |
-| **Skills** | Ed25519 signature verification support, capability model; WASM sandbox executor planned |
+| **Skills** | Ed25519 signature verification support, capability model; no-import WASM sandbox executor with timeout and memory limits |
 | **Input** | Prompt injection detection (34+ patterns), canary tokens |
 | **Network** | SSRF prevention on OIDC/SAML endpoints (private IP rejection) |
 | **Subprocess** | MCP command allowlist, shell metacharacter rejection |
@@ -212,7 +218,7 @@ crates/
   agent/         # Agent runtime with tool execution loop
   gateway/       # Axum WebSocket server with auth, sessions, and webhook integrations
   channels/      # 20 messaging channel integrations
-  skills/        # Skill registry, loader, marketplace, sandbox scaffolding
+  skills/        # Skill registry, loader, marketplace, and WASM sandbox
   scheduler/     # Durable job scheduling (no cron -- app-owned polling)
   security/      # Auth, SSO, isolation, input sanitization, skill verification
   langbridge/    # gRPC bridge to Python LangGraph sidecar

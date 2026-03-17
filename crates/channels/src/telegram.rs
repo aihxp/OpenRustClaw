@@ -15,10 +15,12 @@ use async_trait::async_trait;
 use governor::{Quota, RateLimiter};
 use reqwest::Client;
 use std::num::NonZeroU32;
+use tokio::task::JoinHandle;
 use tokio::sync::{Mutex, RwLock, mpsc};
-use tracing::{debug, info};
+use tracing::{debug, error, info, warn};
+use uuid::Uuid;
 
-use openrustclaw_core::config::TelegramConfig;
+use openrustclaw_core::config::{TelegramConfig, TelegramMode};
 use openrustclaw_core::error::{ChannelError, Result};
 use openrustclaw_core::traits::Channel;
 use openrustclaw_core::types::{IncomingMessage, OutgoingMessage, Platform};
@@ -27,7 +29,7 @@ use openrustclaw_core::types::{IncomingMessage, OutgoingMessage, Platform};
 pub struct TelegramChannel {
     config: TelegramConfig,
     client: Client,
-    _incoming_tx: mpsc::Sender<IncomingMessage>,
+    incoming_tx: mpsc::Sender<IncomingMessage>,
     incoming_rx: Mutex<mpsc::Receiver<IncomingMessage>>,
     rate_limiter: Arc<
         RateLimiter<
@@ -38,6 +40,7 @@ pub struct TelegramChannel {
         >,
     >,
     is_connected: RwLock<bool>,
+    polling_task: Mutex<Option<JoinHandle<()>>>,
 }
 
 impl TelegramChannel {
@@ -55,10 +58,11 @@ impl TelegramChannel {
         Self {
             config,
             client: Client::new(),
-            _incoming_tx: incoming_tx,
+            incoming_tx,
             incoming_rx: Mutex::new(incoming_rx),
             rate_limiter,
             is_connected: RwLock::new(false),
+            polling_task: Mutex::new(None),
         }
     }
 
@@ -104,6 +108,140 @@ impl TelegramChannel {
             message: "Missing chat_id in metadata".to_string(),
         }
         .into())
+    }
+
+    async fn spawn_polling_task(&self) -> Result<()> {
+        let mut task_guard = self.polling_task.lock().await;
+        if task_guard.is_some() {
+            return Ok(());
+        }
+
+        let client = self.client.clone();
+        let incoming_tx = self.incoming_tx.clone();
+        let token = self.config.token.clone();
+        let api_base_url = self.api_base_url();
+        let allowed_users = self.config.allowed_users.clone();
+
+        *task_guard = Some(tokio::spawn(async move {
+            let mut next_offset: i64 = 0;
+
+            loop {
+                let response = client
+                    .get(format!("{}/bot{}/getUpdates", api_base_url, token))
+                    .query(&[
+                        ("timeout", "30"),
+                        ("offset", &next_offset.to_string()),
+                        ("allowed_updates", "[\"message\"]"),
+                    ])
+                    .send()
+                    .await;
+
+                let response = match response {
+                    Ok(response) => response,
+                    Err(error) => {
+                        warn!(error = %error, "Telegram polling request failed");
+                        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+                        continue;
+                    }
+                };
+
+                let status = response.status();
+                let body: serde_json::Value = match response.json().await {
+                    Ok(body) => body,
+                    Err(error) => {
+                        warn!(error = %error, "Failed to parse Telegram polling response");
+                        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+                        continue;
+                    }
+                };
+
+                if !status.is_success() || body.get("ok").and_then(|v| v.as_bool()) != Some(true) {
+                    warn!(status = %status, body = %body, "Telegram polling returned failure");
+                    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+                    continue;
+                }
+
+                let updates = body
+                    .get("result")
+                    .and_then(|value| value.as_array())
+                    .cloned()
+                    .unwrap_or_default();
+
+                for update in updates {
+                    if let Some(update_id) = update.get("update_id").and_then(|value| value.as_i64())
+                    {
+                        next_offset = update_id + 1;
+                    }
+
+                    let Some(message) = update.get("message") else {
+                        continue;
+                    };
+
+                    let Some(from) = message.get("from") else {
+                        continue;
+                    };
+
+                    let user_id = from
+                        .get("id")
+                        .and_then(|value| value.as_i64())
+                        .map(|value| value.to_string())
+                        .unwrap_or_default();
+
+                    if !allowed_users.is_empty() && !allowed_users.contains(&user_id) {
+                        debug!(user_id = %user_id, "Skipping Telegram user outside allowlist");
+                        continue;
+                    }
+
+                    let content = message
+                        .get("text")
+                        .and_then(|value| value.as_str())
+                        .map(ToString::to_string)
+                        .or_else(|| {
+                            message
+                                .get("caption")
+                                .and_then(|value| value.as_str())
+                                .map(ToString::to_string)
+                        });
+
+                    let Some(content) = content else {
+                        continue;
+                    };
+
+                    let chat_id = message
+                        .get("chat")
+                        .and_then(|chat| chat.get("id"))
+                        .and_then(|value| value.as_i64())
+                        .map(|value| value.to_string())
+                        .unwrap_or_default();
+
+                    let mut metadata = serde_json::json!({
+                        "telegram_chat_id": chat_id,
+                    });
+                    if let Some(message_id) = message.get("message_id").and_then(|value| value.as_i64())
+                    {
+                        metadata["telegram_message_id"] = serde_json::json!(message_id);
+                    }
+                    if let Some(username) = from.get("username").and_then(|value| value.as_str()) {
+                        metadata["telegram_username"] = serde_json::json!(username);
+                    }
+
+                    let incoming = IncomingMessage {
+                        session_id: Uuid::new_v4(),
+                        user_id,
+                        content,
+                        platform: Platform::Telegram,
+                        metadata,
+                    };
+
+                    if let Err(error) = incoming_tx.send(incoming).await {
+                        error!(error = %error, "Failed to enqueue Telegram incoming message");
+                        return;
+                    }
+                }
+            }
+        }));
+
+        Ok(())
     }
 }
 
@@ -257,6 +395,10 @@ impl Channel for TelegramChannel {
             .into());
         }
 
+        if self.config.mode == TelegramMode::Polling {
+            self.spawn_polling_task().await?;
+        }
+
         *self.is_connected.write().await = true;
         info!(mode = ?self.config.mode, "Telegram channel connected");
         Ok(())
@@ -266,6 +408,9 @@ impl Channel for TelegramChannel {
         info!("Disconnecting from Telegram...");
 
         *self.is_connected.write().await = false;
+        if let Some(task) = self.polling_task.lock().await.take() {
+            task.abort();
+        }
 
         info!("Telegram channel disconnected");
         Ok(())
@@ -353,5 +498,60 @@ mod tests {
             })
             .await
             .unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_polling_receive_enqueues_message() {
+        use wiremock::matchers::{method, path, query_param};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/bottoken/getMe"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "ok": true,
+                "result": {"id": 1, "is_bot": true}
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/bottoken/getUpdates"))
+            .and(query_param("timeout", "30"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "ok": true,
+                "result": [{
+                    "update_id": 100,
+                    "message": {
+                        "message_id": 7,
+                        "text": "hello from telegram",
+                        "chat": {"id": 12345},
+                        "from": {"id": 999, "username": "alice"}
+                    }
+                }]
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let config = TelegramConfig {
+            enabled: true,
+            token: "token".to_string(),
+            api_base_url: Some(server.uri()),
+            mode: openrustclaw_core::config::TelegramMode::Polling,
+            webhook_url: None,
+            webhook_port: None,
+            allowed_users: vec![],
+            rate_limit_per_second: 30,
+        };
+        let mut channel = TelegramChannel::new(config);
+        channel.connect().await.unwrap();
+        let incoming = tokio::time::timeout(tokio::time::Duration::from_secs(2), channel.receive())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(incoming.content, "hello from telegram");
+        assert_eq!(incoming.user_id, "999");
+        assert_eq!(incoming.metadata["telegram_chat_id"], "12345");
+        channel.disconnect().await.unwrap();
     }
 }

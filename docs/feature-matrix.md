@@ -33,9 +33,9 @@ Status values:
 | Area | Status | Notes |
 | --- | --- | --- |
 | WebChat | real | Current baseline chat path |
-| Telegram | partial | Configured surface exists; runtime client/send path still incomplete |
-| Discord | partial | Configured surface exists; runtime client/send path still incomplete |
-| Slack | partial | Configured surface exists; runtime client/send path still incomplete |
+| Telegram | partial | Auth probe, outbound send, and Bot API polling receive path exist; webhook/runtime routing remains incomplete |
+| Discord | partial | Auth probe and outbound send path exist; inbound gateway/runtime path remains incomplete |
+| Slack | partial | Auth probe and outbound send path exist; inbound event/runtime path remains incomplete |
 | Matrix | partial | Shape exists; matrix-sdk integration deferred |
 | Google Chat | partial | Auth/config shape exists; receive/send coverage incomplete |
 | Gmail Pub/Sub | partial | Auth/config shape exists; live Gmail API operations incomplete |
@@ -51,7 +51,7 @@ Status values:
 | `mcp2-cli` | real | Real stdio/OpenAPI discovery path |
 | Cursor integration | partial | Core path exists; full tool/runtime parity still incomplete |
 | Skills registry/install flow | partial | Live registry path exists; runtime execution model still evolving |
-| WASM skill executor | deferred | Planned, not implemented |
+| WASM skill executor | partial | Real no-import executor exists with JSON ABI, memory limits, and timeout enforcement; host capability surface is still minimal |
 
 ## Experience Layers
 
