@@ -44,7 +44,7 @@ Speaker Notes: Set up the problem. Most AI frameworks have terrible memory manag
 
 ## ⚠️ The Problem: Context Window Limits
 
-### OpenClaw's Approach (The Wrong Way)
+### The File-Based Anti-Pattern
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -52,11 +52,11 @@ Speaker Notes: Set up the problem. Most AI frameworks have terrible memory manag
 │  ─────────────────────────────────────────────────────  │
 │  You are a helpful assistant.                           │
 │                                                         │
-│  [MEMORY.md - 15,000 tokens of irrelevant history]     │
-│  • Conversation from 3 months ago...                   │
-│  • Tool output that's no longer relevant...            │
-│  • Duplicate information...                            │
-│  • Outdated project context...                         │
+│  [Full memory file - 15,000 tokens of history]         │
+│  - Conversation from 3 months ago...                   │
+│  - Tool output that's no longer relevant...            │
+│  - Duplicate information...                            │
+│  - Outdated project context...                         │
 │  ─────────────────────────────────────────────────────  │
 │  User: "What's 2+2?" (current query - lost in noise)   │
 └─────────────────────────────────────────────────────────┘
@@ -458,15 +458,15 @@ Speaker Notes: Present the performance numbers. These are impressive and show th
 | Embedding Gen | 45ms | 80ms | 100 doc/sec |
 | Archive Consolidation | 500ms | 2s | Nightly batch |
 
-### Comparison: OpenClaw vs OpenRustClaw
+### Performance Highlights
 
-| Metric | OpenClaw | OpenRustClaw | Improvement |
-|--------|----------|--------------|-------------|
-| Memory tokens/turn | 15,000-20,000 | ~500 + search | **93.5% ↓** |
-| Query latency | 50-100ms | <3ms | **17x faster** |
-| Storage | Files (slow) | SQLite (fast) | **10x faster** |
-| Concurrent queries | Limited | 1000+ | **Unlimited** |
-| Token cost/msg | +$0.03-0.06 | Baseline | **~$0 savings** |
+| Metric | OpenRustClaw |
+|--------|--------------|
+| Memory tokens/turn | ~500 core + on-demand search |
+| Query latency | <3ms (hybrid search) |
+| Storage backend | SQLite with WAL mode |
+| Concurrent queries | 1000+ |
+| Token cost overhead | Minimal (recall-only) |
 
 ---
 
@@ -474,30 +474,30 @@ Speaker Notes: Present the performance numbers. These are impressive and show th
 Speaker Notes: Direct comparison highlighting why the new approach is superior.
 -->
 
-## ⚖️ Comparison with OpenClaw
+## ⚖️ File-Based vs Database-First
 
-### File-Based vs Database-First
+### Why Database-First Wins
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                     OPENCLAW (File-Based)                        │
+│              FILE-BASED APPROACH (Anti-Pattern)                   │
 │                                                                  │
-│   MEMORY.md              CONVERSATION.md         LEARNED.md     │
+│   memory.md              conversation.md         learned.md     │
 │   ━━━━━━━━━━━            ━━━━━━━━━━━━━━━         ━━━━━━━━━━     │
-│   • Old conversations    • Full history          • Facts        │
-│   • User preferences     • Every message         • Skills       │
-│   • Random facts         • Timestamps            • Config       │
+│   - Old conversations    - Full history          - Facts        │
+│   - User preferences     - Every message         - Skills       │
+│   - Random facts         - Timestamps            - Config       │
 │                                                                  │
 │   Problems:                                                      │
-│   ❌ Files grow unbounded (MBs over time)                       │
-│   ❌ Linear scan on every turn                                  │
-│   ❌ No search ranking                                          │
-│   ❌ Race conditions (file locks)                               │
-│   ❌ 93.5% token waste                                          │
+│   - Files grow unbounded (MBs over time)                        │
+│   - Linear scan on every turn                                   │
+│   - No search ranking                                           │
+│   - Race conditions (file locks)                                │
+│   - 93.5% token waste                                           │
 └─────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────┐
-│                  OPENRUSTCLAW (Database-First)                   │
+│             OPENRUSTCLAW (Database-First)                        │
 │                                                                  │
 │   SQLite Database                                                │
 │   ━━━━━━━━━━━━━━━                                                │
@@ -508,11 +508,11 @@ Speaker Notes: Direct comparison highlighting why the new approach is superior.
 │   memory_archive: Consolidated summaries                        │
 │                                                                  │
 │   Advantages:                                                    │
-│   ✅ Bounded core memory                                        │
-│   ✅ Sub-3ms search latency                                     │
-│   ✅ Intelligent ranking (hybrid)                               │
-│   ✅ Concurrent access (WAL mode)                               │
-│   ✅ 93.5% token savings                                        │
+│   + Bounded core memory                                         │
+│   + Sub-3ms search latency                                      │
+│   + Intelligent ranking (hybrid)                                │
+│   + Concurrent access (WAL mode)                                │
+│   + 93.5% token savings                                         │
 └─────────────────────────────────────────────────────────────────┘
 ```
 

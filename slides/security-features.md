@@ -8,7 +8,7 @@ footer: '© 2026 OpenRustClaw Project'
 ---
 
 <!--
-Speaker Notes: Security-focused deck. OpenRustClaw was built to fix critical vulnerabilities in OpenClaw. This deck explains the defense-in-depth approach.
+Speaker Notes: Security-focused deck. This deck explains the defense-in-depth approach built into OpenRustClaw.
 -->
 
 <style>
@@ -39,7 +39,7 @@ code {
 ---
 
 <!--
-Speaker Notes: Start with the critical vulnerability that motivated OpenRustClaw's creation. This was a real security issue with CVSS 8.8.
+Speaker Notes: Start with the critical vulnerability that OpenRustClaw was designed to prevent. CVE-2026-25253 is a real security issue with CVSS 8.8.
 -->
 
 ## ⚠️ CVE-2026-25253 Fix
@@ -64,20 +64,20 @@ Speaker Notes: Start with the critical vulnerability that motivated OpenRustClaw
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### OpenClaw's Mistake
+### The Vulnerable Pattern
 
 ```python
-# VULNERABLE CODE (OpenClaw)
+# VULNERABLE CODE (anti-pattern)
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    await websocket.accept()  # ❌ No authentication!
+    await websocket.accept()  # No authentication!
     # Attacker can connect from any origin
 ```
 
 ---
 
 <!--
-Speaker Notes: Explain how OpenRustClaw fixes this with mandatory origin validation and token authentication.
+Speaker Notes: Explain how OpenRustClaw addresses this with mandatory origin validation and token authentication.
 -->
 
 ## ✅ OpenRustClaw's Solution
@@ -598,15 +598,15 @@ Speaker Notes: Summary slide. Emphasize that security is not a feature but a fou
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Key Improvements Over OpenClaw
+### Security Feature Summary
 
-| Vulnerability | OpenClaw | OpenRustClaw |
-|--------------|----------|--------------|
-| WebSocket Auth | ❌ None | ✅ Mandatory |
-| Prompt Injection | 17% defense | >95% defense |
-| Skill Verification | ❌ None | ✅ Ed25519 |
-| Code Execution | ❌ Unrestricted | ✅ WASM sandbox |
-| Audit Logging | ❌ Basic | ✅ Comprehensive |
+| Area | OpenRustClaw Approach |
+|------|----------------------|
+| WebSocket Auth | Mandatory origin validation + JWT |
+| Prompt Injection | >95% defense rate (multi-layer) |
+| Skill Verification | Ed25519 cryptographic signatures |
+| Code Execution | WASM sandbox with resource limits |
+| Audit Logging | Comprehensive, immutable records |
 
 ### Philosophy
 

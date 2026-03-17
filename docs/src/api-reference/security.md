@@ -8,8 +8,8 @@ This reference documents the security hardening layer for OpenRustClaw.
 
 ## Overview
 
-The security layer addresses documented OpenClaw gaps:
-- **CVE-2026-25253**: Origin validation bypass
+The security layer provides comprehensive protection for AI agent deployments:
+- **CVE-2026-25253 mitigation**: Mandatory WebSocket origin validation
 - **Prompt injection defense**: Multi-layer detection
 - **Ed25519 skill verification**: Cryptographic signing
 - **Session isolation**: Prevents cross-session attacks
@@ -110,7 +110,7 @@ match validator.validate("https://app.example.com") {
 assert!(validator.validate("http://localhost:3000").is_err());
 ```
 
-**Important**: Unlike OpenClaw, OpenRustClaw requires explicit origin configuration. Localhost is NOT automatically trusted.
+**Important**: OpenRustClaw requires explicit origin configuration. Localhost is NOT automatically trusted.
 
 ---
 

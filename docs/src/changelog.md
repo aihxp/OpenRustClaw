@@ -83,7 +83,7 @@ First stable release of OpenRustClaw, a hybrid Rust + Python AI agent framework.
 
 ### 📊 Performance Improvements
 
-- **90% token cost reduction** vs OpenClaw (recall-only memory)
+- **90% token cost reduction** with recall-only memory architecture
 - **<3ms** hybrid memory search
 - **<1ms** core memory retrieval
 - **10x faster startup** with async embedding pipeline
@@ -158,7 +158,6 @@ First stable release of OpenRustClaw, a hybrid Rust + Python AI agent framework.
 
 ### 🙏 Acknowledgments
 
-- OpenClaw — Original inspiration
 - LangChain/LangGraph — Python AI orchestration
 - Anthropic — Claude and tool use patterns
 - OpenAI — GPT and function calling
@@ -194,26 +193,20 @@ First stable release of OpenRustClaw, a hybrid Rust + Python AI agent framework.
 
 ## Migration Notes
 
-### From OpenClaw
+### Configuration
 
-OpenRustClaw is a ground-up rewrite, not a drop-in replacement:
+OpenRustClaw uses the following configuration layout:
 
-1. **Memory system** — 3-tier recall-only vs file-based
-2. **Security model** — Mandatory auth vs optional
-3. **Scheduling** — LangGraph workflows vs cron
-4. **Skills** — Signed/SKILL.md vs unsigned
+| Item | Location |
+|------|----------|
+| Configuration | `config/` directory with TOML files |
+| Memory storage | SQLite database |
+| Environment variables | `.env` |
+| Skills | `skills/` (with SKILL.md format) |
 
-Migration path:
-1. Export OpenClaw memories to JSON
-2. Import into OpenRustClaw memory system
-3. Reconfigure skills with new format
+### Importing Existing Data
+
+1. Export existing memories to JSON format
+2. Import into OpenRustClaw memory system via `openrustclaw memory import`
+3. Configure skills with the SKILL.md format
 4. Update deployment configuration
-
-### Configuration Changes
-
-| OpenClaw | OpenRustClaw |
-|----------|-------------|
-| `config.json` | `config/` directory with TOML files |
-| `MEMORY.md` | SQLite database |
-| `.env` | `.env` (compatible) |
-| `skills/` | `skills/` (with SKILL.md format) |

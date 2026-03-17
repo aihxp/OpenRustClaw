@@ -51,7 +51,7 @@ Each platform has its own crate:
 
 ### Negative
 - **Boilerplate**: Each platform needs adapter
-- **Feature parity**: Some platform features don't map cleanly
+- **Feature coverage**: Some platform features don't map cleanly
 - **Dependencies**: Each adapter adds dependencies
 
 ## Implementation

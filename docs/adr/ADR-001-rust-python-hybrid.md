@@ -58,5 +58,5 @@ We adopted a hybrid architecture:
 - Rejected: WASI not mature enough for Python
 
 ## References
-- [Architecture Overview](../ARCHITECTURE.md)
+- [Architecture Overview](../src/architecture/overview.md)
 - [Sidecar Implementation](../../sidecar/)

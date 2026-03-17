@@ -489,6 +489,39 @@ flowchart TB
 
 ---
 
+## 🛠️ Technology Stack
+
+### Backend (Rust)
+- **Runtime**: Tokio (async)
+- **HTTP**: Axum, reqwest
+- **Serialization**: serde, prost (gRPC)
+- **Database**: sqlx, libSQL, rusqlite
+- **Sandbox**: wasmtime (WASM)
+- **Crypto**: ed25519-dalek
+
+### Sidecar (Python)
+- **Orchestration**: LangGraph
+- **Observability**: LangSmith
+- **gRPC**: grpcio
+
+### Infrastructure
+- **Container**: Docker, Kubernetes
+- **Observability**: Prometheus, Grafana, OpenTelemetry
+- **Messaging**: gRPC, NATS (optional)
+
+---
+
+## 🌐 Distributed Mode (Future)
+
+Horizontal scaling capabilities planned for future releases:
+- Raft consensus for leader election
+- Gossip protocol for service discovery
+- Distributed memory (Redis/etcd)
+- Load balancing (round-robin, consistent hashing)
+- Session affinity
+
+---
+
 ## 📚 Related Documentation
 
 - [Rust Core Deep Dive](./rust-core.md) — All 14 crates explained

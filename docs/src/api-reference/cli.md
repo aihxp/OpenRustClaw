@@ -206,7 +206,7 @@ openrustclaw memory <ACTION>
 
 Actions:
   export --output <PATH> [--user-id <ID>]  Export memory to markdown
-  import --file <PATH> --user-id <ID>      Import legacy OpenClaw MEMORY.md
+  import --file <PATH> --user-id <ID>      Import memory from markdown file
   stats                                    Show memory statistics
 ```
 
@@ -215,7 +215,7 @@ Actions:
 # Export memory for inspection
 openrustclaw memory export --output memory_backup.md --user-id user_42
 
-# Import legacy OpenClaw memory
+# Import memory from markdown file
 openrustclaw memory import --file MEMORY.md --user-id user_42
 
 # Show statistics

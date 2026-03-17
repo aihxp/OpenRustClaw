@@ -6,9 +6,9 @@
 
 ## 🎯 Project Overview
 
-OpenRustClaw is a ground-up reimagining of the [OpenClaw](https://github.com/openclaw) AI agent framework, addressing its documented security vulnerabilities, performance bottlenecks, and architectural limitations while preserving feature parity and adding significant new capabilities.
+OpenRustClaw is a production-grade AI agent framework built from the ground up with security, performance, and reliability as core design principles.
 
-Built for production deployments where reliability, security, and performance matter, OpenRustClaw leverages Rust's memory safety guarantees and Python's rich AI ecosystem to deliver a best-of-both-worlds solution.
+Built for production deployments where these qualities matter most, OpenRustClaw leverages Rust's memory safety guarantees and Python's rich AI ecosystem to deliver a best-of-both-worlds solution.
 
 ---
 
@@ -168,16 +168,16 @@ OpenRustClaw/
 
 ---
 
-## 📊 Comparison with OpenClaw
+## 📊 Design Advantages
 
-| Problem in OpenClaw | OpenRustClaw Solution | Impact |
-|---------------------|----------------------|--------|
-| **CVE-2026-25253**: Unauthenticated WebSocket access (CVSS 8.8) | Mandatory origin validation + token auth on ALL connections | 🔒 Critical security fix |
-| MEMORY.md injected every turn (~15-20K tokens, 93.5% waste) | 3-tier recall-only memory: Core (~500 tokens) + on-demand search | 💰 90% token cost reduction |
-| Prompt injection: only 17% defense rate | Multi-layer: sandwich defense, canary tokens, classification | 🛡️ 95%+ defense rate |
-| 1000+ malicious skills in marketplace | Ed25519 cryptographic signatures + WASM sandboxing | 🔐 Trustless skill execution |
+| Challenge | OpenRustClaw Solution | Impact |
+|-----------|----------------------|--------|
+| Unauthenticated WebSocket access | Mandatory origin validation + token auth on ALL connections | 🔒 Eliminates unauthorized access |
+| Large memory files injected every turn | 3-tier recall-only memory: Core (~500 tokens) + on-demand search | 💰 90% token cost reduction |
+| Weak prompt injection defense | Multi-layer: sandwich defense, canary tokens, classification | 🛡️ 95%+ defense rate |
+| Unverified third-party skills | Ed25519 cryptographic signatures + WASM sandboxing | 🔐 Trustless skill execution |
 | Synchronous memory indexing blocks startup | Fully async embedding pipeline with bounded concurrency | ⚡ 10x faster startup |
-| Basic cron scheduler, missed reminders | Durable scheduler: idempotency, leases, dead-letter, timezone-safe | ✅ 99.9% task reliability |
+| Unreliable cron-based scheduling | Durable scheduler: idempotency, leases, dead-letter, timezone-safe | ✅ 99.9% task reliability |
 | Single-writer SQLite, no isolation | WAL mode + per-session filesystem namespaces | 🏗️ Production concurrency |
 
 ---
@@ -269,6 +269,68 @@ Every operation is traced. Every decision is logged. Every metric is tracked.
 
 ---
 
+## 📋 Extended Feature Reference
+
+### 📡 Channel Integrations (20 Channels)
+
+| Channel | Status | Notes |
+|---------|--------|-------|
+| Telegram | Planned | Polling & webhook modes, rate limiting |
+| Discord | Planned | Slash commands, DMs, Socket Mode |
+| Slack | Planned | App Home, Socket Mode, thread support |
+| WhatsApp | Planned | Via Baileys bridge, QR/pairing auth |
+| Microsoft Teams | Planned | Bot Framework, Azure AD auth |
+| Google Chat | Planned | Service account, Pub/Sub support |
+| Gmail Pub/Sub | Planned | Real-time email notifications |
+| Signal | Planned | signal-cli bridge |
+| Matrix | Planned | matrix-rust-sdk |
+| iMessage | Planned | BlueBubbles server or macOS AppleScript |
+| LINE | Planned | Messaging API |
+| Viber | Planned | Bot API |
+| WeChat | Planned | Work + Official Accounts |
+| Messenger | Planned | Meta Graph API |
+| Instagram | Planned | Meta Graph API |
+| SMS (Twilio) | Planned | Twilio API |
+| X (Twitter) | Planned | X API v2 |
+| WebChat | Ready | Built-in web interface |
+| Email | Planned | IMAP/SMTP |
+| IRC | Planned | Built-in |
+
+### 🎤 Voice System
+
+| Feature | Status | Implementation |
+|---------|--------|----------------|
+| Wake Word Detection | Planned | Porcupine engine, custom models |
+| Talk Mode | Planned | Continuous conversation mode |
+| Speech-to-Text | Planned | OpenAI Whisper, local models |
+| Text-to-Speech | Planned | OpenAI, ElevenLabs, local |
+
+### 🖼️ Visual / Canvas
+
+| Feature | Status | Implementation |
+|---------|--------|----------------|
+| Live Canvas | Planned | A2UI workspace, WebSocket |
+| Real-time Collaboration | Planned | Multi-user sessions |
+| Visual Elements | Planned | Text, Image, Chart, Form, Button, Code, Markdown |
+
+### 🤖 Multi-Agent System
+
+| Feature | Status | Description |
+|---------|--------|-------------|
+| Agent Router | Planned | Priority-based task routing |
+| Capability Discovery | Planned | Agent skill registry |
+| Inter-Agent Tools | Planned | `sessions_*` tool protocol |
+| Heartbeat Scheduler | Planned | Distributed coordination |
+
+### 📱 Mobile
+
+| Feature | Status | Description |
+|---------|--------|-------------|
+| iOS SDK | Planned | Swift FFI bindings |
+| Android SDK | Planned | Kotlin JNI bindings |
+
+---
+
 ## 🤝 Community & Support
 
 - **GitHub**: [github.com/openrustclaw/openrustclaw](https://github.com/openrustclaw/openrustclaw)
@@ -288,7 +350,6 @@ MIT License. See [LICENSE](https://github.com/openrustclaw/openrustclaw/blob/mai
 
 OpenRustClaw builds upon the excellent work of:
 
-- **OpenClaw** — The original inspiration
 - **LangChain/LangGraph** — Python AI orchestration
 - **Anthropic** — Claude and tool use patterns
 - **OpenAI** — GPT and function calling

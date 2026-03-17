@@ -53,19 +53,19 @@ OpenRustClaw is a **hybrid AI agent framework** combining:
 | 🐍 **AI Orchestration** | Python + LangGraph | Agent workflows, memory maintenance |
 | 📊 **Observability** | LangSmith | Tracing, metrics, evaluation |
 
-### A Ground-Up Reimagining
+### Built for Production
 
-Built as a **secure, performant successor** to OpenClaw — addressing documented vulnerabilities, architectural limitations, and feature gaps.
+A **secure, performant AI agent framework** designed from the ground up to address the security, performance, and reliability challenges of deploying AI agents in production.
 
 ---
 
-<!-- 
-Speaker Notes: Emphasize the severity of CVE-2026-25253. This isn't a theoretical issue—it was a real vulnerability with CVSS 8.8 score.
+<!--
+Speaker Notes: Walk through the challenges that AI agent frameworks face in production. These are real problems that OpenRustClaw was designed to solve.
 -->
 
-## ⚠️ The Problem: OpenClaw's Issues
+## ⚠️ The Problem: AI Agent Deployment Challenges
 
-### Critical Security Vulnerability
+### Security Risks
 
 ```
 ┌─────────────────────────────────────────┐
@@ -75,36 +75,36 @@ Speaker Notes: Emphasize the severity of CVE-2026-25253. This isn't a theoretica
 └─────────────────────────────────────────┘
 ```
 
-### Performance Bottlenecks
+### Common Performance Bottlenecks
 
 | Issue | Impact |
 |-------|--------|
-| MEMORY.md injected every turn | ~15-20K tokens, **93.5% waste** |
+| Full memory files injected every turn | ~15-20K tokens, **93.5% waste** |
 | Synchronous memory indexing | Blocks startup, stalls runtime |
-| Single-writer SQLite | No session isolation |
+| Single-writer databases | No session isolation |
 
-### Security Gaps
+### Common Security Gaps
 
-- 😰 **17% prompt injection defense rate** — inadequate filtering
-- 😰 **1000+ malicious skills** in marketplace — no verification
-- 😰 Basic cron scheduler — missed reminders, no recovery
+- Weak prompt injection defenses -- inadequate filtering
+- Unverified third-party skills -- no code signing
+- Unreliable cron-based scheduling -- missed tasks, no recovery
 
 ---
 
-<!-- 
-Speaker Notes: Transition to the solution. Each fix directly addresses the problems on the previous slide.
+<!--
+Speaker Notes: Transition to the solution. Each design decision directly addresses the challenges on the previous slide.
 -->
 
 ## ✅ The Solution: OpenRustClaw's Approach
 
 ### Security-First Design
 
-| OpenClaw Problem | OpenRustClaw Fix |
-|------------------|------------------|
-| CVE-2026-25253 | ✅ Mandatory origin validation + token auth |
-| Token waste | ✅ 3-tier recall-only memory (~500 tokens core) |
-| 17% injection defense | ✅ Multi-layer defense (sandwich, canaries, classification) |
-| Malicious skills | ✅ Ed25519 signatures + WASM sandboxing |
+| Challenge | OpenRustClaw Solution |
+|-----------|----------------------|
+| Unauthenticated WebSocket access | Mandatory origin validation + token auth |
+| Token waste from full memory injection | 3-tier recall-only memory (~500 tokens core) |
+| Weak prompt injection defense | Multi-layer defense (sandwich, canaries, classification) |
+| Unverified third-party skills | Ed25519 signatures + WASM sandboxing |
 
 ### Architecture Improvements
 
@@ -267,19 +267,19 @@ Speaker Notes: Security is a major selling point. Walk through each layer and ho
 Speaker Notes: Use this slide to show concrete improvements. The numbers tell a compelling story.
 -->
 
-## 📊 Performance Comparison
+## 📊 Performance Characteristics
 
-### OpenClaw vs OpenRustClaw
+### Key Metrics
 
-| Metric | OpenClaw | OpenRustClaw | Improvement |
-|--------|----------|--------------|-------------|
-| Memory tokens/turn | 15,000-20,000 | ~500 core + search | **93.5% reduction** |
-| Memory query latency | ~50ms | <3ms | **16x faster** |
-| WebSocket auth | ❌ None | ✅ Mandatory | **CVSS 8.8 → 0** |
-| Prompt injection defense | 17% | >95% | **5.6x better** |
-| Startup time | 30s+ (indexing) | <2s (async) | **15x faster** |
-| Concurrent sessions | Limited | 10,000+ | **Unlimited scale** |
-| Scheduler reliability | Basic cron | Durable workflows | **99.9% uptime** |
+| Metric | OpenRustClaw |
+|--------|--------------|
+| Memory tokens/turn | ~500 core + on-demand search |
+| Memory query latency | <3ms |
+| WebSocket auth | Mandatory origin validation + JWT |
+| Prompt injection defense | >95% multi-layer defense |
+| Startup time | <2s (async pipeline) |
+| Concurrent sessions | 10,000+ |
+| Scheduler reliability | 99.9% (durable workflows) |
 
 ### Throughput Benchmarks
 
@@ -400,9 +400,9 @@ Speaker Notes: Thank the audience. Provide contact information. Be ready for tec
 ### Common Questions
 
 - How does the memory system handle privacy?
-- What's the migration path from OpenClaw?
 - Can I add custom providers?
 - How does WASM sandboxing work?
+- What deployment configurations are supported?
 
 ### Contact
 
