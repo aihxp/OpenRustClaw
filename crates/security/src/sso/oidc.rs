@@ -305,7 +305,7 @@ impl SsoClient for OidcClient {
             groups,
             organization: claims.get("org_name").or_else(|| claims.get("organization")).and_then(|o| o.as_str()).map(String::from),
             department: claims.get("department").and_then(|d| d.as_str()).map(String::from),
-            extra_claims: claims.as_object().map(|o| o.clone()).unwrap_or_default(),
+            extra_claims: claims.as_object().map(|o| o.iter().map(|(k, v)| (k.clone(), v.clone())).collect()).unwrap_or_default(),
         })
     }
 

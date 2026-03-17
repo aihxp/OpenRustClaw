@@ -53,6 +53,22 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
                     // WebChat is always enabled via gateway
                     info!("WebChat is always enabled via gateway");
                 }
+                ChannelType::Teams => {
+                    config.channels.teams.enabled = true;
+                    info!("Teams channel enabled");
+                }
+                ChannelType::GoogleChat => {
+                    config.channels.google_chat.enabled = true;
+                    info!("Google Chat channel enabled");
+                }
+                ChannelType::WhatsApp => {
+                    config.channels.whatsapp.enabled = true;
+                    info!("WhatsApp channel enabled");
+                }
+                ChannelType::Gmail => {
+                    config.channels.gmail_pubsub.enabled = true;
+                    info!("Gmail Pub/Sub channel enabled");
+                }
             }
         }
     }

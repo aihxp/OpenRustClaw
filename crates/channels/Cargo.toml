@@ -33,6 +33,29 @@ governor = "0.8"
 # slack-morphism = { version = "2.19", features = ["hyper", "axum"] }
 # slack-morphism-hyper = "0.41"
 
+# Microsoft Teams & Google Chat
+reqwest = { version = "0.12", features = ["json", "multipart"] }
+
+# LINE, WeChat (HMAC/SHA for webhook signature verification)
+hmac = "0.12"
+sha2 = "0.10"
+sha1 = "0.10"
+hex = "0.4"
+
+# Gmail Pub/Sub
+base64 = "0.22"
+
+# Google Chat (for full implementation, uncomment):
+# yup-oauth2 = "12"
+# google-chat1 = "6"
+
+# Gmail Pub/Sub (for full implementation, uncomment):
+# google-cloud-pubsub = "0.28"
+# yup-oauth2 = "12"
+
+# Matrix (for full implementation, uncomment):
+# matrix-sdk = { version = "0.10", default-features = false, features = ["e2e-encryption", "sqlite", "native-tls"] }
+
 [dev-dependencies]
 tokio-test.workspace = true
 wiremock.workspace = true

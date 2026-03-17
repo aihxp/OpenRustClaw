@@ -1,0 +1,44 @@
+[package]
+name = "openrustclaw-mobile"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Mobile node SDK for iOS and Android - allows phones to act as OpenRustClaw nodes"
+
+[dependencies]
+openrustclaw-core.workspace = true
+tokio.workspace = true
+futures.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+async-trait.workspace = true
+
+# Mobile-specific (disabled by default)
+tauri = { version = "1.5", optional = true }
+uniffi = { version = "0.25", optional = true }
+
+[target.'cfg(target_os = "ios")'.dependencies]
+objc = "0.2"
+cocoa = "0.25"
+
+[target.'cfg(target_os = "android")'.dependencies]
+jnix = { version = "0.5", features = ["derive"] }
+ndk = "0.8"
+ndk-sys = "0.5"
+
+[dev-dependencies]
+tokio-test.workspace = true
+serial_test.workspace = true
+
+[features]
+default = []
+tauri = ["dep:tauri"]
+uniffi = ["dep:uniffi"]
+
+[lib]
+crate-type = ["cdylib", "staticlib", "rlib"]

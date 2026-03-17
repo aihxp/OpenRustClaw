@@ -14,10 +14,13 @@ members = [
     "crates/skills",
     "crates/scheduler",
     "crates/security",
+    "crates/canvas",
     "crates/langbridge",
     "crates/observability",
     "crates/cursor",
     "crates/automation",
+    "crates/voice",
+    "crates/mobile",
     "crates/anthropic_rust",
     "crates/async_openai",
     "crates/openrouter_api",
@@ -126,9 +129,12 @@ openrustclaw-security = { path = "crates/security" }
 openrustclaw-langbridge = { path = "crates/langbridge" }
 openrustclaw-observability = { path = "crates/observability" }
 openrustclaw-cursor = { path = "crates/cursor" }
+openrustclaw-canvas = { path = "crates/canvas" }
 openrustclaw-mcp2cli = { path = "crates/mcp2cli" }
 openrustclaw-distributed = { path = "crates/distributed" }
 openrustclaw-automation = { path = "crates/automation" }
+openrustclaw-voice = { path = "crates/voice" }
+openrustclaw-mobile = { path = "crates/mobile" }
 
 # Native SDK crates
 anthropic-rust = { path = "crates/anthropic_rust" }
@@ -149,6 +155,11 @@ urlencoding = "2"
 
 # Compression
 flate2 = "1"
+
+# CLI/UX
+dialoguer = "0.11"
+indicatif = "0.17"
+console = "0.15"
 
 # Test dependencies
 wiremock = "0.6"

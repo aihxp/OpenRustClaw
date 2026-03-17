@@ -8,6 +8,7 @@ description = "Skill/plugin system for OpenRustClaw"
 [dependencies]
 openrustclaw-core.workspace = true
 openrustclaw-security.workspace = true
+openrustclaw-db.workspace = true
 tokio.workspace = true
 async-trait.workspace = true
 serde.workspace = true
@@ -17,3 +18,12 @@ tracing.workspace = true
 uuid.workspace = true
 sha2.workspace = true
 wasmtime.workspace = true
+reqwest.workspace = true
+chrono.workspace = true
+semver = { version = "1", features = ["serde"] }
+ed25519-dalek.workspace = true
+sqlx.workspace = true
+base64.workspace = true
+flate2.workspace = true
+tar = "0.4"
+dirs = "5"

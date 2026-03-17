@@ -1,1 +1,99 @@
-This is the OpenRustClaw project. See .cursor/rules/ for detailed conventions.
+# OpenRustClaw Project Rules
+
+This is the OpenRustClaw project — a production-ready Rust AI agent framework.
+
+## Quick Reference
+- See `.cursor/rules/` for detailed conventions
+- Architecture: Rust core (22 crates) + Python sidecar
+- Gateway: Axum WebSocket server
+- Agent: Runtime with tool execution
+
+## New Module Rules
+
+### Voice Module (`crates/voice`)
+- Wake word detection uses Porcupine — always validate model path
+- STT/TTS operations are async and may block — use `tokio::task::spawn_blocking`
+- Audio streams must be properly closed on drop to prevent resource leaks
+- Never store audio recordings without user consent
+- Respect platform-specific audio permissions (mic/camera access)
+
+### Canvas Module (`crates/canvas`)
+- A2UI workspace uses WebSocket for real-time updates
+- All canvas operations are collaborative — handle conflicts with OT/CRDT
+- Session state must be cleaned up on client disconnect
+- Validate all user-generated content before rendering
+- Rate limit canvas operations to prevent abuse
+
+### Mobile Module (`crates/mobile`)
+- iOS/Android SDK uses gRPC for communication
+- Device nodes (camera, location) require explicit permissions
+- Push notifications must respect user preferences
+- Mobile API endpoints require stronger auth (device attestation)
+- Battery optimization: batch operations, minimize wake locks
+
+## Inter-Agent Communication
+- Agent-to-agent calls use `sessions_*` tool naming convention
+- Always validate agent capability before routing
+- Heartbeat scheduler maintains distributed agent state
+- Router uses priority rules: capability match > load > latency
+- Failed inter-agent calls should fallback to local execution
+
+## Webhook Security Requirements
+- All webhooks must verify signatures using HMAC-SHA256
+- Reject requests from non-allowed IP ranges (CIDR validation)
+- GitHub webhooks: verify `X-Hub-Signature-256` header
+- Stripe webhooks: verify `Stripe-Signature` header
+- Log all webhook events for audit trail
+- Implement idempotency keys to prevent duplicate processing
+
+## Multi-Agent Patterns
+```rust
+// Agent routing with capability check
+let router = AgentRouter::new()
+    .with_capability_check(true)
+    .with_fallback(FallbackStrategy::Local);
+
+// Inter-agent tool call
+let result = router.call_agent(
+    target_agent_id,
+    ToolRequest::new("sessions_query", params)
+).await?;
+```
+
+## Voice Patterns
+```rust
+// Wake word detection
+let wake = WakeWordDetector::new(model_path)?
+    .with_sensitivity(0.7);
+
+// Continuous talk mode
+let talk = TalkMode::new(stt, tts)
+    .with_timeout(Duration::from_secs(30));
+```
+
+## Canvas Patterns
+```rust
+// Session management
+let session = CanvasSession::new(session_id)
+    .with_max_users(10)
+    .with_collaboration(true);
+
+// Operation broadcasting
+session.broadcast(Operation::AddNode { ... }).await?;
+```
+
+## Channel Implementation
+When adding new channels:
+1. Implement `Channel` trait from `openrustclaw-core`
+2. Add config section to `config/channels-example.toml`
+3. Update `crates/channels/src/lib.rs` with feature flag
+4. Include rate limiting and allowlist support
+5. Add webhook verification if applicable
+
+## Security Checklist
+- [ ] All external inputs validated
+- [ ] Secrets never logged or exposed in errors
+- [ ] Rate limiting implemented for all public endpoints
+- [ ] Webhook signatures verified
+- [ ] File uploads scanned/sandboxed
+- [ ] Auth tokens validated on every request

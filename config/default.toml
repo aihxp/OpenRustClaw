@@ -104,3 +104,15 @@ socket_mode = true  # Use Socket Mode (recommended)
 rate_limit_requests_per_second = 10  # Slack rate limit
 allowed_workspaces = []  # List of allowed team IDs (empty = allow all)
 app_home_enabled = true  # Enable App Home tab
+
+# Signal Messenger Configuration
+[channels.signal]
+enabled = false
+phone_number = ""  # Your Signal phone number (E.164 format, e.g., +1234567890)
+data_dir = "./data/signal"  # Path to store signal-cli data (keep secure!)
+allowlist = []  # Allowed phone numbers (empty = allow all if require_allowlist = false)
+allowed_groups = []  # Allowed group IDs (empty = allow all if require_allowlist = false)
+signal_cli_path = null  # Path to signal-cli binary (null = use system PATH)
+use_libsignal = false  # Use native libsignal-client (experimental)
+rate_limit_per_minute = 20  # Signal rate limit (~20 messages/minute)
+require_allowlist = true  # Require allowlist for security (recommended)

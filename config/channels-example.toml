@@ -1,0 +1,286 @@
+# Complete Channel Configuration Example for OpenRustClaw
+# Copy relevant sections to your main config.toml and update with your values
+
+# =============================================================================
+# Telegram Bot Configuration
+# =============================================================================
+[channels.telegram]
+enabled = true
+token = "${TELEGRAM_TOKEN}"  # Bot token from @BotFather
+mode = "polling"  # "polling" or "webhook"
+webhook_url = null  # Required for webhook mode (e.g., "https://yourdomain.com/webhook")
+webhook_port = null  # Port to listen on for webhooks (e.g., 8080)
+allowed_users = []  # List of allowed user IDs (empty = allow all)
+rate_limit_per_second = 30  # Telegram allows ~30 msg/sec
+
+# =============================================================================
+# Discord Bot Configuration
+# =============================================================================
+[channels.discord]
+enabled = true
+token = "${DISCORD_TOKEN}"  # Bot token from Discord Developer Portal
+application_id = "${DISCORD_APP_ID}"  # Application ID for slash commands
+rate_limit_requests_per_second = 5  # Discord global rate limit
+allowed_guilds = []  # List of allowed server IDs (empty = allow all)
+allowed_channels = []  # List of allowed channel IDs (empty = allow all)
+dm_enabled = true  # Allow direct messages
+
+# =============================================================================
+# Slack App Configuration
+# =============================================================================
+[channels.slack]
+enabled = true
+bot_token = "${SLACK_BOT_TOKEN}"  # Bot User OAuth Token (xoxb-...)
+app_token = "${SLACK_APP_TOKEN}"  # App-Level Token (xapp-...) for Socket Mode
+signing_secret = "${SLACK_SIGNING_SECRET}"  # Signing secret for HTTP mode
+mode = "socket_mode"  # "socket_mode" or "http"
+socket_mode = true  # Use Socket Mode (recommended)
+rate_limit_requests_per_second = 10  # Slack rate limit
+allowed_workspaces = []  # List of allowed team IDs (empty = allow all)
+app_home_enabled = true  # Enable App Home tab
+
+# =============================================================================
+# WhatsApp Configuration (via Baileys Bridge)
+# =============================================================================
+[channels.whatsapp]
+enabled = false
+
+# Path to store WhatsApp session credentials
+# This directory will contain your authentication state, keep it secure!
+session_path = "./data/whatsapp-session"
+
+# Use pairing code instead of QR code for linking
+# When true, displays an 8-character code to enter in WhatsApp
+# When false, displays a QR code to scan
+pairing_mode = false
+
+# Allowed phone numbers for direct messages
+# Leave empty to allow all numbers
+# Format: E.164 format (e.g., "1234567890", or include country code)
+allowlist = [
+    # "1234567890",      # Example: US number
+    # "447123456789",    # Example: UK number
+]
+
+# Optional webhook URL for connection events
+# Receives POST requests for: whatsapp_connecting, whatsapp_connected, whatsapp_disconnected
+# webhook_url = "https://your-server.com/webhooks/whatsapp"
+
+# Path to the Baileys bridge script
+# Default should work if you run from project root
+bridge_path = "./crates/channels/baileys-bridge/index.js"
+
+# Rate limiting for outgoing messages
+# WhatsApp limits: ~60/minute for DMs, ~15/minute for groups
+rate_limit_per_second = 10
+
+# Reconnection settings
+max_reconnect_attempts = 10
+reconnect_delay_secs = 5
+
+# =============================================================================
+# Microsoft Teams Configuration
+# =============================================================================
+[channels.teams]
+enabled = false
+app_id = "${TEAMS_APP_ID}"  # Microsoft App ID from Azure Portal
+app_password = "${TEAMS_APP_PASSWORD}"  # Client secret from Azure Portal
+tenant_id = "${TEAMS_TENANT_ID}"  # Azure AD Tenant ID (optional, for single-tenant)
+
+# Bot Framework configuration
+bot_framework_endpoint = "https://api.botframework.com"
+messaging_endpoint = "https://yourdomain.com/api/teams/webhook"
+
+# Allowed teams and channels
+allowed_teams = []  # List of allowed Microsoft Teams IDs
+allowed_channels = []  # List of allowed channel IDs
+
+# Rate limiting (Teams allows ~20 msg/sec per bot)
+rate_limit_per_second = 15
+
+# =============================================================================
+# Google Chat Configuration
+# =============================================================================
+[channels.google_chat]
+enabled = false
+
+# Path to Google Cloud service account JSON key file
+service_account_key = "/path/to/service-account.json"
+
+# Google Cloud Project ID
+project_id = "my-gcp-project"
+
+# Space (room) configuration
+allowed_spaces = []  # List of allowed space IDs (empty = allow all)
+
+# Pub/Sub subscription for async message receiving
+pubsub_subscription = "google-chat-subscription"
+
+# Rate limiting (Google Chat allows ~30 msg/sec per bot)
+rate_limit_per_second = 25
+
+# =============================================================================
+# Gmail Pub/Sub Configuration
+# =============================================================================
+[channels.gmail_pubsub]
+enabled = false
+
+# Google Cloud Project ID
+project_id = "my-gcp-project"
+
+# Pub/Sub subscription name for Gmail notifications
+subscription_name = "gmail-notifications"
+
+# Path to Google Cloud service account JSON key file
+service_account_key = "/path/to/service-account.json"
+
+# Gmail user ID (typically 'me' for authenticated user)
+user_id = "me"
+
+# Label filters - only process emails with these labels
+# Leave empty to process all emails
+label_filters = ["INBOX", "IMPORTANT"]
+
+# Rate limiting for Gmail API calls
+rate_limit_per_second = 10
+
+# =============================================================================
+# Webhook Configuration (Generic)
+# =============================================================================
+[channels.webhook]
+enabled = true
+port = 8081  # Port to listen for incoming webhooks
+host = "0.0.0.0"
+
+# Secret for webhook signature verification
+webhook_secret = "${WEBHOOK_SECRET}"
+
+# Allowed IP ranges (CIDR notation)
+# Common: GitHub (140.82.112.0/20), Stripe (varies by region)
+allowed_ip_ranges = ["0.0.0.0/0"]  # Restrict in production!
+
+# Individual webhook endpoint configurations
+[channels.webhook.endpoints.github]
+enabled = true
+path = "/webhooks/github"
+secret = "${GITHUB_WEBHOOK_SECRET}"
+events = ["push", "pull_request", "issues"]
+
+[channels.webhook.endpoints.stripe]
+enabled = true
+path = "/webhooks/stripe"
+secret = "${STRIPE_WEBHOOK_SECRET}"
+events = ["invoice.payment_succeeded", "customer.subscription.created"]
+
+# =============================================================================
+# Signal Configuration
+# =============================================================================
+[channels.signal]
+enabled = false
+
+# Your Signal phone number (E.164 format with country code)
+phone_number = "${SIGNAL_PHONE_NUMBER}"
+
+# Path to store signal-cli data (contains cryptographic keys - keep secure!)
+data_dir = "./data/signal"
+
+# Allowed phone numbers (empty = allow all if require_allowlist = false)
+allowlist = [
+    # "+9876543210",     # Example: Trusted contact
+]
+
+# Allowed group IDs (empty = allow all if require_allowlist = false)
+allowed_groups = []
+
+# Path to signal-cli binary (optional, uses system PATH if not set)
+# signal_cli_path = "/usr/local/bin/signal-cli"
+
+# Use native libsignal-client instead of signal-cli (experimental)
+use_libsignal = false
+
+# Rate limiting for outgoing messages (Signal limits: ~20/minute)
+rate_limit_per_minute = 20
+
+# Require allowlist for security (recommended for production)
+require_allowlist = true
+
+# =============================================================================
+# Matrix Configuration (Coming in v3.0)
+# =============================================================================
+[channels.matrix]
+enabled = false
+# Matrix protocol support via matrix-rust-sdk
+# Coming in OpenRustClaw v3.0
+
+# =============================================================================
+# Voice Configuration
+# =============================================================================
+[voice]
+enabled = false
+
+# Wake word detection
+[voice.wake_word]
+enabled = true
+model_path = "./models/porcupine/hey-claw.ppn"
+sensitivity = 0.7  # 0.0 to 1.0, higher = more sensitive
+
+# Speech-to-Text
+[voice.stt]
+provider = "whisper"  # "whisper" or "local"
+model = "base"  # tiny, base, small, medium, large
+language = "auto"  # "auto" for auto-detect or ISO code (e.g., "en")
+
+# Text-to-Speech
+[voice.tts]
+provider = "openai"  # "openai", "elevenlabs", or "local"
+model = "tts-1"
+voice = "alloy"  # alloy, echo, fable, onyx, nova, shimmer
+
+# Talk Mode (continuous conversation)
+[voice.talk_mode]
+enabled = true
+timeout_secs = 30  # Timeout for continuous listening
+
+# =============================================================================
+# Canvas (A2UI) Configuration
+# =============================================================================
+[canvas]
+enabled = false
+host = "0.0.0.0"
+port = 3000
+
+# WebSocket configuration
+websocket_path = "/ws/canvas"
+max_connections = 100
+
+# Real-time collaboration
+[canvas.collaboration]
+enabled = true
+max_users_per_session = 10
+
+# =============================================================================
+# Mobile SDK Configuration
+# =============================================================================
+[mobile]
+# Server-side mobile configuration
+[mobile.push_notifications]
+enabled = false
+provider = "firebase"  # "firebase" or "apns"
+
+# Firebase Cloud Messaging
+[mobile.push_notifications.fcm]
+service_account_key = "/path/to/fcm-service-account.json"
+project_id = "my-mobile-app"
+
+# Apple Push Notification Service
+[mobile.push_notifications.apns]
+key_path = "/path/to/apns-key.p8"
+key_id = "ABCD123456"
+team_id = "TEAM123456"
+bundle_id = "com.openrustclaw.app"
+
+# Mobile API endpoints
+[mobile.api]
+enabled = true
+base_path = "/api/mobile"
+require_auth = true

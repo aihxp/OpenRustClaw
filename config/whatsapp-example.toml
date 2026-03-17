@@ -1,0 +1,38 @@
+# WhatsApp Channel Configuration Example
+# Copy this to your main config.toml and update with your values
+
+[channels.whatsapp]
+enabled = true
+
+# Path to store WhatsApp session credentials
+# This directory will contain your authentication state, keep it secure!
+session_path = "./data/whatsapp-session"
+
+# Use pairing code instead of QR code for linking
+# When true, displays an 8-character code to enter in WhatsApp
+# When false, displays a QR code to scan
+pairing_mode = false
+
+# Allowed phone numbers for direct messages
+# Leave empty to allow all numbers
+# Format: E.164 format (e.g., "1234567890", or include country code)
+allowlist = [
+    # "1234567890",      # Example: US number
+    # "447123456789",    # Example: UK number
+]
+
+# Optional webhook URL for connection events
+# Receives POST requests for: whatsapp_connecting, whatsapp_connected, whatsapp_disconnected
+# webhook_url = "https://your-server.com/webhooks/whatsapp"
+
+# Path to the Baileys bridge script
+# Default should work if you run from project root
+bridge_path = "./crates/channels/baileys-bridge/index.js"
+
+# Rate limiting for outgoing messages
+# WhatsApp limits: ~60/minute for DMs, ~15/minute for groups
+rate_limit_per_second = 10
+
+# Reconnection settings
+max_reconnect_attempts = 10
+reconnect_delay_secs = 5

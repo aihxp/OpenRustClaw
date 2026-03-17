@@ -61,6 +61,8 @@ enum Commands {
     },
     /// Run diagnostics
     Doctor,
+    /// Interactive onboarding wizard
+    Onboard,
     /// Set up Cursor IDE integration
     Cursor {
         #[command(subcommand)]
@@ -77,6 +79,32 @@ enum Commands {
         #[command(subcommand)]
         action: Mcp2CliAction,
     },
+    /// Talk Mode - continuous voice conversation
+    Talk {
+        /// Provider to use (anthropic, openai, openrouter, ollama)
+        #[arg(short, long, default_value = "anthropic")]
+        provider: String,
+        /// Model to use
+        #[arg(short, long)]
+        model: Option<String>,
+        /// Wake word to activate listening
+        #[arg(short, long, default_value = "Hey Assistant")]
+        wake_word: String,
+        /// Silence timeout in seconds (stop listening after silence)
+        #[arg(long, default_value = "3")]
+        silence_timeout: u64,
+        /// Maximum utterance duration in seconds
+        #[arg(long, default_value = "30")]
+        max_utterance: u64,
+        /// Enable barge-in (interrupt TTS with wake word)
+        #[arg(long, default_value = "true")]
+        barge_in: bool,
+    },
+    /// Manage webhooks for external integrations
+    Webhooks {
+        #[command(subcommand)]
+        action: WebhooksAction,
+    },
 }
 
 #[derive(Subcommand)]
@@ -91,10 +119,34 @@ enum ModelsAction {
 enum SkillsAction {
     /// List installed skills
     List,
+    /// Search for skills in the registry
+    Search {
+        query: String,
+        /// Filter by category
+        #[arg(short, long)]
+        category: Option<String>,
+        /// Sort by: relevance, downloads, rating, recent
+        #[arg(short, long, default_value = "relevance")]
+        sort: String,
+    },
     /// Install a skill from marketplace
     Install { name: String },
+    /// Update an installed skill
+    Update { name: String },
+    /// Uninstall a skill
+    Uninstall { name: String },
     /// Verify skill signatures
     Verify { name: String },
+    /// Show popular skills
+    Popular {
+        #[arg(short, long, default_value = "10")]
+        limit: usize,
+    },
+    /// Show trending skills
+    Trending {
+        #[arg(short, long, default_value = "10")]
+        limit: usize,
+    },
 }
 
 #[derive(Subcommand)]
@@ -231,6 +283,42 @@ enum Mcp2CliCacheAction {
     Stats,
 }
 
+#[derive(Subcommand)]
+enum WebhooksAction {
+    /// List configured webhooks
+    List,
+    /// Create a new webhook
+    Create {
+        /// Webhook path (e.g., "github", "stripe")
+        path: String,
+    },
+    /// Delete a webhook
+    Delete {
+        /// Webhook path to delete
+        path: String,
+    },
+    /// Enable a webhook
+    Enable {
+        /// Webhook path to enable
+        path: String,
+    },
+    /// Disable a webhook
+    Disable {
+        /// Webhook path to disable
+        path: String,
+    },
+    /// Show webhook details
+    Info {
+        /// Webhook path
+        path: String,
+    },
+    /// Test a webhook by sending a sample request
+    Test {
+        /// Webhook path to test
+        path: String,
+    },
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -244,8 +332,15 @@ async fn main() -> Result<()> {
         },
         Commands::Skills { action } => match action {
             SkillsAction::List => commands::skills::list().await,
+            SkillsAction::Search { query, category, sort } => {
+                commands::skills::search(&query, category.as_deref(), &sort).await
+            }
             SkillsAction::Install { name } => commands::skills::install(&name).await,
+            SkillsAction::Update { name } => commands::skills::update(&name).await,
+            SkillsAction::Uninstall { name } => commands::skills::uninstall(&name).await,
             SkillsAction::Verify { name } => commands::skills::verify(&name).await,
+            SkillsAction::Popular { limit } => commands::skills::popular(limit).await,
+            SkillsAction::Trending { limit } => commands::skills::trending(limit).await,
         },
         Commands::Schedule { action } => match action {
             ScheduleAction::List => commands::schedule::list().await,
@@ -263,6 +358,7 @@ async fn main() -> Result<()> {
             MemoryAction::Stats => commands::memory::stats().await,
         },
         Commands::Doctor => commands::doctor::run().await,
+        Commands::Onboard => commands::onboard::run().await,
         Commands::Cursor { action } => match action {
             CursorAction::Setup => commands::cursor::setup().await,
             CursorAction::Start { transport, port } => commands::cursor::start(&transport, port).await,
@@ -289,6 +385,18 @@ async fn main() -> Result<()> {
                 Mcp2CliCacheAction::Clear => commands::mcp2cli::cache_clear().await,
                 Mcp2CliCacheAction::Stats => commands::mcp2cli::cache_stats().await,
             },
+        },
+        Commands::Talk { provider, model, wake_word, silence_timeout, max_utterance, barge_in } => {
+            commands::talk::run(&provider, model.as_deref(), &wake_word, silence_timeout, max_utterance, barge_in).await
+        }
+        Commands::Webhooks { action } => match action {
+            WebhooksAction::List => commands::webhooks::list().await,
+            WebhooksAction::Create { path } => commands::webhooks::create(&path).await,
+            WebhooksAction::Delete { path } => commands::webhooks::delete(&path).await,
+            WebhooksAction::Enable { path } => commands::webhooks::enable(&path).await,
+            WebhooksAction::Disable { path } => commands::webhooks::disable(&path).await,
+            WebhooksAction::Info { path } => commands::webhooks::info(&path).await,
+            WebhooksAction::Test { path } => commands::webhooks::test(&path).await,
         },
     }
 }

@@ -437,10 +437,10 @@ mod tests {
             choices: vec![ChatChoice {
                 index: 0,
                 message: ChatMessage::assistant("Hello!"),
-                finish_reason: Some(super::FinishReason::Stop),
+                finish_reason: Some(crate::types::FinishReason::Stop),
                 logprobs: None,
             }],
-            usage: super::TokenUsage::new(10, 5),
+            usage: crate::types::TokenUsage::new(10, 5),
             system_fingerprint: None,
         };
 

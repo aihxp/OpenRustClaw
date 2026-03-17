@@ -182,12 +182,40 @@ impl Session {
 pub enum Platform {
     /// The built-in WebSocket-based web chat.
     WebChat,
-    /// Telegram bot integration (future).
+    /// Telegram bot integration.
     Telegram,
-    /// Discord bot integration (future).
+    /// Discord bot integration.
     Discord,
-    /// Slack app integration (future).
+    /// Slack app integration.
     Slack,
+    /// WhatsApp Web integration via Baileys.
+    WhatsApp,
+    /// Microsoft Teams bot integration.
+    Teams,
+    /// Google Chat bot integration.
+    GoogleChat,
+    /// Gmail Pub/Sub integration.
+    Gmail,
+    /// Twilio SMS/MMS integration.
+    Twilio,
+    /// Signal messenger integration via signal-cli.
+    Signal,
+    /// Matrix protocol integration.
+    Matrix,
+    /// X (Twitter) integration.
+    X,
+    /// Meta Messenger integration.
+    Messenger,
+    /// Meta Instagram integration.
+    Instagram,
+    /// iMessage integration (macOS BlueBubbles or AppleScript).
+    IMessage,
+    /// LINE integration.
+    Line,
+    /// Viber integration.
+    Viber,
+    /// WeChat integration.
+    WeChat,
     /// CLI / terminal interface.
     Cli,
     /// REST API access (headless).
@@ -697,6 +725,20 @@ impl std::fmt::Display for Platform {
             Platform::Telegram => write!(f, "telegram"),
             Platform::Discord => write!(f, "discord"),
             Platform::Slack => write!(f, "slack"),
+            Platform::Teams => write!(f, "teams"),
+            Platform::GoogleChat => write!(f, "google_chat"),
+            Platform::Gmail => write!(f, "gmail"),
+            Platform::WhatsApp => write!(f, "whatsapp"),
+            Platform::Twilio => write!(f, "twilio"),
+            Platform::Signal => write!(f, "signal"),
+            Platform::Matrix => write!(f, "matrix"),
+            Platform::X => write!(f, "x"),
+            Platform::Messenger => write!(f, "messenger"),
+            Platform::Instagram => write!(f, "instagram"),
+            Platform::IMessage => write!(f, "imessage"),
+            Platform::Line => write!(f, "line"),
+            Platform::Viber => write!(f, "viber"),
+            Platform::WeChat => write!(f, "wechat"),
             Platform::Cli => write!(f, "cli"),
             Platform::Api => write!(f, "api"),
         }
@@ -885,5 +927,9 @@ mod tests {
     fn platform_display() {
         assert_eq!(Platform::WebChat.to_string(), "web_chat");
         assert_eq!(Platform::Discord.to_string(), "discord");
+        assert_eq!(Platform::GoogleChat.to_string(), "google_chat");
+        assert_eq!(Platform::WhatsApp.to_string(), "whatsapp");
+        assert_eq!(Platform::Twilio.to_string(), "twilio");
+        assert_eq!(Platform::IMessage.to_string(), "imessage");
     }
 }

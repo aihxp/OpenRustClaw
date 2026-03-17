@@ -1,0 +1,27 @@
+{
+  "name": "@openrustclaw/baileys-bridge",
+  "version": "1.0.0",
+  "description": "WhatsApp Web bridge for OpenRustClaw using Baileys library",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "node test.js"
+  },
+  "keywords": [
+    "whatsapp",
+    "baileys",
+    "openrustclaw",
+    "bot",
+    "messaging"
+  ],
+  "author": "OpenRustClaw Contributors",
+  "license": "MIT",
+  "dependencies": {
+    "@whiskeysockets/baileys": "^6.7.5",
+    "qrcode-terminal": "^0.12.0",
+    "pino": "^8.19.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

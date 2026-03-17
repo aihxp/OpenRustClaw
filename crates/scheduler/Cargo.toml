@@ -19,3 +19,9 @@ uuid.workspace = true
 chrono.workspace = true
 chrono-tz.workspace = true
 backoff.workspace = true
+
+# Heartbeat scheduler dependencies
+cron = "0.15"
+notify = { version = "8", default-features = false, features = ["macos_fsevent"] }
+tokio-util = "0.7"
+anyhow.workspace = true

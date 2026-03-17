@@ -32,3 +32,11 @@ metrics-exporter-prometheus = "0.16"
 metrics-util = "0.19"
 http.workspace = true
 http-body-util.workspace = true
+
+# Webhook dependencies
+hmac = "0.12"
+sha2.workspace = true
+hex.workspace = true
+regex.workspace = true
+constant_time_eq = "0.4"
+bytes.workspace = true

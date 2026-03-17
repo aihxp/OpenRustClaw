@@ -34,6 +34,9 @@ pub enum Error {
     #[error("Channel error: {0}")]
     Channel(#[from] ChannelError),
 
+    #[error("Voice error: {0}")]
+    Voice(#[from] VoiceError),
+
     #[error("Distributed error: {0}")]
     Distributed(#[from] DistributedError),
 
@@ -173,6 +176,27 @@ pub enum SchedulerError {
 
     #[error("Invalid trigger config: {0}")]
     InvalidTrigger(String),
+
+    #[error("Heartbeat task not found: {0}")]
+    HeartbeatTaskNotFound(String),
+
+    #[error("Invalid cron expression: {0}")]
+    InvalidCronExpression(String),
+
+    #[error("Missing heartbeat condition")]
+    MissingHeartbeatCondition,
+
+    #[error("Missing heartbeat action")]
+    MissingHeartbeatAction,
+
+    #[error("Heartbeat cooldown active for task {0}")]
+    HeartbeatCooldown(String),
+
+    #[error("File watch error: {0}")]
+    FileWatchError(String),
+
+    #[error("Heartbeat action failed: {0}")]
+    HeartbeatActionFailed(String),
 }
 
 /// MCP protocol errors.
@@ -316,6 +340,52 @@ pub enum ChannelError {
 
     #[error("{platform} not connected")]
     NotConnected { platform: String },
+
+    #[error("{platform} Pub/Sub error: {message}")]
+    PubSubError { platform: String, message: String },
+
+    #[error("{platform} permission denied: {message}")]
+    PermissionDenied { platform: String, message: String },
+}
+
+/// Voice system errors.
+#[derive(Debug, Error)]
+pub enum VoiceError {
+    #[error("Wake word error: {0}")]
+    Wake(String),
+
+    #[error("Speech-to-text error: {0}")]
+    Stt(String),
+
+    #[error("Text-to-speech error: {0}")]
+    Tts(String),
+
+    #[error("Audio error: {0}")]
+    Audio(String),
+
+    #[error("Audio device not found: {0}")]
+    DeviceNotFound(String),
+
+    #[error("Model error: {0}")]
+    Model(String),
+
+    #[error("Voice configuration error: {0}")]
+    VoiceConfig(String),
+
+    #[error("Component not initialized: {0}")]
+    NotInitialized(String),
+
+    #[error("Talk mode error: {0}")]
+    TalkMode(String),
+
+    #[error("Voice API error: {0}")]
+    VoiceApi(String),
+
+    #[error("Invalid audio format: {0}")]
+    InvalidFormat(String),
+
+    #[error("Voice timeout: {0}")]
+    VoiceTimeout(String),
 }
 
 /// Convenient Result type alias.

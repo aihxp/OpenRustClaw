@@ -1,0 +1,119 @@
+# Gmail Pub/Sub Configuration Example
+#
+# This file demonstrates how to configure Gmail Pub/Sub integration for OpenRustClaw.
+# Copy this file and modify it with your actual values.
+#
+# For full setup instructions, see:
+# https://developers.google.com/gmail/api/guides/push
+
+[channels.gmail_pubsub]
+enabled = true
+
+# Google Cloud project ID where Pub/Sub is configured
+project_id = "my-gcp-project"
+
+# Pub/Sub subscription name (must be created in Google Cloud Console)
+subscription_name = "gmail-notifications"
+
+# Path to the service account JSON key file
+# The service account must have:
+# - Pub/Sub Subscriber role
+# - Gmail API access with domain-wide delegation
+service_account_key_path = "/path/to/service-account.json"
+
+# Gmail user email address to monitor
+user_email = "user@example.com"
+
+# Label filters - only process emails with these labels
+# Common labels: INBOX, UNREAD, IMPORTANT, STARRED, SENT
+label_filters = ["INBOX", "UNREAD"]
+
+# Optional query filter for additional filtering
+# Uses Gmail search syntax: https://support.google.com/mail/answer/7190
+# Examples:
+#   "from:github.com OR from:gitlab.com"
+#   "subject:alert"
+#   "has:attachment"
+query_filter = "from:github.com OR from:gitlab.com"
+
+# Enable auto-reply functionality (requires additional configuration)
+auto_reply = false
+
+# Maximum number of history records to fetch per notification
+# Increase this if you expect high email volume
+max_history_fetch = 100
+
+# Rate limit for Gmail API requests per second
+# Gmail API has quota limits: https://developers.google.com/gmail/api/reference/quota
+rate_limit_requests_per_second = 10
+
+# =============================================================================
+# Google Cloud Setup Instructions
+# =============================================================================
+#
+# 1. Create a Google Cloud project:
+#    https://console.cloud.google.com/projectcreate
+#
+# 2. Enable the required APIs:
+#    - Gmail API
+#    - Cloud Pub/Sub API
+#
+# 3. Create a service account:
+#    - Go to IAM & Admin > Service Accounts
+#    - Create a service account with a descriptive name
+#    - Grant it the "Pub/Sub Subscriber" role
+#    - Enable domain-wide delegation (for Workspace accounts)
+#    - Create and download a JSON key
+#
+# 4. Create a Pub/Sub topic and subscription:
+#    - Go to Pub/Sub > Topics
+#    - Create a topic (e.g., "gmail-notifications")
+#    - Create a subscription for that topic
+#    - Configure the subscription with appropriate acknowledgment deadline
+#
+# 5. Configure Gmail API push notifications:
+#    - Go to the Gmail API page in Google Cloud Console
+#    - Click "Push Notifications"
+#    - Configure the Pub/Sub topic you created
+#    - Grant Gmail API service account permission to publish to your topic
+#
+# 6. For Google Workspace accounts, configure domain-wide delegation:
+#    - Go to Google Workspace Admin Console
+#    - Go to Security > Access and data control > API controls
+#    - Click "Manage Domain Wide Delegation"
+#    - Add your service account client ID
+#    - Add OAuth scopes:
+#      - https://www.googleapis.com/auth/gmail.modify
+#      - https://www.googleapis.com/auth/gmail.readonly
+#
+# 7. Set up Gmail watch:
+#    The application will automatically set up the watch when connecting,
+#    or you can manually trigger it via the API:
+#    
+#    POST https://gmail.googleapis.com/gmail/v1/users/me/watch
+#    {
+#      "labelIds": ["INBOX"],
+#      "topicName": "projects/PROJECT_ID/topics/TOPIC_NAME",
+#      "labelFilterBehavior": "INCLUDE"
+#    }
+#
+# =============================================================================
+# Security Considerations
+# =============================================================================
+#
+# - Store the service account key file securely
+# - Use environment variables or a secrets manager for sensitive values
+# - Restrict the service account permissions to minimum required
+# - Regularly rotate service account keys
+# - Monitor Pub/Sub access logs for suspicious activity
+#
+# =============================================================================
+# Environment Variable Overrides
+# =============================================================================
+#
+# You can override any configuration value using environment variables:
+#
+# OPENRUSTCLAW_CHANNELS__GMAIL_PUBSUB__ENABLED=true
+# OPENRUSTCLAW_CHANNELS__GMAIL_PUBSUB__PROJECT_ID=my-project
+# OPENRUSTCLAW_CHANNELS__GMAIL_PUBSUB__USER_EMAIL=user@example.com
+# OPENRUSTCLAW_CHANNELS__GMAIL_PUBSUB__SERVICE_ACCOUNT_KEY_PATH=/path/to/key.json

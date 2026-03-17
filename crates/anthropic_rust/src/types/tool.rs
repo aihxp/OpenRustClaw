@@ -360,7 +360,7 @@ mod tests {
 
     #[test]
     fn test_tool_serialization() {
-        let tool = Tool::builder("test")
+        let tool = Tool::builder("test", "A test tool")
             .string_property("foo", "A foo value", true)
             .build();
 

@@ -1,0 +1,100 @@
+# Signal Channel Configuration Example
+# Copy this to your main config.toml and update with your values
+#
+# Prerequisites:
+# 1. Install signal-cli: https://github.com/AsamK/signal-cli
+# 2. Register or link your phone number (see below)
+# 3. Configure this file with your settings
+
+[channels.signal]
+enabled = true
+
+# Your Signal phone number (E.164 format with country code)
+# Example: +1234567890 for US, +447123456789 for UK
+phone_number = "+1234567890"
+
+# Path to store signal-cli data (contains cryptographic keys - keep secure!)
+data_dir = "./data/signal"
+
+# Allowed phone numbers (empty = allow all if require_allowlist = false)
+# Format: E.164 format with country code
+allowlist = [
+    # "+9876543210",     # Example: Trusted contact 1
+    # "+441234567890",   # Example: Trusted contact 2
+]
+
+# Allowed group IDs (empty = allow all if require_allowlist = false)
+# Group IDs are base64-encoded strings from Signal
+allowed_groups = [
+    # "base64groupid==", # Example: Work group
+]
+
+# Path to signal-cli binary (optional, uses system PATH if not set)
+# signal_cli_path = "/usr/local/bin/signal-cli"
+
+# Use native libsignal-client instead of signal-cli (experimental)
+# When true, uses Rust libsignal-client library directly
+# When false (default), uses signal-cli subprocess
+use_libsignal = false
+
+# Rate limiting for outgoing messages (Signal limits: ~20/minute)
+rate_limit_per_minute = 20
+
+# Require allowlist for security (recommended for production)
+# When true, only allowlisted numbers/groups can interact with the bot
+# When false, anyone can message the bot
+require_allowlist = true
+
+# =============================================================================
+# Initial Setup Instructions
+# =============================================================================
+#
+# Option 1: Register as primary device (new phone number)
+# ------------------------------------------------------------------------------
+# 1. Run: signal-cli -a +1234567890 register
+# 2. Enter the verification code sent via SMS/voice: signal-cli -a +1234567890 verify <code>
+# 3. Set profile: signal-cli -a +1234567890 updateProfile --name "Bot Name" --about "AI Assistant"
+#
+# Option 2: Link as secondary device (existing Signal account)
+# ------------------------------------------------------------------------------
+# 1. Run: signal-cli link --name "OpenRustClaw Bot"
+# 2. Scan the QR code with your phone: Settings > Linked Devices > Link New Device
+# 3. The device will be linked and can send/receive messages
+#
+# Option 3: Use via OpenRustClaw CLI
+# ------------------------------------------------------------------------------
+# cargo run -- signal register --voice        # For voice verification
+# cargo run -- signal verify <code>          # Enter verification code
+# cargo run -- signal link "Bot Name"        # Link as secondary device
+#
+# =============================================================================
+# Security Recommendations
+# =============================================================================
+#
+# 1. ALWAYS set require_allowlist = true in production
+# 2. Keep data_dir secure (contains encryption keys)
+# 3. Use a dedicated phone number for the bot
+# 4. Regularly backup the data_dir
+# 5. Monitor for unauthorized access attempts
+#
+# =============================================================================
+# Signal CLI Commands Reference
+# =============================================================================
+#
+# List contacts:       signal-cli -a +1234567890 listContacts
+# List groups:         signal-cli -a +1234567890 listGroups
+# Send message:        signal-cli -a +1234567890 send -m "Hello" +9876543210
+# Send to group:       signal-cli -a +1234567890 send -g <group-id> -m "Hello"
+# Update profile:      signal-cli -a +1234567890 updateProfile --name "Bot"
+# Set avatar:          signal-cli -a +1234567890 updateProfile --avatar /path/to/avatar.png
+# Receive messages:    signal-cli -a +1234567890 receive
+# Daemon mode:         signal-cli -a +1234567890 daemon --system
+#
+# =============================================================================
+# Troubleshooting
+# =============================================================================
+#
+# "User not registered" - The phone number is not registered with Signal
+# "Rate limit exceeded" - Too many messages sent, wait a minute
+# "Failed to send" - Check network connection and signal-cli installation
+# "Permission denied" - Check data_dir permissions
