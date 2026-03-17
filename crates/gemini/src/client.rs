@@ -18,7 +18,11 @@ impl GeminiClient {
     /// Create a new Gemini client
     pub fn new(api_key: impl Into<SecretString>) -> Self {
         Self {
-            client: Client::new(),
+            client: Client::builder()
+                .connect_timeout(Duration::from_secs(10))
+                .timeout(Duration::from_secs(120))
+                .build()
+                .expect("Failed to build HTTP client"),
             api_key: api_key.into(),
             base_url: crate::DEFAULT_BASE_URL.to_string(),
             default_model: GeminiModel::default(),

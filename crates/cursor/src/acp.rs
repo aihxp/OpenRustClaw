@@ -45,6 +45,7 @@ pub enum AcpPayload {
 /// One-way notifications from IDE to agent.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "kind")]
+#[allow(missing_docs)]
 pub enum AcpNotification {
     /// File was modified.
     FileModified { path: std::path::PathBuf },

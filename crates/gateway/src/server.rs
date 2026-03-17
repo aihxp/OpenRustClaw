@@ -8,7 +8,7 @@ use axum::{Router, routing::get};
 use futures::StreamExt;
 use openrustclaw_observability::metrics::{
     decrement_active_connections, increment_active_connections,
-    record_websocket_message, set_active_connections, SimpleTimer,
+    record_websocket_message, SimpleTimer,
 };
 use openrustclaw_security::OriginValidator;
 use crate::auth::extract_token;

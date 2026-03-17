@@ -444,6 +444,7 @@ impl MetaChannel {
     }
 
     /// Determine platform from metadata.
+    #[allow(dead_code)]
     fn platform_from_metadata(metadata: &serde_json::Value) -> Platform {
         metadata
             .get("platform")

@@ -36,19 +36,20 @@ use openrustclaw_core::traits::Channel;
 use openrustclaw_core::types::{IncomingMessage, OutgoingMessage, Platform};
 
 /// Google Chat API base URL.
+#[allow(dead_code)]
 const GOOGLE_CHAT_API_BASE: &str = "https://chat.googleapis.com/v1";
 
 /// Google Chat channel implementation.
 pub struct GoogleChatChannel {
     config: GoogleChatConfig,
-    incoming_tx: mpsc::Sender<IncomingMessage>,
+    _incoming_tx: mpsc::Sender<IncomingMessage>,
     incoming_rx: Mutex<mpsc::Receiver<IncomingMessage>>,
     rate_limiter: Arc<RateLimiter<governor::state::NotKeyed, governor::state::InMemoryState, governor::clock::DefaultClock, governor::middleware::NoOpMiddleware>>,
     is_connected: RwLock<bool>,
     /// Access token for API calls (cached and refreshed as needed)
     access_token: RwLock<Option<String>>,
     /// HTTP client for API calls
-    http_client: reqwest::Client,
+    _http_client: reqwest::Client,
 }
 
 /// Google Chat message payload for sending.
@@ -102,6 +103,7 @@ struct CardSection {
 /// Card widget.
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
+#[allow(dead_code)]
 enum Widget {
     TextParagraph { text: String },
     ButtonList { buttons: Vec<Button> },
@@ -117,6 +119,7 @@ struct Button {
 /// Button click action.
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(tag = "action", rename_all = "snake_case")]
+#[allow(dead_code)]
 enum OnClick {
     OpenLink { open_link: OpenLink },
 }
@@ -129,6 +132,7 @@ struct OpenLink {
 
 /// Incoming Google Chat event.
 #[derive(Debug, Clone, serde::Deserialize)]
+#[allow(dead_code)]
 struct ChatEvent {
     #[serde(rename = "type")]
     event_type: String,
@@ -152,6 +156,7 @@ struct Space {
 
 /// Message in a Chat event.
 #[derive(Debug, Clone, serde::Deserialize)]
+#[allow(dead_code)]
 struct EventMessage {
     name: String,
     text: String,
@@ -172,6 +177,7 @@ struct SlashCommand {
 
 /// Message annotation (e.g., user mention).
 #[derive(Debug, Clone, serde::Deserialize)]
+#[allow(dead_code)]
 struct Annotation {
     #[serde(rename = "type")]
     annotation_type: String,
@@ -181,6 +187,7 @@ struct Annotation {
 
 /// User mention annotation.
 #[derive(Debug, Clone, serde::Deserialize)]
+#[allow(dead_code)]
 struct UserMention {
     user: User,
     #[serde(rename = "type")]
@@ -215,16 +222,17 @@ impl GoogleChatChannel {
 
         Self {
             config,
-            incoming_tx,
+            _incoming_tx: incoming_tx,
             incoming_rx: Mutex::new(incoming_rx),
             rate_limiter,
             is_connected: RwLock::new(false),
             access_token: RwLock::new(None),
-            http_client,
+            _http_client: http_client,
         }
     }
 
     /// Check if the user is in the allowlist.
+    #[allow(dead_code)]
     fn is_user_allowed(&self, email: Option<&str>, user_id: &str) -> bool {
         if self.config.allowlist.is_empty() {
             return true;
@@ -240,6 +248,7 @@ impl GoogleChatChannel {
     }
 
     /// Check if the space is in the allowed spaces list.
+    #[allow(dead_code)]
     fn is_space_allowed(&self, space_id: &str) -> bool {
         if self.config.allowed_spaces.is_empty() {
             return true;
@@ -248,6 +257,7 @@ impl GoogleChatChannel {
     }
 
     /// Check if the bot should respond based on response mode.
+    #[allow(dead_code)]
     fn should_respond(&self, event: &ChatEvent) -> bool {
         match self.config.response_mode {
             GoogleChatResponseMode::SlashCommands => {
@@ -284,6 +294,7 @@ impl GoogleChatChannel {
     }
 
     /// Build a card message payload.
+    #[allow(dead_code)]
     fn build_card_message(
         title: &str,
         content: &str,

@@ -155,6 +155,7 @@ pub struct Diagnostic {
 /// Severity level for diagnostics.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[allow(missing_docs)]
 pub enum Severity {
     Error,
     Warning,
@@ -180,6 +181,7 @@ impl std::fmt::Display for Severity {
 /// A request sent from the agent to the Cursor IDE.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "type")]
+#[allow(missing_docs)]
 pub enum AcpRequest {
     /// Get the current IDE state.
     GetState,
@@ -216,6 +218,7 @@ pub enum AcpRequest {
 /// A response from the Cursor IDE to the agent.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "type")]
+#[allow(missing_docs)]
 pub enum AcpResponse {
     /// Current IDE state.
     State(IdeState),
@@ -296,6 +299,7 @@ pub struct DirEntry {
 
 /// Extended git status information.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(missing_docs)]
 pub struct GitStatus {
     pub branch: String,
     pub modified: Vec<PathBuf>,

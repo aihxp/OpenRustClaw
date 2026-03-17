@@ -602,6 +602,7 @@ pub async fn test(path: &str) -> Result<()> {
 }
 
 /// Get a pre-configured webhook handler by source type.
+#[allow(dead_code)]
 pub fn get_preset_handler(source: &str, secret: Option<String>) -> Option<WebhookHandler> {
     match source.to_lowercase().as_str() {
         "github" => Some(handlers::github(secret)),

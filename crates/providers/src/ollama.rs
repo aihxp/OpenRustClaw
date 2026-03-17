@@ -40,7 +40,11 @@ impl OllamaProvider {
     /// Uses the default base URL (`http://localhost:11434`).
     pub fn new(model: String) -> Self {
         Self {
-            client: reqwest::Client::new(),
+            client: reqwest::Client::builder()
+                .connect_timeout(std::time::Duration::from_secs(10))
+                .timeout(std::time::Duration::from_secs(120))
+                .build()
+                .expect("Failed to build HTTP client"),
             model,
             base_url: DEFAULT_BASE_URL.to_string(),
         }
@@ -49,7 +53,11 @@ impl OllamaProvider {
     /// Create a new Ollama provider with a custom base URL.
     pub fn with_base_url(model: String, base_url: String) -> Self {
         Self {
-            client: reqwest::Client::new(),
+            client: reqwest::Client::builder()
+                .connect_timeout(std::time::Duration::from_secs(10))
+                .timeout(std::time::Duration::from_secs(120))
+                .build()
+                .expect("Failed to build HTTP client"),
             model,
             base_url,
         }

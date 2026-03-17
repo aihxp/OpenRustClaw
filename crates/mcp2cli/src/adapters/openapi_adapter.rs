@@ -15,7 +15,7 @@ use tracing::{debug, info, warn};
 
 /// Adapter for OpenAPI specifications
 pub struct OpenApiAdapter {
-    spec: OpenAPI,
+    _spec: OpenAPI,
     base_url: String,
     endpoints: Vec<EndpointInfo>,
 }
@@ -120,7 +120,7 @@ impl OpenApiAdapter {
         );
 
         Ok(Self {
-            spec,
+            _spec: spec,
             base_url,
             endpoints,
         })

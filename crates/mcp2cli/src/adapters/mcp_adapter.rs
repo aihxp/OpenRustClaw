@@ -14,8 +14,8 @@ use tracing::{debug, info, warn};
 
 /// Adapter for MCP servers
 pub struct McpAdapter {
-    client: McpClient,
-    server_url: Option<String>,
+    _client: McpClient,
+    _server_url: Option<String>,
 }
 
 impl McpAdapter {
@@ -49,8 +49,8 @@ impl McpAdapter {
         info!("Connected to MCP server at {}", url);
         
         Ok(Self {
-            client,
-            server_url: Some(url.to_string()),
+            _client: client,
+            _server_url: Some(url.to_string()),
         })
     }
 
@@ -67,12 +67,13 @@ impl McpAdapter {
         info!("MCP server started successfully");
         
         Ok(Self {
-            client,
-            server_url: None,
+            _client: client,
+            _server_url: None,
         })
     }
 
     /// Convert MCP tool definition to ToolSummary
+    #[allow(dead_code)]
     fn mcp_tool_to_summary(tool: &McpToolDef) -> ToolSummary {
         // Create a compact description (first sentence only)
         let description = tool
@@ -87,6 +88,7 @@ impl McpAdapter {
     }
 
     /// Convert MCP tool definition to ToolHelp
+    #[allow(dead_code)]
     fn mcp_tool_to_help(tool: &McpToolDef) -> ToolHelp {
         let parameters = Self::extract_parameters(&tool.input_schema);
 
@@ -116,6 +118,7 @@ impl McpAdapter {
     }
 
     /// Extract parameter help from JSON schema
+    #[allow(dead_code)]
     fn extract_parameters(schema: &Value) -> Vec<ParamHelp> {
         let mut params = Vec::new();
 
@@ -166,6 +169,7 @@ impl McpAdapter {
     }
 
     /// Get JSON schema type name
+    #[allow(dead_code)]
     fn json_schema_type(prop: &Value) -> String {
         prop.get("type")
             .and_then(|t| t.as_str())
@@ -184,6 +188,7 @@ impl McpAdapter {
     }
 
     /// Convert CLI-style arguments to JSON
+    #[allow(dead_code)]
     fn args_to_json(args: &Value, params: &[ParamHelp]) -> Value {
         // If args is already an object, return it
         if let Value::Object(_) = args {
@@ -227,6 +232,7 @@ impl McpAdapter {
     }
 
     /// Parse a string value to appropriate JSON type
+    #[allow(dead_code)]
     fn parse_value(s: &str, type_name: &str) -> Value {
         match type_name {
             "number" | "integer" => {

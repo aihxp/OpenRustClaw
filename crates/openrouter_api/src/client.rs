@@ -18,10 +18,10 @@ pub struct OpenRouterClient {
 #[derive(Debug)]
 struct ClientInner {
     http: reqwest::Client,
-    api_key: SecretString,
+    _api_key: SecretString,
     base_url: String,
-    referer: String,
-    app_name: String,
+    _referer: String,
+    _app_name: String,
     max_retries: u32,
     retry_delay: Duration,
 }
@@ -60,6 +60,7 @@ impl OpenRouterClient {
 
         let http = reqwest::Client::builder()
             .default_headers(headers)
+            .connect_timeout(Duration::from_secs(10))
             .timeout(config.timeout)
             .build()
             .map_err(|e| OpenRouterError::Config {
@@ -69,10 +70,10 @@ impl OpenRouterClient {
         Ok(Self {
             inner: Arc::new(ClientInner {
                 http,
-                api_key: config.api_key,
+                _api_key: config.api_key,
                 base_url: config.base_url,
-                referer: config.referer,
-                app_name: config.app_name,
+                _referer: config.referer,
+                _app_name: config.app_name,
                 max_retries: config.max_retries,
                 retry_delay: config.retry_delay,
             }),

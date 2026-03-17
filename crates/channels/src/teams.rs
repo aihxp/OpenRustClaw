@@ -27,7 +27,7 @@ use std::time::{Duration, Instant};
 use async_trait::async_trait;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use governor::{Quota, RateLimiter};
-use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, TokenData, Validation};
+use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
 use serde::{Deserialize, Serialize};
 use std::num::NonZeroU32;
 use tokio::sync::{mpsc, Mutex, RwLock};
@@ -118,6 +118,7 @@ struct BotFrameworkClaims {
 
 /// Microsoft's OpenID configuration document.
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 struct OpenIdConfig {
     #[serde(rename = "jwks_uri")]
     pub jwks_uri: String,
@@ -127,6 +128,7 @@ struct OpenIdConfig {
 
 /// JSON Web Key for signature verification.
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 struct Jwk {
     pub kty: String,
     pub kid: String,
@@ -229,6 +231,7 @@ impl TeamsChannel {
     }
 
     /// Get the Bot Framework service URL base.
+    #[allow(dead_code)]
     fn bot_framework_url(&self) -> &'static str {
         "https://smba.trafficmanager.net/emea/v3"
     }

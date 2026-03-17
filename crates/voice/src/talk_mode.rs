@@ -165,7 +165,7 @@ pub struct TalkMode {
     /// Wake word detector
     wake: Arc<dyn WakeDetector>,
     /// Speech-to-text engine
-    stt: Arc<SpeechToText>,
+    _stt: Arc<SpeechToText>,
     /// Text-to-speech engine
     tts: Arc<TextToSpeech>,
     /// Configuration
@@ -179,7 +179,7 @@ pub struct TalkMode {
     /// Event sender
     event_tx: mpsc::Sender<TalkEvent>,
     /// Event receiver (stored for cloning)
-    event_rx: Arc<Mutex<mpsc::Receiver<TalkEvent>>>,
+    _event_rx: Arc<Mutex<mpsc::Receiver<TalkEvent>>>,
     /// Conversation history
     history: Arc<Mutex<VecDeque<ConversationTurn>>>,
     /// Current session start time
@@ -189,7 +189,7 @@ pub struct TalkMode {
     /// Audio input channel
     audio_tx: mpsc::Sender<Vec<f32>>,
     /// Audio input receiver
-    audio_rx: Arc<Mutex<mpsc::Receiver<Vec<f32>>>>,
+    _audio_rx: Arc<Mutex<mpsc::Receiver<Vec<f32>>>>,
 }
 
 impl TalkMode {
@@ -205,19 +205,19 @@ impl TalkMode {
 
         Self {
             wake,
-            stt,
+            _stt: stt,
             tts,
             config,
             state: Arc::new(RwLock::new(TalkState::Idle)),
             running: Arc::new(AtomicBool::new(false)),
             stop_notify: Arc::new(Notify::new()),
             event_tx,
-            event_rx: Arc::new(Mutex::new(event_rx)),
+            _event_rx: Arc::new(Mutex::new(event_rx)),
             history: Arc::new(Mutex::new(VecDeque::new())),
             session_start: Arc::new(RwLock::new(None)),
             last_activity: Arc::new(RwLock::new(Instant::now())),
             audio_tx,
-            audio_rx: Arc::new(Mutex::new(audio_rx)),
+            _audio_rx: Arc::new(Mutex::new(audio_rx)),
         }
     }
 
@@ -468,6 +468,7 @@ impl TalkMode {
     }
 
     /// Update last activity timestamp.
+    #[allow(dead_code)]
     async fn update_activity(&self) {
         *self.last_activity.write().await = Instant::now();
     }

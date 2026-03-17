@@ -27,9 +27,17 @@ pub enum ClientConnection {
         args: Vec<String>,
     },
     /// Connect via TCP to a running server.
-    Tcp { host: String, port: u16 },
+    Tcp {
+        /// TCP host address.
+        host: String,
+        /// TCP port.
+        port: u16,
+    },
     /// Connect via WebSocket.
-    WebSocket { url: String },
+    WebSocket {
+        /// WebSocket URL.
+        url: String,
+    },
 }
 
 impl Default for ClientConnection {
@@ -51,11 +59,12 @@ impl Default for ClientConnection {
 /// Cursor ACP Client.
 pub struct CursorClient {
     connection: ClientConnection,
-    config: CursorConfig,
+    _config: CursorConfig,
     request_timeout: Duration,
 }
 
 /// Active connection handle.
+#[allow(dead_code)]
 enum ConnectionHandle {
     Stdio {
         child: Child,
@@ -74,7 +83,7 @@ impl CursorClient {
     pub fn new(connection: ClientConnection, config: CursorConfig) -> Self {
         Self {
             connection,
-            config,
+            _config: config,
             request_timeout: Duration::from_secs(30),
         }
     }

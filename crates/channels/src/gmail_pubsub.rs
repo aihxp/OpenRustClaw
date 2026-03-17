@@ -67,7 +67,7 @@ pub struct GmailPubSub {
     incoming_rx: Mutex<mpsc::Receiver<IncomingMessage>>,
     rate_limiter: Arc<RateLimiter<governor::state::NotKeyed, governor::state::InMemoryState, governor::clock::DefaultClock, governor::middleware::NoOpMiddleware>>,
     is_connected: RwLock<bool>,
-    http_client: reqwest::Client,
+    _http_client: reqwest::Client,
     access_token: RwLock<Option<String>>,
 }
 
@@ -163,6 +163,7 @@ struct WatchResponse {
 
 /// Gmail API message metadata.
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 struct MessageMetadata {
     /// Message ID.
     pub id: String,
@@ -173,6 +174,7 @@ struct MessageMetadata {
 
 /// Gmail API message part (for parsing multipart messages).
 #[derive(Debug, Clone, Deserialize, Default)]
+#[allow(dead_code)]
 struct MessagePart {
     /// MIME type of this part.
     #[serde(rename = "mimeType")]
@@ -191,6 +193,7 @@ struct MessagePart {
 
 /// Gmail API message part body.
 #[derive(Debug, Clone, Deserialize, Default)]
+#[allow(dead_code)]
 struct MessagePartBody {
     /// Base64 encoded data.
     pub data: Option<String>,
@@ -203,6 +206,7 @@ struct MessagePartBody {
 
 /// Gmail API message header.
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 struct MessageHeader {
     /// Header name.
     pub name: String,
@@ -212,6 +216,7 @@ struct MessageHeader {
 
 /// Gmail API full message.
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 struct GmailMessage {
     /// Message ID.
     pub id: String,
@@ -233,6 +238,7 @@ struct GmailMessage {
 
 /// Gmail API history response.
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 struct HistoryResponse {
     /// History records.
     pub history: Vec<HistoryRecord>,
@@ -246,6 +252,7 @@ struct HistoryResponse {
 
 /// Gmail API history record.
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 struct HistoryRecord {
     /// Messages added in this history record.
     #[serde(rename = "messagesAdded")]
@@ -254,6 +261,7 @@ struct HistoryRecord {
 
 /// Message added to history.
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 struct MessageAdded {
     /// The message metadata.
     pub message: MessageMetadata,
@@ -261,6 +269,7 @@ struct MessageAdded {
 
 /// Parsed message parts.
 #[derive(Debug, Clone, Default)]
+#[allow(dead_code)]
 struct ParsedParts {
     /// Plain text content.
     pub text: String,
@@ -293,12 +302,13 @@ impl GmailPubSub {
             incoming_rx: Mutex::new(incoming_rx),
             rate_limiter,
             is_connected: RwLock::new(false),
-            http_client,
+            _http_client: http_client,
             access_token: RwLock::new(None),
         }
     }
 
     /// Parse email addresses from a comma-separated string.
+    #[allow(dead_code)]
     fn parse_addresses(s: &str) -> Vec<String> {
         s.split(',').map(|a| a.trim().to_string()).collect()
     }
@@ -331,6 +341,7 @@ impl GmailPubSub {
     }
 
     /// Decode base64 URL-safe encoded data.
+    #[allow(dead_code)]
     fn decode_base64(data: &str) -> Option<Vec<u8>> {
         // Gmail uses URL-safe base64 with possible padding issues
         let data = data.replace('-', "+").replace('_', "/");
@@ -338,6 +349,7 @@ impl GmailPubSub {
     }
 
     /// Parse a Gmail API message into an EmailMessage.
+    #[allow(dead_code)]
     fn parse_message(&self, msg: GmailMessage) -> Result<EmailMessage> {
         let headers: HashMap<String, String> = msg
             .payload
@@ -379,6 +391,7 @@ impl GmailPubSub {
     }
 
     /// Extract parts from a message payload recursively.
+    #[allow(dead_code)]
     fn get_parts(&self, payload: &MessagePart) -> ParsedParts {
         let mut result = ParsedParts::default();
 
@@ -635,6 +648,7 @@ impl GmailPubSub {
     }
 
     /// Check if the email sender is in the allowlist.
+    #[allow(dead_code)]
     fn is_sender_allowed(&self, _from: &str) -> bool {
         // For now, all senders are allowed
         // In a full implementation, check against config.allowlist
@@ -816,6 +830,7 @@ impl GmailWebhookHandler {
 }
 
 /// Base64 decoding utility.
+#[allow(dead_code)]
 mod b64 {
     //! Base64 decoding for Gmail API responses.
     use base64::Engine;

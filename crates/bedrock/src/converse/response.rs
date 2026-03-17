@@ -402,6 +402,12 @@ mod tests {
             },
         });
 
+        // ContentBlockStart must precede ContentBlockDelta to initialize the block
+        collector.process_event(&StreamEvent::ContentBlockStart {
+            content_block_index: 0,
+            start: ContentBlockStart { tool_use: None },
+        });
+
         collector.process_event(&StreamEvent::ContentBlockDelta {
             content_block_index: 0,
             delta: crate::types::ContentBlockDelta::Text {

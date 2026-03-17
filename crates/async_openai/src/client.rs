@@ -19,9 +19,9 @@ pub struct OpenAIClient {
 #[derive(Debug)]
 struct ClientInner {
     http: reqwest::Client,
-    api_key: SecretString,
+    _api_key: SecretString,
     base_url: String,
-    organization: Option<String>,
+    _organization: Option<String>,
     max_retries: u32,
     retry_delay: Duration,
 }
@@ -55,6 +55,7 @@ impl OpenAIClient {
 
         let http = reqwest::Client::builder()
             .default_headers(headers)
+            .connect_timeout(Duration::from_secs(10))
             .timeout(config.timeout)
             .build()
             .map_err(|e| OpenAIError::Config {
@@ -64,9 +65,9 @@ impl OpenAIClient {
         Ok(Self {
             inner: Arc::new(ClientInner {
                 http,
-                api_key: config.api_key,
+                _api_key: config.api_key,
                 base_url: config.base_url,
-                organization: config.organization,
+                _organization: config.organization,
                 max_retries: config.max_retries,
                 retry_delay: config.retry_delay,
             }),
@@ -90,7 +91,7 @@ impl OpenAIClient {
 
     /// Get the API key.
     pub fn api_key(&self) -> &str {
-        self.inner.api_key.expose_secret()
+        self.inner._api_key.expose_secret()
     }
 
     /// Execute a request with retry logic.
@@ -140,7 +141,7 @@ impl OpenAIClient {
     }
 
     /// Make a GET request to the API.
-    pub(crate) async fn get(&self, path: &str) -> Result<reqwest::Response> {
+    pub(crate) async fn _get(&self, path: &str) -> Result<reqwest::Response> {
         let url = format!("{}{}", self.inner.base_url, path);
         trace!(url = %url, "Making GET request");
 
@@ -173,7 +174,7 @@ impl OpenAIClient {
     }
 
     /// Make a DELETE request to the API.
-    pub(crate) async fn delete(&self, path: &str) -> Result<reqwest::Response> {
+    pub(crate) async fn _delete(&self, path: &str) -> Result<reqwest::Response> {
         let url = format!("{}{}", self.inner.base_url, path);
         trace!(url = %url, "Making DELETE request");
 

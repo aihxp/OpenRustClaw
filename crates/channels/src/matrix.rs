@@ -33,14 +33,14 @@ use openrustclaw_core::types::{IncomingMessage, OutgoingMessage, Platform};
 /// Supports E2EE, room management, and rich media messages.
 pub struct MatrixChannel {
     config: MatrixConfig,
-    incoming_tx: mpsc::Sender<IncomingMessage>,
+    _incoming_tx: mpsc::Sender<IncomingMessage>,
     incoming_rx: Mutex<mpsc::Receiver<IncomingMessage>>,
     rate_limiter: Arc<RateLimiter<governor::state::NotKeyed, governor::state::InMemoryState, governor::clock::DefaultClock, governor::middleware::NoOpMiddleware>>,
     is_connected: RwLock<bool>,
     /// Maps session_id to event_id for reply threading
-    message_cache: Arc<RwLock<HashMap<Uuid, String>>>,
+    _message_cache: Arc<RwLock<HashMap<Uuid, String>>>,
     /// Client handle (placeholder for actual matrix-sdk Client)
-    client: Arc<RwLock<Option<Arc<()>>>>,
+    _client: Arc<RwLock<Option<Arc<()>>>>,
 }
 
 impl MatrixChannel {
@@ -56,16 +56,17 @@ impl MatrixChannel {
 
         Self {
             config,
-            incoming_tx,
+            _incoming_tx: incoming_tx,
             incoming_rx: Mutex::new(incoming_rx),
             rate_limiter,
             is_connected: RwLock::new(false),
-            message_cache: Arc::new(RwLock::new(HashMap::new())),
-            client: Arc::new(RwLock::new(None)),
+            _message_cache: Arc::new(RwLock::new(HashMap::new())),
+            _client: Arc::new(RwLock::new(None)),
         }
     }
 
     /// Check if a user is allowed to interact with the bot.
+    #[allow(dead_code)]
     fn is_user_allowed(&self, user_id: &str) -> bool {
         if self.config.allowlist.is_empty() {
             return true;
@@ -74,6 +75,7 @@ impl MatrixChannel {
     }
 
     /// Check if a room is allowed.
+    #[allow(dead_code)]
     fn is_room_allowed(&self, room_id: &str) -> bool {
         if self.config.room_allowlist.is_empty() {
             return true;
@@ -83,6 +85,7 @@ impl MatrixChannel {
 
     /// Extract display name from MXID.
     /// Converts `@username:matrix.org` to `username`.
+    #[allow(dead_code)]
     fn extract_display_name(user_id: &str) -> String {
         user_id
             .split(':')
@@ -93,6 +96,7 @@ impl MatrixChannel {
     }
 
     /// Convert Matrix HTML formatted body to plain text.
+    #[allow(dead_code)]
     fn html_to_text(html: &str) -> String {
         // Simple HTML to text conversion
         // In a full implementation, this would use a proper HTML parser

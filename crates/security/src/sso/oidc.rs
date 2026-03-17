@@ -108,7 +108,7 @@ impl OidcConfig {
 /// OIDC discovery document
 #[derive(Debug, Clone, Deserialize)]
 struct DiscoveryDocument {
-    issuer: String,
+    _issuer: String,
     authorization_endpoint: String,
     token_endpoint: String,
     userinfo_endpoint: Option<String>,
@@ -154,7 +154,11 @@ impl OidcClient {
 
         Self {
             config,
-            http_client: Client::new(),
+            http_client: Client::builder()
+                .connect_timeout(std::time::Duration::from_secs(10))
+                .timeout(std::time::Duration::from_secs(120))
+                .build()
+                .expect("Failed to build HTTP client"),
             metadata,
             jwks: None,
         }

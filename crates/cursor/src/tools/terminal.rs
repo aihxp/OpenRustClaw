@@ -21,6 +21,7 @@ pub struct TerminalManager {
 
 /// A terminal session.
 #[derive(Debug, Clone)]
+#[allow(missing_docs)]
 pub struct TerminalSession {
     pub id: String,
     pub cwd: std::path::PathBuf,
@@ -33,6 +34,7 @@ pub struct TerminalSession {
 
 /// A command history entry.
 #[derive(Debug, Clone)]
+#[allow(missing_docs)]
 pub struct CommandHistoryEntry {
     pub command: String,
     pub stdout: String,
@@ -231,6 +233,7 @@ impl TerminalManager {
 
 /// Result of executing a command.
 #[derive(Debug, Clone)]
+#[allow(missing_docs)]
 pub struct CommandResult {
     pub stdout: String,
     pub stderr: String,

@@ -26,7 +26,7 @@ use openrustclaw_core::types::{IncomingMessage, OutgoingMessage, Platform};
 /// Slack channel implementation.
 pub struct SlackChannel {
     config: SlackConfig,
-    incoming_tx: mpsc::Sender<IncomingMessage>,
+    _incoming_tx: mpsc::Sender<IncomingMessage>,
     incoming_rx: Mutex<mpsc::Receiver<IncomingMessage>>,
     rate_limiter: Arc<RateLimiter<governor::state::NotKeyed, governor::state::InMemoryState, governor::clock::DefaultClock, governor::middleware::NoOpMiddleware>>,
     is_connected: RwLock<bool>,
@@ -45,7 +45,7 @@ impl SlackChannel {
 
         Self {
             config,
-            incoming_tx,
+            _incoming_tx: incoming_tx,
             incoming_rx: Mutex::new(incoming_rx),
             rate_limiter,
             is_connected: RwLock::new(false),
@@ -53,6 +53,7 @@ impl SlackChannel {
     }
 
     /// Convert Slack mrkdwn to standard markdown
+    #[allow(dead_code)]
     fn slack_to_markdown(text: &str) -> String {
         // Slack uses special mrkdwn syntax
         let mut result = text.to_string();

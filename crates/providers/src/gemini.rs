@@ -20,8 +20,6 @@ use openrustclaw_core::types::{
     ToolCall, ToolFormat,
 };
 
-use crate::tool_formats::translate_tool_definition;
-
 /// Default base URL for the Google Generative Language API.
 const DEFAULT_BASE_URL: &str = "https://generativelanguage.googleapis.com";
 
@@ -37,7 +35,11 @@ impl GeminiProvider {
     /// Create a new Gemini provider with the given API key and model.
     pub fn new(api_key: impl Into<SecretString>, model: String) -> Self {
         Self {
-            client: reqwest::Client::new(),
+            client: reqwest::Client::builder()
+                .connect_timeout(std::time::Duration::from_secs(10))
+                .timeout(std::time::Duration::from_secs(120))
+                .build()
+                .expect("Failed to build HTTP client"),
             api_key: api_key.into(),
             model,
             base_url: DEFAULT_BASE_URL.to_string(),
@@ -47,7 +49,11 @@ impl GeminiProvider {
     /// Create a new Gemini provider with a custom base URL.
     pub fn with_base_url(api_key: impl Into<SecretString>, model: String, base_url: String) -> Self {
         Self {
-            client: reqwest::Client::new(),
+            client: reqwest::Client::builder()
+                .connect_timeout(std::time::Duration::from_secs(10))
+                .timeout(std::time::Duration::from_secs(120))
+                .build()
+                .expect("Failed to build HTTP client"),
             api_key: api_key.into(),
             model,
             base_url,
@@ -55,7 +61,7 @@ impl GeminiProvider {
     }
 
     /// Get the maximum output tokens for the current model.
-    fn model_max_output_tokens(&self) -> usize {
+    fn _model_max_output_tokens(&self) -> usize {
         match self.model.as_str() {
             "gemini-1.5-pro" | "gemini-1.5-pro-latest" => 8192,
             "gemini-1.5-flash" | "gemini-1.5-flash-latest" => 8192,
@@ -420,7 +426,7 @@ impl LlmProvider for GeminiProvider {
 
             // Check for specific error codes
             if let Some(error) = error_json.get("error") {
-                let code = error.get("code").and_then(|v| v.as_i64());
+                let _code = error.get("code").and_then(|v| v.as_i64());
                 let message = error
                     .get("message")
                     .and_then(|v| v.as_str())

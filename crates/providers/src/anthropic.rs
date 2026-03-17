@@ -44,7 +44,11 @@ impl AnthropicProvider {
     /// (`https://api.anthropic.com`).
     pub fn new(api_key: impl Into<SecretString>, model: String) -> Self {
         Self {
-            client: reqwest::Client::new(),
+            client: reqwest::Client::builder()
+                .connect_timeout(std::time::Duration::from_secs(10))
+                .timeout(std::time::Duration::from_secs(120))
+                .build()
+                .expect("Failed to build HTTP client"),
             api_key: api_key.into(),
             model,
             api_version: DEFAULT_API_VERSION.to_string(),
@@ -60,7 +64,11 @@ impl AnthropicProvider {
         api_version: String,
     ) -> Self {
         Self {
-            client: reqwest::Client::new(),
+            client: reqwest::Client::builder()
+                .connect_timeout(std::time::Duration::from_secs(10))
+                .timeout(std::time::Duration::from_secs(120))
+                .build()
+                .expect("Failed to build HTTP client"),
             api_key: api_key.into(),
             model,
             api_version,

@@ -8,7 +8,7 @@ use std::time::Duration;
 pub struct TestHttpClient {
     client: Client,
     base_url: String,
-    default_timeout: Duration,
+    _default_timeout: Duration,
 }
 
 impl TestHttpClient {
@@ -20,7 +20,7 @@ impl TestHttpClient {
                 .build()
                 .expect("Failed to create HTTP client"),
             base_url: base_url.into(),
-            default_timeout: Duration::from_secs(30),
+            _default_timeout: Duration::from_secs(30),
         }
     }
 
@@ -32,7 +32,7 @@ impl TestHttpClient {
                 .build()
                 .expect("Failed to create HTTP client"),
             base_url: base_url.into(),
-            default_timeout: Duration::from_secs(timeout_secs),
+            _default_timeout: Duration::from_secs(timeout_secs),
         }
     }
 

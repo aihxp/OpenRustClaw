@@ -4,6 +4,7 @@ use thiserror::Error;
 
 /// Errors specific to Cursor ACP operations.
 #[derive(Debug, Error)]
+#[allow(missing_docs)]
 pub enum CursorError {
     #[error("ACP connection error: {0}")]
     Connection(String),
@@ -15,7 +16,12 @@ pub enum CursorError {
     ToolNotFound(String),
 
     #[error("Tool execution failed: {tool}: {message}")]
-    ToolExecution { tool: String, message: String },
+    ToolExecution {
+        /// Tool name.
+        tool: String,
+        /// Error message.
+        message: String,
+    },
 
     #[error("File operation error: {0}")]
     FileOperation(String),

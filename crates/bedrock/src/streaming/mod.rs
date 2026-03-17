@@ -118,6 +118,7 @@ pub struct StreamCollector {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 enum PartialBlock {
     Text(String),
     ToolUse {
@@ -292,6 +293,12 @@ mod tests {
             message: StreamMessage {
                 role: ConversationRole::Assistant,
             },
+        });
+
+        // ContentBlockStart must precede ContentBlockDelta to initialize the block
+        collector.process_event(&StreamEvent::ContentBlockStart {
+            content_block_index: 0,
+            start: Some(ContentBlockStart { tool_use: None }),
         });
 
         // Add text

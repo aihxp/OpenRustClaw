@@ -74,6 +74,7 @@ impl VllmClient {
 
         let http = reqwest::Client::builder()
             .default_headers(headers)
+            .connect_timeout(Duration::from_secs(10))
             .timeout(config.timeout)
             .build()
             .map_err(|e| VllmError::Config {
@@ -233,7 +234,7 @@ impl VllmClient {
     }
 
     /// Make a DELETE request.
-    pub(crate) async fn delete(&self, path: &str) -> Result<reqwest::Response> {
+    pub(crate) async fn _delete(&self, path: &str) -> Result<reqwest::Response> {
         let url = format!("{}{}", self.inner.base_url, path);
         let response = self
             .inner

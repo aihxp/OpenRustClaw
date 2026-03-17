@@ -30,7 +30,7 @@ use crate::error::{AutomationError, Result};
 pub struct CdpBackend {
     config: BrowserConfig,
     websocket_url: String,
-    session_id: String,
+    _session_id: String,
 }
 
 impl CdpBackend {
@@ -63,18 +63,18 @@ impl CdpBackend {
         Ok(Self {
             config: config.clone(),
             websocket_url,
-            session_id: uuid::Uuid::new_v4().to_string(),
+            _session_id: uuid::Uuid::new_v4().to_string(),
         })
     }
 
     /// Connect to an existing Chrome instance.
     pub async fn connect(websocket_url: &str) -> Result<Self> {
         info!(url = %websocket_url, "Connecting to existing Chrome instance");
-        
+
         Ok(Self {
             config: BrowserConfig::default(),
             websocket_url: websocket_url.to_string(),
-            session_id: uuid::Uuid::new_v4().to_string(),
+            _session_id: uuid::Uuid::new_v4().to_string(),
         })
     }
 
@@ -91,6 +91,7 @@ impl CdpBackend {
     }
 
     /// Enable a CDP domain.
+    #[allow(dead_code)]
     async fn enable_domain(&self, domain: &str) -> Result<()> {
         self.send_command(&format!("{}.enable", domain), Value::Null).await?;
         Ok(())
@@ -178,14 +179,14 @@ impl BrowserBackend for CdpBackend {
 
 /// CDP browser context.
 pub struct CdpContext {
-    context_id: String,
+    _context_id: String,
     config: BrowserConfig,
 }
 
 impl CdpContext {
     fn new(context_id: &str, config: &BrowserConfig) -> Result<Self> {
         Ok(Self {
-            context_id: context_id.to_string(),
+            _context_id: context_id.to_string(),
             config: config.clone(),
         })
     }
@@ -570,8 +571,8 @@ impl PageBackend for CdpPage {
 pub struct CdpElement {
     selector: String,
     session_id: String,
-    node_id: Option<i64>,
-    remote_object_id: Option<String>,
+    _node_id: Option<i64>,
+    _remote_object_id: Option<String>,
 }
 
 impl CdpElement {
@@ -579,8 +580,8 @@ impl CdpElement {
         Self {
             selector: selector.to_string(),
             session_id: session_id.to_string(),
-            node_id: None,
-            remote_object_id: None,
+            _node_id: None,
+            _remote_object_id: None,
         }
     }
 }
@@ -932,6 +933,7 @@ impl NetworkInterceptor {
 
 /// Request pattern for interception.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct RequestPattern {
     url_pattern: String,
     resource_type: Option<ResourceType>,

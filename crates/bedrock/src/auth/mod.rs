@@ -178,7 +178,7 @@ impl SigV4Signer {
         })?;
 
         // Sign the request
-        let signing_params: aws_sigv4::http_request::SigningParams = signing_params.into();
+        let signing_params: aws_sigv4::http_request::SigningParams<'_> = signing_params.into();
         let signing_output = sign(signable_request, &signing_params)
             .map_err(|e| BedrockError::SigV4 {
                 message: e.to_string(),

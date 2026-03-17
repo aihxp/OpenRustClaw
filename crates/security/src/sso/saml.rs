@@ -238,7 +238,7 @@ impl SamlClient {
         let decoded = BASE64.decode(encoded_response)
             .map_err(|e| SsoError::SamlError(format!("Base64 decode failed: {}", e)))?;
         
-        let xml = String::from_utf8(decoded)
+        let _xml = String::from_utf8(decoded)
             .map_err(|e| SsoError::SamlError(format!("Invalid UTF-8: {}", e)))?;
 
         // Parse XML to SamlResponse
@@ -252,7 +252,7 @@ impl SamlClient {
     }
 
     /// Validate SAML response signature
-    fn validate_signature(&self, _response: &str) -> Result<(), SsoError> {
+    fn _validate_signature(&self, _response: &str) -> Result<(), SsoError> {
         // Validate XML signature against IdP certificate
         // This requires xmlsec or similar
         Ok(())

@@ -25,7 +25,7 @@ use openrustclaw_core::types::{IncomingMessage, OutgoingMessage, Platform};
 /// Telegram channel implementation.
 pub struct TelegramChannel {
     config: TelegramConfig,
-    incoming_tx: mpsc::Sender<IncomingMessage>,
+    _incoming_tx: mpsc::Sender<IncomingMessage>,
     incoming_rx: Mutex<mpsc::Receiver<IncomingMessage>>,
     rate_limiter: Arc<RateLimiter<governor::state::NotKeyed, governor::state::InMemoryState, governor::clock::DefaultClock, governor::middleware::NoOpMiddleware>>,
     is_connected: RwLock<bool>,
@@ -44,7 +44,7 @@ impl TelegramChannel {
 
         Self {
             config,
-            incoming_tx,
+            _incoming_tx: incoming_tx,
             incoming_rx: Mutex::new(incoming_rx),
             rate_limiter,
             is_connected: RwLock::new(false),
@@ -52,6 +52,7 @@ impl TelegramChannel {
     }
 
     /// Check if a user is allowed to interact with the bot.
+    #[allow(dead_code)]
     fn is_user_allowed(&self, user_id: i64) -> bool {
         if self.config.allowed_users.is_empty() {
             return true;

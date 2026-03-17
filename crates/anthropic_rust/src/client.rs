@@ -23,7 +23,7 @@ pub struct AnthropicClient {
 #[derive(Debug)]
 struct ClientInner {
     http: reqwest::Client,
-    api_key: SecretString,
+    _api_key: SecretString,
     base_url: String,
     api_version: String,
     max_retries: u32,
@@ -54,6 +54,7 @@ impl AnthropicClient {
 
         let http = reqwest::Client::builder()
             .default_headers(headers)
+            .connect_timeout(Duration::from_secs(10))
             .timeout(config.timeout)
             .build()
             .map_err(|e| AnthropicError::Config {
@@ -63,7 +64,7 @@ impl AnthropicClient {
         Ok(Self {
             inner: Arc::new(ClientInner {
                 http,
-                api_key: config.api_key,
+                _api_key: config.api_key,
                 base_url: config.base_url,
                 api_version: config.api_version,
                 max_retries: config.max_retries,

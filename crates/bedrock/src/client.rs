@@ -69,6 +69,7 @@ impl BedrockClient {
 
         let http = reqwest::Client::builder()
             .default_headers(headers)
+            .connect_timeout(Duration::from_secs(10))
             .timeout(config.timeout)
             .build()
             .map_err(|e| BedrockError::Config {

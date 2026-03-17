@@ -29,11 +29,11 @@ use openrustclaw_core::types::{IncomingMessage, OutgoingMessage, Platform};
 /// Discord channel implementation.
 pub struct DiscordChannel {
     config: DiscordConfig,
-    incoming_tx: mpsc::Sender<IncomingMessage>,
+    _incoming_tx: mpsc::Sender<IncomingMessage>,
     incoming_rx: Mutex<mpsc::Receiver<IncomingMessage>>,
     rate_limiter: Arc<RateLimiter<governor::state::NotKeyed, governor::state::InMemoryState, governor::clock::DefaultClock, governor::middleware::NoOpMiddleware>>,
     is_connected: RwLock<bool>,
-    message_cache: Arc<RwLock<HashMap<Uuid, String>>>, // Maps session_id to message_id
+    _message_cache: Arc<RwLock<HashMap<Uuid, String>>>, // Maps session_id to message_id
 }
 
 impl DiscordChannel {
@@ -49,11 +49,11 @@ impl DiscordChannel {
 
         Self {
             config,
-            incoming_tx,
+            _incoming_tx: incoming_tx,
             incoming_rx: Mutex::new(incoming_rx),
             rate_limiter,
             is_connected: RwLock::new(false),
-            message_cache: Arc::new(RwLock::new(HashMap::new())),
+            _message_cache: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 

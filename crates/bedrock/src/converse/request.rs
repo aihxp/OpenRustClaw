@@ -81,6 +81,7 @@ impl ConverseRequest {
 /// Request for ConverseStream API.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(dead_code)]
 pub struct ConverseStreamRequest {
     /// The base Converse request.
     #[serde(flatten)]
@@ -89,6 +90,7 @@ pub struct ConverseStreamRequest {
 
 impl ConverseStreamRequest {
     /// Create from a ConverseRequest.
+    #[allow(dead_code)]
     pub fn from_request(request: ConverseRequest) -> Self {
         Self { base: request }
     }

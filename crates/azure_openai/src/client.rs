@@ -89,6 +89,7 @@ impl AzureOpenAIClient {
 
         let http = reqwest::Client::builder()
             .default_headers(headers)
+            .connect_timeout(Duration::from_secs(10))
             .timeout(config.timeout)
             .build()
             .map_err(|e| AzureOpenAIError::Config {
@@ -224,7 +225,7 @@ impl AzureOpenAIClient {
     }
 
     /// Get the HTTP client.
-    pub(crate) fn http(&self) -> &reqwest::Client {
+    pub(crate) fn _http(&self) -> &reqwest::Client {
         &self.inner.http
     }
 
@@ -292,7 +293,7 @@ impl AzureOpenAIClient {
     }
 
     /// Make a GET request to the API.
-    pub(crate) async fn get(&self, path: &str) -> Result<reqwest::Response> {
+    pub(crate) async fn _get(&self, path: &str) -> Result<reqwest::Response> {
         let url = self.build_url(path);
         trace!(url = %url, "Making GET request");
 
@@ -330,7 +331,7 @@ impl AzureOpenAIClient {
     }
 
     /// Make a DELETE request to the API.
-    pub(crate) async fn delete(&self, path: &str) -> Result<reqwest::Response> {
+    pub(crate) async fn _delete(&self, path: &str) -> Result<reqwest::Response> {
         let url = self.build_url(path);
         trace!(url = %url, "Making DELETE request");
 

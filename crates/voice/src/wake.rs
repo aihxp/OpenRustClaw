@@ -152,7 +152,7 @@ impl WakeDetector for SimpleWakeDetector {
         loop {
             tokio::select! {
                 Some(frame) = rx.recv() => {
-                    let vad_state = vad.process_frame(&frame);
+                    let _vad_state = vad.process_frame(&frame);
 
                     if vad.is_speech() {
                         speech_detected = true;
@@ -208,7 +208,7 @@ impl WakeDetector for SimpleWakeDetector {
 /// This would integrate with Picovoice Porcupine for on-device
 /// wake word detection. Requires a Porcupine access key and model files.
 pub struct PorcupineWakeDetector {
-    config: WakeWordConfig,
+    _config: WakeWordConfig,
     listening: AtomicBool,
     stop_notify: Notify,
 }
@@ -223,7 +223,7 @@ impl PorcupineWakeDetector {
         // In a real implementation, this would initialize Porcupine
         // For now, we just check if we could potentially use it
         Ok(Self {
-            config,
+            _config: config,
             listening: AtomicBool::new(false),
             stop_notify: Notify::new(),
         })

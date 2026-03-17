@@ -210,6 +210,7 @@ impl ProfileCredentialProvider {
     }
 
     /// Get the default AWS config file path.
+    #[allow(dead_code)]
     fn default_config_path() -> Option<PathBuf> {
         env::var("AWS_CONFIG_FILE")
             .ok()
@@ -230,6 +231,7 @@ impl ProfileCredentialProvider {
     }
 
     /// Parse an AWS config file.
+    #[allow(dead_code)]
     fn parse_config_file(&self, path: &PathBuf) -> Result<HashMap<String, HashMap<String, String>>> {
         let content = fs::read_to_string(path)
             .map_err(|e| BedrockError::Credential {

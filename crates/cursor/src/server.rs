@@ -25,7 +25,10 @@ pub enum ServerTransport {
     /// JSON-RPC over stdio (for MCP compatibility).
     Stdio,
     /// HTTP/WebSocket server.
-    Http { port: u16 },
+    Http {
+        /// Port to listen on.
+        port: u16,
+    },
 }
 
 /// Configuration for the Cursor ACP server.
@@ -53,6 +56,7 @@ impl Default for CursorServerConfig {
 }
 
 /// The Cursor ACP server.
+#[allow(missing_docs)]
 pub struct CursorServer {
     config: CursorServerConfig,
     protocol: Arc<AcpProtocol>,
@@ -62,6 +66,7 @@ pub struct CursorServer {
 
 /// State of a client connection.
 #[derive(Debug)]
+#[allow(dead_code)]
 struct ConnectionState {
     id: String,
     initialized: bool,

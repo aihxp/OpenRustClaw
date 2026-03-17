@@ -37,7 +37,11 @@ impl OpenAiProvider {
     /// Create a new OpenAI provider with the given API key and model.
     pub fn new(api_key: impl Into<SecretString>, model: String) -> Self {
         Self {
-            client: reqwest::Client::new(),
+            client: reqwest::Client::builder()
+                .connect_timeout(std::time::Duration::from_secs(10))
+                .timeout(std::time::Duration::from_secs(120))
+                .build()
+                .expect("Failed to build HTTP client"),
             api_key: api_key.into(),
             model,
             base_url: DEFAULT_BASE_URL.to_string(),
@@ -47,7 +51,11 @@ impl OpenAiProvider {
     /// Create a new OpenAI provider with a custom base URL.
     pub fn with_base_url(api_key: impl Into<SecretString>, model: String, base_url: String) -> Self {
         Self {
-            client: reqwest::Client::new(),
+            client: reqwest::Client::builder()
+                .connect_timeout(std::time::Duration::from_secs(10))
+                .timeout(std::time::Duration::from_secs(120))
+                .build()
+                .expect("Failed to build HTTP client"),
             api_key: api_key.into(),
             model,
             base_url,

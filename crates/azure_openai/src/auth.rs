@@ -126,6 +126,7 @@ impl AzureADToken {
 
 /// Token response from Azure AD.
 #[derive(Debug, Clone, serde::Deserialize)]
+#[allow(dead_code)]
 struct TokenResponse {
     access_token: String,
     expires_in: u64,
@@ -269,6 +270,7 @@ impl Default for ManagedIdentityCredential {
 
 /// Token response from managed identity endpoint.
 #[derive(Debug, Clone, serde::Deserialize)]
+#[allow(dead_code)]
 struct ManagedIdentityTokenResponse {
     access_token: String,
     expires_on: Option<String>,

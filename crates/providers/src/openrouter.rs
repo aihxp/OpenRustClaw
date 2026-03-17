@@ -85,7 +85,11 @@ impl OpenRouterProvider {
     /// Uses the default quality routing strategy.
     pub fn new(api_key: impl Into<SecretString>, model: String) -> Self {
         Self {
-            client: reqwest::Client::new(),
+            client: reqwest::Client::builder()
+                .connect_timeout(std::time::Duration::from_secs(10))
+                .timeout(std::time::Duration::from_secs(120))
+                .build()
+                .expect("Failed to build HTTP client"),
             api_key: api_key.into(),
             model,
             route_strategy: RouteStrategy::Quality,
@@ -96,7 +100,11 @@ impl OpenRouterProvider {
     /// Create a new OpenRouter provider with a specific routing strategy.
     pub fn with_strategy(api_key: impl Into<SecretString>, model: String, strategy: RouteStrategy) -> Self {
         Self {
-            client: reqwest::Client::new(),
+            client: reqwest::Client::builder()
+                .connect_timeout(std::time::Duration::from_secs(10))
+                .timeout(std::time::Duration::from_secs(120))
+                .build()
+                .expect("Failed to build HTTP client"),
             api_key: api_key.into(),
             model,
             route_strategy: strategy,

@@ -24,7 +24,7 @@ use crate::error::{AutomationError, Result};
 pub struct PlaywrightBackend {
     config: BrowserConfig,
     // In a real implementation, these would hold actual Playwright objects
-    browser_type: String,
+    _browser_type: String,
 }
 
 impl PlaywrightBackend {
@@ -60,7 +60,7 @@ impl PlaywrightBackend {
 
         Ok(Self {
             config: config.clone(),
-            browser_type,
+            _browser_type: browser_type,
         })
     }
 

@@ -217,6 +217,7 @@ impl WhatsAppChannel {
     }
 
     /// Check if a phone number is allowed to interact.
+    #[allow(dead_code)]
     fn is_number_allowed(&self, phone_number: &str) -> bool {
         if self.config.allowlist.is_empty() {
             return true;
@@ -236,6 +237,7 @@ impl WhatsAppChannel {
     }
 
     /// Validate DM allowlist - returns true if allowed or if it's a group message.
+    #[allow(dead_code)]
     fn validate_dm_access(&self, phone_number: &str, is_group: bool) -> bool {
         // Group messages are always allowed (group-level permissions handled elsewhere)
         if is_group {

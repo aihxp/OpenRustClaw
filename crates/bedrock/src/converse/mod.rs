@@ -38,7 +38,7 @@ pub struct ConverseClient {
 #[derive(Debug)]
 struct ConverseClientInner {
     http: reqwest::Client,
-    region: crate::auth::Region,
+    _region: crate::auth::Region,
     signer: SigV4Signer,
     endpoint: String,
 }
@@ -55,7 +55,7 @@ impl ConverseClient {
         Self {
             inner: Arc::new(ConverseClientInner {
                 http,
-                region,
+                _region: region,
                 signer,
                 endpoint,
             }),

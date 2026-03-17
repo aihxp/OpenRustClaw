@@ -108,7 +108,10 @@ impl SqliteMemoryStore {
         let metadata = row
             .metadata
             .as_deref()
-            .map(|s| serde_json::from_str(s).unwrap_or_else(|_| serde_json::json!({})))
+            .map(|s| serde_json::from_str(s).unwrap_or_else(|e| {
+                tracing::warn!(error = %e, raw = %s, "Failed to parse memory metadata, using empty object");
+                serde_json::json!({})
+            }))
             .unwrap_or_else(|| serde_json::json!({}));
 
         Ok(MemoryEntry {

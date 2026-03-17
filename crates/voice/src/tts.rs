@@ -2,7 +2,7 @@
 //!
 //! This module provides text-to-speech capabilities.
 
-use crate::error::{VoiceError, VoiceResult};
+use crate::error::VoiceResult;
 use serde::{Deserialize, Serialize};
 
 /// Configuration for text-to-speech.

@@ -1,7 +1,6 @@
 //! Common types for voice processing.
 
 use crate::error::VoiceResult;
-use crate::VoiceError;
 use async_trait::async_trait;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::time::Duration;
