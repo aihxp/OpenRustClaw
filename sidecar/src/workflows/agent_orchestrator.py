@@ -11,6 +11,8 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 
+from ..memory_bridge import MemoryBridge
+
 logger = logging.getLogger(__name__)
 
 
@@ -44,6 +46,7 @@ class PreprocessNode:
 
     def __init__(self) -> None:
         self.name = "preprocess"
+        self.memory_bridge = MemoryBridge.from_env()
 
     async def __call__(
         self,
@@ -86,6 +89,13 @@ class PreprocessNode:
         user_id = configurable.get("user_id", "")
         if user_id:
             context_lines.append(f"User: {user_id}")
+            if self.memory_bridge is not None:
+                try:
+                    core_memory = await self.memory_bridge.render_core_memory(user_id)
+                    if core_memory and core_memory != "No core memory entries.":
+                        context_lines.append(core_memory.strip())
+                except Exception as exc:
+                    logger.warning("Failed to load core memory from Rust bridge: %s", exc)
 
         provided_context = configurable.get("memory_context", "")
         if isinstance(provided_context, str) and provided_context.strip():
@@ -117,6 +127,27 @@ class PreprocessNode:
 
         if len(messages) > 1:
             context_lines.append(f"Previous turns: {len(messages) - 1}")
+
+        if self.memory_bridge is not None and user_id:
+            latest_message = messages[-1]
+            latest_content = getattr(latest_message, "content", "")
+            if isinstance(latest_content, str) and latest_content.strip():
+                try:
+                    memories = await self.memory_bridge.search_memory(
+                        user_id,
+                        latest_content,
+                        limit=3,
+                    )
+                    rendered = [
+                        memory.get("content", "").strip()
+                        for memory in memories
+                        if isinstance(memory.get("content"), str)
+                        and memory.get("content", "").strip()
+                    ]
+                    if rendered:
+                        context_lines.append("Relevant memories:\n- " + "\n- ".join(rendered))
+                except Exception as exc:
+                    logger.warning("Failed to search Rust memory bridge: %s", exc)
 
         return "\n".join(context_lines)
 
@@ -208,27 +239,38 @@ class ExecuteToolsNode:
     def __init__(self, tools: Optional[List[Any]] = None) -> None:
         self.name = "execute_tools"
         self.tools = tools or []
-        self._tool_node: Optional[ToolNode] = None
         self._memory_records: List[Dict[str, str]] = []
         self._scheduled_reminders: List[Dict[str, str]] = []
+        self.memory_bridge = MemoryBridge.from_env()
 
-    def _get_tool_node(self) -> ToolNode:
+    def _get_tool_node(self, config: Optional[RunnableConfig]) -> ToolNode:
         """Get or create tool node."""
-        if self._tool_node is None:
-            if self.tools:
-                self._tool_node = ToolNode(self.tools)
-            else:
-                # Create default tools
-                self._tool_node = ToolNode(self._create_default_tools())
-        return self._tool_node
+        if self.tools:
+            return ToolNode(self.tools)
+        return ToolNode(self._create_default_tools(config))
 
-    def _create_default_tools(self) -> List[Any]:
+    def _create_default_tools(self, config: Optional[RunnableConfig]) -> List[Any]:
         """Create default set of tools."""
         from langchain_core.tools import tool
+        configurable = config.get("configurable", {}) if config else {}
+        user_id = str(configurable.get("user_id", "")).strip()
+        thread_id = str(configurable.get("thread_id", "")).strip()
 
         @tool
-        def search_memory(query: str) -> str:
+        async def search_memory(query: str) -> str:
             """Search the memory system for relevant information."""
+            if self.memory_bridge is not None and user_id:
+                memories = await self.memory_bridge.search_memory(user_id, query, limit=5)
+                rendered = [
+                    memory.get("content", "").strip()
+                    for memory in memories
+                    if isinstance(memory.get("content"), str)
+                    and memory.get("content", "").strip()
+                ]
+                if rendered:
+                    return "\n".join(rendered)
+                return f"No stored memories matched: {query}"
+
             query_lower = query.strip().lower()
             matches = [
                 f"[{record['category']}] {record['content']}"
@@ -240,8 +282,18 @@ class ExecuteToolsNode:
             return "\n".join(matches[:5])
 
         @tool
-        def store_memory(content: str, category: str = "episodic") -> str:
+        async def store_memory(content: str, category: str = "episodic") -> str:
             """Store information in memory."""
+            if self.memory_bridge is not None and user_id:
+                result = await self.memory_bridge.store_memory(
+                    user_id=user_id,
+                    content=content,
+                    category=category,
+                    session_id=thread_id,
+                )
+                memory_id = result.get("id", "")
+                return f"Stored in {category}: {content[:50]}... ({memory_id})"
+
             self._memory_records.append(
                 {
                     "content": content.strip(),
@@ -281,7 +333,7 @@ class ExecuteToolsNode:
             if not tool_calls:
                 return {"output": "No tools to execute"}
 
-            tool_node = self._get_tool_node()
+            tool_node = self._get_tool_node(config)
 
             # Execute tools
             messages = state.get("messages", [])

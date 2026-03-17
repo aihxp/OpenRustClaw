@@ -112,9 +112,20 @@ pub async fn list() -> Result<()> {
 }
 
 /// Create a new scheduled job.
-pub async fn create(name: &str, workflow: &str) -> Result<()> {
+pub async fn create(
+    name: &str,
+    workflow: &str,
+    description: Option<&str>,
+    every_seconds: Option<u64>,
+    at: Option<&str>,
+    payload: Option<&str>,
+) -> Result<()> {
     println!("Creating scheduled job: {}", name);
     println!("Workflow: {}", workflow);
+
+    if every_seconds.is_some() && at.is_some() {
+        anyhow::bail!("Use either --every-seconds or --at, not both");
+    }
 
     // Load configuration
     let config = openrustclaw_core::config::AppConfig::load().unwrap_or_default();
@@ -143,27 +154,56 @@ pub async fn create(name: &str, workflow: &str) -> Result<()> {
     let id = Uuid::new_v4().to_string();
     let idempotency_key = format!("{}:{}", id, Uuid::new_v4());
 
-    // Default trigger: run every hour
-    let trigger_config = serde_json::json!({
-        "interval_seconds": 3600
-    });
+    let payload_json = match payload {
+        Some(raw) => serde_json::from_str::<serde_json::Value>(raw)
+            .with_context(|| format!("Invalid --payload JSON: {}", raw))?,
+        None => serde_json::json!({}),
+    };
+    let metadata = serde_json::json!({ "input": payload_json });
 
-    // Schedule first run for 1 minute from now
-    let next_run = Utc::now() + chrono::Duration::minutes(1);
+    let (trigger_type, trigger_config, next_run, trigger_description) = if let Some(run_at) = at {
+        let run_at = chrono::DateTime::parse_from_rfc3339(run_at)
+            .with_context(|| format!("Invalid RFC3339 timestamp for --at: {}", run_at))?
+            .with_timezone(&Utc);
+        (
+            "absolute",
+            serde_json::json!({
+                "type": "absolute",
+                "run_at": run_at.to_rfc3339(),
+            }),
+            run_at,
+            format!("Once at {}", run_at.to_rfc3339()),
+        )
+    } else {
+        let interval_secs = every_seconds.unwrap_or(3600);
+        (
+            "interval",
+            serde_json::json!({
+                "type": "interval",
+                "interval_secs": interval_secs,
+            }),
+            Utc::now() + chrono::Duration::seconds(interval_secs as i64),
+            format!("Every {} seconds", interval_secs),
+        )
+    };
 
     sqlx::query(
         r#"
         INSERT INTO scheduled_jobs (
             id, name, description, workflow_id, trigger_type, trigger_config,
-            idempotency_key, state, timezone, max_retries, next_run_at, run_count, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+            idempotency_key, state, timezone, max_retries, next_run_at, run_count, metadata, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
         "#,
     )
     .bind(&id)
     .bind(name)
-    .bind(format!("Auto-created job for workflow {}", workflow))
+    .bind(
+        description
+            .map(ToString::to_string)
+            .unwrap_or_else(|| format!("Auto-created job for workflow {}", workflow)),
+    )
     .bind(workflow)
-    .bind("interval")
+    .bind(trigger_type)
     .bind(trigger_config.to_string())
     .bind(&idempotency_key)
     .bind("active")
@@ -171,6 +211,7 @@ pub async fn create(name: &str, workflow: &str) -> Result<()> {
     .bind(3i64)
     .bind(next_run.to_rfc3339())
     .bind(0i64)
+    .bind(metadata.to_string())
     .execute(&pool)
     .await
     .context("Failed to create scheduled job")?;
@@ -179,7 +220,7 @@ pub async fn create(name: &str, workflow: &str) -> Result<()> {
     println!("  ID: {}", id);
     println!("  Name: {}", name);
     println!("  Workflow: {}", workflow);
-    println!("  Trigger: Every hour");
+    println!("  Trigger: {}", trigger_description);
     println!("  Next run: {}", next_run.to_rfc3339());
     println!();
     println!("To pause this job:");

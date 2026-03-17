@@ -22,6 +22,9 @@ fn test_state_with_auth() -> GatewayState {
             "https://example.com".to_string(),
         ])),
         require_auth: true,
+        internal_api_token: None,
+        memory_store: None,
+        core_memory_store: None,
     }
 }
 
@@ -32,6 +35,9 @@ fn test_state_no_auth() -> GatewayState {
             "http://localhost:3000".to_string(),
         ])),
         require_auth: false,
+        internal_api_token: None,
+        memory_store: None,
+        core_memory_store: None,
     }
 }
 
@@ -180,6 +186,9 @@ fn origin_validator_via_gateway_state() {
             "https://example.com".to_string(),
         ])),
         require_auth: false,
+        internal_api_token: None,
+        memory_store: None,
+        core_memory_store: None,
     };
 
     // Test that origin validator is correctly set up

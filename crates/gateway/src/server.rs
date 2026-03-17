@@ -3,23 +3,30 @@
 use crate::auth::extract_token;
 use axum::extract::State;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
+use axum::http::header::HeaderName;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::{
+    extract::Path,
     Json, Router,
     routing::{get, post},
 };
 use futures::StreamExt;
 use openrustclaw_core::error::{Error, Result as CoreResult, SecurityError};
+use openrustclaw_core::traits::{CoreMemoryStore, MemoryStore};
+use openrustclaw_core::types::{MemoryEntry, MemoryQuery, MemoryType, SourceType};
+use openrustclaw_db::{SqliteCoreMemoryStore, SqliteMemoryStore};
 use openrustclaw_observability::metrics::{
     SimpleTimer, decrement_active_connections, increment_active_connections,
     record_websocket_message,
 };
 use openrustclaw_security::OriginValidator;
 use serde_json::json;
+use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use tower_http::cors::{Any, CorsLayer};
 use tracing::{info, warn};
+use uuid::Uuid;
 
 /// Shared gateway state.
 #[derive(Clone)]
@@ -27,6 +34,9 @@ pub struct GatewayState {
     pub session_manager: Arc<crate::sessions::SessionManager>,
     pub origin_validator: Arc<OriginValidator>,
     pub require_auth: bool,
+    pub internal_api_token: Option<Arc<String>>,
+    pub memory_store: Option<Arc<SqliteMemoryStore>>,
+    pub core_memory_store: Option<Arc<SqliteCoreMemoryStore>>,
 }
 
 /// The gateway WebSocket server.
@@ -51,6 +61,12 @@ impl GatewayServer {
                     .options(cors_preflight_handler),
             )
             .route("/v1/chat/completions", post(chat_completions_handler))
+            .route("/internal/memory/search", post(internal_memory_search_handler))
+            .route("/internal/memory/store", post(internal_memory_store_handler))
+            .route(
+                "/internal/memory/core/{user_id}",
+                post(internal_core_memory_render_handler),
+            )
             .layer(
                 CorsLayer::new()
                     .allow_origin(Any)
@@ -160,6 +176,146 @@ async fn chat_completions_handler(
     }))
 }
 
+#[derive(serde::Deserialize)]
+struct InternalMemorySearchRequest {
+    user_id: String,
+    query: String,
+    limit: Option<usize>,
+}
+
+#[derive(serde::Deserialize)]
+struct InternalMemoryStoreRequest {
+    user_id: String,
+    content: String,
+    category: Option<String>,
+    importance: Option<f32>,
+    session_id: Option<String>,
+}
+
+async fn internal_memory_search_handler(
+    State(state): State<GatewayState>,
+    headers: HeaderMap,
+    Json(payload): Json<InternalMemorySearchRequest>,
+) -> Response {
+    if let Err(response) = validate_internal_api(&state, &headers) {
+        return response;
+    }
+
+    let Some(memory_store) = &state.memory_store else {
+        return (StatusCode::SERVICE_UNAVAILABLE, "memory store unavailable").into_response();
+    };
+
+    let query = MemoryQuery {
+        text: payload.query,
+        memory_types: vec![],
+        source_types: vec![],
+        namespace: Some(payload.user_id),
+        limit: payload.limit.unwrap_or(5),
+        min_confidence: 0.0,
+        recency_weight: 0.0,
+    };
+
+    match memory_store.search(&query).await {
+        Ok(results) => Json(json!({
+            "memories": results.into_iter().map(|scored| json!({
+                "id": scored.entry.id,
+                "content": scored.entry.content,
+                "score": scored.score,
+                "importance": scored.entry.importance,
+            })).collect::<Vec<_>>()
+        }))
+        .into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("memory search failed: {}", error),
+        )
+            .into_response(),
+    }
+}
+
+async fn internal_memory_store_handler(
+    State(state): State<GatewayState>,
+    headers: HeaderMap,
+    Json(payload): Json<InternalMemoryStoreRequest>,
+) -> Response {
+    if let Err(response) = validate_internal_api(&state, &headers) {
+        return response;
+    }
+
+    let Some(memory_store) = &state.memory_store else {
+        return (StatusCode::SERVICE_UNAVAILABLE, "memory store unavailable").into_response();
+    };
+
+    let category = payload.category.unwrap_or_else(|| "semantic".to_string());
+    let memory_type = match category.as_str() {
+        "episodic" => MemoryType::Episodic,
+        "procedural" => MemoryType::Procedural,
+        _ => MemoryType::Semantic,
+    };
+
+    let mut hasher = Sha256::new();
+    hasher.update(payload.content.as_bytes());
+    let content_hash = hex::encode(hasher.finalize());
+
+    let entry = MemoryEntry {
+        id: Uuid::new_v4(),
+        memory_type,
+        content: payload.content,
+        content_hash,
+        source: Some("sidecar_memory_bridge".to_string()),
+        source_type: Some(SourceType::Conversation),
+        session_id: payload
+            .session_id
+            .as_deref()
+            .and_then(|value| Uuid::parse_str(value).ok()),
+        user_id: Some(payload.user_id.clone()),
+        namespace: payload.user_id,
+        importance: payload.importance.unwrap_or(0.7).clamp(0.0, 1.0),
+        confidence: 1.0,
+        access_count: 0,
+        last_accessed: None,
+        created_at: chrono::Utc::now(),
+        expires_at: None,
+        metadata: json!({
+            "source": "sidecar_memory_bridge",
+            "category": category,
+        }),
+    };
+
+    let id = entry.id;
+    match memory_store.store(entry).await {
+        Ok(()) => Json(json!({"stored": true, "id": id})).into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("memory store failed: {}", error),
+        )
+            .into_response(),
+    }
+}
+
+async fn internal_core_memory_render_handler(
+    Path(user_id): Path<String>,
+    State(state): State<GatewayState>,
+    headers: HeaderMap,
+) -> Response {
+    if let Err(response) = validate_internal_api(&state, &headers) {
+        return response;
+    }
+
+    let Some(core_memory_store) = &state.core_memory_store else {
+        return (StatusCode::SERVICE_UNAVAILABLE, "core memory store unavailable").into_response();
+    };
+
+    match core_memory_store.render(&user_id).await {
+        Ok(content) => Json(json!({ "content": content })).into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("core memory render failed: {}", error),
+        )
+            .into_response(),
+    }
+}
+
 fn validate_ws_request(state: &GatewayState, headers: &HeaderMap) -> CoreResult<()> {
     let origin = headers
         .get(axum::http::header::ORIGIN)
@@ -179,6 +335,24 @@ fn validate_ws_request(state: &GatewayState, headers: &HeaderMap) -> CoreResult<
     }
 
     Ok(())
+}
+
+fn validate_internal_api(state: &GatewayState, headers: &HeaderMap) -> std::result::Result<(), Response> {
+    let Some(expected_token) = &state.internal_api_token else {
+        return Err((StatusCode::SERVICE_UNAVAILABLE, "internal api disabled").into_response());
+    };
+
+    let header_name = HeaderName::from_static("x-openrustclaw-internal-token");
+    let provided = headers
+        .get(header_name)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("");
+
+    if provided == expected_token.as_str() {
+        Ok(())
+    } else {
+        Err((StatusCode::UNAUTHORIZED, "invalid internal api token").into_response())
+    }
 }
 
 fn gateway_error_response(err: Error) -> Response {
@@ -263,6 +437,13 @@ async fn handle_socket(mut socket: WebSocket) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::body::{Body, to_bytes};
+    use http::Request;
+    use http::header::{CONTENT_TYPE, HeaderValue};
+    use openrustclaw_core::traits::CoreMemoryStore;
+    use openrustclaw_core::types::CoreEntry;
+    use openrustclaw_db::{SqliteCoreMemoryStore, SqliteMemoryStore, init_pool, run_migrations};
+    use tower::ServiceExt;
 
     fn test_state() -> GatewayState {
         GatewayState {
@@ -271,6 +452,9 @@ mod tests {
                 "http://localhost:3000".to_string(),
             ])),
             require_auth: true,
+            internal_api_token: None,
+            memory_store: None,
+            core_memory_store: None,
         }
     }
 
@@ -302,5 +486,89 @@ mod tests {
             "Bearer test-token".parse().unwrap(),
         );
         assert!(validate_ws_request(&test_state(), &headers).is_ok());
+    }
+
+    #[tokio::test]
+    async fn internal_memory_api_store_search_and_render() {
+        let db_path = std::env::temp_dir().join(format!("gateway-memory-{}.db", Uuid::new_v4()));
+        let pool = init_pool(&format!("sqlite://{}", db_path.display()), 1)
+            .await
+            .unwrap();
+        run_migrations(&pool).await.unwrap();
+
+        let memory_store = Arc::new(SqliteMemoryStore::new(pool.clone()));
+        let core_memory_store = Arc::new(SqliteCoreMemoryStore::new(pool.clone()));
+        core_memory_store
+            .set(
+                "user-1",
+                CoreEntry {
+                    key: "preference".to_string(),
+                    value: "Prefers Rust".to_string(),
+                    importance: 0.9,
+                    token_count: 4,
+                    updated_at: chrono::Utc::now(),
+                },
+            )
+            .await
+            .unwrap();
+
+        let state = GatewayState {
+            session_manager: Arc::new(crate::sessions::SessionManager::new()),
+            origin_validator: Arc::new(OriginValidator::new(vec![
+                "http://localhost:3000".to_string(),
+            ])),
+            require_auth: false,
+            internal_api_token: Some(Arc::new("test-token".to_string())),
+            memory_store: Some(memory_store),
+            core_memory_store: Some(core_memory_store),
+        };
+
+        let app = GatewayServer::new("127.0.0.1".to_string(), 0).router(state);
+
+        let store_request = Request::builder()
+            .method("POST")
+            .uri("/internal/memory/store")
+            .header(CONTENT_TYPE, "application/json")
+            .header("x-openrustclaw-internal-token", "test-token")
+            .body(Body::from(
+                r#"{"user_id":"user-1","content":"Rust ownership matters","category":"semantic"}"#,
+            ))
+            .unwrap();
+        let store_response = app.clone().oneshot(store_request).await.unwrap();
+        assert_eq!(store_response.status(), StatusCode::OK);
+
+        let search_request = Request::builder()
+            .method("POST")
+            .uri("/internal/memory/search")
+            .header(CONTENT_TYPE, "application/json")
+            .header("x-openrustclaw-internal-token", "test-token")
+            .body(Body::from(r#"{"user_id":"user-1","query":"ownership","limit":3}"#))
+            .unwrap();
+        let search_response = app.clone().oneshot(search_request).await.unwrap();
+        assert_eq!(search_response.status(), StatusCode::OK);
+        let search_body = to_bytes(search_response.into_body(), usize::MAX).await.unwrap();
+        let search_json: serde_json::Value = serde_json::from_slice(&search_body).unwrap();
+        assert!(search_json["memories"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|entry| entry["content"] == "Rust ownership matters"));
+
+        let core_request = Request::builder()
+            .method("POST")
+            .uri("/internal/memory/core/user-1")
+            .header("x-openrustclaw-internal-token", HeaderValue::from_static("test-token"))
+            .body(Body::from("{}"))
+            .unwrap();
+        let core_response = app.oneshot(core_request).await.unwrap();
+        assert_eq!(core_response.status(), StatusCode::OK);
+        let core_body = to_bytes(core_response.into_body(), usize::MAX).await.unwrap();
+        let core_json: serde_json::Value = serde_json::from_slice(&core_body).unwrap();
+        assert!(core_json["content"]
+            .as_str()
+            .unwrap()
+            .contains("Prefers Rust"));
+
+        let _ = std::fs::remove_file(db_path);
     }
 }

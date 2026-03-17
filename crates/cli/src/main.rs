@@ -161,6 +161,17 @@ enum ScheduleAction {
         name: String,
         #[arg(short, long)]
         workflow: String,
+        #[arg(short, long)]
+        description: Option<String>,
+        /// Run every N seconds
+        #[arg(long)]
+        every_seconds: Option<u64>,
+        /// Run once at an RFC3339 timestamp
+        #[arg(long)]
+        at: Option<String>,
+        /// JSON workflow payload passed to the sidecar
+        #[arg(long)]
+        payload: Option<String>,
     },
     /// Pause a job
     Pause { id: String },
@@ -357,8 +368,23 @@ async fn main() -> Result<()> {
         },
         Commands::Schedule { action } => match action {
             ScheduleAction::List => commands::schedule::list().await,
-            ScheduleAction::Create { name, workflow } => {
-                commands::schedule::create(&name, &workflow).await
+            ScheduleAction::Create {
+                name,
+                workflow,
+                description,
+                every_seconds,
+                at,
+                payload,
+            } => {
+                commands::schedule::create(
+                    &name,
+                    &workflow,
+                    description.as_deref(),
+                    every_seconds,
+                    at.as_deref(),
+                    payload.as_deref(),
+                )
+                .await
             }
             ScheduleAction::Pause { id } => commands::schedule::pause(&id).await,
             ScheduleAction::Resume { id } => commands::schedule::resume(&id).await,
@@ -744,10 +770,21 @@ mod tests {
         .unwrap();
         match cli.command {
             Commands::Schedule {
-                action: ScheduleAction::Create { name, workflow },
+                action: ScheduleAction::Create {
+                    name,
+                    workflow,
+                    description,
+                    every_seconds,
+                    at,
+                    payload,
+                },
             } => {
                 assert_eq!(name, "daily-check");
                 assert_eq!(workflow, "health_check");
+                assert!(description.is_none());
+                assert!(every_seconds.is_none());
+                assert!(at.is_none());
+                assert!(payload.is_none());
             }
             _ => panic!("Expected Schedule Create command"),
         }

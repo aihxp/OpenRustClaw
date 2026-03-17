@@ -284,6 +284,43 @@ def test_preprocess_memory_context_uses_metadata():
         raise
 
 
+def test_memory_bridge_request_helpers():
+    """Test sidecar memory bridge HTTP client behavior."""
+    print("\nTesting memory bridge client...")
+
+    try:
+        from unittest.mock import patch
+
+        from src.memory_bridge import MemoryBridge
+
+        class _Response:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return b'{"memories":[{"content":"Prefers Rust"}],"content":"## Core Memory"}'
+
+        bridge = MemoryBridge("http://127.0.0.1:3000/internal", "token-123")
+
+        with patch("urllib.request.urlopen", return_value=_Response()) as mock_urlopen:
+            search_result = asyncio.run(bridge.search_memory("user-1", "rust", limit=2))
+            core_result = asyncio.run(bridge.render_core_memory("user-1"))
+
+        assert search_result[0]["content"] == "Prefers Rust"
+        assert "Core Memory" in core_result
+        assert mock_urlopen.call_count == 2
+        print("  ✓ Memory bridge client")
+    except ModuleNotFoundError as e:
+        print(f"  ✗ Memory bridge client: {e}")
+        _skip_missing_dependency(e)
+    except Exception as e:
+        print(f"  ✗ Memory bridge client: {e}")
+        raise
+
+
 def test_memory_maintenance_uses_configurable_memories():
     """Test memory maintenance nodes consume configurable old memories."""
     print("\nTesting memory maintenance workflow metadata...")
@@ -520,6 +557,7 @@ def main():
     results.append(test_protobuf_messages())
     results.append(test_evaluators())
     results.append(test_preprocess_memory_context_uses_metadata())
+    results.append(test_memory_bridge_request_helpers())
     results.append(test_memory_maintenance_uses_configurable_memories())
     results.append(test_scheduler_retry_records_next_run())
 

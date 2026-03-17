@@ -241,6 +241,9 @@ async fn test_gateway_header_validation() {
             "http://localhost:3000".to_string(),
         ])),
         require_auth: true,
+        internal_api_token: None,
+        memory_store: None,
+        core_memory_store: None,
     };
 
     // Missing origin

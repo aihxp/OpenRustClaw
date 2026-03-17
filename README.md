@@ -6,6 +6,11 @@
 
 A high-performance AI agent platform written in Rust. 43 crates, 20 LLM providers, 15 CLI-startable messaging channels, and a Python sidecar for LangGraph workflows.
 
+Current execution planning lives in:
+
+- [docs/feature-matrix.md](docs/feature-matrix.md)
+- [docs/reengineering-backlog.md](docs/reengineering-backlog.md)
+
 ## Quick Start
 
 ```bash

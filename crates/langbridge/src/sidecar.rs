@@ -1,6 +1,7 @@
 //! Sidecar process lifecycle management.
 
 use openrustclaw_core::error::{Error, Result};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Stdio;
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -13,6 +14,7 @@ use tracing::{info, warn};
 pub struct SidecarManager {
     python_path: String,
     grpc_port: u16,
+    env: HashMap<String, String>,
     child: Option<Child>,
 }
 
@@ -21,14 +23,22 @@ impl SidecarManager {
         Self {
             python_path,
             grpc_port,
+            env: HashMap::new(),
             child: None,
         }
+    }
+
+    /// Add an environment variable for the spawned sidecar process.
+    pub fn with_env(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.env.insert(key.into(), value.into());
+        self
     }
 
     /// Start the sidecar process.
     pub async fn start(&mut self) -> Result<()> {
         let sidecar_dir = sidecar_dir();
-        let mut child = Command::new(&self.python_path)
+        let mut command = Command::new(&self.python_path);
+        command
             .arg("-m")
             .arg("src.server")
             .arg("--port")
@@ -36,6 +46,9 @@ impl SidecarManager {
             .current_dir(&sidecar_dir)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
+            .envs(&self.env);
+
+        let mut child = command
             .spawn()
             .map_err(|e| Error::Sidecar(format!("Failed to start sidecar: {}", e)))?;
 
@@ -211,5 +224,12 @@ mod tests {
         let m1 = SidecarManager::new("python3".to_string(), 50051);
         let m2 = SidecarManager::new("python3".to_string(), 50052);
         assert_ne!(m1.grpc_addr(), m2.grpc_addr());
+    }
+
+    #[test]
+    fn test_sidecar_manager_with_env() {
+        let manager =
+            SidecarManager::new("python3".to_string(), 50051).with_env("FOO", "bar");
+        assert_eq!(manager.env.get("FOO").map(String::as_str), Some("bar"));
     }
 }

@@ -147,6 +147,9 @@ impl TestEnvironment {
                 "http://127.0.0.1:3000".to_string(),
             ])),
             require_auth,
+            internal_api_token: None,
+            memory_store: Some(Arc::new(self.memory_store.clone())),
+            core_memory_store: Some(Arc::new(self.core_memory_store.clone())),
         }
     }
 
