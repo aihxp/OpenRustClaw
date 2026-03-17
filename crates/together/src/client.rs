@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
+use secrecy::{ExposeSecret, SecretString};
 
 use crate::constants::{retry, DEFAULT_APP_NAME, DEFAULT_BASE_URL};
 use crate::error::{Result, TogetherError};
@@ -18,7 +19,7 @@ pub struct TogetherClient {
 #[allow(dead_code)]
 struct ClientInner {
     http: reqwest::Client,
-    api_key: String,
+    api_key: SecretString,
     base_url: String,
     app_name: String,
     max_retries: u32,
@@ -27,7 +28,7 @@ struct ClientInner {
 
 impl TogetherClient {
     /// Create a new client with the given API key.
-    pub fn new(api_key: impl Into<String>) -> Result<Self> {
+    pub fn new(api_key: impl Into<SecretString>) -> Result<Self> {
         Self::with_config(ClientConfig::new(api_key))
     }
 
@@ -37,7 +38,7 @@ impl TogetherClient {
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
         headers.insert(
             AUTHORIZATION,
-            HeaderValue::from_str(&format!("Bearer {}", config.api_key))
+            HeaderValue::from_str(&format!("Bearer {}", config.api_key.expose_secret()))
                 .map_err(|_| TogetherError::Config {
                     message: "Invalid API key".to_string(),
                 })?,
@@ -100,7 +101,7 @@ impl TogetherClient {
 
     /// Get the API key (masked for security).
     pub fn api_key_masked(&self) -> String {
-        let key = &self.inner.api_key;
+        let key = self.inner.api_key.expose_secret();
         if key.len() <= 8 {
             "***".to_string()
         } else {
@@ -219,7 +220,7 @@ impl TogetherClient {
 /// Configuration for the Together AI client.
 #[derive(Debug, Clone)]
 pub struct ClientConfig {
-    pub(crate) api_key: String,
+    pub(crate) api_key: SecretString,
     pub(crate) base_url: String,
     pub(crate) app_name: String,
     pub(crate) timeout: Duration,
@@ -229,7 +230,7 @@ pub struct ClientConfig {
 
 impl ClientConfig {
     /// Create a new configuration.
-    pub fn new(api_key: impl Into<String>) -> Self {
+    pub fn new(api_key: impl Into<SecretString>) -> Self {
         Self {
             api_key: api_key.into(),
             base_url: DEFAULT_BASE_URL.to_string(),

@@ -70,6 +70,7 @@ dependencies = [
  "futures",
  "pin-project-lite",
  "reqwest 0.12.28",
+ "secrecy",
  "serde",
  "serde_json",
  "serial_test",
@@ -203,6 +204,7 @@ dependencies = [
  "futures",
  "pin-project-lite",
  "reqwest 0.12.28",
+ "secrecy",
  "serde",
  "serde_json",
  "serial_test",
@@ -333,6 +335,7 @@ dependencies = [
  "futures",
  "pin-project-lite",
  "reqwest 0.12.28",
+ "secrecy",
  "serde",
  "serde_json",
  "serial_test",
@@ -788,6 +791,7 @@ dependencies = [
  "mime",
  "pin-project-lite",
  "reqwest 0.12.28",
+ "secrecy",
  "serde",
  "serde_json",
  "serial_test",
@@ -1403,6 +1407,7 @@ dependencies = [
  "mime",
  "pin-project-lite",
  "reqwest 0.12.28",
+ "secrecy",
  "serde",
  "serde_json",
  "serial_test",
@@ -1491,6 +1496,7 @@ dependencies = [
  "futures",
  "pin-project-lite",
  "reqwest 0.12.28",
+ "secrecy",
  "serde",
  "serde_json",
  "serial_test",
@@ -2256,6 +2262,7 @@ dependencies = [
  "futures",
  "pin-project-lite",
  "reqwest 0.12.28",
+ "secrecy",
  "serde",
  "serde_json",
  "serial_test",
@@ -2715,6 +2722,7 @@ dependencies = [
  "futures",
  "pin-project-lite",
  "reqwest 0.12.28",
+ "secrecy",
  "serde",
  "serde_json",
  "serial_test",
@@ -3306,6 +3314,7 @@ dependencies = [
  "mime",
  "mockito",
  "reqwest 0.12.28",
+ "secrecy",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -3352,6 +3361,7 @@ dependencies = [
  "mime",
  "pin-project-lite",
  "reqwest 0.12.28",
+ "secrecy",
  "serde",
  "serde_json",
  "serial_test",
@@ -4749,6 +4759,7 @@ dependencies = [
  "futures",
  "pin-project-lite",
  "reqwest 0.12.28",
+ "secrecy",
  "serde",
  "serde_json",
  "serial_test",
@@ -5025,6 +5036,7 @@ dependencies = [
  "futures",
  "pin-project-lite",
  "reqwest 0.12.28",
+ "secrecy",
  "serde",
  "serde_json",
  "serial_test",
@@ -5521,6 +5533,7 @@ dependencies = [
  "futures",
  "pin-project-lite",
  "reqwest 0.12.28",
+ "secrecy",
  "serde",
  "serde_json",
  "serial_test",
@@ -6089,6 +6102,7 @@ dependencies = [
  "openrustclaw-core",
  "pin-project-lite",
  "reqwest 0.12.28",
+ "secrecy",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -6430,6 +6444,7 @@ dependencies = [
  "futures",
  "pin-project-lite",
  "reqwest 0.12.28",
+ "secrecy",
  "serde",
  "serde_json",
  "serial_test",
@@ -7565,6 +7580,7 @@ dependencies = [
  "hmac",
  "pin-project-lite",
  "reqwest 0.12.28",
+ "secrecy",
  "serde",
  "serde_json",
  "serial_test",
@@ -8037,6 +8053,16 @@ name = "sdd"
 version = "3.0.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "490dcfcbfef26be6800d11870ff2df8774fa6e86d047e3e8c8a76b25655e41ca"
+
+[[package]]
+name = "secrecy"
+version = "0.10.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e891af845473308773346dc847b2c23ee78fe442e0472ac50e22a18a93d3ae5a"
+dependencies = [
+ "serde",
+ "zeroize",
+]
 
 [[package]]
 name = "security-framework"
@@ -9508,6 +9534,7 @@ dependencies = [
  "futures",
  "pin-project-lite",
  "reqwest 0.12.28",
+ "secrecy",
  "serde",
  "serde_json",
  "serial_test",
@@ -10433,6 +10460,7 @@ dependencies = [
  "futures",
  "pin-project-lite",
  "reqwest 0.12.28",
+ "secrecy",
  "serde",
  "serde_json",
  "serial_test",

@@ -44,6 +44,7 @@ bytes = { workspace = true }
 tracing = { workspace = true }
 backoff = { workspace = true }
 url = { workspace = true }
+secrecy = { workspace = true }
 
 # Streaming support
 eventsource-stream = { workspace = true, optional = true }

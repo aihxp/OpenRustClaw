@@ -1,5 +1,7 @@
 //! Chat completions API for Azure OpenAI.
 
+use secrecy::ExposeSecret;
+
 use crate::client::AzureOpenAIClient;
 use crate::error::{AzureOpenAIError, Result};
 use crate::types::{ChatMessage, ChatResponse, Function, Role, Tool};
@@ -117,7 +119,7 @@ impl<'a> Chat<'a> {
         } else {
             // API key auth
             if let crate::AzureCredential::ApiKey(key) = &self.client.config().credential {
-                request_builder = request_builder.header("api-key", key);
+                request_builder = request_builder.header("api-key", key.expose_secret());
             }
         }
 

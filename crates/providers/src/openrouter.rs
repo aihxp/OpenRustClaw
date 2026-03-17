@@ -12,6 +12,7 @@ use futures::{Stream, StreamExt};
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use secrecy::{ExposeSecret, SecretString};
 use tracing::{debug, warn};
 
 use openrustclaw_core::error::{Error, ProviderError, Result};
@@ -72,7 +73,7 @@ impl std::fmt::Display for RouteStrategy {
 /// multiple providers behind a single API key.
 pub struct OpenRouterProvider {
     client: reqwest::Client,
-    api_key: String,
+    api_key: SecretString,
     model: String,
     route_strategy: RouteStrategy,
     base_url: String,
@@ -82,10 +83,10 @@ impl OpenRouterProvider {
     /// Create a new OpenRouter provider with the given API key and model.
     ///
     /// Uses the default quality routing strategy.
-    pub fn new(api_key: String, model: String) -> Self {
+    pub fn new(api_key: impl Into<SecretString>, model: String) -> Self {
         Self {
             client: reqwest::Client::new(),
-            api_key,
+            api_key: api_key.into(),
             model,
             route_strategy: RouteStrategy::Quality,
             base_url: DEFAULT_BASE_URL.to_string(),
@@ -93,10 +94,10 @@ impl OpenRouterProvider {
     }
 
     /// Create a new OpenRouter provider with a specific routing strategy.
-    pub fn with_strategy(api_key: String, model: String, strategy: RouteStrategy) -> Self {
+    pub fn with_strategy(api_key: impl Into<SecretString>, model: String, strategy: RouteStrategy) -> Self {
         Self {
             client: reqwest::Client::new(),
-            api_key,
+            api_key: api_key.into(),
             model,
             route_strategy: strategy,
             base_url: DEFAULT_BASE_URL.to_string(),
@@ -318,7 +319,7 @@ impl OpenRouterProvider {
         );
         headers.insert(
             AUTHORIZATION,
-            HeaderValue::from_str(&format!("Bearer {}", self.api_key))
+            HeaderValue::from_str(&format!("Bearer {}", self.api_key.expose_secret()))
                 .unwrap_or_else(|_| HeaderValue::from_static("")),
         );
         headers.insert(

@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
+use secrecy::{ExposeSecret, SecretString};
 
 use crate::constants::retry::{MAX_DELAY_MS, MAX_RETRIES};
 use crate::constants::DEFAULT_APP_NAME;
@@ -19,7 +20,7 @@ pub struct VllmClient {
 #[allow(dead_code)]
 struct ClientInner {
     http: reqwest::Client,
-    api_key: Option<String>,
+    api_key: Option<SecretString>,
     base_url: String,
     app_name: String,
     max_retries: u32,
@@ -49,7 +50,7 @@ impl VllmClient {
     ///
     /// let client = VllmClient::with_api_key("http://localhost:8000", "sk-xxx").unwrap();
     /// ```
-    pub fn with_api_key(base_url: impl Into<String>, api_key: impl Into<String>) -> Result<Self> {
+    pub fn with_api_key(base_url: impl Into<String>, api_key: impl Into<SecretString>) -> Result<Self> {
         let config = ClientConfig::new(base_url).with_api_key(api_key);
         Self::with_config(config)
     }
@@ -63,7 +64,7 @@ impl VllmClient {
         if let Some(ref api_key) = config.api_key {
             headers.insert(
                 AUTHORIZATION,
-                HeaderValue::from_str(&format!("Bearer {api_key}")).map_err(|_| {
+                HeaderValue::from_str(&format!("Bearer {}", api_key.expose_secret())).map_err(|_| {
                     VllmError::Config {
                         message: "Invalid API key".to_string(),
                     }
@@ -168,6 +169,7 @@ impl VllmClient {
     /// Get the API key (masked for security).
     pub fn api_key_masked(&self) -> Option<String> {
         self.inner.api_key.as_ref().map(|key| {
+            let key = key.expose_secret();
             if key.len() <= 8 {
                 "***".to_string()
             } else {
@@ -285,7 +287,7 @@ impl VllmClient {
 /// Configuration for the vLLM client.
 #[derive(Debug, Clone)]
 pub struct ClientConfig {
-    pub(crate) api_key: Option<String>,
+    pub(crate) api_key: Option<SecretString>,
     pub(crate) base_url: String,
     pub(crate) app_name: String,
     pub(crate) timeout: Duration,
@@ -307,7 +309,7 @@ impl ClientConfig {
     }
 
     /// Set the API key.
-    pub fn with_api_key(mut self, api_key: impl Into<String>) -> Self {
+    pub fn with_api_key(mut self, api_key: impl Into<SecretString>) -> Self {
         self.api_key = Some(api_key.into());
         self
     }

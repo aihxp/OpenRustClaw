@@ -10,6 +10,7 @@ use eventsource_stream::Eventsource;
 use futures::{Stream, StreamExt};
 use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
 use serde_json::Value;
+use secrecy::{ExposeSecret, SecretString};
 use tracing::{debug, warn};
 
 use openrustclaw_core::error::{Error, ProviderError, Result};
@@ -30,7 +31,7 @@ const DEFAULT_API_VERSION: &str = "2023-06-01";
 /// LLM provider implementation for Anthropic's Messages API.
 pub struct AnthropicProvider {
     client: reqwest::Client,
-    api_key: String,
+    api_key: SecretString,
     model: String,
     api_version: String,
     base_url: String,
@@ -41,10 +42,10 @@ impl AnthropicProvider {
     ///
     /// Uses default values for `api_version` (`2023-06-01`) and `base_url`
     /// (`https://api.anthropic.com`).
-    pub fn new(api_key: String, model: String) -> Self {
+    pub fn new(api_key: impl Into<SecretString>, model: String) -> Self {
         Self {
             client: reqwest::Client::new(),
-            api_key,
+            api_key: api_key.into(),
             model,
             api_version: DEFAULT_API_VERSION.to_string(),
             base_url: DEFAULT_BASE_URL.to_string(),
@@ -53,14 +54,14 @@ impl AnthropicProvider {
 
     /// Create a new Anthropic provider with custom base URL and API version.
     pub fn with_config(
-        api_key: String,
+        api_key: impl Into<SecretString>,
         model: String,
         base_url: String,
         api_version: String,
     ) -> Self {
         Self {
             client: reqwest::Client::new(),
-            api_key,
+            api_key: api_key.into(),
             model,
             api_version,
             base_url,
@@ -285,7 +286,7 @@ impl AnthropicProvider {
         );
         headers.insert(
             "x-api-key",
-            HeaderValue::from_str(&self.api_key)
+            HeaderValue::from_str(self.api_key.expose_secret())
                 .unwrap_or_else(|_| HeaderValue::from_static("")),
         );
         headers.insert(

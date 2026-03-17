@@ -36,6 +36,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn};
+use chrono;
 
 use openrustclaw_agent::routing::{AgentId, AgentRouter};
 use openrustclaw_core::types::Message;
@@ -458,13 +459,54 @@ impl WebhookManager {
                     }
                 }
                 WebhookSource::Stripe => {
-                    if let Some(sig) = headers.get("stripe-signature") {
-                        let sig = sig.to_str().map_err(|_| WebhookError::InvalidSignature)?;
-                        // Stripe signature format: t=timestamp,v1=signature
-                        // For now, we do a simplified verification
-                        // In production, you should verify timestamp and signature
-                        debug!(signature = %sig, "Verifying Stripe signature");
-                        return Ok(());
+                    if let Some(sig_header) = headers.get("stripe-signature") {
+                        let sig_str = sig_header.to_str().map_err(|_| WebhookError::InvalidSignature)?;
+
+                        // Parse Stripe signature header: t=timestamp,v1=signature
+                        let mut timestamp_str = None;
+                        let mut signature_hex = None;
+                        for part in sig_str.split(',') {
+                            if let Some(t) = part.strip_prefix("t=") {
+                                timestamp_str = Some(t);
+                            } else if let Some(v1) = part.strip_prefix("v1=") {
+                                signature_hex = Some(v1);
+                            }
+                        }
+
+                        let timestamp_str = timestamp_str
+                            .ok_or(WebhookError::InvalidSignature)?;
+                        let signature_hex = signature_hex
+                            .ok_or(WebhookError::InvalidSignature)?;
+
+                        // Replay protection: reject if timestamp is older than 300 seconds
+                        let timestamp: i64 = timestamp_str
+                            .parse()
+                            .map_err(|_| WebhookError::InvalidSignature)?;
+                        let now = chrono::Utc::now().timestamp();
+                        if (now - timestamp).abs() > 300 {
+                            debug!("Stripe webhook rejected: timestamp too old");
+                            return Err(WebhookError::InvalidSignature);
+                        }
+
+                        // Reconstruct signed payload: "{timestamp}.{body}"
+                        let signed_payload = format!(
+                            "{}.{}",
+                            timestamp_str,
+                            String::from_utf8_lossy(body)
+                        );
+
+                        let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
+                            .map_err(|_| WebhookError::InvalidSecret)?;
+                        mac.update(signed_payload.as_bytes());
+                        let result = mac.finalize();
+                        let expected = hex::encode(result.into_bytes());
+
+                        if constant_time_eq::constant_time_eq(
+                            signature_hex.as_bytes(),
+                            expected.as_bytes(),
+                        ) {
+                            return Ok(());
+                        }
                     }
                 }
                 _ => {}

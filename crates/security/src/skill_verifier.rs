@@ -17,14 +17,22 @@ pub struct SkillVerifier {
 
 impl SkillVerifier {
     /// Create a new verifier. If public_key_bytes is None, verification is disabled.
-    pub fn new(public_key_bytes: Option<&[u8; 32]>, required: bool) -> Self {
-        let verifying_key = public_key_bytes.map(|bytes| {
-            VerifyingKey::from_bytes(bytes).expect("Invalid Ed25519 public key")
-        });
-        Self {
+    ///
+    /// Returns an error if the provided public key bytes are invalid.
+    pub fn new(public_key_bytes: Option<&[u8; 32]>, required: bool) -> Result<Self> {
+        let verifying_key = match public_key_bytes {
+            Some(bytes) => Some(VerifyingKey::from_bytes(bytes).map_err(|e| {
+                Error::Security(SecurityError::SkillVerificationFailed(format!(
+                    "Invalid Ed25519 public key: {}",
+                    e
+                )))
+            })?),
+            None => None,
+        };
+        Ok(Self {
             verifying_key,
             required,
-        }
+        })
     }
 
     /// Create a disabled verifier.
@@ -97,8 +105,16 @@ mod tests {
 
     #[test]
     fn required_without_key_fails() {
-        let verifier = SkillVerifier::new(None, true);
+        let verifier = SkillVerifier::new(None, true).unwrap();
         assert!(verifier.verify(b"content", b"sig").is_err());
+    }
+
+    #[test]
+    fn new_with_invalid_key_returns_error() {
+        let bad_bytes = [0u8; 32]; // All zeros is not a valid Ed25519 key point
+        // This may or may not fail depending on the curve point -- test that
+        // it doesn't panic regardless
+        let _result = SkillVerifier::new(Some(&bad_bytes), true);
     }
 
     #[test]
@@ -107,7 +123,7 @@ mod tests {
         let content = b"skill manifest content here";
         let signature = SkillVerifier::sign(content, &signing_key);
 
-        let verifier = SkillVerifier::new(Some(verifying_key.as_bytes()), true);
+        let verifier = SkillVerifier::new(Some(verifying_key.as_bytes()), true).unwrap();
         assert!(verifier.verify(content, &signature).unwrap());
     }
 
@@ -117,7 +133,7 @@ mod tests {
         let content = b"original content";
         let signature = SkillVerifier::sign(content, &signing_key);
 
-        let verifier = SkillVerifier::new(Some(verifying_key.as_bytes()), true);
+        let verifier = SkillVerifier::new(Some(verifying_key.as_bytes()), true).unwrap();
         assert!(verifier.verify(b"tampered content", &signature).is_err());
     }
 

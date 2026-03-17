@@ -187,7 +187,7 @@ fn skill_verifier_disabled_passes() {
 fn skill_verifier_required_without_key_fails() {
     init_test_tracing();
 
-    let verifier = SkillVerifier::new(None, true);
+    let verifier = SkillVerifier::new(None, true).unwrap();
     let result = verifier.verify(b"content", b"sig");
 
     assert!(result.is_err());
@@ -205,7 +205,7 @@ fn skill_verifier_sign_and_verify_roundtrip() {
     let content = b"skill manifest content here";
     let signature = SkillVerifier::sign(content, &signing_key);
 
-    let verifier = SkillVerifier::new(Some(verifying_key.as_bytes()), true);
+    let verifier = SkillVerifier::new(Some(verifying_key.as_bytes()), true).unwrap();
     assert!(verifier.verify(content, &signature).unwrap());
 }
 
@@ -217,7 +217,7 @@ fn skill_verifier_wrong_content_fails() {
     let content = b"original content";
     let signature = SkillVerifier::sign(content, &signing_key);
 
-    let verifier = SkillVerifier::new(Some(verifying_key.as_bytes()), true);
+    let verifier = SkillVerifier::new(Some(verifying_key.as_bytes()), true).unwrap();
     let result = verifier.verify(b"tampered content", &signature);
 
     assert!(result.is_err());
@@ -228,7 +228,7 @@ fn skill_verifier_invalid_signature_format() {
     init_test_tracing();
 
     let (_, verifying_key) = SkillVerifier::generate_keypair();
-    let verifier = SkillVerifier::new(Some(verifying_key.as_bytes()), true);
+    let verifier = SkillVerifier::new(Some(verifying_key.as_bytes()), true).unwrap();
 
     let result = verifier.verify(b"content", b"invalid-signature");
     assert!(result.is_err());

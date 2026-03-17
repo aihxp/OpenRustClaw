@@ -3,19 +3,20 @@
 use crate::types::*;
 use crate::error::GeminiError;
 use reqwest::{Client, Response};
+use secrecy::{ExposeSecret, SecretString};
 use std::time::Duration;
 
 /// Gemini API client
 pub struct GeminiClient {
     client: Client,
-    api_key: String,
+    api_key: SecretString,
     base_url: String,
     default_model: GeminiModel,
 }
 
 impl GeminiClient {
     /// Create a new Gemini client
-    pub fn new(api_key: impl Into<String>) -> Self {
+    pub fn new(api_key: impl Into<SecretString>) -> Self {
         Self {
             client: Client::new(),
             api_key: api_key.into(),
@@ -55,7 +56,7 @@ impl GeminiClient {
             self.base_url,
             model.as_str(),
             action,
-            self.api_key
+            self.api_key.expose_secret()
         )
     }
     
@@ -131,7 +132,7 @@ impl GeminiClient {
         let url = format!("{}/models/{}:embedContent?key={}",
             self.base_url,
             GeminiModel::Embedding004.as_str(),
-            self.api_key
+            self.api_key.expose_secret()
         );
         
         tracing::debug!("Sending embedding request to {}", url);
@@ -166,7 +167,7 @@ impl GeminiClient {
         let url = format!("{}/models/{}:batchEmbedContents?key={}",
             self.base_url,
             GeminiModel::Embedding004.as_str(),
-            self.api_key
+            self.api_key.expose_secret()
         );
         
         tracing::debug!("Sending batch embedding request to {}", url);
@@ -215,7 +216,7 @@ impl GeminiClient {
     
     /// List available models
     pub async fn list_models(&self) -> Result<Vec<ModelInfo>, GeminiError> {
-        let url = format!("{}/models?key={}", self.base_url, self.api_key);
+        let url = format!("{}/models?key={}", self.base_url, self.api_key.expose_secret());
         
         tracing::debug!("Listing models from {}", url);
         
@@ -233,9 +234,9 @@ impl GeminiClient {
         let url = format!("{}/models/{}:countTokens?key={}",
             self.base_url,
             self.default_model.as_str(),
-            self.api_key
+            self.api_key.expose_secret()
         );
-        
+
         let request = CountTokensRequest { contents };
         
         tracing::debug!("Sending count tokens request to {}", url);
@@ -251,7 +252,7 @@ impl GeminiClient {
     
     /// Get model info
     pub async fn get_model(&self, model_name: &str) -> Result<ModelInfo, GeminiError> {
-        let url = format!("{}/models/{}?key={}", self.base_url, model_name, self.api_key);
+        let url = format!("{}/models/{}?key={}", self.base_url, model_name, self.api_key.expose_secret());
         
         tracing::debug!("Getting model info from {}", url);
         

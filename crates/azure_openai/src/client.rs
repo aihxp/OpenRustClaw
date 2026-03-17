@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
+use secrecy::{ExposeSecret, SecretString};
 use tracing::{debug, trace};
 
 use crate::config::AzureConfig;
@@ -45,7 +46,7 @@ impl AzureOpenAIClient {
     pub fn new(
         resource_name: impl Into<String>,
         deployment_name: impl Into<String>,
-        api_key: impl Into<String>,
+        api_key: impl Into<SecretString>,
     ) -> Result<Self> {
         let config = AzureConfig::api_key(api_key)
             .resource_name(resource_name)
@@ -79,7 +80,7 @@ impl AzureOpenAIClient {
             if let crate::AzureCredential::ApiKey(key) = &config.credential {
                 headers.insert(
                     "api-key",
-                    HeaderValue::from_str(key).map_err(|_| AzureOpenAIError::Config {
+                    HeaderValue::from_str(key.expose_secret()).map_err(|_| AzureOpenAIError::Config {
                         message: "Invalid API key".to_string(),
                     })?,
                 );

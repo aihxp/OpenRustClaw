@@ -9,7 +9,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .expect("AI21_API_KEY environment variable must be set");
 
     // Create client
-    let client = Ai21Client::new(&api_key)?;
+    let client = Ai21Client::new(api_key)?;
 
     // Create completion request
     let request = CompletionRequest::builder("j2-ultra")

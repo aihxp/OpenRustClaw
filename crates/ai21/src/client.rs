@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
+use secrecy::{ExposeSecret, SecretString};
 use tracing::{debug, trace};
 
 use crate::constants::{headers, retry, DEFAULT_API_VERSION, DEFAULT_BASE_URL};
@@ -29,7 +30,7 @@ pub(crate) struct ClientInner {
     pub http: reqwest::Client,
     // Stored for potential future use (e.g., custom auth schemes)
     #[allow(dead_code)]
-    pub api_key: String,
+    pub api_key: SecretString,
     pub base_url: String,
     pub api_version: String,
     pub max_retries: u32,
@@ -38,7 +39,7 @@ pub(crate) struct ClientInner {
 
 impl Ai21Client {
     /// Create a new AI21 client with the given API key.
-    pub fn new(api_key: impl Into<String>) -> Result<Self> {
+    pub fn new(api_key: impl Into<SecretString>) -> Result<Self> {
         Self::with_config(ClientConfig::new(api_key))
     }
 
@@ -47,7 +48,7 @@ impl Ai21Client {
         let mut headers = HeaderMap::new();
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
 
-        let auth_header = format!("Bearer {}", config.api_key);
+        let auth_header = format!("Bearer {}", config.api_key.expose_secret());
         headers.insert(
             AUTHORIZATION,
             HeaderValue::from_str(&auth_header).map_err(|_| Ai21Error::Config {
@@ -199,7 +200,7 @@ impl Ai21Client {
 /// Configuration for the AI21 client.
 #[derive(Debug, Clone)]
 pub struct ClientConfig {
-    pub(crate) api_key: String,
+    pub(crate) api_key: SecretString,
     pub(crate) base_url: String,
     pub(crate) api_version: String,
     pub(crate) timeout: Duration,
@@ -209,7 +210,7 @@ pub struct ClientConfig {
 
 impl ClientConfig {
     /// Create a new configuration with the given API key.
-    pub fn new(api_key: impl Into<String>) -> Self {
+    pub fn new(api_key: impl Into<SecretString>) -> Self {
         Self {
             api_key: api_key.into(),
             base_url: DEFAULT_BASE_URL.to_string(),

@@ -3,6 +3,8 @@
 //! This module provides support for the legacy completions API, which is
 //! still available for certain models in Azure OpenAI Service.
 
+use secrecy::ExposeSecret;
+
 use crate::client::AzureOpenAIClient;
 use crate::error::Result;
 use crate::types::TokenUsage;
@@ -88,7 +90,7 @@ impl<'a> Completions<'a> {
             request_builder = request_builder.header("Authorization", auth_header);
         } else {
             if let crate::AzureCredential::ApiKey(key) = &self.client.config().credential {
-                request_builder = request_builder.header("api-key", key);
+                request_builder = request_builder.header("api-key", key.expose_secret());
             }
         }
 

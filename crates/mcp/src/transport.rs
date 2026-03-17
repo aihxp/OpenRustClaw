@@ -1,10 +1,19 @@
 //! MCP transport layer (stdio subprocess management).
+//!
+//! Commands are validated against an allowlist before spawning to prevent
+//! execution of arbitrary binaries.
 
 use openrustclaw_core::error::{Error, McpError, Result};
 use serde_json::Value;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
-use tracing::debug;
+use tracing::{debug, warn};
+
+/// Commands allowed to be spawned as MCP server subprocesses.
+const ALLOWED_COMMANDS: &[&str] = &[
+    "npx", "uvx", "node", "python3", "python", "docker",
+    "deno", "bun", "cargo", "go",
+];
 
 /// A stdio transport connection to an MCP server subprocess.
 pub struct StdioTransport {
@@ -13,8 +22,40 @@ pub struct StdioTransport {
 }
 
 impl StdioTransport {
+    /// Validate that a command is safe to execute.
+    fn validate_command(command: &str) -> Result<()> {
+        // Extract the base command name (strip path if present)
+        let base_name = std::path::Path::new(command)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(command);
+
+        // Check against allowlist
+        if !ALLOWED_COMMANDS.contains(&base_name) {
+            warn!(command = %command, "MCP server command rejected: not in allowlist");
+            return Err(Error::Mcp(McpError::Transport(format!(
+                "Command '{}' is not in the allowed MCP server commands list. Allowed: {:?}",
+                command, ALLOWED_COMMANDS
+            ))));
+        }
+
+        // Reject commands with shell metacharacters
+        let shell_chars = ['|', '&', ';', '$', '`', '(', ')', '{', '}', '<', '>', '!', '\n'];
+        if command.chars().any(|c| shell_chars.contains(&c)) {
+            warn!(command = %command, "MCP server command rejected: contains shell metacharacters");
+            return Err(Error::Mcp(McpError::Transport(format!(
+                "Command '{}' contains disallowed shell metacharacters",
+                command
+            ))));
+        }
+
+        Ok(())
+    }
+
     /// Spawn an MCP server as a subprocess.
     pub async fn spawn(command: &str, args: &[&str]) -> Result<Self> {
+        Self::validate_command(command)?;
+
         let child = Command::new(command)
             .args(args)
             .stdin(std::process::Stdio::piped())
@@ -101,5 +142,41 @@ impl StdioTransport {
     pub async fn shutdown(&mut self) -> Result<()> {
         let _ = self.child.kill().await;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validate_command_allows_permitted_commands() {
+        assert!(StdioTransport::validate_command("npx").is_ok());
+        assert!(StdioTransport::validate_command("node").is_ok());
+        assert!(StdioTransport::validate_command("python3").is_ok());
+        assert!(StdioTransport::validate_command("docker").is_ok());
+        assert!(StdioTransport::validate_command("uvx").is_ok());
+    }
+
+    #[test]
+    fn validate_command_rejects_arbitrary_binaries() {
+        assert!(StdioTransport::validate_command("bash").is_err());
+        assert!(StdioTransport::validate_command("sh").is_err());
+        assert!(StdioTransport::validate_command("curl").is_err());
+        assert!(StdioTransport::validate_command("rm").is_err());
+    }
+
+    #[test]
+    fn validate_command_extracts_basename_from_path() {
+        assert!(StdioTransport::validate_command("/usr/bin/node").is_ok());
+        assert!(StdioTransport::validate_command("/usr/local/bin/npx").is_ok());
+        assert!(StdioTransport::validate_command("/tmp/evil").is_err());
+    }
+
+    #[test]
+    fn validate_command_rejects_shell_metacharacters() {
+        assert!(StdioTransport::validate_command("node; rm -rf /").is_err());
+        assert!(StdioTransport::validate_command("node | cat").is_err());
+        assert!(StdioTransport::validate_command("$(whoami)").is_err());
     }
 }

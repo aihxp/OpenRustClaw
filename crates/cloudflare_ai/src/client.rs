@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
+use secrecy::{ExposeSecret, SecretString};
 use tracing::{debug, trace};
 
 use crate::error::{CloudflareAiError, Result};
@@ -40,7 +41,7 @@ struct ClientInner {
     http: reqwest::Client,
     account_id: String,
     #[allow(dead_code)]
-    api_token: String,
+    api_token: SecretString,
     base_url: String,
     max_retries: u32,
     retry_delay: Duration,
@@ -67,7 +68,7 @@ impl CloudflareAiClient {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn new(account_id: impl Into<String>, api_token: impl Into<String>) -> Result<Self> {
+    pub fn new(account_id: impl Into<String>, api_token: impl Into<SecretString>) -> Result<Self> {
         Self::with_config(ClientConfig::new(account_id, api_token))
     }
 
@@ -77,7 +78,7 @@ impl CloudflareAiClient {
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
         headers.insert(
             AUTHORIZATION,
-            HeaderValue::from_str(&format!("Bearer {}", config.api_token))
+            HeaderValue::from_str(&format!("Bearer {}", config.api_token.expose_secret()))
                 .map_err(|_| CloudflareAiError::Config {
                     message: "Invalid API token".to_string(),
                 })?,
@@ -317,7 +318,7 @@ impl CloudflareAiClient {
 #[derive(Debug, Clone)]
 pub struct ClientConfig {
     pub(crate) account_id: String,
-    pub(crate) api_token: String,
+    pub(crate) api_token: SecretString,
     pub(crate) base_url: String,
     pub(crate) timeout: Duration,
     pub(crate) max_retries: u32,
@@ -326,7 +327,7 @@ pub struct ClientConfig {
 
 impl ClientConfig {
     /// Create a new configuration with the given credentials.
-    pub fn new(account_id: impl Into<String>, api_token: impl Into<String>) -> Self {
+    pub fn new(account_id: impl Into<String>, api_token: impl Into<SecretString>) -> Self {
         Self {
             account_id: account_id.into(),
             api_token: api_token.into(),
@@ -373,7 +374,7 @@ mod tests {
             .max_retries(5);
 
         assert_eq!(config.account_id, "account123");
-        assert_eq!(config.api_token, "token456");
+        assert_eq!(config.api_token.expose_secret(), "token456");
         assert_eq!(config.base_url, "https://custom.api.com");
         assert_eq!(config.max_retries, 5);
     }

@@ -2,6 +2,8 @@
 
 use std::time::Duration;
 
+use secrecy::{ExposeSecret, SecretString};
+
 use crate::constants::{retry, DEFAULT_API_VERSION};
 use crate::error::{AzureOpenAIError, Result};
 use crate::{AzureADToken, AzureRegion};
@@ -31,7 +33,7 @@ pub struct AzureConfig {
 #[derive(Debug, Clone)]
 pub enum AzureCredential {
     /// API key authentication.
-    ApiKey(String),
+    ApiKey(SecretString),
     /// Azure AD token authentication.
     AzureADToken(AzureADToken),
     /// Managed Identity authentication.
@@ -43,7 +45,7 @@ pub enum AzureCredential {
 
 impl AzureConfig {
     /// Create a new configuration for API key authentication.
-    pub fn api_key(api_key: impl Into<String>) -> Self {
+    pub fn api_key(api_key: impl Into<SecretString>) -> Self {
         Self {
             resource_name: String::new(),
             deployment_name: String::new(),
@@ -205,7 +207,7 @@ impl AzureConfig {
     /// Get the authorization header value.
     pub(crate) async fn authorization_header(&self) -> Result<String> {
         match &self.credential {
-            AzureCredential::ApiKey(key) => Ok(format!("Bearer {key}")),
+            AzureCredential::ApiKey(key) => Ok(format!("Bearer {}", key.expose_secret())),
             AzureCredential::AzureADToken(token_credential) => {
                 let token = token_credential.get_token().await?;
                 Ok(format!("Bearer {token}"))
@@ -240,7 +242,7 @@ impl Default for AzureConfig {
             deployment_name: String::new(),
             api_version: DEFAULT_API_VERSION.to_string(),
             region: None,
-            credential: AzureCredential::ApiKey(String::new()),
+            credential: AzureCredential::ApiKey(SecretString::from(String::new())),
             timeout: Duration::from_secs(120),
             max_retries: retry::MAX_RETRIES,
             retry_delay: Duration::from_millis(retry::INITIAL_DELAY_MS),

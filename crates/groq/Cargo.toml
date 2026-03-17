@@ -42,6 +42,7 @@ uuid = { workspace = true, features = ["v4", "serde"] }
 bytes = { workspace = true }
 tracing = { workspace = true }
 backoff = { workspace = true }
+secrecy = { workspace = true }
 
 # Streaming support
 eventsource-stream = { workspace = true, optional = true }

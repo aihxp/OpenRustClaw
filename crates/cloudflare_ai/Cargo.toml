@@ -47,6 +47,7 @@ bytes = { workspace = true }
 tracing = { workspace = true }
 backoff = { workspace = true }
 base64 = { workspace = true }
+secrecy = { workspace = true }
 mime = { workspace = true }
 
 # Streaming support

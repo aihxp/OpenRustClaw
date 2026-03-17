@@ -34,7 +34,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let client = AzureOpenAIClient::new(
         &resource_name,
         &whisper_deployment,
-        &api_key,
+        api_key.clone(),
     )?;
 
     println!("Azure OpenAI Whisper Audio Example\n");
@@ -95,7 +95,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let tts_client = AzureOpenAIClient::new(
             &resource_name,
             &tts_deployment,
-            &api_key,
+            api_key.clone(),
         )?;
 
         let tts_request = TtsRequest::new(

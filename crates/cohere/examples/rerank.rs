@@ -15,7 +15,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .expect("COHERE_API_KEY environment variable must be set");
 
     // Create client
-    let client = CohereClient::new(&api_key)?;
+    let client = CohereClient::new(api_key)?;
 
     // Documents to rerank
     let documents = vec![

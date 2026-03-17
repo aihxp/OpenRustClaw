@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
+use secrecy::{ExposeSecret, SecretString};
 use tracing::{debug, trace};
 
 use crate::error::{LlamaCppError, Result};
@@ -52,7 +53,7 @@ struct ClientInner {
     base_url: String,
     max_retries: u32,
     retry_delay: Duration,
-    api_key: Option<String>,
+    api_key: Option<SecretString>,
 }
 
 impl LlamaCppClient {
@@ -75,7 +76,7 @@ impl LlamaCppClient {
         if let Some(ref api_key) = config.api_key {
             headers.insert(
                 reqwest::header::AUTHORIZATION,
-                HeaderValue::from_str(&format!("Bearer {api_key}"))
+                HeaderValue::from_str(&format!("Bearer {}", api_key.expose_secret()))
                     .map_err(|_| LlamaCppError::Config {
                         message: "Invalid API key".to_string(),
                     })?,
@@ -262,7 +263,7 @@ pub struct ClientConfig {
     pub(crate) timeout: Duration,
     pub(crate) max_retries: u32,
     pub(crate) retry_delay: Duration,
-    pub(crate) api_key: Option<String>,
+    pub(crate) api_key: Option<SecretString>,
 }
 
 impl Default for ClientConfig {
@@ -308,7 +309,7 @@ impl ClientConfig {
     }
 
     /// Set the API key for authentication.
-    pub fn api_key(mut self, key: impl Into<String>) -> Self {
+    pub fn api_key(mut self, key: impl Into<SecretString>) -> Self {
         self.api_key = Some(key.into());
         self
     }

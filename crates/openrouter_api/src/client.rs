@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
+use secrecy::{ExposeSecret, SecretString};
 
 use crate::constants::{retry, DEFAULT_APP_NAME, DEFAULT_BASE_URL, DEFAULT_REFERER};
 use crate::error::{OpenRouterError, Result};
@@ -17,7 +18,7 @@ pub struct OpenRouterClient {
 #[derive(Debug)]
 struct ClientInner {
     http: reqwest::Client,
-    api_key: String,
+    api_key: SecretString,
     base_url: String,
     referer: String,
     app_name: String,
@@ -27,7 +28,7 @@ struct ClientInner {
 
 impl OpenRouterClient {
     /// Create a new client with the given API key.
-    pub fn new(api_key: impl Into<String>) -> Result<Self> {
+    pub fn new(api_key: impl Into<SecretString>) -> Result<Self> {
         Self::with_config(ClientConfig::new(api_key))
     }
 
@@ -37,7 +38,7 @@ impl OpenRouterClient {
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
         headers.insert(
             AUTHORIZATION,
-            HeaderValue::from_str(&format!("Bearer {}", config.api_key))
+            HeaderValue::from_str(&format!("Bearer {}", config.api_key.expose_secret()))
                 .map_err(|_| OpenRouterError::Config {
                     message: "Invalid API key".to_string(),
                 })?,
@@ -167,7 +168,7 @@ impl OpenRouterClient {
 /// Configuration for the OpenRouter client.
 #[derive(Debug, Clone)]
 pub struct ClientConfig {
-    pub(crate) api_key: String,
+    pub(crate) api_key: SecretString,
     pub(crate) base_url: String,
     pub(crate) referer: String,
     pub(crate) app_name: String,
@@ -178,7 +179,7 @@ pub struct ClientConfig {
 
 impl ClientConfig {
     /// Create a new configuration.
-    pub fn new(api_key: impl Into<String>) -> Self {
+    pub fn new(api_key: impl Into<SecretString>) -> Self {
         Self {
             api_key: api_key.into(),
             base_url: DEFAULT_BASE_URL.to_string(),

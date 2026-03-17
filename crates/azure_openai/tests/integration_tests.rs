@@ -15,7 +15,7 @@ fn create_test_client() -> Option<AzureOpenAIClient> {
     let resource_name = std::env::var("AZURE_OPENAI_RESOURCE").ok()?;
     let deployment_name = std::env::var("AZURE_OPENAI_DEPLOYMENT").ok()?;
 
-    AzureOpenAIClient::new(&resource_name, &deployment_name, &api_key).ok()
+    AzureOpenAIClient::new(&resource_name, &deployment_name, api_key.clone()).ok()
 }
 
 #[test]

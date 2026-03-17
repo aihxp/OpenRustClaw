@@ -9,7 +9,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .expect("AI21_API_KEY environment variable must be set");
 
     // Create client
-    let client = Ai21Client::new(&api_key)?;
+    let client = Ai21Client::new(api_key)?;
 
     // Create chat request
     let request = ChatRequest::builder("jamba-1.5-large")

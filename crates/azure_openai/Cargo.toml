@@ -53,6 +53,7 @@ bytes = { workspace = true }
 tracing = { workspace = true }
 backoff = { workspace = true }
 url = { workspace = true }
+secrecy = { workspace = true }
 urlencoding = { workspace = true }
 
 # Streaming support

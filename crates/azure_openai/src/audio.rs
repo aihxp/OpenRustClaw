@@ -1,5 +1,7 @@
 //! Audio API for Azure OpenAI (Whisper and TTS).
 
+use secrecy::ExposeSecret;
+
 use crate::client::AzureOpenAIClient;
 use crate::error::{AzureOpenAIError, Result};
 
@@ -95,7 +97,7 @@ impl<'a> Audio<'a> {
             http_request = http_request.header("Authorization", auth_header);
         } else {
             if let crate::AzureCredential::ApiKey(key) = &self.client.config().credential {
-                http_request = http_request.header("api-key", key);
+                http_request = http_request.header("api-key", key.expose_secret());
             }
         }
 

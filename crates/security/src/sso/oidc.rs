@@ -6,6 +6,52 @@ use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::net::IpAddr;
+use url::Url;
+
+/// Validate that a URL does not point to a private/internal network address.
+/// Prevents SSRF attacks by rejecting loopback, private, and link-local IPs.
+fn validate_url_not_private(url_str: &str) -> Result<(), SsoError> {
+    let parsed = Url::parse(url_str)
+        .map_err(|e| SsoError::InvalidConfig(format!("Invalid URL: {}", e)))?;
+
+    let host = parsed.host_str()
+        .ok_or_else(|| SsoError::InvalidConfig("URL has no host".to_string()))?;
+
+    // Reject localhost by name
+    if host == "localhost" || host == "127.0.0.1" || host == "::1" || host == "[::1]" {
+        return Err(SsoError::InvalidConfig(format!(
+            "SSRF protection: URL host '{}' resolves to loopback address", host
+        )));
+    }
+
+    // Reject private IP ranges by parsing
+    if let Ok(ip) = host.parse::<IpAddr>() {
+        let is_private = match ip {
+            IpAddr::V4(v4) => {
+                v4.is_loopback()               // 127.0.0.0/8
+                || v4.is_private()              // 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16
+                || v4.is_link_local()           // 169.254.0.0/16
+                || v4.is_unspecified()          // 0.0.0.0
+                || v4.octets()[0] == 100 && (v4.octets()[1] & 0xC0) == 64 // 100.64.0.0/10 (CGNAT)
+            }
+            IpAddr::V6(v6) => {
+                v6.is_loopback()                // ::1
+                || v6.is_unspecified()          // ::
+                || v6.segments()[0] == 0xfe80   // fe80::/10 link-local
+                || v6.segments()[0] == 0xfc00 || v6.segments()[0] == 0xfd00 // ULA
+            }
+        };
+
+        if is_private {
+            return Err(SsoError::InvalidConfig(format!(
+                "SSRF protection: URL host '{}' is a private/internal address", host
+            )));
+        }
+    }
+
+    Ok(())
+}
 
 /// OIDC configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -117,7 +163,8 @@ impl OidcClient {
     /// Fetch discovery document from issuer
     async fn discover(&mut self) -> Result<DiscoveryDocument, SsoError> {
         let discovery_url = format!("{}/.well-known/openid-configuration", self.config.issuer);
-        
+        validate_url_not_private(&discovery_url)?;
+
         let response = self.http_client
             .get(&discovery_url)
             .send()
@@ -138,6 +185,7 @@ impl OidcClient {
     async fn fetch_jwks(&mut self) -> Result<(), SsoError> {
         let jwks_uri = self.metadata.jwks_uri.as_ref()
             .ok_or_else(|| SsoError::OidcError("JWKS URI not available".to_string()))?;
+        validate_url_not_private(jwks_uri)?;
 
         let response = self.http_client
             .get(jwks_uri)
@@ -237,6 +285,8 @@ impl SsoClient for OidcClient {
     }
 
     async fn exchange_code(&self, code: &str, redirect_uri: &str) -> Result<SsoTokens, SsoError> {
+        validate_url_not_private(&self.metadata.token_endpoint)?;
+
         let mut params = HashMap::new();
         params.insert("grant_type", "authorization_code");
         params.insert("code", code);
@@ -275,6 +325,7 @@ impl SsoClient for OidcClient {
             // Fall back to userinfo endpoint
             let userinfo_url = self.metadata.userinfo_endpoint.as_ref()
                 .ok_or_else(|| SsoError::OidcError("No userinfo endpoint".to_string()))?;
+            validate_url_not_private(userinfo_url)?;
 
             let response = self.http_client
                 .get(userinfo_url)
@@ -310,6 +361,8 @@ impl SsoClient for OidcClient {
     }
 
     async fn refresh_token(&self, refresh_token: &str) -> Result<SsoTokens, SsoError> {
+        validate_url_not_private(&self.metadata.token_endpoint)?;
+
         let mut params = HashMap::new();
         params.insert("grant_type", "refresh_token");
         params.insert("refresh_token", refresh_token);
@@ -347,5 +400,36 @@ impl SsoClient for OidcClient {
 
     fn metadata(&self) -> &SsoMetadata {
         &self.metadata
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ssrf_rejects_localhost() {
+        assert!(validate_url_not_private("http://localhost/.well-known/openid-configuration").is_err());
+        assert!(validate_url_not_private("http://127.0.0.1/token").is_err());
+        assert!(validate_url_not_private("http://[::1]/token").is_err());
+    }
+
+    #[test]
+    fn ssrf_rejects_private_ips() {
+        assert!(validate_url_not_private("http://10.0.0.1/token").is_err());
+        assert!(validate_url_not_private("http://172.16.0.1/token").is_err());
+        assert!(validate_url_not_private("http://192.168.1.1/token").is_err());
+        assert!(validate_url_not_private("http://169.254.169.254/latest/meta-data").is_err());
+    }
+
+    #[test]
+    fn ssrf_allows_public_urls() {
+        assert!(validate_url_not_private("https://accounts.google.com/.well-known/openid-configuration").is_ok());
+        assert!(validate_url_not_private("https://login.microsoftonline.com/token").is_ok());
+    }
+
+    #[test]
+    fn ssrf_rejects_unspecified() {
+        assert!(validate_url_not_private("http://0.0.0.0/token").is_err());
     }
 }

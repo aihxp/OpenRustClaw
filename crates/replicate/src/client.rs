@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
+use secrecy::{ExposeSecret, SecretString};
 use tracing::{debug, trace};
 
 use crate::error::{ReplicateError, Result};
@@ -32,7 +33,7 @@ pub struct ReplicateClient {
 #[derive(Debug)]
 struct ClientInner {
     http: reqwest::Client,
-    api_token: String,
+    api_token: SecretString,
     base_url: String,
     max_retries: u32,
     retry_delay: Duration,
@@ -40,7 +41,7 @@ struct ClientInner {
 
 impl ReplicateClient {
     /// Create a new Replicate client with the given API token.
-    pub fn new(api_token: impl Into<String>) -> Result<Self> {
+    pub fn new(api_token: impl Into<SecretString>) -> Result<Self> {
         Self::with_config(ClientConfig::new(api_token))
     }
 
@@ -50,7 +51,7 @@ impl ReplicateClient {
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
         headers.insert(
             AUTHORIZATION,
-            HeaderValue::from_str(&format!("Bearer {}", config.api_token))
+            HeaderValue::from_str(&format!("Bearer {}", config.api_token.expose_secret()))
                 .map_err(|_| ReplicateError::Config {
                     message: "Invalid API token".to_string(),
                 })?,
@@ -111,7 +112,7 @@ impl ReplicateClient {
 
     /// Get the API token.
     pub fn api_token(&self) -> &str {
-        &self.inner.api_token
+        self.inner.api_token.expose_secret()
     }
 
     /// Execute a request with retry logic.
@@ -297,7 +298,7 @@ impl ReplicateClient {
 /// Configuration for the Replicate client.
 #[derive(Debug, Clone)]
 pub struct ClientConfig {
-    pub(crate) api_token: String,
+    pub(crate) api_token: SecretString,
     pub(crate) base_url: String,
     pub(crate) timeout: Duration,
     pub(crate) max_retries: u32,
@@ -306,7 +307,7 @@ pub struct ClientConfig {
 
 impl ClientConfig {
     /// Create a new configuration with the given API token.
-    pub fn new(api_token: impl Into<String>) -> Self {
+    pub fn new(api_token: impl Into<SecretString>) -> Self {
         Self {
             api_token: api_token.into(),
             base_url: DEFAULT_BASE_URL.to_string(),

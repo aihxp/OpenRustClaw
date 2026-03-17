@@ -2,6 +2,8 @@
 //!
 //! The Files API is used to upload files for fine-tuning, assistants, and batch processing.
 
+use secrecy::ExposeSecret;
+
 use crate::client::AzureOpenAIClient;
 use crate::error::{AzureOpenAIError, Result};
 
@@ -137,7 +139,7 @@ impl<'a> Files<'a> {
             request = request.header("Authorization", auth_header);
         } else {
             if let crate::AzureCredential::ApiKey(key) = &self.client.config().credential {
-                request = request.header("api-key", key);
+                request = request.header("api-key", key.expose_secret());
             }
         }
 

@@ -10,6 +10,7 @@ use eventsource_stream::Eventsource;
 use futures::{Stream, StreamExt};
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use serde_json::Value;
+use secrecy::{ExposeSecret, SecretString};
 use tracing::{debug, warn};
 
 use openrustclaw_core::error::{Error, ProviderError, Result};
@@ -27,27 +28,27 @@ const DEFAULT_BASE_URL: &str = "https://api.openai.com";
 /// LLM provider implementation for OpenAI's Chat Completions API.
 pub struct OpenAiProvider {
     client: reqwest::Client,
-    api_key: String,
+    api_key: SecretString,
     model: String,
     base_url: String,
 }
 
 impl OpenAiProvider {
     /// Create a new OpenAI provider with the given API key and model.
-    pub fn new(api_key: String, model: String) -> Self {
+    pub fn new(api_key: impl Into<SecretString>, model: String) -> Self {
         Self {
             client: reqwest::Client::new(),
-            api_key,
+            api_key: api_key.into(),
             model,
             base_url: DEFAULT_BASE_URL.to_string(),
         }
     }
 
     /// Create a new OpenAI provider with a custom base URL.
-    pub fn with_base_url(api_key: String, model: String, base_url: String) -> Self {
+    pub fn with_base_url(api_key: impl Into<SecretString>, model: String, base_url: String) -> Self {
         Self {
             client: reqwest::Client::new(),
-            api_key,
+            api_key: api_key.into(),
             model,
             base_url,
         }
@@ -264,7 +265,7 @@ impl OpenAiProvider {
         );
         headers.insert(
             AUTHORIZATION,
-            HeaderValue::from_str(&format!("Bearer {}", self.api_key))
+            HeaderValue::from_str(&format!("Bearer {}", self.api_key.expose_secret()))
                 .unwrap_or_else(|_| HeaderValue::from_static("")),
         );
         headers

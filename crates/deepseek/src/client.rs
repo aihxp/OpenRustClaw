@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
+use secrecy::{ExposeSecret, SecretString};
 use tracing::{debug, trace};
 
 use crate::error::{DeepSeekError, Result};
@@ -40,7 +41,7 @@ pub struct DeepSeekClient {
 #[derive(Debug)]
 struct ClientInner {
     http: reqwest::Client,
-    api_key: String,
+    api_key: SecretString,
     base_url: String,
     max_retries: u32,
     retry_delay: Duration,
@@ -48,7 +49,7 @@ struct ClientInner {
 
 impl DeepSeekClient {
     /// Create a new DeepSeek client with the given API key.
-    pub fn new(api_key: impl Into<String>) -> Result<Self> {
+    pub fn new(api_key: impl Into<SecretString>) -> Result<Self> {
         Self::with_config(ClientConfig::new(api_key))
     }
 
@@ -58,7 +59,7 @@ impl DeepSeekClient {
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
         headers.insert(
             AUTHORIZATION,
-            HeaderValue::from_str(&format!("Bearer {}", config.api_key))
+            HeaderValue::from_str(&format!("Bearer {}", config.api_key.expose_secret()))
                 .map_err(|_| DeepSeekError::Config {
                     message: "Invalid API key".to_string(),
                 })?,
@@ -100,7 +101,7 @@ impl DeepSeekClient {
 
     /// Get the API key.
     pub fn api_key(&self) -> &str {
-        &self.inner.api_key
+        self.inner.api_key.expose_secret()
     }
 
     /// Execute a request with retry logic.
@@ -225,7 +226,7 @@ impl DeepSeekClient {
 /// Configuration for the DeepSeek client.
 #[derive(Debug, Clone)]
 pub struct ClientConfig {
-    pub(crate) api_key: String,
+    pub(crate) api_key: SecretString,
     pub(crate) base_url: String,
     pub(crate) timeout: Duration,
     pub(crate) max_retries: u32,
@@ -234,7 +235,7 @@ pub struct ClientConfig {
 
 impl ClientConfig {
     /// Create a new configuration with the given API key.
-    pub fn new(api_key: impl Into<String>) -> Self {
+    pub fn new(api_key: impl Into<SecretString>) -> Self {
         Self {
             api_key: api_key.into(),
             base_url: DEFAULT_BASE_URL.to_string(),

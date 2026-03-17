@@ -1,5 +1,6 @@
 //! Chat API for Cohere's Command R and Command R+ models.
 
+use secrecy::ExposeSecret;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
@@ -59,7 +60,7 @@ impl<'a> ChatEndpoint<'a> {
             .inner
             .http
             .post(&url)
-            .header(AUTHORIZATION, format!("Bearer {}", self.client.inner.api_key))
+            .header(AUTHORIZATION, format!("Bearer {}", self.client.inner.api_key.expose_secret()))
             .json(&body)
             .send()
             .await

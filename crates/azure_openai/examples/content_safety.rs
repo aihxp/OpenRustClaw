@@ -30,7 +30,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let client = AzureOpenAIClient::new(
         &resource_name,
         &deployment_name,
-        &api_key,
+        api_key.clone(),
     )?;
 
     println!("Azure OpenAI Content Safety Example\n");

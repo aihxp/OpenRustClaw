@@ -3,6 +3,8 @@
 //! This module provides access to Azure Content Safety integration,
 //! including content filtering results and standalone content safety checks.
 
+use secrecy::ExposeSecret;
+
 use crate::client::AzureOpenAIClient;
 use crate::error::Result;
 
@@ -50,7 +52,7 @@ impl<'a> ContentSafety<'a> {
             request_builder = request_builder.header("Authorization", auth_header);
         } else {
             if let crate::AzureCredential::ApiKey(key) = &self.client.config().credential {
-                request_builder = request_builder.header("Ocp-Apim-Subscription-Key", key);
+                request_builder = request_builder.header("Ocp-Apim-Subscription-Key", key.expose_secret());
             }
         }
 
