@@ -5,6 +5,7 @@ pub mod control;
 pub mod cursor;
 pub mod doctor;
 pub mod mcp2cli;
+pub mod meet;
 pub mod memory;
 pub mod models;
 pub mod onboard;

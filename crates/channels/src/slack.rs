@@ -290,7 +290,10 @@ impl Channel for SlackChannel {
                 }
             ]);
         }
-        if let Some(attachments) = msg.metadata.get("slack_attachments").and_then(|v| v.as_array())
+        if let Some(attachments) = msg
+            .metadata
+            .get("slack_attachments")
+            .and_then(|v| v.as_array())
         {
             payload["attachments"] = serde_json::json!(attachments);
         } else if !file_refs.is_empty() && !download_actions {
@@ -886,7 +889,10 @@ mod tests {
         assert_eq!(incoming.metadata["slack_team_id"], "T123");
         assert_eq!(incoming.metadata["slack_thread_ts"], "171234.000100");
         assert_eq!(incoming.metadata["slack_attachment_count"], 1);
-        assert_eq!(incoming.metadata["file_references"][0], "https://files.example.com/file-1/download");
+        assert_eq!(
+            incoming.metadata["file_references"][0],
+            "https://files.example.com/file-1/download"
+        );
     }
 
     #[tokio::test]
@@ -909,7 +915,9 @@ mod tests {
             .and(bearer_token("xoxb-test"))
             .and(body_string_contains("\"type\":\"actions\""))
             .and(body_string_contains("https://files.example.com/report.pdf"))
-            .and(body_string_contains("\"event_type\":\"openrustclaw_stream\""))
+            .and(body_string_contains(
+                "\"event_type\":\"openrustclaw_stream\"",
+            ))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "ok": true,
                 "ts": "1.23"

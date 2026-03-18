@@ -6,16 +6,8 @@
 //! - Threading support
 //! - Slash commands
 //! - Mention handling (@bot)
-//! - Service account authentication
-//! - Pub/Sub or HTTP webhook support
-//!
-//! # Authentication
-//!
-//! Intended authentication model: Google Cloud service account credentials. The
-//! service-account flow is not implemented in this crate yet. Planned inputs:
-//! - Service account JSON key file
-//! - `chat.bot` scope for bot operations
-//! - Project ID for API calls
+//! - Service account or token authentication
+//! - HTTP webhook support
 //!
 //! # API Reference
 //!
@@ -515,12 +507,12 @@ impl GoogleChatChannel {
 
         let key_path = std::path::Path::new(&self.config.service_account_key);
         if key_path.exists() {
-            let raw = tokio::fs::read_to_string(key_path)
-                .await
-                .map_err(|e| ChannelError::AuthFailed {
+            let raw = tokio::fs::read_to_string(key_path).await.map_err(|e| {
+                ChannelError::AuthFailed {
                     platform: "google_chat".to_string(),
                     message: format!("Failed to read Google Chat key file: {}", e),
-                })?;
+                }
+            })?;
             if let Ok(json) = serde_json::from_str::<serde_json::Value>(&raw)
                 && let Some(token) = json.get("access_token").and_then(|value| value.as_str())
                 && !token.trim().is_empty()
@@ -528,13 +520,13 @@ impl GoogleChatChannel {
                 return Ok(token.to_string());
             }
             if let Ok(service_account) = serde_json::from_str::<ServiceAccountKey>(&raw) {
-                return self
-                    .exchange_service_account_token(&service_account)
-                    .await;
+                return self.exchange_service_account_token(&service_account).await;
             }
         }
 
-        warn!("Google Chat auth requires `token:<value>`, `env:VAR`, or a JSON file containing `access_token`");
+        warn!(
+            "Google Chat auth requires `token:<value>`, `env:VAR`, or a JSON file containing `access_token`"
+        );
         Err(ChannelError::AuthFailed {
             platform: "google_chat".to_string(),
             message: "Google Chat authentication is not configured with a usable access token"
@@ -685,7 +677,10 @@ impl Channel for GoogleChatChannel {
 
         let response = self
             .http_client
-            .post(format!("{}/messages", GOOGLE_CHAT_API_BASE.to_string() + "/" + space_name))
+            .post(format!(
+                "{}/messages",
+                GOOGLE_CHAT_API_BASE.to_string() + "/" + space_name
+            ))
             .bearer_auth(&token)
             .json(&message_payload)
             .send()
@@ -827,6 +822,31 @@ impl GoogleChatWebhookHandler {
         }
     }
 
+    fn should_respond(&self, event: &ChatEvent) -> bool {
+        match self.config.response_mode {
+            GoogleChatResponseMode::SlashCommands => event
+                .message
+                .as_ref()
+                .and_then(|m| m.slash_command.as_ref())
+                .is_some(),
+            GoogleChatResponseMode::Mention => event
+                .message
+                .as_ref()
+                .and_then(|m| m.annotations.as_ref())
+                .map(|annots| {
+                    annots.iter().any(|a| {
+                        a.annotation_type == "USER_MENTION"
+                            && a.user_mention
+                                .as_ref()
+                                .map(|um| um.user.name.contains("/bots/"))
+                                .unwrap_or(false)
+                    })
+                })
+                .unwrap_or(false),
+            GoogleChatResponseMode::Open => true,
+        }
+    }
+
     /// Handle an incoming webhook event.
     ///
     /// This should be called by your HTTP server when a webhook is received
@@ -896,6 +916,15 @@ impl GoogleChatWebhookHandler {
             })));
         }
 
+        if !self.should_respond(&event) {
+            debug!(
+                response_mode = ?self.config.response_mode,
+                space_id = %space_id,
+                "Ignoring Google Chat message because response mode did not match"
+            );
+            return Ok(None);
+        }
+
         // Build metadata
         let mut metadata = serde_json::json!({
             "google_chat_space": event.space.name,
@@ -903,6 +932,15 @@ impl GoogleChatWebhookHandler {
             "google_chat_user_name": user.name,
             "google_chat_user_display_name": user.display_name,
         });
+        if let Some(display_name) = event.space.display_name.as_ref() {
+            metadata["google_chat_space_display_name"] = serde_json::json!(display_name);
+        }
+        if let Some(argument_text) = message.argument_text.as_ref() {
+            metadata["google_chat_argument_text"] = serde_json::json!(argument_text);
+        }
+        if let Some(slash_command) = message.slash_command.as_ref() {
+            metadata["google_chat_slash_command_id"] = serde_json::json!(slash_command.command_id);
+        }
 
         // Add thread info if present
         if let Some(thread) = &message.thread {
@@ -1075,10 +1113,7 @@ mod tests {
             }]
         });
         let cards = GoogleChatChannel::parse_file_reference_cards(&metadata).unwrap();
-        assert_eq!(
-            cards[0].card.sections[0].widgets.len(),
-            1
-        );
+        assert_eq!(cards[0].card.sections[0].widgets.len(), 1);
     }
 
     #[test]

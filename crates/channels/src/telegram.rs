@@ -219,9 +219,7 @@ impl TelegramChannel {
                                         values
                                             .iter()
                                             .filter_map(|option| {
-                                                option
-                                                    .get("text")
-                                                    .and_then(|value| value.as_str())
+                                                option.get("text").and_then(|value| value.as_str())
                                             })
                                             .collect::<Vec<_>>()
                                             .join(", ")
@@ -336,10 +334,14 @@ impl TelegramChannel {
                     }
                     if let Some(photo) = message.get("photo").and_then(|value| value.as_array()) {
                         metadata["telegram_media_type"] = serde_json::json!("image");
-                        metadata["telegram_file_references"] = serde_json::json!(photo
-                            .iter()
-                            .filter_map(|entry| entry.get("file_id").and_then(|value| value.as_str()))
-                            .collect::<Vec<_>>());
+                        metadata["telegram_file_references"] = serde_json::json!(
+                            photo
+                                .iter()
+                                .filter_map(|entry| entry
+                                    .get("file_id")
+                                    .and_then(|value| value.as_str()))
+                                .collect::<Vec<_>>()
+                        );
                     } else if let Some(document) = message.get("document") {
                         metadata["telegram_media_type"] = serde_json::json!("document");
                         metadata["telegram_file_references"] = serde_json::json!([document
@@ -427,7 +429,10 @@ impl Channel for TelegramChannel {
                     .and_then(|values| values.first())
             })
             .and_then(|value| value.as_str());
-        let is_poll = msg.metadata.get("telegram_poll_options").and_then(|value| value.as_array());
+        let is_poll = msg
+            .metadata
+            .get("telegram_poll_options")
+            .and_then(|value| value.as_array());
         let reaction = msg
             .metadata
             .get("telegram_reaction")
@@ -450,7 +455,12 @@ impl Channel for TelegramChannel {
                 _ => "sendMessage",
             }
         };
-        let url = format!("{}/bot{}/{}", self.api_base_url(), self.config.token, endpoint);
+        let url = format!(
+            "{}/bot{}/{}",
+            self.api_base_url(),
+            self.config.token,
+            endpoint
+        );
         let mut payload = serde_json::json!({
             "chat_id": chat_id,
         });

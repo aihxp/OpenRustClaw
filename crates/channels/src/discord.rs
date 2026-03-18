@@ -294,7 +294,11 @@ impl Channel for DiscordChannel {
         if let Some(embed) = embed {
             payload["embeds"] = serde_json::json!([embed]);
         }
-        if let Some(embeds) = msg.metadata.get("discord_embeds").and_then(|v| v.as_array()) {
+        if let Some(embeds) = msg
+            .metadata
+            .get("discord_embeds")
+            .and_then(|v| v.as_array())
+        {
             payload["embeds"] = serde_json::json!(embeds);
         } else if let Some(file_refs) = msg
             .metadata
@@ -804,31 +808,36 @@ fn normalize_gateway_message(
     });
     if !event.attachments.is_empty() {
         metadata["discord_attachments"] = serde_json::json!(event.attachments);
-        metadata["discord_attachment_urls"] = serde_json::json!(event
-            .attachments
-            .iter()
-            .filter_map(|attachment| attachment.get("url").and_then(|value| value.as_str()))
-            .collect::<Vec<_>>());
+        metadata["discord_attachment_urls"] = serde_json::json!(
+            event
+                .attachments
+                .iter()
+                .filter_map(|attachment| attachment.get("url").and_then(|value| value.as_str()))
+                .collect::<Vec<_>>()
+        );
         metadata["discord_forwarded_attachment_count"] = serde_json::json!(event.attachments.len());
-        metadata["file_references"] = serde_json::json!(event
-            .attachments
-            .iter()
-            .filter_map(|attachment| {
-                let url = attachment.get("url").and_then(|value| value.as_str())?;
-                let mut reference = serde_json::json!({ "url": url });
-                if let Some(name) = attachment.get("filename").and_then(|value| value.as_str()) {
-                    reference["name"] = serde_json::json!(name);
-                    reference["title"] = serde_json::json!(name);
-                }
-                if let Some(content_type) = attachment
-                    .get("content_type")
-                    .and_then(|value| value.as_str())
-                {
-                    reference["content_type"] = serde_json::json!(content_type);
-                }
-                Some(reference)
-            })
-            .collect::<Vec<_>>());
+        metadata["file_references"] = serde_json::json!(
+            event
+                .attachments
+                .iter()
+                .filter_map(|attachment| {
+                    let url = attachment.get("url").and_then(|value| value.as_str())?;
+                    let mut reference = serde_json::json!({ "url": url });
+                    if let Some(name) = attachment.get("filename").and_then(|value| value.as_str())
+                    {
+                        reference["name"] = serde_json::json!(name);
+                        reference["title"] = serde_json::json!(name);
+                    }
+                    if let Some(content_type) = attachment
+                        .get("content_type")
+                        .and_then(|value| value.as_str())
+                    {
+                        reference["content_type"] = serde_json::json!(content_type);
+                    }
+                    Some(reference)
+                })
+                .collect::<Vec<_>>()
+        );
     }
     if let Some(guild_id) = event.guild_id {
         metadata["discord_guild_id"] = serde_json::json!(guild_id);

@@ -118,7 +118,34 @@ allowed_spaces = []  # List of allowed space IDs (empty = allow all)
 pubsub_subscription = "google-chat-subscription"
 
 # Rate limiting (Google Chat allows ~30 msg/sec per bot)
-rate_limit_per_second = 25
+rate_limit_requests_per_second = 25
+
+# =============================================================================
+# Google Meet Configuration
+# =============================================================================
+[channels.google_meet]
+enabled = false
+
+# Path to Google service account JSON key with domain-wide delegation
+service_account_key_path = "/path/to/service-account.json"
+
+# Delegated Google Workspace user for Meet API access
+delegated_user_email = "user@example.com"
+
+# Webhook path for Google Workspace Events / Pub/Sub push delivery
+webhook_path = "/webhooks/google-meet/events"
+
+# Optional allowlist of Meet spaces (empty = all spaces)
+allowed_spaces = []
+
+# Optional additional scopes for conference artifacts/events
+additional_scopes = []
+
+# Hydrate transcript entries eagerly on transcript events
+hydrate_transcript_events = true
+
+# Rate limiting for Meet API calls
+rate_limit_requests_per_second = 5
 
 # =============================================================================
 # Gmail Pub/Sub Configuration
@@ -132,18 +159,22 @@ project_id = "my-gcp-project"
 # Pub/Sub subscription name for Gmail notifications
 subscription_name = "gmail-notifications"
 
-# Path to Google Cloud service account JSON key file
-service_account_key = "/path/to/service-account.json"
+# Optional fully-qualified Pub/Sub topic name.
+# If omitted, OpenRustClaw derives it from project_id + subscription_name.
+# topic_name = "projects/my-gcp-project/topics/gmail-notifications"
 
-# Gmail user ID (typically 'me' for authenticated user)
-user_id = "me"
+# Path to Google Cloud service account JSON key file
+service_account_key_path = "/path/to/service-account.json"
+
+# Gmail user email address to monitor
+user_email = "user@example.com"
 
 # Label filters - only process emails with these labels
 # Leave empty to process all emails
 label_filters = ["INBOX", "IMPORTANT"]
 
 # Rate limiting for Gmail API calls
-rate_limit_per_second = 10
+rate_limit_requests_per_second = 10
 
 # =============================================================================
 # Webhook Configuration (Generic)

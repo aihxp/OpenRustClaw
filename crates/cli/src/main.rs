@@ -49,6 +49,11 @@ enum Commands {
         #[command(subcommand)]
         action: ScheduleAction,
     },
+    /// Google Meet operator integration
+    Meet {
+        #[command(subcommand)]
+        action: MeetAction,
+    },
     /// Manage file-backed control-plane profiles and multi-claw runtime mode
     Control {
         #[command(subcommand)]
@@ -274,6 +279,73 @@ enum ScheduleAction {
         name: Option<String>,
         #[arg(short, long, default_value_t = 20)]
         limit: usize,
+    },
+}
+
+#[derive(Subcommand)]
+enum MeetAction {
+    /// Create a new Google Meet space
+    CreateSpace {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+    },
+    /// Fetch one Meet space by resource name
+    GetSpace {
+        name: String,
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+    },
+    /// End the active conference for a Meet space
+    EndSpace {
+        name: String,
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+    },
+    /// List conference records
+    ListRecords {
+        #[arg(short, long, default_value_t = 20)]
+        limit: usize,
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+    },
+    /// List participants for a conference record
+    ListParticipants {
+        conference_record: String,
+        #[arg(short, long, default_value_t = 100)]
+        limit: usize,
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+    },
+    /// List recordings for a conference record
+    ListRecordings {
+        conference_record: String,
+        #[arg(short, long, default_value_t = 100)]
+        limit: usize,
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+    },
+    /// List transcripts for a conference record
+    ListTranscripts {
+        conference_record: String,
+        #[arg(short, long, default_value_t = 100)]
+        limit: usize,
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+    },
+    /// Show transcript entries for a transcript resource
+    ShowTranscript {
+        transcript: String,
+        #[arg(short, long, default_value_t = 500)]
+        limit: usize,
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+    },
+    /// Decode a Google Workspace Events / Pub/Sub push payload
+    DecodeEvent {
+        /// File path containing the raw JSON envelope, or '-' for stdin
+        input: String,
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
     },
 }
 
@@ -903,6 +975,41 @@ async fn main() -> Result<()> {
             }
             ScheduleAction::Events { name, limit } => {
                 commands::schedule::events(name.as_deref(), limit).await
+            }
+        },
+        Commands::Meet { action } => match action {
+            MeetAction::CreateSpace { config } => commands::meet::create_space(&config).await,
+            MeetAction::GetSpace { name, config } => {
+                commands::meet::get_space(&config, &name).await
+            }
+            MeetAction::EndSpace { name, config } => {
+                commands::meet::end_space(&config, &name).await
+            }
+            MeetAction::ListRecords { limit, config } => {
+                commands::meet::list_records(&config, limit).await
+            }
+            MeetAction::ListParticipants {
+                conference_record,
+                limit,
+                config,
+            } => commands::meet::list_participants(&config, &conference_record, limit).await,
+            MeetAction::ListRecordings {
+                conference_record,
+                limit,
+                config,
+            } => commands::meet::list_recordings(&config, &conference_record, limit).await,
+            MeetAction::ListTranscripts {
+                conference_record,
+                limit,
+                config,
+            } => commands::meet::list_transcripts(&config, &conference_record, limit).await,
+            MeetAction::ShowTranscript {
+                transcript,
+                limit,
+                config,
+            } => commands::meet::show_transcript(&config, &transcript, limit).await,
+            MeetAction::DecodeEvent { input, config } => {
+                commands::meet::decode_event(&config, &input).await
             }
         },
         Commands::Control { action } => match action {

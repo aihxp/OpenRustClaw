@@ -3,20 +3,20 @@
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use axum::{
-    Router,
+    Json, Router,
     body::Bytes,
     extract::{Path as AxumPath, State},
     http::{HeaderMap, StatusCode},
     response::IntoResponse,
     routing::{get, post},
-    Json,
 };
 use chrono::{DateTime, Utc};
 use futures::Stream;
 use openrustclaw_agent::runtime::AgentRuntime;
 use openrustclaw_channels::discord::DiscordInteractionsHandler;
-use openrustclaw_channels::imessage::{BlueBubblesMessage, IMessageWebhookHandler};
+use openrustclaw_channels::gmail_pubsub::GmailWebhookHandler;
 use openrustclaw_channels::google_chat::GoogleChatWebhookHandler;
+use openrustclaw_channels::imessage::{BlueBubblesMessage, IMessageWebhookHandler};
 use openrustclaw_channels::slack::SlackEventHandler;
 use openrustclaw_channels::teams::TeamsWebhookHandler;
 use openrustclaw_core::error::{ChannelError as CoreChannelError, Error as CoreError, McpError};
@@ -230,6 +230,7 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
     let mut slack_ingress_handler = None;
     let mut teams_ingress_handler = None;
     let mut google_chat_ingress_handler = None;
+    let mut gmail_ingress_handler = None;
     let mut imessage_ingress_handler = None;
     let mut enabled_channels = Vec::new();
     let channel_registry = Arc::new(tokio::sync::RwLock::new(
@@ -306,6 +307,20 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
             Err(e) => {
                 error!(error = %e, "Failed to create Google Chat channel");
                 channel_config.google_chat.enabled = false;
+            }
+        }
+    }
+
+    if channel_config.gmail_pubsub.enabled {
+        match ChannelFactory::create_gmail_pubsub(channel_config.gmail_pubsub.clone()) {
+            Ok(gmail_channel) => {
+                gmail_ingress_handler = Some(gmail_channel.webhook_handler());
+                enabled_channels.push(Box::new(gmail_channel) as Box<dyn Channel>);
+                channel_config.gmail_pubsub.enabled = false;
+            }
+            Err(e) => {
+                error!(error = %e, "Failed to create Gmail Pub/Sub channel");
+                channel_config.gmail_pubsub.enabled = false;
             }
         }
     }
@@ -393,6 +408,10 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
         app = app.merge(google_chat_ingress_router(handler));
         info!("Google Chat ingress enabled at /webhooks/google-chat/events");
     }
+    if let Some(handler) = gmail_ingress_handler {
+        app = app.merge(gmail_ingress_router(handler));
+        info!("Gmail Pub/Sub ingress enabled at /webhooks/gmail/pubsub");
+    }
     if let Some(handler) = imessage_ingress_handler {
         app = app.merge(imessage_ingress_router(handler));
         info!("iMessage BlueBubbles ingress enabled at /webhooks/imessage/bluebubbles");
@@ -475,8 +494,9 @@ fn gate_nonshipping_channels(config: &mut openrustclaw_core::config::ChannelsCon
         warn!("Teams is on a partial shipped path; deeper parity is still incomplete");
     }
     if config.gmail_pubsub.enabled {
-        warn!("Gmail Pub/Sub is currently gated and will not be started by `openrustclaw start`");
-        config.gmail_pubsub.enabled = false;
+        warn!(
+            "Gmail Pub/Sub is on a partial shipped path; deeper operator parity is still incomplete"
+        );
     }
     if config.matrix.enabled {
         warn!("Matrix is on a partial shipped path; deeper parity is still incomplete");
@@ -2196,7 +2216,10 @@ fn channel_registry_router(registry: Arc<tokio::sync::RwLock<ChannelRegistry>>) 
             "/control/channels/accounts/{id}/activation",
             post(channel_registry_activation_handler),
         )
-        .route("/control/channels/bindings", post(channel_registry_bind_handler))
+        .route(
+            "/control/channels/bindings",
+            post(channel_registry_bind_handler),
+        )
         .with_state(ChannelRegistryApiState { registry })
 }
 
@@ -2220,7 +2243,10 @@ async fn channel_registry_account_handler(
     let registry = state.registry.read().await;
     match registry.accounts.get(&id) {
         Some(account) => (StatusCode::OK, Json(serde_json::json!(account))).into_response(),
-        None => (StatusCode::NOT_FOUND, Json(serde_json::json!({"error": "account not found"})))
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": "account not found"})),
+        )
             .into_response(),
     }
 }
@@ -2318,9 +2344,7 @@ async fn mutate_channel_registry_account(
     let result = match action {
         "approve" => super::channels::approve(Some(&root), id),
         "block" => super::channels::block(Some(&root), id),
-        "activation" => {
-            super::channels::activation(Some(&root), id, mode.as_deref().unwrap_or(""))
-        }
+        "activation" => super::channels::activation(Some(&root), id, mode.as_deref().unwrap_or("")),
         _ => Err(anyhow::anyhow!("unsupported channel registry action")),
     };
 
@@ -2361,7 +2385,10 @@ struct IMessageIngressState {
 
 fn imessage_ingress_router(handler: IMessageWebhookHandler) -> Router {
     Router::new()
-        .route("/webhooks/imessage/bluebubbles", post(imessage_bluebubbles_handler))
+        .route(
+            "/webhooks/imessage/bluebubbles",
+            post(imessage_bluebubbles_handler),
+        )
         .with_state(IMessageIngressState {
             handler: Arc::new(handler),
         })
@@ -2425,7 +2452,10 @@ struct GoogleChatIngressState {
 
 fn google_chat_ingress_router(handler: GoogleChatWebhookHandler) -> Router {
     Router::new()
-        .route("/webhooks/google-chat/events", post(google_chat_events_handler))
+        .route(
+            "/webhooks/google-chat/events",
+            post(google_chat_events_handler),
+        )
         .with_state(GoogleChatIngressState {
             handler: Arc::new(handler),
         })
@@ -2438,6 +2468,29 @@ async fn google_chat_events_handler(
     match state.handler.handle_event(&body).await {
         Ok(Some(response)) => (StatusCode::OK, Json(response)).into_response(),
         Ok(None) => StatusCode::OK.into_response(),
+        Err(error) => (StatusCode::BAD_REQUEST, error.to_string()).into_response(),
+    }
+}
+
+#[derive(Clone)]
+struct GmailIngressState {
+    handler: Arc<GmailWebhookHandler>,
+}
+
+fn gmail_ingress_router(handler: GmailWebhookHandler) -> Router {
+    Router::new()
+        .route("/webhooks/gmail/pubsub", post(gmail_pubsub_handler))
+        .with_state(GmailIngressState {
+            handler: Arc::new(handler),
+        })
+}
+
+async fn gmail_pubsub_handler(
+    State(state): State<GmailIngressState>,
+    body: Bytes,
+) -> impl IntoResponse {
+    match state.handler.handle_push(&body).await {
+        Ok(()) => StatusCode::OK.into_response(),
         Err(error) => (StatusCode::BAD_REQUEST, error.to_string()).into_response(),
     }
 }
@@ -5023,7 +5076,7 @@ mod tests {
 
         assert!(config.teams.enabled);
         assert!(config.google_chat.enabled);
-        assert!(!config.gmail_pubsub.enabled);
+        assert!(config.gmail_pubsub.enabled);
         assert!(config.matrix.enabled);
         assert!(!config.line.enabled);
         assert!(!config.viber.enabled);

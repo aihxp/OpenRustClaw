@@ -747,7 +747,7 @@ impl WhatsAppChannel {
                         platform: "whatsapp".to_string(),
                         message: "WhatsApp bridge did not become ready in time".to_string(),
                     }
-                    .into())
+                    .into());
                 }
                 _ => {}
             }
@@ -955,11 +955,7 @@ fn normalize_whatsapp_chat_target(
     }
 
     let jid = from.to_string();
-    let chat_id = from
-        .split('@')
-        .next()
-        .unwrap_or(from)
-        .to_string();
+    let chat_id = from.split('@').next().unwrap_or(from).to_string();
     (jid, chat_id)
 }
 

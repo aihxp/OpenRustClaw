@@ -235,6 +235,7 @@ pub struct ChannelsConfig {
     pub whatsapp: WhatsAppConfig,
     pub teams: TeamsConfig,
     pub google_chat: GoogleChatConfig,
+    pub google_meet: GoogleMeetConfig,
     pub gmail_pubsub: GmailPubSubConfig,
     pub signal: SignalConfig,
     pub matrix: MatrixConfig,
@@ -410,6 +411,30 @@ pub enum GoogleChatResponseMode {
     SlashCommands,
 }
 
+/// Google Meet integration configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GoogleMeetConfig {
+    pub enabled: bool,
+    /// Path to service account JSON key file, or `token:<value>`, or `env:VAR`
+    pub service_account_key_path: String,
+    /// Delegated Google Workspace user email for Meet API access
+    pub delegated_user_email: String,
+    /// Webhook path for Google Workspace Events / Pub/Sub push delivery
+    pub webhook_path: String,
+    /// Optional space allowlist (empty = all spaces)
+    pub allowed_spaces: Vec<String>,
+    /// Rate limit for Meet API requests per second
+    pub rate_limit_requests_per_second: u32,
+    /// Optional override for the Google Meet API base URL
+    pub api_base_url: Option<String>,
+    /// Optional override for the Google OAuth token URL
+    pub oauth_token_url: Option<String>,
+    /// Additional OAuth scopes to request beyond the built-in Meet defaults
+    pub additional_scopes: Vec<String>,
+    /// Whether transcript events should hydrate transcript entries eagerly
+    pub hydrate_transcript_events: bool,
+}
+
 /// Gmail Pub/Sub configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GmailPubSubConfig {
@@ -418,6 +443,8 @@ pub struct GmailPubSubConfig {
     pub project_id: String,
     /// Pub/Sub subscription name
     pub subscription_name: String,
+    /// Optional fully qualified Pub/Sub topic name for Gmail watch notifications
+    pub topic_name: Option<String>,
     /// Path to service account JSON key file
     pub service_account_key_path: String,
     /// Gmail user email address
@@ -432,6 +459,10 @@ pub struct GmailPubSubConfig {
     pub max_history_fetch: u32,
     /// Rate limit for Gmail API requests per second
     pub rate_limit_requests_per_second: u32,
+    /// Optional override for the Gmail API base URL
+    pub api_base_url: Option<String>,
+    /// Optional override for the Google OAuth token URL
+    pub oauth_token_url: Option<String>,
 }
 
 /// Signal messenger configuration.
@@ -871,10 +902,23 @@ impl Default for AppConfig {
                     cards_enabled: true,
                     response_mode: GoogleChatResponseMode::Mention,
                 },
+                google_meet: GoogleMeetConfig {
+                    enabled: false,
+                    service_account_key_path: String::new(),
+                    delegated_user_email: String::new(),
+                    webhook_path: "/webhooks/google-meet/events".to_string(),
+                    allowed_spaces: Vec::new(),
+                    rate_limit_requests_per_second: 5,
+                    api_base_url: None,
+                    oauth_token_url: None,
+                    additional_scopes: Vec::new(),
+                    hydrate_transcript_events: true,
+                },
                 gmail_pubsub: GmailPubSubConfig {
                     enabled: false,
                     project_id: String::new(),
                     subscription_name: String::new(),
+                    topic_name: None,
                     service_account_key_path: String::new(),
                     user_email: String::new(),
                     label_filters: vec!["INBOX".to_string(), "UNREAD".to_string()],
@@ -882,6 +926,8 @@ impl Default for AppConfig {
                     auto_reply: false,
                     max_history_fetch: 100,
                     rate_limit_requests_per_second: 10,
+                    api_base_url: None,
+                    oauth_token_url: None,
                 },
                 signal: SignalConfig {
                     enabled: false,

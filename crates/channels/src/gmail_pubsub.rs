@@ -1,59 +1,20 @@
-//! Gmail Pub/Sub Integration for Email-based Workflows
-//!
-//! This module provides integration with Gmail via Google Cloud Pub/Sub push notifications.
-//! It allows the agent to receive real-time email notifications and take actions such as:
-//! - Auto-replying to emails
-//! - Labeling and archiving
-//! - Triggering workflows based on email content
-//!
-//! # Authentication
-//!
-//! Intended authentication model: Google Cloud service account credentials with
-//! domain-wide delegation. The service-account flow is not implemented in this
-//! crate yet.
-//!
-//! # Setup Requirements
-//!
-//! 1. Create a Google Cloud project
-//! 2. Enable Gmail API and Pub/Sub API
-//! 3. Create a service account with domain-wide delegation
-//! 4. Create a Pub/Sub topic and subscription
-//! 5. Configure Gmail watch on the user's mailbox
-//!
-//! # Example
-//!
-//! ```rust,no_run
-//! use openrustclaw_channels::gmail_pubsub::GmailPubSub;
-//! use openrustclaw_core::config::GmailPubSubConfig;
-//!
-//! let config = GmailPubSubConfig {
-//!     enabled: true,
-//!     project_id: "my-project".to_string(),
-//!     subscription_name: "gmail-notifications".to_string(),
-//!     service_account_key_path: "/path/to/service-account.json".to_string(),
-//!     user_email: "user@example.com".to_string(),
-//!     label_filters: vec!["INBOX".to_string(), "UNREAD".to_string()],
-//!     query_filter: Some("from:github.com".to_string()),
-//!     auto_reply: false,
-//!     max_history_fetch: 100,
-//!     rate_limit_requests_per_second: 10,
-//! };
-//!
-//! let gmail = GmailPubSub::new(config);
-//! ```
+//! Gmail Pub/Sub integration for email-driven workflows.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use base64::{Engine, engine::general_purpose::STANDARD};
-use chrono;
+use base64::Engine;
+use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
+use chrono::{DateTime, Utc};
 use governor::{Quota, RateLimiter};
-use serde::Deserialize;
+use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
+use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
 use std::num::NonZeroU32;
 use tokio::sync::{Mutex, RwLock, mpsc};
-use tracing::{debug, error, info, warn};
+use tracing::info;
 use uuid::Uuid;
 
 use openrustclaw_core::config::GmailPubSubConfig;
@@ -61,11 +22,15 @@ use openrustclaw_core::error::{ChannelError, Result};
 use openrustclaw_core::traits::Channel;
 use openrustclaw_core::types::{IncomingMessage, OutgoingMessage, Platform};
 
-/// Gmail Pub/Sub channel implementation.
-pub struct GmailPubSub {
+const DEFAULT_GMAIL_API_BASE: &str = "https://gmail.googleapis.com/gmail/v1";
+const DEFAULT_GOOGLE_OAUTH_TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
+const GMAIL_SCOPES: &str =
+    "https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.send";
+
+#[derive(Clone)]
+struct GmailRuntime {
     config: GmailPubSubConfig,
     incoming_tx: mpsc::Sender<IncomingMessage>,
-    incoming_rx: Mutex<mpsc::Receiver<IncomingMessage>>,
     rate_limiter: Arc<
         RateLimiter<
             governor::state::NotKeyed,
@@ -74,355 +39,317 @@ pub struct GmailPubSub {
             governor::middleware::NoOpMiddleware,
         >,
     >,
-    is_connected: RwLock<bool>,
-    _http_client: reqwest::Client,
-    access_token: RwLock<Option<String>>,
+    is_connected: Arc<RwLock<bool>>,
+    access_token: Arc<RwLock<Option<String>>>,
+    http_client: reqwest::Client,
 }
 
-/// Gmail message notification from Pub/Sub.
+pub struct GmailPubSub {
+    runtime: GmailRuntime,
+    incoming_rx: Mutex<mpsc::Receiver<IncomingMessage>>,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct GmailNotification {
-    /// The email address that received the message.
     #[serde(rename = "emailAddress")]
     pub email_address: String,
-    /// The history ID for fetching changes.
     #[serde(rename = "historyId")]
     pub history_id: u64,
 }
 
-/// Parsed email message.
 #[derive(Debug, Clone)]
 pub struct EmailMessage {
-    /// Unique message ID.
     pub id: String,
-    /// Thread ID this message belongs to.
     pub thread_id: String,
-    /// History ID for this message.
     pub history_id: u64,
-    /// Sender email address.
     pub from: String,
-    /// Recipient email addresses.
     pub to: Vec<String>,
-    /// CC email addresses.
     pub cc: Vec<String>,
-    /// Email subject.
     pub subject: String,
-    /// Plain text body.
     pub body_text: String,
-    /// HTML body (if available).
     pub body_html: Option<String>,
-    /// Attachments.
     pub attachments: Vec<Attachment>,
-    /// Gmail labels.
     pub labels: Vec<String>,
-    /// When the email was received.
-    pub received_at: chrono::DateTime<chrono::Utc>,
-    /// Whether the email is unread.
+    pub received_at: DateTime<Utc>,
     pub is_unread: bool,
 }
 
-/// Email attachment metadata.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Attachment {
-    /// Filename of the attachment.
     pub filename: String,
-    /// MIME type of the attachment.
     pub mime_type: String,
-    /// Size in bytes.
     pub size: usize,
-    /// Gmail attachment ID for downloading.
     pub attachment_id: String,
 }
 
-/// Email action to take on a message.
 #[derive(Debug, Clone)]
 pub enum EmailAction {
-    /// Reply to the email.
-    Reply { body: String },
-    /// Add or remove labels.
+    Reply {
+        body: String,
+    },
     Label {
         add: Vec<String>,
         remove: Vec<String>,
     },
-    /// Archive the email (remove INBOX label).
     Archive,
-    /// Delete the email.
     Delete,
-    /// Forward the email.
-    Forward { to: String, body: String },
-    /// Trigger a workflow.
-    TriggerWorkflow { workflow_name: String },
+    Forward {
+        to: String,
+        body: String,
+    },
+    TriggerWorkflow {
+        workflow_name: String,
+    },
 }
 
-/// Event emitted when a new email arrives.
-#[derive(Debug, Clone)]
-pub struct NewEmailEvent {
-    /// The email message.
-    pub email: EmailMessage,
-    /// Action taken on the email (if any).
-    pub action_taken: Option<EmailAction>,
+#[derive(Debug, Clone, Deserialize)]
+struct ServiceAccountKey {
+    client_email: String,
+    private_key: String,
+    #[serde(default = "default_google_token_uri")]
+    token_uri: String,
 }
 
-/// Response from Gmail watch API.
+fn default_google_token_uri() -> String {
+    DEFAULT_GOOGLE_OAUTH_TOKEN_URL.to_string()
+}
+
+#[derive(Debug, Serialize)]
+struct ServiceAccountClaims {
+    iss: String,
+    scope: String,
+    aud: String,
+    exp: i64,
+    iat: i64,
+    sub: String,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 struct WatchResponse {
-    /// The history ID to start from.
-    pub history_id: String,
-    /// The expiration time of the watch.
-    pub expiration: String,
+    #[serde(rename = "historyId")]
+    history_id: String,
+    expiration: String,
 }
 
-/// Gmail API message metadata.
-#[derive(Debug, Clone, Deserialize)]
-#[allow(dead_code)]
+#[derive(Debug, Clone, Deserialize, Eq, PartialEq, Hash)]
 struct MessageMetadata {
-    /// Message ID.
-    pub id: String,
-    /// Thread ID.
+    id: String,
     #[serde(rename = "threadId")]
-    pub thread_id: String,
+    thread_id: String,
 }
 
-/// Gmail API message part (for parsing multipart messages).
 #[derive(Debug, Clone, Deserialize, Default)]
-#[allow(dead_code)]
 struct MessagePart {
-    /// MIME type of this part.
-    #[serde(rename = "mimeType")]
-    pub mime_type: String,
-    /// Body content.
-    pub body: MessagePartBody,
-    /// Filename (for attachments).
-    pub filename: Option<String>,
-    /// Nested parts (for multipart messages).
+    #[serde(rename = "mimeType", default)]
+    mime_type: String,
     #[serde(default)]
-    pub parts: Vec<MessagePart>,
-    /// Headers.
+    body: MessagePartBody,
     #[serde(default)]
-    pub headers: Vec<MessageHeader>,
+    filename: String,
+    #[serde(default)]
+    parts: Vec<MessagePart>,
+    #[serde(default)]
+    headers: Vec<MessageHeader>,
 }
 
-/// Gmail API message part body.
 #[derive(Debug, Clone, Deserialize, Default)]
-#[allow(dead_code)]
 struct MessagePartBody {
-    /// Base64 encoded data.
-    pub data: Option<String>,
-    /// Attachment ID (if this is an attachment).
+    data: Option<String>,
     #[serde(rename = "attachmentId")]
-    pub attachment_id: Option<String>,
-    /// Size in bytes.
-    pub size: i64,
+    attachment_id: Option<String>,
+    #[serde(default)]
+    size: i64,
 }
 
-/// Gmail API message header.
 #[derive(Debug, Clone, Deserialize)]
-#[allow(dead_code)]
 struct MessageHeader {
-    /// Header name.
-    pub name: String,
-    /// Header value.
-    pub value: String,
+    name: String,
+    value: String,
 }
 
-/// Gmail API full message.
 #[derive(Debug, Clone, Deserialize)]
-#[allow(dead_code)]
 struct GmailMessage {
-    /// Message ID.
-    pub id: String,
-    /// Thread ID.
+    id: String,
     #[serde(rename = "threadId")]
-    pub thread_id: String,
-    /// Label IDs.
-    #[serde(rename = "labelIds")]
-    pub label_ids: Vec<String>,
-    /// Internal date (timestamp in milliseconds).
-    #[serde(rename = "internalDate")]
-    pub internal_date: String,
-    /// Message payload.
-    pub payload: MessagePart,
-    /// History ID.
-    #[serde(rename = "historyId")]
-    pub history_id: String,
+    thread_id: String,
+    #[serde(rename = "labelIds", default)]
+    label_ids: Vec<String>,
+    #[serde(rename = "internalDate", default)]
+    internal_date: String,
+    payload: MessagePart,
+    #[serde(rename = "historyId", default)]
+    history_id: String,
 }
 
-/// Gmail API history response.
 #[derive(Debug, Clone, Deserialize)]
-#[allow(dead_code)]
 struct HistoryResponse {
-    /// History records.
-    pub history: Vec<HistoryRecord>,
-    /// Next page token.
-    #[serde(rename = "nextPageToken")]
-    pub next_page_token: Option<String>,
-    /// History ID of the latest change.
-    #[serde(rename = "historyId")]
-    pub history_id: Option<String>,
+    #[serde(default)]
+    history: Vec<HistoryRecord>,
 }
 
-/// Gmail API history record.
 #[derive(Debug, Clone, Deserialize)]
-#[allow(dead_code)]
 struct HistoryRecord {
-    /// Messages added in this history record.
-    #[serde(rename = "messagesAdded")]
-    pub messages_added: Vec<MessageAdded>,
+    #[serde(rename = "messagesAdded", default)]
+    messages_added: Vec<MessageAdded>,
 }
 
-/// Message added to history.
 #[derive(Debug, Clone, Deserialize)]
-#[allow(dead_code)]
 struct MessageAdded {
-    /// The message metadata.
-    pub message: MessageMetadata,
+    message: MessageMetadata,
 }
 
-/// Parsed message parts.
+#[derive(Debug, Clone, Deserialize)]
+struct TokenResponse {
+    access_token: String,
+}
+
 #[derive(Debug, Clone, Default)]
-#[allow(dead_code)]
 struct ParsedParts {
-    /// Plain text content.
-    pub text: String,
-    /// HTML content.
-    pub html: Option<String>,
-    /// Attachments.
-    pub attachments: Vec<Attachment>,
+    text: String,
+    html: Option<String>,
+    attachments: Vec<Attachment>,
 }
 
 impl GmailPubSub {
-    /// Create a new Gmail Pub/Sub channel with the given configuration.
     pub fn new(config: GmailPubSubConfig) -> Self {
         let (incoming_tx, incoming_rx) = mpsc::channel(256);
-
-        // Create rate limiter (Gmail API allows ~10+ requests per second)
         let quota = Quota::per_second(
             NonZeroU32::new(config.rate_limit_requests_per_second.max(1))
-                .unwrap_or(NonZeroU32::new(10).unwrap()),
+                .unwrap_or(NonZeroU32::new(10).expect("non-zero")),
         );
-        let rate_limiter = Arc::new(RateLimiter::direct(quota));
 
-        let http_client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(30))
-            .build()
-            .unwrap_or_default();
-
-        Self {
+        let runtime = GmailRuntime {
             config,
             incoming_tx,
+            rate_limiter: Arc::new(RateLimiter::direct(quota)),
+            is_connected: Arc::new(RwLock::new(false)),
+            access_token: Arc::new(RwLock::new(None)),
+            http_client: reqwest::Client::builder()
+                .timeout(Duration::from_secs(30))
+                .build()
+                .unwrap_or_default(),
+        };
+
+        Self {
+            runtime,
             incoming_rx: Mutex::new(incoming_rx),
-            rate_limiter,
-            is_connected: RwLock::new(false),
-            _http_client: http_client,
-            access_token: RwLock::new(None),
         }
     }
 
-    /// Parse email addresses from a comma-separated string.
-    #[allow(dead_code)]
-    fn parse_addresses(s: &str) -> Vec<String> {
-        s.split(',').map(|a| a.trim().to_string()).collect()
+    pub fn webhook_handler(&self) -> GmailWebhookHandler {
+        GmailWebhookHandler {
+            runtime: self.runtime.clone(),
+        }
     }
 
-    /// Check if an email should be processed based on configured filters.
+    pub async fn process_notification(&self, notification: GmailNotification) -> Result<()> {
+        self.runtime.process_notification(notification).await
+    }
+
+    pub async fn take_action(&self, email_id: &str, action: EmailAction) -> Result<()> {
+        self.runtime.take_action(email_id, action).await
+    }
+}
+
+impl GmailRuntime {
+    fn gmail_api_base(&self) -> String {
+        self.config
+            .api_base_url
+            .clone()
+            .unwrap_or_else(|| DEFAULT_GMAIL_API_BASE.to_string())
+            .trim_end_matches('/')
+            .to_string()
+    }
+
+    fn token_url(&self, key: &ServiceAccountKey) -> String {
+        self.config
+            .oauth_token_url
+            .clone()
+            .unwrap_or_else(|| key.token_uri.clone())
+    }
+
+    fn topic_name(&self) -> String {
+        if let Some(topic) = self.config.topic_name.clone() {
+            return topic;
+        }
+        if self.config.subscription_name.contains("/topics/") {
+            return self.config.subscription_name.clone();
+        }
+        if self.config.subscription_name.contains("/subscriptions/") {
+            return self
+                .config
+                .subscription_name
+                .replace("/subscriptions/", "/topics/");
+        }
+        format!(
+            "projects/{}/topics/{}",
+            self.config.project_id, self.config.subscription_name
+        )
+    }
+
+    fn user_path(&self) -> String {
+        urlencoding::encode(&self.config.user_email).to_string()
+    }
+
+    fn parse_addresses(s: &str) -> Vec<String> {
+        s.split(',')
+            .map(|address| address.trim().to_string())
+            .filter(|address| !address.is_empty())
+            .collect()
+    }
+
     fn should_process(&self, email: &EmailMessage) -> bool {
-        // Label filter
         if !self.config.label_filters.is_empty() {
-            let has_matching_label = self
+            let has_matching = self
                 .config
                 .label_filters
                 .iter()
-                .any(|filter| email.labels.iter().any(|l| l.contains(filter)));
-            if !has_matching_label {
-                debug!(email_id = %email.id, "Email filtered out by label filter");
+                .any(|filter| email.labels.iter().any(|label| label.contains(filter)));
+            if !has_matching {
                 return false;
             }
         }
-
-        // Query filter (simple string match)
         if let Some(query) = &self.config.query_filter {
             let search_text = format!("{} {} {}", email.from, email.subject, email.body_text);
             if !search_text.to_lowercase().contains(&query.to_lowercase()) {
-                debug!(email_id = %email.id, "Email filtered out by query filter");
                 return false;
             }
         }
-
         true
     }
 
-    /// Decode base64 URL-safe encoded data.
-    #[allow(dead_code)]
     fn decode_base64(data: &str) -> Option<Vec<u8>> {
-        // Gmail uses URL-safe base64 with possible padding issues
-        let data = data.replace('-', "+").replace('_', "/");
-        STANDARD.decode(&data).ok()
+        let normalized = data.replace('-', "+").replace('_', "/");
+        STANDARD.decode(normalized).ok()
     }
 
-    /// Parse a Gmail API message into an EmailMessage.
-    #[allow(dead_code)]
-    fn parse_message(&self, msg: GmailMessage) -> Result<EmailMessage> {
-        let headers: HashMap<String, String> = msg
-            .payload
-            .headers
+    fn parse_headers(headers: &[MessageHeader]) -> HashMap<String, String> {
+        headers
             .iter()
-            .map(|h| (h.name.clone(), h.value.clone()))
-            .collect();
-
-        let parts = self.get_parts(&msg.payload);
-
-        let internal_date = msg
-            .internal_date
-            .parse::<i64>()
-            .unwrap_or_else(|_| chrono::Utc::now().timestamp_millis());
-
-        let is_unread = msg.label_ids.contains(&"UNREAD".to_string());
-
-        Ok(EmailMessage {
-            id: msg.id,
-            thread_id: msg.thread_id,
-            history_id: msg.history_id.parse().unwrap_or(0),
-            from: headers.get("From").cloned().unwrap_or_default(),
-            to: headers
-                .get("To")
-                .map(|s| Self::parse_addresses(s))
-                .unwrap_or_default(),
-            cc: headers
-                .get("Cc")
-                .map(|s| Self::parse_addresses(s))
-                .unwrap_or_default(),
-            subject: headers.get("Subject").cloned().unwrap_or_default(),
-            body_text: parts.text,
-            body_html: parts.html,
-            attachments: parts.attachments,
-            labels: msg.label_ids.clone(),
-            received_at: chrono::DateTime::from_timestamp_millis(internal_date)
-                .unwrap_or_else(chrono::Utc::now),
-            is_unread,
-        })
+            .map(|header| (header.name.clone(), header.value.clone()))
+            .collect()
     }
 
-    /// Extract parts from a message payload recursively.
-    #[allow(dead_code)]
-    fn get_parts(&self, payload: &MessagePart) -> ParsedParts {
+    fn get_parts(payload: &MessagePart) -> ParsedParts {
         let mut result = ParsedParts::default();
 
         match payload.mime_type.as_str() {
             "text/plain" => {
                 if let Some(data) = &payload.body.data {
                     result.text = Self::decode_base64(data)
-                        .and_then(|b| String::from_utf8(b).ok())
+                        .and_then(|bytes| String::from_utf8(bytes).ok())
                         .unwrap_or_default();
                 }
             }
             "text/html" => {
                 if let Some(data) = &payload.body.data {
-                    result.html = Self::decode_base64(data).and_then(|b| String::from_utf8(b).ok());
+                    result.html =
+                        Self::decode_base64(data).and_then(|bytes| String::from_utf8(bytes).ok());
                 }
             }
             mime if mime.starts_with("multipart/") => {
                 for part in &payload.parts {
-                    let sub = self.get_parts(part);
+                    let sub = Self::get_parts(part);
                     if result.text.is_empty() && !sub.text.is_empty() {
                         result.text = sub.text;
                     }
@@ -432,19 +359,16 @@ impl GmailPubSub {
                     result.attachments.extend(sub.attachments);
                 }
             }
-            _ => {
-                // Other MIME types - could be attachments
-            }
+            _ => {}
         }
 
-        // Check for attachments at this level
         if let Some(attachment_id) = &payload.body.attachment_id
-            && let Some(filename) = payload.filename.clone()
+            && !payload.filename.is_empty()
         {
             result.attachments.push(Attachment {
-                filename,
+                filename: payload.filename.clone(),
                 mime_type: payload.mime_type.clone(),
-                size: payload.body.size as usize,
+                size: payload.body.size.max(0) as usize,
                 attachment_id: attachment_id.clone(),
             });
         }
@@ -452,63 +376,134 @@ impl GmailPubSub {
         result
     }
 
-    /// Authenticate with Gmail API using service account.
-    ///
-    /// In a full implementation, this would:
-    /// 1. Load the service account JSON key file
-    /// 2. Use yup_oauth2 or google-auth to get an access token
-    /// 3. Cache the token and refresh when expired
+    fn parse_message(&self, msg: GmailMessage) -> EmailMessage {
+        let headers = Self::parse_headers(&msg.payload.headers);
+        let parts = Self::get_parts(&msg.payload);
+        let internal_date = msg
+            .internal_date
+            .parse::<i64>()
+            .unwrap_or_else(|_| Utc::now().timestamp_millis());
+
+        EmailMessage {
+            id: msg.id,
+            thread_id: msg.thread_id,
+            history_id: msg.history_id.parse().unwrap_or(0),
+            from: headers.get("From").cloned().unwrap_or_default(),
+            to: headers
+                .get("To")
+                .map(|value| Self::parse_addresses(value))
+                .unwrap_or_default(),
+            cc: headers
+                .get("Cc")
+                .map(|value| Self::parse_addresses(value))
+                .unwrap_or_default(),
+            subject: headers.get("Subject").cloned().unwrap_or_default(),
+            body_text: parts.text,
+            body_html: parts.html,
+            attachments: parts.attachments,
+            labels: msg.label_ids.clone(),
+            received_at: DateTime::from_timestamp_millis(internal_date).unwrap_or_else(Utc::now),
+            is_unread: msg.label_ids.iter().any(|label| label == "UNREAD"),
+        }
+    }
+
     async fn authenticate(&self) -> Result<String> {
-        warn!("Gmail Pub/Sub service account auth is not implemented yet");
-        Err(ChannelError::AuthFailed {
-            platform: "gmail_pubsub".to_string(),
-            message: "Service account authentication is not implemented yet".to_string(),
+        if let Some(token) = self.config.service_account_key_path.strip_prefix("token:") {
+            let token = token.trim();
+            if !token.is_empty() {
+                return Ok(token.to_string());
+            }
         }
-        .into())
-    }
 
-    /// Setup Gmail watch for this user.
-    async fn setup_watch(&self, _token: &str) -> Result<WatchResponse> {
-        let _url = format!(
-            "https://gmail.googleapis.com/gmail/v1/users/{}/watch",
-            self.config.user_email
-        );
-
-        let _body = serde_json::json!({
-            "labelIds": ["INBOX"],
-            "topicName": format!("projects/{}/topics/{}-topic", self.config.project_id, self.config.subscription_name),
-            "labelFilterBehavior": "INCLUDE"
-        });
-
-        Err(ChannelError::Connection {
-            platform: "gmail".to_string(),
-            message: "Gmail watch setup is not implemented yet".to_string(),
+        if let Some(var_name) = self.config.service_account_key_path.strip_prefix("env:") {
+            return std::env::var(var_name.trim()).map_err(|_| {
+                ChannelError::AuthFailed {
+                    platform: "gmail".to_string(),
+                    message: format!(
+                        "Gmail access token env var '{}' is not set",
+                        var_name.trim()
+                    ),
+                }
+                .into()
+            });
         }
-        .into())
-    }
 
-    /// Get new messages since history_id.
-    async fn get_new_messages(
-        &self,
-        history_id: u64,
-        _token: &str,
-    ) -> Result<Vec<MessageMetadata>> {
-        debug!("Fetching new messages since history_id: {}", history_id);
-        Err(ChannelError::Connection {
-            platform: "gmail".to_string(),
-            message: "Gmail history polling is not implemented yet".to_string(),
-        }
-        .into())
-    }
+        let key_data = tokio::fs::read_to_string(&self.config.service_account_key_path)
+            .await
+            .map_err(|e| ChannelError::AuthFailed {
+                platform: "gmail".to_string(),
+                message: format!("Failed to read Gmail service account key: {}", e),
+            })?;
 
-    /// Get full message by ID.
-    async fn get_message(&self, id: &str, _token: &str) -> Result<Option<EmailMessage>> {
-        debug!("Fetching message: {}", id);
-        Err(ChannelError::Connection {
-            platform: "gmail".to_string(),
-            message: "Gmail message retrieval is not implemented yet".to_string(),
+        if let Ok(value) = serde_json::from_str::<serde_json::Value>(&key_data)
+            && let Some(token) = value.get("access_token").and_then(|field| field.as_str())
+        {
+            return Ok(token.to_string());
         }
-        .into())
+
+        let key: ServiceAccountKey =
+            serde_json::from_str(&key_data).map_err(|e| ChannelError::AuthFailed {
+                platform: "gmail".to_string(),
+                message: format!("Invalid Gmail service account JSON: {}", e),
+            })?;
+
+        let issued_at = Utc::now().timestamp();
+        let claims = ServiceAccountClaims {
+            iss: key.client_email.clone(),
+            scope: GMAIL_SCOPES.to_string(),
+            aud: self.token_url(&key),
+            exp: issued_at + 3600,
+            iat: issued_at,
+            sub: self.config.user_email.clone(),
+        };
+
+        let private_key = EncodingKey::from_rsa_pem(key.private_key.as_bytes()).map_err(|e| {
+            ChannelError::AuthFailed {
+                platform: "gmail".to_string(),
+                message: format!("Invalid Gmail service account private key: {}", e),
+            }
+        })?;
+
+        let assertion =
+            encode(&Header::new(Algorithm::RS256), &claims, &private_key).map_err(|e| {
+                ChannelError::AuthFailed {
+                    platform: "gmail".to_string(),
+                    message: format!("Failed to sign Gmail service account JWT: {}", e),
+                }
+            })?;
+
+        let response = self
+            .http_client
+            .post(self.token_url(&key))
+            .form(&[
+                ("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer"),
+                ("assertion", assertion.as_str()),
+            ])
+            .send()
+            .await
+            .map_err(|e| ChannelError::AuthFailed {
+                platform: "gmail".to_string(),
+                message: format!("Failed to exchange Gmail service account JWT: {}", e),
+            })?;
+
+        if !response.status().is_success() {
+            let body = response.text().await.unwrap_or_default();
+            return Err(ChannelError::AuthFailed {
+                platform: "gmail".to_string(),
+                message: format!("Gmail OAuth exchange failed: {}", body),
+            }
+            .into());
+        }
+
+        let body: TokenResponse = response
+            .json()
+            .await
+            .map_err(|e| ChannelError::AuthFailed {
+                platform: "gmail".to_string(),
+                message: format!("Failed to parse Gmail OAuth response: {}", e),
+            })?;
+
+        Ok(body.access_token)
     }
 
     async fn require_access_token(&self) -> Result<String> {
@@ -518,9 +513,7 @@ impl GmailPubSub {
             }
             .into());
         }
-
-        let token_guard = self.access_token.read().await;
-        token_guard.clone().ok_or_else(|| {
+        self.access_token.read().await.clone().ok_or_else(|| {
             ChannelError::AuthFailed {
                 platform: "gmail".to_string(),
                 message: "Missing access token for Gmail API".to_string(),
@@ -529,30 +522,146 @@ impl GmailPubSub {
         })
     }
 
-    /// Process a Pub/Sub notification message.
-    pub async fn process_notification(&self, notification: GmailNotification) -> Result<()> {
+    async fn get_json<T: DeserializeOwned>(
+        &self,
+        path: &str,
+        token: &str,
+        query: &[(&str, String)],
+    ) -> Result<T> {
+        let response = self
+            .http_client
+            .get(format!(
+                "{}/{}",
+                self.gmail_api_base(),
+                path.trim_start_matches('/')
+            ))
+            .bearer_auth(token)
+            .query(query)
+            .send()
+            .await
+            .map_err(|e| ChannelError::Connection {
+                platform: "gmail".to_string(),
+                message: format!("Gmail GET request failed: {}", e),
+            })?;
+
+        if !response.status().is_success() {
+            let body = response.text().await.unwrap_or_default();
+            return Err(ChannelError::Connection {
+                platform: "gmail".to_string(),
+                message: format!("Gmail GET request failed: {}", body),
+            }
+            .into());
+        }
+
+        response.json().await.map_err(|e| {
+            ChannelError::Connection {
+                platform: "gmail".to_string(),
+                message: format!("Failed to parse Gmail GET response: {}", e),
+            }
+            .into()
+        })
+    }
+
+    async fn setup_watch(&self, token: &str) -> Result<WatchResponse> {
+        let response = self
+            .http_client
+            .post(format!(
+                "{}/users/{}/watch",
+                self.gmail_api_base(),
+                self.user_path()
+            ))
+            .bearer_auth(token)
+            .json(&serde_json::json!({
+                "topicName": self.topic_name(),
+                "labelIds": self.config.label_filters,
+                "labelFilterBehavior": "INCLUDE",
+            }))
+            .send()
+            .await
+            .map_err(|e| ChannelError::Connection {
+                platform: "gmail".to_string(),
+                message: format!("Failed to set up Gmail watch: {}", e),
+            })?;
+
+        if !response.status().is_success() {
+            let body = response.text().await.unwrap_or_default();
+            return Err(ChannelError::Connection {
+                platform: "gmail".to_string(),
+                message: format!("Failed to set up Gmail watch: {}", body),
+            }
+            .into());
+        }
+
+        response.json().await.map_err(|e| {
+            ChannelError::Connection {
+                platform: "gmail".to_string(),
+                message: format!("Failed to parse Gmail watch response: {}", e),
+            }
+            .into()
+        })
+    }
+
+    async fn get_new_messages(&self, history_id: u64, token: &str) -> Result<Vec<MessageMetadata>> {
+        let response: HistoryResponse = self
+            .get_json(
+                &format!("users/{}/history", self.user_path()),
+                token,
+                &[
+                    ("startHistoryId", history_id.to_string()),
+                    ("historyTypes", "messageAdded".to_string()),
+                    ("maxResults", self.config.max_history_fetch.to_string()),
+                ],
+            )
+            .await?;
+
+        let mut messages = Vec::new();
+        let mut seen = HashSet::new();
+        for record in response.history {
+            for added in record.messages_added {
+                if seen.insert(added.message.id.clone()) {
+                    messages.push(added.message);
+                }
+            }
+        }
+        Ok(messages)
+    }
+
+    async fn get_gmail_message(&self, id: &str, token: &str) -> Result<GmailMessage> {
+        self.get_json(
+            &format!(
+                "users/{}/messages/{}",
+                self.user_path(),
+                urlencoding::encode(id)
+            ),
+            token,
+            &[("format", "full".to_string())],
+        )
+        .await
+    }
+
+    async fn get_message(&self, id: &str, token: &str) -> Result<Option<EmailMessage>> {
+        Ok(Some(
+            self.parse_message(self.get_gmail_message(id, token).await?),
+        ))
+    }
+
+    async fn process_notification(&self, notification: GmailNotification) -> Result<()> {
         info!(
-            "New Gmail notification for {} (historyId: {})",
-            notification.email_address, notification.history_id
+            email = %notification.email_address,
+            history_id = notification.history_id,
+            "Processing Gmail notification"
         );
 
-        // Get access token
         let token = self.require_access_token().await?;
-
-        // Fetch new messages using history API
         let new_messages = self
             .get_new_messages(notification.history_id, &token)
             .await?;
 
-        for msg_metadata in new_messages {
-            // Fetch full message
-            if let Some(email) = self.get_message(&msg_metadata.id, &token).await? {
-                // Apply filters
+        for metadata in new_messages {
+            if let Some(email) = self.get_message(&metadata.id, &token).await? {
                 if !self.should_process(&email) {
                     continue;
                 }
-
-                // Create incoming message
                 let incoming = IncomingMessage {
                     session_id: Uuid::new_v4(),
                     user_id: email.from.clone(),
@@ -565,129 +674,227 @@ impl GmailPubSub {
                         "gmail_from": email.from,
                         "gmail_to": email.to,
                         "gmail_labels": email.labels,
-                        "gmail_attachments": email.attachments.len(),
+                        "gmail_attachment_count": email.attachments.len(),
+                        "gmail_attachments": email.attachments,
                     }),
                 };
 
-                // Send to channel
-                if let Err(e) = self.incoming_tx.send(incoming).await {
-                    error!("Failed to send email event: {}", e);
-                }
-
-                info!(
-                    message_id = %email.id,
-                    subject = %email.subject,
-                    from = %email.from,
-                    "Processed new email"
-                );
+                self.incoming_tx
+                    .send(incoming)
+                    .await
+                    .map_err(|e| ChannelError::Connection {
+                        platform: "gmail".to_string(),
+                        message: format!("Failed to enqueue Gmail event: {}", e),
+                    })?;
             }
         }
 
         Ok(())
     }
 
-    /// Take action on an email.
-    pub async fn take_action(&self, email_id: &str, action: EmailAction) -> Result<()> {
-        // Get access token
+    async fn take_action(&self, email_id: &str, action: EmailAction) -> Result<()> {
         let token = self.require_access_token().await?;
-
         match action {
-            EmailAction::Reply { body } => {
-                self.reply_to_message(email_id, &body, &token).await?;
-            }
+            EmailAction::Reply { body } => self.reply_to_message(email_id, &body, &token).await,
             EmailAction::Label { add, remove } => {
-                for label in add {
-                    self.add_label(email_id, &label, &token).await?;
-                }
-                for label in remove {
-                    self.remove_label(email_id, &label, &token).await?;
-                }
+                self.modify_labels(email_id, add, remove, &token).await
             }
             EmailAction::Archive => {
-                self.archive_message(email_id, &token).await?;
+                self.modify_labels(email_id, Vec::new(), vec!["INBOX".to_string()], &token)
+                    .await
             }
-            EmailAction::Delete => {
-                self.delete_message(email_id, &token).await?;
-            }
+            EmailAction::Delete => self.delete_message(email_id, &token).await,
             EmailAction::Forward { to, body } => {
-                self.forward_message(email_id, &to, &body, &token).await?;
+                self.forward_message(email_id, &to, &body, &token).await
             }
             EmailAction::TriggerWorkflow { workflow_name } => {
-                info!(workflow = %workflow_name, "Triggering workflow");
-                // Workflow triggering would be handled by the agent runtime
+                info!(workflow = %workflow_name, email_id = %email_id, "Gmail workflow trigger requested");
+                Ok(())
             }
         }
+    }
+
+    async fn modify_labels(
+        &self,
+        email_id: &str,
+        add: Vec<String>,
+        remove: Vec<String>,
+        token: &str,
+    ) -> Result<()> {
+        let response = self
+            .http_client
+            .post(format!(
+                "{}/users/{}/messages/{}/modify",
+                self.gmail_api_base(),
+                self.user_path(),
+                urlencoding::encode(email_id)
+            ))
+            .bearer_auth(token)
+            .json(&serde_json::json!({
+                "addLabelIds": add,
+                "removeLabelIds": remove,
+            }))
+            .send()
+            .await
+            .map_err(|e| ChannelError::SendFailed {
+                platform: "gmail".to_string(),
+                message: format!("Gmail modify request failed: {}", e),
+            })?;
+
+        if !response.status().is_success() {
+            let body = response.text().await.unwrap_or_default();
+            return Err(ChannelError::SendFailed {
+                platform: "gmail".to_string(),
+                message: format!("Gmail modify request failed: {}", body),
+            }
+            .into());
+        }
+
         Ok(())
     }
 
-    /// Reply to a message.
-    async fn reply_to_message(&self, email_id: &str, _body: &str, _token: &str) -> Result<()> {
-        debug!(email_id = %email_id, "Replying to message");
-        Err(ChannelError::SendFailed {
-            platform: "gmail".to_string(),
-            message: "Gmail reply path is not implemented yet".to_string(),
+    async fn delete_message(&self, email_id: &str, token: &str) -> Result<()> {
+        let response = self
+            .http_client
+            .delete(format!(
+                "{}/users/{}/messages/{}",
+                self.gmail_api_base(),
+                self.user_path(),
+                urlencoding::encode(email_id)
+            ))
+            .bearer_auth(token)
+            .send()
+            .await
+            .map_err(|e| ChannelError::SendFailed {
+                platform: "gmail".to_string(),
+                message: format!("Gmail delete request failed: {}", e),
+            })?;
+
+        if !response.status().is_success() {
+            let body = response.text().await.unwrap_or_default();
+            return Err(ChannelError::SendFailed {
+                platform: "gmail".to_string(),
+                message: format!("Gmail delete request failed: {}", body),
+            }
+            .into());
         }
-        .into())
+
+        Ok(())
     }
 
-    /// Add a label to a message.
-    async fn add_label(&self, email_id: &str, label: &str, _token: &str) -> Result<()> {
-        debug!(email_id = %email_id, label = %label, "Adding label");
-        Err(ChannelError::SendFailed {
-            platform: "gmail".to_string(),
-            message: "Gmail label mutation is not implemented yet".to_string(),
+    async fn reply_to_message(&self, email_id: &str, body: &str, token: &str) -> Result<()> {
+        let message = self.get_gmail_message(email_id, token).await?;
+        let headers = Self::parse_headers(&message.payload.headers);
+        let reply_to = headers
+            .get("Reply-To")
+            .or_else(|| headers.get("From"))
+            .cloned()
+            .unwrap_or_default();
+        let subject = headers
+            .get("Subject")
+            .map(|value| {
+                if value.to_lowercase().starts_with("re:") {
+                    value.clone()
+                } else {
+                    format!("Re: {}", value)
+                }
+            })
+            .unwrap_or_else(|| "Re:".to_string());
+        let message_id_header = headers.get("Message-ID").cloned();
+        let references = headers.get("References").cloned();
+
+        let mut mime = format!(
+            "To: {}\r\nSubject: {}\r\nContent-Type: text/plain; charset=\"UTF-8\"\r\n",
+            reply_to, subject
+        );
+        if let Some(message_id) = message_id_header.clone() {
+            mime.push_str(&format!("In-Reply-To: {}\r\n", message_id));
+            let references = references
+                .map(|existing| format!("{} {}", existing, message_id))
+                .unwrap_or(message_id);
+            mime.push_str(&format!("References: {}\r\n", references));
         }
-        .into())
-    }
+        mime.push_str("\r\n");
+        mime.push_str(body);
 
-    /// Remove a label from a message.
-    async fn remove_label(&self, email_id: &str, label: &str, _token: &str) -> Result<()> {
-        debug!(email_id = %email_id, label = %label, "Removing label");
-        Err(ChannelError::SendFailed {
-            platform: "gmail".to_string(),
-            message: "Gmail label mutation is not implemented yet".to_string(),
+        let response = self
+            .http_client
+            .post(format!(
+                "{}/users/{}/messages/send",
+                self.gmail_api_base(),
+                self.user_path()
+            ))
+            .bearer_auth(token)
+            .json(&serde_json::json!({
+                "raw": URL_SAFE_NO_PAD.encode(mime.as_bytes()),
+                "threadId": message.thread_id,
+            }))
+            .send()
+            .await
+            .map_err(|e| ChannelError::SendFailed {
+                platform: "gmail".to_string(),
+                message: format!("Gmail reply request failed: {}", e),
+            })?;
+
+        if !response.status().is_success() {
+            let body = response.text().await.unwrap_or_default();
+            return Err(ChannelError::SendFailed {
+                platform: "gmail".to_string(),
+                message: format!("Gmail reply request failed: {}", body),
+            }
+            .into());
         }
-        .into())
+
+        Ok(())
     }
 
-    /// Archive a message (remove INBOX label).
-    async fn archive_message(&self, email_id: &str, token: &str) -> Result<()> {
-        debug!(email_id = %email_id, "Archiving message");
-        self.remove_label(email_id, "INBOX", token).await
-    }
-
-    /// Delete a message.
-    async fn delete_message(&self, email_id: &str, _token: &str) -> Result<()> {
-        debug!(email_id = %email_id, "Deleting message");
-        Err(ChannelError::SendFailed {
-            platform: "gmail".to_string(),
-            message: "Gmail delete path is not implemented yet".to_string(),
-        }
-        .into())
-    }
-
-    /// Forward a message.
     async fn forward_message(
         &self,
         email_id: &str,
         to: &str,
-        _body: &str,
-        _token: &str,
+        body: &str,
+        token: &str,
     ) -> Result<()> {
-        debug!(email_id = %email_id, to = %to, "Forwarding message");
-        Err(ChannelError::SendFailed {
-            platform: "gmail".to_string(),
-            message: "Gmail forward path is not implemented yet".to_string(),
-        }
-        .into())
-    }
+        let message = self.parse_message(self.get_gmail_message(email_id, token).await?);
+        let subject = if message.subject.to_lowercase().starts_with("fwd:") {
+            message.subject.clone()
+        } else {
+            format!("Fwd: {}", message.subject)
+        };
 
-    /// Check if the email sender is in the allowlist.
-    #[allow(dead_code)]
-    fn is_sender_allowed(&self, _from: &str) -> bool {
-        // For now, all senders are allowed
-        // In a full implementation, check against config.allowlist
-        true
+        let mime = format!(
+            "To: {}\r\nSubject: {}\r\nContent-Type: text/plain; charset=\"UTF-8\"\r\n\r\n{}\n\n--- Forwarded message ---\nFrom: {}\nSubject: {}\n\n{}",
+            to, subject, body, message.from, message.subject, message.body_text
+        );
+
+        let response = self
+            .http_client
+            .post(format!(
+                "{}/users/{}/messages/send",
+                self.gmail_api_base(),
+                self.user_path()
+            ))
+            .bearer_auth(token)
+            .json(&serde_json::json!({
+                "raw": URL_SAFE_NO_PAD.encode(mime.as_bytes()),
+            }))
+            .send()
+            .await
+            .map_err(|e| ChannelError::SendFailed {
+                platform: "gmail".to_string(),
+                message: format!("Gmail forward request failed: {}", e),
+            })?;
+
+        if !response.status().is_success() {
+            let body = response.text().await.unwrap_or_default();
+            return Err(ChannelError::SendFailed {
+                platform: "gmail".to_string(),
+                message: format!("Gmail forward request failed: {}", body),
+            }
+            .into());
+        }
+
+        Ok(())
     }
 }
 
@@ -698,39 +905,28 @@ impl Channel for GmailPubSub {
     }
 
     async fn send(&self, msg: OutgoingMessage) -> Result<()> {
-        if !*self.is_connected.read().await {
+        if !*self.runtime.is_connected.read().await {
             return Err(ChannelError::NotConnected {
                 platform: "gmail".to_string(),
             }
             .into());
         }
 
-        // Apply rate limiting
-        self.rate_limiter.until_ready().await;
+        self.runtime.rate_limiter.until_ready().await;
 
-        // Get message ID from metadata for reply
         let message_id = msg
             .metadata
             .get("gmail_message_id")
-            .and_then(|v| v.as_str());
-
-        let _thread_id = msg.metadata.get("gmail_thread_id").and_then(|v| v.as_str());
-
-        // Get access token
-        let token = self.require_access_token().await?;
-
-        if let Some(msg_id) = message_id {
-            // Reply to the message
-            self.reply_to_message(msg_id, &msg.content, &token).await?;
-        } else {
-            return Err(ChannelError::InvalidFormat {
+            .and_then(|value| value.as_str())
+            .ok_or_else(|| ChannelError::InvalidFormat {
                 platform: "gmail".to_string(),
                 message: "Missing gmail_message_id in metadata for Gmail reply".to_string(),
-            }
-            .into());
-        }
+            })?;
 
-        Ok(())
+        let token = self.runtime.require_access_token().await?;
+        self.runtime
+            .reply_to_message(message_id, &msg.content, &token)
+            .await
     }
 
     async fn receive(&self) -> Result<IncomingMessage> {
@@ -745,30 +941,28 @@ impl Channel for GmailPubSub {
     }
 
     async fn connect(&mut self) -> Result<()> {
-        if *self.is_connected.read().await {
+        if *self.runtime.is_connected.read().await {
             return Ok(());
         }
 
         info!("Connecting to Gmail Pub/Sub...");
-
-        // Validate configuration
-        if self.config.project_id.is_empty() {
+        if self.runtime.config.project_id.is_empty() {
             return Err(ChannelError::Config {
                 platform: "gmail".to_string(),
                 message: "Gmail Pub/Sub project ID is required".to_string(),
             }
             .into());
         }
-
-        if self.config.subscription_name.is_empty() {
+        if self.runtime.config.subscription_name.is_empty()
+            && self.runtime.config.topic_name.is_none()
+        {
             return Err(ChannelError::Config {
                 platform: "gmail".to_string(),
-                message: "Gmail Pub/Sub subscription name is required".to_string(),
+                message: "Gmail Pub/Sub subscription name or topic_name is required".to_string(),
             }
             .into());
         }
-
-        if self.config.user_email.is_empty() {
+        if self.runtime.config.user_email.is_empty() {
             return Err(ChannelError::Config {
                 platform: "gmail".to_string(),
                 message: "Gmail user email is required".to_string(),
@@ -776,257 +970,239 @@ impl Channel for GmailPubSub {
             .into());
         }
 
-        // Authenticate
-        let token = self.authenticate().await?;
-        *self.access_token.write().await = Some(token.clone());
+        let token = self.runtime.authenticate().await?;
+        *self.runtime.access_token.write().await = Some(token.clone());
 
-        // Setup Gmail watch
-        let watch_response = self.setup_watch(&token).await?;
+        let watch = self.runtime.setup_watch(&token).await?;
         info!(
-            history_id = %watch_response.history_id,
-            expiration = %watch_response.expiration,
+            history_id = %watch.history_id,
+            expiration = %watch.expiration,
             "Gmail watch established"
         );
 
-        *self.is_connected.write().await = true;
-
+        *self.runtime.is_connected.write().await = true;
         info!("Gmail Pub/Sub channel connected");
         Ok(())
     }
 
     async fn disconnect(&mut self) -> Result<()> {
-        info!("Disconnecting from Gmail Pub/Sub...");
-
-        *self.is_connected.write().await = false;
-        *self.access_token.write().await = None;
-
+        *self.runtime.is_connected.write().await = false;
+        *self.runtime.access_token.write().await = None;
         info!("Gmail Pub/Sub channel disconnected");
         Ok(())
     }
 }
 
-/// Webhook handler for Gmail Pub/Sub HTTP push mode.
-///
-/// This can be used when Pub/Sub is configured to push to an HTTP endpoint
-/// instead of using the Pub/Sub client library.
 pub struct GmailWebhookHandler {
-    gmail: Arc<GmailPubSub>,
+    runtime: GmailRuntime,
 }
 
 impl GmailWebhookHandler {
-    /// Create a new webhook handler.
-    pub fn new(gmail: Arc<GmailPubSub>) -> Self {
-        Self { gmail }
-    }
-
-    /// Handle an incoming Pub/Sub push notification.
-    ///
-    /// The body is the Pub/Sub message envelope:
-    /// <https://cloud.google.com/pubsub/docs/push#receiving_messages>
     pub async fn handle_push(&self, body: &[u8]) -> Result<()> {
-        // Parse the Pub/Sub message envelope
         let envelope: serde_json::Value =
             serde_json::from_slice(body).map_err(|e| ChannelError::InvalidFormat {
                 platform: "gmail".to_string(),
                 message: format!("Failed to parse Pub/Sub envelope: {}", e),
             })?;
 
-        // Extract the message data
-        let message = envelope
+        let data = envelope
             .get("message")
+            .and_then(|message| message.get("data"))
+            .and_then(|value| value.as_str())
             .ok_or_else(|| ChannelError::InvalidFormat {
                 platform: "gmail".to_string(),
-                message: "Missing message in Pub/Sub envelope".to_string(),
+                message: "Missing message.data in Pub/Sub envelope".to_string(),
             })?;
 
-        let data = message
-            .get("data")
-            .and_then(|d| d.as_str())
-            .ok_or_else(|| ChannelError::InvalidFormat {
-                platform: "gmail".to_string(),
-                message: "Missing data in Pub/Sub message".to_string(),
-            })?;
-
-        // Decode base64 data
         let decoded = STANDARD
             .decode(data)
             .map_err(|e| ChannelError::InvalidFormat {
                 platform: "gmail".to_string(),
-                message: format!("Failed to decode message data: {}", e),
+                message: format!("Failed to decode Pub/Sub message data: {}", e),
             })?;
 
-        // Parse the Gmail notification
         let notification: GmailNotification =
             serde_json::from_slice(&decoded).map_err(|e| ChannelError::InvalidFormat {
                 platform: "gmail".to_string(),
                 message: format!("Failed to parse Gmail notification: {}", e),
             })?;
 
-        // Process the notification
-        self.gmail.process_notification(notification).await
-    }
-}
-
-#[allow(dead_code)]
-mod b64 {
-    //! Base64 decoding for Gmail API responses.
-    use base64::Engine;
-    pub fn decode(data: &str) -> Result<Vec<u8>, base64::DecodeError> {
-        base64::engine::general_purpose::STANDARD.decode(data)
+        self.runtime.process_notification(notification).await
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use wiremock::matchers::{body_string_contains, method, path, query_param};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
 
-    #[test]
-    fn test_parse_addresses() {
-        let addresses = GmailPubSub::parse_addresses("user1@example.com, user2@example.com");
-        assert_eq!(addresses.len(), 2);
-        assert_eq!(addresses[0], "user1@example.com");
-        assert_eq!(addresses[1], "user2@example.com");
-    }
-
-    #[test]
-    fn test_should_process_with_label_filter() {
-        let config = GmailPubSubConfig {
+    fn gmail_config(server: &MockServer, key_path: String) -> GmailPubSubConfig {
+        GmailPubSubConfig {
             enabled: true,
-            project_id: "test".to_string(),
-            subscription_name: "test".to_string(),
-            service_account_key_path: "/tmp/key.json".to_string(),
-            user_email: "test@example.com".to_string(),
+            project_id: "test-project".to_string(),
+            subscription_name: "gmail-notifications".to_string(),
+            topic_name: Some("projects/test-project/topics/gmail-notifications".to_string()),
+            service_account_key_path: key_path,
+            user_email: "user@example.com".to_string(),
             label_filters: vec!["INBOX".to_string()],
             query_filter: None,
             auto_reply: false,
             max_history_fetch: 100,
             rate_limit_requests_per_second: 10,
-        };
-
-        let gmail = GmailPubSub::new(config);
-
-        let email_with_label = EmailMessage {
-            id: "1".to_string(),
-            thread_id: "t1".to_string(),
-            history_id: 1,
-            from: "sender@example.com".to_string(),
-            to: vec!["recipient@example.com".to_string()],
-            cc: vec![],
-            subject: "Test".to_string(),
-            body_text: "Hello".to_string(),
-            body_html: None,
-            attachments: vec![],
-            labels: vec!["INBOX".to_string(), "UNREAD".to_string()],
-            received_at: chrono::Utc::now(),
-            is_unread: true,
-        };
-
-        let email_without_label = EmailMessage {
-            id: "2".to_string(),
-            thread_id: "t2".to_string(),
-            history_id: 2,
-            from: "sender@example.com".to_string(),
-            to: vec!["recipient@example.com".to_string()],
-            cc: vec![],
-            subject: "Test".to_string(),
-            body_text: "Hello".to_string(),
-            body_html: None,
-            attachments: vec![],
-            labels: vec!["SENT".to_string()],
-            received_at: chrono::Utc::now(),
-            is_unread: false,
-        };
-
-        assert!(gmail.should_process(&email_with_label));
-        assert!(!gmail.should_process(&email_without_label));
+            api_base_url: Some(format!("{}/gmail/v1", server.uri())),
+            oauth_token_url: Some(format!("{}/token", server.uri())),
+        }
     }
 
     #[test]
-    fn test_should_process_with_query_filter() {
-        let config = GmailPubSubConfig {
-            enabled: true,
-            project_id: "test".to_string(),
-            subscription_name: "test".to_string(),
-            service_account_key_path: "/tmp/key.json".to_string(),
-            user_email: "test@example.com".to_string(),
-            label_filters: vec![],
-            query_filter: Some("github".to_string()),
-            auto_reply: false,
-            max_history_fetch: 100,
-            rate_limit_requests_per_second: 10,
-        };
-
-        let gmail = GmailPubSub::new(config);
-
-        let matching_email = EmailMessage {
-            id: "1".to_string(),
-            thread_id: "t1".to_string(),
-            history_id: 1,
-            from: "noreply@github.com".to_string(),
-            to: vec!["user@example.com".to_string()],
-            cc: vec![],
-            subject: "PR Review".to_string(),
-            body_text: "Please review this PR".to_string(),
-            body_html: None,
-            attachments: vec![],
-            labels: vec!["INBOX".to_string()],
-            received_at: chrono::Utc::now(),
-            is_unread: true,
-        };
-
-        let non_matching_email = EmailMessage {
-            id: "2".to_string(),
-            thread_id: "t2".to_string(),
-            history_id: 2,
-            from: "friend@example.com".to_string(),
-            to: vec!["user@example.com".to_string()],
-            cc: vec![],
-            subject: "Hello".to_string(),
-            body_text: "How are you?".to_string(),
-            body_html: None,
-            attachments: vec![],
-            labels: vec!["INBOX".to_string()],
-            received_at: chrono::Utc::now(),
-            is_unread: true,
-        };
-
-        assert!(gmail.should_process(&matching_email));
-        assert!(!gmail.should_process(&non_matching_email));
-    }
-
-    #[test]
-    fn test_gmail_notification_deserialization() {
-        let json = r#"{"emailAddress": "user@example.com", "historyId": 12345}"#;
-        let notification: GmailNotification = serde_json::from_str(json).unwrap();
-        assert_eq!(notification.email_address, "user@example.com");
-        assert_eq!(notification.history_id, 12345);
+    fn test_parse_addresses() {
+        let addresses = GmailRuntime::parse_addresses("user1@example.com, user2@example.com");
+        assert_eq!(addresses, vec!["user1@example.com", "user2@example.com"]);
     }
 
     #[tokio::test]
-    async fn test_send_requires_connection() {
-        let config = GmailPubSubConfig {
-            enabled: true,
-            project_id: "test".to_string(),
-            subscription_name: "test".to_string(),
-            service_account_key_path: "/tmp/key.json".to_string(),
-            user_email: "test@example.com".to_string(),
-            label_filters: vec![],
-            query_filter: None,
-            auto_reply: false,
-            max_history_fetch: 100,
-            rate_limit_requests_per_second: 10,
-        };
+    async fn test_connect_watch_and_process_push() {
+        let server = MockServer::start().await;
+        let config = gmail_config(&server, "token:test-token".to_string());
 
-        let gmail = GmailPubSub::new(config);
-        let result = gmail
-            .send(OutgoingMessage {
-                session_id: Uuid::new_v4(),
-                content: "hello".to_string(),
-                metadata: serde_json::json!({}),
-            })
+        Mock::given(method("POST"))
+            .and(path("/gmail/v1/users/user%40example.com/watch"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "historyId": "100",
+                "expiration": "999999"
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/gmail/v1/users/user%40example.com/history"))
+            .and(query_param("startHistoryId", "100"))
+            .and(query_param("historyTypes", "messageAdded"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "history": [{
+                    "messagesAdded": [{
+                        "message": {
+                            "id": "msg-1",
+                            "threadId": "thread-1"
+                        }
+                    }]
+                }]
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/gmail/v1/users/user%40example.com/messages/msg-1"))
+            .and(query_param("format", "full"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "msg-1",
+                "threadId": "thread-1",
+                "labelIds": ["INBOX", "UNREAD"],
+                "internalDate": "1710000000000",
+                "historyId": "100",
+                "payload": {
+                    "mimeType": "multipart/alternative",
+                    "headers": [
+                        {"name": "From", "value": "sender@example.com"},
+                        {"name": "To", "value": "user@example.com"},
+                        {"name": "Subject", "value": "Test subject"}
+                    ],
+                    "parts": [{
+                        "mimeType": "text/plain",
+                        "body": {
+                            "data": "SGVsbG8gZnJvbSBHbWFpbA=="
+                        }
+                    }]
+                }
+            })))
+            .mount(&server)
             .await;
 
-        let err = result.expect_err("send should fail when Gmail channel is not connected");
-        assert!(err.to_string().to_lowercase().contains("not connected"));
+        let mut gmail = GmailPubSub::new(config);
+        gmail.connect().await.unwrap();
+
+        let handler = gmail.webhook_handler();
+        let notification = STANDARD.encode(
+            serde_json::json!({
+                "emailAddress": "user@example.com",
+                "historyId": 100
+            })
+            .to_string(),
+        );
+        handler
+            .handle_push(
+                serde_json::json!({
+                    "message": {
+                        "data": notification
+                    }
+                })
+                .to_string()
+                .as_bytes(),
+            )
+            .await
+            .unwrap();
+
+        let incoming = gmail.receive().await.unwrap();
+        assert_eq!(incoming.user_id, "sender@example.com");
+        assert_eq!(incoming.metadata["gmail_message_id"], "msg-1");
+        assert_eq!(incoming.metadata["gmail_thread_id"], "thread-1");
+    }
+
+    #[tokio::test]
+    async fn test_reply_send() {
+        let server = MockServer::start().await;
+        let config = gmail_config(&server, "token:test-token".to_string());
+
+        Mock::given(method("POST"))
+            .and(path("/gmail/v1/users/user%40example.com/watch"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "historyId": "100",
+                "expiration": "999999"
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/gmail/v1/users/user%40example.com/messages/msg-1"))
+            .and(query_param("format", "full"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "msg-1",
+                "threadId": "thread-1",
+                "labelIds": ["INBOX"],
+                "internalDate": "1710000000000",
+                "historyId": "100",
+                "payload": {
+                    "mimeType": "text/plain",
+                    "headers": [
+                        {"name": "From", "value": "sender@example.com"},
+                        {"name": "Subject", "value": "Original subject"},
+                        {"name": "Message-ID", "value": "<msg-1@example.com>"}
+                    ],
+                    "body": {
+                        "data": "SGVsbG8="
+                    }
+                }
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/gmail/v1/users/user%40example.com/messages/send"))
+            .and(body_string_contains("threadId"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "sent-1"
+            })))
+            .mount(&server)
+            .await;
+
+        let mut gmail = GmailPubSub::new(config);
+        gmail.connect().await.unwrap();
+        gmail
+            .send(OutgoingMessage {
+                session_id: Uuid::new_v4(),
+                content: "Reply body".to_string(),
+                metadata: serde_json::json!({
+                    "gmail_message_id": "msg-1"
+                }),
+            })
+            .await
+            .unwrap();
     }
 }

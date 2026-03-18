@@ -181,17 +181,13 @@ impl MatrixChannel {
     }
 
     async fn bearer_token(&self) -> Result<String> {
-        self.access_token
-            .read()
-            .await
-            .clone()
-            .ok_or_else(|| {
-                ChannelError::AuthFailed {
-                    platform: "matrix".to_string(),
-                    message: "Matrix access token is not available".to_string(),
-                }
-                .into()
-            })
+        self.access_token.read().await.clone().ok_or_else(|| {
+            ChannelError::AuthFailed {
+                platform: "matrix".to_string(),
+                message: "Matrix access token is not available".to_string(),
+            }
+            .into()
+        })
     }
 
     async fn login_with_password(&self, password: &str) -> Result<String> {
@@ -247,14 +243,13 @@ impl MatrixChannel {
             .into());
         }
 
-        let body: LoginResponse =
-            response
-                .json()
-                .await
-                .map_err(|e| ChannelError::AuthFailed {
-                    platform: "matrix".to_string(),
-                    message: format!("Failed to parse Matrix login response: {}", e),
-                })?;
+        let body: LoginResponse = response
+            .json()
+            .await
+            .map_err(|e| ChannelError::AuthFailed {
+                platform: "matrix".to_string(),
+                message: format!("Failed to parse Matrix login response: {}", e),
+            })?;
 
         Ok(body.access_token)
     }
@@ -653,10 +648,7 @@ impl MatrixChannel {
         let token = self.bearer_token().await?;
         let response = self
             .http
-            .post(self.endpoint(&format!(
-                "/join/{}",
-                urlencoding::encode(room_id_or_alias)
-            )))
+            .post(self.endpoint(&format!("/join/{}", urlencoding::encode(room_id_or_alias))))
             .bearer_auth(token)
             .send()
             .await
@@ -689,10 +681,7 @@ impl MatrixChannel {
         let token = self.bearer_token().await?;
         let response = self
             .http
-            .post(self.endpoint(&format!(
-                "/rooms/{}/leave",
-                urlencoding::encode(room_id)
-            )))
+            .post(self.endpoint(&format!("/rooms/{}/leave", urlencoding::encode(room_id))))
             .bearer_auth(token)
             .send()
             .await
@@ -837,10 +826,13 @@ impl MatrixChannel {
         }
 
         let body: serde_json::Value =
-            response.json().await.map_err(|e| ChannelError::Connection {
-                platform: "matrix".to_string(),
-                message: format!("Failed to parse Matrix joined_rooms response: {}", e),
-            })?;
+            response
+                .json()
+                .await
+                .map_err(|e| ChannelError::Connection {
+                    platform: "matrix".to_string(),
+                    message: format!("Failed to parse Matrix joined_rooms response: {}", e),
+                })?;
 
         Ok(body
             .get("joined_rooms")
@@ -953,7 +945,10 @@ mod tests {
     #[test]
     fn test_user_allowed_with_list() {
         let mut config = test_config("https://matrix.org");
-        config.allowlist = vec!["@alice:matrix.org".to_string(), "@bob:matrix.org".to_string()];
+        config.allowlist = vec![
+            "@alice:matrix.org".to_string(),
+            "@bob:matrix.org".to_string(),
+        ];
         let channel = MatrixChannel::new(config);
         assert!(channel.is_user_allowed("@alice:matrix.org"));
         assert!(!channel.is_user_allowed("@charlie:matrix.org"));
@@ -974,17 +969,26 @@ mod tests {
             MatrixChannel::extract_display_name("@alice:matrix.org"),
             "alice"
         );
-        assert_eq!(MatrixChannel::extract_display_name("just_text"), "just_text");
+        assert_eq!(
+            MatrixChannel::extract_display_name("just_text"),
+            "just_text"
+        );
     }
 
     #[test]
     fn test_text_to_html() {
-        assert_eq!(MatrixChannel::text_to_html("Hello\nWorld"), "Hello<br>World");
+        assert_eq!(
+            MatrixChannel::text_to_html("Hello\nWorld"),
+            "Hello<br>World"
+        );
     }
 
     #[test]
     fn test_html_to_text() {
-        assert_eq!(MatrixChannel::html_to_text("Hello<b>World</b>"), "Hello**World**");
+        assert_eq!(
+            MatrixChannel::html_to_text("Hello<b>World</b>"),
+            "Hello**World**"
+        );
     }
 
     #[test]
@@ -1095,7 +1099,10 @@ mod tests {
         assert_eq!(incoming.user_id, "@alice:matrix.org");
         assert_eq!(incoming.content, "hello from matrix");
         assert_eq!(
-            incoming.metadata.get("matrix_room_id").and_then(|v| v.as_str()),
+            incoming
+                .metadata
+                .get("matrix_room_id")
+                .and_then(|v| v.as_str()),
             Some("!room:matrix.org")
         );
 

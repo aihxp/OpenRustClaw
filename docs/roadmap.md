@@ -676,7 +676,14 @@ Channel completion remaining:
   - contact/group mapping.
 - [ ] Mattermost parity via Rust-native plugin/channel implementation.
 - [ ] Google Chat parity.
+  - current shipped path covers webhook ingress, token or service-account outbound auth, response-mode gating, slash-command metadata capture, file-reference cards, attachment metadata capture, and local agent/session routing;
+  - richer operator/media parity still remains.
+- [ ] Google Meet parity.
+  - current shipped Rust operator path covers space creation/inspection, active-conference termination, conference-record/participant/recording/transcript inspection, and Google Workspace Events / Pub/Sub payload decoding with transcript hydration;
+  - Meet add-on UI embedding, live in-meeting collaboration surfaces, and deeper artifact/event automation remain open.
 - [ ] Gmail inbound automation parity for mail-triggered workflows.
+  - current shipped path covers Gmail watch setup, Pub/Sub webhook ingress, history fetch, message hydration, mail-triggered local agent/session routing, replies, label/archive/delete actions, and forwarding;
+  - richer operator parity still remains.
 - [ ] Matrix parity.
   - current shipped path covers auth, send, polling ingress, room actions, and basic file upload;
   - deeper E2EE and richer operator/media parity still remain.

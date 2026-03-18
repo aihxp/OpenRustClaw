@@ -294,10 +294,11 @@ Every operation is traced. Every decision is logged. Every metric is tracked.
 | Slack | Partial | Config/model scaffolding present; Web API runtime client not implemented |
 | WhatsApp | Available | Via Baileys bridge, QR/pairing auth |
 | Microsoft Teams | Available | Bot Framework integration |
-| Google Chat | Partial | Channel scaffolding present; service-account auth/send path incomplete |
-| Gmail Pub/Sub | Partial | Channel scaffolding present; service-account auth incomplete |
+| Google Chat | Partial | Webhook ingress, token/service-account auth, file-reference cards, and local routing are implemented; richer operator/media parity remains open |
+| Google Meet | Partial | Native Rust operator integration covers spaces, conference records, transcripts, and Workspace Events/Pub/Sub payload decoding; add-on UI/runtime embedding remains open |
+| Gmail Pub/Sub | Partial | Watch setup, Pub/Sub webhook ingress, message hydration, replies, and mail-triggered workflows are implemented; richer operator parity remains open |
 | Signal | Planned | signal-cli bridge |
-| Matrix | Partial | Config/model scaffolding present; matrix-sdk runtime client not implemented |
+| Matrix | Partial | Auth, `/sync` polling ingress, sends, reactions, room actions, and file upload are implemented; deeper parity remains open |
 | iMessage | Partial | Channel module present; private API mode incomplete |
 | LINE | Available | Messaging API channel module |
 | Viber | Available | Bot API channel module |

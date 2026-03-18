@@ -1202,7 +1202,10 @@ mod tests {
             )
             .expect("card");
         assert_eq!(card.content_type, "application/vnd.microsoft.card.adaptive");
-        assert_eq!(card.content["actions"][0]["url"], "https://files.example.com/report.pdf");
+        assert_eq!(
+            card.content["actions"][0]["url"],
+            "https://files.example.com/report.pdf"
+        );
     }
 
     #[test]

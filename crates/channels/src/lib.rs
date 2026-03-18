@@ -7,6 +7,7 @@
 //! - Slack (App API via slack-morphism)
 //! - Microsoft Teams (Bot Framework)
 //! - Google Chat (Google Workspace Chat API)
+//! - Google Meet (operator/event integration for spaces, conference records, and artifacts)
 //! - WhatsApp (Web via Baileys bridge)
 //! - Gmail Pub/Sub (Gmail push notifications)
 //! - Matrix (Matrix protocol via matrix-rust-sdk)
@@ -20,6 +21,7 @@ pub mod commands;
 pub mod discord;
 pub mod gmail_pubsub;
 pub mod google_chat;
+pub mod google_meet;
 pub mod imessage;
 pub mod line;
 pub mod matrix;
@@ -40,6 +42,7 @@ pub mod whatsapp;
 pub use discord::DiscordChannel;
 pub use gmail_pubsub::GmailPubSub;
 pub use google_chat::GoogleChatChannel;
+pub use google_meet::{DecodedGoogleMeetEvent, GoogleMeetClient, GoogleMeetWebhookHandler};
 pub use imessage::IMessageChannel;
 pub use line::LineChannel;
 pub use matrix::MatrixChannel;
@@ -273,6 +276,26 @@ impl ChannelFactory {
             ));
         }
         Ok(GoogleChatChannel::new(config))
+    }
+
+    /// Create a Google Meet operator client.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the configuration is invalid.
+    pub fn create_google_meet(
+        config: openrustclaw_core::config::GoogleMeetConfig,
+    ) -> Result<GoogleMeetClient> {
+        if config.service_account_key_path.is_empty() || config.delegated_user_email.is_empty() {
+            return Err(openrustclaw_core::error::Error::Channel(
+                ChannelError::Config {
+                    platform: "google_meet".to_string(),
+                    message: "service_account_key_path and delegated_user_email are required"
+                        .to_string(),
+                },
+            ));
+        }
+        Ok(GoogleMeetClient::new(config))
     }
 
     /// Create a WhatsApp channel.
