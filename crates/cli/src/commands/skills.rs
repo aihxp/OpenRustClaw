@@ -149,6 +149,16 @@ async fn upsert_skill_record(
     Ok(())
 }
 
+async fn persist_verified_state(pool: &sqlx::SqlitePool, id: &str, verified: bool) -> Result<()> {
+    sqlx::query("UPDATE skills SET verified = ? WHERE id = ?")
+        .bind(if verified { 1 } else { 0 })
+        .bind(id)
+        .execute(pool)
+        .await
+        .context("Failed to update skill verification state")?;
+    Ok(())
+}
+
 /// List installed skills from database.
 pub async fn list() -> Result<()> {
     // Load configuration to get DB path
@@ -676,11 +686,7 @@ pub async fn verify(name: &str) -> Result<()> {
             name, source
         );
 
-        // Update verified status
-        sqlx::query("UPDATE skills SET verified = 1 WHERE id = ?")
-            .bind(&id)
-            .execute(&pool)
-            .await?;
+        persist_verified_state(&pool, &id, true).await?;
 
         return Ok(());
     }
@@ -709,6 +715,7 @@ pub async fn verify(name: &str) -> Result<()> {
     // Check if skill has signature
     let Some(sig_hex) = signature else {
         println!("✗ Skill '{}' has no signature", name);
+        persist_verified_state(&pool, &id, false).await?;
         return Ok(());
     };
 
@@ -719,18 +726,15 @@ pub async fn verify(name: &str) -> Result<()> {
     match verifier.verify(&content, &signature_bytes) {
         Ok(true) => {
             println!("✓ Skill '{}' signature verified successfully", name);
-
-            // Update verified status
-            sqlx::query("UPDATE skills SET verified = 1 WHERE id = ?")
-                .bind(&id)
-                .execute(&pool)
-                .await?;
+            persist_verified_state(&pool, &id, true).await?;
         }
         Ok(false) => {
             println!("✗ Skill '{}' signature verification failed", name);
+            persist_verified_state(&pool, &id, false).await?;
         }
         Err(e) => {
             println!("✗ Error verifying skill '{}': {}", name, e);
+            persist_verified_state(&pool, &id, false).await?;
         }
     }
 
@@ -1149,5 +1153,46 @@ mod tests {
             "signed-skill",
         )
         .unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_persist_verified_state_updates_row() {
+        let db_path = std::env::temp_dir().join(format!("skills-verify-{}.db", uuid::Uuid::new_v4()));
+        let pool = openrustclaw_db::init_pool(&format!("sqlite://{}", db_path.display()), 1)
+            .await
+            .unwrap();
+        openrustclaw_db::run_migrations(&pool).await.unwrap();
+
+        sqlx::query(
+            r#"
+            INSERT INTO skills (
+                id, name, description, source, version, signature,
+                verified, enabled, capabilities, schema, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+            "#,
+        )
+        .bind("skill-1")
+        .bind("test-skill")
+        .bind("desc")
+        .bind("managed")
+        .bind("1.0.0")
+        .bind(Option::<String>::None)
+        .bind(1i64)
+        .bind(1i64)
+        .bind("[]")
+        .bind(Option::<String>::None)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        persist_verified_state(&pool, "skill-1", false).await.unwrap();
+        let verified: i64 = sqlx::query_scalar("SELECT verified FROM skills WHERE id = ?")
+            .bind("skill-1")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(verified, 0);
+
+        let _ = std::fs::remove_file(db_path);
     }
 }

@@ -128,6 +128,7 @@ Status:
 - The skills CLI now resolves real `SKILL.md` workspace paths, validates and normalizes declared capabilities, syncs marketplace installs back into the main skills table, and keeps managed verification state aligned with install/update flows.
 - Marketplace installs no longer auto-mark signed skills as verified, and unsigned skills requesting sensitive capabilities are rejected during install/update.
 - Workspace skill discovery now normalizes declared capabilities, skips invalid `SKILL.md` capability sets, and the WASM sandbox config layer can be built directly from declared capabilities.
+- Skill verification now clears stale `verified` state on missing signatures or failed signature checks instead of leaving outdated verification records behind.
 - The sidecar RAG workflow now supports deterministic query-only retrieval against Rust-backed durable collections and budgeted context assembly with stable source ids.
 - The sidecar RAG workflow now applies source-aware scoring and optional source-type filters on top of the durable collection store.
 - The sidecar RAG workflow now applies stopword-aware lexical scoring and configurable per-source diversity limits on top of the durable collection store.
