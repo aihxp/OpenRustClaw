@@ -50,8 +50,8 @@ Status values:
 | MCP remote HTTP/SSE | deferred | Not part of current shipped surface |
 | `mcp2-cli` | real | Real stdio/OpenAPI discovery path |
 | Cursor integration | gated | Repo surface exists, but it is not part of the current shipped runtime/tooling surface |
-| Skills registry/install flow | real | Workspace installs, marketplace lifecycle sync, capability metadata persistence, and verification-state handling are wired through the CLI |
-| WASM skill executor | real | Real no-import executor exists with JSON ABI, memory limits, timeout enforcement, and explicit capability checks |
+| Skills registry/install flow | real | Workspace installs, marketplace lifecycle sync, discovery-time capability normalization, capability metadata persistence, and verification-state handling are wired through the CLI |
+| WASM skill executor | real | Real no-import executor exists with JSON ABI, memory limits, timeout enforcement, explicit capability checks, and declared-capability sandbox config helpers |
 
 ## Experience Layers
 

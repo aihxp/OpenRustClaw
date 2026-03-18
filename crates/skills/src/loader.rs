@@ -3,9 +3,11 @@
 use std::path::{Path, PathBuf};
 
 use openrustclaw_core::error::{Error, Result};
-use openrustclaw_core::types::SkillSource;
+use openrustclaw_core::types::{SkillCapability, SkillSource};
 use serde::{Deserialize, Serialize};
 use tracing::info;
+
+use crate::{normalize_capability_names, parse_capability_names};
 
 /// Metadata parsed from a SKILL.md file.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -16,6 +18,13 @@ pub struct SkillMetadata {
     pub source: SkillSource,
     pub capabilities: Vec<String>,
     pub author: Option<String>,
+}
+
+impl SkillMetadata {
+    /// Return the parsed capability set for this skill metadata.
+    pub fn parsed_capabilities(&self) -> Result<std::collections::HashSet<SkillCapability>> {
+        parse_capability_names(&self.capabilities)
+    }
 }
 
 /// Loads skills from the filesystem.
@@ -115,6 +124,7 @@ impl SkillLoader {
                 .unwrap_or("unknown")
                 .to_string();
         }
+        let capabilities = normalize_capability_names(&capabilities)?;
 
         Ok(SkillMetadata {
             name,
@@ -244,7 +254,10 @@ This skill does awesome things.
         assert_eq!(skill.description, "Does awesome things");
         assert_eq!(skill.version, "2.1.0");
         assert_eq!(skill.author, Some("Jane Doe".to_string()));
-        assert_eq!(skill.capabilities, vec!["network_access", "file_read"]);
+        assert_eq!(skill.capabilities, vec!["file_read", "network_access"]);
+        let parsed = skill.parsed_capabilities().unwrap();
+        assert!(parsed.contains(&SkillCapability::NetworkAccess));
+        assert!(parsed.contains(&SkillCapability::FileRead));
     }
 
     #[test]
@@ -318,6 +331,22 @@ author: "Quoted Author"
         assert_eq!(skill.description, "A quoted description");
         assert_eq!(skill.version, "3.0.0");
         assert_eq!(skill.author, Some("Quoted Author".to_string()));
+    }
+
+    #[test]
+    fn test_discover_skips_skill_with_unknown_capability() {
+        let tmp = tempfile::tempdir().unwrap();
+        let content = r#"---
+name: invalid-skill
+capabilities: "launch_missiles"
+---
+"#;
+        create_skill_dir(tmp.path(), "invalid-skill", content);
+
+        let loader = SkillLoader::new(vec![tmp.path().to_path_buf()]);
+        let skills = loader.discover().unwrap();
+
+        assert!(skills.is_empty());
     }
 
     // ── discover() tests ────────────────────────────────────────────────

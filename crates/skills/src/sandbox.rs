@@ -13,6 +13,7 @@ use wasmtime::{Config, Engine, Instance, Memory, Module, Store, StoreLimits, Sto
 use crate::parse_capability_names;
 
 /// WASM sandbox configuration.
+#[derive(Debug)]
 pub struct SandboxConfig {
     /// Maximum memory in bytes (default: 64MB).
     pub max_memory_bytes: usize,
@@ -29,6 +30,16 @@ impl Default for SandboxConfig {
             max_execution_ms: 30_000,
             capabilities: HashSet::new(),
         }
+    }
+}
+
+impl SandboxConfig {
+    /// Build a sandbox config that grants exactly the declared capability names.
+    pub fn with_declared_capabilities(declared: &[String]) -> Result<Self> {
+        Ok(Self {
+            capabilities: parse_capability_names(declared)?,
+            ..Self::default()
+        })
     }
 }
 
@@ -277,6 +288,24 @@ mod tests {
     fn test_sandbox_config_default_no_capabilities() {
         let config = SandboxConfig::default();
         assert!(config.capabilities.is_empty());
+    }
+
+    #[test]
+    fn test_sandbox_config_with_declared_capabilities() {
+        let config = SandboxConfig::with_declared_capabilities(&[
+            "network_access".to_string(),
+            "file_read".to_string(),
+        ])
+        .unwrap();
+        assert!(config.capabilities.contains(&SkillCapability::NetworkAccess));
+        assert!(config.capabilities.contains(&SkillCapability::FileRead));
+    }
+
+    #[test]
+    fn test_sandbox_config_with_declared_capabilities_rejects_unknown_values() {
+        let error = SandboxConfig::with_declared_capabilities(&["launch_missiles".to_string()])
+            .unwrap_err();
+        assert!(error.to_string().contains("Unknown skill capability"));
     }
 
     #[test]
