@@ -18,6 +18,8 @@ The execution model is also explicit: Rust-native for production-critical paths,
 `openrustclaw start` now defaults to the Rust runtime path without requiring Python; the sidecar is only used when a compatibility workflow is explicitly needed and configured.
 The shipped Rust runtime now owns durable scheduling, event-triggered workflows, session lifecycle hooks, hook execution policies, and reminder delivery with quiet-hours/retry-aware channel fallback policies.
 The roadmap now includes a shipped Rust-native autonomous optimization framework inspired by `autoresearch`, generalized for skills, RAG, prompts, policies, bounded workflows, bounded code, and research-program targets.
+The roadmap also now includes a Rust-native web access stack for read-only page extraction, crawl-for-RAG ingestion, interactive browser automation, MCP/browser tool exposure, and optional compatibility with external browser runtimes without making them the durable source of truth.
+The roadmap further includes model-aware artifact sync, memory rehydration on model swaps, multi-model routing with optional quarterback/orchestrator models, a self-configuration harness, and a control-plane fallback model so provider/model changes do not take the platform down.
 
 ## Quick Start
 

@@ -35,6 +35,7 @@ Status values:
 | Sidecar memory orchestration | real | Agent and maintenance workflows use the Rust loopback bridge and typed workflow contract for search/store/archive paths, and the bridge/internal API plus default agent tools now support both rendering and setting core memory |
 | Memory maintenance archive pipeline | real | Maintenance workflow can fetch old memories, persist archive summaries, and remove archived originals through Rust-owned storage |
 | RAG pipeline | partial | Deterministic collection-backed retrieval, Rust-backed durable chunk storage, budgeted context assembly, source-type filters, stopword-aware lexical scoring, configurable per-source diversity limits, configurable minimum-score filtering, configurable top_k/preferred/required/excluded source and source-type controls, minimum-overlap filtering, duplicate suppression, retrieval summaries, score-aware/metadata-aware context shaping, and collection stats inspection exist; richer indexing still needs production hardening |
+| Model-aware memory/artifact rehydration | deferred | Roadmap now includes model-specific artifact sync, context rebudgeting, and memory reload/rehydration on provider or model swap so sessions survive model changes cleanly |
 
 ## Channels
 
@@ -57,6 +58,8 @@ Status values:
 | MCP stdio server | real | Supported transport with workspace, memory, scheduling, and RAG collection/chunk inspection tools |
 | MCP remote HTTP/SSE | deferred | Not part of current shipped surface |
 | `mcp2-cli` | real | Real stdio/OpenAPI discovery path |
+| Native web access / browser automation | deferred | Roadmap now includes a Rust-native stack for read-only fetch/extract, crawl-for-RAG, interactive browser control, optional vision verification, MCP/browser tool surfaces, and optional compatibility bridges for external browser runtimes where Rust remains the durable source of truth |
+| Multi-model orchestration / quarterback model | deferred | Roadmap now includes model profiles, model-per-task routing, a planner-orchestrator model mode, and a control-plane fallback model so model changes and outages do not take the platform down |
 | Cursor integration | gated | Repo surface exists, but it is not part of the current shipped runtime/tooling surface |
 | Skills registry/install flow | real | Workspace installs, marketplace lifecycle sync, discovery-time capability normalization, capability metadata persistence, sensitive-capability classification, verification policy summaries, and verification-state handling are wired through the CLI; failed verification clears stale verified state |
 | WASM skill executor | real | Real no-import executor exists with JSON ABI, memory limits, timeout enforcement, explicit capability checks, declared-capability sandbox config helpers, verification-aware declared-capability policy enforcement helpers, and sensitive-capability classification helpers |

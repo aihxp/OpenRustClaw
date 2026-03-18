@@ -443,6 +443,17 @@ Remaining:
   - thread scope can override channel scope.
 - [ ] Add Markdown/QMD-style workspace memory files or a Rust-native equivalent with import/export parity.
 - [ ] Add file-backed memory views that are operator-readable and editable from the Control UI.
+- [ ] Add model-aware workspace artifact support so OpenRustClaw can manage the per-model file conventions that different coding/reasoning models expect:
+  - `AGENTS.md`,
+  - `SKILL.md`,
+  - `CLAUDE.md`,
+  - model-specific memory or instruction files where they materially affect runtime quality,
+  - import/export and sync policies rather than hardcoding one provider's convention as universal.
+- [ ] Add artifact sync policies for model changes:
+  - update the active model's preferred artifact set,
+  - synchronize shared content across equivalent files when configured,
+  - preserve per-model overrides,
+  - show operator-visible diffs before destructive rewrites.
 - [ ] Add targeted memory lookup parity beyond broad search:
   - memory get,
   - namespace reads,
@@ -463,6 +474,11 @@ Remaining:
   - similarity-based consolidation/merge,
   - strengthening/abstraction of repeated patterns,
   - forgetting/pruning with archive recovery.
+- [ ] Add model-swap memory rehydration policies so context survives provider/model changes cleanly:
+  - reload core memory after model swap,
+  - recompute model-budgeted context windows,
+  - translate or compact persona/memory artifacts for the new model's preferred format,
+  - preserve session continuity without requiring restart or manual memory repair.
 - [ ] Add operator-visible learnings/error ledgers that can feed the optimization framework without becoming uncontrolled self-modification.
 - [ ] Add context compaction parity for long threads and high-volume group chats.
 - [ ] Add stronger retrieval quality:
@@ -565,6 +581,22 @@ Remaining:
   - memory inheritance/scope,
   - output policies,
   - profile inheritance/versioning.
+- [ ] Add first-class model profile support:
+  - provider/model capability descriptors,
+  - per-model artifact preferences,
+  - token/context budget policies,
+  - reasoning/latency/cost hints,
+  - safe fallback ordering when the primary model becomes unavailable or unauthorized.
+- [ ] Add multi-model execution support for users who want different models for different jobs:
+  - model-per-tool or model-per-workflow selection,
+  - model-per-agent-profile selection,
+  - routing by task type, cost, latency, privacy, or capability,
+  - operator-visible routing decisions and overrides.
+- [ ] Add a quarterback/orchestrator model mode:
+  - one model plans or routes work,
+  - one or more worker models execute subtasks,
+  - bounded handoff contracts,
+  - explicit traceability of which model decided versus which model executed.
 - [ ] Add sub-agent supervision surfaces:
   - active agent list/watch,
   - logs,
@@ -578,6 +610,101 @@ Remaining:
   - browser/web tools,
   - media tools,
   - node tools.
+- [ ] Build a Rust-native web access and browser automation stack that follows the execution-tier model instead of introducing a new permanent Python runtime dependency.
+  - [ ] Define the capability split explicitly:
+    - read-only web fetch/extract,
+    - crawl and map for RAG ingestion,
+    - interactive browser automation,
+    - optional managed-browser compatibility,
+    - optional stealth/anti-bot transport profiles.
+  - [ ] Build a read-first HTTP acquisition lane in Rust for "help Claw read" tasks:
+    - caching,
+    - redirects,
+    - cookies,
+    - robots and rate-limit policy hooks,
+    - readability/article extraction,
+    - markdown/plain-text normalization,
+    - metadata extraction,
+    - PDF/document fetch handoff.
+  - [ ] Build a crawl/map lane for doc and site ingestion:
+    - sitemap discovery,
+    - bounded site crawling,
+    - canonical URL handling,
+    - deduplication,
+    - chunking handoff into Rust-owned RAG storage,
+    - refresh/re-crawl policies,
+    - source attribution and crawl receipts.
+  - [ ] Build an interactive browser lane in Rust:
+    - Chrome/Chromium DevTools Protocol control,
+    - page/tab/session management,
+    - navigation history,
+    - DOM snapshotting,
+    - accessibility-tree extraction,
+    - forms,
+    - uploads/downloads,
+    - cookies/storage-state import and export,
+    - screenshot/PDF capture.
+  - [ ] Build a hybrid page-understanding layer:
+    - DOM/accessibility-first element discovery,
+    - screenshot capture for visual verification,
+    - optional vision-model grounding for visually ambiguous pages,
+    - stable action-target ids rather than raw coordinate-only execution.
+  - [ ] Build a Rust-native action planner/executor contract for browser work:
+    - navigate,
+    - click,
+    - type,
+    - select,
+    - scroll,
+    - drag,
+    - extract text/links/forms/tables,
+    - wait-for conditions,
+    - bounded retry semantics,
+    - operator approval gates for sensitive actions.
+  - [ ] Add browser/web tool surfaces to MCP, CLI, and runtime APIs:
+    - read page,
+    - crawl site,
+    - open session,
+    - inspect DOM/accessibility tree,
+    - run bounded action sequences,
+    - capture screenshots/artifacts,
+    - export artifacts for later inspection.
+  - [ ] Add a compatibility bridge for Playwright MCP or equivalent external browser runtimes only as Tier B:
+    - optional operator-configured backend,
+    - typed event translation,
+    - no durable truth outside Rust,
+    - explicit "compatibility" labeling in docs and UI.
+  - [ ] Add optional managed-browser infrastructure compatibility for scale-sensitive operators:
+    - Browserbase-style remote browser backends,
+    - proxy/session profile support,
+    - session replay artifact import,
+    - clear separation from the local default path.
+  - [ ] Add optional stealth/anti-bot transport profiles as an operator-controlled capability rather than default behavior:
+    - impersonation-aware HTTP client profiles,
+    - configurable proxy backends,
+    - init-script injection for browser sessions,
+    - humanized input timing profiles,
+    - explicit legal/compliance/operator-policy gating.
+  - [ ] Add safety boundaries for browser automation:
+    - domain allowlists and deny lists,
+    - secret redaction in captured artifacts,
+    - purchase/transfer/login approval gates,
+    - form-submit confirmation policies,
+    - download path sandboxing,
+    - CSRF/session-isolation rules,
+    - audit events for every sensitive browser action.
+  - [ ] Add observability and replay for browser runs:
+    - screenshots,
+    - DOM/action traces,
+    - network summaries,
+    - failure artifacts,
+    - LangSmith trace links,
+    - operator replay for failed runs.
+  - [ ] Add evaluation and benchmark coverage for web tasks:
+    - read-only extraction accuracy,
+    - docs/RAG crawl quality,
+    - interactive task success,
+    - latency/cost budgets,
+    - regression suites for dynamic sites.
 - [ ] Build the Web Control UI with parity for:
   - live chat,
   - configuration,
@@ -596,6 +723,12 @@ Remaining:
   - provider selection,
   - first channel login/pairing,
   - remote access guidance.
+- [ ] Add an agent self-configuration harness so users can ask Claw to configure itself without the model operating blindly:
+  - machine-readable self-description of enabled features, limits, tools, channels, and current config,
+  - typed introspection APIs for provider/account/channel/model state,
+  - safe config-edit proposals with validation before apply,
+  - dry-run explanations and rollback points,
+  - explicit approval gates for risky self-reconfiguration.
 - [ ] Add secure credential-vault parity:
   - encrypted storage for provider keys and channel tokens at rest,
   - CLI/UI secret management,
@@ -605,6 +738,11 @@ Remaining:
   - editable persona/DNA/system prompt artifacts that reload cleanly,
   - provider/channel updates that do not require process restarts when safe.
 - [ ] Add runtime provider and account switching without full restart where the active runtime can rebind safely.
+- [ ] Add model-switch hardening so changing providers/models does not crash the runtime:
+  - transactional config swap,
+  - validation before cutover,
+  - session-safe rebind and rollback,
+  - degraded-mode fallback if the requested model cannot start.
 - [ ] Add channel account CRUD parity to the CLI and Control UI.
 - [ ] Add operator-grade diagnostics:
   - gateway health,
@@ -635,6 +773,7 @@ Remaining:
 Exit criteria:
 
 - [ ] An operator can configure, inspect, and drive the system from CLI, MCP, or Control UI without dropping into internal-only tools.
+- [ ] OpenRustClaw has a Rust-native web access stack that can read, crawl, and interact with the web without requiring Browser Use or another Python browser agent runtime.
 
 ## Phase 7: Skills, Plugins, Media, Voice, and Nodes
 
@@ -736,6 +875,11 @@ Remaining:
   - launchd/systemd integration,
   - network modes for loopback/LAN/remote deployment,
   - trusted-proxy auth mode for reverse proxies.
+- [ ] Add control-plane model resilience so operator actions still work when the primary paid model is unavailable:
+  - separate low-cost or local fallback model for onboarding, updates, config edits, and model-switch operations,
+  - explicit distinction between primary task model and control-plane/safety model,
+  - startup-time fallback validation,
+  - operator warnings when the system is running in degraded control-plane mode.
 - [ ] Add explicit governance for optional external execution backends:
   - allowed backend registry,
   - credential and token isolation,
