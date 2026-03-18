@@ -37,6 +37,7 @@ impl IMessageChannel {
     }
 
     /// Check if an address (phone number or Apple ID) is allowed.
+    #[allow(dead_code)]
     fn is_address_allowed(&self, address: &str) -> bool {
         if self.config.allowlist.is_empty() {
             return true;
@@ -46,21 +47,37 @@ impl IMessageChannel {
 
     /// Handle BlueBubbles webhook payload.
     pub async fn handle_bluebubbles_webhook(&self, payload: BlueBubblesMessage) -> Result<()> {
-        // Skip messages from self
-        if payload.is_from_me {
+        let Some(msg) = Self::incoming_from_bluebubbles(&self.config, payload) else {
             return Ok(());
+        };
+        let _ = self.incoming_tx.send(msg).await;
+        Ok(())
+    }
+
+    /// Create an HTTP webhook handler for BlueBubbles callbacks.
+    pub fn webhook_handler(&self) -> IMessageWebhookHandler {
+        IMessageWebhookHandler {
+            config: self.config.clone(),
+            incoming_tx: self.incoming_tx.clone(),
+        }
+    }
+
+    fn incoming_from_bluebubbles(
+        config: &IMessageConfig,
+        payload: BlueBubblesMessage,
+    ) -> Option<IncomingMessage> {
+        if payload.is_from_me {
+            return None;
         }
 
-        // Check allowlist
-        if !self.is_address_allowed(&payload.handle.address) {
+        if !address_allowed(config, &payload.handle.address) {
             debug!(
                 address = %payload.handle.address,
                 "iMessage: ignoring message from non-allowed address"
             );
-            return Ok(());
+            return None;
         }
 
-        // Determine if this is a tapback/reaction
         let (content, is_reaction) = if let Some(tapback_type) = payload.associated_message_type {
             let reaction_text = match tapback_type {
                 0 => "❤️ Loved",
@@ -83,26 +100,21 @@ impl IMessageChannel {
             .or(payload.handle.last_name.clone())
             .unwrap_or_else(|| payload.handle.address.clone());
 
-        // Create metadata with iMessage-specific info
-        let metadata = serde_json::json!({
-            "imessage_chat_guid": payload.chat_guid,
-            "imessage_message_guid": payload.guid,
-            "imessage_handle_address": payload.handle.address,
-            "imessage_handle_name": name,
-            "imessage_is_reaction": is_reaction,
-            "imessage_associated_message_guid": payload.associated_message_guid,
-        });
-
-        let msg = IncomingMessage {
+        Some(IncomingMessage {
             session_id: Uuid::new_v4(),
             user_id: payload.handle.address.clone(),
             content,
             platform: Platform::IMessage,
-            metadata,
-        };
-
-        let _ = self.incoming_tx.send(msg).await;
-        Ok(())
+            metadata: serde_json::json!({
+                "imessage_chat_guid": payload.chat_guid,
+                "imessage_message_guid": payload.guid,
+                "imessage_handle_address": payload.handle.address,
+                "imessage_handle_name": name,
+                "imessage_is_reaction": is_reaction,
+                "imessage_is_group": false,
+                "imessage_associated_message_guid": payload.associated_message_guid,
+            }),
+        })
     }
 
     /// Send a message via BlueBubbles API.
@@ -250,6 +262,29 @@ impl IMessageChannel {
             .into()),
         }
     }
+}
+
+#[derive(Clone)]
+pub struct IMessageWebhookHandler {
+    config: IMessageConfig,
+    incoming_tx: mpsc::Sender<IncomingMessage>,
+}
+
+impl IMessageWebhookHandler {
+    pub async fn handle_event(&self, payload: BlueBubblesMessage) -> Result<()> {
+        let Some(msg) = IMessageChannel::incoming_from_bluebubbles(&self.config, payload) else {
+            return Ok(());
+        };
+        let _ = self.incoming_tx.send(msg).await;
+        Ok(())
+    }
+}
+
+fn address_allowed(config: &IMessageConfig, address: &str) -> bool {
+    if config.allowlist.is_empty() {
+        return true;
+    }
+    config.allowlist.contains(&address.to_string())
 }
 
 #[async_trait]

@@ -294,6 +294,22 @@ impl Channel for DiscordChannel {
         if let Some(embed) = embed {
             payload["embeds"] = serde_json::json!([embed]);
         }
+        if let Some(embeds) = msg.metadata.get("discord_embeds").and_then(|v| v.as_array()) {
+            payload["embeds"] = serde_json::json!(embeds);
+        } else if let Some(file_refs) = msg
+            .metadata
+            .get("file_references")
+            .and_then(|value| value.as_array())
+        {
+            let embeds: Vec<_> = file_refs
+                .iter()
+                .filter_map(|value| value.as_str())
+                .map(|url| serde_json::json!({"title": "File reference", "url": url}))
+                .collect();
+            if !embeds.is_empty() {
+                payload["embeds"] = serde_json::json!(embeds);
+            }
+        }
 
         let interaction_token = msg
             .metadata
@@ -765,6 +781,14 @@ fn normalize_gateway_message(
         "discord_attachment_count": event.attachments.len(),
         "discord_embed_count": event.embeds.len(),
     });
+    if !event.attachments.is_empty() {
+        metadata["discord_attachments"] = serde_json::json!(event.attachments);
+        metadata["file_references"] = serde_json::json!(event
+            .attachments
+            .iter()
+            .filter_map(|attachment| attachment.get("url").and_then(|value| value.as_str()))
+            .collect::<Vec<_>>());
+    }
     if let Some(guild_id) = event.guild_id {
         metadata["discord_guild_id"] = serde_json::json!(guild_id);
     }

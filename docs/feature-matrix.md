@@ -47,11 +47,14 @@ Status values:
 | Telegram | real | Auth probe, outbound send, Bot API polling receive, reply threading, mention-aware group activation metadata, and local agent/session routing exist |
 | Discord | partial | Auth probe, outbound send, edit/reaction operations, verified Interactions HTTP ingress, Gateway `MESSAGE_CREATE` receive, reconnect plus session resume handling, stale-heartbeat recovery, invalid-session recycling, thread-aware session routing, thread-preferred outbound replies, reply-reference propagation aliases, bot/webhook/self-message suppression, DM markers, mention detection, attachment/embed metadata capture, deferred acknowledgements, and local agent/session routing exist; deeper gateway polish remains incomplete |
 | Slack | real | HTTP mode supports auth probe, outbound send, edit/reaction operations, built-in Events API ingress, mention activation metadata, and local agent/session routing; Socket Mode remains incomplete |
-| Channel account/binding registry | real | `.claw/channels/` manifests now back pending/approved accounts, account activation mode, workspace/account/channel bindings, and operator CLI control |
+| Teams | partial | Bot Framework channel is now on the shipped startup path instead of being hard-gated, but deeper webhook/runtime parity still trails the tier-1 channels |
+| Channel account/binding registry | real | `.claw/channels/` manifests now back pending/approved accounts, account activation mode, workspace/account/channel bindings, operator CLI control, and typed HTTP operator APIs for Control UI reuse |
 | Matrix | gated | Repo surface exists, but runtime client support is deferred from the current shipped surface |
-| Google Chat | gated | Repo surface exists, but service-account auth and runtime coverage are deferred from the current shipped surface |
+| Google Chat | partial | Shipped runtime now supports webhook ingress plus token-backed outbound sends and local agent/session routing; fuller service-account auth and richer operator parity remain open |
 | Gmail Pub/Sub | gated | Repo surface exists, but Gmail API runtime coverage is deferred from the current shipped surface |
-| Teams / WhatsApp / LINE / Viber / WeChat / Messenger / Instagram / iMessage | gated | Present in repo, not part of the current shipped surface |
+| WhatsApp | real | Baileys bridge runtime, pairing/QR support, reconnect handling, DM/group routing, mentions, replies, media send/receive, and local agent/session routing are part of the shipped surface |
+| iMessage | partial | BlueBubbles/macOS direct send, BlueBubbles inbound webhook ingress, tapbacks, contact routing, and local agent/session routing are on the shipped runtime path; richer attachment/group mapping still trails OpenClaw |
+| Teams / LINE / Viber / WeChat / Messenger / Instagram | gated | Present in repo, not part of the current shipped surface |
 | Signal / Twilio / X/Twitter | gated | Present in repo, not part of the current shipped surface |
 
 ## Tooling and Integrations

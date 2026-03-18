@@ -113,18 +113,23 @@ Current channel modules available in the repo:
 
 Telegram, Discord, Slack, WhatsApp (Baileys bridge), Microsoft Teams, Google Chat, Gmail (Pub/Sub), Matrix, iMessage, LINE, Viber, WeChat, Messenger, Instagram DMs, WebChat
 
-The current shipped startup path is narrower: `openrustclaw start` actively supports WebChat, Telegram, Discord, and Slack. Other channel modules remain in the repo but are gated or deferred from the shipped runtime surface.
+The current shipped startup path actively supports WebChat, Telegram, Discord, Slack, WhatsApp, iMessage, and Google Chat, and now allows Microsoft Teams on a partial shipped path. Other channel modules remain in the repo but are gated or deferred from the shipped runtime surface.
 
 Current tier-1 status:
 
 - Telegram: auth probe, outbound send, Bot API polling receive, reply threading, mention-aware group metadata, and local agent/session routing are implemented
 - Discord: auth probe, outbound send, edit/reaction operations, verified Interactions HTTP ingress, Gateway `MESSAGE_CREATE` receive, reconnect/session recovery, thread-aware session routing, thread-preferred replies, reply-reference propagation aliases, mention detection, attachment/embed metadata capture, and local agent/session routing are implemented; deeper gateway polish still remains
 - Slack: auth probe, outbound send, edit/reaction operations, built-in HTTP Events API ingress, mention-aware routing metadata, and local agent/session routing are implemented for HTTP mode; Socket Mode remains incomplete
+- WhatsApp: Baileys bridge pairing/QR, reconnect behavior, DM/group routing, mentions, replies, media send/receive, and local agent/session routing are implemented
+- iMessage: BlueBubbles/macOS direct send, BlueBubbles inbound webhook routing, tapbacks, and local agent/session routing are implemented; richer attachment/group mapping still remains
+- Google Chat: webhook ingress, token-backed outbound sends, and local agent/session routing are implemented; fuller service-account auth and richer parity still remain
+- Teams: Bot Framework channel is no longer hard-gated from startup, but it is still partial relative to the shipped tier-1 surfaces
 
 Channel routing/operator controls:
 
 - `.claw/channels/` is the standard operator-visible registry for pending/approved accounts and channel bindings
 - `openrustclaw channels init|list|approve|block|activation|bind` manages tier-1 channel pairing state and binding policy
+- `GET/POST /control/channels...` exposes the same shipped channel registry over typed HTTP so the future Control UI can reuse the runtime state model
 - shipped channel routing now applies workspace/account/channel binding precedence, pairing approval gates, group mention activation, and shared reply chunking/coalescing/pacing policy
 
 ## Control Plane

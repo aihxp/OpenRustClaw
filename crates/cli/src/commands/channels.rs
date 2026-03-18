@@ -435,6 +435,8 @@ pub fn message_workspace_id(message: &IncomingMessage) -> Option<String> {
         "slack_team_id",
         "discord_guild_id",
         "telegram_chat_id",
+        "whatsapp_workspace_id",
+        "imessage_workspace_id",
         "webchat_workspace_id",
     ];
     lookup_string(metadata, &keys)
@@ -447,6 +449,8 @@ pub fn message_channel_scope(message: &IncomingMessage) -> Option<String> {
         "slack_channel",
         "discord_thread_id",
         "discord_channel_id",
+        "whatsapp_group_id",
+        "imessage_chat_guid",
         "telegram_chat_id",
         "webchat_room_id",
     ];
@@ -479,6 +483,18 @@ pub fn message_is_group(message: &IncomingMessage) -> bool {
     {
         return value;
     }
+    if let Some(value) = metadata
+        .get("whatsapp_is_group")
+        .and_then(|value| value.as_bool())
+    {
+        return value;
+    }
+    if let Some(value) = metadata
+        .get("imessage_is_group")
+        .and_then(|value| value.as_bool())
+    {
+        return value;
+    }
     false
 }
 
@@ -488,6 +504,8 @@ pub fn message_bot_mentioned(message: &IncomingMessage) -> bool {
         "slack_bot_mentioned",
         "discord_bot_mentioned",
         "telegram_bot_mentioned",
+        "whatsapp_bot_mentioned",
+        "imessage_bot_mentioned",
         "webchat_bot_mentioned",
     ] {
         if metadata.get(key).and_then(|value| value.as_bool()) == Some(true) {

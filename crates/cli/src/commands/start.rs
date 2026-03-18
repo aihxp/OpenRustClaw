@@ -5,15 +5,18 @@ use async_trait::async_trait;
 use axum::{
     Router,
     body::Bytes,
-    extract::State,
+    extract::{Path as AxumPath, State},
     http::{HeaderMap, StatusCode},
     response::IntoResponse,
-    routing::post,
+    routing::{get, post},
+    Json,
 };
 use chrono::{DateTime, Utc};
 use futures::Stream;
 use openrustclaw_agent::runtime::AgentRuntime;
 use openrustclaw_channels::discord::DiscordInteractionsHandler;
+use openrustclaw_channels::imessage::{BlueBubblesMessage, IMessageWebhookHandler};
+use openrustclaw_channels::google_chat::GoogleChatWebhookHandler;
 use openrustclaw_channels::slack::SlackEventHandler;
 use openrustclaw_core::error::{ChannelError as CoreChannelError, Error as CoreError, McpError};
 use openrustclaw_core::traits::{Channel, LlmProvider};
@@ -101,6 +104,14 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
                 ChannelType::Slack => {
                     config.channels.slack.enabled = true;
                     info!("Slack channel enabled");
+                }
+                ChannelType::WhatsApp => {
+                    config.channels.whatsapp.enabled = true;
+                    info!("WhatsApp channel enabled");
+                }
+                ChannelType::IMessage => {
+                    config.channels.imessage.enabled = true;
+                    info!("iMessage channel enabled");
                 }
                 ChannelType::WebChat => {
                     // WebChat is always enabled via gateway
@@ -216,11 +227,15 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
     let mut channel_config = config.channels.clone();
     let mut discord_ingress_handler = None;
     let mut slack_ingress_handler = None;
+    let mut google_chat_ingress_handler = None;
+    let mut imessage_ingress_handler = None;
     let mut enabled_channels = Vec::new();
-    let channel_registry = load_registry(resolve_root(None)?).unwrap_or_else(|error| {
-        warn!(error = %error, "Failed to load file-backed channel registry; continuing with defaults");
-        ChannelRegistry::default()
-    });
+    let channel_registry = Arc::new(tokio::sync::RwLock::new(
+        load_registry(resolve_root(None)?).unwrap_or_else(|error| {
+            warn!(error = %error, "Failed to load file-backed channel registry; continuing with defaults");
+            ChannelRegistry::default()
+        }),
+    ));
 
     if channel_config.discord.enabled {
         match ChannelFactory::create_discord(channel_config.discord.clone()) {
@@ -262,6 +277,34 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
         }
     }
 
+    if channel_config.google_chat.enabled {
+        match ChannelFactory::create_google_chat(channel_config.google_chat.clone()) {
+            Ok(google_chat_channel) => {
+                google_chat_ingress_handler = Some(google_chat_channel.event_handler());
+                enabled_channels.push(Box::new(google_chat_channel) as Box<dyn Channel>);
+                channel_config.google_chat.enabled = false;
+            }
+            Err(e) => {
+                error!(error = %e, "Failed to create Google Chat channel");
+                channel_config.google_chat.enabled = false;
+            }
+        }
+    }
+
+    if channel_config.imessage.enabled {
+        match ChannelFactory::create_imessage(channel_config.imessage.clone()) {
+            Ok(imessage_channel) => {
+                imessage_ingress_handler = Some(imessage_channel.webhook_handler());
+                enabled_channels.push(Box::new(imessage_channel) as Box<dyn Channel>);
+                channel_config.imessage.enabled = false;
+            }
+            Err(e) => {
+                error!(error = %e, "Failed to create iMessage channel");
+                channel_config.imessage.enabled = false;
+            }
+        }
+    }
+
     enabled_channels.extend(ChannelFactory::create_channels(&channel_config));
     let enabled_platforms: Vec<_> = enabled_channels
         .iter()
@@ -277,7 +320,7 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
             session_manager.clone(),
             channel_langsmith_client(&config),
             event_bus.clone(),
-            channel_registry,
+            channel_registry.clone(),
         )?))
     };
 
@@ -323,6 +366,15 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
         ));
         info!("Discord Interactions ingress enabled at /webhooks/discord/interactions");
     }
+    if let Some(handler) = google_chat_ingress_handler {
+        app = app.merge(google_chat_ingress_router(handler));
+        info!("Google Chat ingress enabled at /webhooks/google-chat/events");
+    }
+    if let Some(handler) = imessage_ingress_handler {
+        app = app.merge(imessage_ingress_router(handler));
+        info!("iMessage BlueBubbles ingress enabled at /webhooks/imessage/bluebubbles");
+    }
+    app = app.merge(channel_registry_router(channel_registry));
 
     // Create shutdown signal handler
     let shutdown = async {
@@ -397,16 +449,7 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
 
 fn gate_nonshipping_channels(config: &mut openrustclaw_core::config::ChannelsConfig) {
     if config.teams.enabled {
-        warn!("Teams is currently gated and will not be started by `openrustclaw start`");
-        config.teams.enabled = false;
-    }
-    if config.google_chat.enabled {
-        warn!("Google Chat is currently gated and will not be started by `openrustclaw start`");
-        config.google_chat.enabled = false;
-    }
-    if config.whatsapp.enabled {
-        warn!("WhatsApp is currently gated and will not be started by `openrustclaw start`");
-        config.whatsapp.enabled = false;
+        warn!("Teams is on a partial shipped path; deeper parity is still incomplete");
     }
     if config.gmail_pubsub.enabled {
         warn!("Gmail Pub/Sub is currently gated and will not be started by `openrustclaw start`");
@@ -415,10 +458,6 @@ fn gate_nonshipping_channels(config: &mut openrustclaw_core::config::ChannelsCon
     if config.matrix.enabled {
         warn!("Matrix is currently gated and will not be started by `openrustclaw start`");
         config.matrix.enabled = false;
-    }
-    if config.imessage.enabled {
-        warn!("iMessage is currently gated and will not be started by `openrustclaw start`");
-        config.imessage.enabled = false;
     }
     if config.line.enabled {
         warn!("LINE is currently gated and will not be started by `openrustclaw start`");
@@ -1356,7 +1395,7 @@ fn build_channel_agent(
     session_manager: Arc<SessionManager>,
     langsmith: Option<LangSmithClient>,
     event_bus: DurableEventBus,
-    channel_registry: ChannelRegistry,
+    channel_registry: Arc<tokio::sync::RwLock<ChannelRegistry>>,
 ) -> Result<ChannelAgent> {
     let workspace_root = std::env::current_dir()?;
     let provider = build_channel_provider(config)?;
@@ -1374,7 +1413,7 @@ fn build_channel_agent(
         core_memory_store: Some(core_memory_store),
         max_history_messages: 24,
         session_routing: config.session_routing.clone(),
-        channel_registry: Arc::new(tokio::sync::RwLock::new(channel_registry)),
+        channel_registry,
         langsmith,
         event_bus,
     })
@@ -2059,6 +2098,11 @@ struct DiscordIngressState {
     langsmith: Option<LangSmithClient>,
 }
 
+#[derive(Clone)]
+struct ChannelRegistryApiState {
+    registry: Arc<tokio::sync::RwLock<ChannelRegistry>>,
+}
+
 fn discord_ingress_router(
     handler: DiscordInteractionsHandler,
     langsmith: Option<LangSmithClient>,
@@ -2072,6 +2116,230 @@ fn discord_ingress_router(
             handler: Arc::new(handler),
             langsmith,
         })
+}
+
+fn channel_registry_router(registry: Arc<tokio::sync::RwLock<ChannelRegistry>>) -> Router {
+    Router::new()
+        .route("/control/channels", get(channel_registry_index_handler))
+        .route(
+            "/control/channels/accounts/{id}",
+            get(channel_registry_account_handler),
+        )
+        .route(
+            "/control/channels/accounts/{id}/approve",
+            post(channel_registry_approve_handler),
+        )
+        .route(
+            "/control/channels/accounts/{id}/block",
+            post(channel_registry_block_handler),
+        )
+        .route(
+            "/control/channels/accounts/{id}/activation",
+            post(channel_registry_activation_handler),
+        )
+        .route("/control/channels/bindings", post(channel_registry_bind_handler))
+        .with_state(ChannelRegistryApiState { registry })
+}
+
+async fn channel_registry_index_handler(
+    State(state): State<ChannelRegistryApiState>,
+) -> Json<serde_json::Value> {
+    let registry = state.registry.read().await;
+    let mut accounts: Vec<_> = registry.accounts.values().cloned().collect();
+    accounts.sort_by(|left, right| left.id.cmp(&right.id));
+    Json(serde_json::json!({
+        "root": registry.root.clone(),
+        "accounts": accounts,
+        "bindings": registry.bindings.clone(),
+    }))
+}
+
+async fn channel_registry_account_handler(
+    State(state): State<ChannelRegistryApiState>,
+    AxumPath(id): AxumPath<String>,
+) -> impl IntoResponse {
+    let registry = state.registry.read().await;
+    match registry.accounts.get(&id) {
+        Some(account) => (StatusCode::OK, Json(serde_json::json!(account))).into_response(),
+        None => (StatusCode::NOT_FOUND, Json(serde_json::json!({"error": "account not found"})))
+            .into_response(),
+    }
+}
+
+async fn channel_registry_approve_handler(
+    State(state): State<ChannelRegistryApiState>,
+    AxumPath(id): AxumPath<String>,
+) -> impl IntoResponse {
+    mutate_channel_registry_account(state.registry, &id, "approve", None).await
+}
+
+async fn channel_registry_block_handler(
+    State(state): State<ChannelRegistryApiState>,
+    AxumPath(id): AxumPath<String>,
+) -> impl IntoResponse {
+    mutate_channel_registry_account(state.registry, &id, "block", None).await
+}
+
+#[derive(serde::Deserialize)]
+struct ChannelActivationRequest {
+    mode: String,
+}
+
+async fn channel_registry_activation_handler(
+    State(state): State<ChannelRegistryApiState>,
+    AxumPath(id): AxumPath<String>,
+    Json(payload): Json<ChannelActivationRequest>,
+) -> impl IntoResponse {
+    mutate_channel_registry_account(state.registry, &id, "activation", Some(payload.mode)).await
+}
+
+#[derive(serde::Deserialize)]
+struct ChannelBindingRequest {
+    id: String,
+    platform: String,
+    workspace_match: Option<String>,
+    account_match: Option<String>,
+    channel_match: Option<String>,
+    workspace_target: Option<String>,
+    agent_id: Option<String>,
+    activation_mode: Option<String>,
+}
+
+async fn channel_registry_bind_handler(
+    State(state): State<ChannelRegistryApiState>,
+    Json(payload): Json<ChannelBindingRequest>,
+) -> impl IntoResponse {
+    let root = {
+        state
+            .registry
+            .read()
+            .await
+            .root
+            .to_string_lossy()
+            .to_string()
+    };
+    match super::channels::bind(
+        Some(&root),
+        &payload.id,
+        &payload.platform,
+        payload.workspace_match.as_deref(),
+        payload.account_match.as_deref(),
+        payload.channel_match.as_deref(),
+        payload.workspace_target.as_deref(),
+        payload.agent_id.as_deref(),
+        payload.activation_mode.as_deref(),
+    ) {
+        Ok(()) => match reload_channel_registry(&state.registry).await {
+            Ok(()) => (
+                StatusCode::OK,
+                Json(serde_json::json!({"status": "ok", "binding_id": payload.id})),
+            )
+                .into_response(),
+            Err(error) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": error.to_string()})),
+            )
+                .into_response(),
+        },
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn mutate_channel_registry_account(
+    registry: Arc<tokio::sync::RwLock<ChannelRegistry>>,
+    id: &str,
+    action: &str,
+    mode: Option<String>,
+) -> axum::response::Response {
+    let root = { registry.read().await.root.to_string_lossy().to_string() };
+    let result = match action {
+        "approve" => super::channels::approve(Some(&root), id),
+        "block" => super::channels::block(Some(&root), id),
+        "activation" => {
+            super::channels::activation(Some(&root), id, mode.as_deref().unwrap_or(""))
+        }
+        _ => Err(anyhow::anyhow!("unsupported channel registry action")),
+    };
+
+    match result {
+        Ok(()) => match reload_channel_registry(&registry).await {
+            Ok(()) => (
+                StatusCode::OK,
+                Json(serde_json::json!({"status": "ok", "account_id": id, "action": action})),
+            )
+                .into_response(),
+            Err(error) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": error.to_string()})),
+            )
+                .into_response(),
+        },
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn reload_channel_registry(
+    registry: &Arc<tokio::sync::RwLock<ChannelRegistry>>,
+) -> Result<()> {
+    let root = { registry.read().await.root.clone() };
+    let refreshed = load_registry(root)?;
+    *registry.write().await = refreshed;
+    Ok(())
+}
+
+#[derive(Clone)]
+struct IMessageIngressState {
+    handler: Arc<IMessageWebhookHandler>,
+}
+
+fn imessage_ingress_router(handler: IMessageWebhookHandler) -> Router {
+    Router::new()
+        .route("/webhooks/imessage/bluebubbles", post(imessage_bluebubbles_handler))
+        .with_state(IMessageIngressState {
+            handler: Arc::new(handler),
+        })
+}
+
+async fn imessage_bluebubbles_handler(
+    State(state): State<IMessageIngressState>,
+    Json(payload): Json<BlueBubblesMessage>,
+) -> impl IntoResponse {
+    match state.handler.handle_event(payload).await {
+        Ok(()) => StatusCode::OK.into_response(),
+        Err(error) => (StatusCode::BAD_REQUEST, error.to_string()).into_response(),
+    }
+}
+
+#[derive(Clone)]
+struct GoogleChatIngressState {
+    handler: Arc<GoogleChatWebhookHandler>,
+}
+
+fn google_chat_ingress_router(handler: GoogleChatWebhookHandler) -> Router {
+    Router::new()
+        .route("/webhooks/google-chat/events", post(google_chat_events_handler))
+        .with_state(GoogleChatIngressState {
+            handler: Arc::new(handler),
+        })
+}
+
+async fn google_chat_events_handler(
+    State(state): State<GoogleChatIngressState>,
+    body: Bytes,
+) -> impl IntoResponse {
+    match state.handler.handle_event(&body).await {
+        Ok(Some(response)) => (StatusCode::OK, Json(response)).into_response(),
+        Ok(None) => StatusCode::OK.into_response(),
+        Err(error) => (StatusCode::BAD_REQUEST, error.to_string()).into_response(),
+    }
 }
 
 async fn discord_interactions_handler(
@@ -4644,10 +4912,8 @@ mod tests {
         let mut config = AppConfig::default().channels;
         config.teams.enabled = true;
         config.google_chat.enabled = true;
-        config.whatsapp.enabled = true;
         config.gmail_pubsub.enabled = true;
         config.matrix.enabled = true;
-        config.imessage.enabled = true;
         config.line.enabled = true;
         config.viber.enabled = true;
         config.wechat.enabled = true;
@@ -4655,12 +4921,10 @@ mod tests {
 
         gate_nonshipping_channels(&mut config);
 
-        assert!(!config.teams.enabled);
-        assert!(!config.google_chat.enabled);
-        assert!(!config.whatsapp.enabled);
+        assert!(config.teams.enabled);
+        assert!(config.google_chat.enabled);
         assert!(!config.gmail_pubsub.enabled);
         assert!(!config.matrix.enabled);
-        assert!(!config.imessage.enabled);
         assert!(!config.line.enabled);
         assert!(!config.viber.enabled);
         assert!(!config.wechat.enabled);

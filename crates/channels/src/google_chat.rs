@@ -43,7 +43,7 @@ const GOOGLE_CHAT_API_BASE: &str = "https://chat.googleapis.com/v1";
 /// Google Chat channel implementation.
 pub struct GoogleChatChannel {
     config: GoogleChatConfig,
-    _incoming_tx: mpsc::Sender<IncomingMessage>,
+    incoming_tx: mpsc::Sender<IncomingMessage>,
     incoming_rx: Mutex<mpsc::Receiver<IncomingMessage>>,
     rate_limiter: Arc<
         RateLimiter<
@@ -57,7 +57,7 @@ pub struct GoogleChatChannel {
     /// Access token for API calls (cached and refreshed as needed)
     access_token: RwLock<Option<String>>,
     /// HTTP client for API calls
-    _http_client: reqwest::Client,
+    http_client: reqwest::Client,
 }
 
 /// Google Chat message payload for sending.
@@ -230,13 +230,18 @@ impl GoogleChatChannel {
 
         Self {
             config,
-            _incoming_tx: incoming_tx,
+            incoming_tx,
             incoming_rx: Mutex::new(incoming_rx),
             rate_limiter,
             is_connected: RwLock::new(false),
             access_token: RwLock::new(None),
-            _http_client: http_client,
+            http_client,
         }
+    }
+
+    /// Create an HTTP event handler for Google Chat push events.
+    pub fn event_handler(&self) -> GoogleChatWebhookHandler {
+        GoogleChatWebhookHandler::new(self.config.clone(), self.incoming_tx.clone())
     }
 
     /// Check if the user is in the allowlist.
@@ -416,10 +421,47 @@ impl GoogleChatChannel {
 
     /// Load service account key and obtain access token.
     async fn authenticate(&self) -> Result<String> {
-        warn!("Google Chat service account auth is not implemented yet");
+        if let Some(token) = self.config.service_account_key.strip_prefix("token:") {
+            let token = token.trim();
+            if !token.is_empty() {
+                return Ok(token.to_string());
+            }
+        }
+
+        if let Some(var_name) = self.config.service_account_key.strip_prefix("env:") {
+            let value = std::env::var(var_name.trim()).map_err(|_| ChannelError::AuthFailed {
+                platform: "google_chat".to_string(),
+                message: format!(
+                    "Google Chat access token env var '{}' is not set",
+                    var_name.trim()
+                ),
+            })?;
+            if !value.trim().is_empty() {
+                return Ok(value);
+            }
+        }
+
+        let key_path = std::path::Path::new(&self.config.service_account_key);
+        if key_path.exists() {
+            let raw = tokio::fs::read_to_string(key_path)
+                .await
+                .map_err(|e| ChannelError::AuthFailed {
+                    platform: "google_chat".to_string(),
+                    message: format!("Failed to read Google Chat key file: {}", e),
+                })?;
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&raw)
+                && let Some(token) = json.get("access_token").and_then(|value| value.as_str())
+                && !token.trim().is_empty()
+            {
+                return Ok(token.to_string());
+            }
+        }
+
+        warn!("Google Chat auth requires `token:<value>`, `env:VAR`, or a JSON file containing `access_token`");
         Err(ChannelError::AuthFailed {
             platform: "google_chat".to_string(),
-            message: "Service account authentication is not implemented yet".to_string(),
+            message: "Google Chat authentication is not configured with a usable access token"
+                .to_string(),
         }
         .into())
     }
@@ -489,19 +531,60 @@ impl Channel for GoogleChatChannel {
                 })?
         };
 
-        debug!(
-            space = %space_name,
-            token_length = token.len(),
-            content = %msg.content,
-            has_cards = message_payload.cards_v2.is_some(),
-            "Google Chat send requested before API send path was implemented"
-        );
+        let response = self
+            .http_client
+            .post(format!("{}/messages", GOOGLE_CHAT_API_BASE.to_string() + "/" + space_name))
+            .bearer_auth(&token)
+            .json(&message_payload)
+            .send()
+            .await
+            .map_err(|e| ChannelError::SendFailed {
+                platform: "google_chat".to_string(),
+                message: e.to_string(),
+            })?;
 
-        Err(ChannelError::SendFailed {
-            platform: "google_chat".to_string(),
-            message: "Google Chat API send path is not implemented yet".to_string(),
+        let status = response.status();
+        let body: serde_json::Value = response
+            .json()
+            .await
+            .unwrap_or_else(|_| serde_json::json!({}));
+
+        if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+            return Err(ChannelError::RateLimited {
+                platform: "google_chat".to_string(),
+                retry_after_secs: None,
+            }
+            .into());
         }
-        .into())
+
+        if status == reqwest::StatusCode::UNAUTHORIZED {
+            return Err(ChannelError::AuthFailed {
+                platform: "google_chat".to_string(),
+                message: body
+                    .get("error")
+                    .and_then(|value| value.get("message"))
+                    .and_then(|value| value.as_str())
+                    .unwrap_or("unauthorized")
+                    .to_string(),
+            }
+            .into());
+        }
+
+        if !status.is_success() {
+            return Err(ChannelError::SendFailed {
+                platform: "google_chat".to_string(),
+                message: body
+                    .get("error")
+                    .and_then(|value| value.get("message"))
+                    .and_then(|value| value.as_str())
+                    .unwrap_or("Google Chat send failed")
+                    .to_string(),
+            }
+            .into());
+        }
+
+        debug!(space = %space_name, content = %msg.content, "Google Chat message sent");
+        Ok(())
     }
 
     async fn receive(&self) -> Result<IncomingMessage> {

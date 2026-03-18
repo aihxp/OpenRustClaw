@@ -207,8 +207,49 @@ impl Channel for SlackChannel {
         if let Some(thread_ts) = thread_ts {
             payload["thread_ts"] = serde_json::json!(thread_ts);
         }
+        if let Some(reply_broadcast) = msg
+            .metadata
+            .get("slack_reply_broadcast")
+            .and_then(|v| v.as_bool())
+        {
+            payload["reply_broadcast"] = serde_json::json!(reply_broadcast);
+        }
+        if let Some(unfurl_links) = msg
+            .metadata
+            .get("slack_unfurl_links")
+            .and_then(|v| v.as_bool())
+        {
+            payload["unfurl_links"] = serde_json::json!(unfurl_links);
+        }
+        if let Some(unfurl_media) = msg
+            .metadata
+            .get("slack_unfurl_media")
+            .and_then(|v| v.as_bool())
+        {
+            payload["unfurl_media"] = serde_json::json!(unfurl_media);
+        }
         if let Some(blocks) = blocks {
             payload["blocks"] = serde_json::json!(blocks);
+        }
+        if let Some(attachments) = msg.metadata.get("slack_attachments").and_then(|v| v.as_array())
+        {
+            payload["attachments"] = serde_json::json!(attachments);
+        } else if let Some(file_refs) = msg
+            .metadata
+            .get("file_references")
+            .and_then(|value| value.as_array())
+        {
+            let attachment_text = file_refs
+                .iter()
+                .filter_map(|value| value.as_str())
+                .collect::<Vec<_>>()
+                .join("\n");
+            if !attachment_text.is_empty() {
+                payload["attachments"] = serde_json::json!([{
+                    "fallback": attachment_text,
+                    "text": attachment_text,
+                }]);
+            }
         }
         if let Some(ts) = update_ts {
             payload["ts"] = serde_json::json!(ts);

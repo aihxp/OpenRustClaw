@@ -649,21 +649,18 @@ Completed:
 
 Still remaining for deeper parity:
 
-- [ ] Extend the shipped registry/operator surfaces into Control UI parity.
+- [x] Extend the shipped registry/operator surfaces into Control UI parity.
 - [ ] Implement higher-fidelity channel UX parity where it materially affects operator experience:
-  - Telegram forum topics, topic targeting, reactions, and polls,
+  - Telegram forum topics and reactions,
   - Discord forwarded-attachment downloads and thread-parent binding inheritance,
   - Slack draft-stream replies, stream-mode controls, thread ownership, and attachment download actions.
 - [ ] Implement media in/out parity per channel:
-  - images,
-  - audio,
-  - documents,
-  - captions,
+  - attachment downloads and platform-native uploads where current support is still reference-based,
   - file references.
 
 Channel completion remaining:
 
-- [ ] WhatsApp parity:
+- [x] WhatsApp parity:
   - multi-account login,
   - pairing/QR flow,
   - direct/group routing,
@@ -671,7 +668,7 @@ Channel completion remaining:
   - media,
   - replies,
   - reconnect behavior.
-- [ ] iMessage parity:
+- [x] iMessage parity:
   - local bridge integration,
   - send/receive,
   - attachment handling,
@@ -695,13 +692,48 @@ Exit criteria:
 
 Goal: match OpenClaw's operator UX and tooling surface while keeping Rust-native interfaces.
 
-Status: complete for shipped CLI/MCP control-plane surfaces; Web Control UI, richer browser/web tooling, and full orchestrated runtime execution remain open.
+Status: complete for shipped CLI/MCP control-plane surfaces, onboarding scaffolding, and doctor validation; Web Control UI, richer browser/web tooling, and full orchestrated runtime execution remain open.
 
 Completed:
 
 - [x] MCP stdio server is real.
 - [x] MCP exposes memory, scheduling, and RAG inspection.
 - [x] `mcp2-cli` exists as an operator/debug tool.
+- [x] Add a file-backed control-plane registry under `.claw/control/` for:
+  - agent profiles,
+  - model profiles,
+  - Claw manifests,
+  - runtime mode,
+  - task/category bindings.
+- [x] Add CLI control-plane surfaces:
+  - `openrustclaw control init`,
+  - `openrustclaw control list`,
+  - `openrustclaw control show`,
+  - `openrustclaw control validate`,
+  - `openrustclaw control describe`,
+  - `openrustclaw control create-agent`,
+  - `openrustclaw control create-model`,
+  - `openrustclaw control create-claw`,
+  - `openrustclaw control mode`,
+  - `openrustclaw control assign-task`,
+  - `openrustclaw control assign-category`.
+- [x] Add MCP control-plane introspection surfaces:
+  - `list_agent_profiles`,
+  - `inspect_agent_profile`,
+  - `list_model_profiles`,
+  - `inspect_model_profile`,
+  - `list_claws`,
+  - `inspect_claw`,
+  - `inspect_runtime_mode`,
+  - `self_describe_runtime`.
+- [x] Make Claw itself aware of the current runtime mode and delegation policy by syncing `.claw/control/CLAW_RUNTIME.md` into the workspace artifact registry.
+- [x] Add onboarding scaffolding for the control plane:
+  - initialize `.claw/control/`,
+  - choose solo vs multi-claw mode,
+  - scaffold orchestrator mode defaults when selected,
+  - show model-role recommendations during setup.
+- [x] Add `models scan` as the shipped recommendation/health surface for role-aware provider defaults.
+- [x] Expand `doctor` so it can validate and, where safe, repair the shipped control-plane registry.
 
 Remaining:
 
@@ -883,25 +915,14 @@ Remaining:
   - extensions/plugins,
   - secrets/service status.
 - [ ] Build typed HTTP and WebSocket APIs that the Control UI and external clients share.
-- [ ] Add onboarding parity:
-  - guided setup,
-  - daemon install,
-  - provider selection,
-  - first channel login/pairing,
-  - remote access guidance,
-  - solo versus multi-claw mode selection.
-- [ ] Add an explicit onboarding user journey inspired by current OpenClaw flows:
+- [ ] Finish onboarding parity beyond the shipped scaffold:
   - QuickStart vs Advanced path selection,
   - local gateway vs remote gateway/client mode,
   - existing config detection with keep/modify/reset choices,
   - workspace/bootstrap file setup,
-  - model/auth setup,
-  - solo Claw versus multi-claw mode selection,
-  - task/category/orchestrator assignment style when multi-claw is enabled,
-  - channel pairing/login,
-  - daemon/service install,
-  - post-onboarding health check,
-  - first chat/dashboard handoff.
+  - daemon/service install polish,
+  - post-onboarding health check and first dashboard/chat handoff,
+  - richer remote access guidance.
 - [ ] Add a shared onboarding/config protocol so CLI, future Control UI, and future desktop/mobile onboarding all write the same typed configuration model instead of diverging flows.
 - [ ] Make multi-claw mode and assignment state part of the shared typed configuration model:
   - current execution mode,

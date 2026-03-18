@@ -205,6 +205,49 @@ impl TelegramChannel {
                                 .get("caption")
                                 .and_then(|value| value.as_str())
                                 .map(ToString::to_string)
+                        })
+                        .or_else(|| {
+                            message.get("poll").map(|poll| {
+                                let question = poll
+                                    .get("question")
+                                    .and_then(|value| value.as_str())
+                                    .unwrap_or("Poll");
+                                let options = poll
+                                    .get("options")
+                                    .and_then(|value| value.as_array())
+                                    .map(|values| {
+                                        values
+                                            .iter()
+                                            .filter_map(|option| {
+                                                option
+                                                    .get("text")
+                                                    .and_then(|value| value.as_str())
+                                            })
+                                            .collect::<Vec<_>>()
+                                            .join(", ")
+                                    })
+                                    .unwrap_or_default();
+                                if options.is_empty() {
+                                    format!("[Poll] {question}")
+                                } else {
+                                    format!("[Poll] {question} Options: {options}")
+                                }
+                            })
+                        })
+                        .or_else(|| {
+                            if message.get("photo").is_some() {
+                                Some("[Image]".to_string())
+                            } else if message.get("document").is_some() {
+                                Some("[Document]".to_string())
+                            } else if message.get("audio").is_some() {
+                                Some("[Audio]".to_string())
+                            } else if message.get("voice").is_some() {
+                                Some("[Voice message]".to_string())
+                            } else if message.get("video").is_some() {
+                                Some("[Video]".to_string())
+                            } else {
+                                None
+                            }
                         });
 
                     let Some(content) = content else {
@@ -246,6 +289,46 @@ impl TelegramChannel {
                         .and_then(|value| value.as_i64())
                     {
                         metadata["telegram_reply_to_message_id"] = serde_json::json!(reply_to);
+                    }
+                    if let Some(thread_id) = message
+                        .get("message_thread_id")
+                        .and_then(|value| value.as_i64())
+                    {
+                        metadata["telegram_message_thread_id"] = serde_json::json!(thread_id);
+                    }
+                    if let Some(poll) = message.get("poll") {
+                        metadata["telegram_poll"] = poll.clone();
+                    }
+                    if let Some(photo) = message.get("photo").and_then(|value| value.as_array()) {
+                        metadata["telegram_media_type"] = serde_json::json!("image");
+                        metadata["telegram_file_references"] = serde_json::json!(photo
+                            .iter()
+                            .filter_map(|entry| entry.get("file_id").and_then(|value| value.as_str()))
+                            .collect::<Vec<_>>());
+                    } else if let Some(document) = message.get("document") {
+                        metadata["telegram_media_type"] = serde_json::json!("document");
+                        metadata["telegram_file_references"] = serde_json::json!([document
+                            .get("file_id")
+                            .and_then(|value| value.as_str())
+                            .unwrap_or_default()]);
+                    } else if let Some(audio) = message.get("audio") {
+                        metadata["telegram_media_type"] = serde_json::json!("audio");
+                        metadata["telegram_file_references"] = serde_json::json!([audio
+                            .get("file_id")
+                            .and_then(|value| value.as_str())
+                            .unwrap_or_default()]);
+                    } else if let Some(voice) = message.get("voice") {
+                        metadata["telegram_media_type"] = serde_json::json!("voice");
+                        metadata["telegram_file_references"] = serde_json::json!([voice
+                            .get("file_id")
+                            .and_then(|value| value.as_str())
+                            .unwrap_or_default()]);
+                    } else if let Some(video) = message.get("video") {
+                        metadata["telegram_media_type"] = serde_json::json!("video");
+                        metadata["telegram_file_references"] = serde_json::json!([video
+                            .get("file_id")
+                            .and_then(|value| value.as_str())
+                            .unwrap_or_default()]);
                     }
                     if let Some(bot_username) = bot_username.as_deref() {
                         metadata["telegram_bot_mentioned"] =
@@ -294,21 +377,68 @@ impl Channel for TelegramChannel {
 
         // Parse inline keyboard from metadata
         let reply_markup = Self::parse_inline_keyboard(&msg.metadata);
-        let url = format!(
-            "{}/bot{}/sendMessage",
-            self.api_base_url(),
-            self.config.token
-        );
+        let media_type = msg
+            .metadata
+            .get("telegram_media_type")
+            .and_then(|value| value.as_str());
+        let media_ref = msg
+            .metadata
+            .get("telegram_media_url")
+            .or_else(|| msg.metadata.get("telegram_media_path"))
+            .or_else(|| {
+                msg.metadata
+                    .get("file_references")
+                    .and_then(|value| value.as_array())
+                    .and_then(|values| values.first())
+            })
+            .and_then(|value| value.as_str());
+        let is_poll = msg.metadata.get("telegram_poll_options").and_then(|value| value.as_array());
+        let endpoint = if is_poll.is_some() {
+            "sendPoll"
+        } else {
+            match media_type {
+                Some("image") => "sendPhoto",
+                Some("document") => "sendDocument",
+                Some("audio") | Some("voice") => "sendAudio",
+                Some("video") => "sendVideo",
+                _ => "sendMessage",
+            }
+        };
+        let url = format!("{}/bot{}/{}", self.api_base_url(), self.config.token, endpoint);
         let mut payload = serde_json::json!({
             "chat_id": chat_id,
-            "text": msg.content,
         });
+        if let Some(options) = is_poll {
+            payload["question"] = serde_json::json!(msg.content);
+            payload["options"] = serde_json::json!(options);
+        } else if let (Some(kind), Some(reference)) = (media_type, media_ref) {
+            let field = match kind {
+                "image" => "photo",
+                "document" => "document",
+                "audio" | "voice" => "audio",
+                "video" => "video",
+                _ => "text",
+            };
+            payload[field] = serde_json::json!(reference);
+            if !msg.content.is_empty() {
+                payload["caption"] = serde_json::json!(msg.content);
+            }
+        } else {
+            payload["text"] = serde_json::json!(msg.content);
+        }
         if let Some(reply_to) = msg
             .metadata
             .get("telegram_reply_to_message_id")
             .and_then(|value| value.as_i64())
         {
             payload["reply_to_message_id"] = serde_json::json!(reply_to);
+        }
+        if let Some(thread_id) = msg
+            .metadata
+            .get("telegram_message_thread_id")
+            .and_then(|value| value.as_i64())
+        {
+            payload["message_thread_id"] = serde_json::json!(thread_id);
         }
         if let Some(reply_markup) = reply_markup {
             payload["reply_markup"] = reply_markup;
