@@ -3,6 +3,7 @@
 use anyhow::{Context, Result};
 use indicatif::{ProgressBar, ProgressStyle};
 use sqlx::Row;
+use std::path::{Path, PathBuf};
 
 use openrustclaw_security::SkillVerifier;
 use openrustclaw_skills::{ClawHubRegistry, SearchFilters, SortBy};
@@ -45,6 +46,64 @@ fn load_configured_skill_verifier(
 
     SkillVerifier::new(Some(&key_bytes), required)
         .context("Failed to construct skill verifier from configured key")
+}
+
+fn resolve_workspace_skill_file(name: &str) -> Option<PathBuf> {
+    let candidates = [
+        Path::new("skills").join(name).join("SKILL.md"),
+        Path::new("skills").join(format!("{name}.md")),
+    ];
+
+    candidates.into_iter().find(|path| path.exists())
+}
+
+fn serialize_capabilities(capabilities: &[String]) -> Result<String> {
+    serde_json::to_string(capabilities).context("Failed to serialize skill capabilities")
+}
+
+async fn upsert_skill_record(
+    pool: &sqlx::SqlitePool,
+    name: &str,
+    description: Option<&str>,
+    source: &str,
+    version: Option<&str>,
+    signature: Option<&str>,
+    verified: bool,
+    capabilities_json: Option<&str>,
+    schema: Option<&str>,
+) -> Result<()> {
+    sqlx::query(
+        r#"
+        INSERT INTO skills (
+            id, name, description, source, version, signature,
+            verified, enabled, capabilities, schema, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, datetime('now'), datetime('now'))
+        ON CONFLICT(name) DO UPDATE SET
+            description = excluded.description,
+            source = excluded.source,
+            version = excluded.version,
+            signature = excluded.signature,
+            verified = excluded.verified,
+            enabled = 1,
+            capabilities = excluded.capabilities,
+            schema = excluded.schema,
+            updated_at = datetime('now')
+        "#,
+    )
+    .bind(uuid::Uuid::new_v4().to_string())
+    .bind(name)
+    .bind(description)
+    .bind(source)
+    .bind(version)
+    .bind(signature)
+    .bind(if verified { 1 } else { 0 })
+    .bind(capabilities_json)
+    .bind(schema)
+    .execute(pool)
+    .await
+    .context("Failed to upsert skill record")?;
+
+    Ok(())
 }
 
 /// List installed skills from database.
@@ -259,62 +318,72 @@ pub async fn install(name: &str) -> Result<()> {
         return Ok(());
     }
 
-    // For now, we support installing from the local skills directory
-    // In a full implementation, this would download from a marketplace API
     let skills_dir = std::path::Path::new("skills");
+    let expected_skill_path = Path::new("skills").join(name).join("SKILL.md");
     if !skills_dir.exists() {
         tokio::fs::create_dir_all(skills_dir).await?;
     }
 
-    let skill_file = skills_dir.join(format!("{}.md", name));
-
-    if skill_file.exists() {
+    if let Some(skill_file) = resolve_workspace_skill_file(name) {
         // Load and parse the skill
         let content = tokio::fs::read_to_string(&skill_file).await?;
 
         // Parse SKILL.md format
         let metadata = parse_skill_metadata(&content)?;
+        let capabilities_json = serialize_capabilities(&metadata.capabilities)?;
 
-        // Insert into database
-        let id = uuid::Uuid::new_v4().to_string();
-        sqlx::query(
-            r#"
-            INSERT INTO skills (
-                id, name, description, source, version, 
-                verified, enabled, capabilities, schema, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
-            "#,
+        upsert_skill_record(
+            &pool,
+            &metadata.name,
+            metadata.description.as_deref(),
+            "workspace",
+            metadata.version.as_deref(),
+            metadata.signature.as_deref(),
+            true,
+            Some(&capabilities_json),
+            metadata.schema.as_deref(),
         )
-        .bind(&id)
-        .bind(&metadata.name)
-        .bind(&metadata.description)
-        .bind("workspace")
-        .bind(&metadata.version)
-        .bind(0) // not verified
-        .bind(1) // enabled
-        .bind(&metadata.capabilities)
-        .bind(&metadata.schema)
-        .execute(&pool)
-        .await
-        .context("Failed to insert skill into database")?;
+        .await?;
 
         println!("✓ Skill '{}' installed successfully", name);
-        println!("  ID: {}", id);
+        println!("  Path: {}", skill_file.display());
         println!("  Source: workspace");
-
-        if config.security.skill_signature_required {
-            println!();
-            println!("⚠ Warning: Signature verification is required but this skill is not signed.");
-            println!("  Run `openrustclaw skills verify {}` to verify.", name);
+        if !metadata.capabilities.is_empty() {
+            println!("  Capabilities: {}", metadata.capabilities.join(", "));
         }
     } else {
         // Try to install from ClawHub registry
         println!("Skill not found locally. Checking ClawHub registry...");
 
-        let endpoint = "https://clawhub.openrustclaw.dev".to_string();
+        let endpoint = config
+            .skills
+            .clone()
+            .and_then(|s| s.registry_url)
+            .unwrap_or_else(|| "https://clawhub.openrustclaw.dev".to_string());
 
         match ClawHubRegistry::new(&endpoint).await {
             Ok(registry) => {
+                let registry_metadata = registry.get_skill(name).await;
+                let registry_metadata = match registry_metadata {
+                    Ok(metadata) => metadata,
+                    Err(e) => {
+                        println!("✗ Failed to fetch skill metadata from ClawHub: {}", e);
+                        println!();
+                        println!(
+                            "To create a new skill locally, add a SKILL.md file to the ./skills directory."
+                        );
+                        println!("Expected file: {}", Path::new("skills").join(name).join("SKILL.md").display());
+                        return Ok(());
+                    }
+                };
+
+                if config.security.skill_signature_required && registry_metadata.signature.is_none() {
+                    anyhow::bail!(
+                        "Skill '{}' is unsigned and [security].skill_signature_required is enabled",
+                        name
+                    );
+                }
+
                 let pb = ProgressBar::new_spinner();
                 pb.set_style(
                     ProgressStyle::default_spinner()
@@ -335,6 +404,22 @@ pub async fn install(name: &str) -> Result<()> {
                                 version,
                                 path,
                             } => {
+                                let capabilities_json =
+                                    serialize_capabilities(&registry_metadata.capabilities)?;
+                                let version_string = version.to_string();
+                                upsert_skill_record(
+                                    &pool,
+                                    &name,
+                                    Some(&registry_metadata.description),
+                                    "marketplace",
+                                    Some(version_string.as_str()),
+                                    registry_metadata.signature.as_deref(),
+                                    registry_metadata.signature.is_some(),
+                                    Some(&capabilities_json),
+                                    None,
+                                )
+                                .await?;
+
                                 println!("✓ Skill '{}' v{} installed successfully", name, version);
                                 println!("  Path: {}", path.display());
                             }
@@ -347,7 +432,7 @@ pub async fn install(name: &str) -> Result<()> {
                         println!(
                             "To create a new skill locally, add a SKILL.md file to the ./skills directory."
                         );
-                        println!("Expected file: {}", skill_file.display());
+                        println!("Expected file: {}", expected_skill_path.display());
                     }
                 }
             }
@@ -357,7 +442,7 @@ pub async fn install(name: &str) -> Result<()> {
                 println!(
                     "To create a new skill locally, add a SKILL.md file to the ./skills directory."
                 );
-                println!("Expected file: {}", skill_file.display());
+                println!("Expected file: {}", expected_skill_path.display());
             }
         }
     }
@@ -394,7 +479,11 @@ pub async fn update(name: &str) -> Result<()> {
     }
 
     // Try to update via ClawHub registry
-    let endpoint = "https://clawhub.openrustclaw.dev".to_string();
+    let endpoint = config
+        .skills
+        .clone()
+        .and_then(|s| s.registry_url)
+        .unwrap_or_else(|| "https://clawhub.openrustclaw.dev".to_string());
 
     match ClawHubRegistry::new(&endpoint).await {
         Ok(registry) => {
@@ -416,13 +505,21 @@ pub async fn update(name: &str) -> Result<()> {
                         openrustclaw_skills::UpdateResult::Updated { from, to } => {
                             println!("✓ Skill '{}' updated from v{} to v{}", name, from, to);
 
-                            // Update database
-                            sqlx::query(
-                                "UPDATE skills SET version = ?, updated_at = datetime('now') WHERE name = ?"
+                            let metadata = registry.get_skill(name).await?;
+                            let capabilities_json =
+                                serialize_capabilities(&metadata.capabilities)?;
+                            let version_string = to.to_string();
+                            upsert_skill_record(
+                                &pool,
+                                name,
+                                Some(&metadata.description),
+                                "marketplace",
+                                Some(version_string.as_str()),
+                                metadata.signature.as_deref(),
+                                metadata.signature.is_some(),
+                                Some(&capabilities_json),
+                                None,
                             )
-                            .bind(to.to_string())
-                            .bind(name)
-                            .execute(&pool)
                             .await?;
                         }
                     }
@@ -469,7 +566,11 @@ pub async fn uninstall(name: &str) -> Result<()> {
     }
 
     // Try to uninstall via ClawHub registry first
-    let endpoint = "https://clawhub.openrustclaw.dev".to_string();
+    let endpoint = config
+        .skills
+        .clone()
+        .and_then(|s| s.registry_url)
+        .unwrap_or_else(|| "https://clawhub.openrustclaw.dev".to_string());
 
     if let Ok(registry) = ClawHubRegistry::new(&endpoint).await
         && let Err(e) = registry.uninstall(name).await
@@ -505,7 +606,7 @@ pub async fn verify(name: &str) -> Result<()> {
         .context("Failed to run migrations")?;
 
     // Get skill from database
-    let row = sqlx::query("SELECT id, signature, source FROM skills WHERE name = ?")
+    let row = sqlx::query("SELECT id, signature, source, verified FROM skills WHERE name = ?")
         .bind(name)
         .fetch_optional(&pool)
         .await?;
@@ -517,6 +618,7 @@ pub async fn verify(name: &str) -> Result<()> {
     let id: String = row.get("id");
     let signature: Option<String> = row.get("signature");
     let source: String = row.get("source");
+    let verified: i64 = row.get("verified");
 
     // Workspace and bundled skills are exempt from verification
     if source == "workspace" || source == "bundled" {
@@ -534,13 +636,21 @@ pub async fn verify(name: &str) -> Result<()> {
         return Ok(());
     }
 
-    // Load skill content
-    let skills_dir = std::path::Path::new("skills");
-    let skill_file = skills_dir.join(format!("{}.md", name));
-
-    if !skill_file.exists() {
-        anyhow::bail!("Skill file not found: {}", skill_file.display());
+    if verified == 1 {
+        println!(
+            "✓ Skill '{}' is already verified from its managed install record",
+            name
+        );
+        return Ok(());
     }
+
+    // Load skill content
+    let Some(skill_file) = resolve_workspace_skill_file(name) else {
+        anyhow::bail!(
+            "Skill '{}' is not a workspace skill and no local SKILL.md was found for manual verification",
+            name
+        );
+    };
 
     let content = tokio::fs::read(&skill_file).await?;
 
@@ -583,7 +693,11 @@ pub async fn popular(limit: usize) -> Result<()> {
     println!("🔥 Popular Skills");
     println!();
 
-    let endpoint = "https://clawhub.openrustclaw.dev".to_string();
+    let config = openrustclaw_core::config::AppConfig::load().unwrap_or_default();
+    let endpoint = config
+        .skills
+        .and_then(|s| s.registry_url)
+        .unwrap_or_else(|| "https://clawhub.openrustclaw.dev".to_string());
 
     match ClawHubRegistry::new(&endpoint).await {
         Ok(registry) => {
@@ -651,7 +765,11 @@ pub async fn trending(limit: usize) -> Result<()> {
     println!("📈 Trending Skills");
     println!();
 
-    let endpoint = "https://clawhub.openrustclaw.dev".to_string();
+    let config = openrustclaw_core::config::AppConfig::load().unwrap_or_default();
+    let endpoint = config
+        .skills
+        .and_then(|s| s.registry_url)
+        .unwrap_or_else(|| "https://clawhub.openrustclaw.dev".to_string());
 
     match ClawHubRegistry::new(&endpoint).await {
         Ok(registry) => {
@@ -719,8 +837,9 @@ struct ParsedSkillMetadata {
     name: String,
     description: Option<String>,
     version: Option<String>,
-    capabilities: Option<String>,
+    capabilities: Vec<String>,
     schema: Option<String>,
+    signature: Option<String>,
 }
 
 /// Parse SKILL.md metadata.
@@ -729,8 +848,9 @@ fn parse_skill_metadata(content: &str) -> Result<ParsedSkillMetadata> {
     let mut name = "unknown".to_string();
     let mut description = None;
     let mut version = None;
-    let mut capabilities = None;
+    let mut capabilities = Vec::new();
     let mut schema = None;
+    let mut signature = None;
 
     // Extract name from title (# Title)
     for line in content.lines() {
@@ -761,7 +881,20 @@ fn parse_skill_metadata(content: &str) -> Result<ParsedSkillMetadata> {
             version = line.split_once(':').map(|(_, s)| s.trim().to_string());
         }
         if line.starts_with("capabilities:") || line.starts_with("Capabilities:") {
-            capabilities = line.split_once(':').map(|(_, s)| s.trim().to_string());
+            if let Some((_, raw)) = line.split_once(':') {
+                capabilities = raw
+                    .split(',')
+                    .map(|value| value.trim().trim_matches('"'))
+                    .filter(|value| !value.is_empty())
+                    .map(ToString::to_string)
+                    .collect();
+            }
+        }
+        if line.starts_with("signature:") || line.starts_with("Signature:") {
+            signature = line
+                .split_once(':')
+                .map(|(_, s)| s.trim().trim_matches('"').to_string())
+                .filter(|value| !value.is_empty());
         }
     }
 
@@ -778,6 +911,7 @@ fn parse_skill_metadata(content: &str) -> Result<ParsedSkillMetadata> {
         version,
         capabilities,
         schema,
+        signature,
     })
 }
 
@@ -874,10 +1008,7 @@ mod tests {
     fn test_parse_skill_metadata_with_capabilities() {
         let content = "# Net Skill\n\nA net skill.\n\ncapabilities: network_access, file_read\n";
         let metadata = parse_skill_metadata(content).unwrap();
-        assert_eq!(
-            metadata.capabilities.as_deref(),
-            Some("network_access, file_read")
-        );
+        assert_eq!(metadata.capabilities, vec!["network_access", "file_read"]);
     }
 
     #[test]
@@ -885,6 +1016,13 @@ mod tests {
         let content = "# Schema Skill\n\nHas schema.\n\n```json\n{\"type\": \"object\"}\n```\n";
         let metadata = parse_skill_metadata(content).unwrap();
         assert_eq!(metadata.schema.as_deref(), Some("{\"type\": \"object\"}"));
+    }
+
+    #[test]
+    fn test_parse_skill_metadata_with_signature() {
+        let content = "# Signed Skill\n\nSigned.\n\nsignature: deadbeef\n";
+        let metadata = parse_skill_metadata(content).unwrap();
+        assert_eq!(metadata.signature.as_deref(), Some("deadbeef"));
     }
 
     #[test]
@@ -901,5 +1039,6 @@ mod tests {
         assert_eq!(metadata.name, "unknown");
         assert!(metadata.description.is_none());
         assert!(metadata.version.is_none());
+        assert!(metadata.capabilities.is_empty());
     }
 }

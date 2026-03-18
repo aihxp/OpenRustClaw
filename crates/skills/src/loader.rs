@@ -73,7 +73,7 @@ impl SkillLoader {
         let mut name = String::new();
         let mut description = String::new();
         let mut version = "0.1.0".to_string();
-        let capabilities = Vec::new();
+        let mut capabilities = Vec::new();
         let mut author = None;
 
         let mut in_frontmatter = false;
@@ -95,6 +95,13 @@ impl SkillLoader {
                     version = val.trim().trim_matches('"').to_string();
                 } else if let Some(val) = line.strip_prefix("author:") {
                     author = Some(val.trim().trim_matches('"').to_string());
+                } else if let Some(val) = line.strip_prefix("capabilities:") {
+                    capabilities = val
+                        .split(',')
+                        .map(|entry| entry.trim().trim_matches('"'))
+                        .filter(|entry| !entry.is_empty())
+                        .map(ToString::to_string)
+                        .collect();
                 }
             }
         }
@@ -219,6 +226,7 @@ name: "my-awesome-skill"
 description: "Does awesome things"
 version: "2.1.0"
 author: "Jane Doe"
+capabilities: "network_access, file_read"
 ---
 
 # My Awesome Skill
@@ -236,6 +244,7 @@ This skill does awesome things.
         assert_eq!(skill.description, "Does awesome things");
         assert_eq!(skill.version, "2.1.0");
         assert_eq!(skill.author, Some("Jane Doe".to_string()));
+        assert_eq!(skill.capabilities, vec!["network_access", "file_read"]);
     }
 
     #[test]

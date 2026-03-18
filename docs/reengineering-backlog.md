@@ -125,9 +125,10 @@ Status:
 - Discord now has verified Interactions HTTP ingress with deferred acknowledgements and follow-up replies, but not full Gateway message-event coverage.
 - Memory maintenance now uses Rust-backed archive persistence and removes archived recall entries through the loopback bridge.
 - Rust-to-sidecar workflow dispatch now preserves typed configurable metadata through a reserved contract key instead of flattening everything to strings.
+- The skills CLI now resolves real `SKILL.md` workspace paths, stores capability metadata as JSON, syncs marketplace installs back into the main skills table, and keeps managed verification state aligned with install/update flows.
 - The biggest remaining engineering gaps are:
-  - fuller skills lifecycle/capability enforcement
   - production-grade RAG/context assembly
+  - fuller skills host-capability enforcement beyond the current no-import WASM boundary
 
 ## Current Execution Order
 

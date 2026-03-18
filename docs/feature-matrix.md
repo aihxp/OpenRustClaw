@@ -50,7 +50,7 @@ Status values:
 | MCP remote HTTP/SSE | deferred | Not part of current shipped surface |
 | `mcp2-cli` | real | Real stdio/OpenAPI discovery path |
 | Cursor integration | partial | Core path exists; full tool/runtime parity still incomplete |
-| Skills registry/install flow | partial | Live registry path exists; runtime execution model still evolving |
+| Skills registry/install flow | partial | Workspace `SKILL.md` installs, marketplace install/update sync, capability metadata persistence, and verification-state handling are real; host capability execution is still evolving |
 | WASM skill executor | partial | Real no-import executor exists with JSON ABI, memory limits, and timeout enforcement; host capability surface is still minimal |
 
 ## Experience Layers
