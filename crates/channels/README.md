@@ -7,19 +7,19 @@ Messaging platform integrations for the OpenRustClaw AI agent.
 | Channel | Status | Features |
 |---------|--------|----------|
 | WebChat | ✅ Ready | WebSocket-based chat |
-| Telegram | ⚠️ Partial | Config/model scaffolding present; runtime client/send path not implemented |
-| Discord | ⚠️ Partial | Config/model scaffolding present; runtime client/send path not implemented |
-| Slack | ⚠️ Partial | Config/model scaffolding present; runtime client/send path not implemented |
-| Microsoft Teams | ✅ Ready | Bot Framework, Adaptive Cards |
+| Telegram | ✅ Ready | Auth probe, outbound send, Bot API polling receive, and local agent/session routing |
+| Discord | ⚠️ Partial | Outbound send plus verified Interactions HTTP ingress; full Gateway message-event runtime is still incomplete |
+| Slack | ✅ Ready | Auth probe, outbound send, built-in Events API ingress, and local agent/session routing |
+| Microsoft Teams | 🚧 Gated | Repo surface exists, not part of the current shipped runtime |
 | Google Chat | ⚠️ Partial | Channel scaffolding present; service-account auth not implemented |
-| WhatsApp | ✅ Ready | Web bridge, media |
+| WhatsApp | 🚧 Gated | Repo surface exists, not part of the current shipped runtime |
 | Gmail Pub/Sub | ⚠️ Partial | Channel scaffolding present; service-account auth not implemented |
 | Matrix | ⚠️ Partial | Config/model scaffolding present; matrix-sdk runtime client not implemented |
-| Meta (Messenger/Instagram) | ✅ Ready | Graph API |
-| LINE | ✅ Ready | Messaging API |
-| Viber | ✅ Ready | Bot API |
-| WeChat | ✅ Ready | Work & Official Accounts |
-| iMessage | ✅ Ready | macOS integration |
+| Meta (Messenger/Instagram) | 🚧 Gated | Repo surface exists, not part of the current shipped runtime |
+| LINE | 🚧 Gated | Repo surface exists, not part of the current shipped runtime |
+| Viber | 🚧 Gated | Repo surface exists, not part of the current shipped runtime |
+| WeChat | 🚧 Gated | Repo surface exists, not part of the current shipped runtime |
+| iMessage | 🚧 Gated | Repo surface exists, not part of the current shipped runtime |
 
 ## Quick Start
 
