@@ -15,7 +15,7 @@ Current execution planning lives in:
 
 The roadmap target is explicit: achieve practical OpenClaw feature parity with a Rust-first runtime, while keeping OpenRustClaw-native improvements where they are stronger.
 The execution model is also explicit: Rust-native for production-critical paths, sidecar compatibility for migration, and LangGraph as the experimentation lane rather than the sole durability boundary.
-The roadmap now also includes a Rust-native autonomous optimization framework inspired by `autoresearch`, but generalized for skills, RAG, prompts, policies, bounded workflows, and selected bounded code surfaces.
+The roadmap now includes a shipped Rust-native autonomous optimization framework inspired by `autoresearch`, generalized for skills, RAG, prompts, policies, bounded workflows, bounded code, and research-program targets.
 
 ## Quick Start
 
@@ -134,6 +134,41 @@ openrustclaw mcp-server
 
 Command allowlist enforced on subprocess spawning (`npx`, `uvx`, `node`, `python3`, `docker`, `deno`, `bun`, `cargo`, `go`).
 
+The MCP server also exposes optimization tools for:
+
+- listing and registering optimization targets
+- submitting and inspecting optimization candidates
+- running bounded optimization candidates in isolated temp workspaces
+- recording approve/reject/promote decisions
+
+## Autonomous Optimization
+
+Phase 2.5 is implemented in `crates/optimization`.
+
+```bash
+# List targets
+openrustclaw optimize list-targets
+
+# Register a target
+openrustclaw optimize register-target \
+  --name prompt.optimize \
+  --kind prompt_policy \
+  --tier rust_native \
+  --allowed-path prompt.txt \
+  --eval "verify=bash -lc 'grep -q optimized prompt.txt'"
+
+# Submit a candidate from a JSON change set
+openrustclaw optimize submit-candidate \
+  --target prompt.optimize \
+  --hypothesis "shorter prompt improves quality" \
+  --change-set changes.json
+
+# Run the bounded experiment
+openrustclaw optimize run-candidate <candidate-id>
+```
+
+The optimization subsystem persists targets, candidates, evaluations, and promotion history in SQLite, enforces allowlists and diff budgets, runs evals in temporary workspaces, and records promotion decisions for Tier C, Tier B, or human-reviewed Tier A merge queues.
+
 ## Security
 
 Defense-in-depth across every layer:
@@ -227,6 +262,7 @@ crates/
   channels/      # 20 messaging channel integrations
   skills/        # Skill registry, loader, marketplace, and WASM sandbox
   scheduler/     # Durable job scheduling (no cron -- app-owned polling)
+  optimization/  # Rust-native autonomous optimization framework
   security/      # Auth, SSO, isolation, input sanitization, skill verification
   langbridge/    # gRPC bridge to Python LangGraph sidecar
   observability/ # OpenTelemetry, Prometheus metrics, tracing

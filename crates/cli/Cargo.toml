@@ -21,6 +21,7 @@ openrustclaw-channels.workspace = true
 openrustclaw-skills.workspace = true
 openrustclaw-scheduler.workspace = true
 openrustclaw-security.workspace = true
+openrustclaw-optimization.workspace = true
 openrustclaw-langbridge.workspace = true
 openrustclaw-observability.workspace = true
 openrustclaw-cursor = { workspace = true, optional = true }

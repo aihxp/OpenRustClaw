@@ -13,7 +13,7 @@ This book page exists so the mdBook navigation can expose the same planning surf
   - Rust-native for production-critical paths,
   - sidecar compatibility for migration,
   - LangGraph for experimentation.
-- Build a Rust-native autonomous optimization framework for skills, RAG, prompts, policies, and bounded workflow/code improvements.
+- The Rust-native autonomous optimization framework is now implemented for skills, RAG, prompts, policies, bounded workflows/code improvements, and research-program targets.
 
 ## Phase summary
 

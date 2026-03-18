@@ -253,29 +253,31 @@ Required safety classes:
 - `bounded_code`: tightly scoped file/module optimization with mandatory tests
 - `human_review_only`: security, auth, persistence, protocol-critical code
 
-Remaining:
+Status: complete
 
-- [ ] Create a new Rust-owned optimization subsystem with a clear crate boundary.
-- [ ] Define optimization targets with typed metadata:
+Completed:
+
+- [x] Create a new Rust-owned optimization subsystem with a clear crate boundary.
+- [x] Define optimization targets with typed metadata:
   - target id,
   - target kind,
   - execution tier,
   - allowed mutation surface,
   - required eval suite,
   - promotion policy.
-- [ ] Build a mutation-policy layer that enforces:
+- [x] Build a mutation-policy layer that enforces:
   - file allowlists,
   - field allowlists,
   - max diff size,
   - forbidden paths,
   - mandatory tests.
-- [ ] Build an experiment runner that:
+- [x] Build an experiment runner that:
   - creates a candidate,
   - applies changes in a temporary workspace,
   - runs bounded evals,
   - captures metrics,
   - stores artifacts and diffs.
-- [ ] Build an evaluator that scores:
+- [x] Build an evaluator that scores:
   - task success,
   - regressions,
   - safety,
@@ -283,40 +285,49 @@ Remaining:
   - token cost,
   - tool correctness,
   - grounding quality.
-- [ ] Build a promotion engine that can:
+- [x] Build a promotion engine that can:
   - reject,
   - keep as candidate,
   - promote to Tier C,
   - promote to Tier B,
   - queue for Tier A human-reviewed merge.
-- [ ] Build an experiment/audit history model with:
+- [x] Build an experiment/audit history model with:
   - candidate diffs,
   - hypotheses,
   - eval metrics,
   - traces,
   - winner/loser decisions,
   - rollback references.
-- [ ] Add support for the first optimization targets:
+- [x] Add support for the first optimization targets:
   - skills,
   - RAG retrieval params,
   - context assembly,
   - prompt/tool policies.
-- [ ] Add a second wave of targets:
+- [x] Add a second wave of targets:
   - memory policies,
   - scheduler heuristics,
   - routing heuristics,
   - bounded workflow definitions.
-- [ ] Decide which bounded code surfaces are eligible for automated optimization and keep core security/auth/storage out of automatic promotion.
-- [ ] Add operator controls to inspect, approve, reject, and promote candidates.
-- [ ] Add MCP and CLI surfaces for experiment inspection and promotion control.
-- [ ] Add LangSmith/OpenTelemetry integration for experiment traces and eval lineage.
-- [ ] Support original autoresearch-style research loops as one target class, not the whole subsystem.
+- [x] Decide which bounded code surfaces are eligible for automated optimization and keep core security/auth/storage out of automatic promotion.
+- [x] Add operator controls to inspect, approve, reject, and promote candidates.
+- [x] Add MCP and CLI surfaces for experiment inspection and promotion control.
+- [x] Add LangSmith/OpenTelemetry integration for experiment traces and eval lineage.
+- [x] Support original autoresearch-style research loops as one target class, not the whole subsystem.
+
+Shipped in this phase:
+
+- [x] `openrustclaw-optimization` crate with typed targets, candidate change-sets, evaluation records, and promotion history.
+- [x] SQLite schema for optimization targets, candidates, evaluations, and promotions.
+- [x] Temp-workspace experiment runner with bounded file mutation and eval execution.
+- [x] CLI surfaces for target registration, candidate submission, candidate execution, approval, rejection, and promotion.
+- [x] MCP tools for target registration/listing, candidate submission/listing/inspection, candidate execution, and promotion control.
+- [x] LangSmith-aware tracing for optimization candidate runs and evaluation lineage when enabled.
 
 Exit criteria:
 
-- [ ] OpenRustClaw has a Rust-native autonomous optimization framework.
-- [ ] The framework can improve skills, RAG, and prompt/policy surfaces without uncontrolled self-modification.
-- [ ] Production-critical code remains protected by explicit promotion and review rules.
+- [x] OpenRustClaw has a Rust-native autonomous optimization framework.
+- [x] The framework can improve skills, RAG, and prompt/policy surfaces without uncontrolled self-modification.
+- [x] Production-critical code remains protected by explicit promotion and review rules.
 
 ## Phase 3: Durable Scheduler and Eventing
 

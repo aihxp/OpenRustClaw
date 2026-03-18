@@ -50,7 +50,7 @@ OpenRustClaw was created to solve these fundamental problems while maintaining t
 
 ### 🔁 **Rust-Native Autonomous Optimization**
 - Inspired by `autoresearch`, but generalized for OpenRustClaw
-- Intended to improve skills, prompts, RAG policies, workflow heuristics, and bounded code surfaces
+- Implemented for skills, prompts, RAG policies, workflow heuristics, bounded code surfaces, and research-program targets
 - Rust owns experiment orchestration, evaluation, promotion, and rollback policy
 - Production-critical code remains guarded by explicit promotion and human review rules
 

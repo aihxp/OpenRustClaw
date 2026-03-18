@@ -49,6 +49,11 @@ enum Commands {
         #[command(subcommand)]
         action: ScheduleAction,
     },
+    /// Manage autonomous optimization targets and candidates
+    Optimize {
+        #[command(subcommand)]
+        action: OptimizeAction,
+    },
     /// Security audit and management
     Security {
         #[command(subcommand)]
@@ -180,6 +185,105 @@ enum ScheduleAction {
     Pause { id: String },
     /// Resume a job
     Resume { id: String },
+}
+
+#[derive(Subcommand)]
+enum OptimizeAction {
+    /// List registered optimization targets
+    ListTargets,
+    /// Show one optimization target
+    ShowTarget { id: String },
+    /// Register a new optimization target
+    RegisterTarget {
+        #[arg(long)]
+        name: String,
+        #[arg(long)]
+        description: Option<String>,
+        #[arg(long)]
+        kind: String,
+        #[arg(long)]
+        tier: String,
+        #[arg(long, default_value = "safe_config")]
+        risk_class: String,
+        #[arg(long, default_value = "experimental")]
+        ship_status: String,
+        #[arg(long, default_value = ".")]
+        workspace_root: String,
+        #[arg(long = "allowed-path")]
+        allowed_paths: Vec<String>,
+        #[arg(long = "forbidden-path")]
+        forbidden_paths: Vec<String>,
+        #[arg(long = "allowed-field")]
+        allowed_fields: Vec<String>,
+        #[arg(long, default_value_t = 8)]
+        max_changed_files: usize,
+        #[arg(long, default_value_t = 32768)]
+        max_total_bytes: usize,
+        #[arg(long, default_value_t = 400)]
+        max_diff_lines: usize,
+        #[arg(long = "required-test")]
+        required_tests: Vec<String>,
+        #[arg(long = "mandatory-eval")]
+        mandatory_evals: Vec<String>,
+        #[arg(long = "eval")]
+        evals: Vec<String>,
+        #[arg(long)]
+        metadata: Option<String>,
+    },
+    /// List optimization candidates
+    ListCandidates {
+        #[arg(long)]
+        target: Option<String>,
+        #[arg(long)]
+        status: Option<String>,
+        #[arg(long, default_value_t = 20)]
+        limit: usize,
+    },
+    /// Show an optimization candidate and its history
+    ShowCandidate { id: String },
+    /// Submit a new optimization candidate from a JSON change set
+    SubmitCandidate {
+        #[arg(long)]
+        target: String,
+        #[arg(long)]
+        hypothesis: String,
+        #[arg(long, default_value = "operator")]
+        proposed_by: String,
+        #[arg(long)]
+        change_set: String,
+        #[arg(long)]
+        trace_id: Option<String>,
+    },
+    /// Run the bounded experiment loop for one candidate
+    RunCandidate { id: String },
+    /// Approve a candidate without promoting it
+    ApproveCandidate {
+        id: String,
+        #[arg(long, default_value = "operator")]
+        decided_by: String,
+        #[arg(long)]
+        notes: Option<String>,
+    },
+    /// Reject a candidate
+    RejectCandidate {
+        id: String,
+        #[arg(long, default_value = "operator")]
+        decided_by: String,
+        #[arg(long)]
+        notes: Option<String>,
+    },
+    /// Record a promotion decision
+    PromoteCandidate {
+        id: String,
+        #[arg(long)]
+        decision: String,
+        #[arg(long, default_value = "operator")]
+        decided_by: String,
+        #[arg(long)]
+        notes: Option<String>,
+        #[arg(long)]
+        rollback_reference: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -391,6 +495,102 @@ async fn main() -> Result<()> {
             }
             ScheduleAction::Pause { id } => commands::schedule::pause(&id).await,
             ScheduleAction::Resume { id } => commands::schedule::resume(&id).await,
+        },
+        Commands::Optimize { action } => match action {
+            OptimizeAction::ListTargets => commands::optimize::list_targets().await,
+            OptimizeAction::ShowTarget { id } => commands::optimize::show_target(&id).await,
+            OptimizeAction::RegisterTarget {
+                name,
+                description,
+                kind,
+                tier,
+                risk_class,
+                ship_status,
+                workspace_root,
+                allowed_paths,
+                forbidden_paths,
+                allowed_fields,
+                max_changed_files,
+                max_total_bytes,
+                max_diff_lines,
+                required_tests,
+                mandatory_evals,
+                evals,
+                metadata,
+            } => {
+                commands::optimize::register_target(
+                    &name,
+                    description.as_deref(),
+                    &kind,
+                    &tier,
+                    &risk_class,
+                    &ship_status,
+                    &workspace_root,
+                    &allowed_paths,
+                    &forbidden_paths,
+                    &allowed_fields,
+                    max_changed_files,
+                    max_total_bytes,
+                    max_diff_lines,
+                    &required_tests,
+                    &mandatory_evals,
+                    &evals,
+                    metadata.as_deref(),
+                )
+                .await
+            }
+            OptimizeAction::ListCandidates {
+                target,
+                status,
+                limit,
+            } => {
+                commands::optimize::list_candidates(target.as_deref(), status.as_deref(), limit)
+                    .await
+            }
+            OptimizeAction::ShowCandidate { id } => commands::optimize::show_candidate(&id).await,
+            OptimizeAction::SubmitCandidate {
+                target,
+                hypothesis,
+                proposed_by,
+                change_set,
+                trace_id,
+            } => {
+                commands::optimize::submit_candidate(
+                    &target,
+                    &hypothesis,
+                    &proposed_by,
+                    &change_set,
+                    trace_id.as_deref(),
+                )
+                .await
+            }
+            OptimizeAction::RunCandidate { id } => commands::optimize::run_candidate(&id).await,
+            OptimizeAction::ApproveCandidate {
+                id,
+                decided_by,
+                notes,
+            } => commands::optimize::approve_candidate(&id, &decided_by, notes.as_deref()).await,
+            OptimizeAction::RejectCandidate {
+                id,
+                decided_by,
+                notes,
+            } => commands::optimize::reject_candidate(&id, &decided_by, notes.as_deref()).await,
+            OptimizeAction::PromoteCandidate {
+                id,
+                decision,
+                decided_by,
+                notes,
+                rollback_reference,
+            } => {
+                commands::optimize::promote_candidate(
+                    &id,
+                    &decision,
+                    &decided_by,
+                    notes.as_deref(),
+                    rollback_reference.as_deref(),
+                )
+                .await
+            }
         },
         Commands::Security { action } => match action {
             SecurityAction::Audit => commands::security::audit().await,
@@ -775,14 +975,15 @@ mod tests {
         .unwrap();
         match cli.command {
             Commands::Schedule {
-                action: ScheduleAction::Create {
-                    name,
-                    workflow,
-                    description,
-                    every_seconds,
-                    at,
-                    payload,
-                },
+                action:
+                    ScheduleAction::Create {
+                        name,
+                        workflow,
+                        description,
+                        every_seconds,
+                        at,
+                        payload,
+                    },
             } => {
                 assert_eq!(name, "daily-check");
                 assert_eq!(workflow, "health_check");
@@ -792,6 +993,78 @@ mod tests {
                 assert!(payload.is_none());
             }
             _ => panic!("Expected Schedule Create command"),
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_optimize_register_target() {
+        let cli = Cli::try_parse_from([
+            "openrustclaw",
+            "optimize",
+            "register-target",
+            "--name",
+            "skills.instructions",
+            "--kind",
+            "skill",
+            "--tier",
+            "rust_native",
+            "--allowed-path",
+            "skills/",
+            "--eval",
+            "smoke=bash -lc 'echo ok'",
+        ])
+        .unwrap();
+        match cli.command {
+            Commands::Optimize {
+                action:
+                    OptimizeAction::RegisterTarget {
+                        name,
+                        kind,
+                        tier,
+                        allowed_paths,
+                        evals,
+                        ..
+                    },
+            } => {
+                assert_eq!(name, "skills.instructions");
+                assert_eq!(kind, "skill");
+                assert_eq!(tier, "rust_native");
+                assert_eq!(allowed_paths, vec!["skills/"]);
+                assert_eq!(evals, vec!["smoke=bash -lc 'echo ok'"]);
+            }
+            _ => panic!("Expected Optimize RegisterTarget command"),
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_optimize_submit_candidate() {
+        let cli = Cli::try_parse_from([
+            "openrustclaw",
+            "optimize",
+            "submit-candidate",
+            "--target",
+            "skills.instructions",
+            "--hypothesis",
+            "reduce noise",
+            "--change-set",
+            "changes.json",
+        ])
+        .unwrap();
+        match cli.command {
+            Commands::Optimize {
+                action:
+                    OptimizeAction::SubmitCandidate {
+                        target,
+                        hypothesis,
+                        change_set,
+                        ..
+                    },
+            } => {
+                assert_eq!(target, "skills.instructions");
+                assert_eq!(hypothesis, "reduce noise");
+                assert_eq!(change_set, "changes.json");
+            }
+            _ => panic!("Expected Optimize SubmitCandidate command"),
         }
     }
 

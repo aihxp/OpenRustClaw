@@ -22,7 +22,7 @@ The goal is not to imitate OpenClaw's internals. The goal is to deliver the same
 - Broader multi-provider model support
 - First-class MCP and `mcp2-cli` workflows
 - Stricter runtime/docs truthfulness and CI gates around shipped features
-- A planned Rust-native autonomous optimization framework instead of relying on a Python self-improvement loop as the product-level answer
+- A shipped Rust-native autonomous optimization framework instead of relying on a Python self-improvement loop as the product-level answer
 
 These are not parity failures. They are product choices to preserve.
 

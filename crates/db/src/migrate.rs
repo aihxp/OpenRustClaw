@@ -245,6 +245,86 @@ CREATE INDEX IF NOT EXISTS idx_rag_chunks_collection ON rag_chunks(collection_na
 CREATE INDEX IF NOT EXISTS idx_rag_chunks_source ON rag_chunks(source_id);
 "#,
     },
+    Migration {
+        name: "014_optimization_framework",
+        sql: r#"
+CREATE TABLE IF NOT EXISTS optimization_targets (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    description TEXT,
+    target_kind TEXT NOT NULL,
+    execution_tier TEXT NOT NULL,
+    risk_class TEXT NOT NULL,
+    ship_status TEXT NOT NULL DEFAULT 'experimental',
+    workspace_root TEXT NOT NULL,
+    mutation_policy TEXT NOT NULL,
+    eval_suite TEXT NOT NULL,
+    promotion_policy TEXT NOT NULL,
+    metadata TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_optimization_targets_kind ON optimization_targets(target_kind, execution_tier);
+CREATE TABLE IF NOT EXISTS optimization_candidates (
+    id TEXT PRIMARY KEY,
+    target_id TEXT NOT NULL REFERENCES optimization_targets(id) ON DELETE CASCADE,
+    hypothesis TEXT NOT NULL,
+    proposed_by TEXT NOT NULL,
+    change_set TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN (
+        'draft',
+        'approved',
+        'running',
+        'passed',
+        'failed',
+        'rejected',
+        'promoted_experimental',
+        'promoted_compat',
+        'queued_rust_merge'
+    )),
+    diff_summary TEXT,
+    result_summary TEXT,
+    artifact_manifest TEXT NOT NULL DEFAULT '{}',
+    trace_id TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_optimization_candidates_target ON optimization_candidates(target_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_optimization_candidates_status ON optimization_candidates(status, created_at);
+CREATE TABLE IF NOT EXISTS optimization_evaluations (
+    id TEXT PRIMARY KEY,
+    candidate_id TEXT NOT NULL REFERENCES optimization_candidates(id) ON DELETE CASCADE,
+    eval_name TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('success', 'failure', 'timeout')),
+    exit_code INTEGER,
+    duration_ms INTEGER NOT NULL DEFAULT 0,
+    stdout TEXT NOT NULL DEFAULT '',
+    stderr TEXT NOT NULL DEFAULT '',
+    metrics TEXT NOT NULL DEFAULT '{}',
+    trace_id TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_optimization_evaluations_candidate ON optimization_evaluations(candidate_id, created_at);
+CREATE TABLE IF NOT EXISTS optimization_promotions (
+    id TEXT PRIMARY KEY,
+    candidate_id TEXT NOT NULL REFERENCES optimization_candidates(id) ON DELETE CASCADE,
+    decision TEXT NOT NULL CHECK(decision IN (
+        'reject',
+        'keep_candidate',
+        'approve',
+        'promote_experimental',
+        'promote_compat',
+        'queue_rust_merge'
+    )),
+    decided_by TEXT NOT NULL,
+    notes TEXT,
+    rollback_reference TEXT,
+    trace_id TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_optimization_promotions_candidate ON optimization_promotions(candidate_id, created_at);
+"#,
+    },
 ];
 
 /// Run all embedded database migrations in order.

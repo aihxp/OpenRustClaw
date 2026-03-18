@@ -24,6 +24,7 @@ members = [
     "crates/skills",
     "crates/scheduler",
     "crates/security",
+    "crates/optimization",
     "crates/canvas",
     "crates/langbridge",
     "crates/observability",
@@ -144,6 +145,7 @@ openrustclaw-channels = { path = "crates/channels" }
 openrustclaw-skills = { path = "crates/skills" }
 openrustclaw-scheduler = { path = "crates/scheduler" }
 openrustclaw-security = { path = "crates/security" }
+openrustclaw-optimization = { path = "crates/optimization" }
 openrustclaw-langbridge = { path = "crates/langbridge" }
 openrustclaw-observability = { path = "crates/observability" }
 openrustclaw-cursor = { path = "crates/cursor" }

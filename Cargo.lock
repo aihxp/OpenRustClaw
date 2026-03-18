@@ -5721,6 +5721,7 @@ dependencies = [
  "openrustclaw-mcp2cli",
  "openrustclaw-memory",
  "openrustclaw-observability",
+ "openrustclaw-optimization",
  "openrustclaw-providers",
  "openrustclaw-scheduler",
  "openrustclaw-security",
@@ -6108,6 +6109,28 @@ dependencies = [
  "tracing-opentelemetry",
  "tracing-subscriber",
  "uuid",
+]
+
+[[package]]
+name = "openrustclaw-optimization"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "glob",
+ "openrustclaw-core",
+ "openrustclaw-db",
+ "openrustclaw-observability",
+ "serde",
+ "serde_json",
+ "shlex",
+ "sqlx",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "uuid",
+ "walkdir",
 ]
 
 [[package]]

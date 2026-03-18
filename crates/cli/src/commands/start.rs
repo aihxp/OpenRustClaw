@@ -1,6 +1,7 @@
 //! Start command - Initialize and run the OpenRustClaw server.
 
 use anyhow::{Context, Result};
+use async_trait::async_trait;
 use axum::{
     Router,
     body::Bytes,
@@ -10,22 +11,21 @@ use axum::{
     routing::post,
 };
 use chrono::{DateTime, Utc};
-use async_trait::async_trait;
 use futures::Stream;
+use openrustclaw_agent::runtime::AgentRuntime;
+use openrustclaw_channels::discord::DiscordInteractionsHandler;
+use openrustclaw_channels::slack::SlackEventHandler;
 use openrustclaw_core::error::{ChannelError as CoreChannelError, Error as CoreError, McpError};
 use openrustclaw_core::traits::{Channel, LlmProvider};
 use openrustclaw_core::types::{
     CompletionRequest, CompletionResponse, MemoryEntry, MemoryQuery, MemoryType, Message,
     OutgoingMessage, SessionType, SourceType, StreamChunk, ToolFormat,
 };
-use openrustclaw_agent::runtime::AgentRuntime;
-use openrustclaw_channels::discord::DiscordInteractionsHandler;
-use openrustclaw_channels::slack::SlackEventHandler;
+use std::collections::{HashMap, HashSet};
+use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
-use std::future::Future;
-use std::collections::{HashMap, HashSet};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::signal;
 use tracing::{error, info, warn};
@@ -41,10 +41,14 @@ use openrustclaw_db::{
 use openrustclaw_gateway::server::{GatewayServer, GatewayState};
 use openrustclaw_gateway::sessions::SessionManager;
 use openrustclaw_langbridge::{LangBridgeClient, sidecar::SidecarManager};
-use openrustclaw_memory::MemoryPolicies;
 use openrustclaw_mcp::server::{McpServer, McpServerConfig, McpServerTool};
+use openrustclaw_memory::MemoryPolicies;
 use openrustclaw_observability::LangSmithClient;
 use openrustclaw_observability::langsmith::RunType;
+use openrustclaw_optimization::{
+    CandidateChange, CandidateRunner, CandidateRunnerConfig, EvaluationSpec, MutationPolicy,
+    OptimizationStore, PromotionPolicy, TargetRegistration,
+};
 use openrustclaw_providers::{
     AnthropicProvider, OllamaProvider, OpenAiProvider, OpenRouterProvider, ProviderChain,
     openrouter::RouteStrategy,
@@ -131,12 +135,16 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
     // Start Python sidecar if auto_start is enabled
     let mut sidecar: Option<SidecarManager> = None;
     if config.sidecar.auto_start {
-        let mut manager = SidecarManager::new(
-            config.sidecar.python_path.clone(),
-            config.sidecar.grpc_port,
-        )
-        .with_env("OPENRUSTCLAW_INTERNAL_API_URL", format!("{}/internal", internal_api_addr))
-        .with_env("OPENRUSTCLAW_INTERNAL_API_TOKEN", internal_api_token.clone());
+        let mut manager =
+            SidecarManager::new(config.sidecar.python_path.clone(), config.sidecar.grpc_port)
+                .with_env(
+                    "OPENRUSTCLAW_INTERNAL_API_URL",
+                    format!("{}/internal", internal_api_addr),
+                )
+                .with_env(
+                    "OPENRUSTCLAW_INTERNAL_API_TOKEN",
+                    internal_api_token.clone(),
+                );
 
         match manager.start().await {
             Ok(()) => {
@@ -261,11 +269,17 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
     }
 
     if let Some(handler) = slack_ingress_handler {
-        app = app.merge(slack_ingress_router(handler, channel_langsmith_client(&config)));
+        app = app.merge(slack_ingress_router(
+            handler,
+            channel_langsmith_client(&config),
+        ));
         info!("Slack HTTP ingress enabled at /webhooks/slack/events");
     }
     if let Some(handler) = discord_ingress_handler {
-        app = app.merge(discord_ingress_router(handler, channel_langsmith_client(&config)));
+        app = app.merge(discord_ingress_router(
+            handler,
+            channel_langsmith_client(&config),
+        ));
         info!("Discord Interactions ingress enabled at /webhooks/discord/interactions");
     }
 
@@ -450,9 +464,7 @@ fn spawn_scheduler_task(
     tokio::spawn(async move {
         let mut worker = SchedulerWorker::new(WorkerSchedulerConfig {
             poll_interval: tokio::time::Duration::from_millis(scheduler_config.poll_interval_ms),
-            lease_duration: tokio::time::Duration::from_secs(
-                scheduler_config.lease_duration_secs,
-            ),
+            lease_duration: tokio::time::Duration::from_secs(scheduler_config.lease_duration_secs),
             base_retry_delay_secs: scheduler_config.base_retry_delay_secs,
             max_retry_delay_secs: scheduler_config.max_retry_delay_secs,
         });
@@ -880,7 +892,8 @@ fn create_provider_from_config(
         "anthropic" => {
             let api_key = std::env::var("ANTHROPIC_API_KEY")
                 .context("ANTHROPIC_API_KEY environment variable not set")?;
-            let provider = AnthropicProvider::new(api_key, config.providers.anthropic.model.clone());
+            let provider =
+                AnthropicProvider::new(api_key, config.providers.anthropic.model.clone());
             Ok(Arc::new(provider))
         }
         "openai" => {
@@ -935,15 +948,19 @@ impl ChannelProviderChain {
 
 #[async_trait]
 impl LlmProvider for ChannelProviderChain {
-    async fn complete(&self, request: CompletionRequest) -> openrustclaw_core::error::Result<CompletionResponse> {
+    async fn complete(
+        &self,
+        request: CompletionRequest,
+    ) -> openrustclaw_core::error::Result<CompletionResponse> {
         self.chain.complete(request).await
     }
 
     async fn stream(
         &self,
         _request: CompletionRequest,
-    ) -> openrustclaw_core::error::Result<Pin<Box<dyn Stream<Item = openrustclaw_core::error::Result<StreamChunk>> + Send>>>
-    {
+    ) -> openrustclaw_core::error::Result<
+        Pin<Box<dyn Stream<Item = openrustclaw_core::error::Result<StreamChunk>> + Send>>,
+    > {
         Err(openrustclaw_core::error::Error::Provider(
             openrustclaw_core::error::ProviderError::StreamError {
                 provider: self.primary.provider_name().to_string(),
@@ -986,8 +1003,8 @@ fn infer_session_type(message: &openrustclaw_core::types::IncomingMessage) -> Se
 }
 
 fn channel_route_key(message: &openrustclaw_core::types::IncomingMessage) -> String {
-    let scope = channel_scope_from_metadata(&message.metadata)
-        .unwrap_or_else(|| "direct".to_string());
+    let scope =
+        channel_scope_from_metadata(&message.metadata).unwrap_or_else(|| "direct".to_string());
     format!("{}:{}:{}", message.platform, scope, message.user_id)
 }
 
@@ -1068,7 +1085,11 @@ async fn slack_events_handler(
     );
     start_ingress_trace(state.langsmith.as_ref(), trace.as_ref()).await;
 
-    match state.handler.handle_event(&body, timestamp, signature).await {
+    match state
+        .handler
+        .handle_event(&body, timestamp, signature)
+        .await
+    {
         Ok(Some(response)) => {
             complete_ingress_trace(
                 state.langsmith.as_ref(),
@@ -1183,7 +1204,11 @@ async fn discord_interactions_handler(
     );
     start_ingress_trace(state.langsmith.as_ref(), trace.as_ref()).await;
 
-    match state.handler.handle_event(&body, signature, timestamp).await {
+    match state
+        .handler
+        .handle_event(&body, signature, timestamp)
+        .await
+    {
         Ok(response) => {
             complete_ingress_trace(
                 state.langsmith.as_ref(),
@@ -1292,6 +1317,7 @@ fn build_mcp_server(
     let memory_store = SqliteMemoryStore::new(pool.clone());
     let core_memory_store = SqliteCoreMemoryStore::new(pool.clone());
     let rag_store = SqliteRagStore::new(pool.clone());
+    let optimization_store = OptimizationStore::new(pool.clone());
     let mut server = McpServer::new(McpServerConfig {
         name: "openrustclaw".to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
@@ -1429,202 +1455,324 @@ fn build_mcp_server(
                     "required": ["collection_name"]
                 }),
             },
+            McpServerTool {
+                name: "list_optimization_targets".to_string(),
+                description: "List registered optimization targets.".to_string(),
+                input_schema: serde_json::json!({"type": "object", "properties": {}}),
+            },
+            McpServerTool {
+                name: "register_optimization_target".to_string(),
+                description: "Register a bounded optimization target with policy and eval suite."
+                    .to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "description": {"type": "string"},
+                        "target_kind": {"type": "string"},
+                        "execution_tier": {"type": "string"},
+                        "risk_class": {"type": "string"},
+                        "ship_status": {"type": "string"},
+                        "workspace_root": {"type": "string"},
+                        "mutation_policy": {"type": "object"},
+                        "eval_suite": {"type": "array", "items": {"type": "object"}},
+                        "promotion_policy": {"type": "object"},
+                        "metadata": {"type": "object"}
+                    },
+                    "required": ["name", "target_kind", "execution_tier"]
+                }),
+            },
+            McpServerTool {
+                name: "submit_optimization_candidate".to_string(),
+                description: "Submit a candidate change-set for an optimization target."
+                    .to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "target": {"type": "string"},
+                        "hypothesis": {"type": "string"},
+                        "proposed_by": {"type": "string"},
+                        "changes": {"type": "array", "items": {"type": "object"}},
+                        "trace_id": {"type": "string"}
+                    },
+                    "required": ["target", "hypothesis", "changes"]
+                }),
+            },
+            McpServerTool {
+                name: "list_optimization_candidates".to_string(),
+                description: "List optimization candidates and their statuses.".to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "target": {"type": "string"},
+                        "status": {"type": "string"},
+                        "limit": {"type": "integer", "minimum": 1}
+                    }
+                }),
+            },
+            McpServerTool {
+                name: "inspect_optimization_candidate".to_string(),
+                description: "Inspect one candidate plus evaluations and promotion history."
+                    .to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "candidate_id": {"type": "string"}
+                    },
+                    "required": ["candidate_id"]
+                }),
+            },
+            McpServerTool {
+                name: "run_optimization_candidate".to_string(),
+                description: "Run a bounded optimization candidate in an isolated temp workspace."
+                    .to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "candidate_id": {"type": "string"}
+                    },
+                    "required": ["candidate_id"]
+                }),
+            },
+            McpServerTool {
+                name: "promote_optimization_candidate".to_string(),
+                description:
+                    "Record approve/reject/promote decisions for an optimization candidate."
+                        .to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "candidate_id": {"type": "string"},
+                        "decision": {"type": "string"},
+                        "decided_by": {"type": "string"},
+                        "notes": {"type": "string"},
+                        "rollback_reference": {"type": "string"}
+                    },
+                    "required": ["candidate_id", "decision", "decided_by"]
+                }),
+            },
         ],
     });
 
     let root_for_health = workspace_root.clone();
-    server.register_handler("health", traced_mcp_handler(langsmith.clone(), "health", move |_| {
-        Ok(serde_json::json!({
-            "status": "healthy",
-            "workspace_root": root_for_health,
-        }))
-    }));
+    server.register_handler(
+        "health",
+        traced_mcp_handler(langsmith.clone(), "health", move |_| {
+            Ok(serde_json::json!({
+                "status": "healthy",
+                "workspace_root": root_for_health,
+            }))
+        }),
+    );
 
     let root_for_list = workspace_root.clone();
-    server.register_handler("list_files", traced_mcp_handler(langsmith.clone(), "list_files", move |args| {
-        let path = args.get("path").and_then(|v| v.as_str()).unwrap_or(".");
-        let recursive = args
-            .get("recursive")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-        let resolved = resolve_workspace_path(&root_for_list, path)?;
-        let max_depth = if recursive { usize::MAX } else { 1 };
-        let entries: Vec<_> = walkdir::WalkDir::new(&resolved)
-            .max_depth(max_depth)
-            .into_iter()
-            .filter_map(|entry| entry.ok())
-            .filter(|entry| entry.path() != resolved)
-            .map(|entry| {
-                serde_json::json!({
-                    "path": entry.path(),
-                    "is_directory": entry.file_type().is_dir(),
+    server.register_handler(
+        "list_files",
+        traced_mcp_handler(langsmith.clone(), "list_files", move |args| {
+            let path = args.get("path").and_then(|v| v.as_str()).unwrap_or(".");
+            let recursive = args
+                .get("recursive")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            let resolved = resolve_workspace_path(&root_for_list, path)?;
+            let max_depth = if recursive { usize::MAX } else { 1 };
+            let entries: Vec<_> = walkdir::WalkDir::new(&resolved)
+                .max_depth(max_depth)
+                .into_iter()
+                .filter_map(|entry| entry.ok())
+                .filter(|entry| entry.path() != resolved)
+                .map(|entry| {
+                    serde_json::json!({
+                        "path": entry.path(),
+                        "is_directory": entry.file_type().is_dir(),
+                    })
                 })
-            })
-            .collect();
-        Ok(serde_json::json!({
-            "path": resolved,
-            "entries": entries,
-        }))
-    }));
+                .collect();
+            Ok(serde_json::json!({
+                "path": resolved,
+                "entries": entries,
+            }))
+        }),
+    );
 
     let root_for_read = workspace_root;
-    server.register_handler("read_file", traced_mcp_handler(langsmith.clone(), "read_file", move |args| {
-        let path = args.get("path").and_then(|v| v.as_str()).ok_or_else(|| {
-            openrustclaw_core::error::Error::Mcp(openrustclaw_core::error::McpError::ToolExecution(
-                "Missing 'path' parameter".to_string(),
-            ))
-        })?;
-        let resolved = resolve_workspace_path(&root_for_read, path)?;
-        let content = std::fs::read_to_string(&resolved).map_err(|e| {
-            openrustclaw_core::error::Error::Mcp(openrustclaw_core::error::McpError::ToolExecution(
-                e.to_string(),
-            ))
-        })?;
-        Ok(serde_json::json!({
-            "path": resolved,
-            "content": content,
-        }))
-    }));
+    let root_for_opt_register = root_for_read.clone();
+    server.register_handler(
+        "read_file",
+        traced_mcp_handler(langsmith.clone(), "read_file", move |args| {
+            let path = args.get("path").and_then(|v| v.as_str()).ok_or_else(|| {
+                openrustclaw_core::error::Error::Mcp(
+                    openrustclaw_core::error::McpError::ToolExecution(
+                        "Missing 'path' parameter".to_string(),
+                    ),
+                )
+            })?;
+            let resolved = resolve_workspace_path(&root_for_read, path)?;
+            let content = std::fs::read_to_string(&resolved).map_err(|e| {
+                openrustclaw_core::error::Error::Mcp(
+                    openrustclaw_core::error::McpError::ToolExecution(e.to_string()),
+                )
+            })?;
+            Ok(serde_json::json!({
+                "path": resolved,
+                "content": content,
+            }))
+        }),
+    );
 
     let memory_store_for_search = memory_store.clone();
-    server.register_handler("search_memory", traced_mcp_handler(langsmith.clone(), "search_memory", move |args| {
-        let request: McpMemorySearchArgs = parse_tool_args(args)?;
-        let memory_store = memory_store_for_search.clone();
-        block_on_tool(async move {
-            let query = MemoryQuery {
-                text: request.query,
-                memory_types: vec![],
-                source_types: vec![],
-                namespace: Some(request.user_id),
-                limit: request.limit.unwrap_or(5).max(1),
-                min_confidence: 0.0,
-                recency_weight: 0.0,
-            };
-            let results = memory_store.search(&query).await?;
-            Ok(serde_json::json!({
-                "memories": results.into_iter().map(|scored| serde_json::json!({
-                    "id": scored.entry.id,
-                    "content": scored.entry.content,
-                    "score": scored.score,
-                    "importance": scored.entry.importance,
-                    "created_at": scored.entry.created_at,
-                })).collect::<Vec<_>>()
-            }))
-        })
-    }));
+    server.register_handler(
+        "search_memory",
+        traced_mcp_handler(langsmith.clone(), "search_memory", move |args| {
+            let request: McpMemorySearchArgs = parse_tool_args(args)?;
+            let memory_store = memory_store_for_search.clone();
+            block_on_tool(async move {
+                let query = MemoryQuery {
+                    text: request.query,
+                    memory_types: vec![],
+                    source_types: vec![],
+                    namespace: Some(request.user_id),
+                    limit: request.limit.unwrap_or(5).max(1),
+                    min_confidence: 0.0,
+                    recency_weight: 0.0,
+                };
+                let results = memory_store.search(&query).await?;
+                Ok(serde_json::json!({
+                    "memories": results.into_iter().map(|scored| serde_json::json!({
+                        "id": scored.entry.id,
+                        "content": scored.entry.content,
+                        "score": scored.score,
+                        "importance": scored.entry.importance,
+                        "created_at": scored.entry.created_at,
+                    })).collect::<Vec<_>>()
+                }))
+            })
+        }),
+    );
 
     let memory_store_for_store = memory_store.clone();
-    server.register_handler("store_memory", traced_mcp_handler(langsmith.clone(), "store_memory", move |args| {
-        let request: McpStoreMemoryArgs = parse_tool_args(args)?;
-        let memory_store = memory_store_for_store.clone();
-        block_on_tool(async move {
-            let category = request
-                .category
-                .unwrap_or_else(|| "semantic".to_string())
-                .to_lowercase();
-            let memory_type = match category.as_str() {
-                "episodic" => MemoryType::Episodic,
-                "procedural" => MemoryType::Procedural,
-                _ => MemoryType::Semantic,
-            };
+    server.register_handler(
+        "store_memory",
+        traced_mcp_handler(langsmith.clone(), "store_memory", move |args| {
+            let request: McpStoreMemoryArgs = parse_tool_args(args)?;
+            let memory_store = memory_store_for_store.clone();
+            block_on_tool(async move {
+                let category = request
+                    .category
+                    .unwrap_or_else(|| "semantic".to_string())
+                    .to_lowercase();
+                let memory_type = match category.as_str() {
+                    "episodic" => MemoryType::Episodic,
+                    "procedural" => MemoryType::Procedural,
+                    _ => MemoryType::Semantic,
+                };
 
-            let entry = MemoryEntry {
-                id: Uuid::new_v4(),
-                memory_type,
-                content_hash: MemoryPolicies::content_hash(&request.content),
-                content: request.content,
-                source: request
-                    .source
-                    .or_else(|| Some("mcp_server".to_string())),
-                source_type: Some(SourceType::Conversation),
-                session_id: request
-                    .session_id
-                    .as_deref()
-                    .and_then(|value| Uuid::parse_str(value).ok()),
-                user_id: Some(request.user_id.clone()),
-                namespace: request.user_id,
-                importance: request.importance.unwrap_or(0.7).clamp(0.0, 1.0),
-                confidence: 1.0,
-                access_count: 0,
-                last_accessed: None,
-                created_at: Utc::now(),
-                expires_at: None,
-                metadata: serde_json::json!({
-                    "source": "mcp_server",
-                    "category": category,
-                }),
-            };
-            let id = entry.id;
-            memory_store.store(entry).await?;
-            Ok(serde_json::json!({
-                "stored": true,
-                "id": id,
-            }))
-        })
-    }));
+                let entry = MemoryEntry {
+                    id: Uuid::new_v4(),
+                    memory_type,
+                    content_hash: MemoryPolicies::content_hash(&request.content),
+                    content: request.content,
+                    source: request.source.or_else(|| Some("mcp_server".to_string())),
+                    source_type: Some(SourceType::Conversation),
+                    session_id: request
+                        .session_id
+                        .as_deref()
+                        .and_then(|value| Uuid::parse_str(value).ok()),
+                    user_id: Some(request.user_id.clone()),
+                    namespace: request.user_id,
+                    importance: request.importance.unwrap_or(0.7).clamp(0.0, 1.0),
+                    confidence: 1.0,
+                    access_count: 0,
+                    last_accessed: None,
+                    created_at: Utc::now(),
+                    expires_at: None,
+                    metadata: serde_json::json!({
+                        "source": "mcp_server",
+                        "category": category,
+                    }),
+                };
+                let id = entry.id;
+                memory_store.store(entry).await?;
+                Ok(serde_json::json!({
+                    "stored": true,
+                    "id": id,
+                }))
+            })
+        }),
+    );
 
     let core_memory_for_render = core_memory_store.clone();
-    server.register_handler("render_core_memory", traced_mcp_handler(langsmith.clone(), "render_core_memory", move |args| {
-        let request: McpRenderCoreMemoryArgs = parse_tool_args(args)?;
-        let core_memory_store = core_memory_for_render.clone();
-        block_on_tool(async move {
-            let content = core_memory_store.render(&request.user_id).await?;
-            Ok(serde_json::json!({ "content": content }))
-        })
-    }));
+    server.register_handler(
+        "render_core_memory",
+        traced_mcp_handler(langsmith.clone(), "render_core_memory", move |args| {
+            let request: McpRenderCoreMemoryArgs = parse_tool_args(args)?;
+            let core_memory_store = core_memory_for_render.clone();
+            block_on_tool(async move {
+                let content = core_memory_store.render(&request.user_id).await?;
+                Ok(serde_json::json!({ "content": content }))
+            })
+        }),
+    );
 
     let core_memory_for_set = core_memory_store.clone();
-    server.register_handler("set_core_memory", traced_mcp_handler(langsmith.clone(), "set_core_memory", move |args| {
-        let request: McpSetCoreMemoryArgs = parse_tool_args(args)?;
-        let core_memory_store = core_memory_for_set.clone();
-        block_on_tool(async move {
-            let entry = openrustclaw_db::CoreEntryBuilder::new(&request.key, &request.value)
-                .importance(request.importance.unwrap_or(0.8).clamp(0.0, 1.0))
-                .build();
-            core_memory_store.set(&request.user_id, entry).await?;
-            Ok(serde_json::json!({
-                "stored": true,
-                "user_id": request.user_id,
-                "key": request.key,
-            }))
-        })
-    }));
+    server.register_handler(
+        "set_core_memory",
+        traced_mcp_handler(langsmith.clone(), "set_core_memory", move |args| {
+            let request: McpSetCoreMemoryArgs = parse_tool_args(args)?;
+            let core_memory_store = core_memory_for_set.clone();
+            block_on_tool(async move {
+                let entry = openrustclaw_db::CoreEntryBuilder::new(&request.key, &request.value)
+                    .importance(request.importance.unwrap_or(0.8).clamp(0.0, 1.0))
+                    .build();
+                core_memory_store.set(&request.user_id, entry).await?;
+                Ok(serde_json::json!({
+                    "stored": true,
+                    "user_id": request.user_id,
+                    "key": request.key,
+                }))
+            })
+        }),
+    );
 
     let pool_for_list_jobs = pool.clone();
-    server.register_handler("list_scheduled_jobs", traced_mcp_handler(langsmith.clone(), "list_scheduled_jobs", move |args| {
-        let request: McpListScheduledJobsArgs = parse_tool_args(args)?;
-        let pool = pool_for_list_jobs.clone();
-        block_on_tool(async move {
-            let mut sql = String::from(
-                r#"
+    server.register_handler(
+        "list_scheduled_jobs",
+        traced_mcp_handler(langsmith.clone(), "list_scheduled_jobs", move |args| {
+            let request: McpListScheduledJobsArgs = parse_tool_args(args)?;
+            let pool = pool_for_list_jobs.clone();
+            block_on_tool(async move {
+                let mut sql = String::from(
+                    r#"
                 SELECT id, name, description, workflow_id, trigger_type, trigger_config,
                        state, timezone, max_retries, next_run_at, last_run_at,
                        run_count, consecutive_failures, metadata, created_at
                 FROM scheduled_jobs
                 "#,
-            );
-            let state = request.state.unwrap_or_default();
-            if state.is_empty() {
-                sql.push_str(" ORDER BY next_run_at ASC, created_at DESC LIMIT ?");
-            } else {
-                sql.push_str(" WHERE state = ? ORDER BY next_run_at ASC, created_at DESC LIMIT ?");
-            }
+                );
+                let state = request.state.unwrap_or_default();
+                if state.is_empty() {
+                    sql.push_str(" ORDER BY next_run_at ASC, created_at DESC LIMIT ?");
+                } else {
+                    sql.push_str(
+                        " WHERE state = ? ORDER BY next_run_at ASC, created_at DESC LIMIT ?",
+                    );
+                }
 
-            let limit = request.limit.unwrap_or(20).max(1) as i64;
-            let mut query = sqlx::query(&sql);
-            if !state.is_empty() {
-                query = query.bind(state);
-            }
-            query = query.bind(limit);
+                let limit = request.limit.unwrap_or(20).max(1) as i64;
+                let mut query = sqlx::query(&sql);
+                if !state.is_empty() {
+                    query = query.bind(state);
+                }
+                query = query.bind(limit);
 
-            let rows = query.fetch_all(&pool).await.map_err(|e| {
-                CoreError::Mcp(McpError::ToolExecution(format!(
-                    "Failed to list scheduled jobs: {}",
-                    e
-                )))
-            })?;
+                let rows = query.fetch_all(&pool).await.map_err(|e| {
+                    CoreError::Mcp(McpError::ToolExecution(format!(
+                        "Failed to list scheduled jobs: {}",
+                        e
+                    )))
+                })?;
 
-            let jobs = rows
+                let jobs = rows
                 .into_iter()
                 .map(|row| {
                     serde_json::json!({
@@ -1647,166 +1795,377 @@ fn build_mcp_server(
                 })
                 .collect::<Vec<_>>();
 
-            Ok(serde_json::json!({ "jobs": jobs }))
-        })
-    }));
+                Ok(serde_json::json!({ "jobs": jobs }))
+            })
+        }),
+    );
 
     let pool_for_create_jobs = pool;
     let langsmith_for_create_jobs = langsmith.clone();
-    server.register_handler("create_scheduled_job", traced_mcp_handler(langsmith_for_create_jobs, "create_scheduled_job", move |args| {
-        let request: McpCreateScheduledJobArgs = parse_tool_args(args)?;
-        let pool = pool_for_create_jobs.clone();
-        block_on_tool(async move {
-            if request.interval_seconds.is_some() && request.run_at.is_some() {
-                return Err(mcp_tool_error(
-                    "Use either interval_seconds or run_at, not both",
-                ));
-            }
+    server.register_handler(
+        "create_scheduled_job",
+        traced_mcp_handler(
+            langsmith_for_create_jobs,
+            "create_scheduled_job",
+            move |args| {
+                let request: McpCreateScheduledJobArgs = parse_tool_args(args)?;
+                let pool = pool_for_create_jobs.clone();
+                block_on_tool(async move {
+                    if request.interval_seconds.is_some() && request.run_at.is_some() {
+                        return Err(mcp_tool_error(
+                            "Use either interval_seconds or run_at, not both",
+                        ));
+                    }
 
-            let existing: Option<String> =
-                sqlx::query_scalar("SELECT id FROM scheduled_jobs WHERE name = ?")
-                    .bind(&request.name)
-                    .fetch_optional(&pool)
-                    .await
-                    .map_err(|e| {
-                        CoreError::Mcp(McpError::ToolExecution(format!(
-                            "Failed to check for existing job: {}",
-                            e
-                        )))
-                    })?;
+                    let existing: Option<String> =
+                        sqlx::query_scalar("SELECT id FROM scheduled_jobs WHERE name = ?")
+                            .bind(&request.name)
+                            .fetch_optional(&pool)
+                            .await
+                            .map_err(|e| {
+                                CoreError::Mcp(McpError::ToolExecution(format!(
+                                    "Failed to check for existing job: {}",
+                                    e
+                                )))
+                            })?;
 
-            if existing.is_some() {
-                return Err(mcp_tool_error(format!(
-                    "A job named '{}' already exists",
-                    request.name
-                )));
-            }
+                    if existing.is_some() {
+                        return Err(mcp_tool_error(format!(
+                            "A job named '{}' already exists",
+                            request.name
+                        )));
+                    }
 
-            let id = Uuid::new_v4().to_string();
-            let idempotency_key = format!("{}:{}", id, Uuid::new_v4());
-            let timezone = request.timezone.unwrap_or_else(|| "UTC".to_string());
-            let payload = request.payload.unwrap_or_else(|| serde_json::json!({}));
-            let workflow_metadata = request
-                .workflow_metadata
-                .unwrap_or_else(|| serde_json::json!({}));
+                    let id = Uuid::new_v4().to_string();
+                    let idempotency_key = format!("{}:{}", id, Uuid::new_v4());
+                    let timezone = request.timezone.unwrap_or_else(|| "UTC".to_string());
+                    let payload = request.payload.unwrap_or_else(|| serde_json::json!({}));
+                    let workflow_metadata = request
+                        .workflow_metadata
+                        .unwrap_or_else(|| serde_json::json!({}));
 
-            let (trigger_type, trigger_config, next_run_at) = if let Some(run_at) = request.run_at {
-                let parsed = parse_mcp_timestamp(&run_at)?;
-                (
-                    "absolute",
-                    serde_json::json!({
-                        "type": "absolute",
-                        "run_at": parsed.to_rfc3339(),
-                    }),
-                    parsed,
-                )
-            } else {
-                let interval_seconds = request.interval_seconds.unwrap_or(3600).max(1);
-                (
-                    "interval",
-                    serde_json::json!({
-                        "type": "interval",
-                        "interval_secs": interval_seconds,
-                    }),
-                    Utc::now() + chrono::Duration::seconds(interval_seconds as i64),
-                )
-            };
+                    let (trigger_type, trigger_config, next_run_at) =
+                        if let Some(run_at) = request.run_at {
+                            let parsed = parse_mcp_timestamp(&run_at)?;
+                            (
+                                "absolute",
+                                serde_json::json!({
+                                    "type": "absolute",
+                                    "run_at": parsed.to_rfc3339(),
+                                }),
+                                parsed,
+                            )
+                        } else {
+                            let interval_seconds = request.interval_seconds.unwrap_or(3600).max(1);
+                            (
+                                "interval",
+                                serde_json::json!({
+                                    "type": "interval",
+                                    "interval_secs": interval_seconds,
+                                }),
+                                Utc::now() + chrono::Duration::seconds(interval_seconds as i64),
+                            )
+                        };
 
-            let metadata = serde_json::json!({
-                "input": payload,
-                "workflow_metadata": workflow_metadata,
-            });
+                    let metadata = serde_json::json!({
+                        "input": payload,
+                        "workflow_metadata": workflow_metadata,
+                    });
 
-            sqlx::query(
-                r#"
+                    sqlx::query(
+                        r#"
                 INSERT INTO scheduled_jobs (
                     id, name, description, workflow_id, trigger_type, trigger_config,
                     idempotency_key, state, timezone, max_retries, next_run_at,
                     run_count, metadata, created_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 "#,
-            )
-            .bind(&id)
-            .bind(&request.name)
-            .bind(
-                request.description.unwrap_or_else(|| {
-                    format!("Auto-created job for workflow {}", request.workflow_id)
-                }),
-            )
-            .bind(&request.workflow_id)
-            .bind(trigger_type)
-            .bind(trigger_config.to_string())
-            .bind(&idempotency_key)
-            .bind("active")
-            .bind(&timezone)
-            .bind(request.max_retries.unwrap_or(3) as i64)
-            .bind(next_run_at.to_rfc3339())
-            .bind(0i64)
-            .bind(metadata.to_string())
-            .bind(Utc::now().to_rfc3339())
-            .execute(&pool)
-            .await
-            .map_err(|e| {
-                CoreError::Mcp(McpError::ToolExecution(format!(
-                    "Failed to create scheduled job: {}",
-                    e
-                )))
-            })?;
+                    )
+                    .bind(&id)
+                    .bind(&request.name)
+                    .bind(request.description.unwrap_or_else(|| {
+                        format!("Auto-created job for workflow {}", request.workflow_id)
+                    }))
+                    .bind(&request.workflow_id)
+                    .bind(trigger_type)
+                    .bind(trigger_config.to_string())
+                    .bind(&idempotency_key)
+                    .bind("active")
+                    .bind(&timezone)
+                    .bind(request.max_retries.unwrap_or(3) as i64)
+                    .bind(next_run_at.to_rfc3339())
+                    .bind(0i64)
+                    .bind(metadata.to_string())
+                    .bind(Utc::now().to_rfc3339())
+                    .execute(&pool)
+                    .await
+                    .map_err(|e| {
+                        CoreError::Mcp(McpError::ToolExecution(format!(
+                            "Failed to create scheduled job: {}",
+                            e
+                        )))
+                    })?;
 
-            Ok(serde_json::json!({
-                "created": true,
-                "job": {
-                    "id": id,
-                    "name": request.name,
-                    "workflow_id": request.workflow_id,
-                    "trigger_type": trigger_type,
-                    "next_run_at": next_run_at.to_rfc3339(),
-                    "timezone": timezone,
-                }
-            }))
-        })
-    }));
+                    Ok(serde_json::json!({
+                        "created": true,
+                        "job": {
+                            "id": id,
+                            "name": request.name,
+                            "workflow_id": request.workflow_id,
+                            "trigger_type": trigger_type,
+                            "next_run_at": next_run_at.to_rfc3339(),
+                            "timezone": timezone,
+                        }
+                    }))
+                })
+            },
+        ),
+    );
 
     let rag_store_for_list = rag_store.clone();
     let langsmith_for_list_rag = langsmith.clone();
-    server.register_handler("list_rag_collections", traced_mcp_handler(langsmith_for_list_rag, "list_rag_collections", move |args| {
-        let request: McpListRagCollectionsArgs = parse_tool_args(args)?;
-        let rag_store = rag_store_for_list.clone();
-        block_on_tool(async move {
-            let collections = rag_store.list_collection_stats(request.limit).await?;
-            Ok(serde_json::json!({
-                "collections": collections.into_iter().map(|stats| serde_json::json!({
-                    "collection_name": stats.collection_name,
-                    "chunk_count": stats.chunk_count,
-                    "source_count": stats.source_count,
-                    "total_content_bytes": stats.total_content_bytes,
-                    "last_updated_at": stats.last_updated_at,
-                })).collect::<Vec<_>>()
-            }))
-        })
-    }));
+    server.register_handler(
+        "list_rag_collections",
+        traced_mcp_handler(
+            langsmith_for_list_rag,
+            "list_rag_collections",
+            move |args| {
+                let request: McpListRagCollectionsArgs = parse_tool_args(args)?;
+                let rag_store = rag_store_for_list.clone();
+                block_on_tool(async move {
+                    let collections = rag_store.list_collection_stats(request.limit).await?;
+                    Ok(serde_json::json!({
+                        "collections": collections.into_iter().map(|stats| serde_json::json!({
+                            "collection_name": stats.collection_name,
+                            "chunk_count": stats.chunk_count,
+                            "source_count": stats.source_count,
+                            "total_content_bytes": stats.total_content_bytes,
+                            "last_updated_at": stats.last_updated_at,
+                        })).collect::<Vec<_>>()
+                    }))
+                })
+            },
+        ),
+    );
 
     let rag_store_for_load = rag_store;
-    server.register_handler("load_rag_chunks", traced_mcp_handler(langsmith, "load_rag_chunks", move |args| {
-        let request: McpLoadRagChunksArgs = parse_tool_args(args)?;
-        let rag_store = rag_store_for_load.clone();
-        block_on_tool(async move {
-            let chunks = rag_store
-                .load_collection(&request.collection_name, request.limit)
-                .await?;
-            Ok(serde_json::json!({
-                "collection_name": request.collection_name,
-                "chunks": chunks.into_iter().map(|chunk| serde_json::json!({
-                    "id": chunk.chunk_id,
-                    "source_id": chunk.source_id,
-                    "chunk_index": chunk.chunk_index,
-                    "content": chunk.content,
-                    "metadata": chunk.metadata,
-                    "created_at": chunk.created_at,
-                })).collect::<Vec<_>>()
-            }))
-        })
-    }));
+    server.register_handler(
+        "load_rag_chunks",
+        traced_mcp_handler(langsmith.clone(), "load_rag_chunks", move |args| {
+            let request: McpLoadRagChunksArgs = parse_tool_args(args)?;
+            let rag_store = rag_store_for_load.clone();
+            block_on_tool(async move {
+                let chunks = rag_store
+                    .load_collection(&request.collection_name, request.limit)
+                    .await?;
+                Ok(serde_json::json!({
+                    "collection_name": request.collection_name,
+                    "chunks": chunks.into_iter().map(|chunk| serde_json::json!({
+                        "id": chunk.chunk_id,
+                        "source_id": chunk.source_id,
+                        "chunk_index": chunk.chunk_index,
+                        "content": chunk.content,
+                        "metadata": chunk.metadata,
+                        "created_at": chunk.created_at,
+                    })).collect::<Vec<_>>()
+                }))
+            })
+        }),
+    );
+
+    let optimization_for_list_targets = optimization_store.clone();
+    let langsmith_for_opt_list = langsmith.clone();
+    server.register_handler(
+        "list_optimization_targets",
+        traced_mcp_handler(
+            langsmith_for_opt_list,
+            "list_optimization_targets",
+            move |_| {
+                let store = optimization_for_list_targets.clone();
+                block_on_tool(async move {
+                    let targets = store.list_targets().await?;
+                    Ok(serde_json::json!({
+                        "targets": targets
+                    }))
+                })
+            },
+        ),
+    );
+
+    let optimization_for_register = optimization_store.clone();
+    let langsmith_for_opt_register = langsmith.clone();
+    server.register_handler(
+        "register_optimization_target",
+        traced_mcp_handler(
+            langsmith_for_opt_register,
+            "register_optimization_target",
+            move |args| {
+                let request: McpRegisterOptimizationTargetArgs = parse_tool_args(args)?;
+                let store = optimization_for_register.clone();
+                let workspace_root = root_for_opt_register.clone();
+                block_on_tool(async move {
+                    let target = store
+                        .register_target(TargetRegistration {
+                            name: request.name,
+                            description: request.description,
+                            target_kind: parse_mcp_enum(&request.target_kind, "target_kind")?,
+                            execution_tier: parse_mcp_enum(
+                                &request.execution_tier,
+                                "execution_tier",
+                            )?,
+                            risk_class: parse_mcp_enum(
+                                request.risk_class.as_deref().unwrap_or("safe_config"),
+                                "risk_class",
+                            )?,
+                            ship_status: parse_mcp_enum(
+                                request.ship_status.as_deref().unwrap_or("experimental"),
+                                "ship_status",
+                            )?,
+                            workspace_root: request
+                                .workspace_root
+                                .map(|root| resolve_workspace_path(&workspace_root, &root))
+                                .transpose()?
+                                .unwrap_or(workspace_root.clone())
+                                .display()
+                                .to_string(),
+                            mutation_policy: request.mutation_policy.unwrap_or_default(),
+                            eval_suite: request.eval_suite.unwrap_or_default(),
+                            promotion_policy: request.promotion_policy.unwrap_or_default(),
+                            metadata: request.metadata.unwrap_or_else(|| serde_json::json!({})),
+                        })
+                        .await?;
+                    Ok(serde_json::json!({ "target": target }))
+                })
+            },
+        ),
+    );
+
+    let optimization_for_submit = optimization_store.clone();
+    let langsmith_for_opt_submit = langsmith.clone();
+    server.register_handler(
+        "submit_optimization_candidate",
+        traced_mcp_handler(
+            langsmith_for_opt_submit,
+            "submit_optimization_candidate",
+            move |args| {
+                let request: McpSubmitOptimizationCandidateArgs = parse_tool_args(args)?;
+                let store = optimization_for_submit.clone();
+                block_on_tool(async move {
+                    let target = store.get_target(&request.target).await?;
+                    let candidate = store
+                        .submit_candidate(
+                            &target.id,
+                            &request.hypothesis,
+                            request.proposed_by.as_deref().unwrap_or("mcp_operator"),
+                            request.changes,
+                            request.trace_id,
+                        )
+                        .await?;
+                    Ok(serde_json::json!({ "candidate": candidate }))
+                })
+            },
+        ),
+    );
+
+    let optimization_for_list_candidates = optimization_store.clone();
+    let langsmith_for_opt_list_candidates = langsmith.clone();
+    server.register_handler(
+        "list_optimization_candidates",
+        traced_mcp_handler(
+            langsmith_for_opt_list_candidates,
+            "list_optimization_candidates",
+            move |args| {
+                let request: McpListOptimizationCandidatesArgs = parse_tool_args(args)?;
+                let store = optimization_for_list_candidates.clone();
+                block_on_tool(async move {
+                    let target_id = match request.target {
+                        Some(target) => Some(store.get_target(&target).await?.id),
+                        None => None,
+                    };
+                    let status = request
+                        .status
+                        .as_deref()
+                        .map(|raw| parse_mcp_enum(raw, "candidate status"))
+                        .transpose()?;
+                    let candidates = store
+                        .list_candidates(target_id.as_deref(), status, request.limit)
+                        .await?;
+                    Ok(serde_json::json!({ "candidates": candidates }))
+                })
+            },
+        ),
+    );
+
+    let optimization_for_inspect = optimization_store.clone();
+    let langsmith_for_opt_inspect = langsmith.clone();
+    server.register_handler(
+        "inspect_optimization_candidate",
+        traced_mcp_handler(
+            langsmith_for_opt_inspect,
+            "inspect_optimization_candidate",
+            move |args| {
+                let request: McpInspectOptimizationCandidateArgs = parse_tool_args(args)?;
+                let store = optimization_for_inspect.clone();
+                block_on_tool(async move {
+                    let candidate = store.get_candidate(&request.candidate_id).await?;
+                    let evaluations = store.list_evaluations(&request.candidate_id).await?;
+                    let promotions = store.list_promotions(&request.candidate_id).await?;
+                    Ok(serde_json::json!({
+                        "candidate": candidate,
+                        "evaluations": evaluations,
+                        "promotions": promotions,
+                    }))
+                })
+            },
+        ),
+    );
+
+    let optimization_for_run = optimization_store.clone();
+    let langsmith_for_opt_run = langsmith.clone();
+    server.register_handler(
+        "run_optimization_candidate",
+        traced_mcp_handler(
+            langsmith_for_opt_run.clone(),
+            "run_optimization_candidate",
+            move |args| {
+                let request: McpRunOptimizationCandidateArgs = parse_tool_args(args)?;
+                let store = optimization_for_run.clone();
+                let langsmith = langsmith_for_opt_run.clone();
+                block_on_tool(async move {
+                    let runner =
+                        CandidateRunner::new(store, langsmith, CandidateRunnerConfig::default());
+                    let summary = runner.run_candidate(&request.candidate_id).await?;
+                    Ok(serde_json::json!({ "summary": summary }))
+                })
+            },
+        ),
+    );
+
+    let optimization_for_promote = optimization_store;
+    server.register_handler(
+        "promote_optimization_candidate",
+        traced_mcp_handler(
+            langsmith.clone(),
+            "promote_optimization_candidate",
+            move |args| {
+                let request: McpPromoteOptimizationCandidateArgs = parse_tool_args(args)?;
+                let store = optimization_for_promote.clone();
+                block_on_tool(async move {
+                    let event = store
+                        .record_promotion(
+                            &request.candidate_id,
+                            parse_mcp_enum(&request.decision, "decision")?,
+                            &request.decided_by,
+                            request.notes.as_deref(),
+                            request.rollback_reference.as_deref(),
+                            None,
+                        )
+                        .await?;
+                    Ok(serde_json::json!({ "promotion": event }))
+                })
+            },
+        ),
+    );
 
     server
 }
@@ -1815,9 +2174,15 @@ fn traced_mcp_handler<F>(
     langsmith: Option<LangSmithClient>,
     tool_name: &'static str,
     handler: F,
-) -> impl Fn(serde_json::Value) -> openrustclaw_core::error::Result<serde_json::Value> + Send + Sync + 'static
+) -> impl Fn(serde_json::Value) -> openrustclaw_core::error::Result<serde_json::Value>
++ Send
++ Sync
++ 'static
 where
-    F: Fn(serde_json::Value) -> openrustclaw_core::error::Result<serde_json::Value> + Send + Sync + 'static,
+    F: Fn(serde_json::Value) -> openrustclaw_core::error::Result<serde_json::Value>
+        + Send
+        + Sync
+        + 'static,
 {
     move |args| {
         let trace_client = langsmith.clone();
@@ -1871,11 +2236,21 @@ fn mcp_tool_error(message: impl Into<String>) -> CoreError {
 fn parse_tool_args<T: serde::de::DeserializeOwned>(
     args: serde_json::Value,
 ) -> openrustclaw_core::error::Result<T> {
-    serde_json::from_value(args).map_err(|e| mcp_tool_error(format!("Invalid tool arguments: {}", e)))
+    serde_json::from_value(args)
+        .map_err(|e| mcp_tool_error(format!("Invalid tool arguments: {}", e)))
 }
 
 fn parse_json_column(raw: String) -> serde_json::Value {
     serde_json::from_str(&raw).unwrap_or_else(|_| serde_json::json!(raw))
+}
+
+fn parse_mcp_enum<T>(raw: &str, label: &str) -> openrustclaw_core::error::Result<T>
+where
+    T: std::str::FromStr,
+    <T as std::str::FromStr>::Err: std::fmt::Display,
+{
+    raw.parse::<T>()
+        .map_err(|error| mcp_tool_error(format!("Invalid {} '{}': {}", label, raw, error)))
 }
 
 fn parse_mcp_timestamp(raw: &str) -> openrustclaw_core::error::Result<DateTime<Utc>> {
@@ -1975,6 +2350,56 @@ struct McpListRagCollectionsArgs {
 struct McpLoadRagChunksArgs {
     collection_name: String,
     limit: Option<usize>,
+}
+
+#[derive(serde::Deserialize)]
+struct McpRegisterOptimizationTargetArgs {
+    name: String,
+    description: Option<String>,
+    target_kind: String,
+    execution_tier: String,
+    risk_class: Option<String>,
+    ship_status: Option<String>,
+    workspace_root: Option<String>,
+    mutation_policy: Option<MutationPolicy>,
+    eval_suite: Option<Vec<EvaluationSpec>>,
+    promotion_policy: Option<PromotionPolicy>,
+    metadata: Option<serde_json::Value>,
+}
+
+#[derive(serde::Deserialize)]
+struct McpSubmitOptimizationCandidateArgs {
+    target: String,
+    hypothesis: String,
+    proposed_by: Option<String>,
+    changes: Vec<CandidateChange>,
+    trace_id: Option<String>,
+}
+
+#[derive(serde::Deserialize, Default)]
+struct McpListOptimizationCandidatesArgs {
+    target: Option<String>,
+    status: Option<String>,
+    limit: Option<usize>,
+}
+
+#[derive(serde::Deserialize)]
+struct McpInspectOptimizationCandidateArgs {
+    candidate_id: String,
+}
+
+#[derive(serde::Deserialize)]
+struct McpRunOptimizationCandidateArgs {
+    candidate_id: String,
+}
+
+#[derive(serde::Deserialize)]
+struct McpPromoteOptimizationCandidateArgs {
+    candidate_id: String,
+    decision: String,
+    decided_by: String,
+    notes: Option<String>,
+    rollback_reference: Option<String>,
 }
 
 #[cfg(test)]
@@ -2292,8 +2717,11 @@ mod tests {
         };
         let body = Bytes::from_static(br#"{"type":1}"#);
         let timestamp = "1712550000";
-        let signature =
-            hex::encode(signing_key.sign(&[timestamp.as_bytes(), body.as_ref()].concat()).to_bytes());
+        let signature = hex::encode(
+            signing_key
+                .sign(&[timestamp.as_bytes(), body.as_ref()].concat())
+                .to_bytes(),
+        );
         let mut headers = HeaderMap::new();
         headers.insert("x-signature-ed25519", signature.parse().unwrap());
         headers.insert("x-signature-timestamp", timestamp.parse().unwrap());
@@ -2336,8 +2764,11 @@ mod tests {
             }"#,
         );
         let timestamp = "1712550001";
-        let signature =
-            hex::encode(signing_key.sign(&[timestamp.as_bytes(), body.as_ref()].concat()).to_bytes());
+        let signature = hex::encode(
+            signing_key
+                .sign(&[timestamp.as_bytes(), body.as_ref()].concat())
+                .to_bytes(),
+        );
         let mut headers = HeaderMap::new();
         headers.insert("x-signature-ed25519", signature.parse().unwrap());
         headers.insert("x-signature-timestamp", timestamp.parse().unwrap());
@@ -2351,7 +2782,10 @@ mod tests {
         assert_eq!(incoming.user_id, "user-1");
         assert_eq!(incoming.content, "hello from discord");
         assert_eq!(incoming.metadata["discord_channel_id"], "channel-1");
-        assert_eq!(incoming.metadata["discord_interaction_token"], "interaction-token");
+        assert_eq!(
+            incoming.metadata["discord_interaction_token"],
+            "interaction-token"
+        );
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -2396,7 +2830,9 @@ mod tests {
             }
         });
         let search_resp = server.handle_request(&search_req);
-        let search_text = search_resp["result"]["content"][0]["text"].as_str().unwrap();
+        let search_text = search_resp["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap();
         let search_payload: serde_json::Value = serde_json::from_str(search_text).unwrap();
         assert_eq!(search_payload["memories"].as_array().unwrap().len(), 1);
 
@@ -2415,7 +2851,9 @@ mod tests {
             }
         });
         let set_core_resp = server.handle_request(&set_core_req);
-        let set_core_text = set_core_resp["result"]["content"][0]["text"].as_str().unwrap();
+        let set_core_text = set_core_resp["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap();
         let set_core_payload: serde_json::Value = serde_json::from_str(set_core_text).unwrap();
         assert_eq!(set_core_payload["stored"], true);
 
@@ -2431,12 +2869,16 @@ mod tests {
             }
         });
         let render_resp = server.handle_request(&render_req);
-        let render_text = render_resp["result"]["content"][0]["text"].as_str().unwrap();
-        let render_payload: serde_json::Value = serde_json::from_str(render_text).unwrap();
-        assert!(render_payload["content"]
+        let render_text = render_resp["result"]["content"][0]["text"]
             .as_str()
-            .unwrap()
-            .contains("language_preference"));
+            .unwrap();
+        let render_payload: serde_json::Value = serde_json::from_str(render_text).unwrap();
+        assert!(
+            render_payload["content"]
+                .as_str()
+                .unwrap()
+                .contains("language_preference")
+        );
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -2465,7 +2907,9 @@ mod tests {
             }
         });
         let create_resp = server.handle_request(&create_req);
-        let create_text = create_resp["result"]["content"][0]["text"].as_str().unwrap();
+        let create_text = create_resp["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap();
         let create_payload: serde_json::Value = serde_json::from_str(create_text).unwrap();
         assert_eq!(create_payload["created"], true);
 
@@ -2485,7 +2929,10 @@ mod tests {
         let list_payload: serde_json::Value = serde_json::from_str(list_text).unwrap();
         assert_eq!(list_payload["jobs"].as_array().unwrap().len(), 1);
         assert_eq!(list_payload["jobs"][0]["name"], "nightly-summary");
-        assert_eq!(list_payload["jobs"][0]["metadata"]["workflow_metadata"]["purpose"], "test");
+        assert_eq!(
+            list_payload["jobs"][0]["metadata"]["workflow_metadata"]["purpose"],
+            "test"
+        );
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -2585,5 +3032,122 @@ mod tests {
         assert_eq!(load_payload["collection_name"], "docs");
         assert_eq!(load_payload["chunks"].as_array().unwrap().len(), 1);
         assert_eq!(load_payload["chunks"][0]["content"], "Rust ownership");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn mcp_server_runs_optimization_candidate_end_to_end() {
+        let workspace = tempdir().unwrap();
+        std::fs::write(workspace.path().join("prompt.txt"), "original prompt").unwrap();
+        let db_path = workspace.path().join("mcp-optimization.db");
+        let db_url = format!("sqlite://{}", db_path.display());
+        let pool = init_pool(&db_url, 1).await.unwrap();
+        run_migrations(&pool).await.unwrap();
+
+        let server = build_mcp_server(workspace.path().to_path_buf(), pool, None);
+
+        let register_req = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 30,
+            "method": "tools/call",
+            "params": {
+                "name": "register_optimization_target",
+                "arguments": {
+                    "name": "prompt.optimize",
+                    "target_kind": "prompt_policy",
+                    "execution_tier": "rust_native",
+                    "workspace_root": ".",
+                    "mutation_policy": {
+                        "allowed_paths": ["prompt.txt"],
+                        "forbidden_paths": [".git", "target"],
+                        "allowed_fields": [],
+                        "max_changed_files": 2,
+                        "max_total_bytes": 4096,
+                        "max_diff_lines": 50,
+                        "mandatory_evals": ["verify"],
+                        "required_tests": []
+                    },
+                    "eval_suite": [{
+                        "name": "verify",
+                        "command": {
+                            "program": "bash",
+                            "args": ["-lc", "grep -q optimized prompt.txt"]
+                        },
+                        "timeout_secs": 30,
+                        "metadata": {}
+                    }]
+                }
+            }
+        });
+        let register_resp = server.handle_request(&register_req);
+        let register_text = register_resp["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap();
+        let register_payload: serde_json::Value = serde_json::from_str(register_text).unwrap();
+        assert_eq!(register_payload["target"]["name"], "prompt.optimize");
+
+        let submit_req = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 31,
+            "method": "tools/call",
+            "params": {
+                "name": "submit_optimization_candidate",
+                "arguments": {
+                    "target": "prompt.optimize",
+                    "hypothesis": "simpler prompt works better",
+                    "changes": [{
+                        "path": "prompt.txt",
+                        "new_content": "optimized",
+                        "summary": "replace prompt",
+                        "field_path": null,
+                        "metadata": {}
+                    }]
+                }
+            }
+        });
+        let submit_resp = server.handle_request(&submit_req);
+        let submit_text = submit_resp["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap();
+        let submit_payload: serde_json::Value = serde_json::from_str(submit_text).unwrap();
+        let candidate_id = submit_payload["candidate"]["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        let run_req = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 32,
+            "method": "tools/call",
+            "params": {
+                "name": "run_optimization_candidate",
+                "arguments": {
+                    "candidate_id": candidate_id
+                }
+            }
+        });
+        let run_resp = server.handle_request(&run_req);
+        let run_text = run_resp["result"]["content"][0]["text"].as_str().unwrap();
+        let run_payload: serde_json::Value = serde_json::from_str(run_text).unwrap();
+        assert_eq!(run_payload["summary"]["metrics"]["status"], "passed");
+
+        let promote_req = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 33,
+            "method": "tools/call",
+            "params": {
+                "name": "promote_optimization_candidate",
+                "arguments": {
+                    "candidate_id": run_payload["summary"]["candidate"]["id"],
+                    "decision": "approve",
+                    "decided_by": "tester"
+                }
+            }
+        });
+        let promote_resp = server.handle_request(&promote_req);
+        let promote_text = promote_resp["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap();
+        let promote_payload: serde_json::Value = serde_json::from_str(promote_text).unwrap();
+        assert_eq!(promote_payload["promotion"]["decision"], "approve");
     }
 }

@@ -6,6 +6,7 @@ pub mod mcp2cli;
 pub mod memory;
 pub mod models;
 pub mod onboard;
+pub mod optimize;
 pub mod schedule;
 pub mod security;
 pub mod skills;
