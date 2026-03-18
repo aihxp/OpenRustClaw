@@ -592,6 +592,67 @@ def test_rag_pipeline_supports_query_only_retrieval():
         raise
 
 
+def test_rag_pipeline_prefers_metadata_and_filters_source_types():
+    """Test RAG retrieval scoring prefers matching metadata and respects source filters."""
+    print("\nTesting RAG retrieval scoring and filters...")
+
+    try:
+        from langchain_core.documents import Document
+
+        from src.workflows.rag_pipeline import RetrievalNode
+
+        node = RetrievalNode(top_k=2)
+        chunks = [
+            Document(
+                page_content="A compact guide to service health checks and readiness probes.",
+                metadata={
+                    "id": "chunk_ops",
+                    "source_id": "chunk_ops",
+                    "source": "ops-runbook",
+                    "title": "Service Operations Runbook",
+                    "type": "text",
+                },
+            ),
+            Document(
+                page_content="Discord gateway reconnect and resume semantics for bots.",
+                metadata={
+                    "id": "chunk_discord",
+                    "source_id": "chunk_discord",
+                    "source": "discord-docs",
+                    "title": "Discord Gateway Resume Guide",
+                    "type": "code",
+                    "source_type": "code",
+                },
+            ),
+        ]
+
+        state = {
+            "query": "How do Discord gateway resume semantics work?",
+            "chunks": chunks,
+        }
+        result = asyncio.run(
+            node(
+                state,
+                config={
+                    "configurable": {
+                        "allowed_source_types": ["code"],
+                    }
+                },
+            )
+        )
+
+        assert result["retrieved_docs"]
+        assert result["retrieved_docs"][0].metadata["source_id"] == "chunk_discord"
+        assert result["allowed_source_types"] == ["code"]
+        print("  ✓ RAG retrieval scoring and filters")
+    except ModuleNotFoundError as e:
+        print(f"  ✗ RAG retrieval scoring and filters: {e}")
+        _skip_missing_dependency(e)
+    except Exception as e:
+        print(f"  ✗ RAG retrieval scoring and filters: {e}")
+        raise
+
+
 def test_protobuf_messages():
     """Test protobuf message creation."""
     print("\nTesting protobuf messages...")

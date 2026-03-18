@@ -417,6 +417,7 @@ class RetrievalNode:
                 return {"error": "No query provided"}
 
             collection_name = state.get("collection_name") or "rag_documents"
+            allowed_types = _parse_allowed_source_types(config)
             available_chunks = state.get("chunks", [])
             if not available_chunks:
                 if self.memory_bridge is not None:
@@ -428,7 +429,7 @@ class RetrievalNode:
                     available_chunks = RAG_STORE.load(collection_name)
 
             # Retrieve documents
-            retrieved = await self._retrieve(query, available_chunks)
+            retrieved = await self._retrieve(query, available_chunks, allowed_types)
 
             # Extract sources for citation
             sources = [
@@ -445,6 +446,7 @@ class RetrievalNode:
                 "sources": sources,
                 "query": query,
                 "collection_name": collection_name,
+                "allowed_source_types": sorted(allowed_types) if allowed_types else [],
             }
 
         except Exception as e:
@@ -453,16 +455,44 @@ class RetrievalNode:
                 "error": str(e),
             }
 
-    async def _retrieve(self, query: str, chunks: List[Document]) -> List[Document]:
+    async def _retrieve(
+        self,
+        query: str,
+        chunks: List[Document],
+        allowed_source_types: Optional[set[str]] = None,
+    ) -> List[Document]:
         """Retrieve relevant chunks for the query."""
         query_words = set(_normalize_text(query))
         scored_chunks: List[tuple[float, Document]] = []
 
         for chunk in chunks:
+            chunk_type = str(
+                chunk.metadata.get("source_type", chunk.metadata.get("type", "text"))
+            ).strip().lower()
+            if allowed_source_types and chunk_type not in allowed_source_types:
+                continue
+
             chunk_words = set(_normalize_text(chunk.page_content))
             lexical_overlap = len(query_words & chunk_words) / max(len(query_words), 1)
-            type_boost = 0.15 if chunk.metadata.get("type") == "code" else 0.0
-            score = lexical_overlap + type_boost
+            coverage = len(query_words & chunk_words) / max(len(chunk_words), 1)
+            metadata_tokens = set(
+                _normalize_text(
+                    " ".join(
+                        str(chunk.metadata.get(key, ""))
+                        for key in ("title", "source", "source_id", "path")
+                    )
+                )
+            )
+            metadata_overlap = len(query_words & metadata_tokens) / max(len(query_words), 1)
+            exact_phrase = 0.2 if query.lower() in chunk.page_content.lower() else 0.0
+            type_boost = 0.15 if chunk_type == "code" else 0.0
+            score = (
+                lexical_overlap * 0.55
+                + coverage * 0.2
+                + metadata_overlap * 0.25
+                + exact_phrase
+                + type_boost
+            )
             scored_chunks.append((score, chunk))
 
         scored_chunks.sort(
@@ -593,6 +623,24 @@ def _normalize_text(text: str) -> List[str]:
         for token in text.lower().split()
         if token.strip(".,:;!?()[]{}\"'")
     ]
+
+
+def _parse_allowed_source_types(
+    config: Optional[RunnableConfig],
+) -> Optional[set[str]]:
+    configured = get_configurable_value(config, "allowed_source_types")
+    if configured is None:
+        configured = get_configurable_value(config, "source_types")
+
+    if not isinstance(configured, list):
+        return None
+
+    allowed = {
+        str(value).strip().lower()
+        for value in configured
+        if isinstance(value, (str, int, float)) and str(value).strip()
+    }
+    return allowed or None
 
 
 def _assemble_context(retrieved_docs: List[Document], budget: int) -> tuple[str, List[str]]:
