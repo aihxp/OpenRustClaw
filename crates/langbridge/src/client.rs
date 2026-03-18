@@ -1,7 +1,8 @@
 //! gRPC client to the Python sidecar.
 
+use crate::contract::WorkflowInvocation;
 use crate::proto::orchestration::orchestration_service_client::OrchestrationServiceClient;
-use crate::proto::orchestration::{WorkflowRequest, WorkflowResponse};
+use crate::proto::orchestration::WorkflowResponse;
 use openrustclaw_core::error::{Error, Result};
 use std::collections::HashMap;
 use tonic::transport::Channel;
@@ -35,7 +36,7 @@ impl LangBridgeClient {
         thread_id: &str,
         input: serde_json::Value,
     ) -> Result<WorkflowResponse> {
-        self.execute_workflow_with_metadata(workflow_id, thread_id, input, HashMap::new())
+        self.execute_invocation(WorkflowInvocation::new(workflow_id, thread_id, input))
             .await
     }
 
@@ -47,12 +48,18 @@ impl LangBridgeClient {
         input: serde_json::Value,
         metadata: HashMap<String, String>,
     ) -> Result<WorkflowResponse> {
-        let request = tonic::Request::new(WorkflowRequest {
-            workflow_id: workflow_id.to_string(),
-            thread_id: thread_id.to_string(),
-            input: serde_json::to_string(&input).map_err(|e| Error::Sidecar(e.to_string()))?,
-            metadata,
-        });
+        self.execute_invocation(
+            WorkflowInvocation::new(workflow_id, thread_id, input).with_metadata(metadata),
+        )
+        .await
+    }
+
+    /// Execute a typed workflow invocation.
+    pub async fn execute_invocation(
+        &mut self,
+        invocation: WorkflowInvocation,
+    ) -> Result<WorkflowResponse> {
+        let request = tonic::Request::new(invocation.into_request()?);
 
         let response = self
             .orchestration
@@ -67,6 +74,7 @@ impl LangBridgeClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::contract::CONFIGURABLE_METADATA_KEY;
     use crate::proto::orchestration::{
         StatusRequest, StatusResponse, WorkflowRequest, WorkflowResponse, WorkflowUpdate,
     };
@@ -102,6 +110,24 @@ mod tests {
         assert_eq!(req.metadata.len(), 2);
         assert_eq!(req.metadata.get("user_id").unwrap(), "user_123");
         assert_eq!(req.metadata.get("session").unwrap(), "sess_456");
+    }
+
+    #[test]
+    fn test_workflow_invocation_request_with_typed_configurable() {
+        let req = WorkflowInvocation::new("wf", "thread-1", serde_json::json!({"message": "hi"}))
+            .with_metadata(HashMap::from([("user_id".to_string(), "user_123".to_string())]))
+            .with_configurable(serde_json::Map::from_iter([(
+                "workflow_metadata".to_string(),
+                serde_json::json!({"limit": 3, "enabled": true}),
+            )]))
+            .into_request()
+            .unwrap();
+
+        assert_eq!(req.metadata.get("user_id").unwrap(), "user_123");
+        let configurable = req.metadata.get(CONFIGURABLE_METADATA_KEY).unwrap();
+        let decoded: serde_json::Value = serde_json::from_str(configurable).unwrap();
+        assert_eq!(decoded["workflow_metadata"]["limit"], 3);
+        assert_eq!(decoded["workflow_metadata"]["enabled"], true);
     }
 
     #[test]

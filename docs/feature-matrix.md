@@ -13,7 +13,7 @@ Status values:
 | --- | --- | --- |
 | Gateway health and WebSocket entry | real | Core runtime path exists and is tested |
 | Python sidecar process management | real | Source-tree execution and readiness checks exist |
-| Rust to sidecar workflow dispatch | partial | Generic dispatch exists; typed workflow helpers are being expanded |
+| Rust to sidecar workflow dispatch | real | Workflow dispatch now preserves typed configurable metadata through the bridge contract |
 | Durable scheduler schema | real | SQLite schema and retry/dead-letter tables exist |
 | Durable scheduler execution loop | partial | Execution and persistence are being completed |
 | Observability / LangSmith tracing | partial | Core tracing exists; coverage is not uniform yet |

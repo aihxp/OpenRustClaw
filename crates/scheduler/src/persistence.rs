@@ -49,6 +49,25 @@ impl PersistedJob {
 
         metadata
     }
+
+    /// Build typed configurable values for the sidecar workflow contract.
+    pub fn workflow_configurable(&self) -> serde_json::Map<String, Value> {
+        let mut configurable = serde_json::Map::new();
+        configurable.insert("job_id".to_string(), Value::String(self.job.id.clone()));
+        configurable.insert("job_name".to_string(), Value::String(self.job.name.clone()));
+        configurable.insert(
+            "job_timezone".to_string(),
+            Value::String(self.job.timezone.clone()),
+        );
+
+        if let Some(object) = self.metadata.get("workflow_metadata").and_then(|v| v.as_object()) {
+            for (key, value) in object {
+                configurable.insert(key.clone(), value.clone());
+            }
+        }
+
+        configurable
+    }
 }
 
 fn parse_rfc3339(raw: &str, field: &str) -> Result<DateTime<Utc>> {

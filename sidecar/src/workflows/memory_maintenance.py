@@ -11,6 +11,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 
 from ..memory_bridge import MemoryBridge
+from ..workflow_contract import get_configurable_value
 
 logger = logging.getLogger(__name__)
 
@@ -49,19 +50,7 @@ def _load_configurable_payload(
     key: str,
 ) -> Optional[Any]:
     """Extract structured workflow metadata from RunnableConfig."""
-    if not config:
-        return None
-
-    configurable = config.get("configurable", {})
-    value = configurable.get(key)
-
-    if isinstance(value, str):
-        try:
-            return json.loads(value)
-        except json.JSONDecodeError:
-            return value
-
-    return value
+    return get_configurable_value(config, key)
 
 
 class IdentifyOldMemoriesNode:

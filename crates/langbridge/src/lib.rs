@@ -3,6 +3,7 @@
 //! Connects to the Python LangGraph/LangSmith sidecar via gRPC (tonic).
 
 pub mod client;
+pub mod contract;
 pub mod sidecar;
 
 // Generated protobuf code
@@ -16,6 +17,7 @@ pub mod proto {
 }
 
 pub use client::LangBridgeClient;
+pub use contract::{CONFIGURABLE_METADATA_KEY, WorkflowInvocation};
 pub use sidecar::SidecarManager;
 
 #[cfg(test)]

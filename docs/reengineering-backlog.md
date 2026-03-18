@@ -35,7 +35,7 @@ Goal: make the Rust/Python boundary explicit and testable.
 - Add integration tests for request/response semantics and workflow metadata.
 
 Status:
-- In progress
+- Mostly complete
 
 ## Phase 3: Durable Scheduler
 
@@ -124,8 +124,8 @@ Status:
 - Telegram and Slack HTTP mode are end-to-end runtime paths.
 - Discord now has verified Interactions HTTP ingress with deferred acknowledgements and follow-up replies, but not full Gateway message-event coverage.
 - Memory maintenance now uses Rust-backed archive persistence and removes archived recall entries through the loopback bridge.
+- Rust-to-sidecar workflow dispatch now preserves typed configurable metadata through a reserved contract key instead of flattening everything to strings.
 - The biggest remaining engineering gaps are:
-  - typed Rust-sidecar contracts
   - fuller skills lifecycle/capability enforcement
   - production-grade RAG/context assembly
 

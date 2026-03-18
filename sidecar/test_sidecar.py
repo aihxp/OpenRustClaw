@@ -428,6 +428,52 @@ def test_memory_maintenance_archive_node_uses_bridge():
         raise
 
 
+def test_workflow_contract_parses_typed_configurable_metadata():
+    """Test typed configurable payload survives the workflow contract."""
+    print("\nTesting workflow contract parsing...")
+
+    try:
+        from src.proto.orchestration_pb2 import WorkflowRequest
+        from src.workflow_contract import (
+            CONFIGURABLE_METADATA_KEY,
+            get_configurable_value,
+            parse_workflow_request,
+        )
+
+        request = WorkflowRequest(
+            workflow_id="scheduler",
+            thread_id="thread-123",
+            input='{"job_id":"job-1","payload":{}}',
+            metadata={
+                "job_name": "Nightly sync",
+                CONFIGURABLE_METADATA_KEY: json.dumps(
+                    {
+                        "limit": 25,
+                        "labels": ["nightly", "critical"],
+                        "workflow_metadata": {"priority": "high", "enabled": True},
+                    }
+                ),
+            },
+        )
+
+        parsed = parse_workflow_request(request)
+        assert parsed.thread_id == "thread-123"
+        assert parsed.input_data["job_id"] == "job-1"
+        assert parsed.configurable["job_name"] == "Nightly sync"
+        assert parsed.configurable["limit"] == 25
+        assert parsed.configurable["labels"] == ["nightly", "critical"]
+        assert parsed.configurable["workflow_metadata"]["enabled"] is True
+        assert parsed.runnable_config()["configurable"]["thread_id"] == "thread-123"
+        assert get_configurable_value(parsed.runnable_config(), "limit") == 25
+        print("  ✓ Workflow contract parsing")
+    except ModuleNotFoundError as e:
+        print(f"  ✗ Workflow contract parsing: {e}")
+        _skip_missing_dependency(e)
+    except Exception as e:
+        print(f"  ✗ Workflow contract parsing: {e}")
+        raise
+
+
 def test_scheduler_retry_records_next_run():
     """Test scheduler retry logic records the next retry timestamp."""
     print("\nTesting scheduler retry scheduling...")
@@ -628,6 +674,8 @@ def main():
     results.append(test_preprocess_memory_context_uses_metadata())
     results.append(test_memory_bridge_request_helpers())
     results.append(test_memory_maintenance_uses_configurable_memories())
+    results.append(test_memory_maintenance_archive_node_uses_bridge())
+    results.append(test_workflow_contract_parses_typed_configurable_metadata())
     results.append(test_scheduler_retry_records_next_run())
 
     # Run async tests

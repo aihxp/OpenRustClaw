@@ -15,6 +15,7 @@ import grpc
 from .proto import orchestration_pb2
 from .proto import orchestration_pb2_grpc
 from .langsmith_bridge import LangSmithBridge
+from .workflow_contract import WorkflowContractError, parse_workflow_request
 
 # Import workflow builders
 from .workflows.agent_orchestrator import build_agent_graph
@@ -113,27 +114,24 @@ class OrchestrationServicer(orchestration_pb2_grpc.OrchestrationServiceServicer)
         """Execute a LangGraph workflow."""
         logger.info(f"Executing workflow: {request.workflow_id} for thread: {request.thread_id}")
 
-        # Generate thread_id if not provided
-        thread_id = request.thread_id or str(uuid.uuid4())
+        try:
+            parsed_request = parse_workflow_request(request)
+        except WorkflowContractError as exc:
+            logger.error("Invalid workflow request: %s", exc)
+            return orchestration_pb2.WorkflowResponse(
+                thread_id=request.thread_id or "",
+                output="{}",
+                status="error",
+                error=str(exc),
+                trace_id="",
+            )
+
+        thread_id = parsed_request.thread_id
 
         # Register workflow
         self.registry.register(thread_id, request.workflow_id)
 
         try:
-            # Parse input JSON
-            try:
-                input_data = json.loads(request.input) if request.input else {}
-            except json.JSONDecodeError as e:
-                logger.error(f"Invalid input JSON: {e}")
-                self.registry.update(thread_id, status="error", error=str(e))
-                return orchestration_pb2.WorkflowResponse(
-                    thread_id=thread_id,
-                    output="{}",
-                    status="error",
-                    error=f"Invalid input JSON: {e}",
-                    trace_id="",
-                )
-
             # Get workflow builder
             workflow_builder = self._workflows.get(request.workflow_id)
             if not workflow_builder:
@@ -151,18 +149,15 @@ class OrchestrationServicer(orchestration_pb2_grpc.OrchestrationServiceServicer)
             # Build and execute workflow with LangSmith tracing
             self.registry.update(thread_id, status="running", current_step="building_graph")
 
-            with self.langsmith.trace(request.workflow_id, thread_id, dict(request.metadata)):
+            with self.langsmith.trace(request.workflow_id, thread_id, parsed_request.metadata):
                 graph = workflow_builder()
                 self.registry.update(thread_id, current_step="executing")
-
-                # Execute workflow
-                config = {
-                    "configurable": {
-                        "thread_id": thread_id,
-                        **dict(request.metadata),
-                    }
-                }
-                result = await self._execute_graph(graph, input_data, config, thread_id)
+                result = await self._execute_graph(
+                    graph,
+                    parsed_request.input_data,
+                    parsed_request.runnable_config(),
+                    thread_id,
+                )
 
             # Determine status
             status = result.get("status", "completed")
@@ -236,22 +231,21 @@ class OrchestrationServicer(orchestration_pb2_grpc.OrchestrationServiceServicer)
         """Execute a workflow with streaming updates."""
         logger.info(f"Executing workflow stream: {request.workflow_id}")
 
-        thread_id = request.thread_id or str(uuid.uuid4())
+        try:
+            parsed_request = parse_workflow_request(request)
+        except WorkflowContractError as exc:
+            yield orchestration_pb2.WorkflowUpdate(
+                step_name="error",
+                status="error",
+                output=json.dumps({"error": str(exc)}),
+                trace_id="",
+            )
+            return
+
+        thread_id = parsed_request.thread_id
         self.registry.register(thread_id, request.workflow_id, status="streaming")
 
         try:
-            # Parse input
-            try:
-                input_data = json.loads(request.input) if request.input else {}
-            except json.JSONDecodeError as e:
-                yield orchestration_pb2.WorkflowUpdate(
-                    step_name="error",
-                    status="error",
-                    output=json.dumps({"error": str(e)}),
-                    trace_id="",
-                )
-                return
-
             # Get workflow
             workflow_builder = self._workflows.get(request.workflow_id)
             if not workflow_builder:
@@ -265,15 +259,10 @@ class OrchestrationServicer(orchestration_pb2_grpc.OrchestrationServiceServicer)
 
             # Build and stream workflow execution
             graph = workflow_builder()
-            config = {
-                "configurable": {
-                    "thread_id": thread_id,
-                    **dict(request.metadata),
-                }
-            }
+            config = parsed_request.runnable_config()
 
-            with self.langsmith.trace(request.workflow_id, thread_id, dict(request.metadata)):
-                async for event in graph.astream(input_data, config=config):
+            with self.langsmith.trace(request.workflow_id, thread_id, parsed_request.metadata):
+                async for event in graph.astream(parsed_request.input_data, config=config):
                     for node_name, node_output in event.items():
                         trace_id = self.langsmith.get_current_trace_id()
                         yield orchestration_pb2.WorkflowUpdate(

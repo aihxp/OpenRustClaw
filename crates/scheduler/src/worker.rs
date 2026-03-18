@@ -8,7 +8,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use chrono::Utc;
 use openrustclaw_db::SqlitePool;
-use openrustclaw_langbridge::LangBridgeClient;
+use openrustclaw_langbridge::{LangBridgeClient, WorkflowInvocation};
 use serde_json::Value;
 use tracing::{error, info, warn};
 
@@ -42,26 +42,14 @@ pub struct WorkflowDispatchResult {
 /// Pluggable execution backend for scheduled workflows.
 #[async_trait]
 pub trait WorkflowDispatcher {
-    async fn dispatch(
-        &mut self,
-        workflow_id: &str,
-        thread_id: &str,
-        input: Value,
-        metadata: std::collections::HashMap<String, String>,
-    ) -> Result<WorkflowDispatchResult>;
+    async fn dispatch(&mut self, invocation: WorkflowInvocation) -> Result<WorkflowDispatchResult>;
 }
 
 #[async_trait]
 impl WorkflowDispatcher for LangBridgeClient {
-    async fn dispatch(
-        &mut self,
-        workflow_id: &str,
-        thread_id: &str,
-        input: Value,
-        metadata: std::collections::HashMap<String, String>,
-    ) -> Result<WorkflowDispatchResult> {
+    async fn dispatch(&mut self, invocation: WorkflowInvocation) -> Result<WorkflowDispatchResult> {
         let response = self
-            .execute_workflow_with_metadata(workflow_id, thread_id, input, metadata)
+            .execute_invocation(invocation)
             .await
             .map_err(|e| openrustclaw_core::error::SchedulerError::WorkflowFailed(e.to_string()))?;
 
@@ -218,16 +206,17 @@ impl SchedulerWorker {
     ) -> Result<JobRun> {
         let workflow_input = persisted.workflow_input();
         let workflow_metadata = persisted.workflow_metadata();
+        let workflow_configurable = persisted.workflow_configurable();
         let original_metadata = persisted.metadata.clone();
         let mut job = persisted.job;
         let idempotency_key = job.generate_idempotency_key();
         let mut run = start_job_run(pool, &job, &idempotency_key).await?;
         let thread_id = format!("scheduled-job-{}", job.id);
+        let invocation = WorkflowInvocation::new(&job.workflow_id, &thread_id, workflow_input)
+            .with_metadata(workflow_metadata)
+            .with_configurable(workflow_configurable);
 
-        match dispatcher
-            .dispatch(&job.workflow_id, &thread_id, workflow_input, workflow_metadata)
-            .await
-        {
+        match dispatcher.dispatch(invocation).await {
             Ok(dispatch) => {
                 let success = !matches!(dispatch.status.as_str(), "error" | "failed")
                     && dispatch.error.is_none();
@@ -311,13 +300,7 @@ mod tests {
 
     #[async_trait]
     impl WorkflowDispatcher for StubDispatcher {
-        async fn dispatch(
-            &mut self,
-            _workflow_id: &str,
-            _thread_id: &str,
-            _input: Value,
-            _metadata: std::collections::HashMap<String, String>,
-        ) -> Result<WorkflowDispatchResult> {
+        async fn dispatch(&mut self, _invocation: WorkflowInvocation) -> Result<WorkflowDispatchResult> {
             match (&self.success, &self.error) {
                 (Some(result), None) => Ok(result.clone()),
                 (_, Some(error)) => Err(openrustclaw_core::error::SchedulerError::WorkflowFailed(
@@ -403,6 +386,48 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(run_status, "success");
+    }
+
+    #[tokio::test]
+    async fn persisted_job_configurable_preserves_typed_metadata() {
+        let pool = test_pool().await;
+        sqlx::query(
+            r#"
+            INSERT INTO scheduled_jobs (
+                id, name, description, workflow_id, trigger_type, trigger_config,
+                idempotency_key, state, timezone, max_retries, next_run_at, run_count,
+                consecutive_failures, metadata, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', 'UTC', ?, ?, 0, 0, ?, ?)
+            "#,
+        )
+        .bind("job-typed")
+        .bind("Typed Metadata Job")
+        .bind("scheduler test")
+        .bind("scheduler")
+        .bind("interval")
+        .bind(r#"{"type":"interval","interval_secs":60}"#)
+        .bind("job-typed:stable")
+        .bind(3_i64)
+        .bind((Utc::now() - ChronoDuration::seconds(10)).to_rfc3339())
+        .bind(
+            r#"{
+                "input":{"job_id":"job-typed","job_type":"sync","payload":{}},
+                "workflow_metadata":{"limit":25,"enabled":true,"labels":["nightly","critical"]}
+            }"#,
+        )
+        .bind(Utc::now().to_rfc3339())
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let persisted = load_due_jobs(&pool, 10).await.unwrap().remove(0);
+        let configurable = persisted.workflow_configurable();
+        assert_eq!(configurable.get("limit").unwrap(), &serde_json::json!(25));
+        assert_eq!(configurable.get("enabled").unwrap(), &serde_json::json!(true));
+        assert_eq!(
+            configurable.get("labels").unwrap(),
+            &serde_json::json!(["nightly", "critical"])
+        );
     }
 
     #[tokio::test]
