@@ -453,6 +453,9 @@ class RetrievalNode:
             allowed_types = _parse_allowed_source_types(config)
             max_chunks_per_source = _parse_max_chunks_per_source(config)
             min_score = _parse_min_score(config)
+            effective_top_k = _parse_top_k(config, self.top_k)
+            preferred_source_ids = _parse_source_ids(config, "preferred_source_ids")
+            required_source_ids = _parse_source_ids(config, "required_source_ids")
             available_chunks = state.get("chunks", [])
             if not available_chunks:
                 if self.memory_bridge is not None:
@@ -468,8 +471,11 @@ class RetrievalNode:
                 query,
                 available_chunks,
                 allowed_types,
+                top_k=effective_top_k,
                 max_chunks_per_source=max_chunks_per_source,
                 min_score=min_score,
+                preferred_source_ids=preferred_source_ids,
+                required_source_ids=required_source_ids,
             )
 
             # Extract sources for citation
@@ -488,8 +494,15 @@ class RetrievalNode:
                 "query": query,
                 "collection_name": collection_name,
                 "allowed_source_types": sorted(allowed_types) if allowed_types else [],
+                "preferred_source_ids": sorted(preferred_source_ids),
+                "required_source_ids": sorted(required_source_ids),
+                "top_k": effective_top_k,
                 "max_chunks_per_source": max_chunks_per_source,
                 "min_score": min_score,
+                "retrieval_summary": {
+                    "available_chunks": len(available_chunks),
+                    "retrieved_chunks": len(retrieved),
+                },
             }
 
         except Exception as e:
@@ -503,18 +516,27 @@ class RetrievalNode:
         query: str,
         chunks: List[Document],
         allowed_source_types: Optional[set[str]] = None,
+        top_k: Optional[int] = None,
         max_chunks_per_source: Optional[int] = None,
         min_score: Optional[float] = None,
+        preferred_source_ids: Optional[set[str]] = None,
+        required_source_ids: Optional[set[str]] = None,
     ) -> List[Document]:
         """Retrieve relevant chunks for the query."""
         query_words = set(_normalize_text(query))
         scored_chunks: List[tuple[float, Document]] = []
+        effective_top_k = top_k if isinstance(top_k, int) and top_k > 0 else self.top_k
+        preferred_source_ids = preferred_source_ids or set()
+        required_source_ids = required_source_ids or set()
 
         for chunk in chunks:
+            source_id = str(chunk.metadata.get("source_id", chunk.metadata.get("id", "unknown")))
             chunk_type = str(
                 chunk.metadata.get("source_type", chunk.metadata.get("type", "text"))
             ).strip().lower()
             if allowed_source_types and chunk_type not in allowed_source_types:
+                continue
+            if required_source_ids and source_id not in required_source_ids:
                 continue
 
             chunk_words = set(_normalize_text(chunk.page_content))
@@ -531,12 +553,14 @@ class RetrievalNode:
             metadata_overlap = len(query_words & metadata_tokens) / max(len(query_words), 1)
             exact_phrase = 0.2 if query.lower() in chunk.page_content.lower() else 0.0
             type_boost = 0.15 if chunk_type == "code" else 0.0
+            preferred_source_boost = 0.12 if source_id in preferred_source_ids else 0.0
             score = (
                 lexical_overlap * 0.55
                 + coverage * 0.2
                 + metadata_overlap * 0.25
                 + exact_phrase
                 + type_boost
+                + preferred_source_boost
             )
             scored_chunks.append((score, chunk))
 
@@ -560,7 +584,7 @@ class RetrievalNode:
             chunk.metadata["score"] = score
             top_chunks.append(chunk)
             per_source_counts[source_id] = per_source_counts.get(source_id, 0) + 1
-            if len(top_chunks) >= self.top_k:
+            if len(top_chunks) >= effective_top_k:
                 break
 
         # Add scores to metadata
@@ -725,6 +749,31 @@ def _parse_min_score(config: Optional[RunnableConfig]) -> Optional[float]:
         return None
 
     return value if value >= 0.0 else None
+
+
+def _parse_top_k(config: Optional[RunnableConfig], default: int) -> int:
+    configured = get_configurable_value(config, "top_k")
+    if configured is None:
+        return default
+
+    try:
+        value = int(configured)
+    except (TypeError, ValueError):
+        return default
+
+    return value if value > 0 else default
+
+
+def _parse_source_ids(config: Optional[RunnableConfig], key: str) -> set[str]:
+    configured = get_configurable_value(config, key)
+    if not isinstance(configured, list):
+        return set()
+
+    return {
+        str(value).strip()
+        for value in configured
+        if isinstance(value, (str, int, float)) and str(value).strip()
+    }
 
 
 def _assemble_context(retrieved_docs: List[Document], budget: int) -> tuple[str, List[str]]:

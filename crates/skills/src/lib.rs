@@ -10,8 +10,9 @@ pub mod registry;
 pub mod sandbox;
 
 pub use capabilities::{
-    canonical_capability_name, normalize_capability_names, parse_capability_name,
-    parse_capability_names,
+    canonical_capability_name, declared_sensitive_capability_names, is_sensitive_capability,
+    normalize_capability_names, parse_capability_name, parse_capability_names,
+    sensitive_capabilities,
 };
 pub use loader::SkillLoader;
 pub use marketplace::{MarketplaceClient, MarketplaceListing};

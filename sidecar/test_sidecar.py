@@ -830,6 +830,118 @@ def test_rag_pipeline_respects_min_score_threshold():
         raise
 
 
+def test_rag_pipeline_supports_top_k_and_source_preferences():
+    """Test RAG retrieval supports top_k override and preferred source boosting."""
+    print("\nTesting RAG top_k and preferred source ids...")
+
+    try:
+        from langchain_core.documents import Document
+
+        from src.workflows.rag_pipeline import RetrievalNode
+
+        node = RetrievalNode(top_k=3)
+        chunks = [
+            Document(
+                page_content="Discord gateway reconnect and resume semantics overview.",
+                metadata={
+                    "id": "chunk_a",
+                    "source_id": "discord-docs",
+                    "title": "Gateway Resume",
+                    "type": "text",
+                },
+            ),
+            Document(
+                page_content="Discord reconnect notes with examples for operators.",
+                metadata={
+                    "id": "chunk_b",
+                    "source_id": "ops-runbook",
+                    "title": "Reconnect Notes",
+                    "type": "text",
+                },
+            ),
+        ]
+
+        result = asyncio.run(
+            node(
+                {"query": "How does Discord reconnect work?", "chunks": chunks},
+                config={
+                    "configurable": {
+                        "top_k": 1,
+                        "preferred_source_ids": ["ops-runbook"],
+                    }
+                },
+            )
+        )
+
+        assert len(result["retrieved_docs"]) == 1
+        assert result["retrieved_docs"][0].metadata["source_id"] == "ops-runbook"
+        assert result["top_k"] == 1
+        assert result["preferred_source_ids"] == ["ops-runbook"]
+        assert result["retrieval_summary"]["available_chunks"] == 2
+        assert result["retrieval_summary"]["retrieved_chunks"] == 1
+        print("  ✓ RAG top_k and preferred source ids")
+    except ModuleNotFoundError as e:
+        print(f"  ✗ RAG top_k and preferred source ids: {e}")
+        _skip_missing_dependency(e)
+    except Exception as e:
+        print(f"  ✗ RAG top_k and preferred source ids: {e}")
+        raise
+
+
+def test_rag_pipeline_supports_required_source_filters():
+    """Test RAG retrieval can constrain results to required source ids."""
+    print("\nTesting RAG required source ids...")
+
+    try:
+        from langchain_core.documents import Document
+
+        from src.workflows.rag_pipeline import RetrievalNode
+
+        node = RetrievalNode(top_k=3)
+        chunks = [
+            Document(
+                page_content="Rust ownership prevents data races.",
+                metadata={
+                    "id": "chunk_rust",
+                    "source_id": "rust-book",
+                    "title": "Rust Book",
+                    "type": "text",
+                },
+            ),
+            Document(
+                page_content="Python generators produce lazy iterators.",
+                metadata={
+                    "id": "chunk_python",
+                    "source_id": "python-guide",
+                    "title": "Python Guide",
+                    "type": "text",
+                },
+            ),
+        ]
+
+        result = asyncio.run(
+            node(
+                {"query": "How do generators work?", "chunks": chunks},
+                config={
+                    "configurable": {
+                        "required_source_ids": ["rust-book"],
+                    }
+                },
+            )
+        )
+
+        assert len(result["retrieved_docs"]) == 1
+        assert result["retrieved_docs"][0].metadata["source_id"] == "rust-book"
+        assert result["required_source_ids"] == ["rust-book"]
+        print("  ✓ RAG required source ids")
+    except ModuleNotFoundError as e:
+        print(f"  ✗ RAG required source ids: {e}")
+        _skip_missing_dependency(e)
+    except Exception as e:
+        print(f"  ✗ RAG required source ids: {e}")
+        raise
+
+
 def test_protobuf_messages():
     """Test protobuf message creation."""
     print("\nTesting protobuf messages...")

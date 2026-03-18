@@ -7,7 +7,7 @@ use openrustclaw_core::types::{SkillCapability, SkillSource};
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
-use crate::{normalize_capability_names, parse_capability_names};
+use crate::{declared_sensitive_capability_names, normalize_capability_names, parse_capability_names};
 
 /// Metadata parsed from a SKILL.md file.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -24,6 +24,16 @@ impl SkillMetadata {
     /// Return the parsed capability set for this skill metadata.
     pub fn parsed_capabilities(&self) -> Result<std::collections::HashSet<SkillCapability>> {
         parse_capability_names(&self.capabilities)
+    }
+
+    /// Return the sensitive declared capabilities for this skill.
+    pub fn sensitive_capabilities(&self) -> Result<Vec<String>> {
+        declared_sensitive_capability_names(&self.capabilities)
+    }
+
+    /// Whether this skill should require verification before privileged execution.
+    pub fn requires_verified_signature(&self) -> Result<bool> {
+        Ok(!self.sensitive_capabilities()?.is_empty())
     }
 }
 
@@ -205,6 +215,24 @@ mod tests {
         assert_eq!(cloned.description, meta.description);
         assert_eq!(cloned.version, meta.version);
         assert_eq!(cloned.capabilities, meta.capabilities);
+    }
+
+    #[test]
+    fn test_skill_metadata_requires_verification_for_sensitive_caps() {
+        let meta = SkillMetadata {
+            name: "danger".to_string(),
+            description: "Sensitive".to_string(),
+            version: "1.0.0".to_string(),
+            source: SkillSource::Managed,
+            capabilities: vec!["shell_exec".to_string(), "file_read".to_string()],
+            author: None,
+        };
+
+        assert!(meta.requires_verified_signature().unwrap());
+        assert_eq!(
+            meta.sensitive_capabilities().unwrap(),
+            vec!["shell_exec".to_string()]
+        );
     }
 
     // ── SkillLoader construction tests ──────────────────────────────────

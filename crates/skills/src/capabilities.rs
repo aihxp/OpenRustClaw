@@ -49,6 +49,34 @@ pub fn normalize_capability_names(capabilities: &[String]) -> Result<Vec<String>
     Ok(normalized)
 }
 
+pub fn is_sensitive_capability(capability: &SkillCapability) -> bool {
+    matches!(
+        capability,
+        SkillCapability::FileWrite
+            | SkillCapability::NetworkAccess
+            | SkillCapability::ShellExec
+            | SkillCapability::DatabaseAccess
+            | SkillCapability::MemoryWrite
+    )
+}
+
+pub fn sensitive_capabilities(capabilities: &std::collections::HashSet<SkillCapability>) -> Vec<SkillCapability> {
+    let mut sensitive: Vec<SkillCapability> = capabilities
+        .iter()
+        .filter(|capability| is_sensitive_capability(capability))
+        .cloned()
+        .collect();
+    sensitive.sort_by_key(|capability| canonical_capability_name(capability));
+    sensitive
+}
+
+pub fn declared_sensitive_capability_names(capabilities: &[String]) -> Result<Vec<String>> {
+    Ok(sensitive_capabilities(&parse_capability_names(capabilities)?)
+        .into_iter()
+        .map(|capability| canonical_capability_name(&capability).to_string())
+        .collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -83,6 +111,27 @@ mod tests {
         assert_eq!(
             normalized,
             vec!["file_read".to_string(), "network_access".to_string()]
+        );
+    }
+
+    #[test]
+    fn identifies_sensitive_capabilities() {
+        assert!(is_sensitive_capability(&SkillCapability::ShellExec));
+        assert!(!is_sensitive_capability(&SkillCapability::FileRead));
+    }
+
+    #[test]
+    fn filters_declared_sensitive_capabilities() {
+        let sensitive = declared_sensitive_capability_names(&[
+            "file_read".to_string(),
+            "network".to_string(),
+            "shell_exec".to_string(),
+        ])
+        .unwrap();
+
+        assert_eq!(
+            sensitive,
+            vec!["network_access".to_string(), "shell_exec".to_string()]
         );
     }
 }

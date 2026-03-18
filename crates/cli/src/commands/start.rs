@@ -261,11 +261,11 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
     }
 
     if let Some(handler) = slack_ingress_handler {
-        app = app.merge(slack_ingress_router(handler));
+        app = app.merge(slack_ingress_router(handler, channel_langsmith_client(&config)));
         info!("Slack HTTP ingress enabled at /webhooks/slack/events");
     }
     if let Some(handler) = discord_ingress_handler {
-        app = app.merge(discord_ingress_router(handler));
+        app = app.merge(discord_ingress_router(handler, channel_langsmith_client(&config)));
         info!("Discord Interactions ingress enabled at /webhooks/discord/interactions");
     }
 
@@ -981,6 +981,7 @@ fn channel_scope_from_metadata(metadata: &serde_json::Value) -> Option<String> {
         "slack_thread_ts",
         "slack_channel",
         "telegram_chat_id",
+        "discord_thread_id",
         "discord_channel_id",
         "google_chat_thread",
         "google_chat_space",
@@ -1018,13 +1019,15 @@ fn trim_history(history: &mut Vec<Message>, max_history_messages: usize) {
 #[derive(Clone)]
 struct SlackIngressState {
     handler: Arc<SlackEventHandler>,
+    langsmith: Option<LangSmithClient>,
 }
 
-fn slack_ingress_router(handler: SlackEventHandler) -> Router {
+fn slack_ingress_router(handler: SlackEventHandler, langsmith: Option<LangSmithClient>) -> Router {
     Router::new()
         .route("/webhooks/slack/events", post(slack_events_handler))
         .with_state(SlackIngressState {
             handler: Arc::new(handler),
+            langsmith,
         })
 }
 
@@ -1039,20 +1042,83 @@ async fn slack_events_handler(
     let signature = headers
         .get("x-slack-signature")
         .and_then(|value| value.to_str().ok());
+    let mut trace = ingress_trace(
+        state.langsmith.as_ref(),
+        "slack_ingress",
+        serde_json::json!({
+            "body_bytes": body.len(),
+            "has_timestamp": timestamp.is_some(),
+            "has_signature": signature.is_some(),
+        }),
+    );
 
     match state.handler.handle_event(&body, timestamp, signature).await {
-        Ok(Some(response)) => (StatusCode::OK, axum::Json(response)).into_response(),
-        Ok(None) => StatusCode::OK.into_response(),
+        Ok(Some(response)) => {
+            complete_ingress_trace(
+                state.langsmith.as_ref(),
+                trace.as_mut(),
+                Some(serde_json::json!({
+                    "status": StatusCode::OK.as_u16(),
+                    "outcome": "url_verification",
+                })),
+                None,
+            )
+            .await;
+            (StatusCode::OK, axum::Json(response)).into_response()
+        }
+        Ok(None) => {
+            complete_ingress_trace(
+                state.langsmith.as_ref(),
+                trace.as_mut(),
+                Some(serde_json::json!({
+                    "status": StatusCode::OK.as_u16(),
+                    "outcome": "accepted",
+                })),
+                None,
+            )
+            .await;
+            StatusCode::OK.into_response()
+        }
         Err(CoreError::Channel(CoreChannelError::AuthFailed { message, .. })) => {
             warn!(error = %message, "Rejected Slack webhook due to failed auth");
+            complete_ingress_trace(
+                state.langsmith.as_ref(),
+                trace.as_mut(),
+                Some(serde_json::json!({
+                    "status": StatusCode::UNAUTHORIZED.as_u16(),
+                    "outcome": "auth_failed",
+                })),
+                Some(message.clone()),
+            )
+            .await;
             (StatusCode::UNAUTHORIZED, message).into_response()
         }
         Err(CoreError::Channel(CoreChannelError::PermissionDenied { message, .. })) => {
             warn!(error = %message, "Rejected Slack webhook due to permission check");
+            complete_ingress_trace(
+                state.langsmith.as_ref(),
+                trace.as_mut(),
+                Some(serde_json::json!({
+                    "status": StatusCode::FORBIDDEN.as_u16(),
+                    "outcome": "permission_denied",
+                })),
+                Some(message.clone()),
+            )
+            .await;
             (StatusCode::FORBIDDEN, message).into_response()
         }
         Err(error) => {
             warn!(error = %error, "Failed to process Slack webhook");
+            complete_ingress_trace(
+                state.langsmith.as_ref(),
+                trace.as_mut(),
+                Some(serde_json::json!({
+                    "status": StatusCode::BAD_REQUEST.as_u16(),
+                    "outcome": "error",
+                })),
+                Some(error.to_string()),
+            )
+            .await;
             (StatusCode::BAD_REQUEST, error.to_string()).into_response()
         }
     }
@@ -1061,9 +1127,13 @@ async fn slack_events_handler(
 #[derive(Clone)]
 struct DiscordIngressState {
     handler: Arc<DiscordInteractionsHandler>,
+    langsmith: Option<LangSmithClient>,
 }
 
-fn discord_ingress_router(handler: DiscordInteractionsHandler) -> Router {
+fn discord_ingress_router(
+    handler: DiscordInteractionsHandler,
+    langsmith: Option<LangSmithClient>,
+) -> Router {
     Router::new()
         .route(
             "/webhooks/discord/interactions",
@@ -1071,6 +1141,7 @@ fn discord_ingress_router(handler: DiscordInteractionsHandler) -> Router {
         )
         .with_state(DiscordIngressState {
             handler: Arc::new(handler),
+            langsmith,
         })
 }
 
@@ -1085,21 +1156,99 @@ async fn discord_interactions_handler(
     let timestamp = headers
         .get("x-signature-timestamp")
         .and_then(|value| value.to_str().ok());
+    let mut trace = ingress_trace(
+        state.langsmith.as_ref(),
+        "discord_interactions_ingress",
+        serde_json::json!({
+            "body_bytes": body.len(),
+            "has_signature": signature.is_some(),
+            "has_timestamp": timestamp.is_some(),
+        }),
+    );
 
     match state.handler.handle_event(&body, signature, timestamp).await {
-        Ok(response) => (StatusCode::OK, axum::Json(response)).into_response(),
+        Ok(response) => {
+            complete_ingress_trace(
+                state.langsmith.as_ref(),
+                trace.as_mut(),
+                Some(serde_json::json!({
+                    "status": StatusCode::OK.as_u16(),
+                    "outcome": "accepted",
+                    "response_type": response.get("type").and_then(|value| value.as_u64()),
+                })),
+                None,
+            )
+            .await;
+            (StatusCode::OK, axum::Json(response)).into_response()
+        }
         Err(CoreError::Channel(CoreChannelError::AuthFailed { message, .. })) => {
             warn!(error = %message, "Rejected Discord interaction due to failed auth");
+            complete_ingress_trace(
+                state.langsmith.as_ref(),
+                trace.as_mut(),
+                Some(serde_json::json!({
+                    "status": StatusCode::UNAUTHORIZED.as_u16(),
+                    "outcome": "auth_failed",
+                })),
+                Some(message.clone()),
+            )
+            .await;
             (StatusCode::UNAUTHORIZED, message).into_response()
         }
         Err(CoreError::Channel(CoreChannelError::PermissionDenied { message, .. })) => {
             warn!(error = %message, "Rejected Discord interaction due to permission check");
+            complete_ingress_trace(
+                state.langsmith.as_ref(),
+                trace.as_mut(),
+                Some(serde_json::json!({
+                    "status": StatusCode::FORBIDDEN.as_u16(),
+                    "outcome": "permission_denied",
+                })),
+                Some(message.clone()),
+            )
+            .await;
             (StatusCode::FORBIDDEN, message).into_response()
         }
         Err(error) => {
             warn!(error = %error, "Failed to process Discord interaction");
+            complete_ingress_trace(
+                state.langsmith.as_ref(),
+                trace.as_mut(),
+                Some(serde_json::json!({
+                    "status": StatusCode::BAD_REQUEST.as_u16(),
+                    "outcome": "error",
+                })),
+                Some(error.to_string()),
+            )
+            .await;
             (StatusCode::BAD_REQUEST, error.to_string()).into_response()
         }
+    }
+}
+
+fn ingress_trace(
+    client: Option<&LangSmithClient>,
+    name: &str,
+    inputs: serde_json::Value,
+) -> Option<openrustclaw_observability::langsmith::TraceRun> {
+    Some(client?.new_run(name, RunType::Tool, inputs))
+}
+
+async fn complete_ingress_trace(
+    client: Option<&LangSmithClient>,
+    trace: Option<&mut openrustclaw_observability::langsmith::TraceRun>,
+    outputs: Option<serde_json::Value>,
+    error: Option<String>,
+) {
+    let (Some(client), Some(trace)) = (client, trace) else {
+        return;
+    };
+
+    trace.outputs = outputs;
+    trace.error = error;
+    trace.end_time = Some(chrono::Utc::now());
+    if let Err(trace_error) = client.update_run(trace).await {
+        warn!(error = %trace_error, trace_name = %trace.name, "Failed to update LangSmith ingress trace");
     }
 }
 
@@ -2003,6 +2152,16 @@ mod tests {
         assert_eq!(first_reply.metadata["slack_channel"], "C123");
     }
 
+    #[test]
+    fn discord_thread_scope_takes_priority_over_channel_scope() {
+        let scope = channel_scope_from_metadata(&serde_json::json!({
+            "discord_channel_id": "channel-1",
+            "discord_thread_id": "thread-1"
+        }));
+
+        assert_eq!(scope.as_deref(), Some("discord_thread_id=thread-1"));
+    }
+
     #[tokio::test]
     async fn slack_http_ingress_handles_url_verification() {
         let channel = openrustclaw_channels::SlackChannel::new(SlackConfig {
@@ -2019,6 +2178,7 @@ mod tests {
         });
         let state = SlackIngressState {
             handler: Arc::new(channel.event_handler()),
+            langsmith: None,
         };
 
         let response = slack_events_handler(
@@ -2048,6 +2208,7 @@ mod tests {
         });
         let state = SlackIngressState {
             handler: Arc::new(channel.event_handler()),
+            langsmith: None,
         };
 
         let response = slack_events_handler(
@@ -2095,6 +2256,7 @@ mod tests {
         });
         let state = DiscordIngressState {
             handler: Arc::new(channel.interactions_handler().unwrap()),
+            langsmith: None,
         };
         let body = Bytes::from_static(br#"{"type":1}"#);
         let timestamp = "1712550000";
@@ -2127,6 +2289,7 @@ mod tests {
         });
         let state = DiscordIngressState {
             handler: Arc::new(channel.interactions_handler().unwrap()),
+            langsmith: None,
         };
         let body = Bytes::from_static(
             br#"{

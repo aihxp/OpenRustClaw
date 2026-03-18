@@ -10,7 +10,7 @@ use openrustclaw_core::error::{Error, Result, ToolError};
 use openrustclaw_core::types::SkillCapability;
 use wasmtime::{Config, Engine, Instance, Memory, Module, Store, StoreLimits, StoreLimitsBuilder, TypedFunc};
 
-use crate::parse_capability_names;
+use crate::{declared_sensitive_capability_names, parse_capability_names};
 
 /// WASM sandbox configuration.
 #[derive(Debug)]
@@ -40,6 +40,21 @@ impl SandboxConfig {
             capabilities: parse_capability_names(declared)?,
             ..Self::default()
         })
+    }
+
+    /// Validate whether a declared capability set is allowed for the current verification state.
+    pub fn validate_declared_capability_policy(
+        declared: &[String],
+        verified: bool,
+    ) -> Result<()> {
+        let sensitive = declared_sensitive_capability_names(declared)?;
+        if !verified && !sensitive.is_empty() {
+            return Err(Error::Tool(ToolError::CapabilityDenied {
+                tool: "wasm_sandbox".to_string(),
+                capability: sensitive.join(","),
+            }));
+        }
+        Ok(())
     }
 }
 
@@ -119,6 +134,19 @@ impl WasmSandbox {
         let parsed = parse_capability_names(declared)?;
         let required: Vec<SkillCapability> = parsed.into_iter().collect();
         self.execute_with_capabilities(wasm_bytes, &required, input).await
+    }
+
+    /// Execute only if declared capabilities are granted and the skill is verified when required.
+    pub async fn execute_with_verified_declared_capabilities(
+        &self,
+        wasm_bytes: &[u8],
+        declared: &[String],
+        verified: bool,
+        input: serde_json::Value,
+    ) -> Result<serde_json::Value> {
+        SandboxConfig::validate_declared_capability_policy(declared, verified)?;
+        self.execute_with_declared_capabilities(wasm_bytes, declared, input)
+            .await
     }
 
     fn execute_blocking(
@@ -309,6 +337,31 @@ mod tests {
     }
 
     #[test]
+    fn test_sandbox_config_rejects_unverified_sensitive_declared_capabilities() {
+        let error = SandboxConfig::validate_declared_capability_policy(
+            &["shell_exec".to_string()],
+            false,
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("shell_exec"));
+    }
+
+    #[test]
+    fn test_sandbox_config_allows_unverified_nonsensitive_declared_capabilities() {
+        SandboxConfig::validate_declared_capability_policy(&["file_read".to_string()], false)
+            .unwrap();
+    }
+
+    #[test]
+    fn test_sandbox_config_allows_verified_sensitive_declared_capabilities() {
+        SandboxConfig::validate_declared_capability_policy(
+            &["network_access".to_string(), "file_read".to_string()],
+            true,
+        )
+        .unwrap();
+    }
+
+    #[test]
     fn test_sandbox_config_custom_memory() {
         let config = SandboxConfig {
             max_memory_bytes: 128 * 1024 * 1024,
@@ -484,6 +537,29 @@ mod tests {
 
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("capability"));
+    }
+
+    #[tokio::test]
+    async fn test_sandbox_execute_with_verified_declared_capabilities_rejects_unverified_sensitive() {
+        let sandbox = WasmSandbox::new(SandboxConfig::default());
+        let module = br#"
+            (module
+              (memory (export "memory") 1 1)
+              (func (export "alloc") (param i32) (result i32) i32.const 0)
+              (func (export "run") (param i32 i32) (result i64) i64.const 0))
+        "#;
+
+        let result = sandbox
+            .execute_with_verified_declared_capabilities(
+                module,
+                &["shell_exec".to_string()],
+                false,
+                serde_json::json!({}),
+            )
+            .await;
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("shell_exec"));
     }
 
     #[tokio::test]

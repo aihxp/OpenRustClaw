@@ -317,6 +317,17 @@ impl Channel for DiscordChannel {
                 )
             };
 
+        if expects_auth_body
+            && let Some(reference_id) = msg
+                .metadata
+                .get("discord_referenced_message_id")
+                .and_then(|v| v.as_str())
+        {
+            payload["message_reference"] = serde_json::json!({
+                "message_id": reference_id,
+            });
+        }
+
         let response = request_builder
             .json(&payload)
             .send()
@@ -652,6 +663,15 @@ fn normalize_gateway_message(
     if event.author.bot.unwrap_or(false) {
         return Ok(None);
     }
+    if event.author.system.unwrap_or(false) {
+        return Ok(None);
+    }
+    if event.webhook_id.is_some() {
+        return Ok(None);
+    }
+    if event.author.id == config.application_id {
+        return Ok(None);
+    }
     if !config.allowed_channels.is_empty() && !config.allowed_channels.contains(&event.channel_id) {
         return Ok(None);
     }
@@ -664,7 +684,7 @@ fn normalize_gateway_message(
     if event.guild_id.is_none() && !config.dm_enabled {
         return Ok(None);
     }
-    if event.content.trim().is_empty() {
+    if event.content.trim().is_empty() && event.attachments.is_empty() && event.embeds.is_empty() {
         return Ok(None);
     }
 
@@ -674,9 +694,22 @@ fn normalize_gateway_message(
         "discord_author_username": event.author.username,
         "discord_gateway": true,
         "discord_application_id": config.application_id,
+        "discord_attachment_count": event.attachments.len(),
+        "discord_embed_count": event.embeds.len(),
     });
     if let Some(guild_id) = event.guild_id {
         metadata["discord_guild_id"] = serde_json::json!(guild_id);
+    }
+    if let Some(thread_id) = event.thread_id {
+        metadata["discord_thread_id"] = serde_json::json!(thread_id);
+    }
+    if let Some(reference) = event.message_reference
+        && let Some(reference_id) = reference.message_id
+    {
+        metadata["discord_referenced_message_id"] = serde_json::json!(reference_id);
+    }
+    if let Some(timestamp) = event.timestamp {
+        metadata["discord_timestamp"] = serde_json::json!(timestamp);
     }
 
     Ok(Some(IncomingMessage {
@@ -962,8 +995,20 @@ struct GatewayMessageCreate {
     id: String,
     channel_id: String,
     #[serde(default)]
+    thread_id: Option<String>,
+    #[serde(default)]
     guild_id: Option<String>,
     content: String,
+    #[serde(default)]
+    timestamp: Option<String>,
+    #[serde(default)]
+    webhook_id: Option<String>,
+    #[serde(default)]
+    message_reference: Option<GatewayMessageReference>,
+    #[serde(default)]
+    attachments: Vec<serde_json::Value>,
+    #[serde(default)]
+    embeds: Vec<serde_json::Value>,
     author: GatewayAuthor,
 }
 
@@ -973,6 +1018,14 @@ struct GatewayAuthor {
     username: String,
     #[serde(default)]
     bot: Option<bool>,
+    #[serde(default)]
+    system: Option<bool>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct GatewayMessageReference {
+    #[serde(default)]
+    message_id: Option<String>,
 }
 
 fn extract_interaction_content(data: &DiscordInteractionData) -> String {
@@ -1433,8 +1486,15 @@ mod tests {
             "d": {
                 "id": "message-1",
                 "channel_id": "channel-1",
+                "thread_id": "thread-1",
                 "guild_id": "guild-1",
                 "content": "hello from gateway",
+                "timestamp": "2026-01-01T00:00:00Z",
+                "message_reference": {
+                    "message_id": "parent-1"
+                },
+                "attachments": [{"id":"attachment-1"}],
+                "embeds": [{"title":"embed"}],
                 "author": {
                     "id": "user-1",
                     "username": "alice",
@@ -1480,7 +1540,83 @@ mod tests {
         assert_eq!(incoming.content, "hello from gateway");
         assert_eq!(incoming.user_id, "user-1");
         assert_eq!(incoming.metadata["discord_channel_id"], "channel-1");
+        assert_eq!(incoming.metadata["discord_thread_id"], "thread-1");
+        assert_eq!(incoming.metadata["discord_referenced_message_id"], "parent-1");
+        assert_eq!(incoming.metadata["discord_attachment_count"], 1);
+        assert_eq!(incoming.metadata["discord_embed_count"], 1);
+        assert_eq!(incoming.metadata["discord_timestamp"], "2026-01-01T00:00:00Z");
         channel.disconnect().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_gateway_ignores_webhook_and_self_authored_messages() {
+        let ignored_webhook = normalize_gateway_message(
+            &DiscordConfig {
+                enabled: true,
+                token: "token".to_string(),
+                application_id: "app-1".to_string(),
+                interaction_public_key: None,
+                api_base_url: None,
+                rate_limit_requests_per_second: 5,
+                allowed_guilds: vec![],
+                allowed_channels: vec![],
+                dm_enabled: true,
+            },
+            GatewayMessageCreate {
+                id: "message-1".to_string(),
+                channel_id: "channel-1".to_string(),
+                thread_id: None,
+                guild_id: None,
+                content: "from webhook".to_string(),
+                timestamp: None,
+                webhook_id: Some("webhook-1".to_string()),
+                message_reference: None,
+                attachments: vec![],
+                embeds: vec![],
+                author: GatewayAuthor {
+                    id: "user-1".to_string(),
+                    username: "alice".to_string(),
+                    bot: Some(false),
+                    system: Some(false),
+                },
+            },
+        )
+        .unwrap();
+        assert!(ignored_webhook.is_none());
+
+        let ignored_self = normalize_gateway_message(
+            &DiscordConfig {
+                enabled: true,
+                token: "token".to_string(),
+                application_id: "app-1".to_string(),
+                interaction_public_key: None,
+                api_base_url: None,
+                rate_limit_requests_per_second: 5,
+                allowed_guilds: vec![],
+                allowed_channels: vec![],
+                dm_enabled: true,
+            },
+            GatewayMessageCreate {
+                id: "message-2".to_string(),
+                channel_id: "channel-1".to_string(),
+                thread_id: None,
+                guild_id: None,
+                content: "from self".to_string(),
+                timestamp: None,
+                webhook_id: None,
+                message_reference: None,
+                attachments: vec![],
+                embeds: vec![],
+                author: GatewayAuthor {
+                    id: "app-1".to_string(),
+                    username: "bot".to_string(),
+                    bot: Some(false),
+                    system: Some(false),
+                },
+            },
+        )
+        .unwrap();
+        assert!(ignored_self.is_none());
     }
 
     #[tokio::test]

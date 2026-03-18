@@ -143,6 +143,12 @@ Status:
 - Channel message handling can now create Rust-side LangSmith runs when `[observability].langsmith_enabled = true` and LangSmith env vars are present.
 - Gateway chat completions and internal memory/RAG endpoints can now emit Rust-side LangSmith runs when `[observability].langsmith_enabled = true` and LangSmith env vars are present.
 - MCP stdio tool calls can now emit Rust-side LangSmith runs when `[observability].langsmith_enabled = true` and LangSmith env vars are present.
+- Slack and Discord ingress handlers can now emit Rust-side LangSmith runs when `[observability].langsmith_enabled = true` and LangSmith env vars are present.
+- Discord gateway normalization now suppresses bot/system/webhook/self-authored events, preserves thread/reply/timestamp metadata, and keeps thread-aware session scope separate from channel scope.
+- Discord outbound sends now propagate reply references when channel-originated metadata includes a referenced message id.
+- Skill metadata now exposes sensitive capability classification and whether privileged execution should require verification.
+- The WASM sandbox now exposes verification-aware declared-capability policy validation and execution helpers for privileged skill execution paths.
+- The RAG retrieval workflow now supports configurable `top_k`, preferred source ids, required source ids, and retrieval summaries in addition to source-type/diversity/min-score controls.
 - MCP stdio now exposes durable RAG collection and chunk inspection through `list_rag_collections` and `load_rag_chunks`.
 - `openrustclaw start` now gates non-shipping channel modules instead of advertising them through the active runtime surface.
 - The biggest remaining engineering gaps are:
