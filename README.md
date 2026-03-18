@@ -89,11 +89,11 @@ Provider fallback chain with configurable cooldowns routes requests through avai
 
 ## Messaging Channels
 
-Current channel modules available in the repo and startup path:
+Current channel modules available in the repo:
 
 Telegram, Discord, Slack, WhatsApp (Baileys bridge), Microsoft Teams, Google Chat, Gmail (Pub/Sub), Matrix, iMessage, LINE, Viber, WeChat, Messenger, Instagram DMs, WebChat
 
-Not all of these modules are feature-complete. Telegram, Discord, Slack, Matrix, Google Chat, and Gmail Pub/Sub still include scaffolding or partial runtime implementations, and additional channel modules such as Signal, Twilio, and X/Twitter are present in the repo but are not fully integrated into the current startup path.
+The current shipped startup path is narrower: `openrustclaw start` actively supports WebChat, Telegram, Discord, and Slack. Other channel modules remain in the repo but are gated or deferred from the shipped runtime surface.
 
 Current tier-1 status:
 

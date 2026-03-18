@@ -81,7 +81,7 @@ Each channel must have:
 - tests for nominal and failure paths
 
 Status:
-- In progress
+- Mostly complete
 
 ## Phase 6: MCP Surface
 
@@ -127,6 +127,7 @@ Status:
 - Rust-to-sidecar workflow dispatch now preserves typed configurable metadata through a reserved contract key instead of flattening everything to strings.
 - The skills CLI now resolves real `SKILL.md` workspace paths, stores capability metadata as JSON, syncs marketplace installs back into the main skills table, and keeps managed verification state aligned with install/update flows.
 - The sidecar RAG workflow now supports deterministic query-only retrieval against stored collections and budgeted context assembly with stable source ids.
+- `openrustclaw start` now gates non-shipping channel modules instead of advertising them through the active runtime surface.
 - The biggest remaining engineering gaps are:
   - fuller skills host-capability enforcement beyond the current no-import WASM boundary
   - deeper retrieval quality and storage durability beyond the current sidecar in-memory collection store

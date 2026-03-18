@@ -15,7 +15,7 @@ Status values:
 | Python sidecar process management | real | Source-tree execution and readiness checks exist |
 | Rust to sidecar workflow dispatch | real | Workflow dispatch now preserves typed configurable metadata through the bridge contract |
 | Durable scheduler schema | real | SQLite schema and retry/dead-letter tables exist |
-| Durable scheduler execution loop | partial | Execution and persistence are being completed |
+| Durable scheduler execution loop | real | Due-job polling, leases, retries, dead-letter handling, and sidecar dispatch are persisted and tested |
 | Observability / LangSmith tracing | partial | Core tracing exists; coverage is not uniform yet |
 
 ## Memory and Context
@@ -24,7 +24,7 @@ Status values:
 | --- | --- | --- |
 | SQLite recall memory store | real | Search/store/dedup/expiry paths exist |
 | Core memory store | real | Budgeted key-value memory exists |
-| Sidecar memory orchestration | partial | Agent and maintenance workflows use the Rust loopback bridge for search/store/archive; typed contract cleanup is still pending |
+| Sidecar memory orchestration | real | Agent and maintenance workflows use the Rust loopback bridge and typed workflow contract for search/store/archive paths |
 | Memory maintenance archive pipeline | real | Maintenance workflow can fetch old memories, persist archive summaries, and remove archived originals through Rust-owned storage |
 | RAG pipeline | partial | Deterministic collection-backed retrieval and budgeted context assembly exist in the sidecar; storage durability and retrieval quality still need production hardening |
 
@@ -36,9 +36,9 @@ Status values:
 | Telegram | real | Auth probe, outbound send, Bot API polling receive, and local agent/session routing in `openrustclaw start` exist |
 | Discord | partial | Auth probe, outbound send, verified Interactions HTTP ingress, deferred acknowledgements, and local agent/session routing exist; full Gateway message-event support remains incomplete |
 | Slack | real | HTTP mode supports auth probe, outbound send, built-in Events API ingress, and local agent/session routing; Socket Mode remains incomplete |
-| Matrix | partial | Shape exists; matrix-sdk integration deferred |
-| Google Chat | partial | Auth/config shape exists; receive/send coverage incomplete |
-| Gmail Pub/Sub | partial | Auth/config shape exists; live Gmail API operations incomplete |
+| Matrix | gated | Repo surface exists, but runtime client support is deferred from the current shipped surface |
+| Google Chat | gated | Repo surface exists, but service-account auth and runtime coverage are deferred from the current shipped surface |
+| Gmail Pub/Sub | gated | Repo surface exists, but Gmail API runtime coverage is deferred from the current shipped surface |
 | Teams / WhatsApp / LINE / Viber / WeChat / Messenger / Instagram / iMessage | gated | Present in repo, not part of the current shipped surface |
 | Signal / Twilio / X/Twitter | gated | Present in repo, not part of the current shipped surface |
 
@@ -50,8 +50,8 @@ Status values:
 | MCP remote HTTP/SSE | deferred | Not part of current shipped surface |
 | `mcp2-cli` | real | Real stdio/OpenAPI discovery path |
 | Cursor integration | partial | Core path exists; full tool/runtime parity still incomplete |
-| Skills registry/install flow | partial | Workspace `SKILL.md` installs, marketplace install/update sync, capability metadata persistence, and verification-state handling are real; host capability execution is still evolving |
-| WASM skill executor | partial | Real no-import executor exists with JSON ABI, memory limits, and timeout enforcement; host capability surface is still minimal |
+| Skills registry/install flow | real | Workspace installs, marketplace lifecycle sync, capability metadata persistence, and verification-state handling are wired through the CLI |
+| WASM skill executor | partial | Real no-import executor exists with JSON ABI, memory limits, and timeout enforcement; host capability surface is intentionally minimal |
 
 ## Experience Layers
 

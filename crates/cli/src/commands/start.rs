@@ -89,49 +89,17 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
                     // WebChat is always enabled via gateway
                     info!("WebChat is always enabled via gateway");
                 }
-                ChannelType::Teams => {
-                    config.channels.teams.enabled = true;
-                    info!("Teams channel enabled");
-                }
-                ChannelType::GoogleChat => {
-                    config.channels.google_chat.enabled = true;
-                    info!("Google Chat channel enabled");
-                }
-                ChannelType::WhatsApp => {
-                    config.channels.whatsapp.enabled = true;
-                    info!("WhatsApp channel enabled");
-                }
-                ChannelType::Gmail => {
-                    config.channels.gmail_pubsub.enabled = true;
-                    info!("Gmail Pub/Sub channel enabled");
-                }
-                ChannelType::Matrix => {
-                    config.channels.matrix.enabled = true;
-                    info!("Matrix channel enabled");
-                }
-                ChannelType::IMessage => {
-                    config.channels.imessage.enabled = true;
-                    info!("iMessage channel enabled");
-                }
-                ChannelType::Line => {
-                    config.channels.line.enabled = true;
-                    info!("LINE channel enabled");
-                }
-                ChannelType::Viber => {
-                    config.channels.viber.enabled = true;
-                    info!("Viber channel enabled");
-                }
-                ChannelType::WeChat => {
-                    config.channels.wechat.enabled = true;
-                    info!("WeChat channel enabled");
-                }
-                ChannelType::Messenger | ChannelType::Instagram => {
-                    config.channels.meta.enabled = true;
-                    info!("Meta channel enabled");
+                unsupported => {
+                    warn!(
+                        channel = %unsupported,
+                        "Channel is not part of the current shipped runtime and will be ignored by `openrustclaw start`"
+                    );
                 }
             }
         }
     }
+
+    gate_nonshipping_channels(&mut config.channels);
 
     // Ensure data directory exists
     let db_path = config.database.url.replace("sqlite://", "");
@@ -361,6 +329,49 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
 
     info!("OpenRustClaw shutdown complete");
     Ok(())
+}
+
+fn gate_nonshipping_channels(config: &mut openrustclaw_core::config::ChannelsConfig) {
+    if config.teams.enabled {
+        warn!("Teams is currently gated and will not be started by `openrustclaw start`");
+        config.teams.enabled = false;
+    }
+    if config.google_chat.enabled {
+        warn!("Google Chat is currently gated and will not be started by `openrustclaw start`");
+        config.google_chat.enabled = false;
+    }
+    if config.whatsapp.enabled {
+        warn!("WhatsApp is currently gated and will not be started by `openrustclaw start`");
+        config.whatsapp.enabled = false;
+    }
+    if config.gmail_pubsub.enabled {
+        warn!("Gmail Pub/Sub is currently gated and will not be started by `openrustclaw start`");
+        config.gmail_pubsub.enabled = false;
+    }
+    if config.matrix.enabled {
+        warn!("Matrix is currently gated and will not be started by `openrustclaw start`");
+        config.matrix.enabled = false;
+    }
+    if config.imessage.enabled {
+        warn!("iMessage is currently gated and will not be started by `openrustclaw start`");
+        config.imessage.enabled = false;
+    }
+    if config.line.enabled {
+        warn!("LINE is currently gated and will not be started by `openrustclaw start`");
+        config.line.enabled = false;
+    }
+    if config.viber.enabled {
+        warn!("Viber is currently gated and will not be started by `openrustclaw start`");
+        config.viber.enabled = false;
+    }
+    if config.wechat.enabled {
+        warn!("WeChat is currently gated and will not be started by `openrustclaw start`");
+        config.wechat.enabled = false;
+    }
+    if config.meta.enabled {
+        warn!("Meta channels are currently gated and will not be started by `openrustclaw start`");
+        config.meta.enabled = false;
+    }
 }
 
 /// Run MCP server (stdio transport).
@@ -1508,7 +1519,7 @@ struct McpCreateScheduledJobArgs {
 mod tests {
     use super::*;
     use ed25519_dalek::{Signer, SigningKey};
-    use openrustclaw_core::config::{DiscordConfig, SlackConfig, SlackMode};
+    use openrustclaw_core::config::{AppConfig, DiscordConfig, SlackConfig, SlackMode};
     use openrustclaw_core::error::{Error, ProviderError};
     use openrustclaw_core::types::{FinishReason, IncomingMessage, Role, TokenUsage};
     use tempfile::tempdir;
@@ -1589,6 +1600,34 @@ mod tests {
             core_memory_store: None,
             max_history_messages: 24,
         }
+    }
+
+    #[test]
+    fn gate_nonshipping_channels_disables_gated_runtime_surfaces() {
+        let mut config = AppConfig::default().channels;
+        config.teams.enabled = true;
+        config.google_chat.enabled = true;
+        config.whatsapp.enabled = true;
+        config.gmail_pubsub.enabled = true;
+        config.matrix.enabled = true;
+        config.imessage.enabled = true;
+        config.line.enabled = true;
+        config.viber.enabled = true;
+        config.wechat.enabled = true;
+        config.meta.enabled = true;
+
+        gate_nonshipping_channels(&mut config);
+
+        assert!(!config.teams.enabled);
+        assert!(!config.google_chat.enabled);
+        assert!(!config.whatsapp.enabled);
+        assert!(!config.gmail_pubsub.enabled);
+        assert!(!config.matrix.enabled);
+        assert!(!config.imessage.enabled);
+        assert!(!config.line.enabled);
+        assert!(!config.viber.enabled);
+        assert!(!config.wechat.enabled);
+        assert!(!config.meta.enabled);
     }
 
     #[tokio::test]

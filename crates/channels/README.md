@@ -11,10 +11,10 @@ Messaging platform integrations for the OpenRustClaw AI agent.
 | Discord | ⚠️ Partial | Outbound send plus verified Interactions HTTP ingress; full Gateway message-event runtime is still incomplete |
 | Slack | ✅ Ready | Auth probe, outbound send, built-in Events API ingress, and local agent/session routing |
 | Microsoft Teams | 🚧 Gated | Repo surface exists, not part of the current shipped runtime |
-| Google Chat | ⚠️ Partial | Channel scaffolding present; service-account auth not implemented |
+| Google Chat | 🚧 Gated | Repo surface exists, but service-account auth and runtime coverage are deferred from the shipped runtime |
 | WhatsApp | 🚧 Gated | Repo surface exists, not part of the current shipped runtime |
-| Gmail Pub/Sub | ⚠️ Partial | Channel scaffolding present; service-account auth not implemented |
-| Matrix | ⚠️ Partial | Config/model scaffolding present; matrix-sdk runtime client not implemented |
+| Gmail Pub/Sub | 🚧 Gated | Repo surface exists, but Gmail API runtime coverage is deferred from the shipped runtime |
+| Matrix | 🚧 Gated | Repo surface exists, but matrix-sdk runtime support is deferred from the shipped runtime |
 | Meta (Messenger/Instagram) | 🚧 Gated | Repo surface exists, not part of the current shipped runtime |
 | LINE | 🚧 Gated | Repo surface exists, not part of the current shipped runtime |
 | Viber | 🚧 Gated | Repo surface exists, not part of the current shipped runtime |
