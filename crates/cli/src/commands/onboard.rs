@@ -7,12 +7,16 @@ use indicatif::{ProgressBar, ProgressStyle};
 use std::path::Path;
 use tokio::fs;
 
+use super::control;
+use super::models;
+
 /// Onboarding wizard state
 #[derive(Default)]
 pub struct OnboardingState {
     pub gateway_configured: bool,
     pub channels_configured: Vec<String>,
     pub model_configured: bool,
+    pub execution_mode: Option<String>,
     pub daemon_installed: bool,
     pub skills_installed: Vec<String>,
 }
@@ -28,6 +32,7 @@ enum OnboardingStep {
     Gateway,
     Channel,
     Model,
+    ControlPlane,
     Skill,
     Daemon,
 }
@@ -38,6 +43,7 @@ impl OnboardingStep {
             OnboardingStep::Gateway => "Gateway Setup",
             OnboardingStep::Channel => "Channel Setup",
             OnboardingStep::Model => "AI Model Setup",
+            OnboardingStep::ControlPlane => "Claw Runtime Mode",
             OnboardingStep::Skill => "Skills Setup",
             OnboardingStep::Daemon => "System Service",
         }
@@ -48,6 +54,7 @@ impl OnboardingStep {
             OnboardingStep::Gateway => "Configure the WebSocket gateway server",
             OnboardingStep::Channel => "Connect messaging platforms",
             OnboardingStep::Model => "Configure your LLM provider",
+            OnboardingStep::ControlPlane => "Choose solo vs multi-claw execution",
             OnboardingStep::Skill => "Install starter skills",
             OnboardingStep::Daemon => "Install as system service (optional)",
         }
@@ -58,6 +65,7 @@ impl OnboardingStep {
             OnboardingStep::Gateway => run_gateway_setup(wizard).await,
             OnboardingStep::Channel => run_channel_setup(wizard).await,
             OnboardingStep::Model => run_model_setup(wizard).await,
+            OnboardingStep::ControlPlane => run_control_plane_setup(wizard).await,
             OnboardingStep::Skill => run_skill_setup(wizard).await,
             OnboardingStep::Daemon => run_daemon_install(wizard).await,
         }
@@ -81,6 +89,7 @@ impl OnboardingWizard {
             OnboardingStep::Gateway,
             OnboardingStep::Channel,
             OnboardingStep::Model,
+            OnboardingStep::ControlPlane,
             OnboardingStep::Skill,
             OnboardingStep::Daemon,
         ];
@@ -149,6 +158,13 @@ Let's get started!
             } else {
                 "✗ Not configured"
             }
+        );
+        println!(
+            "  Runtime Mode: {}",
+            self.state
+                .execution_mode
+                .as_deref()
+                .unwrap_or("solo_claw (default)")
         );
         println!(
             "  Skills: {}",
@@ -337,6 +353,8 @@ async fn run_model_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
         save_provider_config(provider_name, &api_key).await?;
         wizard.state.model_configured = true;
         println!("✓ Model configured ({provider_name})");
+        println!();
+        models::scan().await?;
     } else {
         println!("⚠️  No API key provided, skipping model setup");
     }
@@ -345,7 +363,58 @@ async fn run_model_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
 }
 
 // ============================================================================
-// Step 4: Skill Setup
+// Step 4: Control-Plane Setup
+// ============================================================================
+
+async fn run_control_plane_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
+    control::init(None)?;
+
+    let modes = vec![
+        "Solo Claw - one Claw handles all work",
+        "Task Assigned - specific tasks bind to specific Claws",
+        "Category Assigned - task categories map to Claws",
+        "Orchestrated - quarterback Claw delegates to worker Claws",
+    ];
+    let selection = Select::with_theme(&wizard.theme)
+        .with_prompt("Choose how work should be assigned")
+        .items(&modes)
+        .default(0)
+        .interact()?;
+
+    let (mode, orchestrator) = match selection {
+        1 => ("task_assigned", None),
+        2 => ("category_assigned", None),
+        3 => ("orchestrated", Some("orchestrator")),
+        _ => ("solo_claw", None),
+    };
+
+    let allow_shared_context = if mode == "solo_claw" {
+        false
+    } else {
+        Confirm::with_theme(&wizard.theme)
+            .with_prompt("Allow shared context between Claws when explicitly configured?")
+            .default(false)
+            .interact()?
+    };
+
+    control::configure_mode(
+        None,
+        mode,
+        Some("main"),
+        orchestrator,
+        allow_shared_context,
+        Some("strict"),
+    )?;
+
+    wizard.state.execution_mode = Some(mode.to_string());
+    println!("✓ Control-plane registry initialized at .claw/control/");
+    println!("✓ Runtime mode configured as {mode}");
+    println!("  Inspect: openrustclaw control describe");
+    Ok(true)
+}
+
+// ============================================================================
+// Step 5: Skill Setup
 // ============================================================================
 
 async fn run_skill_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
@@ -391,7 +460,7 @@ async fn run_skill_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
 }
 
 // ============================================================================
-// Step 5: Daemon Install
+// Step 6: Daemon Install
 // ============================================================================
 
 async fn run_daemon_install(wizard: &mut OnboardingWizard) -> Result<bool> {

@@ -8,7 +8,9 @@ use std::time::Duration;
 
 use openrustclaw_core::error::{Error, Result, ToolError};
 use openrustclaw_core::types::SkillCapability;
-use wasmtime::{Config, Engine, Instance, Memory, Module, Store, StoreLimits, StoreLimitsBuilder, TypedFunc};
+use wasmtime::{
+    Config, Engine, Instance, Memory, Module, Store, StoreLimits, StoreLimitsBuilder, TypedFunc,
+};
 
 use crate::{declared_sensitive_capability_names, parse_capability_names};
 
@@ -43,10 +45,7 @@ impl SandboxConfig {
     }
 
     /// Validate whether a declared capability set is allowed for the current verification state.
-    pub fn validate_declared_capability_policy(
-        declared: &[String],
-        verified: bool,
-    ) -> Result<()> {
+    pub fn validate_declared_capability_policy(declared: &[String], verified: bool) -> Result<()> {
         let sensitive = declared_sensitive_capability_names(declared)?;
         if !verified && !sensitive.is_empty() {
             return Err(Error::Tool(ToolError::CapabilityDenied {
@@ -138,7 +137,8 @@ impl WasmSandbox {
     ) -> Result<serde_json::Value> {
         let parsed = parse_capability_names(declared)?;
         let required: Vec<SkillCapability> = parsed.into_iter().collect();
-        self.execute_with_capabilities(wasm_bytes, &required, input).await
+        self.execute_with_capabilities(wasm_bytes, &required, input)
+            .await
     }
 
     /// Execute only if declared capabilities are granted and the skill is verified when required.
@@ -198,23 +198,25 @@ impl WasmSandbox {
         let instance = Instance::new(&mut store, &module, &[])
             .map_err(|e| Error::Internal(format!("Failed to instantiate wasm module: {}", e)))?;
 
-        let memory = instance
-            .get_memory(&mut store, "memory")
-            .ok_or_else(|| Error::Tool(ToolError::SandboxViolation(
+        let memory = instance.get_memory(&mut store, "memory").ok_or_else(|| {
+            Error::Tool(ToolError::SandboxViolation(
                 "WASM module must export memory".to_string(),
-            )))?;
-        let alloc: TypedFunc<i32, i32> = instance
-            .get_typed_func(&mut store, "alloc")
-            .map_err(|e| Error::Tool(ToolError::SandboxViolation(format!(
-                "WASM module must export alloc(i32) -> i32: {}",
-                e
-            ))))?;
-        let run: TypedFunc<(i32, i32), i64> = instance
-            .get_typed_func(&mut store, "run")
-            .map_err(|e| Error::Tool(ToolError::SandboxViolation(format!(
-                "WASM module must export run(i32, i32) -> i64: {}",
-                e
-            ))))?;
+            ))
+        })?;
+        let alloc: TypedFunc<i32, i32> =
+            instance.get_typed_func(&mut store, "alloc").map_err(|e| {
+                Error::Tool(ToolError::SandboxViolation(format!(
+                    "WASM module must export alloc(i32) -> i32: {}",
+                    e
+                )))
+            })?;
+        let run: TypedFunc<(i32, i32), i64> =
+            instance.get_typed_func(&mut store, "run").map_err(|e| {
+                Error::Tool(ToolError::SandboxViolation(format!(
+                    "WASM module must export run(i32, i32) -> i64: {}",
+                    e
+                )))
+            })?;
 
         let input_bytes = serde_json::to_vec(&input)
             .map_err(|e| Error::Internal(format!("Failed to serialize sandbox input: {}", e)))?;
@@ -230,9 +232,9 @@ impl WasmSandbox {
             .map_err(|e| map_wasm_trap("alloc", e, config.max_execution_ms))?;
         write_memory(&mut store, &memory, input_ptr, &input_bytes)?;
 
-        let packed = run
-            .call(&mut store, (input_ptr, input_bytes.len() as i32))
-            .map_err(|e| map_wasm_trap("run", e, config.max_execution_ms))? as u64;
+        let packed =
+            run.call(&mut store, (input_ptr, input_bytes.len() as i32))
+                .map_err(|e| map_wasm_trap("run", e, config.max_execution_ms))? as u64;
 
         let output_ptr = (packed >> 32) as usize;
         let output_len = (packed & 0xFFFF_FFFF) as usize;
@@ -258,12 +260,12 @@ fn write_memory(
         )));
     }
 
-    memory
-        .write(store, ptr as usize, bytes)
-        .map_err(|e| Error::Tool(ToolError::SandboxViolation(format!(
+    memory.write(store, ptr as usize, bytes).map_err(|e| {
+        Error::Tool(ToolError::SandboxViolation(format!(
             "Failed to write input into wasm memory: {}",
             e
-        ))))
+        )))
+    })
 }
 
 fn read_memory(
@@ -273,12 +275,12 @@ fn read_memory(
     len: usize,
 ) -> Result<Vec<u8>> {
     let mut buffer = vec![0u8; len];
-    memory
-        .read(store, ptr, &mut buffer)
-        .map_err(|e| Error::Tool(ToolError::SandboxViolation(format!(
+    memory.read(store, ptr, &mut buffer).map_err(|e| {
+        Error::Tool(ToolError::SandboxViolation(format!(
             "Failed to read output from wasm memory: {}",
             e
-        ))))?;
+        )))
+    })?;
     Ok(buffer)
 }
 
@@ -330,7 +332,11 @@ mod tests {
             "file_read".to_string(),
         ])
         .unwrap();
-        assert!(config.capabilities.contains(&SkillCapability::NetworkAccess));
+        assert!(
+            config
+                .capabilities
+                .contains(&SkillCapability::NetworkAccess)
+        );
         assert!(config.capabilities.contains(&SkillCapability::FileRead));
     }
 
@@ -343,11 +349,9 @@ mod tests {
 
     #[test]
     fn test_sandbox_config_rejects_unverified_sensitive_declared_capabilities() {
-        let error = SandboxConfig::validate_declared_capability_policy(
-            &["shell_exec".to_string()],
-            false,
-        )
-        .unwrap_err();
+        let error =
+            SandboxConfig::validate_declared_capability_policy(&["shell_exec".to_string()], false)
+                .unwrap_err();
         assert!(error.to_string().contains("shell_exec"));
     }
 
@@ -369,8 +373,10 @@ mod tests {
     #[test]
     fn test_sandbox_config_reports_when_declared_capabilities_require_verification() {
         assert!(
-            SandboxConfig::requires_verified_declared_capabilities(&["database_access".to_string()])
-                .unwrap()
+            SandboxConfig::requires_verified_declared_capabilities(
+                &["database_access".to_string()]
+            )
+            .unwrap()
         );
         assert!(
             !SandboxConfig::requires_verified_declared_capabilities(&["file_read".to_string()])
@@ -557,7 +563,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_sandbox_execute_with_verified_declared_capabilities_rejects_unverified_sensitive() {
+    async fn test_sandbox_execute_with_verified_declared_capabilities_rejects_unverified_sensitive()
+    {
         let sandbox = WasmSandbox::new(SandboxConfig::default());
         let module = br#"
             (module
@@ -594,7 +601,12 @@ mod tests {
 
         let result = sandbox.execute(module, serde_json::json!({})).await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("does not allow module imports"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("does not allow module imports")
+        );
     }
 
     #[tokio::test]

@@ -7,10 +7,10 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use openrustclaw_memory::WorkspaceArtifactRegistry;
 use openrustclaw_core::error::Result;
 use openrustclaw_core::traits::{CoreMemoryStore, LlmProvider, MemoryStore, ToolContext};
 use openrustclaw_core::types::{CompletionRequest, CoreEntry, FinishReason, Message};
+use openrustclaw_memory::WorkspaceArtifactRegistry;
 use tracing::{debug, info};
 
 use crate::prompt::build_system_prompt;
@@ -131,7 +131,9 @@ impl AgentRuntime {
         let supplemental_instructions = self
             .workspace_path
             .as_ref()
-            .and_then(|path| WorkspaceArtifactRegistry::resolve(path, self.provider.model_id()).ok())
+            .and_then(|path| {
+                WorkspaceArtifactRegistry::resolve(path, self.provider.model_id()).ok()
+            })
             .map(|bundle| bundle.merged_instructions);
         let system_prompt = build_system_prompt(
             &self.agent_name,

@@ -111,10 +111,7 @@ pub fn load_task_manifest(path: impl AsRef<Path>) -> Result<LoadedTaskManifest> 
         ))
     })?;
     let manifest = serde_yaml::from_str::<TaskManifest>(&raw).map_err(|e| {
-        SchedulerError::WorkflowFailed(format!(
-            "invalid task manifest '{}': {e}",
-            path.display()
-        ))
+        SchedulerError::WorkflowFailed(format!("invalid task manifest '{}': {e}", path.display()))
     })?;
     validate_manifest(&manifest, &path)?;
 

@@ -6,8 +6,8 @@ use sqlx::Row;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-use openrustclaw_security::SkillVerifier;
 use openrustclaw_scheduler::DurableEventBus;
+use openrustclaw_security::SkillVerifier;
 use openrustclaw_skills::{ClawHubRegistry, SearchFilters, SortBy, normalize_capability_names};
 
 fn parse_hex_bytes(input: &str) -> Result<Vec<u8>> {
@@ -84,9 +84,14 @@ fn sensitive_capabilities(capabilities: &[String]) -> Result<Vec<String>> {
     let normalized = normalize_capability_names(capabilities)
         .map_err(|e| anyhow::anyhow!(e.to_string()))
         .context("Failed to validate skill capabilities")?;
-    let sensitive: HashSet<&str> = ["file_write", "network_access", "shell_exec", "database_access"]
-        .into_iter()
-        .collect();
+    let sensitive: HashSet<&str> = [
+        "file_write",
+        "network_access",
+        "shell_exec",
+        "database_access",
+    ]
+    .into_iter()
+    .collect();
     Ok(normalized
         .into_iter()
         .filter(|capability| sensitive.contains(capability.as_str()))
@@ -451,7 +456,10 @@ pub async fn install(name: &str) -> Result<()> {
                         println!(
                             "To create a new skill locally, add a SKILL.md file to the ./skills directory."
                         );
-                        println!("Expected file: {}", Path::new("skills").join(name).join("SKILL.md").display());
+                        println!(
+                            "Expected file: {}",
+                            Path::new("skills").join(name).join("SKILL.md").display()
+                        );
                         return Ok(());
                     }
                 };
@@ -602,8 +610,7 @@ pub async fn update(name: &str) -> Result<()> {
                                 metadata.signature.as_deref(),
                                 name,
                             )?;
-                            let capabilities_json =
-                                serialize_capabilities(&metadata.capabilities)?;
+                            let capabilities_json = serialize_capabilities(&metadata.capabilities)?;
                             let version_string = to.to_string();
                             upsert_skill_record(
                                 &pool,
@@ -1259,7 +1266,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_persist_verified_state_updates_row() {
-        let db_path = std::env::temp_dir().join(format!("skills-verify-{}.db", uuid::Uuid::new_v4()));
+        let db_path =
+            std::env::temp_dir().join(format!("skills-verify-{}.db", uuid::Uuid::new_v4()));
         let pool = openrustclaw_db::init_pool(&format!("sqlite://{}", db_path.display()), 1)
             .await
             .unwrap();
@@ -1287,7 +1295,9 @@ mod tests {
         .await
         .unwrap();
 
-        persist_verified_state(&pool, "skill-1", false).await.unwrap();
+        persist_verified_state(&pool, "skill-1", false)
+            .await
+            .unwrap();
         let verified: i64 = sqlx::query_scalar("SELECT verified FROM skills WHERE id = ?")
             .bind("skill-1")
             .fetch_one(&pool)

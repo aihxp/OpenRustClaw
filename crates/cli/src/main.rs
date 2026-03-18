@@ -49,6 +49,11 @@ enum Commands {
         #[command(subcommand)]
         action: ScheduleAction,
     },
+    /// Manage file-backed control-plane profiles and multi-claw runtime mode
+    Control {
+        #[command(subcommand)]
+        action: ControlAction,
+    },
     /// Manage autonomous optimization targets and candidates
     Optimize {
         #[command(subcommand)]
@@ -75,7 +80,17 @@ enum Commands {
         action: ChannelAction,
     },
     /// Run diagnostics
-    Doctor,
+    Doctor {
+        /// Attempt safe repairs for missing registries/directories
+        #[arg(long)]
+        repair: bool,
+        /// Include deeper optional diagnostics
+        #[arg(long)]
+        deep: bool,
+        /// Avoid interactive remediation hints
+        #[arg(long)]
+        non_interactive: bool,
+    },
     /// Interactive onboarding wizard
     Onboard,
     /// Set up Cursor IDE integration
@@ -133,6 +148,8 @@ enum ModelsAction {
     List,
     /// Show model details
     Info { name: String },
+    /// Scan configured providers and recommend model-role assignments
+    Scan,
 }
 
 #[derive(Subcommand)]
@@ -538,6 +555,134 @@ enum ChannelAction {
     },
 }
 
+#[derive(Subcommand)]
+enum ControlAction {
+    /// Initialize the standard .claw/control/ registry layout
+    Init {
+        #[arg(long)]
+        path: Option<String>,
+    },
+    /// List agent profiles, model profiles, claws, and runtime mode
+    List {
+        #[arg(long)]
+        path: Option<String>,
+    },
+    /// Show one manifest as YAML
+    Show {
+        kind: String,
+        #[arg(long)]
+        id: Option<String>,
+        #[arg(long)]
+        path: Option<String>,
+    },
+    /// Validate registry references and runtime mode bindings
+    Validate {
+        #[arg(long)]
+        path: Option<String>,
+    },
+    /// Machine-readable runtime self-description for users or Claw
+    Describe {
+        #[arg(long)]
+        path: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Create or replace an agent profile manifest
+    CreateAgent {
+        id: String,
+        #[arg(long)]
+        name: Option<String>,
+        #[arg(long)]
+        model_profile: Option<String>,
+        #[arg(long = "extends")]
+        extends: Vec<String>,
+        #[arg(long, default_value_t = 90)]
+        timeout_secs: u64,
+        #[arg(long)]
+        memory_scope: Option<String>,
+        #[arg(long)]
+        output_policy: Option<String>,
+        #[arg(long = "tool-allow")]
+        tool_allow: Vec<String>,
+        #[arg(long = "tool-deny")]
+        tool_deny: Vec<String>,
+        #[arg(long)]
+        path: Option<String>,
+    },
+    /// Create or replace a model profile manifest
+    CreateModel {
+        id: String,
+        #[arg(long)]
+        provider: String,
+        #[arg(long)]
+        model: String,
+        #[arg(long)]
+        context_window: Option<usize>,
+        #[arg(long)]
+        max_output_tokens: Option<usize>,
+        #[arg(long)]
+        latency_hint: Option<String>,
+        #[arg(long)]
+        cost_hint: Option<String>,
+        #[arg(long)]
+        reasoning_hint: Option<String>,
+        #[arg(long = "role-tag")]
+        role_tags: Vec<String>,
+        #[arg(long = "artifact-preference")]
+        artifact_preferences: Vec<String>,
+        #[arg(long = "fallback")]
+        fallback_order: Vec<String>,
+        #[arg(long)]
+        path: Option<String>,
+    },
+    /// Create or replace a Claw manifest
+    CreateClaw {
+        id: String,
+        #[arg(long)]
+        name: Option<String>,
+        #[arg(long)]
+        agent_profile: String,
+        #[arg(long)]
+        model_profile: String,
+        #[arg(long)]
+        role: Option<String>,
+        #[arg(long = "category")]
+        categories: Vec<String>,
+        #[arg(long)]
+        memory_scope: Option<String>,
+        #[arg(long)]
+        path: Option<String>,
+    },
+    /// Set the top-level runtime execution mode
+    Mode {
+        mode: String,
+        #[arg(long)]
+        default_claw: Option<String>,
+        #[arg(long)]
+        orchestrator_claw: Option<String>,
+        #[arg(long)]
+        allow_shared_context: bool,
+        #[arg(long)]
+        isolation_mode: Option<String>,
+        #[arg(long)]
+        path: Option<String>,
+    },
+    /// Assign one task id to a Claw
+    AssignTask {
+        task_id: String,
+        claw_id: String,
+        #[arg(long)]
+        path: Option<String>,
+    },
+    /// Assign one task category to a Claw
+    AssignCategory {
+        category: String,
+        claw_id: String,
+        #[arg(long)]
+        path: Option<String>,
+    },
+}
+
 #[cfg(feature = "cursor")]
 #[derive(Subcommand)]
 enum CursorAction {
@@ -682,6 +827,7 @@ async fn main() -> Result<()> {
         Commands::Models { action } => match action {
             ModelsAction::List => commands::models::list().await,
             ModelsAction::Info { name } => commands::models::info(&name).await,
+            ModelsAction::Scan => commands::models::scan().await,
         },
         Commands::Skills { action } => match action {
             SkillsAction::List => commands::skills::list().await,
@@ -758,6 +904,111 @@ async fn main() -> Result<()> {
             ScheduleAction::Events { name, limit } => {
                 commands::schedule::events(name.as_deref(), limit).await
             }
+        },
+        Commands::Control { action } => match action {
+            ControlAction::Init { path } => commands::control::init(path.as_deref()),
+            ControlAction::List { path } => commands::control::list(path.as_deref()),
+            ControlAction::Show { kind, id, path } => {
+                commands::control::show(path.as_deref(), &kind, id.as_deref())
+            }
+            ControlAction::Validate { path } => commands::control::validate(path.as_deref()),
+            ControlAction::Describe { path, json } => {
+                commands::control::describe(path.as_deref(), json)
+            }
+            ControlAction::CreateAgent {
+                id,
+                name,
+                model_profile,
+                extends,
+                timeout_secs,
+                memory_scope,
+                output_policy,
+                tool_allow,
+                tool_deny,
+                path,
+            } => commands::control::create_agent(
+                path.as_deref(),
+                &id,
+                name.as_deref(),
+                model_profile.as_deref(),
+                &extends,
+                timeout_secs,
+                memory_scope.as_deref(),
+                output_policy.as_deref(),
+                &tool_allow,
+                &tool_deny,
+            ),
+            ControlAction::CreateModel {
+                id,
+                provider,
+                model,
+                context_window,
+                max_output_tokens,
+                latency_hint,
+                cost_hint,
+                reasoning_hint,
+                role_tags,
+                artifact_preferences,
+                fallback_order,
+                path,
+            } => commands::control::create_model(
+                path.as_deref(),
+                &id,
+                &provider,
+                &model,
+                context_window,
+                max_output_tokens,
+                latency_hint.as_deref(),
+                cost_hint.as_deref(),
+                reasoning_hint.as_deref(),
+                &role_tags,
+                &artifact_preferences,
+                &fallback_order,
+            ),
+            ControlAction::CreateClaw {
+                id,
+                name,
+                agent_profile,
+                model_profile,
+                role,
+                categories,
+                memory_scope,
+                path,
+            } => commands::control::create_claw(
+                path.as_deref(),
+                &id,
+                name.as_deref(),
+                &agent_profile,
+                &model_profile,
+                role.as_deref(),
+                &categories,
+                memory_scope.as_deref(),
+            ),
+            ControlAction::Mode {
+                mode,
+                default_claw,
+                orchestrator_claw,
+                allow_shared_context,
+                isolation_mode,
+                path,
+            } => commands::control::configure_mode(
+                path.as_deref(),
+                &mode,
+                default_claw.as_deref(),
+                orchestrator_claw.as_deref(),
+                allow_shared_context,
+                isolation_mode.as_deref(),
+            ),
+            ControlAction::AssignTask {
+                task_id,
+                claw_id,
+                path,
+            } => commands::control::assign_task(path.as_deref(), &task_id, &claw_id),
+            ControlAction::AssignCategory {
+                category,
+                claw_id,
+                path,
+            } => commands::control::assign_category(path.as_deref(), &category, &claw_id),
         },
         Commands::Optimize { action } => match action {
             OptimizeAction::ListTargets => commands::optimize::list_targets().await,
@@ -922,7 +1173,9 @@ async fn main() -> Result<()> {
         Commands::Channels { action } => match action {
             ChannelAction::Init { path } => commands::channels::init(path.as_deref()),
             ChannelAction::List { path } => commands::channels::list(path.as_deref()),
-            ChannelAction::Approve { id, path } => commands::channels::approve(path.as_deref(), &id),
+            ChannelAction::Approve { id, path } => {
+                commands::channels::approve(path.as_deref(), &id)
+            }
             ChannelAction::Block { id, path } => commands::channels::block(path.as_deref(), &id),
             ChannelAction::Activation { id, mode, path } => {
                 commands::channels::activation(path.as_deref(), &id, &mode)
@@ -949,7 +1202,11 @@ async fn main() -> Result<()> {
                 activation_mode.as_deref(),
             ),
         },
-        Commands::Doctor => commands::doctor::run().await,
+        Commands::Doctor {
+            repair,
+            deep,
+            non_interactive,
+        } => commands::doctor::run(repair, deep, non_interactive).await,
         Commands::Onboard => commands::onboard::run().await,
         #[cfg(feature = "cursor")]
         Commands::Cursor { action } => match action {
@@ -1106,7 +1363,18 @@ mod tests {
     fn test_cli_parse_doctor() {
         let cli = Cli::try_parse_from(["openrustclaw", "doctor"]);
         assert!(cli.is_ok());
-        matches!(cli.unwrap().command, Commands::Doctor);
+        match cli.unwrap().command {
+            Commands::Doctor {
+                repair,
+                deep,
+                non_interactive,
+            } => {
+                assert!(!repair);
+                assert!(!deep);
+                assert!(!non_interactive);
+            }
+            _ => panic!("Expected Doctor command"),
+        }
     }
 
     #[test]
@@ -1114,6 +1382,17 @@ mod tests {
         let cli = Cli::try_parse_from(["openrustclaw", "onboard"]);
         assert!(cli.is_ok());
         matches!(cli.unwrap().command, Commands::Onboard);
+    }
+
+    #[test]
+    fn test_cli_parse_control_init() {
+        let cli = Cli::try_parse_from(["openrustclaw", "control", "init"]).unwrap();
+        match cli.command {
+            Commands::Control {
+                action: ControlAction::Init { path },
+            } => assert!(path.is_none()),
+            _ => panic!("Expected Control::Init command"),
+        }
     }
 
     #[test]

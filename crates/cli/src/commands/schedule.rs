@@ -75,7 +75,10 @@ fn detect_manifest_paths(root: &Path) -> Vec<PathBuf> {
         return manifests;
     }
 
-    for entry in WalkDir::new(root).into_iter().filter_map(std::result::Result::ok) {
+    for entry in WalkDir::new(root)
+        .into_iter()
+        .filter_map(std::result::Result::ok)
+    {
         if !entry.file_type().is_file() {
             continue;
         }
@@ -110,7 +113,9 @@ fn trigger_from_inline(every_seconds: Option<u64>, at: Option<&str>) -> Result<T
     }
 }
 
-fn trigger_config_and_next_run(trigger: &TaskTrigger) -> Result<(String, Value, Option<DateTime<Utc>>)> {
+fn trigger_config_and_next_run(
+    trigger: &TaskTrigger,
+) -> Result<(String, Value, Option<DateTime<Utc>>)> {
     match trigger {
         TaskTrigger::Interval { every_seconds } => Ok((
             "interval".to_string(),
@@ -219,7 +224,11 @@ async fn upsert_task_manifest(
         });
     }
 
-    let action = if existing_hash.is_some() { "updated" } else { "created" };
+    let action = if existing_hash.is_some() {
+        "updated"
+    } else {
+        "created"
+    };
     if dry_run {
         return Ok(AppliedTaskResult { job_id, action });
     }
@@ -389,8 +398,12 @@ async fn fetch_job(pool: &sqlx::SqlitePool, id: &str) -> Result<sqlx::sqlite::Sq
 fn row_to_task_spec(row: &sqlx::sqlite::SqliteRow) -> Result<TaskSpec> {
     let trigger_type: String = row.get("trigger_type");
     let trigger_config_raw: String = row.get("trigger_config");
-    let trigger_config: Value = serde_json::from_str(&trigger_config_raw)
-        .with_context(|| format!("Invalid trigger_config JSON for {}", row.get::<String, _>("id")))?;
+    let trigger_config: Value = serde_json::from_str(&trigger_config_raw).with_context(|| {
+        format!(
+            "Invalid trigger_config JSON for {}",
+            row.get::<String, _>("id")
+        )
+    })?;
     let metadata_raw: String = row.get("metadata");
     let metadata: Value = serde_json::from_str(&metadata_raw)
         .with_context(|| format!("Invalid metadata JSON for {}", row.get::<String, _>("id")))?;
@@ -452,10 +465,16 @@ fn row_to_task_spec(row: &sqlx::sqlite::SqliteRow) -> Result<TaskSpec> {
         timezone: row.get("timezone"),
         owner: row.try_get("owner").ok(),
         tags,
-        max_retries: row.try_get::<i64, _>("max_retries").ok().map(|value| value as u32),
+        max_retries: row
+            .try_get::<i64, _>("max_retries")
+            .ok()
+            .map(|value| value as u32),
         disabled_until: row.try_get("disabled_until").ok(),
         trigger,
-        payload: metadata.get("input").cloned().unwrap_or_else(|| serde_json::json!({})),
+        payload: metadata
+            .get("input")
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!({})),
         metadata: passthrough_metadata,
         delivery_policy: metadata.get("delivery_policy").cloned(),
         hook_policy: metadata.get("hook_policy").cloned(),
@@ -687,8 +706,12 @@ pub async fn create(
 pub async fn sync(path: Option<&str>, dry_run: bool) -> Result<()> {
     let pool = open_schedule_pool().await?;
     let root = resolve_tasks_root(path)?;
-    std::fs::create_dir_all(&root)
-        .with_context(|| format!("Failed to create task manifest directory '{}'", root.display()))?;
+    std::fs::create_dir_all(&root).with_context(|| {
+        format!(
+            "Failed to create task manifest directory '{}'",
+            root.display()
+        )
+    })?;
 
     let paths = detect_manifest_paths(&root);
     let mut seen = HashSet::new();
@@ -767,7 +790,9 @@ pub async fn init(path: Option<&str>) -> Result<()> {
             tags: vec!["example".to_string(), "reminder".to_string()],
             max_retries: Some(3),
             disabled_until: None,
-            trigger: TaskTrigger::Interval { every_seconds: 3600 },
+            trigger: TaskTrigger::Interval {
+                every_seconds: 3600,
+            },
             payload: serde_json::json!({
                 "message": "Review today's queued work",
                 "delivery_policy": {
@@ -787,7 +812,10 @@ pub async fn init(path: Option<&str>) -> Result<()> {
 
     println!("✓ Initialized task registry at {}", root.display());
     println!("  Starter manifest: {}", starter.display());
-    println!("  Sync into SQLite with: openrustclaw schedule sync --path {}", root.display());
+    println!(
+        "  Sync into SQLite with: openrustclaw schedule sync --path {}",
+        root.display()
+    );
     Ok(())
 }
 
@@ -824,7 +852,10 @@ pub async fn export(id: &str, output: Option<&str>) -> Result<()> {
             let loaded = load_task_manifest(&canonical)?;
             loaded.hash
         },
-        manifest: TaskManifest { version: 1, task: spec.clone() },
+        manifest: TaskManifest {
+            version: 1,
+            task: spec.clone(),
+        },
         raw,
     };
 
@@ -850,15 +881,18 @@ pub async fn inspect(id: &str) -> Result<()> {
     .bind(row.get::<String, _>("id"))
     .fetch_optional(&pool)
     .await?;
-    let checkpoint_count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM workflow_checkpoints WHERE workflow_id = ?",
-    )
-    .bind(row.get::<String, _>("workflow_id"))
-    .fetch_one(&pool)
-    .await
-    .unwrap_or(0);
+    let checkpoint_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM workflow_checkpoints WHERE workflow_id = ?")
+            .bind(row.get::<String, _>("workflow_id"))
+            .fetch_one(&pool)
+            .await
+            .unwrap_or(0);
 
-    println!("Task: {} ({})", row.get::<String, _>("name"), row.get::<String, _>("id"));
+    println!(
+        "Task: {} ({})",
+        row.get::<String, _>("name"),
+        row.get::<String, _>("id")
+    );
     println!("  Workflow: {}", row.get::<String, _>("workflow_id"));
     println!("  State: {}", row.get::<String, _>("state"));
     println!("  Priority: {}", row.get::<i64, _>("priority"));
@@ -884,14 +918,22 @@ pub async fn inspect(id: &str) -> Result<()> {
         row.get::<Option<String>, _>("last_run_at")
             .unwrap_or_else(|| "-".to_string())
     );
-    println!("  Owner: {}", row.get::<Option<String>, _>("owner").unwrap_or_else(|| "-".to_string()));
+    println!(
+        "  Owner: {}",
+        row.get::<Option<String>, _>("owner")
+            .unwrap_or_else(|| "-".to_string())
+    );
     println!("  Tags: {}", row.get::<String, _>("tags"));
     println!(
         "  Disabled until: {}",
         row.get::<Option<String>, _>("disabled_until")
             .unwrap_or_else(|| "-".to_string())
     );
-    println!("  Description: {}", row.get::<Option<String>, _>("description").unwrap_or_default());
+    println!(
+        "  Description: {}",
+        row.get::<Option<String>, _>("description")
+            .unwrap_or_default()
+    );
     println!("  Checkpoints: {}", checkpoint_count);
     if row.get::<String, _>("trigger_type") == "event" {
         let trigger_config_raw: String = row.get("trigger_config");
@@ -966,7 +1008,8 @@ pub async fn resume(id: &str) -> Result<()> {
 
     let job_id: String = row.get("id");
     let next_run: Option<String> = row.try_get("next_run_at").ok();
-    let next_run_at = next_run.unwrap_or_else(|| (Utc::now() + chrono::Duration::minutes(1)).to_rfc3339());
+    let next_run_at =
+        next_run.unwrap_or_else(|| (Utc::now() + chrono::Duration::minutes(1)).to_rfc3339());
 
     let result = sqlx::query(
         "UPDATE scheduled_jobs SET state = 'active', next_run_at = ?, disabled_until = NULL WHERE id = ? AND state = 'paused'"
@@ -1027,14 +1070,12 @@ pub async fn run_now(id: &str) -> Result<()> {
 /// Update task priority.
 pub async fn reprioritize(id: &str, priority: i64) -> Result<()> {
     let pool = open_schedule_pool().await?;
-    let result = sqlx::query(
-        "UPDATE scheduled_jobs SET priority = ? WHERE id = ? OR name = ?"
-    )
-    .bind(priority)
-    .bind(id)
-    .bind(id)
-    .execute(&pool)
-    .await?;
+    let result = sqlx::query("UPDATE scheduled_jobs SET priority = ? WHERE id = ? OR name = ?")
+        .bind(priority)
+        .bind(id)
+        .bind(id)
+        .execute(&pool)
+        .await?;
 
     if result.rows_affected() == 0 {
         anyhow::bail!("Job '{}' not found", id);
@@ -1057,13 +1098,12 @@ pub async fn reprioritize(id: &str, priority: i64) -> Result<()> {
 /// Rebind a task to a different workflow target.
 pub async fn rebind(id: &str, workflow: &str) -> Result<()> {
     let pool = open_schedule_pool().await?;
-    let result =
-        sqlx::query("UPDATE scheduled_jobs SET workflow_id = ? WHERE id = ? OR name = ?")
-            .bind(workflow)
-            .bind(id)
-            .bind(id)
-            .execute(&pool)
-            .await?;
+    let result = sqlx::query("UPDATE scheduled_jobs SET workflow_id = ? WHERE id = ? OR name = ?")
+        .bind(workflow)
+        .bind(id)
+        .bind(id)
+        .execute(&pool)
+        .await?;
 
     if result.rows_affected() == 0 {
         anyhow::bail!("Job '{}' not found", id);
@@ -1091,7 +1131,7 @@ pub async fn disable_until(id: &str, until: &str) -> Result<()> {
         .with_context(|| "disable_until requires a timestamp".to_string())?;
 
     let result = sqlx::query(
-        "UPDATE scheduled_jobs SET disabled_until = ?, state = 'active' WHERE id = ? OR name = ?"
+        "UPDATE scheduled_jobs SET disabled_until = ?, state = 'active' WHERE id = ? OR name = ?",
     )
     .bind(until.to_rfc3339())
     .bind(id)
@@ -1121,13 +1161,12 @@ pub async fn disable_until(id: &str, until: &str) -> Result<()> {
 /// Clear disabled-until state.
 pub async fn enable(id: &str) -> Result<()> {
     let pool = open_schedule_pool().await?;
-    let result = sqlx::query(
-        "UPDATE scheduled_jobs SET disabled_until = NULL WHERE id = ? OR name = ?"
-    )
-    .bind(id)
-    .bind(id)
-    .execute(&pool)
-    .await?;
+    let result =
+        sqlx::query("UPDATE scheduled_jobs SET disabled_until = NULL WHERE id = ? OR name = ?")
+            .bind(id)
+            .bind(id)
+            .execute(&pool)
+            .await?;
 
     if result.rows_affected() == 0 {
         anyhow::bail!("Job '{}' not found", id);
@@ -1378,7 +1417,10 @@ mod tests {
     #[test]
     fn resolve_tasks_root_defaults_to_hidden_claw_path() {
         let cwd = current_workspace_root().unwrap();
-        assert_eq!(resolve_tasks_root(None).unwrap(), cwd.join(DEFAULT_TASKS_DIR));
+        assert_eq!(
+            resolve_tasks_root(None).unwrap(),
+            cwd.join(DEFAULT_TASKS_DIR)
+        );
     }
 
     #[test]

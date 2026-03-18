@@ -7,7 +7,9 @@ use openrustclaw_core::types::{SkillCapability, SkillSource};
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
-use crate::{declared_sensitive_capability_names, normalize_capability_names, parse_capability_names};
+use crate::{
+    declared_sensitive_capability_names, normalize_capability_names, parse_capability_names,
+};
 
 /// Metadata parsed from a SKILL.md file.
 #[derive(Debug, Clone, Serialize, Deserialize)]

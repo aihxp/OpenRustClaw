@@ -10,7 +10,9 @@ use openrustclaw_agent::runtime::AgentRuntime;
 use openrustclaw_core::config::AppConfig;
 use openrustclaw_core::error::SchedulerError;
 use openrustclaw_core::traits::{CoreMemoryStore, LlmProvider};
-use openrustclaw_core::types::{CoreEntry, Message, OutgoingMessage, Platform, SourceType, ToolFormat};
+use openrustclaw_core::types::{
+    CoreEntry, Message, OutgoingMessage, Platform, SourceType, ToolFormat,
+};
 use openrustclaw_db::{SqliteCoreMemoryStore, SqliteMemoryStore, SqlitePool, SqliteRagStore};
 use openrustclaw_langbridge::{LangBridgeClient, WorkflowInvocation};
 use openrustclaw_providers::{
@@ -720,8 +722,7 @@ impl RustWorkflowDispatcher {
     ) -> Result<WorkflowDispatchResult> {
         let Some(sender) = self.reminder_sender.as_ref() else {
             return Err(SchedulerError::WorkflowFailed(
-                "rust-native reminder workflow requires at least one connected channel"
-                    .to_string(),
+                "rust-native reminder workflow requires at least one connected channel".to_string(),
             ));
         };
 
@@ -750,16 +751,25 @@ impl RustWorkflowDispatcher {
             .input
             .get("user_id")
             .and_then(Value::as_str)
-            .or_else(|| invocation.configurable.get("user_id").and_then(Value::as_str))
+            .or_else(|| {
+                invocation
+                    .configurable
+                    .get("user_id")
+                    .and_then(Value::as_str)
+            })
             .unwrap_or("scheduler");
         let agent_id = invocation
             .input
             .get("agent_id")
             .and_then(Value::as_str)
-            .or_else(|| invocation.configurable.get("agent_id").and_then(Value::as_str));
+            .or_else(|| {
+                invocation
+                    .configurable
+                    .get("agent_id")
+                    .and_then(Value::as_str)
+            });
         let policy = ReminderDeliveryPolicy::from_input(&invocation.input, agent_id)?;
-        let selected_platforms =
-            resolve_delivery_platforms(&policy, sender.available_platforms())?;
+        let selected_platforms = resolve_delivery_platforms(&policy, sender.available_platforms())?;
 
         self.checkpoint(
             &invocation,
@@ -1122,7 +1132,8 @@ impl QuietHoursPolicy {
             .and_hms_opt(self.end_hour.min(23), 0, 0)
             .map(|naive| chrono::DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc))
             .unwrap_or(local);
-        let mut next_allowed = today_end - chrono::Duration::minutes(self.timezone_offset_minutes as i64);
+        let mut next_allowed =
+            today_end - chrono::Duration::minutes(self.timezone_offset_minutes as i64);
         if next_allowed <= Utc::now() {
             next_allowed += chrono::Duration::days(1);
         }
@@ -1150,9 +1161,8 @@ async fn deliver_with_retries(
         }
     }
 
-    Err(last_error.unwrap_or_else(|| {
-        SchedulerError::WorkflowFailed("reminder delivery failed".to_string())
-    }))
+    Err(last_error
+        .unwrap_or_else(|| SchedulerError::WorkflowFailed("reminder delivery failed".to_string())))
 }
 
 fn merge_json_objects(base: Value, override_value: Value) -> Value {
@@ -1491,13 +1501,15 @@ fn build_agent_runtime(
 ) -> AnyhowResult<Arc<AgentRuntime>> {
     let provider = build_provider(config)?;
     let workspace_root = std::env::current_dir()?;
-    Ok(Arc::new(AgentRuntime::with_memory_stores(
-        provider,
-        "OpenRustClaw".to_string(),
-        memory_store,
-        core_memory_store,
-    )
-    .with_workspace_path(workspace_root)))
+    Ok(Arc::new(
+        AgentRuntime::with_memory_stores(
+            provider,
+            "OpenRustClaw".to_string(),
+            memory_store,
+            core_memory_store,
+        )
+        .with_workspace_path(workspace_root),
+    ))
 }
 
 fn build_provider(config: &AppConfig) -> AnyhowResult<Arc<dyn LlmProvider>> {
@@ -1699,24 +1711,22 @@ mod tests {
         );
 
         let result = dispatcher
-            .dispatch(
-                WorkflowInvocation::new(
-                    "reminder",
-                    "thread-1",
-                    serde_json::json!({
-                        "content": "Take the daily standup notes",
-                        "session_id": Uuid::nil().to_string(),
-                        "delivery_policy": {
-                            "mode": "first_success",
-                            "preferred_channels": ["telegram", "slack"],
-                            "channel_metadata": {
-                                "telegram": {"telegram_chat_id": "chat-123"},
-                                "slack": {"slack_channel": "C123"}
-                            }
+            .dispatch(WorkflowInvocation::new(
+                "reminder",
+                "thread-1",
+                serde_json::json!({
+                    "content": "Take the daily standup notes",
+                    "session_id": Uuid::nil().to_string(),
+                    "delivery_policy": {
+                        "mode": "first_success",
+                        "preferred_channels": ["telegram", "slack"],
+                        "channel_metadata": {
+                            "telegram": {"telegram_chat_id": "chat-123"},
+                            "slack": {"slack_channel": "C123"}
                         }
-                    }),
-                ),
-            )
+                    }
+                }),
+            ))
             .await
             .unwrap();
 

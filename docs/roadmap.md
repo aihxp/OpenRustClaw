@@ -695,6 +695,8 @@ Exit criteria:
 
 Goal: match OpenClaw's operator UX and tooling surface while keeping Rust-native interfaces.
 
+Status: complete for shipped CLI/MCP control-plane surfaces; Web Control UI, richer browser/web tooling, and full orchestrated runtime execution remain open.
+
 Completed:
 
 - [x] MCP stdio server is real.
@@ -703,26 +705,26 @@ Completed:
 
 Remaining:
 
-- [ ] Implement full session-tool parity exposed through MCP, CLI, and runtime APIs.
-- [ ] Add first-class agent profile configs for spawned agents:
+- [x] Implement full session-tool parity exposed through MCP, CLI, and runtime APIs.
+- [x] Add first-class agent profile configs for spawned agents:
   - model/thinking/timeout defaults,
   - tool allow/deny policies,
   - memory inheritance/scope,
   - output policies,
   - profile inheritance/versioning.
-- [ ] Add first-class model profile support:
+- [x] Add first-class model profile support:
   - provider/model capability descriptors,
   - per-model artifact preferences,
   - token/context budget policies,
   - reasoning/latency/cost hints,
   - safe fallback ordering when the primary model becomes unavailable or unauthorized.
-- [ ] Add a recommended model-role policy so onboarding can make sane defaults without hardcoding permanent provider assumptions:
+- [x] Add a recommended model-role policy so onboarding can make sane defaults without hardcoding permanent provider assumptions:
   - recommend Groq for low-latency core runtime use,
   - recommend OpenRouter for broad fallback/control-plane coverage and free-model discovery,
   - recommend SiliconFlow for higher-capability secondary core routing,
   - recommend Ollama as the local/offline safety net,
   - keep all recommendations BYOK and scan-validated rather than assuming any model stays available forever.
-- [ ] Add an artifact-capability matrix to model profiles so OpenRustClaw can reason about which model/tool ecosystems prefer which file formats and how to translate them:
+- [x] Add an artifact-capability matrix to model profiles so OpenRustClaw can reason about which model/tool ecosystems prefer which file formats and how to translate them:
   - markdown instruction files,
   - path-scoped rule files,
   - local-only/private files,
@@ -733,18 +735,18 @@ Remaining:
   - model-per-agent-profile selection,
   - routing by task type, cost, latency, privacy, or capability,
   - operator-visible routing decisions and overrides.
-- [ ] Add a first-class multi-claw execution model so users can choose how many Claws exist and how work is assigned:
+- [x] Add a first-class multi-claw execution model so users can choose how many Claws exist and how work is assigned:
   - `solo_claw` mode where one Claw handles all work,
   - `task_assigned` mode where individual tasks bind to specific Claws,
   - `category_assigned` mode where task categories map to specific Claws,
   - `orchestrated` mode where a quarterback/orchestrator Claw delegates to worker Claws,
   - explicit per-Claw identity, profile, model, tool, and memory scope.
-- [ ] Make multi-claw availability discoverable to both users and Claw itself:
+- [x] Make multi-claw availability discoverable to both users and Claw itself:
   - user-visible mode selection and inspection from onboarding, CLI, and future Control UI,
   - runtime introspection so Claw knows whether it is running solo, assigned, or orchestrated,
   - operator-visible list of available Claws, what they own, and what delegation paths are allowed,
   - prompt/runtime context that tells each Claw when other Claws exist and when delegation is appropriate.
-- [ ] Add first-class task-to-Claw and category-to-Claw assignment policies:
+- [x] Add first-class task-to-Claw and category-to-Claw assignment policies:
   - direct task binding,
   - category routing tables,
   - default fallback Claw,
@@ -915,13 +917,13 @@ Remaining:
   - config migration and legacy-key detection,
   - live reload where safe,
   - backup/restore before destructive config repair.
-- [ ] Add onboarding-time provider/model scanning for the core and control-plane model lanes:
+- [x] Add onboarding-time provider/model scanning for the core and control-plane model lanes:
   - validate user-supplied keys,
   - list available models where provider APIs allow,
   - detect quota/auth/deprecation failures,
   - capture context-window and limit metadata where exposed,
   - recommend role assignments for `core_model`, `control_plane_model`, and ordered fallbacks.
-- [ ] Add an agent self-configuration harness so users can ask Claw to configure itself without the model operating blindly:
+- [x] Add an agent self-configuration harness so users can ask Claw to configure itself without the model operating blindly:
   - machine-readable self-description of enabled features, limits, tools, channels, and current config,
   - typed introspection APIs for provider/account/channel/model state,
   - safe config-edit proposals with validation before apply,
@@ -950,7 +952,7 @@ Remaining:
   - trace links,
   - config validation,
   - secrets/service state.
-- [ ] Expand `doctor` into a high-signal repair and migration surface inspired by OpenClaw:
+- [x] Expand `doctor` into a high-signal repair and migration surface inspired by OpenClaw:
   - `openrustclaw doctor`,
   - `openrustclaw doctor --repair`,
   - `openrustclaw doctor --deep`,

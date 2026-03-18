@@ -250,7 +250,11 @@ mod tests {
     #[test]
     fn new_run_populates_expected_defaults() {
         let client = LangSmithClient::disabled();
-        let run = client.new_run("scheduler_dispatch", RunType::Chain, serde_json::json!({"job_id":"job-1"}));
+        let run = client.new_run(
+            "scheduler_dispatch",
+            RunType::Chain,
+            serde_json::json!({"job_id":"job-1"}),
+        );
         assert_eq!(run.name, "scheduler_dispatch");
         assert!(matches!(run.run_type, RunType::Chain));
         assert_eq!(run.inputs["job_id"], "job-1");

@@ -165,19 +165,18 @@ impl SqliteRagStore {
                         e
                     )))
                 })?;
-                let metadata = serde_json::from_str(&metadata_raw).unwrap_or_else(|_| serde_json::json!({}));
-                let created_at = if let Ok(parsed) = DateTime::parse_from_rfc3339(&created_at_raw)
-                {
+                let metadata =
+                    serde_json::from_str(&metadata_raw).unwrap_or_else(|_| serde_json::json!({}));
+                let created_at = if let Ok(parsed) = DateTime::parse_from_rfc3339(&created_at_raw) {
                     parsed.with_timezone(&Utc)
                 } else {
-                    let naive =
-                        NaiveDateTime::parse_from_str(&created_at_raw, "%Y-%m-%d %H:%M:%S")
-                            .map_err(|e| {
-                                Error::Database(DatabaseError::Query(format!(
-                                    "Invalid rag created_at value: {}",
-                                    e
-                                )))
-                            })?;
+                    let naive = NaiveDateTime::parse_from_str(&created_at_raw, "%Y-%m-%d %H:%M:%S")
+                        .map_err(|e| {
+                            Error::Database(DatabaseError::Query(format!(
+                                "Invalid rag created_at value: {}",
+                                e
+                            )))
+                        })?;
                     DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc)
                 };
 
@@ -310,13 +309,12 @@ impl SqliteRagStore {
                         e
                     )))
                 })?;
-                let total_content_bytes: i64 =
-                    row.try_get("total_content_bytes").map_err(|e| {
-                        Error::Database(DatabaseError::Query(format!(
-                            "Failed to read rag total_content_bytes: {}",
-                            e
-                        )))
-                    })?;
+                let total_content_bytes: i64 = row.try_get("total_content_bytes").map_err(|e| {
+                    Error::Database(DatabaseError::Query(format!(
+                        "Failed to read rag total_content_bytes: {}",
+                        e
+                    )))
+                })?;
                 let last_updated_raw: String = row.try_get("last_updated_at").map_err(|e| {
                     Error::Database(DatabaseError::Query(format!(
                         "Failed to read rag last_updated_at: {}",
@@ -330,11 +328,11 @@ impl SqliteRagStore {
                         let naive =
                             NaiveDateTime::parse_from_str(&last_updated_raw, "%Y-%m-%d %H:%M:%S")
                                 .map_err(|e| {
-                                    Error::Database(DatabaseError::Query(format!(
-                                        "Invalid rag last_updated_at value: {}",
-                                        e
-                                    )))
-                                })?;
+                                Error::Database(DatabaseError::Query(format!(
+                                    "Invalid rag last_updated_at value: {}",
+                                    e
+                                )))
+                            })?;
                         DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc)
                     };
 
@@ -440,7 +438,13 @@ mod tests {
 
         let deleted = store.delete_collection("docs").await.unwrap();
         assert_eq!(deleted, 1);
-        assert!(store.load_collection("docs", None).await.unwrap().is_empty());
+        assert!(
+            store
+                .load_collection("docs", None)
+                .await
+                .unwrap()
+                .is_empty()
+        );
 
         let _ = std::fs::remove_file(db_path);
     }

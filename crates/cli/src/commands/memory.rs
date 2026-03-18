@@ -448,7 +448,10 @@ pub async fn views_export(root: &str, user_id: Option<&str>) -> Result<()> {
     if !persona_path.exists() {
         tokio::fs::write(
             &persona_path,
-            format!("# Persona\n\n## User\n{}\n\n## Values\n- helpful\n- precise\n", user_id),
+            format!(
+                "# Persona\n\n## User\n{}\n\n## Values\n- helpful\n- precise\n",
+                user_id
+            ),
         )
         .await?;
     }
@@ -470,11 +473,17 @@ pub async fn views_export(root: &str, user_id: Option<&str>) -> Result<()> {
         let event_name: String = row.get("event_name");
         let payload: String = row.get("payload");
         let created_at: String = row.get("created_at");
-        ledger.push_str(&format!("## {} [{}]\n{}\n\n", event_name, created_at, payload));
+        ledger.push_str(&format!(
+            "## {} [{}]\n{}\n\n",
+            event_name, created_at, payload
+        ));
     }
     tokio::fs::write(root.join(".claw/memory/ledgers/runtime.md"), ledger).await?;
 
-    println!("✓ Exported file-backed memory views under {}", views_root.display());
+    println!(
+        "✓ Exported file-backed memory views under {}",
+        views_root.display()
+    );
     Ok(())
 }
 
@@ -632,9 +641,18 @@ fn parse_recall_view(content: &str, user_id: &str) -> Vec<MemoryEntry> {
     for line in content.lines() {
         if let Some(rest) = line.strip_prefix("## ") {
             if let Some((id, typ, namespace)) = current_header.take() {
-                entries.push(build_memory_entry(&id, &typ, &namespace, user_id, &current_body));
+                entries.push(build_memory_entry(
+                    &id,
+                    &typ,
+                    &namespace,
+                    user_id,
+                    &current_body,
+                ));
             }
-            let parts: Vec<_> = rest.split('|').map(|part| part.trim().to_string()).collect();
+            let parts: Vec<_> = rest
+                .split('|')
+                .map(|part| part.trim().to_string())
+                .collect();
             if parts.len() == 3 {
                 current_header = Some((parts[0].clone(), parts[1].clone(), parts[2].clone()));
             }
@@ -647,7 +665,13 @@ fn parse_recall_view(content: &str, user_id: &str) -> Vec<MemoryEntry> {
         }
     }
     if let Some((id, typ, namespace)) = current_header.take() {
-        entries.push(build_memory_entry(&id, &typ, &namespace, user_id, &current_body));
+        entries.push(build_memory_entry(
+            &id,
+            &typ,
+            &namespace,
+            user_id,
+            &current_body,
+        ));
     }
     entries
 }

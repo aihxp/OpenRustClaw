@@ -95,7 +95,8 @@ impl WorkspaceArtifactRegistry {
 
         for artifact in artifacts {
             if artifact_applies_to_family(&artifact, family) {
-                let content = fs::read_to_string(root.join(&artifact.path)).map_err(io_to_memory)?;
+                let content =
+                    fs::read_to_string(root.join(&artifact.path)).map_err(io_to_memory)?;
                 if artifact.class == ArtifactClass::Persona {
                     persona = Some(content.clone());
                 }
@@ -173,6 +174,7 @@ const EXACT_PATHS: &[&str] = &[
     ".claw/persona/SOUL.md",
     ".claw/persona/profile.md",
     ".claw/memory/MEMORY.md",
+    ".claw/control/CLAW_RUNTIME.md",
 ];
 
 const GLOB_PATHS: &[&str] = &[
@@ -225,6 +227,7 @@ fn classify_relative_path(path: &str) -> (ArtifactClass, Option<String>, Artifac
         ".cursorrules" => ArtifactClass::CursorRules,
         ".claw/persona/SOUL.md" | ".claw/persona/profile.md" => ArtifactClass::Persona,
         ".claw/memory/MEMORY.md" => ArtifactClass::Memory,
+        ".claw/control/CLAW_RUNTIME.md" => ArtifactClass::Context,
         _ if path.starts_with(".github/instructions/") => ArtifactClass::CopilotInstructions,
         _ if path.starts_with(".cursor/rules/") => ArtifactClass::CursorRules,
         _ if path.starts_with(".continue/rules/") => ArtifactClass::ContinueRules,

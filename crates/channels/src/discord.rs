@@ -269,7 +269,11 @@ impl Channel for DiscordChannel {
             .into());
         }
 
-        if let Some(guild_id) = msg.metadata.get("discord_guild_id").and_then(|v| v.as_str()) {
+        if let Some(guild_id) = msg
+            .metadata
+            .get("discord_guild_id")
+            .and_then(|v| v.as_str())
+        {
             if !self.config.allowed_guilds.is_empty()
                 && !self.config.allowed_guilds.contains(&guild_id.to_string())
             {
@@ -312,51 +316,60 @@ impl Channel for DiscordChannel {
             .metadata
             .get("discord_reaction_target_message_id")
             .and_then(|v| v.as_str())
-            .or_else(|| msg.metadata.get("discord_reply_to_message_id").and_then(|v| v.as_str()));
+            .or_else(|| {
+                msg.metadata
+                    .get("discord_reply_to_message_id")
+                    .and_then(|v| v.as_str())
+            });
 
-        let (request_builder, expects_auth_body) = if let (Some(emoji), Some(target)) =
-            (reaction_emoji, reaction_target)
-        {
-            let encoded = urlencoding::encode(emoji);
-            let url = format!(
-                "{}/channels/{}/messages/{}/reactions/{}/@me",
-                self.api_base_url(),
-                channel_id,
-                target,
-                encoded
-            );
-            (
-                self.client.put(url).header("Authorization", self.header_value()),
-                true,
-            )
-        } else if let (Some(interaction_token), Some(application_id)) =
-            (interaction_token, application_id)
-        {
-            let followup_url = format!(
-                "{}/webhooks/{}/{}",
-                self.api_base_url(),
-                application_id,
-                interaction_token
-            );
-            (self.client.post(followup_url), false)
-        } else if let Some(message_id) = edit_message_id {
-            let url = format!(
-                "{}/channels/{}/messages/{}",
-                self.api_base_url(),
-                channel_id,
-                message_id
-            );
-            (
-                self.client.patch(url).header("Authorization", self.header_value()),
-                true,
-            )
-        } else {
-            let url = format!("{}/channels/{}/messages", self.api_base_url(), channel_id);
-            (
-                self.client.post(url).header("Authorization", self.header_value()),
-                true,
-            )
-        };
+        let (request_builder, expects_auth_body) =
+            if let (Some(emoji), Some(target)) = (reaction_emoji, reaction_target) {
+                let encoded = urlencoding::encode(emoji);
+                let url = format!(
+                    "{}/channels/{}/messages/{}/reactions/{}/@me",
+                    self.api_base_url(),
+                    channel_id,
+                    target,
+                    encoded
+                );
+                (
+                    self.client
+                        .put(url)
+                        .header("Authorization", self.header_value()),
+                    true,
+                )
+            } else if let (Some(interaction_token), Some(application_id)) =
+                (interaction_token, application_id)
+            {
+                let followup_url = format!(
+                    "{}/webhooks/{}/{}",
+                    self.api_base_url(),
+                    application_id,
+                    interaction_token
+                );
+                (self.client.post(followup_url), false)
+            } else if let Some(message_id) = edit_message_id {
+                let url = format!(
+                    "{}/channels/{}/messages/{}",
+                    self.api_base_url(),
+                    channel_id,
+                    message_id
+                );
+                (
+                    self.client
+                        .patch(url)
+                        .header("Authorization", self.header_value()),
+                    true,
+                )
+            } else {
+                let url = format!("{}/channels/{}/messages", self.api_base_url(), channel_id);
+                (
+                    self.client
+                        .post(url)
+                        .header("Authorization", self.header_value()),
+                    true,
+                )
+            };
 
         if expects_auth_body
             && let Some(reference_id) = msg
@@ -381,10 +394,16 @@ impl Channel for DiscordChannel {
         })?;
 
         let status = response.status();
-        let body: serde_json::Value = response.json().await.unwrap_or_else(|_| serde_json::json!({}));
+        let body: serde_json::Value = response
+            .json()
+            .await
+            .unwrap_or_else(|_| serde_json::json!({}));
 
         if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
-            let retry_after = body.get("retry_after").and_then(|v| v.as_f64()).map(|v| v.ceil() as u64);
+            let retry_after = body
+                .get("retry_after")
+                .and_then(|v| v.as_f64())
+                .map(|v| v.ceil() as u64);
             return Err(ChannelError::RateLimited {
                 platform: "discord".to_string(),
                 retry_after_secs: retry_after,
@@ -460,7 +479,10 @@ impl Channel for DiscordChannel {
             })?;
 
         let status = response.status();
-        let body: serde_json::Value = response.json().await.unwrap_or_else(|_| serde_json::json!({}));
+        let body: serde_json::Value = response
+            .json()
+            .await
+            .unwrap_or_else(|_| serde_json::json!({}));
 
         if status == reqwest::StatusCode::UNAUTHORIZED {
             return Err(ChannelError::AuthFailed {
@@ -776,7 +798,11 @@ pub struct DiscordInteractionsHandler {
 
 impl DiscordInteractionsHandler {
     pub fn new(config: DiscordConfig, incoming_tx: mpsc::Sender<IncomingMessage>) -> Result<Self> {
-        let public_key_hex = config.interaction_public_key.as_deref().unwrap_or("").trim();
+        let public_key_hex = config
+            .interaction_public_key
+            .as_deref()
+            .unwrap_or("")
+            .trim();
         if public_key_hex.is_empty() {
             return Err(ChannelError::Config {
                 platform: "discord".to_string(),
@@ -790,12 +816,13 @@ impl DiscordInteractionsHandler {
             platform: "discord".to_string(),
             message: format!("invalid Discord interaction public key: {}", e),
         })?;
-        let key_bytes: [u8; 32] = public_key_bytes
-            .try_into()
-            .map_err(|_| ChannelError::Config {
-                platform: "discord".to_string(),
-                message: "Discord interaction public key must be 32 bytes".to_string(),
-            })?;
+        let key_bytes: [u8; 32] =
+            public_key_bytes
+                .try_into()
+                .map_err(|_| ChannelError::Config {
+                    platform: "discord".to_string(),
+                    message: "Discord interaction public key must be 32 bytes".to_string(),
+                })?;
         let public_key =
             VerifyingKey::from_bytes(&key_bytes).map_err(|e| ChannelError::Config {
                 platform: "discord".to_string(),
@@ -839,7 +866,10 @@ impl DiscordInteractionsHandler {
                 Ok(serde_json::json!({ "type": 5 }))
             }
             other => {
-                debug!(interaction_type = other, "Ignoring unsupported Discord interaction");
+                debug!(
+                    interaction_type = other,
+                    "Ignoring unsupported Discord interaction"
+                );
                 Ok(serde_json::json!({ "type": 5 }))
             }
         }
@@ -863,12 +893,11 @@ impl DiscordInteractionsHandler {
             platform: "discord".to_string(),
             message: format!("Invalid Discord signature: {}", e),
         })?;
-        let signature = Signature::from_slice(&signature_bytes).map_err(|e| {
-            ChannelError::AuthFailed {
+        let signature =
+            Signature::from_slice(&signature_bytes).map_err(|e| ChannelError::AuthFailed {
                 platform: "discord".to_string(),
                 message: format!("Invalid Discord signature: {}", e),
-            }
-        })?;
+            })?;
 
         let mut signed_payload = Vec::with_capacity(timestamp.len() + body.len());
         signed_payload.extend_from_slice(timestamp.as_bytes());
@@ -1126,9 +1155,7 @@ mod tests {
     use tokio::net::TcpListener;
     use tokio_tungstenite::accept_async;
 
-    async fn spawn_mock_gateway(
-        dispatch_event: Option<serde_json::Value>,
-    ) -> String {
+    async fn spawn_mock_gateway(dispatch_event: Option<serde_json::Value>) -> String {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         tokio::spawn(async move {
@@ -1158,7 +1185,8 @@ mod tests {
                     .unwrap();
             }
 
-            let _ = tokio::time::timeout(std::time::Duration::from_millis(500), ws_stream.next()).await;
+            let _ =
+                tokio::time::timeout(std::time::Duration::from_millis(500), ws_stream.next()).await;
         });
 
         format!("ws://{}/gateway", addr)
@@ -1634,11 +1662,17 @@ mod tests {
         assert_eq!(incoming.user_id, "user-1");
         assert_eq!(incoming.metadata["discord_channel_id"], "channel-1");
         assert_eq!(incoming.metadata["discord_thread_id"], "thread-1");
-        assert_eq!(incoming.metadata["discord_referenced_message_id"], "parent-1");
+        assert_eq!(
+            incoming.metadata["discord_referenced_message_id"],
+            "parent-1"
+        );
         assert_eq!(incoming.metadata["discord_is_dm"], false);
         assert_eq!(incoming.metadata["discord_attachment_count"], 1);
         assert_eq!(incoming.metadata["discord_embed_count"], 1);
-        assert_eq!(incoming.metadata["discord_timestamp"], "2026-01-01T00:00:00Z");
+        assert_eq!(
+            incoming.metadata["discord_timestamp"],
+            "2026-01-01T00:00:00Z"
+        );
         channel.disconnect().await.unwrap();
     }
 
@@ -2078,7 +2112,10 @@ mod tests {
         assert_eq!(incoming.content, "hello from discord");
         assert_eq!(incoming.metadata["discord_channel_id"], "channel-1");
         assert_eq!(incoming.metadata["discord_guild_id"], "guild-1");
-        assert_eq!(incoming.metadata["discord_interaction_token"], "interaction-token");
+        assert_eq!(
+            incoming.metadata["discord_interaction_token"],
+            "interaction-token"
+        );
         assert_eq!(incoming.metadata["discord_is_dm"], false);
         assert_eq!(incoming.metadata["discord_author_id"], "user-1");
     }

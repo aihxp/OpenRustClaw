@@ -1,0 +1,1178 @@
+//! File-backed control-plane registry for agent/model/claw profiles and runtime mode.
+
+use std::collections::BTreeMap;
+use std::fs;
+use std::path::{Path, PathBuf};
+
+use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use walkdir::WalkDir;
+
+pub const DEFAULT_CONTROL_DIR: &str = ".claw/control";
+
+fn default_version() -> u32 {
+    1
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_timeout_secs() -> u64 {
+    90
+}
+
+fn default_memory_scope() -> String {
+    "workspace_shared".to_string()
+}
+
+fn default_output_policy() -> String {
+    "standard".to_string()
+}
+
+fn default_claw_role() -> String {
+    "worker".to_string()
+}
+
+fn default_runtime_mode() -> String {
+    "solo_claw".to_string()
+}
+
+fn default_isolation_mode() -> String {
+    "strict".to_string()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentProfileManifest {
+    #[serde(default = "default_version")]
+    pub version: u32,
+    pub profile: AgentProfileSpec,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentProfileSpec {
+    pub id: String,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub extends: Vec<String>,
+    #[serde(default)]
+    pub model_profile_id: Option<String>,
+    #[serde(default)]
+    pub thinking_level: Option<String>,
+    #[serde(default = "default_timeout_secs")]
+    pub timeout_secs: u64,
+    #[serde(default)]
+    pub tool_allow: Vec<String>,
+    #[serde(default)]
+    pub tool_deny: Vec<String>,
+    #[serde(default = "default_memory_scope")]
+    pub memory_scope: String,
+    #[serde(default = "default_output_policy")]
+    pub output_policy: String,
+    #[serde(default)]
+    pub metadata: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelProfileManifest {
+    #[serde(default = "default_version")]
+    pub version: u32,
+    pub model: ModelProfileSpec,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelProfileSpec {
+    pub id: String,
+    pub provider: String,
+    pub model: String,
+    #[serde(default)]
+    pub context_window: Option<usize>,
+    #[serde(default)]
+    pub max_output_tokens: Option<usize>,
+    #[serde(default = "default_true")]
+    pub supports_tools: bool,
+    #[serde(default)]
+    pub supports_vision: bool,
+    #[serde(default)]
+    pub role_tags: Vec<String>,
+    #[serde(default)]
+    pub artifact_preferences: Vec<String>,
+    #[serde(default)]
+    pub fallback_order: Vec<String>,
+    #[serde(default)]
+    pub latency_hint: Option<String>,
+    #[serde(default)]
+    pub cost_hint: Option<String>,
+    #[serde(default)]
+    pub reasoning_hint: Option<String>,
+    #[serde(default)]
+    pub metadata: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClawManifest {
+    #[serde(default = "default_version")]
+    pub version: u32,
+    pub claw: ClawSpec,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClawSpec {
+    pub id: String,
+    #[serde(default)]
+    pub name: Option<String>,
+    pub agent_profile_id: String,
+    pub model_profile_id: String,
+    #[serde(default = "default_claw_role")]
+    pub role: String,
+    #[serde(default = "default_memory_scope")]
+    pub memory_scope: String,
+    #[serde(default)]
+    pub task_categories: Vec<String>,
+    #[serde(default)]
+    pub tool_allow: Vec<String>,
+    #[serde(default)]
+    pub tool_deny: Vec<String>,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub metadata: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RuntimeModeManifest {
+    #[serde(default = "default_version")]
+    pub version: u32,
+    pub runtime: RuntimeModeSpec,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RuntimeModeSpec {
+    #[serde(default = "default_runtime_mode")]
+    pub mode: String,
+    #[serde(default)]
+    pub default_claw_id: Option<String>,
+    #[serde(default)]
+    pub orchestrator_claw_id: Option<String>,
+    #[serde(default)]
+    pub task_assignments: BTreeMap<String, String>,
+    #[serde(default)]
+    pub category_assignments: BTreeMap<String, String>,
+    #[serde(default)]
+    pub allow_shared_context: bool,
+    #[serde(default = "default_isolation_mode")]
+    pub isolation_mode: String,
+    #[serde(default)]
+    pub metadata: Value,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ControlRegistry {
+    pub agent_profiles: BTreeMap<String, AgentProfileSpec>,
+    pub model_profiles: BTreeMap<String, ModelProfileSpec>,
+    pub claws: BTreeMap<String, ClawSpec>,
+    pub runtime: Option<RuntimeModeSpec>,
+}
+
+pub fn control_root_for(root: impl AsRef<Path>) -> PathBuf {
+    root.as_ref().join(DEFAULT_CONTROL_DIR)
+}
+
+fn agents_dir(root: &Path) -> PathBuf {
+    root.join("agents")
+}
+
+fn models_dir(root: &Path) -> PathBuf {
+    root.join("models")
+}
+
+fn claws_dir(root: &Path) -> PathBuf {
+    root.join("claws")
+}
+
+fn runtime_path(root: &Path) -> PathBuf {
+    root.join("runtime.yaml")
+}
+
+fn runtime_artifact_path(root: &Path) -> PathBuf {
+    root.join("CLAW_RUNTIME.md")
+}
+
+pub fn resolve_root(root: Option<&str>) -> Result<PathBuf> {
+    let cwd = std::env::current_dir().context("Failed to determine current workspace root")?;
+    Ok(match root {
+        Some(value) => {
+            let path = PathBuf::from(value);
+            if path.is_absolute() {
+                path
+            } else {
+                cwd.join(path)
+            }
+        }
+        None => control_root_for(cwd),
+    })
+}
+
+pub fn init(root: Option<&str>) -> Result<()> {
+    let root = resolve_root(root)?;
+    fs::create_dir_all(agents_dir(&root))
+        .with_context(|| format!("Failed to create '{}'", agents_dir(&root).display()))?;
+    fs::create_dir_all(models_dir(&root))
+        .with_context(|| format!("Failed to create '{}'", models_dir(&root).display()))?;
+    fs::create_dir_all(claws_dir(&root))
+        .with_context(|| format!("Failed to create '{}'", claws_dir(&root).display()))?;
+
+    write_if_missing(
+        &agents_dir(&root).join("default.yaml"),
+        &serde_yaml::to_string(&AgentProfileManifest {
+            version: 1,
+            profile: AgentProfileSpec {
+                id: "default".to_string(),
+                name: Some("Default Operator".to_string()),
+                extends: vec![],
+                model_profile_id: Some("core-groq".to_string()),
+                thinking_level: Some("balanced".to_string()),
+                timeout_secs: 90,
+                tool_allow: vec![],
+                tool_deny: vec![],
+                memory_scope: "workspace_shared".to_string(),
+                output_policy: "standard".to_string(),
+                metadata: serde_json::json!({
+                    "purpose": "default interactive claw"
+                }),
+            },
+        })?,
+    )?;
+    write_if_missing(
+        &agents_dir(&root).join("orchestrator.yaml"),
+        &serde_yaml::to_string(&AgentProfileManifest {
+            version: 1,
+            profile: AgentProfileSpec {
+                id: "orchestrator".to_string(),
+                name: Some("Quarterback".to_string()),
+                extends: vec!["default".to_string()],
+                model_profile_id: Some("control-openrouter".to_string()),
+                thinking_level: Some("planner".to_string()),
+                timeout_secs: 120,
+                tool_allow: vec!["memory_search".to_string(), "session_list".to_string()],
+                tool_deny: vec![],
+                memory_scope: "workspace_shared".to_string(),
+                output_policy: "delegating".to_string(),
+                metadata: serde_json::json!({
+                    "purpose": "quarterback/orchestrator claw"
+                }),
+            },
+        })?,
+    )?;
+
+    write_if_missing(
+        &models_dir(&root).join("core-groq.yaml"),
+        &serde_yaml::to_string(&ModelProfileManifest {
+            version: 1,
+            model: ModelProfileSpec {
+                id: "core-groq".to_string(),
+                provider: "groq".to_string(),
+                model: "llama-3.3-70b-versatile".to_string(),
+                context_window: Some(131_072),
+                max_output_tokens: Some(4096),
+                supports_tools: true,
+                supports_vision: false,
+                role_tags: vec!["core_model".to_string(), "low_latency".to_string()],
+                artifact_preferences: vec!["AGENTS.md".to_string(), "AI.md".to_string()],
+                fallback_order: vec!["control-openrouter".to_string(), "local-ollama".to_string()],
+                latency_hint: Some("low".to_string()),
+                cost_hint: Some("low".to_string()),
+                reasoning_hint: Some("balanced".to_string()),
+                metadata: serde_json::json!({
+                    "recommended_role": "core_model",
+                    "byok": true
+                }),
+            },
+        })?,
+    )?;
+    write_if_missing(
+        &models_dir(&root).join("control-openrouter.yaml"),
+        &serde_yaml::to_string(&ModelProfileManifest {
+            version: 1,
+            model: ModelProfileSpec {
+                id: "control-openrouter".to_string(),
+                provider: "openrouter".to_string(),
+                model: "openrouter/auto".to_string(),
+                context_window: Some(128_000),
+                max_output_tokens: Some(4096),
+                supports_tools: true,
+                supports_vision: true,
+                role_tags: vec!["control_plane_model".to_string(), "fallback".to_string()],
+                artifact_preferences: vec![
+                    "AGENTS.md".to_string(),
+                    ".github/copilot-instructions.md".to_string(),
+                ],
+                fallback_order: vec!["local-ollama".to_string()],
+                latency_hint: Some("variable".to_string()),
+                cost_hint: Some("free_or_low_cost".to_string()),
+                reasoning_hint: Some("broad_compatibility".to_string()),
+                metadata: serde_json::json!({
+                    "recommended_role": "control_plane_model",
+                    "byok": true
+                }),
+            },
+        })?,
+    )?;
+    write_if_missing(
+        &models_dir(&root).join("local-ollama.yaml"),
+        &serde_yaml::to_string(&ModelProfileManifest {
+            version: 1,
+            model: ModelProfileSpec {
+                id: "local-ollama".to_string(),
+                provider: "ollama".to_string(),
+                model: "llama3.1".to_string(),
+                context_window: Some(128_000),
+                max_output_tokens: Some(4096),
+                supports_tools: true,
+                supports_vision: false,
+                role_tags: vec!["offline_fallback".to_string()],
+                artifact_preferences: vec!["Modelfile".to_string(), "AGENTS.md".to_string()],
+                fallback_order: vec![],
+                latency_hint: Some("local".to_string()),
+                cost_hint: Some("free".to_string()),
+                reasoning_hint: Some("offline".to_string()),
+                metadata: serde_json::json!({
+                    "recommended_role": "offline_fallback",
+                    "byok": false
+                }),
+            },
+        })?,
+    )?;
+
+    write_if_missing(
+        &claws_dir(&root).join("main.yaml"),
+        &serde_yaml::to_string(&ClawManifest {
+            version: 1,
+            claw: ClawSpec {
+                id: "main".to_string(),
+                name: Some("Main Claw".to_string()),
+                agent_profile_id: "default".to_string(),
+                model_profile_id: "core-groq".to_string(),
+                role: "primary".to_string(),
+                memory_scope: "workspace_shared".to_string(),
+                task_categories: vec!["general".to_string()],
+                tool_allow: vec![],
+                tool_deny: vec![],
+                enabled: true,
+                metadata: serde_json::json!({}),
+            },
+        })?,
+    )?;
+    write_if_missing(
+        &claws_dir(&root).join("orchestrator.yaml"),
+        &serde_yaml::to_string(&ClawManifest {
+            version: 1,
+            claw: ClawSpec {
+                id: "orchestrator".to_string(),
+                name: Some("Orchestrator Claw".to_string()),
+                agent_profile_id: "orchestrator".to_string(),
+                model_profile_id: "control-openrouter".to_string(),
+                role: "orchestrator".to_string(),
+                memory_scope: "workspace_shared".to_string(),
+                task_categories: vec!["routing".to_string(), "planning".to_string()],
+                tool_allow: vec![],
+                tool_deny: vec![],
+                enabled: true,
+                metadata: serde_json::json!({}),
+            },
+        })?,
+    )?;
+
+    if !runtime_path(&root).exists() {
+        let runtime = RuntimeModeManifest {
+            version: 1,
+            runtime: RuntimeModeSpec {
+                mode: "solo_claw".to_string(),
+                default_claw_id: Some("main".to_string()),
+                orchestrator_claw_id: None,
+                task_assignments: BTreeMap::new(),
+                category_assignments: BTreeMap::new(),
+                allow_shared_context: false,
+                isolation_mode: "strict".to_string(),
+                metadata: serde_json::json!({}),
+            },
+        };
+        write_yaml(&runtime_path(&root), &runtime)?;
+    }
+
+    sync_runtime_artifact(&root)?;
+    println!("Initialized control registry at {}", root.display());
+    Ok(())
+}
+
+pub fn list(root: Option<&str>) -> Result<()> {
+    let registry = load_registry(resolve_root(root)?)?;
+    println!(
+        "Runtime mode: {} (default_claw={}, orchestrator={})",
+        registry
+            .runtime
+            .as_ref()
+            .map(|runtime| runtime.mode.as_str())
+            .unwrap_or("unconfigured"),
+        registry
+            .runtime
+            .as_ref()
+            .and_then(|runtime| runtime.default_claw_id.as_deref())
+            .unwrap_or("-"),
+        registry
+            .runtime
+            .as_ref()
+            .and_then(|runtime| runtime.orchestrator_claw_id.as_deref())
+            .unwrap_or("-")
+    );
+
+    println!("Agent profiles:");
+    for profile in registry.agent_profiles.values() {
+        println!(
+            "- {} model_profile={} extends={} memory_scope={} output_policy={}",
+            profile.id,
+            profile.model_profile_id.as_deref().unwrap_or("-"),
+            if profile.extends.is_empty() {
+                "-".to_string()
+            } else {
+                profile.extends.join(",")
+            },
+            profile.memory_scope,
+            profile.output_policy
+        );
+    }
+
+    println!("Model profiles:");
+    for profile in registry.model_profiles.values() {
+        println!(
+            "- {} provider={} model={} roles={} fallbacks={}",
+            profile.id,
+            profile.provider,
+            profile.model,
+            if profile.role_tags.is_empty() {
+                "-".to_string()
+            } else {
+                profile.role_tags.join(",")
+            },
+            if profile.fallback_order.is_empty() {
+                "-".to_string()
+            } else {
+                profile.fallback_order.join(",")
+            }
+        );
+    }
+
+    println!("Claws:");
+    for claw in registry.claws.values() {
+        println!(
+            "- {} role={} agent_profile={} model_profile={} categories={}",
+            claw.id,
+            claw.role,
+            claw.agent_profile_id,
+            claw.model_profile_id,
+            if claw.task_categories.is_empty() {
+                "-".to_string()
+            } else {
+                claw.task_categories.join(",")
+            }
+        );
+    }
+
+    Ok(())
+}
+
+pub fn show(root: Option<&str>, kind: &str, id: Option<&str>) -> Result<()> {
+    let registry = load_registry(resolve_root(root)?)?;
+    match kind {
+        "runtime" => println!(
+            "{}",
+            serde_yaml::to_string(&RuntimeModeManifest {
+                version: 1,
+                runtime: registry.runtime.unwrap_or(RuntimeModeSpec {
+                    mode: default_runtime_mode(),
+                    default_claw_id: None,
+                    orchestrator_claw_id: None,
+                    task_assignments: BTreeMap::new(),
+                    category_assignments: BTreeMap::new(),
+                    allow_shared_context: false,
+                    isolation_mode: default_isolation_mode(),
+                    metadata: serde_json::json!({}),
+                }),
+            })?
+        ),
+        "agent" => {
+            let id = id.context("agent show requires --id")?;
+            let profile = registry
+                .agent_profiles
+                .get(id)
+                .with_context(|| format!("Unknown agent profile '{id}'"))?;
+            println!(
+                "{}",
+                serde_yaml::to_string(&AgentProfileManifest {
+                    version: 1,
+                    profile: profile.clone(),
+                })?
+            );
+        }
+        "model" => {
+            let id = id.context("model show requires --id")?;
+            let profile = registry
+                .model_profiles
+                .get(id)
+                .with_context(|| format!("Unknown model profile '{id}'"))?;
+            println!(
+                "{}",
+                serde_yaml::to_string(&ModelProfileManifest {
+                    version: 1,
+                    model: profile.clone(),
+                })?
+            );
+        }
+        "claw" => {
+            let id = id.context("claw show requires --id")?;
+            let claw = registry
+                .claws
+                .get(id)
+                .with_context(|| format!("Unknown claw '{id}'"))?;
+            println!(
+                "{}",
+                serde_yaml::to_string(&ClawManifest {
+                    version: 1,
+                    claw: claw.clone(),
+                })?
+            );
+        }
+        _ => anyhow::bail!("kind must be one of: runtime, agent, model, claw"),
+    }
+    Ok(())
+}
+
+pub fn validate(root: Option<&str>) -> Result<()> {
+    let root = resolve_root(root)?;
+    let registry = load_registry(root.clone())?;
+    validate_registry(&registry)?;
+    println!(
+        "Control registry is valid: {} agent profiles, {} model profiles, {} claws",
+        registry.agent_profiles.len(),
+        registry.model_profiles.len(),
+        registry.claws.len()
+    );
+    Ok(())
+}
+
+pub fn describe(root: Option<&str>, json: bool) -> Result<()> {
+    let description = describe_registry(resolve_root(root)?)?;
+    if json {
+        println!("{}", serde_json::to_string_pretty(&description)?);
+    } else {
+        println!("Execution mode: {}", description["execution_mode"]);
+        println!(
+            "Default claw: {}",
+            description["default_claw"].as_str().unwrap_or("-")
+        );
+        println!(
+            "Available claws: {}",
+            description["available_claws"]
+                .as_array()
+                .map(|items| {
+                    items
+                        .iter()
+                        .filter_map(|item| item.get("id").and_then(|value| value.as_str()))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                })
+                .unwrap_or_default()
+        );
+        println!(
+            "Isolation mode: {}",
+            description["isolation_mode"].as_str().unwrap_or("-")
+        );
+    }
+    Ok(())
+}
+
+pub fn create_agent(
+    root: Option<&str>,
+    id: &str,
+    name: Option<&str>,
+    model_profile_id: Option<&str>,
+    extends: &[String],
+    timeout_secs: u64,
+    memory_scope: Option<&str>,
+    output_policy: Option<&str>,
+    tool_allow: &[String],
+    tool_deny: &[String],
+) -> Result<()> {
+    let root = resolve_root(root)?;
+    let registry = load_registry(root.clone())?;
+    for parent in extends {
+        if !registry.agent_profiles.contains_key(parent) {
+            anyhow::bail!("cannot extend missing agent profile '{}'", parent);
+        }
+    }
+    if let Some(model_profile_id) = model_profile_id
+        && !registry.model_profiles.contains_key(model_profile_id)
+    {
+        anyhow::bail!(
+            "agent profile '{}' references missing model profile '{}'",
+            id,
+            model_profile_id
+        );
+    }
+    fs::create_dir_all(agents_dir(&root))?;
+    let manifest = AgentProfileManifest {
+        version: 1,
+        profile: AgentProfileSpec {
+            id: id.to_string(),
+            name: name.map(ToString::to_string),
+            extends: extends.to_vec(),
+            model_profile_id: model_profile_id.map(ToString::to_string),
+            thinking_level: None,
+            timeout_secs,
+            tool_allow: tool_allow.to_vec(),
+            tool_deny: tool_deny.to_vec(),
+            memory_scope: memory_scope.unwrap_or("workspace_shared").to_string(),
+            output_policy: output_policy.unwrap_or("standard").to_string(),
+            metadata: serde_json::json!({}),
+        },
+    };
+    write_yaml(
+        &agents_dir(&root).join(format!("{}.yaml", slugify(id))),
+        &manifest,
+    )?;
+    sync_runtime_artifact(&root)?;
+    println!("Wrote agent profile {}", id);
+    Ok(())
+}
+
+pub fn create_model(
+    root: Option<&str>,
+    id: &str,
+    provider: &str,
+    model: &str,
+    context_window: Option<usize>,
+    max_output_tokens: Option<usize>,
+    latency_hint: Option<&str>,
+    cost_hint: Option<&str>,
+    reasoning_hint: Option<&str>,
+    role_tags: &[String],
+    artifact_preferences: &[String],
+    fallback_order: &[String],
+) -> Result<()> {
+    let root = resolve_root(root)?;
+    let registry = load_registry(root.clone())?;
+    for fallback in fallback_order {
+        if !registry.model_profiles.contains_key(fallback) && fallback != id {
+            anyhow::bail!("model fallback '{}' does not exist yet", fallback);
+        }
+    }
+    fs::create_dir_all(models_dir(&root))?;
+    let manifest = ModelProfileManifest {
+        version: 1,
+        model: ModelProfileSpec {
+            id: id.to_string(),
+            provider: provider.to_string(),
+            model: model.to_string(),
+            context_window,
+            max_output_tokens,
+            supports_tools: true,
+            supports_vision: false,
+            role_tags: role_tags.to_vec(),
+            artifact_preferences: artifact_preferences.to_vec(),
+            fallback_order: fallback_order.to_vec(),
+            latency_hint: latency_hint.map(ToString::to_string),
+            cost_hint: cost_hint.map(ToString::to_string),
+            reasoning_hint: reasoning_hint.map(ToString::to_string),
+            metadata: serde_json::json!({}),
+        },
+    };
+    write_yaml(
+        &models_dir(&root).join(format!("{}.yaml", slugify(id))),
+        &manifest,
+    )?;
+    sync_runtime_artifact(&root)?;
+    println!("Wrote model profile {}", id);
+    Ok(())
+}
+
+pub fn create_claw(
+    root: Option<&str>,
+    id: &str,
+    name: Option<&str>,
+    agent_profile_id: &str,
+    model_profile_id: &str,
+    role: Option<&str>,
+    categories: &[String],
+    memory_scope: Option<&str>,
+) -> Result<()> {
+    let root = resolve_root(root)?;
+    let registry = load_registry(root.clone())?;
+    if !registry.agent_profiles.contains_key(agent_profile_id) {
+        anyhow::bail!("missing agent profile '{}'", agent_profile_id);
+    }
+    if !registry.model_profiles.contains_key(model_profile_id) {
+        anyhow::bail!("missing model profile '{}'", model_profile_id);
+    }
+    fs::create_dir_all(claws_dir(&root))?;
+    let manifest = ClawManifest {
+        version: 1,
+        claw: ClawSpec {
+            id: id.to_string(),
+            name: name.map(ToString::to_string),
+            agent_profile_id: agent_profile_id.to_string(),
+            model_profile_id: model_profile_id.to_string(),
+            role: role.unwrap_or("worker").to_string(),
+            memory_scope: memory_scope.unwrap_or("workspace_shared").to_string(),
+            task_categories: categories.to_vec(),
+            tool_allow: vec![],
+            tool_deny: vec![],
+            enabled: true,
+            metadata: serde_json::json!({}),
+        },
+    };
+    write_yaml(
+        &claws_dir(&root).join(format!("{}.yaml", slugify(id))),
+        &manifest,
+    )?;
+    sync_runtime_artifact(&root)?;
+    println!("Wrote claw {}", id);
+    Ok(())
+}
+
+pub fn configure_mode(
+    root: Option<&str>,
+    mode: &str,
+    default_claw_id: Option<&str>,
+    orchestrator_claw_id: Option<&str>,
+    allow_shared_context: bool,
+    isolation_mode: Option<&str>,
+) -> Result<()> {
+    let root = resolve_root(root)?;
+    let mut runtime = read_runtime(&root)?;
+    runtime.runtime.mode = mode.to_string();
+    runtime.runtime.default_claw_id = default_claw_id.map(ToString::to_string);
+    runtime.runtime.orchestrator_claw_id = orchestrator_claw_id.map(ToString::to_string);
+    runtime.runtime.allow_shared_context = allow_shared_context;
+    if let Some(isolation_mode) = isolation_mode {
+        runtime.runtime.isolation_mode = isolation_mode.to_string();
+    }
+    write_yaml(&runtime_path(&root), &runtime)?;
+    sync_runtime_artifact(&root)?;
+    println!("Configured runtime mode {}", mode);
+    Ok(())
+}
+
+pub fn assign_task(root: Option<&str>, task_id: &str, claw_id: &str) -> Result<()> {
+    let root = resolve_root(root)?;
+    let mut runtime = read_runtime(&root)?;
+    runtime
+        .runtime
+        .task_assignments
+        .insert(task_id.to_string(), claw_id.to_string());
+    write_yaml(&runtime_path(&root), &runtime)?;
+    sync_runtime_artifact(&root)?;
+    println!("Assigned task {} -> {}", task_id, claw_id);
+    Ok(())
+}
+
+pub fn assign_category(root: Option<&str>, category: &str, claw_id: &str) -> Result<()> {
+    let root = resolve_root(root)?;
+    let mut runtime = read_runtime(&root)?;
+    runtime
+        .runtime
+        .category_assignments
+        .insert(category.to_string(), claw_id.to_string());
+    write_yaml(&runtime_path(&root), &runtime)?;
+    sync_runtime_artifact(&root)?;
+    println!("Assigned category {} -> {}", category, claw_id);
+    Ok(())
+}
+
+pub fn load_registry(root: PathBuf) -> Result<ControlRegistry> {
+    let mut registry = ControlRegistry::default();
+    if !root.exists() {
+        return Ok(registry);
+    }
+
+    let agents_root = agents_dir(&root);
+    if agents_root.exists() {
+        for entry in WalkDir::new(&agents_root)
+            .into_iter()
+            .filter_map(|entry| entry.ok())
+        {
+            if !entry.file_type().is_file() || !is_yaml(entry.path()) {
+                continue;
+            }
+            let manifest: AgentProfileManifest = read_yaml(entry.path())?;
+            registry
+                .agent_profiles
+                .insert(manifest.profile.id.clone(), manifest.profile);
+        }
+    }
+
+    let models_root = models_dir(&root);
+    if models_root.exists() {
+        for entry in WalkDir::new(&models_root)
+            .into_iter()
+            .filter_map(|entry| entry.ok())
+        {
+            if !entry.file_type().is_file() || !is_yaml(entry.path()) {
+                continue;
+            }
+            let manifest: ModelProfileManifest = read_yaml(entry.path())?;
+            registry
+                .model_profiles
+                .insert(manifest.model.id.clone(), manifest.model);
+        }
+    }
+
+    let claws_root = claws_dir(&root);
+    if claws_root.exists() {
+        for entry in WalkDir::new(&claws_root)
+            .into_iter()
+            .filter_map(|entry| entry.ok())
+        {
+            if !entry.file_type().is_file() || !is_yaml(entry.path()) {
+                continue;
+            }
+            let manifest: ClawManifest = read_yaml(entry.path())?;
+            registry
+                .claws
+                .insert(manifest.claw.id.clone(), manifest.claw);
+        }
+    }
+
+    if runtime_path(&root).exists() {
+        registry.runtime = Some(read_runtime(&root)?.runtime);
+    }
+
+    Ok(registry)
+}
+
+pub fn describe_registry(root: PathBuf) -> Result<Value> {
+    let registry = load_registry(root)?;
+    validate_registry(&registry)?;
+
+    let available_claws: Vec<_> = registry
+        .claws
+        .values()
+        .map(|claw| {
+            serde_json::json!({
+                "id": claw.id,
+                "name": claw.name,
+                "role": claw.role,
+                "agent_profile_id": claw.agent_profile_id,
+                "model_profile_id": claw.model_profile_id,
+                "memory_scope": claw.memory_scope,
+                "task_categories": claw.task_categories,
+                "enabled": claw.enabled,
+            })
+        })
+        .collect();
+    let runtime = registry.runtime.unwrap_or(RuntimeModeSpec {
+        mode: default_runtime_mode(),
+        default_claw_id: None,
+        orchestrator_claw_id: None,
+        task_assignments: BTreeMap::new(),
+        category_assignments: BTreeMap::new(),
+        allow_shared_context: false,
+        isolation_mode: default_isolation_mode(),
+        metadata: serde_json::json!({}),
+    });
+
+    Ok(serde_json::json!({
+        "execution_mode": runtime.mode,
+        "default_claw": runtime.default_claw_id,
+        "orchestrator_claw": runtime.orchestrator_claw_id,
+        "allow_shared_context": runtime.allow_shared_context,
+        "isolation_mode": runtime.isolation_mode,
+        "task_assignments": runtime.task_assignments,
+        "category_assignments": runtime.category_assignments,
+        "available_claws": available_claws,
+        "agent_profiles": registry.agent_profiles.values().map(|profile| serde_json::json!({
+            "id": profile.id,
+            "model_profile_id": profile.model_profile_id,
+            "memory_scope": profile.memory_scope,
+            "output_policy": profile.output_policy,
+            "extends": profile.extends,
+        })).collect::<Vec<_>>(),
+        "model_profiles": registry.model_profiles.values().map(|profile| serde_json::json!({
+            "id": profile.id,
+            "provider": profile.provider,
+            "model": profile.model,
+            "role_tags": profile.role_tags,
+            "artifact_preferences": profile.artifact_preferences,
+            "fallback_order": profile.fallback_order,
+        })).collect::<Vec<_>>(),
+    }))
+}
+
+pub fn sync_runtime_artifact(root: &Path) -> Result<()> {
+    let description = describe_registry(root.to_path_buf())?;
+    let runtime_md = render_runtime_markdown(&description);
+    fs::write(runtime_artifact_path(root), runtime_md.as_bytes()).with_context(|| {
+        format!(
+            "Failed to write '{}'",
+            runtime_artifact_path(root).display()
+        )
+    })?;
+    Ok(())
+}
+
+pub fn validate_registry(registry: &ControlRegistry) -> Result<()> {
+    if let Some(runtime) = &registry.runtime {
+        match runtime.mode.as_str() {
+            "solo_claw" | "task_assigned" | "category_assigned" | "orchestrated" => {}
+            other => anyhow::bail!("invalid runtime mode '{}'", other),
+        }
+
+        if let Some(default_claw) = &runtime.default_claw_id
+            && !registry.claws.contains_key(default_claw)
+        {
+            anyhow::bail!("runtime.default_claw_id '{}' does not exist", default_claw);
+        }
+        if let Some(orchestrator) = &runtime.orchestrator_claw_id
+            && !registry.claws.contains_key(orchestrator)
+        {
+            anyhow::bail!(
+                "runtime.orchestrator_claw_id '{}' does not exist",
+                orchestrator
+            );
+        }
+        for (task, claw_id) in &runtime.task_assignments {
+            if !registry.claws.contains_key(claw_id) {
+                anyhow::bail!(
+                    "task assignment '{}' references unknown claw '{}'",
+                    task,
+                    claw_id
+                );
+            }
+        }
+        for (category, claw_id) in &runtime.category_assignments {
+            if !registry.claws.contains_key(claw_id) {
+                anyhow::bail!(
+                    "category assignment '{}' references unknown claw '{}'",
+                    category,
+                    claw_id
+                );
+            }
+        }
+    }
+
+    for profile in registry.agent_profiles.values() {
+        for parent in &profile.extends {
+            if !registry.agent_profiles.contains_key(parent) {
+                anyhow::bail!(
+                    "agent profile '{}' extends missing profile '{}'",
+                    profile.id,
+                    parent
+                );
+            }
+        }
+        if let Some(model_profile_id) = &profile.model_profile_id
+            && !registry.model_profiles.contains_key(model_profile_id)
+        {
+            anyhow::bail!(
+                "agent profile '{}' references missing model profile '{}'",
+                profile.id,
+                model_profile_id
+            );
+        }
+    }
+
+    for profile in registry.model_profiles.values() {
+        for fallback in &profile.fallback_order {
+            if !registry.model_profiles.contains_key(fallback) {
+                anyhow::bail!(
+                    "model profile '{}' fallback '{}' does not exist",
+                    profile.id,
+                    fallback
+                );
+            }
+        }
+    }
+
+    for claw in registry.claws.values() {
+        if !registry.agent_profiles.contains_key(&claw.agent_profile_id) {
+            anyhow::bail!(
+                "claw '{}' references missing agent profile '{}'",
+                claw.id,
+                claw.agent_profile_id
+            );
+        }
+        if !registry.model_profiles.contains_key(&claw.model_profile_id) {
+            anyhow::bail!(
+                "claw '{}' references missing model profile '{}'",
+                claw.id,
+                claw.model_profile_id
+            );
+        }
+    }
+
+    Ok(())
+}
+
+fn render_runtime_markdown(description: &Value) -> String {
+    let mut output = String::new();
+    output.push_str("# OpenRustClaw Runtime Mode\n\n");
+    output.push_str(&format!(
+        "- Execution mode: `{}`\n",
+        description["execution_mode"]
+            .as_str()
+            .unwrap_or("solo_claw")
+    ));
+    if let Some(default_claw) = description["default_claw"].as_str() {
+        output.push_str(&format!("- Default Claw: `{default_claw}`\n"));
+    }
+    if let Some(orchestrator) = description["orchestrator_claw"].as_str() {
+        output.push_str(&format!("- Orchestrator Claw: `{orchestrator}`\n"));
+    }
+    output.push_str(&format!(
+        "- Shared context allowed: `{}`\n",
+        description["allow_shared_context"]
+            .as_bool()
+            .unwrap_or(false)
+    ));
+    output.push_str(&format!(
+        "- Isolation mode: `{}`\n\n",
+        description["isolation_mode"].as_str().unwrap_or("strict")
+    ));
+    output.push_str("## Available Claws\n\n");
+    if let Some(items) = description["available_claws"].as_array() {
+        for item in items {
+            output.push_str(&format!(
+                "- `{}` role=`{}` model_profile=`{}` memory_scope=`{}` categories={}\n",
+                item["id"].as_str().unwrap_or("unknown"),
+                item["role"].as_str().unwrap_or("worker"),
+                item["model_profile_id"].as_str().unwrap_or("-"),
+                item["memory_scope"].as_str().unwrap_or("-"),
+                item["task_categories"]
+                    .as_array()
+                    .map(|values| values
+                        .iter()
+                        .filter_map(|value| value.as_str())
+                        .collect::<Vec<_>>()
+                        .join(","))
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or_else(|| "-".to_string())
+            ));
+        }
+    }
+    output.push_str("\n## Delegation Contract\n\n");
+    output.push_str("- Worker Claws report back to the primary/orchestrator Claw.\n");
+    output.push_str(
+        "- Cross-task contamination is disallowed unless shared context is explicitly enabled.\n",
+    );
+    output.push_str("- Task/category assignments are authoritative when present.\n");
+    output.push_str(
+        "- Use delegation only when another Claw is available and better suited for the task.\n",
+    );
+    output
+}
+
+fn read_runtime(root: &Path) -> Result<RuntimeModeManifest> {
+    if !runtime_path(root).exists() {
+        return Ok(RuntimeModeManifest {
+            version: 1,
+            runtime: RuntimeModeSpec {
+                mode: default_runtime_mode(),
+                default_claw_id: None,
+                orchestrator_claw_id: None,
+                task_assignments: BTreeMap::new(),
+                category_assignments: BTreeMap::new(),
+                allow_shared_context: false,
+                isolation_mode: default_isolation_mode(),
+                metadata: serde_json::json!({}),
+            },
+        });
+    }
+    read_yaml(&runtime_path(root))
+}
+
+fn write_if_missing(path: &Path, content: &str) -> Result<()> {
+    if !path.exists() {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(path, content.as_bytes())
+            .with_context(|| format!("Failed to write '{}'", path.display()))?;
+    }
+    Ok(())
+}
+
+fn write_yaml<T: Serialize>(path: &Path, value: &T) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(path, serde_yaml::to_string(value)?.as_bytes())
+        .with_context(|| format!("Failed to write '{}'", path.display()))?;
+    Ok(())
+}
+
+fn read_yaml<T: for<'de> Deserialize<'de>>(path: &Path) -> Result<T> {
+    let raw =
+        fs::read_to_string(path).with_context(|| format!("Failed to read '{}'", path.display()))?;
+    serde_yaml::from_str(&raw).with_context(|| format!("Failed to parse '{}'", path.display()))
+}
+
+fn is_yaml(path: &Path) -> bool {
+    matches!(
+        path.extension().and_then(|ext| ext.to_str()),
+        Some("yaml" | "yml")
+    )
+}
+
+fn slugify(input: &str) -> String {
+    let mut slug = String::with_capacity(input.len());
+    let mut last_dash = false;
+    for ch in input.chars() {
+        let next = if ch.is_ascii_alphanumeric() {
+            last_dash = false;
+            ch.to_ascii_lowercase()
+        } else if !last_dash {
+            last_dash = true;
+            '-'
+        } else {
+            continue;
+        };
+        slug.push(next);
+    }
+    slug.trim_matches('-').to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn init_creates_valid_registry() {
+        let dir = tempdir().unwrap();
+        init(Some(dir.path().to_str().unwrap())).unwrap();
+        let registry = load_registry(dir.path().to_path_buf()).unwrap();
+        validate_registry(&registry).unwrap();
+        assert!(registry.agent_profiles.contains_key("default"));
+        assert!(registry.model_profiles.contains_key("core-groq"));
+        assert!(registry.claws.contains_key("main"));
+        assert!(runtime_artifact_path(dir.path()).exists());
+    }
+
+    #[test]
+    fn assign_task_updates_runtime() {
+        let dir = tempdir().unwrap();
+        init(Some(dir.path().to_str().unwrap())).unwrap();
+        assign_task(Some(dir.path().to_str().unwrap()), "daily-review", "main").unwrap();
+        let registry = load_registry(dir.path().to_path_buf()).unwrap();
+        assert_eq!(
+            registry
+                .runtime
+                .unwrap()
+                .task_assignments
+                .get("daily-review")
+                .cloned(),
+            Some("main".to_string())
+        );
+    }
+}

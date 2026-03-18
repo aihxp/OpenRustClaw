@@ -65,6 +65,7 @@ use super::channels::{
     ChannelBindingSpec, ChannelRegistry, ChannelSendPolicy, ensure_account_manifest,
     identity_from_message, load_registry, message_bot_mentioned, resolve_root,
 };
+use super::control;
 
 /// Run the start command - load config, optionally start the compatibility/experimental sidecar, and start the gateway.
 pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
@@ -173,7 +174,9 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
     } else if config.sidecar.auto_start && config.sidecar.is_disabled() {
         warn!("Python sidecar auto_start is set, but sidecar role is disabled; skipping startup");
     } else if config.sidecar.supports_experimental_lane() {
-        info!("Python sidecar is configured as an experimental LangGraph lane and will not be used for production compatibility dispatch unless explicitly started");
+        info!(
+            "Python sidecar is configured as an experimental LangGraph lane and will not be used for production compatibility dispatch unless explicitly started"
+        );
     }
 
     // Create session manager
@@ -681,7 +684,10 @@ fn spawn_channel_task(
                                         .and_then(|value| value.as_u64())
                                         .unwrap_or(0);
                                     if delay_ms > 0 {
-                                        tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms)).await;
+                                        tokio::time::sleep(tokio::time::Duration::from_millis(
+                                            delay_ms,
+                                        ))
+                                        .await;
                                     }
                                 }
                             }
@@ -763,20 +769,23 @@ impl ChannelDeliveryRouter {
 
 #[async_trait]
 impl ReminderSender for ChannelDeliveryRouter {
-    async fn send(&self, platform: Platform, message: OutgoingMessage) -> openrustclaw_scheduler::Result<()> {
+    async fn send(
+        &self,
+        platform: Platform,
+        message: OutgoingMessage,
+    ) -> openrustclaw_scheduler::Result<()> {
         let Some(channel) = self.channels.get(&platform) else {
-            return Err(openrustclaw_core::error::SchedulerError::WorkflowFailed(format!(
-                "channel '{}' is not connected for reminder delivery",
-                platform
-            )));
+            return Err(openrustclaw_core::error::SchedulerError::WorkflowFailed(
+                format!(
+                    "channel '{}' is not connected for reminder delivery",
+                    platform
+                ),
+            ));
         };
 
-        channel
-            .send(message)
-            .await
-            .map_err(|error| {
-                openrustclaw_core::error::SchedulerError::WorkflowFailed(error.to_string())
-            })
+        channel.send(message).await.map_err(|error| {
+            openrustclaw_core::error::SchedulerError::WorkflowFailed(error.to_string())
+        })
     }
 
     fn available_platforms(&self) -> Vec<Platform> {
@@ -1181,7 +1190,9 @@ impl ChannelAgent {
         )?;
         {
             let mut registry = self.channel_registry.write().await;
-            registry.accounts.insert(account.id.clone(), account.clone());
+            registry
+                .accounts
+                .insert(account.id.clone(), account.clone());
         }
 
         if account.blocked || !account.enabled {
@@ -1575,9 +1586,7 @@ fn channel_route_key_with_binding(
         prefix.push(format!("account={account_id}"));
     }
 
-    if let Some(scope) =
-        channel_scope_from_metadata(&message.metadata, thread_overrides_channel)
-    {
+    if let Some(scope) = channel_scope_from_metadata(&message.metadata, thread_overrides_channel) {
         if group_strategy == "shared_channel" {
             prefix.push(scope);
             prefix.push("shared".to_string());
@@ -1776,21 +1785,24 @@ fn split_message_blocks(content: &str, max_chunk_chars: usize) -> Vec<String> {
     chunks
 }
 
-fn channel_scope_from_metadata(metadata: &serde_json::Value, thread_overrides_channel: bool) -> Option<String> {
+fn channel_scope_from_metadata(
+    metadata: &serde_json::Value,
+    thread_overrides_channel: bool,
+) -> Option<String> {
     let primary_keys: &[&str] = if thread_overrides_channel {
         &[
-        "slack_thread_ts",
-        "slack_channel",
-        "telegram_chat_id",
-        "discord_thread_id",
-        "discord_channel_id",
-        "google_chat_thread",
-        "google_chat_space",
-        "teams_conversation_id",
-        "matrix_room_id",
-        "whatsapp_chat_id",
-        "line_room_id",
-        "meta_thread_id",
+            "slack_thread_ts",
+            "slack_channel",
+            "telegram_chat_id",
+            "discord_thread_id",
+            "discord_channel_id",
+            "google_chat_thread",
+            "google_chat_space",
+            "teams_conversation_id",
+            "matrix_room_id",
+            "whatsapp_chat_id",
+            "line_room_id",
+            "meta_thread_id",
         ]
     } else {
         &[
@@ -1867,7 +1879,11 @@ fn derive_turn_memory_candidates(
         "always ",
     ];
     let lower = normalized.to_lowercase();
-    if interesting_prefixes.iter().any(|prefix| lower.starts_with(prefix)) || lower.contains("please remember") {
+    if interesting_prefixes
+        .iter()
+        .any(|prefix| lower.starts_with(prefix))
+        || lower.contains("please remember")
+    {
         candidates.push(MemoryEntry {
             id: Uuid::new_v4(),
             memory_type: MemoryType::Semantic,
@@ -1895,7 +1911,10 @@ fn derive_turn_memory_candidates(
         || lower.contains("failed")
         || outbound.to_lowercase().contains("error")
     {
-        let content = format!("User turn:\n{}\n\nAssistant reply:\n{}", normalized, outbound);
+        let content = format!(
+            "User turn:\n{}\n\nAssistant reply:\n{}",
+            normalized, outbound
+        );
         candidates.push(MemoryEntry {
             id: Uuid::new_v4(),
             memory_type: MemoryType::Episodic,
@@ -2408,6 +2427,68 @@ fn build_mcp_server(
                 }),
             },
             McpServerTool {
+                name: "list_agent_profiles".to_string(),
+                description: "List file-backed agent profiles from .claw/control.".to_string(),
+                input_schema: serde_json::json!({"type": "object", "properties": {}}),
+            },
+            McpServerTool {
+                name: "inspect_agent_profile".to_string(),
+                description: "Inspect one file-backed agent profile.".to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"}
+                    },
+                    "required": ["id"]
+                }),
+            },
+            McpServerTool {
+                name: "list_model_profiles".to_string(),
+                description: "List file-backed model profiles from .claw/control.".to_string(),
+                input_schema: serde_json::json!({"type": "object", "properties": {}}),
+            },
+            McpServerTool {
+                name: "inspect_model_profile".to_string(),
+                description: "Inspect one file-backed model profile.".to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"}
+                    },
+                    "required": ["id"]
+                }),
+            },
+            McpServerTool {
+                name: "list_claws".to_string(),
+                description: "List configured Claws and their bindings from .claw/control."
+                    .to_string(),
+                input_schema: serde_json::json!({"type": "object", "properties": {}}),
+            },
+            McpServerTool {
+                name: "inspect_claw".to_string(),
+                description: "Inspect one configured Claw.".to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"}
+                    },
+                    "required": ["id"]
+                }),
+            },
+            McpServerTool {
+                name: "inspect_runtime_mode".to_string(),
+                description: "Inspect the current solo/task/category/orchestrated runtime mode."
+                    .to_string(),
+                input_schema: serde_json::json!({"type": "object", "properties": {}}),
+            },
+            McpServerTool {
+                name: "self_describe_runtime".to_string(),
+                description:
+                    "Return a machine-readable self-description of the current control plane."
+                        .to_string(),
+                input_schema: serde_json::json!({"type": "object", "properties": {}}),
+            },
+            McpServerTool {
                 name: "list_scheduled_jobs".to_string(),
                 description: "List scheduled jobs persisted in SQLite.".to_string(),
                 input_schema: serde_json::json!({
@@ -2440,7 +2521,9 @@ fn build_mcp_server(
             },
             McpServerTool {
                 name: "inspect_scheduled_job".to_string(),
-                description: "Inspect one scheduled job/task including priority and manifest metadata.".to_string(),
+                description:
+                    "Inspect one scheduled job/task including priority and manifest metadata."
+                        .to_string(),
                 input_schema: serde_json::json!({
                     "type": "object",
                     "properties": {
@@ -2451,7 +2534,8 @@ fn build_mcp_server(
             },
             McpServerTool {
                 name: "reprioritize_scheduled_job".to_string(),
-                description: "Change a scheduled job/task priority (lower numbers run first).".to_string(),
+                description: "Change a scheduled job/task priority (lower numbers run first)."
+                    .to_string(),
                 input_schema: serde_json::json!({
                     "type": "object",
                     "properties": {
@@ -2871,7 +2955,10 @@ fn build_mcp_server(
             let memory_store = memory_store_for_timeline.clone();
             block_on_tool(async move {
                 let entries = memory_store
-                    .list_recent(request.namespace.as_deref(), request.limit.unwrap_or(20).max(1))
+                    .list_recent(
+                        request.namespace.as_deref(),
+                        request.limit.unwrap_or(20).max(1),
+                    )
                     .await?;
                 Ok(serde_json::json!({ "entries": entries }))
             })
@@ -2886,7 +2973,10 @@ fn build_mcp_server(
             let memory_store = memory_store_for_archive.clone();
             block_on_tool(async move {
                 let entries = memory_store
-                    .list_archive_entries(request.namespace.as_deref(), request.limit.unwrap_or(20).max(1))
+                    .list_archive_entries(
+                        request.namespace.as_deref(),
+                        request.limit.unwrap_or(20).max(1),
+                    )
                     .await?;
                 Ok(serde_json::json!({ "entries": entries }))
             })
@@ -2951,7 +3041,11 @@ fn build_mcp_server(
                     "route_key": request.route_key,
                 });
                 session_store
-                    .create_or_update(&session, request.route_key.as_deref(), openrustclaw_db::SessionStatus::Active)
+                    .create_or_update(
+                        &session,
+                        request.route_key.as_deref(),
+                        openrustclaw_db::SessionStatus::Active,
+                    )
                     .await
                     .map_err(|e| mcp_tool_error(e.to_string()))?;
                 Ok(serde_json::json!({ "session": session }))
@@ -2981,8 +3075,8 @@ fn build_mcp_server(
                     .list_history(&request.id, 128)
                     .await
                     .map_err(|e| mcp_tool_error(e.to_string()))?;
-                let provider = build_channel_provider(&config)
-                    .map_err(|e| mcp_tool_error(e.to_string()))?;
+                let provider =
+                    build_channel_provider(&config).map_err(|e| mcp_tool_error(e.to_string()))?;
                 let memory_store = Arc::new(SqliteMemoryStore::new(pool.clone()));
                 let core_memory_store = Arc::new(SqliteCoreMemoryStore::new(pool.clone()));
                 let runtime = AgentRuntime::with_memory_stores(
@@ -3060,14 +3154,18 @@ fn build_mcp_server(
     let workspace_for_artifact_render = workspace_root.clone();
     server.register_handler(
         "render_workspace_artifacts",
-        traced_mcp_handler(langsmith.clone(), "render_workspace_artifacts", move |args| {
-            let request: McpRenderArtifactsArgs = parse_tool_args(args)?;
-            let workspace_root = workspace_for_artifact_render.clone();
-            Ok(serde_json::json!(
-                WorkspaceArtifactRegistry::resolve(&workspace_root, &request.model)
-                    .map_err(|e| mcp_tool_error(e.to_string()))?
-            ))
-        }),
+        traced_mcp_handler(
+            langsmith.clone(),
+            "render_workspace_artifacts",
+            move |args| {
+                let request: McpRenderArtifactsArgs = parse_tool_args(args)?;
+                let workspace_root = workspace_for_artifact_render.clone();
+                Ok(serde_json::json!(
+                    WorkspaceArtifactRegistry::resolve(&workspace_root, &request.model)
+                        .map_err(|e| mcp_tool_error(e.to_string()))?
+                ))
+            },
+        ),
     );
 
     let workspace_for_artifact_sync = workspace_root.clone();
@@ -3080,6 +3178,139 @@ fn build_mcp_server(
                 "written": WorkspaceArtifactRegistry::sync_preferred(&workspace_root, &request.model)
                     .map_err(|e| mcp_tool_error(e.to_string()))?,
             }))
+        }),
+    );
+
+    let workspace_for_agent_profiles = workspace_root.clone();
+    server.register_handler(
+        "list_agent_profiles",
+        traced_mcp_handler(langsmith.clone(), "list_agent_profiles", move |_| {
+            let control_root = control::control_root_for(&workspace_for_agent_profiles);
+            let description = control::describe_registry(control_root)
+                .map_err(|e| mcp_tool_error(e.to_string()))?;
+            Ok(serde_json::json!({
+                "agent_profiles": description["agent_profiles"].clone(),
+            }))
+        }),
+    );
+
+    let workspace_for_agent_profile = workspace_root.clone();
+    server.register_handler(
+        "inspect_agent_profile",
+        traced_mcp_handler(langsmith.clone(), "inspect_agent_profile", move |args| {
+            let id = args
+                .get("id")
+                .and_then(|value| value.as_str())
+                .context("Missing required field 'id'")
+                .map_err(|e| mcp_tool_error(e.to_string()))?;
+            let control_root = control::control_root_for(&workspace_for_agent_profile);
+            let registry =
+                control::load_registry(control_root).map_err(|e| mcp_tool_error(e.to_string()))?;
+            let profile = registry
+                .agent_profiles
+                .get(id)
+                .cloned()
+                .with_context(|| format!("Unknown agent profile '{id}'"))
+                .map_err(|e| mcp_tool_error(e.to_string()))?;
+            Ok(serde_json::to_value(profile).unwrap_or_default())
+        }),
+    );
+
+    let workspace_for_model_profiles = workspace_root.clone();
+    server.register_handler(
+        "list_model_profiles",
+        traced_mcp_handler(langsmith.clone(), "list_model_profiles", move |_| {
+            let control_root = control::control_root_for(&workspace_for_model_profiles);
+            let description = control::describe_registry(control_root)
+                .map_err(|e| mcp_tool_error(e.to_string()))?;
+            Ok(serde_json::json!({
+                "model_profiles": description["model_profiles"].clone(),
+            }))
+        }),
+    );
+
+    let workspace_for_model_profile = workspace_root.clone();
+    server.register_handler(
+        "inspect_model_profile",
+        traced_mcp_handler(langsmith.clone(), "inspect_model_profile", move |args| {
+            let id = args
+                .get("id")
+                .and_then(|value| value.as_str())
+                .context("Missing required field 'id'")
+                .map_err(|e| mcp_tool_error(e.to_string()))?;
+            let control_root = control::control_root_for(&workspace_for_model_profile);
+            let registry =
+                control::load_registry(control_root).map_err(|e| mcp_tool_error(e.to_string()))?;
+            let profile = registry
+                .model_profiles
+                .get(id)
+                .cloned()
+                .with_context(|| format!("Unknown model profile '{id}'"))
+                .map_err(|e| mcp_tool_error(e.to_string()))?;
+            Ok(serde_json::to_value(profile).unwrap_or_default())
+        }),
+    );
+
+    let workspace_for_claws = workspace_root.clone();
+    server.register_handler(
+        "list_claws",
+        traced_mcp_handler(langsmith.clone(), "list_claws", move |_| {
+            let control_root = control::control_root_for(&workspace_for_claws);
+            let description = control::describe_registry(control_root)
+                .map_err(|e| mcp_tool_error(e.to_string()))?;
+            Ok(serde_json::json!({
+                "claws": description["available_claws"].clone(),
+            }))
+        }),
+    );
+
+    let workspace_for_claw = workspace_root.clone();
+    server.register_handler(
+        "inspect_claw",
+        traced_mcp_handler(langsmith.clone(), "inspect_claw", move |args| {
+            let id = args
+                .get("id")
+                .and_then(|value| value.as_str())
+                .context("Missing required field 'id'")
+                .map_err(|e| mcp_tool_error(e.to_string()))?;
+            let control_root = control::control_root_for(&workspace_for_claw);
+            let registry =
+                control::load_registry(control_root).map_err(|e| mcp_tool_error(e.to_string()))?;
+            let claw = registry
+                .claws
+                .get(id)
+                .cloned()
+                .with_context(|| format!("Unknown claw '{id}'"))
+                .map_err(|e| mcp_tool_error(e.to_string()))?;
+            Ok(serde_json::to_value(claw).unwrap_or_default())
+        }),
+    );
+
+    let workspace_for_runtime_mode = workspace_root.clone();
+    server.register_handler(
+        "inspect_runtime_mode",
+        traced_mcp_handler(langsmith.clone(), "inspect_runtime_mode", move |_| {
+            let control_root = control::control_root_for(&workspace_for_runtime_mode);
+            let description = control::describe_registry(control_root)
+                .map_err(|e| mcp_tool_error(e.to_string()))?;
+            Ok(serde_json::json!({
+                "execution_mode": description["execution_mode"].clone(),
+                "default_claw": description["default_claw"].clone(),
+                "orchestrator_claw": description["orchestrator_claw"].clone(),
+                "allow_shared_context": description["allow_shared_context"].clone(),
+                "isolation_mode": description["isolation_mode"].clone(),
+                "task_assignments": description["task_assignments"].clone(),
+                "category_assignments": description["category_assignments"].clone(),
+            }))
+        }),
+    );
+
+    let workspace_for_self_description = workspace_root.clone();
+    server.register_handler(
+        "self_describe_runtime",
+        traced_mcp_handler(langsmith.clone(), "self_describe_runtime", move |_| {
+            let control_root = control::control_root_for(&workspace_for_self_description);
+            control::describe_registry(control_root).map_err(|e| mcp_tool_error(e.to_string()))
         }),
     );
 
@@ -3311,7 +3542,9 @@ fn build_mcp_server(
                         e
                     )))
                 })?
-                .ok_or_else(|| mcp_tool_error(format!("Scheduled job '{}' not found", request.id)))?;
+                .ok_or_else(|| {
+                    mcp_tool_error(format!("Scheduled job '{}' not found", request.id))
+                })?;
 
                 let latest_run = sqlx::query(
                     r#"
@@ -3373,39 +3606,43 @@ fn build_mcp_server(
     let pool_for_reprioritize_job = pool_for_create_jobs.clone();
     server.register_handler(
         "reprioritize_scheduled_job",
-        traced_mcp_handler(langsmith.clone(), "reprioritize_scheduled_job", move |args| {
-            let request: McpReprioritizeScheduledJobArgs = parse_tool_args(args)?;
-            let pool = pool_for_reprioritize_job.clone();
-            block_on_tool(async move {
-                let result = sqlx::query(
-                    "UPDATE scheduled_jobs SET priority = ? WHERE id = ? OR name = ?",
-                )
-                .bind(request.priority)
-                .bind(&request.id)
-                .bind(&request.id)
-                .execute(&pool)
-                .await
-                .map_err(|e| {
-                    CoreError::Mcp(McpError::ToolExecution(format!(
-                        "Failed to reprioritize scheduled job: {}",
-                        e
-                    )))
-                })?;
+        traced_mcp_handler(
+            langsmith.clone(),
+            "reprioritize_scheduled_job",
+            move |args| {
+                let request: McpReprioritizeScheduledJobArgs = parse_tool_args(args)?;
+                let pool = pool_for_reprioritize_job.clone();
+                block_on_tool(async move {
+                    let result = sqlx::query(
+                        "UPDATE scheduled_jobs SET priority = ? WHERE id = ? OR name = ?",
+                    )
+                    .bind(request.priority)
+                    .bind(&request.id)
+                    .bind(&request.id)
+                    .execute(&pool)
+                    .await
+                    .map_err(|e| {
+                        CoreError::Mcp(McpError::ToolExecution(format!(
+                            "Failed to reprioritize scheduled job: {}",
+                            e
+                        )))
+                    })?;
 
-                if result.rows_affected() == 0 {
-                    return Err(mcp_tool_error(format!(
-                        "Scheduled job '{}' not found",
-                        request.id
-                    )));
-                }
+                    if result.rows_affected() == 0 {
+                        return Err(mcp_tool_error(format!(
+                            "Scheduled job '{}' not found",
+                            request.id
+                        )));
+                    }
 
-                Ok(serde_json::json!({
-                    "updated": true,
-                    "id": request.id,
-                    "priority": request.priority
-                }))
-            })
-        }),
+                    Ok(serde_json::json!({
+                        "updated": true,
+                        "id": request.id,
+                        "priority": request.priority
+                    }))
+                })
+            },
+        ),
     );
 
     server.register_handler(
@@ -4380,7 +4617,8 @@ mod tests {
             .await
             .expect("migrations");
 
-        let registry_root = std::env::temp_dir().join(format!("openrustclaw-channel-tests-{}", Uuid::new_v4()));
+        let registry_root =
+            std::env::temp_dir().join(format!("openrustclaw-channel-tests-{}", Uuid::new_v4()));
         std::fs::create_dir_all(&registry_root).expect("registry root");
 
         (
@@ -4568,10 +4806,13 @@ mod tests {
 
     #[test]
     fn discord_thread_scope_takes_priority_over_channel_scope() {
-        let scope = channel_scope_from_metadata(&serde_json::json!({
-            "discord_channel_id": "channel-1",
-            "discord_thread_id": "thread-1"
-        }), true);
+        let scope = channel_scope_from_metadata(
+            &serde_json::json!({
+                "discord_channel_id": "channel-1",
+                "discord_thread_id": "thread-1"
+            }),
+            true,
+        );
 
         assert_eq!(scope.as_deref(), Some("discord_thread_id=thread-1"));
     }

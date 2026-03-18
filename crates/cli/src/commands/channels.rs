@@ -288,7 +288,11 @@ pub fn bind(
     Ok(())
 }
 
-fn mutate_account(root: Option<&str>, id: &str, mutator: impl FnOnce(&mut ChannelAccountSpec)) -> Result<()> {
+fn mutate_account(
+    root: Option<&str>,
+    id: &str,
+    mutator: impl FnOnce(&mut ChannelAccountSpec),
+) -> Result<()> {
     let root = resolve_root(root)?;
     let path = account_manifest_path(&root, id);
     let raw = fs::read_to_string(&path)
@@ -332,7 +336,9 @@ pub fn load_registry(root: PathBuf) -> Result<ChannelRegistry> {
             .with_context(|| format!("Failed to read '{}'", path.display()))?;
         let manifest: ChannelAccountManifest =
             serde_yaml::from_str(&raw).with_context(|| format!("Invalid '{}'", path.display()))?;
-        registry.accounts.insert(manifest.account.id.clone(), manifest.account);
+        registry
+            .accounts
+            .insert(manifest.account.id.clone(), manifest.account);
     }
 
     for path in detect_yaml_paths(&bindings_dir(&root)) {
@@ -449,16 +455,28 @@ pub fn message_channel_scope(message: &IncomingMessage) -> Option<String> {
 
 pub fn message_is_group(message: &IncomingMessage) -> bool {
     let metadata = &message.metadata;
-    if let Some(value) = metadata.get("telegram_is_group").and_then(|value| value.as_bool()) {
+    if let Some(value) = metadata
+        .get("telegram_is_group")
+        .and_then(|value| value.as_bool())
+    {
         return value;
     }
-    if let Some(value) = metadata.get("discord_is_dm").and_then(|value| value.as_bool()) {
+    if let Some(value) = metadata
+        .get("discord_is_dm")
+        .and_then(|value| value.as_bool())
+    {
         return !value;
     }
-    if let Some(value) = metadata.get("slack_is_group").and_then(|value| value.as_bool()) {
+    if let Some(value) = metadata
+        .get("slack_is_group")
+        .and_then(|value| value.as_bool())
+    {
         return value;
     }
-    if let Some(value) = metadata.get("webchat_is_group").and_then(|value| value.as_bool()) {
+    if let Some(value) = metadata
+        .get("webchat_is_group")
+        .and_then(|value| value.as_bool())
+    {
         return value;
     }
     false
@@ -484,7 +502,10 @@ fn detect_yaml_paths(root: &Path) -> Vec<PathBuf> {
     if !root.exists() {
         return paths;
     }
-    for entry in WalkDir::new(root).into_iter().filter_map(std::result::Result::ok) {
+    for entry in WalkDir::new(root)
+        .into_iter()
+        .filter_map(std::result::Result::ok)
+    {
         if !entry.file_type().is_file() {
             continue;
         }

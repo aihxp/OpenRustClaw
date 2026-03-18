@@ -228,8 +228,7 @@ mod tests {
 
     #[test]
     fn test_sidecar_manager_with_env() {
-        let manager =
-            SidecarManager::new("python3".to_string(), 50051).with_env("FOO", "bar");
+        let manager = SidecarManager::new("python3".to_string(), 50051).with_env("FOO", "bar");
         assert_eq!(manager.env.get("FOO").map(String::as_str), Some("bar"));
     }
 }

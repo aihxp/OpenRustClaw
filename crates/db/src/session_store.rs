@@ -98,7 +98,10 @@ impl SqliteSessionStore {
         .execute(&self.pool)
         .await
         .map_err(|e| {
-            Error::Database(DatabaseError::Query(format!("Failed to persist session: {}", e)))
+            Error::Database(DatabaseError::Query(format!(
+                "Failed to persist session: {}",
+                e
+            )))
         })?;
 
         Ok(())
@@ -116,11 +119,19 @@ impl SqliteSessionStore {
         .bind(session_id)
         .execute(&self.pool)
         .await
-        .map_err(|e| Error::Database(DatabaseError::Query(format!("Failed to touch session: {}", e))))?;
+        .map_err(|e| {
+            Error::Database(DatabaseError::Query(format!(
+                "Failed to touch session: {}",
+                e
+            )))
+        })?;
         Ok(())
     }
 
-    pub async fn find_active_by_route_key(&self, route_key: &str) -> Result<Option<PersistedSession>> {
+    pub async fn find_active_by_route_key(
+        &self,
+        route_key: &str,
+    ) -> Result<Option<PersistedSession>> {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
             SELECT * FROM sessions
@@ -157,7 +168,10 @@ impl SqliteSessionStore {
         .fetch_optional(&self.pool)
         .await
         .map_err(|e| {
-            Error::Database(DatabaseError::Query(format!("Failed to load session: {}", e)))
+            Error::Database(DatabaseError::Query(format!(
+                "Failed to load session: {}",
+                e
+            )))
         })?;
 
         match row {
@@ -200,7 +214,10 @@ impl SqliteSessionStore {
             }
         }
         .map_err(|e| {
-            Error::Database(DatabaseError::Query(format!("Failed to list sessions: {}", e)))
+            Error::Database(DatabaseError::Query(format!(
+                "Failed to list sessions: {}",
+                e
+            )))
         })?;
 
         rows.into_iter()
@@ -209,7 +226,11 @@ impl SqliteSessionStore {
     }
 
     pub async fn append_message(&self, session_id: &str, message: &Message) -> Result<()> {
-        let tool_calls = message.tool_calls.as_ref().map(serialize_json).transpose()?;
+        let tool_calls = message
+            .tool_calls
+            .as_ref()
+            .map(serialize_json)
+            .transpose()?;
         sqlx::query(
             r#"
             INSERT INTO conversations (
@@ -337,7 +358,10 @@ impl SqliteSessionStore {
 
 fn serialize_json<T: serde::Serialize>(value: &T) -> Result<String> {
     serde_json::to_string(value).map_err(|e| {
-        Error::Database(DatabaseError::Query(format!("Failed to serialize JSON: {}", e)))
+        Error::Database(DatabaseError::Query(format!(
+            "Failed to serialize JSON: {}",
+            e
+        )))
     })
 }
 
@@ -358,8 +382,9 @@ fn parse_time(value: &str) -> Result<DateTime<Utc>> {
 
 fn row_to_message(row: ConversationRow) -> Result<Message> {
     Ok(Message {
-        id: Uuid::parse_str(&row.id)
-            .map_err(|e| Error::Database(DatabaseError::Query(format!("Invalid message id: {}", e))))?,
+        id: Uuid::parse_str(&row.id).map_err(|e| {
+            Error::Database(DatabaseError::Query(format!("Invalid message id: {}", e)))
+        })?,
         role: parse_role(&row.role),
         content: row.content,
         tool_calls: row
@@ -368,7 +393,10 @@ fn row_to_message(row: ConversationRow) -> Result<Message> {
             .map(serde_json::from_str::<Vec<ToolCall>>)
             .transpose()
             .map_err(|e| {
-                Error::Database(DatabaseError::Query(format!("Invalid tool_calls JSON: {}", e)))
+                Error::Database(DatabaseError::Query(format!(
+                    "Invalid tool_calls JSON: {}",
+                    e
+                )))
             })?,
         tool_call_id: row.tool_call_id,
         token_count: row.token_count.map(|value| value as usize),
@@ -486,13 +514,23 @@ mod tests {
             .await
             .unwrap();
 
-        let loaded = store.get_session(&session.id.to_string()).await.unwrap().unwrap();
+        let loaded = store
+            .get_session(&session.id.to_string())
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(loaded.session.user_id, "user-1");
 
-        let history = store.list_history(&session.id.to_string(), 10).await.unwrap();
+        let history = store
+            .list_history(&session.id.to_string(), 10)
+            .await
+            .unwrap();
         assert_eq!(history.len(), 2);
 
-        let sessions = store.list_sessions(Some(SessionStatus::Active), 10).await.unwrap();
+        let sessions = store
+            .list_sessions(Some(SessionStatus::Active), 10)
+            .await
+            .unwrap();
         assert_eq!(sessions.len(), 1);
     }
 }

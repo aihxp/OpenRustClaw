@@ -1,8 +1,8 @@
 //! gRPC client to the Python sidecar.
 
 use crate::contract::WorkflowInvocation;
-use crate::proto::orchestration::orchestration_service_client::OrchestrationServiceClient;
 use crate::proto::orchestration::WorkflowResponse;
+use crate::proto::orchestration::orchestration_service_client::OrchestrationServiceClient;
 use openrustclaw_core::error::{Error, Result};
 use std::collections::HashMap;
 use tonic::transport::Channel;
@@ -115,7 +115,10 @@ mod tests {
     #[test]
     fn test_workflow_invocation_request_with_typed_configurable() {
         let req = WorkflowInvocation::new("wf", "thread-1", serde_json::json!({"message": "hi"}))
-            .with_metadata(HashMap::from([("user_id".to_string(), "user_123".to_string())]))
+            .with_metadata(HashMap::from([(
+                "user_id".to_string(),
+                "user_123".to_string(),
+            )]))
             .with_configurable(serde_json::Map::from_iter([(
                 "workflow_metadata".to_string(),
                 serde_json::json!({"limit": 3, "enabled": true}),

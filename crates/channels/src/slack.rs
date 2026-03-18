@@ -234,7 +234,10 @@ impl Channel for SlackChannel {
             })?;
 
         let status = response.status();
-        let body: serde_json::Value = response.json().await.unwrap_or_else(|_| serde_json::json!({}));
+        let body: serde_json::Value = response
+            .json()
+            .await
+            .unwrap_or_else(|_| serde_json::json!({}));
 
         if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
             return Err(ChannelError::RateLimited {
@@ -327,7 +330,10 @@ impl Channel for SlackChannel {
             })?;
 
         let status = response.status();
-        let body: serde_json::Value = response.json().await.unwrap_or_else(|_| serde_json::json!({}));
+        let body: serde_json::Value = response
+            .json()
+            .await
+            .unwrap_or_else(|_| serde_json::json!({}));
 
         if status == reqwest::StatusCode::UNAUTHORIZED {
             return Err(ChannelError::AuthFailed {
@@ -357,7 +363,10 @@ impl Channel for SlackChannel {
         if !self.workspace_allowed(team_id) {
             return Err(ChannelError::PermissionDenied {
                 platform: "slack".to_string(),
-                message: format!("workspace {} is not allowed", team_id.unwrap_or("<missing>")),
+                message: format!(
+                    "workspace {} is not allowed",
+                    team_id.unwrap_or("<missing>")
+                ),
             }
             .into());
         }
@@ -448,10 +457,12 @@ impl SlackEventHandler {
         })?;
 
         let request_age = chrono::Utc::now().timestamp()
-            - timestamp.parse::<i64>().map_err(|e| ChannelError::AuthFailed {
-                platform: "slack".to_string(),
-                message: format!("Invalid Slack request timestamp: {}", e),
-            })?;
+            - timestamp
+                .parse::<i64>()
+                .map_err(|e| ChannelError::AuthFailed {
+                    platform: "slack".to_string(),
+                    message: format!("Invalid Slack request timestamp: {}", e),
+                })?;
 
         if request_age.abs() > 60 * 5 {
             return Err(ChannelError::AuthFailed {
@@ -491,7 +502,10 @@ impl SlackEventHandler {
         if !self.workspace_allowed(team_id) {
             return Err(ChannelError::PermissionDenied {
                 platform: "slack".to_string(),
-                message: format!("workspace {} is not allowed", team_id.unwrap_or("<missing>")),
+                message: format!(
+                    "workspace {} is not allowed",
+                    team_id.unwrap_or("<missing>")
+                ),
             }
             .into());
         }
@@ -504,16 +518,19 @@ impl SlackEventHandler {
                 message: "Slack event callback missing event payload".to_string(),
             })?;
 
-        let event_type = event.get("type").and_then(|value| value.as_str()).unwrap_or("");
+        let event_type = event
+            .get("type")
+            .and_then(|value| value.as_str())
+            .unwrap_or("");
         if !matches!(event_type, "message" | "app_mention") {
             return Ok(());
         }
 
         if event_type == "message"
             && event
-            .get("subtype")
-            .and_then(|value| value.as_str())
-            .is_some()
+                .get("subtype")
+                .and_then(|value| value.as_str())
+                .is_some()
         {
             return Ok(());
         }

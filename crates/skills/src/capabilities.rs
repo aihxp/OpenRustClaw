@@ -60,7 +60,9 @@ pub fn is_sensitive_capability(capability: &SkillCapability) -> bool {
     )
 }
 
-pub fn sensitive_capabilities(capabilities: &std::collections::HashSet<SkillCapability>) -> Vec<SkillCapability> {
+pub fn sensitive_capabilities(
+    capabilities: &std::collections::HashSet<SkillCapability>,
+) -> Vec<SkillCapability> {
     let mut sensitive: Vec<SkillCapability> = capabilities
         .iter()
         .filter(|capability| is_sensitive_capability(capability))
@@ -71,10 +73,12 @@ pub fn sensitive_capabilities(capabilities: &std::collections::HashSet<SkillCapa
 }
 
 pub fn declared_sensitive_capability_names(capabilities: &[String]) -> Result<Vec<String>> {
-    Ok(sensitive_capabilities(&parse_capability_names(capabilities)?)
-        .into_iter()
-        .map(|capability| canonical_capability_name(&capability).to_string())
-        .collect())
+    Ok(
+        sensitive_capabilities(&parse_capability_names(capabilities)?)
+            .into_iter()
+            .map(|capability| canonical_capability_name(&capability).to_string())
+            .collect(),
+    )
 }
 
 #[cfg(test)]

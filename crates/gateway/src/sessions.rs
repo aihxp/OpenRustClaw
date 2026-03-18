@@ -74,7 +74,11 @@ impl SessionManager {
         self.persist_new_session(session, route_key).await
     }
 
-    async fn persist_new_session(&self, session: Session, route_key: Option<&str>) -> Result<Session> {
+    async fn persist_new_session(
+        &self,
+        session: Session,
+        route_key: Option<&str>,
+    ) -> Result<Session> {
         let id = session.id.to_string();
         self.sessions
             .write()
@@ -172,7 +176,9 @@ impl SessionManager {
             }
         }
 
-        Err(Error::Gateway(GatewayError::SessionNotFound(id.to_string())))
+        Err(Error::Gateway(GatewayError::SessionNotFound(
+            id.to_string(),
+        )))
     }
 
     pub async fn list_sessions(

@@ -3,8 +3,10 @@
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 
+use super::control;
+
 /// Run diagnostics.
-pub async fn run() -> Result<()> {
+pub async fn run(repair: bool, deep: bool, _non_interactive: bool) -> Result<()> {
     println!("╔══════════════════════════════════════════════════════════╗");
     println!("║           OpenRustClaw Diagnostics                       ║");
     println!("╚══════════════════════════════════════════════════════════╝");
@@ -15,7 +17,7 @@ pub async fn run() -> Result<()> {
     let mut checks_warning = 0;
 
     // 1. Check database connection
-    print!("[1/7] Checking database connection... ");
+    print!("[1/8] Checking database connection... ");
     match check_database().await {
         Ok(()) => {
             println!("\x1b[32m✓ OK\x1b[0m");
@@ -29,7 +31,7 @@ pub async fn run() -> Result<()> {
     }
 
     // 2. Check database migrations
-    print!("[2/7] Checking database migrations... ");
+    print!("[2/8] Checking database migrations... ");
     match check_migrations().await {
         Ok(()) => {
             println!("\x1b[32m✓ OK\x1b[0m");
@@ -43,7 +45,7 @@ pub async fn run() -> Result<()> {
     }
 
     // 3. Check provider API keys
-    print!("[3/7] Checking provider API keys... ");
+    print!("[3/8] Checking provider API keys... ");
     match check_api_keys() {
         Ok(()) => {
             println!("\x1b[32m✓ OK\x1b[0m");
@@ -57,7 +59,7 @@ pub async fn run() -> Result<()> {
     }
 
     // 4. Check sidecar availability
-    print!("[4/7] Checking sidecar availability... ");
+    print!("[4/8] Checking sidecar availability... ");
     match check_sidecar().await {
         Ok(()) => {
             println!("\x1b[32m✓ OK\x1b[0m");
@@ -71,7 +73,7 @@ pub async fn run() -> Result<()> {
     }
 
     // 5. Check configuration files
-    print!("[5/7] Checking configuration files... ");
+    print!("[5/8] Checking configuration files... ");
     match check_config() {
         Ok(()) => {
             println!("\x1b[32m✓ OK\x1b[0m");
@@ -85,7 +87,7 @@ pub async fn run() -> Result<()> {
     }
 
     // 6. Check skill directory
-    print!("[6/7] Checking skill directory... ");
+    print!("[6/8] Checking skill directory... ");
     match check_skills_dir().await {
         Ok(()) => {
             println!("\x1b[32m✓ OK\x1b[0m");
@@ -99,7 +101,7 @@ pub async fn run() -> Result<()> {
     }
 
     // 7. Check data directory
-    print!("[7/7] Checking data directory... ");
+    print!("[7/8] Checking data directory... ");
     match check_data_dir().await {
         Ok(()) => {
             println!("\x1b[32m✓ OK\x1b[0m");
@@ -109,6 +111,31 @@ pub async fn run() -> Result<()> {
             println!("\x1b[31m✗ FAILED\x1b[0m");
             println!("      Error: {}", e);
             checks_failed += 1;
+        }
+    }
+
+    // 8. Check control-plane registry
+    print!("[8/8] Checking control-plane registry... ");
+    match check_control_registry(repair).await {
+        Ok(()) => {
+            println!("\x1b[32m✓ OK\x1b[0m");
+            checks_passed += 1;
+        }
+        Err(e) => {
+            println!("\x1b[33m⚠ WARNING\x1b[0m");
+            println!("      {}", e);
+            checks_warning += 1;
+        }
+    }
+
+    if deep {
+        println!();
+        println!("Deep diagnostics:");
+        print!("  • Ollama availability... ");
+        if check_ollama().await {
+            println!("\x1b[32mOK\x1b[0m");
+        } else {
+            println!("\x1b[90mnot detected\x1b[0m");
         }
     }
 
@@ -147,6 +174,24 @@ pub async fn run() -> Result<()> {
 
     println!();
 
+    Ok(())
+}
+
+async fn check_control_registry(repair: bool) -> Result<()> {
+    let cwd = std::env::current_dir()?;
+    let control_root = control::control_root_for(&cwd);
+    if repair && !control_root.exists() {
+        control::init(None)?;
+    }
+    let registry = control::load_registry(control_root.clone())?;
+    if registry.agent_profiles.is_empty()
+        && registry.model_profiles.is_empty()
+        && registry.claws.is_empty()
+        && !control_root.exists()
+    {
+        anyhow::bail!("Control registry not initialized. Run `openrustclaw control init`.");
+    }
+    control::validate_registry(&registry)?;
     Ok(())
 }
 
@@ -345,6 +390,17 @@ async fn check_data_dir() -> Result<()> {
             anyhow::bail!("Data directory is not writable: {}", e)
         }
     }
+}
+
+async fn check_ollama() -> bool {
+    let base_url =
+        std::env::var("OLLAMA_BASE_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
+    reqwest::Client::new()
+        .get(format!("{}/api/tags", base_url))
+        .timeout(std::time::Duration::from_secs(2))
+        .send()
+        .await
+        .is_ok()
 }
 
 #[cfg(test)]

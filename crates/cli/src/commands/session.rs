@@ -28,10 +28,7 @@ pub async fn list(status: Option<&str>, limit: usize) -> Result<()> {
             session.status.as_str(),
             session.session.channel,
             session.session.user_id,
-            session
-                .route_key
-                .as_deref()
-                .unwrap_or("<no-route>")
+            session.route_key.as_deref().unwrap_or("<no-route>")
         );
     }
     Ok(())
@@ -54,7 +51,10 @@ pub async fn show(id: &str, history_limit: usize) -> Result<()> {
         session.session.created_at,
         session.session.updated_at,
     );
-    println!("metadata: {}", serde_json::to_string_pretty(&session.session.metadata)?);
+    println!(
+        "metadata: {}",
+        serde_json::to_string_pretty(&session.session.metadata)?
+    );
     println!("\nhistory:");
     for message in store.list_history(id, history_limit).await? {
         println!(
@@ -75,7 +75,11 @@ pub async fn spawn(
     workspace_id: Option<&str>,
 ) -> Result<()> {
     let (store, _) = open_store().await?;
-    let mut session = Session::new(parse_session_type(session_type), user_id, parse_platform(platform));
+    let mut session = Session::new(
+        parse_session_type(session_type),
+        user_id,
+        parse_platform(platform),
+    );
     session.workspace_id = workspace_id.map(|value| value.to_string());
     session.metadata = json!({
         "spawned_by": "operator",
@@ -101,11 +105,7 @@ pub async fn close(id: &str, archive: bool, reason: Option<&str>) -> Result<()> 
             reason,
         )
         .await?;
-    println!(
-        "{} -> {}",
-        id,
-        if archive { "archived" } else { "closed" }
-    );
+    println!("{} -> {}", id, if archive { "archived" } else { "closed" });
     Ok(())
 }
 
@@ -190,7 +190,10 @@ fn build_provider(config: &AppConfig) -> Result<Arc<dyn LlmProvider>> {
     Ok(Arc::new(SessionProviderChain::new(providers, primary)))
 }
 
-fn create_provider_from_config(provider_name: &str, config: &AppConfig) -> Result<Arc<dyn LlmProvider>> {
+fn create_provider_from_config(
+    provider_name: &str,
+    config: &AppConfig,
+) -> Result<Arc<dyn LlmProvider>> {
     match provider_name.to_lowercase().as_str() {
         "anthropic" => {
             let api_key = std::env::var("ANTHROPIC_API_KEY")

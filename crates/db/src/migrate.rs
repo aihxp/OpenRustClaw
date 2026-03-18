@@ -470,13 +470,7 @@ async fn ensure_scheduler_task_registry_columns(pool: &SqlitePool) -> Result<()>
     )
     .await?;
     add_column_if_missing(pool, "scheduled_jobs", "owner", "TEXT").await?;
-    add_column_if_missing(
-        pool,
-        "scheduled_jobs",
-        "tags",
-        "TEXT NOT NULL DEFAULT '[]'",
-    )
-    .await?;
+    add_column_if_missing(pool, "scheduled_jobs", "tags", "TEXT NOT NULL DEFAULT '[]'").await?;
     add_column_if_missing(pool, "scheduled_jobs", "disabled_until", "TEXT").await?;
     add_column_if_missing(pool, "scheduled_jobs", "manifest_path", "TEXT").await?;
     add_column_if_missing(pool, "scheduled_jobs", "task_notes_path", "TEXT").await?;
@@ -496,25 +490,21 @@ async fn ensure_scheduler_task_registry_columns(pool: &SqlitePool) -> Result<()>
 }
 
 async fn ensure_phase4_session_columns(pool: &SqlitePool) -> Result<()> {
-    add_column_if_missing(
-        pool,
-        "sessions",
-        "status",
-        "TEXT NOT NULL DEFAULT 'active'",
-    )
-    .await?;
+    add_column_if_missing(pool, "sessions", "status", "TEXT NOT NULL DEFAULT 'active'").await?;
     add_column_if_missing(pool, "sessions", "route_key", "TEXT").await?;
     add_column_if_missing(pool, "sessions", "archived_at", "TEXT").await?;
     add_column_if_missing(pool, "sessions", "closed_at", "TEXT").await?;
 
-    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sessions_status_updated ON sessions(status, updated_at)")
-        .execute(pool)
-        .await
-        .map_err(|e| {
-            Error::Database(DatabaseError::Migration(format!(
-                "failed to create session status index: {e}"
-            )))
-        })?;
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_sessions_status_updated ON sessions(status, updated_at)",
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| {
+        Error::Database(DatabaseError::Migration(format!(
+            "failed to create session status index: {e}"
+        )))
+    })?;
     sqlx::query("CREATE INDEX IF NOT EXISTS idx_sessions_route_key ON sessions(route_key, status)")
         .execute(pool)
         .await

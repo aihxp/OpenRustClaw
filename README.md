@@ -25,6 +25,7 @@ The roadmap further includes model-aware artifact sync, memory rehydration on mo
 The model-awareness track now also includes a canonical instruction/context artifact registry so OpenRustClaw can understand and translate common project guidance files like `AGENTS.md`, `AI.md`, `CONTEXT.md`, `ARCHITECTURE.md`, `CLAUDE.md`, `GEMINI.md`, Copilot instruction files, Cursor/Continue rules, and local open-weight `Modelfile` packaging.
 The roadmap also now calls for onboarding-time provider/model scans and role-aware recommendations: Groq for low-latency core runtime use, OpenRouter for broad fallback/control-plane coverage, SiliconFlow for higher-capability secondary routing, and Ollama as the local/offline safety net, all validated against user-supplied keys rather than hardcoded assumptions.
 The operator roadmap also now explicitly includes an OpenClaw-inspired onboarding journey, typed user configuration/settings flows, solo-versus-multi-claw setup choices, and a stronger `doctor` repair/migration surface rather than leaving these as ad hoc setup utilities.
+The shipped control-plane surface now includes a file-backed `.claw/control/` registry for agent profiles, model profiles, Claw manifests, runtime-mode/task/category bindings, runtime self-description, and MCP/CLI inspection tools; the future Web Control UI is expected to reuse this registry instead of inventing a separate state model.
 
 ## Quick Start
 
@@ -35,6 +36,10 @@ cargo build --release
 
 # Interactive setup -- configures providers, channels, and security
 ./target/release/openrustclaw onboard
+
+# Scaffold and inspect the control plane
+openrustclaw control init
+openrustclaw control describe --json
 
 # Start the agent with your configured channels
 openrustclaw start --channels=telegram,discord,slack
@@ -121,6 +126,18 @@ Channel routing/operator controls:
 - `.claw/channels/` is the standard operator-visible registry for pending/approved accounts and channel bindings
 - `openrustclaw channels init|list|approve|block|activation|bind` manages tier-1 channel pairing state and binding policy
 - shipped channel routing now applies workspace/account/channel binding precedence, pairing approval gates, group mention activation, and shared reply chunking/coalescing/pacing policy
+
+## Control Plane
+
+- `.claw/control/` is the standard operator-visible registry for:
+  - agent profiles
+  - model profiles
+  - Claw manifests
+  - solo/task/category/orchestrated runtime mode
+  - task/category-to-Claw assignments
+- `openrustclaw control init|list|show|validate|describe|create-agent|create-model|create-claw|mode|assign-task|assign-category`
+- `openrustclaw doctor --repair --deep` now validates and, where safe, scaffolds the shipped control-plane registry
+- the runtime syncs `.claw/control/CLAW_RUNTIME.md` so Claw itself can see whether it is running solo or alongside other Claws and what delegation/isolation policies exist
 
 ## Memory System
 

@@ -2,6 +2,7 @@
 
 use anyhow::Result;
 use std::collections::HashMap;
+use std::time::Duration;
 
 /// Model information for display.
 #[derive(Debug)]
@@ -263,6 +264,76 @@ pub async fn info(name: &str) -> Result<()> {
     Ok(())
 }
 
+/// Scan configured providers and recommend role assignments.
+pub async fn scan() -> Result<()> {
+    let ollama_available = check_ollama().await;
+    let providers = vec![
+        ProviderScan {
+            provider: "groq",
+            key_env: Some("GROQ_API_KEY"),
+            role_hint: "core_model",
+            note: "Low-latency core runtime recommendation",
+        },
+        ProviderScan {
+            provider: "openrouter",
+            key_env: Some("OPENROUTER_API_KEY"),
+            role_hint: "control_plane_model",
+            note: "Broad fallback/control-plane recommendation",
+        },
+        ProviderScan {
+            provider: "siliconflow",
+            key_env: Some("SILICONFLOW_API_KEY"),
+            role_hint: "secondary_core_model",
+            note: "Higher-capability secondary routing recommendation",
+        },
+        ProviderScan {
+            provider: "ollama",
+            key_env: None,
+            role_hint: "offline_fallback",
+            note: "Local/offline fallback recommendation",
+        },
+    ];
+
+    println!("Recommended model-role scan");
+    println!();
+    for provider in providers {
+        let healthy = match provider.provider {
+            "ollama" => ollama_available,
+            _ => provider
+                .key_env
+                .and_then(|key| std::env::var(key).ok())
+                .map(|value| !value.trim().is_empty())
+                .unwrap_or(false),
+        };
+        let status = if healthy {
+            "\x1b[32mhealthy\x1b[0m"
+        } else {
+            "\x1b[90mnot configured\x1b[0m"
+        };
+        println!(
+            "- {:12} {:22} {:20} {}",
+            provider.provider, status, provider.role_hint, provider.note
+        );
+    }
+
+    println!();
+    println!("Suggested defaults:");
+    println!("  core_model:           Groq when BYOK is configured and healthy");
+    println!("  control_plane_model:  OpenRouter for broad fallback/model discovery");
+    println!("  secondary_core_model: SiliconFlow for higher-capability routing");
+    println!("  offline_fallback:     Ollama");
+    println!();
+    println!("Use `openrustclaw control init` to scaffold model profiles reflecting these roles.");
+    Ok(())
+}
+
+struct ProviderScan {
+    provider: &'static str,
+    key_env: Option<&'static str>,
+    role_hint: &'static str,
+    note: &'static str,
+}
+
 /// Check if Ollama is available locally.
 async fn check_ollama() -> bool {
     let base_url =
@@ -270,7 +341,7 @@ async fn check_ollama() -> bool {
 
     reqwest::Client::new()
         .get(format!("{}/api/tags", base_url))
-        .timeout(std::time::Duration::from_secs(2))
+        .timeout(Duration::from_secs(2))
         .send()
         .await
         .is_ok()

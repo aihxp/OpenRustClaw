@@ -16,8 +16,8 @@ use openrustclaw_core::error::{DatabaseError, Error, MemoryError, Result};
 use openrustclaw_core::traits::MemoryStore as MemoryStoreTrait;
 use openrustclaw_core::types::{MemoryEntry, MemoryQuery, MemoryType, ScoredMemory, SourceType};
 
-use crate::models::MemoryEntryRow;
 use crate::models::MemoryArchiveRow;
+use crate::models::MemoryEntryRow;
 
 /// Trait for embedding providers to generate vector representations.
 ///

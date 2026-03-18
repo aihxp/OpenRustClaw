@@ -216,15 +216,17 @@ mod tests {
         Mock::given(method("GET"))
             .and(path("/api/v1/skills/search"))
             .and(query_param("q", "calendar"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(vec![MarketplaceListing {
-                name: "calendar".to_string(),
-                description: "Calendar skill".to_string(),
-                version: "1.2.3".to_string(),
-                author: "Alice".to_string(),
-                downloads: 25,
-                verified: true,
-                signature: Some("sig".to_string()),
-            }]))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(vec![MarketplaceListing {
+                    name: "calendar".to_string(),
+                    description: "Calendar skill".to_string(),
+                    version: "1.2.3".to_string(),
+                    author: "Alice".to_string(),
+                    downloads: 25,
+                    verified: true,
+                    signature: Some("sig".to_string()),
+                }]),
+            )
             .mount(&server)
             .await;
 
@@ -241,25 +243,27 @@ mod tests {
         Mock::given(method("GET"))
             .and(path("/api/v1/skills/search"))
             .and(query_param("q", "memory"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(vec![SkillMetadata {
-                name: "memory-helper".to_string(),
-                version: Version::parse("2.0.0").unwrap(),
-                description: "Memory helper".to_string(),
-                author: "Bob".to_string(),
-                repository: "https://example.com/memory-helper".to_string(),
-                license: "MIT".to_string(),
-                keywords: vec!["memory".to_string()],
-                categories: vec!["productivity".to_string()],
-                downloads: 99,
-                rating: 4.8,
-                rating_count: 20,
-                signature: None,
-                published_at: Utc::now(),
-                updated_at: Utc::now(),
-                dependencies: vec![],
-                capabilities: vec![],
-                min_openrustclaw_version: None,
-            }]))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(vec![SkillMetadata {
+                    name: "memory-helper".to_string(),
+                    version: Version::parse("2.0.0").unwrap(),
+                    description: "Memory helper".to_string(),
+                    author: "Bob".to_string(),
+                    repository: "https://example.com/memory-helper".to_string(),
+                    license: "MIT".to_string(),
+                    keywords: vec!["memory".to_string()],
+                    categories: vec!["productivity".to_string()],
+                    downloads: 99,
+                    rating: 4.8,
+                    rating_count: 20,
+                    signature: None,
+                    published_at: Utc::now(),
+                    updated_at: Utc::now(),
+                    dependencies: vec![],
+                    capabilities: vec![],
+                    min_openrustclaw_version: None,
+                }]),
+            )
             .mount(&server)
             .await;
 

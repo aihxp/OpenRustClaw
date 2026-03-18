@@ -7,8 +7,8 @@ use axum::http::header::HeaderName;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::{
-    extract::Path,
     Json, Router,
+    extract::Path,
     routing::{get, post},
 };
 use futures::StreamExt;
@@ -65,8 +65,14 @@ impl GatewayServer {
                     .options(cors_preflight_handler),
             )
             .route("/v1/chat/completions", post(chat_completions_handler))
-            .route("/internal/memory/search", post(internal_memory_search_handler))
-            .route("/internal/memory/store", post(internal_memory_store_handler))
+            .route(
+                "/internal/memory/search",
+                post(internal_memory_search_handler),
+            )
+            .route(
+                "/internal/memory/store",
+                post(internal_memory_store_handler),
+            )
             .route(
                 "/internal/memory/archive/store",
                 post(internal_memory_archive_store_handler),
@@ -340,13 +346,13 @@ async fn internal_memory_search_handler(
     match memory_store.search(&query).await {
         Ok(results) => {
             let body = json!({
-            "memories": results.into_iter().map(|scored| json!({
-                "id": scored.entry.id,
-                "content": scored.entry.content,
-                "score": scored.score,
-                "importance": scored.entry.importance,
-            })).collect::<Vec<_>>()
-        });
+                "memories": results.into_iter().map(|scored| json!({
+                    "id": scored.entry.id,
+                    "content": scored.entry.content,
+                    "score": scored.score,
+                    "importance": scored.entry.importance,
+                })).collect::<Vec<_>>()
+            });
             complete_gateway_trace(
                 state.langsmith.as_ref(),
                 trace.as_mut(),
@@ -487,7 +493,11 @@ async fn internal_core_memory_render_handler(
             Some("core memory store unavailable".to_string()),
         )
         .await;
-        return (StatusCode::SERVICE_UNAVAILABLE, "core memory store unavailable").into_response();
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "core memory store unavailable",
+        )
+            .into_response();
     };
 
     match core_memory_store.render(&user_id).await {
@@ -543,7 +553,11 @@ async fn internal_core_memory_set_handler(
             Some("core memory store unavailable".to_string()),
         )
         .await;
-        return (StatusCode::SERVICE_UNAVAILABLE, "core memory store unavailable").into_response();
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "core memory store unavailable",
+        )
+            .into_response();
     };
 
     let entry = openrustclaw_db::CoreEntryBuilder::new(&payload.key, &payload.value)
@@ -747,15 +761,15 @@ async fn internal_memory_maintenance_old_handler(
     {
         Ok(entries) => {
             let body = json!({
-            "memories": entries.into_iter().map(|entry| json!({
-                "id": entry.id,
-                "content": entry.content,
-                "timestamp": entry.created_at,
-                "namespace": entry.namespace,
-                "user_id": entry.user_id,
-                "importance": entry.importance,
-            })).collect::<Vec<_>>()
-        });
+                "memories": entries.into_iter().map(|entry| json!({
+                    "id": entry.id,
+                    "content": entry.content,
+                    "timestamp": entry.created_at,
+                    "namespace": entry.namespace,
+                    "user_id": entry.user_id,
+                    "importance": entry.importance,
+                })).collect::<Vec<_>>()
+            });
             complete_gateway_trace(
                 state.langsmith.as_ref(),
                 trace.as_mut(),
@@ -826,9 +840,9 @@ async fn internal_rag_store_handler(
     {
         Ok(stored_chunks) => {
             let body = json!({
-            "collection_name": payload.collection_name,
-            "stored_chunks": stored_chunks,
-        });
+                "collection_name": payload.collection_name,
+                "stored_chunks": stored_chunks,
+            });
             complete_gateway_trace(
                 state.langsmith.as_ref(),
                 trace.as_mut(),
@@ -887,15 +901,15 @@ async fn internal_rag_load_handler(
     {
         Ok(chunks) => {
             let body = json!({
-            "collection_name": payload.collection_name,
-            "chunks": chunks.into_iter().map(|chunk| json!({
-                "id": chunk.chunk_id,
-                "source_id": chunk.source_id,
-                "chunk_index": chunk.chunk_index,
-                "content": chunk.content,
-                "metadata": chunk.metadata,
-            })).collect::<Vec<_>>(),
-        });
+                "collection_name": payload.collection_name,
+                "chunks": chunks.into_iter().map(|chunk| json!({
+                    "id": chunk.chunk_id,
+                    "source_id": chunk.source_id,
+                    "chunk_index": chunk.chunk_index,
+                    "content": chunk.content,
+                    "metadata": chunk.metadata,
+                })).collect::<Vec<_>>(),
+            });
             complete_gateway_trace(
                 state.langsmith.as_ref(),
                 trace.as_mut(),
@@ -950,14 +964,14 @@ async fn internal_rag_list_handler(
     match rag_store.list_collection_stats(payload.limit).await {
         Ok(collections) => {
             let body = json!({
-            "collections": collections.into_iter().map(|stats| json!({
-                "collection_name": stats.collection_name,
-                "chunk_count": stats.chunk_count,
-                "source_count": stats.source_count,
-                "total_content_bytes": stats.total_content_bytes,
-                "last_updated_at": stats.last_updated_at,
-            })).collect::<Vec<_>>(),
-        });
+                "collections": collections.into_iter().map(|stats| json!({
+                    "collection_name": stats.collection_name,
+                    "chunk_count": stats.chunk_count,
+                    "source_count": stats.source_count,
+                    "total_content_bytes": stats.total_content_bytes,
+                    "last_updated_at": stats.last_updated_at,
+                })).collect::<Vec<_>>(),
+            });
             complete_gateway_trace(
                 state.langsmith.as_ref(),
                 trace.as_mut(),
@@ -1012,9 +1026,9 @@ async fn internal_rag_delete_handler(
     match rag_store.delete_collection(&payload.collection_name).await {
         Ok(deleted_chunks) => {
             let body = json!({
-            "collection_name": payload.collection_name,
-            "deleted_chunks": deleted_chunks,
-        });
+                "collection_name": payload.collection_name,
+                "deleted_chunks": deleted_chunks,
+            });
             complete_gateway_trace(
                 state.langsmith.as_ref(),
                 trace.as_mut(),
@@ -1088,7 +1102,10 @@ fn validate_ws_request(state: &GatewayState, headers: &HeaderMap) -> CoreResult<
     Ok(())
 }
 
-fn validate_internal_api(state: &GatewayState, headers: &HeaderMap) -> std::result::Result<(), Response> {
+fn validate_internal_api(
+    state: &GatewayState,
+    headers: &HeaderMap,
+) -> std::result::Result<(), Response> {
     let Some(expected_token) = &state.internal_api_token else {
         return Err((StatusCode::SERVICE_UNAVAILABLE, "internal api disabled").into_response());
     };
@@ -1299,32 +1316,45 @@ mod tests {
             .uri("/internal/memory/search")
             .header(CONTENT_TYPE, "application/json")
             .header("x-openrustclaw-internal-token", "test-token")
-            .body(Body::from(r#"{"user_id":"user-1","query":"ownership","limit":3}"#))
+            .body(Body::from(
+                r#"{"user_id":"user-1","query":"ownership","limit":3}"#,
+            ))
             .unwrap();
         let search_response = app.clone().oneshot(search_request).await.unwrap();
         assert_eq!(search_response.status(), StatusCode::OK);
-        let search_body = to_bytes(search_response.into_body(), usize::MAX).await.unwrap();
+        let search_body = to_bytes(search_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let search_json: serde_json::Value = serde_json::from_slice(&search_body).unwrap();
-        assert!(search_json["memories"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|entry| entry["content"] == "Rust ownership matters"));
+        assert!(
+            search_json["memories"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|entry| entry["content"] == "Rust ownership matters")
+        );
 
         let core_request = Request::builder()
             .method("POST")
             .uri("/internal/memory/core/user-1")
-            .header("x-openrustclaw-internal-token", HeaderValue::from_static("test-token"))
+            .header(
+                "x-openrustclaw-internal-token",
+                HeaderValue::from_static("test-token"),
+            )
             .body(Body::from("{}"))
             .unwrap();
         let core_response = app.clone().oneshot(core_request).await.unwrap();
         assert_eq!(core_response.status(), StatusCode::OK);
-        let core_body = to_bytes(core_response.into_body(), usize::MAX).await.unwrap();
+        let core_body = to_bytes(core_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let core_json: serde_json::Value = serde_json::from_slice(&core_body).unwrap();
-        assert!(core_json["content"]
-            .as_str()
-            .unwrap()
-            .contains("Prefers Rust"));
+        assert!(
+            core_json["content"]
+                .as_str()
+                .unwrap()
+                .contains("Prefers Rust")
+        );
 
         let set_request = Request::builder()
             .method("POST")
@@ -1341,16 +1371,30 @@ mod tests {
         let updated_core_request = Request::builder()
             .method("POST")
             .uri("/internal/memory/core/user-1")
-            .header("x-openrustclaw-internal-token", HeaderValue::from_static("test-token"))
+            .header(
+                "x-openrustclaw-internal-token",
+                HeaderValue::from_static("test-token"),
+            )
             .body(Body::from("{}"))
             .unwrap();
         let updated_core_response = app.oneshot(updated_core_request).await.unwrap();
-        let updated_core_body =
-            to_bytes(updated_core_response.into_body(), usize::MAX).await.unwrap();
+        let updated_core_body = to_bytes(updated_core_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let updated_core_json: serde_json::Value =
             serde_json::from_slice(&updated_core_body).unwrap();
-        assert!(updated_core_json["content"].as_str().unwrap().contains("language"));
-        assert!(updated_core_json["content"].as_str().unwrap().contains("Rust"));
+        assert!(
+            updated_core_json["content"]
+                .as_str()
+                .unwrap()
+                .contains("language")
+        );
+        assert!(
+            updated_core_json["content"]
+                .as_str()
+                .unwrap()
+                .contains("Rust")
+        );
 
         let _ = std::fs::remove_file(db_path);
     }
@@ -1412,7 +1456,9 @@ mod tests {
             .unwrap();
         let old_response = app.clone().oneshot(old_request).await.unwrap();
         assert_eq!(old_response.status(), StatusCode::OK);
-        let old_body = to_bytes(old_response.into_body(), usize::MAX).await.unwrap();
+        let old_body = to_bytes(old_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let old_json: serde_json::Value = serde_json::from_slice(&old_body).unwrap();
         assert_eq!(old_json["memories"].as_array().unwrap().len(), 1);
 
@@ -1452,7 +1498,9 @@ mod tests {
             ))
             .unwrap();
         let search_response = app.oneshot(search_request).await.unwrap();
-        let search_body = to_bytes(search_response.into_body(), usize::MAX).await.unwrap();
+        let search_body = to_bytes(search_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let search_json: serde_json::Value = serde_json::from_slice(&search_body).unwrap();
         assert!(search_json["memories"].as_array().unwrap().is_empty());
 
@@ -1509,7 +1557,9 @@ mod tests {
             .unwrap();
         let load_response = app.clone().oneshot(load_request).await.unwrap();
         assert_eq!(load_response.status(), StatusCode::OK);
-        let load_body = to_bytes(load_response.into_body(), usize::MAX).await.unwrap();
+        let load_body = to_bytes(load_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let load_json: serde_json::Value = serde_json::from_slice(&load_body).unwrap();
         let chunks = load_json["chunks"].as_array().unwrap();
         assert_eq!(chunks.len(), 1);
@@ -1525,15 +1575,19 @@ mod tests {
             .unwrap();
         let list_response = app.clone().oneshot(list_request).await.unwrap();
         assert_eq!(list_response.status(), StatusCode::OK);
-        let list_body = to_bytes(list_response.into_body(), usize::MAX).await.unwrap();
+        let list_body = to_bytes(list_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let list_json: serde_json::Value = serde_json::from_slice(&list_body).unwrap();
         assert_eq!(list_json["collections"][0]["collection_name"], "docs");
         assert_eq!(list_json["collections"][0]["chunk_count"], 1);
         assert_eq!(list_json["collections"][0]["source_count"], 1);
-        assert!(list_json["collections"][0]["total_content_bytes"]
-            .as_i64()
-            .unwrap()
-            > 0);
+        assert!(
+            list_json["collections"][0]["total_content_bytes"]
+                .as_i64()
+                .unwrap()
+                > 0
+        );
         assert!(list_json["collections"][0]["last_updated_at"].is_string());
 
         let delete_request = Request::builder()
@@ -1545,7 +1599,9 @@ mod tests {
             .unwrap();
         let delete_response = app.clone().oneshot(delete_request).await.unwrap();
         assert_eq!(delete_response.status(), StatusCode::OK);
-        let delete_body = to_bytes(delete_response.into_body(), usize::MAX).await.unwrap();
+        let delete_body = to_bytes(delete_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
         let delete_json: serde_json::Value = serde_json::from_slice(&delete_body).unwrap();
         assert_eq!(delete_json["deleted_chunks"], 1);
 

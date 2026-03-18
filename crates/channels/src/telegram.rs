@@ -15,8 +15,8 @@ use async_trait::async_trait;
 use governor::{Quota, RateLimiter};
 use reqwest::Client;
 use std::num::NonZeroU32;
-use tokio::task::JoinHandle;
 use tokio::sync::{Mutex, RwLock, mpsc};
+use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
@@ -171,7 +171,8 @@ impl TelegramChannel {
                     .unwrap_or_default();
 
                 for update in updates {
-                    if let Some(update_id) = update.get("update_id").and_then(|value| value.as_i64())
+                    if let Some(update_id) =
+                        update.get("update_id").and_then(|value| value.as_i64())
                     {
                         next_offset = update_id + 1;
                     }
@@ -231,7 +232,8 @@ impl TelegramChannel {
                             .map(|value| matches!(value, "group" | "supergroup"))
                             .unwrap_or(false),
                     });
-                    if let Some(message_id) = message.get("message_id").and_then(|value| value.as_i64())
+                    if let Some(message_id) =
+                        message.get("message_id").and_then(|value| value.as_i64())
                     {
                         metadata["telegram_message_id"] = serde_json::json!(message_id);
                     }
@@ -292,7 +294,11 @@ impl Channel for TelegramChannel {
 
         // Parse inline keyboard from metadata
         let reply_markup = Self::parse_inline_keyboard(&msg.metadata);
-        let url = format!("{}/bot{}/sendMessage", self.api_base_url(), self.config.token);
+        let url = format!(
+            "{}/bot{}/sendMessage",
+            self.api_base_url(),
+            self.config.token
+        );
         let mut payload = serde_json::json!({
             "chat_id": chat_id,
             "text": msg.content,
@@ -320,10 +326,14 @@ impl Channel for TelegramChannel {
             })?;
 
         let status = response.status();
-        let body: serde_json::Value = response.json().await.map_err(|e| ChannelError::SendFailed {
-            platform: "telegram".to_string(),
-            message: format!("failed to parse Telegram response: {}", e),
-        })?;
+        let body: serde_json::Value =
+            response
+                .json()
+                .await
+                .map_err(|e| ChannelError::SendFailed {
+                    platform: "telegram".to_string(),
+                    message: format!("failed to parse Telegram response: {}", e),
+                })?;
 
         if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
             let retry_after = body
@@ -393,15 +403,24 @@ impl Channel for TelegramChannel {
         }
 
         let url = format!("{}/bot{}/getMe", self.api_base_url(), self.config.token);
-        let response = self.client.get(url).send().await.map_err(|e| ChannelError::Connection {
-            platform: "telegram".to_string(),
-            message: e.to_string(),
-        })?;
+        let response = self
+            .client
+            .get(url)
+            .send()
+            .await
+            .map_err(|e| ChannelError::Connection {
+                platform: "telegram".to_string(),
+                message: e.to_string(),
+            })?;
         let status = response.status();
-        let body: serde_json::Value = response.json().await.map_err(|e| ChannelError::Connection {
-            platform: "telegram".to_string(),
-            message: format!("failed to parse Telegram auth response: {}", e),
-        })?;
+        let body: serde_json::Value =
+            response
+                .json()
+                .await
+                .map_err(|e| ChannelError::Connection {
+                    platform: "telegram".to_string(),
+                    message: format!("failed to parse Telegram auth response: {}", e),
+                })?;
 
         if status == reqwest::StatusCode::UNAUTHORIZED {
             return Err(ChannelError::AuthFailed {
