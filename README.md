@@ -112,9 +112,15 @@ The current shipped startup path is narrower: `openrustclaw start` actively supp
 
 Current tier-1 status:
 
-- Telegram: auth probe, outbound send, Bot API polling receive, and local agent/session routing are implemented
-- Discord: auth probe, outbound send, verified Interactions HTTP ingress, Gateway `MESSAGE_CREATE` receive, reconnect/session recovery, thread-aware session routing, thread-preferred replies, reply-reference propagation aliases, attachment/embed metadata capture, and local agent/session routing are implemented; deeper gateway polish still remains
-- Slack: auth probe, outbound send, built-in HTTP Events API ingress, and local agent/session routing are implemented for HTTP mode; Socket Mode remains incomplete
+- Telegram: auth probe, outbound send, Bot API polling receive, reply threading, mention-aware group metadata, and local agent/session routing are implemented
+- Discord: auth probe, outbound send, edit/reaction operations, verified Interactions HTTP ingress, Gateway `MESSAGE_CREATE` receive, reconnect/session recovery, thread-aware session routing, thread-preferred replies, reply-reference propagation aliases, mention detection, attachment/embed metadata capture, and local agent/session routing are implemented; deeper gateway polish still remains
+- Slack: auth probe, outbound send, edit/reaction operations, built-in HTTP Events API ingress, mention-aware routing metadata, and local agent/session routing are implemented for HTTP mode; Socket Mode remains incomplete
+
+Channel routing/operator controls:
+
+- `.claw/channels/` is the standard operator-visible registry for pending/approved accounts and channel bindings
+- `openrustclaw channels init|list|approve|block|activation|bind` manages tier-1 channel pairing state and binding policy
+- shipped channel routing now applies workspace/account/channel binding precedence, pairing approval gates, group mention activation, and shared reply chunking/coalescing/pacing policy
 
 ## Memory System
 

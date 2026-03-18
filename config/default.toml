@@ -51,6 +51,11 @@ schedule_interval_hours = 24
 direct_strategy = "shared_main"  # shared_main, per_user
 group_strategy = "isolated"      # isolated, shared_channel
 thread_overrides_channel = true
+pairing_approval_required = false
+default_group_activation = "mention"
+default_send_mode = "blocks"
+default_chunk_chars = 1600
+default_chunk_delay_ms = 250
 
 [scheduler]
 poll_interval_ms = 1000

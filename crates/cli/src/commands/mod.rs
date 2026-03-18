@@ -1,4 +1,5 @@
 pub mod chat;
+pub mod channels;
 #[cfg(feature = "cursor")]
 pub mod cursor;
 pub mod doctor;

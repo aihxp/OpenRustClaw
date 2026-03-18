@@ -640,23 +640,16 @@ Completed:
 - [x] Telegram outbound and polling ingress exist.
 - [x] Slack outbound and HTTP Events ingress exist.
 - [x] Discord outbound, interactions ingress, and gateway message ingress exist.
+- [x] File-backed channel account and binding registry exists under `.claw/channels/`.
+- [x] Shipped runtime now applies channel/account/workspace binding precedence plus pairing approval for tier-1 channels.
+- [x] Group mention activation rules now exist on the shipped runtime path.
+- [x] CLI channel operator controls now cover init/list/approve/block/activation/bind.
+- [x] Shared outbound send policy now supports preview-then-blocks, block chunking, coalescing, and pacing.
+- [x] Shipped reply/edit/reaction semantics now exist where the current tier-1 channel APIs support them.
 
-Core routing remaining:
+Still remaining for deeper parity:
 
-- [ ] Implement full multi-agent binding parity:
-  - per-channel binding,
-  - per-account binding,
-  - per-workspace binding,
-  - fallback precedence rules.
-- [ ] Implement pairing approval flows consistently across supported channels.
-- [ ] Implement OpenClaw-style group mention activation rules.
-- [ ] Implement richer account management parity from the CLI and Control UI.
-- [ ] Implement reply/edit/thread/reaction semantics per channel where the platform supports them.
-- [ ] Implement streaming and chunking parity per channel:
-  - preview modes,
-  - block streaming,
-  - message coalescing,
-  - pacing.
+- [ ] Extend the shipped registry/operator surfaces into Control UI parity.
 - [ ] Implement higher-fidelity channel UX parity where it materially affects operator experience:
   - Telegram forum topics, topic targeting, reactions, and polls,
   - Discord forwarded-attachment downloads and thread-parent binding inheritance,

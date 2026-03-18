@@ -41,6 +41,7 @@ pub struct TelegramChannel {
     >,
     is_connected: RwLock<bool>,
     polling_task: Mutex<Option<JoinHandle<()>>>,
+    bot_username: RwLock<Option<String>>,
 }
 
 impl TelegramChannel {
@@ -63,6 +64,7 @@ impl TelegramChannel {
             rate_limiter,
             is_connected: RwLock::new(false),
             polling_task: Mutex::new(None),
+            bot_username: RwLock::new(None),
         }
     }
 
@@ -121,6 +123,7 @@ impl TelegramChannel {
         let token = self.config.token.clone();
         let api_base_url = self.api_base_url();
         let allowed_users = self.config.allowed_users.clone();
+        let bot_username = self.bot_username.read().await.clone();
 
         *task_guard = Some(tokio::spawn(async move {
             let mut next_offset: i64 = 0;
@@ -216,6 +219,17 @@ impl TelegramChannel {
 
                     let mut metadata = serde_json::json!({
                         "telegram_chat_id": chat_id,
+                        "telegram_chat_type": message
+                            .get("chat")
+                            .and_then(|chat| chat.get("type"))
+                            .and_then(|value| value.as_str())
+                            .unwrap_or("private"),
+                        "telegram_is_group": message
+                            .get("chat")
+                            .and_then(|chat| chat.get("type"))
+                            .and_then(|value| value.as_str())
+                            .map(|value| matches!(value, "group" | "supergroup"))
+                            .unwrap_or(false),
                     });
                     if let Some(message_id) = message.get("message_id").and_then(|value| value.as_i64())
                     {
@@ -223,6 +237,17 @@ impl TelegramChannel {
                     }
                     if let Some(username) = from.get("username").and_then(|value| value.as_str()) {
                         metadata["telegram_username"] = serde_json::json!(username);
+                    }
+                    if let Some(reply_to) = message
+                        .get("reply_to_message")
+                        .and_then(|value| value.get("message_id"))
+                        .and_then(|value| value.as_i64())
+                    {
+                        metadata["telegram_reply_to_message_id"] = serde_json::json!(reply_to);
+                    }
+                    if let Some(bot_username) = bot_username.as_deref() {
+                        metadata["telegram_bot_mentioned"] =
+                            serde_json::json!(content.contains(&format!("@{bot_username}")));
                     }
 
                     let incoming = IncomingMessage {
@@ -272,6 +297,13 @@ impl Channel for TelegramChannel {
             "chat_id": chat_id,
             "text": msg.content,
         });
+        if let Some(reply_to) = msg
+            .metadata
+            .get("telegram_reply_to_message_id")
+            .and_then(|value| value.as_i64())
+        {
+            payload["reply_to_message_id"] = serde_json::json!(reply_to);
+        }
         if let Some(reply_markup) = reply_markup {
             payload["reply_markup"] = reply_markup;
         }
@@ -393,6 +425,14 @@ impl Channel for TelegramChannel {
                     .to_string(),
             }
             .into());
+        }
+
+        if let Some(username) = body
+            .get("result")
+            .and_then(|value| value.get("username"))
+            .and_then(|value| value.as_str())
+        {
+            *self.bot_username.write().await = Some(username.to_string());
         }
 
         if self.config.mode == TelegramMode::Polling {

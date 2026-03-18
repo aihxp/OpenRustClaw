@@ -25,9 +25,50 @@ pub struct AppConfig {
 /// Session-routing policy configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionRoutingConfig {
+    #[serde(default = "default_direct_strategy")]
     pub direct_strategy: String,
+    #[serde(default = "default_group_strategy")]
     pub group_strategy: String,
+    #[serde(default = "default_thread_overrides_channel")]
     pub thread_overrides_channel: bool,
+    #[serde(default = "default_pairing_approval_required")]
+    pub pairing_approval_required: bool,
+    #[serde(default = "default_group_activation_mode")]
+    pub default_group_activation: String,
+    #[serde(default = "default_send_mode")]
+    pub default_send_mode: String,
+    #[serde(default = "default_chunk_chars")]
+    pub default_chunk_chars: usize,
+    #[serde(default)]
+    pub default_chunk_delay_ms: u64,
+}
+
+fn default_direct_strategy() -> String {
+    "shared_main".to_string()
+}
+
+fn default_group_strategy() -> String {
+    "isolated".to_string()
+}
+
+fn default_thread_overrides_channel() -> bool {
+    true
+}
+
+fn default_pairing_approval_required() -> bool {
+    false
+}
+
+fn default_group_activation_mode() -> String {
+    "mention".to_string()
+}
+
+fn default_send_mode() -> String {
+    "blocks".to_string()
+}
+
+fn default_chunk_chars() -> usize {
+    1600
 }
 
 /// Gateway (WebSocket server) configuration.
@@ -729,6 +770,11 @@ impl Default for AppConfig {
                 direct_strategy: "shared_main".to_string(),
                 group_strategy: "isolated".to_string(),
                 thread_overrides_channel: true,
+                pairing_approval_required: false,
+                default_group_activation: "mention".to_string(),
+                default_send_mode: "blocks".to_string(),
+                default_chunk_chars: 1600,
+                default_chunk_delay_ms: 250,
             },
             scheduler: SchedulerConfig {
                 poll_interval_ms: 1000,

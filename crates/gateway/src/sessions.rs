@@ -51,6 +51,30 @@ impl SessionManager {
         if let Some(route_key) = route_key {
             session.metadata["route_key"] = serde_json::Value::String(route_key.to_string());
         }
+        self.persist_new_session(session, route_key).await
+    }
+
+    pub async fn create_session_with_context(
+        &self,
+        user_id: &str,
+        session_type: SessionType,
+        platform: Platform,
+        route_key: Option<&str>,
+        workspace_id: Option<&str>,
+        metadata: Option<serde_json::Value>,
+    ) -> Result<Session> {
+        let mut session = Session::new(session_type, user_id, platform);
+        session.workspace_id = workspace_id.map(|value| value.to_string());
+        if let Some(route_key) = route_key {
+            session.metadata["route_key"] = serde_json::Value::String(route_key.to_string());
+        }
+        if let Some(metadata) = metadata {
+            session.metadata = merge_json(session.metadata, metadata);
+        }
+        self.persist_new_session(session, route_key).await
+    }
+
+    async fn persist_new_session(&self, session: Session, route_key: Option<&str>) -> Result<Session> {
         let id = session.id.to_string();
         self.sessions
             .write()
@@ -62,7 +86,7 @@ impl SessionManager {
                 .await
                 .map_err(|error| Error::Gateway(GatewayError::WebSocket(error.to_string())))?;
         }
-        info!(session_id = %id, user_id = %user_id, "Session created");
+        info!(session_id = %id, user_id = %session.user_id, "Session created");
         Ok(session)
     }
 
@@ -90,6 +114,41 @@ impl SessionManager {
 
         self.create_session_with_route(user_id, session_type, platform, route_key)
             .await
+    }
+
+    pub async fn restore_or_create_session_with_context(
+        &self,
+        user_id: &str,
+        session_type: SessionType,
+        platform: Platform,
+        route_key: Option<&str>,
+        workspace_id: Option<&str>,
+        metadata: Option<serde_json::Value>,
+    ) -> Result<Session> {
+        if let (Some(store), Some(route_key)) = (&self.store, route_key) {
+            if let Some(restored) = store
+                .find_active_by_route_key(route_key)
+                .await
+                .map_err(|error| Error::Gateway(GatewayError::WebSocket(error.to_string())))?
+            {
+                let session = restored.session;
+                self.sessions
+                    .write()
+                    .await
+                    .insert(session.id.to_string(), session.clone());
+                return Ok(session);
+            }
+        }
+
+        self.create_session_with_context(
+            user_id,
+            session_type,
+            platform,
+            route_key,
+            workspace_id,
+            metadata,
+        )
+        .await
     }
 
     /// Get a session by ID.
@@ -200,4 +259,14 @@ impl Default for SessionManager {
     fn default() -> Self {
         Self::new()
     }
+}
+
+fn merge_json(base: serde_json::Value, overlay: serde_json::Value) -> serde_json::Value {
+    let mut object = base.as_object().cloned().unwrap_or_default();
+    if let Some(overlay) = overlay.as_object() {
+        for (key, value) in overlay {
+            object.insert(key.clone(), value.clone());
+        }
+    }
+    serde_json::Value::Object(object)
 }

@@ -52,6 +52,7 @@ base64.workspace = true
 hex.workspace = true
 ed25519-dalek.workspace = true
 walkdir.workspace = true
+serde_yaml.workspace = true
 dirs = "5"
 shlex = "1"
 

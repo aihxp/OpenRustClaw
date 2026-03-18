@@ -69,6 +69,11 @@ enum Commands {
         #[command(subcommand)]
         action: SessionAction,
     },
+    /// Channel account, binding, and pairing controls
+    Channels {
+        #[command(subcommand)]
+        action: ChannelAction,
+    },
     /// Run diagnostics
     Doctor,
     /// Interactive onboarding wizard
@@ -480,6 +485,59 @@ enum SessionAction {
     },
 }
 
+#[derive(Subcommand)]
+enum ChannelAction {
+    /// Initialize the standard .claw/channels/ registry layout
+    Init {
+        #[arg(long)]
+        path: Option<String>,
+    },
+    /// List channel accounts and bindings
+    List {
+        #[arg(long)]
+        path: Option<String>,
+    },
+    /// Approve a pending channel account
+    Approve {
+        id: String,
+        #[arg(long)]
+        path: Option<String>,
+    },
+    /// Block a channel account
+    Block {
+        id: String,
+        #[arg(long)]
+        path: Option<String>,
+    },
+    /// Set activation mode for a channel account
+    Activation {
+        id: String,
+        mode: String,
+        #[arg(long)]
+        path: Option<String>,
+    },
+    /// Write or replace a binding manifest
+    Bind {
+        id: String,
+        #[arg(long)]
+        platform: String,
+        #[arg(long)]
+        workspace_match: Option<String>,
+        #[arg(long)]
+        account_match: Option<String>,
+        #[arg(long)]
+        channel_match: Option<String>,
+        #[arg(long)]
+        workspace_target: Option<String>,
+        #[arg(long)]
+        agent_id: Option<String>,
+        #[arg(long)]
+        activation_mode: Option<String>,
+        #[arg(long)]
+        path: Option<String>,
+    },
+}
+
 #[cfg(feature = "cursor")]
 #[derive(Subcommand)]
 enum CursorAction {
@@ -860,6 +918,36 @@ async fn main() -> Result<()> {
                 archive,
                 reason,
             } => commands::session::close(&id, archive, reason.as_deref()).await,
+        },
+        Commands::Channels { action } => match action {
+            ChannelAction::Init { path } => commands::channels::init(path.as_deref()),
+            ChannelAction::List { path } => commands::channels::list(path.as_deref()),
+            ChannelAction::Approve { id, path } => commands::channels::approve(path.as_deref(), &id),
+            ChannelAction::Block { id, path } => commands::channels::block(path.as_deref(), &id),
+            ChannelAction::Activation { id, mode, path } => {
+                commands::channels::activation(path.as_deref(), &id, &mode)
+            }
+            ChannelAction::Bind {
+                id,
+                platform,
+                workspace_match,
+                account_match,
+                channel_match,
+                workspace_target,
+                agent_id,
+                activation_mode,
+                path,
+            } => commands::channels::bind(
+                path.as_deref(),
+                &id,
+                &platform,
+                workspace_match.as_deref(),
+                account_match.as_deref(),
+                channel_match.as_deref(),
+                workspace_target.as_deref(),
+                agent_id.as_deref(),
+                activation_mode.as_deref(),
+            ),
         },
         Commands::Doctor => commands::doctor::run().await,
         Commands::Onboard => commands::onboard::run().await,

@@ -61,6 +61,11 @@ use openrustclaw_security::OriginValidator;
 use sqlx::Row;
 use uuid::Uuid;
 
+use super::channels::{
+    ChannelBindingSpec, ChannelRegistry, ChannelSendPolicy, ensure_account_manifest,
+    identity_from_message, load_registry, message_bot_mentioned, resolve_root,
+};
+
 /// Run the start command - load config, optionally start the compatibility/experimental sidecar, and start the gateway.
 pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
     // Initialize tracing
@@ -209,6 +214,10 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
     let mut discord_ingress_handler = None;
     let mut slack_ingress_handler = None;
     let mut enabled_channels = Vec::new();
+    let channel_registry = load_registry(resolve_root(None)?).unwrap_or_else(|error| {
+        warn!(error = %error, "Failed to load file-backed channel registry; continuing with defaults");
+        ChannelRegistry::default()
+    });
 
     if channel_config.discord.enabled {
         match ChannelFactory::create_discord(channel_config.discord.clone()) {
@@ -265,6 +274,7 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
             session_manager.clone(),
             channel_langsmith_client(&config),
             event_bus.clone(),
+            channel_registry,
         )?))
     };
 
@@ -655,12 +665,24 @@ fn spawn_channel_task(
                             .await
                         {
                             Ok(Some(reply)) => {
-                                if let Err(e) = channel.send(reply).await {
-                                    error!(
-                                        platform = ?platform,
-                                        error = %e,
-                                        "Failed to send channel reply"
-                                    );
+                                for outbound in expand_outgoing_message(reply) {
+                                    if let Err(e) = channel.send(outbound.clone()).await {
+                                        error!(
+                                            platform = ?platform,
+                                            error = %e,
+                                            "Failed to send channel reply"
+                                        );
+                                        break;
+                                    }
+                                    let delay_ms = outbound
+                                        .metadata
+                                        .get("claw_send_policy")
+                                        .and_then(|value| value.get("chunk_delay_ms"))
+                                        .and_then(|value| value.as_u64())
+                                        .unwrap_or(0);
+                                    if delay_ms > 0 {
+                                        tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms)).await;
+                                    }
                                 }
                             }
                             Ok(None) => {}
@@ -696,6 +718,7 @@ struct ChannelAgent {
     core_memory_store: Option<Arc<dyn CoreMemoryStoreTrait>>,
     max_history_messages: usize,
     session_routing: SessionRoutingConfig,
+    channel_registry: Arc<tokio::sync::RwLock<ChannelRegistry>>,
     langsmith: Option<LangSmithClient>,
     event_bus: DurableEventBus,
 }
@@ -704,6 +727,21 @@ struct ChannelConversationState {
     session_id: Uuid,
     history: Vec<Message>,
     reply_metadata: serde_json::Value,
+    workspace_id: Option<String>,
+    agent_id: Option<String>,
+    send_policy: ChannelSendPolicy,
+}
+
+#[derive(Debug, Clone)]
+struct ChannelRouteDecision {
+    route_key: String,
+    session_type: SessionType,
+    workspace_id: Option<String>,
+    agent_id: Option<String>,
+    activation_mode: String,
+    send_policy: ChannelSendPolicy,
+    account_id: String,
+    binding_id: Option<String>,
 }
 
 type SharedChannel = Arc<dyn Channel>;
@@ -799,16 +837,32 @@ impl ChannelAgent {
             return Ok(None);
         }
 
-        let route_key = channel_route_key(&incoming, &self.session_routing);
+        let Some(decision) = self.resolve_route_decision(&incoming).await? else {
+            return Ok(None);
+        };
+        if message_is_group_candidate(&incoming)
+            && decision.activation_mode == "mention"
+            && !message_bot_mentioned(&incoming)
+        {
+            return Ok(None);
+        }
+
+        let route_key = decision.route_key.clone();
         if !route_sessions.contains_key(&route_key) {
-            let session_type = infer_session_type(&incoming, &self.session_routing);
             let session = self
                 .session_manager
-                .restore_or_create_session(
+                .restore_or_create_session_with_context(
                     &incoming.user_id,
-                    session_type,
+                    decision.session_type,
                     incoming.platform,
                     Some(&route_key),
+                    decision.workspace_id.as_deref(),
+                    Some(serde_json::json!({
+                        "route_key": route_key,
+                        "channel_account_id": decision.account_id,
+                        "binding_id": decision.binding_id,
+                        "agent_id": decision.agent_id,
+                    })),
                 )
                 .await?;
             let restored_history = self
@@ -846,6 +900,9 @@ impl ChannelAgent {
                     session_id: session.id,
                     history: restored_history,
                     reply_metadata: incoming.metadata.clone(),
+                    workspace_id: decision.workspace_id.clone(),
+                    agent_id: decision.agent_id.clone(),
+                    send_policy: decision.send_policy.clone(),
                 },
             );
         }
@@ -855,6 +912,9 @@ impl ChannelAgent {
         };
 
         route_state.reply_metadata = incoming.metadata.clone();
+        route_state.workspace_id = decision.workspace_id.clone();
+        route_state.agent_id = decision.agent_id.clone();
+        route_state.send_policy = decision.send_policy.clone();
         let inbound_message = Message::user(trimmed_content);
         if let Err(error) = self
             .event_bus
@@ -947,6 +1007,8 @@ impl ChannelAgent {
                         "route_key": route_key,
                         "history_len": route_state.history.len(),
                         "core_memory_entries": core_memory.len(),
+                        "workspace_id": route_state.workspace_id,
+                        "agent_id": route_state.agent_id,
                     }));
                     if let Err(trace_error) = client.update_run(run).await {
                         warn!(error = %trace_error, "Failed to update LangSmith channel trace");
@@ -1005,6 +1067,8 @@ impl ChannelAgent {
                     "history_len": route_state.history.len(),
                     "core_memory_entries": core_memory.len(),
                     "empty_reply": true,
+                    "workspace_id": route_state.workspace_id,
+                    "agent_id": route_state.agent_id,
                 }));
                 if let Err(trace_error) = client.update_run(run).await {
                     warn!(error = %trace_error, "Failed to update LangSmith channel trace");
@@ -1024,6 +1088,8 @@ impl ChannelAgent {
                     "route_key": route_key,
                     "history_len": route_state.history.len(),
                     "reply_length": response.message.content.len(),
+                    "workspace_id": route_state.workspace_id,
+                    "agent_id": route_state.agent_id,
                 }),
             })
             .await
@@ -1060,6 +1126,8 @@ impl ChannelAgent {
                 "history_len": route_state.history.len(),
                 "core_memory_entries": core_memory.len(),
                 "reply_length": response.message.content.len(),
+                "workspace_id": route_state.workspace_id,
+                "agent_id": route_state.agent_id,
             }));
             if let Err(trace_error) = client.update_run(run).await {
                 warn!(error = %trace_error, "Failed to update LangSmith channel trace");
@@ -1069,7 +1137,7 @@ impl ChannelAgent {
         Ok(Some(OutgoingMessage {
             session_id: route_state.session_id,
             content: response.message.content,
-            metadata: route_state.reply_metadata.clone(),
+            metadata: augment_reply_metadata(route_state.reply_metadata.clone(), &decision),
         }))
     }
 
@@ -1100,6 +1168,110 @@ impl ChannelAgent {
 }
 
 impl ChannelAgent {
+    async fn resolve_route_decision(
+        &self,
+        incoming: &openrustclaw_core::types::IncomingMessage,
+    ) -> Result<Option<ChannelRouteDecision>> {
+        let identity = identity_from_message(incoming);
+        let registry_root = { self.channel_registry.read().await.root.clone() };
+        let account = ensure_account_manifest(
+            &registry_root,
+            &identity,
+            self.session_routing.pairing_approval_required,
+        )?;
+        {
+            let mut registry = self.channel_registry.write().await;
+            registry.accounts.insert(account.id.clone(), account.clone());
+        }
+
+        if account.blocked || !account.enabled {
+            return Ok(None);
+        }
+        if !account.approved {
+            let _ = self
+                .event_bus
+                .publish_named(
+                    "channel.pairing_requested",
+                    "channel_pairing",
+                    None,
+                    &serde_json::json!({
+                        "platform": incoming.platform.to_string(),
+                        "account_id": account.id,
+                        "user_id": incoming.user_id,
+                        "workspace_id": identity.workspace_id,
+                    }),
+                    None,
+                )
+                .await;
+            return Ok(None);
+        }
+
+        let registry = self.channel_registry.read().await;
+        let binding = resolve_channel_binding(
+            &registry,
+            incoming.platform,
+            identity.workspace_id.as_deref(),
+            Some(account.id.as_str()),
+            identity.channel_scope.as_deref(),
+        );
+
+        let direct_strategy = account
+            .direct_strategy
+            .clone()
+            .or_else(|| binding.and_then(|value| value.direct_strategy.clone()))
+            .unwrap_or_else(|| self.session_routing.direct_strategy.clone());
+        let group_strategy = account
+            .group_strategy
+            .clone()
+            .or_else(|| binding.and_then(|value| value.group_strategy.clone()))
+            .unwrap_or_else(|| self.session_routing.group_strategy.clone());
+        let activation_mode = account
+            .activation_mode
+            .clone()
+            .or_else(|| binding.and_then(|value| value.activation_mode.clone()))
+            .unwrap_or_else(|| self.session_routing.default_group_activation.clone());
+        let send_policy = account
+            .send_policy
+            .clone()
+            .or_else(|| binding.and_then(|value| value.send_policy.clone()))
+            .unwrap_or_else(|| default_send_policy(&self.session_routing));
+        let workspace_id = account
+            .workspace_target
+            .clone()
+            .or_else(|| binding.and_then(|value| value.workspace_target.clone()))
+            .or_else(|| identity.workspace_id.clone());
+        let agent_id = account
+            .agent_id
+            .clone()
+            .or_else(|| binding.and_then(|value| value.agent_id.clone()));
+        let session_type = if identity.is_group {
+            SessionType::Group
+        } else {
+            SessionType::Dm
+        };
+
+        let route_key = channel_route_key_with_binding(
+            incoming,
+            &direct_strategy,
+            &group_strategy,
+            self.session_routing.thread_overrides_channel,
+            workspace_id.as_deref(),
+            agent_id.as_deref(),
+            Some(account.id.as_str()),
+        );
+
+        Ok(Some(ChannelRouteDecision {
+            route_key,
+            session_type,
+            workspace_id,
+            agent_id,
+            activation_mode,
+            send_policy,
+            account_id: account.id,
+            binding_id: binding.map(|value| value.id.clone()),
+        }))
+    }
+
     async fn capture_turn_memory(
         &self,
         user_id: &str,
@@ -1173,6 +1345,7 @@ fn build_channel_agent(
     session_manager: Arc<SessionManager>,
     langsmith: Option<LangSmithClient>,
     event_bus: DurableEventBus,
+    channel_registry: ChannelRegistry,
 ) -> Result<ChannelAgent> {
     let workspace_root = std::env::current_dir()?;
     let provider = build_channel_provider(config)?;
@@ -1190,6 +1363,7 @@ fn build_channel_agent(
         core_memory_store: Some(core_memory_store),
         max_history_messages: 24,
         session_routing: config.session_routing.clone(),
+        channel_registry: Arc::new(tokio::sync::RwLock::new(channel_registry)),
         langsmith,
         event_bus,
     })
@@ -1347,32 +1521,259 @@ impl LlmProvider for ChannelProviderChain {
     }
 }
 
+#[allow(dead_code)]
 fn infer_session_type(
     message: &openrustclaw_core::types::IncomingMessage,
     policy: &SessionRoutingConfig,
 ) -> SessionType {
-    if channel_scope_from_metadata(&message.metadata, policy.thread_overrides_channel).is_some() {
+    if message_is_group_candidate(message)
+        || channel_scope_from_metadata(&message.metadata, policy.thread_overrides_channel).is_some()
+    {
         SessionType::Group
     } else {
         SessionType::Dm
     }
 }
 
+fn message_is_group_candidate(message: &openrustclaw_core::types::IncomingMessage) -> bool {
+    super::channels::message_is_group(message)
+}
+
+#[allow(dead_code)]
 fn channel_route_key(
     message: &openrustclaw_core::types::IncomingMessage,
     policy: &SessionRoutingConfig,
 ) -> String {
-    if let Some(scope) = channel_scope_from_metadata(&message.metadata, policy.thread_overrides_channel) {
-        if policy.group_strategy == "shared_channel" {
-            return format!("{}:{}:shared", message.platform, scope);
-        }
-        return format!("{}:{}:{}", message.platform, scope, message.user_id);
+    channel_route_key_with_binding(
+        message,
+        &policy.direct_strategy,
+        &policy.group_strategy,
+        policy.thread_overrides_channel,
+        None,
+        None,
+        None,
+    )
+}
+
+fn channel_route_key_with_binding(
+    message: &openrustclaw_core::types::IncomingMessage,
+    direct_strategy: &str,
+    group_strategy: &str,
+    thread_overrides_channel: bool,
+    workspace_id: Option<&str>,
+    agent_id: Option<&str>,
+    account_id: Option<&str>,
+) -> String {
+    let mut prefix = vec![message.platform.to_string()];
+    if let Some(workspace_id) = workspace_id {
+        prefix.push(format!("workspace={workspace_id}"));
+    }
+    if let Some(agent_id) = agent_id {
+        prefix.push(format!("agent={agent_id}"));
+    }
+    if let Some(account_id) = account_id {
+        prefix.push(format!("account={account_id}"));
     }
 
-    match policy.direct_strategy.as_str() {
-        "shared_main" => format!("{}:main", message.platform),
-        _ => format!("{}:direct:{}", message.platform, message.user_id),
+    if let Some(scope) =
+        channel_scope_from_metadata(&message.metadata, thread_overrides_channel)
+    {
+        if group_strategy == "shared_channel" {
+            prefix.push(scope);
+            prefix.push("shared".to_string());
+            return prefix.join(":");
+        }
+        prefix.push(scope);
+        prefix.push(message.user_id.clone());
+        return prefix.join(":");
     }
+
+    match direct_strategy {
+        "shared_main" => {
+            prefix.push("main".to_string());
+            prefix.join(":")
+        }
+        _ => {
+            prefix.push("direct".to_string());
+            prefix.push(message.user_id.clone());
+            prefix.join(":")
+        }
+    }
+}
+
+fn resolve_channel_binding<'a>(
+    registry: &'a ChannelRegistry,
+    platform: Platform,
+    workspace_id: Option<&str>,
+    account_id: Option<&str>,
+    channel_scope: Option<&str>,
+) -> Option<&'a ChannelBindingSpec> {
+    registry
+        .bindings
+        .iter()
+        .filter(|binding| binding.enabled && binding.platform == platform.to_string())
+        .filter(|binding| {
+            binding
+                .workspace_match
+                .as_deref()
+                .map(|value| workspace_id == Some(value))
+                .unwrap_or(true)
+        })
+        .filter(|binding| {
+            binding
+                .account_match
+                .as_deref()
+                .map(|value| account_id == Some(value))
+                .unwrap_or(true)
+        })
+        .filter(|binding| {
+            binding
+                .channel_match
+                .as_deref()
+                .map(|value| channel_scope == Some(value))
+                .unwrap_or(true)
+        })
+        .max_by_key(|binding| {
+            let specificity = usize::from(binding.workspace_match.is_some())
+                + usize::from(binding.account_match.is_some())
+                + usize::from(binding.channel_match.is_some());
+            (specificity, -(binding.priority as isize))
+        })
+}
+
+fn default_send_policy(policy: &SessionRoutingConfig) -> ChannelSendPolicy {
+    ChannelSendPolicy {
+        mode: policy.default_send_mode.clone(),
+        max_chunk_chars: policy.default_chunk_chars,
+        chunk_delay_ms: policy.default_chunk_delay_ms,
+        coalesce_below_chars: Some(320),
+        preview_chars: 280,
+    }
+}
+
+fn augment_reply_metadata(
+    mut metadata: serde_json::Value,
+    decision: &ChannelRouteDecision,
+) -> serde_json::Value {
+    metadata["channel_account_id"] = serde_json::json!(decision.account_id);
+    if let Some(binding_id) = &decision.binding_id {
+        metadata["channel_binding_id"] = serde_json::json!(binding_id);
+    }
+    if let Some(workspace_id) = &decision.workspace_id {
+        metadata["workspace_id"] = serde_json::json!(workspace_id);
+    }
+    if let Some(agent_id) = &decision.agent_id {
+        metadata["agent_id"] = serde_json::json!(agent_id);
+    }
+    metadata["claw_send_policy"] = serde_json::to_value(&decision.send_policy).unwrap_or_default();
+    metadata
+}
+
+fn expand_outgoing_message(message: OutgoingMessage) -> Vec<OutgoingMessage> {
+    let policy: ChannelSendPolicy = message
+        .metadata
+        .get("claw_send_policy")
+        .cloned()
+        .and_then(|value| serde_json::from_value(value).ok())
+        .unwrap_or_default();
+
+    if message.content.chars().count() <= policy.max_chunk_chars || policy.mode == "single" {
+        return vec![message];
+    }
+
+    let preview = if policy.mode == "preview_then_blocks" {
+        let preview: String = message.content.chars().take(policy.preview_chars).collect();
+        Some(format!("{preview}…"))
+    } else {
+        None
+    };
+    let mut chunks = split_message_blocks(&message.content, policy.max_chunk_chars);
+    if let Some(limit) = policy.coalesce_below_chars
+        && chunks.len() >= 2
+        && chunks[0].chars().count() + chunks[1].chars().count() <= limit
+    {
+        let second = chunks.remove(1);
+        chunks[0] = format!("{}\n\n{}", chunks[0], second);
+    }
+
+    let total = chunks.len();
+    let mut expanded: Vec<OutgoingMessage> = chunks
+        .into_iter()
+        .enumerate()
+        .map(|(index, content)| {
+            let mut metadata = message.metadata.clone();
+            metadata["reply_part"] = serde_json::json!(index + 1);
+            metadata["reply_parts_total"] = serde_json::json!(total);
+            OutgoingMessage {
+                session_id: message.session_id,
+                content,
+                metadata,
+            }
+        })
+        .collect();
+
+    if let Some(preview) = preview {
+        let mut metadata = message.metadata.clone();
+        metadata["reply_preview"] = serde_json::json!(true);
+        expanded.insert(
+            0,
+            OutgoingMessage {
+                session_id: message.session_id,
+                content: preview,
+                metadata,
+            },
+        );
+    }
+
+    expanded
+}
+
+fn split_message_blocks(content: &str, max_chunk_chars: usize) -> Vec<String> {
+    let mut chunks = Vec::new();
+    let mut current = String::new();
+    for paragraph in content.split("\n\n") {
+        let paragraph = paragraph.trim();
+        if paragraph.is_empty() {
+            continue;
+        }
+        let addition = if current.is_empty() {
+            paragraph.to_string()
+        } else {
+            format!("{}\n\n{}", current, paragraph)
+        };
+        if addition.chars().count() <= max_chunk_chars {
+            current = addition;
+            continue;
+        }
+        if !current.is_empty() {
+            chunks.push(current);
+            current = String::new();
+        }
+        let mut buffer = String::new();
+        for word in paragraph.split_whitespace() {
+            let candidate = if buffer.is_empty() {
+                word.to_string()
+            } else {
+                format!("{buffer} {word}")
+            };
+            if candidate.chars().count() > max_chunk_chars && !buffer.is_empty() {
+                chunks.push(buffer);
+                buffer = word.to_string();
+            } else {
+                buffer = candidate;
+            }
+        }
+        if !buffer.is_empty() {
+            current = buffer;
+        }
+    }
+    if !current.is_empty() {
+        chunks.push(current);
+    }
+    if chunks.is_empty() {
+        chunks.push(content.to_string());
+    }
+    chunks
 }
 
 fn channel_scope_from_metadata(metadata: &serde_json::Value, thread_overrides_channel: bool) -> Option<String> {
@@ -3979,6 +4380,9 @@ mod tests {
             .await
             .expect("migrations");
 
+        let registry_root = std::env::temp_dir().join(format!("openrustclaw-channel-tests-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&registry_root).expect("registry root");
+
         (
             ChannelAgent {
                 runtime: Arc::new(runtime),
@@ -3986,6 +4390,10 @@ mod tests {
                 core_memory_store: None,
                 max_history_messages: 24,
                 session_routing: AppConfig::default().session_routing,
+                channel_registry: Arc::new(tokio::sync::RwLock::new(ChannelRegistry {
+                    root: registry_root,
+                    ..ChannelRegistry::default()
+                })),
                 langsmith: None,
                 event_bus: DurableEventBus::new(pool.clone(), 16),
             },
@@ -4166,6 +4574,51 @@ mod tests {
         }), true);
 
         assert_eq!(scope.as_deref(), Some("discord_thread_id=thread-1"));
+    }
+
+    #[test]
+    fn expand_outgoing_message_chunks_long_replies() {
+        let messages = expand_outgoing_message(OutgoingMessage {
+            session_id: Uuid::new_v4(),
+            content: "one two three four five six seven eight nine ten".to_string(),
+            metadata: serde_json::json!({
+                "claw_send_policy": {
+                    "mode": "blocks",
+                    "max_chunk_chars": 12,
+                    "chunk_delay_ms": 0,
+                    "coalesce_below_chars": 0,
+                    "preview_chars": 5
+                }
+            }),
+        });
+
+        assert!(messages.len() > 1);
+        assert_eq!(messages[0].metadata["reply_part"], 1);
+    }
+
+    #[test]
+    fn binding_route_key_includes_workspace_agent_and_account() {
+        let route_key = channel_route_key_with_binding(
+            &IncomingMessage {
+                session_id: Uuid::new_v4(),
+                user_id: "user-1".to_string(),
+                content: "hello".to_string(),
+                platform: openrustclaw_core::types::Platform::Slack,
+                metadata: serde_json::json!({
+                    "slack_channel": "C123"
+                }),
+            },
+            "shared_main",
+            "shared_channel",
+            true,
+            Some("workspace-a"),
+            Some("ops"),
+            Some("slack:T123:user-1"),
+        );
+
+        assert!(route_key.contains("workspace=workspace-a"));
+        assert!(route_key.contains("agent=ops"));
+        assert!(route_key.contains("account=slack:T123:user-1"));
     }
 
     #[tokio::test]

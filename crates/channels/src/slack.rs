@@ -176,7 +176,30 @@ impl Channel for SlackChannel {
             .into());
         }
 
-        let url = format!("{}/chat.postMessage", self.api_base_url());
+        let update_ts = msg
+            .metadata
+            .get("slack_update_ts")
+            .and_then(|v| v.as_str())
+            .map(ToString::to_string);
+        let reaction = msg
+            .metadata
+            .get("slack_reaction")
+            .and_then(|v| v.as_str())
+            .map(ToString::to_string);
+        let reaction_target_ts = msg
+            .metadata
+            .get("slack_target_ts")
+            .and_then(|v| v.as_str())
+            .map(ToString::to_string);
+
+        let endpoint = if reaction.is_some() {
+            "reactions.add"
+        } else if update_ts.is_some() {
+            "chat.update"
+        } else {
+            "chat.postMessage"
+        };
+        let url = format!("{}/{}", self.api_base_url(), endpoint);
         let mut payload = serde_json::json!({
             "channel": channel_id,
             "text": formatted_content,
@@ -186,6 +209,16 @@ impl Channel for SlackChannel {
         }
         if let Some(blocks) = blocks {
             payload["blocks"] = serde_json::json!(blocks);
+        }
+        if let Some(ts) = update_ts {
+            payload["ts"] = serde_json::json!(ts);
+        }
+        if let (Some(name), Some(ts)) = (reaction, reaction_target_ts) {
+            payload = serde_json::json!({
+                "channel": channel_id,
+                "timestamp": ts,
+                "name": name,
+            });
         }
 
         let response = self
@@ -471,11 +504,13 @@ impl SlackEventHandler {
                 message: "Slack event callback missing event payload".to_string(),
             })?;
 
-        if event.get("type").and_then(|value| value.as_str()) != Some("message") {
+        let event_type = event.get("type").and_then(|value| value.as_str()).unwrap_or("");
+        if !matches!(event_type, "message" | "app_mention") {
             return Ok(());
         }
 
-        if event
+        if event_type == "message"
+            && event
             .get("subtype")
             .and_then(|value| value.as_str())
             .is_some()
@@ -510,6 +545,8 @@ impl SlackEventHandler {
 
         let mut metadata = serde_json::json!({
             "slack_channel": channel_id,
+            "slack_is_group": !channel_id.starts_with('D'),
+            "slack_bot_mentioned": event_type == "app_mention",
         });
         if let Some(team_id) = team_id {
             metadata["slack_team_id"] = serde_json::json!(team_id);

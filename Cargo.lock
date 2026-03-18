@@ -5688,6 +5688,7 @@ dependencies = [
  "tokio-tungstenite 0.26.2",
  "tracing",
  "url",
+ "urlencoding",
  "uuid",
  "wiremock",
 ]
@@ -5732,6 +5733,7 @@ dependencies = [
  "reqwest 0.12.28",
  "serde",
  "serde_json",
+ "serde_yaml",
  "shlex",
  "sqlx",
  "tempfile",

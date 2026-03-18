@@ -44,9 +44,10 @@ Status values:
 | Area | Status | Notes |
 | --- | --- | --- |
 | WebChat | real | Current baseline chat path |
-| Telegram | real | Auth probe, outbound send, Bot API polling receive, and local agent/session routing in `openrustclaw start` exist |
-| Discord | partial | Auth probe, outbound send, verified Interactions HTTP ingress, Gateway `MESSAGE_CREATE` receive, reconnect plus session resume handling, stale-heartbeat recovery, invalid-session recycling, thread-aware session routing, thread-preferred outbound replies, reply-reference propagation aliases, bot/webhook/self-message suppression, DM markers, attachment/embed metadata capture, deferred acknowledgements, and local agent/session routing exist; deeper gateway polish remains incomplete |
-| Slack | real | HTTP mode supports auth probe, outbound send, built-in Events API ingress, and local agent/session routing; Socket Mode remains incomplete |
+| Telegram | real | Auth probe, outbound send, Bot API polling receive, reply threading, mention-aware group activation metadata, and local agent/session routing exist |
+| Discord | partial | Auth probe, outbound send, edit/reaction operations, verified Interactions HTTP ingress, Gateway `MESSAGE_CREATE` receive, reconnect plus session resume handling, stale-heartbeat recovery, invalid-session recycling, thread-aware session routing, thread-preferred outbound replies, reply-reference propagation aliases, bot/webhook/self-message suppression, DM markers, mention detection, attachment/embed metadata capture, deferred acknowledgements, and local agent/session routing exist; deeper gateway polish remains incomplete |
+| Slack | real | HTTP mode supports auth probe, outbound send, edit/reaction operations, built-in Events API ingress, mention activation metadata, and local agent/session routing; Socket Mode remains incomplete |
+| Channel account/binding registry | real | `.claw/channels/` manifests now back pending/approved accounts, account activation mode, workspace/account/channel bindings, and operator CLI control |
 | Matrix | gated | Repo surface exists, but runtime client support is deferred from the current shipped surface |
 | Google Chat | gated | Repo surface exists, but service-account auth and runtime coverage are deferred from the current shipped surface |
 | Gmail Pub/Sub | gated | Repo surface exists, but Gmail API runtime coverage is deferred from the current shipped surface |

@@ -300,23 +300,63 @@ impl Channel for DiscordChannel {
             .get("discord_application_id")
             .and_then(|v| v.as_str());
 
-        let (request_builder, expects_auth_body) =
-            if let (Some(interaction_token), Some(application_id)) = (interaction_token, application_id)
-            {
-                let followup_url = format!(
-                    "{}/webhooks/{}/{}",
-                    self.api_base_url(),
-                    application_id,
-                    interaction_token
-                );
-                (self.client.post(followup_url), false)
-            } else {
-                let url = format!("{}/channels/{}/messages", self.api_base_url(), channel_id);
-                (
-                    self.client.post(url).header("Authorization", self.header_value()),
-                    true,
-                )
-            };
+        let edit_message_id = msg
+            .metadata
+            .get("discord_edit_message_id")
+            .and_then(|v| v.as_str());
+        let reaction_emoji = msg
+            .metadata
+            .get("discord_reaction_emoji")
+            .and_then(|v| v.as_str());
+        let reaction_target = msg
+            .metadata
+            .get("discord_reaction_target_message_id")
+            .and_then(|v| v.as_str())
+            .or_else(|| msg.metadata.get("discord_reply_to_message_id").and_then(|v| v.as_str()));
+
+        let (request_builder, expects_auth_body) = if let (Some(emoji), Some(target)) =
+            (reaction_emoji, reaction_target)
+        {
+            let encoded = urlencoding::encode(emoji);
+            let url = format!(
+                "{}/channels/{}/messages/{}/reactions/{}/@me",
+                self.api_base_url(),
+                channel_id,
+                target,
+                encoded
+            );
+            (
+                self.client.put(url).header("Authorization", self.header_value()),
+                true,
+            )
+        } else if let (Some(interaction_token), Some(application_id)) =
+            (interaction_token, application_id)
+        {
+            let followup_url = format!(
+                "{}/webhooks/{}/{}",
+                self.api_base_url(),
+                application_id,
+                interaction_token
+            );
+            (self.client.post(followup_url), false)
+        } else if let Some(message_id) = edit_message_id {
+            let url = format!(
+                "{}/channels/{}/messages/{}",
+                self.api_base_url(),
+                channel_id,
+                message_id
+            );
+            (
+                self.client.patch(url).header("Authorization", self.header_value()),
+                true,
+            )
+        } else {
+            let url = format!("{}/channels/{}/messages", self.api_base_url(), channel_id);
+            (
+                self.client.post(url).header("Authorization", self.header_value()),
+                true,
+            )
+        };
 
         if expects_auth_body
             && let Some(reference_id) = msg
@@ -330,14 +370,15 @@ impl Channel for DiscordChannel {
             });
         }
 
-        let response = request_builder
-            .json(&payload)
-            .send()
-            .await
-            .map_err(|e| ChannelError::SendFailed {
-                platform: "discord".to_string(),
-                message: e.to_string(),
-            })?;
+        let response = if reaction_emoji.is_some() && reaction_target.is_some() {
+            request_builder.send().await
+        } else {
+            request_builder.json(&payload).send().await
+        }
+        .map_err(|e| ChannelError::SendFailed {
+            platform: "discord".to_string(),
+            message: e.to_string(),
+        })?;
 
         let status = response.status();
         let body: serde_json::Value = response.json().await.unwrap_or_else(|_| serde_json::json!({}));
@@ -697,6 +738,8 @@ fn normalize_gateway_message(
         "discord_gateway": true,
         "discord_application_id": config.application_id,
         "discord_is_dm": event.guild_id.is_none(),
+        "discord_bot_mentioned": event.content.contains(&format!("<@{}>", config.application_id))
+            || event.content.contains(&format!("<@!{}>", config.application_id)),
         "discord_attachment_count": event.attachments.len(),
         "discord_embed_count": event.embeds.len(),
     });
