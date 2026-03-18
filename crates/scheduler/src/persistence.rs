@@ -94,6 +94,7 @@ pub struct PersistedEventDispatch {
     pub dispatch_id: String,
     pub event_id: String,
     pub event_name: String,
+    pub dispatch_created_at: DateTime<Utc>,
     pub attempts: u32,
     pub payload: Value,
     pub job: Job,
@@ -112,6 +113,14 @@ fn optional_rfc3339(raw: Option<String>, field: &str) -> Result<Option<DateTime<
         Some(value) => parse_rfc3339(&value, field).map(Some),
         None => Ok(None),
     }
+}
+
+fn parse_datetime(raw: &str, field: &str) -> Result<DateTime<Utc>> {
+    parse_rfc3339(raw, field).or_else(|_| {
+        chrono::NaiveDateTime::parse_from_str(raw, "%Y-%m-%d %H:%M:%S")
+            .map(|value| chrono::DateTime::<Utc>::from_naive_utc_and_offset(value, Utc))
+            .map_err(|e| SchedulerError::InvalidTrigger(format!("invalid {field}: {e}")))
+    })
 }
 
 fn parse_trigger(trigger_type: &str, trigger_config: &str) -> Result<TriggerConfig> {
@@ -316,6 +325,10 @@ fn row_to_persisted_event_dispatch(row: sqlx::sqlite::SqliteRow) -> Result<Persi
         dispatch_id,
         event_id,
         event_name,
+        dispatch_created_at: parse_datetime(
+            &row.get::<String, _>("dispatch_created_at"),
+            "dispatch_created_at",
+        )?,
         attempts: row.get::<i64, _>("attempts") as u32,
         payload,
         job: Job {
@@ -628,6 +641,7 @@ pub async fn load_due_event_dispatches(
             q.event_id,
             q.attempts,
             q.payload,
+            q.created_at AS dispatch_created_at,
             e.event_name,
             j.id AS job_id,
             j.name,
@@ -671,9 +685,23 @@ pub async fn load_due_event_dispatches(
         SchedulerError::WorkflowFailed(format!("failed to load due event dispatches: {e}"))
     })?;
 
-    rows.into_iter()
+    let mut dispatches: Vec<_> = rows
+        .into_iter()
         .map(row_to_persisted_event_dispatch)
-        .collect()
+        .collect::<Result<Vec<_>>>()?;
+
+    dispatches.sort_by(|left, right| {
+        let left_priority = hook_priority(&left.metadata);
+        let right_priority = hook_priority(&right.metadata);
+        right_priority
+            .cmp(&left_priority)
+            .then_with(|| match hook_ordering(&left.metadata) {
+                HookOrdering::Lifo => right.dispatch_created_at.cmp(&left.dispatch_created_at),
+                HookOrdering::Fifo => left.dispatch_created_at.cmp(&right.dispatch_created_at),
+            })
+    });
+
+    Ok(dispatches)
 }
 
 /// Claim a queued event dispatch lease.
@@ -821,6 +849,31 @@ pub async fn insert_dead_letter(
     Ok(())
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum HookOrdering {
+    Fifo,
+    Lifo,
+}
+
+fn hook_priority(metadata: &Value) -> i64 {
+    metadata
+        .get("hook_policy")
+        .and_then(|policy| policy.get("priority"))
+        .and_then(Value::as_i64)
+        .unwrap_or(0)
+}
+
+fn hook_ordering(metadata: &Value) -> HookOrdering {
+    match metadata
+        .get("hook_policy")
+        .and_then(|policy| policy.get("ordering"))
+        .and_then(Value::as_str)
+    {
+        Some("lifo") => HookOrdering::Lifo,
+        _ => HookOrdering::Fifo,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -884,5 +937,59 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(queued_with_session, 1);
+    }
+
+    #[tokio::test]
+    async fn load_due_event_dispatches_prioritizes_high_priority_hooks() {
+        let pool = init_pool("sqlite::memory:", 1).await.unwrap();
+        run_migrations(&pool).await.unwrap();
+
+        for (job_id, priority) in [("hook-low", 1), ("hook-high", 10)] {
+            sqlx::query(
+                r#"
+                INSERT INTO scheduled_jobs (
+                    id, name, description, workflow_id, trigger_type, trigger_config,
+                    idempotency_key, state, timezone, max_retries, next_run_at, run_count,
+                    consecutive_failures, metadata, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', 'UTC', 3, NULL, 0, 0, ?, ?)
+                "#,
+            )
+            .bind(job_id)
+            .bind(job_id)
+            .bind("test")
+            .bind("scheduler")
+            .bind("event")
+            .bind(r#"{"type":"event","event_name":"session.end"}"#)
+            .bind(format!("{job_id}:stable"))
+            .bind(
+                serde_json::json!({
+                    "hook_policy": {
+                        "priority": priority,
+                        "ordering": "fifo",
+                    }
+                })
+                .to_string(),
+            )
+            .bind(Utc::now().to_rfc3339())
+            .execute(&pool)
+            .await
+            .unwrap();
+        }
+
+        queue_runtime_event(
+            &pool,
+            "session.end",
+            "session_lifecycle",
+            Some("session-1"),
+            &serde_json::json!({"reason": "normal"}),
+            None,
+        )
+        .await
+        .unwrap();
+
+        let dispatches = load_due_event_dispatches(&pool, 10).await.unwrap();
+        assert_eq!(dispatches.len(), 2);
+        assert_eq!(dispatches[0].job.id, "hook-high");
+        assert_eq!(dispatches[1].job.id, "hook-low");
     }
 }

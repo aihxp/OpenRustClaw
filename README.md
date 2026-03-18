@@ -16,7 +16,7 @@ Current execution planning lives in:
 The roadmap target is explicit: achieve practical OpenClaw feature parity with a Rust-first runtime, while keeping OpenRustClaw-native improvements where they are stronger.
 The execution model is also explicit: Rust-native for production-critical paths, sidecar compatibility for migration, and LangGraph as the experimentation lane rather than the sole durability boundary.
 `openrustclaw start` now defaults to the Rust runtime path without requiring Python; the sidecar is only used when a compatibility workflow is explicitly needed and configured.
-The shipped Rust runtime now owns durable scheduling, event-triggered workflows, session lifecycle hooks, and reminder delivery with channel-aware fallback policies.
+The shipped Rust runtime now owns durable scheduling, event-triggered workflows, session lifecycle hooks, hook execution policies, and reminder delivery with quiet-hours/retry-aware channel fallback policies.
 The roadmap now includes a shipped Rust-native autonomous optimization framework inspired by `autoresearch`, generalized for skills, RAG, prompts, policies, bounded workflows, bounded code, and research-program targets.
 
 ## Quick Start

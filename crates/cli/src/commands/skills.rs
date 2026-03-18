@@ -7,6 +7,7 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use openrustclaw_security::SkillVerifier;
+use openrustclaw_scheduler::DurableEventBus;
 use openrustclaw_skills::{ClawHubRegistry, SearchFilters, SortBy, normalize_capability_names};
 
 fn parse_hex_bytes(input: &str) -> Result<Vec<u8>> {
@@ -47,6 +48,20 @@ fn load_configured_skill_verifier(
 
     SkillVerifier::new(Some(&key_bytes), required)
         .context("Failed to construct skill verifier from configured key")
+}
+
+async fn publish_plugin_event(
+    pool: &sqlx::SqlitePool,
+    event_name: &str,
+    payload: serde_json::Value,
+) {
+    let event_bus = DurableEventBus::new(pool.clone(), 64);
+    if let Err(error) = event_bus
+        .publish_named(event_name, "plugin_runtime_event", None, &payload, None)
+        .await
+    {
+        tracing::warn!(error = %error, event_name, "Failed to publish plugin runtime event");
+    }
 }
 
 fn resolve_workspace_skill_file(name: &str) -> Option<PathBuf> {
@@ -398,6 +413,17 @@ pub async fn install(name: &str) -> Result<()> {
         )
         .await?;
 
+        publish_plugin_event(
+            &pool,
+            "plugin.skill_installed",
+            serde_json::json!({
+                "name": metadata.name,
+                "source": "workspace",
+                "capabilities": metadata.capabilities,
+            }),
+        )
+        .await;
+
         println!("✓ Skill '{}' installed successfully", name);
         println!("  Path: {}", skill_file.display());
         println!("  Source: workspace");
@@ -472,6 +498,17 @@ pub async fn install(name: &str) -> Result<()> {
                                     None,
                                 )
                                 .await?;
+
+                                publish_plugin_event(
+                                    &pool,
+                                    "plugin.skill_installed",
+                                    serde_json::json!({
+                                        "name": name,
+                                        "source": "marketplace",
+                                        "version": version_string,
+                                    }),
+                                )
+                                .await;
 
                                 println!("✓ Skill '{}' v{} installed successfully", name, version);
                                 println!("  Path: {}", path.display());
@@ -580,6 +617,17 @@ pub async fn update(name: &str) -> Result<()> {
                                 None,
                             )
                             .await?;
+
+                            publish_plugin_event(
+                                &pool,
+                                "plugin.skill_updated",
+                                serde_json::json!({
+                                    "name": name,
+                                    "from": from.to_string(),
+                                    "to": version_string,
+                                }),
+                            )
+                            .await;
                         }
                     }
                 }
@@ -643,6 +691,15 @@ pub async fn uninstall(name: &str) -> Result<()> {
         .execute(&pool)
         .await?;
 
+    publish_plugin_event(
+        &pool,
+        "plugin.skill_uninstalled",
+        serde_json::json!({
+            "name": name,
+        }),
+    )
+    .await;
+
     println!("✓ Skill '{}' uninstalled successfully.", name);
 
     Ok(())
@@ -687,6 +744,17 @@ pub async fn verify(name: &str) -> Result<()> {
         );
 
         persist_verified_state(&pool, &id, true).await?;
+        publish_plugin_event(
+            &pool,
+            "plugin.skill_verified",
+            serde_json::json!({
+                "name": name,
+                "source": source,
+                "verified": true,
+                "verification_mode": "exempt",
+            }),
+        )
+        .await;
 
         return Ok(());
     }
@@ -727,14 +795,48 @@ pub async fn verify(name: &str) -> Result<()> {
         Ok(true) => {
             println!("✓ Skill '{}' signature verified successfully", name);
             persist_verified_state(&pool, &id, true).await?;
+            publish_plugin_event(
+                &pool,
+                "plugin.skill_verified",
+                serde_json::json!({
+                    "name": name,
+                    "source": source,
+                    "verified": true,
+                    "verification_mode": "signature",
+                }),
+            )
+            .await;
         }
         Ok(false) => {
             println!("✗ Skill '{}' signature verification failed", name);
             persist_verified_state(&pool, &id, false).await?;
+            publish_plugin_event(
+                &pool,
+                "plugin.skill_verified",
+                serde_json::json!({
+                    "name": name,
+                    "source": source,
+                    "verified": false,
+                    "verification_mode": "signature",
+                }),
+            )
+            .await;
         }
         Err(e) => {
             println!("✗ Error verifying skill '{}': {}", name, e);
             persist_verified_state(&pool, &id, false).await?;
+            publish_plugin_event(
+                &pool,
+                "plugin.skill_verified",
+                serde_json::json!({
+                    "name": name,
+                    "source": source,
+                    "verified": false,
+                    "verification_mode": "error",
+                    "error": e.to_string(),
+                }),
+            )
+            .await;
         }
     }
 

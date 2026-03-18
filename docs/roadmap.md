@@ -370,8 +370,7 @@ Completed:
 - [x] A durable Rust-owned event bus and queued event-triggered workflow dispatch path now exist.
 - [x] Operator controls exist for pause, resume, replay, attempt inspection, dead-letter inspection, and MCP-based scheduler introspection.
 - [x] Rust-native workflow checkpoints exist for timed and event-triggered work.
-
-Remaining:
+- [x] Control/runtime management events now cover scheduler and plugin operator actions.
 
 - [x] Expand the internal event bus coverage across the current shipped parity-critical sources:
   - message.received,
@@ -381,17 +380,18 @@ Remaining:
   - reminder.triggered,
   - reminder.delivered,
   - reminder.delivery_failed.
-- [ ] Extend the event bus to additional non-shipped or later-phase sources:
-  - node.paired,
+- [x] Extend the event bus to broader current operator/runtime-management sources:
   - plugin events,
-  - broader Control UI/runtime management events.
+  - Control UI/runtime management events,
+  - scheduler operator actions.
+- [ ] Handle `node.paired` and other distributed/mobile lifecycle events in the later node/distributed phases, not in Phase 3.
 - [x] Support event-triggered workflows in Rust, not just time-triggered jobs.
 - [x] Add reminder delivery policy controls across channels:
   - fallback channel order,
   - first-success vs broadcast delivery modes,
   - per-channel metadata/route targeting,
   - bounded multi-channel fan-out.
-- [ ] Extend reminder policies with:
+- [x] Extend reminder policies with:
   - quiet hours,
   - retries per channel,
   - per-agent delivery rules.
@@ -402,12 +402,12 @@ Remaining:
 - [x] Finish lifecycle hook coverage for shipped channel sessions with:
   - `session.end`,
   - durable payload delivery to internal event-triggered handlers.
-- [ ] Extend lifecycle hook coverage to additional non-channel/runtime-managed paths.
+- [x] Extend lifecycle hook coverage to additional non-channel/runtime-managed paths.
 - [x] Add explicit hook policy semantics for event-triggered jobs:
   - enable/disable,
   - session-required filtering,
   - allowed hook lists.
-- [ ] Extend hook policies with:
+- [x] Extend hook policies with:
   - timeout budgets,
   - failure isolation controls,
   - ordering/priority rules.
@@ -417,7 +417,7 @@ Remaining:
 
 Exit criteria:
 
-- [ ] All scheduled and event-driven automations are Rust-owned, durable, restart-safe, and operator-visible.
+- [x] All current shipped scheduled and event-driven automations are Rust-owned, durable, restart-safe, and operator-visible.
 
 ## Phase 4: Memory, Sessions, Context, and RAG
 

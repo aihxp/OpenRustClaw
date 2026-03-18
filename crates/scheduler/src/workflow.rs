@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result as AnyhowResult};
 use async_trait::async_trait;
-use chrono::{Datelike, Utc};
+use chrono::{Datelike, Timelike, Utc};
 use openrustclaw_agent::runtime::AgentRuntime;
 use openrustclaw_core::config::AppConfig;
 use openrustclaw_core::error::SchedulerError;
@@ -362,6 +362,7 @@ impl RustWorkflowDispatcher {
             .and_then(Value::as_str)
             .unwrap_or(&invocation.thread_id)
             .to_string();
+        let session_uuid = derive_session_uuid(&session_id);
 
         let messages = parse_messages(invocation.input.get("messages"));
         let core_memory = if let Some(entries_value) = invocation.input.get("core_memory") {
@@ -383,6 +384,31 @@ impl RustWorkflowDispatcher {
             }),
         )
         .await?;
+
+        if let Some(event_bus) = &self.event_bus {
+            let _ = event_bus
+                .publish_named(
+                    "session.start",
+                    "session_lifecycle",
+                    Some(&session_uuid.to_string()),
+                    &serde_json::json!({
+                        "workflow": "agent",
+                        "channel": "scheduler",
+                        "thread_id": invocation.thread_id,
+                        "user_id": user_id,
+                    }),
+                    None,
+                )
+                .await;
+            if let Some(last_message) = messages.last() {
+                let _ = event_bus
+                    .publish(openrustclaw_core::types::Event::MessageReceived {
+                        session_id: session_uuid,
+                        message: last_message.clone(),
+                    })
+                    .await;
+            }
+        }
 
         let response = runtime
             .process(&messages, &core_memory, &session_id, &user_id)
@@ -406,6 +432,49 @@ impl RustWorkflowDispatcher {
             }),
         )
         .await?;
+
+        if let Some(event_bus) = &self.event_bus {
+            let _ = event_bus
+                .publish(openrustclaw_core::types::Event::MessageSent {
+                    session_id: session_uuid,
+                    message: response.message.clone(),
+                })
+                .await;
+            let _ = event_bus
+                .publish_named(
+                    "session.post_turn",
+                    "session_lifecycle",
+                    Some(&session_uuid.to_string()),
+                    &serde_json::json!({
+                        "workflow": "agent",
+                        "channel": "scheduler",
+                        "thread_id": invocation.thread_id,
+                        "user_id": user_id,
+                        "reply_length": response.message.content.len(),
+                    }),
+                    None,
+                )
+                .await;
+            let _ = event_bus
+                .publish_named(
+                    "session.end",
+                    "session_lifecycle",
+                    Some(&session_uuid.to_string()),
+                    &serde_json::json!({
+                        "workflow": "agent",
+                        "channel": "scheduler",
+                        "thread_id": invocation.thread_id,
+                        "user_id": user_id,
+                    }),
+                    None,
+                )
+                .await;
+            let _ = event_bus
+                .publish(openrustclaw_core::types::Event::SessionClosed {
+                    session_id: session_uuid,
+                })
+                .await;
+        }
 
         Ok(WorkflowDispatchResult {
             status: "success".to_string(),
@@ -683,7 +752,12 @@ impl RustWorkflowDispatcher {
             .and_then(Value::as_str)
             .or_else(|| invocation.configurable.get("user_id").and_then(Value::as_str))
             .unwrap_or("scheduler");
-        let policy = ReminderDeliveryPolicy::from_input(&invocation.input)?;
+        let agent_id = invocation
+            .input
+            .get("agent_id")
+            .and_then(Value::as_str)
+            .or_else(|| invocation.configurable.get("agent_id").and_then(Value::as_str));
+        let policy = ReminderDeliveryPolicy::from_input(&invocation.input, agent_id)?;
         let selected_platforms =
             resolve_delivery_platforms(&policy, sender.available_platforms())?;
 
@@ -716,9 +790,19 @@ impl RustWorkflowDispatcher {
 
         let mut deliveries = Vec::new();
         let mut failures = Vec::new();
+        let mut suppressed = Vec::new();
         let mut delivered_count = 0_usize;
 
         for platform in selected_platforms {
+            if let Some(next_allowed_at) = policy.quiet_hours_next_allowed_at() {
+                suppressed.push(serde_json::json!({
+                    "platform": platform.to_string(),
+                    "reason": "quiet_hours",
+                    "next_allowed_at": next_allowed_at.to_rfc3339(),
+                }));
+                continue;
+            }
+
             let metadata = policy.metadata_for(platform, &invocation.input);
             let outgoing = OutgoingMessage {
                 session_id,
@@ -726,7 +810,15 @@ impl RustWorkflowDispatcher {
                 metadata: metadata.clone(),
             };
 
-            match sender.send(platform, outgoing).await {
+            match deliver_with_retries(
+                sender.as_ref(),
+                platform,
+                outgoing,
+                policy.per_channel_retries,
+                policy.retry_delay_ms,
+            )
+            .await
+            {
                 Ok(()) => {
                     delivered_count += 1;
                     deliveries.push(serde_json::json!({
@@ -781,6 +873,35 @@ impl RustWorkflowDispatcher {
             }
         }
 
+        if delivered_count == 0
+            && !suppressed.is_empty()
+            && let Some(next_allowed_at) = policy.quiet_hours_next_allowed_at()
+        {
+            self.checkpoint(
+                &invocation,
+                1,
+                serde_json::json!({
+                    "status": "deferred",
+                    "next_attempt_at": next_allowed_at.to_rfc3339(),
+                    "suppressed_count": suppressed.len(),
+                }),
+            )
+            .await?;
+
+            return Ok(WorkflowDispatchResult {
+                status: "deferred".to_string(),
+                output: serde_json::json!({
+                    "deferred": true,
+                    "next_attempt_at": next_allowed_at.to_rfc3339(),
+                    "suppressed": suppressed,
+                    "deliveries": deliveries,
+                    "failures": failures,
+                }),
+                error: None,
+                trace_id: None,
+            });
+        }
+
         let success = match policy.mode {
             ReminderDeliveryMode::FirstSuccess => delivered_count >= 1,
             ReminderDeliveryMode::Broadcast => delivered_count >= 1,
@@ -806,11 +927,16 @@ impl RustWorkflowDispatcher {
                 "delivery_mode": policy.mode.as_str(),
                 "deliveries": deliveries,
                 "failures": failures,
+                "suppressed": suppressed,
             }),
             error: (!success).then_some("reminder delivery failed".to_string()),
             trace_id: None,
         })
     }
+}
+
+fn derive_session_uuid(session_id: &str) -> Uuid {
+    Uuid::parse_str(session_id).unwrap_or_else(|_| Uuid::new_v4())
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -835,16 +961,28 @@ struct ReminderDeliveryPolicy {
     fallback_channels: Vec<Platform>,
     max_deliveries: usize,
     continue_on_failure: bool,
+    per_channel_retries: u32,
+    retry_delay_ms: u64,
+    quiet_hours: Option<QuietHoursPolicy>,
     default_metadata: Value,
     channel_metadata: Map<String, Value>,
 }
 
 impl ReminderDeliveryPolicy {
-    fn from_input(input: &Value) -> Result<Self> {
-        let policy = input
+    fn from_input(input: &Value, agent_id: Option<&str>) -> Result<Self> {
+        let mut policy = input
             .get("delivery_policy")
             .cloned()
             .unwrap_or_else(|| serde_json::json!({}));
+        if let Some(agent_id) = agent_id
+            && let Some(agent_rule) = policy
+                .get("agent_rules")
+                .and_then(Value::as_object)
+                .and_then(|rules| rules.get(agent_id))
+                .cloned()
+        {
+            policy = merge_json_objects(policy, agent_rule);
+        }
 
         let mode = match policy
             .get("mode")
@@ -884,9 +1022,26 @@ impl ReminderDeliveryPolicy {
                 .get("continue_on_failure")
                 .and_then(Value::as_bool)
                 .unwrap_or(true),
+            per_channel_retries: policy
+                .get("per_channel_retries")
+                .and_then(Value::as_u64)
+                .unwrap_or(0) as u32,
+            retry_delay_ms: policy
+                .get("retry_delay_ms")
+                .and_then(Value::as_u64)
+                .unwrap_or(0),
+            quiet_hours: policy
+                .get("quiet_hours")
+                .map(QuietHoursPolicy::from_value)
+                .transpose()?,
             default_metadata,
             channel_metadata,
         })
+    }
+
+    fn quiet_hours_next_allowed_at(&self) -> Option<chrono::DateTime<Utc>> {
+        let quiet_hours = self.quiet_hours.as_ref()?;
+        quiet_hours.next_allowed_at()
     }
 
     fn metadata_for(&self, platform: Platform, input: &Value) -> Value {
@@ -910,6 +1065,105 @@ impl ReminderDeliveryPolicy {
             Value::String(platform.to_string()),
         );
         Value::Object(metadata)
+    }
+}
+
+#[derive(Debug, Clone)]
+struct QuietHoursPolicy {
+    start_hour: u32,
+    end_hour: u32,
+    timezone_offset_minutes: i32,
+}
+
+impl QuietHoursPolicy {
+    fn from_value(value: &Value) -> Result<Self> {
+        let start_hour = value
+            .get("start_hour")
+            .and_then(Value::as_u64)
+            .ok_or_else(|| {
+                SchedulerError::WorkflowFailed("quiet_hours.start_hour is required".to_string())
+            })? as u32;
+        let end_hour = value
+            .get("end_hour")
+            .and_then(Value::as_u64)
+            .ok_or_else(|| {
+                SchedulerError::WorkflowFailed("quiet_hours.end_hour is required".to_string())
+            })? as u32;
+        let timezone_offset_minutes = value
+            .get("timezone_offset_minutes")
+            .and_then(Value::as_i64)
+            .unwrap_or(0) as i32;
+
+        Ok(Self {
+            start_hour,
+            end_hour,
+            timezone_offset_minutes,
+        })
+    }
+
+    fn is_active_now(&self) -> bool {
+        let local = Utc::now() + chrono::Duration::minutes(self.timezone_offset_minutes as i64);
+        let hour = local.hour();
+        if self.start_hour < self.end_hour {
+            hour >= self.start_hour && hour < self.end_hour
+        } else {
+            hour >= self.start_hour || hour < self.end_hour
+        }
+    }
+
+    fn next_allowed_at(&self) -> Option<chrono::DateTime<Utc>> {
+        if !self.is_active_now() {
+            return None;
+        }
+
+        let local = Utc::now() + chrono::Duration::minutes(self.timezone_offset_minutes as i64);
+        let today_end = local
+            .date_naive()
+            .and_hms_opt(self.end_hour.min(23), 0, 0)
+            .map(|naive| chrono::DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc))
+            .unwrap_or(local);
+        let mut next_allowed = today_end - chrono::Duration::minutes(self.timezone_offset_minutes as i64);
+        if next_allowed <= Utc::now() {
+            next_allowed += chrono::Duration::days(1);
+        }
+        Some(next_allowed)
+    }
+}
+
+async fn deliver_with_retries(
+    sender: &dyn ReminderSender,
+    platform: Platform,
+    outgoing: OutgoingMessage,
+    retries: u32,
+    retry_delay_ms: u64,
+) -> Result<()> {
+    let mut last_error = None;
+    for attempt in 0..=retries {
+        match sender.send(platform, outgoing.clone()).await {
+            Ok(()) => return Ok(()),
+            Err(error) => {
+                last_error = Some(error);
+                if attempt < retries && retry_delay_ms > 0 {
+                    tokio::time::sleep(std::time::Duration::from_millis(retry_delay_ms)).await;
+                }
+            }
+        }
+    }
+
+    Err(last_error.unwrap_or_else(|| {
+        SchedulerError::WorkflowFailed("reminder delivery failed".to_string())
+    }))
+}
+
+fn merge_json_objects(base: Value, override_value: Value) -> Value {
+    match (base, override_value) {
+        (Value::Object(mut base_map), Value::Object(override_map)) => {
+            for (key, value) in override_map {
+                base_map.insert(key, value);
+            }
+            Value::Object(base_map)
+        }
+        (_, override_value) => override_value,
     }
 }
 

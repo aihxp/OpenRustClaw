@@ -2,6 +2,7 @@
 
 use anyhow::{Context, Result};
 use chrono::Utc;
+use openrustclaw_scheduler::DurableEventBus;
 use sqlx::Row;
 use uuid::Uuid;
 
@@ -16,6 +17,20 @@ async fn open_schedule_pool() -> Result<sqlx::SqlitePool> {
         .await
         .context("Failed to run migrations")?;
     Ok(pool)
+}
+
+async fn publish_control_event(
+    pool: &sqlx::SqlitePool,
+    event_name: &str,
+    payload: serde_json::Value,
+) {
+    let event_bus = DurableEventBus::new(pool.clone(), 64);
+    if let Err(error) = event_bus
+        .publish_named(event_name, "control_runtime_event", None, &payload, None)
+        .await
+    {
+        tracing::warn!(error = %error, event_name, "Failed to publish control runtime event");
+    }
 }
 
 /// List scheduled jobs.
@@ -207,6 +222,18 @@ pub async fn create(
     .await
     .context("Failed to create scheduled job")?;
 
+    publish_control_event(
+        &pool,
+        "control.scheduler.job_created",
+        serde_json::json!({
+            "job_id": id,
+            "name": name,
+            "workflow_id": workflow,
+            "trigger_type": trigger_type,
+        }),
+    )
+    .await;
+
     println!("✓ Job created successfully");
     println!("  ID: {}", id);
     println!("  Name: {}", name);
@@ -247,6 +274,15 @@ pub async fn pause(id: &str) -> Result<()> {
     if result.rows_affected() == 0 {
         println!("Job '{}' is already paused or not in active state", id);
     } else {
+        publish_control_event(
+            &pool,
+            "control.scheduler.job_paused",
+            serde_json::json!({
+                "job_id": job_id,
+                "requested_by": "cli",
+            }),
+        )
+        .await;
         println!("✓ Job '{}' paused successfully", id);
     }
 
@@ -291,6 +327,16 @@ pub async fn resume(id: &str) -> Result<()> {
     if result.rows_affected() == 0 {
         println!("Job '{}' is already active or not in paused state", id);
     } else {
+        publish_control_event(
+            &pool,
+            "control.scheduler.job_resumed",
+            serde_json::json!({
+                "job_id": job_id,
+                "requested_by": "cli",
+                "next_run_at": next_run_at,
+            }),
+        )
+        .await;
         println!("✓ Job '{}' resumed successfully", id);
         println!("  Next run: {}", next_run_at);
     }
@@ -453,6 +499,17 @@ pub async fn replay_dead_letter(id: &str) -> Result<()> {
         .bind(id)
         .execute(&pool)
         .await?;
+
+    publish_control_event(
+        &pool,
+        "control.scheduler.dead_letter_replayed",
+        serde_json::json!({
+            "dead_letter_id": id,
+            "job_id": job_id,
+            "requested_by": "cli",
+        }),
+    )
+    .await;
 
     println!("✓ Replayed dead-letter entry '{}' for job '{}'", id, job_id);
     Ok(())

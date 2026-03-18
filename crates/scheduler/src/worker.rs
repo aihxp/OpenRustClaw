@@ -24,6 +24,40 @@ use crate::retry;
 use crate::triggers;
 use crate::workflow::WorkflowDispatcher;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum HookFailureIsolation {
+    Strict,
+    Ignore,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct HookExecutionPolicy {
+    timeout_ms: Option<u64>,
+    failure_isolation: HookFailureIsolation,
+}
+
+impl HookExecutionPolicy {
+    fn from_metadata(metadata: &serde_json::Value) -> Self {
+        let hook_policy = metadata.get("hook_policy");
+        let timeout_ms = hook_policy
+            .and_then(|policy| policy.get("timeout_ms"))
+            .and_then(serde_json::Value::as_u64)
+            .filter(|value| *value > 0);
+        let failure_isolation = match hook_policy
+            .and_then(|policy| policy.get("failure_isolation"))
+            .and_then(serde_json::Value::as_str)
+        {
+            Some("ignore") => HookFailureIsolation::Ignore,
+            _ => HookFailureIsolation::Strict,
+        };
+
+        Self {
+            timeout_ms,
+            failure_isolation,
+        }
+    }
+}
+
 /// Configuration for the scheduler worker.
 #[derive(Debug, Clone)]
 pub struct SchedulerConfig {
@@ -255,6 +289,31 @@ impl SchedulerWorker {
 
         match dispatcher.dispatch(invocation).await {
             Ok(dispatch) => {
+                if dispatch.status == "deferred" {
+                    let next_run_at = extract_next_attempt_at(&dispatch.output)
+                        .unwrap_or_else(|| Utc::now() + chrono::Duration::minutes(15));
+                    job.state = JobState::Active;
+                    job.lease_owner = None;
+                    job.lease_expires_at = None;
+                    job.next_run_at = Some(next_run_at);
+                    persist_job(pool, &job).await?;
+                    complete_job_run(
+                        pool,
+                        &run.id,
+                        RunStatus::Success,
+                        Some(&dispatch.output.to_string()),
+                        effective_trace_id(scheduler_trace.as_ref(), dispatch.trace_id.clone())
+                            .as_deref(),
+                    )
+                    .await?;
+                    run.status = RunStatus::Success;
+                    run.completed_at = Some(Utc::now());
+                    run.result = Some(dispatch.output.to_string());
+                    run.langsmith_trace_id =
+                        effective_trace_id(scheduler_trace.as_ref(), dispatch.trace_id.clone());
+                    return Ok(run);
+                }
+
                 let success = !matches!(dispatch.status.as_str(), "error" | "failed")
                     && dispatch.error.is_none();
                 let result_json = dispatch.output.to_string();
@@ -366,10 +425,57 @@ impl SchedulerWorker {
         let invocation = WorkflowInvocation::new(&job.workflow_id, &thread_id, workflow_input)
             .with_metadata(workflow_metadata)
             .with_configurable(workflow_configurable);
+        let hook_policy = HookExecutionPolicy::from_metadata(&original_metadata);
         let mut scheduler_trace = self.build_scheduler_trace(&job, &thread_id, &idempotency_key);
 
-        match dispatcher.dispatch(invocation).await {
+        let dispatch_result = if let Some(timeout_ms) = hook_policy.timeout_ms {
+            tokio::time::timeout(
+                Duration::from_millis(timeout_ms),
+                dispatcher.dispatch(invocation),
+            )
+            .await
+            .map_err(|_| {
+                openrustclaw_core::error::SchedulerError::WorkflowFailed(format!(
+                    "event hook timed out after {}ms",
+                    timeout_ms
+                ))
+            })?
+        } else {
+            dispatcher.dispatch(invocation).await
+        };
+
+        match dispatch_result {
             Ok(dispatch) => {
+                if dispatch.status == "deferred" {
+                    let next_attempt_at = extract_next_attempt_at(&dispatch.output)
+                        .unwrap_or_else(|| Utc::now() + chrono::Duration::minutes(15));
+                    finalize_event_dispatch(
+                        pool,
+                        &persisted.dispatch_id,
+                        &persisted.event_id,
+                        "pending",
+                        persisted.attempts + 1,
+                        Some(next_attempt_at),
+                        None,
+                    )
+                    .await?;
+                    complete_job_run(
+                        pool,
+                        &run.id,
+                        RunStatus::Success,
+                        Some(&dispatch.output.to_string()),
+                        effective_trace_id(scheduler_trace.as_ref(), dispatch.trace_id.clone())
+                            .as_deref(),
+                    )
+                    .await?;
+                    run.status = RunStatus::Success;
+                    run.completed_at = Some(Utc::now());
+                    run.result = Some(dispatch.output.to_string());
+                    run.langsmith_trace_id =
+                        effective_trace_id(scheduler_trace.as_ref(), dispatch.trace_id.clone());
+                    return Ok(run);
+                }
+
                 let success = !matches!(dispatch.status.as_str(), "error" | "failed")
                     && dispatch.error.is_none();
                 let result_json = dispatch.output.to_string();
@@ -423,6 +529,31 @@ impl SchedulerWorker {
                         .error
                         .clone()
                         .unwrap_or_else(|| "event dispatch failed".to_string());
+                    if hook_policy.failure_isolation == HookFailureIsolation::Ignore {
+                        finalize_event_dispatch(
+                            pool,
+                            &persisted.dispatch_id,
+                            &persisted.event_id,
+                            "completed",
+                            attempts,
+                            None,
+                            Some(&error_message),
+                        )
+                        .await?;
+                        complete_job_run(
+                            pool,
+                            &run.id,
+                            RunStatus::Success,
+                            Some(&result_json),
+                            persisted_trace_id.as_deref(),
+                        )
+                        .await?;
+                        run.status = RunStatus::Success;
+                        run.completed_at = Some(Utc::now());
+                        run.result = Some(result_json);
+                        run.langsmith_trace_id = persisted_trace_id;
+                        return Ok(run);
+                    }
                     if retry::should_dead_letter(attempts, job.max_retries) {
                         finalize_event_dispatch(
                             pool,
@@ -477,6 +608,31 @@ impl SchedulerWorker {
                 let attempts = persisted.attempts + 1;
                 let error_message = error.to_string();
                 let persisted_trace_id = effective_trace_id(scheduler_trace.as_ref(), None);
+                if hook_policy.failure_isolation == HookFailureIsolation::Ignore {
+                    finalize_event_dispatch(
+                        pool,
+                        &persisted.dispatch_id,
+                        &persisted.event_id,
+                        "completed",
+                        attempts,
+                        None,
+                        Some(&error_message),
+                    )
+                    .await?;
+                    complete_job_run(
+                        pool,
+                        &run.id,
+                        RunStatus::Success,
+                        Some(&error_message),
+                        persisted_trace_id.as_deref(),
+                    )
+                    .await?;
+                    run.status = RunStatus::Success;
+                    run.completed_at = Some(Utc::now());
+                    run.result = Some(error_message);
+                    run.langsmith_trace_id = persisted_trace_id;
+                    return Ok(run);
+                }
                 if retry::should_dead_letter(attempts, job.max_retries) {
                     finalize_event_dispatch(
                         pool,
@@ -558,6 +714,14 @@ impl SchedulerWorker {
     pub fn poll_interval(&self) -> Duration {
         self.config.poll_interval
     }
+}
+
+fn extract_next_attempt_at(output: &serde_json::Value) -> Option<chrono::DateTime<Utc>> {
+    output
+        .get("next_attempt_at")
+        .and_then(serde_json::Value::as_str)
+        .and_then(|raw| chrono::DateTime::parse_from_rfc3339(raw).ok())
+        .map(|value| value.with_timezone(&Utc))
 }
 
 fn effective_trace_id(
@@ -860,5 +1024,43 @@ mod tests {
                 .await
                 .unwrap();
         assert_eq!(dead_letter_count, 1);
+    }
+
+    #[tokio::test]
+    async fn run_due_jobs_once_reschedules_deferred_dispatch() {
+        let pool = test_pool().await;
+        seed_job(&pool, "job-deferred", 3).await;
+
+        let worker = SchedulerWorker::new(SchedulerConfig {
+            poll_interval: Duration::from_secs(30),
+            lease_duration: Duration::from_secs(60),
+            base_retry_delay_secs: 10,
+            max_retry_delay_secs: 60,
+        });
+        let next_attempt_at = (Utc::now() + ChronoDuration::minutes(30)).to_rfc3339();
+        let mut dispatcher = StubDispatcher {
+            success: Some(WorkflowDispatchResult {
+                status: "deferred".to_string(),
+                output: serde_json::json!({"next_attempt_at": next_attempt_at}),
+                error: None,
+                trace_id: None,
+            }),
+            error: None,
+        };
+
+        let runs = worker
+            .run_due_jobs_once(&pool, &mut dispatcher, 10)
+            .await
+            .unwrap();
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0].status, RunStatus::Success);
+
+        let stored_next_run: String =
+            sqlx::query_scalar("SELECT next_run_at FROM scheduled_jobs WHERE id = ?")
+                .bind("job-deferred")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(stored_next_run, next_attempt_at);
     }
 }
