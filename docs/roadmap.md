@@ -886,6 +886,53 @@ Remaining:
     - typed event translation,
     - no durable truth outside Rust,
     - explicit "compatibility" labeling in docs and UI.
+  - [ ] Add `agent-browser` as a first-class Tier B Rust-compatible browser backend rather than treating it as an ad hoc external tool.
+    - Use it as a compatibility and operator-debug backend while the native CDP lane matures.
+    - Keep OpenRustClaw as the durable source of truth for workflow state, retries, approvals, artifacts, and policy.
+    - Implement a shared `BrowserBackend` abstraction in Rust with at least:
+      - `native_cdp`,
+      - `agent_browser_cli`,
+      - future managed/remote backends.
+    - Normalize `agent-browser` capabilities into the same internal contract used by the native lane:
+      - open session,
+      - navigate,
+      - snapshot DOM/accessibility tree,
+      - click/type/select/scroll,
+      - extract structured text/links/forms,
+      - capture screenshot/PDF,
+      - import/export state,
+      - run bounded batch actions.
+    - Leverage `agent-browser` features where they clearly accelerate parity:
+      - machine-readable `--json` output,
+      - `batch --json`,
+      - ref-based targeting from snapshots,
+      - `--session` / `--session-name` / `--profile` / `--state`,
+      - domain allowlists,
+      - action-policy files,
+      - explicit confirmation categories,
+      - local auth-vault and encrypted session support.
+    - Treat `agent-browser` as the preferred operator-debug and early-eval backend before full native parity:
+      - easier reproducible browser sessions,
+      - faster bounded multi-step runs,
+      - better artifact capture during bring-up.
+    - Do not let `agent-browser` become the only browser path:
+      - crawl/map and long-term RAG ingestion remain Rust-owned,
+      - safety policy remains OpenRustClaw-owned,
+      - runtime APIs must not depend directly on raw CLI output shapes.
+    - Add backend selection policy:
+      - `native_cdp` default for production when supported,
+      - `agent_browser_cli` optional for compatibility/debug/operator workflows,
+      - explicit UI/CLI labeling of which backend executed a run.
+    - Add backend-specific safety mapping:
+      - map OpenRustClaw domain allowlists to `--allowed-domains`,
+      - map approval-gated action classes to `--action-policy` and `--confirm-actions`,
+      - map session isolation rules to `--session`, `--session-name`, and profile/state paths.
+    - Add backend-specific observability:
+      - persist batch command receipts,
+      - snapshots,
+      - screenshots,
+      - downloaded artifact references,
+      - backend identity (`native_cdp` vs `agent_browser_cli`) on each run.
   - [ ] Add optional managed-browser infrastructure compatibility for scale-sensitive operators:
     - Browserbase-style remote browser backends,
     - proxy/session profile support,
