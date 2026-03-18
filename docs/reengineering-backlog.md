@@ -129,6 +129,8 @@ Status:
 - The sidecar RAG workflow now supports deterministic query-only retrieval against stored collections and budgeted context assembly with stable source ids.
 - `openrustclaw start` now gates non-shipping channel modules instead of advertising them through the active runtime surface.
 - The biggest remaining engineering gaps are:
+  - broader observability/LangSmith trace coverage across all runtime paths
+  - Discord Gateway message-event support beyond the current verified Interactions ingress
   - fuller skills host-capability enforcement beyond the current no-import WASM boundary
   - deeper retrieval quality and storage durability beyond the current sidecar in-memory collection store
 
