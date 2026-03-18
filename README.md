@@ -22,6 +22,7 @@ The roadmap now also includes a file-backed task registry layer so operators can
 The roadmap now includes a shipped Rust-native autonomous optimization framework inspired by `autoresearch`, generalized for skills, RAG, prompts, policies, bounded workflows, bounded code, and research-program targets.
 The roadmap also now includes a Rust-native web access stack for read-only page extraction, crawl-for-RAG ingestion, interactive browser automation, MCP/browser tool exposure, and optional compatibility with external browser runtimes without making them the durable source of truth.
 The roadmap further includes model-aware artifact sync, memory rehydration on model swaps, multi-model routing with optional quarterback/orchestrator models, a self-configuration harness, and a control-plane fallback model so provider/model changes do not take the platform down.
+The model-awareness track now also includes a canonical instruction/context artifact registry so OpenRustClaw can understand and translate common project guidance files like `AGENTS.md`, `AI.md`, `CONTEXT.md`, `ARCHITECTURE.md`, `CLAUDE.md`, `GEMINI.md`, Copilot instruction files, Cursor/Continue rules, and local open-weight `Modelfile` packaging.
 
 ## Quick Start
 

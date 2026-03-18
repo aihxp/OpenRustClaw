@@ -37,6 +37,7 @@ Status values:
 | Memory maintenance archive pipeline | real | Maintenance workflow can fetch old memories, persist archive summaries, and remove archived originals through Rust-owned storage |
 | RAG pipeline | partial | Deterministic collection-backed retrieval, Rust-backed durable chunk storage, budgeted context assembly, source-type filters, stopword-aware lexical scoring, configurable per-source diversity limits, configurable minimum-score filtering, configurable top_k/preferred/required/excluded source and source-type controls, minimum-overlap filtering, duplicate suppression, retrieval summaries, score-aware/metadata-aware context shaping, and collection stats inspection exist; richer indexing still needs production hardening |
 | Model-aware memory/artifact rehydration | deferred | Roadmap now includes model-specific artifact sync, context rebudgeting, and memory reload/rehydration on provider or model swap so sessions survive model changes cleanly |
+| Instruction/context artifact registry | deferred | Roadmap now includes a canonical Rust-native registry for universal and vendor-specific instruction files such as `AGENTS.md`, `AI.md`, `CONTEXT.md`, `ARCHITECTURE.md`, `CLAUDE.md`, `GEMINI.md`, Copilot instruction files, Cursor/Continue rules, and `Modelfile`, with precedence, sync, translation, and local-override handling |
 
 ## Channels
 

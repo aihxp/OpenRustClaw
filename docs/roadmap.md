@@ -539,15 +539,53 @@ Remaining:
 - [ ] Add file-backed memory views that are operator-readable and editable from the Control UI.
 - [ ] Add model-aware workspace artifact support so OpenRustClaw can manage the per-model file conventions that different coding/reasoning models expect:
   - `AGENTS.md`,
+  - `AI.md`,
+  - `CONTEXT.md`,
+  - `ARCHITECTURE.md`,
   - `SKILL.md`,
   - `CLAUDE.md`,
+  - `CLAUDE.local.md`,
+  - `GEMINI.md`,
+  - `.github/copilot-instructions.md`,
+  - `.github/instructions/*.instructions.md`,
+  - `.cursor/rules/*` and `.cursorrules`,
+  - `.continue/rules/*`,
+  - `Modelfile` for local open-weight model packaging where applicable,
   - model-specific memory or instruction files where they materially affect runtime quality,
   - import/export and sync policies rather than hardcoding one provider's convention as universal.
+- [ ] Build a canonical instruction/context artifact registry in Rust so OpenRustClaw understands these files as normalized artifact classes rather than ad hoc vendor-specific strings:
+  - universal project guidance,
+  - model/provider-specific guidance,
+  - local-only/private overrides,
+  - path-scoped rules,
+  - agent-profile artifacts,
+  - open-weight model packaging artifacts,
+  - orchestration/task manifests where relevant.
+- [ ] Define artifact precedence and merge policy:
+  - global vs workspace vs nested directory scope,
+  - shared vs model-specific instructions,
+  - local/private overrides vs versioned project rules,
+  - explicit conflict reporting,
+  - deterministic merge order visible to operators.
 - [ ] Add artifact sync policies for model changes:
   - update the active model's preferred artifact set,
   - synchronize shared content across equivalent files when configured,
   - preserve per-model overrides,
   - show operator-visible diffs before destructive rewrites.
+- [ ] Add artifact adapters/import-export paths for major ecosystems without making them all first-class sources of truth:
+  - Anthropic/Claude Code,
+  - Gemini CLI,
+  - OpenAI Codex/AGENTS.md conventions,
+  - GitHub Copilot instructions,
+  - Cursor rules,
+  - Continue rules,
+  - Ollama `Modelfile`,
+  - selected autonomous-agent tool conventions where operator demand justifies it.
+- [ ] Add privacy and repo-safety semantics for local-only artifacts:
+  - `.local`-style overrides,
+  - auto-gitignore recommendations,
+  - secret scanning/redaction,
+  - operator-visible distinction between shared and personal artifacts.
 - [ ] Add targeted memory lookup parity beyond broad search:
   - memory get,
   - namespace reads,
@@ -681,6 +719,12 @@ Remaining:
   - token/context budget policies,
   - reasoning/latency/cost hints,
   - safe fallback ordering when the primary model becomes unavailable or unauthorized.
+- [ ] Add an artifact-capability matrix to model profiles so OpenRustClaw can reason about which model/tool ecosystems prefer which file formats and how to translate them:
+  - markdown instruction files,
+  - path-scoped rule files,
+  - local-only/private files,
+  - YAML/TOML agent configs,
+  - model-baked artifacts such as `Modelfile`.
 - [ ] Add multi-model execution support for users who want different models for different jobs:
   - model-per-tool or model-per-workflow selection,
   - model-per-agent-profile selection,
