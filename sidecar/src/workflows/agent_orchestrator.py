@@ -303,6 +303,30 @@ class ExecuteToolsNode:
             return f"Stored in {category}: {content[:50]}..."
 
         @tool
+        async def set_core_memory(
+            key: str,
+            value: str,
+            importance: float = 0.8,
+        ) -> str:
+            """Set a durable core-memory entry for the active user."""
+            if self.memory_bridge is not None and user_id:
+                await self.memory_bridge.set_core_memory(
+                    user_id=user_id,
+                    key=key,
+                    value=value,
+                    importance=importance,
+                )
+                return f"Set core memory {key}={value}"
+
+            self._memory_records.append(
+                {
+                    "content": f"{key.strip()}: {value.strip()}",
+                    "category": "core",
+                }
+            )
+            return f"Set core memory {key}={value}"
+
+        @tool
         def schedule_reminder(
             content: str,
             datetime_str: str,
@@ -318,7 +342,7 @@ class ExecuteToolsNode:
             )
             return f"Reminder scheduled for {datetime_str} ({timezone}): {content[:50]}..."
 
-        return [search_memory, store_memory, schedule_reminder]
+        return [search_memory, store_memory, set_core_memory, schedule_reminder]
 
     async def __call__(
         self,

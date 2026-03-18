@@ -364,6 +364,59 @@ def test_memory_bridge_request_helpers():
         raise
 
 
+def test_execute_tools_exposes_core_memory_setter():
+    """Test default agent tools expose durable core-memory writes."""
+    print("\nTesting execute tools core-memory setter...")
+
+    try:
+        from langchain_core.runnables import RunnableConfig
+        from src.workflows.agent_orchestrator import ExecuteToolsNode
+
+        class _Bridge:
+            def __init__(self) -> None:
+                self.calls = []
+
+            async def set_core_memory(self, user_id, key, value, importance=0.8):
+                self.calls.append(
+                    {
+                        "user_id": user_id,
+                        "key": key,
+                        "value": value,
+                        "importance": importance,
+                    }
+                )
+                return {"stored": True}
+
+        node = ExecuteToolsNode()
+        bridge = _Bridge()
+        node.memory_bridge = bridge
+        config = RunnableConfig(configurable={"user_id": "user-123", "thread_id": "thread-1"})
+        tools = {tool.name: tool for tool in node._create_default_tools(config)}
+
+        result = asyncio.run(
+            tools["set_core_memory"].ainvoke(
+                {"key": "language", "value": "Rust", "importance": 0.9}
+            )
+        )
+
+        assert result == "Set core memory language=Rust"
+        assert bridge.calls == [
+            {
+                "user_id": "user-123",
+                "key": "language",
+                "value": "Rust",
+                "importance": 0.9,
+            }
+        ]
+        print("  ✓ Execute tools core-memory setter")
+    except ModuleNotFoundError as e:
+        print(f"  ✗ Execute tools core-memory setter: {e}")
+        _skip_missing_dependency(e)
+    except Exception as e:
+        print(f"  ✗ Execute tools core-memory setter: {e}")
+        raise
+
+
 def test_memory_maintenance_uses_configurable_memories():
     """Test memory maintenance nodes consume configurable old memories."""
     print("\nTesting memory maintenance workflow metadata...")
