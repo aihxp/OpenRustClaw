@@ -139,7 +139,7 @@ Defense-in-depth across every layer:
 | **Transport** | Origin validation on all WebSocket connections; token auth enabled by default |
 | **Webhooks** | HMAC-SHA256 with constant-time comparison, Stripe replay protection |
 | **Sessions** | Filesystem isolation with path traversal prevention |
-| **Skills** | Workspace and marketplace skill lifecycle is wired through the CLI with signature-state tracking, validated capability metadata, and a no-import WASM sandbox executor with timeout, memory limits, and capability-gated execution helpers |
+| **Skills** | Workspace and marketplace skill lifecycle is wired through the CLI with signature-state tracking, validated capability metadata, unsigned-sensitive-skill rejection, and a no-import WASM sandbox executor with timeout, memory limits, and capability-gated execution helpers |
 | **Input** | Prompt injection detection (34+ patterns), canary tokens |
 | **Network** | SSRF prevention on OIDC/SAML endpoints (private IP rejection) |
 | **Subprocess** | MCP command allowlist, shell metacharacter rejection |

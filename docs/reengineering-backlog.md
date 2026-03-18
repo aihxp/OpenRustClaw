@@ -126,6 +126,7 @@ Status:
 - Memory maintenance now uses Rust-backed archive persistence and removes archived recall entries through the loopback bridge.
 - Rust-to-sidecar workflow dispatch now preserves typed configurable metadata through a reserved contract key instead of flattening everything to strings.
 - The skills CLI now resolves real `SKILL.md` workspace paths, validates and normalizes declared capabilities, syncs marketplace installs back into the main skills table, and keeps managed verification state aligned with install/update flows.
+- Marketplace installs no longer auto-mark signed skills as verified, and unsigned skills requesting sensitive capabilities are rejected during install/update.
 - The sidecar RAG workflow now supports deterministic query-only retrieval against Rust-backed durable collections and budgeted context assembly with stable source ids.
 - The sidecar RAG workflow now applies source-aware scoring and optional source-type filters on top of the durable collection store.
 - The Rust loopback RAG API now supports collection listing and deletion in addition to replace/load operations.

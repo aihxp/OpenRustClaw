@@ -3,6 +3,7 @@
 use anyhow::{Context, Result};
 use indicatif::{ProgressBar, ProgressStyle};
 use sqlx::Row;
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use openrustclaw_security::SkillVerifier;
@@ -62,6 +63,45 @@ fn serialize_capabilities(capabilities: &[String]) -> Result<String> {
         .map_err(|e| anyhow::anyhow!(e.to_string()))
         .context("Failed to validate skill capabilities")?;
     serde_json::to_string(&normalized).context("Failed to serialize skill capabilities")
+}
+
+fn sensitive_capabilities(capabilities: &[String]) -> Result<Vec<String>> {
+    let normalized = normalize_capability_names(capabilities)
+        .map_err(|e| anyhow::anyhow!(e.to_string()))
+        .context("Failed to validate skill capabilities")?;
+    let sensitive: HashSet<&str> = ["file_write", "network_access", "shell_exec", "database_access"]
+        .into_iter()
+        .collect();
+    Ok(normalized
+        .into_iter()
+        .filter(|capability| sensitive.contains(capability.as_str()))
+        .collect())
+}
+
+fn enforce_external_skill_policy(
+    config: &openrustclaw_core::config::AppConfig,
+    capabilities: &[String],
+    signature: Option<&str>,
+    skill_name: &str,
+) -> Result<()> {
+    let sensitive = sensitive_capabilities(capabilities)?;
+
+    if config.security.skill_signature_required && signature.is_none() {
+        anyhow::bail!(
+            "Skill '{}' is unsigned and [security].skill_signature_required is enabled",
+            skill_name
+        );
+    }
+
+    if !sensitive.is_empty() && signature.is_none() {
+        anyhow::bail!(
+            "Skill '{}' requests sensitive capabilities ({}) and must be signed before install",
+            skill_name,
+            sensitive.join(", ")
+        );
+    }
+
+    Ok(())
 }
 
 async fn upsert_skill_record(
@@ -380,12 +420,12 @@ pub async fn install(name: &str) -> Result<()> {
                     }
                 };
 
-                if config.security.skill_signature_required && registry_metadata.signature.is_none() {
-                    anyhow::bail!(
-                        "Skill '{}' is unsigned and [security].skill_signature_required is enabled",
-                        name
-                    );
-                }
+                enforce_external_skill_policy(
+                    &config,
+                    &registry_metadata.capabilities,
+                    registry_metadata.signature.as_deref(),
+                    name,
+                )?;
 
                 let pb = ProgressBar::new_spinner();
                 pb.set_style(
@@ -417,7 +457,7 @@ pub async fn install(name: &str) -> Result<()> {
                                     "marketplace",
                                     Some(version_string.as_str()),
                                     registry_metadata.signature.as_deref(),
-                                    registry_metadata.signature.is_some(),
+                                    false,
                                     Some(&capabilities_json),
                                     None,
                                 )
@@ -509,6 +549,12 @@ pub async fn update(name: &str) -> Result<()> {
                             println!("✓ Skill '{}' updated from v{} to v{}", name, from, to);
 
                             let metadata = registry.get_skill(name).await?;
+                            enforce_external_skill_policy(
+                                &config,
+                                &metadata.capabilities,
+                                metadata.signature.as_deref(),
+                                name,
+                            )?;
                             let capabilities_json =
                                 serialize_capabilities(&metadata.capabilities)?;
                             let version_string = to.to_string();
@@ -519,7 +565,7 @@ pub async fn update(name: &str) -> Result<()> {
                                 "marketplace",
                                 Some(version_string.as_str()),
                                 metadata.signature.as_deref(),
-                                metadata.signature.is_some(),
+                                false,
                                 Some(&capabilities_json),
                                 None,
                             )
@@ -1064,5 +1110,44 @@ mod tests {
             message.contains("Failed to validate skill capabilities")
                 || message.contains("Unknown skill capability")
         );
+    }
+
+    #[test]
+    fn test_sensitive_capabilities_filters_safe_entries() {
+        let sensitive = sensitive_capabilities(&[
+            "network_access".to_string(),
+            "file_read".to_string(),
+            "shell_exec".to_string(),
+        ])
+        .unwrap();
+        assert_eq!(
+            sensitive,
+            vec!["network_access".to_string(), "shell_exec".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_external_skill_policy_rejects_unsigned_sensitive_skills() {
+        let config = openrustclaw_core::config::AppConfig::default();
+        let error = enforce_external_skill_policy(
+            &config,
+            &["shell_exec".to_string()],
+            None,
+            "dangerous-skill",
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("must be signed"));
+    }
+
+    #[test]
+    fn test_external_skill_policy_allows_signed_sensitive_skills() {
+        let config = openrustclaw_core::config::AppConfig::default();
+        enforce_external_skill_policy(
+            &config,
+            &["shell_exec".to_string()],
+            Some("deadbeef"),
+            "signed-skill",
+        )
+        .unwrap();
     }
 }
