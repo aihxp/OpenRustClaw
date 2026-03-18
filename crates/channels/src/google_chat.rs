@@ -931,6 +931,7 @@ impl GoogleChatWebhookHandler {
             "google_chat_space_type": event.space.space_type,
             "google_chat_user_name": user.name,
             "google_chat_user_display_name": user.display_name,
+            "google_chat_is_group": event.space.space_type != "DM",
         });
         if let Some(display_name) = event.space.display_name.as_ref() {
             metadata["google_chat_space_display_name"] = serde_json::json!(display_name);
@@ -941,6 +942,21 @@ impl GoogleChatWebhookHandler {
         if let Some(slash_command) = message.slash_command.as_ref() {
             metadata["google_chat_slash_command_id"] = serde_json::json!(slash_command.command_id);
         }
+        let bot_mentioned = message
+            .annotations
+            .as_ref()
+            .map(|annots| {
+                annots.iter().any(|annotation| {
+                    annotation.annotation_type == "USER_MENTION"
+                        && annotation
+                            .user_mention
+                            .as_ref()
+                            .map(|mention| mention.user.name.contains("/bots/"))
+                            .unwrap_or(false)
+                })
+            })
+            .unwrap_or(false);
+        metadata["google_chat_bot_mentioned"] = serde_json::json!(bot_mentioned);
 
         // Add thread info if present
         if let Some(thread) = &message.thread {

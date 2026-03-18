@@ -646,6 +646,7 @@ impl TeamsChannel {
             "teams_activity_id": activity.get("id").and_then(|i| i.as_str()),
             "teams_mentioned": mention_info.mentioned_users,
             "teams_bot_mentioned": mention_info.bot_mentioned,
+            "teams_is_group": conversation_type != "personal",
         });
         if let Some(attachments) = activity.get("attachments").and_then(|v| v.as_array()) {
             metadata["teams_attachments"] = serde_json::json!(attachments);

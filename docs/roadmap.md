@@ -689,10 +689,13 @@ Channel completion remaining:
   - deeper E2EE and richer operator/media parity still remain.
 - [ ] Microsoft Teams parity.
 - [ ] Signal parity if kept in scope.
+  - current shipped path covers `signal-cli` daemon-backed direct/group send-receive, allowlist filtering, registration/verify/link helpers, normalized routing metadata, attachment/file-reference capture, mention-aware group routing, and local agent/session routing;
+  - richer operator UX and media download parity still remain.
 - [ ] Feishu/Lark parity if kept in scope:
   - docs/tables actions,
   - rich-text embedded media extraction.
 - [ ] Additional plugin-channel parity where OpenClaw currently documents active support or plugin support.
+- [x] Normalize shared workspace/channel-scope/group/mention routing metadata across newly promoted partial-runtime channels so binding and isolation policy works consistently outside the original tier-1 set.
 
 Exit criteria:
 

@@ -434,9 +434,13 @@ pub fn message_workspace_id(message: &IncomingMessage) -> Option<String> {
         "workspace_id",
         "slack_team_id",
         "discord_guild_id",
+        "teams_conversation_id",
+        "google_chat_space",
+        "matrix_room_id",
         "telegram_chat_id",
         "whatsapp_workspace_id",
         "imessage_workspace_id",
+        "signal_group_id",
         "webchat_workspace_id",
     ];
     lookup_string(metadata, &keys)
@@ -449,8 +453,16 @@ pub fn message_channel_scope(message: &IncomingMessage) -> Option<String> {
         "slack_channel",
         "discord_thread_id",
         "discord_channel_id",
+        "teams_conversation_id",
+        "google_chat_thread",
+        "google_chat_space",
+        "matrix_thread_root",
+        "matrix_room_id",
         "whatsapp_group_id",
         "imessage_chat_guid",
+        "signal_group_id",
+        "signal_source_number",
+        "signal_source_uuid",
         "telegram_chat_id",
         "webchat_room_id",
     ];
@@ -495,6 +507,30 @@ pub fn message_is_group(message: &IncomingMessage) -> bool {
     {
         return value;
     }
+    if let Some(value) = metadata
+        .get("signal_is_group")
+        .and_then(|value| value.as_bool())
+    {
+        return value;
+    }
+    if let Some(value) = metadata
+        .get("teams_is_group")
+        .and_then(|value| value.as_bool())
+    {
+        return value;
+    }
+    if let Some(value) = metadata
+        .get("google_chat_is_group")
+        .and_then(|value| value.as_bool())
+    {
+        return value;
+    }
+    if let Some(value) = metadata
+        .get("matrix_is_group")
+        .and_then(|value| value.as_bool())
+    {
+        return value;
+    }
     false
 }
 
@@ -506,6 +542,9 @@ pub fn message_bot_mentioned(message: &IncomingMessage) -> bool {
         "telegram_bot_mentioned",
         "whatsapp_bot_mentioned",
         "imessage_bot_mentioned",
+        "signal_bot_mentioned",
+        "teams_bot_mentioned",
+        "google_chat_bot_mentioned",
         "webchat_bot_mentioned",
     ] {
         if metadata.get(key).and_then(|value| value.as_bool()) == Some(true) {
@@ -595,5 +634,99 @@ mod tests {
         assert_eq!(identity.channel_scope.as_deref(), Some("C123"));
         assert!(identity.is_group);
         assert!(identity.bot_mentioned);
+    }
+
+    #[test]
+    fn message_identity_uses_signal_group_metadata() {
+        let identity = identity_from_message(&IncomingMessage {
+            session_id: uuid::Uuid::new_v4(),
+            user_id: "+15551234567".to_string(),
+            content: "hello".to_string(),
+            platform: Platform::Signal,
+            metadata: serde_json::json!({
+                "signal_group_id": "group-123",
+                "signal_source_number": "+15551234567",
+                "signal_is_group": true,
+                "signal_bot_mentioned": true
+            }),
+        });
+
+        assert_eq!(identity.account_id, "signal:group-123:+15551234567");
+        assert_eq!(identity.workspace_id.as_deref(), Some("group-123"));
+        assert_eq!(identity.channel_scope.as_deref(), Some("group-123"));
+        assert!(identity.is_group);
+        assert!(identity.bot_mentioned);
+    }
+
+    #[test]
+    fn message_identity_uses_google_chat_thread_metadata() {
+        let identity = identity_from_message(&IncomingMessage {
+            session_id: uuid::Uuid::new_v4(),
+            user_id: "users/123".to_string(),
+            content: "hello".to_string(),
+            platform: Platform::GoogleChat,
+            metadata: serde_json::json!({
+                "google_chat_space": "spaces/AAA",
+                "google_chat_thread": "spaces/AAA/threads/BBB",
+                "google_chat_is_group": true,
+                "google_chat_bot_mentioned": true
+            }),
+        });
+
+        assert_eq!(identity.account_id, "google_chat:spaces/AAA:users/123");
+        assert_eq!(identity.workspace_id.as_deref(), Some("spaces/AAA"));
+        assert_eq!(
+            identity.channel_scope.as_deref(),
+            Some("spaces/AAA/threads/BBB")
+        );
+        assert!(identity.is_group);
+        assert!(identity.bot_mentioned);
+    }
+
+    #[test]
+    fn message_identity_uses_teams_and_matrix_routing_metadata() {
+        let teams_identity = identity_from_message(&IncomingMessage {
+            session_id: uuid::Uuid::new_v4(),
+            user_id: "29:user".to_string(),
+            content: "hello".to_string(),
+            platform: Platform::Teams,
+            metadata: serde_json::json!({
+                "teams_conversation_id": "19:conversation",
+                "teams_is_group": true,
+                "teams_bot_mentioned": false
+            }),
+        });
+        assert_eq!(teams_identity.account_id, "teams:19:conversation:29:user");
+        assert_eq!(
+            teams_identity.workspace_id.as_deref(),
+            Some("19:conversation")
+        );
+        assert_eq!(
+            teams_identity.channel_scope.as_deref(),
+            Some("19:conversation")
+        );
+        assert!(teams_identity.is_group);
+
+        let matrix_identity = identity_from_message(&IncomingMessage {
+            session_id: uuid::Uuid::new_v4(),
+            user_id: "@user:matrix.org".to_string(),
+            content: "hello".to_string(),
+            platform: Platform::Matrix,
+            metadata: serde_json::json!({
+                "matrix_room_id": "!room:matrix.org",
+                "matrix_thread_root": "$event",
+                "matrix_is_group": true
+            }),
+        });
+        assert_eq!(
+            matrix_identity.account_id,
+            "matrix:!room:matrix.org:@user:matrix.org"
+        );
+        assert_eq!(
+            matrix_identity.workspace_id.as_deref(),
+            Some("!room:matrix.org")
+        );
+        assert_eq!(matrix_identity.channel_scope.as_deref(), Some("$event"));
+        assert!(matrix_identity.is_group);
     }
 }

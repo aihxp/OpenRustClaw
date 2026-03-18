@@ -113,7 +113,7 @@ Current channel modules available in the repo:
 
 Telegram, Discord, Slack, WhatsApp (Baileys bridge), Microsoft Teams, Google Chat, Gmail (Pub/Sub), Matrix, iMessage, LINE, Viber, WeChat, Messenger, Instagram DMs, WebChat
 
-The current shipped startup path actively supports WebChat, Telegram, Discord, Slack, WhatsApp, iMessage, Google Chat, and Matrix, and now allows Microsoft Teams on a partial shipped path. Other channel modules remain in the repo but are gated or deferred from the shipped runtime surface.
+The current shipped startup path actively supports WebChat, Telegram, Discord, Slack, WhatsApp, iMessage, Google Chat, Gmail Pub/Sub, Matrix, and Signal, and it also allows Microsoft Teams on a partial shipped path. Other channel modules remain in the repo but are gated or deferred from the shipped runtime surface.
 
 Current tier-1 status:
 
@@ -126,6 +126,7 @@ Current tier-1 status:
 - Google Meet: native Rust operator integration now covers space creation/inspection, active-conference termination, conference-record/participant/recording/transcript inspection, and Google Workspace Events/Pub/Sub payload decoding with transcript hydration; add-on UI/runtime embedding remains a later track
 - Gmail Pub/Sub: Gmail watch setup, Pub/Sub webhook ingress, history fetch, message hydration, mail-triggered local agent/session routing, replies, label/archive/delete actions, and forwarding are implemented; richer operator surfaces still remain
 - Matrix: access-token or password auth, `/sync` polling ingress, outbound room sends, reactions, room join/leave, joined-room inspection, file uploads, and local agent/session routing are implemented; deeper E2EE and richer operator parity still remain
+- Signal: `signal-cli` daemon-backed direct/group send-receive, allowlist handling, registration/verify/link helpers, normalized route metadata, attachment/file-reference capture, mention-aware group routing, and local agent/session routing are implemented; richer operator UX and media download parity still remain
 - Teams: Bot Framework webhook ingress, JWT verification, outbound sends, attachment metadata capture, adaptive-card file links, and local agent/session routing are on the shipped runtime path, but it is still partial relative to the tier-1 surfaces
 
 Channel routing/operator controls:
@@ -134,6 +135,7 @@ Channel routing/operator controls:
 - `openrustclaw channels init|list|approve|block|activation|bind` manages tier-1 channel pairing state and binding policy
 - `GET/POST /control/channels...` exposes the same shipped channel registry over typed HTTP so the future Control UI can reuse the runtime state model
 - shipped channel routing now applies workspace/account/channel binding precedence, pairing approval gates, group mention activation, and shared reply chunking/coalescing/pacing policy
+- shipped channel routing now normalizes workspace/scope/group/mention metadata across Teams, Google Chat, Matrix, and Signal as well, so the same binding and isolation rules apply to the newer partial-runtime channels
 
 ## Control Plane
 

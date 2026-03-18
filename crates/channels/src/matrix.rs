@@ -396,6 +396,7 @@ impl MatrixChannel {
                                 "matrix_sender": event.sender,
                                 "matrix_msgtype": message_type,
                                 "matrix_thread_root": thread_root,
+                                "matrix_is_group": true,
                             }),
                         };
 

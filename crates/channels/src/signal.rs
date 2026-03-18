@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 use std::num::NonZeroU32;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::{Child, Command};
-use tokio::sync::{mpsc, Mutex, RwLock};
+use tokio::sync::{Mutex, RwLock, mpsc};
 use tracing::{debug, error, info};
 use uuid::Uuid;
 
@@ -35,7 +35,14 @@ pub struct SignalChannel {
     config: SignalConfig,
     incoming_tx: mpsc::Sender<IncomingMessage>,
     incoming_rx: Mutex<mpsc::Receiver<IncomingMessage>>,
-    rate_limiter: Arc<RateLimiter<governor::state::NotKeyed, governor::state::InMemoryState, governor::clock::DefaultClock, governor::middleware::NoOpMiddleware>>,
+    rate_limiter: Arc<
+        RateLimiter<
+            governor::state::NotKeyed,
+            governor::state::InMemoryState,
+            governor::clock::DefaultClock,
+            governor::middleware::NoOpMiddleware,
+        >,
+    >,
     is_connected: RwLock<bool>,
     cli_process: Mutex<Option<Child>>,
     message_cache: Arc<RwLock<HashMap<Uuid, String>>>, // Maps session_id to Signal message timestamp
@@ -200,16 +207,20 @@ impl SignalChannel {
                 message: format!("Failed to start signal-cli: {}", e),
             })?;
 
-        let stdout = child.stdout.take().ok_or_else(|| ChannelError::Connection {
-            platform: "signal".to_string(),
-            message: "Failed to capture stdout".to_string(),
-        })?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| ChannelError::Connection {
+                platform: "signal".to_string(),
+                message: "Failed to capture stdout".to_string(),
+            })?;
 
         let mut reader = BufReader::new(stdout).lines();
         let tx = self.incoming_tx.clone();
         let allowlist = self.config.allowlist.clone();
         let allowed_groups = self.config.allowed_groups.clone();
         let require_allowlist = self.config.require_allowlist;
+        let bot_phone_number = self.config.phone_number.clone();
 
         // Spawn task to process JSON output
         tokio::spawn(async move {
@@ -217,8 +228,15 @@ impl SignalChannel {
                 debug!(line = %line, "Received Signal envelope");
 
                 if let Ok(envelope) = serde_json::from_str::<SignalEnvelope>(&line) {
-                    if let Err(e) =
-                        Self::process_envelope(envelope, &tx, &allowlist, &allowed_groups, require_allowlist).await
+                    if let Err(e) = Self::process_envelope(
+                        envelope,
+                        &tx,
+                        &allowlist,
+                        &allowed_groups,
+                        require_allowlist,
+                        &bot_phone_number,
+                    )
+                    .await
                     {
                         error!(error = %e, "Failed to process Signal envelope");
                     }
@@ -244,6 +262,7 @@ impl SignalChannel {
         allowlist: &[String],
         allowed_groups: &[String],
         require_allowlist: bool,
+        bot_phone_number: &str,
     ) -> Result<()> {
         match envelope {
             SignalEnvelope::DataMessage {
@@ -258,7 +277,10 @@ impl SignalChannel {
                 let user_id = source_number.clone().unwrap_or_else(|| source.clone());
                 if require_allowlist && !allowlist.is_empty() {
                     let is_allowed = allowlist.contains(&user_id)
-                        || source_uuid.as_ref().map(|u| allowlist.contains(u)).unwrap_or(false);
+                        || source_uuid
+                            .as_ref()
+                            .map(|u| allowlist.contains(u))
+                            .unwrap_or(false);
                     if !is_allowed {
                         debug!(user = %user_id, "User not in allowlist, ignoring message");
                         return Ok(());
@@ -277,11 +299,15 @@ impl SignalChannel {
 
                 // Process text message
                 if let Some(text) = data_message.message {
+                    let is_group = group_info.is_some();
+                    let recipient = source_number.clone().unwrap_or_else(|| source.clone());
                     let mut metadata = serde_json::json!({
                         "signal_timestamp": timestamp,
                         "signal_source": source,
                         "signal_source_number": source_number,
                         "signal_source_uuid": source_uuid,
+                        "signal_recipient": recipient,
+                        "signal_is_group": is_group,
                     });
 
                     // Add group info to metadata
@@ -292,10 +318,25 @@ impl SignalChannel {
 
                     // Add attachments info
                     if !data_message.attachments.is_empty() {
-                        metadata["attachments"] = serde_json::to_value(&data_message.attachments).map_err(|e| ChannelError::InvalidFormat {
+                        metadata["attachments"] = serde_json::to_value(&data_message.attachments)
+                            .map_err(|e| ChannelError::InvalidFormat {
                             platform: "signal".to_string(),
                             message: e.to_string(),
                         })?;
+                        let file_references: Vec<String> = data_message
+                            .attachments
+                            .iter()
+                            .filter_map(|attachment| {
+                                if attachment.id.is_empty() {
+                                    None
+                                } else {
+                                    Some(format!("signal-attachment://{}", attachment.id))
+                                }
+                            })
+                            .collect();
+                        if !file_references.is_empty() {
+                            metadata["file_references"] = serde_json::json!(file_references);
+                        }
                     }
 
                     // Add quote info
@@ -305,13 +346,28 @@ impl SignalChannel {
                             "author": quote.author,
                             "text": quote.text,
                         });
+                        metadata["signal_quote"] = serde_json::json!({
+                            "id": quote.id,
+                            "author": quote.author,
+                            "text": quote.text,
+                        });
                     }
 
                     // Check if message is a mention of the bot
-                    let is_mention = data_message.mentions.iter().any(|m| {
-                        m.number.as_ref().map(|n| allowlist.contains(n)).unwrap_or(false)
+                    let is_mention = data_message.mentions.iter().any(|mention| {
+                        mention
+                            .number
+                            .as_ref()
+                            .map(|number| number == bot_phone_number)
+                            .unwrap_or(false)
+                            || mention
+                                .uuid
+                                .as_ref()
+                                .map(|uuid| uuid == bot_phone_number)
+                                .unwrap_or(false)
                     });
                     metadata["is_mention"] = serde_json::json!(is_mention);
+                    metadata["signal_bot_mentioned"] = serde_json::json!(is_mention);
 
                     let msg = IncomingMessage {
                         session_id: Uuid::new_v4(),
@@ -436,9 +492,7 @@ impl SignalChannel {
             .unwrap_or_else(|| "signal-cli".into());
 
         let mut cmd = Command::new(&cli_path);
-        cmd.arg("-a")
-            .arg(&self.config.phone_number)
-            .arg("register");
+        cmd.arg("-a").arg(&self.config.phone_number).arg("register");
 
         if voice_verification {
             cmd.arg("--voice");
@@ -655,6 +709,7 @@ impl Channel for SignalChannel {
 mod tests {
     use super::*;
     use openrustclaw_core::config::SignalConfig;
+    use std::path::PathBuf;
 
     fn create_test_config() -> SignalConfig {
         SignalConfig {

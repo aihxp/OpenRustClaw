@@ -10,16 +10,17 @@ Messaging platform integrations for the OpenRustClaw AI agent.
 | Telegram | ✅ Ready | Auth probe, outbound send, Bot API polling receive, and local agent/session routing |
 | Discord | ⚠️ Partial | Outbound send plus verified Interactions HTTP ingress; full Gateway message-event runtime is still incomplete |
 | Slack | ✅ Ready | Auth probe, outbound send, built-in Events API ingress, and local agent/session routing |
-| Microsoft Teams | 🚧 Gated | Repo surface exists, not part of the current shipped runtime |
-| Google Chat | 🚧 Gated | Repo surface exists, but service-account auth and runtime coverage are deferred from the shipped runtime |
+| Microsoft Teams | ⚠️ Partial | Bot Framework webhook ingress, JWT verification, outbound sends, attachment metadata capture, adaptive-card file links, and local agent/session routing are on the shipped runtime path |
+| Google Chat | ⚠️ Partial | Webhook ingress, token-backed or service-account outbound auth, response-mode gating, slash-command metadata capture, file-reference cards, attachment metadata capture, and local agent/session routing are on the shipped runtime path |
 | WhatsApp | ✅ Ready | Baileys bridge pairing/QR, group/DM routing, mentions, replies, media send/receive, delivery acknowledgements, and local agent/session routing |
-| Gmail Pub/Sub | 🚧 Gated | Repo surface exists, but Gmail API runtime coverage is deferred from the shipped runtime |
-| Matrix | 🚧 Gated | Repo surface exists, but matrix-sdk runtime support is deferred from the shipped runtime |
+| Gmail Pub/Sub | ⚠️ Partial | Gmail watch setup, Pub/Sub webhook ingress, history fetch, message hydration, mail-triggered local agent/session routing, replies, label/archive/delete actions, and forwarding are on the shipped runtime path |
+| Matrix | ⚠️ Partial | Access-token or password auth, `/sync` polling ingress, outbound room sends, reactions, room join/leave, joined-room inspection, file uploads, and local agent/session routing are on the shipped runtime path |
+| Signal | ⚠️ Partial | `signal-cli` daemon-backed direct/group send-receive, allowlist handling, registration/verify/link helpers, normalized route metadata, attachment/file-reference capture, mention-aware group routing, and local agent/session routing are on the shipped runtime path |
 | Meta (Messenger/Instagram) | 🚧 Gated | Repo surface exists, not part of the current shipped runtime |
 | LINE | 🚧 Gated | Repo surface exists, not part of the current shipped runtime |
 | Viber | 🚧 Gated | Repo surface exists, not part of the current shipped runtime |
 | WeChat | 🚧 Gated | Repo surface exists, not part of the current shipped runtime |
-| iMessage | 🚧 Gated | Repo surface exists, not part of the current shipped runtime |
+| iMessage | ⚠️ Partial | BlueBubbles/macOS direct send, BlueBubbles inbound webhook ingress, tapbacks, contact routing, and local agent/session routing are on the shipped runtime path |
 
 ## Quick Start
 

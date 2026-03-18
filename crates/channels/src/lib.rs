@@ -26,6 +26,7 @@ pub mod imessage;
 pub mod line;
 pub mod matrix;
 pub mod meta;
+pub mod signal;
 pub mod slack;
 pub mod teams;
 pub mod telegram;
@@ -35,7 +36,6 @@ pub mod wechat;
 pub mod whatsapp;
 
 // Note: These modules are work-in-progress and not yet fully integrated
-// pub mod signal;
 // pub mod twilio;
 // pub mod x_twitter;
 
@@ -47,6 +47,7 @@ pub use imessage::IMessageChannel;
 pub use line::LineChannel;
 pub use matrix::MatrixChannel;
 pub use meta::MetaChannel;
+pub use signal::SignalChannel;
 pub use slack::SlackChannel;
 pub use teams::TeamsChannel;
 pub use telegram::TelegramChannel;
@@ -133,6 +134,14 @@ impl ChannelFactory {
             match Self::create_gmail_pubsub(config.gmail_pubsub.clone()) {
                 Ok(channel) => channels.push(Box::new(channel)),
                 Err(e) => tracing::error!("Failed to create Gmail Pub/Sub channel: {}", e),
+            }
+        }
+
+        if config.signal.enabled {
+            tracing::info!("Creating Signal channel");
+            match Self::create_signal(config.signal.clone()) {
+                Ok(channel) => channels.push(Box::new(channel)),
+                Err(e) => tracing::error!("Failed to create Signal channel: {}", e),
             }
         }
 
@@ -328,6 +337,23 @@ impl ChannelFactory {
         Ok(GmailPubSub::new(config))
     }
 
+    /// Create a Signal channel.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the configuration is invalid.
+    pub fn create_signal(config: openrustclaw_core::config::SignalConfig) -> Result<SignalChannel> {
+        if config.phone_number.is_empty() {
+            return Err(openrustclaw_core::error::Error::Channel(
+                ChannelError::Config {
+                    platform: "signal".to_string(),
+                    message: "phone_number is required".to_string(),
+                },
+            ));
+        }
+        Ok(SignalChannel::new(config))
+    }
+
     /// Create a Matrix channel.
     ///
     /// # Errors
@@ -444,6 +470,8 @@ pub enum ChannelType {
     WhatsApp,
     /// Gmail Pub/Sub channel
     Gmail,
+    /// Signal channel
+    Signal,
     /// Matrix channel
     Matrix,
     /// iMessage channel
@@ -473,6 +501,7 @@ impl std::str::FromStr for ChannelType {
             "googlechat" | "google_chat" => Ok(ChannelType::GoogleChat),
             "whatsapp" | "whats_app" => Ok(ChannelType::WhatsApp),
             "gmail" | "gmail_pubsub" => Ok(ChannelType::Gmail),
+            "signal" => Ok(ChannelType::Signal),
             "matrix" => Ok(ChannelType::Matrix),
             "imessage" | "i_message" => Ok(ChannelType::IMessage),
             "line" => Ok(ChannelType::Line),
@@ -496,6 +525,7 @@ impl std::fmt::Display for ChannelType {
             ChannelType::GoogleChat => write!(f, "google_chat"),
             ChannelType::WhatsApp => write!(f, "whatsapp"),
             ChannelType::Gmail => write!(f, "gmail"),
+            ChannelType::Signal => write!(f, "signal"),
             ChannelType::Matrix => write!(f, "matrix"),
             ChannelType::IMessage => write!(f, "imessage"),
             ChannelType::Line => write!(f, "line"),
@@ -528,8 +558,8 @@ mod tests {
 
     #[test]
     fn test_parse_channels_list() {
-        let result = parse_channels_list("telegram,discord,slack,teams,google_chat,whatsapp,gmail,matrix,imessage,line,viber,wechat,messenger,instagram").expect("valid channel list");
-        assert_eq!(result.len(), 14);
+        let result = parse_channels_list("telegram,discord,slack,teams,google_chat,whatsapp,gmail,signal,matrix,imessage,line,viber,wechat,messenger,instagram").expect("valid channel list");
+        assert_eq!(result.len(), 15);
         assert_eq!(result[0], ChannelType::Telegram);
         assert_eq!(result[1], ChannelType::Discord);
         assert_eq!(result[2], ChannelType::Slack);
@@ -537,13 +567,14 @@ mod tests {
         assert_eq!(result[4], ChannelType::GoogleChat);
         assert_eq!(result[5], ChannelType::WhatsApp);
         assert_eq!(result[6], ChannelType::Gmail);
-        assert_eq!(result[7], ChannelType::Matrix);
-        assert_eq!(result[8], ChannelType::IMessage);
-        assert_eq!(result[9], ChannelType::Line);
-        assert_eq!(result[10], ChannelType::Viber);
-        assert_eq!(result[11], ChannelType::WeChat);
-        assert_eq!(result[12], ChannelType::Messenger);
-        assert_eq!(result[13], ChannelType::Instagram);
+        assert_eq!(result[7], ChannelType::Signal);
+        assert_eq!(result[8], ChannelType::Matrix);
+        assert_eq!(result[9], ChannelType::IMessage);
+        assert_eq!(result[10], ChannelType::Line);
+        assert_eq!(result[11], ChannelType::Viber);
+        assert_eq!(result[12], ChannelType::WeChat);
+        assert_eq!(result[13], ChannelType::Messenger);
+        assert_eq!(result[14], ChannelType::Instagram);
     }
 
     #[test]
@@ -562,6 +593,7 @@ mod tests {
         assert_eq!(ChannelType::WhatsApp.to_string(), "whatsapp");
         assert_eq!(ChannelType::WebChat.to_string(), "webchat");
         assert_eq!(ChannelType::Gmail.to_string(), "gmail");
+        assert_eq!(ChannelType::Signal.to_string(), "signal");
         assert_eq!(ChannelType::Matrix.to_string(), "matrix");
         assert_eq!(ChannelType::IMessage.to_string(), "imessage");
         assert_eq!(ChannelType::Line.to_string(), "line");

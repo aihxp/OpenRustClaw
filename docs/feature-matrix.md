@@ -50,13 +50,15 @@ Status values:
 | Teams | partial | Bot Framework channel is on the shipped startup path with webhook ingress, JWT verification, outbound sends, attachment metadata capture, adaptive-card file links, and local agent/session routing; deeper operator/media parity still trails the tier-1 channels |
 | Google Meet | partial | Native Rust operator integration covers space creation/inspection, active-conference termination, conference-record/participant/recording/transcript inspection, and Google Workspace Events / Pub/Sub payload decoding with transcript hydration; add-on UI/runtime embedding remains open |
 | Channel account/binding registry | real | `.claw/channels/` manifests now back pending/approved accounts, account activation mode, workspace/account/channel bindings, operator CLI control, and typed HTTP operator APIs for Control UI reuse |
+| Shared channel routing identity | real | Workspace/channel-scope/group/mention routing is now normalized across tier-1 channels plus Teams, Google Chat, Matrix, and Signal, so the same binding and isolation rules apply across the shipped runtime surface |
 | Matrix | partial | Access-token or password auth, `/sync` polling ingress, outbound room sends, reactions, room join/leave, joined-room inspection, file uploads, and local agent/session routing are on the shipped runtime path; deeper E2EE and richer operator parity remain open |
 | Google Chat | partial | Shipped runtime now supports webhook ingress plus token-backed or service-account outbound auth, response-mode gating, slash-command metadata capture, file-reference cards, attachment metadata capture, and local agent/session routing; richer operator/media parity remains open |
 | Gmail Pub/Sub | partial | Shipped runtime now supports Gmail watch setup, Pub/Sub webhook ingress, history fetch, message hydration, mail-triggered local agent/session routing, replies, label/archive/delete actions, and forwarding; richer operator parity remains open |
 | WhatsApp | real | Baileys bridge runtime, pairing/QR support, reconnect handling, DM/group routing, mentions, replies, media send/receive, and local agent/session routing are part of the shipped surface |
 | iMessage | partial | BlueBubbles/macOS direct send, BlueBubbles inbound webhook ingress, tapbacks, contact routing, and local agent/session routing are on the shipped runtime path; richer attachment/group mapping still trails OpenClaw |
-| Teams / LINE / Viber / WeChat / Messenger / Instagram | gated | Present in repo, not part of the current shipped surface |
-| Signal / Twilio / X/Twitter | gated | Present in repo, not part of the current shipped surface |
+| Signal | partial | `signal-cli` daemon-backed direct/group send-receive, allowlist handling, registration/verify/link helpers, normalized route metadata, attachment/file-reference capture, mention-aware group routing, and local agent/session routing are on the shipped runtime path; richer operator UX and media download parity remain open |
+| LINE / Viber / WeChat / Messenger / Instagram | gated | Present in repo, not part of the current shipped surface |
+| Twilio / X/Twitter | gated | Present in repo, not part of the current shipped surface |
 
 ## Tooling and Integrations
 
