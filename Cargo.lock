@@ -6152,6 +6152,7 @@ dependencies = [
  "openrustclaw-core",
  "openrustclaw-db",
  "openrustclaw-langbridge",
+ "openrustclaw-observability",
  "serde",
  "serde_json",
  "sqlx",

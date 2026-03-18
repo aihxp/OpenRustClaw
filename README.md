@@ -98,7 +98,7 @@ The current shipped startup path is narrower: `openrustclaw start` actively supp
 Current tier-1 status:
 
 - Telegram: auth probe, outbound send, Bot API polling receive, and local agent/session routing are implemented
-- Discord: auth probe, outbound send, verified Interactions HTTP ingress, Gateway `MESSAGE_CREATE` receive, and local agent/session routing are implemented; reconnect/resume coverage remains incomplete
+- Discord: auth probe, outbound send, verified Interactions HTTP ingress, Gateway `MESSAGE_CREATE` receive, basic reconnect handling, and local agent/session routing are implemented; full session resume coverage remains incomplete
 - Slack: auth probe, outbound send, built-in HTTP Events API ingress, and local agent/session routing are implemented for HTTP mode; Socket Mode remains incomplete
 
 ## Memory System
