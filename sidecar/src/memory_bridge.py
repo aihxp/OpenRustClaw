@@ -102,6 +102,26 @@ class MemoryBridge:
             return [item for item in chunks if isinstance(item, dict)]
         return []
 
+    async def list_rag_collections(self, limit: int = 100) -> List[Dict[str, Any]]:
+        response = await self._post(
+            "/rag/list",
+            {
+                "limit": limit,
+            },
+        )
+        collections = response.get("collections", [])
+        if isinstance(collections, list):
+            return [item for item in collections if isinstance(item, dict)]
+        return []
+
+    async def delete_rag_collection(self, collection_name: str) -> Dict[str, Any]:
+        return await self._post(
+            "/rag/delete",
+            {
+                "collection_name": collection_name,
+            },
+        )
+
     async def fetch_old_memories(
         self,
         age_days: int = 30,

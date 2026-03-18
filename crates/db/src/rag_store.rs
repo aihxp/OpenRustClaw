@@ -209,6 +209,63 @@ impl SqliteRagStore {
             })
             .collect()
     }
+
+    #[instrument(skip(self))]
+    pub async fn list_collections(&self, limit: Option<usize>) -> Result<Vec<(String, i64)>> {
+        let effective_limit = limit.unwrap_or(100).max(1) as i64;
+        let rows = sqlx::query(
+            r#"
+            SELECT collection_name, COUNT(*) AS chunk_count
+            FROM rag_chunks
+            GROUP BY collection_name
+            ORDER BY collection_name ASC
+            LIMIT ?
+            "#,
+        )
+        .bind(effective_limit)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| {
+            Error::Database(DatabaseError::Query(format!(
+                "Failed to list rag collections: {}",
+                e
+            )))
+        })?;
+
+        rows.into_iter()
+            .map(|row| {
+                let collection_name: String = row.try_get("collection_name").map_err(|e| {
+                    Error::Database(DatabaseError::Query(format!(
+                        "Failed to read rag collection_name: {}",
+                        e
+                    )))
+                })?;
+                let chunk_count: i64 = row.try_get("chunk_count").map_err(|e| {
+                    Error::Database(DatabaseError::Query(format!(
+                        "Failed to read rag chunk_count: {}",
+                        e
+                    )))
+                })?;
+                Ok((collection_name, chunk_count))
+            })
+            .collect()
+    }
+
+    #[instrument(skip(self))]
+    pub async fn delete_collection(&self, collection_name: &str) -> Result<u64> {
+        let result = sqlx::query("DELETE FROM rag_chunks WHERE collection_name = ?")
+            .bind(collection_name)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| {
+                Error::Database(DatabaseError::Query(format!(
+                    "Failed to delete rag collection: {}",
+                    e
+                )))
+            })?;
+
+        Ok(result.rows_affected())
+    }
 }
 
 #[cfg(test)]
@@ -273,6 +330,13 @@ mod tests {
         let replaced = store.load_collection("docs", None).await.unwrap();
         assert_eq!(replaced.len(), 1);
         assert_eq!(replaced[0].chunk_id, "chunk-c");
+
+        let collections = store.list_collections(None).await.unwrap();
+        assert_eq!(collections, vec![("docs".to_string(), 1)]);
+
+        let deleted = store.delete_collection("docs").await.unwrap();
+        assert_eq!(deleted, 1);
+        assert!(store.load_collection("docs", None).await.unwrap().is_empty());
 
         let _ = std::fs::remove_file(db_path);
     }

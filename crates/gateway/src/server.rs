@@ -82,6 +82,8 @@ impl GatewayServer {
             )
             .route("/internal/rag/store", post(internal_rag_store_handler))
             .route("/internal/rag/load", post(internal_rag_load_handler))
+            .route("/internal/rag/list", post(internal_rag_list_handler))
+            .route("/internal/rag/delete", post(internal_rag_delete_handler))
             .layer(
                 CorsLayer::new()
                     .allow_origin(Any)
@@ -253,6 +255,16 @@ struct InternalRagStoreRequest {
 struct InternalRagLoadRequest {
     collection_name: String,
     limit: Option<usize>,
+}
+
+#[derive(serde::Deserialize)]
+struct InternalRagListRequest {
+    limit: Option<usize>,
+}
+
+#[derive(serde::Deserialize)]
+struct InternalRagDeleteRequest {
+    collection_name: String,
 }
 
 async fn internal_memory_search_handler(
@@ -553,6 +565,62 @@ async fn internal_rag_load_handler(
         Err(error) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("rag load failed: {}", error),
+        )
+            .into_response(),
+    }
+}
+
+async fn internal_rag_list_handler(
+    State(state): State<GatewayState>,
+    headers: HeaderMap,
+    Json(payload): Json<InternalRagListRequest>,
+) -> Response {
+    if let Err(response) = validate_internal_api(&state, &headers) {
+        return response;
+    }
+
+    let Some(rag_store) = &state.rag_store else {
+        return (StatusCode::SERVICE_UNAVAILABLE, "rag store unavailable").into_response();
+    };
+
+    match rag_store.list_collections(payload.limit).await {
+        Ok(collections) => Json(json!({
+            "collections": collections.into_iter().map(|(name, chunk_count)| json!({
+                "collection_name": name,
+                "chunk_count": chunk_count,
+            })).collect::<Vec<_>>(),
+        }))
+        .into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("rag list failed: {}", error),
+        )
+            .into_response(),
+    }
+}
+
+async fn internal_rag_delete_handler(
+    State(state): State<GatewayState>,
+    headers: HeaderMap,
+    Json(payload): Json<InternalRagDeleteRequest>,
+) -> Response {
+    if let Err(response) = validate_internal_api(&state, &headers) {
+        return response;
+    }
+
+    let Some(rag_store) = &state.rag_store else {
+        return (StatusCode::SERVICE_UNAVAILABLE, "rag store unavailable").into_response();
+    };
+
+    match rag_store.delete_collection(&payload.collection_name).await {
+        Ok(deleted_chunks) => Json(json!({
+            "collection_name": payload.collection_name,
+            "deleted_chunks": deleted_chunks,
+        }))
+        .into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("rag delete failed: {}", error),
         )
             .into_response(),
     }
@@ -968,7 +1036,7 @@ mod tests {
             .header("x-openrustclaw-internal-token", "test-token")
             .body(Body::from(r#"{"collection_name":"docs","limit":5}"#))
             .unwrap();
-        let load_response = app.oneshot(load_request).await.unwrap();
+        let load_response = app.clone().oneshot(load_request).await.unwrap();
         assert_eq!(load_response.status(), StatusCode::OK);
         let load_body = to_bytes(load_response.into_body(), usize::MAX).await.unwrap();
         let load_json: serde_json::Value = serde_json::from_slice(&load_body).unwrap();
@@ -976,6 +1044,32 @@ mod tests {
         assert_eq!(chunks.len(), 1);
         assert_eq!(chunks[0]["source_id"], "chunk-1");
         assert_eq!(chunks[0]["content"], "Rust uses ownership.");
+
+        let list_request = Request::builder()
+            .method("POST")
+            .uri("/internal/rag/list")
+            .header(CONTENT_TYPE, "application/json")
+            .header("x-openrustclaw-internal-token", "test-token")
+            .body(Body::from(r#"{"limit":10}"#))
+            .unwrap();
+        let list_response = app.clone().oneshot(list_request).await.unwrap();
+        assert_eq!(list_response.status(), StatusCode::OK);
+        let list_body = to_bytes(list_response.into_body(), usize::MAX).await.unwrap();
+        let list_json: serde_json::Value = serde_json::from_slice(&list_body).unwrap();
+        assert_eq!(list_json["collections"][0]["collection_name"], "docs");
+
+        let delete_request = Request::builder()
+            .method("POST")
+            .uri("/internal/rag/delete")
+            .header(CONTENT_TYPE, "application/json")
+            .header("x-openrustclaw-internal-token", "test-token")
+            .body(Body::from(r#"{"collection_name":"docs"}"#))
+            .unwrap();
+        let delete_response = app.clone().oneshot(delete_request).await.unwrap();
+        assert_eq!(delete_response.status(), StatusCode::OK);
+        let delete_body = to_bytes(delete_response.into_body(), usize::MAX).await.unwrap();
+        let delete_json: serde_json::Value = serde_json::from_slice(&delete_body).unwrap();
+        assert_eq!(delete_json["deleted_chunks"], 1);
 
         let _ = std::fs::remove_file(db_path);
     }
