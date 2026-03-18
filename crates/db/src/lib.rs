@@ -14,5 +14,5 @@ pub use core_memory_store::{CoreEntryBuilder, DEFAULT_CORE_MEMORY_BUDGET, Sqlite
 pub use memory_store::{EmbeddingProvider, SqliteMemoryStore};
 pub use migrate::run_migrations;
 pub use pool::init_pool;
-pub use rag_store::{RagChunkInput, RagChunkRecord, SqliteRagStore};
+pub use rag_store::{RagChunkInput, RagChunkRecord, RagCollectionStats, SqliteRagStore};
 pub use sqlx::SqlitePool;

@@ -871,12 +871,15 @@ async fn internal_rag_list_handler(
         return (StatusCode::SERVICE_UNAVAILABLE, "rag store unavailable").into_response();
     };
 
-    match rag_store.list_collections(payload.limit).await {
+    match rag_store.list_collection_stats(payload.limit).await {
         Ok(collections) => {
             let body = json!({
-            "collections": collections.into_iter().map(|(name, chunk_count)| json!({
-                "collection_name": name,
-                "chunk_count": chunk_count,
+            "collections": collections.into_iter().map(|stats| json!({
+                "collection_name": stats.collection_name,
+                "chunk_count": stats.chunk_count,
+                "source_count": stats.source_count,
+                "total_content_bytes": stats.total_content_bytes,
+                "last_updated_at": stats.last_updated_at,
             })).collect::<Vec<_>>(),
         });
             complete_gateway_trace(
@@ -1423,6 +1426,13 @@ mod tests {
         let list_body = to_bytes(list_response.into_body(), usize::MAX).await.unwrap();
         let list_json: serde_json::Value = serde_json::from_slice(&list_body).unwrap();
         assert_eq!(list_json["collections"][0]["collection_name"], "docs");
+        assert_eq!(list_json["collections"][0]["chunk_count"], 1);
+        assert_eq!(list_json["collections"][0]["source_count"], 1);
+        assert!(list_json["collections"][0]["total_content_bytes"]
+            .as_i64()
+            .unwrap()
+            > 0);
+        assert!(list_json["collections"][0]["last_updated_at"].is_string());
 
         let delete_request = Request::builder()
             .method("POST")

@@ -27,6 +27,15 @@ pub struct RagChunkRecord {
     pub created_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct RagCollectionStats {
+    pub collection_name: String,
+    pub chunk_count: i64,
+    pub source_count: i64,
+    pub total_content_bytes: i64,
+    pub last_updated_at: DateTime<Utc>,
+}
+
 #[derive(Clone)]
 pub struct SqliteRagStore {
     pool: SqlitePool,
@@ -252,6 +261,95 @@ impl SqliteRagStore {
     }
 
     #[instrument(skip(self))]
+    pub async fn list_collection_stats(
+        &self,
+        limit: Option<usize>,
+    ) -> Result<Vec<RagCollectionStats>> {
+        let effective_limit = limit.unwrap_or(100).max(1) as i64;
+        let rows = sqlx::query(
+            r#"
+            SELECT
+                collection_name,
+                COUNT(*) AS chunk_count,
+                COUNT(DISTINCT source_id) AS source_count,
+                COALESCE(SUM(LENGTH(content)), 0) AS total_content_bytes,
+                MAX(created_at) AS last_updated_at
+            FROM rag_chunks
+            GROUP BY collection_name
+            ORDER BY collection_name ASC
+            LIMIT ?
+            "#,
+        )
+        .bind(effective_limit)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| {
+            Error::Database(DatabaseError::Query(format!(
+                "Failed to list rag collection stats: {}",
+                e
+            )))
+        })?;
+
+        rows.into_iter()
+            .map(|row| {
+                let collection_name: String = row.try_get("collection_name").map_err(|e| {
+                    Error::Database(DatabaseError::Query(format!(
+                        "Failed to read rag collection_name: {}",
+                        e
+                    )))
+                })?;
+                let chunk_count: i64 = row.try_get("chunk_count").map_err(|e| {
+                    Error::Database(DatabaseError::Query(format!(
+                        "Failed to read rag chunk_count: {}",
+                        e
+                    )))
+                })?;
+                let source_count: i64 = row.try_get("source_count").map_err(|e| {
+                    Error::Database(DatabaseError::Query(format!(
+                        "Failed to read rag source_count: {}",
+                        e
+                    )))
+                })?;
+                let total_content_bytes: i64 =
+                    row.try_get("total_content_bytes").map_err(|e| {
+                        Error::Database(DatabaseError::Query(format!(
+                            "Failed to read rag total_content_bytes: {}",
+                            e
+                        )))
+                    })?;
+                let last_updated_raw: String = row.try_get("last_updated_at").map_err(|e| {
+                    Error::Database(DatabaseError::Query(format!(
+                        "Failed to read rag last_updated_at: {}",
+                        e
+                    )))
+                })?;
+                let last_updated_at =
+                    if let Ok(parsed) = DateTime::parse_from_rfc3339(&last_updated_raw) {
+                        parsed.with_timezone(&Utc)
+                    } else {
+                        let naive =
+                            NaiveDateTime::parse_from_str(&last_updated_raw, "%Y-%m-%d %H:%M:%S")
+                                .map_err(|e| {
+                                    Error::Database(DatabaseError::Query(format!(
+                                        "Invalid rag last_updated_at value: {}",
+                                        e
+                                    )))
+                                })?;
+                        DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc)
+                    };
+
+                Ok(RagCollectionStats {
+                    collection_name,
+                    chunk_count,
+                    source_count,
+                    total_content_bytes,
+                    last_updated_at,
+                })
+            })
+            .collect()
+    }
+
+    #[instrument(skip(self))]
     pub async fn delete_collection(&self, collection_name: &str) -> Result<u64> {
         let result = sqlx::query("DELETE FROM rag_chunks WHERE collection_name = ?")
             .bind(collection_name)
@@ -333,6 +431,12 @@ mod tests {
 
         let collections = store.list_collections(None).await.unwrap();
         assert_eq!(collections, vec![("docs".to_string(), 1)]);
+        let stats = store.list_collection_stats(None).await.unwrap();
+        assert_eq!(stats.len(), 1);
+        assert_eq!(stats[0].collection_name, "docs");
+        assert_eq!(stats[0].chunk_count, 1);
+        assert_eq!(stats[0].source_count, 1);
+        assert!(stats[0].total_content_bytes > 0);
 
         let deleted = store.delete_collection("docs").await.unwrap();
         assert_eq!(deleted, 1);

@@ -132,6 +132,7 @@ Status:
 - The sidecar RAG workflow now applies source-aware scoring and optional source-type filters on top of the durable collection store.
 - The sidecar RAG workflow now applies stopword-aware lexical scoring and configurable per-source diversity limits on top of the durable collection store.
 - The Rust loopback RAG API now supports collection listing and deletion in addition to replace/load operations.
+- The Rust loopback RAG API now returns richer collection stats, including source breadth and content volume, in addition to replace/load/list/delete operations.
 - Sidecar LangSmith traces now preserve workflow trace ids back through the gRPC boundary so scheduler runs can persist them.
 - Scheduler dispatch can now create Rust-side LangSmith parent runs when `[observability].langsmith_enabled = true` and LangSmith env vars are present.
 - Channel message handling can now create Rust-side LangSmith runs when `[observability].langsmith_enabled = true` and LangSmith env vars are present.
