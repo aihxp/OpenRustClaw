@@ -228,6 +228,23 @@ CREATE TABLE IF NOT EXISTS memory_archive (
 CREATE INDEX IF NOT EXISTS idx_archive_namespace ON memory_archive(namespace);
 "#,
     },
+    Migration {
+        name: "013_rag_chunks",
+        sql: r#"
+CREATE TABLE IF NOT EXISTS rag_chunks (
+    collection_name TEXT NOT NULL,
+    chunk_id TEXT NOT NULL,
+    source_id TEXT NOT NULL,
+    chunk_index INTEGER NOT NULL DEFAULT 0,
+    content TEXT NOT NULL,
+    metadata TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY(collection_name, chunk_id)
+);
+CREATE INDEX IF NOT EXISTS idx_rag_chunks_collection ON rag_chunks(collection_name, chunk_index);
+CREATE INDEX IF NOT EXISTS idx_rag_chunks_source ON rag_chunks(source_id);
+"#,
+    },
 ];
 
 /// Run all embedded database migrations in order.

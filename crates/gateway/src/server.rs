@@ -15,7 +15,7 @@ use futures::StreamExt;
 use openrustclaw_core::error::{Error, Result as CoreResult, SecurityError};
 use openrustclaw_core::traits::{CoreMemoryStore, MemoryStore};
 use openrustclaw_core::types::{MemoryEntry, MemoryQuery, MemoryType, SourceType};
-use openrustclaw_db::{SqliteCoreMemoryStore, SqliteMemoryStore};
+use openrustclaw_db::{RagChunkInput, SqliteCoreMemoryStore, SqliteMemoryStore, SqliteRagStore};
 use openrustclaw_observability::metrics::{
     SimpleTimer, decrement_active_connections, increment_active_connections,
     record_websocket_message,
@@ -37,6 +37,7 @@ pub struct GatewayState {
     pub internal_api_token: Option<Arc<String>>,
     pub memory_store: Option<Arc<SqliteMemoryStore>>,
     pub core_memory_store: Option<Arc<SqliteCoreMemoryStore>>,
+    pub rag_store: Option<Arc<SqliteRagStore>>,
 }
 
 /// The gateway WebSocket server.
@@ -79,6 +80,8 @@ impl GatewayServer {
                 "/internal/memory/core/{user_id}",
                 post(internal_core_memory_render_handler),
             )
+            .route("/internal/rag/store", post(internal_rag_store_handler))
+            .route("/internal/rag/load", post(internal_rag_load_handler))
             .layer(
                 CorsLayer::new()
                     .allow_origin(Any)
@@ -226,6 +229,29 @@ struct InternalMemoryMaintenanceOldRequest {
     age_days: Option<i64>,
     namespace: Option<String>,
     user_id: Option<String>,
+    limit: Option<usize>,
+}
+
+#[derive(serde::Deserialize)]
+struct InternalRagChunkRequest {
+    id: String,
+    source_id: Option<String>,
+    content: String,
+    #[serde(default)]
+    metadata: serde_json::Value,
+    chunk_index: Option<i64>,
+}
+
+#[derive(serde::Deserialize)]
+struct InternalRagStoreRequest {
+    collection_name: String,
+    #[serde(default)]
+    chunks: Vec<InternalRagChunkRequest>,
+}
+
+#[derive(serde::Deserialize)]
+struct InternalRagLoadRequest {
+    collection_name: String,
     limit: Option<usize>,
 }
 
@@ -454,6 +480,84 @@ async fn internal_memory_maintenance_old_handler(
     }
 }
 
+async fn internal_rag_store_handler(
+    State(state): State<GatewayState>,
+    headers: HeaderMap,
+    Json(payload): Json<InternalRagStoreRequest>,
+) -> Response {
+    if let Err(response) = validate_internal_api(&state, &headers) {
+        return response;
+    }
+
+    let Some(rag_store) = &state.rag_store else {
+        return (StatusCode::SERVICE_UNAVAILABLE, "rag store unavailable").into_response();
+    };
+
+    let chunks: Vec<RagChunkInput> = payload
+        .chunks
+        .into_iter()
+        .map(|chunk| RagChunkInput {
+            chunk_id: chunk.id.clone(),
+            source_id: chunk.source_id.unwrap_or(chunk.id),
+            chunk_index: chunk.chunk_index.unwrap_or(0),
+            content: chunk.content,
+            metadata: chunk.metadata,
+        })
+        .collect();
+
+    match rag_store
+        .replace_collection(&payload.collection_name, &chunks)
+        .await
+    {
+        Ok(stored_chunks) => Json(json!({
+            "collection_name": payload.collection_name,
+            "stored_chunks": stored_chunks,
+        }))
+        .into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("rag store failed: {}", error),
+        )
+            .into_response(),
+    }
+}
+
+async fn internal_rag_load_handler(
+    State(state): State<GatewayState>,
+    headers: HeaderMap,
+    Json(payload): Json<InternalRagLoadRequest>,
+) -> Response {
+    if let Err(response) = validate_internal_api(&state, &headers) {
+        return response;
+    }
+
+    let Some(rag_store) = &state.rag_store else {
+        return (StatusCode::SERVICE_UNAVAILABLE, "rag store unavailable").into_response();
+    };
+
+    match rag_store
+        .load_collection(&payload.collection_name, payload.limit)
+        .await
+    {
+        Ok(chunks) => Json(json!({
+            "collection_name": payload.collection_name,
+            "chunks": chunks.into_iter().map(|chunk| json!({
+                "id": chunk.chunk_id,
+                "source_id": chunk.source_id,
+                "chunk_index": chunk.chunk_index,
+                "content": chunk.content,
+                "metadata": chunk.metadata,
+            })).collect::<Vec<_>>(),
+        }))
+        .into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("rag load failed: {}", error),
+        )
+            .into_response(),
+    }
+}
+
 fn validate_ws_request(state: &GatewayState, headers: &HeaderMap) -> CoreResult<()> {
     let origin = headers
         .get(axum::http::header::ORIGIN)
@@ -580,7 +684,9 @@ mod tests {
     use http::header::{CONTENT_TYPE, HeaderValue};
     use openrustclaw_core::traits::CoreMemoryStore;
     use openrustclaw_core::types::CoreEntry;
-    use openrustclaw_db::{SqliteCoreMemoryStore, SqliteMemoryStore, init_pool, run_migrations};
+    use openrustclaw_db::{
+        SqliteCoreMemoryStore, SqliteMemoryStore, SqliteRagStore, init_pool, run_migrations,
+    };
     use tower::ServiceExt;
 
     fn test_state() -> GatewayState {
@@ -593,6 +699,7 @@ mod tests {
             internal_api_token: None,
             memory_store: None,
             core_memory_store: None,
+            rag_store: None,
         }
     }
 
@@ -659,6 +766,7 @@ mod tests {
             internal_api_token: Some(Arc::new("test-token".to_string())),
             memory_store: Some(memory_store),
             core_memory_store: Some(core_memory_store),
+            rag_store: Some(Arc::new(SqliteRagStore::new(pool.clone()))),
         };
 
         let app = GatewayServer::new("127.0.0.1".to_string(), 0).router(state);
@@ -750,6 +858,7 @@ mod tests {
             internal_api_token: Some(Arc::new("test-token".to_string())),
             memory_store: Some(memory_store),
             core_memory_store: Some(core_memory_store),
+            rag_store: Some(Arc::new(SqliteRagStore::new(pool.clone()))),
         };
 
         let app = GatewayServer::new("127.0.0.1".to_string(), 0).router(state);
@@ -814,6 +923,59 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(archive_count, 1);
+
+        let _ = std::fs::remove_file(db_path);
+    }
+
+    #[tokio::test]
+    async fn internal_rag_endpoints_store_and_load_chunks() {
+        let db_path = std::env::temp_dir().join(format!("gateway-rag-{}.db", Uuid::new_v4()));
+        let pool = init_pool(&format!("sqlite://{}", db_path.display()), 1)
+            .await
+            .unwrap();
+        run_migrations(&pool).await.unwrap();
+
+        let state = GatewayState {
+            session_manager: Arc::new(crate::sessions::SessionManager::new()),
+            origin_validator: Arc::new(OriginValidator::new(vec![
+                "http://localhost:3000".to_string(),
+            ])),
+            require_auth: false,
+            internal_api_token: Some(Arc::new("test-token".to_string())),
+            memory_store: Some(Arc::new(SqliteMemoryStore::new(pool.clone()))),
+            core_memory_store: Some(Arc::new(SqliteCoreMemoryStore::new(pool.clone()))),
+            rag_store: Some(Arc::new(SqliteRagStore::new(pool.clone()))),
+        };
+
+        let app = GatewayServer::new("127.0.0.1".to_string(), 0).router(state);
+
+        let store_request = Request::builder()
+            .method("POST")
+            .uri("/internal/rag/store")
+            .header(CONTENT_TYPE, "application/json")
+            .header("x-openrustclaw-internal-token", "test-token")
+            .body(Body::from(
+                r#"{"collection_name":"docs","chunks":[{"id":"chunk-1","content":"Rust uses ownership.","metadata":{"type":"text"},"chunk_index":0}]}"#,
+            ))
+            .unwrap();
+        let store_response = app.clone().oneshot(store_request).await.unwrap();
+        assert_eq!(store_response.status(), StatusCode::OK);
+
+        let load_request = Request::builder()
+            .method("POST")
+            .uri("/internal/rag/load")
+            .header(CONTENT_TYPE, "application/json")
+            .header("x-openrustclaw-internal-token", "test-token")
+            .body(Body::from(r#"{"collection_name":"docs","limit":5}"#))
+            .unwrap();
+        let load_response = app.oneshot(load_request).await.unwrap();
+        assert_eq!(load_response.status(), StatusCode::OK);
+        let load_body = to_bytes(load_response.into_body(), usize::MAX).await.unwrap();
+        let load_json: serde_json::Value = serde_json::from_slice(&load_body).unwrap();
+        let chunks = load_json["chunks"].as_array().unwrap();
+        assert_eq!(chunks.len(), 1);
+        assert_eq!(chunks[0]["source_id"], "chunk-1");
+        assert_eq!(chunks[0]["content"], "Rust uses ownership.");
 
         let _ = std::fs::remove_file(db_path);
     }

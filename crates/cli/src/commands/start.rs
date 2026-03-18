@@ -35,7 +35,9 @@ use openrustclaw_core::config::{AppConfig, SlackMode};
 use openrustclaw_core::traits::{
     CoreMemoryStore as CoreMemoryStoreTrait, MemoryStore as MemoryStoreTrait,
 };
-use openrustclaw_db::{SqliteCoreMemoryStore, SqliteMemoryStore, init_pool, run_migrations};
+use openrustclaw_db::{
+    SqliteCoreMemoryStore, SqliteMemoryStore, SqliteRagStore, init_pool, run_migrations,
+};
 use openrustclaw_gateway::server::{GatewayServer, GatewayState};
 use openrustclaw_gateway::sessions::SessionManager;
 use openrustclaw_langbridge::{LangBridgeClient, sidecar::SidecarManager};
@@ -155,6 +157,7 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
     let session_manager = Arc::new(SessionManager::new());
     let memory_store = Arc::new(SqliteMemoryStore::new(pool.clone()));
     let core_memory_store = Arc::new(SqliteCoreMemoryStore::new(pool.clone()));
+    let rag_store = Arc::new(SqliteRagStore::new(pool.clone()));
 
     // Create origin validator
     let origin_validator = Arc::new(OriginValidator::new(config.gateway.allowed_origins.clone()));
@@ -167,6 +170,7 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
         internal_api_token: Some(Arc::new(internal_api_token)),
         memory_store: Some(memory_store.clone()),
         core_memory_store: Some(core_memory_store.clone()),
+        rag_store: Some(rag_store),
     };
 
     // Create and start gateway server

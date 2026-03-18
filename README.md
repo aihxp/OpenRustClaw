@@ -107,7 +107,7 @@ Three-tier architecture -- no full memory files injected into prompts:
 
 - **Core Memory** (~500 tokens, always loaded) -- persistent user/system facts
 - **Recall Memory** (on-demand search) -- hybrid BM25 + vector similarity + temporal decay
-- **RAG Context** (budgeted assembly) -- deterministic retrieved context with stable source ids for citations
+- **RAG Context** (budgeted assembly) -- deterministic retrieved context with stable source ids for citations and Rust-backed durable chunk storage
 - **Archive Memory** (consolidated) -- long-term storage with Rust-backed maintenance that persists summaries and removes archived recall entries
 
 ```toml

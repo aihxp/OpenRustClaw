@@ -72,6 +72,36 @@ class MemoryBridge:
         content = response.get("content", "")
         return content if isinstance(content, str) else ""
 
+    async def store_rag_chunks(
+        self,
+        collection_name: str,
+        chunks: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        return await self._post(
+            "/rag/store",
+            {
+                "collection_name": collection_name,
+                "chunks": chunks,
+            },
+        )
+
+    async def load_rag_chunks(
+        self,
+        collection_name: str,
+        limit: int = 1000,
+    ) -> List[Dict[str, Any]]:
+        response = await self._post(
+            "/rag/load",
+            {
+                "collection_name": collection_name,
+                "limit": limit,
+            },
+        )
+        chunks = response.get("chunks", [])
+        if isinstance(chunks, list):
+            return [item for item in chunks if isinstance(item, dict)]
+        return []
+
     async def fetch_old_memories(
         self,
         age_days: int = 30,

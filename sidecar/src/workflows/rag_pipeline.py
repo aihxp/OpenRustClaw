@@ -12,6 +12,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 
+from ..memory_bridge import MemoryBridge
 from ..workflow_contract import get_configurable_value
 
 logger = logging.getLogger(__name__)
@@ -330,6 +331,7 @@ class StorageNode:
         self.name = "storage"
         self.collection_name = collection_name
         self._vectorstore: Optional[Any] = None
+        self.memory_bridge = MemoryBridge.from_env()
 
     async def __call__(
         self,
@@ -374,6 +376,12 @@ class StorageNode:
             content_hash = hashlib.md5(chunk.page_content.encode()).hexdigest()[:12]
             chunk.metadata["id"] = f"chunk_{content_hash}"
             chunk.metadata.setdefault("source_id", chunk.metadata["id"])
+        if self.memory_bridge is not None:
+            payload = [_document_to_bridge_chunk(chunk) for chunk in chunks]
+            result = await self.memory_bridge.store_rag_chunks(collection_name, payload)
+            stored_chunks = result.get("stored_chunks", len(payload))
+            if isinstance(stored_chunks, int):
+                return stored_chunks
 
         return RAG_STORE.store(collection_name, chunks)
 
@@ -384,6 +392,7 @@ class RetrievalNode:
     def __init__(self, top_k: int = 5) -> None:
         self.name = "retrieval"
         self.top_k = top_k
+        self.memory_bridge = MemoryBridge.from_env()
 
     async def __call__(
         self,
@@ -410,7 +419,13 @@ class RetrievalNode:
             collection_name = state.get("collection_name") or "rag_documents"
             available_chunks = state.get("chunks", [])
             if not available_chunks:
-                available_chunks = RAG_STORE.load(collection_name)
+                if self.memory_bridge is not None:
+                    bridge_chunks = await self.memory_bridge.load_rag_chunks(collection_name)
+                    available_chunks = [
+                        _document_from_bridge_chunk(chunk) for chunk in bridge_chunks
+                    ]
+                if not available_chunks:
+                    available_chunks = RAG_STORE.load(collection_name)
 
             # Retrieve documents
             retrieved = await self._retrieve(query, available_chunks)
@@ -606,6 +621,40 @@ def _assemble_context(retrieved_docs: List[Document], budget: int) -> tuple[str,
         break
 
     return "\n\n".join(sections), citation_order
+
+
+def _document_to_bridge_chunk(doc: Document) -> Dict[str, Any]:
+    metadata = dict(doc.metadata)
+    chunk_id = str(metadata.get("id") or metadata.get("source_id") or "chunk_unknown")
+    source_id = str(metadata.get("source_id") or chunk_id)
+    chunk_index = metadata.get("chunk_index", 0)
+    if not isinstance(chunk_index, int):
+        try:
+            chunk_index = int(chunk_index)
+        except (TypeError, ValueError):
+            chunk_index = 0
+
+    return {
+        "id": chunk_id,
+        "source_id": source_id,
+        "chunk_index": chunk_index,
+        "content": doc.page_content,
+        "metadata": metadata,
+    }
+
+
+def _document_from_bridge_chunk(chunk: Dict[str, Any]) -> Document:
+    metadata = chunk.get("metadata", {})
+    if not isinstance(metadata, dict):
+        metadata = {}
+    metadata = dict(metadata)
+    metadata.setdefault("id", chunk.get("id", "chunk_unknown"))
+    metadata.setdefault("source_id", chunk.get("source_id", metadata["id"]))
+    metadata.setdefault("chunk_index", chunk.get("chunk_index", 0))
+    return Document(
+        page_content=str(chunk.get("content", "")),
+        metadata=metadata,
+    )
 
 
 def build_rag_graph(

@@ -25,6 +25,7 @@ fn test_state_with_auth() -> GatewayState {
         internal_api_token: None,
         memory_store: None,
         core_memory_store: None,
+        rag_store: None,
     }
 }
 
@@ -38,6 +39,7 @@ fn test_state_no_auth() -> GatewayState {
         internal_api_token: None,
         memory_store: None,
         core_memory_store: None,
+        rag_store: None,
     }
 }
 
@@ -189,6 +191,7 @@ fn origin_validator_via_gateway_state() {
         internal_api_token: None,
         memory_store: None,
         core_memory_store: None,
+        rag_store: None,
     };
 
     // Test that origin validator is correctly set up

@@ -301,7 +301,7 @@ def test_memory_bridge_request_helpers():
                 return False
 
             def read(self):
-                return b'{"memories":[{"content":"Prefers Rust"}],"content":"## Core Memory"}'
+                return b'{"memories":[{"content":"Prefers Rust"}],"chunks":[{"content":"Prefers Rust"}],"content":"## Core Memory"}'
 
         bridge = MemoryBridge("http://127.0.0.1:3000/internal", "token-123")
 
@@ -311,6 +311,13 @@ def test_memory_bridge_request_helpers():
             old_result = asyncio.run(
                 bridge.fetch_old_memories(age_days=30, namespace="user-1", user_id="user-1")
             )
+            rag_store_result = asyncio.run(
+                bridge.store_rag_chunks(
+                    "docs",
+                    [{"id": "chunk-1", "content": "Rust ownership", "metadata": {}}],
+                )
+            )
+            rag_load_result = asyncio.run(bridge.load_rag_chunks("docs", limit=10))
             archive_result = asyncio.run(
                 bridge.store_archive_entry(
                     {
@@ -325,9 +332,11 @@ def test_memory_bridge_request_helpers():
         assert search_result[0]["content"] == "Prefers Rust"
         assert "Core Memory" in core_result
         assert old_result[0]["content"] == "Prefers Rust"
+        assert rag_store_result["memories"][0]["content"] == "Prefers Rust"
+        assert rag_load_result[0]["content"] == "Prefers Rust"
         assert archive_result["memories"][0]["content"] == "Prefers Rust"
         assert delete_result["memories"][0]["content"] == "Prefers Rust"
-        assert mock_urlopen.call_count == 5
+        assert mock_urlopen.call_count == 7
         print("  ✓ Memory bridge client")
     except ModuleNotFoundError as e:
         print(f"  ✗ Memory bridge client: {e}")

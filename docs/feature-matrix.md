@@ -26,7 +26,7 @@ Status values:
 | Core memory store | real | Budgeted key-value memory exists |
 | Sidecar memory orchestration | real | Agent and maintenance workflows use the Rust loopback bridge and typed workflow contract for search/store/archive paths |
 | Memory maintenance archive pipeline | real | Maintenance workflow can fetch old memories, persist archive summaries, and remove archived originals through Rust-owned storage |
-| RAG pipeline | partial | Deterministic collection-backed retrieval and budgeted context assembly exist in the sidecar; storage durability and retrieval quality still need production hardening |
+| RAG pipeline | partial | Deterministic collection-backed retrieval, Rust-backed durable chunk storage, and budgeted context assembly exist; retrieval quality and richer indexing still need production hardening |
 
 ## Channels
 

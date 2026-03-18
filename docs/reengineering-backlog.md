@@ -126,13 +126,13 @@ Status:
 - Memory maintenance now uses Rust-backed archive persistence and removes archived recall entries through the loopback bridge.
 - Rust-to-sidecar workflow dispatch now preserves typed configurable metadata through a reserved contract key instead of flattening everything to strings.
 - The skills CLI now resolves real `SKILL.md` workspace paths, stores capability metadata as JSON, syncs marketplace installs back into the main skills table, and keeps managed verification state aligned with install/update flows.
-- The sidecar RAG workflow now supports deterministic query-only retrieval against stored collections and budgeted context assembly with stable source ids.
+- The sidecar RAG workflow now supports deterministic query-only retrieval against Rust-backed durable collections and budgeted context assembly with stable source ids.
 - `openrustclaw start` now gates non-shipping channel modules instead of advertising them through the active runtime surface.
 - The biggest remaining engineering gaps are:
   - broader observability/LangSmith trace coverage across all runtime paths
   - Discord Gateway message-event support beyond the current verified Interactions ingress
   - fuller skills host-capability enforcement beyond the current no-import WASM boundary
-  - deeper retrieval quality and storage durability beyond the current sidecar in-memory collection store
+  - deeper retrieval quality and richer indexing beyond the current durable lexical collection store
 
 ## Current Execution Order
 
