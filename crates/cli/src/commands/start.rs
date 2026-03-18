@@ -60,7 +60,7 @@ use openrustclaw_security::OriginValidator;
 use sqlx::Row;
 use uuid::Uuid;
 
-/// Run the start command - load config, init DB, start sidecar, start gateway.
+/// Run the start command - load config, optionally start the compatibility/experimental sidecar, and start the gateway.
 pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
     // Initialize tracing
     tracing_subscriber::fmt::init();
@@ -134,9 +134,9 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
     let internal_api_addr = internal_api_addr(&config.gateway.host, config.gateway.port);
     let internal_api_token = uuid::Uuid::new_v4().to_string();
 
-    // Start Python sidecar if auto_start is enabled
+    // Start the optional Python sidecar only when explicitly enabled for a non-disabled role.
     let mut sidecar: Option<SidecarManager> = None;
-    if config.sidecar.auto_start {
+    if config.sidecar.auto_start && !config.sidecar.is_disabled() {
         let mut manager =
             SidecarManager::new(config.sidecar.python_path.clone(), config.sidecar.grpc_port)
                 .with_env(
@@ -151,6 +151,7 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
         match manager.start().await {
             Ok(()) => {
                 info!(
+                    role = ?config.sidecar.role,
                     grpc_port = config.sidecar.grpc_port,
                     "Python sidecar started"
                 );
@@ -163,6 +164,10 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
                 }
             }
         }
+    } else if config.sidecar.auto_start && config.sidecar.is_disabled() {
+        warn!("Python sidecar auto_start is set, but sidecar role is disabled; skipping startup");
+    } else if config.sidecar.supports_experimental_lane() {
+        info!("Python sidecar is configured as an experimental LangGraph lane and will not be used for production compatibility dispatch unless explicitly started");
     }
 
     // Create session manager
@@ -336,7 +341,7 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
     info!("Gateway: http://{}", addr);
     info!("WebSocket: ws://{}/ws", addr);
     if sidecar.is_some() {
-        info!("Sidecar gRPC: {}", sidecar_addr);
+        info!(role = ?config.sidecar.role, "Sidecar gRPC: {}", sidecar_addr);
     }
     info!(
         poll_interval_ms = config.scheduler.poll_interval_ms,
@@ -499,9 +504,8 @@ fn spawn_scheduler_task(
 
         let compat_sidecar_addr = app_config
             .sidecar
-            .auto_start
-            .then_some(sidecar_addr.clone())
-            .or(Some(sidecar_addr));
+            .supports_compat_dispatch()
+            .then_some(sidecar_addr);
         let mut dispatcher = match RustWorkflowDispatcher::from_config(
             pool.clone(),
             &app_config,
@@ -2260,7 +2264,12 @@ fn build_mcp_server(
                     {
                         "workflow_id": "*",
                         "tier": "compat_sidecar",
-                        "description": "Compatibility fallback for bounded legacy sidecar workflows when configured"
+                        "description": "Optional bounded compatibility bridge for legacy sidecar workflows when sidecar.role=compatibility"
+                    },
+                    {
+                        "workflow_id": "*",
+                        "tier": "experimental_langgraph",
+                        "description": "Experimental LangGraph authoring/prototyping lane; not part of the production-critical runtime path"
                     }
                 ]
             }))

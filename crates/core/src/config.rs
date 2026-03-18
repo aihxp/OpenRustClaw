@@ -134,8 +134,37 @@ pub struct SecurityConfig {
 pub struct SidecarConfig {
     pub grpc_port: u16,
     pub python_path: String,
+    #[serde(default)]
+    pub role: SidecarRole,
     pub auto_start: bool,
     pub restart_on_crash: bool,
+}
+
+impl SidecarConfig {
+    pub fn supports_compat_dispatch(&self) -> bool {
+        matches!(self.role, SidecarRole::Compatibility)
+    }
+
+    pub fn supports_experimental_lane(&self) -> bool {
+        matches!(self.role, SidecarRole::Experimental)
+    }
+
+    pub fn is_disabled(&self) -> bool {
+        matches!(self.role, SidecarRole::Disabled)
+    }
+}
+
+/// The allowed role of the optional Python sidecar.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SidecarRole {
+    /// Optional bounded compatibility bridge for legacy workflow execution only.
+    #[default]
+    Compatibility,
+    /// Experimental LangGraph lane for prototyping and evaluation only.
+    Experimental,
+    /// Fully disabled; the sidecar should not be started or used for dispatch.
+    Disabled,
 }
 
 /// Observability configuration.
@@ -704,6 +733,7 @@ impl Default for AppConfig {
             sidecar: SidecarConfig {
                 grpc_port: 50051,
                 python_path: "python3".to_string(),
+                role: SidecarRole::Compatibility,
                 auto_start: false,
                 restart_on_crash: true,
             },

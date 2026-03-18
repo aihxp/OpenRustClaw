@@ -32,7 +32,8 @@ LangGraph is not being rejected. It is being demoted from "possible permanent ru
 
 - Rust-native execution is the long-term production target.
 - Sidecar/LangGraph compatibility is acceptable for shipped flows still being migrated.
-- LangGraph remains useful as the rapid experimentation lane for new workflow ideas.
+- LangGraph remains useful as the rapid experimentation lane and authoring/prototyping format for new workflow ideas.
+- LangGraph is not part of the production-critical runtime path.
 
 The key constraint is that Rust owns the durable outer loop:
 

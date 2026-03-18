@@ -14,8 +14,9 @@ Current execution planning lives in:
 - [docs/parity-positioning.md](docs/parity-positioning.md)
 
 The roadmap target is explicit: achieve practical OpenClaw feature parity with a Rust-first runtime, while keeping OpenRustClaw-native improvements where they are stronger.
-The execution model is also explicit: Rust-native for production-critical paths, sidecar compatibility for migration, and LangGraph as the experimentation lane rather than the sole durability boundary.
+The execution model is also explicit: Rust-native for production-critical paths, sidecar compatibility for bounded migration, and LangGraph as the experimentation/authoring lane rather than the sole durability boundary.
 `openrustclaw start` now defaults to the Rust runtime path without requiring Python; the sidecar is only used when a compatibility workflow is explicitly needed and configured.
+LangGraph is therefore retained as an authoring/prototyping format and an optional compatibility bridge, but removed from the production-critical runtime path.
 The shipped Rust runtime now owns durable scheduling, event-triggered workflows, session lifecycle hooks, hook execution policies, and reminder delivery with quiet-hours/retry-aware channel fallback policies.
 The roadmap now also includes a file-backed task registry layer so operators can manage visible `.claw/tasks/`-style task manifests, priorities, and sync/inspection workflows without making OS cron or loose files the durable source of truth.
 The roadmap now includes a shipped Rust-native autonomous optimization framework inspired by `autoresearch`, generalized for skills, RAG, prompts, policies, bounded workflows, bounded code, and research-program targets.
@@ -126,6 +127,10 @@ Three-tier architecture -- no full memory files injected into prompts:
 core_max_tokens = 500
 recall_search_limit = 20
 archive_after_days = 30
+
+[sidecar]
+role = "compatibility" # compatibility, experimental, disabled
+auto_start = false
 ```
 
 ## MCP (Model Context Protocol)

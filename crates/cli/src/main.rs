@@ -16,7 +16,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Start the gateway server and Python sidecar
+    /// Start the gateway server and optional compatibility/experimental sidecar
     Start {
         /// Config file path
         #[arg(short, long, default_value = "config/default.toml")]

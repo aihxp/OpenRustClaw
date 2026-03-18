@@ -12,7 +12,7 @@ This book page exists so the mdBook navigation can expose the same planning surf
 - Use a three-tier execution model:
   - Rust-native for production-critical paths,
   - sidecar compatibility for migration,
-  - LangGraph for experimentation.
+  - LangGraph for experimentation and authoring, not as the production runtime brain.
 - The Rust-native autonomous optimization framework is now implemented for skills, RAG, prompts, policies, bounded workflows/code improvements, and research-program targets.
 
 ## Phase summary

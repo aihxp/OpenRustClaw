@@ -113,7 +113,7 @@ Rules:
 - [x] Skills install and verification flow, marketplace sync, and a real WASM executor exist.
 - [x] Rust-owned RAG storage, retrieval controls, and MCP inspection exist.
 - [ ] Full OpenClaw parity across channels, Control UI, nodes, plugin ecosystem, media flows, session tools, and all operator workflows does not exist yet.
-- [ ] The Python sidecar is still part of the production execution path.
+- [x] The Python sidecar is no longer part of the production-critical execution path; it remains an optional compatibility/experimental lane only.
 
 ## Parity Scope
 
@@ -231,10 +231,14 @@ Remaining:
 - [x] Keep shipped sidecar-backed workflows bounded and compatibility-only.
 - [x] Ban sidecar-owned infinite loops and scheduler-owned durable truth outside Rust.
 - [x] Keep LangSmith via direct API integration from Rust, not Python framework dependency.
-- [ ] Decide whether LangGraph remains:
-  - an authoring format only,
-  - an optional compatibility bridge,
-  - or is removed entirely from production.
+- [x] Decide whether LangGraph remains:
+  - [x] keep it as an authoring/prototyping format,
+  - [x] keep it as an optional bounded compatibility bridge,
+  - [x] remove it from the production-critical runtime path.
+- [x] Make the decision explicit in runtime/configuration policy:
+  - sidecar role is `compatibility`, `experimental`, or `disabled`,
+  - compatibility dispatch only exists when explicitly configured,
+  - experimental LangGraph usage is operator-visible and does not count as shipped parity by itself.
 - [x] Build a Rust-native workflow abstraction that covers:
   - node execution,
   - retries,
