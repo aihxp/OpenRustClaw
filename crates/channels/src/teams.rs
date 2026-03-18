@@ -557,12 +557,11 @@ impl TeamsChannel {
         let activity_type = activity
             .get("type")
             .and_then(|t| t.as_str())
-            .unwrap_or("message");
+            .unwrap_or("message")
+            .to_string();
 
-        // Only process message activities for now
         if activity_type != "message" {
-            debug!("Ignoring non-message activity type: {}", activity_type);
-            return Ok(None);
+            return self.handle_non_message_activity(activity, &activity_type);
         }
 
         // Extract user info
@@ -679,6 +678,136 @@ impl TeamsChannel {
         };
 
         Ok(Some(incoming))
+    }
+
+    fn build_activity_metadata(
+        activity: &serde_json::Value,
+        user_id: &str,
+        user_email: Option<&str>,
+        conversation_id: &str,
+        conversation_type: &str,
+        service_url: &str,
+    ) -> serde_json::Value {
+        serde_json::json!({
+            "teams_conversation_id": conversation_id,
+            "teams_conversation_type": conversation_type,
+            "teams_user_id": user_id,
+            "teams_user_email": user_email,
+            "teams_service_url": service_url,
+            "teams_activity_id": activity.get("id").and_then(|i| i.as_str()),
+            "teams_is_group": conversation_type != "personal",
+            "teams_activity_type": activity.get("type").and_then(|value| value.as_str()),
+        })
+    }
+
+    fn handle_non_message_activity(
+        &self,
+        activity: serde_json::Value,
+        activity_type: &str,
+    ) -> Result<Option<IncomingMessage>> {
+        if !matches!(
+            activity_type,
+            "conversationUpdate" | "messageReaction" | "messageDelete" | "messageUpdate"
+        ) {
+            debug!("Ignoring non-message activity type: {}", activity_type);
+            return Ok(None);
+        }
+
+        let conversation =
+            activity
+                .get("conversation")
+                .ok_or_else(|| ChannelError::InvalidFormat {
+                    platform: "teams".to_string(),
+                    message: "Missing 'conversation' field in activity".to_string(),
+                })?;
+        let conversation_id = conversation
+            .get("id")
+            .and_then(|i| i.as_str())
+            .unwrap_or("");
+        let conversation_type = conversation
+            .get("conversationType")
+            .and_then(|t| t.as_str())
+            .unwrap_or("personal");
+        let service_url = activity
+            .get("serviceUrl")
+            .and_then(|s| s.as_str())
+            .unwrap_or("https://smba.trafficmanager.net/emea/");
+        let from = activity.get("from");
+        let user_id = from
+            .and_then(|value| value.get("id"))
+            .and_then(|value| value.as_str())
+            .unwrap_or("system");
+        let user_email = from
+            .and_then(|value| value.get("email"))
+            .and_then(|value| value.as_str());
+        if user_id != "system" && !self.is_user_allowed(user_id, user_email) {
+            warn!("User {} not in allowlist, ignoring Teams activity", user_id);
+            return Ok(None);
+        }
+
+        let mut metadata = Self::build_activity_metadata(
+            &activity,
+            user_id,
+            user_email,
+            conversation_id,
+            conversation_type,
+            service_url,
+        );
+        metadata["teams_bot_mentioned"] = serde_json::json!(false);
+
+        let content = match activity_type {
+            "conversationUpdate" => {
+                if let Some(added) = activity
+                    .get("membersAdded")
+                    .and_then(|value| value.as_array())
+                {
+                    metadata["teams_members_added"] = serde_json::json!(added);
+                }
+                if let Some(removed) = activity
+                    .get("membersRemoved")
+                    .and_then(|value| value.as_array())
+                {
+                    metadata["teams_members_removed"] = serde_json::json!(removed);
+                }
+                if let Some(channel_data) = activity.get("channelData") {
+                    metadata["teams_channel_data"] = channel_data.clone();
+                }
+                "[teams conversation update]".to_string()
+            }
+            "messageReaction" => {
+                if let Some(added) = activity
+                    .get("reactionsAdded")
+                    .and_then(|value| value.as_array())
+                {
+                    metadata["teams_reactions_added"] = serde_json::json!(added);
+                }
+                if let Some(removed) = activity
+                    .get("reactionsRemoved")
+                    .and_then(|value| value.as_array())
+                {
+                    metadata["teams_reactions_removed"] = serde_json::json!(removed);
+                }
+                "[teams reaction event]".to_string()
+            }
+            "messageDelete" => "[teams message deleted]".to_string(),
+            "messageUpdate" => {
+                if let Some(text) = activity.get("text").and_then(|value| value.as_str()) {
+                    metadata["teams_updated_text"] = serde_json::json!(text);
+                    text.to_string()
+                } else {
+                    "[teams message updated]".to_string()
+                }
+            }
+            _ => return Ok(None),
+        };
+
+        Ok(Some(IncomingMessage {
+            session_id: Uuid::new_v4(),
+            user_id: user_id.to_string(),
+            content,
+            platform: Platform::Teams,
+            metadata,
+        }))
     }
 
     /// Send a message to Teams using the Bot Framework REST API.
@@ -1206,6 +1335,86 @@ mod tests {
         assert_eq!(
             card.content["actions"][0]["url"],
             "https://files.example.com/report.pdf"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_handle_message_reaction_activity() {
+        let config = TeamsConfig {
+            enabled: true,
+            app_id: "test".to_string(),
+            app_password: "test".to_string(),
+            tenant_id: None,
+            webhook_path: "/webhook".to_string(),
+            allowlist: vec![],
+            group_policy: TeamsGroupPolicy::Open,
+            rate_limit_requests_per_second: 10,
+            adaptive_cards_enabled: true,
+        };
+        let channel = TeamsChannel::new(config);
+        let incoming = channel
+            .handle_activity(serde_json::json!({
+                "type": "messageReaction",
+                "id": "activity-1",
+                "serviceUrl": "https://smba.trafficmanager.net/emea/",
+                "conversation": {
+                    "id": "19:conversation",
+                    "conversationType": "channel"
+                },
+                "from": {
+                    "id": "29:user"
+                },
+                "reactionsAdded": [{"type": "like"}]
+            }))
+            .await
+            .expect("reaction event")
+            .expect("incoming");
+        assert_eq!(incoming.content, "[teams reaction event]");
+        assert_eq!(
+            incoming.metadata["teams_activity_type"],
+            serde_json::json!("messageReaction")
+        );
+        assert_eq!(
+            incoming.metadata["teams_reactions_added"][0]["type"],
+            serde_json::json!("like")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_handle_conversation_update_activity() {
+        let config = TeamsConfig {
+            enabled: true,
+            app_id: "test".to_string(),
+            app_password: "test".to_string(),
+            tenant_id: None,
+            webhook_path: "/webhook".to_string(),
+            allowlist: vec![],
+            group_policy: TeamsGroupPolicy::Open,
+            rate_limit_requests_per_second: 10,
+            adaptive_cards_enabled: true,
+        };
+        let channel = TeamsChannel::new(config);
+        let incoming = channel
+            .handle_activity(serde_json::json!({
+                "type": "conversationUpdate",
+                "id": "activity-2",
+                "serviceUrl": "https://smba.trafficmanager.net/emea/",
+                "conversation": {
+                    "id": "19:conversation",
+                    "conversationType": "channel"
+                },
+                "from": {
+                    "id": "29:user"
+                },
+                "membersAdded": [{"id": "29:new-user"}]
+            }))
+            .await
+            .expect("conversation update")
+            .expect("incoming");
+        assert_eq!(incoming.content, "[teams conversation update]");
+        assert_eq!(
+            incoming.metadata["teams_members_added"][0]["id"],
+            serde_json::json!("29:new-user")
         );
     }
 

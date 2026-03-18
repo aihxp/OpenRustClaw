@@ -852,9 +852,13 @@ impl GoogleChatWebhookHandler {
     /// This should be called by your HTTP server when a webhook is received
     /// from Google Chat.
     pub async fn handle_event(&self, body: &[u8]) -> Result<Option<serde_json::Value>> {
-        // Parse the event
-        let event: ChatEvent =
+        let raw_event: serde_json::Value =
             serde_json::from_slice(body).map_err(|e| ChannelError::InvalidFormat {
+                platform: "google_chat".to_string(),
+                message: format!("Failed to parse raw event: {}", e),
+            })?;
+        let event: ChatEvent =
+            serde_json::from_value(raw_event.clone()).map_err(|e| ChannelError::InvalidFormat {
                 platform: "google_chat".to_string(),
                 message: format!("Failed to parse event: {}", e),
             })?;
@@ -862,16 +866,10 @@ impl GoogleChatWebhookHandler {
         // Handle different event types
         match event.event_type.as_str() {
             "MESSAGE" => self.handle_message_event(event).await,
-            "CARD_CLICKED" => self.handle_card_click_event(event).await,
+            "CARD_CLICKED" => self.handle_card_click_event(event, raw_event).await,
             "SLASH_COMMAND" => self.handle_slash_command_event(event).await,
-            "ADDED_TO_SPACE" => {
-                info!("Bot added to space: {:?}", event.space.display_name);
-                Ok(None)
-            }
-            "REMOVED_FROM_SPACE" => {
-                info!("Bot removed from space: {:?}", event.space.display_name);
-                Ok(None)
-            }
+            "ADDED_TO_SPACE" => self.handle_space_event(event, raw_event, true).await,
+            "REMOVED_FROM_SPACE" => self.handle_space_event(event, raw_event, false).await,
             _ => {
                 debug!("Unknown event type: {}", event.event_type);
                 Ok(None)
@@ -1003,11 +1001,116 @@ impl GoogleChatWebhookHandler {
 
     async fn handle_card_click_event(
         &self,
-        _event: ChatEvent,
+        event: ChatEvent,
+        raw_event: serde_json::Value,
     ) -> Result<Option<serde_json::Value>> {
-        // Handle card button clicks
-        debug!("Card clicked event received");
-        // In a full implementation, this would parse the action and route it appropriately
+        let user = event
+            .user
+            .as_ref()
+            .ok_or_else(|| ChannelError::InvalidFormat {
+                platform: "google_chat".to_string(),
+                message: "CARD_CLICKED event without user data".to_string(),
+            })?;
+        let user_id = GoogleChatChannel::extract_user_id(&user.name);
+        let email = user.email.as_deref();
+        if !self.is_user_allowed(email, &user_id) {
+            warn!(user_id = %user_id, "User not in allowlist");
+            return Ok(None);
+        }
+
+        let space_id = GoogleChatChannel::extract_space_id(&event.space.name);
+        if !self.is_space_allowed(&space_id) {
+            warn!(space_id = %space_id, "Space not in allowed spaces");
+            return Ok(None);
+        }
+
+        let invoked_function = raw_event
+            .pointer("/common/invokedFunction")
+            .and_then(|value| value.as_str());
+        let action_name = raw_event
+            .pointer("/action/actionMethodName")
+            .and_then(|value| value.as_str())
+            .or(invoked_function);
+
+        let mut metadata = serde_json::json!({
+            "google_chat_space": event.space.name,
+            "google_chat_space_type": event.space.space_type,
+            "google_chat_user_name": user.name,
+            "google_chat_user_display_name": user.display_name,
+            "google_chat_is_group": event.space.space_type != "DM",
+            "google_chat_interaction_type": "CARD_CLICKED",
+            "google_chat_card_click": raw_event,
+        });
+        if let Some(display_name) = event.space.display_name.as_ref() {
+            metadata["google_chat_space_display_name"] = serde_json::json!(display_name);
+        }
+        if let Some(name) = action_name {
+            metadata["google_chat_action_name"] = serde_json::json!(name);
+        }
+
+        let incoming = IncomingMessage {
+            session_id: Uuid::new_v4(),
+            user_id,
+            content: action_name
+                .unwrap_or("[google_chat card clicked]")
+                .to_string(),
+            platform: Platform::GoogleChat,
+            metadata,
+        };
+        let _ = self.incoming_tx.send(incoming).await;
+        Ok(None)
+    }
+
+    async fn handle_space_event(
+        &self,
+        event: ChatEvent,
+        raw_event: serde_json::Value,
+        added: bool,
+    ) -> Result<Option<serde_json::Value>> {
+        let event_type = if added {
+            "ADDED_TO_SPACE"
+        } else {
+            "REMOVED_FROM_SPACE"
+        };
+        info!(
+            space = ?event.space.display_name,
+            event_type = event_type,
+            "Google Chat space lifecycle event received"
+        );
+
+        let user_id = event
+            .user
+            .as_ref()
+            .map(|user| GoogleChatChannel::extract_user_id(&user.name))
+            .unwrap_or_else(|| "system".to_string());
+
+        let mut metadata = serde_json::json!({
+            "google_chat_space": event.space.name,
+            "google_chat_space_type": event.space.space_type,
+            "google_chat_is_group": event.space.space_type != "DM",
+            "google_chat_interaction_type": event_type,
+            "google_chat_space_event": raw_event,
+        });
+        if let Some(display_name) = event.space.display_name.as_ref() {
+            metadata["google_chat_space_display_name"] = serde_json::json!(display_name);
+        }
+        if let Some(user) = event.user.as_ref() {
+            metadata["google_chat_user_name"] = serde_json::json!(user.name);
+            metadata["google_chat_user_display_name"] = serde_json::json!(user.display_name);
+        }
+
+        let incoming = IncomingMessage {
+            session_id: Uuid::new_v4(),
+            user_id,
+            content: if added {
+                "[google_chat added to space]".to_string()
+            } else {
+                "[google_chat removed from space]".to_string()
+            },
+            platform: Platform::GoogleChat,
+            metadata,
+        };
+        let _ = self.incoming_tx.send(incoming).await;
         Ok(None)
     }
 
@@ -1065,6 +1168,7 @@ impl GoogleChatWebhookHandler {
 mod tests {
     use super::*;
     use serde_json::json;
+    use tokio::sync::mpsc;
 
     #[test]
     fn test_markdown_to_chat() {
@@ -1211,5 +1315,89 @@ mod tests {
         )
         .unwrap();
         assert!(channel.should_respond(&event_with_command));
+    }
+
+    #[tokio::test]
+    async fn test_handle_card_clicked_event_routes_incoming_message() {
+        let (tx, mut rx) = mpsc::channel(4);
+        let handler = GoogleChatWebhookHandler::new(
+            GoogleChatConfig {
+                enabled: true,
+                service_account_key: String::new(),
+                project_id: String::new(),
+                webhook_url: None,
+                pubsub_subscription: None,
+                allowlist: vec![],
+                allowed_spaces: vec![],
+                rate_limit_requests_per_second: 10,
+                cards_enabled: true,
+                response_mode: GoogleChatResponseMode::Open,
+            },
+            tx,
+        );
+
+        handler
+            .handle_event(
+                br#"{
+                    "type": "CARD_CLICKED",
+                    "eventTime": "2024-01-01T00:00:00Z",
+                    "space": {"name": "spaces/AAA", "type": "ROOM", "displayName": "Ops"},
+                    "user": {"name": "users/123", "displayName": "Alice"},
+                    "common": {"invokedFunction": "open_report"},
+                    "action": {"actionMethodName": "open_report"}
+                }"#,
+            )
+            .await
+            .expect("card event");
+
+        let incoming = rx.recv().await.expect("incoming message");
+        assert_eq!(incoming.content, "open_report");
+        assert_eq!(
+            incoming.metadata["google_chat_interaction_type"],
+            serde_json::json!("CARD_CLICKED")
+        );
+        assert_eq!(
+            incoming.metadata["google_chat_action_name"],
+            serde_json::json!("open_report")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_handle_added_to_space_routes_lifecycle_message() {
+        let (tx, mut rx) = mpsc::channel(4);
+        let handler = GoogleChatWebhookHandler::new(
+            GoogleChatConfig {
+                enabled: true,
+                service_account_key: String::new(),
+                project_id: String::new(),
+                webhook_url: None,
+                pubsub_subscription: None,
+                allowlist: vec![],
+                allowed_spaces: vec![],
+                rate_limit_requests_per_second: 10,
+                cards_enabled: true,
+                response_mode: GoogleChatResponseMode::Open,
+            },
+            tx,
+        );
+
+        handler
+            .handle_event(
+                br#"{
+                    "type": "ADDED_TO_SPACE",
+                    "eventTime": "2024-01-01T00:00:00Z",
+                    "space": {"name": "spaces/AAA", "type": "ROOM", "displayName": "Ops"},
+                    "user": {"name": "users/123", "displayName": "Alice"}
+                }"#,
+            )
+            .await
+            .expect("space event");
+
+        let incoming = rx.recv().await.expect("incoming message");
+        assert_eq!(incoming.content, "[google_chat added to space]");
+        assert_eq!(
+            incoming.metadata["google_chat_interaction_type"],
+            serde_json::json!("ADDED_TO_SPACE")
+        );
     }
 }

@@ -676,7 +676,7 @@ Channel completion remaining:
   - contact/group mapping.
 - [ ] Mattermost parity via Rust-native plugin/channel implementation.
 - [ ] Google Chat parity.
-  - current shipped path covers webhook ingress, token or service-account outbound auth, response-mode gating, slash-command metadata capture, file-reference cards, attachment metadata capture, and local agent/session routing;
+  - current shipped path covers webhook ingress, token or service-account outbound auth, response-mode gating, slash-command metadata capture, card-click and space lifecycle routing, file-reference cards, attachment metadata capture, and local agent/session routing;
   - richer operator/media parity still remains.
 - [ ] Google Meet parity.
   - current shipped Rust operator path covers space creation/inspection, active-conference termination, conference-record/participant/recording/transcript inspection, and Google Workspace Events / Pub/Sub payload decoding with transcript hydration;
@@ -688,6 +688,8 @@ Channel completion remaining:
   - current shipped path covers auth, send, polling ingress, room actions, and basic file upload;
   - deeper E2EE and richer operator/media parity still remain.
 - [ ] Microsoft Teams parity.
+  - current shipped path covers Bot Framework webhook ingress, JWT verification, outbound sends, conversation/reaction lifecycle routing, attachment metadata capture, adaptive-card file links, and local agent/session routing;
+  - deeper operator/media parity still remains.
 - [ ] Signal parity if kept in scope.
   - current shipped path covers `signal-cli` daemon-backed direct/group send-receive, allowlist filtering, registration/verify/link helpers, normalized routing metadata, attachment/file-reference capture, mention-aware group routing, and local agent/session routing;
   - richer operator UX and media download parity still remain.
