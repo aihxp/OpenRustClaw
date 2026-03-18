@@ -12,7 +12,7 @@ Messaging platform integrations for the OpenRustClaw AI agent.
 | Slack | ✅ Ready | Auth probe, outbound send, built-in Events API ingress, and local agent/session routing |
 | Microsoft Teams | 🚧 Gated | Repo surface exists, not part of the current shipped runtime |
 | Google Chat | 🚧 Gated | Repo surface exists, but service-account auth and runtime coverage are deferred from the shipped runtime |
-| WhatsApp | 🚧 Gated | Repo surface exists, not part of the current shipped runtime |
+| WhatsApp | ✅ Ready | Baileys bridge pairing/QR, group/DM routing, mentions, replies, media send/receive, delivery acknowledgements, and local agent/session routing |
 | Gmail Pub/Sub | 🚧 Gated | Repo surface exists, but Gmail API runtime coverage is deferred from the shipped runtime |
 | Matrix | 🚧 Gated | Repo surface exists, but matrix-sdk runtime support is deferred from the shipped runtime |
 | Meta (Messenger/Instagram) | 🚧 Gated | Repo surface exists, not part of the current shipped runtime |

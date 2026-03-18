@@ -28,6 +28,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::sync::{Mutex, RwLock, mpsc};
 use tokio::time::interval;
+use tokio::time::timeout;
 use tracing::{debug, error, info, trace, warn};
 use uuid::Uuid;
 
@@ -330,6 +331,7 @@ impl WhatsAppChannel {
         let allowlist = self.config.allowlist.clone();
         let rate_limiter = Arc::clone(&self.rate_limiter);
         let reconnect_attempts = Arc::clone(&self.reconnect_attempts);
+        let webhook_url = self.config.webhook_url.clone();
 
         tokio::spawn(async move {
             let reader = BufReader::new(stdout);
@@ -345,6 +347,12 @@ impl WhatsAppChannel {
                                 info!("WhatsApp connected");
                                 *state.write().await = ConnectionState::Connected;
                                 *reconnect_attempts.write().await = 0;
+                                send_whatsapp_webhook_event(
+                                    webhook_url.as_deref(),
+                                    "whatsapp_connected",
+                                    serde_json::json!({}),
+                                )
+                                .await;
                             }
                             BridgeMessage::QrCode { qr_code } => {
                                 info!("Received QR code for pairing");
@@ -357,6 +365,14 @@ impl WhatsAppChannel {
 
                                 // Also log it for terminal users
                                 info!("\n{}", create_qr_code_display(qr_code));
+                                send_whatsapp_webhook_event(
+                                    webhook_url.as_deref(),
+                                    "whatsapp_qr_code",
+                                    serde_json::json!({
+                                        "qr_preview": qr_code.chars().take(32).collect::<String>(),
+                                    }),
+                                )
+                                .await;
                             }
                             BridgeMessage::PairingCode { code } => {
                                 info!(pairing_code = %code, "Received pairing code");
@@ -369,10 +385,22 @@ impl WhatsAppChannel {
                                 info!("║ Open WhatsApp → Settings → Devices ║");
                                 info!("║ → Link a Device → Link with code   ║");
                                 info!("╚════════════════════════════════════╝");
+                                send_whatsapp_webhook_event(
+                                    webhook_url.as_deref(),
+                                    "whatsapp_pairing_code",
+                                    serde_json::json!({ "code": code }),
+                                )
+                                .await;
                             }
                             BridgeMessage::Disconnected { reason } => {
                                 warn!(reason = ?reason, "WhatsApp disconnected");
                                 *state.write().await = ConnectionState::Disconnected;
+                                send_whatsapp_webhook_event(
+                                    webhook_url.as_deref(),
+                                    "whatsapp_disconnected",
+                                    serde_json::json!({ "reason": reason }),
+                                )
+                                .await;
                             }
                             BridgeMessage::Message {
                                 id,
@@ -383,6 +411,8 @@ impl WhatsAppChannel {
                                 is_group,
                                 group_id,
                                 group_name,
+                                quoted_message,
+                                mentions,
                                 ..
                             } => {
                                 // Validate DM allowlist
@@ -400,6 +430,12 @@ impl WhatsAppChannel {
                                 // Apply rate limiting
                                 rate_limiter.until_ready().await;
 
+                                let (chat_jid, chat_id) = normalize_whatsapp_chat_target(
+                                    &from,
+                                    *is_group,
+                                    group_id.as_deref(),
+                                );
+
                                 let incoming = IncomingMessage {
                                     session_id: Uuid::new_v4(),
                                     user_id: from.clone(),
@@ -407,11 +443,15 @@ impl WhatsAppChannel {
                                     platform: Platform::WhatsApp,
                                     metadata: serde_json::json!({
                                         "whatsapp_message_id": id,
+                                        "whatsapp_jid": chat_jid,
+                                        "whatsapp_chat_id": chat_id,
                                         "whatsapp_from_name": from_name,
                                         "whatsapp_timestamp": timestamp,
                                         "whatsapp_is_group": is_group,
                                         "whatsapp_group_id": group_id,
                                         "whatsapp_group_name": group_name,
+                                        "whatsapp_quoted_message": quoted_message,
+                                        "whatsapp_mentions": mentions,
                                     }),
                                 };
 
@@ -450,6 +490,11 @@ impl WhatsAppChannel {
                                     format_media_type(&media.media_type),
                                     media.caption.as_deref().unwrap_or("No caption")
                                 );
+                                let (chat_jid, chat_id) = normalize_whatsapp_chat_target(
+                                    &from,
+                                    *is_group,
+                                    group_id.as_deref(),
+                                );
 
                                 let incoming = IncomingMessage {
                                     session_id: Uuid::new_v4(),
@@ -458,12 +503,15 @@ impl WhatsAppChannel {
                                     platform: Platform::WhatsApp,
                                     metadata: serde_json::json!({
                                         "whatsapp_message_id": id,
+                                        "whatsapp_jid": chat_jid,
+                                        "whatsapp_chat_id": chat_id,
                                         "whatsapp_from_name": from_name,
                                         "whatsapp_timestamp": timestamp,
                                         "whatsapp_is_group": is_group,
                                         "whatsapp_group_id": group_id,
                                         "whatsapp_group_name": group_name,
                                         "whatsapp_media": media,
+                                        "file_references": media.url.as_ref().map(|url| vec![url.clone()]),
                                     }),
                                 };
 
@@ -508,6 +556,12 @@ impl WhatsAppChannel {
 
             info!("Bridge stdout reader ended");
             *state.write().await = ConnectionState::Disconnected;
+            send_whatsapp_webhook_event(
+                webhook_url.as_deref(),
+                "whatsapp_bridge_stopped",
+                serde_json::json!({}),
+            )
+            .await;
         });
     }
 
@@ -558,6 +612,7 @@ impl WhatsAppChannel {
     }
 
     /// Start the reconnection monitor.
+    #[allow(dead_code)]
     async fn start_reconnection_monitor(&self) {
         let state = Arc::clone(&self.state);
         let should_reconnect = Arc::clone(&self.should_reconnect);
@@ -625,12 +680,86 @@ impl WhatsAppChannel {
             .and_then(|v| v.as_str())
             .map(|s| s.to_string())
             .or_else(|| {
+                metadata
+                    .get("whatsapp_group_id")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+            })
+            .or_else(|| {
                 // Try to construct from other fields
                 metadata
                     .get("whatsapp_chat_id")
                     .and_then(|v| v.as_str())
-                    .map(|s| format!("{}@s.whatsapp.net", s))
+                    .map(|s| {
+                        if s.contains('@') {
+                            s.to_string()
+                        } else {
+                            format!("{}@s.whatsapp.net", s)
+                        }
+                    })
             })
+    }
+
+    async fn wait_for_request_result(&self, request_id: String) -> Result<()> {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.pending_requests
+            .write()
+            .await
+            .insert(request_id.clone(), tx);
+
+        match timeout(Duration::from_secs(30), rx).await {
+            Ok(Ok(BridgeMessage::MessageSent { .. })) => Ok(()),
+            Ok(Ok(BridgeMessage::Error { code, message, .. })) => Err(ChannelError::SendFailed {
+                platform: "whatsapp".to_string(),
+                message: format!("{}: {}", code, message),
+            }
+            .into()),
+            Ok(Ok(other)) => Err(ChannelError::SendFailed {
+                platform: "whatsapp".to_string(),
+                message: format!("Unexpected WhatsApp bridge response: {:?}", other),
+            }
+            .into()),
+            Ok(Err(_)) => Err(ChannelError::Connection {
+                platform: "whatsapp".to_string(),
+                message: "WhatsApp bridge request channel closed".to_string(),
+            }
+            .into()),
+            Err(_) => {
+                self.pending_requests.write().await.remove(&request_id);
+                Err(ChannelError::SendFailed {
+                    platform: "whatsapp".to_string(),
+                    message: "Timed out waiting for WhatsApp bridge acknowledgement".to_string(),
+                }
+                .into())
+            }
+        }
+    }
+
+    async fn wait_for_connection_ready(&self) -> Result<()> {
+        let deadline = std::time::Instant::now() + Duration::from_secs(15);
+        loop {
+            match *self.state.read().await {
+                ConnectionState::Connected
+                | ConnectionState::AwaitingQrCode
+                | ConnectionState::AwaitingPairingCode => return Ok(()),
+                ConnectionState::Disconnected if std::time::Instant::now() > deadline => {
+                    return Err(ChannelError::Connection {
+                        platform: "whatsapp".to_string(),
+                        message: "WhatsApp bridge did not become ready in time".to_string(),
+                    }
+                    .into())
+                }
+                _ => {}
+            }
+            if std::time::Instant::now() > deadline {
+                return Err(ChannelError::Connection {
+                    platform: "whatsapp".to_string(),
+                    message: "WhatsApp bridge did not become ready in time".to_string(),
+                }
+                .into());
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
     }
 }
 
@@ -683,6 +812,12 @@ impl Channel for WhatsAppChannel {
                 .metadata
                 .get("whatsapp_media_url")
                 .or_else(|| msg.metadata.get("whatsapp_media_path"))
+                .or_else(|| {
+                    msg.metadata
+                        .get("file_references")
+                        .and_then(|value| value.as_array())
+                        .and_then(|values| values.first())
+                })
                 .and_then(|v| v.as_str())
                 .ok_or_else(|| ChannelError::InvalidFormat {
                     platform: "whatsapp".to_string(),
@@ -706,6 +841,7 @@ impl Channel for WhatsAppChannel {
             };
 
             self.send_to_bridge(bridge_msg).await?;
+            self.wait_for_request_result(request_id).await?;
         } else {
             // Text message
             let request_id = Uuid::new_v4().to_string();
@@ -717,6 +853,7 @@ impl Channel for WhatsAppChannel {
             };
 
             self.send_to_bridge(bridge_msg).await?;
+            self.wait_for_request_result(request_id).await?;
         }
 
         debug!("Sent WhatsApp message");
@@ -757,9 +894,7 @@ impl Channel for WhatsAppChannel {
             pairing_mode: self.config.pairing_mode,
         };
         self.send_to_bridge(connect_msg).await?;
-
-        // Start reconnection monitor
-        self.start_reconnection_monitor().await;
+        self.wait_for_connection_ready().await?;
 
         // Send webhook notification if configured
         if let Some(webhook_url) = &self.config.webhook_url {
@@ -807,6 +942,47 @@ impl Channel for WhatsAppChannel {
         info!("WhatsApp channel disconnected");
         Ok(())
     }
+}
+
+fn normalize_whatsapp_chat_target(
+    from: &str,
+    is_group: bool,
+    group_id: Option<&str>,
+) -> (String, String) {
+    if is_group {
+        let jid = group_id.unwrap_or(from).to_string();
+        return (jid.clone(), jid);
+    }
+
+    let jid = from.to_string();
+    let chat_id = from
+        .split('@')
+        .next()
+        .unwrap_or(from)
+        .to_string();
+    (jid, chat_id)
+}
+
+async fn send_whatsapp_webhook_event(
+    webhook_url: Option<&str>,
+    event: &str,
+    extra: serde_json::Value,
+) {
+    let Some(url) = webhook_url else {
+        return;
+    };
+
+    let mut body = serde_json::json!({
+        "event": event,
+        "timestamp": chrono::Utc::now().to_rfc3339(),
+    });
+    if let Some(map) = extra.as_object() {
+        for (key, value) in map {
+            body[key] = value.clone();
+        }
+    }
+
+    let _ = reqwest::Client::new().post(url).json(&body).send().await;
 }
 
 impl Drop for WhatsAppChannel {
@@ -918,6 +1094,14 @@ mod tests {
             WhatsAppChannel::extract_jid(&metadata2),
             Some("1234567890@s.whatsapp.net".to_string())
         );
+
+        let metadata3 = serde_json::json!({
+            "whatsapp_group_id": "1203630@g.us"
+        });
+        assert_eq!(
+            WhatsAppChannel::extract_jid(&metadata3),
+            Some("1203630@g.us".to_string())
+        );
     }
 
     #[test]
@@ -955,5 +1139,18 @@ mod tests {
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("message"));
         assert!(json.contains("Hello"));
+    }
+
+    #[test]
+    fn test_normalize_whatsapp_chat_target() {
+        let (jid, chat_id) =
+            normalize_whatsapp_chat_target("1234567890@s.whatsapp.net", false, None);
+        assert_eq!(jid, "1234567890@s.whatsapp.net");
+        assert_eq!(chat_id, "1234567890");
+
+        let (jid, chat_id) =
+            normalize_whatsapp_chat_target("1234567890@s.whatsapp.net", true, Some("1203630@g.us"));
+        assert_eq!(jid, "1203630@g.us");
+        assert_eq!(chat_id, "1203630@g.us");
     }
 }
