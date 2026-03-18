@@ -16,7 +16,7 @@ Status values:
 | Rust to sidecar workflow dispatch | real | Workflow dispatch now preserves typed configurable metadata through the bridge contract |
 | Durable scheduler schema | real | SQLite schema and retry/dead-letter tables exist |
 | Durable scheduler execution loop | real | Due-job polling, leases, retries, dead-letter handling, and sidecar dispatch are persisted and tested |
-| Observability / LangSmith tracing | partial | Sidecar workflow traces now preserve trace ids back to Rust and scheduler persistence, but coverage is not uniform across all runtime paths yet |
+| Observability / LangSmith tracing | partial | Sidecar workflow traces now preserve trace ids back to Rust, and scheduler dispatch can emit Rust-side LangSmith runs when enabled via env; coverage is still not uniform across all runtime paths |
 
 ## Memory and Context
 

@@ -9,6 +9,7 @@ description = "Durable scheduler for OpenRustClaw (no cron)"
 openrustclaw-core.workspace = true
 openrustclaw-db.workspace = true
 openrustclaw-langbridge.workspace = true
+openrustclaw-observability.workspace = true
 tokio.workspace = true
 async-trait.workspace = true
 serde.workspace = true

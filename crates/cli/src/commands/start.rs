@@ -43,6 +43,7 @@ use openrustclaw_gateway::sessions::SessionManager;
 use openrustclaw_langbridge::{LangBridgeClient, sidecar::SidecarManager};
 use openrustclaw_memory::MemoryPolicies;
 use openrustclaw_mcp::server::{McpServer, McpServerConfig, McpServerTool};
+use openrustclaw_observability::LangSmithClient;
 use openrustclaw_providers::{
     AnthropicProvider, OllamaProvider, OpenAiProvider, OpenRouterProvider, ProviderChain,
     openrouter::RouteStrategy,
@@ -188,6 +189,7 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
         pool.clone(),
         sidecar_addr.clone(),
         config.scheduler.clone(),
+        scheduler_langsmith_client(&config),
     );
 
     let mut channel_config = config.channels.clone();
@@ -440,9 +442,10 @@ fn spawn_scheduler_task(
     pool: sqlx::SqlitePool,
     sidecar_addr: String,
     scheduler_config: openrustclaw_core::config::SchedulerConfig,
+    langsmith_client: Option<LangSmithClient>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        let worker = SchedulerWorker::new(WorkerSchedulerConfig {
+        let mut worker = SchedulerWorker::new(WorkerSchedulerConfig {
             poll_interval: tokio::time::Duration::from_millis(scheduler_config.poll_interval_ms),
             lease_duration: tokio::time::Duration::from_secs(
                 scheduler_config.lease_duration_secs,
@@ -450,6 +453,9 @@ fn spawn_scheduler_task(
             base_retry_delay_secs: scheduler_config.base_retry_delay_secs,
             max_retry_delay_secs: scheduler_config.max_retry_delay_secs,
         });
+        if let Some(client) = langsmith_client {
+            worker = worker.with_langsmith(client);
+        }
 
         loop {
             match LangBridgeClient::connect(&sidecar_addr).await {
@@ -474,6 +480,22 @@ fn spawn_scheduler_task(
             tokio::time::sleep(worker.poll_interval()).await;
         }
     })
+}
+
+fn scheduler_langsmith_client(config: &AppConfig) -> Option<LangSmithClient> {
+    if !config.observability.langsmith_enabled {
+        return None;
+    }
+
+    let client = LangSmithClient::from_env(Some("openrustclaw-scheduler".to_string()));
+    if client.is_enabled() {
+        Some(client)
+    } else {
+        warn!(
+            "LangSmith tracing is enabled in config, but no LANGSMITH_API_KEY/LANGCHAIN_API_KEY was found for scheduler tracing"
+        );
+        None
+    }
 }
 
 fn internal_api_addr(host: &str, port: u16) -> String {

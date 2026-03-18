@@ -9,6 +9,7 @@ use async_trait::async_trait;
 use chrono::Utc;
 use openrustclaw_db::SqlitePool;
 use openrustclaw_langbridge::{LangBridgeClient, WorkflowInvocation};
+use openrustclaw_observability::langsmith::{LangSmithClient, RunType, TraceRun};
 use serde_json::Value;
 use tracing::{error, info, warn};
 
@@ -78,6 +79,7 @@ impl WorkflowDispatcher for LangBridgeClient {
 pub struct SchedulerWorker {
     config: SchedulerConfig,
     worker_id: String,
+    langsmith: Option<LangSmithClient>,
 }
 
 impl SchedulerWorker {
@@ -85,7 +87,15 @@ impl SchedulerWorker {
         Self {
             config,
             worker_id: uuid::Uuid::new_v4().to_string(),
+            langsmith: None,
         }
+    }
+
+    pub fn with_langsmith(mut self, client: LangSmithClient) -> Self {
+        if client.is_enabled() {
+            self.langsmith = Some(client);
+        }
+        self
     }
 
     /// Process a single due job.
@@ -215,12 +225,36 @@ impl SchedulerWorker {
         let invocation = WorkflowInvocation::new(&job.workflow_id, &thread_id, workflow_input)
             .with_metadata(workflow_metadata)
             .with_configurable(workflow_configurable);
+        let mut scheduler_trace = self.build_scheduler_trace(&job, &thread_id, &idempotency_key);
+        if let (Some(client), Some(trace)) = (&self.langsmith, scheduler_trace.as_ref()) {
+            if let Err(error) = client.trace_run(trace).await {
+                warn!(error = %error, job_id = %job.id, "Failed to create LangSmith scheduler trace");
+            }
+        }
 
         match dispatcher.dispatch(invocation).await {
             Ok(dispatch) => {
                 let success = !matches!(dispatch.status.as_str(), "error" | "failed")
                     && dispatch.error.is_none();
                 let result_json = dispatch.output.to_string();
+                let persisted_trace_id =
+                    effective_trace_id(scheduler_trace.as_ref(), dispatch.trace_id.clone());
+
+                if let (Some(client), Some(trace)) = (&self.langsmith, scheduler_trace.as_mut()) {
+                    trace.outputs = Some(dispatch.output.clone());
+                    trace.error = dispatch.error.clone();
+                    trace.end_time = Some(Utc::now());
+                    trace.extra = Some(serde_json::json!({
+                        "job_id": job.id,
+                        "workflow_id": job.workflow_id,
+                        "scheduler_worker_id": self.worker_id,
+                        "sidecar_trace_id": dispatch.trace_id,
+                        "status": dispatch.status,
+                    }));
+                    if let Err(error) = client.update_run(trace).await {
+                        warn!(error = %error, job_id = %job.id, "Failed to update LangSmith scheduler trace");
+                    }
+                }
 
                 self.process_job_result(&mut job, success, dispatch.error.as_deref());
                 let run_status = if success {
@@ -233,7 +267,7 @@ impl SchedulerWorker {
                     &run.id,
                     run_status.clone(),
                     Some(&result_json),
-                    dispatch.trace_id.as_deref(),
+                    persisted_trace_id.as_deref(),
                 )
                 .await?;
                 persist_job(pool, &job).await?;
@@ -251,14 +285,33 @@ impl SchedulerWorker {
                 run.status = run_status;
                 run.completed_at = Some(Utc::now());
                 run.result = Some(result_json);
-                run.langsmith_trace_id = dispatch.trace_id;
+                run.langsmith_trace_id = persisted_trace_id;
                 Ok(run)
             }
             Err(e) => {
                 let error_message = e.to_string();
+                if let (Some(client), Some(trace)) = (&self.langsmith, scheduler_trace.as_mut()) {
+                    trace.error = Some(error_message.clone());
+                    trace.end_time = Some(Utc::now());
+                    trace.extra = Some(serde_json::json!({
+                        "job_id": job.id,
+                        "workflow_id": job.workflow_id,
+                        "scheduler_worker_id": self.worker_id,
+                    }));
+                    if let Err(error) = client.update_run(trace).await {
+                        warn!(error = %error, job_id = %job.id, "Failed to update LangSmith scheduler trace");
+                    }
+                }
                 self.process_job_result(&mut job, false, Some(&error_message));
-                complete_job_run(pool, &run.id, RunStatus::Failure, Some(&error_message), None)
-                    .await?;
+                let persisted_trace_id = effective_trace_id(scheduler_trace.as_ref(), None);
+                complete_job_run(
+                    pool,
+                    &run.id,
+                    RunStatus::Failure,
+                    Some(&error_message),
+                    persisted_trace_id.as_deref(),
+                )
+                .await?;
                 persist_job(pool, &job).await?;
 
                 if job.state == JobState::DeadLetter {
@@ -269,9 +322,31 @@ impl SchedulerWorker {
                 run.status = RunStatus::Failure;
                 run.completed_at = Some(Utc::now());
                 run.result = Some(error_message);
+                run.langsmith_trace_id = persisted_trace_id;
                 Ok(run)
             }
         }
+    }
+
+    fn build_scheduler_trace(
+        &self,
+        job: &Job,
+        thread_id: &str,
+        idempotency_key: &str,
+    ) -> Option<TraceRun> {
+        let client = self.langsmith.as_ref()?;
+        Some(client.new_run(
+            "scheduler_dispatch",
+            RunType::Chain,
+            serde_json::json!({
+                "job_id": job.id,
+                "job_name": job.name,
+                "workflow_id": job.workflow_id,
+                "thread_id": thread_id,
+                "idempotency_key": idempotency_key,
+                "trigger": job.trigger,
+            }),
+        ))
     }
 
     /// Get the worker ID.
@@ -283,6 +358,13 @@ impl SchedulerWorker {
     pub fn poll_interval(&self) -> Duration {
         self.config.poll_interval
     }
+}
+
+fn effective_trace_id(
+    scheduler_trace: Option<&TraceRun>,
+    sidecar_trace_id: Option<String>,
+) -> Option<String> {
+    sidecar_trace_id.or_else(|| scheduler_trace.map(|trace| trace.id.clone()))
 }
 
 #[cfg(test)]
@@ -386,6 +468,32 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(run_status, "success");
+    }
+
+    #[test]
+    fn effective_trace_id_prefers_sidecar_trace() {
+        let trace = TraceRun {
+            id: "scheduler-trace".to_string(),
+            name: "scheduler_dispatch".to_string(),
+            run_type: RunType::Chain,
+            parent_run_id: None,
+            inputs: serde_json::json!({}),
+            outputs: None,
+            error: None,
+            start_time: Utc::now(),
+            end_time: None,
+            extra: None,
+            tags: None,
+        };
+        assert_eq!(
+            effective_trace_id(Some(&trace), Some("sidecar-trace".to_string())),
+            Some("sidecar-trace".to_string())
+        );
+        assert_eq!(
+            effective_trace_id(Some(&trace), None),
+            Some("scheduler-trace".to_string())
+        );
+        assert_eq!(effective_trace_id(None, None), None);
     }
 
     #[tokio::test]

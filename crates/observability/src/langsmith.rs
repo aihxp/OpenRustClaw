@@ -7,10 +7,12 @@ use chrono::{DateTime, Utc};
 use openrustclaw_core::error::{Error, Result};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use std::env;
 use tracing::{debug, warn};
 use uuid::Uuid;
 
 /// LangSmith REST API client.
+#[derive(Clone)]
 pub struct LangSmithClient {
     api_key: String,
     project_name: String,
@@ -82,6 +84,18 @@ impl LangSmithClient {
             client: Client::new(),
             enabled: false,
         }
+    }
+
+    /// Create a client from standard environment variables.
+    pub fn from_env(project_name: Option<String>) -> Self {
+        let api_key = env::var("LANGSMITH_API_KEY")
+            .or_else(|_| env::var("LANGCHAIN_API_KEY"))
+            .unwrap_or_default();
+        let project_name = project_name
+            .or_else(|| env::var("LANGSMITH_PROJECT").ok())
+            .unwrap_or_else(|| "openrustclaw".to_string());
+        let endpoint = env::var("LANGSMITH_ENDPOINT").ok();
+        Self::new(api_key, project_name, endpoint)
     }
 
     /// Check if tracing is enabled.
@@ -220,5 +234,28 @@ impl LangSmithClient {
             .map_err(|e| Error::Internal(format!("LangSmith feedback error: {}", e)))?;
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn disabled_client_reports_disabled() {
+        let client = LangSmithClient::disabled();
+        assert!(!client.is_enabled());
+    }
+
+    #[test]
+    fn new_run_populates_expected_defaults() {
+        let client = LangSmithClient::disabled();
+        let run = client.new_run("scheduler_dispatch", RunType::Chain, serde_json::json!({"job_id":"job-1"}));
+        assert_eq!(run.name, "scheduler_dispatch");
+        assert!(matches!(run.run_type, RunType::Chain));
+        assert_eq!(run.inputs["job_id"], "job-1");
+        assert!(run.outputs.is_none());
+        assert!(run.error.is_none());
+        assert!(run.end_time.is_none());
     }
 }

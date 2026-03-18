@@ -128,6 +128,7 @@ Status:
 - The skills CLI now resolves real `SKILL.md` workspace paths, validates and normalizes declared capabilities, syncs marketplace installs back into the main skills table, and keeps managed verification state aligned with install/update flows.
 - The sidecar RAG workflow now supports deterministic query-only retrieval against Rust-backed durable collections and budgeted context assembly with stable source ids.
 - Sidecar LangSmith traces now preserve workflow trace ids back through the gRPC boundary so scheduler runs can persist them.
+- Scheduler dispatch can now create Rust-side LangSmith parent runs when `[observability].langsmith_enabled = true` and LangSmith env vars are present.
 - `openrustclaw start` now gates non-shipping channel modules instead of advertising them through the active runtime surface.
 - The biggest remaining engineering gaps are:
   - broader observability/LangSmith trace coverage across all runtime paths
