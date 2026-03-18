@@ -570,6 +570,15 @@ pub enum Event {
         /// The id of the closed session.
         session_id: Uuid,
     },
+    /// A session lifecycle hook fired.
+    SessionLifecycle {
+        /// The session the hook belongs to.
+        session_id: Uuid,
+        /// Hook name such as `session.start`, `session.post_turn`, or `session.end`.
+        hook: String,
+        /// Structured metadata captured at the hook boundary.
+        metadata: serde_json::Value,
+    },
     /// A scheduled job fired.
     SchedulerJobFired {
         /// The job identifier.
@@ -603,6 +612,13 @@ pub enum Event {
         session_id: Option<Uuid>,
         /// Error severity level.
         severity: ErrorSeverity,
+    },
+    /// A custom application-defined event.
+    Custom {
+        /// Event name used for routing.
+        name: String,
+        /// Structured event payload.
+        payload: serde_json::Value,
     },
 }
 

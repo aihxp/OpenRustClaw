@@ -704,7 +704,7 @@ impl Default for AppConfig {
             sidecar: SidecarConfig {
                 grpc_port: 50051,
                 python_path: "python3".to_string(),
-                auto_start: true,
+                auto_start: false,
                 restart_on_crash: true,
             },
             observability: ObservabilityConfig {

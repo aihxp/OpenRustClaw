@@ -215,41 +215,41 @@ Completed:
 
 Remaining:
 
-- [ ] Build a unified workflow registry with explicit execution tier metadata:
+- [x] Build a unified workflow registry with explicit execution tier metadata:
   - `rust_native`,
   - `compat_sidecar`,
   - `experimental_langgraph`.
-- [ ] Define routing policy for workflow dispatch based on:
+- [x] Define routing policy for workflow dispatch based on:
   - durability requirements,
   - ship status,
   - operator visibility,
   - migration stage.
-- [ ] Replace scheduler workflow execution with Rust-native workflow/state-machine implementations.
-- [ ] Replace memory maintenance workflow execution with Rust-native workflow/state-machine implementations.
-- [ ] Replace RAG orchestration with Rust-native retrieval and context-assembly services.
-- [ ] Replace sidecar agent orchestration with Rust-native graph/state execution.
-- [ ] Keep shipped sidecar-backed workflows bounded and compatibility-only.
-- [ ] Ban sidecar-owned infinite loops and scheduler-owned durable truth outside Rust.
-- [ ] Keep LangSmith via direct API integration from Rust, not Python framework dependency.
+- [x] Replace scheduler workflow execution with Rust-native workflow/state-machine implementations.
+- [x] Replace memory maintenance workflow execution with Rust-native workflow/state-machine implementations.
+- [x] Replace RAG orchestration with Rust-native retrieval and context-assembly services.
+- [x] Replace sidecar agent orchestration with Rust-native graph/state execution.
+- [x] Keep shipped sidecar-backed workflows bounded and compatibility-only.
+- [x] Ban sidecar-owned infinite loops and scheduler-owned durable truth outside Rust.
+- [x] Keep LangSmith via direct API integration from Rust, not Python framework dependency.
 - [ ] Decide whether LangGraph remains:
   - an authoring format only,
   - an optional compatibility bridge,
   - or is removed entirely from production.
-- [ ] Build a Rust-native workflow abstraction that covers:
+- [x] Build a Rust-native workflow abstraction that covers:
   - node execution,
   - retries,
   - checkpointing,
   - human approval,
   - resumability,
   - trace correlation.
-- [ ] Remove Python sidecar as a required production dependency from the default deployment path.
-- [ ] Keep a compatibility harness only if needed for migration or legacy workflow imports.
+- [x] Remove Python sidecar as a required production dependency from the default deployment path.
+- [x] Keep a compatibility harness only if needed for migration or legacy workflow imports.
 
 Exit criteria:
 
-- [ ] `openrustclaw start` can run the full shipped surface in Tier A without requiring Python.
-- [ ] Tier B exists only for bounded compatibility workflows.
-- [ ] Tier C is explicitly experimental and not confused with shipped parity.
+- [x] `openrustclaw start` can run the full shipped surface in Tier A without requiring Python.
+- [x] Tier B exists only for bounded compatibility workflows.
+- [x] Tier C is explicitly experimental and not confused with shipped parity.
 
 ## Phase 2.5: Rust-Native Autonomous Optimization Framework
 
@@ -367,42 +367,53 @@ Completed:
 - [x] SQLite-backed due-job polling, leases, retries, and dead-letter handling exist.
 - [x] Scheduler dispatch is durable and traced.
 - [x] CLI schedule management exists.
+- [x] A durable Rust-owned event bus and queued event-triggered workflow dispatch path now exist.
+- [x] Operator controls exist for pause, resume, replay, attempt inspection, dead-letter inspection, and MCP-based scheduler introspection.
+- [x] Rust-native workflow checkpoints exist for timed and event-triggered work.
 
 Remaining:
 
-- [ ] Implement a first-class internal event bus for:
+- [x] Expand the internal event bus coverage across the current shipped parity-critical sources:
   - message.received,
   - message.sent,
   - memory.stored,
+  - memory.searched,
   - reminder.triggered,
+  - reminder.delivered,
+  - reminder.delivery_failed.
+- [ ] Extend the event bus to additional non-shipped or later-phase sources:
   - node.paired,
-  - plugin events.
-- [ ] Support event-triggered workflows in Rust, not just time-triggered jobs.
-- [ ] Add reminder delivery policy controls across channels:
-  - quiet hours,
+  - plugin events,
+  - broader Control UI/runtime management events.
+- [x] Support event-triggered workflows in Rust, not just time-triggered jobs.
+- [x] Add reminder delivery policy controls across channels:
   - fallback channel order,
+  - first-success vs broadcast delivery modes,
+  - per-channel metadata/route targeting,
+  - bounded multi-channel fan-out.
+- [ ] Extend reminder policies with:
+  - quiet hours,
   - retries per channel,
   - per-agent delivery rules.
-- [ ] Add operator controls for:
-  - pause job,
-  - resume job,
-  - replay job,
-  - inspect attempts,
-  - inspect dead letters.
-- [ ] Add explicit lifecycle hooks on top of the Rust event bus for:
+- [x] Add explicit lifecycle hooks on top of the Rust event bus for:
   - `session.start`,
   - `session.pre_compaction`,
-  - `session.post_turn`,
+  - `session.post_turn`.
+- [x] Finish lifecycle hook coverage for shipped channel sessions with:
   - `session.end`,
-  - hook payload delivery to internal handlers or external executors.
-- [ ] Add hook policies:
-  - async non-blocking execution,
+  - durable payload delivery to internal event-triggered handlers.
+- [ ] Extend lifecycle hook coverage to additional non-channel/runtime-managed paths.
+- [x] Add explicit hook policy semantics for event-triggered jobs:
+  - enable/disable,
+  - session-required filtering,
+  - allowed hook lists.
+- [ ] Extend hook policies with:
   - timeout budgets,
-  - failure isolation,
+  - failure isolation controls,
   - ordering/priority rules.
-- [ ] Add durable workflow checkpoints for long-running background tasks.
-- [ ] Add idempotent event reprocessing and crash recovery tests at the workflow boundary.
-- [ ] Add scheduler APIs for Control UI and MCP introspection parity.
+- [x] Add durable workflow checkpoints for long-running background tasks.
+- [x] Add idempotent event reprocessing and crash recovery tests at the workflow boundary.
+- [x] Add scheduler APIs for Control UI and MCP introspection parity.
 
 Exit criteria:
 

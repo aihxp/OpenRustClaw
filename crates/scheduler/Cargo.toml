@@ -6,11 +6,14 @@ license.workspace = true
 description = "Durable scheduler for OpenRustClaw (no cron)"
 
 [dependencies]
+openrustclaw-agent.workspace = true
 openrustclaw-core.workspace = true
 openrustclaw-db.workspace = true
 openrustclaw-langbridge.workspace = true
 openrustclaw-observability.workspace = true
+openrustclaw-providers.workspace = true
 tokio.workspace = true
+futures.workspace = true
 async-trait.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -21,6 +24,7 @@ uuid.workspace = true
 chrono.workspace = true
 chrono-tz.workspace = true
 backoff.workspace = true
+reqwest.workspace = true
 
 # Heartbeat scheduler dependencies
 cron = "0.15"

@@ -325,6 +325,46 @@ CREATE TABLE IF NOT EXISTS optimization_promotions (
 CREATE INDEX IF NOT EXISTS idx_optimization_promotions_candidate ON optimization_promotions(candidate_id, created_at);
 "#,
     },
+    Migration {
+        name: "015_runtime_events",
+        sql: r#"
+CREATE TABLE IF NOT EXISTS runtime_events (
+    id TEXT PRIMARY KEY,
+    event_name TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    session_id TEXT,
+    payload TEXT NOT NULL,
+    dedupe_key TEXT,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'processed', 'failed')),
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    processed_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_runtime_events_name ON runtime_events(event_name, created_at);
+CREATE INDEX IF NOT EXISTS idx_runtime_events_status ON runtime_events(status, created_at);
+"#,
+    },
+    Migration {
+        name: "016_event_dispatch_queue",
+        sql: r#"
+CREATE TABLE IF NOT EXISTS event_dispatch_queue (
+    id TEXT PRIMARY KEY,
+    event_id TEXT NOT NULL REFERENCES runtime_events(id) ON DELETE CASCADE,
+    job_id TEXT NOT NULL REFERENCES scheduled_jobs(id) ON DELETE CASCADE,
+    state TEXT NOT NULL DEFAULT 'pending' CHECK(state IN ('pending', 'leased', 'completed', 'failed', 'dead_letter')),
+    lease_owner TEXT,
+    lease_expires_at TEXT,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    next_attempt_at TEXT NOT NULL DEFAULT (datetime('now')),
+    last_error TEXT,
+    payload TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    completed_at TEXT,
+    UNIQUE(event_id, job_id)
+);
+CREATE INDEX IF NOT EXISTS idx_event_dispatch_queue_state ON event_dispatch_queue(state, next_attempt_at);
+CREATE INDEX IF NOT EXISTS idx_event_dispatch_queue_job ON event_dispatch_queue(job_id, created_at);
+"#,
+    },
 ];
 
 /// Run all embedded database migrations in order.

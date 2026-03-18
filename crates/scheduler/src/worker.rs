@@ -1,26 +1,28 @@
 //! Rust scheduler worker -- poll loop.
 //!
-//! Polls SQLite for due jobs, acquires leases, dispatches to LangGraph
-//! via gRPC, handles success/failure/retry/dead-letter.
+//! Polls SQLite for due jobs and queued event dispatches, acquires leases,
+//! dispatches through the Rust-native workflow runtime, and optionally falls
+//! back to the sidecar for bounded compatibility-only workflows.
 
 use std::time::Duration;
 
-use async_trait::async_trait;
 use chrono::Utc;
 use openrustclaw_db::SqlitePool;
-use openrustclaw_langbridge::{LangBridgeClient, WorkflowInvocation};
+use openrustclaw_langbridge::WorkflowInvocation;
 use openrustclaw_observability::langsmith::{LangSmithClient, RunType, TraceRun};
-use serde_json::Value;
 use tracing::{error, info, warn};
 
+use crate::Result;
+use crate::eventing::DurableEventBus;
 use crate::jobs::{Job, JobRun, JobState, RunStatus};
 use crate::persistence::{
-    PersistedJob, acquire_lease, complete_job_run, insert_dead_letter, load_due_jobs, persist_job,
-    start_job_run,
+    PersistedEventDispatch, PersistedJob, acquire_event_dispatch_lease, acquire_lease,
+    complete_job_run, finalize_event_dispatch, insert_dead_letter, load_due_event_dispatches,
+    load_due_jobs, persist_job, start_job_run,
 };
 use crate::retry;
 use crate::triggers;
-use crate::Result;
+use crate::workflow::WorkflowDispatcher;
 
 /// Configuration for the scheduler worker.
 #[derive(Debug, Clone)]
@@ -31,55 +33,12 @@ pub struct SchedulerConfig {
     pub max_retry_delay_secs: u64,
 }
 
-/// Outcome returned by a workflow dispatcher.
-#[derive(Debug, Clone)]
-pub struct WorkflowDispatchResult {
-    pub status: String,
-    pub output: Value,
-    pub error: Option<String>,
-    pub trace_id: Option<String>,
-}
-
-/// Pluggable execution backend for scheduled workflows.
-#[async_trait]
-pub trait WorkflowDispatcher {
-    async fn dispatch(&mut self, invocation: WorkflowInvocation) -> Result<WorkflowDispatchResult>;
-}
-
-#[async_trait]
-impl WorkflowDispatcher for LangBridgeClient {
-    async fn dispatch(&mut self, invocation: WorkflowInvocation) -> Result<WorkflowDispatchResult> {
-        let response = self
-            .execute_invocation(invocation)
-            .await
-            .map_err(|e| openrustclaw_core::error::SchedulerError::WorkflowFailed(e.to_string()))?;
-
-        let output = serde_json::from_str(&response.output).unwrap_or_else(|_| serde_json::json!({}));
-        let error = if response.error.is_empty() {
-            None
-        } else {
-            Some(response.error)
-        };
-        let trace_id = if response.trace_id.is_empty() {
-            None
-        } else {
-            Some(response.trace_id)
-        };
-
-        Ok(WorkflowDispatchResult {
-            status: response.status,
-            output,
-            error,
-            trace_id,
-        })
-    }
-}
-
 /// The scheduler worker that polls for due jobs.
 pub struct SchedulerWorker {
     config: SchedulerConfig,
     worker_id: String,
     langsmith: Option<LangSmithClient>,
+    event_bus: Option<DurableEventBus>,
 }
 
 impl SchedulerWorker {
@@ -88,6 +47,7 @@ impl SchedulerWorker {
             config,
             worker_id: uuid::Uuid::new_v4().to_string(),
             langsmith: None,
+            event_bus: None,
         }
     }
 
@@ -95,6 +55,11 @@ impl SchedulerWorker {
         if client.is_enabled() {
             self.langsmith = Some(client);
         }
+        self
+    }
+
+    pub fn with_event_bus(mut self, event_bus: DurableEventBus) -> Self {
+        self.event_bus = Some(event_bus);
         self
     }
 
@@ -109,7 +74,9 @@ impl SchedulerWorker {
 
             // Calculate next run
             job.next_run_at = triggers::calculate_next_run(&job.trigger, job.last_run_at);
-            if job.next_run_at.is_none() {
+            if job.next_run_at.is_none()
+                && matches!(job.trigger, crate::triggers::TriggerConfig::Absolute { .. })
+            {
                 job.state = JobState::Completed;
             }
 
@@ -166,11 +133,7 @@ impl SchedulerWorker {
     }
 
     /// Load and atomically claim due jobs from SQLite.
-    pub async fn claim_due_jobs(
-        &self,
-        pool: &SqlitePool,
-        limit: i64,
-    ) -> Result<Vec<PersistedJob>> {
+    pub async fn claim_due_jobs(&self, pool: &SqlitePool, limit: i64) -> Result<Vec<PersistedJob>> {
         let candidates = load_due_jobs(pool, limit).await?;
         let mut claimed = Vec::new();
 
@@ -201,7 +164,54 @@ impl SchedulerWorker {
         let mut completed_runs = Vec::new();
 
         for persisted in claimed_jobs {
-            let run = self.execute_claimed_job(pool, dispatcher, persisted).await?;
+            let run = self
+                .execute_claimed_job(pool, dispatcher, persisted)
+                .await?;
+            completed_runs.push(run);
+        }
+
+        Ok(completed_runs)
+    }
+
+    /// Load and atomically claim due event-triggered dispatches from SQLite.
+    pub async fn claim_due_event_dispatches(
+        &self,
+        pool: &SqlitePool,
+        limit: i64,
+    ) -> Result<Vec<PersistedEventDispatch>> {
+        let candidates = load_due_event_dispatches(pool, limit).await?;
+        let mut claimed = Vec::new();
+
+        for candidate in candidates {
+            if acquire_event_dispatch_lease(
+                pool,
+                &candidate.dispatch_id,
+                &self.worker_id,
+                self.config.lease_duration,
+            )
+            .await?
+            {
+                claimed.push(candidate);
+            }
+        }
+
+        Ok(claimed)
+    }
+
+    /// Run all currently queued event dispatches once.
+    pub async fn run_due_event_dispatches_once<D: WorkflowDispatcher + Send>(
+        &self,
+        pool: &SqlitePool,
+        dispatcher: &mut D,
+        limit: i64,
+    ) -> Result<Vec<JobRun>> {
+        let claimed_dispatches = self.claim_due_event_dispatches(pool, limit).await?;
+        let mut completed_runs = Vec::new();
+
+        for persisted in claimed_dispatches {
+            let run = self
+                .execute_claimed_event_dispatch(pool, dispatcher, persisted)
+                .await?;
             completed_runs.push(run);
         }
 
@@ -225,6 +235,17 @@ impl SchedulerWorker {
         let invocation = WorkflowInvocation::new(&job.workflow_id, &thread_id, workflow_input)
             .with_metadata(workflow_metadata)
             .with_configurable(workflow_configurable);
+        if let Some(event_bus) = &self.event_bus {
+            if let Err(error) = event_bus
+                .publish(openrustclaw_core::types::Event::SchedulerJobFired {
+                    job_id: job.id.clone(),
+                    job_name: job.name.clone(),
+                })
+                .await
+            {
+                warn!(error = %error, job_id = %job.id, "Failed to publish scheduler job fired event");
+            }
+        }
         let mut scheduler_trace = self.build_scheduler_trace(&job, &thread_id, &idempotency_key);
         if let (Some(client), Some(trace)) = (&self.langsmith, scheduler_trace.as_ref()) {
             if let Err(error) = client.trace_run(trace).await {
@@ -328,6 +349,185 @@ impl SchedulerWorker {
         }
     }
 
+    async fn execute_claimed_event_dispatch<D: WorkflowDispatcher + Send>(
+        &self,
+        pool: &SqlitePool,
+        dispatcher: &mut D,
+        persisted: PersistedEventDispatch,
+    ) -> Result<JobRun> {
+        let mut job = persisted.job.clone();
+        let original_metadata = persisted.metadata.clone();
+        let workflow_input = merge_event_payload_into_job_input(&original_metadata, &persisted);
+        let workflow_metadata = build_event_workflow_metadata(&job, &persisted);
+        let workflow_configurable = build_event_workflow_configurable(&job, &persisted);
+        let idempotency_key = format!("{}:{}", job.id, persisted.event_id);
+        let mut run = start_job_run(pool, &job, &idempotency_key).await?;
+        let thread_id = format!("event-dispatch-{}-{}", job.id, persisted.event_id);
+        let invocation = WorkflowInvocation::new(&job.workflow_id, &thread_id, workflow_input)
+            .with_metadata(workflow_metadata)
+            .with_configurable(workflow_configurable);
+        let mut scheduler_trace = self.build_scheduler_trace(&job, &thread_id, &idempotency_key);
+
+        match dispatcher.dispatch(invocation).await {
+            Ok(dispatch) => {
+                let success = !matches!(dispatch.status.as_str(), "error" | "failed")
+                    && dispatch.error.is_none();
+                let result_json = dispatch.output.to_string();
+                let persisted_trace_id =
+                    effective_trace_id(scheduler_trace.as_ref(), dispatch.trace_id.clone());
+
+                if let (Some(client), Some(trace)) = (&self.langsmith, scheduler_trace.as_mut()) {
+                    trace.outputs = Some(dispatch.output.clone());
+                    trace.error = dispatch.error.clone();
+                    trace.end_time = Some(Utc::now());
+                    trace.extra = Some(serde_json::json!({
+                        "job_id": job.id,
+                        "workflow_id": job.workflow_id,
+                        "event_id": persisted.event_id,
+                        "event_name": persisted.event_name,
+                        "scheduler_worker_id": self.worker_id,
+                        "status": dispatch.status,
+                    }));
+                    if let Err(error) = client.update_run(trace).await {
+                        warn!(error = %error, job_id = %job.id, "Failed to update LangSmith event dispatch trace");
+                    }
+                }
+
+                if success {
+                    job.consecutive_failures = 0;
+                    job.run_count += 1;
+                    job.last_run_at = Some(Utc::now());
+                    persist_job(pool, &job).await?;
+                    finalize_event_dispatch(
+                        pool,
+                        &persisted.dispatch_id,
+                        &persisted.event_id,
+                        "completed",
+                        persisted.attempts + 1,
+                        None,
+                        None,
+                    )
+                    .await?;
+                    complete_job_run(
+                        pool,
+                        &run.id,
+                        RunStatus::Success,
+                        Some(&result_json),
+                        persisted_trace_id.as_deref(),
+                    )
+                    .await?;
+                    run.status = RunStatus::Success;
+                } else {
+                    let attempts = persisted.attempts + 1;
+                    let error_message = dispatch
+                        .error
+                        .clone()
+                        .unwrap_or_else(|| "event dispatch failed".to_string());
+                    if retry::should_dead_letter(attempts, job.max_retries) {
+                        finalize_event_dispatch(
+                            pool,
+                            &persisted.dispatch_id,
+                            &persisted.event_id,
+                            "dead_letter",
+                            attempts,
+                            None,
+                            Some(&error_message),
+                        )
+                        .await?;
+                        insert_dead_letter(pool, &job, &error_message, Some(&original_metadata))
+                            .await?;
+                    } else {
+                        let delay = retry::backoff_delay(
+                            attempts,
+                            self.config.base_retry_delay_secs,
+                            self.config.max_retry_delay_secs,
+                        );
+                        finalize_event_dispatch(
+                            pool,
+                            &persisted.dispatch_id,
+                            &persisted.event_id,
+                            "pending",
+                            attempts,
+                            Some(
+                                Utc::now()
+                                    + chrono::Duration::from_std(delay)
+                                        .unwrap_or(chrono::Duration::seconds(60)),
+                            ),
+                            Some(&error_message),
+                        )
+                        .await?;
+                    }
+                    complete_job_run(
+                        pool,
+                        &run.id,
+                        RunStatus::Failure,
+                        Some(&result_json),
+                        persisted_trace_id.as_deref(),
+                    )
+                    .await?;
+                    run.status = RunStatus::Failure;
+                }
+
+                run.completed_at = Some(Utc::now());
+                run.result = Some(result_json);
+                run.langsmith_trace_id = persisted_trace_id;
+                Ok(run)
+            }
+            Err(error) => {
+                let attempts = persisted.attempts + 1;
+                let error_message = error.to_string();
+                let persisted_trace_id = effective_trace_id(scheduler_trace.as_ref(), None);
+                if retry::should_dead_letter(attempts, job.max_retries) {
+                    finalize_event_dispatch(
+                        pool,
+                        &persisted.dispatch_id,
+                        &persisted.event_id,
+                        "dead_letter",
+                        attempts,
+                        None,
+                        Some(&error_message),
+                    )
+                    .await?;
+                    insert_dead_letter(pool, &job, &error_message, Some(&original_metadata))
+                        .await?;
+                } else {
+                    let delay = retry::backoff_delay(
+                        attempts,
+                        self.config.base_retry_delay_secs,
+                        self.config.max_retry_delay_secs,
+                    );
+                    finalize_event_dispatch(
+                        pool,
+                        &persisted.dispatch_id,
+                        &persisted.event_id,
+                        "pending",
+                        attempts,
+                        Some(
+                            Utc::now()
+                                + chrono::Duration::from_std(delay)
+                                    .unwrap_or(chrono::Duration::seconds(60)),
+                        ),
+                        Some(&error_message),
+                    )
+                    .await?;
+                }
+                complete_job_run(
+                    pool,
+                    &run.id,
+                    RunStatus::Failure,
+                    Some(&error_message),
+                    persisted_trace_id.as_deref(),
+                )
+                .await?;
+                run.status = RunStatus::Failure;
+                run.completed_at = Some(Utc::now());
+                run.result = Some(error_message);
+                run.langsmith_trace_id = persisted_trace_id;
+                Ok(run)
+            }
+        }
+    }
+
     fn build_scheduler_trace(
         &self,
         job: &Job,
@@ -367,10 +567,86 @@ fn effective_trace_id(
     sidecar_trace_id.or_else(|| scheduler_trace.map(|trace| trace.id.clone()))
 }
 
+fn merge_event_payload_into_job_input(
+    original_metadata: &serde_json::Value,
+    persisted: &PersistedEventDispatch,
+) -> serde_json::Value {
+    let mut input = original_metadata
+        .get("input")
+        .cloned()
+        .unwrap_or_else(|| serde_json::json!({}));
+    if !input.is_object() {
+        input = serde_json::json!({ "input": input });
+    }
+
+    if let Some(object) = input.as_object_mut() {
+        object.insert(
+            "event".to_string(),
+            serde_json::json!({
+                "event_id": persisted.event_id,
+                "event_name": persisted.event_name,
+                "payload": persisted.payload,
+            }),
+        );
+    }
+
+    input
+}
+
+fn build_event_workflow_metadata(
+    job: &Job,
+    persisted: &PersistedEventDispatch,
+) -> std::collections::HashMap<String, String> {
+    let mut metadata = std::collections::HashMap::from([
+        ("job_id".to_string(), job.id.clone()),
+        ("job_name".to_string(), job.name.clone()),
+        ("job_timezone".to_string(), job.timezone.clone()),
+        ("event_id".to_string(), persisted.event_id.clone()),
+        ("event_name".to_string(), persisted.event_name.clone()),
+    ]);
+    metadata.insert("dispatch_id".to_string(), persisted.dispatch_id.clone());
+    metadata
+}
+
+fn build_event_workflow_configurable(
+    job: &Job,
+    persisted: &PersistedEventDispatch,
+) -> serde_json::Map<String, serde_json::Value> {
+    serde_json::Map::from_iter([
+        (
+            "job_id".to_string(),
+            serde_json::Value::String(job.id.clone()),
+        ),
+        (
+            "job_name".to_string(),
+            serde_json::Value::String(job.name.clone()),
+        ),
+        (
+            "job_timezone".to_string(),
+            serde_json::Value::String(job.timezone.clone()),
+        ),
+        (
+            "event_id".to_string(),
+            serde_json::Value::String(persisted.event_id.clone()),
+        ),
+        (
+            "event_name".to_string(),
+            serde_json::Value::String(persisted.event_name.clone()),
+        ),
+        (
+            "dispatch_id".to_string(),
+            serde_json::Value::String(persisted.dispatch_id.clone()),
+        ),
+        ("event_payload".to_string(), persisted.payload.clone()),
+    ])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    use crate::WorkflowDispatchResult;
+    use async_trait::async_trait;
     use chrono::Duration as ChronoDuration;
     use openrustclaw_db::{init_pool, run_migrations};
     use tempfile::tempdir;
@@ -382,7 +658,10 @@ mod tests {
 
     #[async_trait]
     impl WorkflowDispatcher for StubDispatcher {
-        async fn dispatch(&mut self, _invocation: WorkflowInvocation) -> Result<WorkflowDispatchResult> {
+        async fn dispatch(
+            &mut self,
+            _invocation: WorkflowInvocation,
+        ) -> Result<WorkflowDispatchResult> {
             match (&self.success, &self.error) {
                 (Some(result), None) => Ok(result.clone()),
                 (_, Some(error)) => Err(openrustclaw_core::error::SchedulerError::WorkflowFailed(
@@ -451,7 +730,10 @@ mod tests {
             error: None,
         };
 
-        let runs = worker.run_due_jobs_once(&pool, &mut dispatcher, 10).await.unwrap();
+        let runs = worker
+            .run_due_jobs_once(&pool, &mut dispatcher, 10)
+            .await
+            .unwrap();
         assert_eq!(runs.len(), 1);
         assert_eq!(runs[0].status, RunStatus::Success);
 
@@ -531,7 +813,10 @@ mod tests {
         let persisted = load_due_jobs(&pool, 10).await.unwrap().remove(0);
         let configurable = persisted.workflow_configurable();
         assert_eq!(configurable.get("limit").unwrap(), &serde_json::json!(25));
-        assert_eq!(configurable.get("enabled").unwrap(), &serde_json::json!(true));
+        assert_eq!(
+            configurable.get("enabled").unwrap(),
+            &serde_json::json!(true)
+        );
         assert_eq!(
             configurable.get("labels").unwrap(),
             &serde_json::json!(["nightly", "critical"])
@@ -554,7 +839,10 @@ mod tests {
             error: Some("boom".to_string()),
         };
 
-        let runs = worker.run_due_jobs_once(&pool, &mut dispatcher, 10).await.unwrap();
+        let runs = worker
+            .run_due_jobs_once(&pool, &mut dispatcher, 10)
+            .await
+            .unwrap();
         assert_eq!(runs.len(), 1);
         assert_eq!(runs[0].status, RunStatus::Failure);
 

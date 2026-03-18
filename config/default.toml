@@ -64,7 +64,7 @@ skill_verifying_key = null        # 32-byte Ed25519 public key as lowercase hex
 [sidecar]
 grpc_port = 50051
 python_path = "python3"
-auto_start = true
+auto_start = false
 restart_on_crash = true
 
 [observability]

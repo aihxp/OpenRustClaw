@@ -4,7 +4,7 @@
 [![Rust](https://img.shields.io/badge/rust-2024_edition-orange.svg)](https://www.rust-lang.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-A high-performance AI agent platform written in Rust. 43 crates, 20 LLM providers, 15 CLI-startable messaging channels, and a Python sidecar for LangGraph workflows.
+A high-performance AI agent platform written in Rust. 43 crates, 20 LLM providers, 15 CLI-startable messaging channels, and an optional Python sidecar kept only for bounded workflow compatibility.
 
 Current execution planning lives in:
 
@@ -15,6 +15,8 @@ Current execution planning lives in:
 
 The roadmap target is explicit: achieve practical OpenClaw feature parity with a Rust-first runtime, while keeping OpenRustClaw-native improvements where they are stronger.
 The execution model is also explicit: Rust-native for production-critical paths, sidecar compatibility for migration, and LangGraph as the experimentation lane rather than the sole durability boundary.
+`openrustclaw start` now defaults to the Rust runtime path without requiring Python; the sidecar is only used when a compatibility workflow is explicitly needed and configured.
+The shipped Rust runtime now owns durable scheduling, event-triggered workflows, session lifecycle hooks, and reminder delivery with channel-aware fallback policies.
 The roadmap now includes a shipped Rust-native autonomous optimization framework inspired by `autoresearch`, generalized for skills, RAG, prompts, policies, bounded workflows, bounded code, and research-program targets.
 
 ## Quick Start
@@ -56,8 +58,8 @@ openrustclaw start --channels=telegram,discord,slack
         └─────────┘  └────────┘  │-RPC │  └───┬────┘  └──────────┘
                                  └─────┘      │
                                     ┌─────────┴─────────┐
-                                    │  Python Sidecar   │
-                                    │  LangGraph/Smith  │
+                                    │ Python Sidecar    │
+                                    │ Optional Compat   │
                                     └───────────────────┘
 ```
 
@@ -261,15 +263,15 @@ crates/
   gateway/       # Axum WebSocket server with auth, sessions, and webhook integrations
   channels/      # 20 messaging channel integrations
   skills/        # Skill registry, loader, marketplace, and WASM sandbox
-  scheduler/     # Durable job scheduling (no cron -- app-owned polling)
+  scheduler/     # Durable job scheduling, workflow runtime, and eventing
   optimization/  # Rust-native autonomous optimization framework
   security/      # Auth, SSO, isolation, input sanitization, skill verification
-  langbridge/    # gRPC bridge to Python LangGraph sidecar
+  langbridge/    # Compatibility bridge to optional Python sidecar
   observability/ # OpenTelemetry, Prometheus metrics, tracing
   cli/           # Terminal UI (ratatui), all CLI commands
   + 16 native LLM SDK crates
   + canvas, cursor, voice, automation, mobile, distributed
-sidecar/         # Python LangGraph workflows + LangSmith observability
+sidecar/         # Optional compatibility workflows for migration/experiments
 ```
 
 ## Contributing

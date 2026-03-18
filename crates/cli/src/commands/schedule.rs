@@ -7,19 +7,20 @@ use uuid::Uuid;
 
 // Job state is handled by the database
 
-/// List scheduled jobs.
-pub async fn list() -> Result<()> {
-    // Load configuration
+async fn open_schedule_pool() -> Result<sqlx::SqlitePool> {
     let config = openrustclaw_core::config::AppConfig::load().unwrap_or_default();
-
-    // Initialize pool and run migrations
     let pool = openrustclaw_db::init_pool(&config.database.url, 2)
         .await
         .context("Failed to connect to database")?;
-
     openrustclaw_db::run_migrations(&pool)
         .await
         .context("Failed to run migrations")?;
+    Ok(pool)
+}
+
+/// List scheduled jobs.
+pub async fn list() -> Result<()> {
+    let pool = open_schedule_pool().await?;
 
     // Query scheduled jobs
     let rows = sqlx::query(
@@ -127,17 +128,7 @@ pub async fn create(
         anyhow::bail!("Use either --every-seconds or --at, not both");
     }
 
-    // Load configuration
-    let config = openrustclaw_core::config::AppConfig::load().unwrap_or_default();
-
-    // Initialize pool and run migrations
-    let pool = openrustclaw_db::init_pool(&config.database.url, 2)
-        .await
-        .context("Failed to connect to database")?;
-
-    openrustclaw_db::run_migrations(&pool)
-        .await
-        .context("Failed to run migrations")?;
+    let pool = open_schedule_pool().await?;
 
     // Check if job with same name exists
     let existing: Option<String> =
@@ -231,17 +222,7 @@ pub async fn create(
 
 /// Pause a scheduled job.
 pub async fn pause(id: &str) -> Result<()> {
-    // Load configuration
-    let config = openrustclaw_core::config::AppConfig::load().unwrap_or_default();
-
-    // Initialize pool and run migrations
-    let pool = openrustclaw_db::init_pool(&config.database.url, 2)
-        .await
-        .context("Failed to connect to database")?;
-
-    openrustclaw_db::run_migrations(&pool)
-        .await
-        .context("Failed to run migrations")?;
+    let pool = open_schedule_pool().await?;
 
     // Check if job exists
     let existing: Option<String> =
@@ -274,17 +255,7 @@ pub async fn pause(id: &str) -> Result<()> {
 
 /// Resume a scheduled job.
 pub async fn resume(id: &str) -> Result<()> {
-    // Load configuration
-    let config = openrustclaw_core::config::AppConfig::load().unwrap_or_default();
-
-    // Initialize pool and run migrations
-    let pool = openrustclaw_db::init_pool(&config.database.url, 2)
-        .await
-        .context("Failed to connect to database")?;
-
-    openrustclaw_db::run_migrations(&pool)
-        .await
-        .context("Failed to run migrations")?;
+    let pool = open_schedule_pool().await?;
 
     // Check if job exists
     let existing: Option<(String, Option<String>)> =
@@ -322,6 +293,218 @@ pub async fn resume(id: &str) -> Result<()> {
     } else {
         println!("✓ Job '{}' resumed successfully", id);
         println!("  Next run: {}", next_run_at);
+    }
+
+    Ok(())
+}
+
+/// List recent job attempts.
+pub async fn runs(job: Option<&str>, limit: usize) -> Result<()> {
+    let pool = open_schedule_pool().await?;
+
+    let rows = if let Some(job) = job {
+        sqlx::query(
+            r#"
+            SELECT r.id, r.job_id, j.name, r.status, r.started_at, r.completed_at,
+                   r.retry_count, r.langsmith_trace_id, r.result
+            FROM job_runs r
+            JOIN scheduled_jobs j ON j.id = r.job_id
+            WHERE r.job_id = ? OR j.name = ?
+            ORDER BY r.started_at DESC
+            LIMIT ?
+            "#,
+        )
+        .bind(job)
+        .bind(job)
+        .bind(limit as i64)
+        .fetch_all(&pool)
+        .await?
+    } else {
+        sqlx::query(
+            r#"
+            SELECT r.id, r.job_id, j.name, r.status, r.started_at, r.completed_at,
+                   r.retry_count, r.langsmith_trace_id, r.result
+            FROM job_runs r
+            JOIN scheduled_jobs j ON j.id = r.job_id
+            ORDER BY r.started_at DESC
+            LIMIT ?
+            "#,
+        )
+        .bind(limit as i64)
+        .fetch_all(&pool)
+        .await?
+    };
+
+    if rows.is_empty() {
+        println!("No job runs found.");
+        return Ok(());
+    }
+
+    for row in rows {
+        println!(
+            "{} {} [{}] retry={} started={} completed={}",
+            row.get::<String, _>("job_id"),
+            row.get::<String, _>("name"),
+            row.get::<String, _>("status"),
+            row.get::<i64, _>("retry_count"),
+            row.get::<String, _>("started_at"),
+            row.get::<Option<String>, _>("completed_at")
+                .unwrap_or_else(|| "-".to_string())
+        );
+        if let Some(trace_id) = row.get::<Option<String>, _>("langsmith_trace_id") {
+            println!("  trace: {}", trace_id);
+        }
+    }
+
+    Ok(())
+}
+
+/// List current dead-letter entries.
+pub async fn dead_letters(job: Option<&str>, limit: usize) -> Result<()> {
+    let pool = open_schedule_pool().await?;
+    let rows = if let Some(job) = job {
+        sqlx::query(
+            r#"
+            SELECT d.id, d.job_id, j.name, d.last_error, d.failed_at, d.retry_count, d.resolved
+            FROM dead_letter_queue d
+            JOIN scheduled_jobs j ON j.id = d.job_id
+            WHERE d.job_id = ? OR j.name = ?
+            ORDER BY d.failed_at DESC
+            LIMIT ?
+            "#,
+        )
+        .bind(job)
+        .bind(job)
+        .bind(limit as i64)
+        .fetch_all(&pool)
+        .await?
+    } else {
+        sqlx::query(
+            r#"
+            SELECT d.id, d.job_id, j.name, d.last_error, d.failed_at, d.retry_count, d.resolved
+            FROM dead_letter_queue d
+            JOIN scheduled_jobs j ON j.id = d.job_id
+            ORDER BY d.failed_at DESC
+            LIMIT ?
+            "#,
+        )
+        .bind(limit as i64)
+        .fetch_all(&pool)
+        .await?
+    };
+
+    if rows.is_empty() {
+        println!("No dead-letter entries found.");
+        return Ok(());
+    }
+
+    for row in rows {
+        println!(
+            "{} {} [{} retries] resolved={} failed_at={}",
+            row.get::<String, _>("id"),
+            row.get::<String, _>("name"),
+            row.get::<i64, _>("retry_count"),
+            row.get::<i64, _>("resolved") == 1,
+            row.get::<String, _>("failed_at")
+        );
+        println!("  error: {}", row.get::<String, _>("last_error"));
+    }
+
+    Ok(())
+}
+
+/// Replay a dead-letter entry by resetting the target job.
+pub async fn replay_dead_letter(id: &str) -> Result<()> {
+    let pool = open_schedule_pool().await?;
+    let row = sqlx::query(
+        r#"
+        SELECT id, job_id
+        FROM dead_letter_queue
+        WHERE id = ?
+        "#,
+    )
+    .bind(id)
+    .fetch_optional(&pool)
+    .await?;
+
+    let Some(row) = row else {
+        anyhow::bail!("Dead-letter entry '{}' not found", id);
+    };
+
+    let job_id: String = row.get("job_id");
+    sqlx::query(
+        r#"
+        UPDATE scheduled_jobs
+        SET state = 'active',
+            consecutive_failures = 0,
+            lease_owner = NULL,
+            lease_expires_at = NULL,
+            next_run_at = COALESCE(next_run_at, ?)
+        WHERE id = ?
+        "#,
+    )
+    .bind((Utc::now() + chrono::Duration::minutes(1)).to_rfc3339())
+    .bind(&job_id)
+    .execute(&pool)
+    .await?;
+
+    sqlx::query("UPDATE dead_letter_queue SET resolved = 1, resolved_at = ? WHERE id = ?")
+        .bind(Utc::now().to_rfc3339())
+        .bind(id)
+        .execute(&pool)
+        .await?;
+
+    println!("✓ Replayed dead-letter entry '{}' for job '{}'", id, job_id);
+    Ok(())
+}
+
+/// List recent runtime events.
+pub async fn events(name: Option<&str>, limit: usize) -> Result<()> {
+    let pool = open_schedule_pool().await?;
+    let rows = if let Some(name) = name {
+        sqlx::query(
+            r#"
+            SELECT id, event_name, event_type, session_id, status, created_at, processed_at
+            FROM runtime_events
+            WHERE event_name = ?
+            ORDER BY created_at DESC
+            LIMIT ?
+            "#,
+        )
+        .bind(name)
+        .bind(limit as i64)
+        .fetch_all(&pool)
+        .await?
+    } else {
+        sqlx::query(
+            r#"
+            SELECT id, event_name, event_type, session_id, status, created_at, processed_at
+            FROM runtime_events
+            ORDER BY created_at DESC
+            LIMIT ?
+            "#,
+        )
+        .bind(limit as i64)
+        .fetch_all(&pool)
+        .await?
+    };
+
+    if rows.is_empty() {
+        println!("No runtime events found.");
+        return Ok(());
+    }
+
+    for row in rows {
+        println!(
+            "{} {} [{}] status={} session={} created={}",
+            row.get::<String, _>("id"),
+            row.get::<String, _>("event_name"),
+            row.get::<String, _>("event_type"),
+            row.get::<String, _>("status"),
+            row.get::<Option<String>, _>("session_id")
+                .unwrap_or_else(|| "-".to_string()),
+            row.get::<String, _>("created_at")
+        );
     }
 
     Ok(())

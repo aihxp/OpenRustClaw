@@ -22,7 +22,7 @@ Status values:
 | Rust to sidecar workflow dispatch | real | Workflow dispatch now preserves typed configurable metadata through the bridge contract |
 | Workflow execution tier model | partial | The target execution strategy is now explicit: `rust_native` for production-critical paths, `compat_sidecar` for bounded migration paths, and `experimental_langgraph` for rapid prototyping; the registry and dispatch policy are not fully implemented yet |
 | Durable scheduler schema | real | SQLite schema and retry/dead-letter tables exist |
-| Durable scheduler execution loop | real | Due-job polling, leases, retries, dead-letter handling, and sidecar dispatch are persisted and tested |
+| Durable scheduler execution loop | real | Due-job polling, leases, retries, dead-letter handling, event-triggered dispatch, session lifecycle hooks, and Rust-native reminder delivery are persisted and tested |
 | Autonomous optimization framework | real | Rust-native target registry, candidate store, mutation policy enforcement, temp-workspace runner, evaluation history, promotion history, CLI operator controls, and MCP inspection/promotion tools exist |
 | Observability / LangSmith tracing | partial | Sidecar workflow traces now preserve trace ids back to Rust, and scheduler dispatch, channel message handling, persisted Slack/Discord ingress handling, richer channel trace metadata, gateway chat completions, internal memory/RAG endpoints, plus MCP tool calls can emit Rust-side LangSmith runs when enabled via env; coverage is still not uniform across all runtime paths |
 

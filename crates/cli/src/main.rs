@@ -185,6 +185,29 @@ enum ScheduleAction {
     Pause { id: String },
     /// Resume a job
     Resume { id: String },
+    /// List recent job attempts
+    Runs {
+        #[arg(long)]
+        job: Option<String>,
+        #[arg(short, long, default_value_t = 20)]
+        limit: usize,
+    },
+    /// List dead-letter entries
+    DeadLetters {
+        #[arg(long)]
+        job: Option<String>,
+        #[arg(short, long, default_value_t = 20)]
+        limit: usize,
+    },
+    /// Replay a dead-letter entry by id
+    ReplayDeadLetter { id: String },
+    /// List recent runtime events
+    Events {
+        #[arg(long)]
+        name: Option<String>,
+        #[arg(short, long, default_value_t = 20)]
+        limit: usize,
+    },
 }
 
 #[derive(Subcommand)]
@@ -495,6 +518,18 @@ async fn main() -> Result<()> {
             }
             ScheduleAction::Pause { id } => commands::schedule::pause(&id).await,
             ScheduleAction::Resume { id } => commands::schedule::resume(&id).await,
+            ScheduleAction::Runs { job, limit } => {
+                commands::schedule::runs(job.as_deref(), limit).await
+            }
+            ScheduleAction::DeadLetters { job, limit } => {
+                commands::schedule::dead_letters(job.as_deref(), limit).await
+            }
+            ScheduleAction::ReplayDeadLetter { id } => {
+                commands::schedule::replay_dead_letter(&id).await
+            }
+            ScheduleAction::Events { name, limit } => {
+                commands::schedule::events(name.as_deref(), limit).await
+            }
         },
         Commands::Optimize { action } => match action {
             OptimizeAction::ListTargets => commands::optimize::list_targets().await,

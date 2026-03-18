@@ -18,8 +18,9 @@ use openrustclaw_channels::slack::SlackEventHandler;
 use openrustclaw_core::error::{ChannelError as CoreChannelError, Error as CoreError, McpError};
 use openrustclaw_core::traits::{Channel, LlmProvider};
 use openrustclaw_core::types::{
-    CompletionRequest, CompletionResponse, MemoryEntry, MemoryQuery, MemoryType, Message,
-    OutgoingMessage, SessionType, SourceType, StreamChunk, ToolFormat,
+    CompletionRequest, CompletionResponse, Event, MemoryEntry, MemoryQuery, MemorySource,
+    MemoryType, Message, OutgoingMessage, Platform, SessionType, SourceType, StreamChunk,
+    ToolFormat,
 };
 use std::collections::{HashMap, HashSet};
 use std::future::Future;
@@ -40,7 +41,7 @@ use openrustclaw_db::{
 };
 use openrustclaw_gateway::server::{GatewayServer, GatewayState};
 use openrustclaw_gateway::sessions::SessionManager;
-use openrustclaw_langbridge::{LangBridgeClient, sidecar::SidecarManager};
+use openrustclaw_langbridge::sidecar::SidecarManager;
 use openrustclaw_mcp::server::{McpServer, McpServerConfig, McpServerTool};
 use openrustclaw_memory::MemoryPolicies;
 use openrustclaw_observability::LangSmithClient;
@@ -53,6 +54,7 @@ use openrustclaw_providers::{
     AnthropicProvider, OllamaProvider, OpenAiProvider, OpenRouterProvider, ProviderChain,
     openrouter::RouteStrategy,
 };
+use openrustclaw_scheduler::{DurableEventBus, ReminderSender, RustWorkflowDispatcher};
 use openrustclaw_scheduler::{SchedulerWorker, worker::SchedulerConfig as WorkerSchedulerConfig};
 use openrustclaw_security::OriginValidator;
 use sqlx::Row;
@@ -168,6 +170,7 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
     let memory_store = Arc::new(SqliteMemoryStore::new(pool.clone()));
     let core_memory_store = Arc::new(SqliteCoreMemoryStore::new(pool.clone()));
     let rag_store = Arc::new(SqliteRagStore::new(pool.clone()));
+    let event_bus = DurableEventBus::new(pool.clone(), 1024);
 
     // Create origin validator
     let origin_validator = Arc::new(OriginValidator::new(config.gateway.allowed_origins.clone()));
@@ -195,13 +198,6 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
     // Initialize enabled channels
     let mut channel_tasks: Vec<tokio::task::JoinHandle<()>> = Vec::new();
     let sidecar_addr = format!("http://127.0.0.1:{}", config.sidecar.grpc_port);
-    let scheduler_task = spawn_scheduler_task(
-        pool.clone(),
-        sidecar_addr.clone(),
-        config.scheduler.clone(),
-        scheduler_langsmith_client(&config),
-    );
-
     let mut channel_config = config.channels.clone();
     let mut discord_ingress_handler = None;
     let mut slack_ingress_handler = None;
@@ -261,12 +257,37 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
             core_memory_store.clone(),
             session_manager.clone(),
             channel_langsmith_client(&config),
+            event_bus.clone(),
         )?))
     };
 
-    for channel in enabled_channels {
-        channel_tasks.push(spawn_channel_task(channel, channel_agent.clone()));
+    let mut delivery_router = ChannelDeliveryRouter::default();
+    for mut channel in enabled_channels {
+        let platform = channel.platform();
+        match channel.connect().await {
+            Ok(()) => {
+                info!(platform = ?platform, "Channel connected");
+                let channel: SharedChannel = Arc::from(channel);
+                delivery_router.insert(platform, channel.clone());
+                channel_tasks.push(spawn_channel_task(channel, channel_agent.clone()));
+            }
+            Err(error) => {
+                error!(platform = ?platform, error = %error, "Failed to connect channel");
+            }
+        }
     }
+
+    let reminder_sender = (!delivery_router.is_empty())
+        .then_some(Arc::new(delivery_router) as Arc<dyn ReminderSender>);
+    let scheduler_task = spawn_scheduler_task(
+        pool.clone(),
+        config.clone(),
+        sidecar_addr.clone(),
+        config.scheduler.clone(),
+        scheduler_langsmith_client(&config),
+        event_bus.clone(),
+        reminder_sender,
+    );
 
     if let Some(handler) = slack_ingress_handler {
         app = app.merge(slack_ingress_router(
@@ -457,9 +478,12 @@ pub async fn run_mcp_server(transport: &str, config_path: &str) -> Result<()> {
 
 fn spawn_scheduler_task(
     pool: sqlx::SqlitePool,
+    app_config: AppConfig,
     sidecar_addr: String,
     scheduler_config: openrustclaw_core::config::SchedulerConfig,
     langsmith_client: Option<LangSmithClient>,
+    event_bus: DurableEventBus,
+    reminder_sender: Option<Arc<dyn ReminderSender>>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let mut worker = SchedulerWorker::new(WorkerSchedulerConfig {
@@ -471,24 +495,51 @@ fn spawn_scheduler_task(
         if let Some(client) = langsmith_client {
             worker = worker.with_langsmith(client);
         }
+        worker = worker.with_event_bus(event_bus.clone());
+
+        let compat_sidecar_addr = app_config
+            .sidecar
+            .auto_start
+            .then_some(sidecar_addr.clone())
+            .or(Some(sidecar_addr));
+        let mut dispatcher = match RustWorkflowDispatcher::from_config(
+            pool.clone(),
+            &app_config,
+            compat_sidecar_addr,
+            reminder_sender,
+            Some(event_bus.clone()),
+        ) {
+            Ok(dispatcher) => dispatcher,
+            Err(error) => {
+                error!(error = %error, "Failed to initialize Rust workflow dispatcher");
+                return;
+            }
+        };
 
         loop {
-            match LangBridgeClient::connect(&sidecar_addr).await {
-                Ok(mut client) => match worker.run_due_jobs_once(&pool, &mut client, 32).await {
-                    Ok(runs) if !runs.is_empty() => {
-                        info!(count = runs.len(), "Scheduler worker processed due jobs");
-                    }
-                    Ok(_) => {}
-                    Err(e) => {
-                        error!(error = %e, "Scheduler worker failed to process jobs");
-                    }
-                },
+            match worker.run_due_jobs_once(&pool, &mut dispatcher, 32).await {
+                Ok(runs) if !runs.is_empty() => {
+                    info!(count = runs.len(), "Scheduler worker processed due jobs");
+                }
+                Ok(_) => {}
                 Err(e) => {
-                    warn!(
-                        error = %e,
-                        addr = %sidecar_addr,
-                        "Scheduler worker could not reach sidecar"
+                    error!(error = %e, "Scheduler worker failed to process timed jobs");
+                }
+            }
+
+            match worker
+                .run_due_event_dispatches_once(&pool, &mut dispatcher, 32)
+                .await
+            {
+                Ok(runs) if !runs.is_empty() => {
+                    info!(
+                        count = runs.len(),
+                        "Scheduler worker processed queued event dispatches"
                     );
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    error!(error = %e, "Scheduler worker failed to process queued events");
                 }
             }
 
@@ -570,61 +621,59 @@ fn internal_api_addr(host: &str, port: u16) -> String {
 }
 
 fn spawn_channel_task(
-    mut channel: Box<dyn Channel>,
+    channel: SharedChannel,
     channel_agent: Option<Arc<ChannelAgent>>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let platform = channel.platform();
         let mut route_sessions = HashMap::new();
-        info!(platform = ?platform, "Starting channel");
-        match channel.connect().await {
-            Ok(()) => {
-                info!(platform = ?platform, "Channel connected");
-                loop {
-                    match channel.receive().await {
-                        Ok(message) => {
-                            info!(
-                                platform = ?platform,
-                                user_id = %message.user_id,
-                                session_id = %message.session_id,
-                                content = %message.content,
-                                "Channel received incoming message"
-                            );
-                            if let Some(agent) = channel_agent.as_ref() {
-                                match agent
-                                    .handle_incoming_message(&mut route_sessions, message)
-                                    .await
-                                {
-                                    Ok(Some(reply)) => {
-                                        if let Err(e) = channel.send(reply).await {
-                                            error!(
-                                                platform = ?platform,
-                                                error = %e,
-                                                "Failed to send channel reply"
-                                            );
-                                        }
-                                    }
-                                    Ok(None) => {}
-                                    Err(e) => {
-                                        error!(
-                                            platform = ?platform,
-                                            error = %e,
-                                            "Failed to process inbound channel message"
-                                        );
-                                    }
+        info!(platform = ?platform, "Starting channel receive loop");
+        loop {
+            match channel.receive().await {
+                Ok(message) => {
+                    info!(
+                        platform = ?platform,
+                        user_id = %message.user_id,
+                        session_id = %message.session_id,
+                        content = %message.content,
+                        "Channel received incoming message"
+                    );
+                    if let Some(agent) = channel_agent.as_ref() {
+                        match agent
+                            .handle_incoming_message(&mut route_sessions, message)
+                            .await
+                        {
+                            Ok(Some(reply)) => {
+                                if let Err(e) = channel.send(reply).await {
+                                    error!(
+                                        platform = ?platform,
+                                        error = %e,
+                                        "Failed to send channel reply"
+                                    );
                                 }
                             }
-                        }
-                        Err(e) => {
-                            error!(platform = ?platform, error = %e, "Channel receive failed");
-                            break;
+                            Ok(None) => {}
+                            Err(e) => {
+                                error!(
+                                    platform = ?platform,
+                                    error = %e,
+                                    "Failed to process inbound channel message"
+                                );
+                            }
                         }
                     }
                 }
+                Err(e) => {
+                    error!(platform = ?platform, error = %e, "Channel receive failed");
+                    break;
+                }
             }
-            Err(e) => {
-                error!(platform = ?platform, error = %e, "Failed to connect channel");
-            }
+        }
+
+        if let Some(agent) = channel_agent.as_ref() {
+            agent
+                .close_route_sessions(&mut route_sessions, platform, "channel_receive_ended")
+                .await;
         }
     })
 }
@@ -636,6 +685,7 @@ struct ChannelAgent {
     core_memory_store: Option<Arc<dyn CoreMemoryStoreTrait>>,
     max_history_messages: usize,
     langsmith: Option<LangSmithClient>,
+    event_bus: DurableEventBus,
 }
 
 struct ChannelConversationState {
@@ -644,7 +694,89 @@ struct ChannelConversationState {
     reply_metadata: serde_json::Value,
 }
 
+type SharedChannel = Arc<dyn Channel>;
+
+#[derive(Clone, Default)]
+struct ChannelDeliveryRouter {
+    channels: HashMap<Platform, SharedChannel>,
+}
+
+impl ChannelDeliveryRouter {
+    fn insert(&mut self, platform: Platform, channel: SharedChannel) {
+        self.channels.insert(platform, channel);
+    }
+
+    fn is_empty(&self) -> bool {
+        self.channels.is_empty()
+    }
+}
+
+#[async_trait]
+impl ReminderSender for ChannelDeliveryRouter {
+    async fn send(&self, platform: Platform, message: OutgoingMessage) -> openrustclaw_scheduler::Result<()> {
+        let Some(channel) = self.channels.get(&platform) else {
+            return Err(openrustclaw_core::error::SchedulerError::WorkflowFailed(format!(
+                "channel '{}' is not connected for reminder delivery",
+                platform
+            )));
+        };
+
+        channel
+            .send(message)
+            .await
+            .map_err(|error| {
+                openrustclaw_core::error::SchedulerError::WorkflowFailed(error.to_string())
+            })
+    }
+
+    fn available_platforms(&self) -> Vec<Platform> {
+        self.channels.keys().copied().collect()
+    }
+}
+
 impl ChannelAgent {
+    async fn close_route_sessions(
+        &self,
+        route_sessions: &mut HashMap<String, ChannelConversationState>,
+        platform: Platform,
+        reason: &str,
+    ) {
+        for (route_key, state) in route_sessions.drain() {
+            if let Err(error) = self
+                .event_bus
+                .publish(Event::SessionLifecycle {
+                    session_id: state.session_id,
+                    hook: "session.end".to_string(),
+                    metadata: serde_json::json!({
+                        "platform": platform.to_string(),
+                        "route_key": route_key,
+                        "reason": reason,
+                        "history_len": state.history.len(),
+                    }),
+                })
+                .await
+            {
+                warn!(error = %error, session_id = %state.session_id, "Failed to publish session.end event");
+            }
+            if let Err(error) = self
+                .event_bus
+                .publish(Event::SessionClosed {
+                    session_id: state.session_id,
+                })
+                .await
+            {
+                warn!(error = %error, session_id = %state.session_id, "Failed to publish session.closed event");
+            }
+            if let Err(error) = self
+                .session_manager
+                .remove_session(&state.session_id.to_string())
+                .await
+            {
+                warn!(error = %error, session_id = %state.session_id, "Failed to remove channel session");
+            }
+        }
+    }
+
     async fn handle_incoming_message(
         &self,
         route_sessions: &mut HashMap<String, ChannelConversationState>,
@@ -662,6 +794,30 @@ impl ChannelAgent {
                 .session_manager
                 .create_session(&incoming.user_id, session_type, incoming.platform)
                 .await?;
+            if let Err(error) = self
+                .event_bus
+                .publish(Event::SessionCreated {
+                    session: session.clone(),
+                })
+                .await
+            {
+                warn!(error = %error, "Failed to publish session.created event");
+            }
+            if let Err(error) = self
+                .event_bus
+                .publish(Event::SessionLifecycle {
+                    session_id: session.id,
+                    hook: "session.start".to_string(),
+                    metadata: serde_json::json!({
+                        "platform": incoming.platform.to_string(),
+                        "user_id": incoming.user_id,
+                        "route_key": route_key,
+                    }),
+                })
+                .await
+            {
+                warn!(error = %error, "Failed to publish session.start event");
+            }
             route_sessions.insert(
                 route_key.clone(),
                 ChannelConversationState {
@@ -677,8 +833,32 @@ impl ChannelAgent {
         };
 
         route_state.reply_metadata = incoming.metadata.clone();
-        route_state.history.push(Message::user(trimmed_content));
-        trim_history(&mut route_state.history, self.max_history_messages);
+        let inbound_message = Message::user(trimmed_content);
+        if let Err(error) = self
+            .event_bus
+            .publish(Event::MessageReceived {
+                session_id: route_state.session_id,
+                message: inbound_message.clone(),
+            })
+            .await
+        {
+            warn!(error = %error, "Failed to publish message.received event");
+        }
+        route_state.history.push(inbound_message);
+        let drained_before = trim_history(&mut route_state.history, self.max_history_messages);
+        if drained_before > 0 {
+            let _ = self
+                .event_bus
+                .publish(Event::SessionLifecycle {
+                    session_id: route_state.session_id,
+                    hook: "session.pre_compaction".to_string(),
+                    metadata: serde_json::json!({
+                        "route_key": route_key,
+                        "evicted_messages": drained_before,
+                    }),
+                })
+                .await;
+        }
         let mut trace = self.channel_trace(&incoming, &route_state.session_id, trimmed_content);
         if let (Some(client), Some(run)) = (&self.langsmith, trace.as_ref()) {
             if let Err(error) = client.trace_run(run).await {
@@ -740,7 +920,20 @@ impl ChannelAgent {
         };
 
         route_state.history.push(response.message.clone());
-        trim_history(&mut route_state.history, self.max_history_messages);
+        let drained_after = trim_history(&mut route_state.history, self.max_history_messages);
+        if drained_after > 0 {
+            let _ = self
+                .event_bus
+                .publish(Event::SessionLifecycle {
+                    session_id: route_state.session_id,
+                    hook: "session.pre_compaction".to_string(),
+                    metadata: serde_json::json!({
+                        "route_key": route_key,
+                        "evicted_messages": drained_after,
+                    }),
+                })
+                .await;
+        }
 
         if response.message.content.trim().is_empty() {
             info!(
@@ -766,6 +959,35 @@ impl ChannelAgent {
                 }
             }
             return Ok(None);
+        }
+
+        if let Err(error) = self
+            .event_bus
+            .publish(Event::SessionLifecycle {
+                session_id: route_state.session_id,
+                hook: "session.post_turn".to_string(),
+                metadata: serde_json::json!({
+                    "platform": incoming.platform.to_string(),
+                    "user_id": incoming.user_id,
+                    "route_key": route_key,
+                    "history_len": route_state.history.len(),
+                    "reply_length": response.message.content.len(),
+                }),
+            })
+            .await
+        {
+            warn!(error = %error, "Failed to publish session.post_turn event");
+        }
+
+        if let Err(error) = self
+            .event_bus
+            .publish(Event::MessageSent {
+                session_id: route_state.session_id,
+                message: response.message.clone(),
+            })
+            .await
+        {
+            warn!(error = %error, "Failed to publish message.sent event");
         }
 
         if let (Some(client), Some(run)) = (&self.langsmith, trace.as_mut()) {
@@ -824,6 +1046,7 @@ fn build_channel_agent(
     core_memory_store: Arc<SqliteCoreMemoryStore>,
     session_manager: Arc<SessionManager>,
     langsmith: Option<LangSmithClient>,
+    event_bus: DurableEventBus,
 ) -> Result<ChannelAgent> {
     let provider = build_channel_provider(config)?;
     let runtime = AgentRuntime::with_memory_stores(
@@ -839,6 +1062,7 @@ fn build_channel_agent(
         core_memory_store: Some(core_memory_store),
         max_history_messages: 24,
         langsmith,
+        event_bus,
     })
 }
 
@@ -1041,10 +1265,13 @@ fn channel_scope_from_metadata(metadata: &serde_json::Value) -> Option<String> {
     None
 }
 
-fn trim_history(history: &mut Vec<Message>, max_history_messages: usize) {
+fn trim_history(history: &mut Vec<Message>, max_history_messages: usize) -> usize {
     if history.len() > max_history_messages {
         let drain_count = history.len() - max_history_messages;
         history.drain(0..drain_count);
+        drain_count
+    } else {
+        0
     }
 }
 
@@ -1318,6 +1545,7 @@ fn build_mcp_server(
     let core_memory_store = SqliteCoreMemoryStore::new(pool.clone());
     let rag_store = SqliteRagStore::new(pool.clone());
     let optimization_store = OptimizationStore::new(pool.clone());
+    let event_bus = DurableEventBus::new(pool.clone(), 256);
     let mut server = McpServer::new(McpServerConfig {
         name: "openrustclaw".to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
@@ -1431,6 +1659,58 @@ fn build_mcp_server(
                         "max_retries": {"type": "integer", "minimum": 0}
                     },
                     "required": ["name", "workflow_id"]
+                }),
+            },
+            McpServerTool {
+                name: "list_workflows".to_string(),
+                description: "List the unified workflow registry and execution tiers.".to_string(),
+                input_schema: serde_json::json!({"type": "object", "properties": {}}),
+            },
+            McpServerTool {
+                name: "list_job_runs".to_string(),
+                description: "Inspect recent workflow/job attempts persisted by the scheduler."
+                    .to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "job": {"type": "string"},
+                        "limit": {"type": "integer", "minimum": 1}
+                    }
+                }),
+            },
+            McpServerTool {
+                name: "list_dead_letters".to_string(),
+                description: "Inspect dead-letter queue entries for failed workflow runs."
+                    .to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "job": {"type": "string"},
+                        "limit": {"type": "integer", "minimum": 1}
+                    }
+                }),
+            },
+            McpServerTool {
+                name: "replay_dead_letter".to_string(),
+                description: "Resolve and replay a dead-letter entry by id.".to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"}
+                    },
+                    "required": ["id"]
+                }),
+            },
+            McpServerTool {
+                name: "list_runtime_events".to_string(),
+                description: "Inspect durable runtime events and their processing status."
+                    .to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "event_name": {"type": "string"},
+                        "limit": {"type": "integer", "minimum": 1}
+                    }
                 }),
             },
             McpServerTool {
@@ -1621,11 +1901,13 @@ fn build_mcp_server(
     );
 
     let memory_store_for_search = memory_store.clone();
+    let event_bus_for_search = event_bus.clone();
     server.register_handler(
         "search_memory",
         traced_mcp_handler(langsmith.clone(), "search_memory", move |args| {
             let request: McpMemorySearchArgs = parse_tool_args(args)?;
             let memory_store = memory_store_for_search.clone();
+            let event_bus = event_bus_for_search.clone();
             block_on_tool(async move {
                 let query = MemoryQuery {
                     text: request.query,
@@ -1637,6 +1919,15 @@ fn build_mcp_server(
                     recency_weight: 0.0,
                 };
                 let results = memory_store.search(&query).await?;
+                if let Err(error) = event_bus
+                    .publish(Event::MemorySearched {
+                        query: query.text.clone(),
+                        result_count: results.len(),
+                    })
+                    .await
+                {
+                    warn!(error = %error, "Failed to publish memory.searched event");
+                }
                 Ok(serde_json::json!({
                     "memories": results.into_iter().map(|scored| serde_json::json!({
                         "id": scored.entry.id,
@@ -1651,11 +1942,13 @@ fn build_mcp_server(
     );
 
     let memory_store_for_store = memory_store.clone();
+    let event_bus_for_store = event_bus.clone();
     server.register_handler(
         "store_memory",
         traced_mcp_handler(langsmith.clone(), "store_memory", move |args| {
             let request: McpStoreMemoryArgs = parse_tool_args(args)?;
             let memory_store = memory_store_for_store.clone();
+            let event_bus = event_bus_for_store.clone();
             block_on_tool(async move {
                 let category = request
                     .category
@@ -1692,7 +1985,18 @@ fn build_mcp_server(
                     }),
                 };
                 let id = entry.id;
+                let memory_type = entry.memory_type;
                 memory_store.store(entry).await?;
+                if let Err(error) = event_bus
+                    .publish(Event::MemoryStored {
+                        entry_id: id,
+                        memory_type,
+                        source: MemorySource::ConversationSummary,
+                    })
+                    .await
+                {
+                    warn!(error = %error, "Failed to publish memory.stored event");
+                }
                 Ok(serde_json::json!({
                     "stored": true,
                     "id": id,
@@ -1800,7 +2104,8 @@ fn build_mcp_server(
         }),
     );
 
-    let pool_for_create_jobs = pool;
+    let pool_for_create_jobs = pool.clone();
+    let pool_for_create_job_handler = pool_for_create_jobs.clone();
     let langsmith_for_create_jobs = langsmith.clone();
     server.register_handler(
         "create_scheduled_job",
@@ -1809,7 +2114,7 @@ fn build_mcp_server(
             "create_scheduled_job",
             move |args| {
                 let request: McpCreateScheduledJobArgs = parse_tool_args(args)?;
-                let pool = pool_for_create_jobs.clone();
+                let pool = pool_for_create_job_handler.clone();
                 block_on_tool(async move {
                     if request.interval_seconds.is_some() && request.run_at.is_some() {
                         return Err(mcp_tool_error(
@@ -1920,6 +2225,296 @@ fn build_mcp_server(
                 })
             },
         ),
+    );
+
+    server.register_handler(
+        "list_workflows",
+        traced_mcp_handler(langsmith.clone(), "list_workflows", move |_| {
+            Ok(serde_json::json!({
+                "workflows": [
+                    {
+                        "workflow_id": "agent",
+                        "tier": "rust_native",
+                        "description": "Rust-native agent execution over the core runtime"
+                    },
+                    {
+                        "workflow_id": "memory_maintenance",
+                        "tier": "rust_native",
+                        "description": "Rust-native episodic memory consolidation and archive maintenance"
+                    },
+                    {
+                        "workflow_id": "rag",
+                        "tier": "rust_native",
+                        "description": "Rust-native RAG indexing, retrieval, and context assembly"
+                    },
+                    {
+                        "workflow_id": "scheduler",
+                        "tier": "rust_native",
+                        "description": "Rust-native scheduled workflow envelope and inner workflow dispatch"
+                    },
+                    {
+                        "workflow_id": "reminder",
+                        "tier": "rust_native",
+                        "description": "Rust-native reminder delivery with channel-aware fallback policies"
+                    },
+                    {
+                        "workflow_id": "*",
+                        "tier": "compat_sidecar",
+                        "description": "Compatibility fallback for bounded legacy sidecar workflows when configured"
+                    }
+                ]
+            }))
+        }),
+    );
+
+    let pool_for_job_runs = pool_for_create_jobs.clone();
+    server.register_handler(
+        "list_job_runs",
+        traced_mcp_handler(langsmith.clone(), "list_job_runs", move |args| {
+            let request: McpListRunsArgs = parse_tool_args(args)?;
+            let pool = pool_for_job_runs.clone();
+            block_on_tool(async move {
+                let rows = if let Some(job) = request.job {
+                    sqlx::query(
+                        r#"
+                        SELECT r.id, r.job_id, j.name, r.status, r.started_at, r.completed_at,
+                               r.retry_count, r.langsmith_trace_id, r.result
+                        FROM job_runs r
+                        JOIN scheduled_jobs j ON j.id = r.job_id
+                        WHERE r.job_id = ? OR j.name = ?
+                        ORDER BY r.started_at DESC
+                        LIMIT ?
+                        "#,
+                    )
+                    .bind(&job)
+                    .bind(&job)
+                    .bind(request.limit.unwrap_or(20).max(1) as i64)
+                    .fetch_all(&pool)
+                    .await
+                } else {
+                    sqlx::query(
+                        r#"
+                        SELECT r.id, r.job_id, j.name, r.status, r.started_at, r.completed_at,
+                               r.retry_count, r.langsmith_trace_id, r.result
+                        FROM job_runs r
+                        JOIN scheduled_jobs j ON j.id = r.job_id
+                        ORDER BY r.started_at DESC
+                        LIMIT ?
+                        "#,
+                    )
+                    .bind(request.limit.unwrap_or(20).max(1) as i64)
+                    .fetch_all(&pool)
+                    .await
+                }
+                .map_err(|e| {
+                    CoreError::Mcp(McpError::ToolExecution(format!(
+                        "Failed to list job runs: {}",
+                        e
+                    )))
+                })?;
+
+                Ok(serde_json::json!({
+                    "runs": rows.into_iter().map(|row| serde_json::json!({
+                        "id": row.get::<String, _>("id"),
+                        "job_id": row.get::<String, _>("job_id"),
+                        "job_name": row.get::<String, _>("name"),
+                        "status": row.get::<String, _>("status"),
+                        "started_at": row.get::<String, _>("started_at"),
+                        "completed_at": row.get::<Option<String>, _>("completed_at"),
+                        "retry_count": row.get::<i64, _>("retry_count"),
+                        "langsmith_trace_id": row.get::<Option<String>, _>("langsmith_trace_id"),
+                        "result": row.get::<Option<String>, _>("result"),
+                    })).collect::<Vec<_>>()
+                }))
+            })
+        }),
+    );
+
+    let pool_for_dead_letters = pool_for_create_jobs.clone();
+    server.register_handler(
+        "list_dead_letters",
+        traced_mcp_handler(langsmith.clone(), "list_dead_letters", move |args| {
+            let request: McpListRunsArgs = parse_tool_args(args)?;
+            let pool = pool_for_dead_letters.clone();
+            block_on_tool(async move {
+                let rows = if let Some(job) = request.job {
+                    sqlx::query(
+                        r#"
+                        SELECT d.id, d.job_id, j.name, d.last_error, d.failed_at, d.retry_count,
+                               d.original_payload, d.resolved, d.resolved_at
+                        FROM dead_letter_queue d
+                        JOIN scheduled_jobs j ON j.id = d.job_id
+                        WHERE d.job_id = ? OR j.name = ?
+                        ORDER BY d.failed_at DESC
+                        LIMIT ?
+                        "#,
+                    )
+                    .bind(&job)
+                    .bind(&job)
+                    .bind(request.limit.unwrap_or(20).max(1) as i64)
+                    .fetch_all(&pool)
+                    .await
+                } else {
+                    sqlx::query(
+                        r#"
+                        SELECT d.id, d.job_id, j.name, d.last_error, d.failed_at, d.retry_count,
+                               d.original_payload, d.resolved, d.resolved_at
+                        FROM dead_letter_queue d
+                        JOIN scheduled_jobs j ON j.id = d.job_id
+                        ORDER BY d.failed_at DESC
+                        LIMIT ?
+                        "#,
+                    )
+                    .bind(request.limit.unwrap_or(20).max(1) as i64)
+                    .fetch_all(&pool)
+                    .await
+                }
+                .map_err(|e| {
+                    CoreError::Mcp(McpError::ToolExecution(format!(
+                        "Failed to list dead letters: {}",
+                        e
+                    )))
+                })?;
+
+                Ok(serde_json::json!({
+                    "dead_letters": rows.into_iter().map(|row| serde_json::json!({
+                        "id": row.get::<String, _>("id"),
+                        "job_id": row.get::<String, _>("job_id"),
+                        "job_name": row.get::<String, _>("name"),
+                        "last_error": row.get::<String, _>("last_error"),
+                        "failed_at": row.get::<String, _>("failed_at"),
+                        "retry_count": row.get::<i64, _>("retry_count"),
+                        "original_payload": parse_optional_json_column(row.get::<Option<String>, _>("original_payload")),
+                        "resolved": row.get::<i64, _>("resolved") == 1,
+                        "resolved_at": row.get::<Option<String>, _>("resolved_at"),
+                    })).collect::<Vec<_>>()
+                }))
+            })
+        }),
+    );
+
+    let pool_for_replay_dead_letter = pool_for_create_jobs.clone();
+    server.register_handler(
+        "replay_dead_letter",
+        traced_mcp_handler(langsmith.clone(), "replay_dead_letter", move |args| {
+            let request: McpReplayDeadLetterArgs = parse_tool_args(args)?;
+            let pool = pool_for_replay_dead_letter.clone();
+            block_on_tool(async move {
+                let row = sqlx::query("SELECT id, job_id FROM dead_letter_queue WHERE id = ?")
+                    .bind(&request.id)
+                    .fetch_optional(&pool)
+                    .await
+                    .map_err(|e| {
+                        CoreError::Mcp(McpError::ToolExecution(format!(
+                            "Failed to load dead-letter entry: {}",
+                            e
+                        )))
+                    })?;
+                let Some(row) = row else {
+                    return Err(mcp_tool_error(format!(
+                        "Dead-letter entry '{}' not found",
+                        request.id
+                    )));
+                };
+                let job_id: String = row.get("job_id");
+                sqlx::query(
+                    r#"
+                    UPDATE scheduled_jobs
+                    SET state = 'active',
+                        consecutive_failures = 0,
+                        lease_owner = NULL,
+                        lease_expires_at = NULL,
+                        next_run_at = COALESCE(next_run_at, ?)
+                    WHERE id = ?
+                    "#,
+                )
+                .bind((Utc::now() + chrono::Duration::minutes(1)).to_rfc3339())
+                .bind(&job_id)
+                .execute(&pool)
+                .await
+                .map_err(|e| {
+                    CoreError::Mcp(McpError::ToolExecution(format!(
+                        "Failed to reset scheduled job: {}",
+                        e
+                    )))
+                })?;
+                sqlx::query(
+                    "UPDATE dead_letter_queue SET resolved = 1, resolved_at = ? WHERE id = ?",
+                )
+                .bind(Utc::now().to_rfc3339())
+                .bind(&request.id)
+                .execute(&pool)
+                .await
+                .map_err(|e| {
+                    CoreError::Mcp(McpError::ToolExecution(format!(
+                        "Failed to resolve dead-letter entry: {}",
+                        e
+                    )))
+                })?;
+                Ok(serde_json::json!({
+                    "replayed": true,
+                    "dead_letter_id": request.id,
+                    "job_id": job_id,
+                }))
+            })
+        }),
+    );
+
+    let pool_for_runtime_events = pool_for_create_jobs.clone();
+    server.register_handler(
+        "list_runtime_events",
+        traced_mcp_handler(langsmith.clone(), "list_runtime_events", move |args| {
+            let request: McpListRuntimeEventsArgs = parse_tool_args(args)?;
+            let pool = pool_for_runtime_events.clone();
+            block_on_tool(async move {
+                let rows = if let Some(event_name) = request.event_name {
+                    sqlx::query(
+                        r#"
+                        SELECT id, event_name, event_type, session_id, payload, status, created_at, processed_at
+                        FROM runtime_events
+                        WHERE event_name = ?
+                        ORDER BY created_at DESC
+                        LIMIT ?
+                        "#,
+                    )
+                    .bind(&event_name)
+                    .bind(request.limit.unwrap_or(20).max(1) as i64)
+                    .fetch_all(&pool)
+                    .await
+                } else {
+                    sqlx::query(
+                        r#"
+                        SELECT id, event_name, event_type, session_id, payload, status, created_at, processed_at
+                        FROM runtime_events
+                        ORDER BY created_at DESC
+                        LIMIT ?
+                        "#,
+                    )
+                    .bind(request.limit.unwrap_or(20).max(1) as i64)
+                    .fetch_all(&pool)
+                    .await
+                }
+                .map_err(|e| {
+                    CoreError::Mcp(McpError::ToolExecution(format!(
+                        "Failed to list runtime events: {}",
+                        e
+                    )))
+                })?;
+
+                Ok(serde_json::json!({
+                    "events": rows.into_iter().map(|row| serde_json::json!({
+                        "id": row.get::<String, _>("id"),
+                        "event_name": row.get::<String, _>("event_name"),
+                        "event_type": row.get::<String, _>("event_type"),
+                        "session_id": row.get::<Option<String>, _>("session_id"),
+                        "payload": parse_json_column(row.get::<String, _>("payload")),
+                        "status": row.get::<String, _>("status"),
+                        "created_at": row.get::<String, _>("created_at"),
+                        "processed_at": row.get::<Option<String>, _>("processed_at"),
+                    })).collect::<Vec<_>>()
+                }))
+            })
+        }),
     );
 
     let rag_store_for_list = rag_store.clone();
@@ -2244,6 +2839,11 @@ fn parse_json_column(raw: String) -> serde_json::Value {
     serde_json::from_str(&raw).unwrap_or_else(|_| serde_json::json!(raw))
 }
 
+fn parse_optional_json_column(raw: Option<String>) -> serde_json::Value {
+    raw.map(parse_json_column)
+        .unwrap_or(serde_json::Value::Null)
+}
+
 fn parse_mcp_enum<T>(raw: &str, label: &str) -> openrustclaw_core::error::Result<T>
 where
     T: std::str::FromStr,
@@ -2339,6 +2939,23 @@ struct McpCreateScheduledJobArgs {
     workflow_metadata: Option<serde_json::Value>,
     timezone: Option<String>,
     max_retries: Option<u32>,
+}
+
+#[derive(serde::Deserialize, Default)]
+struct McpListRunsArgs {
+    job: Option<String>,
+    limit: Option<usize>,
+}
+
+#[derive(serde::Deserialize)]
+struct McpReplayDeadLetterArgs {
+    id: String,
+}
+
+#[derive(serde::Deserialize, Default)]
+struct McpListRuntimeEventsArgs {
+    event_name: Option<String>,
+    limit: Option<usize>,
 }
 
 #[derive(serde::Deserialize, Default)]
@@ -2474,20 +3091,30 @@ mod tests {
         }
     }
 
-    fn test_channel_agent() -> ChannelAgent {
+    async fn test_channel_agent() -> (ChannelAgent, sqlx::SqlitePool) {
         let runtime = AgentRuntime::new(
             Arc::new(MockProvider),
             Arc::new(openrustclaw_agent::tools::ToolRegistry::new()),
             "OpenRustClaw".to_string(),
         );
+        let pool = openrustclaw_db::init_pool("sqlite::memory:", 1)
+            .await
+            .expect("pool");
+        openrustclaw_db::run_migrations(&pool)
+            .await
+            .expect("migrations");
 
-        ChannelAgent {
-            runtime: Arc::new(runtime),
-            session_manager: Arc::new(SessionManager::new()),
-            core_memory_store: None,
-            max_history_messages: 24,
-            langsmith: None,
-        }
+        (
+            ChannelAgent {
+                runtime: Arc::new(runtime),
+                session_manager: Arc::new(SessionManager::new()),
+                core_memory_store: None,
+                max_history_messages: 24,
+                langsmith: None,
+                event_bus: DurableEventBus::new(pool.clone(), 16),
+            },
+            pool,
+        )
     }
 
     #[test]
@@ -2520,7 +3147,7 @@ mod tests {
 
     #[tokio::test]
     async fn inbound_channel_messages_reuse_session_for_same_route() {
-        let agent = test_channel_agent();
+        let (agent, _pool) = test_channel_agent().await;
         let mut route_sessions = HashMap::new();
 
         let first_reply = agent
@@ -2565,7 +3192,7 @@ mod tests {
 
     #[tokio::test]
     async fn shared_group_scope_isolated_by_user() {
-        let agent = test_channel_agent();
+        let (agent, _pool) = test_channel_agent().await;
         let mut route_sessions = HashMap::new();
 
         let first_reply = agent
@@ -2607,6 +3234,52 @@ mod tests {
         assert_eq!(route_sessions.len(), 2);
         assert_ne!(first_reply.session_id, second_reply.session_id);
         assert_eq!(first_reply.metadata["slack_channel"], "C123");
+    }
+
+    #[tokio::test]
+    async fn channel_agent_publishes_runtime_lifecycle_and_message_events() {
+        let (agent, pool) = test_channel_agent().await;
+        let mut route_sessions = HashMap::new();
+
+        let reply = agent
+            .handle_incoming_message(
+                &mut route_sessions,
+                IncomingMessage {
+                    session_id: Uuid::new_v4(),
+                    user_id: "user-1".to_string(),
+                    content: "hello".to_string(),
+                    platform: openrustclaw_core::types::Platform::Telegram,
+                    metadata: serde_json::json!({
+                        "telegram_chat_id": "chat-123"
+                    }),
+                },
+            )
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(reply.content, "Echo: hello");
+        agent
+            .close_route_sessions(
+                &mut route_sessions,
+                openrustclaw_core::types::Platform::Telegram,
+                "test_completed",
+            )
+            .await;
+
+        let names: Vec<String> =
+            sqlx::query_scalar("SELECT event_name FROM runtime_events ORDER BY created_at ASC")
+                .fetch_all(&pool)
+                .await
+                .unwrap();
+
+        assert!(names.contains(&"session.created".to_string()));
+        assert!(names.contains(&"session.start".to_string()));
+        assert!(names.contains(&"message.received".to_string()));
+        assert!(names.contains(&"message.sent".to_string()));
+        assert!(names.contains(&"session.post_turn".to_string()));
+        assert!(names.contains(&"session.end".to_string()));
+        assert!(names.contains(&"session.closed".to_string()));
     }
 
     #[test]
@@ -2796,7 +3469,7 @@ mod tests {
         let pool = init_pool(&db_url, 1).await.unwrap();
         run_migrations(&pool).await.unwrap();
 
-        let server = build_mcp_server(workspace.path().to_path_buf(), pool, None);
+        let server = build_mcp_server(workspace.path().to_path_buf(), pool.clone(), None);
 
         let store_req = serde_json::json!({
             "jsonrpc": "2.0",
@@ -2879,6 +3552,14 @@ mod tests {
                 .unwrap()
                 .contains("language_preference")
         );
+
+        let event_names: Vec<String> =
+            sqlx::query_scalar("SELECT event_name FROM runtime_events ORDER BY created_at ASC")
+                .fetch_all(&pool)
+                .await
+                .unwrap();
+        assert!(event_names.contains(&"memory.stored".to_string()));
+        assert!(event_names.contains(&"memory.searched".to_string()));
     }
 
     #[tokio::test(flavor = "multi_thread")]
