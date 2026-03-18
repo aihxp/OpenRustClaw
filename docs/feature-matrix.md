@@ -34,7 +34,7 @@ Status values:
 | --- | --- | --- |
 | WebChat | real | Current baseline chat path |
 | Telegram | real | Auth probe, outbound send, Bot API polling receive, and local agent/session routing in `openrustclaw start` exist |
-| Discord | partial | Auth probe, outbound send, verified Interactions HTTP ingress, deferred acknowledgements, and local agent/session routing exist; full Gateway message-event support remains incomplete |
+| Discord | partial | Auth probe, outbound send, verified Interactions HTTP ingress, Gateway `MESSAGE_CREATE` receive, deferred acknowledgements, and local agent/session routing exist; reconnect/resume coverage remains incomplete |
 | Slack | real | HTTP mode supports auth probe, outbound send, built-in Events API ingress, and local agent/session routing; Socket Mode remains incomplete |
 | Matrix | gated | Repo surface exists, but runtime client support is deferred from the current shipped surface |
 | Google Chat | gated | Repo surface exists, but service-account auth and runtime coverage are deferred from the current shipped surface |

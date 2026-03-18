@@ -36,6 +36,8 @@ governor = "0.8"
 # Microsoft Teams & Google Chat
 reqwest = { version = "0.12", features = ["json", "multipart"] }
 jsonwebtoken = "9"
+tokio-tungstenite = "0.26"
+url.workspace = true
 
 # LINE, WeChat (HMAC/SHA for webhook signature verification)
 hmac = "0.12"

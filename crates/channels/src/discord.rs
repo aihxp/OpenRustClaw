@@ -13,14 +13,18 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 
 use async_trait::async_trait;
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+use futures::{SinkExt, StreamExt};
 use governor::{Quota, RateLimiter};
 use reqwest::Client;
 use std::num::NonZeroU32;
 use tokio::sync::{Mutex, RwLock, mpsc};
-use tracing::{debug, info};
+use tokio::task::JoinHandle;
+use tokio_tungstenite::{connect_async, tungstenite::Message as WsMessage};
+use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 use openrustclaw_core::config::DiscordConfig;
@@ -43,6 +47,7 @@ pub struct DiscordChannel {
         >,
     >,
     is_connected: RwLock<bool>,
+    gateway_task: Mutex<Option<JoinHandle<()>>>,
     _message_cache: Arc<RwLock<HashMap<Uuid, String>>>, // Maps session_id to message_id
 }
 
@@ -65,6 +70,7 @@ impl DiscordChannel {
             incoming_rx: Mutex::new(incoming_rx),
             rate_limiter,
             is_connected: RwLock::new(false),
+            gateway_task: Mutex::new(None),
             _message_cache: Arc::new(RwLock::new(HashMap::new())),
         }
     }
@@ -96,6 +102,80 @@ impl DiscordChannel {
     /// Create a verified Discord Interactions handler.
     pub fn interactions_handler(&self) -> Result<DiscordInteractionsHandler> {
         DiscordInteractionsHandler::new(self.config.clone(), self.incoming_tx.clone())
+    }
+
+    async fn fetch_gateway_url(&self) -> Result<String> {
+        let url = format!("{}/gateway/bot", self.api_base_url());
+        let response = self
+            .client
+            .get(url)
+            .header("Authorization", self.header_value())
+            .send()
+            .await
+            .map_err(|e| ChannelError::Connection {
+                platform: "discord".to_string(),
+                message: e.to_string(),
+            })?;
+
+        let status = response.status();
+        let body: serde_json::Value = response
+            .json()
+            .await
+            .unwrap_or_else(|_| serde_json::json!({}));
+
+        if status == reqwest::StatusCode::UNAUTHORIZED {
+            return Err(ChannelError::AuthFailed {
+                platform: "discord".to_string(),
+                message: body
+                    .get("message")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or("unauthorized")
+                    .to_string(),
+            }
+            .into());
+        }
+
+        if !status.is_success() {
+            return Err(ChannelError::Connection {
+                platform: "discord".to_string(),
+                message: body
+                    .get("message")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or("Discord gateway discovery failed")
+                    .to_string(),
+            }
+            .into());
+        }
+
+        let gateway_url = body
+            .get("url")
+            .and_then(|value| value.as_str())
+            .ok_or_else(|| ChannelError::InvalidFormat {
+                platform: "discord".to_string(),
+                message: "Discord gateway response missing url".to_string(),
+            })?;
+        let separator = if gateway_url.contains('?') { "&" } else { "?" };
+        Ok(format!("{gateway_url}{separator}v=10&encoding=json"))
+    }
+
+    async fn start_gateway_loop(&self, gateway_url: String) -> Result<()> {
+        let (stream, _) =
+            connect_async(gateway_url)
+                .await
+                .map_err(|e| ChannelError::Connection {
+                    platform: "discord".to_string(),
+                    message: format!("Failed to connect to Discord gateway websocket: {}", e),
+                })?;
+
+        let config = self.config.clone();
+        let incoming_tx = self.incoming_tx.clone();
+        let gateway_task = tokio::spawn(async move {
+            if let Err(error) = run_gateway_loop(stream, config, incoming_tx).await {
+                warn!(error = %error, "Discord gateway loop exited");
+            }
+        });
+        *self.gateway_task.lock().await = Some(gateway_task);
+        Ok(())
     }
 }
 
@@ -301,6 +381,9 @@ impl Channel for DiscordChannel {
             .into());
         }
 
+        let gateway_url = self.fetch_gateway_url().await?;
+        self.start_gateway_loop(gateway_url).await?;
+
         *self.is_connected.write().await = true;
         info!("Discord channel connected");
         Ok(())
@@ -310,10 +393,189 @@ impl Channel for DiscordChannel {
         info!("Disconnecting from Discord...");
 
         *self.is_connected.write().await = false;
+        if let Some(task) = self.gateway_task.lock().await.take() {
+            task.abort();
+        }
 
         info!("Discord channel disconnected");
         Ok(())
     }
+}
+
+async fn run_gateway_loop<S>(
+    mut stream: tokio_tungstenite::WebSocketStream<S>,
+    config: DiscordConfig,
+    incoming_tx: mpsc::Sender<IncomingMessage>,
+) -> Result<()>
+where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+{
+    let mut heartbeat = tokio::time::interval(Duration::from_secs(60));
+    heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    let mut heartbeats_enabled = false;
+    let mut last_sequence: Option<i64> = None;
+
+    loop {
+        tokio::select! {
+            _ = heartbeat.tick(), if heartbeats_enabled => {
+                let payload = serde_json::json!({
+                    "op": 1,
+                    "d": last_sequence,
+                });
+                stream
+                    .send(WsMessage::Text(payload.to_string().into()))
+                    .await
+                    .map_err(|e| ChannelError::Connection {
+                        platform: "discord".to_string(),
+                        message: format!("Failed to send Discord heartbeat: {}", e),
+                    })?;
+            }
+            message = stream.next() => {
+                let Some(message) = message else {
+                    return Err(ChannelError::Connection {
+                        platform: "discord".to_string(),
+                        message: "Discord gateway closed the connection".to_string(),
+                    }.into());
+                };
+
+                let message = message.map_err(|e| ChannelError::Connection {
+                    platform: "discord".to_string(),
+                    message: format!("Discord gateway read failed: {}", e),
+                })?;
+
+                match message {
+                    WsMessage::Text(text) => {
+                        let envelope: GatewayEnvelope = serde_json::from_str(&text).map_err(|e| ChannelError::InvalidFormat {
+                            platform: "discord".to_string(),
+                            message: format!("Failed to parse Discord gateway payload: {}", e),
+                        })?;
+                        if let Some(sequence) = envelope.s {
+                            last_sequence = Some(sequence);
+                        }
+
+                        match envelope.op {
+                            10 => {
+                                let hello: GatewayHello = serde_json::from_value(envelope.d).map_err(|e| ChannelError::InvalidFormat {
+                                    platform: "discord".to_string(),
+                                    message: format!("Failed to parse Discord hello payload: {}", e),
+                                })?;
+                                heartbeat = tokio::time::interval(Duration::from_millis(hello.heartbeat_interval.max(1)));
+                                heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+                                heartbeats_enabled = true;
+                                let identify = serde_json::json!({
+                                    "op": 2,
+                                    "d": {
+                                        "token": config.token,
+                                        "intents": 37377,
+                                        "properties": {
+                                            "os": std::env::consts::OS,
+                                            "browser": "openrustclaw",
+                                            "device": "openrustclaw",
+                                        },
+                                    },
+                                });
+                                stream
+                                    .send(WsMessage::Text(identify.to_string().into()))
+                                    .await
+                                    .map_err(|e| ChannelError::Connection {
+                                        platform: "discord".to_string(),
+                                        message: format!("Failed to send Discord identify payload: {}", e),
+                                    })?;
+                            }
+                            0 => {
+                                if envelope.t.as_deref() == Some("MESSAGE_CREATE") {
+                                    let event: GatewayMessageCreate = serde_json::from_value(envelope.d).map_err(|e| ChannelError::InvalidFormat {
+                                        platform: "discord".to_string(),
+                                        message: format!("Failed to parse Discord message event: {}", e),
+                                    })?;
+                                    if let Some(message) = normalize_gateway_message(&config, event)? {
+                                        incoming_tx
+                                            .send(message)
+                                            .await
+                                            .map_err(|e| ChannelError::Connection {
+                                                platform: "discord".to_string(),
+                                                message: format!("Failed to enqueue Discord gateway message: {}", e),
+                                            })?;
+                                    }
+                                }
+                            }
+                            7 => {
+                                return Err(ChannelError::Connection {
+                                    platform: "discord".to_string(),
+                                    message: "Discord gateway requested reconnect".to_string(),
+                                }
+                                .into());
+                            }
+                            11 => {
+                                debug!("Received Discord heartbeat ACK");
+                            }
+                            _ => {}
+                        }
+                    }
+                    WsMessage::Ping(payload) => {
+                        stream
+                            .send(WsMessage::Pong(payload))
+                            .await
+                            .map_err(|e| ChannelError::Connection {
+                                platform: "discord".to_string(),
+                                message: format!("Failed to respond to Discord gateway ping: {}", e),
+                            })?;
+                    }
+                    WsMessage::Close(_) => {
+                        return Err(ChannelError::Connection {
+                            platform: "discord".to_string(),
+                            message: "Discord gateway closed the connection".to_string(),
+                        }
+                        .into());
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+}
+
+fn normalize_gateway_message(
+    config: &DiscordConfig,
+    event: GatewayMessageCreate,
+) -> Result<Option<IncomingMessage>> {
+    if event.author.bot.unwrap_or(false) {
+        return Ok(None);
+    }
+    if !config.allowed_channels.is_empty() && !config.allowed_channels.contains(&event.channel_id) {
+        return Ok(None);
+    }
+    if let Some(guild_id) = event.guild_id.as_ref()
+        && !config.allowed_guilds.is_empty()
+        && !config.allowed_guilds.contains(guild_id)
+    {
+        return Ok(None);
+    }
+    if event.guild_id.is_none() && !config.dm_enabled {
+        return Ok(None);
+    }
+    if event.content.trim().is_empty() {
+        return Ok(None);
+    }
+
+    let mut metadata = serde_json::json!({
+        "discord_channel_id": event.channel_id,
+        "discord_message_id": event.id,
+        "discord_author_username": event.author.username,
+        "discord_gateway": true,
+        "discord_application_id": config.application_id,
+    });
+    if let Some(guild_id) = event.guild_id {
+        metadata["discord_guild_id"] = serde_json::json!(guild_id);
+    }
+
+    Ok(Some(IncomingMessage {
+        session_id: Uuid::new_v4(),
+        user_id: event.author.id,
+        content: event.content,
+        platform: Platform::Discord,
+        metadata,
+    }))
 }
 
 /// Handler for verified Discord Interactions HTTP requests.
@@ -564,6 +826,40 @@ struct DiscordInteractionUser {
     id: String,
 }
 
+#[derive(Debug, serde::Deserialize)]
+struct GatewayEnvelope {
+    op: u8,
+    #[serde(default)]
+    d: serde_json::Value,
+    #[serde(default)]
+    s: Option<i64>,
+    #[serde(default)]
+    t: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct GatewayHello {
+    heartbeat_interval: u64,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct GatewayMessageCreate {
+    id: String,
+    channel_id: String,
+    #[serde(default)]
+    guild_id: Option<String>,
+    content: String,
+    author: GatewayAuthor,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct GatewayAuthor {
+    id: String,
+    username: String,
+    #[serde(default)]
+    bot: Option<bool>,
+}
+
 fn extract_interaction_content(data: &DiscordInteractionData) -> String {
     find_option_value(&data.options)
         .unwrap_or_else(|| data.name.clone())
@@ -611,6 +907,46 @@ fn find_option_value(options: &[DiscordInteractionOption]) -> Option<String> {
 mod tests {
     use super::*;
     use ed25519_dalek::{Signer, SigningKey};
+    use tokio::net::TcpListener;
+    use tokio_tungstenite::accept_async;
+
+    async fn spawn_mock_gateway(
+        dispatch_event: Option<serde_json::Value>,
+    ) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let (tcp_stream, _) = listener.accept().await.unwrap();
+            let mut ws_stream = accept_async(tcp_stream).await.unwrap();
+            ws_stream
+                .send(WsMessage::Text(
+                    serde_json::json!({
+                        "op": 10,
+                        "d": {"heartbeat_interval": 250}
+                    })
+                    .to_string()
+                    .into(),
+                ))
+                .await
+                .unwrap();
+
+            let identify = ws_stream.next().await.unwrap().unwrap();
+            let identify_text = identify.into_text().unwrap();
+            let identify_json: serde_json::Value = serde_json::from_str(&identify_text).unwrap();
+            assert_eq!(identify_json["op"], 2);
+
+            if let Some(event) = dispatch_event {
+                ws_stream
+                    .send(WsMessage::Text(event.to_string().into()))
+                    .await
+                    .unwrap();
+            }
+
+            let _ = tokio::time::timeout(std::time::Duration::from_millis(500), ws_stream.next()).await;
+        });
+
+        format!("ws://{}/gateway", addr)
+    }
 
     #[test]
     fn test_format_for_discord() {
@@ -624,6 +960,7 @@ mod tests {
         use wiremock::matchers::{header, method, path};
         use wiremock::{Mock, MockServer, ResponseTemplate};
 
+        let gateway_url = spawn_mock_gateway(None).await;
         let server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/users/@me"))
@@ -631,6 +968,14 @@ mod tests {
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "id": "123",
                 "username": "test-bot"
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/gateway/bot"))
+            .and(header("authorization", "Bot token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "url": gateway_url,
             })))
             .mount(&server)
             .await;
@@ -671,12 +1016,20 @@ mod tests {
         use wiremock::matchers::{method, path};
         use wiremock::{Mock, MockServer, ResponseTemplate};
 
+        let gateway_url = spawn_mock_gateway(None).await;
         let server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/users/@me"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "id": "123",
                 "username": "test-bot"
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/gateway/bot"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "url": gateway_url,
             })))
             .mount(&server)
             .await;
@@ -713,6 +1066,68 @@ mod tests {
             })
             .await
             .unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_gateway_message_create_is_enqueued() {
+        use wiremock::matchers::{header, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let gateway_url = spawn_mock_gateway(Some(serde_json::json!({
+            "op": 0,
+            "t": "MESSAGE_CREATE",
+            "s": 1,
+            "d": {
+                "id": "message-1",
+                "channel_id": "channel-1",
+                "guild_id": "guild-1",
+                "content": "hello from gateway",
+                "author": {
+                    "id": "user-1",
+                    "username": "alice",
+                    "bot": false
+                }
+            }
+        })))
+        .await;
+
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/users/@me"))
+            .and(header("authorization", "Bot token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "123",
+                "username": "test-bot"
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/gateway/bot"))
+            .and(header("authorization", "Bot token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "url": gateway_url,
+            })))
+            .mount(&server)
+            .await;
+
+        let config = DiscordConfig {
+            enabled: true,
+            token: "token".to_string(),
+            application_id: "app-1".to_string(),
+            interaction_public_key: None,
+            api_base_url: Some(server.uri()),
+            rate_limit_requests_per_second: 5,
+            allowed_guilds: vec![],
+            allowed_channels: vec![],
+            dm_enabled: true,
+        };
+        let mut channel = DiscordChannel::new(config);
+        channel.connect().await.unwrap();
+        let incoming = channel.receive().await.unwrap();
+        assert_eq!(incoming.content, "hello from gateway");
+        assert_eq!(incoming.user_id, "user-1");
+        assert_eq!(incoming.metadata["discord_channel_id"], "channel-1");
+        channel.disconnect().await.unwrap();
     }
 
     #[tokio::test]
