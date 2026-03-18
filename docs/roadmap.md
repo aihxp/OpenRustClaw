@@ -733,11 +733,34 @@ Remaining:
   - model-per-agent-profile selection,
   - routing by task type, cost, latency, privacy, or capability,
   - operator-visible routing decisions and overrides.
+- [ ] Add a first-class multi-claw execution model so users can choose how many Claws exist and how work is assigned:
+  - `solo_claw` mode where one Claw handles all work,
+  - `task_assigned` mode where individual tasks bind to specific Claws,
+  - `category_assigned` mode where task categories map to specific Claws,
+  - `orchestrated` mode where a quarterback/orchestrator Claw delegates to worker Claws,
+  - explicit per-Claw identity, profile, model, tool, and memory scope.
+- [ ] Make multi-claw availability discoverable to both users and Claw itself:
+  - user-visible mode selection and inspection from onboarding, CLI, and future Control UI,
+  - runtime introspection so Claw knows whether it is running solo, assigned, or orchestrated,
+  - operator-visible list of available Claws, what they own, and what delegation paths are allowed,
+  - prompt/runtime context that tells each Claw when other Claws exist and when delegation is appropriate.
+- [ ] Add first-class task-to-Claw and category-to-Claw assignment policies:
+  - direct task binding,
+  - category routing tables,
+  - default fallback Claw,
+  - per-workspace overrides,
+  - operator review and override surfaces.
 - [ ] Add a quarterback/orchestrator model mode:
   - one model plans or routes work,
   - one or more worker models execute subtasks,
   - bounded handoff contracts,
   - explicit traceability of which model decided versus which model executed.
+- [ ] Extend quarterback/orchestrator mode into a full orchestrated multi-claw runtime:
+  - primary Claw can delegate to named worker Claws,
+  - worker Claws return structured completion envelopes,
+  - primary Claw can ask follow-up questions of worker Claws,
+  - primary Claw decides when worker output is complete enough to expose to the user,
+  - Rust persists the full parent/child Claw transcript and ownership chain.
 - [ ] Add sub-agent supervision surfaces:
   - active agent list/watch,
   - logs,
@@ -863,18 +886,28 @@ Remaining:
   - daemon install,
   - provider selection,
   - first channel login/pairing,
-  - remote access guidance.
+  - remote access guidance,
+  - solo versus multi-claw mode selection.
 - [ ] Add an explicit onboarding user journey inspired by current OpenClaw flows:
   - QuickStart vs Advanced path selection,
   - local gateway vs remote gateway/client mode,
   - existing config detection with keep/modify/reset choices,
   - workspace/bootstrap file setup,
   - model/auth setup,
+  - solo Claw versus multi-claw mode selection,
+  - task/category/orchestrator assignment style when multi-claw is enabled,
   - channel pairing/login,
   - daemon/service install,
   - post-onboarding health check,
   - first chat/dashboard handoff.
 - [ ] Add a shared onboarding/config protocol so CLI, future Control UI, and future desktop/mobile onboarding all write the same typed configuration model instead of diverging flows.
+- [ ] Make multi-claw mode and assignment state part of the shared typed configuration model:
+  - current execution mode,
+  - registered Claws,
+  - per-Claw profile bindings,
+  - task/category routing tables,
+  - orchestrator/worker relationships,
+  - safe downgrade back to solo mode.
 - [ ] Add user configuration and settings parity:
   - interactive `configure`-style flows by section,
   - typed config editing from CLI and Control UI,

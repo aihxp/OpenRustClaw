@@ -62,7 +62,8 @@ Status values:
 | MCP remote HTTP/SSE | deferred | Not part of current shipped surface |
 | `mcp2-cli` | real | Real stdio/OpenAPI discovery path |
 | Native web access / browser automation | deferred | Roadmap now includes a Rust-native stack for read-only fetch/extract, crawl-for-RAG, interactive browser control, optional vision verification, MCP/browser tool surfaces, and optional compatibility bridges for external browser runtimes where Rust remains the durable source of truth |
-| Multi-model orchestration / quarterback model | deferred | Roadmap now includes model profiles, model-per-task routing, a planner-orchestrator model mode, and a control-plane fallback model so model changes and outages do not take the platform down |
+| Multi-model orchestration / quarterback model | deferred | Roadmap now includes model profiles, model-per-task routing, a planner-orchestrator model mode, structured inter-model delegation, and a control-plane fallback model so model changes and outages do not take the platform down |
+| Multi-claw execution modes | deferred | Roadmap now includes solo-Claw, task-assigned, category-assigned, and orchestrated multi-claw modes plus user-visible and agent-visible discoverability of what Claws exist and how work is assigned |
 | Provider/model availability scanning | deferred | Roadmap now includes onboarding-time and recurring provider/model scans, BYOK validation, role-aware model recommendations, and failover guidance for core versus control-plane model lanes |
 | Onboarding journey / config settings / doctor | partial | Basic onboarding and doctor commands exist, but the roadmap now expands them toward OpenClaw-style guided setup, typed config/settings flows, repair/migration behaviors, and deeper health diagnostics |
 | Cursor integration | gated | Repo surface exists, but it is not part of the current shipped runtime/tooling surface |
