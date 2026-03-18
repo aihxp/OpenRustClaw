@@ -208,6 +208,8 @@ pub struct DiscordConfig {
     pub token: String,
     pub application_id: String,
     #[serde(default)]
+    pub interaction_public_key: Option<String>,
+    #[serde(default)]
     pub api_base_url: Option<String>,
     pub rate_limit_requests_per_second: u32,
     pub allowed_guilds: Vec<String>,
@@ -726,6 +728,7 @@ impl Default for AppConfig {
                     enabled: false,
                     token: String::new(),
                     application_id: String::new(),
+                    interaction_public_key: None,
                     api_base_url: None,
                     rate_limit_requests_per_second: 5,
                     allowed_guilds: Vec::new(),

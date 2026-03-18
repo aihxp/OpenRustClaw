@@ -24,7 +24,7 @@ Goal: define the real supported surface and gate everything else.
 - Gate non-shipping features behind explicit docs/status rather than silent stubs.
 
 Status:
-- In progress
+- Mostly complete
 
 ## Phase 2: Rust-Sidecar Contract
 
@@ -35,7 +35,7 @@ Goal: make the Rust/Python boundary explicit and testable.
 - Add integration tests for request/response semantics and workflow metadata.
 
 Status:
-- Pending
+- In progress
 
 ## Phase 3: Durable Scheduler
 
@@ -48,7 +48,7 @@ Goal: make scheduler execution real end to end.
 - Add restart-safe tests around lease, retry, and run persistence.
 
 Status:
-- In progress
+- Mostly complete
 
 ## Phase 4: Memory Service
 
@@ -60,7 +60,7 @@ Goal: make sidecar memory operations use the Rust memory system instead of mocks
 - Add eval coverage for recall and archive quality.
 
 Status:
-- Pending
+- In progress
 
 ## Phase 5: Tier 1 Channels
 
@@ -81,7 +81,7 @@ Each channel must have:
 - tests for nominal and failure paths
 
 Status:
-- Pending
+- In progress
 
 ## Phase 6: MCP Surface
 
@@ -92,7 +92,7 @@ Goal: keep one honest supported transport and make it useful.
 - Keep `mcp2-cli` as the operator/debug path.
 
 Status:
-- Pending
+- Mostly complete
 
 ## Phase 7: Skills Runtime
 
@@ -104,7 +104,7 @@ Goal: move from claims to a usable secure execution model.
 - Build install/update/remove lifecycle on top of the live registry path.
 
 Status:
-- Pending
+- In progress
 
 ## Phase 8: RAG and Context
 
@@ -115,7 +115,19 @@ Goal: separate retrieval from memory and make context assembly deterministic.
 - Token-budgeted context assembly and compaction
 
 Status:
-- Pending
+- In progress
+
+## Current Snapshot
+
+- Product contract and runtime/docs honesty work is largely complete.
+- Scheduler, MCP stdio, marketplace access, and the no-import WASM executor are real.
+- Telegram and Slack HTTP mode are end-to-end runtime paths.
+- Discord now has verified Interactions HTTP ingress with deferred acknowledgements and follow-up replies, but not full Gateway message-event coverage.
+- The biggest remaining engineering gaps are:
+  - typed Rust-sidecar contracts
+  - memory archive/maintenance completion
+  - fuller skills lifecycle/capability enforcement
+  - production-grade RAG/context assembly
 
 ## Current Execution Order
 

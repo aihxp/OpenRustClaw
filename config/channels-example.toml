@@ -20,6 +20,7 @@ rate_limit_per_second = 30  # Telegram allows ~30 msg/sec
 enabled = true
 token = "${DISCORD_TOKEN}"  # Bot token from Discord Developer Portal
 application_id = "${DISCORD_APP_ID}"  # Application ID for slash commands
+interaction_public_key = "${DISCORD_PUBLIC_KEY}"  # Public key for verified Interactions ingress
 rate_limit_requests_per_second = 5  # Discord global rate limit
 allowed_guilds = []  # List of allowed server IDs (empty = allow all)
 allowed_channels = []  # List of allowed channel IDs (empty = allow all)

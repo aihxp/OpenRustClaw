@@ -1,16 +1,26 @@
 //! Start command - Initialize and run the OpenRustClaw server.
 
 use anyhow::{Context, Result};
+use axum::{
+    Router,
+    body::Bytes,
+    extract::State,
+    http::{HeaderMap, StatusCode},
+    response::IntoResponse,
+    routing::post,
+};
 use chrono::{DateTime, Utc};
 use async_trait::async_trait;
 use futures::Stream;
-use openrustclaw_core::error::{Error as CoreError, McpError};
+use openrustclaw_core::error::{ChannelError as CoreChannelError, Error as CoreError, McpError};
 use openrustclaw_core::traits::{Channel, LlmProvider};
 use openrustclaw_core::types::{
     CompletionRequest, CompletionResponse, MemoryEntry, MemoryQuery, MemoryType, Message,
     OutgoingMessage, SessionType, SourceType, StreamChunk, ToolFormat,
 };
 use openrustclaw_agent::runtime::AgentRuntime;
+use openrustclaw_channels::discord::DiscordInteractionsHandler;
+use openrustclaw_channels::slack::SlackEventHandler;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
@@ -21,7 +31,7 @@ use tokio::signal;
 use tracing::{error, info, warn};
 
 use openrustclaw_channels::{ChannelFactory, ChannelType, parse_channels_list};
-use openrustclaw_core::config::AppConfig;
+use openrustclaw_core::config::{AppConfig, SlackMode};
 use openrustclaw_core::traits::{
     CoreMemoryStore as CoreMemoryStoreTrait, MemoryStore as MemoryStoreTrait,
 };
@@ -194,7 +204,7 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
     // Create and start gateway server
     let gateway = GatewayServer::new(config.gateway.host.clone(), config.gateway.port);
 
-    let app = gateway.router(gateway_state);
+    let mut app = gateway.router(gateway_state);
     let addr = gateway.addr();
 
     info!(addr = %addr, "Starting gateway server");
@@ -208,7 +218,52 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
         config.scheduler.clone(),
     );
 
-    let enabled_channels = ChannelFactory::create_channels(&config.channels);
+    let mut channel_config = config.channels.clone();
+    let mut discord_ingress_handler = None;
+    let mut slack_ingress_handler = None;
+    let mut enabled_channels = Vec::new();
+
+    if channel_config.discord.enabled {
+        match ChannelFactory::create_discord(channel_config.discord.clone()) {
+            Ok(discord_channel) => {
+                match discord_channel.interactions_handler() {
+                    Ok(handler) => {
+                        discord_ingress_handler = Some(handler);
+                    }
+                    Err(error) => {
+                        warn!(
+                            error = %error,
+                            "Discord Interactions ingress not enabled; channel remains outbound-only"
+                        );
+                    }
+                }
+                enabled_channels.push(Box::new(discord_channel) as Box<dyn Channel>);
+                channel_config.discord.enabled = false;
+            }
+            Err(e) => {
+                error!(error = %e, "Failed to create Discord channel");
+                channel_config.discord.enabled = false;
+            }
+        }
+    }
+
+    if channel_config.slack.enabled {
+        match ChannelFactory::create_slack(channel_config.slack.clone()) {
+            Ok(slack_channel) => {
+                if channel_config.slack.mode == SlackMode::Http {
+                    slack_ingress_handler = Some(slack_channel.event_handler());
+                }
+                enabled_channels.push(Box::new(slack_channel) as Box<dyn Channel>);
+                channel_config.slack.enabled = false;
+            }
+            Err(e) => {
+                error!(error = %e, "Failed to create Slack channel");
+                channel_config.slack.enabled = false;
+            }
+        }
+    }
+
+    enabled_channels.extend(ChannelFactory::create_channels(&channel_config));
     let enabled_platforms: Vec<_> = enabled_channels
         .iter()
         .map(|channel| channel.platform())
@@ -226,6 +281,15 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
 
     for channel in enabled_channels {
         channel_tasks.push(spawn_channel_task(channel, channel_agent.clone()));
+    }
+
+    if let Some(handler) = slack_ingress_handler {
+        app = app.merge(slack_ingress_router(handler));
+        info!("Slack HTTP ingress enabled at /webhooks/slack/events");
+    }
+    if let Some(handler) = discord_ingress_handler {
+        app = app.merge(discord_ingress_router(handler));
+        info!("Discord Interactions ingress enabled at /webhooks/discord/interactions");
     }
 
     // Create shutdown signal handler
@@ -782,6 +846,94 @@ fn trim_history(history: &mut Vec<Message>, max_history_messages: usize) {
     if history.len() > max_history_messages {
         let drain_count = history.len() - max_history_messages;
         history.drain(0..drain_count);
+    }
+}
+
+#[derive(Clone)]
+struct SlackIngressState {
+    handler: Arc<SlackEventHandler>,
+}
+
+fn slack_ingress_router(handler: SlackEventHandler) -> Router {
+    Router::new()
+        .route("/webhooks/slack/events", post(slack_events_handler))
+        .with_state(SlackIngressState {
+            handler: Arc::new(handler),
+        })
+}
+
+async fn slack_events_handler(
+    State(state): State<SlackIngressState>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> impl IntoResponse {
+    let timestamp = headers
+        .get("x-slack-request-timestamp")
+        .and_then(|value| value.to_str().ok());
+    let signature = headers
+        .get("x-slack-signature")
+        .and_then(|value| value.to_str().ok());
+
+    match state.handler.handle_event(&body, timestamp, signature).await {
+        Ok(Some(response)) => (StatusCode::OK, axum::Json(response)).into_response(),
+        Ok(None) => StatusCode::OK.into_response(),
+        Err(CoreError::Channel(CoreChannelError::AuthFailed { message, .. })) => {
+            warn!(error = %message, "Rejected Slack webhook due to failed auth");
+            (StatusCode::UNAUTHORIZED, message).into_response()
+        }
+        Err(CoreError::Channel(CoreChannelError::PermissionDenied { message, .. })) => {
+            warn!(error = %message, "Rejected Slack webhook due to permission check");
+            (StatusCode::FORBIDDEN, message).into_response()
+        }
+        Err(error) => {
+            warn!(error = %error, "Failed to process Slack webhook");
+            (StatusCode::BAD_REQUEST, error.to_string()).into_response()
+        }
+    }
+}
+
+#[derive(Clone)]
+struct DiscordIngressState {
+    handler: Arc<DiscordInteractionsHandler>,
+}
+
+fn discord_ingress_router(handler: DiscordInteractionsHandler) -> Router {
+    Router::new()
+        .route(
+            "/webhooks/discord/interactions",
+            post(discord_interactions_handler),
+        )
+        .with_state(DiscordIngressState {
+            handler: Arc::new(handler),
+        })
+}
+
+async fn discord_interactions_handler(
+    State(state): State<DiscordIngressState>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> impl IntoResponse {
+    let signature = headers
+        .get("x-signature-ed25519")
+        .and_then(|value| value.to_str().ok());
+    let timestamp = headers
+        .get("x-signature-timestamp")
+        .and_then(|value| value.to_str().ok());
+
+    match state.handler.handle_event(&body, signature, timestamp).await {
+        Ok(response) => (StatusCode::OK, axum::Json(response)).into_response(),
+        Err(CoreError::Channel(CoreChannelError::AuthFailed { message, .. })) => {
+            warn!(error = %message, "Rejected Discord interaction due to failed auth");
+            (StatusCode::UNAUTHORIZED, message).into_response()
+        }
+        Err(CoreError::Channel(CoreChannelError::PermissionDenied { message, .. })) => {
+            warn!(error = %message, "Rejected Discord interaction due to permission check");
+            (StatusCode::FORBIDDEN, message).into_response()
+        }
+        Err(error) => {
+            warn!(error = %error, "Failed to process Discord interaction");
+            (StatusCode::BAD_REQUEST, error.to_string()).into_response()
+        }
     }
 }
 
@@ -1355,6 +1507,8 @@ struct McpCreateScheduledJobArgs {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ed25519_dalek::{Signer, SigningKey};
+    use openrustclaw_core::config::{DiscordConfig, SlackConfig, SlackMode};
     use openrustclaw_core::error::{Error, ProviderError};
     use openrustclaw_core::types::{FinishReason, IncomingMessage, Role, TokenUsage};
     use tempfile::tempdir;
@@ -1526,6 +1680,162 @@ mod tests {
         assert_eq!(route_sessions.len(), 2);
         assert_ne!(first_reply.session_id, second_reply.session_id);
         assert_eq!(first_reply.metadata["slack_channel"], "C123");
+    }
+
+    #[tokio::test]
+    async fn slack_http_ingress_handles_url_verification() {
+        let channel = openrustclaw_channels::SlackChannel::new(SlackConfig {
+            enabled: true,
+            token: "xoxb-test".to_string(),
+            api_base_url: None,
+            app_token: None,
+            signing_secret: None,
+            mode: SlackMode::Http,
+            socket_mode: false,
+            rate_limit_requests_per_second: 10,
+            allowed_workspaces: vec![],
+            app_home_enabled: true,
+        });
+        let state = SlackIngressState {
+            handler: Arc::new(channel.event_handler()),
+        };
+
+        let response = slack_events_handler(
+            State(state),
+            HeaderMap::new(),
+            Bytes::from_static(br#"{"type":"url_verification","challenge":"abc123"}"#),
+        )
+        .await
+        .into_response();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn slack_http_ingress_enqueues_messages_for_channel_runtime() {
+        let channel = openrustclaw_channels::SlackChannel::new(SlackConfig {
+            enabled: true,
+            token: "xoxb-test".to_string(),
+            api_base_url: None,
+            app_token: None,
+            signing_secret: None,
+            mode: SlackMode::Http,
+            socket_mode: false,
+            rate_limit_requests_per_second: 10,
+            allowed_workspaces: vec!["T123".to_string()],
+            app_home_enabled: true,
+        });
+        let state = SlackIngressState {
+            handler: Arc::new(channel.event_handler()),
+        };
+
+        let response = slack_events_handler(
+            State(state),
+            HeaderMap::new(),
+            Bytes::from_static(
+                br#"{
+                    "type":"event_callback",
+                    "team_id":"T123",
+                    "event":{
+                        "type":"message",
+                        "user":"U123",
+                        "text":"hello from slack",
+                        "channel":"C123",
+                        "thread_ts":"171234.000100"
+                    }
+                }"#,
+            ),
+        )
+        .await
+        .into_response();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let incoming = channel.receive().await.unwrap();
+        assert_eq!(incoming.user_id, "U123");
+        assert_eq!(incoming.content, "hello from slack");
+        assert_eq!(incoming.metadata["slack_channel"], "C123");
+        assert_eq!(incoming.metadata["slack_thread_ts"], "171234.000100");
+    }
+
+    #[tokio::test]
+    async fn discord_http_ingress_handles_ping() {
+        let signing_key = SigningKey::from_bytes(&[11u8; 32]);
+        let verifying_key = signing_key.verifying_key();
+        let channel = openrustclaw_channels::DiscordChannel::new(DiscordConfig {
+            enabled: true,
+            token: "token".to_string(),
+            application_id: "app-1".to_string(),
+            interaction_public_key: Some(hex::encode(verifying_key.to_bytes())),
+            api_base_url: None,
+            rate_limit_requests_per_second: 5,
+            allowed_guilds: vec![],
+            allowed_channels: vec![],
+            dm_enabled: true,
+        });
+        let state = DiscordIngressState {
+            handler: Arc::new(channel.interactions_handler().unwrap()),
+        };
+        let body = Bytes::from_static(br#"{"type":1}"#);
+        let timestamp = "1712550000";
+        let signature =
+            hex::encode(signing_key.sign(&[timestamp.as_bytes(), body.as_ref()].concat()).to_bytes());
+        let mut headers = HeaderMap::new();
+        headers.insert("x-signature-ed25519", signature.parse().unwrap());
+        headers.insert("x-signature-timestamp", timestamp.parse().unwrap());
+
+        let response = discord_interactions_handler(State(state), headers, body)
+            .await
+            .into_response();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn discord_http_ingress_enqueues_interaction_messages() {
+        let signing_key = SigningKey::from_bytes(&[12u8; 32]);
+        let verifying_key = signing_key.verifying_key();
+        let channel = openrustclaw_channels::DiscordChannel::new(DiscordConfig {
+            enabled: true,
+            token: "token".to_string(),
+            application_id: "app-1".to_string(),
+            interaction_public_key: Some(hex::encode(verifying_key.to_bytes())),
+            api_base_url: None,
+            rate_limit_requests_per_second: 5,
+            allowed_guilds: vec![],
+            allowed_channels: vec![],
+            dm_enabled: true,
+        });
+        let state = DiscordIngressState {
+            handler: Arc::new(channel.interactions_handler().unwrap()),
+        };
+        let body = Bytes::from_static(
+            br#"{
+                "id":"interaction-1",
+                "application_id":"app-1",
+                "type":2,
+                "token":"interaction-token",
+                "guild_id":"guild-1",
+                "channel_id":"channel-1",
+                "data":{"name":"ask","options":[{"name":"prompt","value":"hello from discord"}]},
+                "member":{"user":{"id":"user-1"}}
+            }"#,
+        );
+        let timestamp = "1712550001";
+        let signature =
+            hex::encode(signing_key.sign(&[timestamp.as_bytes(), body.as_ref()].concat()).to_bytes());
+        let mut headers = HeaderMap::new();
+        headers.insert("x-signature-ed25519", signature.parse().unwrap());
+        headers.insert("x-signature-timestamp", timestamp.parse().unwrap());
+
+        let response = discord_interactions_handler(State(state), headers, body)
+            .await
+            .into_response();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let incoming = channel.receive().await.unwrap();
+        assert_eq!(incoming.user_id, "user-1");
+        assert_eq!(incoming.content, "hello from discord");
+        assert_eq!(incoming.metadata["discord_channel_id"], "channel-1");
+        assert_eq!(incoming.metadata["discord_interaction_token"], "interaction-token");
     }
 
     #[tokio::test(flavor = "multi_thread")]
