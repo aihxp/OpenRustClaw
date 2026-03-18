@@ -44,6 +44,7 @@ use openrustclaw_langbridge::{LangBridgeClient, sidecar::SidecarManager};
 use openrustclaw_memory::MemoryPolicies;
 use openrustclaw_mcp::server::{McpServer, McpServerConfig, McpServerTool};
 use openrustclaw_observability::LangSmithClient;
+use openrustclaw_observability::langsmith::RunType;
 use openrustclaw_providers::{
     AnthropicProvider, OllamaProvider, OpenAiProvider, OpenRouterProvider, ProviderChain,
     openrouter::RouteStrategy,
@@ -250,6 +251,7 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
             memory_store.clone(),
             core_memory_store.clone(),
             session_manager.clone(),
+            channel_langsmith_client(&config),
         )?))
     };
 
@@ -498,6 +500,22 @@ fn scheduler_langsmith_client(config: &AppConfig) -> Option<LangSmithClient> {
     }
 }
 
+fn channel_langsmith_client(config: &AppConfig) -> Option<LangSmithClient> {
+    if !config.observability.langsmith_enabled {
+        return None;
+    }
+
+    let client = LangSmithClient::from_env(Some("openrustclaw-channels".to_string()));
+    if client.is_enabled() {
+        Some(client)
+    } else {
+        warn!(
+            "LangSmith tracing is enabled in config, but no LANGSMITH_API_KEY/LANGCHAIN_API_KEY was found for channel tracing"
+        );
+        None
+    }
+}
+
 fn internal_api_addr(host: &str, port: u16) -> String {
     let loopback_host = match host {
         "0.0.0.0" | "::" => "127.0.0.1",
@@ -572,6 +590,7 @@ struct ChannelAgent {
     session_manager: Arc<SessionManager>,
     core_memory_store: Option<Arc<dyn CoreMemoryStoreTrait>>,
     max_history_messages: usize,
+    langsmith: Option<LangSmithClient>,
 }
 
 struct ChannelConversationState {
@@ -615,6 +634,17 @@ impl ChannelAgent {
         route_state.reply_metadata = incoming.metadata.clone();
         route_state.history.push(Message::user(trimmed_content));
         trim_history(&mut route_state.history, self.max_history_messages);
+        let mut trace = self.channel_trace(&incoming, &route_state.session_id, trimmed_content);
+        if let (Some(client), Some(run)) = (&self.langsmith, trace.as_ref()) {
+            if let Err(error) = client.trace_run(run).await {
+                warn!(
+                    error = %error,
+                    platform = ?incoming.platform,
+                    user_id = %incoming.user_id,
+                    "Failed to create LangSmith channel trace"
+                );
+            }
+        }
 
         let core_memory = if let Some(store) = self.core_memory_store.as_ref() {
             match store.get_all(&incoming.user_id).await {
@@ -633,7 +663,7 @@ impl ChannelAgent {
             Vec::new()
         };
 
-        let response = self
+        let response = match self
             .runtime
             .process(
                 &route_state.history,
@@ -641,7 +671,25 @@ impl ChannelAgent {
                 &route_state.session_id.to_string(),
                 &incoming.user_id,
             )
-            .await?;
+            .await
+        {
+            Ok(response) => response,
+            Err(error) => {
+                if let (Some(client), Some(run)) = (&self.langsmith, trace.as_mut()) {
+                    run.error = Some(error.to_string());
+                    run.end_time = Some(chrono::Utc::now());
+                    run.extra = Some(serde_json::json!({
+                        "platform": incoming.platform.to_string(),
+                        "user_id": incoming.user_id,
+                        "session_id": route_state.session_id,
+                    }));
+                    if let Err(trace_error) = client.update_run(run).await {
+                        warn!(error = %trace_error, "Failed to update LangSmith channel trace");
+                    }
+                }
+                return Err(error.into());
+            }
+        };
 
         route_state.history.push(response.message.clone());
         trim_history(&mut route_state.history, self.max_history_messages);
@@ -653,7 +701,33 @@ impl ChannelAgent {
                 session_id = %route_state.session_id,
                 "Agent returned empty channel response; skipping outbound send"
             );
+            if let (Some(client), Some(run)) = (&self.langsmith, trace.as_mut()) {
+                run.outputs = Some(serde_json::json!({"reply": ""}));
+                run.end_time = Some(chrono::Utc::now());
+                run.extra = Some(serde_json::json!({
+                    "platform": incoming.platform.to_string(),
+                    "user_id": incoming.user_id,
+                    "session_id": route_state.session_id,
+                    "empty_reply": true,
+                }));
+                if let Err(trace_error) = client.update_run(run).await {
+                    warn!(error = %trace_error, "Failed to update LangSmith channel trace");
+                }
+            }
             return Ok(None);
+        }
+
+        if let (Some(client), Some(run)) = (&self.langsmith, trace.as_mut()) {
+            run.outputs = Some(serde_json::json!({"reply": response.message.content}));
+            run.end_time = Some(chrono::Utc::now());
+            run.extra = Some(serde_json::json!({
+                "platform": incoming.platform.to_string(),
+                "user_id": incoming.user_id,
+                "session_id": route_state.session_id,
+            }));
+            if let Err(trace_error) = client.update_run(run).await {
+                warn!(error = %trace_error, "Failed to update LangSmith channel trace");
+            }
         }
 
         Ok(Some(OutgoingMessage {
@@ -662,6 +736,26 @@ impl ChannelAgent {
             metadata: route_state.reply_metadata.clone(),
         }))
     }
+
+    fn channel_trace(
+        &self,
+        incoming: &openrustclaw_core::types::IncomingMessage,
+        session_id: &Uuid,
+        content: &str,
+    ) -> Option<openrustclaw_observability::langsmith::TraceRun> {
+        let client = self.langsmith.as_ref()?;
+        Some(client.new_run(
+            "channel_inbound_message",
+            RunType::Chain,
+            serde_json::json!({
+                "platform": incoming.platform.to_string(),
+                "user_id": incoming.user_id,
+                "session_id": session_id,
+                "content": content,
+                "metadata": incoming.metadata,
+            }),
+        ))
+    }
 }
 
 fn build_channel_agent(
@@ -669,6 +763,7 @@ fn build_channel_agent(
     memory_store: Arc<SqliteMemoryStore>,
     core_memory_store: Arc<SqliteCoreMemoryStore>,
     session_manager: Arc<SessionManager>,
+    langsmith: Option<LangSmithClient>,
 ) -> Result<ChannelAgent> {
     let provider = build_channel_provider(config)?;
     let runtime = AgentRuntime::with_memory_stores(
@@ -683,6 +778,7 @@ fn build_channel_agent(
         session_manager,
         core_memory_store: Some(core_memory_store),
         max_history_messages: 24,
+        langsmith,
     })
 }
 
@@ -1625,6 +1721,7 @@ mod tests {
             session_manager: Arc::new(SessionManager::new()),
             core_memory_store: None,
             max_history_messages: 24,
+            langsmith: None,
         }
     }
 
