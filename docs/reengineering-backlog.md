@@ -122,7 +122,7 @@ Status:
 - Product contract and runtime/docs honesty work is largely complete.
 - Scheduler, MCP stdio, marketplace access, and the no-import WASM executor are real.
 - Telegram and Slack HTTP mode are end-to-end runtime paths.
-- Discord now has verified Interactions HTTP ingress, Gateway `MESSAGE_CREATE` receive, reconnect plus session resume handling, stale-heartbeat recovery, deferred acknowledgements, and follow-up replies; deeper gateway polish is still incomplete.
+- Discord now has verified Interactions HTTP ingress, Gateway `MESSAGE_CREATE` receive, reconnect plus session resume handling, stale-heartbeat recovery, invalid-session recycling, deferred acknowledgements, and follow-up replies; deeper gateway polish is still incomplete.
 - Memory maintenance now uses Rust-backed archive persistence and removes archived recall entries through the loopback bridge.
 - Rust-to-sidecar workflow dispatch now preserves typed configurable metadata through a reserved contract key instead of flattening everything to strings.
 - The skills CLI now resolves real `SKILL.md` workspace paths, validates and normalizes declared capabilities, syncs marketplace installs back into the main skills table, and keeps managed verification state aligned with install/update flows.

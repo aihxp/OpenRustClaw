@@ -613,6 +613,11 @@ where
                             9 => {
                                 warn!("Discord gateway rejected session; clearing resume state");
                                 *gateway_session.write().await = GatewaySessionState::default();
+                                return Err(ChannelError::Connection {
+                                    platform: "discord".to_string(),
+                                    message: "Discord gateway invalidated the session".to_string(),
+                                }
+                                .into());
                             }
                             _ => {}
                         }
@@ -1235,6 +1240,67 @@ mod tests {
         format!("ws://{}/gateway", addr)
     }
 
+    async fn spawn_mock_invalid_session_gateway(second_event: serde_json::Value) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let (tcp_stream, _) = listener.accept().await.unwrap();
+            let mut first_stream = accept_async(tcp_stream).await.unwrap();
+            first_stream
+                .send(WsMessage::Text(
+                    serde_json::json!({
+                        "op": 10,
+                        "d": {"heartbeat_interval": 250}
+                    })
+                    .to_string()
+                    .into(),
+                ))
+                .await
+                .unwrap();
+            let identify = first_stream.next().await.unwrap().unwrap();
+            let identify_json: serde_json::Value =
+                serde_json::from_str(&identify.into_text().unwrap()).unwrap();
+            assert_eq!(identify_json["op"], 2);
+            first_stream
+                .send(WsMessage::Text(
+                    serde_json::json!({
+                        "op": 9,
+                        "d": false
+                    })
+                    .to_string()
+                    .into(),
+                ))
+                .await
+                .unwrap();
+            first_stream.close(None).await.unwrap();
+
+            let (tcp_stream, _) = listener.accept().await.unwrap();
+            let mut second_stream = accept_async(tcp_stream).await.unwrap();
+            second_stream
+                .send(WsMessage::Text(
+                    serde_json::json!({
+                        "op": 10,
+                        "d": {"heartbeat_interval": 250}
+                    })
+                    .to_string()
+                    .into(),
+                ))
+                .await
+                .unwrap();
+            let identify = second_stream.next().await.unwrap().unwrap();
+            let identify_json: serde_json::Value =
+                serde_json::from_str(&identify.into_text().unwrap()).unwrap();
+            assert_eq!(identify_json["op"], 2);
+            second_stream
+                .send(WsMessage::Text(second_event.to_string().into()))
+                .await
+                .unwrap();
+            second_stream.close(None).await.unwrap();
+        });
+
+        format!("ws://{}/gateway", addr)
+    }
+
     #[test]
     fn test_format_for_discord() {
         let text = "Hello **world**";
@@ -1649,6 +1715,70 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(recovered.content, "recovered after stale heartbeat");
+        channel.disconnect().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_gateway_reconnects_after_invalid_session() {
+        use wiremock::matchers::{header, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let gateway_url = spawn_mock_invalid_session_gateway(serde_json::json!({
+            "op": 0,
+            "t": "MESSAGE_CREATE",
+            "s": 1,
+            "d": {
+                "id": "message-3",
+                "channel_id": "channel-1",
+                "guild_id": "guild-1",
+                "content": "recovered after invalid session",
+                "author": {
+                    "id": "user-3",
+                    "username": "carol",
+                    "bot": false
+                }
+            }
+        }))
+        .await;
+
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/users/@me"))
+            .and(header("authorization", "Bot token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "123",
+                "username": "test-bot"
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/gateway/bot"))
+            .and(header("authorization", "Bot token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "url": gateway_url,
+            })))
+            .mount(&server)
+            .await;
+
+        let config = DiscordConfig {
+            enabled: true,
+            token: "token".to_string(),
+            application_id: "app-1".to_string(),
+            interaction_public_key: None,
+            api_base_url: Some(server.uri()),
+            rate_limit_requests_per_second: 5,
+            allowed_guilds: vec![],
+            allowed_channels: vec![],
+            dm_enabled: true,
+        };
+        let mut channel = DiscordChannel::new(config);
+        channel.connect().await.unwrap();
+
+        let recovered = tokio::time::timeout(Duration::from_secs(3), channel.receive())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(recovered.content, "recovered after invalid session");
         channel.disconnect().await.unwrap();
     }
 
