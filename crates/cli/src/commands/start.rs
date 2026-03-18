@@ -1236,6 +1236,18 @@ fn build_mcp_server(
                     }
                 }),
             },
+            McpServerTool {
+                name: "load_rag_chunks".to_string(),
+                description: "Load stored chunks from a durable RAG collection.".to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "collection_name": {"type": "string"},
+                        "limit": {"type": "integer", "minimum": 1}
+                    },
+                    "required": ["collection_name"]
+                }),
+            },
         ],
     });
 
@@ -1574,8 +1586,9 @@ fn build_mcp_server(
         })
     }));
 
-    let rag_store_for_list = rag_store;
-    server.register_handler("list_rag_collections", traced_mcp_handler(langsmith, "list_rag_collections", move |args| {
+    let rag_store_for_list = rag_store.clone();
+    let langsmith_for_list_rag = langsmith.clone();
+    server.register_handler("list_rag_collections", traced_mcp_handler(langsmith_for_list_rag, "list_rag_collections", move |args| {
         let request: McpListRagCollectionsArgs = parse_tool_args(args)?;
         let rag_store = rag_store_for_list.clone();
         block_on_tool(async move {
@@ -1587,6 +1600,28 @@ fn build_mcp_server(
                     "source_count": stats.source_count,
                     "total_content_bytes": stats.total_content_bytes,
                     "last_updated_at": stats.last_updated_at,
+                })).collect::<Vec<_>>()
+            }))
+        })
+    }));
+
+    let rag_store_for_load = rag_store;
+    server.register_handler("load_rag_chunks", traced_mcp_handler(langsmith, "load_rag_chunks", move |args| {
+        let request: McpLoadRagChunksArgs = parse_tool_args(args)?;
+        let rag_store = rag_store_for_load.clone();
+        block_on_tool(async move {
+            let chunks = rag_store
+                .load_collection(&request.collection_name, request.limit)
+                .await?;
+            Ok(serde_json::json!({
+                "collection_name": request.collection_name,
+                "chunks": chunks.into_iter().map(|chunk| serde_json::json!({
+                    "id": chunk.chunk_id,
+                    "source_id": chunk.source_id,
+                    "chunk_index": chunk.chunk_index,
+                    "content": chunk.content,
+                    "metadata": chunk.metadata,
+                    "created_at": chunk.created_at,
                 })).collect::<Vec<_>>()
             }))
         })
@@ -1752,6 +1787,12 @@ struct McpCreateScheduledJobArgs {
 
 #[derive(serde::Deserialize, Default)]
 struct McpListRagCollectionsArgs {
+    limit: Option<usize>,
+}
+
+#[derive(serde::Deserialize)]
+struct McpLoadRagChunksArgs {
+    collection_name: String,
     limit: Option<usize>,
 }
 
@@ -2295,5 +2336,59 @@ mod tests {
         assert_eq!(list_payload["collections"][0]["collection_name"], "docs");
         assert_eq!(list_payload["collections"][0]["chunk_count"], 1);
         assert_eq!(list_payload["collections"][0]["source_count"], 1);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn mcp_server_loads_rag_chunks() {
+        let workspace = tempdir().unwrap();
+        let db_path = workspace.path().join("mcp-rag-load.db");
+        let db_url = format!("sqlite://{}", db_path.display());
+        let pool = init_pool(&db_url, 1).await.unwrap();
+        run_migrations(&pool).await.unwrap();
+
+        let rag_store = SqliteRagStore::new(pool.clone());
+        rag_store
+            .replace_collection(
+                "docs",
+                &[
+                    openrustclaw_db::RagChunkInput {
+                        chunk_id: "chunk-1".to_string(),
+                        source_id: "doc-1".to_string(),
+                        chunk_index: 0,
+                        content: "Rust ownership".to_string(),
+                        metadata: serde_json::json!({"source_type": "doc"}),
+                    },
+                    openrustclaw_db::RagChunkInput {
+                        chunk_id: "chunk-2".to_string(),
+                        source_id: "doc-1".to_string(),
+                        chunk_index: 1,
+                        content: "Borrow checker".to_string(),
+                        metadata: serde_json::json!({"source_type": "doc"}),
+                    },
+                ],
+            )
+            .await
+            .unwrap();
+
+        let server = build_mcp_server(workspace.path().to_path_buf(), pool, None);
+        let load_req = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 21,
+            "method": "tools/call",
+            "params": {
+                "name": "load_rag_chunks",
+                "arguments": {
+                    "collection_name": "docs",
+                    "limit": 1
+                }
+            }
+        });
+
+        let load_resp = server.handle_request(&load_req);
+        let load_text = load_resp["result"]["content"][0]["text"].as_str().unwrap();
+        let load_payload: serde_json::Value = serde_json::from_str(load_text).unwrap();
+        assert_eq!(load_payload["collection_name"], "docs");
+        assert_eq!(load_payload["chunks"].as_array().unwrap().len(), 1);
+        assert_eq!(load_payload["chunks"][0]["content"], "Rust ownership");
     }
 }
