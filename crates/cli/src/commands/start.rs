@@ -18,6 +18,7 @@ use openrustclaw_channels::discord::DiscordInteractionsHandler;
 use openrustclaw_channels::imessage::{BlueBubblesMessage, IMessageWebhookHandler};
 use openrustclaw_channels::google_chat::GoogleChatWebhookHandler;
 use openrustclaw_channels::slack::SlackEventHandler;
+use openrustclaw_channels::teams::TeamsWebhookHandler;
 use openrustclaw_core::error::{ChannelError as CoreChannelError, Error as CoreError, McpError};
 use openrustclaw_core::traits::{Channel, LlmProvider};
 use openrustclaw_core::types::{
@@ -227,6 +228,7 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
     let mut channel_config = config.channels.clone();
     let mut discord_ingress_handler = None;
     let mut slack_ingress_handler = None;
+    let mut teams_ingress_handler = None;
     let mut google_chat_ingress_handler = None;
     let mut imessage_ingress_handler = None;
     let mut enabled_channels = Vec::new();
@@ -257,6 +259,23 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
             Err(e) => {
                 error!(error = %e, "Failed to create Discord channel");
                 channel_config.discord.enabled = false;
+            }
+        }
+    }
+
+    if channel_config.teams.enabled {
+        match ChannelFactory::create_teams(channel_config.teams.clone()) {
+            Ok(teams_channel) => {
+                teams_ingress_handler = Some((
+                    channel_config.teams.webhook_path.clone(),
+                    teams_channel.webhook_handler(),
+                ));
+                enabled_channels.push(Box::new(teams_channel) as Box<dyn Channel>);
+                channel_config.teams.enabled = false;
+            }
+            Err(e) => {
+                error!(error = %e, "Failed to create Teams channel");
+                channel_config.teams.enabled = false;
             }
         }
     }
@@ -365,6 +384,10 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
             channel_langsmith_client(&config),
         ));
         info!("Discord Interactions ingress enabled at /webhooks/discord/interactions");
+    }
+    if let Some((webhook_path, handler)) = teams_ingress_handler {
+        app = app.merge(teams_ingress_router(webhook_path.as_str(), handler));
+        info!(path = %webhook_path, "Teams ingress enabled");
     }
     if let Some(handler) = google_chat_ingress_handler {
         app = app.merge(google_chat_ingress_router(handler));
@@ -2314,6 +2337,47 @@ async fn imessage_bluebubbles_handler(
 ) -> impl IntoResponse {
     match state.handler.handle_event(payload).await {
         Ok(()) => StatusCode::OK.into_response(),
+        Err(error) => (StatusCode::BAD_REQUEST, error.to_string()).into_response(),
+    }
+}
+
+#[derive(Clone)]
+struct TeamsIngressState {
+    handler: Arc<TeamsWebhookHandler>,
+}
+
+fn teams_ingress_router(path: &str, handler: TeamsWebhookHandler) -> Router {
+    Router::new()
+        .route(path, post(teams_events_handler))
+        .with_state(TeamsIngressState {
+            handler: Arc::new(handler),
+        })
+}
+
+async fn teams_events_handler(
+    State(state): State<TeamsIngressState>,
+    headers: HeaderMap,
+    Json(payload): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    let auth_header = headers
+        .get("authorization")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "));
+
+    if let Some(token) = auth_header {
+        match state.handler.verify_token(token).await {
+            Ok(true) => {}
+            Ok(false) => {
+                return (StatusCode::UNAUTHORIZED, "Invalid Teams auth token").into_response();
+            }
+            Err(error) => {
+                return (StatusCode::UNAUTHORIZED, error.to_string()).into_response();
+            }
+        }
+    }
+
+    match state.handler.handle_request(payload).await {
+        Ok(response) => (StatusCode::OK, Json(response)).into_response(),
         Err(error) => (StatusCode::BAD_REQUEST, error.to_string()).into_response(),
     }
 }

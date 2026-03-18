@@ -226,6 +226,11 @@ impl TeamsChannel {
         }
     }
 
+    /// Create a webhook handler for Bot Framework activities.
+    pub fn webhook_handler(&self) -> TeamsWebhookHandler {
+        TeamsWebhookHandler::new(self.config.clone(), self.incoming_tx.clone())
+    }
+
     /// Get the Microsoft OAuth2 token endpoint.
     fn token_endpoint(&self) -> String {
         match &self.config.tenant_id {
@@ -785,12 +790,16 @@ impl Channel for TeamsChannel {
 #[derive(Debug, Clone)]
 pub struct TeamsWebhookHandler {
     channel: Arc<TeamsChannel>,
+    incoming_tx: mpsc::Sender<IncomingMessage>,
 }
 
 impl TeamsWebhookHandler {
     /// Create a new webhook handler for the given channel.
-    pub fn new(channel: Arc<TeamsChannel>) -> Self {
-        Self { channel }
+    pub fn new(config: TeamsConfig, incoming_tx: mpsc::Sender<IncomingMessage>) -> Self {
+        Self {
+            channel: Arc::new(TeamsChannel::new(config)),
+            incoming_tx,
+        }
     }
 
     /// Microsoft's OpenID configuration URL.
@@ -959,7 +968,7 @@ impl TeamsWebhookHandler {
         match self.channel.handle_activity(body).await {
             Ok(Some(incoming)) => {
                 // Forward to the channel's incoming queue
-                let _ = self.channel.incoming_tx.send(incoming).await;
+                let _ = self.incoming_tx.send(incoming).await;
                 Ok(serde_json::json!({
                     "status": 200,
                     "message": "Activity processed"

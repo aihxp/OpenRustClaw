@@ -123,7 +123,7 @@ Current tier-1 status:
 - WhatsApp: Baileys bridge pairing/QR, reconnect behavior, DM/group routing, mentions, replies, media send/receive, and local agent/session routing are implemented
 - iMessage: BlueBubbles/macOS direct send, BlueBubbles inbound webhook routing, tapbacks, and local agent/session routing are implemented; richer attachment/group mapping still remains
 - Google Chat: webhook ingress, token-backed outbound sends, and local agent/session routing are implemented; fuller service-account auth and richer parity still remain
-- Teams: Bot Framework channel is no longer hard-gated from startup, but it is still partial relative to the shipped tier-1 surfaces
+- Teams: Bot Framework webhook ingress, JWT verification, outbound sends, and local agent/session routing are on the shipped runtime path, but it is still partial relative to the tier-1 surfaces
 
 Channel routing/operator controls:
 
