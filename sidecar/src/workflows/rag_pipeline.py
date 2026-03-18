@@ -452,6 +452,7 @@ class RetrievalNode:
             collection_name = state.get("collection_name") or "rag_documents"
             allowed_types = _parse_allowed_source_types(config)
             max_chunks_per_source = _parse_max_chunks_per_source(config)
+            min_score = _parse_min_score(config)
             available_chunks = state.get("chunks", [])
             if not available_chunks:
                 if self.memory_bridge is not None:
@@ -468,6 +469,7 @@ class RetrievalNode:
                 available_chunks,
                 allowed_types,
                 max_chunks_per_source=max_chunks_per_source,
+                min_score=min_score,
             )
 
             # Extract sources for citation
@@ -487,6 +489,7 @@ class RetrievalNode:
                 "collection_name": collection_name,
                 "allowed_source_types": sorted(allowed_types) if allowed_types else [],
                 "max_chunks_per_source": max_chunks_per_source,
+                "min_score": min_score,
             }
 
         except Exception as e:
@@ -501,6 +504,7 @@ class RetrievalNode:
         chunks: List[Document],
         allowed_source_types: Optional[set[str]] = None,
         max_chunks_per_source: Optional[int] = None,
+        min_score: Optional[float] = None,
     ) -> List[Document]:
         """Retrieve relevant chunks for the query."""
         query_words = set(_normalize_text(query))
@@ -548,6 +552,8 @@ class RetrievalNode:
         per_source_limit = max_chunks_per_source if isinstance(max_chunks_per_source, int) and max_chunks_per_source > 0 else None
 
         for score, chunk in scored_chunks:
+            if min_score is not None and score < min_score:
+                continue
             source_id = str(chunk.metadata.get("source_id", chunk.metadata.get("id", "unknown")))
             if per_source_limit is not None and per_source_counts.get(source_id, 0) >= per_source_limit:
                 continue
@@ -706,6 +712,19 @@ def _parse_max_chunks_per_source(config: Optional[RunnableConfig]) -> Optional[i
         return None
 
     return value if value > 0 else None
+
+
+def _parse_min_score(config: Optional[RunnableConfig]) -> Optional[float]:
+    configured = get_configurable_value(config, "min_score")
+    if configured is None:
+        return None
+
+    try:
+        value = float(configured)
+    except (TypeError, ValueError):
+        return None
+
+    return value if value >= 0.0 else None
 
 
 def _assemble_context(retrieved_docs: List[Document], budget: int) -> tuple[str, List[str]]:

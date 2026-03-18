@@ -721,6 +721,58 @@ def test_rag_pipeline_limits_chunks_per_source():
         raise
 
 
+def test_rag_pipeline_respects_min_score_threshold():
+    """Test RAG retrieval drops weak matches when a minimum score is configured."""
+    print("\nTesting RAG minimum score threshold...")
+
+    try:
+        from langchain_core.documents import Document
+
+        from src.workflows.rag_pipeline import RetrievalNode
+
+        node = RetrievalNode(top_k=2)
+        chunks = [
+            Document(
+                page_content="Rust ownership and borrowing rules for safe memory management.",
+                metadata={
+                    "id": "chunk_rust",
+                    "source_id": "rust-guide",
+                    "source": "rust-guide",
+                    "title": "Rust Ownership Guide",
+                    "type": "text",
+                },
+            ),
+            Document(
+                page_content="Healthy breakfasts include oats, fruit, and yogurt.",
+                metadata={
+                    "id": "chunk_food",
+                    "source_id": "food-guide",
+                    "source": "food-guide",
+                    "title": "Breakfast Guide",
+                    "type": "text",
+                },
+            ),
+        ]
+
+        result = asyncio.run(
+            node(
+                {"query": "How does Rust ownership work?", "chunks": chunks},
+                config={"configurable": {"min_score": 0.3}},
+            )
+        )
+
+        assert len(result["retrieved_docs"]) == 1
+        assert result["retrieved_docs"][0].metadata["source_id"] == "rust-guide"
+        assert result["min_score"] == 0.3
+        print("  ✓ RAG minimum score threshold")
+    except ModuleNotFoundError as e:
+        print(f"  ✗ RAG minimum score threshold: {e}")
+        _skip_missing_dependency(e)
+    except Exception as e:
+        print(f"  ✗ RAG minimum score threshold: {e}")
+        raise
+
+
 def test_protobuf_messages():
     """Test protobuf message creation."""
     print("\nTesting protobuf messages...")
