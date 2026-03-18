@@ -512,6 +512,67 @@ def test_scheduler_retry_records_next_run():
         raise
 
 
+def test_rag_pipeline_supports_query_only_retrieval():
+    """Test RAG indexing and later query-only retrieval against the same collection."""
+    print("\nTesting RAG indexing and retrieval...")
+
+    try:
+        from langchain_core.documents import Document
+
+        from src.workflows.rag_pipeline import build_rag_graph, create_default_state
+
+        graph = build_rag_graph(top_k=2)
+        collection_name = "test-rag-collection"
+
+        index_state = create_default_state()
+        index_state["documents"] = [
+            Document(
+                page_content=(
+                    "Rust uses ownership and borrowing to guarantee memory safety without a garbage collector."
+                ),
+                metadata={"source": "doc-1", "type": "text"},
+            )
+        ]
+
+        asyncio.run(
+            graph.ainvoke(
+                index_state,
+                config={
+                    "configurable": {
+                        "collection_name": collection_name,
+                        "context_budget_chars": 180,
+                    }
+                },
+            )
+        )
+
+        query_state = create_default_state()
+        query_state["query"] = "How does Rust provide memory safety?"
+        result = asyncio.run(
+            graph.ainvoke(
+                query_state,
+                config={
+                    "configurable": {
+                        "collection_name": collection_name,
+                        "context_budget_chars": 180,
+                    }
+                },
+            )
+        )
+
+        assert result["retrieved_docs"]
+        assert result["sources"]
+        assert result["sources"][0]["metadata"]["source_id"].startswith("chunk_")
+        assert "sources:" in result["answer"].lower()
+        print("  ✓ RAG indexing and retrieval")
+    except ModuleNotFoundError as e:
+        print(f"  ✗ RAG indexing and retrieval: {e}")
+        _skip_missing_dependency(e)
+    except Exception as e:
+        print(f"  ✗ RAG indexing and retrieval: {e}")
+        raise
+
+
 def test_protobuf_messages():
     """Test protobuf message creation."""
     print("\nTesting protobuf messages...")
@@ -677,6 +738,7 @@ def main():
     results.append(test_memory_maintenance_archive_node_uses_bridge())
     results.append(test_workflow_contract_parses_typed_configurable_metadata())
     results.append(test_scheduler_retry_records_next_run())
+    results.append(test_rag_pipeline_supports_query_only_retrieval())
 
     # Run async tests
     results.append(asyncio.run(run_async_tests()))

@@ -3,8 +3,8 @@
 import hashlib
 import json
 import logging
-from dataclasses import dataclass
-from typing import Annotated, Any, AsyncIterator, Dict, List, Literal, Optional, Sequence, TypedDict
+import threading
+from typing import Annotated, Any, Dict, List, Literal, Optional, Sequence, TypedDict
 
 from langchain_core.documents import Document
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
@@ -12,7 +12,29 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 
+from ..workflow_contract import get_configurable_value
+
 logger = logging.getLogger(__name__)
+
+
+class InMemoryRagStore:
+    """Minimal deterministic document store for sidecar RAG workflows."""
+
+    def __init__(self) -> None:
+        self._collections: Dict[str, List[Document]] = {}
+        self._lock = threading.RLock()
+
+    def store(self, collection_name: str, chunks: List[Document]) -> int:
+        with self._lock:
+            self._collections[collection_name] = [chunk for chunk in chunks]
+            return len(chunks)
+
+    def load(self, collection_name: str) -> List[Document]:
+        with self._lock:
+            return [chunk for chunk in self._collections.get(collection_name, [])]
+
+
+RAG_STORE = InMemoryRagStore()
 
 
 class RAGState(TypedDict):
@@ -26,6 +48,8 @@ class RAGState(TypedDict):
     retrieved_docs: List[Document]
     answer: Optional[str]
     sources: List[Dict[str, Any]]
+    collection_name: str
+    context_budget_chars: int
     status: Literal["pending", "ingesting", "indexing", "querying", "completed", "error"]
     error: Optional[str]
 
@@ -41,6 +65,8 @@ def create_default_state() -> RAGState:
         "retrieved_docs": [],
         "answer": None,
         "sources": [],
+        "collection_name": "rag_documents",
+        "context_budget_chars": 6000,
         "status": "pending",
         "error": None,
     }
@@ -63,10 +89,18 @@ class DocumentIngestionNode:
         try:
             # Documents can come from state or config
             documents = state.get("documents", [])
+            collection_name = state.get("collection_name") or "rag_documents"
+            context_budget_chars = state.get("context_budget_chars") or 6000
 
             if not documents:
                 # Try to load from config
-                doc_source = config.get("configurable", {}).get("doc_source") if config else None
+                doc_source = get_configurable_value(config, "doc_source")
+                configured_collection = get_configurable_value(config, "collection_name")
+                configured_budget = get_configurable_value(config, "context_budget_chars")
+                if isinstance(configured_collection, str) and configured_collection.strip():
+                    collection_name = configured_collection.strip()
+                if isinstance(configured_budget, int) and configured_budget > 0:
+                    context_budget_chars = configured_budget
                 if doc_source:
                     documents = await self._load_documents(doc_source)
 
@@ -85,12 +119,23 @@ class DocumentIngestionNode:
                                 )
                             )
 
+            query = state.get("query", "")
+            if not query:
+                messages = state.get("messages", [])
+                for msg in reversed(messages):
+                    if isinstance(msg, HumanMessage) and isinstance(msg.content, str):
+                        query = msg.content
+                        break
+
             logger.info(f"Ingested {len(documents)} documents")
 
             return {
                 "documents": documents,
-                "status": "ingesting" if documents else "error",
-                "error": None if documents else "No documents provided",
+                "query": query,
+                "collection_name": collection_name,
+                "context_budget_chars": context_budget_chars,
+                "status": "ingesting" if documents else "querying",
+                "error": None,
             }
 
         except Exception as e:
@@ -296,15 +341,20 @@ class StorageNode:
 
         try:
             chunks = state.get("chunks", [])
+            collection_name = state.get("collection_name") or self.collection_name
             if not chunks:
-                return {"error": "No chunks to store"}
+                return {
+                    "status": "querying",
+                    "collection_name": collection_name,
+                    "error": None,
+                }
 
-            # In production, this would store in a proper vector database
-            # For now, we simulate storage
-            stored_count = await self._store_chunks(chunks)
+            stored_count = await self._store_chunks(collection_name, chunks)
 
             return {
                 "status": "querying",
+                "collection_name": collection_name,
+                "stored_chunks": stored_count,
                 "error": None,
             }
 
@@ -315,17 +365,17 @@ class StorageNode:
                 "status": "error",
             }
 
-    async def _store_chunks(self, chunks: List[Document]) -> int:
+    async def _store_chunks(self, collection_name: str, chunks: List[Document]) -> int:
         """Store chunks in the vector database."""
-        # Placeholder - would integrate with vector store
-        logger.info(f"Storing {len(chunks)} chunks in collection: {self.collection_name}")
+        logger.info(f"Storing {len(chunks)} chunks in collection: {collection_name}")
 
         # Generate IDs for chunks
         for chunk in chunks:
             content_hash = hashlib.md5(chunk.page_content.encode()).hexdigest()[:12]
             chunk.metadata["id"] = f"chunk_{content_hash}"
+            chunk.metadata.setdefault("source_id", chunk.metadata["id"])
 
-        return len(chunks)
+        return RAG_STORE.store(collection_name, chunks)
 
 
 class RetrievalNode:
@@ -357,8 +407,13 @@ class RetrievalNode:
             if not query:
                 return {"error": "No query provided"}
 
+            collection_name = state.get("collection_name") or "rag_documents"
+            available_chunks = state.get("chunks", [])
+            if not available_chunks:
+                available_chunks = RAG_STORE.load(collection_name)
+
             # Retrieve documents
-            retrieved = await self._retrieve(query, state.get("chunks", []))
+            retrieved = await self._retrieve(query, available_chunks)
 
             # Extract sources for citation
             sources = [
@@ -374,6 +429,7 @@ class RetrievalNode:
                 "retrieved_docs": retrieved,
                 "sources": sources,
                 "query": query,
+                "collection_name": collection_name,
             }
 
         except Exception as e:
@@ -384,19 +440,23 @@ class RetrievalNode:
 
     async def _retrieve(self, query: str, chunks: List[Document]) -> List[Document]:
         """Retrieve relevant chunks for the query."""
-        # In production, this would use vector similarity search
-        # For now, use simple keyword matching as fallback
-
-        query_words = set(query.lower().split())
-        scored_chunks: List[tuple] = []
+        query_words = set(_normalize_text(query))
+        scored_chunks: List[tuple[float, Document]] = []
 
         for chunk in chunks:
-            chunk_words = set(chunk.page_content.lower().split())
-            score = len(query_words & chunk_words) / len(query_words) if query_words else 0
+            chunk_words = set(_normalize_text(chunk.page_content))
+            lexical_overlap = len(query_words & chunk_words) / max(len(query_words), 1)
+            type_boost = 0.15 if chunk.metadata.get("type") == "code" else 0.0
+            score = lexical_overlap + type_boost
             scored_chunks.append((score, chunk))
 
-        # Sort by score and take top_k
-        scored_chunks.sort(key=lambda x: x[0], reverse=True)
+        scored_chunks.sort(
+            key=lambda entry: (
+                entry[0],
+                str(entry[1].metadata.get("source_id", entry[1].metadata.get("id", ""))),
+            ),
+            reverse=True,
+        )
         top_chunks = [chunk for score, chunk in scored_chunks[:self.top_k]]
 
         # Add scores to metadata
@@ -440,6 +500,7 @@ class GenerationNode:
             query = state.get("query", "")
             retrieved_docs = state.get("retrieved_docs", [])
             sources = state.get("sources", [])
+            budget = state.get("context_budget_chars") or 6000
 
             if not retrieved_docs:
                 return {
@@ -447,11 +508,7 @@ class GenerationNode:
                     "status": "completed",
                 }
 
-            # Build context from retrieved documents
-            context = "\n\n".join([
-                f"Document {i+1}:\n{doc.page_content}"
-                for i, doc in enumerate(retrieved_docs)
-            ])
+            context, citation_order = _assemble_context(retrieved_docs, budget)
 
             # Create prompt
             prompt = f"""Based on the following context, please answer the question. If the answer is not in the context, say "I don't have enough information to answer this question."
@@ -461,14 +518,17 @@ Context:
 
 Question: {query}
 
-Please provide a clear, accurate answer based only on the context provided."""
+Please provide a clear, accurate answer based only on the context provided. Cite supporting sources inline using their source ids, for example [chunk_abc123]."""
 
             llm = self._get_llm()
 
             if llm is None:
                 # Mock response
                 return {
-                    "answer": f"Mock answer for query: {query[:50]}... (based on {len(retrieved_docs)} documents)",
+                    "answer": (
+                        f"Mock answer for query: {query[:50]}... "
+                        f"(based on {len(retrieved_docs)} documents; sources: {', '.join(citation_order)})"
+                    ),
                     "status": "completed",
                 }
 
@@ -497,20 +557,55 @@ def has_error(state: RAGState) -> str:
     return "error" if state.get("error") else "continue"
 
 
-def should_retrieve(state: RAGState) -> str:
-    """Determine if we should do retrieval or if this is just indexing."""
-    query = state.get("query", "")
-    messages = state.get("messages", [])
+def should_index_or_retrieve(state: RAGState) -> str:
+    """Determine if we should index documents or retrieve from an existing collection."""
+    return "index" if state.get("documents") else "retrieve"
 
-    # Check if there's a query in messages
-    has_query = bool(query)
-    if not has_query and messages:
-        for msg in messages:
-            if isinstance(msg, HumanMessage):
-                has_query = True
-                break
 
-    return "retrieve" if has_query else "complete"
+def should_query(state: RAGState) -> str:
+    """Determine if a query exists for retrieval/generation."""
+    return "generate" if state.get("query") else "complete"
+
+
+def passthrough(state: RAGState) -> Dict[str, Any]:
+    """Router node used for conditional graph branching."""
+    return {}
+
+
+def _normalize_text(text: str) -> List[str]:
+    return [
+        token.strip(".,:;!?()[]{}\"'")
+        for token in text.lower().split()
+        if token.strip(".,:;!?()[]{}\"'")
+    ]
+
+
+def _assemble_context(retrieved_docs: List[Document], budget: int) -> tuple[str, List[str]]:
+    remaining = max(budget, 0)
+    sections: List[str] = []
+    citation_order: List[str] = []
+
+    for doc in retrieved_docs:
+        source_id = str(doc.metadata.get("source_id", doc.metadata.get("id", "unknown")))
+        if source_id not in citation_order:
+            citation_order.append(source_id)
+
+        section = f"[{source_id}]\n{doc.page_content.strip()}"
+        if not section.strip():
+            continue
+
+        if len(section) <= remaining:
+            sections.append(section)
+            remaining -= len(section)
+            continue
+
+        if remaining <= 32:
+            break
+
+        sections.append(section[:remaining].rstrip())
+        break
+
+    return "\n\n".join(sections), citation_order
 
 
 def build_rag_graph(
@@ -549,6 +644,7 @@ def build_rag_graph(
 
     # Add nodes
     workflow.add_node("document_ingestion", ingestion)
+    workflow.add_node("document_router", passthrough)
     workflow.add_node("chunking", chunking)
     workflow.add_node("embedding", embedding)
     workflow.add_node("storage", storage)
@@ -564,7 +660,16 @@ def build_rag_graph(
         has_error,
         {
             "error": END,
-            "continue": "chunking",
+            "continue": "document_router",
+        },
+    )
+
+    workflow.add_conditional_edges(
+        "document_router",
+        should_index_or_retrieve,
+        {
+            "index": "chunking",
+            "retrieve": "retrieval",
         },
     )
 
@@ -574,14 +679,21 @@ def build_rag_graph(
     # Conditional from storage: query mode or just indexing
     workflow.add_conditional_edges(
         "storage",
-        should_retrieve,
+        should_query,
         {
-            "retrieve": "retrieval",
+            "generate": "retrieval",
             "complete": END,
         },
     )
 
-    workflow.add_edge("retrieval", "generation")
+    workflow.add_conditional_edges(
+        "retrieval",
+        should_query,
+        {
+            "generate": "generation",
+            "complete": END,
+        },
+    )
     workflow.add_edge("generation", END)
 
     return workflow.compile()
