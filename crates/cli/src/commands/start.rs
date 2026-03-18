@@ -2,10 +2,20 @@
 
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
+use async_trait::async_trait;
+use futures::Stream;
 use openrustclaw_core::error::{Error as CoreError, McpError};
+use openrustclaw_core::traits::{Channel, LlmProvider};
+use openrustclaw_core::types::{
+    CompletionRequest, CompletionResponse, MemoryEntry, MemoryQuery, MemoryType, Message,
+    OutgoingMessage, SessionType, SourceType, StreamChunk, ToolFormat,
+};
+use openrustclaw_agent::runtime::AgentRuntime;
 use std::path::{Path, PathBuf};
+use std::pin::Pin;
 use std::sync::Arc;
 use std::future::Future;
+use std::collections::{HashMap, HashSet};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::signal;
 use tracing::{error, info, warn};
@@ -15,14 +25,16 @@ use openrustclaw_core::config::AppConfig;
 use openrustclaw_core::traits::{
     CoreMemoryStore as CoreMemoryStoreTrait, MemoryStore as MemoryStoreTrait,
 };
-use openrustclaw_core::traits::Channel;
-use openrustclaw_core::types::{MemoryEntry, MemoryQuery, MemoryType, SourceType};
 use openrustclaw_db::{SqliteCoreMemoryStore, SqliteMemoryStore, init_pool, run_migrations};
 use openrustclaw_gateway::server::{GatewayServer, GatewayState};
 use openrustclaw_gateway::sessions::SessionManager;
 use openrustclaw_langbridge::{LangBridgeClient, sidecar::SidecarManager};
 use openrustclaw_memory::MemoryPolicies;
 use openrustclaw_mcp::server::{McpServer, McpServerConfig, McpServerTool};
+use openrustclaw_providers::{
+    AnthropicProvider, OllamaProvider, OpenAiProvider, OpenRouterProvider, ProviderChain,
+    openrouter::RouteStrategy,
+};
 use openrustclaw_scheduler::{SchedulerWorker, worker::SchedulerConfig as WorkerSchedulerConfig};
 use openrustclaw_security::OriginValidator;
 use sqlx::Row;
@@ -171,12 +183,12 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
 
     // Build gateway state
     let gateway_state = GatewayState {
-        session_manager,
+        session_manager: session_manager.clone(),
         origin_validator,
         require_auth: config.security.require_auth,
         internal_api_token: Some(Arc::new(internal_api_token)),
-        memory_store: Some(memory_store),
-        core_memory_store: Some(core_memory_store),
+        memory_store: Some(memory_store.clone()),
+        core_memory_store: Some(core_memory_store.clone()),
     };
 
     // Create and start gateway server
@@ -201,9 +213,19 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
         .iter()
         .map(|channel| channel.platform())
         .collect();
+    let channel_agent = if enabled_channels.is_empty() {
+        None
+    } else {
+        Some(Arc::new(build_channel_agent(
+            &config,
+            memory_store.clone(),
+            core_memory_store.clone(),
+            session_manager.clone(),
+        )?))
+    };
 
     for channel in enabled_channels {
-        channel_tasks.push(spawn_channel_task(channel));
+        channel_tasks.push(spawn_channel_task(channel, channel_agent.clone()));
     }
 
     // Create shutdown signal handler
@@ -383,9 +405,13 @@ fn internal_api_addr(host: &str, port: u16) -> String {
     format!("http://{}:{}", loopback_host, port)
 }
 
-fn spawn_channel_task(mut channel: Box<dyn Channel>) -> tokio::task::JoinHandle<()> {
+fn spawn_channel_task(
+    mut channel: Box<dyn Channel>,
+    channel_agent: Option<Arc<ChannelAgent>>,
+) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let platform = channel.platform();
+        let mut route_sessions = HashMap::new();
         info!(platform = ?platform, "Starting channel");
         match channel.connect().await {
             Ok(()) => {
@@ -400,6 +426,30 @@ fn spawn_channel_task(mut channel: Box<dyn Channel>) -> tokio::task::JoinHandle<
                                 content = %message.content,
                                 "Channel received incoming message"
                             );
+                            if let Some(agent) = channel_agent.as_ref() {
+                                match agent
+                                    .handle_incoming_message(&mut route_sessions, message)
+                                    .await
+                                {
+                                    Ok(Some(reply)) => {
+                                        if let Err(e) = channel.send(reply).await {
+                                            error!(
+                                                platform = ?platform,
+                                                error = %e,
+                                                "Failed to send channel reply"
+                                            );
+                                        }
+                                    }
+                                    Ok(None) => {}
+                                    Err(e) => {
+                                        error!(
+                                            platform = ?platform,
+                                            error = %e,
+                                            "Failed to process inbound channel message"
+                                        );
+                                    }
+                                }
+                            }
                         }
                         Err(e) => {
                             error!(platform = ?platform, error = %e, "Channel receive failed");
@@ -413,6 +463,326 @@ fn spawn_channel_task(mut channel: Box<dyn Channel>) -> tokio::task::JoinHandle<
             }
         }
     })
+}
+
+#[derive(Clone)]
+struct ChannelAgent {
+    runtime: Arc<AgentRuntime>,
+    session_manager: Arc<SessionManager>,
+    core_memory_store: Option<Arc<dyn CoreMemoryStoreTrait>>,
+    max_history_messages: usize,
+}
+
+struct ChannelConversationState {
+    session_id: Uuid,
+    history: Vec<Message>,
+    reply_metadata: serde_json::Value,
+}
+
+impl ChannelAgent {
+    async fn handle_incoming_message(
+        &self,
+        route_sessions: &mut HashMap<String, ChannelConversationState>,
+        incoming: openrustclaw_core::types::IncomingMessage,
+    ) -> Result<Option<OutgoingMessage>> {
+        let trimmed_content = incoming.content.trim();
+        if trimmed_content.is_empty() {
+            return Ok(None);
+        }
+
+        let route_key = channel_route_key(&incoming);
+        if !route_sessions.contains_key(&route_key) {
+            let session_type = infer_session_type(&incoming);
+            let session = self
+                .session_manager
+                .create_session(&incoming.user_id, session_type, incoming.platform)
+                .await?;
+            route_sessions.insert(
+                route_key.clone(),
+                ChannelConversationState {
+                    session_id: session.id,
+                    history: Vec::new(),
+                    reply_metadata: incoming.metadata.clone(),
+                },
+            );
+        }
+
+        let Some(route_state) = route_sessions.get_mut(&route_key) else {
+            return Ok(None);
+        };
+
+        route_state.reply_metadata = incoming.metadata.clone();
+        route_state.history.push(Message::user(trimmed_content));
+        trim_history(&mut route_state.history, self.max_history_messages);
+
+        let core_memory = if let Some(store) = self.core_memory_store.as_ref() {
+            match store.get_all(&incoming.user_id).await {
+                Ok(entries) => entries,
+                Err(error) => {
+                    warn!(
+                        platform = ?incoming.platform,
+                        user_id = %incoming.user_id,
+                        error = %error,
+                        "Failed to load core memory for inbound channel message"
+                    );
+                    Vec::new()
+                }
+            }
+        } else {
+            Vec::new()
+        };
+
+        let response = self
+            .runtime
+            .process(
+                &route_state.history,
+                &core_memory,
+                &route_state.session_id.to_string(),
+                &incoming.user_id,
+            )
+            .await?;
+
+        route_state.history.push(response.message.clone());
+        trim_history(&mut route_state.history, self.max_history_messages);
+
+        if response.message.content.trim().is_empty() {
+            info!(
+                platform = ?incoming.platform,
+                user_id = %incoming.user_id,
+                session_id = %route_state.session_id,
+                "Agent returned empty channel response; skipping outbound send"
+            );
+            return Ok(None);
+        }
+
+        Ok(Some(OutgoingMessage {
+            session_id: route_state.session_id,
+            content: response.message.content,
+            metadata: route_state.reply_metadata.clone(),
+        }))
+    }
+}
+
+fn build_channel_agent(
+    config: &AppConfig,
+    memory_store: Arc<SqliteMemoryStore>,
+    core_memory_store: Arc<SqliteCoreMemoryStore>,
+    session_manager: Arc<SessionManager>,
+) -> Result<ChannelAgent> {
+    let provider = build_channel_provider(config)?;
+    let runtime = AgentRuntime::with_memory_stores(
+        provider,
+        "OpenRustClaw".to_string(),
+        memory_store,
+        core_memory_store.clone(),
+    );
+
+    Ok(ChannelAgent {
+        runtime: Arc::new(runtime),
+        session_manager,
+        core_memory_store: Some(core_memory_store),
+        max_history_messages: 24,
+    })
+}
+
+fn build_channel_provider(config: &AppConfig) -> Result<Arc<dyn LlmProvider>> {
+    let mut provider_names = Vec::new();
+    provider_names.push(config.providers.default_provider.clone());
+    provider_names.extend(config.providers.fallback_chain.clone());
+
+    let mut seen = HashSet::new();
+    let mut providers = Vec::new();
+
+    for provider_name in provider_names {
+        if !seen.insert(provider_name.clone()) {
+            continue;
+        }
+
+        match create_provider_from_config(&provider_name, config) {
+            Ok(provider) => providers.push(provider),
+            Err(error) if providers.is_empty() => {
+                return Err(error).with_context(|| {
+                    format!("Failed to initialize default provider '{}'", provider_name)
+                });
+            }
+            Err(error) => {
+                warn!(
+                    provider = %provider_name,
+                    error = %error,
+                    "Skipping fallback provider that could not be initialized"
+                );
+            }
+        }
+    }
+
+    if providers.is_empty() {
+        anyhow::bail!("No channel providers could be initialized from configuration");
+    }
+
+    if providers.len() == 1 {
+        return Ok(providers.remove(0));
+    }
+
+    let primary = providers[0].clone();
+    Ok(Arc::new(ChannelProviderChain::new(providers, primary)))
+}
+
+fn create_provider_from_config(
+    provider_name: &str,
+    config: &AppConfig,
+) -> Result<Arc<dyn LlmProvider>> {
+    match provider_name.to_lowercase().as_str() {
+        "anthropic" => {
+            let api_key = std::env::var("ANTHROPIC_API_KEY")
+                .context("ANTHROPIC_API_KEY environment variable not set")?;
+            let provider = AnthropicProvider::new(api_key, config.providers.anthropic.model.clone());
+            Ok(Arc::new(provider))
+        }
+        "openai" => {
+            let api_key = std::env::var("OPENAI_API_KEY")
+                .context("OPENAI_API_KEY environment variable not set")?;
+            let provider = OpenAiProvider::new(api_key, config.providers.openai.model.clone());
+            Ok(Arc::new(provider))
+        }
+        "openrouter" => {
+            let api_key = std::env::var("OPENROUTER_API_KEY")
+                .context("OPENROUTER_API_KEY environment variable not set")?;
+            let strategy = match config.providers.openrouter.route_strategy.as_str() {
+                "price" => RouteStrategy::Price,
+                "throughput" => RouteStrategy::Throughput,
+                "web_search" | "online" => RouteStrategy::WebSearch,
+                _ => RouteStrategy::Quality,
+            };
+            let provider = OpenRouterProvider::with_strategy(
+                api_key,
+                "anthropic/claude-sonnet-4".to_string(),
+                strategy,
+            );
+            Ok(Arc::new(provider))
+        }
+        "ollama" => {
+            let provider = OllamaProvider::with_base_url(
+                config.providers.ollama.model.clone(),
+                config.providers.ollama.base_url.clone(),
+            );
+            Ok(Arc::new(provider))
+        }
+        _ => anyhow::bail!(
+            "Unknown provider '{}'. Available: anthropic, openai, openrouter, ollama",
+            provider_name
+        ),
+    }
+}
+
+struct ChannelProviderChain {
+    chain: ProviderChain,
+    primary: Arc<dyn LlmProvider>,
+}
+
+impl ChannelProviderChain {
+    fn new(providers: Vec<Arc<dyn LlmProvider>>, primary: Arc<dyn LlmProvider>) -> Self {
+        Self {
+            chain: ProviderChain::new(providers),
+            primary,
+        }
+    }
+}
+
+#[async_trait]
+impl LlmProvider for ChannelProviderChain {
+    async fn complete(&self, request: CompletionRequest) -> openrustclaw_core::error::Result<CompletionResponse> {
+        self.chain.complete(request).await
+    }
+
+    async fn stream(
+        &self,
+        _request: CompletionRequest,
+    ) -> openrustclaw_core::error::Result<Pin<Box<dyn Stream<Item = openrustclaw_core::error::Result<StreamChunk>> + Send>>>
+    {
+        Err(openrustclaw_core::error::Error::Provider(
+            openrustclaw_core::error::ProviderError::StreamError {
+                provider: self.primary.provider_name().to_string(),
+                message: "Streaming is not implemented for provider chains".to_string(),
+            },
+        ))
+    }
+
+    fn model_id(&self) -> &str {
+        self.primary.model_id()
+    }
+
+    fn max_tokens(&self) -> usize {
+        self.primary.max_tokens()
+    }
+
+    fn provider_name(&self) -> &str {
+        self.primary.provider_name()
+    }
+
+    fn supports_strict_tools(&self) -> bool {
+        self.primary.supports_strict_tools()
+    }
+
+    fn supports_streaming_tool_deltas(&self) -> bool {
+        false
+    }
+
+    fn native_tool_format(&self) -> ToolFormat {
+        self.primary.native_tool_format()
+    }
+}
+
+fn infer_session_type(message: &openrustclaw_core::types::IncomingMessage) -> SessionType {
+    if channel_scope_from_metadata(&message.metadata).is_some() {
+        SessionType::Group
+    } else {
+        SessionType::Dm
+    }
+}
+
+fn channel_route_key(message: &openrustclaw_core::types::IncomingMessage) -> String {
+    let scope = channel_scope_from_metadata(&message.metadata)
+        .unwrap_or_else(|| "direct".to_string());
+    format!("{}:{}:{}", message.platform, scope, message.user_id)
+}
+
+fn channel_scope_from_metadata(metadata: &serde_json::Value) -> Option<String> {
+    const PRIMARY_KEYS: &[&str] = &[
+        "slack_thread_ts",
+        "slack_channel",
+        "telegram_chat_id",
+        "discord_channel_id",
+        "google_chat_thread",
+        "google_chat_space",
+        "teams_conversation_id",
+        "matrix_room_id",
+        "whatsapp_chat_id",
+        "line_room_id",
+        "meta_thread_id",
+    ];
+
+    for key in PRIMARY_KEYS {
+        if let Some(value) = metadata.get(*key) {
+            if let Some(text) = value.as_str() {
+                return Some(format!("{}={}", key, text));
+            }
+            if let Some(number) = value.as_i64() {
+                return Some(format!("{}={}", key, number));
+            }
+            if let Some(number) = value.as_u64() {
+                return Some(format!("{}={}", key, number));
+            }
+        }
+    }
+
+    None
+}
+
+fn trim_history(history: &mut Vec<Message>, max_history_messages: usize) {
+    if history.len() > max_history_messages {
+        let drain_count = history.len() - max_history_messages;
+        history.drain(0..drain_count);
+    }
 }
 
 fn build_mcp_server(workspace_root: PathBuf, pool: sqlx::SqlitePool) -> McpServer {
@@ -985,7 +1355,178 @@ struct McpCreateScheduledJobArgs {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use openrustclaw_core::error::{Error, ProviderError};
+    use openrustclaw_core::types::{FinishReason, IncomingMessage, Role, TokenUsage};
     use tempfile::tempdir;
+
+    struct MockProvider;
+
+    #[async_trait]
+    impl LlmProvider for MockProvider {
+        async fn complete(
+            &self,
+            request: CompletionRequest,
+        ) -> openrustclaw_core::error::Result<CompletionResponse> {
+            let last_user_message = request
+                .messages
+                .iter()
+                .rev()
+                .find(|message| message.role == Role::User)
+                .map(|message| message.content.clone())
+                .unwrap_or_default();
+
+            Ok(CompletionResponse {
+                id: "mock-response".to_string(),
+                message: Message::assistant(format!("Echo: {}", last_user_message)),
+                model: "mock-model".to_string(),
+                usage: TokenUsage::default(),
+                provider: "mock".to_string(),
+                finish_reason: FinishReason::Stop,
+            })
+        }
+
+        async fn stream(
+            &self,
+            _request: CompletionRequest,
+        ) -> openrustclaw_core::error::Result<
+            Pin<Box<dyn Stream<Item = openrustclaw_core::error::Result<StreamChunk>> + Send>>,
+        > {
+            Err(Error::Provider(ProviderError::StreamError {
+                provider: "mock".to_string(),
+                message: "streaming unsupported in tests".to_string(),
+            }))
+        }
+
+        fn model_id(&self) -> &str {
+            "mock-model"
+        }
+
+        fn max_tokens(&self) -> usize {
+            4096
+        }
+
+        fn provider_name(&self) -> &str {
+            "mock"
+        }
+
+        fn supports_strict_tools(&self) -> bool {
+            false
+        }
+
+        fn supports_streaming_tool_deltas(&self) -> bool {
+            false
+        }
+
+        fn native_tool_format(&self) -> ToolFormat {
+            ToolFormat::OpenAi
+        }
+    }
+
+    fn test_channel_agent() -> ChannelAgent {
+        let runtime = AgentRuntime::new(
+            Arc::new(MockProvider),
+            Arc::new(openrustclaw_agent::tools::ToolRegistry::new()),
+            "OpenRustClaw".to_string(),
+        );
+
+        ChannelAgent {
+            runtime: Arc::new(runtime),
+            session_manager: Arc::new(SessionManager::new()),
+            core_memory_store: None,
+            max_history_messages: 24,
+        }
+    }
+
+    #[tokio::test]
+    async fn inbound_channel_messages_reuse_session_for_same_route() {
+        let agent = test_channel_agent();
+        let mut route_sessions = HashMap::new();
+
+        let first_reply = agent
+            .handle_incoming_message(
+                &mut route_sessions,
+                IncomingMessage {
+                    session_id: Uuid::new_v4(),
+                    user_id: "user-1".to_string(),
+                    content: "hello".to_string(),
+                    platform: openrustclaw_core::types::Platform::Telegram,
+                    metadata: serde_json::json!({
+                        "telegram_chat_id": "chat-123"
+                    }),
+                },
+            )
+            .await
+            .unwrap()
+            .unwrap();
+
+        let second_reply = agent
+            .handle_incoming_message(
+                &mut route_sessions,
+                IncomingMessage {
+                    session_id: Uuid::new_v4(),
+                    user_id: "user-1".to_string(),
+                    content: "again".to_string(),
+                    platform: openrustclaw_core::types::Platform::Telegram,
+                    metadata: serde_json::json!({
+                        "telegram_chat_id": "chat-123"
+                    }),
+                },
+            )
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(route_sessions.len(), 1);
+        assert_eq!(first_reply.session_id, second_reply.session_id);
+        assert_eq!(second_reply.content, "Echo: again");
+        assert_eq!(second_reply.metadata["telegram_chat_id"], "chat-123");
+    }
+
+    #[tokio::test]
+    async fn shared_group_scope_isolated_by_user() {
+        let agent = test_channel_agent();
+        let mut route_sessions = HashMap::new();
+
+        let first_reply = agent
+            .handle_incoming_message(
+                &mut route_sessions,
+                IncomingMessage {
+                    session_id: Uuid::new_v4(),
+                    user_id: "user-1".to_string(),
+                    content: "hello".to_string(),
+                    platform: openrustclaw_core::types::Platform::Slack,
+                    metadata: serde_json::json!({
+                        "slack_channel": "C123",
+                        "slack_team_id": "T123"
+                    }),
+                },
+            )
+            .await
+            .unwrap()
+            .unwrap();
+
+        let second_reply = agent
+            .handle_incoming_message(
+                &mut route_sessions,
+                IncomingMessage {
+                    session_id: Uuid::new_v4(),
+                    user_id: "user-2".to_string(),
+                    content: "hello".to_string(),
+                    platform: openrustclaw_core::types::Platform::Slack,
+                    metadata: serde_json::json!({
+                        "slack_channel": "C123",
+                        "slack_team_id": "T123"
+                    }),
+                },
+            )
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(route_sessions.len(), 2);
+        assert_ne!(first_reply.session_id, second_reply.session_id);
+        assert_eq!(first_reply.metadata["slack_channel"], "C123");
+    }
 
     #[tokio::test(flavor = "multi_thread")]
     async fn mcp_server_memory_tools_persist_and_render() {

@@ -33,9 +33,9 @@ Status values:
 | Area | Status | Notes |
 | --- | --- | --- |
 | WebChat | real | Current baseline chat path |
-| Telegram | partial | Auth probe, outbound send, and Bot API polling receive path exist; webhook/runtime routing remains incomplete |
+| Telegram | real | Auth probe, outbound send, Bot API polling receive, and local agent/session routing in `openrustclaw start` exist |
 | Discord | partial | Auth probe and outbound send path exist; inbound gateway/runtime path remains incomplete |
-| Slack | partial | Auth probe and outbound send path exist; inbound event/runtime path remains incomplete |
+| Slack | partial | Auth probe, outbound send, and HTTP Events API helper exist; built-in HTTP ingress wiring is still incomplete |
 | Matrix | partial | Shape exists; matrix-sdk integration deferred |
 | Google Chat | partial | Auth/config shape exists; receive/send coverage incomplete |
 | Gmail Pub/Sub | partial | Auth/config shape exists; live Gmail API operations incomplete |

@@ -97,9 +97,9 @@ Not all of these modules are feature-complete. Telegram, Discord, Slack, Matrix,
 
 Current tier-1 status:
 
-- Telegram: auth probe, outbound send, and Bot API polling receive path are implemented
+- Telegram: auth probe, outbound send, Bot API polling receive, and local agent/session routing are implemented
 - Discord: auth probe and outbound send path are implemented; inbound runtime remains incomplete
-- Slack: auth probe and outbound send path are implemented; inbound runtime remains incomplete
+- Slack: auth probe, outbound send, and an HTTP Events API helper are implemented; built-in HTTP ingress wiring remains incomplete
 
 ## Memory System
 

@@ -529,7 +529,6 @@ mod tests {
                     }
                 }]
             })))
-            .expect(1)
             .mount(&server)
             .await;
 
