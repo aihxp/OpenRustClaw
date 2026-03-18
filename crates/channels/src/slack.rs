@@ -605,12 +605,14 @@ impl SlackEventHandler {
             "slack_channel": channel_id,
             "slack_is_group": !channel_id.starts_with('D'),
             "slack_bot_mentioned": event_type == "app_mention",
+            "slack_stream_mode": if event_type == "app_mention" { "mention" } else { "message" },
         });
         if let Some(team_id) = team_id {
             metadata["slack_team_id"] = serde_json::json!(team_id);
         }
         if let Some(thread_ts) = event.get("thread_ts").and_then(|value| value.as_str()) {
             metadata["slack_thread_ts"] = serde_json::json!(thread_ts);
+            metadata["slack_thread_owner_user_id"] = serde_json::json!(user_id);
         }
         if let Some(event_ts) = event.get("event_ts").and_then(|value| value.as_str()) {
             metadata["slack_event_ts"] = serde_json::json!(event_ts);

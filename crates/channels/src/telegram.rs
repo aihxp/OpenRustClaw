@@ -245,6 +245,22 @@ impl TelegramChannel {
                                 Some("[Voice message]".to_string())
                             } else if message.get("video").is_some() {
                                 Some("[Video]".to_string())
+                            } else if let Some(topic_created) = message.get("forum_topic_created") {
+                                let name = topic_created
+                                    .get("name")
+                                    .and_then(|value| value.as_str())
+                                    .unwrap_or("topic");
+                                Some(format!("[Forum topic created] {name}"))
+                            } else if message.get("forum_topic_closed").is_some() {
+                                Some("[Forum topic closed]".to_string())
+                            } else if message.get("forum_topic_reopened").is_some() {
+                                Some("[Forum topic reopened]".to_string())
+                            } else if let Some(topic_edited) = message.get("forum_topic_edited") {
+                                let name = topic_edited
+                                    .get("name")
+                                    .and_then(|value| value.as_str())
+                                    .unwrap_or("topic");
+                                Some(format!("[Forum topic edited] {name}"))
                             } else {
                                 None
                             }
@@ -295,6 +311,25 @@ impl TelegramChannel {
                         .and_then(|value| value.as_i64())
                     {
                         metadata["telegram_message_thread_id"] = serde_json::json!(thread_id);
+                    }
+                    if message
+                        .get("is_topic_message")
+                        .and_then(|value| value.as_bool())
+                        == Some(true)
+                    {
+                        metadata["telegram_is_topic_message"] = serde_json::json!(true);
+                    }
+                    if let Some(topic_created) = message.get("forum_topic_created") {
+                        metadata["telegram_forum_topic_created"] = topic_created.clone();
+                    }
+                    if message.get("forum_topic_closed").is_some() {
+                        metadata["telegram_forum_topic_closed"] = serde_json::json!(true);
+                    }
+                    if message.get("forum_topic_reopened").is_some() {
+                        metadata["telegram_forum_topic_reopened"] = serde_json::json!(true);
+                    }
+                    if let Some(topic_edited) = message.get("forum_topic_edited") {
+                        metadata["telegram_forum_topic_edited"] = topic_edited.clone();
                     }
                     if let Some(poll) = message.get("poll") {
                         metadata["telegram_poll"] = poll.clone();
@@ -393,7 +428,18 @@ impl Channel for TelegramChannel {
             })
             .and_then(|value| value.as_str());
         let is_poll = msg.metadata.get("telegram_poll_options").and_then(|value| value.as_array());
-        let endpoint = if is_poll.is_some() {
+        let reaction = msg
+            .metadata
+            .get("telegram_reaction")
+            .and_then(|value| value.as_str());
+        let reaction_target = msg
+            .metadata
+            .get("telegram_reaction_message_id")
+            .or_else(|| msg.metadata.get("telegram_reply_to_message_id"))
+            .and_then(|value| value.as_i64());
+        let endpoint = if reaction.is_some() && reaction_target.is_some() {
+            "setMessageReaction"
+        } else if is_poll.is_some() {
             "sendPoll"
         } else {
             match media_type {
@@ -408,7 +454,13 @@ impl Channel for TelegramChannel {
         let mut payload = serde_json::json!({
             "chat_id": chat_id,
         });
-        if let Some(options) = is_poll {
+        if let (Some(reaction), Some(message_id)) = (reaction, reaction_target) {
+            payload["message_id"] = serde_json::json!(message_id);
+            payload["reaction"] = serde_json::json!([{
+                "type": "emoji",
+                "emoji": reaction,
+            }]);
+        } else if let Some(options) = is_poll {
             payload["question"] = serde_json::json!(msg.content);
             payload["options"] = serde_json::json!(options);
         } else if let (Some(kind), Some(reference)) = (media_type, media_ref) {
@@ -684,6 +736,60 @@ mod tests {
                 session_id: uuid::Uuid::new_v4(),
                 content: "hello".to_string(),
                 metadata: serde_json::json!({"telegram_chat_id": "123"}),
+            })
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_send_reaction_via_bot_api() {
+        use wiremock::matchers::{body_partial_json, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/bottoken/getMe"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "ok": true,
+                "result": {"id": 1, "is_bot": true, "username": "test_bot"}
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/bottoken/setMessageReaction"))
+            .and(body_partial_json(serde_json::json!({
+                "chat_id": "123",
+                "message_id": 42,
+                "reaction": [{"type": "emoji", "emoji": "👍"}]
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "ok": true,
+                "result": true
+            })))
+            .mount(&server)
+            .await;
+
+        let config = TelegramConfig {
+            enabled: true,
+            token: "token".to_string(),
+            api_base_url: Some(server.uri()),
+            mode: openrustclaw_core::config::TelegramMode::Polling,
+            webhook_url: None,
+            webhook_port: None,
+            allowed_users: vec![],
+            rate_limit_per_second: 30,
+        };
+        let mut channel = TelegramChannel::new(config);
+        channel.connect().await.unwrap();
+        channel
+            .send(OutgoingMessage {
+                session_id: uuid::Uuid::new_v4(),
+                content: "".to_string(),
+                metadata: serde_json::json!({
+                    "telegram_chat_id": "123",
+                    "telegram_reaction": "👍",
+                    "telegram_reaction_message_id": 42
+                }),
             })
             .await
             .unwrap();

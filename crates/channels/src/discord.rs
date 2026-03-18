@@ -795,6 +795,9 @@ fn normalize_gateway_message(
     if let Some(thread_id) = event.thread_id {
         metadata["discord_thread_id"] = serde_json::json!(thread_id);
     }
+    if let Some(parent_id) = event.parent_id {
+        metadata["discord_parent_channel_id"] = serde_json::json!(parent_id);
+    }
     if let Some(reference) = event.message_reference
         && let Some(reference_id) = reference.message_id
     {
@@ -1097,6 +1100,8 @@ struct GatewayMessageCreate {
     channel_id: String,
     #[serde(default)]
     thread_id: Option<String>,
+    #[serde(default)]
+    parent_id: Option<String>,
     #[serde(default)]
     guild_id: Option<String>,
     content: String,
@@ -1718,6 +1723,7 @@ mod tests {
                 id: "message-1".to_string(),
                 channel_id: "channel-1".to_string(),
                 thread_id: None,
+                parent_id: None,
                 guild_id: None,
                 content: "from webhook".to_string(),
                 timestamp: None,
@@ -1752,6 +1758,7 @@ mod tests {
                 id: "message-2".to_string(),
                 channel_id: "channel-1".to_string(),
                 thread_id: None,
+                parent_id: None,
                 guild_id: None,
                 content: "from self".to_string(),
                 timestamp: None,

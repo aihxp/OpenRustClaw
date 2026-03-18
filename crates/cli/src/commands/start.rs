@@ -1280,12 +1280,16 @@ impl ChannelAgent {
         }
 
         let registry = self.channel_registry.read().await;
+        let channel_scopes = channel_scope_candidates(
+            &incoming.metadata,
+            self.session_routing.thread_overrides_channel,
+        );
         let binding = resolve_channel_binding(
             &registry,
             incoming.platform,
             identity.workspace_id.as_deref(),
             Some(account.id.as_str()),
-            identity.channel_scope.as_deref(),
+            &channel_scopes,
         );
 
         let direct_strategy = account
@@ -1677,7 +1681,7 @@ fn resolve_channel_binding<'a>(
     platform: Platform,
     workspace_id: Option<&str>,
     account_id: Option<&str>,
-    channel_scope: Option<&str>,
+    channel_scopes: &[String],
 ) -> Option<&'a ChannelBindingSpec> {
     registry
         .bindings
@@ -1701,7 +1705,7 @@ fn resolve_channel_binding<'a>(
             binding
                 .channel_match
                 .as_deref()
-                .map(|value| channel_scope == Some(value))
+                .map(|value| channel_scopes.iter().any(|scope| scope == value))
                 .unwrap_or(true)
         })
         .max_by_key(|binding| {
@@ -1710,6 +1714,22 @@ fn resolve_channel_binding<'a>(
                 + usize::from(binding.channel_match.is_some());
             (specificity, -(binding.priority as isize))
         })
+}
+
+fn channel_scope_candidates(
+    metadata: &serde_json::Value,
+    thread_overrides_channel: bool,
+) -> Vec<String> {
+    let mut candidates = Vec::new();
+    if let Some(primary) = channel_scope_from_metadata(metadata, thread_overrides_channel) {
+        candidates.push(primary);
+    }
+    if let Some(parent) = parent_channel_scope_from_metadata(metadata)
+        && !candidates.iter().any(|existing| existing == &parent)
+    {
+        candidates.push(parent);
+    }
+    candidates
 }
 
 fn default_send_policy(policy: &SessionRoutingConfig) -> ChannelSendPolicy {
@@ -1894,6 +1914,23 @@ fn channel_scope_from_metadata(
         }
     }
 
+    None
+}
+
+fn parent_channel_scope_from_metadata(metadata: &serde_json::Value) -> Option<String> {
+    for key in ["discord_parent_channel_id", "slack_channel"] {
+        if let Some(value) = metadata.get(key) {
+            if let Some(text) = value.as_str() {
+                return Some(format!("{}={}", key, text));
+            }
+            if let Some(number) = value.as_i64() {
+                return Some(format!("{}={}", key, number));
+            }
+            if let Some(number) = value.as_u64() {
+                return Some(format!("{}={}", key, number));
+            }
+        }
+    }
     None
 }
 

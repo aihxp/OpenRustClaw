@@ -26,6 +26,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use governor::{Quota, RateLimiter};
+use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
 use std::num::NonZeroU32;
 use tokio::sync::{Mutex, RwLock, mpsc};
 use tracing::{debug, info, warn};
@@ -39,6 +40,8 @@ use openrustclaw_core::types::{IncomingMessage, OutgoingMessage, Platform};
 /// Google Chat API base URL.
 #[allow(dead_code)]
 const GOOGLE_CHAT_API_BASE: &str = "https://chat.googleapis.com/v1";
+const GOOGLE_OAUTH_TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
+const GOOGLE_CHAT_SCOPE: &str = "https://www.googleapis.com/auth/chat.bot";
 
 /// Google Chat channel implementation.
 pub struct GoogleChatChannel {
@@ -136,6 +139,27 @@ enum OnClick {
 #[derive(Debug, Clone, serde::Serialize)]
 struct OpenLink {
     url: String,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+struct ServiceAccountKey {
+    client_email: String,
+    private_key: String,
+    #[serde(default = "default_google_token_uri")]
+    token_uri: String,
+}
+
+fn default_google_token_uri() -> String {
+    GOOGLE_OAUTH_TOKEN_URL.to_string()
+}
+
+#[derive(Debug, serde::Serialize)]
+struct ServiceAccountClaims {
+    iss: String,
+    scope: String,
+    aud: String,
+    exp: i64,
+    iat: i64,
 }
 
 /// Incoming Google Chat event.
@@ -455,6 +479,11 @@ impl GoogleChatChannel {
             {
                 return Ok(token.to_string());
             }
+            if let Ok(service_account) = serde_json::from_str::<ServiceAccountKey>(&raw) {
+                return self
+                    .exchange_service_account_token(&service_account)
+                    .await;
+            }
         }
 
         warn!("Google Chat auth requires `token:<value>`, `env:VAR`, or a JSON file containing `access_token`");
@@ -464,6 +493,79 @@ impl GoogleChatChannel {
                 .to_string(),
         }
         .into())
+    }
+
+    async fn exchange_service_account_token(
+        &self,
+        service_account: &ServiceAccountKey,
+    ) -> Result<String> {
+        let now = chrono::Utc::now().timestamp();
+        let claims = ServiceAccountClaims {
+            iss: service_account.client_email.clone(),
+            scope: GOOGLE_CHAT_SCOPE.to_string(),
+            aud: service_account.token_uri.clone(),
+            iat: now,
+            exp: now + 3600,
+        };
+
+        let jwt = encode(
+            &Header::new(Algorithm::RS256),
+            &claims,
+            &EncodingKey::from_rsa_pem(service_account.private_key.as_bytes()).map_err(|e| {
+                ChannelError::AuthFailed {
+                    platform: "google_chat".to_string(),
+                    message: format!("Invalid Google service account private key: {}", e),
+                }
+            })?,
+        )
+        .map_err(|e| ChannelError::AuthFailed {
+            platform: "google_chat".to_string(),
+            message: format!("Failed to sign Google service account JWT: {}", e),
+        })?;
+
+        let response = self
+            .http_client
+            .post(&service_account.token_uri)
+            .form(&[
+                ("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer"),
+                ("assertion", jwt.as_str()),
+            ])
+            .send()
+            .await
+            .map_err(|e| ChannelError::AuthFailed {
+                platform: "google_chat".to_string(),
+                message: format!("Google OAuth token exchange failed: {}", e),
+            })?;
+
+        let status = response.status();
+        let body: serde_json::Value = response
+            .json()
+            .await
+            .unwrap_or_else(|_| serde_json::json!({}));
+
+        if !status.is_success() {
+            return Err(ChannelError::AuthFailed {
+                platform: "google_chat".to_string(),
+                message: body
+                    .get("error_description")
+                    .and_then(|value| value.as_str())
+                    .or_else(|| body.get("error").and_then(|value| value.as_str()))
+                    .unwrap_or("Google OAuth token exchange failed")
+                    .to_string(),
+            }
+            .into());
+        }
+
+        body.get("access_token")
+            .and_then(|value| value.as_str())
+            .map(|value| value.to_string())
+            .ok_or_else(|| {
+                ChannelError::AuthFailed {
+                    platform: "google_chat".to_string(),
+                    message: "Google OAuth response did not contain access_token".to_string(),
+                }
+                .into()
+            })
     }
 }
 
