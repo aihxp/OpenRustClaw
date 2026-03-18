@@ -318,6 +318,9 @@ def test_memory_bridge_request_helpers():
         with patch("urllib.request.urlopen", return_value=_Response()) as mock_urlopen:
             search_result = asyncio.run(bridge.search_memory("user-1", "rust", limit=2))
             core_result = asyncio.run(bridge.render_core_memory("user-1"))
+            core_write_result = asyncio.run(
+                bridge.set_core_memory("user-1", "language", "Rust", importance=0.9)
+            )
             old_result = asyncio.run(
                 bridge.fetch_old_memories(age_days=30, namespace="user-1", user_id="user-1")
             )
@@ -343,6 +346,7 @@ def test_memory_bridge_request_helpers():
 
         assert search_result[0]["content"] == "Prefers Rust"
         assert "Core Memory" in core_result
+        assert core_write_result["content"] == "## Core Memory"
         assert old_result[0]["content"] == "Prefers Rust"
         assert rag_store_result["memories"][0]["content"] == "Prefers Rust"
         assert rag_load_result[0]["content"] == "Prefers Rust"
@@ -350,7 +354,7 @@ def test_memory_bridge_request_helpers():
         assert rag_delete_result["memories"][0]["content"] == "Prefers Rust"
         assert archive_result["memories"][0]["content"] == "Prefers Rust"
         assert delete_result["memories"][0]["content"] == "Prefers Rust"
-        assert mock_urlopen.call_count == 9
+        assert mock_urlopen.call_count == 10
         print("  ✓ Memory bridge client")
     except ModuleNotFoundError as e:
         print(f"  ✗ Memory bridge client: {e}")

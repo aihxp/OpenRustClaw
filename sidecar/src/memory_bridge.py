@@ -72,6 +72,23 @@ class MemoryBridge:
         content = response.get("content", "")
         return content if isinstance(content, str) else ""
 
+    async def set_core_memory(
+        self,
+        user_id: str,
+        key: str,
+        value: str,
+        importance: float = 0.8,
+    ) -> Dict[str, Any]:
+        return await self._post(
+            "/memory/core/set",
+            {
+                "user_id": user_id,
+                "key": key,
+                "value": value,
+                "importance": importance,
+            },
+        )
+
     async def store_rag_chunks(
         self,
         collection_name: str,

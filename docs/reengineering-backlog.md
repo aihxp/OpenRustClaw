@@ -136,6 +136,7 @@ Status:
 - The sidecar RAG workflow now supports configurable minimum-score filtering so weak lexical matches can be dropped instead of filling the retrieval set.
 - The Rust loopback RAG API now supports collection listing and deletion in addition to replace/load operations.
 - The Rust loopback RAG API now returns richer collection stats, including source breadth and content volume, in addition to replace/load/list/delete operations.
+- The Python sidecar memory bridge now supports both rendering and setting durable core-memory entries through the Rust loopback API.
 - Sidecar LangSmith traces now preserve workflow trace ids back through the gRPC boundary so scheduler runs can persist them.
 - Scheduler dispatch can now create Rust-side LangSmith parent runs when `[observability].langsmith_enabled = true` and LangSmith env vars are present.
 - Channel message handling can now create Rust-side LangSmith runs when `[observability].langsmith_enabled = true` and LangSmith env vars are present.
