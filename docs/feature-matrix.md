@@ -46,7 +46,7 @@ Status values:
 
 | Area | Status | Notes |
 | --- | --- | --- |
-| MCP stdio server | real | Supported transport |
+| MCP stdio server | real | Supported transport with workspace, memory, scheduling, and RAG collection inspection tools |
 | MCP remote HTTP/SSE | deferred | Not part of current shipped surface |
 | `mcp2-cli` | real | Real stdio/OpenAPI discovery path |
 | Cursor integration | gated | Repo surface exists, but it is not part of the current shipped runtime/tooling surface |

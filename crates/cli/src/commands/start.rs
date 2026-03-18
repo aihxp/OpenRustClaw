@@ -1110,6 +1110,7 @@ fn build_mcp_server(
 ) -> McpServer {
     let memory_store = SqliteMemoryStore::new(pool.clone());
     let core_memory_store = SqliteCoreMemoryStore::new(pool.clone());
+    let rag_store = SqliteRagStore::new(pool.clone());
     let mut server = McpServer::new(McpServerConfig {
         name: "openrustclaw".to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
@@ -1223,6 +1224,16 @@ fn build_mcp_server(
                         "max_retries": {"type": "integer", "minimum": 0}
                     },
                     "required": ["name", "workflow_id"]
+                }),
+            },
+            McpServerTool {
+                name: "list_rag_collections".to_string(),
+                description: "List durable RAG collections and their stored stats.".to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "limit": {"type": "integer", "minimum": 1}
+                    }
                 }),
             },
         ],
@@ -1448,7 +1459,8 @@ fn build_mcp_server(
     }));
 
     let pool_for_create_jobs = pool;
-    server.register_handler("create_scheduled_job", traced_mcp_handler(langsmith, "create_scheduled_job", move |args| {
+    let langsmith_for_create_jobs = langsmith.clone();
+    server.register_handler("create_scheduled_job", traced_mcp_handler(langsmith_for_create_jobs, "create_scheduled_job", move |args| {
         let request: McpCreateScheduledJobArgs = parse_tool_args(args)?;
         let pool = pool_for_create_jobs.clone();
         block_on_tool(async move {
@@ -1558,6 +1570,24 @@ fn build_mcp_server(
                     "next_run_at": next_run_at.to_rfc3339(),
                     "timezone": timezone,
                 }
+            }))
+        })
+    }));
+
+    let rag_store_for_list = rag_store;
+    server.register_handler("list_rag_collections", traced_mcp_handler(langsmith, "list_rag_collections", move |args| {
+        let request: McpListRagCollectionsArgs = parse_tool_args(args)?;
+        let rag_store = rag_store_for_list.clone();
+        block_on_tool(async move {
+            let collections = rag_store.list_collection_stats(request.limit).await?;
+            Ok(serde_json::json!({
+                "collections": collections.into_iter().map(|stats| serde_json::json!({
+                    "collection_name": stats.collection_name,
+                    "chunk_count": stats.chunk_count,
+                    "source_count": stats.source_count,
+                    "total_content_bytes": stats.total_content_bytes,
+                    "last_updated_at": stats.last_updated_at,
+                })).collect::<Vec<_>>()
             }))
         })
     }));
@@ -1718,6 +1748,11 @@ struct McpCreateScheduledJobArgs {
     workflow_metadata: Option<serde_json::Value>,
     timezone: Option<String>,
     max_retries: Option<u32>,
+}
+
+#[derive(serde::Deserialize, Default)]
+struct McpListRagCollectionsArgs {
+    limit: Option<usize>,
 }
 
 #[cfg(test)]
@@ -2215,5 +2250,50 @@ mod tests {
         assert_eq!(list_payload["jobs"].as_array().unwrap().len(), 1);
         assert_eq!(list_payload["jobs"][0]["name"], "nightly-summary");
         assert_eq!(list_payload["jobs"][0]["metadata"]["workflow_metadata"]["purpose"], "test");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn mcp_server_lists_rag_collections() {
+        let workspace = tempdir().unwrap();
+        let db_path = workspace.path().join("mcp-rag.db");
+        let db_url = format!("sqlite://{}", db_path.display());
+        let pool = init_pool(&db_url, 1).await.unwrap();
+        run_migrations(&pool).await.unwrap();
+
+        let rag_store = SqliteRagStore::new(pool.clone());
+        rag_store
+            .replace_collection(
+                "docs",
+                &[openrustclaw_db::RagChunkInput {
+                    chunk_id: "chunk-1".to_string(),
+                    source_id: "doc-1".to_string(),
+                    chunk_index: 0,
+                    content: "Rust ownership".to_string(),
+                    metadata: serde_json::json!({"source_type": "doc"}),
+                }],
+            )
+            .await
+            .unwrap();
+
+        let server = build_mcp_server(workspace.path().to_path_buf(), pool, None);
+        let list_req = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 20,
+            "method": "tools/call",
+            "params": {
+                "name": "list_rag_collections",
+                "arguments": {
+                    "limit": 5
+                }
+            }
+        });
+
+        let list_resp = server.handle_request(&list_req);
+        let list_text = list_resp["result"]["content"][0]["text"].as_str().unwrap();
+        let list_payload: serde_json::Value = serde_json::from_str(list_text).unwrap();
+        assert_eq!(list_payload["collections"].as_array().unwrap().len(), 1);
+        assert_eq!(list_payload["collections"][0]["collection_name"], "docs");
+        assert_eq!(list_payload["collections"][0]["chunk_count"], 1);
+        assert_eq!(list_payload["collections"][0]["source_count"], 1);
     }
 }

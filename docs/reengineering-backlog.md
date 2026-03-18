@@ -143,6 +143,7 @@ Status:
 - Channel message handling can now create Rust-side LangSmith runs when `[observability].langsmith_enabled = true` and LangSmith env vars are present.
 - Gateway chat completions and internal memory/RAG endpoints can now emit Rust-side LangSmith runs when `[observability].langsmith_enabled = true` and LangSmith env vars are present.
 - MCP stdio tool calls can now emit Rust-side LangSmith runs when `[observability].langsmith_enabled = true` and LangSmith env vars are present.
+- MCP stdio now exposes durable RAG collection inspection through `list_rag_collections`.
 - `openrustclaw start` now gates non-shipping channel modules instead of advertising them through the active runtime surface.
 - The biggest remaining engineering gaps are:
   - broader observability/LangSmith trace coverage across all runtime paths
