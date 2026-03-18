@@ -430,6 +430,10 @@ Core routing remaining:
   - block streaming,
   - message coalescing,
   - pacing.
+- [ ] Implement higher-fidelity channel UX parity where it materially affects operator experience:
+  - Telegram forum topics, topic targeting, reactions, and polls,
+  - Discord forwarded-attachment downloads and thread-parent binding inheritance,
+  - Slack draft-stream replies, stream-mode controls, thread ownership, and attachment download actions.
 - [ ] Implement media in/out parity per channel:
   - images,
   - audio,
@@ -458,6 +462,9 @@ Channel completion remaining:
 - [ ] Matrix parity.
 - [ ] Microsoft Teams parity.
 - [ ] Signal parity if kept in scope.
+- [ ] Feishu/Lark parity if kept in scope:
+  - docs/tables actions,
+  - rich-text embedded media extraction.
 - [ ] Additional plugin-channel parity where OpenClaw currently documents active support or plugin support.
 
 Exit criteria:
@@ -491,7 +498,10 @@ Remaining:
   - memory inspection,
   - scheduled jobs,
   - nodes,
-  - channel accounts.
+  - channel accounts,
+  - logs,
+  - extensions/plugins,
+  - secrets/service status.
 - [ ] Build typed HTTP and WebSocket APIs that the Control UI and external clients share.
 - [ ] Add onboarding parity:
   - guided setup,
@@ -499,6 +509,15 @@ Remaining:
   - provider selection,
   - first channel login/pairing,
   - remote access guidance.
+- [ ] Add secure credential-vault parity:
+  - encrypted storage for provider keys and channel tokens at rest,
+  - CLI/UI secret management,
+  - migration from plaintext legacy configs where feasible.
+- [ ] Add config and personality hot-reload:
+  - runtime config reload without restart,
+  - editable persona/DNA/system prompt artifacts that reload cleanly,
+  - provider/channel updates that do not require process restarts when safe.
+- [ ] Add runtime provider and account switching without full restart where the active runtime can rebind safely.
 - [ ] Add channel account CRUD parity to the CLI and Control UI.
 - [ ] Add operator-grade diagnostics:
   - gateway health,
@@ -506,7 +525,8 @@ Remaining:
   - auth status,
   - job status,
   - trace links,
-  - config validation.
+  - config validation,
+  - secrets/service state.
 - [ ] Decide whether remote MCP transport belongs in the parity surface or remains an OpenRustClaw-specific deferred feature.
 
 Exit criteria:
@@ -551,7 +571,8 @@ Remaining:
   - STT,
   - TTS,
   - voice notes,
-  - call/phone plugin support if kept in scope.
+  - call/phone plugin support if kept in scope,
+  - call lifecycle health (stale-call reaping, reconnect, greeting/prewarm behavior) if call surfaces stay in scope.
 - [ ] Add node pairing/runtime parity:
   - iOS node pairing,
   - Android node pairing,
@@ -563,7 +584,8 @@ Remaining:
   - device actions,
   - contacts/calendar,
   - photos,
-  - SMS where applicable.
+  - SMS where applicable,
+  - push-wake / disconnected-node rehydration where mobile nodes need it.
 - [ ] Add typed node protocols in Rust rather than ad hoc compatibility layers.
 - [ ] Add secure device capability gating and operator approval for node commands.
 
@@ -605,7 +627,20 @@ Remaining:
   - restore,
   - log rotation,
   - config migration,
-  - upgrade playbooks.
+  - upgrade playbooks,
+  - self-update and rollback,
+  - PID/gateway lock semantics,
+  - launchd/systemd integration,
+  - network modes for loopback/LAN/remote deployment,
+  - trusted-proxy auth mode for reverse proxies.
+- [ ] Add channel/service runtime resilience features:
+  - channel health monitor with configurable auto-restart,
+  - presence and liveness beacons for operator surfaces,
+  - readiness probes that reflect real channel connectivity.
+- [ ] Add binary-first Rust operations strengths as first-class release goals:
+  - precompiled binaries for major targets,
+  - cross-compile support for x86_64/ARM64 and constrained devices where feasible,
+  - resource-budget regression checks for idle RAM, startup latency, and binary size.
 - [ ] Build a parity test suite that validates behavior against documented OpenClaw scenarios.
 - [ ] Build fixture-based integration suites for:
   - channel routing,
@@ -662,6 +697,7 @@ These are not parity failures if they stay stronger than OpenClaw's current surf
 - Stronger capability enforcement and safer extension execution.
 - MCP and mcp2-cli as first-class native tooling.
 - More explicit docs/runtime truthfulness and stricter CI gates.
+- Binary-first distribution, self-update, and tighter memory/startup budgets where Rust gives a real operational advantage.
 
 ## Definition of Done
 
