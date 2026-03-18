@@ -403,7 +403,7 @@ pub async fn run_mcp_server(transport: &str, config_path: &str) -> Result<()> {
     run_migrations(&pool)
         .await
         .context("Failed to run database migrations for MCP server")?;
-    let server = build_mcp_server(workspace_root.clone(), pool);
+    let server = build_mcp_server(workspace_root.clone(), pool, mcp_langsmith_client(&config));
 
     let stdin = tokio::io::stdin();
     let stdout = tokio::io::stdout();
@@ -528,6 +528,22 @@ fn gateway_langsmith_client(config: &AppConfig) -> Option<LangSmithClient> {
     } else {
         warn!(
             "LangSmith tracing is enabled in config, but no LANGSMITH_API_KEY/LANGCHAIN_API_KEY was found for gateway tracing"
+        );
+        None
+    }
+}
+
+fn mcp_langsmith_client(config: &AppConfig) -> Option<LangSmithClient> {
+    if !config.observability.langsmith_enabled {
+        return None;
+    }
+
+    let client = LangSmithClient::from_env(Some("openrustclaw-mcp".to_string()));
+    if client.is_enabled() {
+        Some(client)
+    } else {
+        warn!(
+            "LangSmith tracing is enabled in config, but no LANGSMITH_API_KEY/LANGCHAIN_API_KEY was found for MCP tracing"
         );
         None
     }
@@ -1087,7 +1103,11 @@ async fn discord_interactions_handler(
     }
 }
 
-fn build_mcp_server(workspace_root: PathBuf, pool: sqlx::SqlitePool) -> McpServer {
+fn build_mcp_server(
+    workspace_root: PathBuf,
+    pool: sqlx::SqlitePool,
+    langsmith: Option<LangSmithClient>,
+) -> McpServer {
     let memory_store = SqliteMemoryStore::new(pool.clone());
     let core_memory_store = SqliteCoreMemoryStore::new(pool.clone());
     let mut server = McpServer::new(McpServerConfig {
@@ -1209,15 +1229,15 @@ fn build_mcp_server(workspace_root: PathBuf, pool: sqlx::SqlitePool) -> McpServe
     });
 
     let root_for_health = workspace_root.clone();
-    server.register_handler("health", move |_| {
+    server.register_handler("health", traced_mcp_handler(langsmith.clone(), "health", move |_| {
         Ok(serde_json::json!({
             "status": "healthy",
             "workspace_root": root_for_health,
         }))
-    });
+    }));
 
     let root_for_list = workspace_root.clone();
-    server.register_handler("list_files", move |args| {
+    server.register_handler("list_files", traced_mcp_handler(langsmith.clone(), "list_files", move |args| {
         let path = args.get("path").and_then(|v| v.as_str()).unwrap_or(".");
         let recursive = args
             .get("recursive")
@@ -1241,10 +1261,10 @@ fn build_mcp_server(workspace_root: PathBuf, pool: sqlx::SqlitePool) -> McpServe
             "path": resolved,
             "entries": entries,
         }))
-    });
+    }));
 
     let root_for_read = workspace_root;
-    server.register_handler("read_file", move |args| {
+    server.register_handler("read_file", traced_mcp_handler(langsmith.clone(), "read_file", move |args| {
         let path = args.get("path").and_then(|v| v.as_str()).ok_or_else(|| {
             openrustclaw_core::error::Error::Mcp(openrustclaw_core::error::McpError::ToolExecution(
                 "Missing 'path' parameter".to_string(),
@@ -1260,10 +1280,10 @@ fn build_mcp_server(workspace_root: PathBuf, pool: sqlx::SqlitePool) -> McpServe
             "path": resolved,
             "content": content,
         }))
-    });
+    }));
 
     let memory_store_for_search = memory_store.clone();
-    server.register_handler("search_memory", move |args| {
+    server.register_handler("search_memory", traced_mcp_handler(langsmith.clone(), "search_memory", move |args| {
         let request: McpMemorySearchArgs = parse_tool_args(args)?;
         let memory_store = memory_store_for_search.clone();
         block_on_tool(async move {
@@ -1287,10 +1307,10 @@ fn build_mcp_server(workspace_root: PathBuf, pool: sqlx::SqlitePool) -> McpServe
                 })).collect::<Vec<_>>()
             }))
         })
-    });
+    }));
 
     let memory_store_for_store = memory_store.clone();
-    server.register_handler("store_memory", move |args| {
+    server.register_handler("store_memory", traced_mcp_handler(langsmith.clone(), "store_memory", move |args| {
         let request: McpStoreMemoryArgs = parse_tool_args(args)?;
         let memory_store = memory_store_for_store.clone();
         block_on_tool(async move {
@@ -1337,20 +1357,20 @@ fn build_mcp_server(workspace_root: PathBuf, pool: sqlx::SqlitePool) -> McpServe
                 "id": id,
             }))
         })
-    });
+    }));
 
     let core_memory_for_render = core_memory_store.clone();
-    server.register_handler("render_core_memory", move |args| {
+    server.register_handler("render_core_memory", traced_mcp_handler(langsmith.clone(), "render_core_memory", move |args| {
         let request: McpRenderCoreMemoryArgs = parse_tool_args(args)?;
         let core_memory_store = core_memory_for_render.clone();
         block_on_tool(async move {
             let content = core_memory_store.render(&request.user_id).await?;
             Ok(serde_json::json!({ "content": content }))
         })
-    });
+    }));
 
     let core_memory_for_set = core_memory_store.clone();
-    server.register_handler("set_core_memory", move |args| {
+    server.register_handler("set_core_memory", traced_mcp_handler(langsmith.clone(), "set_core_memory", move |args| {
         let request: McpSetCoreMemoryArgs = parse_tool_args(args)?;
         let core_memory_store = core_memory_for_set.clone();
         block_on_tool(async move {
@@ -1364,10 +1384,10 @@ fn build_mcp_server(workspace_root: PathBuf, pool: sqlx::SqlitePool) -> McpServe
                 "key": request.key,
             }))
         })
-    });
+    }));
 
     let pool_for_list_jobs = pool.clone();
-    server.register_handler("list_scheduled_jobs", move |args| {
+    server.register_handler("list_scheduled_jobs", traced_mcp_handler(langsmith.clone(), "list_scheduled_jobs", move |args| {
         let request: McpListScheduledJobsArgs = parse_tool_args(args)?;
         let pool = pool_for_list_jobs.clone();
         block_on_tool(async move {
@@ -1425,10 +1445,10 @@ fn build_mcp_server(workspace_root: PathBuf, pool: sqlx::SqlitePool) -> McpServe
 
             Ok(serde_json::json!({ "jobs": jobs }))
         })
-    });
+    }));
 
     let pool_for_create_jobs = pool;
-    server.register_handler("create_scheduled_job", move |args| {
+    server.register_handler("create_scheduled_job", traced_mcp_handler(langsmith, "create_scheduled_job", move |args| {
         let request: McpCreateScheduledJobArgs = parse_tool_args(args)?;
         let pool = pool_for_create_jobs.clone();
         block_on_tool(async move {
@@ -1540,14 +1560,60 @@ fn build_mcp_server(workspace_root: PathBuf, pool: sqlx::SqlitePool) -> McpServe
                 }
             }))
         })
-    });
+    }));
 
     server
 }
 
+fn traced_mcp_handler<F>(
+    langsmith: Option<LangSmithClient>,
+    tool_name: &'static str,
+    handler: F,
+) -> impl Fn(serde_json::Value) -> openrustclaw_core::error::Result<serde_json::Value> + Send + Sync + 'static
+where
+    F: Fn(serde_json::Value) -> openrustclaw_core::error::Result<serde_json::Value> + Send + Sync + 'static,
+{
+    move |args| {
+        let trace_client = langsmith.clone();
+        let trace_args = args.clone();
+        let mut trace = trace_client.as_ref().map(|client| {
+            client.new_run(
+                "mcp_tool_call",
+                RunType::Tool,
+                serde_json::json!({
+                    "tool_name": tool_name,
+                    "args": trace_args,
+                }),
+            )
+        });
+        let result = handler(args);
+
+        if let (Some(client), Some(mut run)) = (trace_client, trace.take()) {
+            run.outputs = result
+                .as_ref()
+                .ok()
+                .map(|value| serde_json::json!({"result": value}));
+            run.error = result.as_ref().err().map(|error| error.to_string());
+            run.end_time = Some(Utc::now());
+            if let Err(trace_error) = block_on_async(client.trace_run(&run)) {
+                warn!(error = %trace_error, tool = %tool_name, "Failed to send LangSmith MCP trace");
+            }
+        }
+
+        result
+    }
+}
+
 fn block_on_tool<F>(future: F) -> openrustclaw_core::error::Result<serde_json::Value>
 where
-    F: Future<Output = openrustclaw_core::error::Result<serde_json::Value>> + Send + 'static,
+    F: Future<Output = openrustclaw_core::error::Result<serde_json::Value>>,
+{
+    tokio::task::block_in_place(|| tokio::runtime::Handle::current().block_on(future))
+}
+
+fn block_on_async<F, T>(future: F) -> openrustclaw_core::error::Result<T>
+where
+    F: Future<Output = openrustclaw_core::error::Result<T>>,
 {
     tokio::task::block_in_place(|| tokio::runtime::Handle::current().block_on(future))
 }
@@ -2025,7 +2091,7 @@ mod tests {
         let pool = init_pool(&db_url, 1).await.unwrap();
         run_migrations(&pool).await.unwrap();
 
-        let server = build_mcp_server(workspace.path().to_path_buf(), pool);
+        let server = build_mcp_server(workspace.path().to_path_buf(), pool, None);
 
         let store_req = serde_json::json!({
             "jsonrpc": "2.0",
@@ -2110,7 +2176,7 @@ mod tests {
         let pool = init_pool(&db_url, 1).await.unwrap();
         run_migrations(&pool).await.unwrap();
 
-        let server = build_mcp_server(workspace.path().to_path_buf(), pool);
+        let server = build_mcp_server(workspace.path().to_path_buf(), pool, None);
 
         let create_req = serde_json::json!({
             "jsonrpc": "2.0",
