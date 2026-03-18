@@ -657,6 +657,70 @@ def test_rag_pipeline_prefers_metadata_and_filters_source_types():
         raise
 
 
+def test_rag_pipeline_limits_chunks_per_source():
+    """Test RAG retrieval enforces per-source diversity when configured."""
+    print("\nTesting RAG source diversity limits...")
+
+    try:
+        from langchain_core.documents import Document
+
+        from src.workflows.rag_pipeline import RetrievalNode
+
+        node = RetrievalNode(top_k=3)
+        chunks = [
+            Document(
+                page_content="Rust ownership model overview and borrowing rules.",
+                metadata={
+                    "id": "chunk_rust_1",
+                    "source_id": "rust-guide",
+                    "source": "rust-guide",
+                    "title": "Rust Guide Part 1",
+                    "type": "text",
+                },
+            ),
+            Document(
+                page_content="Rust ownership prevents double frees and data races.",
+                metadata={
+                    "id": "chunk_rust_2",
+                    "source_id": "rust-guide",
+                    "source": "rust-guide",
+                    "title": "Rust Guide Part 2",
+                    "type": "text",
+                },
+            ),
+            Document(
+                page_content="Borrow checking enforces safe aliasing in Rust programs.",
+                metadata={
+                    "id": "chunk_borrow",
+                    "source_id": "borrow-book",
+                    "source": "borrow-book",
+                    "title": "Borrow Checker Notes",
+                    "type": "text",
+                },
+            ),
+        ]
+
+        result = asyncio.run(
+            node(
+                {"query": "How does Rust ownership and borrowing work?", "chunks": chunks},
+                config={"configurable": {"max_chunks_per_source": 1}},
+            )
+        )
+
+        source_ids = [doc.metadata["source_id"] for doc in result["retrieved_docs"]]
+        assert len(source_ids) == 2
+        assert "rust-guide" in source_ids
+        assert "borrow-book" in source_ids
+        assert result["max_chunks_per_source"] == 1
+        print("  ✓ RAG source diversity limits")
+    except ModuleNotFoundError as e:
+        print(f"  ✗ RAG source diversity limits: {e}")
+        _skip_missing_dependency(e)
+    except Exception as e:
+        print(f"  ✗ RAG source diversity limits: {e}")
+        raise
+
+
 def test_protobuf_messages():
     """Test protobuf message creation."""
     print("\nTesting protobuf messages...")

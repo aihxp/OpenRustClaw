@@ -17,6 +17,39 @@ from ..workflow_contract import get_configurable_value
 
 logger = logging.getLogger(__name__)
 
+STOPWORDS = {
+    "a",
+    "an",
+    "and",
+    "are",
+    "as",
+    "at",
+    "be",
+    "by",
+    "for",
+    "from",
+    "how",
+    "i",
+    "in",
+    "is",
+    "it",
+    "of",
+    "on",
+    "or",
+    "that",
+    "the",
+    "this",
+    "to",
+    "was",
+    "what",
+    "when",
+    "where",
+    "which",
+    "who",
+    "why",
+    "with",
+}
+
 
 class InMemoryRagStore:
     """Minimal deterministic document store for sidecar RAG workflows."""
@@ -418,6 +451,7 @@ class RetrievalNode:
 
             collection_name = state.get("collection_name") or "rag_documents"
             allowed_types = _parse_allowed_source_types(config)
+            max_chunks_per_source = _parse_max_chunks_per_source(config)
             available_chunks = state.get("chunks", [])
             if not available_chunks:
                 if self.memory_bridge is not None:
@@ -429,7 +463,12 @@ class RetrievalNode:
                     available_chunks = RAG_STORE.load(collection_name)
 
             # Retrieve documents
-            retrieved = await self._retrieve(query, available_chunks, allowed_types)
+            retrieved = await self._retrieve(
+                query,
+                available_chunks,
+                allowed_types,
+                max_chunks_per_source=max_chunks_per_source,
+            )
 
             # Extract sources for citation
             sources = [
@@ -447,6 +486,7 @@ class RetrievalNode:
                 "query": query,
                 "collection_name": collection_name,
                 "allowed_source_types": sorted(allowed_types) if allowed_types else [],
+                "max_chunks_per_source": max_chunks_per_source,
             }
 
         except Exception as e:
@@ -460,6 +500,7 @@ class RetrievalNode:
         query: str,
         chunks: List[Document],
         allowed_source_types: Optional[set[str]] = None,
+        max_chunks_per_source: Optional[int] = None,
     ) -> List[Document]:
         """Retrieve relevant chunks for the query."""
         query_words = set(_normalize_text(query))
@@ -502,12 +543,21 @@ class RetrievalNode:
             ),
             reverse=True,
         )
-        top_chunks = [chunk for score, chunk in scored_chunks[:self.top_k]]
+        top_chunks: List[Document] = []
+        per_source_counts: Dict[str, int] = {}
+        per_source_limit = max_chunks_per_source if isinstance(max_chunks_per_source, int) and max_chunks_per_source > 0 else None
+
+        for score, chunk in scored_chunks:
+            source_id = str(chunk.metadata.get("source_id", chunk.metadata.get("id", "unknown")))
+            if per_source_limit is not None and per_source_counts.get(source_id, 0) >= per_source_limit:
+                continue
+            chunk.metadata["score"] = score
+            top_chunks.append(chunk)
+            per_source_counts[source_id] = per_source_counts.get(source_id, 0) + 1
+            if len(top_chunks) >= self.top_k:
+                break
 
         # Add scores to metadata
-        for score, chunk in scored_chunks[:self.top_k]:
-            chunk.metadata["score"] = score
-
         return top_chunks
 
 
@@ -618,11 +668,13 @@ def passthrough(state: RAGState) -> Dict[str, Any]:
 
 
 def _normalize_text(text: str) -> List[str]:
-    return [
-        token.strip(".,:;!?()[]{}\"'")
-        for token in text.lower().split()
-        if token.strip(".,:;!?()[]{}\"'")
-    ]
+    normalized: List[str] = []
+    for raw_token in text.lower().split():
+        token = raw_token.strip(".,:;!?()[]{}\"'")
+        if not token or token in STOPWORDS:
+            continue
+        normalized.append(token)
+    return normalized
 
 
 def _parse_allowed_source_types(
@@ -641,6 +693,19 @@ def _parse_allowed_source_types(
         if isinstance(value, (str, int, float)) and str(value).strip()
     }
     return allowed or None
+
+
+def _parse_max_chunks_per_source(config: Optional[RunnableConfig]) -> Optional[int]:
+    configured = get_configurable_value(config, "max_chunks_per_source")
+    if configured is None:
+        return None
+
+    try:
+        value = int(configured)
+    except (TypeError, ValueError):
+        return None
+
+    return value if value > 0 else None
 
 
 def _assemble_context(retrieved_docs: List[Document], budget: int) -> tuple[str, List[str]]:

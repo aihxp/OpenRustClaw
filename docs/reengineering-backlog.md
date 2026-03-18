@@ -130,6 +130,7 @@ Status:
 - Workspace skill discovery now normalizes declared capabilities, skips invalid `SKILL.md` capability sets, and the WASM sandbox config layer can be built directly from declared capabilities.
 - The sidecar RAG workflow now supports deterministic query-only retrieval against Rust-backed durable collections and budgeted context assembly with stable source ids.
 - The sidecar RAG workflow now applies source-aware scoring and optional source-type filters on top of the durable collection store.
+- The sidecar RAG workflow now applies stopword-aware lexical scoring and configurable per-source diversity limits on top of the durable collection store.
 - The Rust loopback RAG API now supports collection listing and deletion in addition to replace/load operations.
 - Sidecar LangSmith traces now preserve workflow trace ids back through the gRPC boundary so scheduler runs can persist them.
 - Scheduler dispatch can now create Rust-side LangSmith parent runs when `[observability].langsmith_enabled = true` and LangSmith env vars are present.
