@@ -198,6 +198,8 @@ struct EventMessage {
     #[serde(rename = "slashCommand")]
     slash_command: Option<SlashCommand>,
     annotations: Option<Vec<Annotation>>,
+    #[serde(default)]
+    attachments: Vec<serde_json::Value>,
 }
 
 /// Slash command in a message.
@@ -409,6 +411,52 @@ impl GoogleChatChannel {
         }
     }
 
+    fn parse_file_reference_cards(metadata: &serde_json::Value) -> Option<Vec<CardV2>> {
+        let file_refs = metadata.get("file_references")?.as_array()?;
+        let buttons: Vec<_> = file_refs
+            .iter()
+            .filter_map(|value| {
+                let url = value
+                    .get("url")
+                    .or_else(|| value.get("download_url"))
+                    .and_then(|field| field.as_str())
+                    .or_else(|| value.as_str())?;
+                let label = value
+                    .get("title")
+                    .or_else(|| value.get("name"))
+                    .and_then(|field| field.as_str())
+                    .unwrap_or("Open file");
+                Some(Button {
+                    text: label.to_string(),
+                    on_click: OnClick::OpenLink {
+                        open_link: OpenLink {
+                            url: url.to_string(),
+                        },
+                    },
+                })
+            })
+            .collect();
+
+        if buttons.is_empty() {
+            return None;
+        }
+
+        Some(vec![CardV2 {
+            card_id: Uuid::new_v4().to_string(),
+            card: Card {
+                header: Some(CardHeader {
+                    title: "Attachments".to_string(),
+                    subtitle: None,
+                    image_url: None,
+                }),
+                sections: vec![CardSection {
+                    header: None,
+                    widgets: vec![Widget::ButtonList { buttons }],
+                }],
+            },
+        }])
+    }
+
     /// Convert markdown to Google Chat format (simplified).
     fn markdown_to_chat(text: &str) -> String {
         // Google Chat supports basic markdown-like formatting
@@ -607,7 +655,9 @@ impl Channel for GoogleChatChannel {
 
         // Build message payload
         let message_payload = if self.config.cards_enabled {
-            if let Some(cards) = Self::parse_card_from_metadata(&msg.metadata) {
+            if let Some(cards) = Self::parse_card_from_metadata(&msg.metadata)
+                .or_else(|| Self::parse_file_reference_cards(&msg.metadata))
+            {
                 ChatMessage {
                     text: None,
                     cards_v2: Some(cards),
@@ -861,6 +911,24 @@ impl GoogleChatWebhookHandler {
 
         // Add message ID
         metadata["google_chat_message_id"] = serde_json::json!(message.name);
+        if !message.attachments.is_empty() {
+            metadata["google_chat_attachments"] = serde_json::json!(message.attachments);
+            metadata["google_chat_attachment_count"] = serde_json::json!(message.attachments.len());
+            let file_refs: Vec<_> = message
+                .attachments
+                .iter()
+                .filter_map(|attachment| {
+                    attachment
+                        .get("downloadUri")
+                        .or_else(|| attachment.get("downloadUri"))
+                        .or_else(|| attachment.get("attachmentDataRef"))
+                        .and_then(|value| value.as_str())
+                })
+                .collect();
+            if !file_refs.is_empty() {
+                metadata["file_references"] = serde_json::json!(file_refs);
+            }
+        }
 
         // Create incoming message
         let content = GoogleChatChannel::chat_to_markdown(&message.text);
@@ -996,6 +1064,21 @@ mod tests {
         assert!(cards.is_some());
         let cards = cards.unwrap();
         assert_eq!(cards.len(), 1);
+    }
+
+    #[test]
+    fn test_parse_file_reference_cards() {
+        let metadata = json!({
+            "file_references": [{
+                "title": "Download report",
+                "url": "https://files.example.com/report.pdf"
+            }]
+        });
+        let cards = GoogleChatChannel::parse_file_reference_cards(&metadata).unwrap();
+        assert_eq!(
+            cards[0].card.sections[0].widgets.len(),
+            1
+        );
     }
 
     #[test]

@@ -303,8 +303,29 @@ impl Channel for DiscordChannel {
         {
             let embeds: Vec<_> = file_refs
                 .iter()
-                .filter_map(|value| value.as_str())
-                .map(|url| serde_json::json!({"title": "File reference", "url": url}))
+                .filter_map(|value| {
+                    if let Some(url) = value.as_str() {
+                        return Some(serde_json::json!({"title": "File reference", "url": url}));
+                    }
+                    let url = value
+                        .get("url")
+                        .or_else(|| value.get("download_url"))
+                        .and_then(|field| field.as_str())?;
+                    let title = value
+                        .get("title")
+                        .or_else(|| value.get("name"))
+                        .and_then(|field| field.as_str())
+                        .unwrap_or("File reference");
+                    let description = value
+                        .get("content_type")
+                        .or_else(|| value.get("mime_type"))
+                        .and_then(|field| field.as_str());
+                    Some(serde_json::json!({
+                        "title": title,
+                        "url": url,
+                        "description": description,
+                    }))
+                })
                 .collect();
             if !embeds.is_empty() {
                 payload["embeds"] = serde_json::json!(embeds);
@@ -783,10 +804,30 @@ fn normalize_gateway_message(
     });
     if !event.attachments.is_empty() {
         metadata["discord_attachments"] = serde_json::json!(event.attachments);
-        metadata["file_references"] = serde_json::json!(event
+        metadata["discord_attachment_urls"] = serde_json::json!(event
             .attachments
             .iter()
             .filter_map(|attachment| attachment.get("url").and_then(|value| value.as_str()))
+            .collect::<Vec<_>>());
+        metadata["discord_forwarded_attachment_count"] = serde_json::json!(event.attachments.len());
+        metadata["file_references"] = serde_json::json!(event
+            .attachments
+            .iter()
+            .filter_map(|attachment| {
+                let url = attachment.get("url").and_then(|value| value.as_str())?;
+                let mut reference = serde_json::json!({ "url": url });
+                if let Some(name) = attachment.get("filename").and_then(|value| value.as_str()) {
+                    reference["name"] = serde_json::json!(name);
+                    reference["title"] = serde_json::json!(name);
+                }
+                if let Some(content_type) = attachment
+                    .get("content_type")
+                    .and_then(|value| value.as_str())
+                {
+                    reference["content_type"] = serde_json::json!(content_type);
+                }
+                Some(reference)
+            })
             .collect::<Vec<_>>());
     }
     if let Some(guild_id) = event.guild_id {
@@ -1643,7 +1684,12 @@ mod tests {
                 "message_reference": {
                     "message_id": "parent-1"
                 },
-                "attachments": [{"id":"attachment-1"}],
+                "attachments": [{
+                    "id":"attachment-1",
+                    "url":"https://cdn.example.com/file-1",
+                    "filename":"report.pdf",
+                    "content_type":"application/pdf"
+                }],
                 "embeds": [{"title":"embed"}],
                 "author": {
                     "id": "user-1",
@@ -1697,6 +1743,15 @@ mod tests {
         );
         assert_eq!(incoming.metadata["discord_is_dm"], false);
         assert_eq!(incoming.metadata["discord_attachment_count"], 1);
+        assert_eq!(incoming.metadata["discord_forwarded_attachment_count"], 1);
+        assert_eq!(
+            incoming.metadata["discord_attachment_urls"][0],
+            "https://cdn.example.com/file-1"
+        );
+        assert_eq!(
+            incoming.metadata["file_references"][0]["name"],
+            "report.pdf"
+        );
         assert_eq!(incoming.metadata["discord_embed_count"], 1);
         assert_eq!(
             incoming.metadata["discord_timestamp"],

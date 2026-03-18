@@ -99,6 +99,30 @@ impl SlackChannel {
         metadata.get("blocks")?.as_array().cloned()
     }
 
+    fn parse_file_references(metadata: &serde_json::Value) -> Vec<(String, String)> {
+        metadata
+            .get("file_references")
+            .and_then(|value| value.as_array())
+            .into_iter()
+            .flatten()
+            .filter_map(|value| {
+                if let Some(url) = value.as_str() {
+                    return Some(("Download file".to_string(), url.to_string()));
+                }
+                let url = value
+                    .get("url")
+                    .or_else(|| value.get("download_url"))
+                    .and_then(|field| field.as_str())?;
+                let label = value
+                    .get("title")
+                    .or_else(|| value.get("name"))
+                    .and_then(|field| field.as_str())
+                    .unwrap_or("Download file");
+                Some((label.to_string(), url.to_string()))
+            })
+            .collect()
+    }
+
     fn api_base_url(&self) -> String {
         self.config
             .api_base_url
@@ -228,20 +252,51 @@ impl Channel for SlackChannel {
         {
             payload["unfurl_media"] = serde_json::json!(unfurl_media);
         }
+        let download_actions = msg
+            .metadata
+            .get("slack_attachment_download_actions")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let file_refs = Self::parse_file_references(&msg.metadata);
+
         if let Some(blocks) = blocks {
             payload["blocks"] = serde_json::json!(blocks);
+        } else if download_actions && !file_refs.is_empty() {
+            let buttons: Vec<_> = file_refs
+                .iter()
+                .take(5)
+                .map(|(label, url)| {
+                    serde_json::json!({
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": label,
+                        },
+                        "url": url,
+                    })
+                })
+                .collect();
+            payload["blocks"] = serde_json::json!([
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": formatted_content,
+                    }
+                },
+                {
+                    "type": "actions",
+                    "elements": buttons,
+                }
+            ]);
         }
         if let Some(attachments) = msg.metadata.get("slack_attachments").and_then(|v| v.as_array())
         {
             payload["attachments"] = serde_json::json!(attachments);
-        } else if let Some(file_refs) = msg
-            .metadata
-            .get("file_references")
-            .and_then(|value| value.as_array())
-        {
+        } else if !file_refs.is_empty() && !download_actions {
             let attachment_text = file_refs
                 .iter()
-                .filter_map(|value| value.as_str())
+                .map(|(_, url)| url.as_str())
                 .collect::<Vec<_>>()
                 .join("\n");
             if !attachment_text.is_empty() {
@@ -250,6 +305,18 @@ impl Channel for SlackChannel {
                     "text": attachment_text,
                 }]);
             }
+        }
+        if let Some(stream_mode) = msg
+            .metadata
+            .get("slack_stream_mode")
+            .and_then(|v| v.as_str())
+        {
+            payload["metadata"] = serde_json::json!({
+                "event_type": "openrustclaw_stream",
+                "event_payload": {
+                    "mode": stream_mode,
+                }
+            });
         }
         if let Some(ts) = update_ts {
             payload["ts"] = serde_json::json!(ts);
@@ -617,6 +684,21 @@ impl SlackEventHandler {
         if let Some(event_ts) = event.get("event_ts").and_then(|value| value.as_str()) {
             metadata["slack_event_ts"] = serde_json::json!(event_ts);
         }
+        if let Some(files) = event.get("files").and_then(|value| value.as_array()) {
+            metadata["slack_files"] = serde_json::json!(files);
+            metadata["slack_attachment_count"] = serde_json::json!(files.len());
+            let file_refs: Vec<_> = files
+                .iter()
+                .filter_map(|file| {
+                    file.get("url_private_download")
+                        .or_else(|| file.get("url_private"))
+                        .and_then(|value| value.as_str())
+                })
+                .collect();
+            if !file_refs.is_empty() {
+                metadata["file_references"] = serde_json::json!(file_refs);
+            }
+        }
 
         let incoming = IncomingMessage {
             session_id: Uuid::new_v4(),
@@ -780,7 +862,14 @@ mod tests {
                         "text":"Hello <@U999>",
                         "channel":"C456",
                         "thread_ts":"171234.000100",
-                        "event_ts":"171234.000200"
+                        "event_ts":"171234.000200",
+                        "files":[
+                            {
+                                "id":"F1",
+                                "url_private":"https://files.example.com/file-1",
+                                "url_private_download":"https://files.example.com/file-1/download"
+                            }
+                        ]
                     }
                 }"#,
                 None,
@@ -796,6 +885,69 @@ mod tests {
         assert_eq!(incoming.metadata["slack_channel"], "C456");
         assert_eq!(incoming.metadata["slack_team_id"], "T123");
         assert_eq!(incoming.metadata["slack_thread_ts"], "171234.000100");
+        assert_eq!(incoming.metadata["slack_attachment_count"], 1);
+        assert_eq!(incoming.metadata["file_references"][0], "https://files.example.com/file-1/download");
+    }
+
+    #[tokio::test]
+    async fn test_send_slack_file_reference_download_actions() {
+        use wiremock::matchers::{bearer_token, body_string_contains, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/auth.test"))
+            .and(bearer_token("xoxb-test"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "ok": true,
+                "team_id": "T123"
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/chat.postMessage"))
+            .and(bearer_token("xoxb-test"))
+            .and(body_string_contains("\"type\":\"actions\""))
+            .and(body_string_contains("https://files.example.com/report.pdf"))
+            .and(body_string_contains("\"event_type\":\"openrustclaw_stream\""))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "ok": true,
+                "ts": "1.23"
+            })))
+            .mount(&server)
+            .await;
+
+        let config = SlackConfig {
+            enabled: true,
+            token: "xoxb-test".to_string(),
+            api_base_url: Some(server.uri()),
+            app_token: None,
+            signing_secret: None,
+            mode: SlackMode::Http,
+            socket_mode: false,
+            rate_limit_requests_per_second: 10,
+            allowed_workspaces: vec!["T123".to_string()],
+            app_home_enabled: true,
+        };
+        let mut channel = SlackChannel::new(config);
+        channel.connect().await.unwrap();
+        channel
+            .send(OutgoingMessage {
+                session_id: uuid::Uuid::new_v4(),
+                content: "Download the report".to_string(),
+                metadata: serde_json::json!({
+                    "slack_channel": "C123",
+                    "slack_team_id": "T123",
+                    "slack_attachment_download_actions": true,
+                    "slack_stream_mode": "draft",
+                    "file_references": [{
+                        "title": "Report",
+                        "url": "https://files.example.com/report.pdf"
+                    }]
+                }),
+            })
+            .await
+            .unwrap();
     }
 
     #[tokio::test]

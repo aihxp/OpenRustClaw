@@ -490,6 +490,62 @@ impl TeamsChannel {
         Some(AdaptiveCard::new(card_content))
     }
 
+    fn build_file_reference_card(
+        &self,
+        content: &str,
+        title: Option<&str>,
+        file_references: &[serde_json::Value],
+    ) -> Option<AdaptiveCard> {
+        if !self.config.adaptive_cards_enabled || file_references.is_empty() {
+            return None;
+        }
+
+        let actions: Vec<_> = file_references
+            .iter()
+            .filter_map(|value| {
+                let url = value
+                    .get("url")
+                    .or_else(|| value.get("download_url"))
+                    .and_then(|field| field.as_str())
+                    .or_else(|| value.as_str())?;
+                let label = value
+                    .get("title")
+                    .or_else(|| value.get("name"))
+                    .and_then(|field| field.as_str())
+                    .unwrap_or("Open file");
+                Some(serde_json::json!({
+                    "type": "Action.OpenUrl",
+                    "title": label,
+                    "url": url,
+                }))
+            })
+            .collect();
+
+        if actions.is_empty() {
+            return None;
+        }
+
+        Some(AdaptiveCard::new(serde_json::json!({
+            "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+            "type": "AdaptiveCard",
+            "version": "1.4",
+            "body": [
+                {
+                    "type": "TextBlock",
+                    "text": title.unwrap_or("OpenRustClaw"),
+                    "size": "Medium",
+                    "weight": "Bolder"
+                },
+                {
+                    "type": "TextBlock",
+                    "text": content,
+                    "wrap": true
+                }
+            ],
+            "actions": actions
+        })))
+    }
+
     /// Handle an incoming Activity from the Bot Framework webhook.
     ///
     /// This method processes incoming webhook payloads, validates them,
@@ -581,7 +637,7 @@ impl TeamsChannel {
         let session_id = Uuid::new_v4();
 
         // Build metadata
-        let metadata = serde_json::json!({
+        let mut metadata = serde_json::json!({
             "teams_conversation_id": conversation_id,
             "teams_conversation_type": conversation_type,
             "teams_user_id": user_id,
@@ -591,6 +647,22 @@ impl TeamsChannel {
             "teams_mentioned": mention_info.mentioned_users,
             "teams_bot_mentioned": mention_info.bot_mentioned,
         });
+        if let Some(attachments) = activity.get("attachments").and_then(|v| v.as_array()) {
+            metadata["teams_attachments"] = serde_json::json!(attachments);
+            metadata["teams_attachment_count"] = serde_json::json!(attachments.len());
+            let file_refs: Vec<_> = attachments
+                .iter()
+                .filter_map(|attachment| {
+                    attachment
+                        .get("contentUrl")
+                        .or_else(|| attachment.get("content_url"))
+                        .and_then(|value| value.as_str())
+                })
+                .collect();
+            if !file_refs.is_empty() {
+                metadata["file_references"] = serde_json::json!(file_refs);
+            }
+        }
 
         // Send typing indicator
         let _ = self
@@ -664,11 +736,27 @@ impl TeamsChannel {
                 .get("teams_card_title")
                 .and_then(|v| v.as_str());
 
-            if let Some(card) = self.build_adaptive_card(&msg.content, title) {
+            let file_refs = msg
+                .metadata
+                .get("file_references")
+                .and_then(|value| value.as_array())
+                .cloned()
+                .unwrap_or_default();
+            let card = self
+                .build_file_reference_card(&msg.content, title, &file_refs)
+                .or_else(|| self.build_adaptive_card(&msg.content, title));
+
+            if let Some(card) = card {
                 activity["attachments"] = serde_json::json!([card]);
                 // Clear text when using card, or Teams will show both
                 activity["text"] = serde_json::json!(null);
             }
+        } else if let Some(attachments) = msg
+            .metadata
+            .get("teams_attachments")
+            .and_then(|value| value.as_array())
+        {
+            activity["attachments"] = serde_json::json!(attachments);
         }
 
         // Send the activity
@@ -1087,6 +1175,34 @@ mod tests {
         let result = TeamsChannel::markdown_to_teams(text);
         // Teams supports standard markdown, so this should pass through
         assert_eq!(result, "Hello **world**");
+    }
+
+    #[test]
+    fn test_build_file_reference_card() {
+        let config = TeamsConfig {
+            enabled: true,
+            app_id: "test".to_string(),
+            app_password: "test".to_string(),
+            tenant_id: None,
+            webhook_path: "/webhook".to_string(),
+            allowlist: vec![],
+            group_policy: TeamsGroupPolicy::Open,
+            rate_limit_requests_per_second: 10,
+            adaptive_cards_enabled: true,
+        };
+        let channel = TeamsChannel::new(config);
+        let card = channel
+            .build_file_reference_card(
+                "Download the report",
+                Some("Report"),
+                &[serde_json::json!({
+                    "title": "Download PDF",
+                    "url": "https://files.example.com/report.pdf"
+                })],
+            )
+            .expect("card");
+        assert_eq!(card.content_type, "application/vnd.microsoft.card.adaptive");
+        assert_eq!(card.content["actions"][0]["url"], "https://files.example.com/report.pdf");
     }
 
     #[test]

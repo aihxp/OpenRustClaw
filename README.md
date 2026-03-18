@@ -119,12 +119,12 @@ Current tier-1 status:
 
 - Telegram: auth probe, outbound send, Bot API polling receive, reply threading, forum-topic metadata/topic targeting, poll handling, reactions, mention-aware group metadata, and local agent/session routing are implemented
 - Discord: auth probe, outbound send, edit/reaction operations, verified Interactions HTTP ingress, Gateway `MESSAGE_CREATE` receive, reconnect/session recovery, thread-aware session routing with parent-channel binding inheritance, thread-preferred replies, reply-reference propagation aliases, mention detection, attachment/embed metadata capture, and local agent/session routing are implemented; deeper gateway polish still remains
-- Slack: auth probe, outbound send, edit/reaction operations, built-in HTTP Events API ingress, mention-aware routing metadata, thread ownership plus stream-mode metadata, and local agent/session routing are implemented for HTTP mode; Socket Mode remains incomplete
+- Slack: auth probe, outbound send, edit/reaction operations, built-in HTTP Events API ingress, mention-aware routing metadata, thread ownership plus stream-mode metadata, attachment/file-reference metadata, download-action blocks, and local agent/session routing are implemented for HTTP mode; Socket Mode remains incomplete
 - WhatsApp: Baileys bridge pairing/QR, reconnect behavior, DM/group routing, mentions, replies, media send/receive, and local agent/session routing are implemented
 - iMessage: BlueBubbles/macOS direct send, BlueBubbles inbound webhook routing, tapbacks, and local agent/session routing are implemented; richer attachment/group mapping still remains
-- Google Chat: webhook ingress, token-backed or service-account outbound auth, and local agent/session routing are implemented; richer operator/media parity still remains
+- Google Chat: webhook ingress, token-backed or service-account outbound auth, card/file-reference responses, attachment metadata capture, and local agent/session routing are implemented; richer operator/media parity still remains
 - Matrix: access-token or password auth, `/sync` polling ingress, outbound room sends, reactions, room join/leave, joined-room inspection, file uploads, and local agent/session routing are implemented; deeper E2EE and richer operator parity still remain
-- Teams: Bot Framework webhook ingress, JWT verification, outbound sends, and local agent/session routing are on the shipped runtime path, but it is still partial relative to the tier-1 surfaces
+- Teams: Bot Framework webhook ingress, JWT verification, outbound sends, attachment metadata capture, adaptive-card file links, and local agent/session routing are on the shipped runtime path, but it is still partial relative to the tier-1 surfaces
 
 Channel routing/operator controls:
 
