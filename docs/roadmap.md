@@ -140,6 +140,35 @@ OpenRustClaw-specific strengths to preserve while pursuing parity:
 - Stronger capability enforcement around skills and tool execution
 - Rust-native autonomous optimization infrastructure instead of depending on a Python self-improvement loop
 
+## External Leverage Tracks
+
+The roadmap can also selectively absorb concepts from adjacent projects where they strengthen OpenRustClaw without turning it into a thin wrapper around someone else's runtime.
+
+Currently worth leveraging:
+
+- `openclaw-persona`
+  - workspace-readable identity/persona artifacts,
+  - operator-editable memory views,
+  - memory lifecycle automation,
+  - sub-agent profile concepts.
+- `openclaw-rfcs`
+  - lifecycle hooks,
+  - native vector-memory ergonomics,
+  - first-class agent profiles,
+  - sub-agent supervision/dashboard patterns,
+  - memory consolidation hooks.
+- `cureclaw`
+  - structured event-stream adapter pattern for subprocess-backed agents,
+  - optional external CLI wrapping as a local API,
+  - optional cloud-agent access for delegated repo work,
+  - optional remote workstation execution registry.
+
+Guardrails:
+
+- These are leverage tracks, not new parity baselines unless explicitly promoted into the parity matrix.
+- External-agent bridges must remain optional and must not become the durable source of truth.
+- Cloud-agent access is an operator capability, not a replacement for Rust-owned runtime parity.
+
 ## Phase 1: Product Contract and Parity Inventory
 
 Goal: make the parity target explicit and freeze the product contract before more implementation churn.
@@ -360,6 +389,17 @@ Remaining:
   - replay job,
   - inspect attempts,
   - inspect dead letters.
+- [ ] Add explicit lifecycle hooks on top of the Rust event bus for:
+  - `session.start`,
+  - `session.pre_compaction`,
+  - `session.post_turn`,
+  - `session.end`,
+  - hook payload delivery to internal handlers or external executors.
+- [ ] Add hook policies:
+  - async non-blocking execution,
+  - timeout budgets,
+  - failure isolation,
+  - ordering/priority rules.
 - [ ] Add durable workflow checkpoints for long-running background tasks.
 - [ ] Add idempotent event reprocessing and crash recovery tests at the workflow boundary.
 - [ ] Add scheduler APIs for Control UI and MCP introspection parity.
@@ -397,17 +437,30 @@ Remaining:
   - namespace reads,
   - recent memory timeline,
   - archive inspection.
+- [ ] Add persona/identity artifact support, either as first-class Markdown artifacts or a Rust-native equivalent:
+  - `SOUL` / persona values,
+  - user profile/context,
+  - autonomy/operating rules,
+  - editable identity metadata.
 - [ ] Add memory write policies for:
   - user facts,
   - project facts,
   - agent facts,
   - session summaries.
+- [ ] Add memory lifecycle automation:
+  - turn-level memory extraction/formation,
+  - similarity-based consolidation/merge,
+  - strengthening/abstraction of repeated patterns,
+  - forgetting/pruning with archive recovery.
+- [ ] Add operator-visible learnings/error ledgers that can feed the optimization framework without becoming uncontrolled self-modification.
 - [ ] Add context compaction parity for long threads and high-volume group chats.
 - [ ] Add stronger retrieval quality:
   - chunkers for code/docs/media transcripts,
   - embeddings or hybrid rankers where justified,
   - benchmark datasets and regression scoring.
-- [ ] Add import/export and migration tools from OpenClaw-style memory/session data where feasible.
+- [ ] Add import/export and migration tools from OpenClaw-style memory/session data where feasible, including:
+  - `MEMORY.md` style artifacts,
+  - persona-style memory vaults where translation is practical.
 
 Exit criteria:
 
@@ -495,6 +548,18 @@ Completed:
 Remaining:
 
 - [ ] Implement full session-tool parity exposed through MCP, CLI, and runtime APIs.
+- [ ] Add first-class agent profile configs for spawned agents:
+  - model/thinking/timeout defaults,
+  - tool allow/deny policies,
+  - memory inheritance/scope,
+  - output policies,
+  - profile inheritance/versioning.
+- [ ] Add sub-agent supervision surfaces:
+  - active agent list/watch,
+  - logs,
+  - kill/pause/resume,
+  - resource usage,
+  - parent/child run relationships.
 - [ ] Implement richer agent tool groups parity:
   - memory tools,
   - session tools,
@@ -538,6 +603,22 @@ Remaining:
   - trace links,
   - config validation,
   - secrets/service state.
+- [ ] Add optional external-agent interoperability surfaces:
+  - a typed local API that can wrap CureClaw/Cursor-style CLI agents as subprocess-backed event streams,
+  - NDJSON or `stream-json` translation into OpenRustClaw agent/run events,
+  - session continuity mapping,
+  - approval/trace integration,
+  - strict marking as optional compatibility rather than parity-critical runtime.
+- [ ] Add optional remote workstation execution support:
+  - named SSH workstation registry,
+  - per-workstation session isolation,
+  - CLI/MCP routing to a workstation target,
+  - health/connectivity tests.
+- [ ] Add optional cloud-agent interoperability:
+  - launch/status/stop/list/conversation/models,
+  - webhook status callbacks,
+  - steer/evaluator loop for delegated repo work,
+  - clear isolation from Rust-owned core parity/runtime claims.
 - [ ] Decide whether remote MCP transport belongs in the parity surface or remains an OpenRustClaw-specific deferred feature.
 
 Exit criteria:
@@ -644,6 +725,11 @@ Remaining:
   - launchd/systemd integration,
   - network modes for loopback/LAN/remote deployment,
   - trusted-proxy auth mode for reverse proxies.
+- [ ] Add explicit governance for optional external execution backends:
+  - allowed backend registry,
+  - credential and token isolation,
+  - audit trail for local CLI wrappers and cloud-agent calls,
+  - operator policy for when external agent execution is permitted.
 - [ ] Add channel/service runtime resilience features:
   - channel health monitor with configurable auto-restart,
   - presence and liveness beacons for operator surfaces,
