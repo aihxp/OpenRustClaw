@@ -31,9 +31,27 @@ impl SkillMetadata {
         declared_sensitive_capability_names(&self.capabilities)
     }
 
+    /// Whether any declared capabilities are considered sensitive.
+    pub fn has_sensitive_capabilities(&self) -> Result<bool> {
+        Ok(!self.sensitive_capabilities()?.is_empty())
+    }
+
     /// Whether this skill should require verification before privileged execution.
     pub fn requires_verified_signature(&self) -> Result<bool> {
-        Ok(!self.sensitive_capabilities()?.is_empty())
+        self.has_sensitive_capabilities()
+    }
+
+    /// Return a short verification policy summary for operators and logs.
+    pub fn verification_policy_summary(&self) -> Result<String> {
+        let sensitive = self.sensitive_capabilities()?;
+        if sensitive.is_empty() {
+            return Ok("verification optional".to_string());
+        }
+
+        Ok(format!(
+            "verification required for sensitive capabilities: {}",
+            sensitive.join(", ")
+        ))
     }
 }
 
@@ -232,6 +250,11 @@ mod tests {
         assert_eq!(
             meta.sensitive_capabilities().unwrap(),
             vec!["shell_exec".to_string()]
+        );
+        assert!(meta.has_sensitive_capabilities().unwrap());
+        assert_eq!(
+            meta.verification_policy_summary().unwrap(),
+            "verification required for sensitive capabilities: shell_exec"
         );
     }
 

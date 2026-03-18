@@ -942,6 +942,185 @@ def test_rag_pipeline_supports_required_source_filters():
         raise
 
 
+def test_rag_pipeline_supports_excluded_source_ids_and_deduping():
+    """Test RAG retrieval excludes source ids and drops duplicate source/content pairs."""
+    print("\nTesting RAG excluded source ids and deduping...")
+
+    try:
+        from langchain_core.documents import Document
+
+        from src.workflows.rag_pipeline import RetrievalNode
+
+        node = RetrievalNode(top_k=3)
+        chunks = [
+            Document(
+                page_content="Discord reconnect guide for operators.",
+                metadata={"id": "a1", "source_id": "ops", "title": "Ops"},
+            ),
+            Document(
+                page_content="Discord reconnect guide for operators.",
+                metadata={"id": "a2", "source_id": "ops", "title": "Ops duplicate"},
+            ),
+            Document(
+                page_content="Resume packets restore Discord gateway sessions.",
+                metadata={"id": "b1", "source_id": "discord-docs", "title": "Docs"},
+            ),
+        ]
+
+        result = asyncio.run(
+            node(
+                {"query": "How does Discord reconnect work?", "chunks": chunks},
+                config={"configurable": {"excluded_source_ids": ["ops"]}},
+            )
+        )
+
+        assert len(result["retrieved_docs"]) == 1
+        assert result["retrieved_docs"][0].metadata["source_id"] == "discord-docs"
+        assert result["excluded_source_ids"] == ["ops"]
+        print("  ✓ RAG excluded source ids and deduping")
+    except ModuleNotFoundError as e:
+        print(f"  ✗ RAG excluded source ids and deduping: {e}")
+        _skip_missing_dependency(e)
+    except Exception as e:
+        print(f"  ✗ RAG excluded source ids and deduping: {e}")
+        raise
+
+
+def test_rag_pipeline_context_controls_and_summary():
+    """Test RAG generation honors context shaping controls and reports budget."""
+    print("\nTesting RAG context controls and summary...")
+
+    try:
+        from langchain_core.documents import Document
+
+        from src.workflows.rag_pipeline import GenerationNode
+
+        docs = [
+            Document(
+                page_content="Rust ownership prevents data races.",
+                metadata={"source_id": "rust-book", "score": 0.91},
+            ),
+            Document(
+                page_content="Borrow checking enforces aliasing rules.",
+                metadata={"source_id": "borrow-book", "score": 0.77},
+            ),
+        ]
+
+        node = GenerationNode(model="mock")
+        result = asyncio.run(
+            node(
+                {
+                    "query": "How does Rust memory safety work?",
+                    "retrieved_docs": docs,
+                    "sources": [],
+                    "context_budget_chars": 120,
+                },
+                config={"configurable": {"max_context_sections": 1, "include_scores": True}},
+            )
+        )
+
+        assert result["status"] == "completed"
+        assert result["context_budget_chars"] == 120
+        assert "based on 2 documents" in result["answer"]
+        print("  ✓ RAG context controls and summary")
+    except ModuleNotFoundError as e:
+        print(f"  ✗ RAG context controls and summary: {e}")
+        _skip_missing_dependency(e)
+    except Exception as e:
+        print(f"  ✗ RAG context controls and summary: {e}")
+        raise
+
+
+def test_rag_pipeline_supports_source_type_preferences_and_exclusions():
+    """Test RAG retrieval can prefer and exclude source types."""
+    print("\nTesting RAG source type preferences and exclusions...")
+
+    try:
+        from langchain_core.documents import Document
+
+        from src.workflows.rag_pipeline import RetrievalNode
+
+        node = RetrievalNode(top_k=2)
+        chunks = [
+            Document(
+                page_content="Discord gateway packet structure for code examples.",
+                metadata={"id": "code-1", "source_id": "code-docs", "source_type": "code"},
+            ),
+            Document(
+                page_content="Operator checklist for Discord incident response.",
+                metadata={"id": "ops-1", "source_id": "ops-docs", "source_type": "runbook"},
+            ),
+            Document(
+                page_content="General Discord help text.",
+                metadata={"id": "text-1", "source_id": "text-docs", "source_type": "text"},
+            ),
+        ]
+
+        result = asyncio.run(
+            node(
+                {"query": "Discord gateway examples", "chunks": chunks},
+                config={
+                    "configurable": {
+                        "preferred_source_types": ["code"],
+                        "excluded_source_types": ["runbook"],
+                    }
+                },
+            )
+        )
+
+        assert result["retrieved_docs"]
+        assert result["retrieved_docs"][0].metadata["source_id"] == "code-docs"
+        assert result["excluded_source_types"] == ["runbook"]
+        assert result["preferred_source_types"] == ["code"]
+        print("  ✓ RAG source type preferences and exclusions")
+    except ModuleNotFoundError as e:
+        print(f"  ✗ RAG source type preferences and exclusions: {e}")
+        _skip_missing_dependency(e)
+    except Exception as e:
+        print(f"  ✗ RAG source type preferences and exclusions: {e}")
+        raise
+
+
+def test_rag_pipeline_respects_min_overlap_tokens():
+    """Test RAG retrieval can require a minimum overlap count."""
+    print("\nTesting RAG minimum overlap tokens...")
+
+    try:
+        from langchain_core.documents import Document
+
+        from src.workflows.rag_pipeline import RetrievalNode
+
+        node = RetrievalNode(top_k=3)
+        chunks = [
+            Document(
+                page_content="Rust ownership rules and borrow checking.",
+                metadata={"id": "rust-1", "source_id": "rust-book"},
+            ),
+            Document(
+                page_content="Ownership.",
+                metadata={"id": "short-1", "source_id": "short-note"},
+            ),
+        ]
+
+        result = asyncio.run(
+            node(
+                {"query": "Rust ownership borrow checking", "chunks": chunks},
+                config={"configurable": {"min_overlap_tokens": 2}},
+            )
+        )
+
+        assert len(result["retrieved_docs"]) == 1
+        assert result["retrieved_docs"][0].metadata["source_id"] == "rust-book"
+        assert result["min_overlap_tokens"] == 2
+        print("  ✓ RAG minimum overlap tokens")
+    except ModuleNotFoundError as e:
+        print(f"  ✗ RAG minimum overlap tokens: {e}")
+        _skip_missing_dependency(e)
+    except Exception as e:
+        print(f"  ✗ RAG minimum overlap tokens: {e}")
+        raise
+
+
 def test_protobuf_messages():
     """Test protobuf message creation."""
     print("\nTesting protobuf messages...")

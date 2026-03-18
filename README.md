@@ -98,7 +98,7 @@ The current shipped startup path is narrower: `openrustclaw start` actively supp
 Current tier-1 status:
 
 - Telegram: auth probe, outbound send, Bot API polling receive, and local agent/session routing are implemented
-- Discord: auth probe, outbound send, verified Interactions HTTP ingress, Gateway `MESSAGE_CREATE` receive, reconnect/session recovery, thread-aware session routing, reply-reference propagation, and local agent/session routing are implemented; deeper gateway polish still remains
+- Discord: auth probe, outbound send, verified Interactions HTTP ingress, Gateway `MESSAGE_CREATE` receive, reconnect/session recovery, thread-aware session routing, thread-preferred replies, reply-reference propagation aliases, attachment/embed metadata capture, and local agent/session routing are implemented; deeper gateway polish still remains
 - Slack: auth probe, outbound send, built-in HTTP Events API ingress, and local agent/session routing are implemented for HTTP mode; Socket Mode remains incomplete
 
 ## Memory System
@@ -107,7 +107,7 @@ Three-tier architecture -- no full memory files injected into prompts:
 
 - **Core Memory** (~500 tokens, always loaded) -- persistent user/system facts
 - **Recall Memory** (on-demand search) -- hybrid BM25 + vector similarity + temporal decay
-- **RAG Context** (budgeted assembly) -- deterministic retrieved context with stable source ids for citations, Rust-backed durable chunk storage, and configurable retrieval controls for `top_k`, preferred sources, required sources, and minimum score
+- **RAG Context** (budgeted assembly) -- deterministic retrieved context with stable source ids for citations, Rust-backed durable chunk storage, configurable retrieval controls for `top_k`, preferred/required/excluded sources and source types, minimum-overlap/minimum-score filters, plus score-aware and metadata-aware context shaping
 - **Archive Memory** (consolidated) -- long-term storage with Rust-backed maintenance that persists summaries and removes archived recall entries
 
 ```toml
@@ -139,7 +139,7 @@ Defense-in-depth across every layer:
 | **Transport** | Origin validation on all WebSocket connections; token auth enabled by default |
 | **Webhooks** | HMAC-SHA256 with constant-time comparison, Stripe replay protection |
 | **Sessions** | Filesystem isolation with path traversal prevention |
-| **Skills** | Workspace and marketplace skill lifecycle is wired through the CLI with signature-state tracking, validated/sensitive capability metadata, unsigned-sensitive-skill rejection, and a no-import WASM sandbox executor with timeout, memory limits, capability-gated execution helpers, and verification-aware declared-capability policy checks |
+| **Skills** | Workspace and marketplace skill lifecycle is wired through the CLI with signature-state tracking, validated/sensitive capability metadata, unsigned-sensitive-skill rejection, verification-policy summaries, and a no-import WASM sandbox executor with timeout, memory limits, capability-gated execution helpers, sensitive-capability helpers, and verification-aware declared-capability policy checks |
 | **Input** | Prompt injection detection (34+ patterns), canary tokens |
 | **Network** | SSRF prevention on OIDC/SAML endpoints (private IP rejection) |
 | **Subprocess** | MCP command allowlist, shell metacharacter rejection |

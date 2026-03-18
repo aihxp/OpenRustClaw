@@ -456,6 +456,10 @@ class RetrievalNode:
             effective_top_k = _parse_top_k(config, self.top_k)
             preferred_source_ids = _parse_source_ids(config, "preferred_source_ids")
             required_source_ids = _parse_source_ids(config, "required_source_ids")
+            excluded_source_ids = _parse_source_ids(config, "excluded_source_ids")
+            excluded_source_types = _parse_source_ids(config, "excluded_source_types")
+            preferred_source_types = _parse_source_ids(config, "preferred_source_types")
+            min_overlap_tokens = _parse_min_overlap_tokens(config)
             available_chunks = state.get("chunks", [])
             if not available_chunks:
                 if self.memory_bridge is not None:
@@ -476,6 +480,10 @@ class RetrievalNode:
                 min_score=min_score,
                 preferred_source_ids=preferred_source_ids,
                 required_source_ids=required_source_ids,
+                excluded_source_ids=excluded_source_ids,
+                excluded_source_types=excluded_source_types,
+                preferred_source_types=preferred_source_types,
+                min_overlap_tokens=min_overlap_tokens,
             )
 
             # Extract sources for citation
@@ -496,12 +504,36 @@ class RetrievalNode:
                 "allowed_source_types": sorted(allowed_types) if allowed_types else [],
                 "preferred_source_ids": sorted(preferred_source_ids),
                 "required_source_ids": sorted(required_source_ids),
+                "excluded_source_ids": sorted(excluded_source_ids),
+                "excluded_source_types": sorted(excluded_source_types),
+                "preferred_source_types": sorted(preferred_source_types),
                 "top_k": effective_top_k,
                 "max_chunks_per_source": max_chunks_per_source,
                 "min_score": min_score,
+                "min_overlap_tokens": min_overlap_tokens,
                 "retrieval_summary": {
                     "available_chunks": len(available_chunks),
                     "retrieved_chunks": len(retrieved),
+                    "retrieved_source_count": len(
+                        {
+                            str(doc.metadata.get("source_id", doc.metadata.get("id", "unknown")))
+                            for doc in retrieved
+                        }
+                    ),
+                    "source_ids": [
+                        str(doc.metadata.get("source_id", doc.metadata.get("id", "unknown")))
+                        for doc in retrieved
+                    ],
+                    "query_token_count": len(_normalize_text(query)),
+                    "average_score": (
+                        sum(float(doc.metadata.get("score", 0.0)) for doc in retrieved) / len(retrieved)
+                        if retrieved
+                        else 0.0
+                    ),
+                    "max_score": max(
+                        (float(doc.metadata.get("score", 0.0)) for doc in retrieved),
+                        default=0.0,
+                    ),
                 },
             }
 
@@ -521,6 +553,10 @@ class RetrievalNode:
         min_score: Optional[float] = None,
         preferred_source_ids: Optional[set[str]] = None,
         required_source_ids: Optional[set[str]] = None,
+        excluded_source_ids: Optional[set[str]] = None,
+        excluded_source_types: Optional[set[str]] = None,
+        preferred_source_types: Optional[set[str]] = None,
+        min_overlap_tokens: Optional[int] = None,
     ) -> List[Document]:
         """Retrieve relevant chunks for the query."""
         query_words = set(_normalize_text(query))
@@ -528,6 +564,9 @@ class RetrievalNode:
         effective_top_k = top_k if isinstance(top_k, int) and top_k > 0 else self.top_k
         preferred_source_ids = preferred_source_ids or set()
         required_source_ids = required_source_ids or set()
+        excluded_source_ids = excluded_source_ids or set()
+        excluded_source_types = excluded_source_types or set()
+        preferred_source_types = preferred_source_types or set()
 
         for chunk in chunks:
             source_id = str(chunk.metadata.get("source_id", chunk.metadata.get("id", "unknown")))
@@ -536,12 +575,19 @@ class RetrievalNode:
             ).strip().lower()
             if allowed_source_types and chunk_type not in allowed_source_types:
                 continue
+            if excluded_source_types and chunk_type in excluded_source_types:
+                continue
             if required_source_ids and source_id not in required_source_ids:
+                continue
+            if excluded_source_ids and source_id in excluded_source_ids:
                 continue
 
             chunk_words = set(_normalize_text(chunk.page_content))
+            overlap_count = len(query_words & chunk_words)
+            if min_overlap_tokens is not None and overlap_count < min_overlap_tokens:
+                continue
             lexical_overlap = len(query_words & chunk_words) / max(len(query_words), 1)
-            coverage = len(query_words & chunk_words) / max(len(chunk_words), 1)
+            coverage = overlap_count / max(len(chunk_words), 1)
             metadata_tokens = set(
                 _normalize_text(
                     " ".join(
@@ -554,6 +600,18 @@ class RetrievalNode:
             exact_phrase = 0.2 if query.lower() in chunk.page_content.lower() else 0.0
             type_boost = 0.15 if chunk_type == "code" else 0.0
             preferred_source_boost = 0.12 if source_id in preferred_source_ids else 0.0
+            preferred_type_boost = 0.08 if chunk_type in preferred_source_types else 0.0
+            title_match_boost = (
+                0.1
+                if query.lower() in str(chunk.metadata.get("title", "")).lower()
+                else 0.0
+            )
+            source_match_boost = (
+                0.08
+                if query.lower() in str(chunk.metadata.get("source", "")).lower()
+                else 0.0
+            )
+            length_penalty = 0.05 if len(chunk.page_content) > 4000 else 0.0
             score = (
                 lexical_overlap * 0.55
                 + coverage * 0.2
@@ -561,6 +619,10 @@ class RetrievalNode:
                 + exact_phrase
                 + type_boost
                 + preferred_source_boost
+                + preferred_type_boost
+                + title_match_boost
+                + source_match_boost
+                - length_penalty
             )
             scored_chunks.append((score, chunk))
 
@@ -573,16 +635,24 @@ class RetrievalNode:
         )
         top_chunks: List[Document] = []
         per_source_counts: Dict[str, int] = {}
+        seen_chunks: set[tuple[str, str]] = set()
         per_source_limit = max_chunks_per_source if isinstance(max_chunks_per_source, int) and max_chunks_per_source > 0 else None
 
         for score, chunk in scored_chunks:
             if min_score is not None and score < min_score:
                 continue
             source_id = str(chunk.metadata.get("source_id", chunk.metadata.get("id", "unknown")))
+            dedupe_key = (source_id, chunk.page_content.strip())
+            if dedupe_key in seen_chunks:
+                continue
             if per_source_limit is not None and per_source_counts.get(source_id, 0) >= per_source_limit:
                 continue
             chunk.metadata["score"] = score
+            chunk.metadata["rank"] = len(top_chunks) + 1
+            chunk.metadata["preferred_source_match"] = source_id in preferred_source_ids
+            chunk.metadata["preferred_type_match"] = chunk_type in preferred_source_types
             top_chunks.append(chunk)
+            seen_chunks.add(dedupe_key)
             per_source_counts[source_id] = per_source_counts.get(source_id, 0) + 1
             if len(top_chunks) >= effective_top_k:
                 break
@@ -626,6 +696,10 @@ class GenerationNode:
             retrieved_docs = state.get("retrieved_docs", [])
             sources = state.get("sources", [])
             budget = state.get("context_budget_chars") or 6000
+            max_sections = _parse_max_context_sections(config)
+            include_scores = _parse_include_scores(config)
+            max_section_chars = _parse_max_section_chars(config)
+            include_metadata = _parse_include_metadata_in_context(config)
 
             if not retrieved_docs:
                 return {
@@ -633,7 +707,14 @@ class GenerationNode:
                     "status": "completed",
                 }
 
-            context, citation_order = _assemble_context(retrieved_docs, budget)
+            context, citation_order = _assemble_context(
+                retrieved_docs,
+                budget,
+                max_sections=max_sections,
+                include_scores=include_scores,
+                max_section_chars=max_section_chars,
+                include_metadata=include_metadata,
+            )
 
             # Create prompt
             prompt = f"""Based on the following context, please answer the question. If the answer is not in the context, say "I don't have enough information to answer this question."
@@ -655,6 +736,7 @@ Please provide a clear, accurate answer based only on the context provided. Cite
                         f"(based on {len(retrieved_docs)} documents; sources: {', '.join(citation_order)})"
                     ),
                     "status": "completed",
+                    "context_budget_chars": budget,
                 }
 
             messages = [
@@ -667,6 +749,7 @@ Please provide a clear, accurate answer based only on the context provided. Cite
             return {
                 "answer": response.content,
                 "status": "completed",
+                "context_budget_chars": budget,
             }
 
         except Exception as e:
@@ -775,18 +858,87 @@ def _parse_source_ids(config: Optional[RunnableConfig], key: str) -> set[str]:
         if isinstance(value, (str, int, float)) and str(value).strip()
     }
 
+def _parse_max_context_sections(config: Optional[RunnableConfig]) -> Optional[int]:
+    configured = get_configurable_value(config, "max_context_sections")
+    if configured is None:
+        return None
 
-def _assemble_context(retrieved_docs: List[Document], budget: int) -> tuple[str, List[str]]:
+    try:
+        value = int(configured)
+    except (TypeError, ValueError):
+        return None
+
+    return value if value > 0 else None
+
+
+def _parse_include_scores(config: Optional[RunnableConfig]) -> bool:
+    configured = get_configurable_value(config, "include_scores")
+    return bool(configured) if configured is not None else False
+
+
+def _parse_include_metadata_in_context(config: Optional[RunnableConfig]) -> bool:
+    configured = get_configurable_value(config, "include_metadata_in_context")
+    return bool(configured) if configured is not None else False
+
+
+def _parse_max_section_chars(config: Optional[RunnableConfig]) -> Optional[int]:
+    configured = get_configurable_value(config, "max_section_chars")
+    if configured is None:
+        return None
+
+    try:
+        value = int(configured)
+    except (TypeError, ValueError):
+        return None
+
+    return value if value > 0 else None
+
+
+def _parse_min_overlap_tokens(config: Optional[RunnableConfig]) -> Optional[int]:
+    configured = get_configurable_value(config, "min_overlap_tokens")
+    if configured is None:
+        return None
+
+    try:
+        value = int(configured)
+    except (TypeError, ValueError):
+        return None
+
+    return value if value >= 0 else None
+
+
+def _assemble_context(
+    retrieved_docs: List[Document],
+    budget: int,
+    max_sections: Optional[int] = None,
+    include_scores: bool = False,
+    max_section_chars: Optional[int] = None,
+    include_metadata: bool = False,
+) -> tuple[str, List[str]]:
     remaining = max(budget, 0)
     sections: List[str] = []
     citation_order: List[str] = []
 
     for doc in retrieved_docs:
+        if max_sections is not None and len(sections) >= max_sections:
+            break
         source_id = str(doc.metadata.get("source_id", doc.metadata.get("id", "unknown")))
         if source_id not in citation_order:
             citation_order.append(source_id)
 
-        section = f"[{source_id}]\n{doc.page_content.strip()}"
+        header = f"[{source_id}]"
+        if include_scores:
+            header = f"{header} score={doc.metadata.get('score', 0.0):.3f}"
+        if include_metadata:
+            title = str(doc.metadata.get("title", "")).strip()
+            source_type = str(doc.metadata.get("source_type", doc.metadata.get("type", ""))).strip()
+            meta_parts = [part for part in [title, source_type] if part]
+            if meta_parts:
+                header = f"{header} {' | '.join(meta_parts)}"
+        content = doc.page_content.strip()
+        if max_section_chars is not None and max_section_chars > 0:
+            content = content[:max_section_chars].rstrip()
+        section = f"{header}\n{content}"
         if not section.strip():
             continue
 

@@ -715,6 +715,9 @@ impl ChannelAgent {
                         "platform": incoming.platform.to_string(),
                         "user_id": incoming.user_id,
                         "session_id": route_state.session_id,
+                        "route_key": route_key,
+                        "history_len": route_state.history.len(),
+                        "core_memory_entries": core_memory.len(),
                     }));
                     if let Err(trace_error) = client.update_run(run).await {
                         warn!(error = %trace_error, "Failed to update LangSmith channel trace");
@@ -741,6 +744,9 @@ impl ChannelAgent {
                     "platform": incoming.platform.to_string(),
                     "user_id": incoming.user_id,
                     "session_id": route_state.session_id,
+                    "route_key": route_key,
+                    "history_len": route_state.history.len(),
+                    "core_memory_entries": core_memory.len(),
                     "empty_reply": true,
                 }));
                 if let Err(trace_error) = client.update_run(run).await {
@@ -757,6 +763,10 @@ impl ChannelAgent {
                 "platform": incoming.platform.to_string(),
                 "user_id": incoming.user_id,
                 "session_id": route_state.session_id,
+                "route_key": route_key,
+                "history_len": route_state.history.len(),
+                "core_memory_entries": core_memory.len(),
+                "reply_length": response.message.content.len(),
             }));
             if let Err(trace_error) = client.update_run(run).await {
                 warn!(error = %trace_error, "Failed to update LangSmith channel trace");
@@ -777,7 +787,7 @@ impl ChannelAgent {
         content: &str,
     ) -> Option<openrustclaw_observability::langsmith::TraceRun> {
         let client = self.langsmith.as_ref()?;
-        Some(client.new_run(
+        let mut run = client.new_run(
             "channel_inbound_message",
             RunType::Chain,
             serde_json::json!({
@@ -787,7 +797,12 @@ impl ChannelAgent {
                 "content": content,
                 "metadata": incoming.metadata,
             }),
-        ))
+        );
+        run.tags = Some(vec![
+            "channels".to_string(),
+            format!("platform:{}", incoming.platform),
+        ]);
+        Some(run)
     }
 }
 
@@ -1051,6 +1066,7 @@ async fn slack_events_handler(
             "has_signature": signature.is_some(),
         }),
     );
+    start_ingress_trace(state.langsmith.as_ref(), trace.as_ref()).await;
 
     match state.handler.handle_event(&body, timestamp, signature).await {
         Ok(Some(response)) => {
@@ -1165,6 +1181,7 @@ async fn discord_interactions_handler(
             "has_timestamp": timestamp.is_some(),
         }),
     );
+    start_ingress_trace(state.langsmith.as_ref(), trace.as_ref()).await;
 
     match state.handler.handle_event(&body, signature, timestamp).await {
         Ok(response) => {
@@ -1231,7 +1248,22 @@ fn ingress_trace(
     name: &str,
     inputs: serde_json::Value,
 ) -> Option<openrustclaw_observability::langsmith::TraceRun> {
-    Some(client?.new_run(name, RunType::Tool, inputs))
+    let mut run = client?.new_run(name, RunType::Tool, inputs);
+    run.tags = Some(vec!["channels".to_string(), "ingress".to_string()]);
+    Some(run)
+}
+
+async fn start_ingress_trace(
+    client: Option<&LangSmithClient>,
+    trace: Option<&openrustclaw_observability::langsmith::TraceRun>,
+) {
+    let (Some(client), Some(trace)) = (client, trace) else {
+        return;
+    };
+
+    if let Err(trace_error) = client.trace_run(trace).await {
+        warn!(error = %trace_error, trace_name = %trace.name, "Failed to create LangSmith ingress trace");
+    }
 }
 
 async fn complete_ingress_trace(

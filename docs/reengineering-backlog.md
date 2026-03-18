@@ -144,11 +144,16 @@ Status:
 - Gateway chat completions and internal memory/RAG endpoints can now emit Rust-side LangSmith runs when `[observability].langsmith_enabled = true` and LangSmith env vars are present.
 - MCP stdio tool calls can now emit Rust-side LangSmith runs when `[observability].langsmith_enabled = true` and LangSmith env vars are present.
 - Slack and Discord ingress handlers can now emit Rust-side LangSmith runs when `[observability].langsmith_enabled = true` and LangSmith env vars are present.
+- Slack and Discord ingress traces now create persisted LangSmith runs before request handling instead of only attempting end-of-request updates.
+- Channel runtime traces now carry richer route/history/core-memory/reply metadata in addition to the base inbound message payload.
 - Discord gateway normalization now suppresses bot/system/webhook/self-authored events, preserves thread/reply/timestamp metadata, and keeps thread-aware session scope separate from channel scope.
 - Discord outbound sends now propagate reply references when channel-originated metadata includes a referenced message id.
+- Discord outbound sends now prefer `discord_thread_id` over `discord_channel_id` for thread replies and accept `discord_reply_to_message_id` as a reply alias.
 - Skill metadata now exposes sensitive capability classification and whether privileged execution should require verification.
+- Skill metadata now exposes verification-policy summaries for operators and callers, and the sandbox can report whether declared capabilities require verification before execution.
 - The WASM sandbox now exposes verification-aware declared-capability policy validation and execution helpers for privileged skill execution paths.
-- The RAG retrieval workflow now supports configurable `top_k`, preferred source ids, required source ids, and retrieval summaries in addition to source-type/diversity/min-score controls.
+- The RAG retrieval workflow now supports configurable `top_k`, preferred/required/excluded source ids, duplicate suppression, richer retrieval summaries, and score-aware context shaping in addition to source-type/diversity/min-score controls.
+- The RAG retrieval workflow now supports preferred/excluded source types, minimum overlap filtering, rank/preference metadata on retrieved chunks, and metadata-aware/truncated context shaping.
 - MCP stdio now exposes durable RAG collection and chunk inspection through `list_rag_collections` and `load_rag_chunks`.
 - `openrustclaw start` now gates non-shipping channel modules instead of advertising them through the active runtime surface.
 - The biggest remaining engineering gaps are:

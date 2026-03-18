@@ -250,7 +250,8 @@ impl Channel for DiscordChannel {
         // Get channel ID from metadata
         let channel_id = msg
             .metadata
-            .get("discord_channel_id")
+            .get("discord_thread_id")
+            .or_else(|| msg.metadata.get("discord_channel_id"))
             .and_then(|v| v.as_str())
             .ok_or_else(|| ChannelError::InvalidFormat {
                 platform: "discord".to_string(),
@@ -321,6 +322,7 @@ impl Channel for DiscordChannel {
             && let Some(reference_id) = msg
                 .metadata
                 .get("discord_referenced_message_id")
+                .or_else(|| msg.metadata.get("discord_reply_to_message_id"))
                 .and_then(|v| v.as_str())
         {
             payload["message_reference"] = serde_json::json!({
@@ -694,6 +696,7 @@ fn normalize_gateway_message(
         "discord_author_username": event.author.username,
         "discord_gateway": true,
         "discord_application_id": config.application_id,
+        "discord_is_dm": event.guild_id.is_none(),
         "discord_attachment_count": event.attachments.len(),
         "discord_embed_count": event.embeds.len(),
     });
@@ -901,6 +904,7 @@ impl DiscordInteractionsHandler {
             "discord_application_id": interaction.application_id,
             "discord_interaction_id": interaction.id,
             "discord_interaction_token": interaction.token,
+            "discord_is_dm": interaction.guild_id.is_none(),
         });
         if let Some(guild_id) = interaction.guild_id {
             metadata["discord_guild_id"] = serde_json::json!(guild_id);
@@ -908,6 +912,7 @@ impl DiscordInteractionsHandler {
         if let Some(command_name) = interaction.data.as_ref().map(|data| data.name.as_str()) {
             metadata["discord_command_name"] = serde_json::json!(command_name);
         }
+        metadata["discord_author_id"] = serde_json::json!(user.id.clone());
 
         let incoming = IncomingMessage {
             session_id: Uuid::new_v4(),
@@ -1475,6 +1480,51 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_send_prefers_thread_id_and_reply_alias() {
+        use wiremock::matchers::{body_partial_json, header, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/channels/thread-1/messages"))
+            .and(header("authorization", "Bot token"))
+            .and(body_partial_json(serde_json::json!({
+                "message_reference": {"message_id": "parent-1"}
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "message-1"
+            })))
+            .mount(&server)
+            .await;
+
+        let channel = DiscordChannel::new(DiscordConfig {
+            enabled: true,
+            token: "token".to_string(),
+            application_id: "app-1".to_string(),
+            interaction_public_key: None,
+            api_base_url: Some(server.uri()),
+            rate_limit_requests_per_second: 5,
+            allowed_guilds: vec![],
+            allowed_channels: vec![],
+            dm_enabled: true,
+        });
+        *channel.is_connected.write().await = true;
+
+        channel
+            .send(OutgoingMessage {
+                session_id: uuid::Uuid::new_v4(),
+                content: "thread reply".to_string(),
+                metadata: serde_json::json!({
+                    "discord_channel_id": "channel-1",
+                    "discord_thread_id": "thread-1",
+                    "discord_reply_to_message_id": "parent-1"
+                }),
+            })
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
     async fn test_gateway_message_create_is_enqueued() {
         use wiremock::matchers::{header, method, path};
         use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -1542,6 +1592,7 @@ mod tests {
         assert_eq!(incoming.metadata["discord_channel_id"], "channel-1");
         assert_eq!(incoming.metadata["discord_thread_id"], "thread-1");
         assert_eq!(incoming.metadata["discord_referenced_message_id"], "parent-1");
+        assert_eq!(incoming.metadata["discord_is_dm"], false);
         assert_eq!(incoming.metadata["discord_attachment_count"], 1);
         assert_eq!(incoming.metadata["discord_embed_count"], 1);
         assert_eq!(incoming.metadata["discord_timestamp"], "2026-01-01T00:00:00Z");
@@ -1985,5 +2036,7 @@ mod tests {
         assert_eq!(incoming.metadata["discord_channel_id"], "channel-1");
         assert_eq!(incoming.metadata["discord_guild_id"], "guild-1");
         assert_eq!(incoming.metadata["discord_interaction_token"], "interaction-token");
+        assert_eq!(incoming.metadata["discord_is_dm"], false);
+        assert_eq!(incoming.metadata["discord_author_id"], "user-1");
     }
 }

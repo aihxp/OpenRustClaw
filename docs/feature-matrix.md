@@ -16,7 +16,7 @@ Status values:
 | Rust to sidecar workflow dispatch | real | Workflow dispatch now preserves typed configurable metadata through the bridge contract |
 | Durable scheduler schema | real | SQLite schema and retry/dead-letter tables exist |
 | Durable scheduler execution loop | real | Due-job polling, leases, retries, dead-letter handling, and sidecar dispatch are persisted and tested |
-| Observability / LangSmith tracing | partial | Sidecar workflow traces now preserve trace ids back to Rust, and scheduler dispatch, channel message handling, Slack/Discord ingress handling, gateway chat completions, internal memory/RAG endpoints, plus MCP tool calls can emit Rust-side LangSmith runs when enabled via env; coverage is still not uniform across all runtime paths |
+| Observability / LangSmith tracing | partial | Sidecar workflow traces now preserve trace ids back to Rust, and scheduler dispatch, channel message handling, persisted Slack/Discord ingress handling, richer channel trace metadata, gateway chat completions, internal memory/RAG endpoints, plus MCP tool calls can emit Rust-side LangSmith runs when enabled via env; coverage is still not uniform across all runtime paths |
 
 ## Memory and Context
 
@@ -26,7 +26,7 @@ Status values:
 | Core memory store | real | Budgeted key-value memory exists |
 | Sidecar memory orchestration | real | Agent and maintenance workflows use the Rust loopback bridge and typed workflow contract for search/store/archive paths, and the bridge/internal API plus default agent tools now support both rendering and setting core memory |
 | Memory maintenance archive pipeline | real | Maintenance workflow can fetch old memories, persist archive summaries, and remove archived originals through Rust-owned storage |
-| RAG pipeline | partial | Deterministic collection-backed retrieval, Rust-backed durable chunk storage, budgeted context assembly, source-type filters, stopword-aware lexical scoring, configurable per-source diversity limits, configurable minimum-score filtering, configurable top_k/preferred-source/required-source retrieval controls, retrieval summaries, and collection stats inspection exist; richer indexing still needs production hardening |
+| RAG pipeline | partial | Deterministic collection-backed retrieval, Rust-backed durable chunk storage, budgeted context assembly, source-type filters, stopword-aware lexical scoring, configurable per-source diversity limits, configurable minimum-score filtering, configurable top_k/preferred/required/excluded source and source-type controls, minimum-overlap filtering, duplicate suppression, retrieval summaries, score-aware/metadata-aware context shaping, and collection stats inspection exist; richer indexing still needs production hardening |
 
 ## Channels
 
@@ -34,7 +34,7 @@ Status values:
 | --- | --- | --- |
 | WebChat | real | Current baseline chat path |
 | Telegram | real | Auth probe, outbound send, Bot API polling receive, and local agent/session routing in `openrustclaw start` exist |
-| Discord | partial | Auth probe, outbound send, verified Interactions HTTP ingress, Gateway `MESSAGE_CREATE` receive, reconnect plus session resume handling, stale-heartbeat recovery, invalid-session recycling, thread-aware session routing, reply-reference propagation, bot/webhook/self-message suppression, deferred acknowledgements, and local agent/session routing exist; deeper gateway polish remains incomplete |
+| Discord | partial | Auth probe, outbound send, verified Interactions HTTP ingress, Gateway `MESSAGE_CREATE` receive, reconnect plus session resume handling, stale-heartbeat recovery, invalid-session recycling, thread-aware session routing, thread-preferred outbound replies, reply-reference propagation aliases, bot/webhook/self-message suppression, DM markers, attachment/embed metadata capture, deferred acknowledgements, and local agent/session routing exist; deeper gateway polish remains incomplete |
 | Slack | real | HTTP mode supports auth probe, outbound send, built-in Events API ingress, and local agent/session routing; Socket Mode remains incomplete |
 | Matrix | gated | Repo surface exists, but runtime client support is deferred from the current shipped surface |
 | Google Chat | gated | Repo surface exists, but service-account auth and runtime coverage are deferred from the current shipped surface |
@@ -50,8 +50,8 @@ Status values:
 | MCP remote HTTP/SSE | deferred | Not part of current shipped surface |
 | `mcp2-cli` | real | Real stdio/OpenAPI discovery path |
 | Cursor integration | gated | Repo surface exists, but it is not part of the current shipped runtime/tooling surface |
-| Skills registry/install flow | real | Workspace installs, marketplace lifecycle sync, discovery-time capability normalization, capability metadata persistence, sensitive-capability classification, and verification-state handling are wired through the CLI; failed verification clears stale verified state |
-| WASM skill executor | real | Real no-import executor exists with JSON ABI, memory limits, timeout enforcement, explicit capability checks, declared-capability sandbox config helpers, and verification-aware declared-capability policy enforcement helpers |
+| Skills registry/install flow | real | Workspace installs, marketplace lifecycle sync, discovery-time capability normalization, capability metadata persistence, sensitive-capability classification, verification policy summaries, and verification-state handling are wired through the CLI; failed verification clears stale verified state |
+| WASM skill executor | real | Real no-import executor exists with JSON ABI, memory limits, timeout enforcement, explicit capability checks, declared-capability sandbox config helpers, verification-aware declared-capability policy enforcement helpers, and sensitive-capability classification helpers |
 
 ## Experience Layers
 

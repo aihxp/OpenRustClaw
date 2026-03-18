@@ -56,6 +56,11 @@ impl SandboxConfig {
         }
         Ok(())
     }
+
+    /// Whether a declared capability set requires verification before execution.
+    pub fn requires_verified_declared_capabilities(declared: &[String]) -> Result<bool> {
+        Ok(!declared_sensitive_capability_names(declared)?.is_empty())
+    }
 }
 
 /// WASM sandbox for executing untrusted skill code.
@@ -359,6 +364,18 @@ mod tests {
             true,
         )
         .unwrap();
+    }
+
+    #[test]
+    fn test_sandbox_config_reports_when_declared_capabilities_require_verification() {
+        assert!(
+            SandboxConfig::requires_verified_declared_capabilities(&["database_access".to_string()])
+                .unwrap()
+        );
+        assert!(
+            !SandboxConfig::requires_verified_declared_capabilities(&["file_read".to_string()])
+                .unwrap()
+        );
     }
 
     #[test]
