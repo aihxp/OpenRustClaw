@@ -173,6 +173,7 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
         memory_store: Some(memory_store.clone()),
         core_memory_store: Some(core_memory_store.clone()),
         rag_store: Some(rag_store),
+        langsmith: gateway_langsmith_client(&config),
     };
 
     // Create and start gateway server
@@ -511,6 +512,22 @@ fn channel_langsmith_client(config: &AppConfig) -> Option<LangSmithClient> {
     } else {
         warn!(
             "LangSmith tracing is enabled in config, but no LANGSMITH_API_KEY/LANGCHAIN_API_KEY was found for channel tracing"
+        );
+        None
+    }
+}
+
+fn gateway_langsmith_client(config: &AppConfig) -> Option<LangSmithClient> {
+    if !config.observability.langsmith_enabled {
+        return None;
+    }
+
+    let client = LangSmithClient::from_env(Some("openrustclaw-gateway".to_string()));
+    if client.is_enabled() {
+        Some(client)
+    } else {
+        warn!(
+            "LangSmith tracing is enabled in config, but no LANGSMITH_API_KEY/LANGCHAIN_API_KEY was found for gateway tracing"
         );
         None
     }

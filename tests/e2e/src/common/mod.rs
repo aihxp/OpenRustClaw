@@ -151,6 +151,7 @@ impl TestEnvironment {
             memory_store: Some(Arc::new(self.memory_store.clone())),
             core_memory_store: Some(Arc::new(self.core_memory_store.clone())),
             rag_store: None,
+            langsmith: None,
         }
     }
 

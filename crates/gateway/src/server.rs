@@ -16,6 +16,8 @@ use openrustclaw_core::error::{Error, Result as CoreResult, SecurityError};
 use openrustclaw_core::traits::{CoreMemoryStore, MemoryStore};
 use openrustclaw_core::types::{MemoryEntry, MemoryQuery, MemoryType, SourceType};
 use openrustclaw_db::{RagChunkInput, SqliteCoreMemoryStore, SqliteMemoryStore, SqliteRagStore};
+use openrustclaw_observability::LangSmithClient;
+use openrustclaw_observability::langsmith::{RunType, TraceRun};
 use openrustclaw_observability::metrics::{
     SimpleTimer, decrement_active_connections, increment_active_connections,
     record_websocket_message,
@@ -38,6 +40,7 @@ pub struct GatewayState {
     pub memory_store: Option<Arc<SqliteMemoryStore>>,
     pub core_memory_store: Option<Arc<SqliteCoreMemoryStore>>,
     pub rag_store: Option<Arc<SqliteRagStore>>,
+    pub langsmith: Option<LangSmithClient>,
 }
 
 /// The gateway WebSocket server.
@@ -155,8 +158,15 @@ async fn cors_preflight_handler() -> StatusCode {
 }
 
 async fn chat_completions_handler(
+    State(state): State<GatewayState>,
     Json(payload): Json<serde_json::Value>,
 ) -> Json<serde_json::Value> {
+    let mut trace = gateway_trace(
+        state.langsmith.as_ref(),
+        "gateway_chat_completions",
+        RunType::Chain,
+        json!({"request": payload.clone()}),
+    );
     let content = payload
         .get("messages")
         .and_then(|messages| messages.as_array())
@@ -172,7 +182,7 @@ async fn chat_completions_handler(
         })
         .unwrap_or("");
 
-    Json(json!({
+    let response = json!({
         "id": format!("chatcmpl-{}", uuid::Uuid::new_v4()),
         "object": "chat.completion",
         "created": chrono::Utc::now().timestamp(),
@@ -190,7 +200,15 @@ async fn chat_completions_handler(
             "completion_tokens": 0,
             "total_tokens": 0,
         }
-    }))
+    });
+    complete_gateway_trace(
+        state.langsmith.as_ref(),
+        trace.as_mut(),
+        Some(json!({"response": response.clone()})),
+        None,
+    )
+    .await;
+    Json(response)
 }
 
 #[derive(serde::Deserialize)]
@@ -275,8 +293,25 @@ async fn internal_memory_search_handler(
     if let Err(response) = validate_internal_api(&state, &headers) {
         return response;
     }
+    let mut trace = gateway_trace(
+        state.langsmith.as_ref(),
+        "internal_memory_search",
+        RunType::Retriever,
+        json!({
+            "user_id": payload.user_id.clone(),
+            "query": payload.query.clone(),
+            "limit": payload.limit,
+        }),
+    );
 
     let Some(memory_store) = &state.memory_store else {
+        complete_gateway_trace(
+            state.langsmith.as_ref(),
+            trace.as_mut(),
+            None,
+            Some("memory store unavailable".to_string()),
+        )
+        .await;
         return (StatusCode::SERVICE_UNAVAILABLE, "memory store unavailable").into_response();
     };
 
@@ -291,20 +326,35 @@ async fn internal_memory_search_handler(
     };
 
     match memory_store.search(&query).await {
-        Ok(results) => Json(json!({
+        Ok(results) => {
+            let body = json!({
             "memories": results.into_iter().map(|scored| json!({
                 "id": scored.entry.id,
                 "content": scored.entry.content,
                 "score": scored.score,
                 "importance": scored.entry.importance,
             })).collect::<Vec<_>>()
-        }))
-        .into_response(),
-        Err(error) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("memory search failed: {}", error),
-        )
-            .into_response(),
+        });
+            complete_gateway_trace(
+                state.langsmith.as_ref(),
+                trace.as_mut(),
+                Some(body.clone()),
+                None,
+            )
+            .await;
+            Json(body).into_response()
+        }
+        Err(error) => {
+            let error_message = format!("memory search failed: {}", error);
+            complete_gateway_trace(
+                state.langsmith.as_ref(),
+                trace.as_mut(),
+                None,
+                Some(error_message.clone()),
+            )
+            .await;
+            (StatusCode::INTERNAL_SERVER_ERROR, error_message).into_response()
+        }
     }
 }
 
@@ -316,8 +366,26 @@ async fn internal_memory_store_handler(
     if let Err(response) = validate_internal_api(&state, &headers) {
         return response;
     }
+    let mut trace = gateway_trace(
+        state.langsmith.as_ref(),
+        "internal_memory_store",
+        RunType::Tool,
+        json!({
+            "user_id": payload.user_id.clone(),
+            "category": payload.category.clone(),
+            "importance": payload.importance,
+            "session_id": payload.session_id.clone(),
+        }),
+    );
 
     let Some(memory_store) = &state.memory_store else {
+        complete_gateway_trace(
+            state.langsmith.as_ref(),
+            trace.as_mut(),
+            None,
+            Some("memory store unavailable".to_string()),
+        )
+        .await;
         return (StatusCode::SERVICE_UNAVAILABLE, "memory store unavailable").into_response();
     };
 
@@ -359,12 +427,28 @@ async fn internal_memory_store_handler(
 
     let id = entry.id;
     match memory_store.store(entry).await {
-        Ok(()) => Json(json!({"stored": true, "id": id})).into_response(),
-        Err(error) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("memory store failed: {}", error),
-        )
-            .into_response(),
+        Ok(()) => {
+            let body = json!({"stored": true, "id": id});
+            complete_gateway_trace(
+                state.langsmith.as_ref(),
+                trace.as_mut(),
+                Some(body.clone()),
+                None,
+            )
+            .await;
+            Json(body).into_response()
+        }
+        Err(error) => {
+            let error_message = format!("memory store failed: {}", error);
+            complete_gateway_trace(
+                state.langsmith.as_ref(),
+                trace.as_mut(),
+                None,
+                Some(error_message.clone()),
+            )
+            .await;
+            (StatusCode::INTERNAL_SERVER_ERROR, error_message).into_response()
+        }
     }
 }
 
@@ -376,18 +460,47 @@ async fn internal_core_memory_render_handler(
     if let Err(response) = validate_internal_api(&state, &headers) {
         return response;
     }
+    let mut trace = gateway_trace(
+        state.langsmith.as_ref(),
+        "internal_core_memory_render",
+        RunType::Retriever,
+        json!({"user_id": user_id}),
+    );
 
     let Some(core_memory_store) = &state.core_memory_store else {
+        complete_gateway_trace(
+            state.langsmith.as_ref(),
+            trace.as_mut(),
+            None,
+            Some("core memory store unavailable".to_string()),
+        )
+        .await;
         return (StatusCode::SERVICE_UNAVAILABLE, "core memory store unavailable").into_response();
     };
 
     match core_memory_store.render(&user_id).await {
-        Ok(content) => Json(json!({ "content": content })).into_response(),
-        Err(error) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("core memory render failed: {}", error),
-        )
-            .into_response(),
+        Ok(content) => {
+            let body = json!({ "content": content });
+            complete_gateway_trace(
+                state.langsmith.as_ref(),
+                trace.as_mut(),
+                Some(body.clone()),
+                None,
+            )
+            .await;
+            Json(body).into_response()
+        }
+        Err(error) => {
+            let error_message = format!("core memory render failed: {}", error);
+            complete_gateway_trace(
+                state.langsmith.as_ref(),
+                trace.as_mut(),
+                None,
+                Some(error_message.clone()),
+            )
+            .await;
+            (StatusCode::INTERNAL_SERVER_ERROR, error_message).into_response()
+        }
     }
 }
 
@@ -399,8 +512,27 @@ async fn internal_memory_archive_store_handler(
     if let Err(response) = validate_internal_api(&state, &headers) {
         return response;
     }
+    let mut trace = gateway_trace(
+        state.langsmith.as_ref(),
+        "internal_memory_archive_store",
+        RunType::Tool,
+        json!({
+            "archive_id": payload.id.clone(),
+            "source_memory_ids": payload.source_memory_ids.clone(),
+            "namespace": payload.namespace.clone(),
+            "importance": payload.importance,
+            "source_type": payload.source_type.clone(),
+        }),
+    );
 
     let Some(memory_store) = &state.memory_store else {
+        complete_gateway_trace(
+            state.langsmith.as_ref(),
+            trace.as_mut(),
+            None,
+            Some("memory store unavailable".to_string()),
+        )
+        .await;
         return (StatusCode::SERVICE_UNAVAILABLE, "memory store unavailable").into_response();
     };
 
@@ -415,12 +547,28 @@ async fn internal_memory_archive_store_handler(
         )
         .await
     {
-        Ok(id) => Json(json!({"stored": true, "id": id})).into_response(),
-        Err(error) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("memory archive store failed: {}", error),
-        )
-            .into_response(),
+        Ok(id) => {
+            let body = json!({"stored": true, "id": id});
+            complete_gateway_trace(
+                state.langsmith.as_ref(),
+                trace.as_mut(),
+                Some(body.clone()),
+                None,
+            )
+            .await;
+            Json(body).into_response()
+        }
+        Err(error) => {
+            let error_message = format!("memory archive store failed: {}", error);
+            complete_gateway_trace(
+                state.langsmith.as_ref(),
+                trace.as_mut(),
+                None,
+                Some(error_message.clone()),
+            )
+            .await;
+            (StatusCode::INTERNAL_SERVER_ERROR, error_message).into_response()
+        }
     }
 }
 
@@ -432,19 +580,49 @@ async fn internal_memory_archive_delete_handler(
     if let Err(response) = validate_internal_api(&state, &headers) {
         return response;
     }
+    let mut trace = gateway_trace(
+        state.langsmith.as_ref(),
+        "internal_memory_archive_delete",
+        RunType::Tool,
+        json!({
+            "memory_ids": payload.memory_ids.clone(),
+        }),
+    );
 
     let Some(memory_store) = &state.memory_store else {
+        complete_gateway_trace(
+            state.langsmith.as_ref(),
+            trace.as_mut(),
+            None,
+            Some("memory store unavailable".to_string()),
+        )
+        .await;
         return (StatusCode::SERVICE_UNAVAILABLE, "memory store unavailable").into_response();
     };
 
     match memory_store.delete_many(&payload.memory_ids).await {
-        Ok(deleted) => Json(json!({"deleted": deleted, "memory_ids": payload.memory_ids}))
-            .into_response(),
-        Err(error) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("memory archive delete failed: {}", error),
-        )
-            .into_response(),
+        Ok(deleted) => {
+            let body = json!({"deleted": deleted, "memory_ids": payload.memory_ids});
+            complete_gateway_trace(
+                state.langsmith.as_ref(),
+                trace.as_mut(),
+                Some(body.clone()),
+                None,
+            )
+            .await;
+            Json(body).into_response()
+        }
+        Err(error) => {
+            let error_message = format!("memory archive delete failed: {}", error);
+            complete_gateway_trace(
+                state.langsmith.as_ref(),
+                trace.as_mut(),
+                None,
+                Some(error_message.clone()),
+            )
+            .await;
+            (StatusCode::INTERNAL_SERVER_ERROR, error_message).into_response()
+        }
     }
 }
 
@@ -456,8 +634,26 @@ async fn internal_memory_maintenance_old_handler(
     if let Err(response) = validate_internal_api(&state, &headers) {
         return response;
     }
+    let mut trace = gateway_trace(
+        state.langsmith.as_ref(),
+        "internal_memory_maintenance_old",
+        RunType::Retriever,
+        json!({
+            "age_days": payload.age_days,
+            "namespace": payload.namespace.clone(),
+            "user_id": payload.user_id.clone(),
+            "limit": payload.limit,
+        }),
+    );
 
     let Some(memory_store) = &state.memory_store else {
+        complete_gateway_trace(
+            state.langsmith.as_ref(),
+            trace.as_mut(),
+            None,
+            Some("memory store unavailable".to_string()),
+        )
+        .await;
         return (StatusCode::SERVICE_UNAVAILABLE, "memory store unavailable").into_response();
     };
 
@@ -473,7 +669,8 @@ async fn internal_memory_maintenance_old_handler(
         )
         .await
     {
-        Ok(entries) => Json(json!({
+        Ok(entries) => {
+            let body = json!({
             "memories": entries.into_iter().map(|entry| json!({
                 "id": entry.id,
                 "content": entry.content,
@@ -482,13 +679,27 @@ async fn internal_memory_maintenance_old_handler(
                 "user_id": entry.user_id,
                 "importance": entry.importance,
             })).collect::<Vec<_>>()
-        }))
-        .into_response(),
-        Err(error) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("memory maintenance fetch failed: {}", error),
-        )
-            .into_response(),
+        });
+            complete_gateway_trace(
+                state.langsmith.as_ref(),
+                trace.as_mut(),
+                Some(body.clone()),
+                None,
+            )
+            .await;
+            Json(body).into_response()
+        }
+        Err(error) => {
+            let error_message = format!("memory maintenance fetch failed: {}", error);
+            complete_gateway_trace(
+                state.langsmith.as_ref(),
+                trace.as_mut(),
+                None,
+                Some(error_message.clone()),
+            )
+            .await;
+            (StatusCode::INTERNAL_SERVER_ERROR, error_message).into_response()
+        }
     }
 }
 
@@ -500,8 +711,24 @@ async fn internal_rag_store_handler(
     if let Err(response) = validate_internal_api(&state, &headers) {
         return response;
     }
+    let mut trace = gateway_trace(
+        state.langsmith.as_ref(),
+        "internal_rag_store",
+        RunType::Tool,
+        json!({
+            "collection_name": payload.collection_name.clone(),
+            "chunk_count": payload.chunks.len(),
+        }),
+    );
 
     let Some(rag_store) = &state.rag_store else {
+        complete_gateway_trace(
+            state.langsmith.as_ref(),
+            trace.as_mut(),
+            None,
+            Some("rag store unavailable".to_string()),
+        )
+        .await;
         return (StatusCode::SERVICE_UNAVAILABLE, "rag store unavailable").into_response();
     };
 
@@ -521,16 +748,31 @@ async fn internal_rag_store_handler(
         .replace_collection(&payload.collection_name, &chunks)
         .await
     {
-        Ok(stored_chunks) => Json(json!({
+        Ok(stored_chunks) => {
+            let body = json!({
             "collection_name": payload.collection_name,
             "stored_chunks": stored_chunks,
-        }))
-        .into_response(),
-        Err(error) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("rag store failed: {}", error),
-        )
-            .into_response(),
+        });
+            complete_gateway_trace(
+                state.langsmith.as_ref(),
+                trace.as_mut(),
+                Some(body.clone()),
+                None,
+            )
+            .await;
+            Json(body).into_response()
+        }
+        Err(error) => {
+            let error_message = format!("rag store failed: {}", error);
+            complete_gateway_trace(
+                state.langsmith.as_ref(),
+                trace.as_mut(),
+                None,
+                Some(error_message.clone()),
+            )
+            .await;
+            (StatusCode::INTERNAL_SERVER_ERROR, error_message).into_response()
+        }
     }
 }
 
@@ -542,8 +784,24 @@ async fn internal_rag_load_handler(
     if let Err(response) = validate_internal_api(&state, &headers) {
         return response;
     }
+    let mut trace = gateway_trace(
+        state.langsmith.as_ref(),
+        "internal_rag_load",
+        RunType::Retriever,
+        json!({
+            "collection_name": payload.collection_name.clone(),
+            "limit": payload.limit,
+        }),
+    );
 
     let Some(rag_store) = &state.rag_store else {
+        complete_gateway_trace(
+            state.langsmith.as_ref(),
+            trace.as_mut(),
+            None,
+            Some("rag store unavailable".to_string()),
+        )
+        .await;
         return (StatusCode::SERVICE_UNAVAILABLE, "rag store unavailable").into_response();
     };
 
@@ -551,7 +809,8 @@ async fn internal_rag_load_handler(
         .load_collection(&payload.collection_name, payload.limit)
         .await
     {
-        Ok(chunks) => Json(json!({
+        Ok(chunks) => {
+            let body = json!({
             "collection_name": payload.collection_name,
             "chunks": chunks.into_iter().map(|chunk| json!({
                 "id": chunk.chunk_id,
@@ -560,13 +819,27 @@ async fn internal_rag_load_handler(
                 "content": chunk.content,
                 "metadata": chunk.metadata,
             })).collect::<Vec<_>>(),
-        }))
-        .into_response(),
-        Err(error) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("rag load failed: {}", error),
-        )
-            .into_response(),
+        });
+            complete_gateway_trace(
+                state.langsmith.as_ref(),
+                trace.as_mut(),
+                Some(body.clone()),
+                None,
+            )
+            .await;
+            Json(body).into_response()
+        }
+        Err(error) => {
+            let error_message = format!("rag load failed: {}", error);
+            complete_gateway_trace(
+                state.langsmith.as_ref(),
+                trace.as_mut(),
+                None,
+                Some(error_message.clone()),
+            )
+            .await;
+            (StatusCode::INTERNAL_SERVER_ERROR, error_message).into_response()
+        }
     }
 }
 
@@ -578,24 +851,54 @@ async fn internal_rag_list_handler(
     if let Err(response) = validate_internal_api(&state, &headers) {
         return response;
     }
+    let mut trace = gateway_trace(
+        state.langsmith.as_ref(),
+        "internal_rag_list",
+        RunType::Retriever,
+        json!({
+            "limit": payload.limit,
+        }),
+    );
 
     let Some(rag_store) = &state.rag_store else {
+        complete_gateway_trace(
+            state.langsmith.as_ref(),
+            trace.as_mut(),
+            None,
+            Some("rag store unavailable".to_string()),
+        )
+        .await;
         return (StatusCode::SERVICE_UNAVAILABLE, "rag store unavailable").into_response();
     };
 
     match rag_store.list_collections(payload.limit).await {
-        Ok(collections) => Json(json!({
+        Ok(collections) => {
+            let body = json!({
             "collections": collections.into_iter().map(|(name, chunk_count)| json!({
                 "collection_name": name,
                 "chunk_count": chunk_count,
             })).collect::<Vec<_>>(),
-        }))
-        .into_response(),
-        Err(error) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("rag list failed: {}", error),
-        )
-            .into_response(),
+        });
+            complete_gateway_trace(
+                state.langsmith.as_ref(),
+                trace.as_mut(),
+                Some(body.clone()),
+                None,
+            )
+            .await;
+            Json(body).into_response()
+        }
+        Err(error) => {
+            let error_message = format!("rag list failed: {}", error);
+            complete_gateway_trace(
+                state.langsmith.as_ref(),
+                trace.as_mut(),
+                None,
+                Some(error_message.clone()),
+            )
+            .await;
+            (StatusCode::INTERNAL_SERVER_ERROR, error_message).into_response()
+        }
     }
 }
 
@@ -607,22 +910,81 @@ async fn internal_rag_delete_handler(
     if let Err(response) = validate_internal_api(&state, &headers) {
         return response;
     }
+    let mut trace = gateway_trace(
+        state.langsmith.as_ref(),
+        "internal_rag_delete",
+        RunType::Tool,
+        json!({
+            "collection_name": payload.collection_name.clone(),
+        }),
+    );
 
     let Some(rag_store) = &state.rag_store else {
+        complete_gateway_trace(
+            state.langsmith.as_ref(),
+            trace.as_mut(),
+            None,
+            Some("rag store unavailable".to_string()),
+        )
+        .await;
         return (StatusCode::SERVICE_UNAVAILABLE, "rag store unavailable").into_response();
     };
 
     match rag_store.delete_collection(&payload.collection_name).await {
-        Ok(deleted_chunks) => Json(json!({
+        Ok(deleted_chunks) => {
+            let body = json!({
             "collection_name": payload.collection_name,
             "deleted_chunks": deleted_chunks,
-        }))
-        .into_response(),
-        Err(error) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("rag delete failed: {}", error),
-        )
-            .into_response(),
+        });
+            complete_gateway_trace(
+                state.langsmith.as_ref(),
+                trace.as_mut(),
+                Some(body.clone()),
+                None,
+            )
+            .await;
+            Json(body).into_response()
+        }
+        Err(error) => {
+            let error_message = format!("rag delete failed: {}", error);
+            complete_gateway_trace(
+                state.langsmith.as_ref(),
+                trace.as_mut(),
+                None,
+                Some(error_message.clone()),
+            )
+            .await;
+            (StatusCode::INTERNAL_SERVER_ERROR, error_message).into_response()
+        }
+    }
+}
+
+fn gateway_trace(
+    client: Option<&LangSmithClient>,
+    name: &str,
+    run_type: RunType,
+    inputs: serde_json::Value,
+) -> Option<TraceRun> {
+    let client = client?;
+    Some(client.new_run(name, run_type, inputs))
+}
+
+async fn complete_gateway_trace(
+    client: Option<&LangSmithClient>,
+    trace: Option<&mut TraceRun>,
+    outputs: Option<serde_json::Value>,
+    error: Option<String>,
+) {
+    let (Some(client), Some(trace)) = (client, trace) else {
+        return;
+    };
+
+    trace.outputs = outputs;
+    trace.error = error;
+    trace.end_time = Some(chrono::Utc::now());
+
+    if let Err(trace_error) = client.trace_run(trace).await {
+        warn!(error = %trace_error, trace_name = %trace.name, "Failed to send LangSmith gateway trace");
     }
 }
 
@@ -768,6 +1130,7 @@ mod tests {
             memory_store: None,
             core_memory_store: None,
             rag_store: None,
+            langsmith: None,
         }
     }
 
@@ -835,6 +1198,7 @@ mod tests {
             memory_store: Some(memory_store),
             core_memory_store: Some(core_memory_store),
             rag_store: Some(Arc::new(SqliteRagStore::new(pool.clone()))),
+            langsmith: None,
         };
 
         let app = GatewayServer::new("127.0.0.1".to_string(), 0).router(state);
@@ -927,6 +1291,7 @@ mod tests {
             memory_store: Some(memory_store),
             core_memory_store: Some(core_memory_store),
             rag_store: Some(Arc::new(SqliteRagStore::new(pool.clone()))),
+            langsmith: None,
         };
 
         let app = GatewayServer::new("127.0.0.1".to_string(), 0).router(state);
@@ -1013,6 +1378,7 @@ mod tests {
             memory_store: Some(Arc::new(SqliteMemoryStore::new(pool.clone()))),
             core_memory_store: Some(Arc::new(SqliteCoreMemoryStore::new(pool.clone()))),
             rag_store: Some(Arc::new(SqliteRagStore::new(pool.clone()))),
+            langsmith: None,
         };
 
         let app = GatewayServer::new("127.0.0.1".to_string(), 0).router(state);
