@@ -14,6 +14,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::time::Instant;
 
 use async_trait::async_trait;
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
@@ -466,10 +467,26 @@ where
     heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     let mut heartbeats_enabled = false;
     let mut last_sequence: Option<i64> = None;
+    let mut heartbeat_ack_timeout = Duration::from_secs(120);
+    let mut last_heartbeat_sent_at: Option<Instant> = None;
+    let mut awaiting_heartbeat_ack = false;
 
     loop {
         tokio::select! {
             _ = heartbeat.tick(), if heartbeats_enabled => {
+                if awaiting_heartbeat_ack
+                    {
+                    if last_heartbeat_sent_at
+                        .map(|sent_at| sent_at.elapsed() >= heartbeat_ack_timeout)
+                        .unwrap_or(false)
+                    {
+                        return Err(ChannelError::Connection {
+                            platform: "discord".to_string(),
+                            message: "Discord gateway heartbeat ACK timed out".to_string(),
+                        }.into());
+                    }
+                    continue;
+                }
                 let payload = serde_json::json!({
                     "op": 1,
                     "d": last_sequence,
@@ -481,6 +498,8 @@ where
                         platform: "discord".to_string(),
                         message: format!("Failed to send Discord heartbeat: {}", e),
                     })?;
+                awaiting_heartbeat_ack = true;
+                last_heartbeat_sent_at = Some(Instant::now());
             }
             message = stream.next() => {
                 let Some(message) = message else {
@@ -513,6 +532,9 @@ where
                                 })?;
                                 heartbeat = tokio::time::interval(Duration::from_millis(hello.heartbeat_interval.max(1)));
                                 heartbeat.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+                                heartbeat_ack_timeout = Duration::from_millis(hello.heartbeat_interval.max(1) * 2);
+                                awaiting_heartbeat_ack = false;
+                                last_heartbeat_sent_at = None;
                                 heartbeats_enabled = true;
                                 let resume_payload = {
                                     let session = gateway_session.read().await;
@@ -585,6 +607,7 @@ where
                                 .into());
                             }
                             11 => {
+                                awaiting_heartbeat_ack = false;
                                 debug!("Received Discord heartbeat ACK");
                             }
                             9 => {
@@ -1158,6 +1181,60 @@ mod tests {
         format!("ws://{}/gateway", addr)
     }
 
+    async fn spawn_mock_stale_heartbeat_gateway(second_event: serde_json::Value) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let (tcp_stream, _) = listener.accept().await.unwrap();
+            let mut first_stream = accept_async(tcp_stream).await.unwrap();
+            first_stream
+                .send(WsMessage::Text(
+                    serde_json::json!({
+                        "op": 10,
+                        "d": {"heartbeat_interval": 50}
+                    })
+                    .to_string()
+                    .into(),
+                ))
+                .await
+                .unwrap();
+            let identify = first_stream.next().await.unwrap().unwrap();
+            let identify_json: serde_json::Value =
+                serde_json::from_str(&identify.into_text().unwrap()).unwrap();
+            assert_eq!(identify_json["op"], 2);
+            let heartbeat = first_stream.next().await.unwrap().unwrap();
+            let heartbeat_json: serde_json::Value =
+                serde_json::from_str(&heartbeat.into_text().unwrap()).unwrap();
+            assert_eq!(heartbeat_json["op"], 1);
+
+            let (tcp_stream, _) = listener.accept().await.unwrap();
+            let mut second_stream = accept_async(tcp_stream).await.unwrap();
+            second_stream
+                .send(WsMessage::Text(
+                    serde_json::json!({
+                        "op": 10,
+                        "d": {"heartbeat_interval": 250}
+                    })
+                    .to_string()
+                    .into(),
+                ))
+                .await
+                .unwrap();
+            let identify = second_stream.next().await.unwrap().unwrap();
+            let identify_json: serde_json::Value =
+                serde_json::from_str(&identify.into_text().unwrap()).unwrap();
+            assert_eq!(identify_json["op"], 2);
+            second_stream
+                .send(WsMessage::Text(second_event.to_string().into()))
+                .await
+                .unwrap();
+            second_stream.close(None).await.unwrap();
+            first_stream.close(None).await.unwrap();
+        });
+
+        format!("ws://{}/gateway", addr)
+    }
+
     #[test]
     fn test_format_for_discord() {
         let text = "Hello **world**";
@@ -1508,6 +1585,70 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(second.content, "second message");
+        channel.disconnect().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_gateway_reconnects_after_heartbeat_ack_timeout() {
+        use wiremock::matchers::{header, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let gateway_url = spawn_mock_stale_heartbeat_gateway(serde_json::json!({
+            "op": 0,
+            "t": "MESSAGE_CREATE",
+            "s": 1,
+            "d": {
+                "id": "message-2",
+                "channel_id": "channel-1",
+                "guild_id": "guild-1",
+                "content": "recovered after stale heartbeat",
+                "author": {
+                    "id": "user-2",
+                    "username": "bob",
+                    "bot": false
+                }
+            }
+        }))
+        .await;
+
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/users/@me"))
+            .and(header("authorization", "Bot token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "123",
+                "username": "test-bot"
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/gateway/bot"))
+            .and(header("authorization", "Bot token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "url": gateway_url,
+            })))
+            .mount(&server)
+            .await;
+
+        let config = DiscordConfig {
+            enabled: true,
+            token: "token".to_string(),
+            application_id: "app-1".to_string(),
+            interaction_public_key: None,
+            api_base_url: Some(server.uri()),
+            rate_limit_requests_per_second: 5,
+            allowed_guilds: vec![],
+            allowed_channels: vec![],
+            dm_enabled: true,
+        };
+        let mut channel = DiscordChannel::new(config);
+        channel.connect().await.unwrap();
+
+        let recovered = tokio::time::timeout(Duration::from_secs(3), channel.receive())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(recovered.content, "recovered after stale heartbeat");
         channel.disconnect().await.unwrap();
     }
 
