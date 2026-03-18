@@ -83,6 +83,10 @@ impl GatewayServer {
                 "/internal/memory/core/{user_id}",
                 post(internal_core_memory_render_handler),
             )
+            .route(
+                "/internal/memory/core/set",
+                post(internal_core_memory_set_handler),
+            )
             .route("/internal/rag/store", post(internal_rag_store_handler))
             .route("/internal/rag/load", post(internal_rag_load_handler))
             .route("/internal/rag/list", post(internal_rag_list_handler))
@@ -283,6 +287,14 @@ struct InternalRagListRequest {
 #[derive(serde::Deserialize)]
 struct InternalRagDeleteRequest {
     collection_name: String,
+}
+
+#[derive(serde::Deserialize)]
+struct InternalCoreMemorySetRequest {
+    user_id: String,
+    key: String,
+    value: String,
+    importance: Option<f32>,
 }
 
 async fn internal_memory_search_handler(
@@ -492,6 +504,70 @@ async fn internal_core_memory_render_handler(
         }
         Err(error) => {
             let error_message = format!("core memory render failed: {}", error);
+            complete_gateway_trace(
+                state.langsmith.as_ref(),
+                trace.as_mut(),
+                None,
+                Some(error_message.clone()),
+            )
+            .await;
+            (StatusCode::INTERNAL_SERVER_ERROR, error_message).into_response()
+        }
+    }
+}
+
+async fn internal_core_memory_set_handler(
+    State(state): State<GatewayState>,
+    headers: HeaderMap,
+    Json(payload): Json<InternalCoreMemorySetRequest>,
+) -> Response {
+    if let Err(response) = validate_internal_api(&state, &headers) {
+        return response;
+    }
+    let mut trace = gateway_trace(
+        state.langsmith.as_ref(),
+        "internal_core_memory_set",
+        RunType::Tool,
+        json!({
+            "user_id": payload.user_id.clone(),
+            "key": payload.key.clone(),
+            "importance": payload.importance,
+        }),
+    );
+
+    let Some(core_memory_store) = &state.core_memory_store else {
+        complete_gateway_trace(
+            state.langsmith.as_ref(),
+            trace.as_mut(),
+            None,
+            Some("core memory store unavailable".to_string()),
+        )
+        .await;
+        return (StatusCode::SERVICE_UNAVAILABLE, "core memory store unavailable").into_response();
+    };
+
+    let entry = openrustclaw_db::CoreEntryBuilder::new(&payload.key, &payload.value)
+        .importance(payload.importance.unwrap_or(0.8).clamp(0.0, 1.0))
+        .build();
+
+    match core_memory_store.set(&payload.user_id, entry).await {
+        Ok(()) => {
+            let body = json!({
+                "stored": true,
+                "user_id": payload.user_id,
+                "key": payload.key,
+            });
+            complete_gateway_trace(
+                state.langsmith.as_ref(),
+                trace.as_mut(),
+                Some(body.clone()),
+                None,
+            )
+            .await;
+            Json(body).into_response()
+        }
+        Err(error) => {
+            let error_message = format!("core memory set failed: {}", error);
             complete_gateway_trace(
                 state.langsmith.as_ref(),
                 trace.as_mut(),
@@ -1241,7 +1317,7 @@ mod tests {
             .header("x-openrustclaw-internal-token", HeaderValue::from_static("test-token"))
             .body(Body::from("{}"))
             .unwrap();
-        let core_response = app.oneshot(core_request).await.unwrap();
+        let core_response = app.clone().oneshot(core_request).await.unwrap();
         assert_eq!(core_response.status(), StatusCode::OK);
         let core_body = to_bytes(core_response.into_body(), usize::MAX).await.unwrap();
         let core_json: serde_json::Value = serde_json::from_slice(&core_body).unwrap();
@@ -1249,6 +1325,32 @@ mod tests {
             .as_str()
             .unwrap()
             .contains("Prefers Rust"));
+
+        let set_request = Request::builder()
+            .method("POST")
+            .uri("/internal/memory/core/set")
+            .header(CONTENT_TYPE, "application/json")
+            .header("x-openrustclaw-internal-token", "test-token")
+            .body(Body::from(
+                r#"{"user_id":"user-1","key":"language","value":"Rust","importance":0.95}"#,
+            ))
+            .unwrap();
+        let set_response = app.clone().oneshot(set_request).await.unwrap();
+        assert_eq!(set_response.status(), StatusCode::OK);
+
+        let updated_core_request = Request::builder()
+            .method("POST")
+            .uri("/internal/memory/core/user-1")
+            .header("x-openrustclaw-internal-token", HeaderValue::from_static("test-token"))
+            .body(Body::from("{}"))
+            .unwrap();
+        let updated_core_response = app.oneshot(updated_core_request).await.unwrap();
+        let updated_core_body =
+            to_bytes(updated_core_response.into_body(), usize::MAX).await.unwrap();
+        let updated_core_json: serde_json::Value =
+            serde_json::from_slice(&updated_core_body).unwrap();
+        assert!(updated_core_json["content"].as_str().unwrap().contains("language"));
+        assert!(updated_core_json["content"].as_str().unwrap().contains("Rust"));
 
         let _ = std::fs::remove_file(db_path);
     }

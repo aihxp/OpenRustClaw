@@ -124,6 +124,7 @@ Status:
 - Telegram and Slack HTTP mode are end-to-end runtime paths.
 - Discord now has verified Interactions HTTP ingress, Gateway `MESSAGE_CREATE` receive, reconnect plus session resume handling, stale-heartbeat recovery, invalid-session recycling, deferred acknowledgements, and follow-up replies; deeper gateway polish is still incomplete.
 - Memory maintenance now uses Rust-backed archive persistence and removes archived recall entries through the loopback bridge.
+- The Rust loopback memory API now supports both rendering and setting core-memory entries, not just read-only rendering.
 - Rust-to-sidecar workflow dispatch now preserves typed configurable metadata through a reserved contract key instead of flattening everything to strings.
 - The skills CLI now resolves real `SKILL.md` workspace paths, validates and normalizes declared capabilities, syncs marketplace installs back into the main skills table, and keeps managed verification state aligned with install/update flows.
 - Marketplace installs no longer auto-mark signed skills as verified, and unsigned skills requesting sensitive capabilities are rejected during install/update.
