@@ -149,7 +149,9 @@ class OrchestrationServicer(orchestration_pb2_grpc.OrchestrationServiceServicer)
             # Build and execute workflow with LangSmith tracing
             self.registry.update(thread_id, status="running", current_step="building_graph")
 
-            with self.langsmith.trace(request.workflow_id, thread_id, parsed_request.metadata):
+            with self.langsmith.trace(
+                request.workflow_id, thread_id, parsed_request.metadata
+            ) as trace_id:
                 graph = workflow_builder()
                 self.registry.update(thread_id, current_step="executing")
                 result = await self._execute_graph(
@@ -162,13 +164,14 @@ class OrchestrationServicer(orchestration_pb2_grpc.OrchestrationServiceServicer)
             # Determine status
             status = result.get("status", "completed")
             error_msg = result.get("error", "")
+            resolved_trace_id = trace_id or self.langsmith.get_last_trace_id()
 
             self.registry.update(
                 thread_id,
                 status=status,
                 output=json.dumps(result),
                 error=error_msg,
-                trace_id=self.langsmith.get_current_trace_id(),
+                trace_id=resolved_trace_id,
             )
 
             return orchestration_pb2.WorkflowResponse(
@@ -176,7 +179,7 @@ class OrchestrationServicer(orchestration_pb2_grpc.OrchestrationServiceServicer)
                 output=json.dumps(result),
                 status=status,
                 error=error_msg,
-                trace_id=self.langsmith.get_current_trace_id(),
+                trace_id=resolved_trace_id,
             )
 
         except Exception as e:
@@ -188,7 +191,7 @@ class OrchestrationServicer(orchestration_pb2_grpc.OrchestrationServiceServicer)
                 output="{}",
                 status="error",
                 error=error_msg,
-                trace_id=self.langsmith.get_current_trace_id(),
+                trace_id=self.langsmith.get_current_trace_id() or self.langsmith.get_last_trace_id(),
             )
 
     async def _execute_graph(
@@ -212,6 +215,14 @@ class OrchestrationServicer(orchestration_pb2_grpc.OrchestrationServiceServicer)
                     thread_id,
                     current_step=node_name,
                     increment_steps=True,
+                )
+                self.langsmith.trace_node(
+                    node_name,
+                    inputs={
+                        "thread_id": thread_id,
+                        "workflow_node": node_name,
+                    },
+                    outputs=node_output if isinstance(node_output, dict) else {"output": str(node_output)},
                 )
                 logger.debug(f"Node {node_name} completed: {node_output}")
 
@@ -261,20 +272,29 @@ class OrchestrationServicer(orchestration_pb2_grpc.OrchestrationServiceServicer)
             graph = workflow_builder()
             config = parsed_request.runnable_config()
 
-            with self.langsmith.trace(request.workflow_id, thread_id, parsed_request.metadata):
+            with self.langsmith.trace(
+                request.workflow_id, thread_id, parsed_request.metadata
+            ) as trace_id:
                 async for event in graph.astream(parsed_request.input_data, config=config):
                     for node_name, node_output in event.items():
-                        trace_id = self.langsmith.get_current_trace_id()
                         yield orchestration_pb2.WorkflowUpdate(
                             step_name=node_name,
                             status="in_progress",
                             output=json.dumps(node_output) if isinstance(node_output, dict) else str(node_output),
-                            trace_id=trace_id,
+                            trace_id=trace_id or self.langsmith.get_current_trace_id(),
                         )
                         self.registry.update(
                             thread_id,
                             current_step=node_name,
                             increment_steps=True,
+                        )
+                        self.langsmith.trace_node(
+                            node_name,
+                            inputs={
+                                "thread_id": thread_id,
+                                "workflow_node": node_name,
+                            },
+                            outputs=node_output if isinstance(node_output, dict) else {"output": str(node_output)},
                         )
 
             # Final completion update
@@ -282,9 +302,13 @@ class OrchestrationServicer(orchestration_pb2_grpc.OrchestrationServiceServicer)
                 step_name="completed",
                 status="completed",
                 output="{}",
-                trace_id=self.langsmith.get_current_trace_id(),
+                trace_id=trace_id or self.langsmith.get_last_trace_id(),
             )
-            self.registry.update(thread_id, status="completed")
+            self.registry.update(
+                thread_id,
+                status="completed",
+                trace_id=trace_id or self.langsmith.get_last_trace_id(),
+            )
 
         except Exception as e:
             logger.exception("Stream execution failed")
@@ -292,9 +316,14 @@ class OrchestrationServicer(orchestration_pb2_grpc.OrchestrationServiceServicer)
                 step_name="error",
                 status="error",
                 output=json.dumps({"error": str(e)}),
-                trace_id=self.langsmith.get_current_trace_id(),
+                trace_id=self.langsmith.get_current_trace_id() or self.langsmith.get_last_trace_id(),
             )
-            self.registry.update(thread_id, status="error", error=str(e))
+            self.registry.update(
+                thread_id,
+                status="error",
+                error=str(e),
+                trace_id=self.langsmith.get_current_trace_id() or self.langsmith.get_last_trace_id(),
+            )
 
     async def GetWorkflowStatus(
         self,

@@ -148,6 +148,16 @@ def test_langsmith_bridge():
 
         trace_id = bridge.get_current_trace_id()
         print(f"  ✓ Current trace ID: {trace_id}")
+        assert bridge.get_last_trace_id() == ""
+
+        with bridge.trace("test-workflow", "thread-1", {"user_id": "u-1"}) as active_trace_id:
+            assert isinstance(active_trace_id, str)
+            if bridge.enabled:
+                assert active_trace_id
+                assert bridge.get_current_trace_id() == active_trace_id
+
+        if bridge.enabled:
+            assert bridge.get_last_trace_id()
 
         metrics = bridge.get_metrics()
         print(f"  ✓ Metrics: {metrics}")

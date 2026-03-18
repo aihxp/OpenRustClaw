@@ -15,6 +15,7 @@ class LangSmithBridge:
 
     def __init__(self) -> None:
         self._current_trace_id: str = ""
+        self._last_trace_id: str = ""
         self._client: Optional[Any] = None
         self._enabled = self._check_enabled()
 
@@ -41,16 +42,20 @@ class LangSmithBridge:
         """Get the current trace ID."""
         return self._current_trace_id
 
+    def get_last_trace_id(self) -> str:
+        """Get the most recently completed trace ID."""
+        return self._last_trace_id
+
     @contextmanager
     def trace(
         self,
         workflow_name: str,
         thread_id: str,
         metadata: Optional[Dict[str, Any]] = None,
-    ) -> Generator[None, None, None]:
+    ) -> Generator[str, None, None]:
         """Create a LangSmith trace context for workflow execution."""
         if not self.enabled:
-            yield
+            yield ""
             return
 
         from langsmith.run_trees import RunTree
@@ -64,7 +69,7 @@ class LangSmithBridge:
         )
 
         try:
-            yield
+            yield self._current_trace_id
             run_tree.end(outputs={"status": "completed"})
             self._client.create_run(
                 name=run_tree.name,
@@ -78,6 +83,7 @@ class LangSmithBridge:
             logger.warning(f"Error in LangSmith trace: {e}")
             raise
         finally:
+            self._last_trace_id = self._current_trace_id
             self._current_trace_id = ""
 
     def trace_node(
