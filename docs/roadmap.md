@@ -80,6 +80,8 @@ OpenRustClaw-specific strengths to preserve while pursuing parity:
 
 Goal: make the parity target explicit and freeze the product contract before more implementation churn.
 
+Status: complete
+
 Completed:
 
 - [x] Create and maintain a shipped-surface feature matrix.
@@ -88,25 +90,25 @@ Completed:
 
 Remaining:
 
-- [ ] Build a full OpenClaw parity matrix that maps each documented OpenClaw feature to:
+- [x] Build a full OpenClaw parity matrix that maps each documented OpenClaw feature to:
   - current OpenRustClaw status,
   - owning crate/module,
   - tests,
   - docs page,
   - parity gap severity.
-- [ ] Split parity targets into:
+- [x] Split parity targets into:
   - core parity,
   - plugin parity,
   - intentional divergence,
   - out of scope.
-- [ ] Add a `docs/parity-matrix.md` artifact generated or maintained alongside [feature-matrix.md](feature-matrix.md).
-- [ ] Add parity labels to CI and release notes so "green" means "green for the declared shipped surface."
-- [ ] Add a single page that explains which OpenClaw features are matched, stronger in Rust, or intentionally different.
+- [x] Add a `docs/parity-matrix.md` artifact generated or maintained alongside [feature-matrix.md](feature-matrix.md).
+- [x] Add parity labels to CI and release notes so "green" means "green for the declared shipped surface."
+- [x] Add a single page that explains which OpenClaw features are matched, stronger in Rust, or intentionally different.
 
 Exit criteria:
 
-- [ ] OpenRustClaw has a stable, source-backed parity inventory.
-- [ ] Every roadmap item can be traced to a documented OpenClaw feature or an explicit OpenRustClaw divergence.
+- [x] OpenRustClaw has a stable, source-backed parity inventory.
+- [x] Every roadmap item can be traced to a documented OpenClaw feature or an explicit OpenRustClaw divergence.
 
 ## Phase 2: Rust Runtime Contract and Sidecar Retirement
 

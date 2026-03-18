@@ -1,6 +1,6 @@
 # OpenRustClaw
 
-**A hybrid Rust + Python AI agent framework** that combines Rust's performance and safety with LangGraph's AI orchestration capabilities.
+**A Rust-first AI agent platform** that is actively pursuing OpenClaw feature parity while reducing non-Rust runtime ownership over time.
 
 ---
 
@@ -8,7 +8,14 @@
 
 OpenRustClaw is a production-grade AI agent framework built from the ground up with security, performance, and reliability as core design principles.
 
-Built for production deployments where these qualities matter most, OpenRustClaw leverages Rust's memory safety guarantees and Python's rich AI ecosystem to deliver a best-of-both-worlds solution.
+Built for production deployments where these qualities matter most, OpenRustClaw uses Rust as the primary runtime and treats any non-Rust orchestration layer as transitional unless it clearly improves the shipped product contract.
+
+Current parity/planning references:
+
+- [Roadmap](./planning/roadmap.md)
+- [Feature Matrix](./planning/feature-matrix.md)
+- [Parity Matrix](./planning/parity-matrix.md)
+- [Parity Positioning](./planning/parity-positioning.md)
 
 ---
 
@@ -34,18 +41,18 @@ OpenRustClaw was created to solve these fundamental problems while maintaining t
 - **Zero-cost abstractions** for high-performance operations
 - **Async/await throughout** with Tokio runtime
 
-### 🐍 **Python LangGraph Sidecar**
-- **LangGraph workflows** for complex agent orchestration
-- **LangSmith integration** for observability and evaluation
-- **Async gRPC bridge** for seamless Rust-Python communication
-- **State management** with checkpoint persistence
+### 🐍 **Python Sidecar Transition**
+- **Typed bridge contract** exists for current workflow execution
+- **Rust-owned state** already backs memory, scheduler persistence, and RAG storage
+- **Sidecar retirement** is an explicit roadmap objective, not a hidden dependency forever
+- **LangSmith integration** is already available from Rust directly
 
 ### 🔐 **Security-First Design**
 - ✅ **Mandatory WebSocket origin validation** (fixes CVE-2026-25253)
 - ✅ **JWT authentication** on all connections
 - ✅ **Multi-layer prompt injection defense**
 - ✅ **Ed25519 cryptographic skill verification**
-- ⚠️ **WASM sandbox executor planned** for untrusted skills
+- ✅ **WASM sandbox executor implemented** for no-import, capability-aware skill execution
 - ✅ **Per-session filesystem isolation**
 
 ### 🧠 **3-Tier Memory System**
@@ -175,7 +182,7 @@ OpenRustClaw/
 | Unauthenticated WebSocket access | Mandatory origin validation + token auth enabled by default | 🔒 Reduces unauthorized access by default |
 | Large memory files injected every turn | 3-tier recall-only memory: Core (~500 tokens) + on-demand search | 💰 90% token cost reduction |
 | Weak prompt injection defense | Multi-layer: sandwich defense, canary tokens, classification | 🛡️ 95%+ defense rate |
-| Unverified third-party skills | Ed25519 cryptographic signatures + planned WASM sandboxing | 🔐 Safer third-party skill handling |
+| Unverified third-party skills | Ed25519 cryptographic signatures + capability-aware WASM sandboxing | 🔐 Safer third-party skill handling |
 | Synchronous memory indexing blocks startup | Fully async embedding pipeline with bounded concurrency | ⚡ 10x faster startup |
 | Unreliable cron-based scheduling | Durable scheduler: idempotency, leases, dead-letter, timezone-safe | ✅ 99.9% task reliability |
 | Single-writer SQLite, no isolation | WAL mode + per-session filesystem namespaces | 🏗️ Production concurrency |
@@ -189,7 +196,7 @@ OpenRustClaw/
 | Feature | Status | Description |
 |---------|--------|-------------|
 | 🦀 Rust Core | ✅ Complete | 14-crate workspace with full async support |
-| 🐍 Python Sidecar | ✅ Skeleton | LangGraph integration scaffolded |
+| 🐍 Python Sidecar | ⚠️ Transitional | Bridge exists today, but retirement from the production-critical path is a roadmap goal |
 | 🔐 Security Hardening | ✅ 6 modules | Auth, origin check, injection defense, sandbox, audit |
 | 🧠 3-Tier Memory | ✅ Complete | Core + Recall + Archive with hybrid search |
 | 📅 Durable Scheduler | ✅ Complete | Workflow-based with idempotency |
@@ -213,9 +220,9 @@ OpenRustClaw/
 | WebChat | ✅ Ready | WebSocket-based web interface |
 | CLI | ✅ Ready | Terminal/TUI interface |
 | REST API | ✅ Ready | Headless API access |
-| Telegram | ⚠️ Partial | Channel module present; runtime client/send path not implemented |
-| Discord | ⚠️ Partial | Channel module present; runtime client/send path not implemented |
-| Slack | ⚠️ Partial | Channel module present; runtime client/send path not implemented |
+| Telegram | ✅ Ready | Auth probe, outbound send, polling receive, and local agent/session routing exist |
+| Discord | ⚠️ Partial | Outbound send, interactions ingress, gateway ingress, and routing exist; deeper runtime polish remains |
+| Slack | ⚠️ Partial | HTTP mode auth, outbound send, ingress, and routing exist; Socket Mode remains incomplete |
 
 ### 🔒 Security Features
 
@@ -225,7 +232,7 @@ OpenRustClaw/
 | JWT Authentication | `crates/gateway/auth.rs` | ✅ Optional |
 | Prompt Injection Defense | Input validation and runtime guardrails | ✅ Basic |
 | Ed25519 Skill Verification | `crates/security/skill_verifier.rs` | ✅ Configurable |
-| WASM Sandboxing | `crates/skills/src/sandbox.rs` | Planned |
+| WASM Sandboxing | `crates/skills/src/sandbox.rs` | ✅ |
 | Session Isolation | Per-thread session state in gateway/runtime | ✅ Basic |
 | Audit Logging | `crates/security/audit.rs` | ✅ |
 

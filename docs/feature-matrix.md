@@ -1,5 +1,11 @@
 # OpenRustClaw Feature Matrix
 
+Companion planning docs:
+
+- [roadmap.md](roadmap.md)
+- [parity-matrix.md](parity-matrix.md)
+- [parity-positioning.md](parity-positioning.md)
+
 Status values:
 
 - `real`: usable end to end

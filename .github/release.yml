@@ -1,0 +1,24 @@
+changelog:
+  exclude:
+    labels:
+      - skip-changelog
+  categories:
+    - title: Shipped Surface Contract
+      labels:
+        - contract:shipped-surface
+        - contract:parity-inventory
+    - title: Parity - Core
+      labels:
+        - parity:core
+    - title: Parity - Plugin
+      labels:
+        - parity:plugin
+    - title: Intentional Divergences
+      labels:
+        - parity:intentional-divergence
+    - title: Out of Scope / Deferred
+      labels:
+        - parity:out-of-scope
+    - title: Docs and Operator Contract
+      labels:
+        - docs:parity

@@ -1,4 +1,4 @@
-name: E2E Tests
+name: Shipped Surface E2E Tests
 
 on:
   push:
@@ -18,7 +18,7 @@ jobs:
   # Smoke Tests - Run on every commit (fast ~60 seconds)
   # ═════════════════════════════════════════════════════════════════════════════
   smoke-tests:
-    name: Smoke Tests
+    name: Shipped Surface Smoke Tests
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
@@ -50,7 +50,7 @@ jobs:
   # Horizontal Tests - Full user journeys (~5-10 minutes)
   # ═════════════════════════════════════════════════════════════════════════════
   horizontal-tests:
-    name: Horizontal E2E Tests
+    name: Shipped Surface Horizontal E2E Tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: smoke-tests
@@ -78,7 +78,7 @@ jobs:
   # Vertical Tests - Layer-specific tests (~3-5 minutes)
   # ═════════════════════════════════════════════════════════════════════════════
   vertical-tests:
-    name: Vertical E2E Tests
+    name: Shipped Surface Vertical E2E Tests
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: smoke-tests
@@ -110,7 +110,7 @@ jobs:
   # Regression Tests - Full suite on schedule or manual trigger (~15-20 minutes)
   # ═════════════════════════════════════════════════════════════════════════════
   regression-tests:
-    name: Regression E2E Tests
+    name: Shipped Surface Regression E2E Tests
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: [smoke-tests, horizontal-tests, vertical-tests]
@@ -139,7 +139,7 @@ jobs:
   # Live Provider Tests - Run only with API keys
   # ═════════════════════════════════════════════════════════════════════════════
   live-provider-tests:
-    name: Live Provider E2E Tests
+    name: Shipped Surface Live Provider E2E Tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: smoke-tests
@@ -178,7 +178,7 @@ jobs:
   # Test Report - Aggregate results
   # ═════════════════════════════════════════════════════════════════════════════
   test-report:
-    name: Test Report
+    name: Shipped Surface Test Report
     runs-on: ubuntu-latest
     needs: [smoke-tests, horizontal-tests, vertical-tests]
     if: always()

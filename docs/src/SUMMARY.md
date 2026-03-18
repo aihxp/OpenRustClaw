@@ -2,6 +2,12 @@
 
 [Introduction](./introduction.md)
 
+# Planning
+- [Roadmap](./planning/roadmap.md)
+- [Feature Matrix](./planning/feature-matrix.md)
+- [Parity Matrix](./planning/parity-matrix.md)
+- [Parity Positioning](./planning/parity-positioning.md)
+
 # Getting Started
 - [Installation](./getting-started/installation.md)
 - [Quickstart](./getting-started/quickstart.md)

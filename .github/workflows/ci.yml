@@ -1,4 +1,4 @@
-name: CI
+name: Shipped Surface CI
 
 on:
   push:
@@ -11,9 +11,30 @@ env:
   RUSTFLAGS: "-D warnings"
 
 jobs:
-  check:
-    name: Check
+  parity-inventory:
+    name: Parity Inventory Contract
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate parity contract docs
+        run: |
+          test -f docs/feature-matrix.md
+          test -f docs/roadmap.md
+          test -f docs/parity-matrix.md
+          test -f docs/parity-positioning.md
+          test -f .github/release.yml
+          rg -n 'OpenClaw feature family|Scope Split|Phase 1 Completion Note' docs/parity-matrix.md
+          rg -n 'What We Already Match Well|Where OpenRustClaw Is Intentionally Stronger|Current Claim Boundary' docs/parity-positioning.md
+          rg -n '\[x\] Build a full OpenClaw parity matrix' docs/roadmap.md
+          rg -n '\[x\] Split parity targets into:' docs/roadmap.md
+          rg -n '\[x\] Add a `docs/parity-matrix.md` artifact' docs/roadmap.md
+          rg -n '\[x\] Add parity labels to CI and release notes' docs/roadmap.md
+          rg -n '\[x\] Add a single page that explains which OpenClaw features are matched' docs/roadmap.md
+
+  check:
+    name: Shipped Surface Check
+    runs-on: ubuntu-latest
+    needs: parity-inventory
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -22,8 +43,9 @@ jobs:
       - run: cargo check --workspace
 
   test:
-    name: Test
+    name: Shipped Surface Test
     runs-on: ubuntu-latest
+    needs: parity-inventory
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -32,8 +54,9 @@ jobs:
       - run: cargo test --workspace --lib
 
   clippy:
-    name: Clippy
+    name: Shipped Surface Clippy
     runs-on: ubuntu-latest
+    needs: parity-inventory
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -44,8 +67,9 @@ jobs:
       - run: cargo clippy --workspace -- -D warnings
 
   fmt:
-    name: Format
+    name: Shipped Surface Format
     runs-on: ubuntu-latest
+    needs: parity-inventory
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -54,8 +78,9 @@ jobs:
       - run: cargo fmt --all -- --check
 
   security-audit:
-    name: Security Audit
+    name: Shipped Surface Security Audit
     runs-on: ubuntu-latest
+    needs: parity-inventory
     # Informational only -- upstream transitive dependency advisories
     # (e.g. protobuf v2 via raft, rsa via sqlx-mysql) cannot be fixed here
     continue-on-error: true

@@ -10,6 +10,8 @@ Current execution planning lives in:
 
 - [docs/feature-matrix.md](docs/feature-matrix.md)
 - [docs/roadmap.md](docs/roadmap.md)
+- [docs/parity-matrix.md](docs/parity-matrix.md)
+- [docs/parity-positioning.md](docs/parity-positioning.md)
 
 The roadmap target is explicit: achieve practical OpenClaw feature parity with a Rust-first runtime, while keeping OpenRustClaw-native improvements where they are stronger.
 
