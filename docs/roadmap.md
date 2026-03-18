@@ -723,6 +723,12 @@ Remaining:
   - token/context budget policies,
   - reasoning/latency/cost hints,
   - safe fallback ordering when the primary model becomes unavailable or unauthorized.
+- [ ] Add a recommended model-role policy so onboarding can make sane defaults without hardcoding permanent provider assumptions:
+  - recommend Groq for low-latency core runtime use,
+  - recommend OpenRouter for broad fallback/control-plane coverage and free-model discovery,
+  - recommend SiliconFlow for higher-capability secondary core routing,
+  - recommend Ollama as the local/offline safety net,
+  - keep all recommendations BYOK and scan-validated rather than assuming any model stays available forever.
 - [ ] Add an artifact-capability matrix to model profiles so OpenRustClaw can reason about which model/tool ecosystems prefer which file formats and how to translate them:
   - markdown instruction files,
   - path-scoped rule files,
@@ -865,6 +871,30 @@ Remaining:
   - provider selection,
   - first channel login/pairing,
   - remote access guidance.
+- [ ] Add an explicit onboarding user journey inspired by current OpenClaw flows:
+  - QuickStart vs Advanced path selection,
+  - local gateway vs remote gateway/client mode,
+  - existing config detection with keep/modify/reset choices,
+  - workspace/bootstrap file setup,
+  - model/auth setup,
+  - channel pairing/login,
+  - daemon/service install,
+  - post-onboarding health check,
+  - first chat/dashboard handoff.
+- [ ] Add a shared onboarding/config protocol so CLI, future Control UI, and future desktop/mobile onboarding all write the same typed configuration model instead of diverging flows.
+- [ ] Add user configuration and settings parity:
+  - interactive `configure`-style flows by section,
+  - typed config editing from CLI and Control UI,
+  - settings validation before apply,
+  - config migration and legacy-key detection,
+  - live reload where safe,
+  - backup/restore before destructive config repair.
+- [ ] Add onboarding-time provider/model scanning for the core and control-plane model lanes:
+  - validate user-supplied keys,
+  - list available models where provider APIs allow,
+  - detect quota/auth/deprecation failures,
+  - capture context-window and limit metadata where exposed,
+  - recommend role assignments for `core_model`, `control_plane_model`, and ordered fallbacks.
 - [ ] Add an agent self-configuration harness so users can ask Claw to configure itself without the model operating blindly:
   - machine-readable self-description of enabled features, limits, tools, channels, and current config,
   - typed introspection APIs for provider/account/channel/model state,
@@ -894,6 +924,18 @@ Remaining:
   - trace links,
   - config validation,
   - secrets/service state.
+- [ ] Expand `doctor` into a high-signal repair and migration surface inspired by OpenClaw:
+  - `openrustclaw doctor`,
+  - `openrustclaw doctor --repair`,
+  - `openrustclaw doctor --deep`,
+  - `--non-interactive` headless-safe mode,
+  - config backup before rewrite,
+  - legacy key/shape normalization,
+  - orphaned state/session cleanup,
+  - task-manifest and legacy scheduler-store normalization,
+  - model/memory readiness checks,
+  - channel auth fix hints,
+  - sandbox/dependency diagnostics with actionable remediation.
 - [ ] Add optional external-agent interoperability surfaces:
   - a typed local API that can wrap CureClaw/Cursor-style CLI agents as subprocess-backed event streams,
   - NDJSON or `stream-json` translation into OpenRustClaw agent/run events,
@@ -1022,6 +1064,12 @@ Remaining:
   - explicit distinction between primary task model and control-plane/safety model,
   - startup-time fallback validation,
   - operator warnings when the system is running in degraded control-plane mode.
+- [ ] Add recurring provider/model health scans after onboarding:
+  - detect removed or disabled models,
+  - detect auth or billing regressions,
+  - detect changed limits where providers expose them,
+  - precompute failover recommendations before the next model swap,
+  - surface operator warnings instead of letting model changes fail blind at runtime.
 - [ ] Add explicit governance for optional external execution backends:
   - allowed backend registry,
   - credential and token isolation,
