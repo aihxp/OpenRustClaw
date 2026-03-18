@@ -4,7 +4,7 @@
 //! and executed in order on startup. This avoids the need for an external
 //! migrations directory or the `sqlx::migrate!()` macro.
 
-use sqlx::SqlitePool;
+use sqlx::{Row, SqlitePool};
 use tracing::info;
 
 use openrustclaw_core::error::{DatabaseError, Error, Result};
@@ -365,6 +365,21 @@ CREATE INDEX IF NOT EXISTS idx_event_dispatch_queue_state ON event_dispatch_queu
 CREATE INDEX IF NOT EXISTS idx_event_dispatch_queue_job ON event_dispatch_queue(job_id, created_at);
 "#,
     },
+    Migration {
+        name: "017_task_manifests",
+        sql: r#"
+CREATE TABLE IF NOT EXISTS task_manifests (
+    job_id TEXT PRIMARY KEY REFERENCES scheduled_jobs(id) ON DELETE CASCADE,
+    manifest_path TEXT NOT NULL UNIQUE,
+    manifest_hash TEXT NOT NULL,
+    version INTEGER NOT NULL DEFAULT 1,
+    origin TEXT NOT NULL DEFAULT 'filesystem',
+    imported_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_task_manifests_path ON task_manifests(manifest_path);
+"#,
+    },
 ];
 
 /// Run all embedded database migrations in order.
@@ -391,6 +406,84 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
         info!("Applied migration: {}", migration.name);
     }
 
+    ensure_scheduler_task_registry_columns(pool).await?;
+
     info!("All {} database migrations completed", MIGRATIONS.len());
+    Ok(())
+}
+
+async fn column_exists(pool: &SqlitePool, table: &str, column: &str) -> Result<bool> {
+    let pragma = format!("PRAGMA table_info({table})");
+    let rows = sqlx::query(&pragma).fetch_all(pool).await.map_err(|e| {
+        Error::Database(DatabaseError::Migration(format!(
+            "failed to inspect table '{table}': {e}"
+        )))
+    })?;
+
+    Ok(rows.iter().any(|row| {
+        row.try_get::<String, _>("name")
+            .map(|value| value == column)
+            .unwrap_or(false)
+    }))
+}
+
+async fn add_column_if_missing(
+    pool: &SqlitePool,
+    table: &str,
+    column: &str,
+    definition: &str,
+) -> Result<()> {
+    if column_exists(pool, table, column).await? {
+        return Ok(());
+    }
+
+    let statement = format!("ALTER TABLE {table} ADD COLUMN {column} {definition}");
+    sqlx::query(&statement).execute(pool).await.map_err(|e| {
+        Error::Database(DatabaseError::Migration(format!(
+            "failed to add column '{table}.{column}': {e}"
+        )))
+    })?;
+
+    Ok(())
+}
+
+async fn ensure_scheduler_task_registry_columns(pool: &SqlitePool) -> Result<()> {
+    add_column_if_missing(
+        pool,
+        "scheduled_jobs",
+        "priority",
+        "INTEGER NOT NULL DEFAULT 100",
+    )
+    .await?;
+    add_column_if_missing(
+        pool,
+        "scheduled_jobs",
+        "source_kind",
+        "TEXT NOT NULL DEFAULT 'cli'",
+    )
+    .await?;
+    add_column_if_missing(pool, "scheduled_jobs", "owner", "TEXT").await?;
+    add_column_if_missing(
+        pool,
+        "scheduled_jobs",
+        "tags",
+        "TEXT NOT NULL DEFAULT '[]'",
+    )
+    .await?;
+    add_column_if_missing(pool, "scheduled_jobs", "disabled_until", "TEXT").await?;
+    add_column_if_missing(pool, "scheduled_jobs", "manifest_path", "TEXT").await?;
+    add_column_if_missing(pool, "scheduled_jobs", "task_notes_path", "TEXT").await?;
+
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_jobs_priority_due ON scheduled_jobs(state, priority, next_run_at)",
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| {
+        Error::Database(DatabaseError::Migration(format!(
+            "failed to create scheduler priority index: {e}"
+        )))
+    })?;
+
     Ok(())
 }

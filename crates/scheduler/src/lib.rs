@@ -9,6 +9,7 @@ pub mod heartbeat;
 pub mod jobs;
 pub mod persistence;
 pub mod retry;
+pub mod tasks;
 pub mod timezone;
 pub mod triggers;
 pub mod worker;
@@ -17,6 +18,10 @@ pub mod workflow;
 pub use eventing::{DurableEventBus, PublishedRuntimeEvent};
 pub use heartbeat::{HeartbeatScheduler, HeartbeatTask, HeartbeatTaskBuilder};
 pub use jobs::{Job, JobState};
+pub use tasks::{
+    DEFAULT_TASKS_DIR, LoadedTaskManifest, TaskManifest, TaskManifestRecord, TaskSpec,
+    load_task_manifest, manifest_job_id, render_task_manifest, tasks_dir_for_root,
+};
 pub use worker::SchedulerWorker;
 pub use workflow::{
     ReminderSender, RustWorkflowDispatcher, WorkflowDefinition, WorkflowDispatchResult,

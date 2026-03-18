@@ -373,14 +373,25 @@ pub async fn load_due_jobs(pool: &SqlitePool, limit: i64) -> Result<Vec<Persiste
           AND next_run_at IS NOT NULL
           AND next_run_at <= ?
           AND (
+              disabled_until IS NULL
+              OR disabled_until <= ?
+          )
+          AND (
               lease_owner IS NULL
               OR lease_expires_at IS NULL
               OR lease_expires_at <= ?
           )
-        ORDER BY next_run_at ASC
+        ORDER BY
+          MAX(
+              COALESCE(priority, 100) - MIN(CAST((julianday(?) - julianday(next_run_at)) * 24 * 60 / 15 AS INTEGER), 90),
+              0
+          ) ASC,
+          next_run_at ASC
         LIMIT ?
         "#,
     )
+    .bind(Utc::now().to_rfc3339())
+    .bind(Utc::now().to_rfc3339())
     .bind(Utc::now().to_rfc3339())
     .bind(Utc::now().to_rfc3339())
     .bind(limit)
@@ -576,8 +587,13 @@ pub async fn queue_runtime_event(
         FROM scheduled_jobs
         WHERE state = 'active'
           AND trigger_type = 'event'
+          AND (
+              disabled_until IS NULL
+              OR disabled_until <= ?
+          )
         "#,
     )
+    .bind(Utc::now().to_rfc3339())
     .fetch_all(pool)
     .await
     .map_err(|e| {
@@ -860,6 +876,12 @@ fn hook_priority(metadata: &Value) -> i64 {
         .get("hook_policy")
         .and_then(|policy| policy.get("priority"))
         .and_then(Value::as_i64)
+        .or_else(|| {
+            metadata
+                .get("task")
+                .and_then(|task| task.get("priority"))
+                .and_then(Value::as_i64)
+        })
         .unwrap_or(0)
 }
 

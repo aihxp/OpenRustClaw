@@ -427,6 +427,8 @@ Exit criteria:
 
 Goal: give operators a visible, standard, versionable task surface on top of the durable Rust scheduler without falling back to OS cron as the source of truth.
 
+Status: complete for shipped CLI/MCP surfaces; Control UI reuse stays in Phase 6.
+
 Principles:
 
 - SQLite remains the durable scheduler source of truth.
@@ -434,13 +436,13 @@ Principles:
 - Task manifests sync into the scheduler rather than replacing it.
 - Operators must be able to see where tasks live, how often they run, what priority they have, what triggered them, and what happened last.
 
-Remaining:
+Completed:
 
-- [ ] Define a standard workspace task path:
+- [x] Define a standard workspace task path:
   - `.claw/tasks/` as the default hidden control-plane location,
   - optional project-local alias/import path for repo-visible checked-in task manifests where desired,
   - clear separation between task manifests, run artifacts, and generated state.
-- [ ] Define a Rust-native task manifest format for scheduled and event-triggered work:
+- [x] Define a Rust-native task manifest format for scheduled and event-triggered work:
   - stable task id,
   - human-readable name,
   - workflow target,
@@ -452,22 +454,22 @@ Remaining:
   - concurrency and retry policy,
   - approval requirements,
   - channel/session routing metadata.
-- [ ] Add task priority semantics to the scheduler:
+- [x] Add task priority semantics to the scheduler:
   - explicit numeric or named priorities,
   - tie-break ordering rules,
   - starvation protection,
   - operator-visible run-order reasoning.
-- [ ] Add filesystem-to-scheduler sync:
+- [x] Add filesystem-to-scheduler sync:
   - import task manifests into SQLite,
   - detect drift between manifest and persisted state,
   - safe apply/update/remove flow,
   - validation before activation,
   - dry-run preview of changes.
-- [ ] Add scheduler-to-filesystem export:
+- [x] Add scheduler-to-filesystem export:
   - export active jobs into manifest files,
   - preserve comments/operator metadata where feasible,
   - support repo bootstrap and backup use cases.
-- [ ] Add operator-visible task status views across CLI, MCP, and Control UI:
+- [x] Add operator-visible task status views across CLI and MCP:
   - where the task came from,
   - last run,
   - next run,
@@ -478,7 +480,8 @@ Remaining:
   - retries,
   - dead-letter state,
   - owning workflow/agent.
-- [ ] Add richer task inspection and control:
+- [x] Defer Control UI views to Phase 6 so the same task registry is reused there rather than reimplemented.
+- [x] Add richer task inspection and control:
   - pause/resume,
   - run now,
   - reprioritize,
@@ -486,22 +489,22 @@ Remaining:
   - rebind target workflow,
   - inspect checkpoints,
   - inspect event subscriptions.
-- [ ] Add task folders for related artifacts without making them the source of truth:
+- [x] Add task folders for related artifacts without making them the source of truth:
   - per-task notes or instructions,
   - operator annotations,
   - run receipts,
   - exported logs/screenshots/artifacts where relevant.
-- [ ] Add task templates and generated scaffolds:
+- [x] Add task templates and generated scaffolds:
   - reminders,
   - recurring maintenance,
   - event-triggered hooks,
   - digests,
   - multi-channel delivery tasks.
-- [ ] Add explicit replacement language in docs and UI:
+- [x] Add explicit replacement language in docs and UI:
   - this is not OS cron,
   - this is Rust-owned durable scheduling with file-backed operator manifests,
   - explain how frequency, retries, priority, and triggers are interpreted.
-- [ ] Add evaluation and regression coverage for:
+- [x] Add evaluation and regression coverage for:
   - manifest import/export,
   - priority ordering,
   - task drift detection,
@@ -510,8 +513,9 @@ Remaining:
 
 Exit criteria:
 
-- [ ] Operators can manage tasks from a standard folder/manifests path without losing the durability guarantees of the Rust scheduler.
-- [ ] Task priority, frequency, ownership, and status are visible and controllable from CLI, MCP, and Control UI.
+- [x] Operators can manage tasks from a standard folder/manifests path without losing the durability guarantees of the Rust scheduler.
+- [x] Task priority, frequency, ownership, and status are visible and controllable from CLI and MCP.
+- [x] Control UI integration is deferred to Phase 6 rather than being treated as a separate task system.
 
 ## Phase 4: Memory, Sessions, Context, and RAG
 

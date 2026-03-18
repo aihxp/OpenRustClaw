@@ -155,6 +155,13 @@ CREATE TABLE IF NOT EXISTS scheduled_jobs (
     lease_expires_at TEXT,
     timezone TEXT DEFAULT 'UTC',
     max_retries INTEGER DEFAULT 3,
+    priority INTEGER NOT NULL DEFAULT 100,
+    source_kind TEXT NOT NULL DEFAULT 'cli',
+    owner TEXT,
+    tags TEXT NOT NULL DEFAULT '[]',
+    disabled_until TEXT,
+    manifest_path TEXT,
+    task_notes_path TEXT,
     last_run_at TEXT,
     next_run_at TEXT,
     run_count INTEGER DEFAULT 0,
@@ -166,6 +173,7 @@ CREATE TABLE IF NOT EXISTS scheduled_jobs (
 CREATE INDEX IF NOT EXISTS idx_jobs_next_run ON scheduled_jobs(next_run_at, state);
 CREATE INDEX IF NOT EXISTS idx_jobs_lease ON scheduled_jobs(lease_owner, lease_expires_at);
 CREATE INDEX IF NOT EXISTS idx_jobs_state ON scheduled_jobs(state);
+CREATE INDEX IF NOT EXISTS idx_jobs_priority_due ON scheduled_jobs(state, priority, next_run_at);
 
 -- Job runs table: execution history of scheduled jobs
 CREATE TABLE IF NOT EXISTS job_runs (
@@ -248,3 +256,16 @@ CREATE TABLE IF NOT EXISTS event_dispatch_queue (
 
 CREATE INDEX IF NOT EXISTS idx_event_dispatch_queue_state ON event_dispatch_queue(state, next_attempt_at);
 CREATE INDEX IF NOT EXISTS idx_event_dispatch_queue_job ON event_dispatch_queue(job_id, created_at);
+
+-- Task manifests: versioned file-backed task metadata mapped onto durable scheduler jobs
+CREATE TABLE IF NOT EXISTS task_manifests (
+    job_id TEXT PRIMARY KEY REFERENCES scheduled_jobs(id) ON DELETE CASCADE,
+    manifest_path TEXT NOT NULL UNIQUE,
+    manifest_hash TEXT NOT NULL,
+    version INTEGER NOT NULL DEFAULT 1,
+    origin TEXT NOT NULL DEFAULT 'filesystem',
+    imported_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_task_manifests_path ON task_manifests(manifest_path);

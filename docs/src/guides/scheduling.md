@@ -26,6 +26,7 @@ flowchart TB
         JOBS["scheduled_jobs table"]
         RUNS["job_runs table"]
         DLQ["dead_letter_queue"]
+        MANIFESTS["task_manifests table"]
     end
     
     subgraph Worker["Scheduler Worker"]
@@ -34,17 +35,17 @@ flowchart TB
         EXEC["Execute workflow"]
         RETRY["Schedule retry"]
     end
-    
-    subgraph Sidecar["Python Sidecar"]
-        WF["LangGraph Workflow"]
+
+    subgraph Files["Operator Files"]
+        TASKS[".claw/tasks/*.yaml"]
     end
     
+    TASKS --> MANIFESTS
     POLL --> JOBS
     POLL --> LEASE
     LEASE --> EXEC
-    EXEC --> WF
-    WF --> |Success| RUNS
-    WF --> |Failure| RETRY
+    EXEC --> |Rust-native or compat workflow| RUNS
+    EXEC --> |Failure| RETRY
     RETRY --> |Max retries| DLQ
 ```
 
@@ -52,55 +53,34 @@ flowchart TB
 
 ## 📋 Creating Jobs
 
-### Job Definition
+### Task Manifests
 
-```rust
-pub struct ScheduledJob {
-    pub id: String,
-    pub name: String,
-    pub description: Option<String>,
-    pub workflow_name: String,      // LangGraph workflow to execute
-    pub workflow_input: Value,      // Input parameters
-    pub trigger: TriggerConfig,     // When to run
-    pub retry_policy: RetryPolicy,
-    pub idempotency_key_template: Option<String>,
-    pub timezone: String,           // IANA timezone
-    pub enabled: bool,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-}
+OpenRustClaw now supports file-backed task manifests on top of the durable SQLite scheduler.
 
-pub enum TriggerConfig {
-    Cron { expression: String },
-    Interval { seconds: u64 },
-    OneTime { at: DateTime<Utc> },
-    Event { event_type: String },
-}
-
-pub struct RetryPolicy {
-    pub max_attempts: u32,
-    pub backoff_strategy: BackoffStrategy,
-    pub initial_delay_secs: u64,
-}
-
-pub enum BackoffStrategy {
-    Fixed,
-    Linear,
-    Exponential,
-}
-```
+- Durable truth stays in SQLite.
+- Operator-visible manifests live under `.claw/tasks/`.
+- You can sync manifests into the scheduler, export jobs back out, and inspect priority/state from CLI or MCP.
 
 ### CLI Commands
 
 ```bash
-# Create a job from YAML file
-openrustclaw schedule create --file daily-report.yaml
+# Initialize the standard task folder
+openrustclaw schedule init
+
+# Sync manifests from .claw/tasks/ into SQLite
+openrustclaw schedule sync
+
+# Preview sync without applying changes
+openrustclaw schedule sync --dry-run
+
+# Create a job directly from a manifest
+openrustclaw schedule create --file .claw/tasks/daily-report.yaml
 
 # List all jobs
 openrustclaw schedule list
 
-# Get job details
-openrustclaw schedule get daily-report
+# Inspect one task
+openrustclaw schedule inspect daily-report
 
 # Pause a job
 openrustclaw schedule pause daily-report
@@ -108,156 +88,93 @@ openrustclaw schedule pause daily-report
 # Resume a job
 openrustclaw schedule resume daily-report
 
-# Delete a job
-openrustclaw schedule delete daily-report
+# Trigger immediately
+openrustclaw schedule run-now daily-report
 
-# Trigger manually (for testing)
-openrustclaw schedule run daily-report --now
+# Reprioritize (lower numbers run first)
+openrustclaw schedule reprioritize daily-report 25
+
+# Temporarily disable until a timestamp
+openrustclaw schedule disable-until daily-report 2026-03-20T09:00:00Z
+
+# Clear disabled_until
+openrustclaw schedule enable daily-report
+
+# Export a job back to YAML
+openrustclaw schedule export daily-report
 
 # View job history
-openrustclaw schedule history daily-report --limit 50
+openrustclaw schedule runs --job daily-report --limit 50
 ```
 
-### YAML Job Definition
+### YAML Task Manifest
 
 ```yaml
-# daily-report.yaml
-id: daily-report
-name: "Daily Standup Report"
-description: "Generate and send daily standup summary"
-
-# Which LangGraph workflow to execute
-workflow:
-  name: "generate_report"
-  input:
-    report_type: "standup"
-    recipients: ["team@example.com"]
-
-# When to run
-trigger:
-  type: cron
-  expression: "0 9 * * 1-5"  # 9 AM, Monday-Friday
-  timezone: "America/New_York"
-
-# Retry configuration
-retry:
-  max_attempts: 3
-  backoff: exponential
-  initial_delay_secs: 60
-
-# Prevent duplicate execution
-idempotency_key: "daily-report-{{trigger.fire_date}}"
-
-# Additional metadata
-tags: ["reporting", "daily", "team"]
-enabled: true
+# .claw/tasks/daily-report.yaml
+version: 1
+task:
+  id: daily-report
+  name: Daily Standup Report
+  description: Generate and send a daily standup summary
+  workflow: reminder
+  priority: 50
+  enabled: true
+  timezone: America/New_York
+  owner: ops
+  tags:
+    - reporting
+    - daily
+    - team
+  max_retries: 3
+  trigger:
+    type: interval
+    every_seconds: 86400
+  payload:
+    message: Generate and deliver the daily standup summary
+  delivery_policy:
+    mode: first_success
 ```
 
 ---
 
 ## ⏰ Triggers
 
-### Cron Triggers
-
-```yaml
-trigger:
-  type: cron
-  expression: "0 9 * * 1-5"  # Every weekday at 9 AM
-  timezone: "America/New_York"
-```
-
-Common cron patterns:
-
-| Pattern | Description |
-|---------|-------------|
-| `0 * * * *` | Every hour |
-| `0 */6 * * *` | Every 6 hours |
-| `0 9 * * 1-5` | Weekdays at 9 AM |
-| `0 0 * * 0` | Weekly on Sunday |
-| `0 0 1 * *` | Monthly on 1st |
-
-### Interval Triggers
+Current shipped manifest triggers:
 
 ```yaml
 trigger:
   type: interval
-  seconds: 3600  # Every hour
+  every_seconds: 3600
 ```
-
-### One-Time Triggers
 
 ```yaml
 trigger:
-  type: one_time
-  at: "2024-12-25T09:00:00Z"
+  type: absolute
+  at: "2026-03-20T09:00:00Z"
 ```
-
-### Event-Based Triggers
 
 ```yaml
 trigger:
   type: event
-  event_type: "memory.stored"
-  filter:
-    memory_type: "semantic"
+  event_name: "session.end"
+```
+
+```yaml
+trigger:
+  type: dependency
+  depends_on:
+    - upstream-task-id
 ```
 
 ---
+## 🧭 Operator Notes
 
-## 🔄 Workflows
-
-Workflows are LangGraph state machines defined in the Python sidecar.
-
-### Example: Reminder Workflow
-
-```python
-# sidecar/src/workflows/scheduled_execution.py
-from langgraph.graph import StateGraph
-
-class ReminderState(TypedDict):
-    user_id: str
-    reminder_text: str
-    channels: List[str]
-    sent: bool
-
-workflow = StateGraph(ReminderState)
-
-def send_notification(state: ReminderState) -> dict:
-    """Send reminder via configured channels."""
-    for channel in state["channels"]:
-        if channel == "email":
-            send_email(state["user_id"], state["reminder_text"])
-        elif channel == "slack":
-            send_slack_dm(state["user_id"], state["reminder_text"])
-    
-    return {"sent": True}
-
-workflow.add_node("send", send_notification)
-workflow.set_entry_point("send")
-workflow.add_edge("send", END)
-
-reminder_workflow = workflow.compile()
-```
-
-### Example: Maintenance Workflow
-
-```python
-# sidecar/src/workflows/memory_maintenance.py
-class MaintenanceState(TypedDict):
-    user_id: str
-    pruned_count: int
-    archived_count: int
-
-workflow = StateGraph(MaintenanceState)
-
-def prune_expired(state: MaintenanceState) -> dict:
-    """Remove expired memories."""
-    count = prune_expired_memories(state["user_id"])
-    return {"pruned_count": count}
-
-def consolidate_old(state: MaintenanceState) -> dict:
-    """Archive old memories."""
-    count = consolidate_memories(state["user_id"], days_old=30)
+- This is not OS cron.
+- The scheduler is Rust-owned and durable.
+- `.claw/tasks/` is the operator-facing manifest layer.
+- Lower `priority` numbers run first.
+- If multiple tasks are due together, priority is considered before `next_run_at`.
+- Missing manifests discovered during `schedule sync` are paused rather than silently deleted.
     return {"archived_count": count}
 
 workflow.add_node("prune", prune_expired)

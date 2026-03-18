@@ -243,54 +243,44 @@ openrustclaw memory load-core --file ./memory/core.json --namespace code-reviewe
 
 ## ⏰ Step 4: Set Up Scheduled Tasks
 
-Create a scheduled job for daily code reviews.
+Create a scheduled task for daily code reviews.
 
-### Create `scheduler/review_reminder.yaml`
-
-```yaml
-jobs:
-  - id: daily-code-review
-    name: "Daily Code Review Reminder"
-    description: "Remind user to review pending PRs"
-    
-    # Trigger: Every weekday at 9 AM
-    trigger:
-      type: cron
-      expression: "0 9 * * 1-5"
-      timezone: "America/New_York"
-    
-    # Workflow to execute
-    workflow:
-      name: "review_reminder"
-      steps:
-        - name: check_pending_prs
-          tool: shell_exec
-          input:
-            command: "gh pr list --repo myorg/myrepo --state open --json number,title,author"
-        
-        - name: analyze_prs
-          llm:
-            prompt: "Analyze these PRs and prioritize which to review first: {{check_pending_prs.output}}"
-        
-        - name: send_reminder
-          tool: notify_user
-          input:
-            message: "{{analyze_prs.response}}"
-    
-    # Retry policy
-    retry:
-      max_attempts: 3
-      backoff: exponential
-      initial_delay_ms: 1000
-    
-    # Idempotency
-    idempotency_key: "daily-review-{{trigger.fire_time|date:'%Y-%m-%d'}}"
-```
-
-### Register the Job
+### Initialize the task registry
 
 ```bash
-openrustclaw schedule create --file ./scheduler/review_reminder.yaml
+openrustclaw schedule init
+```
+
+### Create `.claw/tasks/review_reminder.yaml`
+
+```yaml
+version: 1
+task:
+  id: daily-code-review
+  name: Daily Code Review Reminder
+  description: Remind the user to review pending PRs
+  workflow: reminder
+  priority: 40
+  enabled: true
+  timezone: America/New_York
+  tags:
+    - review
+    - daily
+    - example
+  max_retries: 3
+  trigger:
+    type: interval
+    every_seconds: 86400
+  payload:
+    message: Review pending PRs and summarize priorities for today
+  delivery_policy:
+    mode: first_success
+```
+
+### Sync the manifest into the durable scheduler
+
+```bash
+openrustclaw schedule sync
 ```
 
 ---

@@ -1660,9 +1660,33 @@ fn build_mcp_server(
                         "payload": {"type": "object"},
                         "workflow_metadata": {"type": "object"},
                         "timezone": {"type": "string"},
-                        "max_retries": {"type": "integer", "minimum": 0}
+                        "max_retries": {"type": "integer", "minimum": 0},
+                        "priority": {"type": "integer"}
                     },
                     "required": ["name", "workflow_id"]
+                }),
+            },
+            McpServerTool {
+                name: "inspect_scheduled_job".to_string(),
+                description: "Inspect one scheduled job/task including priority and manifest metadata.".to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"}
+                    },
+                    "required": ["id"]
+                }),
+            },
+            McpServerTool {
+                name: "reprioritize_scheduled_job".to_string(),
+                description: "Change a scheduled job/task priority (lower numbers run first).".to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"},
+                        "priority": {"type": "integer"}
+                    },
+                    "required": ["id", "priority"]
                 }),
             },
             McpServerTool {
@@ -2052,17 +2076,19 @@ fn build_mcp_server(
                 let mut sql = String::from(
                     r#"
                 SELECT id, name, description, workflow_id, trigger_type, trigger_config,
-                       state, timezone, max_retries, next_run_at, last_run_at,
-                       run_count, consecutive_failures, metadata, created_at
+                       state, timezone, max_retries, priority, source_kind, owner,
+                       tags, disabled_until, manifest_path, task_notes_path,
+                       next_run_at, last_run_at, run_count, consecutive_failures,
+                       metadata, created_at
                 FROM scheduled_jobs
                 "#,
                 );
                 let state = request.state.unwrap_or_default();
                 if state.is_empty() {
-                    sql.push_str(" ORDER BY next_run_at ASC, created_at DESC LIMIT ?");
+                    sql.push_str(" ORDER BY priority ASC, next_run_at ASC, created_at DESC LIMIT ?");
                 } else {
                     sql.push_str(
-                        " WHERE state = ? ORDER BY next_run_at ASC, created_at DESC LIMIT ?",
+                        " WHERE state = ? ORDER BY priority ASC, next_run_at ASC, created_at DESC LIMIT ?",
                     );
                 }
 
@@ -2093,6 +2119,13 @@ fn build_mcp_server(
                         "state": row.get::<String, _>("state"),
                         "timezone": row.get::<String, _>("timezone"),
                         "max_retries": row.get::<i64, _>("max_retries"),
+                        "priority": row.get::<i64, _>("priority"),
+                        "source_kind": row.get::<String, _>("source_kind"),
+                        "owner": row.get::<Option<String>, _>("owner"),
+                        "tags": parse_json_column(row.get::<String, _>("tags")),
+                        "disabled_until": row.get::<Option<String>, _>("disabled_until"),
+                        "manifest_path": row.get::<Option<String>, _>("manifest_path"),
+                        "task_notes_path": row.get::<Option<String>, _>("task_notes_path"),
                         "next_run_at": row.get::<Option<String>, _>("next_run_at"),
                         "last_run_at": row.get::<Option<String>, _>("last_run_at"),
                         "run_count": row.get::<i64, _>("run_count"),
@@ -2185,9 +2218,9 @@ fn build_mcp_server(
                         r#"
                 INSERT INTO scheduled_jobs (
                     id, name, description, workflow_id, trigger_type, trigger_config,
-                    idempotency_key, state, timezone, max_retries, next_run_at,
+                    idempotency_key, state, timezone, max_retries, priority, source_kind, tags, next_run_at,
                     run_count, metadata, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'mcp', '[]', ?, ?, ?, ?)
                 "#,
                     )
                     .bind(&id)
@@ -2202,6 +2235,7 @@ fn build_mcp_server(
                     .bind("active")
                     .bind(&timezone)
                     .bind(request.max_retries.unwrap_or(3) as i64)
+                    .bind(request.priority.unwrap_or(100))
                     .bind(next_run_at.to_rfc3339())
                     .bind(0i64)
                     .bind(metadata.to_string())
@@ -2222,6 +2256,7 @@ fn build_mcp_server(
                             "name": request.name,
                             "workflow_id": request.workflow_id,
                             "trigger_type": trigger_type,
+                            "priority": request.priority.unwrap_or(100),
                             "next_run_at": next_run_at.to_rfc3339(),
                             "timezone": timezone,
                         }
@@ -2229,6 +2264,131 @@ fn build_mcp_server(
                 })
             },
         ),
+    );
+
+    let pool_for_inspect_job = pool_for_create_jobs.clone();
+    server.register_handler(
+        "inspect_scheduled_job",
+        traced_mcp_handler(langsmith.clone(), "inspect_scheduled_job", move |args| {
+            let request: McpInspectScheduledJobArgs = parse_tool_args(args)?;
+            let pool = pool_for_inspect_job.clone();
+            block_on_tool(async move {
+                let row = sqlx::query(
+                    r#"
+                    SELECT id, name, description, workflow_id, trigger_type, trigger_config,
+                           state, timezone, max_retries, priority, source_kind, owner,
+                           tags, disabled_until, manifest_path, task_notes_path,
+                           next_run_at, last_run_at, run_count, consecutive_failures,
+                           metadata, created_at
+                    FROM scheduled_jobs
+                    WHERE id = ? OR name = ?
+                    "#,
+                )
+                .bind(&request.id)
+                .bind(&request.id)
+                .fetch_optional(&pool)
+                .await
+                .map_err(|e| {
+                    CoreError::Mcp(McpError::ToolExecution(format!(
+                        "Failed to inspect scheduled job: {}",
+                        e
+                    )))
+                })?
+                .ok_or_else(|| mcp_tool_error(format!("Scheduled job '{}' not found", request.id)))?;
+
+                let latest_run = sqlx::query(
+                    r#"
+                    SELECT id, status, started_at, completed_at, retry_count, langsmith_trace_id
+                    FROM job_runs
+                    WHERE job_id = ?
+                    ORDER BY started_at DESC
+                    LIMIT 1
+                    "#,
+                )
+                .bind(row.get::<String, _>("id"))
+                .fetch_optional(&pool)
+                .await
+                .map_err(|e| {
+                    CoreError::Mcp(McpError::ToolExecution(format!(
+                        "Failed to load latest job run: {}",
+                        e
+                    )))
+                })?;
+
+                Ok(serde_json::json!({
+                    "job": {
+                        "id": row.get::<String, _>("id"),
+                        "name": row.get::<String, _>("name"),
+                        "description": row.get::<Option<String>, _>("description"),
+                        "workflow_id": row.get::<String, _>("workflow_id"),
+                        "trigger_type": row.get::<String, _>("trigger_type"),
+                        "trigger_config": parse_json_column(row.get::<String, _>("trigger_config")),
+                        "state": row.get::<String, _>("state"),
+                        "timezone": row.get::<String, _>("timezone"),
+                        "max_retries": row.get::<i64, _>("max_retries"),
+                        "priority": row.get::<i64, _>("priority"),
+                        "source_kind": row.get::<String, _>("source_kind"),
+                        "owner": row.get::<Option<String>, _>("owner"),
+                        "tags": parse_json_column(row.get::<String, _>("tags")),
+                        "disabled_until": row.get::<Option<String>, _>("disabled_until"),
+                        "manifest_path": row.get::<Option<String>, _>("manifest_path"),
+                        "task_notes_path": row.get::<Option<String>, _>("task_notes_path"),
+                        "next_run_at": row.get::<Option<String>, _>("next_run_at"),
+                        "last_run_at": row.get::<Option<String>, _>("last_run_at"),
+                        "run_count": row.get::<i64, _>("run_count"),
+                        "consecutive_failures": row.get::<i64, _>("consecutive_failures"),
+                        "metadata": parse_json_column(row.get::<String, _>("metadata")),
+                        "created_at": row.get::<String, _>("created_at"),
+                    },
+                    "latest_run": latest_run.map(|run| serde_json::json!({
+                        "id": run.get::<String, _>("id"),
+                        "status": run.get::<String, _>("status"),
+                        "started_at": run.get::<String, _>("started_at"),
+                        "completed_at": run.get::<Option<String>, _>("completed_at"),
+                        "retry_count": run.get::<i64, _>("retry_count"),
+                        "langsmith_trace_id": run.get::<Option<String>, _>("langsmith_trace_id"),
+                    }))
+                }))
+            })
+        }),
+    );
+
+    let pool_for_reprioritize_job = pool_for_create_jobs.clone();
+    server.register_handler(
+        "reprioritize_scheduled_job",
+        traced_mcp_handler(langsmith.clone(), "reprioritize_scheduled_job", move |args| {
+            let request: McpReprioritizeScheduledJobArgs = parse_tool_args(args)?;
+            let pool = pool_for_reprioritize_job.clone();
+            block_on_tool(async move {
+                let result = sqlx::query(
+                    "UPDATE scheduled_jobs SET priority = ? WHERE id = ? OR name = ?",
+                )
+                .bind(request.priority)
+                .bind(&request.id)
+                .bind(&request.id)
+                .execute(&pool)
+                .await
+                .map_err(|e| {
+                    CoreError::Mcp(McpError::ToolExecution(format!(
+                        "Failed to reprioritize scheduled job: {}",
+                        e
+                    )))
+                })?;
+
+                if result.rows_affected() == 0 {
+                    return Err(mcp_tool_error(format!(
+                        "Scheduled job '{}' not found",
+                        request.id
+                    )));
+                }
+
+                Ok(serde_json::json!({
+                    "updated": true,
+                    "id": request.id,
+                    "priority": request.priority
+                }))
+            })
+        }),
     );
 
     server.register_handler(
@@ -2948,6 +3108,18 @@ struct McpCreateScheduledJobArgs {
     workflow_metadata: Option<serde_json::Value>,
     timezone: Option<String>,
     max_retries: Option<u32>,
+    priority: Option<i64>,
+}
+
+#[derive(serde::Deserialize)]
+struct McpInspectScheduledJobArgs {
+    id: String,
+}
+
+#[derive(serde::Deserialize)]
+struct McpReprioritizeScheduledJobArgs {
+    id: String,
+    priority: i64,
 }
 
 #[derive(serde::Deserialize, Default)]

@@ -165,12 +165,15 @@ enum ScheduleAction {
     List,
     /// Create a new job
     Create {
-        #[arg(short, long)]
-        name: String,
-        #[arg(short, long)]
-        workflow: String,
+        #[arg(short, long, required_unless_present = "file")]
+        name: Option<String>,
+        #[arg(short, long, required_unless_present = "file")]
+        workflow: Option<String>,
         #[arg(short, long)]
         description: Option<String>,
+        /// Import a file-backed task manifest instead of providing inline fields
+        #[arg(long)]
+        file: Option<String>,
         /// Run every N seconds
         #[arg(long)]
         every_seconds: Option<u64>,
@@ -180,11 +183,48 @@ enum ScheduleAction {
         /// JSON workflow payload passed to the sidecar
         #[arg(long)]
         payload: Option<String>,
+        /// Lower numbers run first
+        #[arg(long, default_value_t = 100)]
+        priority: i64,
+        #[arg(long)]
+        owner: Option<String>,
+        #[arg(long = "tag")]
+        tags: Vec<String>,
     },
+    /// Sync `.claw/tasks/`-style manifests into the durable scheduler
+    Sync {
+        #[arg(long)]
+        path: Option<String>,
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Initialize the standard task-manifest folder with starter templates
+    Init {
+        #[arg(long)]
+        path: Option<String>,
+    },
+    /// Export a scheduled job as a task manifest
+    Export {
+        id: String,
+        #[arg(long)]
+        output: Option<String>,
+    },
+    /// Inspect one task/job with manifest and status details
+    Inspect { id: String },
     /// Pause a job
     Pause { id: String },
     /// Resume a job
     Resume { id: String },
+    /// Force a task to become due immediately
+    RunNow { id: String },
+    /// Change task priority (lower numbers run first)
+    Reprioritize { id: String, priority: i64 },
+    /// Rebind a task to a different workflow target
+    Rebind { id: String, workflow: String },
+    /// Disable a task until a future RFC3339 timestamp
+    DisableUntil { id: String, until: String },
+    /// Clear task disabled-until state
+    Enable { id: String },
     /// List recent job attempts
     Runs {
         #[arg(long)]
@@ -502,22 +542,49 @@ async fn main() -> Result<()> {
                 name,
                 workflow,
                 description,
+                file,
                 every_seconds,
                 at,
                 payload,
+                priority,
+                owner,
+                tags,
             } => {
                 commands::schedule::create(
-                    &name,
-                    &workflow,
+                    name.as_deref(),
+                    workflow.as_deref(),
                     description.as_deref(),
+                    file.as_deref(),
                     every_seconds,
                     at.as_deref(),
                     payload.as_deref(),
+                    priority,
+                    owner.as_deref(),
+                    &tags,
                 )
                 .await
             }
+            ScheduleAction::Sync { path, dry_run } => {
+                commands::schedule::sync(path.as_deref(), dry_run).await
+            }
+            ScheduleAction::Init { path } => commands::schedule::init(path.as_deref()).await,
+            ScheduleAction::Export { id, output } => {
+                commands::schedule::export(&id, output.as_deref()).await
+            }
+            ScheduleAction::Inspect { id } => commands::schedule::inspect(&id).await,
             ScheduleAction::Pause { id } => commands::schedule::pause(&id).await,
             ScheduleAction::Resume { id } => commands::schedule::resume(&id).await,
+            ScheduleAction::RunNow { id } => commands::schedule::run_now(&id).await,
+            ScheduleAction::Reprioritize { id, priority } => {
+                commands::schedule::reprioritize(&id, priority).await
+            }
+            ScheduleAction::Rebind { id, workflow } => {
+                commands::schedule::rebind(&id, &workflow).await
+            }
+            ScheduleAction::DisableUntil { id, until } => {
+                commands::schedule::disable_until(&id, &until).await
+            }
+            ScheduleAction::Enable { id } => commands::schedule::enable(&id).await,
             ScheduleAction::Runs { job, limit } => {
                 commands::schedule::runs(job.as_deref(), limit).await
             }
@@ -1015,17 +1082,25 @@ mod tests {
                         name,
                         workflow,
                         description,
+                        file,
                         every_seconds,
                         at,
                         payload,
+                        priority,
+                        owner,
+                        tags,
                     },
             } => {
-                assert_eq!(name, "daily-check");
-                assert_eq!(workflow, "health_check");
+                assert_eq!(name.as_deref(), Some("daily-check"));
+                assert_eq!(workflow.as_deref(), Some("health_check"));
                 assert!(description.is_none());
+                assert!(file.is_none());
                 assert!(every_seconds.is_none());
                 assert!(at.is_none());
                 assert!(payload.is_none());
+                assert_eq!(priority, 100);
+                assert!(owner.is_none());
+                assert!(tags.is_empty());
             }
             _ => panic!("Expected Schedule Create command"),
         }
