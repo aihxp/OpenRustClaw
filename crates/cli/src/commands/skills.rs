@@ -6,7 +6,7 @@ use sqlx::Row;
 use std::path::{Path, PathBuf};
 
 use openrustclaw_security::SkillVerifier;
-use openrustclaw_skills::{ClawHubRegistry, SearchFilters, SortBy};
+use openrustclaw_skills::{ClawHubRegistry, SearchFilters, SortBy, normalize_capability_names};
 
 fn parse_hex_bytes(input: &str) -> Result<Vec<u8>> {
     let trimmed = input.trim();
@@ -58,7 +58,10 @@ fn resolve_workspace_skill_file(name: &str) -> Option<PathBuf> {
 }
 
 fn serialize_capabilities(capabilities: &[String]) -> Result<String> {
-    serde_json::to_string(capabilities).context("Failed to serialize skill capabilities")
+    let normalized = normalize_capability_names(capabilities)
+        .map_err(|e| anyhow::anyhow!(e.to_string()))
+        .context("Failed to validate skill capabilities")?;
+    serde_json::to_string(&normalized).context("Failed to serialize skill capabilities")
 }
 
 async fn upsert_skill_record(
@@ -1040,5 +1043,26 @@ mod tests {
         assert!(metadata.description.is_none());
         assert!(metadata.version.is_none());
         assert!(metadata.capabilities.is_empty());
+    }
+
+    #[test]
+    fn test_serialize_capabilities_normalizes_and_deduplicates() {
+        let serialized = serialize_capabilities(&[
+            "network".to_string(),
+            "file-read".to_string(),
+            "network_access".to_string(),
+        ])
+        .unwrap();
+        assert_eq!(serialized, r#"["file_read","network_access"]"#);
+    }
+
+    #[test]
+    fn test_serialize_capabilities_rejects_unknown_values() {
+        let error = serialize_capabilities(&["launch_missiles".to_string()]).unwrap_err();
+        let message = error.to_string();
+        assert!(
+            message.contains("Failed to validate skill capabilities")
+                || message.contains("Unknown skill capability")
+        );
     }
 }

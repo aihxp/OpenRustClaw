@@ -125,7 +125,7 @@ Status:
 - Discord now has verified Interactions HTTP ingress with deferred acknowledgements and follow-up replies, but not full Gateway message-event coverage.
 - Memory maintenance now uses Rust-backed archive persistence and removes archived recall entries through the loopback bridge.
 - Rust-to-sidecar workflow dispatch now preserves typed configurable metadata through a reserved contract key instead of flattening everything to strings.
-- The skills CLI now resolves real `SKILL.md` workspace paths, stores capability metadata as JSON, syncs marketplace installs back into the main skills table, and keeps managed verification state aligned with install/update flows.
+- The skills CLI now resolves real `SKILL.md` workspace paths, validates and normalizes declared capabilities, syncs marketplace installs back into the main skills table, and keeps managed verification state aligned with install/update flows.
 - The sidecar RAG workflow now supports deterministic query-only retrieval against Rust-backed durable collections and budgeted context assembly with stable source ids.
 - Sidecar LangSmith traces now preserve workflow trace ids back through the gRPC boundary so scheduler runs can persist them.
 - `openrustclaw start` now gates non-shipping channel modules instead of advertising them through the active runtime surface.

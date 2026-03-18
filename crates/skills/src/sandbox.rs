@@ -10,6 +10,8 @@ use openrustclaw_core::error::{Error, Result, ToolError};
 use openrustclaw_core::types::SkillCapability;
 use wasmtime::{Config, Engine, Instance, Memory, Module, Store, StoreLimits, StoreLimitsBuilder, TypedFunc};
 
+use crate::parse_capability_names;
+
 /// WASM sandbox configuration.
 pub struct SandboxConfig {
     /// Maximum memory in bytes (default: 64MB).
@@ -83,6 +85,29 @@ impl WasmSandbox {
         tokio::task::spawn_blocking(move || Self::execute_blocking(config, &wasm, input))
             .await
             .map_err(|e| Error::Internal(format!("WASM sandbox task failed: {}", e)))?
+    }
+
+    /// Execute only if the supplied capabilities are granted by the sandbox.
+    pub async fn execute_with_capabilities(
+        &self,
+        wasm_bytes: &[u8],
+        required: &[SkillCapability],
+        input: serde_json::Value,
+    ) -> Result<serde_json::Value> {
+        self.check_capabilities(required)?;
+        self.execute(wasm_bytes, input).await
+    }
+
+    /// Execute only if the declared capability names are granted by the sandbox.
+    pub async fn execute_with_declared_capabilities(
+        &self,
+        wasm_bytes: &[u8],
+        declared: &[String],
+        input: serde_json::Value,
+    ) -> Result<serde_json::Value> {
+        let parsed = parse_capability_names(declared)?;
+        let required: Vec<SkillCapability> = parsed.into_iter().collect();
+        self.execute_with_capabilities(wasm_bytes, &required, input).await
     }
 
     fn execute_blocking(
@@ -408,6 +433,28 @@ mod tests {
         let input = serde_json::json!({"echo": "hello", "count": 2});
         let result = sandbox.execute(module, input.clone()).await.unwrap();
         assert_eq!(result, input);
+    }
+
+    #[tokio::test]
+    async fn test_sandbox_execute_with_declared_capabilities_rejects_missing_capability() {
+        let sandbox = WasmSandbox::new(SandboxConfig::default());
+        let module = br#"
+            (module
+              (memory (export "memory") 1 1)
+              (func (export "alloc") (param i32) (result i32) i32.const 0)
+              (func (export "run") (param i32 i32) (result i64) i64.const 0))
+        "#;
+
+        let result = sandbox
+            .execute_with_declared_capabilities(
+                module,
+                &["network_access".to_string()],
+                serde_json::json!({}),
+            )
+            .await;
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("capability"));
     }
 
     #[tokio::test]
