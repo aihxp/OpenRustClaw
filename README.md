@@ -9,7 +9,9 @@ A high-performance AI agent platform written in Rust. 43 crates, 20 LLM provider
 Current execution planning lives in:
 
 - [docs/feature-matrix.md](docs/feature-matrix.md)
-- [docs/reengineering-backlog.md](docs/reengineering-backlog.md)
+- [docs/roadmap.md](docs/roadmap.md)
+
+The roadmap target is explicit: achieve practical OpenClaw feature parity with a Rust-first runtime, while keeping OpenRustClaw-native improvements where they are stronger.
 
 ## Quick Start
 
