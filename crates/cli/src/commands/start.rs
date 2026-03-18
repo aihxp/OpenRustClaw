@@ -479,8 +479,7 @@ fn gate_nonshipping_channels(config: &mut openrustclaw_core::config::ChannelsCon
         config.gmail_pubsub.enabled = false;
     }
     if config.matrix.enabled {
-        warn!("Matrix is currently gated and will not be started by `openrustclaw start`");
-        config.matrix.enabled = false;
+        warn!("Matrix is on a partial shipped path; deeper parity is still incomplete");
     }
     if config.line.enabled {
         warn!("LINE is currently gated and will not be started by `openrustclaw start`");
@@ -5025,7 +5024,7 @@ mod tests {
         assert!(config.teams.enabled);
         assert!(config.google_chat.enabled);
         assert!(!config.gmail_pubsub.enabled);
-        assert!(!config.matrix.enabled);
+        assert!(config.matrix.enabled);
         assert!(!config.line.enabled);
         assert!(!config.viber.enabled);
         assert!(!config.wechat.enabled);

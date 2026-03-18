@@ -113,7 +113,7 @@ Current channel modules available in the repo:
 
 Telegram, Discord, Slack, WhatsApp (Baileys bridge), Microsoft Teams, Google Chat, Gmail (Pub/Sub), Matrix, iMessage, LINE, Viber, WeChat, Messenger, Instagram DMs, WebChat
 
-The current shipped startup path actively supports WebChat, Telegram, Discord, Slack, WhatsApp, iMessage, and Google Chat, and now allows Microsoft Teams on a partial shipped path. Other channel modules remain in the repo but are gated or deferred from the shipped runtime surface.
+The current shipped startup path actively supports WebChat, Telegram, Discord, Slack, WhatsApp, iMessage, Google Chat, and Matrix, and now allows Microsoft Teams on a partial shipped path. Other channel modules remain in the repo but are gated or deferred from the shipped runtime surface.
 
 Current tier-1 status:
 
@@ -123,6 +123,7 @@ Current tier-1 status:
 - WhatsApp: Baileys bridge pairing/QR, reconnect behavior, DM/group routing, mentions, replies, media send/receive, and local agent/session routing are implemented
 - iMessage: BlueBubbles/macOS direct send, BlueBubbles inbound webhook routing, tapbacks, and local agent/session routing are implemented; richer attachment/group mapping still remains
 - Google Chat: webhook ingress, token-backed or service-account outbound auth, and local agent/session routing are implemented; richer operator/media parity still remains
+- Matrix: access-token or password auth, `/sync` polling ingress, outbound room sends, reactions, room join/leave, joined-room inspection, file uploads, and local agent/session routing are implemented; deeper E2EE and richer operator parity still remain
 - Teams: Bot Framework webhook ingress, JWT verification, outbound sends, and local agent/session routing are on the shipped runtime path, but it is still partial relative to the tier-1 surfaces
 
 Channel routing/operator controls:

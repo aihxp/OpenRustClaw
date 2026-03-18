@@ -49,7 +49,7 @@ Status values:
 | Slack | real | HTTP mode supports auth probe, outbound send, edit/reaction operations, built-in Events API ingress, mention activation metadata, thread ownership plus stream-mode metadata, and local agent/session routing; Socket Mode remains incomplete |
 | Teams | partial | Bot Framework channel is on the shipped startup path with webhook ingress, JWT verification, outbound sends, and local agent/session routing; deeper operator/media parity still trails the tier-1 channels |
 | Channel account/binding registry | real | `.claw/channels/` manifests now back pending/approved accounts, account activation mode, workspace/account/channel bindings, operator CLI control, and typed HTTP operator APIs for Control UI reuse |
-| Matrix | gated | Repo surface exists, but runtime client support is deferred from the current shipped surface |
+| Matrix | partial | Access-token or password auth, `/sync` polling ingress, outbound room sends, reactions, room join/leave, joined-room inspection, file uploads, and local agent/session routing are on the shipped runtime path; deeper E2EE and richer operator parity remain open |
 | Google Chat | partial | Shipped runtime now supports webhook ingress plus token-backed or service-account outbound auth and local agent/session routing; richer operator/media parity remains open |
 | Gmail Pub/Sub | gated | Repo surface exists, but Gmail API runtime coverage is deferred from the current shipped surface |
 | WhatsApp | real | Baileys bridge runtime, pairing/QR support, reconnect handling, DM/group routing, mentions, replies, media send/receive, and local agent/session routing are part of the shipped surface |

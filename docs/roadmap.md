@@ -640,6 +640,7 @@ Completed:
 - [x] Telegram outbound and polling ingress exist.
 - [x] Slack outbound and HTTP Events ingress exist.
 - [x] Discord outbound, interactions ingress, and gateway message ingress exist.
+- [x] Matrix access-token/password auth, `/sync` polling ingress, outbound room sends, reactions, join/leave, and basic file upload support exist.
 - [x] File-backed channel account and binding registry exists under `.claw/channels/`.
 - [x] Shipped runtime now applies channel/account/workspace binding precedence plus pairing approval for tier-1 channels.
 - [x] Group mention activation rules now exist on the shipped runtime path.
@@ -677,6 +678,8 @@ Channel completion remaining:
 - [ ] Google Chat parity.
 - [ ] Gmail inbound automation parity for mail-triggered workflows.
 - [ ] Matrix parity.
+  - current shipped path covers auth, send, polling ingress, room actions, and basic file upload;
+  - deeper E2EE and richer operator/media parity still remain.
 - [ ] Microsoft Teams parity.
 - [ ] Signal parity if kept in scope.
 - [ ] Feishu/Lark parity if kept in scope:
