@@ -24,8 +24,8 @@ Status values:
 | --- | --- | --- |
 | SQLite recall memory store | real | Search/store/dedup/expiry paths exist |
 | Core memory store | real | Budgeted key-value memory exists |
-| Sidecar memory orchestration | partial | Metadata-based context exists; direct Rust-backed service integration is incomplete |
-| Memory maintenance archive pipeline | partial | Workflow exists; persistence integration is being completed |
+| Sidecar memory orchestration | partial | Agent and maintenance workflows use the Rust loopback bridge for search/store/archive; typed contract cleanup is still pending |
+| Memory maintenance archive pipeline | real | Maintenance workflow can fetch old memories, persist archive summaries, and remove archived originals through Rust-owned storage |
 | RAG pipeline | partial | Workflow exists; storage/retrieval contracts still need production hardening |
 
 ## Channels

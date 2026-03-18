@@ -64,6 +64,18 @@ impl GatewayServer {
             .route("/internal/memory/search", post(internal_memory_search_handler))
             .route("/internal/memory/store", post(internal_memory_store_handler))
             .route(
+                "/internal/memory/archive/store",
+                post(internal_memory_archive_store_handler),
+            )
+            .route(
+                "/internal/memory/archive/delete",
+                post(internal_memory_archive_delete_handler),
+            )
+            .route(
+                "/internal/memory/maintenance/old",
+                post(internal_memory_maintenance_old_handler),
+            )
+            .route(
                 "/internal/memory/core/{user_id}",
                 post(internal_core_memory_render_handler),
             )
@@ -192,6 +204,31 @@ struct InternalMemoryStoreRequest {
     session_id: Option<String>,
 }
 
+#[derive(serde::Deserialize)]
+struct InternalMemoryArchiveStoreRequest {
+    id: String,
+    summary: String,
+    #[serde(default)]
+    source_memory_ids: Vec<String>,
+    namespace: Option<String>,
+    importance: Option<f32>,
+    source_type: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
+struct InternalMemoryArchiveDeleteRequest {
+    #[serde(default)]
+    memory_ids: Vec<String>,
+}
+
+#[derive(serde::Deserialize)]
+struct InternalMemoryMaintenanceOldRequest {
+    age_days: Option<i64>,
+    namespace: Option<String>,
+    user_id: Option<String>,
+    limit: Option<usize>,
+}
+
 async fn internal_memory_search_handler(
     State(state): State<GatewayState>,
     headers: HeaderMap,
@@ -311,6 +348,107 @@ async fn internal_core_memory_render_handler(
         Err(error) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("core memory render failed: {}", error),
+        )
+            .into_response(),
+    }
+}
+
+async fn internal_memory_archive_store_handler(
+    State(state): State<GatewayState>,
+    headers: HeaderMap,
+    Json(payload): Json<InternalMemoryArchiveStoreRequest>,
+) -> Response {
+    if let Err(response) = validate_internal_api(&state, &headers) {
+        return response;
+    }
+
+    let Some(memory_store) = &state.memory_store else {
+        return (StatusCode::SERVICE_UNAVAILABLE, "memory store unavailable").into_response();
+    };
+
+    match memory_store
+        .store_archive_entry(
+            &payload.id,
+            &payload.summary,
+            &payload.source_memory_ids,
+            payload.namespace.as_deref(),
+            payload.importance,
+            payload.source_type.as_deref(),
+        )
+        .await
+    {
+        Ok(id) => Json(json!({"stored": true, "id": id})).into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("memory archive store failed: {}", error),
+        )
+            .into_response(),
+    }
+}
+
+async fn internal_memory_archive_delete_handler(
+    State(state): State<GatewayState>,
+    headers: HeaderMap,
+    Json(payload): Json<InternalMemoryArchiveDeleteRequest>,
+) -> Response {
+    if let Err(response) = validate_internal_api(&state, &headers) {
+        return response;
+    }
+
+    let Some(memory_store) = &state.memory_store else {
+        return (StatusCode::SERVICE_UNAVAILABLE, "memory store unavailable").into_response();
+    };
+
+    match memory_store.delete_many(&payload.memory_ids).await {
+        Ok(deleted) => Json(json!({"deleted": deleted, "memory_ids": payload.memory_ids}))
+            .into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("memory archive delete failed: {}", error),
+        )
+            .into_response(),
+    }
+}
+
+async fn internal_memory_maintenance_old_handler(
+    State(state): State<GatewayState>,
+    headers: HeaderMap,
+    Json(payload): Json<InternalMemoryMaintenanceOldRequest>,
+) -> Response {
+    if let Err(response) = validate_internal_api(&state, &headers) {
+        return response;
+    }
+
+    let Some(memory_store) = &state.memory_store else {
+        return (StatusCode::SERVICE_UNAVAILABLE, "memory store unavailable").into_response();
+    };
+
+    let age_days = payload.age_days.unwrap_or(30).max(0);
+    let cutoff = chrono::Utc::now() - chrono::Duration::days(age_days);
+
+    match memory_store
+        .list_old_episodic_memories(
+            cutoff,
+            payload.namespace.as_deref(),
+            payload.user_id.as_deref(),
+            payload.limit.unwrap_or(100),
+        )
+        .await
+    {
+        Ok(entries) => Json(json!({
+            "memories": entries.into_iter().map(|entry| json!({
+                "id": entry.id,
+                "content": entry.content,
+                "timestamp": entry.created_at,
+                "namespace": entry.namespace,
+                "user_id": entry.user_id,
+                "importance": entry.importance,
+            })).collect::<Vec<_>>()
+        }))
+        .into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("memory maintenance fetch failed: {}", error),
         )
             .into_response(),
     }
@@ -568,6 +706,114 @@ mod tests {
             .as_str()
             .unwrap()
             .contains("Prefers Rust"));
+
+        let _ = std::fs::remove_file(db_path);
+    }
+
+    #[tokio::test]
+    async fn internal_memory_archive_and_maintenance_endpoints_work() {
+        let db_path = std::env::temp_dir().join(format!("gateway-archive-{}.db", Uuid::new_v4()));
+        let pool = init_pool(&format!("sqlite://{}", db_path.display()), 1)
+            .await
+            .unwrap();
+        run_migrations(&pool).await.unwrap();
+
+        let memory_store = Arc::new(SqliteMemoryStore::new(pool.clone()));
+        let core_memory_store = Arc::new(SqliteCoreMemoryStore::new(pool.clone()));
+
+        let old_entry = MemoryEntry {
+            id: Uuid::new_v4(),
+            memory_type: MemoryType::Episodic,
+            content: "Old episodic memory".to_string(),
+            content_hash: "hash-old".to_string(),
+            source: Some("test".to_string()),
+            source_type: Some(SourceType::Conversation),
+            session_id: None,
+            user_id: Some("user-archive".to_string()),
+            namespace: "user-archive".to_string(),
+            importance: 0.8,
+            confidence: 1.0,
+            access_count: 0,
+            last_accessed: None,
+            created_at: chrono::Utc::now() - chrono::Duration::days(90),
+            expires_at: None,
+            metadata: json!({}),
+        };
+        memory_store.store(old_entry.clone()).await.unwrap();
+
+        let state = GatewayState {
+            session_manager: Arc::new(crate::sessions::SessionManager::new()),
+            origin_validator: Arc::new(OriginValidator::new(vec![
+                "http://localhost:3000".to_string(),
+            ])),
+            require_auth: false,
+            internal_api_token: Some(Arc::new("test-token".to_string())),
+            memory_store: Some(memory_store),
+            core_memory_store: Some(core_memory_store),
+        };
+
+        let app = GatewayServer::new("127.0.0.1".to_string(), 0).router(state);
+
+        let old_request = Request::builder()
+            .method("POST")
+            .uri("/internal/memory/maintenance/old")
+            .header(CONTENT_TYPE, "application/json")
+            .header("x-openrustclaw-internal-token", "test-token")
+            .body(Body::from(
+                r#"{"user_id":"user-archive","namespace":"user-archive","age_days":30,"limit":5}"#,
+            ))
+            .unwrap();
+        let old_response = app.clone().oneshot(old_request).await.unwrap();
+        assert_eq!(old_response.status(), StatusCode::OK);
+        let old_body = to_bytes(old_response.into_body(), usize::MAX).await.unwrap();
+        let old_json: serde_json::Value = serde_json::from_slice(&old_body).unwrap();
+        assert_eq!(old_json["memories"].as_array().unwrap().len(), 1);
+
+        let archive_request = Request::builder()
+            .method("POST")
+            .uri("/internal/memory/archive/store")
+            .header(CONTENT_TYPE, "application/json")
+            .header("x-openrustclaw-internal-token", "test-token")
+            .body(Body::from(format!(
+                r#"{{"id":"archive-1","summary":"Archive summary","source_memory_ids":["{}"],"namespace":"user-archive","importance":0.8,"source_type":"conversation"}}"#,
+                old_entry.id
+            )))
+            .unwrap();
+        let archive_response = app.clone().oneshot(archive_request).await.unwrap();
+        assert_eq!(archive_response.status(), StatusCode::OK);
+
+        let delete_request = Request::builder()
+            .method("POST")
+            .uri("/internal/memory/archive/delete")
+            .header(CONTENT_TYPE, "application/json")
+            .header("x-openrustclaw-internal-token", "test-token")
+            .body(Body::from(format!(
+                r#"{{"memory_ids":["{}"]}}"#,
+                old_entry.id
+            )))
+            .unwrap();
+        let delete_response = app.clone().oneshot(delete_request).await.unwrap();
+        assert_eq!(delete_response.status(), StatusCode::OK);
+
+        let search_request = Request::builder()
+            .method("POST")
+            .uri("/internal/memory/search")
+            .header(CONTENT_TYPE, "application/json")
+            .header("x-openrustclaw-internal-token", "test-token")
+            .body(Body::from(
+                r#"{"user_id":"user-archive","query":"episodic","limit":5}"#,
+            ))
+            .unwrap();
+        let search_response = app.oneshot(search_request).await.unwrap();
+        let search_body = to_bytes(search_response.into_body(), usize::MAX).await.unwrap();
+        let search_json: serde_json::Value = serde_json::from_slice(&search_body).unwrap();
+        assert!(search_json["memories"].as_array().unwrap().is_empty());
+
+        let archive_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM memory_archive")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(archive_count, 1);
 
         let _ = std::fs::remove_file(db_path);
     }

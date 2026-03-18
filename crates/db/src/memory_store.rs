@@ -158,6 +158,128 @@ impl SqliteMemoryStore {
         }
     }
 
+    /// Persist a memory archive summary and return the archive id.
+    #[instrument(skip(self, source_memory_ids))]
+    pub async fn store_archive_entry(
+        &self,
+        id: &str,
+        summary: &str,
+        source_memory_ids: &[String],
+        namespace: Option<&str>,
+        importance: Option<f32>,
+        source_type: Option<&str>,
+    ) -> Result<String> {
+        let serialized_ids = serde_json::to_string(source_memory_ids).map_err(|e| {
+            Error::Database(DatabaseError::Query(format!(
+                "Failed to serialize archive source ids: {}",
+                e
+            )))
+        })?;
+
+        sqlx::query(
+            r#"
+            INSERT INTO memory_archive (id, summary, source_memory_ids, source_type, namespace, importance)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                summary = excluded.summary,
+                source_memory_ids = excluded.source_memory_ids,
+                source_type = excluded.source_type,
+                namespace = excluded.namespace,
+                importance = excluded.importance
+            "#,
+        )
+        .bind(id)
+        .bind(summary)
+        .bind(serialized_ids)
+        .bind(source_type)
+        .bind(namespace.unwrap_or("global"))
+        .bind(importance.unwrap_or(0.5) as f64)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| {
+            Error::Database(DatabaseError::Query(format!(
+                "Failed to store memory archive entry: {}",
+                e
+            )))
+        })?;
+
+        Ok(id.to_string())
+    }
+
+    /// Return episodic memories older than the supplied cutoff.
+    #[instrument(skip(self))]
+    pub async fn list_old_episodic_memories(
+        &self,
+        cutoff: DateTime<Utc>,
+        namespace: Option<&str>,
+        user_id: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<MemoryEntry>> {
+        let mut sql = String::from(
+            r#"
+            SELECT * FROM memory_entries
+            WHERE memory_type = 'episodic'
+              AND created_at <= ?
+              AND (expires_at IS NULL OR expires_at > ?)
+            "#,
+        );
+
+        if namespace.is_some() {
+            sql.push_str(" AND namespace = ?");
+        }
+        if user_id.is_some() {
+            sql.push_str(" AND user_id = ?");
+        }
+        sql.push_str(" ORDER BY created_at ASC LIMIT ?");
+
+        let now = Utc::now().to_rfc3339();
+        let mut query = sqlx::query_as::<_, MemoryEntryRow>(&sql)
+            .bind(cutoff.to_rfc3339())
+            .bind(now);
+        if let Some(namespace) = namespace {
+            query = query.bind(namespace);
+        }
+        if let Some(user_id) = user_id {
+            query = query.bind(user_id);
+        }
+        query = query.bind(limit as i64);
+
+        let rows = query.fetch_all(&self.pool).await.map_err(|e| {
+            Error::Database(DatabaseError::Query(format!(
+                "Failed to list old episodic memories: {}",
+                e
+            )))
+        })?;
+
+        rows.iter().map(Self::row_to_entry).collect()
+    }
+
+    /// Delete a set of memories by id and return the number removed.
+    #[instrument(skip(self, ids))]
+    pub async fn delete_many(&self, ids: &[String]) -> Result<u64> {
+        let mut removed = 0_u64;
+        for id in ids {
+            let result = sqlx::query(
+                r#"
+                DELETE FROM memory_entries
+                WHERE id = ?
+                "#,
+            )
+            .bind(id)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| {
+                Error::Database(DatabaseError::Query(format!(
+                    "Failed to delete archived memory entry {}: {}",
+                    id, e
+                )))
+            })?;
+            removed += result.rows_affected();
+        }
+
+        Ok(removed)
+    }
+
     /// Serialize a vector of f32 to bytes for BLOB storage.
     fn vector_to_blob(vector: &[f32]) -> Vec<u8> {
         vector.iter().flat_map(|f| f.to_le_bytes()).collect()

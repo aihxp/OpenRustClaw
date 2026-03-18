@@ -308,10 +308,26 @@ def test_memory_bridge_request_helpers():
         with patch("urllib.request.urlopen", return_value=_Response()) as mock_urlopen:
             search_result = asyncio.run(bridge.search_memory("user-1", "rust", limit=2))
             core_result = asyncio.run(bridge.render_core_memory("user-1"))
+            old_result = asyncio.run(
+                bridge.fetch_old_memories(age_days=30, namespace="user-1", user_id="user-1")
+            )
+            archive_result = asyncio.run(
+                bridge.store_archive_entry(
+                    {
+                        "id": "archive-1",
+                        "summary": "Archive summary",
+                        "source_memory_ids": ["memory-1"],
+                    }
+                )
+            )
+            delete_result = asyncio.run(bridge.archive_memory_ids(["memory-1"]))
 
         assert search_result[0]["content"] == "Prefers Rust"
         assert "Core Memory" in core_result
-        assert mock_urlopen.call_count == 2
+        assert old_result[0]["content"] == "Prefers Rust"
+        assert archive_result["memories"][0]["content"] == "Prefers Rust"
+        assert delete_result["memories"][0]["content"] == "Prefers Rust"
+        assert mock_urlopen.call_count == 5
         print("  ✓ Memory bridge client")
     except ModuleNotFoundError as e:
         print(f"  ✗ Memory bridge client: {e}")
@@ -356,6 +372,59 @@ def test_memory_maintenance_uses_configurable_memories():
         _skip_missing_dependency(e)
     except Exception as e:
         print(f"  ✗ Memory maintenance metadata: {e}")
+        raise
+
+
+def test_memory_maintenance_archive_node_uses_bridge():
+    """Test archive node persists summaries and archived ids through the bridge."""
+    print("\nTesting memory maintenance archive bridge...")
+
+    try:
+        from unittest.mock import AsyncMock, patch
+
+        from src.workflows.memory_maintenance import ArchiveMemoriesNode
+
+        fake_bridge = AsyncMock()
+        fake_bridge.store_archive_entry.return_value = {"stored": True, "id": "archive-1"}
+        fake_bridge.archive_memory_ids.return_value = {"memory_ids": ["memory-1"]}
+
+        with patch(
+            "src.workflows.memory_maintenance.MemoryBridge.from_env",
+            return_value=fake_bridge,
+        ):
+            node = ArchiveMemoriesNode()
+            result = asyncio.run(
+                node(
+                    {
+                        "messages": [],
+                        "old_memories": [{"id": "memory-1", "content": "Old memory"}],
+                        "summaries": [
+                            {
+                                "id": "archive-1",
+                                "summary": "Archived summary",
+                                "source_memory_ids": ["memory-1"],
+                                "namespace": "user-1",
+                            }
+                        ],
+                        "archived_count": 0,
+                        "consolidated_count": 1,
+                        "archive_entries": [],
+                        "archived_memory_ids": [],
+                        "errors": [],
+                        "status": "running",
+                    }
+                )
+            )
+
+        assert result["archived_count"] == 1
+        assert result["archived_memory_ids"] == ["memory-1"]
+        assert result["archive_entries"][0]["stored"] is True
+        print("  ✓ Memory maintenance archive bridge")
+    except ModuleNotFoundError as e:
+        print(f"  ✗ Memory maintenance archive bridge: {e}")
+        _skip_missing_dependency(e)
+    except Exception as e:
+        print(f"  ✗ Memory maintenance archive bridge: {e}")
         raise
 
 

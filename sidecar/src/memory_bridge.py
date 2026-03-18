@@ -72,6 +72,47 @@ class MemoryBridge:
         content = response.get("content", "")
         return content if isinstance(content, str) else ""
 
+    async def fetch_old_memories(
+        self,
+        age_days: int = 30,
+        namespace: Optional[str] = None,
+        user_id: Optional[str] = None,
+        limit: int = 100,
+    ) -> List[Dict[str, Any]]:
+        payload: Dict[str, Any] = {
+            "age_days": age_days,
+            "limit": limit,
+        }
+        if namespace:
+            payload["namespace"] = namespace
+        if user_id:
+            payload["user_id"] = user_id
+
+        response = await self._post("/memory/maintenance/old", payload)
+        memories = response.get("memories", [])
+        if isinstance(memories, list):
+            return [item for item in memories if isinstance(item, dict)]
+        return []
+
+    async def store_archive_entry(self, entry: Dict[str, Any]) -> Dict[str, Any]:
+        payload = {
+            "id": entry.get("id", ""),
+            "summary": entry.get("summary", ""),
+            "source_memory_ids": entry.get("source_memory_ids", []),
+            "namespace": entry.get("namespace"),
+            "importance": entry.get("importance"),
+            "source_type": entry.get("source_type"),
+        }
+        return await self._post("/memory/archive/store", payload)
+
+    async def archive_memory_ids(self, memory_ids: List[str]) -> Dict[str, Any]:
+        return await self._post(
+            "/memory/archive/delete",
+            {
+                "memory_ids": memory_ids,
+            },
+        )
+
     async def _post(self, path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         url = f"{self.base_url}{path}"
         body = json.dumps(payload).encode("utf-8")
@@ -100,4 +141,3 @@ class MemoryBridge:
             ) from exc
         except urllib.error.URLError as exc:
             raise RuntimeError(f"Memory bridge unavailable: {exc.reason}") from exc
-

@@ -60,7 +60,7 @@ Goal: make sidecar memory operations use the Rust memory system instead of mocks
 - Add eval coverage for recall and archive quality.
 
 Status:
-- In progress
+- Mostly complete
 
 ## Phase 5: Tier 1 Channels
 
@@ -123,9 +123,9 @@ Status:
 - Scheduler, MCP stdio, marketplace access, and the no-import WASM executor are real.
 - Telegram and Slack HTTP mode are end-to-end runtime paths.
 - Discord now has verified Interactions HTTP ingress with deferred acknowledgements and follow-up replies, but not full Gateway message-event coverage.
+- Memory maintenance now uses Rust-backed archive persistence and removes archived recall entries through the loopback bridge.
 - The biggest remaining engineering gaps are:
   - typed Rust-sidecar contracts
-  - memory archive/maintenance completion
   - fuller skills lifecycle/capability enforcement
   - production-grade RAG/context assembly
 

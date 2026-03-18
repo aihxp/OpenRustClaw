@@ -10,6 +10,8 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 
+from ..memory_bridge import MemoryBridge
+
 logger = logging.getLogger(__name__)
 
 
@@ -68,6 +70,7 @@ class IdentifyOldMemoriesNode:
     def __init__(self, age_threshold_days: int = 30) -> None:
         self.name = "identify_old_memories"
         self.age_threshold_days = age_threshold_days
+        self.memory_bridge = MemoryBridge.from_env()
 
     async def __call__(
         self,
@@ -110,36 +113,51 @@ class IdentifyOldMemoriesNode:
         if not isinstance(configured_memories, list):
             configured_memories = _load_configurable_payload(config, "memory_entries")
 
-        if not isinstance(configured_memories, list):
+        if isinstance(configured_memories, list):
+            old_memories: List[Dict[str, Any]] = []
+            for index, item in enumerate(configured_memories):
+                if isinstance(item, str):
+                    memory = {
+                        "id": f"memory-{index}",
+                        "content": item,
+                        "timestamp": cutoff_date.isoformat(),
+                    }
+                elif isinstance(item, dict):
+                    memory = {
+                        "id": item.get("id", f"memory-{index}"),
+                        "content": item.get("content", ""),
+                        "timestamp": item.get("timestamp", cutoff_date.isoformat()),
+                        "namespace": item.get("namespace"),
+                        "user_id": item.get("user_id"),
+                        "importance": item.get("importance"),
+                    }
+                else:
+                    continue
+
+                timestamp = memory.get("timestamp", cutoff_date.isoformat())
+                try:
+                    parsed_timestamp = datetime.fromisoformat(str(timestamp).replace("Z", "+00:00"))
+                except Exception:
+                    parsed_timestamp = cutoff_date
+
+                if parsed_timestamp <= cutoff_date:
+                    old_memories.append(memory)
+
+            return old_memories
+
+        if self.memory_bridge is None:
             return []
 
-        old_memories: List[Dict[str, Any]] = []
-        for index, item in enumerate(configured_memories):
-            if isinstance(item, str):
-                memory = {
-                    "id": f"memory-{index}",
-                    "content": item,
-                    "timestamp": cutoff_date.isoformat(),
-                }
-            elif isinstance(item, dict):
-                memory = {
-                    "id": item.get("id", f"memory-{index}"),
-                    "content": item.get("content", ""),
-                    "timestamp": item.get("timestamp", cutoff_date.isoformat()),
-                }
-            else:
-                continue
-
-            timestamp = memory.get("timestamp", cutoff_date.isoformat())
-            try:
-                parsed_timestamp = datetime.fromisoformat(str(timestamp).replace("Z", "+00:00"))
-            except Exception:
-                parsed_timestamp = cutoff_date
-
-            if parsed_timestamp <= cutoff_date:
-                old_memories.append(memory)
-
-        return old_memories
+        namespace = _load_configurable_payload(config, "namespace")
+        user_id = _load_configurable_payload(config, "user_id")
+        limit = _load_configurable_payload(config, "limit")
+        bridge_results = await self.memory_bridge.fetch_old_memories(
+            age_days=self.age_threshold_days,
+            namespace=namespace if isinstance(namespace, str) and namespace else None,
+            user_id=user_id if isinstance(user_id, str) and user_id else None,
+            limit=limit if isinstance(limit, int) and limit > 0 else 100,
+        )
+        return bridge_results
 
 
 class SummarizeMemoriesNode:
@@ -249,6 +267,13 @@ class SummarizeMemoriesNode:
                 "original_count": len(group),
                 "summary": f"Mock summary of {len(group)} memories",
                 "key_points": ["Mock point 1", "Mock point 2"],
+                "source_memory_ids": [m.get("id") for m in group if m.get("id")],
+                "namespace": group[0].get("namespace") if group else None,
+                "importance": max(
+                    [float(m.get("importance", 0.5)) for m in group if m.get("importance") is not None]
+                    or [0.5]
+                ),
+                "source_type": "conversation",
                 "time_range": {
                     "start": group[0].get("timestamp", ""),
                     "end": group[-1].get("timestamp", ""),
@@ -294,6 +319,13 @@ Format as JSON with keys: summary, key_points, sentiment"""
                 "summary": parsed.get("summary", ""),
                 "key_points": parsed.get("key_points", []),
                 "sentiment": parsed.get("sentiment", "neutral"),
+                "source_memory_ids": [m.get("id") for m in group if m.get("id")],
+                "namespace": group[0].get("namespace") if group else None,
+                "importance": max(
+                    [float(m.get("importance", 0.5)) for m in group if m.get("importance") is not None]
+                    or [0.5]
+                ),
+                "source_type": "conversation",
                 "time_range": {
                     "start": group[0].get("timestamp", ""),
                     "end": group[-1].get("timestamp", ""),
@@ -375,6 +407,7 @@ class ArchiveMemoriesNode:
 
     def __init__(self) -> None:
         self.name = "archive_memories"
+        self.memory_bridge = MemoryBridge.from_env()
 
     async def __call__(
         self,
@@ -399,13 +432,16 @@ class ArchiveMemoriesNode:
                     logger.error(f"Failed to store archive entry: {e}")
 
             archived_memory_ids = list(state.get("archived_memory_ids", []))
-            for memory in old_memories:
+            memory_ids_to_archive = [
+                memory.get("id") for memory in old_memories if memory.get("id")
+            ]
+            if memory_ids_to_archive:
                 try:
-                    archived_id = await self._mark_memory_archived(memory.get("id"))
-                    if archived_id:
-                        archived_memory_ids.append(archived_id)
+                    archived_memory_ids.extend(
+                        await self._mark_memories_archived(memory_ids_to_archive)
+                    )
                 except Exception as e:
-                    logger.error(f"Failed to mark memory as archived: {e}")
+                    logger.error(f"Failed to mark memories as archived: {e}")
 
             return {
                 "archived_count": archived_count,
@@ -422,21 +458,42 @@ class ArchiveMemoriesNode:
             }
 
     async def _store_archive_entry(self, summary: Dict[str, Any]) -> Dict[str, Any]:
-        """Return a normalized archive entry for the caller to persist."""
+        """Persist an archive entry when a Rust bridge is available."""
         logger.debug(f"Storing archive entry: {summary.get('id')}")
-        return {
+        entry = {
             "id": summary.get("id"),
             "summary": summary.get("summary", ""),
             "key_points": summary.get("key_points", []),
+            "source_memory_ids": summary.get("source_memory_ids", []),
+            "namespace": summary.get("namespace"),
+            "importance": summary.get("importance"),
+            "source_type": summary.get("source_type"),
             "time_range": summary.get("time_range", {}),
             "embedding": summary.get("embedding"),
         }
+        if self.memory_bridge is None:
+            return entry
 
-    async def _mark_memory_archived(self, memory_id: Optional[str]) -> Optional[str]:
-        """Return the memory id that should be marked archived by the caller."""
-        if memory_id:
-            logger.debug(f"Marking memory as archived: {memory_id}")
-        return memory_id
+        result = await self.memory_bridge.store_archive_entry(entry)
+        if isinstance(result, dict):
+            entry["stored"] = bool(result.get("stored", True))
+            if result.get("id"):
+                entry["id"] = result["id"]
+        return entry
+
+    async def _mark_memories_archived(self, memory_ids: List[str]) -> List[str]:
+        """Archive original memory ids in the Rust store when available."""
+        if not memory_ids:
+            return []
+        logger.debug("Marking %s memories as archived", len(memory_ids))
+        if self.memory_bridge is None:
+            return memory_ids
+
+        result = await self.memory_bridge.archive_memory_ids(memory_ids)
+        archived_ids = result.get("memory_ids", [])
+        if isinstance(archived_ids, list):
+            return [str(memory_id) for memory_id in archived_ids]
+        return memory_ids
 
 
 def has_memories_to_process(state: MemoryMaintenanceState) -> str:
