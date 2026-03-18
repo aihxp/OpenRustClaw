@@ -14,6 +14,8 @@ Current execution planning lives in:
 - [docs/parity-positioning.md](docs/parity-positioning.md)
 
 The roadmap target is explicit: achieve practical OpenClaw feature parity with a Rust-first runtime, while keeping OpenRustClaw-native improvements where they are stronger.
+The execution model is also explicit: Rust-native for production-critical paths, sidecar compatibility for migration, and LangGraph as the experimentation lane rather than the sole durability boundary.
+The roadmap now also includes a Rust-native autonomous optimization framework inspired by `autoresearch`, but generalized for skills, RAG, prompts, policies, bounded workflows, and selected bounded code surfaces.
 
 ## Quick Start
 

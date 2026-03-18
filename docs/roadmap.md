@@ -42,6 +42,69 @@ OpenRustClaw is done when all of the following are true:
 - No phase closes until its parity tasks are either complete or explicitly deferred with a reason.
 - OpenClaw parity is measured against documented user-facing behavior, not internal implementation language or framework choices.
 
+## Workflow Execution Tiers
+
+OpenRustClaw will use a three-tier execution model rather than a single permanent orchestration backend.
+
+### Tier A: Rust-native production path
+
+Use for:
+
+- channel message handling,
+- scheduler jobs and event-triggered work,
+- memory maintenance,
+- RAG retrieval and context assembly,
+- approvals and resumable operator flows,
+- anything durability-critical, restart-sensitive, or part of the shipped surface.
+
+Rules:
+
+- Rust owns persistence, checkpoints, leases, retries, trace correlation, and operator inspection.
+- This is the default target for production parity work.
+- A feature is not considered fully landed if the durable truth still lives outside Rust.
+
+### Tier B: Rust runtime with temporary sidecar compatibility
+
+Use for:
+
+- shipped workflows still being migrated,
+- legacy workflow definitions,
+- complex paths that are real but not yet ported,
+- compatibility during staged cutovers.
+
+Rules:
+
+- Rust still owns the outer loop, persistence, retries, and durability.
+- The sidecar may execute a bounded workflow run, but it does not own the scheduler, forever loop, or source of truth.
+- Every shipped compatibility workflow should have a planned Rust-port destination.
+
+### Tier C: LangGraph rapid experimentation lane
+
+Use for:
+
+- prototyping new agent flows,
+- evaluation of orchestration ideas,
+- prompt/control-flow experiments before productization.
+
+Rules:
+
+- Experimental LangGraph flows do not count as shipped parity by themselves.
+- No infinite graphs; each run should be bounded.
+- If an experiment proves valuable, it should promote to Tier B first and then Tier A.
+
+### Decision Tree
+
+- If the workflow is production-critical, persistent, user-facing, or restart-sensitive: use Tier A.
+- If the workflow is shipped but not yet ported to Rust: use Tier B.
+- If the workflow is experimental: use Tier C.
+- If a Tier C workflow proves useful: promote to Tier B, then port to Tier A.
+
+### Architectural Consequence
+
+- Rust owns the outer scheduler/event loop.
+- Rust owns due-job discovery, leases, retries, dead letters, checkpoints, and operator visibility.
+- LangGraph may remain as an authoring/prototyping or compatibility layer, but not as the sole durability boundary.
+
 ## Current Program Status
 
 - [x] Feature matrix exists and the shipped surface is mostly honest.
@@ -75,6 +138,7 @@ OpenRustClaw-specific strengths to preserve while pursuing parity:
 - Rust-native durability and resource control
 - MCP and mcp2-cli integration
 - Stronger capability enforcement around skills and tool execution
+- Rust-native autonomous optimization infrastructure instead of depending on a Python self-improvement loop
 
 ## Phase 1: Product Contract and Parity Inventory
 
@@ -112,7 +176,7 @@ Exit criteria:
 
 ## Phase 2: Rust Runtime Contract and Sidecar Retirement
 
-Goal: preserve current behavior while removing Python from the critical execution path.
+Goal: preserve current behavior while making the three-tier execution model explicit, with Rust owning the production-critical path.
 
 Completed:
 
@@ -122,10 +186,21 @@ Completed:
 
 Remaining:
 
+- [ ] Build a unified workflow registry with explicit execution tier metadata:
+  - `rust_native`,
+  - `compat_sidecar`,
+  - `experimental_langgraph`.
+- [ ] Define routing policy for workflow dispatch based on:
+  - durability requirements,
+  - ship status,
+  - operator visibility,
+  - migration stage.
 - [ ] Replace scheduler workflow execution with Rust-native workflow/state-machine implementations.
 - [ ] Replace memory maintenance workflow execution with Rust-native workflow/state-machine implementations.
 - [ ] Replace RAG orchestration with Rust-native retrieval and context-assembly services.
 - [ ] Replace sidecar agent orchestration with Rust-native graph/state execution.
+- [ ] Keep shipped sidecar-backed workflows bounded and compatibility-only.
+- [ ] Ban sidecar-owned infinite loops and scheduler-owned durable truth outside Rust.
 - [ ] Keep LangSmith via direct API integration from Rust, not Python framework dependency.
 - [ ] Decide whether LangGraph remains:
   - an authoring format only,
@@ -143,8 +218,105 @@ Remaining:
 
 Exit criteria:
 
-- [ ] `openrustclaw start` can run the full shipped surface without requiring Python.
-- [ ] Sidecar code is optional or fully retired from the production-critical path.
+- [ ] `openrustclaw start` can run the full shipped surface in Tier A without requiring Python.
+- [ ] Tier B exists only for bounded compatibility workflows.
+- [ ] Tier C is explicitly experimental and not confused with shipped parity.
+
+## Phase 2.5: Rust-Native Autonomous Optimization Framework
+
+Goal: build a Rust-native improvement loop inspired by `karpathy/autoresearch`, but generalized for OpenRustClaw and integrated with the execution-tier model.
+
+This subsystem is not limited to model-training experiments. It should support bounded improvement loops across skills, prompts, RAG, policies, workflows, and selected code surfaces.
+
+Principles:
+
+- Rust owns experiment orchestration, persistence, evaluation history, and promotion policy.
+- LLMs propose candidate changes; Rust acts as the lab, referee, and rollback owner.
+- Experimental self-improvement does not count as shipped behavior until it passes the promotion pipeline.
+- No unrestricted repo-wide self-modification.
+
+Allowed optimization lanes:
+
+- skills and skill instructions,
+- prompt and response-format policies,
+- RAG retrieval and context-assembly parameters,
+- memory write policies,
+- scheduler and routing heuristics,
+- bounded workflow definitions,
+- bounded code surfaces,
+- original autoresearch-style training or tuning experiments where useful.
+
+Required safety classes:
+
+- `safe_config`: prompts, thresholds, retrieval parameters, formatting
+- `bounded_workflow`: agent policies, memory policies, routing policies
+- `bounded_code`: tightly scoped file/module optimization with mandatory tests
+- `human_review_only`: security, auth, persistence, protocol-critical code
+
+Remaining:
+
+- [ ] Create a new Rust-owned optimization subsystem with a clear crate boundary.
+- [ ] Define optimization targets with typed metadata:
+  - target id,
+  - target kind,
+  - execution tier,
+  - allowed mutation surface,
+  - required eval suite,
+  - promotion policy.
+- [ ] Build a mutation-policy layer that enforces:
+  - file allowlists,
+  - field allowlists,
+  - max diff size,
+  - forbidden paths,
+  - mandatory tests.
+- [ ] Build an experiment runner that:
+  - creates a candidate,
+  - applies changes in a temporary workspace,
+  - runs bounded evals,
+  - captures metrics,
+  - stores artifacts and diffs.
+- [ ] Build an evaluator that scores:
+  - task success,
+  - regressions,
+  - safety,
+  - latency,
+  - token cost,
+  - tool correctness,
+  - grounding quality.
+- [ ] Build a promotion engine that can:
+  - reject,
+  - keep as candidate,
+  - promote to Tier C,
+  - promote to Tier B,
+  - queue for Tier A human-reviewed merge.
+- [ ] Build an experiment/audit history model with:
+  - candidate diffs,
+  - hypotheses,
+  - eval metrics,
+  - traces,
+  - winner/loser decisions,
+  - rollback references.
+- [ ] Add support for the first optimization targets:
+  - skills,
+  - RAG retrieval params,
+  - context assembly,
+  - prompt/tool policies.
+- [ ] Add a second wave of targets:
+  - memory policies,
+  - scheduler heuristics,
+  - routing heuristics,
+  - bounded workflow definitions.
+- [ ] Decide which bounded code surfaces are eligible for automated optimization and keep core security/auth/storage out of automatic promotion.
+- [ ] Add operator controls to inspect, approve, reject, and promote candidates.
+- [ ] Add MCP and CLI surfaces for experiment inspection and promotion control.
+- [ ] Add LangSmith/OpenTelemetry integration for experiment traces and eval lineage.
+- [ ] Support original autoresearch-style research loops as one target class, not the whole subsystem.
+
+Exit criteria:
+
+- [ ] OpenRustClaw has a Rust-native autonomous optimization framework.
+- [ ] The framework can improve skills, RAG, and prompt/policy surfaces without uncontrolled self-modification.
+- [ ] Production-critical code remains protected by explicit promotion and review rules.
 
 ## Phase 3: Durable Scheduler and Eventing
 
@@ -460,13 +632,14 @@ Exit criteria:
 The phases stay in order, but implementation should happen in these vertical slices:
 
 1. Rust workflow runtime replacement for scheduler, memory maintenance, and RAG.
-2. Session tools and direct/group/thread routing parity.
-3. WhatsApp and iMessage parity.
-4. Control UI and typed operator APIs.
-5. Media pipeline and transcription parity.
-6. Plugin and extension model completion.
-7. Node pairing and device-command parity.
-8. Final observability, ops, and full parity validation.
+2. Rust-native autonomous optimization framework for skills, prompts, RAG, and bounded workflow improvements.
+3. Session tools and direct/group/thread routing parity.
+4. WhatsApp and iMessage parity.
+5. Control UI and typed operator APIs.
+6. Media pipeline and transcription parity.
+7. Plugin and extension model completion.
+8. Node pairing and device-command parity.
+9. Final observability, ops, and full parity validation.
 
 ## Release Gates
 

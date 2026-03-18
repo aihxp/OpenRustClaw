@@ -41,11 +41,18 @@ OpenRustClaw was created to solve these fundamental problems while maintaining t
 - **Zero-cost abstractions** for high-performance operations
 - **Async/await throughout** with Tokio runtime
 
-### 🐍 **Python Sidecar Transition**
-- **Typed bridge contract** exists for current workflow execution
+### 🐍 **Workflow Execution Tiers**
+- **Tier A: Rust-native** for production-critical, durable runtime paths
+- **Tier B: sidecar compatibility** for shipped flows still being migrated
+- **Tier C: LangGraph experimentation** for rapid prototyping before productization
 - **Rust-owned state** already backs memory, scheduler persistence, and RAG storage
-- **Sidecar retirement** is an explicit roadmap objective, not a hidden dependency forever
-- **LangSmith integration** is already available from Rust directly
+- **Sidecar retirement from the production-critical path** remains an explicit roadmap objective
+
+### 🔁 **Rust-Native Autonomous Optimization**
+- Inspired by `autoresearch`, but generalized for OpenRustClaw
+- Intended to improve skills, prompts, RAG policies, workflow heuristics, and bounded code surfaces
+- Rust owns experiment orchestration, evaluation, promotion, and rollback policy
+- Production-critical code remains guarded by explicit promotion and human review rules
 
 ### 🔐 **Security-First Design**
 - ✅ **Mandatory WebSocket origin validation** (fixes CVE-2026-25253)

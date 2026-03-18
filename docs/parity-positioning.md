@@ -22,8 +22,28 @@ The goal is not to imitate OpenClaw's internals. The goal is to deliver the same
 - Broader multi-provider model support
 - First-class MCP and `mcp2-cli` workflows
 - Stricter runtime/docs truthfulness and CI gates around shipped features
+- A planned Rust-native autonomous optimization framework instead of relying on a Python self-improvement loop as the product-level answer
 
 These are not parity failures. They are product choices to preserve.
+
+## How LangGraph Fits
+
+LangGraph is not being rejected. It is being demoted from "possible permanent runtime brain" to a controlled role in the architecture:
+
+- Rust-native execution is the long-term production target.
+- Sidecar/LangGraph compatibility is acceptable for shipped flows still being migrated.
+- LangGraph remains useful as the rapid experimentation lane for new workflow ideas.
+
+The key constraint is that Rust owns the durable outer loop:
+
+- scheduler,
+- event bus,
+- retries,
+- leases,
+- checkpoints,
+- operator inspection.
+
+LangGraph may execute a bounded workflow run. It should not be the only durability boundary for the product.
 
 ## Where We Still Trail OpenClaw
 

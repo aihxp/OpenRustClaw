@@ -9,6 +9,11 @@ This book page exists so the mdBook navigation can expose the same planning surf
 - Reach practical OpenClaw feature parity.
 - Keep OpenRustClaw's stronger Rust-native choices where they are better.
 - Remove Python from the production-critical runtime path over time.
+- Use a three-tier execution model:
+  - Rust-native for production-critical paths,
+  - sidecar compatibility for migration,
+  - LangGraph for experimentation.
+- Build a Rust-native autonomous optimization framework for skills, RAG, prompts, policies, and bounded workflow/code improvements.
 
 ## Phase summary
 
