@@ -64,6 +64,11 @@ enum Commands {
         #[command(subcommand)]
         action: MemoryAction,
     },
+    /// Session inspection and control
+    Session {
+        #[command(subcommand)]
+        action: SessionAction,
+    },
     /// Run diagnostics
     Doctor,
     /// Interactive onboarding wizard
@@ -375,6 +380,104 @@ enum MemoryAction {
     },
     /// Show memory statistics
     Stats,
+    /// Get one memory entry by id
+    Get {
+        #[arg(long)]
+        id: String,
+    },
+    /// Show recent memory timeline
+    Timeline {
+        #[arg(long)]
+        namespace: Option<String>,
+        #[arg(long, default_value_t = 20)]
+        limit: usize,
+    },
+    /// List memory namespaces
+    Namespaces,
+    /// Inspect archive summaries
+    Archive {
+        #[arg(long)]
+        namespace: Option<String>,
+        #[arg(long, default_value_t = 20)]
+        limit: usize,
+    },
+    /// Export file-backed memory/persona views under .claw/
+    ViewsExport {
+        #[arg(long, default_value = ".")]
+        root: String,
+        #[arg(short, long)]
+        user_id: Option<String>,
+    },
+    /// Import file-backed memory/persona views from .claw/
+    ViewsImport {
+        #[arg(long, default_value = ".")]
+        root: String,
+        #[arg(short, long)]
+        user_id: String,
+    },
+    /// Scan model-aware workspace artifacts
+    ArtifactsScan {
+        #[arg(long, default_value = ".")]
+        root: String,
+    },
+    /// Render the merged artifact bundle for a model
+    ArtifactsRender {
+        #[arg(long, default_value = ".")]
+        root: String,
+        #[arg(long)]
+        model: String,
+    },
+    /// Sync preferred artifact files for a model family
+    ArtifactsSync {
+        #[arg(long, default_value = ".")]
+        root: String,
+        #[arg(long)]
+        model: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum SessionAction {
+    /// List sessions
+    List {
+        #[arg(long)]
+        status: Option<String>,
+        #[arg(long, default_value_t = 20)]
+        limit: usize,
+    },
+    /// Show one session plus history
+    Show {
+        id: String,
+        #[arg(long, default_value_t = 50)]
+        history_limit: usize,
+    },
+    /// Spawn a session explicitly
+    Spawn {
+        #[arg(long)]
+        user_id: String,
+        #[arg(long, default_value = "webchat")]
+        platform: String,
+        #[arg(long, default_value = "dm")]
+        session_type: String,
+        #[arg(long)]
+        route_key: Option<String>,
+        #[arg(long)]
+        workspace_id: Option<String>,
+    },
+    /// Send a message through a persisted session
+    Send {
+        id: String,
+        #[arg(long)]
+        content: String,
+    },
+    /// Close or archive a session
+    Close {
+        id: String,
+        #[arg(long)]
+        archive: bool,
+        #[arg(long)]
+        reason: Option<String>,
+    },
 }
 
 #[cfg(feature = "cursor")]
@@ -706,6 +809,57 @@ async fn main() -> Result<()> {
                 commands::memory::import(&file, &user_id).await
             }
             MemoryAction::Stats => commands::memory::stats().await,
+            MemoryAction::Get { id } => commands::memory::get(&id).await,
+            MemoryAction::Timeline { namespace, limit } => {
+                commands::memory::timeline(namespace.as_deref(), limit).await
+            }
+            MemoryAction::Namespaces => commands::memory::namespaces().await,
+            MemoryAction::Archive { namespace, limit } => {
+                commands::memory::archive(namespace.as_deref(), limit).await
+            }
+            MemoryAction::ViewsExport { root, user_id } => {
+                commands::memory::views_export(&root, user_id.as_deref()).await
+            }
+            MemoryAction::ViewsImport { root, user_id } => {
+                commands::memory::views_import(&root, &user_id).await
+            }
+            MemoryAction::ArtifactsScan { root } => commands::memory::artifacts_scan(&root).await,
+            MemoryAction::ArtifactsRender { root, model } => {
+                commands::memory::artifacts_render(&root, &model).await
+            }
+            MemoryAction::ArtifactsSync { root, model } => {
+                commands::memory::artifacts_sync(&root, &model).await
+            }
+        },
+        Commands::Session { action } => match action {
+            SessionAction::List { status, limit } => {
+                commands::session::list(status.as_deref(), limit).await
+            }
+            SessionAction::Show { id, history_limit } => {
+                commands::session::show(&id, history_limit).await
+            }
+            SessionAction::Spawn {
+                user_id,
+                platform,
+                session_type,
+                route_key,
+                workspace_id,
+            } => {
+                commands::session::spawn(
+                    &user_id,
+                    &platform,
+                    &session_type,
+                    route_key.as_deref(),
+                    workspace_id.as_deref(),
+                )
+                .await
+            }
+            SessionAction::Send { id, content } => commands::session::send(&id, &content).await,
+            SessionAction::Close {
+                id,
+                archive,
+                reason,
+            } => commands::session::close(&id, archive, reason.as_deref()).await,
         },
         Commands::Doctor => commands::doctor::run().await,
         Commands::Onboard => commands::onboard::run().await,

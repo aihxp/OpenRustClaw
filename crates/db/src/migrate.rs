@@ -28,8 +28,14 @@ CREATE TABLE IF NOT EXISTS sessions (
     workspace_id TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-    metadata TEXT DEFAULT '{}'
+    metadata TEXT DEFAULT '{}',
+    status TEXT NOT NULL DEFAULT 'active',
+    route_key TEXT,
+    archived_at TEXT,
+    closed_at TEXT
 );
+CREATE INDEX IF NOT EXISTS idx_sessions_status_updated ON sessions(status, updated_at);
+CREATE INDEX IF NOT EXISTS idx_sessions_route_key ON sessions(route_key, status);
 "#,
     },
     Migration {
@@ -407,6 +413,7 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<()> {
     }
 
     ensure_scheduler_task_registry_columns(pool).await?;
+    ensure_phase4_session_columns(pool).await?;
 
     info!("All {} database migrations completed", MIGRATIONS.len());
     Ok(())
@@ -484,6 +491,38 @@ async fn ensure_scheduler_task_registry_columns(pool: &SqlitePool) -> Result<()>
             "failed to create scheduler priority index: {e}"
         )))
     })?;
+
+    Ok(())
+}
+
+async fn ensure_phase4_session_columns(pool: &SqlitePool) -> Result<()> {
+    add_column_if_missing(
+        pool,
+        "sessions",
+        "status",
+        "TEXT NOT NULL DEFAULT 'active'",
+    )
+    .await?;
+    add_column_if_missing(pool, "sessions", "route_key", "TEXT").await?;
+    add_column_if_missing(pool, "sessions", "archived_at", "TEXT").await?;
+    add_column_if_missing(pool, "sessions", "closed_at", "TEXT").await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sessions_status_updated ON sessions(status, updated_at)")
+        .execute(pool)
+        .await
+        .map_err(|e| {
+            Error::Database(DatabaseError::Migration(format!(
+                "failed to create session status index: {e}"
+            )))
+        })?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_sessions_route_key ON sessions(route_key, status)")
+        .execute(pool)
+        .await
+        .map_err(|e| {
+            Error::Database(DatabaseError::Migration(format!(
+                "failed to create session route-key index: {e}"
+            )))
+        })?;
 
     Ok(())
 }

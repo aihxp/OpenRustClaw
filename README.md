@@ -124,6 +124,9 @@ Three-tier architecture -- no full memory files injected into prompts:
 - **Recall Memory** (on-demand search) -- hybrid BM25 + vector similarity + temporal decay
 - **RAG Context** (budgeted assembly) -- deterministic retrieved context with stable source ids for citations, Rust-backed durable chunk storage, configurable retrieval controls for `top_k`, preferred/required/excluded sources and source types, minimum-overlap/minimum-score filters, plus score-aware and metadata-aware context shaping
 - **Archive Memory** (consolidated) -- long-term storage with Rust-backed maintenance that persists summaries and removes archived recall entries
+- **Durable Sessions** -- persisted sessions and conversation history with operator list/show/spawn/send/archive/close controls over CLI and MCP
+- **File-backed Views** -- `.claw/memory/views/` exports for core, recall, archive, persona, and runtime-ledger inspection/edit flows
+- **Model-aware Artifacts** -- Rust-native registry for `AGENTS.md`, `AI.md`, `CONTEXT.md`, `ARCHITECTURE.md`, `CLAUDE.md`, `GEMINI.md`, Copilot/Cursor/Continue rules, persona files, memory files, and `Modelfile`, with precedence-aware prompt resolution and preferred-target sync
 
 ```toml
 [memory]

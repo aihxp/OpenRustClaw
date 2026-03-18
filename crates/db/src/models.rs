@@ -27,6 +27,10 @@ pub struct SessionRow {
     pub created_at: String,
     pub updated_at: String,
     pub metadata: Option<String>,
+    pub status: Option<String>,
+    pub route_key: Option<String>,
+    pub archived_at: Option<String>,
+    pub closed_at: Option<String>,
 }
 
 // ──────────────────────────────────────────────

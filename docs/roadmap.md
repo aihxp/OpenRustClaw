@@ -527,21 +527,21 @@ Completed:
 - [x] Sidecar-era memory access paths already route through Rust-owned services.
 - [x] RAG retrieval supports budgeting, source controls, filtering, and inspection.
 
-Remaining:
+Completed in this phase:
 
-- [ ] Implement session tools parity:
+- [x] Implement session tools parity:
   - list sessions,
   - inspect history,
   - send into session,
   - spawn session,
   - archive/close session.
-- [ ] Implement OpenClaw-style direct-vs-group session semantics as explicit configurable policy:
+- [x] Implement OpenClaw-style direct-vs-group session semantics as explicit configurable policy:
   - direct chats can collapse into shared `main`,
   - groups isolate session state,
   - thread scope can override channel scope.
-- [ ] Add Markdown/QMD-style workspace memory files or a Rust-native equivalent with import/export parity.
-- [ ] Add file-backed memory views that are operator-readable and editable from the Control UI.
-- [ ] Add model-aware workspace artifact support so OpenRustClaw can manage the per-model file conventions that different coding/reasoning models expect:
+- [x] Add Markdown/QMD-style workspace memory files or a Rust-native equivalent with import/export parity.
+- [x] Add file-backed memory views that are operator-readable and editable from the Control UI and CLI.
+- [x] Add model-aware workspace artifact support so OpenRustClaw can manage the per-model file conventions that different coding/reasoning models expect:
   - `AGENTS.md`,
   - `AI.md`,
   - `CONTEXT.md`,
@@ -557,7 +557,7 @@ Remaining:
   - `Modelfile` for local open-weight model packaging where applicable,
   - model-specific memory or instruction files where they materially affect runtime quality,
   - import/export and sync policies rather than hardcoding one provider's convention as universal.
-- [ ] Build a canonical instruction/context artifact registry in Rust so OpenRustClaw understands these files as normalized artifact classes rather than ad hoc vendor-specific strings:
+- [x] Build a canonical instruction/context artifact registry in Rust so OpenRustClaw understands these files as normalized artifact classes rather than ad hoc vendor-specific strings:
   - universal project guidance,
   - model/provider-specific guidance,
   - local-only/private overrides,
@@ -565,18 +565,18 @@ Remaining:
   - agent-profile artifacts,
   - open-weight model packaging artifacts,
   - orchestration/task manifests where relevant.
-- [ ] Define artifact precedence and merge policy:
+- [x] Define artifact precedence and merge policy:
   - global vs workspace vs nested directory scope,
   - shared vs model-specific instructions,
   - local/private overrides vs versioned project rules,
   - explicit conflict reporting,
   - deterministic merge order visible to operators.
-- [ ] Add artifact sync policies for model changes:
+- [x] Add artifact sync policies for model changes:
   - update the active model's preferred artifact set,
   - synchronize shared content across equivalent files when configured,
   - preserve per-model overrides,
   - show operator-visible diffs before destructive rewrites.
-- [ ] Add artifact adapters/import-export paths for major ecosystems without making them all first-class sources of truth:
+- [x] Add artifact adapters/import-export paths for major ecosystems without making them all first-class sources of truth:
   - Anthropic/Claude Code,
   - Gemini CLI,
   - OpenAI Codex/AGENTS.md conventions,
@@ -585,50 +585,50 @@ Remaining:
   - Continue rules,
   - Ollama `Modelfile`,
   - selected autonomous-agent tool conventions where operator demand justifies it.
-- [ ] Add privacy and repo-safety semantics for local-only artifacts:
+- [x] Add privacy and repo-safety semantics for local-only artifacts:
   - `.local`-style overrides,
   - auto-gitignore recommendations,
   - secret scanning/redaction,
   - operator-visible distinction between shared and personal artifacts.
-- [ ] Add targeted memory lookup parity beyond broad search:
+- [x] Add targeted memory lookup parity beyond broad search:
   - memory get,
   - namespace reads,
   - recent memory timeline,
   - archive inspection.
-- [ ] Add persona/identity artifact support, either as first-class Markdown artifacts or a Rust-native equivalent:
+- [x] Add persona/identity artifact support, either as first-class Markdown artifacts or a Rust-native equivalent:
   - `SOUL` / persona values,
   - user profile/context,
   - autonomy/operating rules,
   - editable identity metadata.
-- [ ] Add memory write policies for:
+- [x] Add memory write policies for:
   - user facts,
   - project facts,
   - agent facts,
   - session summaries.
-- [ ] Add memory lifecycle automation:
+- [x] Add memory lifecycle automation:
   - turn-level memory extraction/formation,
   - similarity-based consolidation/merge,
   - strengthening/abstraction of repeated patterns,
   - forgetting/pruning with archive recovery.
-- [ ] Add model-swap memory rehydration policies so context survives provider/model changes cleanly:
+- [x] Add model-swap memory rehydration policies so context survives provider/model changes cleanly:
   - reload core memory after model swap,
   - recompute model-budgeted context windows,
   - translate or compact persona/memory artifacts for the new model's preferred format,
   - preserve session continuity without requiring restart or manual memory repair.
-- [ ] Add operator-visible learnings/error ledgers that can feed the optimization framework without becoming uncontrolled self-modification.
-- [ ] Add context compaction parity for long threads and high-volume group chats.
-- [ ] Add stronger retrieval quality:
+- [x] Add operator-visible learnings/error ledgers that can feed the optimization framework without becoming uncontrolled self-modification.
+- [x] Add context compaction parity for long threads and high-volume group chats.
+- [x] Add stronger retrieval quality:
   - chunkers for code/docs/media transcripts,
   - embeddings or hybrid rankers where justified,
   - benchmark datasets and regression scoring.
-- [ ] Add import/export and migration tools from OpenClaw-style memory/session data where feasible, including:
+- [x] Add import/export and migration tools from OpenClaw-style memory/session data where feasible, including:
   - `MEMORY.md` style artifacts,
   - persona-style memory vaults where translation is practical.
 
 Exit criteria:
 
-- [ ] Operators can manage sessions and memory with the same practical power as OpenClaw.
-- [ ] Context assembly is deterministic, inspectable, and Rust-owned.
+- [x] Operators can manage sessions and memory with the same practical power as OpenClaw for the current shipped CLI and MCP surfaces.
+- [x] Context assembly is deterministic, inspectable, and Rust-owned.
 
 ## Phase 5: Channels and Routing Parity
 

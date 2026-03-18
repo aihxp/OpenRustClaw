@@ -1490,12 +1490,14 @@ fn build_agent_runtime(
     core_memory_store: Arc<SqliteCoreMemoryStore>,
 ) -> AnyhowResult<Arc<AgentRuntime>> {
     let provider = build_provider(config)?;
+    let workspace_root = std::env::current_dir()?;
     Ok(Arc::new(AgentRuntime::with_memory_stores(
         provider,
         "OpenRustClaw".to_string(),
         memory_store,
         core_memory_store,
-    )))
+    )
+    .with_workspace_path(workspace_root)))
 }
 
 fn build_provider(config: &AppConfig) -> AnyhowResult<Arc<dyn LlmProvider>> {

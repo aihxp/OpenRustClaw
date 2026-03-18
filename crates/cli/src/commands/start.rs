@@ -32,18 +32,19 @@ use tokio::signal;
 use tracing::{error, info, warn};
 
 use openrustclaw_channels::{ChannelFactory, ChannelType, parse_channels_list};
-use openrustclaw_core::config::{AppConfig, SlackMode};
+use openrustclaw_core::config::{AppConfig, SessionRoutingConfig, SlackMode};
 use openrustclaw_core::traits::{
     CoreMemoryStore as CoreMemoryStoreTrait, MemoryStore as MemoryStoreTrait,
 };
 use openrustclaw_db::{
-    SqliteCoreMemoryStore, SqliteMemoryStore, SqliteRagStore, init_pool, run_migrations,
+    SqliteCoreMemoryStore, SqliteMemoryStore, SqliteRagStore, SqliteSessionStore, init_pool,
+    run_migrations,
 };
 use openrustclaw_gateway::server::{GatewayServer, GatewayState};
 use openrustclaw_gateway::sessions::SessionManager;
 use openrustclaw_langbridge::sidecar::SidecarManager;
 use openrustclaw_mcp::server::{McpServer, McpServerConfig, McpServerTool};
-use openrustclaw_memory::MemoryPolicies;
+use openrustclaw_memory::{MemoryPolicies, WorkspaceArtifactRegistry};
 use openrustclaw_observability::LangSmithClient;
 use openrustclaw_observability::langsmith::RunType;
 use openrustclaw_optimization::{
@@ -171,7 +172,8 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
     }
 
     // Create session manager
-    let session_manager = Arc::new(SessionManager::new());
+    let session_store = Arc::new(SqliteSessionStore::new(pool.clone()));
+    let session_manager = Arc::new(SessionManager::with_store(session_store.clone()));
     let memory_store = Arc::new(SqliteMemoryStore::new(pool.clone()));
     let core_memory_store = Arc::new(SqliteCoreMemoryStore::new(pool.clone()));
     let rag_store = Arc::new(SqliteRagStore::new(pool.clone()));
@@ -443,7 +445,12 @@ pub async fn run_mcp_server(transport: &str, config_path: &str) -> Result<()> {
     run_migrations(&pool)
         .await
         .context("Failed to run database migrations for MCP server")?;
-    let server = build_mcp_server(workspace_root.clone(), pool, mcp_langsmith_client(&config));
+    let server = build_mcp_server(
+        workspace_root.clone(),
+        pool,
+        config.clone(),
+        mcp_langsmith_client(&config),
+    );
 
     let stdin = tokio::io::stdin();
     let stdout = tokio::io::stdout();
@@ -688,6 +695,7 @@ struct ChannelAgent {
     session_manager: Arc<SessionManager>,
     core_memory_store: Option<Arc<dyn CoreMemoryStoreTrait>>,
     max_history_messages: usize,
+    session_routing: SessionRoutingConfig,
     langsmith: Option<LangSmithClient>,
     event_bus: DurableEventBus,
 }
@@ -791,13 +799,23 @@ impl ChannelAgent {
             return Ok(None);
         }
 
-        let route_key = channel_route_key(&incoming);
+        let route_key = channel_route_key(&incoming, &self.session_routing);
         if !route_sessions.contains_key(&route_key) {
-            let session_type = infer_session_type(&incoming);
+            let session_type = infer_session_type(&incoming, &self.session_routing);
             let session = self
                 .session_manager
-                .create_session(&incoming.user_id, session_type, incoming.platform)
+                .restore_or_create_session(
+                    &incoming.user_id,
+                    session_type,
+                    incoming.platform,
+                    Some(&route_key),
+                )
                 .await?;
+            let restored_history = self
+                .session_manager
+                .list_history(&session.id.to_string(), self.max_history_messages)
+                .await
+                .unwrap_or_default();
             if let Err(error) = self
                 .event_bus
                 .publish(Event::SessionCreated {
@@ -826,7 +844,7 @@ impl ChannelAgent {
                 route_key.clone(),
                 ChannelConversationState {
                     session_id: session.id,
-                    history: Vec::new(),
+                    history: restored_history,
                     reply_metadata: incoming.metadata.clone(),
                 },
             );
@@ -848,6 +866,13 @@ impl ChannelAgent {
         {
             warn!(error = %error, "Failed to publish message.received event");
         }
+        if let Err(error) = self
+            .session_manager
+            .append_message(&route_state.session_id.to_string(), &inbound_message)
+            .await
+        {
+            warn!(error = %error, "Failed to persist inbound session message");
+        }
         route_state.history.push(inbound_message);
         let drained_before = trim_history(&mut route_state.history, self.max_history_messages);
         if drained_before > 0 {
@@ -862,6 +887,14 @@ impl ChannelAgent {
                     }),
                 })
                 .await;
+            self.persist_compaction_summary(
+                &incoming.user_id,
+                route_state.session_id,
+                &route_key,
+                &route_state.history,
+                drained_before,
+            )
+            .await;
         }
         let mut trace = self.channel_trace(&incoming, &route_state.session_id, trimmed_content);
         if let (Some(client), Some(run)) = (&self.langsmith, trace.as_ref()) {
@@ -924,6 +957,13 @@ impl ChannelAgent {
         };
 
         route_state.history.push(response.message.clone());
+        if let Err(error) = self
+            .session_manager
+            .append_message(&route_state.session_id.to_string(), &response.message)
+            .await
+        {
+            warn!(error = %error, "Failed to persist outbound session message");
+        }
         let drained_after = trim_history(&mut route_state.history, self.max_history_messages);
         if drained_after > 0 {
             let _ = self
@@ -937,6 +977,14 @@ impl ChannelAgent {
                     }),
                 })
                 .await;
+            self.persist_compaction_summary(
+                &incoming.user_id,
+                route_state.session_id,
+                &route_key,
+                &route_state.history,
+                drained_after,
+            )
+            .await;
         }
 
         if response.message.content.trim().is_empty() {
@@ -993,6 +1041,13 @@ impl ChannelAgent {
         {
             warn!(error = %error, "Failed to publish message.sent event");
         }
+        self.capture_turn_memory(
+            &incoming.user_id,
+            route_state.session_id,
+            trimmed_content,
+            &response.message.content,
+        )
+        .await;
 
         if let (Some(client), Some(run)) = (&self.langsmith, trace.as_mut()) {
             run.outputs = Some(serde_json::json!({"reply": response.message.content}));
@@ -1044,6 +1099,73 @@ impl ChannelAgent {
     }
 }
 
+impl ChannelAgent {
+    async fn capture_turn_memory(
+        &self,
+        user_id: &str,
+        session_id: Uuid,
+        inbound: &str,
+        outbound: &str,
+    ) {
+        let Some(store) = self.runtime.memory_store() else {
+            return;
+        };
+
+        for candidate in derive_turn_memory_candidates(user_id, session_id, inbound, outbound) {
+            if let Err(error) = store.store(candidate).await {
+                warn!(error = %error, "Failed to auto-capture turn memory");
+            }
+        }
+    }
+
+    async fn persist_compaction_summary(
+        &self,
+        user_id: &str,
+        session_id: Uuid,
+        route_key: &str,
+        history: &[Message],
+        evicted_messages: usize,
+    ) {
+        let Some(store) = self.runtime.memory_store() else {
+            return;
+        };
+        let summary = summarize_history_tail(history, evicted_messages);
+        if summary.is_empty() {
+            return;
+        }
+
+        let entry = MemoryEntry {
+            id: Uuid::new_v4(),
+            memory_type: MemoryType::Episodic,
+            content_hash: MemoryPolicies::content_hash(&summary),
+            content: format!(
+                "Compaction checkpoint for {} after evicting {} messages:\n{}",
+                route_key, evicted_messages, summary
+            ),
+            source: Some("session_compaction".to_string()),
+            source_type: Some(SourceType::Conversation),
+            session_id: Some(session_id),
+            user_id: Some(user_id.to_string()),
+            namespace: user_id.to_string(),
+            importance: 0.65,
+            confidence: 0.8,
+            access_count: 0,
+            last_accessed: None,
+            created_at: Utc::now(),
+            expires_at: None,
+            metadata: serde_json::json!({
+                "source": "session_compaction",
+                "route_key": route_key,
+                "evicted_messages": evicted_messages,
+            }),
+        };
+
+        if let Err(error) = store.store(entry).await {
+            warn!(error = %error, "Failed to persist compaction summary");
+        }
+    }
+}
+
 fn build_channel_agent(
     config: &AppConfig,
     memory_store: Arc<SqliteMemoryStore>,
@@ -1052,19 +1174,22 @@ fn build_channel_agent(
     langsmith: Option<LangSmithClient>,
     event_bus: DurableEventBus,
 ) -> Result<ChannelAgent> {
+    let workspace_root = std::env::current_dir()?;
     let provider = build_channel_provider(config)?;
     let runtime = AgentRuntime::with_memory_stores(
         provider,
         "OpenRustClaw".to_string(),
         memory_store,
         core_memory_store.clone(),
-    );
+    )
+    .with_workspace_path(workspace_root);
 
     Ok(ChannelAgent {
         runtime: Arc::new(runtime),
         session_manager,
         core_memory_store: Some(core_memory_store),
         max_history_messages: 24,
+        session_routing: config.session_routing.clone(),
         langsmith,
         event_bus,
     })
@@ -1222,22 +1347,37 @@ impl LlmProvider for ChannelProviderChain {
     }
 }
 
-fn infer_session_type(message: &openrustclaw_core::types::IncomingMessage) -> SessionType {
-    if channel_scope_from_metadata(&message.metadata).is_some() {
+fn infer_session_type(
+    message: &openrustclaw_core::types::IncomingMessage,
+    policy: &SessionRoutingConfig,
+) -> SessionType {
+    if channel_scope_from_metadata(&message.metadata, policy.thread_overrides_channel).is_some() {
         SessionType::Group
     } else {
         SessionType::Dm
     }
 }
 
-fn channel_route_key(message: &openrustclaw_core::types::IncomingMessage) -> String {
-    let scope =
-        channel_scope_from_metadata(&message.metadata).unwrap_or_else(|| "direct".to_string());
-    format!("{}:{}:{}", message.platform, scope, message.user_id)
+fn channel_route_key(
+    message: &openrustclaw_core::types::IncomingMessage,
+    policy: &SessionRoutingConfig,
+) -> String {
+    if let Some(scope) = channel_scope_from_metadata(&message.metadata, policy.thread_overrides_channel) {
+        if policy.group_strategy == "shared_channel" {
+            return format!("{}:{}:shared", message.platform, scope);
+        }
+        return format!("{}:{}:{}", message.platform, scope, message.user_id);
+    }
+
+    match policy.direct_strategy.as_str() {
+        "shared_main" => format!("{}:main", message.platform),
+        _ => format!("{}:direct:{}", message.platform, message.user_id),
+    }
 }
 
-fn channel_scope_from_metadata(metadata: &serde_json::Value) -> Option<String> {
-    const PRIMARY_KEYS: &[&str] = &[
+fn channel_scope_from_metadata(metadata: &serde_json::Value, thread_overrides_channel: bool) -> Option<String> {
+    let primary_keys: &[&str] = if thread_overrides_channel {
+        &[
         "slack_thread_ts",
         "slack_channel",
         "telegram_chat_id",
@@ -1250,9 +1390,22 @@ fn channel_scope_from_metadata(metadata: &serde_json::Value) -> Option<String> {
         "whatsapp_chat_id",
         "line_room_id",
         "meta_thread_id",
-    ];
+        ]
+    } else {
+        &[
+            "slack_channel",
+            "telegram_chat_id",
+            "discord_channel_id",
+            "google_chat_space",
+            "teams_conversation_id",
+            "matrix_room_id",
+            "whatsapp_chat_id",
+            "line_room_id",
+            "meta_thread_id",
+        ]
+    };
 
-    for key in PRIMARY_KEYS {
+    for key in primary_keys {
         if let Some(value) = metadata.get(*key) {
             if let Some(text) = value.as_str() {
                 return Some(format!("{}={}", key, text));
@@ -1277,6 +1430,94 @@ fn trim_history(history: &mut Vec<Message>, max_history_messages: usize) -> usiz
     } else {
         0
     }
+}
+
+fn summarize_history_tail(history: &[Message], evicted_messages: usize) -> String {
+    if history.is_empty() {
+        return String::new();
+    }
+
+    let mut lines = Vec::new();
+    for message in history.iter().rev().take(6).rev() {
+        lines.push(format!("{}: {}", message.role, message.content.trim()));
+    }
+    format!(
+        "Evicted {} earlier messages. Recent retained context:\n{}",
+        evicted_messages,
+        lines.join("\n")
+    )
+}
+
+fn derive_turn_memory_candidates(
+    user_id: &str,
+    session_id: Uuid,
+    inbound: &str,
+    outbound: &str,
+) -> Vec<MemoryEntry> {
+    let normalized = inbound.trim();
+    let mut candidates = Vec::new();
+
+    let interesting_prefixes = [
+        "remember that ",
+        "my name is ",
+        "i prefer ",
+        "we use ",
+        "the project is ",
+        "always ",
+    ];
+    let lower = normalized.to_lowercase();
+    if interesting_prefixes.iter().any(|prefix| lower.starts_with(prefix)) || lower.contains("please remember") {
+        candidates.push(MemoryEntry {
+            id: Uuid::new_v4(),
+            memory_type: MemoryType::Semantic,
+            content_hash: MemoryPolicies::content_hash(normalized),
+            content: normalized.to_string(),
+            source: Some("turn_memory_capture".to_string()),
+            source_type: Some(SourceType::Conversation),
+            session_id: Some(session_id),
+            user_id: Some(user_id.to_string()),
+            namespace: user_id.to_string(),
+            importance: 0.9,
+            confidence: 0.95,
+            access_count: 0,
+            last_accessed: None,
+            created_at: Utc::now(),
+            expires_at: None,
+            metadata: serde_json::json!({
+                "source": "turn_memory_capture",
+                "reply_preview": outbound.chars().take(120).collect::<String>(),
+            }),
+        });
+    }
+
+    if lower.starts_with("error")
+        || lower.contains("failed")
+        || outbound.to_lowercase().contains("error")
+    {
+        let content = format!("User turn:\n{}\n\nAssistant reply:\n{}", normalized, outbound);
+        candidates.push(MemoryEntry {
+            id: Uuid::new_v4(),
+            memory_type: MemoryType::Episodic,
+            content_hash: MemoryPolicies::content_hash(&content),
+            content,
+            source: Some("error_ledger".to_string()),
+            source_type: Some(SourceType::Conversation),
+            session_id: Some(session_id),
+            user_id: Some(user_id.to_string()),
+            namespace: format!("{}_errors", user_id),
+            importance: 0.75,
+            confidence: 0.75,
+            access_count: 0,
+            last_accessed: None,
+            created_at: Utc::now(),
+            expires_at: None,
+            metadata: serde_json::json!({
+                "source": "error_ledger",
+            }),
+        });
+    }
+
+    candidates
 }
 
 #[derive(Clone)]
@@ -1543,11 +1784,13 @@ async fn complete_ingress_trace(
 fn build_mcp_server(
     workspace_root: PathBuf,
     pool: sqlx::SqlitePool,
+    config: AppConfig,
     langsmith: Option<LangSmithClient>,
 ) -> McpServer {
     let memory_store = SqliteMemoryStore::new(pool.clone());
     let core_memory_store = SqliteCoreMemoryStore::new(pool.clone());
     let rag_store = SqliteRagStore::new(pool.clone());
+    let session_store = SqliteSessionStore::new(pool.clone());
     let optimization_store = OptimizationStore::new(pool.clone());
     let event_bus = DurableEventBus::new(pool.clone(), 256);
     let mut server = McpServer::new(McpServerConfig {
@@ -1633,6 +1876,134 @@ fn build_mcp_server(
                         "importance": {"type": "number"}
                     },
                     "required": ["user_id", "key", "value"]
+                }),
+            },
+            McpServerTool {
+                name: "get_memory".to_string(),
+                description: "Fetch one persisted memory entry by id.".to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"}
+                    },
+                    "required": ["id"]
+                }),
+            },
+            McpServerTool {
+                name: "list_memory_namespaces".to_string(),
+                description: "List distinct recall-memory namespaces.".to_string(),
+                input_schema: serde_json::json!({"type": "object", "properties": {}}),
+            },
+            McpServerTool {
+                name: "memory_timeline".to_string(),
+                description: "Inspect recent persisted memory entries.".to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "namespace": {"type": "string"},
+                        "limit": {"type": "integer", "minimum": 1}
+                    }
+                }),
+            },
+            McpServerTool {
+                name: "list_memory_archive".to_string(),
+                description: "Inspect archive summaries for a namespace.".to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "namespace": {"type": "string"},
+                        "limit": {"type": "integer", "minimum": 1}
+                    }
+                }),
+            },
+            McpServerTool {
+                name: "list_sessions".to_string(),
+                description: "List durable sessions and their statuses.".to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "status": {"type": "string"},
+                        "limit": {"type": "integer", "minimum": 1}
+                    }
+                }),
+            },
+            McpServerTool {
+                name: "inspect_session".to_string(),
+                description: "Inspect one session plus persisted history.".to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"},
+                        "history_limit": {"type": "integer", "minimum": 1}
+                    },
+                    "required": ["id"]
+                }),
+            },
+            McpServerTool {
+                name: "spawn_session".to_string(),
+                description: "Create a durable operator session.".to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "user_id": {"type": "string"},
+                        "platform": {"type": "string"},
+                        "session_type": {"type": "string"},
+                        "route_key": {"type": "string"},
+                        "workspace_id": {"type": "string"}
+                    },
+                    "required": ["user_id"]
+                }),
+            },
+            McpServerTool {
+                name: "send_to_session".to_string(),
+                description: "Run a message turn against a persisted session.".to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"},
+                        "content": {"type": "string"}
+                    },
+                    "required": ["id", "content"]
+                }),
+            },
+            McpServerTool {
+                name: "close_session".to_string(),
+                description: "Close or archive a durable session.".to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"},
+                        "archive": {"type": "boolean"},
+                        "reason": {"type": "string"}
+                    },
+                    "required": ["id"]
+                }),
+            },
+            McpServerTool {
+                name: "scan_workspace_artifacts".to_string(),
+                description: "Scan model-aware workspace artifact files.".to_string(),
+                input_schema: serde_json::json!({"type": "object", "properties": {}}),
+            },
+            McpServerTool {
+                name: "render_workspace_artifacts".to_string(),
+                description: "Render the merged instruction bundle for a model.".to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "model": {"type": "string"}
+                    },
+                    "required": ["model"]
+                }),
+            },
+            McpServerTool {
+                name: "sync_workspace_artifacts".to_string(),
+                description: "Sync preferred model-family artifact files.".to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "model": {"type": "string"}
+                    },
+                    "required": ["model"]
                 }),
             },
             McpServerTool {
@@ -1903,7 +2274,7 @@ fn build_mcp_server(
         }),
     );
 
-    let root_for_read = workspace_root;
+    let root_for_read = workspace_root.clone();
     let root_for_opt_register = root_for_read.clone();
     server.register_handler(
         "read_file",
@@ -2063,6 +2434,251 @@ fn build_mcp_server(
                     "key": request.key,
                 }))
             })
+        }),
+    );
+
+    let memory_store_for_get = memory_store.clone();
+    server.register_handler(
+        "get_memory",
+        traced_mcp_handler(langsmith.clone(), "get_memory", move |args| {
+            let request: McpGetMemoryArgs = parse_tool_args(args)?;
+            let memory_store = memory_store_for_get.clone();
+            block_on_tool(async move {
+                let entry = memory_store.get(&request.id).await?;
+                Ok(serde_json::json!({ "memory": entry }))
+            })
+        }),
+    );
+
+    let memory_store_for_namespaces = memory_store.clone();
+    server.register_handler(
+        "list_memory_namespaces",
+        traced_mcp_handler(langsmith.clone(), "list_memory_namespaces", move |_| {
+            let memory_store = memory_store_for_namespaces.clone();
+            block_on_tool(async move {
+                let namespaces = memory_store.list_namespaces().await?;
+                Ok(serde_json::json!({ "namespaces": namespaces }))
+            })
+        }),
+    );
+
+    let memory_store_for_timeline = memory_store.clone();
+    server.register_handler(
+        "memory_timeline",
+        traced_mcp_handler(langsmith.clone(), "memory_timeline", move |args| {
+            let request: McpMemoryTimelineArgs = parse_tool_args(args)?;
+            let memory_store = memory_store_for_timeline.clone();
+            block_on_tool(async move {
+                let entries = memory_store
+                    .list_recent(request.namespace.as_deref(), request.limit.unwrap_or(20).max(1))
+                    .await?;
+                Ok(serde_json::json!({ "entries": entries }))
+            })
+        }),
+    );
+
+    let memory_store_for_archive = memory_store.clone();
+    server.register_handler(
+        "list_memory_archive",
+        traced_mcp_handler(langsmith.clone(), "list_memory_archive", move |args| {
+            let request: McpMemoryTimelineArgs = parse_tool_args(args)?;
+            let memory_store = memory_store_for_archive.clone();
+            block_on_tool(async move {
+                let entries = memory_store
+                    .list_archive_entries(request.namespace.as_deref(), request.limit.unwrap_or(20).max(1))
+                    .await?;
+                Ok(serde_json::json!({ "entries": entries }))
+            })
+        }),
+    );
+
+    let session_store_for_list = session_store.clone();
+    server.register_handler(
+        "list_sessions",
+        traced_mcp_handler(langsmith.clone(), "list_sessions", move |args| {
+            let request: McpListSessionsArgs = parse_tool_args(args)?;
+            let session_store = session_store_for_list.clone();
+            block_on_tool(async move {
+                let status = request.status.as_deref().and_then(parse_mcp_session_status);
+                let sessions = session_store
+                    .list_sessions(status, request.limit.unwrap_or(20).max(1))
+                    .await
+                    .map_err(|e| mcp_tool_error(e.to_string()))?;
+                Ok(serde_json::json!({ "sessions": sessions }))
+            })
+        }),
+    );
+
+    let session_store_for_inspect = session_store.clone();
+    server.register_handler(
+        "inspect_session",
+        traced_mcp_handler(langsmith.clone(), "inspect_session", move |args| {
+            let request: McpInspectSessionArgs = parse_tool_args(args)?;
+            let session_store = session_store_for_inspect.clone();
+            block_on_tool(async move {
+                let session = session_store
+                    .get_session(&request.id)
+                    .await
+                    .map_err(|e| mcp_tool_error(e.to_string()))?;
+                let history = session_store
+                    .list_history(&request.id, request.history_limit.unwrap_or(50).max(1))
+                    .await
+                    .map_err(|e| mcp_tool_error(e.to_string()))?;
+                Ok(serde_json::json!({
+                    "session": session,
+                    "history": history,
+                }))
+            })
+        }),
+    );
+
+    let session_store_for_spawn = session_store.clone();
+    server.register_handler(
+        "spawn_session",
+        traced_mcp_handler(langsmith.clone(), "spawn_session", move |args| {
+            let request: McpSpawnSessionArgs = parse_tool_args(args)?;
+            let session_store = session_store_for_spawn.clone();
+            block_on_tool(async move {
+                let mut session = openrustclaw_core::types::Session::new(
+                    parse_mcp_session_type(request.session_type.as_deref().unwrap_or("dm")),
+                    request.user_id,
+                    parse_mcp_platform(request.platform.as_deref().unwrap_or("webchat")),
+                );
+                session.workspace_id = request.workspace_id;
+                session.metadata = serde_json::json!({
+                    "spawned_by": "mcp",
+                    "route_key": request.route_key,
+                });
+                session_store
+                    .create_or_update(&session, request.route_key.as_deref(), openrustclaw_db::SessionStatus::Active)
+                    .await
+                    .map_err(|e| mcp_tool_error(e.to_string()))?;
+                Ok(serde_json::json!({ "session": session }))
+            })
+        }),
+    );
+
+    let session_store_for_send = session_store.clone();
+    let pool_for_send = pool.clone();
+    let workspace_for_send = workspace_root.clone();
+    let config_for_send = config.clone();
+    server.register_handler(
+        "send_to_session",
+        traced_mcp_handler(langsmith.clone(), "send_to_session", move |args| {
+            let request: McpSendToSessionArgs = parse_tool_args(args)?;
+            let session_store = session_store_for_send.clone();
+            let pool = pool_for_send.clone();
+            let workspace_root = workspace_for_send.clone();
+            let config = config_for_send.clone();
+            block_on_tool(async move {
+                let session = session_store
+                    .get_session(&request.id)
+                    .await
+                    .map_err(|e| mcp_tool_error(e.to_string()))?
+                    .ok_or_else(|| mcp_tool_error(format!("Session '{}' not found", request.id)))?;
+                let history = session_store
+                    .list_history(&request.id, 128)
+                    .await
+                    .map_err(|e| mcp_tool_error(e.to_string()))?;
+                let provider = build_channel_provider(&config)
+                    .map_err(|e| mcp_tool_error(e.to_string()))?;
+                let memory_store = Arc::new(SqliteMemoryStore::new(pool.clone()));
+                let core_memory_store = Arc::new(SqliteCoreMemoryStore::new(pool.clone()));
+                let runtime = AgentRuntime::with_memory_stores(
+                    provider,
+                    "OpenRustClaw".to_string(),
+                    memory_store,
+                    core_memory_store.clone(),
+                )
+                .with_workspace_path(workspace_root);
+                let user_message = openrustclaw_core::types::Message::user(&request.content);
+                session_store
+                    .append_message(&request.id, &user_message)
+                    .await
+                    .map_err(|e| mcp_tool_error(e.to_string()))?;
+                let mut conversation = history;
+                conversation.push(user_message);
+                let core_memory = core_memory_store
+                    .get_all(&session.session.user_id)
+                    .await
+                    .map_err(|e| mcp_tool_error(e.to_string()))?;
+                let response = runtime
+                    .process(
+                        &conversation,
+                        &core_memory,
+                        &session.session.id.to_string(),
+                        &session.session.user_id,
+                    )
+                    .await
+                    .map_err(|e| mcp_tool_error(e.to_string()))?;
+                session_store
+                    .append_message(&request.id, &response.message)
+                    .await
+                    .map_err(|e| mcp_tool_error(e.to_string()))?;
+                Ok(serde_json::json!({ "response": response.message }))
+            })
+        }),
+    );
+
+    let session_store_for_close = session_store.clone();
+    server.register_handler(
+        "close_session",
+        traced_mcp_handler(langsmith.clone(), "close_session", move |args| {
+            let request: McpCloseSessionArgs = parse_tool_args(args)?;
+            let session_store = session_store_for_close.clone();
+            block_on_tool(async move {
+                session_store
+                    .set_status(
+                        &request.id,
+                        if request.archive.unwrap_or(false) {
+                            openrustclaw_db::SessionStatus::Archived
+                        } else {
+                            openrustclaw_db::SessionStatus::Closed
+                        },
+                        request.reason.as_deref(),
+                    )
+                    .await
+                    .map_err(|e| mcp_tool_error(e.to_string()))?;
+                Ok(serde_json::json!({ "closed": true }))
+            })
+        }),
+    );
+
+    let workspace_for_artifacts = workspace_root.clone();
+    server.register_handler(
+        "scan_workspace_artifacts",
+        traced_mcp_handler(langsmith.clone(), "scan_workspace_artifacts", move |_| {
+            let workspace_root = workspace_for_artifacts.clone();
+            Ok(serde_json::json!({
+                "artifacts": WorkspaceArtifactRegistry::scan(&workspace_root)
+                    .map_err(|e| mcp_tool_error(e.to_string()))?,
+            }))
+        }),
+    );
+
+    let workspace_for_artifact_render = workspace_root.clone();
+    server.register_handler(
+        "render_workspace_artifacts",
+        traced_mcp_handler(langsmith.clone(), "render_workspace_artifacts", move |args| {
+            let request: McpRenderArtifactsArgs = parse_tool_args(args)?;
+            let workspace_root = workspace_for_artifact_render.clone();
+            Ok(serde_json::json!(
+                WorkspaceArtifactRegistry::resolve(&workspace_root, &request.model)
+                    .map_err(|e| mcp_tool_error(e.to_string()))?
+            ))
+        }),
+    );
+
+    let workspace_for_artifact_sync = workspace_root.clone();
+    server.register_handler(
+        "sync_workspace_artifacts",
+        traced_mcp_handler(langsmith.clone(), "sync_workspace_artifacts", move |args| {
+            let request: McpRenderArtifactsArgs = parse_tool_args(args)?;
+            let workspace_root = workspace_for_artifact_sync.clone();
+            Ok(serde_json::json!({
+                "written": WorkspaceArtifactRegistry::sync_preferred(&workspace_root, &request.model)
+                    .map_err(|e| mcp_tool_error(e.to_string()))?,
+            }))
         }),
     );
 
@@ -3028,6 +3644,34 @@ fn parse_mcp_timestamp(raw: &str) -> openrustclaw_core::error::Result<DateTime<U
         .map_err(|e| mcp_tool_error(format!("Invalid RFC3339 timestamp '{}': {}", raw, e)))
 }
 
+fn parse_mcp_session_status(raw: &str) -> Option<openrustclaw_db::SessionStatus> {
+    match raw.to_lowercase().as_str() {
+        "active" => Some(openrustclaw_db::SessionStatus::Active),
+        "archived" => Some(openrustclaw_db::SessionStatus::Archived),
+        "closed" => Some(openrustclaw_db::SessionStatus::Closed),
+        _ => None,
+    }
+}
+
+fn parse_mcp_platform(raw: &str) -> Platform {
+    match raw.to_lowercase().as_str() {
+        "telegram" => Platform::Telegram,
+        "discord" => Platform::Discord,
+        "slack" => Platform::Slack,
+        "cli" => Platform::Cli,
+        "api" => Platform::Api,
+        _ => Platform::WebChat,
+    }
+}
+
+fn parse_mcp_session_type(raw: &str) -> SessionType {
+    match raw.to_lowercase().as_str() {
+        "group" => SessionType::Group,
+        "isolated" => SessionType::Isolated,
+        _ => SessionType::Dm,
+    }
+}
+
 fn resolve_workspace_path(
     workspace_root: &Path,
     path: &str,
@@ -3089,6 +3733,56 @@ struct McpSetCoreMemoryArgs {
     key: String,
     value: String,
     importance: Option<f32>,
+}
+
+#[derive(serde::Deserialize)]
+struct McpGetMemoryArgs {
+    id: String,
+}
+
+#[derive(serde::Deserialize, Default)]
+struct McpMemoryTimelineArgs {
+    namespace: Option<String>,
+    limit: Option<usize>,
+}
+
+#[derive(serde::Deserialize, Default)]
+struct McpListSessionsArgs {
+    status: Option<String>,
+    limit: Option<usize>,
+}
+
+#[derive(serde::Deserialize)]
+struct McpInspectSessionArgs {
+    id: String,
+    history_limit: Option<usize>,
+}
+
+#[derive(serde::Deserialize)]
+struct McpSpawnSessionArgs {
+    user_id: String,
+    platform: Option<String>,
+    session_type: Option<String>,
+    route_key: Option<String>,
+    workspace_id: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
+struct McpSendToSessionArgs {
+    id: String,
+    content: String,
+}
+
+#[derive(serde::Deserialize)]
+struct McpCloseSessionArgs {
+    id: String,
+    archive: Option<bool>,
+    reason: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
+struct McpRenderArtifactsArgs {
+    model: String,
 }
 
 #[derive(serde::Deserialize, Default)]
@@ -3291,6 +3985,7 @@ mod tests {
                 session_manager: Arc::new(SessionManager::new()),
                 core_memory_store: None,
                 max_history_messages: 24,
+                session_routing: AppConfig::default().session_routing,
                 langsmith: None,
                 event_bus: DurableEventBus::new(pool.clone(), 16),
             },
@@ -3468,7 +4163,7 @@ mod tests {
         let scope = channel_scope_from_metadata(&serde_json::json!({
             "discord_channel_id": "channel-1",
             "discord_thread_id": "thread-1"
-        }));
+        }), true);
 
         assert_eq!(scope.as_deref(), Some("discord_thread_id=thread-1"));
     }
@@ -3650,7 +4345,12 @@ mod tests {
         let pool = init_pool(&db_url, 1).await.unwrap();
         run_migrations(&pool).await.unwrap();
 
-        let server = build_mcp_server(workspace.path().to_path_buf(), pool.clone(), None);
+        let server = build_mcp_server(
+            workspace.path().to_path_buf(),
+            pool.clone(),
+            AppConfig::default(),
+            None,
+        );
 
         let store_req = serde_json::json!({
             "jsonrpc": "2.0",
@@ -3751,7 +4451,12 @@ mod tests {
         let pool = init_pool(&db_url, 1).await.unwrap();
         run_migrations(&pool).await.unwrap();
 
-        let server = build_mcp_server(workspace.path().to_path_buf(), pool, None);
+        let server = build_mcp_server(
+            workspace.path().to_path_buf(),
+            pool,
+            AppConfig::default(),
+            None,
+        );
 
         let create_req = serde_json::json!({
             "jsonrpc": "2.0",
@@ -3820,7 +4525,12 @@ mod tests {
             .await
             .unwrap();
 
-        let server = build_mcp_server(workspace.path().to_path_buf(), pool, None);
+        let server = build_mcp_server(
+            workspace.path().to_path_buf(),
+            pool,
+            AppConfig::default(),
+            None,
+        );
         let list_req = serde_json::json!({
             "jsonrpc": "2.0",
             "id": 20,
@@ -3874,7 +4584,12 @@ mod tests {
             .await
             .unwrap();
 
-        let server = build_mcp_server(workspace.path().to_path_buf(), pool, None);
+        let server = build_mcp_server(
+            workspace.path().to_path_buf(),
+            pool,
+            AppConfig::default(),
+            None,
+        );
         let load_req = serde_json::json!({
             "jsonrpc": "2.0",
             "id": 21,
@@ -3905,7 +4620,12 @@ mod tests {
         let pool = init_pool(&db_url, 1).await.unwrap();
         run_migrations(&pool).await.unwrap();
 
-        let server = build_mcp_server(workspace.path().to_path_buf(), pool, None);
+        let server = build_mcp_server(
+            workspace.path().to_path_buf(),
+            pool,
+            AppConfig::default(),
+            None,
+        );
 
         let register_req = serde_json::json!({
             "jsonrpc": "2.0",

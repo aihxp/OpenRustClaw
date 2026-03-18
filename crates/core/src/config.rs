@@ -13,12 +13,21 @@ pub struct AppConfig {
     pub database: DatabaseConfig,
     pub providers: ProvidersConfig,
     pub memory: MemoryConfig,
+    pub session_routing: SessionRoutingConfig,
     pub scheduler: SchedulerConfig,
     pub security: SecurityConfig,
     pub sidecar: SidecarConfig,
     pub observability: ObservabilityConfig,
     pub channels: ChannelsConfig,
     pub skills: Option<SkillsConfig>,
+}
+
+/// Session-routing policy configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionRoutingConfig {
+    pub direct_strategy: String,
+    pub group_strategy: String,
+    pub thread_overrides_channel: bool,
 }
 
 /// Gateway (WebSocket server) configuration.
@@ -715,6 +724,11 @@ impl Default for AppConfig {
                     threshold_entries: 1000,
                     schedule_interval_hours: 24,
                 },
+            },
+            session_routing: SessionRoutingConfig {
+                direct_strategy: "shared_main".to_string(),
+                group_strategy: "isolated".to_string(),
+                thread_overrides_channel: true,
             },
             scheduler: SchedulerConfig {
                 poll_interval_ms: 1000,

@@ -4,8 +4,10 @@
 //! and returns the response.
 
 use std::collections::HashSet;
+use std::path::PathBuf;
 use std::sync::Arc;
 
+use openrustclaw_memory::WorkspaceArtifactRegistry;
 use openrustclaw_core::error::Result;
 use openrustclaw_core::traits::{CoreMemoryStore, LlmProvider, MemoryStore, ToolContext};
 use openrustclaw_core::types::{CompletionRequest, CoreEntry, FinishReason, Message};
@@ -22,6 +24,7 @@ pub struct AgentRuntime {
     max_tool_iterations: usize,
     memory_store: Option<Arc<dyn MemoryStore>>,
     core_memory_store: Option<Arc<dyn CoreMemoryStore>>,
+    workspace_path: Option<PathBuf>,
 }
 
 impl AgentRuntime {
@@ -44,6 +47,7 @@ impl AgentRuntime {
             max_tool_iterations: 10,
             memory_store: None,
             core_memory_store: None,
+            workspace_path: None,
         }
     }
 
@@ -76,7 +80,13 @@ impl AgentRuntime {
             max_tool_iterations: 10,
             memory_store: Some(memory_store),
             core_memory_store: Some(core_memory_store),
+            workspace_path: None,
         }
+    }
+
+    pub fn with_workspace_path(mut self, workspace_path: impl Into<PathBuf>) -> Self {
+        self.workspace_path = Some(workspace_path.into());
+        self
     }
 
     /// Set the maximum number of tool iterations allowed per request.
@@ -118,12 +128,25 @@ impl AgentRuntime {
         user_id: &str,
     ) -> Result<AgentResponse> {
         let tools = self.tool_registry.definitions();
-        let system_prompt = build_system_prompt(&self.agent_name, core_memory, &tools);
+        let supplemental_instructions = self
+            .workspace_path
+            .as_ref()
+            .and_then(|path| WorkspaceArtifactRegistry::resolve(path, self.provider.model_id()).ok())
+            .map(|bundle| bundle.merged_instructions);
+        let system_prompt = build_system_prompt(
+            &self.agent_name,
+            core_memory,
+            &tools,
+            supplemental_instructions.as_deref(),
+        );
 
         let ctx = ToolContext {
             session_id: session_id.to_string(),
             user_id: user_id.to_string(),
-            workspace_path: None,
+            workspace_path: self
+                .workspace_path
+                .as_ref()
+                .map(|path| path.display().to_string()),
         };
 
         let mut conversation: Vec<Message> = messages.to_vec();

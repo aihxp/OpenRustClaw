@@ -1,7 +1,13 @@
 //! Memory management commands.
 
 use anyhow::{Context, Result};
+use chrono::Utc;
+use openrustclaw_core::traits::{CoreMemoryStore, MemoryStore};
+use openrustclaw_core::types::{CoreEntry, MemoryEntry, MemoryType, SourceType};
+use openrustclaw_db::{SqliteCoreMemoryStore, SqliteMemoryStore};
+use openrustclaw_memory::WorkspaceArtifactRegistry;
 use sqlx::Row;
+use std::path::{Path, PathBuf};
 
 /// Export memories to markdown.
 pub async fn export(output: &str, user_id: Option<&str>) -> Result<()> {
@@ -351,6 +357,340 @@ pub async fn stats() -> Result<()> {
     println!("Core Memory Entries: {}", core_count);
 
     Ok(())
+}
+
+/// Get one memory entry by id.
+pub async fn get(id: &str) -> Result<()> {
+    let (store, _core_store, _pool) = open_stores().await?;
+    match store.get(id).await? {
+        Some(entry) => {
+            println!("{}", serde_json::to_string_pretty(&entry)?);
+        }
+        None => {
+            println!("Memory entry not found: {}", id);
+        }
+    }
+    Ok(())
+}
+
+/// Show recent memory timeline.
+pub async fn timeline(namespace: Option<&str>, limit: usize) -> Result<()> {
+    let (store, _core_store, _pool) = open_stores().await?;
+    for entry in store.list_recent(namespace, limit).await? {
+        println!(
+            "{}  {}  {}  {}",
+            entry.created_at.to_rfc3339(),
+            memory_type_label(entry.memory_type),
+            entry.id,
+            entry.content.replace('\n', " ")
+        );
+    }
+    Ok(())
+}
+
+/// List known memory namespaces.
+pub async fn namespaces() -> Result<()> {
+    let (store, _core_store, _pool) = open_stores().await?;
+    for namespace in store.list_namespaces().await? {
+        println!("{}", namespace);
+    }
+    Ok(())
+}
+
+/// Inspect archive summaries.
+pub async fn archive(namespace: Option<&str>, limit: usize) -> Result<()> {
+    let (store, _core_store, _pool) = open_stores().await?;
+    for entry in store.list_archive_entries(namespace, limit).await? {
+        println!(
+            "{}  {}  {}",
+            entry.created_at,
+            entry.id,
+            entry.summary.replace('\n', " ")
+        );
+    }
+    Ok(())
+}
+
+/// Export file-backed memory and persona views.
+pub async fn views_export(root: &str, user_id: Option<&str>) -> Result<()> {
+    let (store, core_store, _pool) = open_stores().await?;
+    let root = PathBuf::from(root);
+    let user_id = user_id.unwrap_or("default");
+    let views_root = root.join(".claw/memory/views");
+    tokio::fs::create_dir_all(views_root.join("core")).await?;
+    tokio::fs::create_dir_all(views_root.join("recall")).await?;
+    tokio::fs::create_dir_all(views_root.join("archive")).await?;
+    tokio::fs::create_dir_all(root.join(".claw/persona")).await?;
+    tokio::fs::create_dir_all(root.join(".claw/memory/ledgers")).await?;
+
+    let core_entries = core_store.get_all(user_id).await?;
+    tokio::fs::write(
+        views_root.join("core").join(format!("{}.md", user_id)),
+        render_core_view(user_id, &core_entries),
+    )
+    .await?;
+
+    let recall_entries = store.list_recent(Some(user_id), 200).await?;
+    tokio::fs::write(
+        views_root.join("recall").join(format!("{}.md", user_id)),
+        render_recall_view(user_id, &recall_entries),
+    )
+    .await?;
+
+    let archive_entries = store.list_archive_entries(Some(user_id), 200).await?;
+    tokio::fs::write(
+        views_root.join("archive").join(format!("{}.md", user_id)),
+        render_archive_view(user_id, &archive_entries),
+    )
+    .await?;
+
+    let persona_path = root.join(".claw/persona/profile.md");
+    if !persona_path.exists() {
+        tokio::fs::write(
+            &persona_path,
+            format!("# Persona\n\n## User\n{}\n\n## Values\n- helpful\n- precise\n", user_id),
+        )
+        .await?;
+    }
+
+    let pool = open_pool().await?;
+    let rows = sqlx::query(
+        r#"
+        SELECT event_name, payload, created_at
+        FROM runtime_events
+        WHERE event_name IN ('message.received', 'message.sent', 'session.pre_compaction')
+        ORDER BY created_at DESC
+        LIMIT 50
+        "#,
+    )
+    .fetch_all(&pool)
+    .await?;
+    let mut ledger = String::from("# Runtime Learnings Ledger\n\n");
+    for row in rows {
+        let event_name: String = row.get("event_name");
+        let payload: String = row.get("payload");
+        let created_at: String = row.get("created_at");
+        ledger.push_str(&format!("## {} [{}]\n{}\n\n", event_name, created_at, payload));
+    }
+    tokio::fs::write(root.join(".claw/memory/ledgers/runtime.md"), ledger).await?;
+
+    println!("✓ Exported file-backed memory views under {}", views_root.display());
+    Ok(())
+}
+
+/// Import edited file-backed memory and persona views.
+pub async fn views_import(root: &str, user_id: &str) -> Result<()> {
+    let (store, core_store, _pool) = open_stores().await?;
+    let root = PathBuf::from(root);
+    let core_path = root
+        .join(".claw/memory/views/core")
+        .join(format!("{}.md", user_id));
+    if core_path.is_file() {
+        let content = tokio::fs::read_to_string(&core_path).await?;
+        for entry in parse_core_view(&content) {
+            core_store.set(user_id, entry).await?;
+        }
+    }
+
+    let recall_path = root
+        .join(".claw/memory/views/recall")
+        .join(format!("{}.md", user_id));
+    if recall_path.is_file() {
+        let content = tokio::fs::read_to_string(&recall_path).await?;
+        for entry in parse_recall_view(&content, user_id) {
+            store.store(entry).await?;
+        }
+    }
+
+    println!("✓ Imported memory views for {}", user_id);
+    Ok(())
+}
+
+/// Scan workspace artifacts.
+pub async fn artifacts_scan(root: &str) -> Result<()> {
+    let artifacts = WorkspaceArtifactRegistry::scan(Path::new(root))?;
+    for artifact in artifacts {
+        println!(
+            "{}  {:?}  {:?}",
+            artifact.path.display(),
+            artifact.class,
+            artifact.visibility
+        );
+    }
+    Ok(())
+}
+
+/// Render merged artifact bundle for a model.
+pub async fn artifacts_render(root: &str, model: &str) -> Result<()> {
+    let bundle = WorkspaceArtifactRegistry::resolve(Path::new(root), model)?;
+    println!("{}", bundle.merged_instructions);
+    Ok(())
+}
+
+/// Sync preferred artifact files for a model family.
+pub async fn artifacts_sync(root: &str, model: &str) -> Result<()> {
+    let written = WorkspaceArtifactRegistry::sync_preferred(Path::new(root), model)?;
+    for path in written {
+        println!("{}", path.display());
+    }
+    Ok(())
+}
+
+async fn open_stores() -> Result<(SqliteMemoryStore, SqliteCoreMemoryStore, sqlx::SqlitePool)> {
+    let pool = open_pool().await?;
+    Ok((
+        SqliteMemoryStore::new(pool.clone()),
+        SqliteCoreMemoryStore::new(pool.clone()),
+        pool,
+    ))
+}
+
+async fn open_pool() -> Result<sqlx::SqlitePool> {
+    let config = openrustclaw_core::config::AppConfig::load().unwrap_or_default();
+    let pool = openrustclaw_db::init_pool(&config.database.url, 2)
+        .await
+        .context("Failed to connect to database")?;
+    openrustclaw_db::run_migrations(&pool)
+        .await
+        .context("Failed to run migrations")?;
+    Ok(pool)
+}
+
+fn render_core_view(user_id: &str, entries: &[CoreEntry]) -> String {
+    let mut out = format!("# Core Memory\n\nUser: {}\n\n", user_id);
+    for entry in entries {
+        out.push_str(&format!("## {}\n{}\n\n", entry.key, entry.value));
+    }
+    out
+}
+
+fn render_recall_view(user_id: &str, entries: &[MemoryEntry]) -> String {
+    let mut out = format!("# Recall Memory\n\nUser: {}\n\n", user_id);
+    for entry in entries {
+        out.push_str(&format!(
+            "## {} | {} | {}\n{}\n\n",
+            entry.id,
+            memory_type_label(entry.memory_type),
+            entry.namespace,
+            entry.content
+        ));
+    }
+    out
+}
+
+fn render_archive_view(
+    namespace: &str,
+    entries: &[openrustclaw_db::models::MemoryArchiveRow],
+) -> String {
+    let mut out = format!("# Archive Memory\n\nNamespace: {}\n\n", namespace);
+    for entry in entries {
+        out.push_str(&format!("## {}\n{}\n\n", entry.id, entry.summary));
+    }
+    out
+}
+
+fn parse_core_view(content: &str) -> Vec<CoreEntry> {
+    let mut entries = Vec::new();
+    let mut current_key = None;
+    let mut current_value = String::new();
+    for line in content.lines() {
+        if let Some(rest) = line.strip_prefix("## ") {
+            if let Some(key) = current_key.take() {
+                entries.push(CoreEntry {
+                    key,
+                    value: current_value.trim().to_string(),
+                    importance: 0.8,
+                    token_count: current_value.len() / 4,
+                    updated_at: Utc::now(),
+                });
+            }
+            current_key = Some(rest.trim().to_string());
+            current_value.clear();
+            continue;
+        }
+        if current_key.is_some() {
+            current_value.push_str(line);
+            current_value.push('\n');
+        }
+    }
+    if let Some(key) = current_key.take() {
+        entries.push(CoreEntry {
+            key,
+            value: current_value.trim().to_string(),
+            importance: 0.8,
+            token_count: current_value.len() / 4,
+            updated_at: Utc::now(),
+        });
+    }
+    entries
+}
+
+fn parse_recall_view(content: &str, user_id: &str) -> Vec<MemoryEntry> {
+    let mut entries = Vec::new();
+    let mut current_header: Option<(String, String, String)> = None;
+    let mut current_body = String::new();
+    for line in content.lines() {
+        if let Some(rest) = line.strip_prefix("## ") {
+            if let Some((id, typ, namespace)) = current_header.take() {
+                entries.push(build_memory_entry(&id, &typ, &namespace, user_id, &current_body));
+            }
+            let parts: Vec<_> = rest.split('|').map(|part| part.trim().to_string()).collect();
+            if parts.len() == 3 {
+                current_header = Some((parts[0].clone(), parts[1].clone(), parts[2].clone()));
+            }
+            current_body.clear();
+            continue;
+        }
+        if current_header.is_some() {
+            current_body.push_str(line);
+            current_body.push('\n');
+        }
+    }
+    if let Some((id, typ, namespace)) = current_header.take() {
+        entries.push(build_memory_entry(&id, &typ, &namespace, user_id, &current_body));
+    }
+    entries
+}
+
+fn build_memory_entry(
+    id: &str,
+    typ: &str,
+    namespace: &str,
+    user_id: &str,
+    body: &str,
+) -> MemoryEntry {
+    MemoryEntry {
+        id: uuid::Uuid::parse_str(id).unwrap_or_else(|_| uuid::Uuid::new_v4()),
+        memory_type: match typ {
+            "episodic" => MemoryType::Episodic,
+            "procedural" => MemoryType::Procedural,
+            _ => MemoryType::Semantic,
+        },
+        content: body.trim().to_string(),
+        content_hash: openrustclaw_memory::MemoryPolicies::content_hash(body.trim()),
+        source: Some("memory_views_import".to_string()),
+        source_type: Some(SourceType::Conversation),
+        session_id: None,
+        user_id: Some(user_id.to_string()),
+        namespace: namespace.to_string(),
+        importance: 0.7,
+        confidence: 1.0,
+        access_count: 0,
+        last_accessed: None,
+        created_at: Utc::now(),
+        expires_at: None,
+        metadata: serde_json::json!({
+            "source": "memory_views_import",
+        }),
+    }
+}
+
+fn memory_type_label(value: MemoryType) -> &'static str {
+    match value {
+        MemoryType::Episodic => "episodic",
+        MemoryType::Semantic => "semantic",
+        MemoryType::Procedural => "procedural",
+    }
 }
 
 /// Simple SHA-256 hash

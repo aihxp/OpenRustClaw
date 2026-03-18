@@ -17,6 +17,7 @@ use openrustclaw_core::traits::MemoryStore as MemoryStoreTrait;
 use openrustclaw_core::types::{MemoryEntry, MemoryQuery, MemoryType, ScoredMemory, SourceType};
 
 use crate::models::MemoryEntryRow;
+use crate::models::MemoryArchiveRow;
 
 /// Trait for embedding providers to generate vector representations.
 ///
@@ -252,6 +253,117 @@ impl SqliteMemoryStore {
         })?;
 
         rows.iter().map(Self::row_to_entry).collect()
+    }
+
+    /// Return recent memories for a namespace ordered newest-first.
+    #[instrument(skip(self))]
+    pub async fn list_recent(
+        &self,
+        namespace: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<MemoryEntry>> {
+        let rows = if let Some(namespace) = namespace {
+            sqlx::query_as::<_, MemoryEntryRow>(
+                r#"
+                SELECT * FROM memory_entries
+                WHERE namespace = ?
+                  AND (expires_at IS NULL OR expires_at > ?)
+                ORDER BY created_at DESC
+                LIMIT ?
+                "#,
+            )
+            .bind(namespace)
+            .bind(Utc::now().to_rfc3339())
+            .bind(limit as i64)
+            .fetch_all(&self.pool)
+            .await
+        } else {
+            sqlx::query_as::<_, MemoryEntryRow>(
+                r#"
+                SELECT * FROM memory_entries
+                WHERE (expires_at IS NULL OR expires_at > ?)
+                ORDER BY created_at DESC
+                LIMIT ?
+                "#,
+            )
+            .bind(Utc::now().to_rfc3339())
+            .bind(limit as i64)
+            .fetch_all(&self.pool)
+            .await
+        }
+        .map_err(|e| {
+            Error::Database(DatabaseError::Query(format!(
+                "Failed to list recent memories: {}",
+                e
+            )))
+        })?;
+
+        rows.iter().map(Self::row_to_entry).collect()
+    }
+
+    /// List distinct namespaces for operator inspection.
+    #[instrument(skip(self))]
+    pub async fn list_namespaces(&self) -> Result<Vec<String>> {
+        let rows = sqlx::query_scalar::<_, String>(
+            r#"
+            SELECT DISTINCT namespace
+            FROM memory_entries
+            WHERE namespace IS NOT NULL
+            ORDER BY namespace ASC
+            "#,
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| {
+            Error::Database(DatabaseError::Query(format!(
+                "Failed to list memory namespaces: {}",
+                e
+            )))
+        })?;
+
+        Ok(rows)
+    }
+
+    /// Inspect stored archive summaries for one namespace.
+    #[instrument(skip(self))]
+    pub async fn list_archive_entries(
+        &self,
+        namespace: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<MemoryArchiveRow>> {
+        let rows = if let Some(namespace) = namespace {
+            sqlx::query_as::<_, MemoryArchiveRow>(
+                r#"
+                SELECT * FROM memory_archive
+                WHERE namespace = ?
+                ORDER BY created_at DESC
+                LIMIT ?
+                "#,
+            )
+            .bind(namespace)
+            .bind(limit as i64)
+            .fetch_all(&self.pool)
+            .await
+        } else {
+            sqlx::query_as::<_, MemoryArchiveRow>(
+                r#"
+                SELECT * FROM memory_archive
+                ORDER BY created_at DESC
+                LIMIT ?
+                "#,
+            )
+            .bind(limit as i64)
+            .fetch_all(&self.pool)
+            .await
+        }
+        .map_err(|e| {
+            Error::Database(DatabaseError::Query(format!(
+                "Failed to list memory archive entries: {}",
+                e
+            )))
+        })?;
+
+        Ok(rows)
     }
 
     /// Delete a set of memories by id and return the number removed.

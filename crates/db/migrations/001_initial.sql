@@ -10,8 +10,14 @@ CREATE TABLE IF NOT EXISTS sessions (
     workspace_id TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-    metadata TEXT DEFAULT '{}'
+    metadata TEXT DEFAULT '{}',
+    status TEXT NOT NULL DEFAULT 'active',
+    route_key TEXT,
+    archived_at TEXT,
+    closed_at TEXT
 );
+CREATE INDEX IF NOT EXISTS idx_sessions_status_updated ON sessions(status, updated_at);
+CREATE INDEX IF NOT EXISTS idx_sessions_route_key ON sessions(route_key, status);
 
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_updated ON sessions(updated_at);

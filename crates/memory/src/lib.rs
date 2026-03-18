@@ -6,6 +6,7 @@
 //! - **Archive**: Consolidated long-term summaries
 
 pub mod archive;
+pub mod artifacts;
 pub mod context;
 pub mod core_memory;
 pub mod embeddings;
@@ -15,6 +16,7 @@ pub mod recall;
 pub mod search;
 
 pub use context::ContextManager;
+pub use artifacts::{ResolvedArtifactBundle, WorkspaceArtifact, WorkspaceArtifactRegistry};
 pub use core_memory::CoreMemoryManager;
 pub use policies::MemoryPolicies;
 pub use recall::RecallMemory;

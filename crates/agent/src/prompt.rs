@@ -8,6 +8,7 @@ pub fn build_system_prompt(
     agent_name: &str,
     core_memory: &[CoreEntry],
     tools: &[ToolDefinition],
+    supplemental_instructions: Option<&str>,
 ) -> String {
     let mut prompt = String::new();
 
@@ -22,6 +23,15 @@ pub fn build_system_prompt(
         "Current time: {}\n\n",
         Utc::now().format("%Y-%m-%d %H:%M:%S UTC")
     ));
+
+    if let Some(supplemental_instructions) = supplemental_instructions {
+        let trimmed = supplemental_instructions.trim();
+        if !trimmed.is_empty() {
+            prompt.push_str("[Workspace Guidance]\n");
+            prompt.push_str(trimmed);
+            prompt.push_str("\n\n");
+        }
+    }
 
     // Core memory (always loaded, ~500 tokens max)
     if !core_memory.is_empty() {

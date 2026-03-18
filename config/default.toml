@@ -47,6 +47,11 @@ enabled = true
 threshold_entries = 1000
 schedule_interval_hours = 24
 
+[session_routing]
+direct_strategy = "shared_main"  # shared_main, per_user
+group_strategy = "isolated"      # isolated, shared_channel
+thread_overrides_channel = true
+
 [scheduler]
 poll_interval_ms = 1000
 lease_duration_secs = 60
