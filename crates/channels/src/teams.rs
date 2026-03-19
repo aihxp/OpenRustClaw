@@ -200,6 +200,25 @@ pub struct MentionInfo {
 }
 
 impl TeamsChannel {
+    fn apply_channel_data_metadata(metadata: &mut serde_json::Value, channel_data: &serde_json::Value) {
+        metadata["teams_channel_data"] = channel_data.clone();
+        if let Some(team_id) = channel_data.pointer("/team/id").and_then(|value| value.as_str()) {
+            metadata["teams_team_id"] = serde_json::json!(team_id);
+        }
+        if let Some(channel_id) = channel_data
+            .pointer("/channel/id")
+            .and_then(|value| value.as_str())
+        {
+            metadata["teams_channel_id"] = serde_json::json!(channel_id);
+        }
+        if let Some(tenant_id) = channel_data
+            .pointer("/tenant/id")
+            .and_then(|value| value.as_str())
+        {
+            metadata["teams_tenant_id"] = serde_json::json!(tenant_id);
+        }
+    }
+
     /// Create a new Teams channel with the given configuration.
     pub fn new(config: TeamsConfig) -> Self {
         let (incoming_tx, incoming_rx) = mpsc::channel(256);
@@ -722,6 +741,9 @@ impl TeamsChannel {
             "teams_bot_mentioned": mention_info.bot_mentioned,
             "teams_is_group": conversation_type != "personal",
         });
+        if let Some(channel_data) = activity.get("channelData") {
+            Self::apply_channel_data_metadata(&mut metadata, channel_data);
+        }
         if let Some(attachments) = activity.get("attachments").and_then(|v| v.as_array()) {
             metadata["teams_attachments"] = serde_json::json!(attachments);
             metadata["teams_attachment_count"] = serde_json::json!(attachments.len());
@@ -891,7 +913,7 @@ impl TeamsChannel {
                     metadata["teams_members_removed_count"] = serde_json::json!(removed.len());
                 }
                 if let Some(channel_data) = activity.get("channelData") {
-                    metadata["teams_channel_data"] = channel_data.clone();
+                    Self::apply_channel_data_metadata(&mut metadata, channel_data);
                 }
                 "[teams conversation update]".to_string()
             }
@@ -901,12 +923,31 @@ impl TeamsChannel {
                     .and_then(|value| value.as_array())
                 {
                     metadata["teams_reactions_added"] = serde_json::json!(added);
+                    metadata["teams_reactions_added_count"] = serde_json::json!(added.len());
+                    let types: Vec<_> = added
+                        .iter()
+                        .filter_map(|value| value.get("type").and_then(|item| item.as_str()))
+                        .collect();
+                    if !types.is_empty() {
+                        metadata["teams_reaction_types_added"] = serde_json::json!(types);
+                    }
                 }
                 if let Some(removed) = activity
                     .get("reactionsRemoved")
                     .and_then(|value| value.as_array())
                 {
                     metadata["teams_reactions_removed"] = serde_json::json!(removed);
+                    metadata["teams_reactions_removed_count"] = serde_json::json!(removed.len());
+                    let types: Vec<_> = removed
+                        .iter()
+                        .filter_map(|value| value.get("type").and_then(|item| item.as_str()))
+                        .collect();
+                    if !types.is_empty() {
+                        metadata["teams_reaction_types_removed"] = serde_json::json!(types);
+                    }
+                }
+                if let Some(channel_data) = activity.get("channelData") {
+                    Self::apply_channel_data_metadata(&mut metadata, channel_data);
                 }
                 "[teams reaction event]".to_string()
             }
@@ -1501,10 +1542,16 @@ mod tests {
                     "id": "19:conversation",
                     "conversationType": "channel"
                 },
+                "channelData": {
+                    "team": {"id": "team-123"},
+                    "channel": {"id": "channel-456"},
+                    "tenant": {"id": "tenant-789"}
+                },
                 "from": {
                     "id": "29:user"
                 },
-                "reactionsAdded": [{"type": "like"}]
+                "reactionsAdded": [{"type": "like"}],
+                "reactionsRemoved": [{"type": "heart"}]
             }))
             .await
             .expect("reaction event")
@@ -1518,6 +1565,13 @@ mod tests {
             incoming.metadata["teams_reactions_added"][0]["type"],
             serde_json::json!("like")
         );
+        assert_eq!(incoming.metadata["teams_reactions_added_count"], 1);
+        assert_eq!(incoming.metadata["teams_reaction_types_added"][0], "like");
+        assert_eq!(incoming.metadata["teams_reactions_removed_count"], 1);
+        assert_eq!(incoming.metadata["teams_reaction_types_removed"][0], "heart");
+        assert_eq!(incoming.metadata["teams_team_id"], "team-123");
+        assert_eq!(incoming.metadata["teams_channel_id"], "channel-456");
+        assert_eq!(incoming.metadata["teams_tenant_id"], "tenant-789");
     }
 
     #[tokio::test]
@@ -1544,6 +1598,11 @@ mod tests {
                     "id": "19:conversation",
                     "conversationType": "channel"
                 },
+                "channelData": {
+                    "team": {"id": "team-123"},
+                    "channel": {"id": "channel-456"},
+                    "tenant": {"id": "tenant-789"}
+                },
                 "from": {
                     "id": "29:user"
                 },
@@ -1559,6 +1618,9 @@ mod tests {
         );
         assert_eq!(incoming.metadata["teams_members_added_count"], 1);
         assert_eq!(incoming.metadata["teams_member_ids_added"][0], "29:new-user");
+        assert_eq!(incoming.metadata["teams_team_id"], "team-123");
+        assert_eq!(incoming.metadata["teams_channel_id"], "channel-456");
+        assert_eq!(incoming.metadata["teams_tenant_id"], "tenant-789");
     }
 
     #[tokio::test]

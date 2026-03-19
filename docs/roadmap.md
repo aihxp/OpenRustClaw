@@ -676,7 +676,7 @@ Channel completion remaining:
   - contact/group mapping.
 - [ ] Mattermost parity via Rust-native plugin/channel implementation.
 - [ ] Google Chat parity.
-  - current shipped path covers direct webhook ingress plus Pub/Sub push-envelope decoding, token or service-account outbound auth, response-mode gating, slash-command plus mention metadata capture, card-click and space lifecycle routing, file-reference cards, structured attachment/file-reference metadata capture, and local agent/session routing;
+  - current shipped path covers direct webhook ingress plus Pub/Sub push-envelope decoding, token or service-account outbound auth, response-mode gating, slash-command plus mention metadata capture, card-click and space lifecycle routing, card action parameter metadata, event-time/user-email metadata, file-reference cards, structured attachment/file-reference metadata capture, and local agent/session routing;
   - richer operator/media parity still remains.
 - [ ] Google Meet parity.
   - current shipped Rust operator path covers space creation/inspection, active-conference termination, conference-record/participant/recording/transcript inspection, and Google Workspace Events / Pub/Sub payload decoding with transcript hydration;
@@ -688,7 +688,7 @@ Channel completion remaining:
   - current shipped path covers auth, send, reply/thread relations, polling ingress, inbound reaction, redaction, and membership events, room actions, helper-driven plus normal-send local file uploads, and inbound media downloads into the Matrix data directory;
   - deeper E2EE and richer operator/media parity still remain.
 - [ ] Microsoft Teams parity.
-  - current shipped path covers Bot Framework webhook ingress, JWT verification, outbound sends, reply aliases, conversation/reaction/update/delete lifecycle routing with normalized member id/count metadata, attachment metadata capture plus opt-in local downloads, adaptive-card file links, and local agent/session routing;
+  - current shipped path covers Bot Framework webhook ingress, JWT verification, outbound sends, reply aliases, conversation/reaction/update/delete lifecycle routing with normalized member id/count metadata, normalized reaction counts/types, normalized team/channel/tenant IDs, attachment metadata capture plus opt-in local downloads, adaptive-card file links, and local agent/session routing;
   - deeper operator/media parity still remains.
 - [ ] Signal parity if kept in scope.
   - current shipped path covers `signal-cli` daemon-backed direct/group send-receive, allowlist filtering, registration/verify/link helpers, normalized routing metadata, outbound local-attachment sends, structured inbound attachment/file-reference metadata, normalized group-member and mention metadata, receipt lifecycle events, and local agent/session routing;

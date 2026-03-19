@@ -1037,7 +1037,11 @@ impl GoogleChatWebhookHandler {
             "google_chat_user_name": user.name,
             "google_chat_user_display_name": user.display_name,
             "google_chat_is_group": event.space.space_type != "DM",
+            "google_chat_event_time": event.event_time,
         });
+        if let Some(email) = user.email.as_ref() {
+            metadata["google_chat_user_email"] = serde_json::json!(email);
+        }
         if let Some(display_name) = event.space.display_name.as_ref() {
             metadata["google_chat_space_display_name"] = serde_json::json!(display_name);
         }
@@ -1153,6 +1157,11 @@ impl GoogleChatWebhookHandler {
             .pointer("/action/actionMethodName")
             .and_then(|value| value.as_str())
             .or(invoked_function);
+        let action_parameters = raw_event
+            .pointer("/action/parameters")
+            .and_then(|value| value.as_array())
+            .cloned()
+            .unwrap_or_default();
 
         let mut metadata = serde_json::json!({
             "google_chat_space": event.space.name,
@@ -1162,12 +1171,24 @@ impl GoogleChatWebhookHandler {
             "google_chat_is_group": event.space.space_type != "DM",
             "google_chat_interaction_type": "CARD_CLICKED",
             "google_chat_card_click": raw_event,
+            "google_chat_event_time": event.event_time,
         });
+        if let Some(email) = user.email.as_ref() {
+            metadata["google_chat_user_email"] = serde_json::json!(email);
+        }
         if let Some(display_name) = event.space.display_name.as_ref() {
             metadata["google_chat_space_display_name"] = serde_json::json!(display_name);
         }
         if let Some(name) = action_name {
             metadata["google_chat_action_name"] = serde_json::json!(name);
+        }
+        if let Some(name) = invoked_function {
+            metadata["google_chat_invoked_function"] = serde_json::json!(name);
+        }
+        if !action_parameters.is_empty() {
+            metadata["google_chat_action_parameters"] = serde_json::json!(action_parameters);
+            metadata["google_chat_action_parameter_count"] =
+                serde_json::json!(metadata["google_chat_action_parameters"].as_array().map(|items| items.len()).unwrap_or(0));
         }
 
         let incoming = IncomingMessage {
@@ -1212,6 +1233,8 @@ impl GoogleChatWebhookHandler {
             "google_chat_is_group": event.space.space_type != "DM",
             "google_chat_interaction_type": event_type,
             "google_chat_space_event": raw_event,
+            "google_chat_event_time": event.event_time,
+            "google_chat_space_event_added": added,
         });
         if let Some(display_name) = event.space.display_name.as_ref() {
             metadata["google_chat_space_display_name"] = serde_json::json!(display_name);
@@ -1219,6 +1242,9 @@ impl GoogleChatWebhookHandler {
         if let Some(user) = event.user.as_ref() {
             metadata["google_chat_user_name"] = serde_json::json!(user.name);
             metadata["google_chat_user_display_name"] = serde_json::json!(user.display_name);
+            if let Some(email) = user.email.as_ref() {
+                metadata["google_chat_user_email"] = serde_json::json!(email);
+            }
         }
 
         let incoming = IncomingMessage {
@@ -1464,9 +1490,15 @@ mod tests {
                     "type": "CARD_CLICKED",
                     "eventTime": "2024-01-01T00:00:00Z",
                     "space": {"name": "spaces/AAA", "type": "ROOM", "displayName": "Ops"},
-                    "user": {"name": "users/123", "displayName": "Alice"},
+                    "user": {"name": "users/123", "displayName": "Alice", "email": "alice@example.com"},
                     "common": {"invokedFunction": "open_report"},
-                    "action": {"actionMethodName": "open_report"}
+                    "action": {
+                        "actionMethodName": "open_report",
+                        "parameters": [
+                            {"key": "report_id", "value": "123"},
+                            {"key": "format", "value": "pdf"}
+                        ]
+                    }
                 }"#,
             )
             .await
@@ -1481,6 +1513,26 @@ mod tests {
         assert_eq!(
             incoming.metadata["google_chat_action_name"],
             serde_json::json!("open_report")
+        );
+        assert_eq!(
+            incoming.metadata["google_chat_invoked_function"],
+            serde_json::json!("open_report")
+        );
+        assert_eq!(
+            incoming.metadata["google_chat_action_parameter_count"],
+            serde_json::json!(2)
+        );
+        assert_eq!(
+            incoming.metadata["google_chat_action_parameters"][0]["key"],
+            serde_json::json!("report_id")
+        );
+        assert_eq!(
+            incoming.metadata["google_chat_event_time"],
+            serde_json::json!("2024-01-01T00:00:00Z")
+        );
+        assert_eq!(
+            incoming.metadata["google_chat_user_email"],
+            serde_json::json!("alice@example.com")
         );
     }
 
@@ -1509,7 +1561,7 @@ mod tests {
                     "type": "ADDED_TO_SPACE",
                     "eventTime": "2024-01-01T00:00:00Z",
                     "space": {"name": "spaces/AAA", "type": "ROOM", "displayName": "Ops"},
-                    "user": {"name": "users/123", "displayName": "Alice"}
+                    "user": {"name": "users/123", "displayName": "Alice", "email": "alice@example.com"}
                 }"#,
             )
             .await
@@ -1520,6 +1572,18 @@ mod tests {
         assert_eq!(
             incoming.metadata["google_chat_interaction_type"],
             serde_json::json!("ADDED_TO_SPACE")
+        );
+        assert_eq!(
+            incoming.metadata["google_chat_space_event_added"],
+            serde_json::json!(true)
+        );
+        assert_eq!(
+            incoming.metadata["google_chat_event_time"],
+            serde_json::json!("2024-01-01T00:00:00Z")
+        );
+        assert_eq!(
+            incoming.metadata["google_chat_user_email"],
+            serde_json::json!("alice@example.com")
         );
     }
 
@@ -1572,6 +1636,10 @@ mod tests {
         assert_eq!(incoming.content, "hello from pubsub");
         assert_eq!(incoming.platform, Platform::GoogleChat);
         assert_eq!(incoming.metadata["google_chat_space"], "spaces/AAA");
+        assert_eq!(
+            incoming.metadata["google_chat_event_time"],
+            serde_json::json!("2024-01-01T00:00:00Z")
+        );
     }
 
     #[tokio::test]
