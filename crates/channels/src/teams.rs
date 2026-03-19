@@ -867,12 +867,28 @@ impl TeamsChannel {
                     .and_then(|value| value.as_array())
                 {
                     metadata["teams_members_added"] = serde_json::json!(added);
+                    let member_ids: Vec<_> = added
+                        .iter()
+                        .filter_map(|value| value.get("id").and_then(|id| id.as_str()))
+                        .collect();
+                    if !member_ids.is_empty() {
+                        metadata["teams_member_ids_added"] = serde_json::json!(member_ids);
+                    }
+                    metadata["teams_members_added_count"] = serde_json::json!(added.len());
                 }
                 if let Some(removed) = activity
                     .get("membersRemoved")
                     .and_then(|value| value.as_array())
                 {
                     metadata["teams_members_removed"] = serde_json::json!(removed);
+                    let member_ids: Vec<_> = removed
+                        .iter()
+                        .filter_map(|value| value.get("id").and_then(|id| id.as_str()))
+                        .collect();
+                    if !member_ids.is_empty() {
+                        metadata["teams_member_ids_removed"] = serde_json::json!(member_ids);
+                    }
+                    metadata["teams_members_removed_count"] = serde_json::json!(removed.len());
                 }
                 if let Some(channel_data) = activity.get("channelData") {
                     metadata["teams_channel_data"] = channel_data.clone();
@@ -938,6 +954,7 @@ impl TeamsChannel {
         let reply_to_id = msg
             .metadata
             .get("teams_activity_id")
+            .or_else(|| msg.metadata.get("teams_reply_to_id"))
             .and_then(|v| v.as_str());
 
         // Build the activity
@@ -1336,7 +1353,7 @@ pub fn create_adaptive_card_activity(card: AdaptiveCard) -> serde_json::Value {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use wiremock::matchers::{method, path};
+    use wiremock::matchers::{body_partial_json, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     #[test]
@@ -1528,6 +1545,89 @@ mod tests {
             incoming.metadata["teams_members_added"][0]["id"],
             serde_json::json!("29:new-user")
         );
+        assert_eq!(incoming.metadata["teams_members_added_count"], 1);
+        assert_eq!(incoming.metadata["teams_member_ids_added"][0], "29:new-user");
+    }
+
+    #[tokio::test]
+    async fn test_handle_conversation_update_activity_tracks_removed_members() {
+        let config = TeamsConfig {
+            enabled: true,
+            app_id: "test".to_string(),
+            app_password: "test".to_string(),
+            tenant_id: None,
+            webhook_path: "/webhook".to_string(),
+            allowlist: vec![],
+            group_policy: TeamsGroupPolicy::Open,
+            rate_limit_requests_per_second: 10,
+            adaptive_cards_enabled: true,
+            attachment_download_dir: None,
+        };
+        let channel = TeamsChannel::new(config);
+        let incoming = channel
+            .handle_activity(serde_json::json!({
+                "type": "conversationUpdate",
+                "id": "activity-3",
+                "serviceUrl": "https://smba.trafficmanager.net/emea",
+                "conversation": {
+                    "id": "19:conversation",
+                    "conversationType": "channel"
+                },
+                "from": {
+                    "id": "29:user"
+                },
+                "membersRemoved": [{"id": "29:old-user"}]
+            }))
+            .await
+            .expect("conversation update")
+            .expect("incoming");
+        assert_eq!(incoming.metadata["teams_members_removed_count"], 1);
+        assert_eq!(incoming.metadata["teams_member_ids_removed"][0], "29:old-user");
+    }
+
+    #[tokio::test]
+    async fn test_send_supports_reply_alias() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/conversations/19:conversation/activities"))
+            .and(body_partial_json(serde_json::json!({
+                "replyToId": "activity-root"
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "activity-sent"
+            })))
+            .mount(&server)
+            .await;
+
+        let channel = TeamsChannel::new(TeamsConfig {
+            enabled: true,
+            app_id: "test-app".to_string(),
+            app_password: "test-password".to_string(),
+            tenant_id: None,
+            webhook_path: "/webhook".to_string(),
+            allowlist: vec![],
+            group_policy: TeamsGroupPolicy::Open,
+            rate_limit_requests_per_second: 10,
+            adaptive_cards_enabled: true,
+            attachment_download_dir: None,
+        });
+        *channel.token.write().await = Some(AccessToken {
+            token: "cached-token".to_string(),
+            expires_at: Instant::now() + Duration::from_secs(600),
+        });
+
+        channel
+            .send(OutgoingMessage {
+                session_id: Uuid::new_v4(),
+                content: "reply body".to_string(),
+                metadata: serde_json::json!({
+                    "teams_service_url": server.uri(),
+                    "teams_conversation_id": "19:conversation",
+                    "teams_reply_to_id": "activity-root"
+                }),
+            })
+            .await
+            .expect("send succeeds");
     }
 
     #[tokio::test]

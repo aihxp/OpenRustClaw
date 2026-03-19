@@ -552,6 +552,10 @@ impl MatrixChannel {
                                     .and_then(|value| value.get("event_id"))
                                     .and_then(|value| value.as_str())
                             });
+                        let reply_to = relates_to
+                            .get("m.in_reply_to")
+                            .and_then(|value| value.get("event_id"))
+                            .and_then(|value| value.as_str());
 
                         let mut metadata = serde_json::json!({
                             "matrix_room_id": room_id,
@@ -561,6 +565,9 @@ impl MatrixChannel {
                             "matrix_thread_root": thread_root,
                             "matrix_is_group": true,
                         });
+                        if let Some(reply_to) = reply_to {
+                            metadata["matrix_reply_to"] = serde_json::json!(reply_to);
+                        }
                         if let Some(content_uri) =
                             event.content.get("url").and_then(|value| value.as_str())
                         {
@@ -637,6 +644,11 @@ impl Channel for MatrixChannel {
         let reply_to_event_id = msg
             .metadata
             .get("matrix_reply_to")
+            .or_else(|| msg.metadata.get("matrix_reply_to_event_id"))
+            .and_then(|value| value.as_str());
+        let thread_root = msg
+            .metadata
+            .get("matrix_thread_root")
             .and_then(|value| value.as_str());
         let reaction = msg
             .metadata
@@ -700,7 +712,16 @@ impl Channel for MatrixChannel {
                 body["formatted_body"] = serde_json::json!(html);
             }
 
-            if let Some(reply_to) = reply_to_event_id {
+            if let Some(thread_root) = thread_root {
+                body["m.relates_to"] = serde_json::json!({
+                    "rel_type": "m.thread",
+                    "event_id": thread_root,
+                    "is_falling_back": true,
+                    "m.in_reply_to": {
+                        "event_id": reply_to_event_id.unwrap_or(thread_root),
+                    },
+                });
+            } else if let Some(reply_to) = reply_to_event_id {
                 body["m.relates_to"] = serde_json::json!({
                     "m.in_reply_to": {
                         "event_id": reply_to,
@@ -1401,6 +1422,125 @@ mod tests {
                 .and_then(|v| v.as_str()),
             Some("!room:matrix.org")
         );
+
+        channel.disconnect().await.expect("disconnect succeeds");
+    }
+
+    #[tokio::test]
+    async fn test_sync_receive_message_preserves_reply_metadata() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/_matrix/client/v3/account/whoami"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "user_id": "@bot:matrix.org"
+            })))
+            .mount(&server)
+            .await;
+
+        Mock::given(method("GET"))
+            .and(path("/_matrix/client/v3/sync"))
+            .and(query_param("timeout", "30000"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "next_batch": "s1",
+                "rooms": {
+                    "join": {
+                        "!room:matrix.org": {
+                            "timeline": {
+                                "events": [{
+                                    "type": "m.room.message",
+                                    "sender": "@alice:matrix.org",
+                                    "event_id": "$evt2",
+                                    "content": {
+                                        "msgtype": "m.text",
+                                        "body": "reply from matrix",
+                                        "m.relates_to": {
+                                            "m.in_reply_to": {
+                                                "event_id": "$root1"
+                                            }
+                                        }
+                                    }
+                                }]
+                            }
+                        }
+                    }
+                }
+            })))
+            .mount(&server)
+            .await;
+
+        let mut channel = MatrixChannel::new(test_config(&server.uri()));
+        channel.connect().await.expect("connect succeeds");
+
+        let incoming = tokio::time::timeout(Duration::from_secs(2), channel.receive())
+            .await
+            .expect("receive timeout")
+            .expect("incoming message");
+
+        assert_eq!(incoming.metadata["matrix_reply_to"], "$root1");
+        assert_eq!(incoming.metadata["matrix_thread_root"], "$root1");
+
+        channel.disconnect().await.expect("disconnect succeeds");
+    }
+
+    #[tokio::test]
+    async fn test_send_supports_reply_alias_and_thread_root() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/_matrix/client/v3/account/whoami"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "user_id": "@bot:matrix.org"
+            })))
+            .mount(&server)
+            .await;
+
+        Mock::given(method("GET"))
+            .and(path("/_matrix/client/v3/sync"))
+            .and(query_param("timeout", "30000"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "next_batch": "s1",
+                "rooms": {}
+            })))
+            .mount(&server)
+            .await;
+
+        Mock::given(method("PUT"))
+            .and(path_regex(
+                r"^/_matrix/client/v3/rooms/%21room%3Amatrix\.org/send/m\.room\.message/.*$",
+            ))
+            .and(body_partial_json(serde_json::json!({
+                "m.relates_to": {
+                    "rel_type": "m.thread",
+                    "event_id": "$thread-root",
+                    "is_falling_back": true,
+                    "m.in_reply_to": {
+                        "event_id": "$reply-target"
+                    }
+                }
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "event_id": "$event"
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let mut channel = MatrixChannel::new(test_config(&server.uri()));
+        channel.connect().await.expect("connect succeeds");
+
+        channel
+            .send(OutgoingMessage {
+                session_id: Uuid::new_v4(),
+                content: "threaded reply".to_string(),
+                metadata: serde_json::json!({
+                    "matrix_room_id": "!room:matrix.org",
+                    "matrix_reply_to_event_id": "$reply-target",
+                    "matrix_thread_root": "$thread-root",
+                }),
+            })
+            .await
+            .expect("send succeeds");
 
         channel.disconnect().await.expect("disconnect succeeds");
     }
