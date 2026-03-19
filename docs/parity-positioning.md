@@ -10,9 +10,9 @@ The goal is not to imitate OpenClaw's internals. The goal is to deliver the same
 - Core memory, recall memory, archive maintenance
 - Durable scheduler semantics
 - MCP stdio server and MCP operator tooling
-- Telegram tier-1 runtime path
-- Slack HTTP ingress runtime path
-- Discord message ingress, interactions ingress, and thread-aware routing baseline
+- Shipped channel/runtime surface across Telegram, Discord, Slack, WhatsApp, Mattermost, iMessage, Google Chat, Google Meet, Gmail Pub/Sub, Matrix, Signal, and Teams
+- Channel-scoped routing, pairing approval, session routing, and channel registry workflows
+- Media/file-reference send and receive flows for the declared shipped channel set
 - Skills install/update/verify lifecycle with real sandbox execution
 
 ## Where OpenRustClaw Is Intentionally Stronger
@@ -48,15 +48,11 @@ LangGraph may execute a bounded workflow run. It should not be the only durabili
 
 ## Where We Still Trail OpenClaw
 
-- WhatsApp parity
-- iMessage parity
 - Web Control UI
 - Mobile nodes and device-command flows
-- Channel account management and pairing flows
-- Session-tool parity
-- Streaming/chunking parity across all channels
-- Media in/out parity and voice-note transcription parity
-- Plugin-channel parity such as Mattermost-style extensions
+- Voice-note transcription parity
+- Broader extension/plugin-channel parity beyond the shipped Rust-native Mattermost channel
+- Optional deferred channel scope such as Feishu/Lark if the product scope expands to include it
 
 These are parity gaps and are tracked as open work in [parity-matrix.md](parity-matrix.md) and [roadmap.md](roadmap.md).
 
@@ -84,7 +80,7 @@ Repo scaffolding, partial crates, or hidden experimental code do not count.
 Today, OpenRustClaw can fairly claim:
 
 - a mostly honest shipped surface,
-- meaningful parity progress across gateway, memory, scheduling, MCP, and tier-1 channels,
+- meaningful parity progress across gateway, memory, scheduling, MCP, and the declared shipped channel surface,
 - stronger Rust-native foundations for durability and extension security.
 
 It cannot yet claim:

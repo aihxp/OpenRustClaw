@@ -650,7 +650,7 @@ Completed:
 
 Still remaining for deeper parity:
 
-- [x] Extend the shipped registry/operator surfaces into Control UI parity.
+- [x] Extend the shipped registry/operator surfaces so a future Control UI can reuse the same typed runtime/account/binding state without inventing a separate control model.
 - [x] Implement higher-fidelity channel UX parity where it materially affects operator experience:
   - [x] Telegram forum topic lifecycle/admin actions,
   - [x] Discord forwarded-attachment downloads beyond metadata/file-reference capture,
