@@ -252,6 +252,27 @@ impl GmailPubSub {
 }
 
 impl GmailRuntime {
+    fn attachment_file_references(email: &EmailMessage) -> Vec<serde_json::Value> {
+        email.attachments
+            .iter()
+            .map(|attachment| {
+                serde_json::json!({
+                    "url": format!(
+                        "gmail-attachment://{}/{}",
+                        email.id,
+                        attachment.attachment_id
+                    ),
+                    "name": attachment.filename,
+                    "mime": attachment.mime_type,
+                    "size": attachment.size,
+                    "attachment_id": attachment.attachment_id,
+                    "message_id": email.id,
+                    "thread_id": email.thread_id,
+                })
+            })
+            .collect()
+    }
+
     fn gmail_api_base(&self) -> String {
         self.config
             .api_base_url
@@ -676,6 +697,8 @@ impl GmailRuntime {
                         "gmail_labels": email.labels,
                         "gmail_attachment_count": email.attachments.len(),
                         "gmail_attachments": email.attachments,
+                        "file_references": Self::attachment_file_references(&email),
+                        "gmail_has_html_body": email.body_html.is_some(),
                     }),
                 };
 
@@ -1111,6 +1134,13 @@ mod tests {
                         "body": {
                             "data": "SGVsbG8gZnJvbSBHbWFpbA=="
                         }
+                    }, {
+                        "mimeType": "application/pdf",
+                        "filename": "report.pdf",
+                        "body": {
+                            "attachmentId": "att-1",
+                            "size": 2048
+                        }
                     }]
                 }
             })))
@@ -1145,6 +1175,15 @@ mod tests {
         assert_eq!(incoming.user_id, "sender@example.com");
         assert_eq!(incoming.metadata["gmail_message_id"], "msg-1");
         assert_eq!(incoming.metadata["gmail_thread_id"], "thread-1");
+        assert_eq!(incoming.metadata["gmail_attachment_count"], serde_json::json!(1));
+        assert_eq!(
+            incoming.metadata["file_references"][0]["url"],
+            "gmail-attachment://msg-1/att-1"
+        );
+        assert_eq!(
+            incoming.metadata["file_references"][0]["name"],
+            "report.pdf"
+        );
     }
 
     #[tokio::test]
