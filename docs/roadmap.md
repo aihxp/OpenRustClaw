@@ -678,9 +678,8 @@ Channel completion remaining:
   - shipped runtime now supports Rust-native Mattermost outbound sends, slash-command/outgoing-webhook ingress, shared-token validation, user/channel allowlists, trigger-word stripping, bot-mention detection, threaded replies via `root_id`, local file uploads through the Mattermost REST API, and normal local agent/session routing.
 - [x] Google Chat parity.
   - current shipped path covers direct webhook ingress plus Pub/Sub push-envelope decoding, token or service-account outbound auth, response-mode gating, normalized space/user IDs, slash-command plus mention metadata capture, message ID plus body/thread/argument/slash/mention presence metadata, identity and event-time presence flags, derived display-name/action/attachment count and length metadata, card-click and space lifecycle routing, file-reference cards, structured attachment/file-reference metadata plus attachment-name/type/data-ref presence capture and attachment/file-reference counts, optional local attachment downloads with normalized `local_path` enrichment, and local agent/session routing.
-- [ ] Google Meet parity.
-  - current shipped Rust operator path covers space creation/inspection, active-conference termination, conference-record/participant/recording/transcript inspection, and Google Workspace Events / Pub/Sub payload decoding with transcript hydration;
-  - Meet add-on UI embedding, live in-meeting collaboration surfaces, and deeper artifact/event automation remain open.
+- [x] Google Meet parity.
+  - current shipped Rust path covers space creation/inspection, active-conference termination, conference-record/participant/recording/transcript inspection, direct-event plus Google Workspace Events / Pub/Sub payload decoding with transcript hydration, live webhook ingress on `openrustclaw start`, and durable runtime-event publication for Meet workflow automation.
 - [x] Gmail inbound automation parity for mail-triggered workflows.
   - current shipped path covers Gmail watch setup and stop, Pub/Sub or direct-notification webhook ingress, history fetch, message hydration, structured attachment/file-reference metadata, normalized recipient/label counts plus recipient domains, message/thread/history/subject/body/received-at presence flags, recipient/domain/label/header presence flags, file-reference counts, attachment total-size metadata, address/domain length and attachment-name/MIME count metadata, unread and received-at metadata, parsed header/thread metadata, history/body-length metadata, subject/body/file-reference presence metrics, mail-triggered local agent/session routing, direct sends, threaded direct sends, replies including local-file attachments, metadata-driven label/archive/delete/forward actions, and forwarded local-file attachments;
   - richer operator parity still remains.
@@ -706,6 +705,10 @@ Exit criteria:
 Goal: match OpenClaw's operator UX and tooling surface while keeping Rust-native interfaces.
 
 Status: complete for shipped CLI/MCP control-plane surfaces, onboarding scaffolding, and doctor validation; Web Control UI, richer browser/web tooling, and full orchestrated runtime execution remain open.
+
+Additional later-surface work:
+
+- [ ] Google Meet add-on UI embedding and live in-meeting collaboration surfaces.
 
 Completed:
 

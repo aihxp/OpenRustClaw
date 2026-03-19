@@ -16,6 +16,7 @@ use openrustclaw_agent::runtime::AgentRuntime;
 use openrustclaw_channels::discord::DiscordInteractionsHandler;
 use openrustclaw_channels::gmail_pubsub::GmailWebhookHandler;
 use openrustclaw_channels::google_chat::GoogleChatWebhookHandler;
+use openrustclaw_channels::google_meet::GoogleMeetWebhookHandler;
 use openrustclaw_channels::imessage::{BlueBubblesMessage, IMessageWebhookHandler};
 use openrustclaw_channels::mattermost::MattermostWebhookHandler;
 use openrustclaw_channels::slack::SlackEventHandler;
@@ -236,6 +237,7 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
     let mut teams_ingress_handler = None;
     let mut mattermost_ingress_handler = None;
     let mut google_chat_ingress_handler = None;
+    let mut google_meet_ingress_handler = None;
     let mut gmail_ingress_handler = None;
     let mut imessage_ingress_handler = None;
     let mut enabled_channels = Vec::new();
@@ -330,6 +332,26 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
             Err(e) => {
                 error!(error = %e, "Failed to create Google Chat channel");
                 channel_config.google_chat.enabled = false;
+            }
+        }
+    }
+
+    if channel_config.google_meet.enabled {
+        match ChannelFactory::create_google_meet(channel_config.google_meet.clone()) {
+            Ok(google_meet_client) => {
+                if let Err(error) = google_meet_client.connect().await {
+                    error!(error = %error, "Failed to connect Google Meet runtime client");
+                } else {
+                    google_meet_ingress_handler = Some((
+                        channel_config.google_meet.webhook_path.clone(),
+                        google_meet_client.webhook_handler(),
+                    ));
+                }
+                channel_config.google_meet.enabled = false;
+            }
+            Err(e) => {
+                error!(error = %e, "Failed to create Google Meet client");
+                channel_config.google_meet.enabled = false;
             }
         }
     }
@@ -434,6 +456,14 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
     if let Some(handler) = google_chat_ingress_handler {
         app = app.merge(google_chat_ingress_router(handler));
         info!("Google Chat ingress enabled at /webhooks/google-chat/events");
+    }
+    if let Some((webhook_path, handler)) = google_meet_ingress_handler {
+        app = app.merge(google_meet_ingress_router(
+            webhook_path.as_str(),
+            handler,
+            event_bus.clone(),
+        ));
+        info!(path = %webhook_path, "Google Meet ingress enabled");
     }
     if let Some(handler) = gmail_ingress_handler {
         app = app.merge(gmail_ingress_router(handler));
@@ -2523,6 +2553,98 @@ async fn google_chat_events_handler(
     match state.handler.handle_event(&body).await {
         Ok(Some(response)) => (StatusCode::OK, Json(response)).into_response(),
         Ok(None) => StatusCode::OK.into_response(),
+        Err(error) => (StatusCode::BAD_REQUEST, error.to_string()).into_response(),
+    }
+}
+
+#[derive(Clone)]
+struct GoogleMeetIngressState {
+    handler: Arc<GoogleMeetWebhookHandler>,
+    event_bus: DurableEventBus,
+}
+
+fn google_meet_ingress_router(
+    path: &str,
+    handler: GoogleMeetWebhookHandler,
+    event_bus: DurableEventBus,
+) -> Router {
+    Router::new()
+        .route(path, post(google_meet_events_handler))
+        .with_state(GoogleMeetIngressState {
+            handler: Arc::new(handler),
+            event_bus,
+        })
+}
+
+fn google_meet_dedupe_key(
+    event: &openrustclaw_channels::DecodedGoogleMeetEvent,
+) -> Option<String> {
+    let resource = event
+        .transcript
+        .as_deref()
+        .or(event.recording.as_deref())
+        .or(event.participant.as_deref())
+        .or(event.conference_record.as_deref())
+        .or(event.space.as_deref())?;
+    Some(format!("{}:{}", event.event_type, resource))
+}
+
+async fn google_meet_events_handler(
+    State(state): State<GoogleMeetIngressState>,
+    body: Bytes,
+) -> impl IntoResponse {
+    match state.handler.decode_push(&body).await {
+        Ok(event) => {
+            let payload = serde_json::json!({
+                "event_type": event.event_type,
+                "conference_record": event.conference_record,
+                "transcript": event.transcript,
+                "recording": event.recording,
+                "participant": event.participant,
+                "space": event.space,
+                "transcript_text": event.transcript_text,
+                "raw": event.raw,
+            });
+
+            if let Err(error) = state
+                .event_bus
+                .publish_named(
+                    "google_meet.event_received",
+                    "google_meet_event",
+                    None,
+                    &payload,
+                    google_meet_dedupe_key(&event).as_deref(),
+                )
+                .await
+            {
+                return (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()).into_response();
+            }
+
+            if let Some(transcript_text) = event.transcript_text.as_ref() {
+                let transcript_payload = serde_json::json!({
+                    "event_type": event.event_type,
+                    "transcript": event.transcript,
+                    "conference_record": event.conference_record,
+                    "space": event.space,
+                    "transcript_text": transcript_text,
+                });
+                if let Err(error) = state
+                    .event_bus
+                    .publish_named(
+                        "google_meet.transcript_hydrated",
+                        "google_meet_transcript",
+                        None,
+                        &transcript_payload,
+                        event.transcript.as_deref(),
+                    )
+                    .await
+                {
+                    return (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()).into_response();
+                }
+            }
+
+            (StatusCode::OK, Json(payload)).into_response()
+        }
         Err(error) => (StatusCode::BAD_REQUEST, error.to_string()).into_response(),
     }
 }

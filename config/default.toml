@@ -169,3 +169,16 @@ rate_limit_requests_per_second = 10
 cards_enabled = true
 attachment_download_dir = "./data/google-chat/downloads"  # Optional local download root for inbound attachments
 response_mode = "mention"  # "mention", "open", or "slash_commands"
+
+# Google Meet Configuration
+[channels.google_meet]
+enabled = false
+service_account_key_path = ""  # Path to service-account JSON, token:<value>, or env:VAR
+delegated_user_email = ""  # Workspace user for domain-wide delegation
+webhook_path = "/webhooks/google-meet/events"  # Workspace Events / Pub/Sub push endpoint
+allowed_spaces = []  # Optional allowlist of Meet spaces
+rate_limit_requests_per_second = 5
+api_base_url = null  # Optional override for Meet API base URL
+oauth_token_url = null  # Optional override for OAuth token URL
+additional_scopes = []  # Extra Meet/Workspace scopes if needed
+hydrate_transcript_events = true  # Fetch transcript entries for transcript events

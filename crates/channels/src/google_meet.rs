@@ -463,35 +463,7 @@ impl GoogleMeetClient {
 }
 
 impl GoogleMeetWebhookHandler {
-    pub async fn decode_push(&self, body: &[u8]) -> Result<DecodedGoogleMeetEvent> {
-        let envelope: Value =
-            serde_json::from_slice(body).map_err(|e| ChannelError::InvalidFormat {
-                platform: "google_meet".to_string(),
-                message: format!("Failed to parse Google Meet Pub/Sub envelope: {}", e),
-            })?;
-
-        let data = envelope
-            .get("message")
-            .and_then(|message| message.get("data"))
-            .and_then(Value::as_str)
-            .ok_or_else(|| ChannelError::InvalidFormat {
-                platform: "google_meet".to_string(),
-                message: "Missing message.data in Google Meet Pub/Sub envelope".to_string(),
-            })?;
-
-        let decoded = STANDARD
-            .decode(data)
-            .map_err(|e| ChannelError::InvalidFormat {
-                platform: "google_meet".to_string(),
-                message: format!("Failed to decode Google Meet Pub/Sub payload: {}", e),
-            })?;
-
-        let raw: Value =
-            serde_json::from_slice(&decoded).map_err(|e| ChannelError::InvalidFormat {
-                platform: "google_meet".to_string(),
-                message: format!("Failed to parse Google Meet event payload: {}", e),
-            })?;
-
+    async fn decode_value(&self, raw: Value) -> Result<DecodedGoogleMeetEvent> {
         let transcript = find_named_resource(&raw, "conferenceRecords/", "/transcripts/");
         let conference_record = find_string_prefix(&raw, "conferenceRecords/")
             .filter(|value| !value.contains("/transcripts/"));
@@ -542,6 +514,37 @@ impl GoogleMeetWebhookHandler {
             transcript_text,
             raw,
         })
+    }
+
+    pub async fn decode_push(&self, body: &[u8]) -> Result<DecodedGoogleMeetEvent> {
+        let envelope: Value =
+            serde_json::from_slice(body).map_err(|e| ChannelError::InvalidFormat {
+                platform: "google_meet".to_string(),
+                message: format!("Failed to parse Google Meet Pub/Sub envelope: {}", e),
+            })?;
+
+        if let Some(data) = envelope
+            .get("message")
+            .and_then(|message| message.get("data"))
+            .and_then(Value::as_str)
+        {
+            let decoded = STANDARD
+                .decode(data)
+                .map_err(|e| ChannelError::InvalidFormat {
+                    platform: "google_meet".to_string(),
+                    message: format!("Failed to decode Google Meet Pub/Sub payload: {}", e),
+                })?;
+
+            let raw: Value =
+                serde_json::from_slice(&decoded).map_err(|e| ChannelError::InvalidFormat {
+                    platform: "google_meet".to_string(),
+                    message: format!("Failed to parse Google Meet event payload: {}", e),
+                })?;
+
+            self.decode_value(raw).await
+        } else {
+            self.decode_value(envelope).await
+        }
     }
 }
 
@@ -717,6 +720,38 @@ mod tests {
             event.transcript_text.as_deref(),
             Some("Hello team\nAction items next")
         );
+    }
+
+    #[tokio::test]
+    async fn decode_direct_event_payload() {
+        let server = MockServer::start().await;
+        let client = GoogleMeetClient::new(meet_config(&server));
+        client.connect().await.unwrap();
+
+        let handler = client.webhook_handler();
+        let event = handler
+            .decode_push(
+                serde_json::json!({
+                    "eventType": "google.workspace.meet.conference.v2.started",
+                    "conferenceRecord": {
+                        "name": "conferenceRecords/987"
+                    },
+                    "space": {
+                        "name": "spaces/xyz"
+                    }
+                })
+                .to_string()
+                .as_bytes(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            event.event_type,
+            "google.workspace.meet.conference.v2.started"
+        );
+        assert_eq!(event.conference_record.as_deref(), Some("conferenceRecords/987"));
+        assert_eq!(event.space.as_deref(), Some("spaces/xyz"));
     }
 
     #[tokio::test]
