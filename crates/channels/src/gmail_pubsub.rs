@@ -510,6 +510,15 @@ impl GmailRuntime {
             .collect()
     }
 
+    fn address_domains(addresses: &[String]) -> Vec<String> {
+        addresses
+            .iter()
+            .filter_map(|address| address.split('@').nth(1))
+            .map(|domain| domain.trim_end_matches('>').trim().to_string())
+            .filter(|domain| !domain.is_empty())
+            .collect()
+    }
+
     fn should_process(&self, email: &EmailMessage) -> bool {
         if !self.config.label_filters.is_empty() {
             let has_matching = self
@@ -895,18 +904,23 @@ impl GmailRuntime {
                         "gmail_from_domain": email.from_domain,
                         "gmail_to": email.to,
                         "gmail_to_count": email.to.len(),
+                        "gmail_to_domains": Self::address_domains(&email.to),
                         "gmail_cc": email.cc,
                         "gmail_cc_count": email.cc.len(),
                         "gmail_has_cc": !email.cc.is_empty(),
+                        "gmail_cc_domains": Self::address_domains(&email.cc),
                         "gmail_labels": email.labels,
                         "gmail_label_count": email.labels.len(),
                         "gmail_has_attachments": !email.attachments.is_empty(),
                         "gmail_attachment_count": email.attachments.len(),
                         "gmail_attachment_names": email.attachments.iter().map(|attachment| attachment.filename.clone()).collect::<Vec<_>>(),
+                        "gmail_attachment_mime_types": email.attachments.iter().map(|attachment| attachment.mime_type.clone()).collect::<Vec<_>>(),
                         "gmail_attachments": email.attachments,
                         "file_references": Self::attachment_file_references(&email),
+                        "gmail_subject_length": email.subject.chars().count(),
                         "gmail_has_html_body": email.body_html.is_some(),
                         "gmail_body_text_length": email.body_text.chars().count(),
+                        "gmail_body_html_length": email.body_html.as_ref().map(|html| html.chars().count()),
                         "gmail_received_at": email.received_at.to_rfc3339(),
                         "gmail_is_unread": email.is_unread,
                         "gmail_message_id_header": email.message_id_header,
@@ -1420,6 +1434,11 @@ mod tests {
                             "data": "SGVsbG8gZnJvbSBHbWFpbA=="
                         }
                     }, {
+                        "mimeType": "text/html",
+                        "body": {
+                            "data": "PHA+SGVsbG8gZnJvbSBHbWFpbDwvcD4="
+                        }
+                    }, {
                         "mimeType": "application/pdf",
                         "filename": "report.pdf",
                         "body": {
@@ -1463,16 +1482,24 @@ mod tests {
         assert_eq!(incoming.metadata["gmail_history_id"], 100);
         assert_eq!(incoming.metadata["gmail_to"][0], "user@example.com");
         assert_eq!(incoming.metadata["gmail_to_count"], 1);
+        assert_eq!(incoming.metadata["gmail_to_domains"][0], "example.com");
         assert_eq!(incoming.metadata["gmail_cc"][0], "cc@example.com");
         assert_eq!(incoming.metadata["gmail_cc_count"], 1);
         assert_eq!(incoming.metadata["gmail_has_cc"], true);
+        assert_eq!(incoming.metadata["gmail_cc_domains"][0], "example.com");
         assert_eq!(incoming.metadata["gmail_from_domain"], "example.com");
         assert_eq!(incoming.metadata["gmail_label_count"], 2);
         assert_eq!(incoming.metadata["gmail_is_unread"], true);
+        assert_eq!(incoming.metadata["gmail_subject_length"], 12);
         assert_eq!(incoming.metadata["gmail_body_text_length"], 16);
+        assert_eq!(incoming.metadata["gmail_body_html_length"], 23);
         assert_eq!(incoming.metadata["gmail_received_at"], "2024-03-09T16:00:00+00:00");
         assert_eq!(incoming.metadata["gmail_has_attachments"], true);
         assert_eq!(incoming.metadata["gmail_attachment_names"][0], "report.pdf");
+        assert_eq!(
+            incoming.metadata["gmail_attachment_mime_types"][0],
+            "application/pdf"
+        );
         assert_eq!(incoming.metadata["gmail_message_id_header"], "<msg-1@example.com>");
         assert_eq!(incoming.metadata["gmail_references"], "<root@example.com>");
         assert_eq!(incoming.metadata["gmail_has_references"], true);
