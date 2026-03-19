@@ -59,6 +59,11 @@ enum Commands {
         #[command(subcommand)]
         action: MatrixAction,
     },
+    /// Gmail Pub/Sub operator integration
+    Gmail {
+        #[command(subcommand)]
+        action: GmailAction,
+    },
     /// Google Chat operator integration
     GoogleChat {
         #[command(subcommand)]
@@ -434,6 +439,94 @@ enum MatrixAction {
         reason: Option<String>,
         #[arg(short, long, default_value = "config/default.toml")]
         config: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum GmailAction {
+    /// Show Gmail Pub/Sub config/operator state
+    Status {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+    },
+    /// Validate Gmail auth/watch setup by connecting once
+    Connect {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+    },
+    /// Replay a Gmail notification payload from a file or stdin (`-`)
+    ProcessNotification {
+        input: String,
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+    },
+    /// Send a new Gmail message
+    Send {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+        #[arg(long = "to")]
+        to: Vec<String>,
+        #[arg(long = "cc")]
+        cc: Vec<String>,
+        #[arg(long = "bcc")]
+        bcc: Vec<String>,
+        #[arg(long)]
+        subject: String,
+        #[arg(long)]
+        body: String,
+        #[arg(long)]
+        thread_id: Option<String>,
+        #[arg(long = "file")]
+        files: Vec<String>,
+    },
+    /// Reply to a Gmail message
+    Reply {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+        #[arg(long)]
+        message_id: String,
+        #[arg(long)]
+        body: String,
+        #[arg(long = "file")]
+        files: Vec<String>,
+    },
+    /// Modify labels on a Gmail message
+    Label {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+        #[arg(long)]
+        message_id: String,
+        #[arg(long = "add")]
+        add: Vec<String>,
+        #[arg(long = "remove")]
+        remove: Vec<String>,
+    },
+    /// Archive a Gmail message
+    Archive {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+        #[arg(long)]
+        message_id: String,
+    },
+    /// Delete a Gmail message
+    Delete {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+        #[arg(long)]
+        message_id: String,
+    },
+    /// Forward a Gmail message
+    Forward {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+        #[arg(long)]
+        message_id: String,
+        #[arg(long)]
+        to: String,
+        #[arg(long)]
+        body: String,
+        #[arg(long = "file")]
+        files: Vec<String>,
     },
 }
 
@@ -1316,6 +1409,60 @@ async fn main() -> Result<()> {
                 reason,
                 config,
             } => commands::matrix::redact(&config, &room, &event_id, reason.as_deref()).await,
+        },
+        Commands::Gmail { action } => match action {
+            GmailAction::Status { config } => commands::gmail::status(&config).await,
+            GmailAction::Connect { config } => commands::gmail::connect(&config).await,
+            GmailAction::ProcessNotification { input, config } => {
+                commands::gmail::process_notification(&config, &input).await
+            }
+            GmailAction::Send {
+                config,
+                to,
+                cc,
+                bcc,
+                subject,
+                body,
+                thread_id,
+                files,
+            } => {
+                commands::gmail::send(
+                    &config,
+                    &to,
+                    &cc,
+                    &bcc,
+                    &subject,
+                    &body,
+                    thread_id.as_deref(),
+                    &files,
+                )
+                .await
+            }
+            GmailAction::Reply {
+                config,
+                message_id,
+                body,
+                files,
+            } => commands::gmail::reply(&config, &message_id, &body, &files).await,
+            GmailAction::Label {
+                config,
+                message_id,
+                add,
+                remove,
+            } => commands::gmail::label(&config, &message_id, &add, &remove).await,
+            GmailAction::Archive { config, message_id } => {
+                commands::gmail::archive(&config, &message_id).await
+            }
+            GmailAction::Delete { config, message_id } => {
+                commands::gmail::delete(&config, &message_id).await
+            }
+            GmailAction::Forward {
+                config,
+                message_id,
+                to,
+                body,
+                files,
+            } => commands::gmail::forward(&config, &message_id, &to, &body, &files).await,
         },
         Commands::GoogleChat { action } => match action {
             GoogleChatAction::Status { config } => commands::google_chat::status(&config).await,
