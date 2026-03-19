@@ -64,9 +64,13 @@ pub struct EmailMessage {
     pub thread_id: String,
     pub history_id: u64,
     pub from: String,
+    pub from_domain: Option<String>,
     pub to: Vec<String>,
     pub cc: Vec<String>,
     pub subject: String,
+    pub message_id_header: Option<String>,
+    pub references_header: Option<String>,
+    pub in_reply_to_header: Option<String>,
     pub body_text: String,
     pub body_html: Option<String>,
     pub attachments: Vec<Attachment>,
@@ -597,6 +601,10 @@ impl GmailRuntime {
             thread_id: msg.thread_id,
             history_id: msg.history_id.parse().unwrap_or(0),
             from: headers.get("From").cloned().unwrap_or_default(),
+            from_domain: headers
+                .get("From")
+                .and_then(|value| value.split('@').nth(1))
+                .map(|value| value.trim_end_matches('>').trim().to_string()),
             to: headers
                 .get("To")
                 .map(|value| Self::parse_addresses(value))
@@ -606,6 +614,9 @@ impl GmailRuntime {
                 .map(|value| Self::parse_addresses(value))
                 .unwrap_or_default(),
             subject: headers.get("Subject").cloned().unwrap_or_default(),
+            message_id_header: headers.get("Message-ID").cloned(),
+            references_header: headers.get("References").cloned(),
+            in_reply_to_header: headers.get("In-Reply-To").cloned(),
             body_text: parts.text,
             body_html: parts.html,
             attachments: parts.attachments,
@@ -880,18 +891,24 @@ impl GmailRuntime {
                         "gmail_thread_id": email.thread_id,
                         "gmail_subject": email.subject,
                         "gmail_from": email.from,
+                        "gmail_from_domain": email.from_domain,
                         "gmail_to": email.to,
                         "gmail_to_count": email.to.len(),
                         "gmail_cc": email.cc,
                         "gmail_cc_count": email.cc.len(),
                         "gmail_labels": email.labels,
                         "gmail_label_count": email.labels.len(),
+                        "gmail_has_attachments": !email.attachments.is_empty(),
                         "gmail_attachment_count": email.attachments.len(),
+                        "gmail_attachment_names": email.attachments.iter().map(|attachment| attachment.filename.clone()).collect::<Vec<_>>(),
                         "gmail_attachments": email.attachments,
                         "file_references": Self::attachment_file_references(&email),
                         "gmail_has_html_body": email.body_html.is_some(),
                         "gmail_received_at": email.received_at.to_rfc3339(),
                         "gmail_is_unread": email.is_unread,
+                        "gmail_message_id_header": email.message_id_header,
+                        "gmail_references": email.references_header,
+                        "gmail_in_reply_to": email.in_reply_to_header,
                     }),
                 };
 
@@ -1387,7 +1404,10 @@ mod tests {
                         {"name": "From", "value": "sender@example.com"},
                         {"name": "To", "value": "user@example.com"},
                         {"name": "Cc", "value": "cc@example.com"},
-                        {"name": "Subject", "value": "Test subject"}
+                        {"name": "Subject", "value": "Test subject"},
+                        {"name": "Message-ID", "value": "<msg-1@example.com>"},
+                        {"name": "References", "value": "<root@example.com>"},
+                        {"name": "In-Reply-To", "value": "<root@example.com>"}
                     ],
                     "parts": [{
                         "mimeType": "text/plain",
@@ -1439,9 +1459,15 @@ mod tests {
         assert_eq!(incoming.metadata["gmail_to_count"], 1);
         assert_eq!(incoming.metadata["gmail_cc"][0], "cc@example.com");
         assert_eq!(incoming.metadata["gmail_cc_count"], 1);
+        assert_eq!(incoming.metadata["gmail_from_domain"], "example.com");
         assert_eq!(incoming.metadata["gmail_label_count"], 2);
         assert_eq!(incoming.metadata["gmail_is_unread"], true);
         assert_eq!(incoming.metadata["gmail_received_at"], "2024-03-09T16:00:00+00:00");
+        assert_eq!(incoming.metadata["gmail_has_attachments"], true);
+        assert_eq!(incoming.metadata["gmail_attachment_names"][0], "report.pdf");
+        assert_eq!(incoming.metadata["gmail_message_id_header"], "<msg-1@example.com>");
+        assert_eq!(incoming.metadata["gmail_references"], "<root@example.com>");
+        assert_eq!(incoming.metadata["gmail_in_reply_to"], "<root@example.com>");
         assert_eq!(incoming.metadata["gmail_attachment_count"], serde_json::json!(1));
         assert_eq!(
             incoming.metadata["file_references"][0]["url"],

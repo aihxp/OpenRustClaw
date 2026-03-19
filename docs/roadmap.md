@@ -682,7 +682,7 @@ Channel completion remaining:
   - current shipped Rust operator path covers space creation/inspection, active-conference termination, conference-record/participant/recording/transcript inspection, and Google Workspace Events / Pub/Sub payload decoding with transcript hydration;
   - Meet add-on UI embedding, live in-meeting collaboration surfaces, and deeper artifact/event automation remain open.
 - [ ] Gmail inbound automation parity for mail-triggered workflows.
-  - current shipped path covers Gmail watch setup, Pub/Sub webhook ingress, history fetch, message hydration, structured attachment/file-reference metadata, normalized recipient/label counts, unread and received-at metadata, mail-triggered local agent/session routing, direct sends, replies including local-file attachments, label/archive/delete actions, and forwarding;
+  - current shipped path covers Gmail watch setup, Pub/Sub webhook ingress, history fetch, message hydration, structured attachment/file-reference metadata, normalized recipient/label counts, unread and received-at metadata, parsed header/thread metadata, attachment-name presence metadata, mail-triggered local agent/session routing, direct sends, replies including local-file attachments, label/archive/delete actions, and forwarding;
   - richer operator parity still remains.
 - [ ] Matrix parity.
   - current shipped path covers auth, send, reply/thread relations, polling ingress, inbound reaction, redaction, and membership events with richer lifecycle metadata, room actions, helper-driven plus normal-send local file uploads, and inbound media downloads into the Matrix data directory with structured file-reference metadata;
