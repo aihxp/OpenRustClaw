@@ -1050,6 +1050,9 @@ impl GoogleChatWebhookHandler {
         if let Some(argument_text) = message.argument_text.as_ref() {
             metadata["google_chat_argument_text"] = serde_json::json!(argument_text);
             metadata["google_chat_argument_length"] = serde_json::json!(argument_text.len());
+            metadata["google_chat_has_argument"] = serde_json::json!(true);
+        } else {
+            metadata["google_chat_has_argument"] = serde_json::json!(false);
         }
         metadata["google_chat_body_length"] = serde_json::json!(message.text.len());
         if let Some(slash_command) = message.slash_command.as_ref() {
@@ -1057,6 +1060,9 @@ impl GoogleChatWebhookHandler {
             if let Some(command_name) = slash_command.command_name.as_ref() {
                 metadata["google_chat_slash_command_name"] = serde_json::json!(command_name);
             }
+            metadata["google_chat_has_slash_command"] = serde_json::json!(true);
+        } else {
+            metadata["google_chat_has_slash_command"] = serde_json::json!(false);
         }
         let mentioned_users: Vec<_> = message
             .annotations
@@ -1079,6 +1085,9 @@ impl GoogleChatWebhookHandler {
         if !mentioned_users.is_empty() {
             metadata["google_chat_mentions"] = serde_json::json!(mentioned_users);
             metadata["google_chat_mention_count"] = serde_json::json!(mentioned_users.len());
+            metadata["google_chat_has_mentions"] = serde_json::json!(true);
+        } else {
+            metadata["google_chat_has_mentions"] = serde_json::json!(false);
         }
         let bot_mentioned = message
             .annotations
@@ -1147,10 +1156,14 @@ impl GoogleChatWebhookHandler {
             }
             let file_refs = GoogleChatChannel::attachment_file_references(&message.attachments);
             if !file_refs.is_empty() {
+                metadata["google_chat_file_reference_count"] = serde_json::json!(file_refs.len());
                 metadata["file_references"] = serde_json::json!(file_refs);
+            } else {
+                metadata["google_chat_file_reference_count"] = serde_json::json!(0);
             }
         } else {
             metadata["google_chat_has_attachments"] = serde_json::json!(false);
+            metadata["google_chat_file_reference_count"] = serde_json::json!(0);
         }
 
         // Create incoming message
@@ -1242,6 +1255,9 @@ impl GoogleChatWebhookHandler {
             metadata["google_chat_action_parameters"] = serde_json::json!(action_parameters);
             metadata["google_chat_action_parameter_count"] =
                 serde_json::json!(metadata["google_chat_action_parameters"].as_array().map(|items| items.len()).unwrap_or(0));
+            metadata["google_chat_has_action_parameters"] = serde_json::json!(true);
+        } else {
+            metadata["google_chat_has_action_parameters"] = serde_json::json!(false);
         }
         if form_inputs.is_object() {
             metadata["google_chat_form_inputs"] = form_inputs.clone();
@@ -1596,6 +1612,7 @@ mod tests {
             incoming.metadata["google_chat_action_parameter_count"],
             serde_json::json!(2)
         );
+        assert_eq!(incoming.metadata["google_chat_has_action_parameters"], true);
         assert_eq!(
             incoming.metadata["google_chat_action_parameters"][0]["key"],
             serde_json::json!("report_id")
@@ -1722,8 +1739,12 @@ mod tests {
         assert_eq!(incoming.metadata["google_chat_space_id"], "AAA");
         assert_eq!(incoming.metadata["google_chat_user_id"], "123");
         assert_eq!(incoming.metadata["google_chat_body_length"], 17);
+        assert_eq!(incoming.metadata["google_chat_has_argument"], false);
+        assert_eq!(incoming.metadata["google_chat_has_slash_command"], false);
+        assert_eq!(incoming.metadata["google_chat_has_mentions"], false);
         assert_eq!(incoming.metadata["google_chat_has_thread"], false);
         assert_eq!(incoming.metadata["google_chat_has_attachments"], false);
+        assert_eq!(incoming.metadata["google_chat_file_reference_count"], 0);
         assert_eq!(
             incoming.metadata["google_chat_event_time"],
             serde_json::json!("2024-01-01T00:00:00Z")
@@ -1775,6 +1796,7 @@ mod tests {
         assert_eq!(incoming.content, "attachment event");
         assert_eq!(incoming.metadata["google_chat_attachment_count"], 1);
         assert_eq!(incoming.metadata["google_chat_has_attachments"], true);
+        assert_eq!(incoming.metadata["google_chat_file_reference_count"], 1);
         assert_eq!(incoming.metadata["google_chat_attachment_names"][0], "incident-report.pdf");
         assert_eq!(
             incoming.metadata["google_chat_attachment_content_types"][0],
@@ -1857,6 +1879,9 @@ mod tests {
         assert_eq!(incoming.metadata["google_chat_slash_command_name"], "/assign");
         assert_eq!(incoming.metadata["google_chat_body_length"], 28);
         assert_eq!(incoming.metadata["google_chat_argument_length"], 6);
+        assert_eq!(incoming.metadata["google_chat_has_argument"], true);
+        assert_eq!(incoming.metadata["google_chat_has_slash_command"], true);
+        assert_eq!(incoming.metadata["google_chat_has_mentions"], true);
         assert_eq!(incoming.metadata["google_chat_has_thread"], false);
         assert_eq!(incoming.metadata["google_chat_mention_count"], 1);
         assert_eq!(
