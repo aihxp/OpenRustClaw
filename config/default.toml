@@ -156,6 +156,16 @@ use_libsignal = false  # Use native libsignal-client (experimental)
 rate_limit_per_minute = 20  # Signal rate limit (~20 messages/minute)
 require_allowlist = true  # Require allowlist for security (recommended)
 
+# iMessage / BlueBubbles Configuration
+[channels.imessage]
+enabled = false
+allowlist = []  # Allowed phone numbers / Apple IDs (empty = allow all)
+enable_tapbacks = true
+enable_typing_indicator = false
+
+[channels.imessage.bridge_mode]
+mode = "macos_direct"  # "macos_direct", "bluebubbles", or "private_api"
+
 # Google Chat Bot Configuration
 [channels.google_chat]
 enabled = false

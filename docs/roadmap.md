@@ -674,6 +674,7 @@ Channel completion remaining:
   - send/receive,
   - attachment handling,
   - contact/group mapping.
+  - current shipped path covers BlueBubbles/macOS direct send, verified BlueBubbles ping on connect, webhook-password validation for BlueBubbles ingress, direct-handle or chat-guid targeting, structured group/chat mapping from webhook payloads, structured attachment metadata plus outbound local-file sends in BlueBubbles mode, tapbacks including normal channel-send reactions, first-class CLI operator flows for ping/server/chats/contacts/send/send-file/tapback, and local agent/session routing.
 - [x] Mattermost parity via Rust-native plugin/channel implementation.
   - shipped runtime now supports Rust-native Mattermost outbound sends, slash-command/outgoing-webhook ingress, shared-token validation, user/channel allowlists, trigger-word stripping, bot-mention detection, threaded replies via `root_id`, local file uploads through the Mattermost REST API, and normal local agent/session routing.
 - [x] Google Chat parity.

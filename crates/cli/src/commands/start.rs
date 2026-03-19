@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use axum::{
     Json, Router,
     body::Bytes,
-    extract::{Path as AxumPath, State},
+    extract::{Path as AxumPath, Query, State},
     http::{HeaderMap, StatusCode},
     response::IntoResponse,
     routing::{get, post},
@@ -2447,8 +2447,22 @@ fn imessage_ingress_router(handler: IMessageWebhookHandler) -> Router {
 
 async fn imessage_bluebubbles_handler(
     State(state): State<IMessageIngressState>,
+    Query(params): Query<HashMap<String, String>>,
+    headers: HeaderMap,
     Json(payload): Json<BlueBubblesMessage>,
 ) -> impl IntoResponse {
+    let candidate = params
+        .get("password")
+        .or_else(|| params.get("guid"))
+        .or_else(|| params.get("token"))
+        .map(|value| value.as_str())
+        .or_else(|| headers.get("x-password").and_then(|value| value.to_str().ok()))
+        .or_else(|| headers.get("x-guid").and_then(|value| value.to_str().ok()));
+
+    if !state.handler.verify_password(candidate) {
+        return (StatusCode::UNAUTHORIZED, "invalid BlueBubbles password").into_response();
+    }
+
     match state.handler.handle_event(payload).await {
         Ok(()) => StatusCode::OK.into_response(),
         Err(error) => (StatusCode::BAD_REQUEST, error.to_string()).into_response(),

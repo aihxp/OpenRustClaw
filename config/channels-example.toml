@@ -129,6 +129,30 @@ allowed_channels = []
 rate_limit_requests_per_second = 10
 
 # =============================================================================
+# iMessage / BlueBubbles Configuration
+# =============================================================================
+[channels.imessage]
+enabled = false
+
+# Allow only specific phone numbers / Apple IDs (empty = allow all)
+allowlist = []
+
+# Enable tapback reactions on outbound sends
+enable_tapbacks = true
+enable_typing_indicator = false
+
+[channels.imessage.bridge_mode]
+mode = "bluebubbles"
+
+# BlueBubbles server URL and password (required for remote / webhook mode)
+server_url = "https://bluebubbles.example.com"
+password = "${BLUEBUBBLES_PASSWORD}"
+
+# For local-only macOS direct mode, use:
+# [channels.imessage.bridge_mode]
+# mode = "macos_direct"
+
+# =============================================================================
 # Google Chat Configuration
 # =============================================================================
 [channels.google_chat]

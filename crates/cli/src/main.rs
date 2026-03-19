@@ -59,6 +59,11 @@ enum Commands {
         #[command(subcommand)]
         action: MatrixAction,
     },
+    /// iMessage / BlueBubbles operator integration
+    IMessage {
+        #[command(subcommand)]
+        action: IMessageAction,
+    },
     /// Signal operator integration
     Signal {
         #[command(subcommand)]
@@ -417,6 +422,60 @@ enum MatrixAction {
         event_id: String,
         #[arg(long)]
         reason: Option<String>,
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum IMessageAction {
+    /// Check iMessage / BlueBubbles health
+    Ping {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+    },
+    /// Show iMessage / BlueBubbles server info
+    Server {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+    },
+    /// List recent BlueBubbles chats
+    Chats {
+        #[arg(short, long, default_value_t = 20)]
+        limit: usize,
+        #[arg(long, default_value_t = 0)]
+        offset: usize,
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+    },
+    /// List BlueBubbles contacts
+    Contacts {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+    },
+    /// Send an iMessage to a handle or chat target
+    Send {
+        to: String,
+        message: String,
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+    },
+    /// Send a local file attachment over iMessage
+    SendFile {
+        to: String,
+        file_path: String,
+        #[arg(long)]
+        filename: Option<String>,
+        #[arg(long)]
+        message: Option<String>,
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+    },
+    /// Send a tapback reaction
+    Tapback {
+        chat_guid: String,
+        message_guid: String,
+        reaction: String,
         #[arg(short, long, default_value = "config/default.toml")]
         config: String,
     },
@@ -1147,6 +1206,43 @@ async fn main() -> Result<()> {
                 reason,
                 config,
             } => commands::matrix::redact(&config, &room, &event_id, reason.as_deref()).await,
+        },
+        Commands::IMessage { action } => match action {
+            IMessageAction::Ping { config } => commands::imessage::ping(&config).await,
+            IMessageAction::Server { config } => commands::imessage::server(&config).await,
+            IMessageAction::Chats {
+                limit,
+                offset,
+                config,
+            } => commands::imessage::chats(&config, limit, offset).await,
+            IMessageAction::Contacts { config } => commands::imessage::contacts(&config).await,
+            IMessageAction::Send {
+                to,
+                message,
+                config,
+            } => commands::imessage::send(&config, &to, &message).await,
+            IMessageAction::SendFile {
+                to,
+                file_path,
+                filename,
+                message,
+                config,
+            } => {
+                commands::imessage::send_file(
+                    &config,
+                    &to,
+                    &file_path,
+                    filename.as_deref(),
+                    message.as_deref(),
+                )
+                .await
+            }
+            IMessageAction::Tapback {
+                chat_guid,
+                message_guid,
+                reaction,
+                config,
+            } => commands::imessage::tapback(&config, &chat_guid, &message_guid, &reaction).await,
         },
         Commands::Signal { action } => match action {
             SignalAction::Register { voice, config } => {

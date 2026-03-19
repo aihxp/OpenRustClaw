@@ -22,7 +22,7 @@ Messaging platform integrations for the OpenRustClaw AI agent.
 | LINE | 🚧 Gated | Repo surface exists, not part of the current shipped runtime |
 | Viber | 🚧 Gated | Repo surface exists, not part of the current shipped runtime |
 | WeChat | 🚧 Gated | Repo surface exists, not part of the current shipped runtime |
-| iMessage | ⚠️ Partial | BlueBubbles/macOS direct send, BlueBubbles inbound webhook ingress, tapbacks including normal channel-send reactions, group/participant metadata normalization, structured attachment metadata, contact routing, and local agent/session routing are on the shipped runtime path |
+| iMessage | ✅ Ready | BlueBubbles/macOS direct send, verified BlueBubbles ping on connect, webhook-password validation for BlueBubbles ingress, direct-handle or chat-guid targeting, structured group/chat mapping from webhook payloads, structured attachment metadata plus outbound local-file sends in BlueBubbles mode, tapbacks including normal channel-send reactions, first-class CLI operator flows for ping/server/chats/contacts/send/send-file/tapback, and local agent/session routing are on the shipped runtime path |
 
 ## Quick Start
 

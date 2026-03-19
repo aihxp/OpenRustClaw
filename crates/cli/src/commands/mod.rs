@@ -4,6 +4,7 @@ pub mod control;
 #[cfg(feature = "cursor")]
 pub mod cursor;
 pub mod doctor;
+pub mod imessage;
 pub mod mcp2cli;
 pub mod meet;
 pub mod matrix;

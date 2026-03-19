@@ -4,6 +4,7 @@
 //! or direct macOS AppleScript/System Events for local macOS bots.
 
 use async_trait::async_trait;
+use reqwest::multipart::{Form, Part};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::process::Command;
@@ -101,18 +102,40 @@ impl IMessageChannel {
             .or(payload.handle.last_name.clone())
             .unwrap_or_else(|| payload.handle.address.clone());
 
-        let participant_addresses: Vec<String> = payload
-            .participants
-            .as_deref()
+        let primary_chat = payload.chats.as_ref().and_then(|chats| chats.first());
+        let participant_addresses: Vec<String> = primary_chat
+            .and_then(|chat| chat.participants.as_deref())
             .map(Self::participant_addresses)
+            .or_else(|| {
+                payload
+                    .participants
+                    .as_deref()
+                    .map(Self::participant_addresses)
+            })
             .unwrap_or_default();
-        let is_group = payload
-            .is_group
-            .unwrap_or_else(|| !participant_addresses.is_empty() && participant_addresses.len() > 1);
-        let chat_display_name = payload
-            .chat_display_name
-            .clone()
+        let chat_guid = if payload.chat_guid.trim().is_empty() {
+            primary_chat
+                .and_then(|chat| chat.guid.as_deref())
+                .unwrap_or_default()
+                .to_string()
+        } else {
+            payload.chat_guid.clone()
+        };
+        let chat_identifier = primary_chat
+            .and_then(|chat| chat.chat_identifier.clone())
             .filter(|value| !value.trim().is_empty());
+        let chat_display_name = primary_chat
+            .and_then(|chat| chat.display_name.clone())
+            .filter(|value| !value.trim().is_empty())
+            .or_else(|| {
+                payload
+                    .chat_display_name
+                    .clone()
+                    .filter(|value| !value.trim().is_empty())
+            });
+        let is_group = payload.is_group.unwrap_or_else(|| {
+            !participant_addresses.is_empty() && participant_addresses.len() > 1
+        });
         let file_references: Vec<Value> = payload
             .attachments
             .as_deref()
@@ -120,7 +143,7 @@ impl IMessageChannel {
             .unwrap_or_default();
 
         let mut metadata = serde_json::json!({
-            "imessage_chat_guid": payload.chat_guid,
+            "imessage_chat_guid": chat_guid,
             "imessage_message_guid": payload.guid,
             "imessage_handle_address": payload.handle.address,
             "imessage_handle_name": name,
@@ -128,6 +151,9 @@ impl IMessageChannel {
             "imessage_is_group": is_group,
             "imessage_associated_message_guid": payload.associated_message_guid,
         });
+        if let Some(chat_identifier) = chat_identifier {
+            metadata["imessage_chat_identifier"] = serde_json::json!(chat_identifier);
+        }
         if let Some(display_name) = chat_display_name {
             metadata["imessage_chat_display_name"] = serde_json::json!(display_name);
         }
@@ -222,15 +248,122 @@ impl IMessageChannel {
             };
         }
 
-        value.as_str().and_then(|value| match value.to_lowercase().as_str() {
-            "love" | "heart" => Some(TapbackType::Love),
-            "like" | "thumbs_up" | "thumbsup" => Some(TapbackType::Like),
-            "dislike" | "thumbs_down" | "thumbsdown" => Some(TapbackType::Dislike),
-            "laugh" | "ha" | "haha" => Some(TapbackType::Laugh),
-            "emphasize" | "emphasis" | "exclaim" => Some(TapbackType::Emphasize),
-            "question" | "question_mark" => Some(TapbackType::Question),
-            _ => None,
-        })
+        value
+            .as_str()
+            .and_then(|value| match value.to_lowercase().as_str() {
+                "love" | "heart" => Some(TapbackType::Love),
+                "like" | "thumbs_up" | "thumbsup" => Some(TapbackType::Like),
+                "dislike" | "thumbs_down" | "thumbsdown" => Some(TapbackType::Dislike),
+                "laugh" | "ha" | "haha" => Some(TapbackType::Laugh),
+                "emphasize" | "emphasis" | "exclaim" => Some(TapbackType::Emphasize),
+                "question" | "question_mark" => Some(TapbackType::Question),
+                _ => None,
+            })
+    }
+
+    fn bluebubbles_request(
+        client: &reqwest::Client,
+        method: reqwest::Method,
+        server_url: &str,
+        password: &str,
+        path: &str,
+    ) -> reqwest::RequestBuilder {
+        client
+            .request(
+                method,
+                format!("{}/{}", server_url.trim_end_matches('/'), path),
+            )
+            .query(&[("password", password)])
+            .header("Authorization", password)
+    }
+
+    fn direct_target_from_metadata(metadata: &Value) -> Option<String> {
+        metadata
+            .get("imessage_chat_guid")
+            .and_then(|value| value.as_str())
+            .map(|value| value.to_string())
+            .or_else(|| {
+                metadata
+                    .get("imessage_chat_identifier")
+                    .and_then(|value| value.as_str())
+                    .map(|value| value.to_string())
+            })
+            .or_else(|| {
+                metadata
+                    .get("imessage_recipient")
+                    .and_then(|value| value.as_str())
+                    .map(|value| format!("any;-;{}", value))
+            })
+            .or_else(|| {
+                metadata
+                    .get("imessage_handle_address")
+                    .and_then(|value| value.as_str())
+                    .map(|value| format!("any;-;{}", value))
+            })
+    }
+
+    fn applescript_target_from_metadata(metadata: &Value) -> Option<String> {
+        metadata
+            .get("imessage_recipient")
+            .and_then(|value| value.as_str())
+            .map(|value| value.to_string())
+            .or_else(|| {
+                metadata
+                    .get("imessage_handle_address")
+                    .and_then(|value| value.as_str())
+                    .map(|value| value.to_string())
+            })
+            .or_else(|| {
+                metadata
+                    .get("imessage_chat_guid")
+                    .and_then(|value| value.as_str())
+                    .map(|value| value.to_string())
+            })
+    }
+
+    async fn outgoing_attachments(metadata: &Value) -> Result<Vec<OutgoingAttachment>> {
+        let mut attachments = Vec::new();
+        let Some(entries) = metadata.get("file_references").and_then(|value| value.as_array()) else {
+            return Ok(attachments);
+        };
+
+        for entry in entries {
+            let Some(local_path) = entry.get("local_path").and_then(|value| value.as_str()) else {
+                continue;
+            };
+
+            let bytes = tokio::fs::read(local_path)
+                .await
+                .map_err(|e| ChannelError::SendFailed {
+                    platform: "imessage".to_string(),
+                    message: format!("Failed to read iMessage attachment '{}': {}", local_path, e),
+                })?;
+
+            let filename = entry
+                .get("name")
+                .and_then(|value| value.as_str())
+                .map(|value| value.to_string())
+                .or_else(|| {
+                    std::path::Path::new(local_path)
+                        .file_name()
+                        .and_then(|value| value.to_str())
+                        .map(|value| value.to_string())
+                })
+                .unwrap_or_else(|| "attachment".to_string());
+
+            let mime = entry
+                .get("mime")
+                .and_then(|value| value.as_str())
+                .map(|value| value.to_string());
+
+            attachments.push(OutgoingAttachment {
+                bytes,
+                filename,
+                mime,
+            });
+        }
+
+        Ok(attachments)
     }
 
     /// Send a message via BlueBubbles API.
@@ -248,9 +381,7 @@ impl IMessageChannel {
             message: String,
             tempGuid: String,
         }
-
         let client = reqwest::Client::new();
-        let url = format!("{}/api/v1/message", server_url);
 
         let payload = BlueBubblesSendPayload {
             chatGuid: chat_guid.to_string(),
@@ -258,9 +389,13 @@ impl IMessageChannel {
             tempGuid: format!("temp-{}", Uuid::new_v4()),
         };
 
-        let response = client
-            .post(&url)
-            .header("Authorization", password)
+        let response = Self::bluebubbles_request(
+            &client,
+            reqwest::Method::POST,
+            server_url,
+            password,
+            "api/v1/message/text",
+        )
             .json(&payload)
             .send()
             .await
@@ -279,6 +414,66 @@ impl IMessageChannel {
                 message: error_text,
             }
             .into());
+        }
+
+        Ok(())
+    }
+
+    async fn send_bluebubbles_attachments(
+        &self,
+        server_url: &str,
+        password: &str,
+        chat_guid: &str,
+        content: &str,
+        attachments: &[OutgoingAttachment],
+    ) -> Result<()> {
+        let client = reqwest::Client::new();
+
+        for (index, attachment) in attachments.iter().enumerate() {
+            let part = if let Some(mime) = &attachment.mime {
+                Part::bytes(attachment.bytes.clone())
+                    .file_name(attachment.filename.clone())
+                    .mime_str(mime)
+                    .unwrap_or_else(|_| {
+                        Part::bytes(attachment.bytes.clone()).file_name(attachment.filename.clone())
+                    })
+            } else {
+                Part::bytes(attachment.bytes.clone()).file_name(attachment.filename.clone())
+            };
+
+            let message = if index == 0 { content } else { "" };
+            let form = Form::new()
+                .text("chatGuid", chat_guid.to_string())
+                .text("tempGuid", format!("temp-{}", Uuid::new_v4()))
+                .text("message", message.to_string())
+                .part("attachment", part);
+
+            let response = Self::bluebubbles_request(
+                &client,
+                reqwest::Method::POST,
+                server_url,
+                password,
+                "api/v1/message/attachment",
+            )
+            .multipart(form)
+            .send()
+            .await
+            .map_err(|e| ChannelError::SendFailed {
+                platform: "imessage".to_string(),
+                message: format!("Failed to send iMessage attachment: {}", e),
+            })?;
+
+            if !response.status().is_success() {
+                let error_text = response
+                    .text()
+                    .await
+                    .unwrap_or_else(|_| "Unknown error".to_string());
+                return Err(ChannelError::SendFailed {
+                    platform: "imessage".to_string(),
+                    message: error_text,
+                }
+                .into());
+            }
         }
 
         Ok(())
@@ -342,7 +537,6 @@ impl IMessageChannel {
                 password,
             } => {
                 let client = reqwest::Client::new();
-                let url = format!("{}/api/v1/message/react", server_url);
 
                 #[derive(Serialize)]
                 #[allow(non_snake_case)]
@@ -358,9 +552,13 @@ impl IMessageChannel {
                     reaction: tapback as i32,
                 };
 
-                client
-                    .post(&url)
-                    .header("Authorization", password)
+                Self::bluebubbles_request(
+                    &client,
+                    reqwest::Method::POST,
+                    server_url,
+                    password,
+                    "api/v1/message/react",
+                )
                     .json(&payload)
                     .send()
                     .await
@@ -378,6 +576,186 @@ impl IMessageChannel {
             .into()),
         }
     }
+
+    pub async fn ping(&self) -> Result<Value> {
+        match &self.config.bridge_mode {
+            IMessageBridgeMode::BlueBubbles {
+                server_url,
+                password,
+            } => {
+                let client = reqwest::Client::new();
+                let response = Self::bluebubbles_request(
+                    &client,
+                    reqwest::Method::GET,
+                    server_url,
+                    password,
+                    "api/v1/ping",
+                )
+                .send()
+                .await
+                .map_err(|e| ChannelError::Connection {
+                    platform: "imessage".to_string(),
+                    message: format!("Failed to ping BlueBubbles: {}", e),
+                })?;
+
+                let status = response.status();
+                let value: Value = response.json().await.unwrap_or_else(|_| serde_json::json!({}));
+                if !status.is_success() {
+                    return Err(ChannelError::Connection {
+                        platform: "imessage".to_string(),
+                        message: format!("BlueBubbles ping failed: {}", value),
+                    }
+                    .into());
+                }
+                Ok(value)
+            }
+            IMessageBridgeMode::MacOSDirect => Ok(serde_json::json!({
+                "status": 200,
+                "message": "macOS direct mode available",
+                "data": { "mode": "macos_direct", "supported": cfg!(target_os = "macos") }
+            })),
+            IMessageBridgeMode::PrivateApi => Err(ChannelError::Config {
+                platform: "imessage".to_string(),
+                message: "Private API mode not yet implemented".to_string(),
+            }
+            .into()),
+        }
+    }
+
+    pub async fn server_info(&self) -> Result<Value> {
+        match &self.config.bridge_mode {
+            IMessageBridgeMode::BlueBubbles {
+                server_url,
+                password,
+            } => {
+                let client = reqwest::Client::new();
+                let response = Self::bluebubbles_request(
+                    &client,
+                    reqwest::Method::GET,
+                    server_url,
+                    password,
+                    "api/v1/server",
+                )
+                .send()
+                .await
+                .map_err(|e| ChannelError::Connection {
+                    platform: "imessage".to_string(),
+                    message: format!("Failed to fetch BlueBubbles server info: {}", e),
+                })?;
+
+                let status = response.status();
+                let value: Value = response.json().await.unwrap_or_else(|_| serde_json::json!({}));
+                if !status.is_success() {
+                    return Err(ChannelError::Connection {
+                        platform: "imessage".to_string(),
+                        message: format!("BlueBubbles server info failed: {}", value),
+                    }
+                    .into());
+                }
+                Ok(value)
+            }
+            IMessageBridgeMode::MacOSDirect => Ok(serde_json::json!({
+                "mode": "macos_direct",
+                "supported": cfg!(target_os = "macos"),
+            })),
+            IMessageBridgeMode::PrivateApi => Err(ChannelError::Config {
+                platform: "imessage".to_string(),
+                message: "Private API mode not yet implemented".to_string(),
+            }
+            .into()),
+        }
+    }
+
+    pub async fn list_chats(&self, limit: usize, offset: usize) -> Result<Value> {
+        let (server_url, password) = match &self.config.bridge_mode {
+            IMessageBridgeMode::BlueBubbles {
+                server_url,
+                password,
+            } => (server_url, password),
+            _ => {
+                return Err(ChannelError::Config {
+                    platform: "imessage".to_string(),
+                    message: "Chat listing is only supported in BlueBubbles mode".to_string(),
+                }
+                .into())
+            }
+        };
+
+        let client = reqwest::Client::new();
+        let response = Self::bluebubbles_request(
+            &client,
+            reqwest::Method::POST,
+            server_url,
+            password,
+            "api/v1/chat/query",
+        )
+        .json(&serde_json::json!({
+            "limit": limit,
+            "offset": offset
+        }))
+        .send()
+        .await
+        .map_err(|e| ChannelError::Connection {
+            platform: "imessage".to_string(),
+            message: format!("Failed to list iMessage chats: {}", e),
+        })?;
+
+        let status = response.status();
+        let value: Value = response.json().await.unwrap_or_else(|_| serde_json::json!({}));
+        if !status.is_success() {
+            return Err(ChannelError::Connection {
+                platform: "imessage".to_string(),
+                message: format!("BlueBubbles chat query failed: {}", value),
+            }
+            .into());
+        }
+
+        Ok(value)
+    }
+
+    pub async fn list_contacts(&self) -> Result<Value> {
+        let (server_url, password) = match &self.config.bridge_mode {
+            IMessageBridgeMode::BlueBubbles {
+                server_url,
+                password,
+            } => (server_url, password),
+            _ => {
+                return Err(ChannelError::Config {
+                    platform: "imessage".to_string(),
+                    message: "Contact listing is only supported in BlueBubbles mode".to_string(),
+                }
+                .into())
+            }
+        };
+
+        let client = reqwest::Client::new();
+        let response = Self::bluebubbles_request(
+            &client,
+            reqwest::Method::POST,
+            server_url,
+            password,
+            "api/v1/contact",
+        )
+        .json(&serde_json::json!({}))
+        .send()
+        .await
+        .map_err(|e| ChannelError::Connection {
+            platform: "imessage".to_string(),
+            message: format!("Failed to list iMessage contacts: {}", e),
+        })?;
+
+        let status = response.status();
+        let value: Value = response.json().await.unwrap_or_else(|_| serde_json::json!({}));
+        if !status.is_success() {
+            return Err(ChannelError::Connection {
+                platform: "imessage".to_string(),
+                message: format!("BlueBubbles contact query failed: {}", value),
+            }
+            .into());
+        }
+
+        Ok(value)
+    }
 }
 
 #[derive(Clone)]
@@ -393,6 +771,16 @@ impl IMessageWebhookHandler {
         };
         let _ = self.incoming_tx.send(msg).await;
         Ok(())
+    }
+
+    pub fn verify_password(&self, candidate: Option<&str>) -> bool {
+        match (&self.config.bridge_mode, candidate) {
+            (IMessageBridgeMode::BlueBubbles { password, .. }, Some(candidate)) => {
+                candidate == password
+            }
+            (IMessageBridgeMode::BlueBubbles { .. }, None) => false,
+            _ => true,
+        }
     }
 }
 
@@ -445,25 +833,52 @@ impl Channel for IMessageChannel {
             return self.send_tapback(chat_guid, message_guid, tapback).await;
         }
 
-        // Extract chat GUID or recipient ID from metadata
-        let chat_guid = msg
-            .metadata
-            .get("imessage_chat_guid")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| ChannelError::InvalidFormat {
-                platform: "imessage".to_string(),
-                message: "Missing imessage_chat_guid in metadata".to_string(),
-            })?;
+        let attachments = Self::outgoing_attachments(&msg.metadata).await?;
 
         match &self.config.bridge_mode {
             IMessageBridgeMode::BlueBubbles {
                 server_url,
                 password,
             } => {
-                self.send_bluebubbles(server_url, password, chat_guid, &msg.content)
+                let chat_guid = Self::direct_target_from_metadata(&msg.metadata).ok_or_else(|| {
+                    ChannelError::InvalidFormat {
+                        platform: "imessage".to_string(),
+                        message: "Missing imessage_chat_guid or imessage_recipient in metadata"
+                            .to_string(),
+                    }
+                })?;
+
+                if attachments.is_empty() {
+                    self.send_bluebubbles(server_url, password, &chat_guid, &msg.content)
+                        .await
+                } else {
+                    self.send_bluebubbles_attachments(
+                        server_url,
+                        password,
+                        &chat_guid,
+                        &msg.content,
+                        &attachments,
+                    )
                     .await
+                }
             }
-            IMessageBridgeMode::MacOSDirect => self.send_applescript(chat_guid, &msg.content).await,
+            IMessageBridgeMode::MacOSDirect => {
+                if !attachments.is_empty() {
+                    return Err(ChannelError::Config {
+                        platform: "imessage".to_string(),
+                        message: "macOS direct mode does not support file attachments".to_string(),
+                    }
+                    .into());
+                }
+                let recipient = Self::applescript_target_from_metadata(&msg.metadata).ok_or_else(
+                    || ChannelError::InvalidFormat {
+                        platform: "imessage".to_string(),
+                        message: "Missing imessage_recipient or imessage_chat_guid in metadata"
+                            .to_string(),
+                    },
+                )?;
+                self.send_applescript(&recipient, &msg.content).await
+            }
             IMessageBridgeMode::PrivateApi => Err(ChannelError::Config {
                 platform: "imessage".to_string(),
                 message: "Private API mode not yet implemented".to_string(),
@@ -493,8 +908,7 @@ impl Channel for IMessageChannel {
         match &self.config.bridge_mode {
             IMessageBridgeMode::BlueBubbles { server_url, .. } => {
                 info!("iMessage: Using BlueBubbles bridge at {}", server_url);
-                // In a full implementation, this would verify the connection
-                // by fetching server info from the BlueBubbles API
+                self.ping().await?;
             }
             IMessageBridgeMode::MacOSDirect => {
                 if !cfg!(target_os = "macos") {
@@ -588,6 +1002,9 @@ pub struct BlueBubblesMessage {
     /// Attachments carried by the message, when provided by BlueBubbles
     #[serde(rename = "attachments")]
     pub attachments: Option<Vec<Value>>,
+    /// Chat metadata, when BlueBubbles includes the expanded chat payload.
+    #[serde(rename = "chats")]
+    pub chats: Option<Vec<BlueBubblesChat>>,
 }
 
 /// BlueBubbles sender handle information.
@@ -604,6 +1021,25 @@ pub struct BlueBubblesHandle {
     pub last_name: Option<String>,
 }
 
+/// BlueBubbles chat metadata included in some webhook events.
+#[derive(Debug, Clone, Deserialize)]
+pub struct BlueBubblesChat {
+    #[serde(rename = "guid")]
+    pub guid: Option<String>,
+    #[serde(rename = "displayName")]
+    pub display_name: Option<String>,
+    #[serde(rename = "chatIdentifier")]
+    pub chat_identifier: Option<String>,
+    #[serde(rename = "participants")]
+    pub participants: Option<Vec<Value>>,
+}
+
+struct OutgoingAttachment {
+    bytes: Vec<u8>,
+    filename: String,
+    mime: Option<String>,
+}
+
 /// Check if running on macOS.
 pub fn is_macos() -> bool {
     cfg!(target_os = "macos")
@@ -614,8 +1050,8 @@ mod tests {
     use super::*;
     use openrustclaw_core::traits::Channel;
     use openrustclaw_core::types::OutgoingMessage;
-    use tokio::net::TcpListener;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
 
     #[test]
     fn test_is_macos() {
@@ -753,10 +1189,19 @@ mod tests {
 
         let incoming = IMessageChannel::incoming_from_bluebubbles(&config, payload).unwrap();
         assert_eq!(incoming.metadata["imessage_is_group"], true);
-        assert_eq!(incoming.metadata["imessage_chat_display_name"], "Weekend Plans");
+        assert_eq!(
+            incoming.metadata["imessage_chat_display_name"],
+            "Weekend Plans"
+        );
         assert_eq!(incoming.metadata["imessage_participant_count"], 2);
-        assert_eq!(incoming.metadata["file_references"][0]["local_path"], "/tmp/photo.jpg");
-        assert_eq!(incoming.metadata["file_references"][0]["mime"], "image/jpeg");
+        assert_eq!(
+            incoming.metadata["file_references"][0]["local_path"],
+            "/tmp/photo.jpg"
+        );
+        assert_eq!(
+            incoming.metadata["file_references"][0]["mime"],
+            "image/jpeg"
+        );
     }
 
     #[test]
@@ -773,6 +1218,25 @@ mod tests {
             IMessageChannel::parse_tapback(&serde_json::json!(3)),
             Some(TapbackType::Laugh)
         );
+    }
+
+    #[test]
+    fn test_webhook_handler_verifies_password() {
+        let channel = IMessageChannel::new(IMessageConfig {
+            enabled: true,
+            bridge_mode: IMessageBridgeMode::BlueBubbles {
+                server_url: "http://127.0.0.1:1234".to_string(),
+                password: "secret".to_string(),
+            },
+            allowlist: vec![],
+            enable_tapbacks: true,
+            enable_typing_indicator: false,
+        });
+
+        let handler = channel.webhook_handler();
+        assert!(handler.verify_password(Some("secret")));
+        assert!(!handler.verify_password(Some("wrong")));
+        assert!(!handler.verify_password(None));
     }
 
     #[tokio::test]
@@ -819,5 +1283,138 @@ mod tests {
         assert!(request.contains("chat-guid-1"));
         assert!(request.contains("message-guid-1"));
         assert!(request.contains("\"reaction\":0"));
+    }
+
+    #[tokio::test]
+    async fn test_connect_pings_bluebubbles() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut buf = vec![0u8; 4096];
+            let n = socket.read(&mut buf).await.unwrap();
+            let request = String::from_utf8_lossy(&buf[..n]).to_string();
+            let response = b"HTTP/1.1 200 OK\r\ncontent-length: 55\r\ncontent-type: application/json\r\n\r\n{\"status\":200,\"message\":\"Ping received!\",\"data\":\"pong\"}";
+            socket.write_all(response).await.unwrap();
+            request
+        });
+
+        let mut channel = IMessageChannel::new(IMessageConfig {
+            enabled: true,
+            bridge_mode: IMessageBridgeMode::BlueBubbles {
+                server_url: format!("http://{}", addr),
+                password: "test-password".to_string(),
+            },
+            allowlist: vec![],
+            enable_tapbacks: true,
+            enable_typing_indicator: false,
+        });
+
+        channel.connect().await.unwrap();
+        channel.disconnect().await.unwrap();
+
+        let request = server.await.unwrap();
+        assert!(request.contains("GET /api/v1/ping?password=test-password"));
+    }
+
+    #[tokio::test]
+    async fn test_send_accepts_imessage_recipient_alias() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut buf = vec![0u8; 4096];
+            let n = socket.read(&mut buf).await.unwrap();
+            let request = String::from_utf8_lossy(&buf[..n]).to_string();
+            let response =
+                b"HTTP/1.1 200 OK\r\ncontent-length: 2\r\ncontent-type: application/json\r\n\r\n{}";
+            socket.write_all(response).await.unwrap();
+            request
+        });
+
+        let channel = IMessageChannel::new(IMessageConfig {
+            enabled: true,
+            bridge_mode: IMessageBridgeMode::BlueBubbles {
+                server_url: format!("http://{}", addr),
+                password: "test-password".to_string(),
+            },
+            allowlist: vec![],
+            enable_tapbacks: true,
+            enable_typing_indicator: false,
+        });
+
+        channel
+            .send(OutgoingMessage {
+                session_id: Uuid::new_v4(),
+                content: "hello there".to_string(),
+                metadata: serde_json::json!({
+                    "imessage_recipient": "+15555550123"
+                }),
+            })
+            .await
+            .unwrap();
+
+        let request = server.await.unwrap();
+        assert!(request.contains("POST /api/v1/message/text?password=test-password"));
+        assert!(request.contains("\"chatGuid\":\"any;-;+15555550123\""));
+        assert!(request.contains("\"message\":\"hello there\""));
+    }
+
+    #[tokio::test]
+    async fn test_send_supports_local_attachment_uploads() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut buf = vec![0u8; 8192];
+            let n = socket.read(&mut buf).await.unwrap();
+            let request = String::from_utf8_lossy(&buf[..n]).to_string();
+            let response =
+                b"HTTP/1.1 200 OK\r\ncontent-length: 2\r\ncontent-type: application/json\r\n\r\n{}";
+            socket.write_all(response).await.unwrap();
+            request
+        });
+
+        let attachment_path = std::env::temp_dir().join(format!(
+            "orc-imessage-attachment-{}.txt",
+            Uuid::new_v4()
+        ));
+        tokio::fs::write(&attachment_path, b"hello from attachment")
+            .await
+            .unwrap();
+
+        let channel = IMessageChannel::new(IMessageConfig {
+            enabled: true,
+            bridge_mode: IMessageBridgeMode::BlueBubbles {
+                server_url: format!("http://{}", addr),
+                password: "test-password".to_string(),
+            },
+            allowlist: vec![],
+            enable_tapbacks: true,
+            enable_typing_indicator: false,
+        });
+
+        channel
+            .send(OutgoingMessage {
+                session_id: Uuid::new_v4(),
+                content: "see attached".to_string(),
+                metadata: serde_json::json!({
+                    "imessage_recipient": "+15555550123",
+                    "file_references": [{
+                        "local_path": attachment_path,
+                        "name": "note.txt",
+                        "mime": "text/plain"
+                    }]
+                }),
+            })
+            .await
+            .unwrap();
+
+        let request = server.await.unwrap();
+        assert!(request.contains("POST /api/v1/message/attachment?password=test-password"));
+        assert!(request.contains("name=\"chatGuid\""));
+        assert!(request.contains("any;-;+15555550123"));
+        assert!(request.contains("filename=\"note.txt\""));
+        assert!(request.contains("see attached"));
     }
 }
