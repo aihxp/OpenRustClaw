@@ -69,6 +69,11 @@ enum Commands {
         #[command(subcommand)]
         action: SignalAction,
     },
+    /// WhatsApp operator integration
+    WhatsApp {
+        #[command(subcommand)]
+        action: WhatsAppAction,
+    },
     /// Manage file-backed control-plane profiles and multi-claw runtime mode
     Control {
         #[command(subcommand)]
@@ -507,6 +512,49 @@ enum SignalAction {
     ListGroups {
         #[arg(short, long, default_value = "config/default.toml")]
         config: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum WhatsAppAction {
+    /// Show current WhatsApp bridge/operator state from config
+    Status {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+    },
+    /// Start a WhatsApp connection and print the resulting state
+    Connect {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+    },
+    /// Wait for a QR code or pairing code and print it
+    Pair {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+        #[arg(long, default_value_t = 30)]
+        timeout_secs: u64,
+    },
+    /// Send a text message
+    Send {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+        #[arg(long)]
+        to: String,
+        #[arg(long)]
+        message: String,
+    },
+    /// Send media from a local path
+    SendMedia {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+        #[arg(long)]
+        to: String,
+        #[arg(long)]
+        media_type: String,
+        #[arg(long)]
+        path: String,
+        #[arg(long)]
+        caption: Option<String>,
     },
 }
 
@@ -1254,6 +1302,35 @@ async fn main() -> Result<()> {
                 config,
             } => commands::signal::link(&config, &device_name).await,
             SignalAction::ListGroups { config } => commands::signal::list_groups(&config).await,
+        },
+        Commands::WhatsApp { action } => match action {
+            WhatsAppAction::Status { config } => commands::whatsapp::status(&config).await,
+            WhatsAppAction::Connect { config } => commands::whatsapp::connect(&config).await,
+            WhatsAppAction::Pair {
+                config,
+                timeout_secs,
+            } => commands::whatsapp::pair(&config, timeout_secs).await,
+            WhatsAppAction::Send {
+                config,
+                to,
+                message,
+            } => commands::whatsapp::send(&config, &to, &message).await,
+            WhatsAppAction::SendMedia {
+                config,
+                to,
+                media_type,
+                path,
+                caption,
+            } => {
+                commands::whatsapp::send_media(
+                    &config,
+                    &to,
+                    &media_type,
+                    &path,
+                    caption.as_deref(),
+                )
+                .await
+            }
         },
         Commands::Control { action } => match action {
             ControlAction::Init { path } => commands::control::init(path.as_deref()),

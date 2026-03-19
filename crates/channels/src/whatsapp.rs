@@ -184,6 +184,8 @@ pub struct WhatsAppChannel {
     bridge_stdin: Arc<Mutex<Option<tokio::process::ChildStdin>>>,
     pending_requests: Arc<RwLock<HashMap<String, tokio::sync::oneshot::Sender<BridgeMessage>>>>,
     qr_code_tx: Arc<RwLock<Option<mpsc::Sender<String>>>>,
+    latest_qr_code: Arc<RwLock<Option<String>>>,
+    latest_pairing_code: Arc<RwLock<Option<String>>>,
     reconnect_attempts: Arc<RwLock<u32>>,
     should_reconnect: Arc<RwLock<bool>>,
 }
@@ -210,6 +212,8 @@ impl WhatsAppChannel {
             bridge_stdin: Arc::new(Mutex::new(None)),
             pending_requests: Arc::new(RwLock::new(HashMap::new())),
             qr_code_tx: Arc::new(RwLock::new(None)),
+            latest_qr_code: Arc::new(RwLock::new(None)),
+            latest_pairing_code: Arc::new(RwLock::new(None)),
             reconnect_attempts: Arc::new(RwLock::new(0)),
             should_reconnect: Arc::new(RwLock::new(true)),
         }
@@ -253,6 +257,51 @@ impl WhatsAppChannel {
     /// Set up QR code callback channel.
     pub async fn set_qr_callback(&self, tx: mpsc::Sender<String>) {
         *self.qr_code_tx.write().await = Some(tx);
+    }
+
+    pub async fn latest_qr_code(&self) -> Option<String> {
+        self.latest_qr_code.read().await.clone()
+    }
+
+    pub async fn latest_pairing_code(&self) -> Option<String> {
+        self.latest_pairing_code.read().await.clone()
+    }
+
+    pub async fn wait_for_pairing_artifact(&self, timeout_duration: Duration) -> Result<String> {
+        let deadline = tokio::time::Instant::now() + timeout_duration;
+        loop {
+            match *self.state.read().await {
+                ConnectionState::AwaitingQrCode => {
+                    if let Some(code) = self.latest_qr_code().await {
+                        return Ok(code);
+                    }
+                }
+                ConnectionState::AwaitingPairingCode => {
+                    if let Some(code) = self.latest_pairing_code().await {
+                        return Ok(code);
+                    }
+                }
+                ConnectionState::Connected => {
+                    return Err(ChannelError::Connection {
+                        platform: "whatsapp".to_string(),
+                        message: "WhatsApp connected before emitting a pairing artifact"
+                            .to_string(),
+                    }
+                    .into());
+                }
+                _ => {}
+            }
+
+            if tokio::time::Instant::now() >= deadline {
+                return Err(ChannelError::Connection {
+                    platform: "whatsapp".to_string(),
+                    message: "Timed out waiting for WhatsApp QR/pairing code".to_string(),
+                }
+                .into());
+            }
+
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
     }
 
     /// Start the Baileys bridge process.
@@ -328,6 +377,8 @@ impl WhatsAppChannel {
         let incoming_tx = self.incoming_tx.clone();
         let pending_requests = Arc::clone(&self.pending_requests);
         let qr_code_tx = Arc::clone(&self.qr_code_tx);
+        let latest_qr_code = Arc::clone(&self.latest_qr_code);
+        let latest_pairing_code = Arc::clone(&self.latest_pairing_code);
         let allowlist = self.config.allowlist.clone();
         let rate_limiter = Arc::clone(&self.rate_limiter);
         let reconnect_attempts = Arc::clone(&self.reconnect_attempts);
@@ -347,6 +398,8 @@ impl WhatsAppChannel {
                                 info!("WhatsApp connected");
                                 *state.write().await = ConnectionState::Connected;
                                 *reconnect_attempts.write().await = 0;
+                                *latest_qr_code.write().await = None;
+                                *latest_pairing_code.write().await = None;
                                 send_whatsapp_webhook_event(
                                     webhook_url.as_deref(),
                                     "whatsapp_connected",
@@ -357,6 +410,8 @@ impl WhatsAppChannel {
                             BridgeMessage::QrCode { qr_code } => {
                                 info!("Received QR code for pairing");
                                 *state.write().await = ConnectionState::AwaitingQrCode;
+                                *latest_qr_code.write().await = Some(qr_code.clone());
+                                *latest_pairing_code.write().await = None;
 
                                 // Send QR code to callback if set
                                 if let Some(tx) = qr_code_tx.read().await.as_ref() {
@@ -377,6 +432,7 @@ impl WhatsAppChannel {
                             BridgeMessage::PairingCode { code } => {
                                 info!(pairing_code = %code, "Received pairing code");
                                 *state.write().await = ConnectionState::AwaitingPairingCode;
+                                *latest_pairing_code.write().await = Some(code.clone());
                                 info!("\n╔════════════════════════════════════╗");
                                 info!("║     WhatsApp Pairing Code          ║");
                                 info!("║                                    ║");
@@ -395,6 +451,8 @@ impl WhatsAppChannel {
                             BridgeMessage::Disconnected { reason } => {
                                 warn!(reason = ?reason, "WhatsApp disconnected");
                                 *state.write().await = ConnectionState::Disconnected;
+                                *latest_qr_code.write().await = None;
+                                *latest_pairing_code.write().await = None;
                                 send_whatsapp_webhook_event(
                                     webhook_url.as_deref(),
                                     "whatsapp_disconnected",
@@ -556,6 +614,8 @@ impl WhatsAppChannel {
 
             info!("Bridge stdout reader ended");
             *state.write().await = ConnectionState::Disconnected;
+            *latest_qr_code.write().await = None;
+            *latest_pairing_code.write().await = None;
             send_whatsapp_webhook_event(
                 webhook_url.as_deref(),
                 "whatsapp_bridge_stopped",
