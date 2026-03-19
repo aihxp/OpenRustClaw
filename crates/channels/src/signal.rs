@@ -370,6 +370,11 @@ impl SignalChannel {
                     if let Some(ref group) = group_info {
                         metadata["signal_group_id"] = serde_json::json!(&group.group_id);
                         metadata["signal_group_name"] = serde_json::json!(&group.group_name);
+                        if let Some(members) = group.members.as_ref() {
+                            metadata["signal_group_members"] = serde_json::json!(members);
+                            metadata["signal_group_member_count"] =
+                                serde_json::json!(members.len());
+                        }
                     }
 
                     // Add attachments info
@@ -418,6 +423,25 @@ impl SignalChannel {
                             "author": quote.author,
                             "text": quote.text,
                         });
+                    }
+
+                    if !data_message.mentions.is_empty() {
+                        let mentions: Vec<_> = data_message
+                            .mentions
+                            .iter()
+                            .map(|mention| {
+                                serde_json::json!({
+                                    "name": mention.name,
+                                    "number": mention.number,
+                                    "uuid": mention.uuid,
+                                    "start": mention.start,
+                                    "length": mention.length,
+                                })
+                            })
+                            .collect();
+                        metadata["signal_mentions"] = serde_json::json!(mentions);
+                        metadata["signal_mention_count"] =
+                            serde_json::json!(data_message.mentions.len());
                     }
 
                     // Check if message is a mention of the bot
@@ -472,6 +496,27 @@ impl SignalChannel {
             }
             SignalEnvelope::Receipt { timestamp, source } => {
                 debug!(timestamp = timestamp, source = %source, "Received receipt");
+                let msg = IncomingMessage {
+                    session_id: Uuid::new_v4(),
+                    user_id: source.clone(),
+                    content: "[signal receipt]".to_string(),
+                    platform: Platform::Signal,
+                    metadata: serde_json::json!({
+                        "signal_receipt_timestamp": timestamp,
+                        "signal_receipt_source": source,
+                        "signal_activity_type": "receipt",
+                        "signal_is_group": false,
+                    }),
+                };
+
+                if let Err(e) = tx.send(msg).await {
+                    error!(error = %e, "Failed to send receipt to channel");
+                    return Err(ChannelError::Connection {
+                        platform: "signal".to_string(),
+                        message: "Message channel closed".to_string(),
+                    }
+                    .into());
+                }
             }
             SignalEnvelope::Other => {
                 // Ignore other message types
@@ -1016,7 +1061,13 @@ mod tests {
                         upload_timestamp: Some(1111),
                     }],
                     quote: None,
-                    mentions: vec![],
+                    mentions: vec![Mention {
+                        name: "OpenRustClaw".to_string(),
+                        number: Some("+19998887777".to_string()),
+                        uuid: None,
+                        start: 0,
+                        length: 12,
+                    }],
                     group_info: None,
                 },
                 timestamp: 123,
@@ -1052,5 +1103,77 @@ mod tests {
             incoming.metadata["file_references"][0]["width"],
             serde_json::json!(800)
         );
+        assert_eq!(incoming.metadata["signal_mention_count"], serde_json::json!(1));
+        assert_eq!(incoming.metadata["signal_mentions"][0]["name"], "OpenRustClaw");
+        assert_eq!(incoming.metadata["signal_bot_mentioned"], true);
+    }
+
+    #[tokio::test]
+    async fn test_process_envelope_preserves_group_members() {
+        let (tx, mut rx) = mpsc::channel(4);
+        SignalChannel::process_envelope(
+            SignalEnvelope::DataMessage {
+                data_message: DataMessage {
+                    message: Some("group hello".to_string()),
+                    attachments: vec![],
+                    quote: None,
+                    mentions: vec![],
+                    group_info: Some(GroupInfo {
+                        group_id: "group-1".to_string(),
+                        group_name: Some("Ops".to_string()),
+                        members: Some(vec![
+                            "+15551230001".to_string(),
+                            "+15551230002".to_string(),
+                        ]),
+                    }),
+                },
+                timestamp: 456,
+                source: "+15551230001".to_string(),
+                source_number: Some("+15551230001".to_string()),
+                source_uuid: None,
+                group_info: Some(GroupInfo {
+                    group_id: "group-1".to_string(),
+                    group_name: Some("Ops".to_string()),
+                    members: Some(vec![
+                        "+15551230001".to_string(),
+                        "+15551230002".to_string(),
+                    ]),
+                }),
+            },
+            &tx,
+            &[],
+            &[],
+            false,
+            "+19998887777",
+        )
+        .await
+        .unwrap();
+
+        let incoming = rx.recv().await.expect("incoming group message");
+        assert_eq!(incoming.metadata["signal_group_member_count"], 2);
+        assert_eq!(incoming.metadata["signal_group_members"][1], "+15551230002");
+    }
+
+    #[tokio::test]
+    async fn test_process_receipt_envelope_routes_lifecycle_message() {
+        let (tx, mut rx) = mpsc::channel(4);
+        SignalChannel::process_envelope(
+            SignalEnvelope::Receipt {
+                timestamp: 999,
+                source: "+15550001111".to_string(),
+            },
+            &tx,
+            &[],
+            &[],
+            false,
+            "+19998887777",
+        )
+        .await
+        .unwrap();
+
+        let incoming = rx.recv().await.expect("receipt message");
+        assert_eq!(incoming.content, "[signal receipt]");
+        assert_eq!(incoming.metadata["signal_activity_type"], "receipt");
+        assert_eq!(incoming.metadata["signal_receipt_timestamp"], 999);
     }
 }
