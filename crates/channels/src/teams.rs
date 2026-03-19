@@ -21,9 +21,9 @@
 //! The webhook handler listens on the configured path (default: `/webhooks/teams`)
 //! and processes incoming Activities from the Bot Framework.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use std::path::PathBuf;
 
 use async_trait::async_trait;
 use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
@@ -200,9 +200,61 @@ pub struct MentionInfo {
 }
 
 impl TeamsChannel {
-    fn apply_channel_data_metadata(metadata: &mut serde_json::Value, channel_data: &serde_json::Value) {
+    fn connector_base_url(service_url: &str) -> String {
+        let trimmed = service_url.trim_end_matches('/');
+        if trimmed.ends_with("/v3") {
+            trimmed.to_string()
+        } else {
+            format!("{trimmed}/v3")
+        }
+    }
+
+    fn conversation_activities_url(service_url: &str, conversation_id: &str) -> String {
+        format!(
+            "{}/conversations/{}/activities",
+            Self::connector_base_url(service_url),
+            conversation_id
+        )
+    }
+
+    fn conversation_activity_url(
+        service_url: &str,
+        conversation_id: &str,
+        activity_id: &str,
+    ) -> String {
+        format!(
+            "{}/conversations/{}/activities/{}",
+            Self::connector_base_url(service_url),
+            conversation_id,
+            activity_id
+        )
+    }
+
+    fn conversation_attachments_url(service_url: &str, conversation_id: &str) -> String {
+        format!(
+            "{}/conversations/{}/attachments",
+            Self::connector_base_url(service_url),
+            conversation_id
+        )
+    }
+
+    fn uploaded_attachment_view_url(service_url: &str, attachment_id: &str) -> String {
+        format!(
+            "{}/attachments/{}/views/original",
+            Self::connector_base_url(service_url),
+            attachment_id
+        )
+    }
+
+    fn apply_channel_data_metadata(
+        metadata: &mut serde_json::Value,
+        channel_data: &serde_json::Value,
+    ) {
         metadata["teams_channel_data"] = channel_data.clone();
-        if let Some(team_id) = channel_data.pointer("/team/id").and_then(|value| value.as_str()) {
+        if let Some(team_id) = channel_data
+            .pointer("/team/id")
+            .and_then(|value| value.as_str())
+        {
             metadata["teams_team_id"] = serde_json::json!(team_id);
         }
         if let Some(channel_id) = channel_data
@@ -363,10 +415,7 @@ impl TeamsChannel {
             }
         });
 
-        let url = format!(
-            "{}/conversations/{}/activities",
-            service_url, conversation_id
-        );
+        let url = Self::conversation_activities_url(service_url, conversation_id);
 
         let response = self
             .http
@@ -607,7 +656,13 @@ impl TeamsChannel {
         let path = downloads_dir.join(Self::sanitize_download_name(activity_id, filename));
 
         let mut request = self.http.get(url);
-        if let Some(token) = self.token.read().await.as_ref().map(|value| value.token.clone()) {
+        if let Some(token) = self
+            .token
+            .read()
+            .await
+            .as_ref()
+            .map(|value| value.token.clone())
+        {
             request = request.bearer_auth(token);
         }
 
@@ -625,10 +680,13 @@ impl TeamsChannel {
             .into());
         }
 
-        let bytes = response.bytes().await.map_err(|e| ChannelError::Connection {
-            platform: "teams".to_string(),
-            message: format!("Failed to read Teams attachment download: {}", e),
-        })?;
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|e| ChannelError::Connection {
+                platform: "teams".to_string(),
+                message: format!("Failed to read Teams attachment download: {}", e),
+            })?;
 
         tokio::fs::write(&path, &bytes)
             .await
@@ -638,6 +696,233 @@ impl TeamsChannel {
             })?;
 
         Ok(Some(path.to_string_lossy().to_string()))
+    }
+
+    fn local_file_references(metadata: &serde_json::Value) -> Vec<(String, String, String)> {
+        metadata
+            .get("file_references")
+            .and_then(|value| value.as_array())
+            .map(|items| {
+                items.iter()
+                    .filter_map(|item| {
+                        let local_path = item
+                            .get("local_path")
+                            .or_else(|| item.get("path"))
+                            .and_then(|value| value.as_str())
+                            .filter(|value| !value.trim().is_empty())?;
+                        let name = item
+                            .get("name")
+                            .or_else(|| item.get("title"))
+                            .and_then(|value| value.as_str())
+                            .map(ToString::to_string)
+                            .or_else(|| {
+                                PathBuf::from(local_path)
+                                    .file_name()
+                                    .map(|value| value.to_string_lossy().to_string())
+                            })
+                            .unwrap_or_else(|| "attachment.bin".to_string());
+                        let mime = item
+                            .get("mime")
+                            .or_else(|| item.get("content_type"))
+                            .and_then(|value| value.as_str())
+                            .unwrap_or("application/octet-stream")
+                            .to_string();
+                        Some((local_path.to_string(), name, mime))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    async fn upload_local_attachments(
+        &self,
+        service_url: &str,
+        conversation_id: &str,
+        token: &str,
+        metadata: &serde_json::Value,
+    ) -> Result<Vec<serde_json::Value>> {
+        let files = Self::local_file_references(metadata);
+        let mut attachments = Vec::new();
+
+        for (local_path, name, mime) in files {
+            let bytes =
+                tokio::fs::read(&local_path)
+                    .await
+                    .map_err(|e| ChannelError::SendFailed {
+                        platform: "teams".to_string(),
+                        message: format!(
+                            "Failed to read Teams local attachment '{}': {}",
+                            local_path, e
+                        ),
+                    })?;
+
+            let payload = serde_json::json!({
+                "name": name,
+                "type": mime,
+                "originalBase64": BASE64.encode(bytes),
+            });
+
+            let response = self
+                .http
+                .post(Self::conversation_attachments_url(
+                    service_url,
+                    conversation_id,
+                ))
+                .header("Authorization", format!("Bearer {}", token))
+                .json(&payload)
+                .send()
+                .await
+                .map_err(|e| ChannelError::SendFailed {
+                    platform: "teams".to_string(),
+                    message: format!("Teams attachment upload failed: {}", e),
+                })?;
+
+            if !response.status().is_success() {
+                let error_text = response.text().await.unwrap_or_default();
+                return Err(ChannelError::SendFailed {
+                    platform: "teams".to_string(),
+                    message: format!("Teams attachment upload failed: {}", error_text),
+                }
+                .into());
+            }
+
+            let upload: serde_json::Value =
+                response
+                    .json()
+                    .await
+                    .map_err(|e| ChannelError::SendFailed {
+                        platform: "teams".to_string(),
+                        message: format!("Failed to parse Teams attachment upload: {}", e),
+                    })?;
+            let attachment_id = upload
+                .get("id")
+                .and_then(|value| value.as_str())
+                .ok_or_else(|| ChannelError::SendFailed {
+                    platform: "teams".to_string(),
+                    message: "Teams attachment upload response missing id".to_string(),
+                })?;
+
+            attachments.push(serde_json::json!({
+                "contentType": mime,
+                "contentUrl": Self::uploaded_attachment_view_url(service_url, attachment_id),
+                "name": name,
+            }));
+        }
+
+        Ok(attachments)
+    }
+
+    fn teams_action(msg: &OutgoingMessage) -> Option<&str> {
+        msg.metadata.get("teams_action").and_then(|value| value.as_str())
+    }
+
+    fn target_activity_id(msg: &OutgoingMessage, action_key: &str) -> Option<String> {
+        msg.metadata
+            .get(action_key)
+            .or_else(|| msg.metadata.get("teams_activity_id"))
+            .or_else(|| msg.metadata.get("teams_reply_to_id"))
+            .and_then(|value| value.as_str())
+            .map(ToString::to_string)
+    }
+
+    fn outgoing_service_url(msg: &OutgoingMessage) -> &str {
+        msg.metadata
+            .get("teams_service_url")
+            .and_then(|v| v.as_str())
+            .unwrap_or("https://smba.trafficmanager.net/teams/")
+    }
+
+    fn outgoing_conversation_id(msg: &OutgoingMessage) -> Result<&str> {
+        msg.metadata
+            .get("teams_conversation_id")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| {
+                ChannelError::InvalidFormat {
+                    platform: "teams".to_string(),
+                    message: "Missing teams_conversation_id in metadata".to_string(),
+                }
+                .into()
+            })
+    }
+
+    async fn build_message_activity(
+        &self,
+        msg: &OutgoingMessage,
+        token: &str,
+    ) -> Result<(String, String, serde_json::Value)> {
+        let service_url = Self::outgoing_service_url(msg).to_string();
+        let conversation_id = Self::outgoing_conversation_id(msg)?.to_string();
+        let reply_to_id = msg
+            .metadata
+            .get("teams_activity_id")
+            .or_else(|| msg.metadata.get("teams_reply_to_id"))
+            .and_then(|v| v.as_str());
+
+        let mut activity = serde_json::json!({
+            "type": "message",
+            "from": {
+                "id": self.config.app_id,
+                "name": "OpenRustClaw"
+            },
+            "conversation": {
+                "id": conversation_id
+            },
+            "text": Self::markdown_to_teams(&msg.content),
+        });
+
+        if let Some(reply_id) = reply_to_id {
+            activity["replyToId"] = serde_json::json!(reply_id);
+        }
+
+        let use_card = msg
+            .metadata
+            .get("teams_use_adaptive_card")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(self.config.adaptive_cards_enabled);
+        let use_native_attachments = msg
+            .metadata
+            .get("teams_use_native_attachments")
+            .and_then(|value| value.as_bool())
+            .unwrap_or(!use_card);
+
+        let uploaded_attachments = if use_native_attachments {
+            self.upload_local_attachments(&service_url, &conversation_id, token, &msg.metadata)
+                .await?
+        } else {
+            Vec::new()
+        };
+
+        if !uploaded_attachments.is_empty() {
+            activity["attachments"] = serde_json::json!(uploaded_attachments);
+        } else if use_card {
+            let title = msg
+                .metadata
+                .get("teams_card_title")
+                .and_then(|v| v.as_str());
+
+            let file_refs = msg
+                .metadata
+                .get("file_references")
+                .and_then(|value| value.as_array())
+                .cloned()
+                .unwrap_or_default();
+            let card = self
+                .build_file_reference_card(&msg.content, title, &file_refs)
+                .or_else(|| self.build_adaptive_card(&msg.content, title));
+
+            if let Some(card) = card {
+                activity["attachments"] = serde_json::json!([card]);
+                activity["text"] = serde_json::json!(null);
+            }
+        } else if let Some(attachments) = msg
+            .metadata
+            .get("teams_attachments")
+            .and_then(|value| value.as_array())
+        {
+            activity["attachments"] = serde_json::json!(attachments);
+        }
+
+        Ok((service_url, conversation_id, activity))
     }
 
     /// Handle an incoming Activity from the Bot Framework webhook.
@@ -744,8 +1029,7 @@ impl TeamsChannel {
         });
         metadata["teams_has_mentions"] =
             serde_json::json!(!mention_info.mentioned_users.is_empty());
-        metadata["teams_mention_count"] =
-            serde_json::json!(mention_info.mentioned_users.len());
+        metadata["teams_mention_count"] = serde_json::json!(mention_info.mentioned_users.len());
         if let Some(reply_to_id) = activity.get("replyToId").and_then(|value| value.as_str()) {
             metadata["teams_reply_to_id"] = serde_json::json!(reply_to_id);
             metadata["teams_has_reply_to"] = serde_json::json!(true);
@@ -761,11 +1045,7 @@ impl TeamsChannel {
             metadata["teams_attachment_count"] = serde_json::json!(attachments.len());
             let attachment_names: Vec<_> = attachments
                 .iter()
-                .filter_map(|attachment| {
-                    attachment
-                        .get("name")
-                        .and_then(|value| value.as_str())
-                })
+                .filter_map(|attachment| attachment.get("name").and_then(|value| value.as_str()))
                 .collect();
             if !attachment_names.is_empty() {
                 metadata["teams_attachment_names"] = serde_json::json!(attachment_names);
@@ -801,8 +1081,7 @@ impl TeamsChannel {
             if !attachment_urls.is_empty() {
                 metadata["teams_attachment_urls"] = serde_json::json!(attachment_urls);
                 metadata["teams_has_attachment_urls"] = serde_json::json!(true);
-                metadata["teams_attachment_url_count"] =
-                    serde_json::json!(attachment_urls.len());
+                metadata["teams_attachment_url_count"] = serde_json::json!(attachment_urls.len());
             } else {
                 metadata["teams_has_attachment_urls"] = serde_json::json!(false);
                 metadata["teams_attachment_url_count"] = serde_json::json!(0);
@@ -858,8 +1137,12 @@ impl TeamsChannel {
                 if !downloaded_paths.is_empty() {
                     metadata["teams_has_download_paths"] = serde_json::json!(true);
                     metadata["teams_download_paths"] = serde_json::json!(downloaded_paths);
-                    metadata["teams_downloaded_attachment_count"] =
-                        serde_json::json!(metadata["teams_download_paths"].as_array().map(|items| items.len()).unwrap_or(0));
+                    metadata["teams_downloaded_attachment_count"] = serde_json::json!(
+                        metadata["teams_download_paths"]
+                            .as_array()
+                            .map(|items| items.len())
+                            .unwrap_or(0)
+                    );
                     let download_paths = metadata["teams_download_paths"]
                         .as_array()
                         .cloned()
@@ -1078,7 +1361,9 @@ impl TeamsChannel {
                 "[teams message deleted]".to_string()
             }
             "messageUpdate" => {
-                if let Some(reply_to_id) = activity.get("replyToId").and_then(|value| value.as_str()) {
+                if let Some(reply_to_id) =
+                    activity.get("replyToId").and_then(|value| value.as_str())
+                {
                     metadata["teams_reply_to_id"] = serde_json::json!(reply_to_id);
                 }
                 if let Some(channel_data) = activity.get("channelData") {
@@ -1107,88 +1392,8 @@ impl TeamsChannel {
     /// Send a message to Teams using the Bot Framework REST API.
     async fn send_to_teams(&self, msg: &OutgoingMessage) -> Result<()> {
         let token = self.get_token().await?;
-
-        // Extract required metadata
-        let service_url = msg
-            .metadata
-            .get("teams_service_url")
-            .and_then(|v| v.as_str())
-            .unwrap_or("https://smba.trafficmanager.net/emea/");
-
-        let conversation_id = msg
-            .metadata
-            .get("teams_conversation_id")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| ChannelError::InvalidFormat {
-                platform: "teams".to_string(),
-                message: "Missing teams_conversation_id in metadata".to_string(),
-            })?;
-
-        let reply_to_id = msg
-            .metadata
-            .get("teams_activity_id")
-            .or_else(|| msg.metadata.get("teams_reply_to_id"))
-            .and_then(|v| v.as_str());
-
-        // Build the activity
-        let mut activity = serde_json::json!({
-            "type": "message",
-            "from": {
-                "id": self.config.app_id,
-                "name": "OpenRustClaw"
-            },
-            "conversation": {
-                "id": conversation_id
-            },
-            "text": Self::markdown_to_teams(&msg.content),
-        });
-
-        // Add replyToId if this is a reply
-        if let Some(reply_id) = reply_to_id {
-            activity["replyToId"] = serde_json::json!(reply_id);
-        }
-
-        // Check if we should use an Adaptive Card
-        let use_card = msg
-            .metadata
-            .get("teams_use_adaptive_card")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(self.config.adaptive_cards_enabled);
-
-        if use_card {
-            let title = msg
-                .metadata
-                .get("teams_card_title")
-                .and_then(|v| v.as_str());
-
-            let file_refs = msg
-                .metadata
-                .get("file_references")
-                .and_then(|value| value.as_array())
-                .cloned()
-                .unwrap_or_default();
-            let card = self
-                .build_file_reference_card(&msg.content, title, &file_refs)
-                .or_else(|| self.build_adaptive_card(&msg.content, title));
-
-            if let Some(card) = card {
-                activity["attachments"] = serde_json::json!([card]);
-                // Clear text when using card, or Teams will show both
-                activity["text"] = serde_json::json!(null);
-            }
-        } else if let Some(attachments) = msg
-            .metadata
-            .get("teams_attachments")
-            .and_then(|value| value.as_array())
-        {
-            activity["attachments"] = serde_json::json!(attachments);
-        }
-
-        // Send the activity
-        let url = format!(
-            "{}/conversations/{}/activities",
-            service_url, conversation_id
-        );
+        let (service_url, conversation_id, activity) = self.build_message_activity(msg, &token).await?;
+        let url = Self::conversation_activities_url(&service_url, &conversation_id);
 
         let response = self
             .http
@@ -1217,6 +1422,79 @@ impl TeamsChannel {
         );
         Ok(())
     }
+
+    async fn update_activity(&self, msg: &OutgoingMessage) -> Result<()> {
+        let token = self.get_token().await?;
+        let activity_id =
+            Self::target_activity_id(msg, "teams_update_activity_id").ok_or_else(|| {
+                ChannelError::InvalidFormat {
+                    platform: "teams".to_string(),
+                    message: "Missing Teams activity id for update".to_string(),
+                }
+            })?;
+        let (service_url, conversation_id, mut activity) = self.build_message_activity(msg, &token).await?;
+        activity["id"] = serde_json::json!(activity_id);
+        let url = Self::conversation_activity_url(&service_url, &conversation_id, &activity_id);
+
+        let response = self
+            .http
+            .put(&url)
+            .header("Authorization", format!("Bearer {}", token))
+            .json(&activity)
+            .send()
+            .await
+            .map_err(|e| ChannelError::SendFailed {
+                platform: "teams".to_string(),
+                message: format!("Teams update failed: {}", e),
+            })?;
+
+        if !response.status().is_success() {
+            let error_text = response.text().await.unwrap_or_default();
+            return Err(ChannelError::SendFailed {
+                platform: "teams".to_string(),
+                message: format!("Teams update failed: {}", error_text),
+            }
+            .into());
+        }
+
+        Ok(())
+    }
+
+    async fn delete_activity(&self, msg: &OutgoingMessage) -> Result<()> {
+        let token = self.get_token().await?;
+        let service_url = Self::outgoing_service_url(msg);
+        let conversation_id = Self::outgoing_conversation_id(msg)?;
+        let activity_id =
+            Self::target_activity_id(msg, "teams_delete_activity_id").ok_or_else(|| {
+                ChannelError::InvalidFormat {
+                    platform: "teams".to_string(),
+                    message: "Missing Teams activity id for delete".to_string(),
+                }
+            })?;
+        let url = Self::conversation_activity_url(service_url, conversation_id, &activity_id);
+
+        let response = self
+            .http
+            .delete(&url)
+            .header("Authorization", format!("Bearer {}", token))
+            .send()
+            .await
+            .map_err(|e| ChannelError::SendFailed {
+                platform: "teams".to_string(),
+                message: format!("Teams delete failed: {}", e),
+            })?;
+
+        if !response.status().is_success() {
+            let error_text = response.text().await.unwrap_or_default();
+            return Err(ChannelError::SendFailed {
+                platform: "teams".to_string(),
+                message: format!("Teams delete failed: {}", error_text),
+            }
+            .into());
+        }
+
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -1229,7 +1507,18 @@ impl Channel for TeamsChannel {
         // Apply rate limiting
         self.rate_limiter.until_ready().await;
 
-        self.send_to_teams(&msg).await
+        match Self::teams_action(&msg) {
+            Some("typing") => {
+                self.send_typing_indicator(
+                    Self::outgoing_service_url(&msg),
+                    Self::outgoing_conversation_id(&msg)?,
+                )
+                .await
+            }
+            Some("update") => self.update_activity(&msg).await,
+            Some("delete") => self.delete_activity(&msg).await,
+            _ => self.send_to_teams(&msg).await,
+        }
     }
 
     async fn receive(&self) -> Result<IncomingMessage> {
@@ -1690,7 +1979,10 @@ mod tests {
         assert_eq!(incoming.metadata["teams_reaction_types_added"][0], "like");
         assert_eq!(incoming.metadata["teams_has_reactions_removed"], true);
         assert_eq!(incoming.metadata["teams_reactions_removed_count"], 1);
-        assert_eq!(incoming.metadata["teams_reaction_types_removed"][0], "heart");
+        assert_eq!(
+            incoming.metadata["teams_reaction_types_removed"][0],
+            "heart"
+        );
         assert_eq!(incoming.metadata["teams_team_id"], "team-123");
         assert_eq!(incoming.metadata["teams_channel_id"], "channel-456");
         assert_eq!(incoming.metadata["teams_tenant_id"], "tenant-789");
@@ -1740,7 +2032,10 @@ mod tests {
         );
         assert_eq!(incoming.metadata["teams_has_members_added"], true);
         assert_eq!(incoming.metadata["teams_members_added_count"], 1);
-        assert_eq!(incoming.metadata["teams_member_ids_added"][0], "29:new-user");
+        assert_eq!(
+            incoming.metadata["teams_member_ids_added"][0],
+            "29:new-user"
+        );
         assert_eq!(incoming.metadata["teams_team_id"], "team-123");
         assert_eq!(incoming.metadata["teams_channel_id"], "channel-456");
         assert_eq!(incoming.metadata["teams_tenant_id"], "tenant-789");
@@ -1781,14 +2076,17 @@ mod tests {
         assert_eq!(incoming.metadata["teams_has_members_added"], false);
         assert_eq!(incoming.metadata["teams_has_members_removed"], true);
         assert_eq!(incoming.metadata["teams_members_removed_count"], 1);
-        assert_eq!(incoming.metadata["teams_member_ids_removed"][0], "29:old-user");
+        assert_eq!(
+            incoming.metadata["teams_member_ids_removed"][0],
+            "29:old-user"
+        );
     }
 
     #[tokio::test]
     async fn test_send_supports_reply_alias() {
         let server = MockServer::start().await;
         Mock::given(method("POST"))
-            .and(path("/conversations/19:conversation/activities"))
+            .and(path("/v3/conversations/19:conversation/activities"))
             .and(body_partial_json(serde_json::json!({
                 "replyToId": "activity-root"
             })))
@@ -1827,6 +2125,207 @@ mod tests {
             })
             .await
             .expect("send succeeds");
+    }
+
+    #[tokio::test]
+    async fn test_send_supports_native_attachment_uploads() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v3/conversations/19:conversation/attachments"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "attachment-1"
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/v3/conversations/19:conversation/activities"))
+            .and(body_partial_json(serde_json::json!({
+                "attachments": [{
+                    "contentType": "application/pdf",
+                    "contentUrl": format!("{}/v3/attachments/attachment-1/views/original", server.uri()),
+                    "name": "report.pdf"
+                }]
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "activity-sent"
+            })))
+            .mount(&server)
+            .await;
+
+        let temp_root = std::env::temp_dir().join(format!("orc-teams-upload-{}", Uuid::new_v4()));
+        tokio::fs::create_dir_all(&temp_root).await.unwrap();
+        let file_path = temp_root.join("report.pdf");
+        tokio::fs::write(&file_path, b"teams-pdf").await.unwrap();
+
+        let channel = TeamsChannel::new(TeamsConfig {
+            enabled: true,
+            app_id: "test-app".to_string(),
+            app_password: "test-password".to_string(),
+            tenant_id: None,
+            webhook_path: "/webhook".to_string(),
+            allowlist: vec![],
+            group_policy: TeamsGroupPolicy::Open,
+            rate_limit_requests_per_second: 10,
+            adaptive_cards_enabled: true,
+            attachment_download_dir: None,
+        });
+        *channel.token.write().await = Some(AccessToken {
+            token: "cached-token".to_string(),
+            expires_at: Instant::now() + Duration::from_secs(600),
+        });
+
+        channel
+            .send(OutgoingMessage {
+                session_id: Uuid::new_v4(),
+                content: "upload body".to_string(),
+                metadata: serde_json::json!({
+                    "teams_service_url": server.uri(),
+                    "teams_conversation_id": "19:conversation",
+                    "teams_use_native_attachments": true,
+                    "file_references": [{
+                        "local_path": file_path,
+                        "name": "report.pdf",
+                        "mime": "application/pdf"
+                    }]
+                }),
+            })
+            .await
+            .expect("send succeeds");
+
+        let _ = tokio::fs::remove_file(&file_path).await;
+        let _ = tokio::fs::remove_dir_all(&temp_root).await;
+    }
+
+    #[tokio::test]
+    async fn test_send_supports_update_action() {
+        let server = MockServer::start().await;
+        Mock::given(method("PUT"))
+            .and(path("/v3/conversations/19:conversation/activities/activity-123"))
+            .and(body_partial_json(serde_json::json!({
+                "id": "activity-123",
+                "text": "updated body"
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "activity-123"
+            })))
+            .mount(&server)
+            .await;
+
+        let channel = TeamsChannel::new(TeamsConfig {
+            enabled: true,
+            app_id: "test-app".to_string(),
+            app_password: "test-password".to_string(),
+            tenant_id: None,
+            webhook_path: "/webhook".to_string(),
+            allowlist: vec![],
+            group_policy: TeamsGroupPolicy::Open,
+            rate_limit_requests_per_second: 10,
+            adaptive_cards_enabled: true,
+            attachment_download_dir: None,
+        });
+        *channel.token.write().await = Some(AccessToken {
+            token: "cached-token".to_string(),
+            expires_at: Instant::now() + Duration::from_secs(600),
+        });
+
+        channel
+            .send(OutgoingMessage {
+                session_id: Uuid::new_v4(),
+                content: "updated body".to_string(),
+                metadata: serde_json::json!({
+                    "teams_service_url": server.uri(),
+                    "teams_conversation_id": "19:conversation",
+                    "teams_action": "update",
+                    "teams_update_activity_id": "activity-123",
+                    "teams_use_adaptive_card": false
+                }),
+            })
+            .await
+            .expect("update succeeds");
+    }
+
+    #[tokio::test]
+    async fn test_send_supports_delete_action() {
+        let server = MockServer::start().await;
+        Mock::given(method("DELETE"))
+            .and(path("/v3/conversations/19:conversation/activities/activity-321"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&server)
+            .await;
+
+        let channel = TeamsChannel::new(TeamsConfig {
+            enabled: true,
+            app_id: "test-app".to_string(),
+            app_password: "test-password".to_string(),
+            tenant_id: None,
+            webhook_path: "/webhook".to_string(),
+            allowlist: vec![],
+            group_policy: TeamsGroupPolicy::Open,
+            rate_limit_requests_per_second: 10,
+            adaptive_cards_enabled: true,
+            attachment_download_dir: None,
+        });
+        *channel.token.write().await = Some(AccessToken {
+            token: "cached-token".to_string(),
+            expires_at: Instant::now() + Duration::from_secs(600),
+        });
+
+        channel
+            .send(OutgoingMessage {
+                session_id: Uuid::new_v4(),
+                content: String::new(),
+                metadata: serde_json::json!({
+                    "teams_service_url": server.uri(),
+                    "teams_conversation_id": "19:conversation",
+                    "teams_action": "delete",
+                    "teams_delete_activity_id": "activity-321"
+                }),
+            })
+            .await
+            .expect("delete succeeds");
+    }
+
+    #[tokio::test]
+    async fn test_send_supports_typing_action() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v3/conversations/19:conversation/activities"))
+            .and(body_partial_json(serde_json::json!({
+                "type": "typing"
+            })))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&server)
+            .await;
+
+        let channel = TeamsChannel::new(TeamsConfig {
+            enabled: true,
+            app_id: "test-app".to_string(),
+            app_password: "test-password".to_string(),
+            tenant_id: None,
+            webhook_path: "/webhook".to_string(),
+            allowlist: vec![],
+            group_policy: TeamsGroupPolicy::Open,
+            rate_limit_requests_per_second: 10,
+            adaptive_cards_enabled: true,
+            attachment_download_dir: None,
+        });
+        *channel.token.write().await = Some(AccessToken {
+            token: "cached-token".to_string(),
+            expires_at: Instant::now() + Duration::from_secs(600),
+        });
+
+        channel
+            .send(OutgoingMessage {
+                session_id: Uuid::new_v4(),
+                content: String::new(),
+                metadata: serde_json::json!({
+                    "teams_service_url": server.uri(),
+                    "teams_conversation_id": "19:conversation",
+                    "teams_action": "typing"
+                }),
+            })
+            .await
+            .expect("typing succeeds");
     }
 
     #[tokio::test]
@@ -1877,13 +2376,19 @@ mod tests {
             .expect("message activity")
             .expect("incoming");
 
-        assert_eq!(incoming.metadata["teams_body_length"], serde_json::json!(15));
+        assert_eq!(
+            incoming.metadata["teams_body_length"],
+            serde_json::json!(15)
+        );
         assert_eq!(incoming.metadata["teams_has_reply_to"], true);
         assert_eq!(incoming.metadata["teams_has_mentions"], false);
         assert_eq!(incoming.metadata["teams_mention_count"], 0);
         assert_eq!(incoming.metadata["teams_reply_to_id"], "activity-parent-1");
         assert_eq!(incoming.metadata["teams_has_attachments"], true);
-        assert_eq!(incoming.metadata["teams_attachment_count"], serde_json::json!(1));
+        assert_eq!(
+            incoming.metadata["teams_attachment_count"],
+            serde_json::json!(1)
+        );
         assert_eq!(incoming.metadata["teams_attachment_names"][0], "report.pdf");
         assert_eq!(incoming.metadata["teams_has_attachment_names"], true);
         assert_eq!(
@@ -1891,12 +2396,18 @@ mod tests {
             serde_json::json!(format!("{}/files/report.pdf", server.uri()))
         );
         assert_eq!(incoming.metadata["teams_has_attachment_urls"], true);
-        assert_eq!(incoming.metadata["teams_attachment_url_count"], serde_json::json!(1));
+        assert_eq!(
+            incoming.metadata["teams_attachment_url_count"],
+            serde_json::json!(1)
+        );
         assert_eq!(
             incoming.metadata["teams_attachment_content_types"][0],
             "application/pdf"
         );
-        assert_eq!(incoming.metadata["teams_has_attachment_content_types"], true);
+        assert_eq!(
+            incoming.metadata["teams_has_attachment_content_types"],
+            true
+        );
         assert_eq!(
             incoming.metadata["teams_file_reference_count"],
             serde_json::json!(1)
@@ -1921,7 +2432,9 @@ mod tests {
             serde_json::json!(1)
         );
         assert_eq!(incoming.metadata["teams_has_download_paths"], true);
-        let bytes = tokio::fs::read(downloaded_path).await.expect("downloaded bytes");
+        let bytes = tokio::fs::read(downloaded_path)
+            .await
+            .expect("downloaded bytes");
         assert_eq!(bytes, b"teams-file");
         let _ = tokio::fs::remove_file(downloaded_path).await;
         let _ = tokio::fs::remove_dir_all(download_dir).await;
@@ -1965,7 +2478,10 @@ mod tests {
             .expect("delete event")
             .expect("incoming");
         assert_eq!(incoming.content, "[teams message deleted]");
-        assert_eq!(incoming.metadata["teams_deleted_activity_id"], "activity-root-1");
+        assert_eq!(
+            incoming.metadata["teams_deleted_activity_id"],
+            "activity-root-1"
+        );
         assert_eq!(incoming.metadata["teams_has_deleted_activity_id"], true);
         assert_eq!(incoming.metadata["teams_team_id"], "team-delete");
         assert_eq!(incoming.metadata["teams_channel_id"], "channel-delete");
