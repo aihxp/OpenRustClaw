@@ -12,6 +12,8 @@
 //! or direct libsignal-client bindings when available.
 
 use std::collections::HashMap;
+use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -162,6 +164,55 @@ impl SignalChannel {
             cli_process: Mutex::new(None),
             message_cache: Arc::new(RwLock::new(HashMap::new())),
         }
+    }
+
+    fn extract_attachment_paths(metadata: &serde_json::Value) -> Vec<String> {
+        let mut paths = Vec::new();
+
+        if let Some(entries) = metadata
+            .get("signal_attachment_paths")
+            .and_then(|value| value.as_array())
+        {
+            for entry in entries {
+                if let Some(path) = entry.as_str().filter(|value| !value.trim().is_empty()) {
+                    paths.push(path.to_string());
+                }
+            }
+        }
+
+        if let Some(entries) = metadata.get("file_references").and_then(|value| value.as_array()) {
+            for entry in entries {
+                let maybe_path = entry
+                    .get("local_path")
+                    .or_else(|| entry.get("path"))
+                    .and_then(|value| value.as_str())
+                    .filter(|value| !value.trim().is_empty());
+                if let Some(path) = maybe_path {
+                    paths.push(path.to_string());
+                }
+            }
+        }
+
+        let mut deduped = Vec::new();
+        for path in paths {
+            if !deduped.contains(&path) {
+                deduped.push(path);
+            }
+        }
+        deduped
+    }
+
+    fn validate_attachment_paths(paths: &[String]) -> Result<()> {
+        for path in paths {
+            if !Path::new(path).exists() {
+                return Err(ChannelError::InvalidFormat {
+                    platform: "signal".to_string(),
+                    message: format!("Signal attachment path does not exist: {}", path),
+                }
+                .into());
+            }
+        }
+        Ok(())
     }
 
     /// Check if a phone number or UUID is in the allowlist.
@@ -414,24 +465,41 @@ impl SignalChannel {
         Ok(())
     }
 
-    /// Send a message via signal-cli.
-    async fn send_via_cli(&self, recipient: &str, content: &str) -> Result<()> {
+    async fn send_command(
+        &self,
+        recipient: Option<&str>,
+        group_id: Option<&str>,
+        content: &str,
+        attachments: &[String],
+    ) -> Result<()> {
+        Self::validate_attachment_paths(attachments)?;
         let cli_path = self
             .config
             .signal_cli_path
             .clone()
             .unwrap_or_else(|| "signal-cli".into());
 
-        let output = Command::new(&cli_path)
+        let mut command = Command::new(&cli_path);
+        command
             .arg("-a")
             .arg(&self.config.phone_number)
-            .arg("send")
-            .arg("-m")
-            .arg(content)
-            .arg(recipient)
-            .output()
-            .await
-            .map_err(|e| ChannelError::Connection {
+            .arg("send");
+
+        if let Some(group_id) = group_id {
+            command.arg("-g").arg(group_id);
+        }
+
+        command.arg("-m").arg(content);
+
+        for attachment in attachments {
+            command.arg("-a").arg(attachment);
+        }
+
+        if let Some(recipient) = recipient {
+            command.arg(recipient);
+        }
+
+        let output = command.output().await.map_err(|e| ChannelError::Connection {
                 platform: "signal".to_string(),
                 message: format!("Failed to execute signal-cli: {}", e),
             })?;
@@ -448,39 +516,21 @@ impl SignalChannel {
         Ok(())
     }
 
-    /// Send a message to a group via signal-cli.
-    async fn send_to_group_via_cli(&self, group_id: &str, content: &str) -> Result<()> {
-        let cli_path = self
-            .config
-            .signal_cli_path
-            .clone()
-            .unwrap_or_else(|| "signal-cli".into());
-
-        let output = Command::new(&cli_path)
-            .arg("-a")
-            .arg(&self.config.phone_number)
-            .arg("send")
-            .arg("-g")
-            .arg(group_id)
-            .arg("-m")
-            .arg(content)
-            .output()
+    /// Send a message via signal-cli.
+    async fn send_via_cli(&self, recipient: &str, content: &str, attachments: &[String]) -> Result<()> {
+        self.send_command(Some(recipient), None, content, attachments)
             .await
-            .map_err(|e| ChannelError::Connection {
-                platform: "signal".to_string(),
-                message: format!("Failed to execute signal-cli: {}", e),
-            })?;
+    }
 
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(ChannelError::SendFailed {
-                platform: "signal".to_string(),
-                message: format!("signal-cli send failed: {}", stderr),
-            }
-            .into());
-        }
-
-        Ok(())
+    /// Send a message to a group via signal-cli.
+    async fn send_to_group_via_cli(
+        &self,
+        group_id: &str,
+        content: &str,
+        attachments: &[String],
+    ) -> Result<()> {
+        self.send_command(None, Some(group_id), content, attachments)
+            .await
     }
 
     /// Register the phone number with Signal (one-time setup).
@@ -629,6 +679,7 @@ impl Channel for SignalChannel {
     async fn send(&self, msg: OutgoingMessage) -> Result<()> {
         // Apply rate limiting
         self.rate_limiter.until_ready().await;
+        let attachments = Self::extract_attachment_paths(&msg.metadata);
 
         // Extract recipient from metadata
         let recipient = msg
@@ -642,9 +693,11 @@ impl Channel for SignalChannel {
 
         // Check if sending to a group
         if let Some(group_id) = msg.metadata.get("signal_group_id").and_then(|v| v.as_str()) {
-            self.send_to_group_via_cli(group_id, &msg.content).await?;
+            self.send_to_group_via_cli(group_id, &msg.content, &attachments)
+                .await?;
         } else {
-            self.send_via_cli(recipient, &msg.content).await?;
+            self.send_via_cli(recipient, &msg.content, &attachments)
+                .await?;
         }
 
         debug!(recipient = %recipient, "Sent Signal message");
@@ -709,7 +762,8 @@ impl Channel for SignalChannel {
 mod tests {
     use super::*;
     use openrustclaw_core::config::SignalConfig;
-    use std::path::PathBuf;
+    use std::fs;
+    use std::os::unix::fs::PermissionsExt;
 
     fn create_test_config() -> SignalConfig {
         SignalConfig {
@@ -814,5 +868,109 @@ mod tests {
         assert_eq!(attachment.content_type, "image/jpeg");
         assert_eq!(attachment.filename, "image.jpg");
         assert_eq!(attachment.size, 1024);
+    }
+
+    #[test]
+    fn test_extract_attachment_paths_from_metadata() {
+        let metadata = serde_json::json!({
+            "signal_attachment_paths": ["/tmp/a.png"],
+            "file_references": [
+                {"local_path": "/tmp/b.pdf"},
+                {"path": "/tmp/c.txt"},
+                {"url": "https://example.com/ignored"}
+            ]
+        });
+
+        let paths = SignalChannel::extract_attachment_paths(&metadata);
+        assert_eq!(paths, vec!["/tmp/a.png", "/tmp/b.pdf", "/tmp/c.txt"]);
+    }
+
+    #[tokio::test]
+    async fn test_send_via_cli_includes_attachment_args() {
+        let temp_root = std::env::temp_dir().join(format!("orc-signal-send-{}", Uuid::new_v4()));
+        fs::create_dir_all(&temp_root).unwrap();
+        let script_path = temp_root.join("signal-cli");
+        let args_path = temp_root.join("args.txt");
+        let attachment_path = temp_root.join("report.pdf");
+        fs::write(&attachment_path, b"attachment").unwrap();
+        fs::write(
+            &script_path,
+            format!(
+                "#!/usr/bin/env bash\nprintf '%s\\n' \"$@\" > \"{}\"\n",
+                args_path.display()
+            ),
+        )
+        .unwrap();
+        let mut permissions = fs::metadata(&script_path).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&script_path, permissions).unwrap();
+
+        let mut config = create_test_config();
+        config.signal_cli_path = Some(script_path.clone());
+        let channel = SignalChannel::new(config);
+        channel
+            .send(OutgoingMessage {
+                session_id: Uuid::new_v4(),
+                content: "hello".to_string(),
+                metadata: serde_json::json!({
+                    "signal_recipient": "+15551234567",
+                    "signal_attachment_paths": [attachment_path],
+                }),
+            })
+            .await
+            .unwrap();
+
+        let args = fs::read_to_string(&args_path).unwrap();
+        assert!(args.contains("send"));
+        assert!(args.contains("-m\nhello\n"));
+        assert!(args.contains(&format!("-a\n{}\n", attachment_path.display())));
+        assert!(args.contains("+15551234567"));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[tokio::test]
+    async fn test_send_to_group_via_cli_includes_attachment_args() {
+        let temp_root =
+            std::env::temp_dir().join(format!("orc-signal-group-send-{}", Uuid::new_v4()));
+        fs::create_dir_all(&temp_root).unwrap();
+        let script_path = temp_root.join("signal-cli");
+        let args_path = temp_root.join("args.txt");
+        let attachment_path = temp_root.join("photo.jpg");
+        fs::write(&attachment_path, b"attachment").unwrap();
+        fs::write(
+            &script_path,
+            format!(
+                "#!/usr/bin/env bash\nprintf '%s\\n' \"$@\" > \"{}\"\n",
+                args_path.display()
+            ),
+        )
+        .unwrap();
+        let mut permissions = fs::metadata(&script_path).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&script_path, permissions).unwrap();
+
+        let mut config = create_test_config();
+        config.signal_cli_path = Some(script_path.clone());
+        let channel = SignalChannel::new(config);
+        channel
+            .send(OutgoingMessage {
+                session_id: Uuid::new_v4(),
+                content: "group hello".to_string(),
+                metadata: serde_json::json!({
+                    "signal_recipient": "+15551234567",
+                    "signal_group_id": "group-123",
+                    "file_references": [{"local_path": attachment_path}],
+                }),
+            })
+            .await
+            .unwrap();
+
+        let args = fs::read_to_string(&args_path).unwrap();
+        assert!(args.contains("-g\ngroup-123\n"));
+        assert!(args.contains(&format!("-a\n{}\n", attachment_path.display())));
+        assert!(!args.contains("+15551234567\n"));
+
+        let _ = fs::remove_dir_all(temp_root);
     }
 }
