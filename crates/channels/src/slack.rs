@@ -123,6 +123,241 @@ impl SlackChannel {
             .collect()
     }
 
+    fn parse_stream_chunks(msg: &OutgoingMessage) -> Vec<serde_json::Value> {
+        if let Some(values) = msg
+            .metadata
+            .get("slack_stream_chunks")
+            .and_then(|value| value.as_array())
+        {
+            let chunks: Vec<_> = values
+                .iter()
+                .filter_map(|value| {
+                    if let Some(text) = value.as_str() {
+                        Some(serde_json::json!({
+                            "type": "markdown_text",
+                            "text": Self::markdown_to_slack(text),
+                        }))
+                    } else if value.is_object() {
+                        Some(value.clone())
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            if !chunks.is_empty() {
+                return chunks;
+            }
+        }
+
+        let chunk_size = msg
+            .metadata
+            .get("slack_stream_chunk_chars")
+            .and_then(|value| value.as_u64())
+            .map(|value| value.clamp(1, 12000) as usize)
+            .unwrap_or(1200);
+        let formatted = Self::markdown_to_slack(&msg.content);
+        if formatted.is_empty() {
+            return Vec::new();
+        }
+        let chars: Vec<char> = formatted.chars().collect();
+        chars
+            .chunks(chunk_size)
+            .map(|chunk| {
+                serde_json::json!({
+                    "type": "markdown_text",
+                    "text": chunk.iter().collect::<String>(),
+                })
+            })
+            .collect()
+    }
+
+    async fn send_stream(&self, msg: &OutgoingMessage, channel_id: &str) -> Result<()> {
+        let thread_ts = msg
+            .metadata
+            .get("slack_thread_ts")
+            .and_then(|v| v.as_str())
+            .or_else(|| msg.metadata.get("slack_event_ts").and_then(|v| v.as_str()))
+            .ok_or_else(|| ChannelError::InvalidFormat {
+                platform: "slack".to_string(),
+                message:
+                    "slack_thread_ts or slack_event_ts is required for Slack draft-stream replies"
+                        .to_string(),
+            })?;
+        let recipient_user_id = msg
+            .metadata
+            .get("slack_recipient_user_id")
+            .or_else(|| msg.metadata.get("slack_thread_owner_user_id"))
+            .or_else(|| msg.metadata.get("slack_user_id"))
+            .and_then(|v| v.as_str());
+        let recipient_team_id = msg
+            .metadata
+            .get("slack_recipient_team_id")
+            .or_else(|| msg.metadata.get("slack_team_id"))
+            .and_then(|v| v.as_str());
+
+        let chunks = Self::parse_stream_chunks(msg);
+        if chunks.is_empty() {
+            return Err(ChannelError::InvalidFormat {
+                platform: "slack".to_string(),
+                message: "Slack draft-stream replies require content or slack_stream_chunks"
+                    .to_string(),
+            }
+            .into());
+        }
+
+        let mut start_payload = serde_json::json!({
+            "channel": channel_id,
+            "thread_ts": thread_ts,
+            "chunks": [chunks[0].clone()],
+        });
+        if !channel_id.starts_with('D') {
+            let recipient_user_id = recipient_user_id.ok_or_else(|| ChannelError::InvalidFormat {
+                platform: "slack".to_string(),
+                message:
+                    "slack_recipient_user_id, slack_thread_owner_user_id, or slack_user_id is required for channel stream replies"
+                        .to_string(),
+            })?;
+            let recipient_team_id = recipient_team_id.ok_or_else(|| ChannelError::InvalidFormat {
+                platform: "slack".to_string(),
+                message:
+                    "slack_recipient_team_id or slack_team_id is required for channel stream replies"
+                        .to_string(),
+            })?;
+            start_payload["recipient_user_id"] = serde_json::json!(recipient_user_id);
+            start_payload["recipient_team_id"] = serde_json::json!(recipient_team_id);
+        }
+
+        let metadata_payload = msg
+            .metadata
+            .get("slack_stream_mode")
+            .and_then(|value| value.as_str())
+            .map(|stream_mode| {
+                serde_json::json!({
+                    "event_type": "openrustclaw_stream",
+                    "event_payload": {
+                        "mode": stream_mode,
+                    }
+                })
+            });
+
+        let start_response = self
+            .client
+            .post(format!("{}/chat.startStream", self.api_base_url()))
+            .bearer_auth(&self.config.token)
+            .json(&start_payload)
+            .send()
+            .await
+            .map_err(|e| ChannelError::SendFailed {
+                platform: "slack".to_string(),
+                message: e.to_string(),
+            })?;
+        let start_status = start_response.status();
+        let start_body: serde_json::Value = start_response
+            .json()
+            .await
+            .unwrap_or_else(|_| serde_json::json!({}));
+        if !start_status.is_success()
+            || start_body.get("ok").and_then(|v| v.as_bool()) != Some(true)
+        {
+            return Err(ChannelError::SendFailed {
+                platform: "slack".to_string(),
+                message: start_body
+                    .get("error")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Slack chat.startStream failed")
+                    .to_string(),
+            }
+            .into());
+        }
+        let stream_ts = start_body
+            .get("ts")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| ChannelError::SendFailed {
+                platform: "slack".to_string(),
+                message: "Slack chat.startStream response missing ts".to_string(),
+            })?
+            .to_string();
+
+        for chunk in chunks.iter().skip(1) {
+            let append_response = self
+                .client
+                .post(format!("{}/chat.appendStream", self.api_base_url()))
+                .bearer_auth(&self.config.token)
+                .json(&serde_json::json!({
+                    "channel": channel_id,
+                    "ts": stream_ts,
+                    "chunks": [chunk],
+                }))
+                .send()
+                .await
+                .map_err(|e| ChannelError::SendFailed {
+                    platform: "slack".to_string(),
+                    message: e.to_string(),
+                })?;
+            let append_status = append_response.status();
+            let append_body: serde_json::Value = append_response
+                .json()
+                .await
+                .unwrap_or_else(|_| serde_json::json!({}));
+            if !append_status.is_success()
+                || append_body.get("ok").and_then(|v| v.as_bool()) != Some(true)
+            {
+                return Err(ChannelError::SendFailed {
+                    platform: "slack".to_string(),
+                    message: append_body
+                        .get("error")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("Slack chat.appendStream failed")
+                        .to_string(),
+                }
+                .into());
+            }
+        }
+
+        let mut stop_payload = serde_json::json!({
+            "channel": channel_id,
+            "ts": stream_ts,
+        });
+        if let Some(blocks) = Self::parse_blocks(&msg.metadata) {
+            stop_payload["blocks"] = serde_json::json!(blocks);
+        }
+        if let Some(metadata) = metadata_payload {
+            stop_payload["metadata"] = metadata;
+        }
+
+        let stop_response = self
+            .client
+            .post(format!("{}/chat.stopStream", self.api_base_url()))
+            .bearer_auth(&self.config.token)
+            .json(&stop_payload)
+            .send()
+            .await
+            .map_err(|e| ChannelError::SendFailed {
+                platform: "slack".to_string(),
+                message: e.to_string(),
+            })?;
+        let stop_status = stop_response.status();
+        let stop_body: serde_json::Value = stop_response
+            .json()
+            .await
+            .unwrap_or_else(|_| serde_json::json!({}));
+        if !stop_status.is_success() || stop_body.get("ok").and_then(|v| v.as_bool()) != Some(true)
+        {
+            return Err(ChannelError::SendFailed {
+                platform: "slack".to_string(),
+                message: stop_body
+                    .get("error")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Slack chat.stopStream failed")
+                    .to_string(),
+            }
+            .into());
+        }
+
+        info!(channel = %channel_id, thread_ts = %thread_ts, "Slack draft-stream reply sent");
+        Ok(())
+    }
+
     fn api_base_url(&self) -> String {
         self.config
             .api_base_url
@@ -198,6 +433,16 @@ impl Channel for SlackChannel {
                 ),
             }
             .into());
+        }
+
+        let use_stream = msg
+            .metadata
+            .get("slack_draft_stream")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+            || msg.metadata.get("slack_stream_chunks").is_some();
+        if use_stream {
+            return self.send_stream(&msg, &channel_id).await;
         }
 
         let update_ts = msg
@@ -676,6 +921,7 @@ impl SlackEventHandler {
             "slack_is_group": !channel_id.starts_with('D'),
             "slack_bot_mentioned": event_type == "app_mention",
             "slack_stream_mode": if event_type == "app_mention" { "mention" } else { "message" },
+            "slack_user_id": user_id,
         });
         if let Some(team_id) = team_id {
             metadata["slack_team_id"] = serde_json::json!(team_id);
@@ -952,6 +1198,95 @@ mod tests {
                         "title": "Report",
                         "url": "https://files.example.com/report.pdf"
                     }]
+                }),
+            })
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_send_slack_draft_stream_reply() {
+        use wiremock::matchers::{bearer_token, body_string_contains, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/auth.test"))
+            .and(bearer_token("xoxb-test"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "ok": true,
+                "team_id": "T123"
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/chat.startStream"))
+            .and(bearer_token("xoxb-test"))
+            .and(body_string_contains("\"channel\":\"C123\""))
+            .and(body_string_contains("\"thread_ts\":\"171234.000100\""))
+            .and(body_string_contains("\"recipient_user_id\":\"U123\""))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "ok": true,
+                "channel": "C123",
+                "ts": "171234.000200"
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/chat.appendStream"))
+            .and(bearer_token("xoxb-test"))
+            .and(body_string_contains("\"ts\":\"171234.000200\""))
+            .and(body_string_contains("Second chunk"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "ok": true
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/chat.stopStream"))
+            .and(bearer_token("xoxb-test"))
+            .and(body_string_contains("\"ts\":\"171234.000200\""))
+            .and(body_string_contains(
+                "\"event_type\":\"openrustclaw_stream\"",
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "ok": true,
+                "channel": "C123",
+                "ts": "171234.000200",
+                "message": {"text": "done"}
+            })))
+            .mount(&server)
+            .await;
+
+        let config = SlackConfig {
+            enabled: true,
+            token: "xoxb-test".to_string(),
+            api_base_url: Some(server.uri()),
+            app_token: None,
+            signing_secret: None,
+            mode: SlackMode::Http,
+            socket_mode: false,
+            rate_limit_requests_per_second: 10,
+            allowed_workspaces: vec!["T123".to_string()],
+            app_home_enabled: true,
+        };
+        let mut channel = SlackChannel::new(config);
+        channel.connect().await.unwrap();
+        channel
+            .send(OutgoingMessage {
+                session_id: uuid::Uuid::new_v4(),
+                content: String::new(),
+                metadata: serde_json::json!({
+                    "slack_channel": "C123",
+                    "slack_team_id": "T123",
+                    "slack_thread_ts": "171234.000100",
+                    "slack_thread_owner_user_id": "U123",
+                    "slack_draft_stream": true,
+                    "slack_stream_mode": "draft",
+                    "slack_stream_chunks": [
+                        "First chunk",
+                        "Second chunk"
+                    ]
                 }),
             })
             .await

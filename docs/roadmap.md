@@ -652,9 +652,9 @@ Still remaining for deeper parity:
 
 - [x] Extend the shipped registry/operator surfaces into Control UI parity.
 - [ ] Implement higher-fidelity channel UX parity where it materially affects operator experience:
-  - Telegram forum topic lifecycle/admin actions,
+  - [x] Telegram forum topic lifecycle/admin actions,
   - Discord forwarded-attachment downloads beyond metadata/file-reference capture,
-  - Slack draft-stream replies.
+  - [x] Slack draft-stream replies.
 - [ ] Implement media in/out parity per channel:
   - attachment downloads and platform-native uploads where current support is still reference-based,
   - file references.
@@ -685,7 +685,7 @@ Channel completion remaining:
   - current shipped path covers Gmail watch setup, Pub/Sub webhook ingress, history fetch, message hydration, mail-triggered local agent/session routing, replies, label/archive/delete actions, and forwarding;
   - richer operator parity still remains.
 - [ ] Matrix parity.
-  - current shipped path covers auth, send, polling ingress, room actions, and basic file upload;
+  - current shipped path covers auth, send, polling ingress, room actions, basic file upload, and inbound media downloads into the Matrix data directory;
   - deeper E2EE and richer operator/media parity still remain.
 - [ ] Microsoft Teams parity.
   - current shipped path covers Bot Framework webhook ingress, JWT verification, outbound sends, conversation/reaction lifecycle routing, attachment metadata capture, adaptive-card file links, and local agent/session routing;

@@ -414,6 +414,11 @@ impl Channel for TelegramChannel {
 
         // Parse inline keyboard from metadata
         let reply_markup = Self::parse_inline_keyboard(&msg.metadata);
+        let admin_action = msg
+            .metadata
+            .get("telegram_forum_action")
+            .or_else(|| msg.metadata.get("telegram_admin_action"))
+            .and_then(|value| value.as_str());
         let media_type = msg
             .metadata
             .get("telegram_media_type")
@@ -442,7 +447,25 @@ impl Channel for TelegramChannel {
             .get("telegram_reaction_message_id")
             .or_else(|| msg.metadata.get("telegram_reply_to_message_id"))
             .and_then(|value| value.as_i64());
-        let endpoint = if reaction.is_some() && reaction_target.is_some() {
+        let endpoint = if let Some(action) = admin_action {
+            match action {
+                "create_topic" => "createForumTopic",
+                "edit_topic" => "editForumTopic",
+                "close_topic" => "closeForumTopic",
+                "reopen_topic" => "reopenForumTopic",
+                "delete_topic" => "deleteForumTopic",
+                "unpin_all_topic_messages" => "unpinAllForumTopicMessages",
+                "pin_message" => "pinChatMessage",
+                "unpin_message" => "unpinChatMessage",
+                _ => {
+                    return Err(ChannelError::InvalidFormat {
+                        platform: "telegram".to_string(),
+                        message: format!("Unsupported telegram forum/admin action: {}", action),
+                    }
+                    .into());
+                }
+            }
+        } else if reaction.is_some() && reaction_target.is_some() {
             "setMessageReaction"
         } else if is_poll.is_some() {
             "sendPoll"
@@ -464,7 +487,95 @@ impl Channel for TelegramChannel {
         let mut payload = serde_json::json!({
             "chat_id": chat_id,
         });
-        if let (Some(reaction), Some(message_id)) = (reaction, reaction_target) {
+        if let Some(action) = admin_action {
+            match action {
+                "create_topic" => {
+                    let topic_name = msg
+                        .metadata
+                        .get("telegram_topic_name")
+                        .and_then(|value| value.as_str())
+                        .filter(|value| !value.is_empty())
+                        .unwrap_or(msg.content.as_str());
+                    if topic_name.is_empty() {
+                        return Err(ChannelError::InvalidFormat {
+                            platform: "telegram".to_string(),
+                            message: "telegram_topic_name or message content is required for create_topic".to_string(),
+                        }
+                        .into());
+                    }
+                    payload["name"] = serde_json::json!(topic_name);
+                    if let Some(icon_color) = msg
+                        .metadata
+                        .get("telegram_topic_icon_color")
+                        .and_then(|value| value.as_u64())
+                    {
+                        payload["icon_color"] = serde_json::json!(icon_color);
+                    }
+                    if let Some(icon_emoji) = msg
+                        .metadata
+                        .get("telegram_topic_icon_custom_emoji_id")
+                        .and_then(|value| value.as_str())
+                    {
+                        payload["icon_custom_emoji_id"] = serde_json::json!(icon_emoji);
+                    }
+                }
+                "edit_topic" => {
+                    let thread_id = msg
+                        .metadata
+                        .get("telegram_message_thread_id")
+                        .and_then(|value| value.as_i64())
+                        .ok_or_else(|| ChannelError::InvalidFormat {
+                            platform: "telegram".to_string(),
+                            message: "telegram_message_thread_id is required for edit_topic"
+                                .to_string(),
+                        })?;
+                    payload["message_thread_id"] = serde_json::json!(thread_id);
+                    if let Some(topic_name) = msg
+                        .metadata
+                        .get("telegram_topic_name")
+                        .and_then(|value| value.as_str())
+                        .filter(|value| !value.is_empty())
+                        .or_else(|| (!msg.content.is_empty()).then_some(msg.content.as_str()))
+                    {
+                        payload["name"] = serde_json::json!(topic_name);
+                    }
+                    if let Some(icon_emoji) = msg
+                        .metadata
+                        .get("telegram_topic_icon_custom_emoji_id")
+                        .and_then(|value| value.as_str())
+                    {
+                        payload["icon_custom_emoji_id"] = serde_json::json!(icon_emoji);
+                    }
+                }
+                "close_topic" | "reopen_topic" | "delete_topic" | "unpin_all_topic_messages" => {
+                    let thread_id = msg
+                        .metadata
+                        .get("telegram_message_thread_id")
+                        .and_then(|value| value.as_i64())
+                        .ok_or_else(|| ChannelError::InvalidFormat {
+                            platform: "telegram".to_string(),
+                            message:
+                                "telegram_message_thread_id is required for topic admin actions"
+                                    .to_string(),
+                        })?;
+                    payload["message_thread_id"] = serde_json::json!(thread_id);
+                }
+                "pin_message" | "unpin_message" => {
+                    let message_id = msg
+                        .metadata
+                        .get("telegram_pin_message_id")
+                        .or_else(|| msg.metadata.get("telegram_reply_to_message_id"))
+                        .and_then(|value| value.as_i64())
+                        .ok_or_else(|| ChannelError::InvalidFormat {
+                            platform: "telegram".to_string(),
+                            message:
+                                "telegram_pin_message_id or telegram_reply_to_message_id is required for pin/unpin".to_string(),
+                        })?;
+                    payload["message_id"] = serde_json::json!(message_id);
+                }
+                _ => {}
+            }
+        } else if let (Some(reaction), Some(message_id)) = (reaction, reaction_target) {
             payload["message_id"] = serde_json::json!(message_id);
             payload["reaction"] = serde_json::json!([{
                 "type": "emoji",
@@ -799,6 +910,166 @@ mod tests {
                     "telegram_chat_id": "123",
                     "telegram_reaction": "👍",
                     "telegram_reaction_message_id": 42
+                }),
+            })
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_create_forum_topic_via_bot_api() {
+        use wiremock::matchers::{body_partial_json, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/bottoken/getMe"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "ok": true,
+                "result": {"id": 1, "is_bot": true, "username": "test_bot"}
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/bottoken/createForumTopic"))
+            .and(body_partial_json(serde_json::json!({
+                "chat_id": "-100123",
+                "name": "Ops Topic",
+                "icon_color": 7322096u64
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "ok": true,
+                "result": {"message_thread_id": 77, "name": "Ops Topic"}
+            })))
+            .mount(&server)
+            .await;
+
+        let config = TelegramConfig {
+            enabled: true,
+            token: "token".to_string(),
+            api_base_url: Some(server.uri()),
+            mode: openrustclaw_core::config::TelegramMode::Polling,
+            webhook_url: None,
+            webhook_port: None,
+            allowed_users: vec![],
+            rate_limit_per_second: 30,
+        };
+        let mut channel = TelegramChannel::new(config);
+        channel.connect().await.unwrap();
+        channel
+            .send(OutgoingMessage {
+                session_id: uuid::Uuid::new_v4(),
+                content: "Ops Topic".to_string(),
+                metadata: serde_json::json!({
+                    "telegram_chat_id": "-100123",
+                    "telegram_forum_action": "create_topic",
+                    "telegram_topic_icon_color": 7322096u64
+                }),
+            })
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_close_forum_topic_via_bot_api() {
+        use wiremock::matchers::{body_partial_json, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/bottoken/getMe"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "ok": true,
+                "result": {"id": 1, "is_bot": true, "username": "test_bot"}
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/bottoken/closeForumTopic"))
+            .and(body_partial_json(serde_json::json!({
+                "chat_id": "-100123",
+                "message_thread_id": 77
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "ok": true,
+                "result": true
+            })))
+            .mount(&server)
+            .await;
+
+        let config = TelegramConfig {
+            enabled: true,
+            token: "token".to_string(),
+            api_base_url: Some(server.uri()),
+            mode: openrustclaw_core::config::TelegramMode::Polling,
+            webhook_url: None,
+            webhook_port: None,
+            allowed_users: vec![],
+            rate_limit_per_second: 30,
+        };
+        let mut channel = TelegramChannel::new(config);
+        channel.connect().await.unwrap();
+        channel
+            .send(OutgoingMessage {
+                session_id: uuid::Uuid::new_v4(),
+                content: String::new(),
+                metadata: serde_json::json!({
+                    "telegram_chat_id": "-100123",
+                    "telegram_forum_action": "close_topic",
+                    "telegram_message_thread_id": 77
+                }),
+            })
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_pin_message_via_bot_api() {
+        use wiremock::matchers::{body_partial_json, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/bottoken/getMe"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "ok": true,
+                "result": {"id": 1, "is_bot": true, "username": "test_bot"}
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/bottoken/pinChatMessage"))
+            .and(body_partial_json(serde_json::json!({
+                "chat_id": "-100123",
+                "message_id": 42
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "ok": true,
+                "result": true
+            })))
+            .mount(&server)
+            .await;
+
+        let config = TelegramConfig {
+            enabled: true,
+            token: "token".to_string(),
+            api_base_url: Some(server.uri()),
+            mode: openrustclaw_core::config::TelegramMode::Polling,
+            webhook_url: None,
+            webhook_port: None,
+            allowed_users: vec![],
+            rate_limit_per_second: 30,
+        };
+        let mut channel = TelegramChannel::new(config);
+        channel.connect().await.unwrap();
+        channel
+            .send(OutgoingMessage {
+                session_id: uuid::Uuid::new_v4(),
+                content: String::new(),
+                metadata: serde_json::json!({
+                    "telegram_chat_id": "-100123",
+                    "telegram_forum_action": "pin_message",
+                    "telegram_pin_message_id": 42
                 }),
             })
             .await

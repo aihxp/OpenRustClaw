@@ -164,6 +164,10 @@ impl MatrixChannel {
         PathBuf::from(&self.config.data_dir)
     }
 
+    fn downloads_dir(&self) -> PathBuf {
+        self.data_dir().join("downloads")
+    }
+
     fn endpoint(&self, path: &str) -> String {
         format!(
             "{}/_matrix/client/v3{}",
@@ -178,6 +182,88 @@ impl MatrixChannel {
             self.config.homeserver.trim_end_matches('/'),
             path
         )
+    }
+
+    fn parse_mxc_uri(uri: &str) -> Option<(&str, &str)> {
+        let trimmed = uri.strip_prefix("mxc://")?;
+        let mut parts = trimmed.splitn(2, '/');
+        let server = parts.next()?;
+        let media_id = parts.next()?;
+        if server.is_empty() || media_id.is_empty() {
+            return None;
+        }
+        Some((server, media_id))
+    }
+
+    fn safe_download_name(event_id: &str, fallback: &str) -> String {
+        let event = event_id
+            .trim_start_matches('$')
+            .replace(['/', '\\', ':'], "_");
+        let fallback = fallback.replace(['/', '\\'], "_");
+        format!("{}-{}", event, fallback)
+    }
+
+    async fn download_media_to_dir(
+        http: &reqwest::Client,
+        homeserver: &str,
+        token: &str,
+        downloads_dir: &PathBuf,
+        content_uri: &str,
+        event_id: &str,
+        filename_hint: Option<&str>,
+    ) -> Result<Option<String>> {
+        let Some((server, media_id)) = Self::parse_mxc_uri(content_uri) else {
+            return Ok(None);
+        };
+        if !downloads_dir.exists() {
+            tokio::fs::create_dir_all(downloads_dir)
+                .await
+                .map_err(|e| ChannelError::SendFailed {
+                    platform: "matrix".to_string(),
+                    message: format!("Failed to create Matrix downloads directory: {}", e),
+                })?;
+        }
+
+        let filename = Self::safe_download_name(event_id, filename_hint.unwrap_or("media"));
+        let path = downloads_dir.join(filename);
+        let response = http
+            .get(format!(
+                "{}/_matrix/media/v3/download/{}/{}",
+                homeserver.trim_end_matches('/'),
+                urlencoding::encode(server),
+                urlencoding::encode(media_id)
+            ))
+            .bearer_auth(token)
+            .send()
+            .await
+            .map_err(|e| ChannelError::SendFailed {
+                platform: "matrix".to_string(),
+                message: format!("Matrix media download failed: {}", e),
+            })?;
+
+        if !response.status().is_success() {
+            let body = response.text().await.unwrap_or_default();
+            return Err(ChannelError::SendFailed {
+                platform: "matrix".to_string(),
+                message: format!("Matrix media download failed: {}", body),
+            }
+            .into());
+        }
+
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|e| ChannelError::SendFailed {
+                platform: "matrix".to_string(),
+                message: format!("Failed to read Matrix media download: {}", e),
+            })?;
+        tokio::fs::write(&path, &bytes)
+            .await
+            .map_err(|e| ChannelError::SendFailed {
+                platform: "matrix".to_string(),
+                message: format!("Failed to persist Matrix media download: {}", e),
+            })?;
+        Ok(Some(path.display().to_string()))
     }
 
     async fn bearer_token(&self) -> Result<String> {
@@ -258,6 +344,7 @@ impl MatrixChannel {
         let token = self.bearer_token().await?;
         let homeserver = self.config.homeserver.clone();
         let user_id = self.config.user_id.clone();
+        let downloads_dir = self.downloads_dir();
         let room_allowlist = self.config.room_allowlist.clone();
         let user_allowlist = self.config.allowlist.clone();
         let auto_join_rooms = self.config.auto_join_rooms;
@@ -385,19 +472,49 @@ impl MatrixChannel {
                                     .and_then(|value| value.as_str())
                             });
 
+                        let mut metadata = serde_json::json!({
+                            "matrix_room_id": room_id,
+                            "matrix_event_id": event_id,
+                            "matrix_sender": event.sender,
+                            "matrix_msgtype": message_type,
+                            "matrix_thread_root": thread_root,
+                            "matrix_is_group": true,
+                        });
+                        if let Some(content_uri) =
+                            event.content.get("url").and_then(|value| value.as_str())
+                        {
+                            metadata["matrix_content_uri"] = serde_json::json!(content_uri);
+                            metadata["file_references"] =
+                                serde_json::json!([serde_json::json!({ "url": content_uri })]);
+                            let filename_hint =
+                                event.content.get("body").and_then(|value| value.as_str());
+                            match Self::download_media_to_dir(
+                                &http,
+                                &homeserver,
+                                &token,
+                                &downloads_dir,
+                                content_uri,
+                                &event_id,
+                                filename_hint,
+                            )
+                            .await
+                            {
+                                Ok(Some(path)) => {
+                                    metadata["matrix_download_path"] = serde_json::json!(path);
+                                }
+                                Ok(None) => {}
+                                Err(error) => {
+                                    warn!(error = %error, event_id = %event_id, "Failed to download Matrix media");
+                                }
+                            }
+                        }
+
                         let incoming = IncomingMessage {
                             session_id: Uuid::new_v4(),
                             user_id: event.sender.clone(),
                             content: formatted.unwrap_or_else(|| body.to_string()),
                             platform: Platform::Matrix,
-                            metadata: serde_json::json!({
-                                "matrix_room_id": room_id,
-                                "matrix_event_id": event_id,
-                                "matrix_sender": event.sender,
-                                "matrix_msgtype": message_type,
-                                "matrix_thread_root": thread_root,
-                                "matrix_is_group": true,
-                            }),
+                            metadata,
                         };
 
                         let _ = incoming_tx.send(incoming).await;
@@ -999,6 +1116,49 @@ mod tests {
             MatrixChannel::parse_formatted_body(&metadata),
             Some("<b>Bold</b> message".to_string())
         );
+    }
+
+    #[test]
+    fn test_parse_mxc_uri() {
+        assert_eq!(
+            MatrixChannel::parse_mxc_uri("mxc://matrix.org/abc123"),
+            Some(("matrix.org", "abc123"))
+        );
+        assert_eq!(
+            MatrixChannel::parse_mxc_uri("https://example.com/file"),
+            None
+        );
+    }
+
+    #[tokio::test]
+    async fn test_download_media_to_dir() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/_matrix/media/v3/download/matrix.org/abc123"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(b"matrix-file".to_vec()))
+            .mount(&server)
+            .await;
+
+        let downloads_dir =
+            std::env::temp_dir().join(format!("orc-matrix-downloads-{}", Uuid::new_v4()));
+        let client = reqwest::Client::new();
+        let path = MatrixChannel::download_media_to_dir(
+            &client,
+            &server.uri(),
+            "token",
+            &downloads_dir,
+            "mxc://matrix.org/abc123",
+            "$evt1",
+            Some("report.txt"),
+        )
+        .await
+        .expect("download succeeds")
+        .expect("download path");
+
+        let bytes = tokio::fs::read(&path).await.expect("file persisted");
+        assert_eq!(bytes, b"matrix-file");
+        let _ = tokio::fs::remove_file(&path).await;
+        let _ = tokio::fs::remove_dir_all(&downloads_dir).await;
     }
 
     #[tokio::test]
