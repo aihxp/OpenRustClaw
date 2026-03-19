@@ -220,6 +220,153 @@ impl SignalChannel {
         Ok(())
     }
 
+    fn build_incoming_metadata(
+        data_message: &DataMessage,
+        timestamp: u64,
+        source: &str,
+        source_number: &Option<String>,
+        source_uuid: &Option<String>,
+        group_info: &Option<GroupInfo>,
+        bot_phone_number: &str,
+    ) -> Result<serde_json::Value> {
+        let is_group = group_info.is_some();
+        let recipient = source_number.clone().unwrap_or_else(|| source.to_string());
+        let mut metadata = serde_json::json!({
+            "signal_timestamp": timestamp,
+            "signal_source": source,
+            "signal_source_number": source_number,
+            "signal_source_uuid": source_uuid,
+            "signal_recipient": recipient,
+            "signal_is_group": is_group,
+        });
+
+        if let Some(group) = group_info {
+            metadata["signal_group_id"] = serde_json::json!(&group.group_id);
+            metadata["signal_group_name"] = serde_json::json!(&group.group_name);
+            if let Some(members) = group.members.as_ref() {
+                metadata["signal_group_members"] = serde_json::json!(members);
+                metadata["signal_group_member_count"] = serde_json::json!(members.len());
+            }
+        }
+
+        if !data_message.attachments.is_empty() {
+            metadata["attachments"] =
+                serde_json::to_value(&data_message.attachments).map_err(|e| {
+                    ChannelError::InvalidFormat {
+                        platform: "signal".to_string(),
+                        message: e.to_string(),
+                    }
+                })?;
+            metadata["signal_has_attachments"] = serde_json::json!(true);
+            metadata["signal_attachment_count"] =
+                serde_json::json!(data_message.attachments.len());
+            let attachment_ids: Vec<_> = data_message
+                .attachments
+                .iter()
+                .filter(|attachment| !attachment.id.is_empty())
+                .map(|attachment| attachment.id.clone())
+                .collect();
+            if !attachment_ids.is_empty() {
+                metadata["signal_attachment_ids"] = serde_json::json!(attachment_ids);
+            }
+            let attachment_names: Vec<_> = data_message
+                .attachments
+                .iter()
+                .filter_map(|attachment| attachment.filename.as_ref())
+                .cloned()
+                .collect();
+            if !attachment_names.is_empty() {
+                metadata["signal_attachment_names"] = serde_json::json!(attachment_names);
+            }
+            let attachment_mime_types: Vec<_> = data_message
+                .attachments
+                .iter()
+                .map(|attachment| attachment.content_type.clone())
+                .collect();
+            if !attachment_mime_types.is_empty() {
+                metadata["signal_attachment_mime_types"] =
+                    serde_json::json!(attachment_mime_types);
+            }
+            let file_references: Vec<serde_json::Value> = data_message
+                .attachments
+                .iter()
+                .filter_map(|attachment| {
+                    if attachment.id.is_empty() {
+                        None
+                    } else {
+                        Some(serde_json::json!({
+                            "url": format!("signal-attachment://{}", attachment.id),
+                            "name": attachment.filename,
+                            "mime": attachment.content_type,
+                            "size": attachment.size,
+                            "width": attachment.width,
+                            "height": attachment.height,
+                            "caption": attachment.caption,
+                            "upload_timestamp": attachment.upload_timestamp,
+                        }))
+                    }
+                })
+                .collect();
+            if !file_references.is_empty() {
+                metadata["file_references"] = serde_json::json!(file_references);
+            }
+        }
+
+        if let Some(quote) = data_message.quote.as_ref() {
+            metadata["quote"] = serde_json::json!({
+                "id": quote.id,
+                "author": quote.author,
+                "text": quote.text,
+            });
+            metadata["signal_quote"] = serde_json::json!({
+                "id": quote.id,
+                "author": quote.author,
+                "text": quote.text,
+            });
+            metadata["signal_quote_id"] = serde_json::json!(quote.id);
+            metadata["signal_quote_author"] = serde_json::json!(quote.author);
+            metadata["signal_reply_to_id"] = serde_json::json!(quote.id);
+            if let Some(text) = quote.text.as_ref() {
+                metadata["signal_quote_text"] = serde_json::json!(text);
+            }
+        }
+
+        if !data_message.mentions.is_empty() {
+            let mentions: Vec<_> = data_message
+                .mentions
+                .iter()
+                .map(|mention| {
+                    serde_json::json!({
+                        "name": mention.name,
+                        "number": mention.number,
+                        "uuid": mention.uuid,
+                        "start": mention.start,
+                        "length": mention.length,
+                    })
+                })
+                .collect();
+            metadata["signal_mentions"] = serde_json::json!(mentions);
+            metadata["signal_mention_count"] = serde_json::json!(data_message.mentions.len());
+        }
+
+        let is_mention = data_message.mentions.iter().any(|mention| {
+            mention
+                .number
+                .as_ref()
+                .map(|number| number == bot_phone_number)
+                .unwrap_or(false)
+                || mention
+                    .uuid
+                    .as_ref()
+                    .map(|uuid| uuid == bot_phone_number)
+                    .unwrap_or(false)
+        });
+        metadata["is_mention"] = serde_json::json!(is_mention);
+        metadata["signal_bot_mentioned"] = serde_json::json!(is_mention);
+
+        Ok(metadata)
+    }
+
     /// Check if a phone number or UUID is in the allowlist.
     fn is_allowed(&self, identifier: &str) -> bool {
         if self.config.allowlist.is_empty() {
@@ -353,151 +500,27 @@ impl SignalChannel {
                     }
                 }
 
-                // Process text message
-                if let Some(text) = data_message.message {
-                    let is_group = group_info.is_some();
-                    let recipient = source_number.clone().unwrap_or_else(|| source.clone());
-                    let mut metadata = serde_json::json!({
-                        "signal_timestamp": timestamp,
-                        "signal_source": source,
-                        "signal_source_number": source_number,
-                        "signal_source_uuid": source_uuid,
-                        "signal_recipient": recipient,
-                        "signal_is_group": is_group,
-                    });
-
-                    // Add group info to metadata
-                    if let Some(ref group) = group_info {
-                        metadata["signal_group_id"] = serde_json::json!(&group.group_id);
-                        metadata["signal_group_name"] = serde_json::json!(&group.group_name);
-                        if let Some(members) = group.members.as_ref() {
-                            metadata["signal_group_members"] = serde_json::json!(members);
-                            metadata["signal_group_member_count"] =
-                                serde_json::json!(members.len());
-                        }
-                    }
-
-                    // Add attachments info
-                    if !data_message.attachments.is_empty() {
-                        metadata["attachments"] = serde_json::to_value(&data_message.attachments)
-                            .map_err(|e| ChannelError::InvalidFormat {
-                            platform: "signal".to_string(),
-                            message: e.to_string(),
-                        })?;
-                        metadata["signal_has_attachments"] = serde_json::json!(true);
-                        metadata["signal_attachment_count"] =
-                            serde_json::json!(data_message.attachments.len());
-                        let attachment_ids: Vec<_> = data_message
-                            .attachments
-                            .iter()
-                            .filter(|attachment| !attachment.id.is_empty())
-                            .map(|attachment| attachment.id.clone())
-                            .collect();
-                        if !attachment_ids.is_empty() {
-                            metadata["signal_attachment_ids"] = serde_json::json!(attachment_ids);
-                        }
-                        let attachment_names: Vec<_> = data_message
-                            .attachments
-                            .iter()
-                            .filter_map(|attachment| attachment.filename.as_ref())
-                            .cloned()
-                            .collect();
-                        if !attachment_names.is_empty() {
-                            metadata["signal_attachment_names"] =
-                                serde_json::json!(attachment_names);
-                        }
-                        let attachment_mime_types: Vec<_> = data_message
-                            .attachments
-                            .iter()
-                            .map(|attachment| attachment.content_type.clone())
-                            .collect();
-                        if !attachment_mime_types.is_empty() {
-                            metadata["signal_attachment_mime_types"] =
-                                serde_json::json!(attachment_mime_types);
-                        }
-                        let file_references: Vec<serde_json::Value> = data_message
-                            .attachments
-                            .iter()
-                            .filter_map(|attachment| {
-                                if attachment.id.is_empty() {
-                                    None
-                                } else {
-                                    Some(serde_json::json!({
-                                        "url": format!("signal-attachment://{}", attachment.id),
-                                        "name": attachment.filename,
-                                        "mime": attachment.content_type,
-                                        "size": attachment.size,
-                                        "width": attachment.width,
-                                        "height": attachment.height,
-                                        "caption": attachment.caption,
-                                        "upload_timestamp": attachment.upload_timestamp,
-                                    }))
-                                }
-                            })
-                            .collect();
-                        if !file_references.is_empty() {
-                            metadata["file_references"] = serde_json::json!(file_references);
-                        }
-                    }
-
-                    // Add quote info
-                    if let Some(ref quote) = data_message.quote {
-                        metadata["quote"] = serde_json::json!({
-                            "id": quote.id,
-                            "author": quote.author,
-                            "text": quote.text,
-                        });
-                        metadata["signal_quote"] = serde_json::json!({
-                            "id": quote.id,
-                            "author": quote.author,
-                            "text": quote.text,
-                        });
-                        metadata["signal_quote_id"] = serde_json::json!(quote.id);
-                        metadata["signal_quote_author"] = serde_json::json!(quote.author);
-                        if let Some(text) = quote.text.as_ref() {
-                            metadata["signal_quote_text"] = serde_json::json!(text);
-                        }
-                    }
-
-                    if !data_message.mentions.is_empty() {
-                        let mentions: Vec<_> = data_message
-                            .mentions
-                            .iter()
-                            .map(|mention| {
-                                serde_json::json!({
-                                    "name": mention.name,
-                                    "number": mention.number,
-                                    "uuid": mention.uuid,
-                                    "start": mention.start,
-                                    "length": mention.length,
-                                })
-                            })
-                            .collect();
-                        metadata["signal_mentions"] = serde_json::json!(mentions);
-                        metadata["signal_mention_count"] =
-                            serde_json::json!(data_message.mentions.len());
-                    }
-
-                    // Check if message is a mention of the bot
-                    let is_mention = data_message.mentions.iter().any(|mention| {
-                        mention
-                            .number
-                            .as_ref()
-                            .map(|number| number == bot_phone_number)
-                            .unwrap_or(false)
-                            || mention
-                                .uuid
-                                .as_ref()
-                                .map(|uuid| uuid == bot_phone_number)
-                                .unwrap_or(false)
-                    });
-                    metadata["is_mention"] = serde_json::json!(is_mention);
-                    metadata["signal_bot_mentioned"] = serde_json::json!(is_mention);
+                if data_message.message.is_some() || !data_message.attachments.is_empty() {
+                    let mut metadata = Self::build_incoming_metadata(
+                        &data_message,
+                        timestamp,
+                        &source,
+                        &source_number,
+                        &source_uuid,
+                        &group_info,
+                        bot_phone_number,
+                    )?;
+                    let content = if let Some(text) = data_message.message.as_ref() {
+                        text.clone()
+                    } else {
+                        metadata["signal_attachment_only"] = serde_json::json!(true);
+                        "[signal attachment]".to_string()
+                    };
 
                     let msg = IncomingMessage {
                         session_id: Uuid::new_v4(),
                         user_id: user_id.clone(),
-                        content: text,
+                        content,
                         platform: Platform::Signal,
                         metadata,
                     };
@@ -526,6 +549,31 @@ impl SignalChannel {
                 // Handle sync messages from linked devices
                 if let Some(sent) = sync_message.sent_message {
                     debug!(timestamp = sent.timestamp, "Received sync message");
+                    let msg = IncomingMessage {
+                        session_id: Uuid::new_v4(),
+                        user_id: "self".to_string(),
+                        content: sent
+                            .message
+                            .clone()
+                            .unwrap_or_else(|| "[signal sync message]".to_string()),
+                        platform: Platform::Signal,
+                        metadata: serde_json::json!({
+                            "signal_activity_type": "sync_message",
+                            "signal_sync_timestamp": sent.timestamp,
+                            "signal_sync_destination": sent.destination,
+                            "signal_sync_has_text": sent.message.as_ref().map(|message| !message.is_empty()).unwrap_or(false),
+                            "signal_sync_sent_by_self": true,
+                        }),
+                    };
+
+                    if let Err(e) = tx.send(msg).await {
+                        error!(error = %e, "Failed to send sync message to channel");
+                        return Err(ChannelError::Connection {
+                            platform: "signal".to_string(),
+                            message: "Message channel closed".to_string(),
+                        }
+                        .into());
+                    }
                 }
             }
             SignalEnvelope::Receipt { timestamp, source } => {
@@ -1230,6 +1278,80 @@ mod tests {
         assert_eq!(incoming.metadata["signal_quote_id"], 42);
         assert_eq!(incoming.metadata["signal_quote_author"], "+15557654321");
         assert_eq!(incoming.metadata["signal_quote_text"], "original text");
+    }
+
+    #[tokio::test]
+    async fn test_process_envelope_routes_attachment_only_messages() {
+        let (tx, mut rx) = mpsc::channel(4);
+        SignalChannel::process_envelope(
+            SignalEnvelope::DataMessage {
+                data_message: DataMessage {
+                    message: None,
+                    attachments: vec![SignalAttachment {
+                        content_type: "application/pdf".to_string(),
+                        filename: Some("report.pdf".to_string()),
+                        id: "att-only-1".to_string(),
+                        size: Some(1024),
+                        width: None,
+                        height: None,
+                        caption: None,
+                        upload_timestamp: Some(4444),
+                    }],
+                    quote: None,
+                    mentions: vec![],
+                    group_info: None,
+                },
+                timestamp: 888,
+                source: "+15550002222".to_string(),
+                source_number: Some("+15550002222".to_string()),
+                source_uuid: None,
+                group_info: None,
+            },
+            &tx,
+            &[],
+            &[],
+            false,
+            "+19998887777",
+        )
+        .await
+        .unwrap();
+
+        let incoming = rx.recv().await.expect("incoming attachment-only message");
+        assert_eq!(incoming.content, "[signal attachment]");
+        assert_eq!(incoming.metadata["signal_attachment_only"], true);
+        assert_eq!(incoming.metadata["signal_has_attachments"], true);
+        assert_eq!(incoming.metadata["signal_attachment_count"], 1);
+    }
+
+    #[tokio::test]
+    async fn test_process_sync_message_routes_lifecycle_message() {
+        let (tx, mut rx) = mpsc::channel(4);
+        SignalChannel::process_envelope(
+            SignalEnvelope::SyncMessage {
+                sync_message: SyncMessage {
+                    sent_message: Some(SentMessage {
+                        message: Some("sent from linked device".to_string()),
+                        timestamp: 321,
+                        destination: Some("+15559990000".to_string()),
+                    }),
+                },
+            },
+            &tx,
+            &[],
+            &[],
+            false,
+            "+19998887777",
+        )
+        .await
+        .unwrap();
+
+        let incoming = rx.recv().await.expect("incoming sync message");
+        assert_eq!(incoming.content, "sent from linked device");
+        assert_eq!(incoming.metadata["signal_activity_type"], "sync_message");
+        assert_eq!(incoming.metadata["signal_sync_timestamp"], 321);
+        assert_eq!(incoming.metadata["signal_sync_destination"], "+15559990000");
+        assert_eq!(incoming.metadata["signal_sync_has_text"], true);
+        assert_eq!(incoming.metadata["signal_sync_sent_by_self"], true);
     }
 
     #[tokio::test]
