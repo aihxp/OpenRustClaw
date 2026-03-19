@@ -681,6 +681,9 @@ impl MatrixChannel {
                             event.content.get("format").and_then(|value| value.as_str())
                         {
                             metadata["matrix_format"] = serde_json::json!(format);
+                            metadata["matrix_has_format"] = serde_json::json!(true);
+                        } else {
+                            metadata["matrix_has_format"] = serde_json::json!(false);
                         }
                         metadata["matrix_has_formatted_body"] =
                             serde_json::json!(event.content.get("formatted_body").is_some());
@@ -692,6 +695,9 @@ impl MatrixChannel {
                             metadata["matrix_formatted_body"] = serde_json::json!(formatted_body);
                             metadata["matrix_formatted_body_length"] =
                                 serde_json::json!(formatted_body.chars().count());
+                            metadata["matrix_has_formatted_body_length"] = serde_json::json!(true);
+                        } else {
+                            metadata["matrix_has_formatted_body_length"] = serde_json::json!(false);
                         }
                         if let Some(content_uri) =
                             event.content.get("url").and_then(|value| value.as_str())
@@ -718,6 +724,9 @@ impl MatrixChannel {
                                 .and_then(|value| value.as_u64());
                             if let Some(mime) = mime {
                                 metadata["matrix_media_mime_type"] = serde_json::json!(mime);
+                                metadata["matrix_has_media_mime_type"] = serde_json::json!(true);
+                            } else {
+                                metadata["matrix_has_media_mime_type"] = serde_json::json!(false);
                             }
                             if let Some(size) = size {
                                 metadata["matrix_media_size"] = serde_json::json!(size);
@@ -732,6 +741,7 @@ impl MatrixChannel {
                                 "size": size,
                             })]);
                             metadata["matrix_file_reference_count"] = serde_json::json!(1);
+                            metadata["matrix_has_file_references"] = serde_json::json!(true);
                             match Self::download_media_to_dir(
                                 &http,
                                 &homeserver,
@@ -758,8 +768,10 @@ impl MatrixChannel {
                             metadata["matrix_has_content_uri"] = serde_json::json!(false);
                             metadata["matrix_has_media"] = serde_json::json!(false);
                             metadata["matrix_has_media_filename"] = serde_json::json!(false);
+                            metadata["matrix_has_media_mime_type"] = serde_json::json!(false);
                             metadata["matrix_has_media_size"] = serde_json::json!(false);
                             metadata["matrix_file_reference_count"] = serde_json::json!(0);
+                            metadata["matrix_has_file_references"] = serde_json::json!(false);
                         }
 
                         let incoming = IncomingMessage {
@@ -1581,11 +1593,15 @@ mod tests {
         assert_eq!(incoming.metadata["matrix_body_length"], 17);
         assert_eq!(incoming.metadata["matrix_has_reply"], false);
         assert_eq!(incoming.metadata["matrix_has_thread"], false);
+        assert_eq!(incoming.metadata["matrix_has_format"], false);
         assert_eq!(incoming.metadata["matrix_has_formatted_body"], false);
+        assert_eq!(incoming.metadata["matrix_has_formatted_body_length"], false);
         assert_eq!(incoming.metadata["matrix_has_media"], false);
         assert_eq!(incoming.metadata["matrix_has_content_uri"], false);
         assert_eq!(incoming.metadata["matrix_has_media_filename"], false);
+        assert_eq!(incoming.metadata["matrix_has_media_mime_type"], false);
         assert_eq!(incoming.metadata["matrix_has_media_size"], false);
+        assert_eq!(incoming.metadata["matrix_has_file_references"], false);
         assert_eq!(incoming.metadata["matrix_file_reference_count"], 0);
         assert_eq!(incoming.user_id, "@alice:matrix.org");
         assert_eq!(incoming.content, "hello from matrix");
@@ -1657,8 +1673,10 @@ mod tests {
         assert_eq!(incoming.metadata["matrix_thread_root"], "$root1");
         assert_eq!(incoming.metadata["matrix_has_reply"], true);
         assert_eq!(incoming.metadata["matrix_has_thread"], true);
+        assert_eq!(incoming.metadata["matrix_has_format"], true);
         assert_eq!(incoming.metadata["matrix_body_length"], 17);
         assert_eq!(incoming.metadata["matrix_has_formatted_body"], true);
+        assert_eq!(incoming.metadata["matrix_has_formatted_body_length"], true);
         assert_eq!(incoming.metadata["matrix_formatted_body_length"], 24);
         assert_eq!(incoming.metadata["matrix_format"], "org.matrix.custom.html");
         assert_eq!(incoming.metadata["matrix_formatted_body"], "<b>reply</b> from matrix");
@@ -1902,8 +1920,10 @@ mod tests {
         assert_eq!(incoming.metadata["matrix_has_media_filename"], true);
         assert_eq!(incoming.metadata["matrix_content_uri"], "mxc://matrix.org/media-1");
         assert_eq!(incoming.metadata["matrix_media_mime_type"], "application/pdf");
+        assert_eq!(incoming.metadata["matrix_has_media_mime_type"], true);
         assert_eq!(incoming.metadata["matrix_media_size"], 2048);
         assert_eq!(incoming.metadata["matrix_has_media_size"], true);
+        assert_eq!(incoming.metadata["matrix_has_file_references"], true);
         assert_eq!(incoming.metadata["matrix_file_reference_count"], 1);
         assert_eq!(incoming.metadata["file_references"][0]["name"], "report.pdf");
         assert_eq!(incoming.metadata["file_references"][0]["mime"], "application/pdf");

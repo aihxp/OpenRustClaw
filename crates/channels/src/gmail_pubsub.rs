@@ -914,9 +914,13 @@ impl GmailRuntime {
 
                         let mut metadata = serde_json::Map::new();
                         metadata.insert("gmail_message_id".into(), serde_json::json!(email.id));
+                        metadata.insert("gmail_has_message_id".into(), serde_json::json!(!email.id.is_empty()));
                         metadata.insert("gmail_thread_id".into(), serde_json::json!(email.thread_id));
+                        metadata.insert("gmail_has_thread_id".into(), serde_json::json!(!email.thread_id.is_empty()));
                         metadata.insert("gmail_history_id".into(), serde_json::json!(email.history_id));
+                        metadata.insert("gmail_has_history_id".into(), serde_json::json!(email.history_id > 0));
                         metadata.insert("gmail_subject".into(), serde_json::json!(email.subject));
+                        metadata.insert("gmail_has_subject".into(), serde_json::json!(!email.subject.is_empty()));
                         metadata.insert("gmail_from".into(), serde_json::json!(email.from));
                         metadata.insert("gmail_from_domain".into(), serde_json::json!(email.from_domain));
                         metadata.insert("gmail_has_from_domain".into(), serde_json::json!(email.from_domain.is_some()));
@@ -945,9 +949,11 @@ impl GmailRuntime {
                         metadata.insert("gmail_file_reference_count".into(), serde_json::json!(metadata["file_references"].as_array().map(|items| items.len()).unwrap_or(0)));
                         metadata.insert("gmail_subject_length".into(), serde_json::json!(email.subject.chars().count()));
                         metadata.insert("gmail_has_html_body".into(), serde_json::json!(email.body_html.is_some()));
+                        metadata.insert("gmail_has_body_text".into(), serde_json::json!(!email.body_text.is_empty()));
                         metadata.insert("gmail_body_text_length".into(), serde_json::json!(email.body_text.chars().count()));
                         metadata.insert("gmail_body_html_length".into(), serde_json::json!(email.body_html.as_ref().map(|html| html.chars().count())));
                         metadata.insert("gmail_received_at".into(), serde_json::json!(email.received_at.to_rfc3339()));
+                        metadata.insert("gmail_has_received_at".into(), serde_json::json!(true));
                         metadata.insert("gmail_is_unread".into(), serde_json::json!(email.is_unread));
                         metadata.insert("gmail_message_id_header".into(), serde_json::json!(email.message_id_header));
                         metadata.insert("gmail_has_message_id_header".into(), serde_json::json!(email.message_id_header.is_some()));
@@ -1506,8 +1512,12 @@ mod tests {
         let incoming = gmail.receive().await.unwrap();
         assert_eq!(incoming.user_id, "sender@example.com");
         assert_eq!(incoming.metadata["gmail_message_id"], "msg-1");
+        assert_eq!(incoming.metadata["gmail_has_message_id"], true);
         assert_eq!(incoming.metadata["gmail_thread_id"], "thread-1");
+        assert_eq!(incoming.metadata["gmail_has_thread_id"], true);
         assert_eq!(incoming.metadata["gmail_history_id"], 100);
+        assert_eq!(incoming.metadata["gmail_has_history_id"], true);
+        assert_eq!(incoming.metadata["gmail_has_subject"], true);
         assert_eq!(incoming.metadata["gmail_to"][0], "user@example.com");
         assert_eq!(incoming.metadata["gmail_has_to"], true);
         assert_eq!(incoming.metadata["gmail_to_count"], 1);
@@ -1524,9 +1534,11 @@ mod tests {
         assert_eq!(incoming.metadata["gmail_label_count"], 2);
         assert_eq!(incoming.metadata["gmail_is_unread"], true);
         assert_eq!(incoming.metadata["gmail_subject_length"], 12);
+        assert_eq!(incoming.metadata["gmail_has_body_text"], true);
         assert_eq!(incoming.metadata["gmail_body_text_length"], 16);
         assert_eq!(incoming.metadata["gmail_body_html_length"], 23);
         assert_eq!(incoming.metadata["gmail_received_at"], "2024-03-09T16:00:00+00:00");
+        assert_eq!(incoming.metadata["gmail_has_received_at"], true);
         assert_eq!(incoming.metadata["gmail_has_attachments"], true);
         assert_eq!(incoming.metadata["gmail_attachment_names"][0], "report.pdf");
         assert_eq!(incoming.metadata["gmail_has_attachment_names"], true);
