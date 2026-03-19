@@ -238,11 +238,15 @@ impl SignalChannel {
             "signal_source_uuid": source_uuid,
             "signal_recipient": recipient,
             "signal_is_group": is_group,
+            "signal_has_source_number": source_number.is_some(),
+            "signal_has_source_uuid": source_uuid.is_some(),
         });
 
         if let Some(group) = group_info {
             metadata["signal_group_id"] = serde_json::json!(&group.group_id);
             metadata["signal_group_name"] = serde_json::json!(&group.group_name);
+            metadata["signal_has_group_name"] =
+                serde_json::json!(group.group_name.as_ref().map(|value| !value.is_empty()).unwrap_or(false));
             if let Some(members) = group.members.as_ref() {
                 metadata["signal_group_members"] = serde_json::json!(members);
                 metadata["signal_group_member_count"] = serde_json::json!(members.len());
@@ -269,6 +273,9 @@ impl SignalChannel {
                 .collect();
             if !attachment_ids.is_empty() {
                 metadata["signal_attachment_ids"] = serde_json::json!(attachment_ids);
+                metadata["signal_has_attachment_ids"] = serde_json::json!(true);
+            } else {
+                metadata["signal_has_attachment_ids"] = serde_json::json!(false);
             }
             let attachment_names: Vec<_> = data_message
                 .attachments
@@ -278,6 +285,9 @@ impl SignalChannel {
                 .collect();
             if !attachment_names.is_empty() {
                 metadata["signal_attachment_names"] = serde_json::json!(attachment_names);
+                metadata["signal_has_attachment_names"] = serde_json::json!(true);
+            } else {
+                metadata["signal_has_attachment_names"] = serde_json::json!(false);
             }
             let attachment_mime_types: Vec<_> = data_message
                 .attachments
@@ -1190,10 +1200,14 @@ mod tests {
         .unwrap();
 
         let incoming = rx.recv().await.expect("incoming message");
+        assert_eq!(incoming.metadata["signal_has_source_number"], true);
+        assert_eq!(incoming.metadata["signal_has_source_uuid"], false);
         assert_eq!(incoming.metadata["signal_has_attachments"], serde_json::json!(true));
         assert_eq!(incoming.metadata["signal_attachment_count"], serde_json::json!(1));
         assert_eq!(incoming.metadata["signal_attachment_ids"][0], "att-1");
+        assert_eq!(incoming.metadata["signal_has_attachment_ids"], true);
         assert_eq!(incoming.metadata["signal_attachment_names"][0], "photo.jpg");
+        assert_eq!(incoming.metadata["signal_has_attachment_names"], true);
         assert_eq!(
             incoming.metadata["signal_attachment_mime_types"][0],
             "image/jpeg"
@@ -1266,6 +1280,7 @@ mod tests {
         .unwrap();
 
         let incoming = rx.recv().await.expect("incoming group message");
+        assert_eq!(incoming.metadata["signal_has_group_name"], true);
         assert_eq!(incoming.metadata["signal_group_member_count"], 2);
         assert_eq!(incoming.metadata["signal_group_members"][1], "+15551230002");
         assert_eq!(incoming.metadata["signal_has_group_members"], true);

@@ -897,45 +897,65 @@ impl GmailRuntime {
                     platform: Platform::Gmail,
                     metadata: {
                         let file_references = Self::attachment_file_references(&email);
-                        serde_json::json!({
-                        "gmail_message_id": email.id,
-                        "gmail_thread_id": email.thread_id,
-                        "gmail_history_id": email.history_id,
-                        "gmail_subject": email.subject,
-                        "gmail_from": email.from,
-                        "gmail_from_domain": email.from_domain,
-                        "gmail_to": email.to,
-                        "gmail_has_to": !email.to.is_empty(),
-                        "gmail_to_count": email.to.len(),
-                        "gmail_to_domains": Self::address_domains(&email.to),
-                        "gmail_cc": email.cc,
-                        "gmail_cc_count": email.cc.len(),
-                        "gmail_has_cc": !email.cc.is_empty(),
-                        "gmail_cc_domains": Self::address_domains(&email.cc),
-                        "gmail_labels": email.labels,
-                        "gmail_has_labels": !email.labels.is_empty(),
-                        "gmail_label_count": email.labels.len(),
-                        "gmail_has_attachments": !email.attachments.is_empty(),
-                        "gmail_attachment_count": email.attachments.len(),
-                        "gmail_attachment_names": email.attachments.iter().map(|attachment| attachment.filename.clone()).collect::<Vec<_>>(),
-                        "gmail_attachment_mime_types": email.attachments.iter().map(|attachment| attachment.mime_type.clone()).collect::<Vec<_>>(),
-                        "gmail_attachment_total_size": email.attachments.iter().map(|attachment| attachment.size).sum::<usize>(),
-                        "gmail_attachments": email.attachments,
-                        "file_references": file_references,
-                        "gmail_file_reference_count": file_references.len(),
-                        "gmail_subject_length": email.subject.chars().count(),
-                        "gmail_has_html_body": email.body_html.is_some(),
-                        "gmail_body_text_length": email.body_text.chars().count(),
-                        "gmail_body_html_length": email.body_html.as_ref().map(|html| html.chars().count()),
-                        "gmail_received_at": email.received_at.to_rfc3339(),
-                        "gmail_is_unread": email.is_unread,
-                        "gmail_message_id_header": email.message_id_header,
-                        "gmail_has_message_id_header": email.message_id_header.is_some(),
-                        "gmail_references": email.references_header,
-                        "gmail_has_references": email.references_header.is_some(),
-                        "gmail_in_reply_to": email.in_reply_to_header,
-                        "gmail_has_in_reply_to": email.in_reply_to_header.is_some(),
-                    })
+                        let to_domains = Self::address_domains(&email.to);
+                        let cc_domains = Self::address_domains(&email.cc);
+                        let attachment_names: Vec<_> = email
+                            .attachments
+                            .iter()
+                            .map(|attachment| attachment.filename.clone())
+                            .collect();
+                        let attachment_mime_types: Vec<_> = email
+                            .attachments
+                            .iter()
+                            .map(|attachment| attachment.mime_type.clone())
+                            .collect();
+                        let attachment_total_size: usize =
+                            email.attachments.iter().map(|attachment| attachment.size).sum();
+
+                        let mut metadata = serde_json::Map::new();
+                        metadata.insert("gmail_message_id".into(), serde_json::json!(email.id));
+                        metadata.insert("gmail_thread_id".into(), serde_json::json!(email.thread_id));
+                        metadata.insert("gmail_history_id".into(), serde_json::json!(email.history_id));
+                        metadata.insert("gmail_subject".into(), serde_json::json!(email.subject));
+                        metadata.insert("gmail_from".into(), serde_json::json!(email.from));
+                        metadata.insert("gmail_from_domain".into(), serde_json::json!(email.from_domain));
+                        metadata.insert("gmail_has_from_domain".into(), serde_json::json!(email.from_domain.is_some()));
+                        metadata.insert("gmail_to".into(), serde_json::json!(email.to));
+                        metadata.insert("gmail_has_to".into(), serde_json::json!(!email.to.is_empty()));
+                        metadata.insert("gmail_to_count".into(), serde_json::json!(email.to.len()));
+                        metadata.insert("gmail_to_domains".into(), serde_json::json!(to_domains));
+                        metadata.insert("gmail_has_to_domains".into(), serde_json::json!(metadata["gmail_to_domains"].as_array().map(|items| !items.is_empty()).unwrap_or(false)));
+                        metadata.insert("gmail_cc".into(), serde_json::json!(email.cc));
+                        metadata.insert("gmail_cc_count".into(), serde_json::json!(email.cc.len()));
+                        metadata.insert("gmail_has_cc".into(), serde_json::json!(!email.cc.is_empty()));
+                        metadata.insert("gmail_cc_domains".into(), serde_json::json!(cc_domains));
+                        metadata.insert("gmail_has_cc_domains".into(), serde_json::json!(metadata["gmail_cc_domains"].as_array().map(|items| !items.is_empty()).unwrap_or(false)));
+                        metadata.insert("gmail_labels".into(), serde_json::json!(email.labels));
+                        metadata.insert("gmail_has_labels".into(), serde_json::json!(!email.labels.is_empty()));
+                        metadata.insert("gmail_label_count".into(), serde_json::json!(email.labels.len()));
+                        metadata.insert("gmail_has_attachments".into(), serde_json::json!(!email.attachments.is_empty()));
+                        metadata.insert("gmail_attachment_count".into(), serde_json::json!(email.attachments.len()));
+                        metadata.insert("gmail_attachment_names".into(), serde_json::json!(attachment_names));
+                        metadata.insert("gmail_has_attachment_names".into(), serde_json::json!(metadata["gmail_attachment_names"].as_array().map(|items| items.iter().any(|item| item.as_str().map(|s| !s.is_empty()).unwrap_or(false))).unwrap_or(false)));
+                        metadata.insert("gmail_attachment_mime_types".into(), serde_json::json!(attachment_mime_types));
+                        metadata.insert("gmail_has_attachment_mime_types".into(), serde_json::json!(metadata["gmail_attachment_mime_types"].as_array().map(|items| items.iter().any(|item| item.as_str().map(|s| !s.is_empty()).unwrap_or(false))).unwrap_or(false)));
+                        metadata.insert("gmail_attachment_total_size".into(), serde_json::json!(attachment_total_size));
+                        metadata.insert("gmail_attachments".into(), serde_json::json!(email.attachments));
+                        metadata.insert("file_references".into(), serde_json::json!(file_references));
+                        metadata.insert("gmail_file_reference_count".into(), serde_json::json!(metadata["file_references"].as_array().map(|items| items.len()).unwrap_or(0)));
+                        metadata.insert("gmail_subject_length".into(), serde_json::json!(email.subject.chars().count()));
+                        metadata.insert("gmail_has_html_body".into(), serde_json::json!(email.body_html.is_some()));
+                        metadata.insert("gmail_body_text_length".into(), serde_json::json!(email.body_text.chars().count()));
+                        metadata.insert("gmail_body_html_length".into(), serde_json::json!(email.body_html.as_ref().map(|html| html.chars().count())));
+                        metadata.insert("gmail_received_at".into(), serde_json::json!(email.received_at.to_rfc3339()));
+                        metadata.insert("gmail_is_unread".into(), serde_json::json!(email.is_unread));
+                        metadata.insert("gmail_message_id_header".into(), serde_json::json!(email.message_id_header));
+                        metadata.insert("gmail_has_message_id_header".into(), serde_json::json!(email.message_id_header.is_some()));
+                        metadata.insert("gmail_references".into(), serde_json::json!(email.references_header));
+                        metadata.insert("gmail_has_references".into(), serde_json::json!(email.references_header.is_some()));
+                        metadata.insert("gmail_in_reply_to".into(), serde_json::json!(email.in_reply_to_header));
+                        metadata.insert("gmail_has_in_reply_to".into(), serde_json::json!(email.in_reply_to_header.is_some()));
+                        serde_json::Value::Object(metadata)
                     },
                 };
 
@@ -1492,11 +1512,14 @@ mod tests {
         assert_eq!(incoming.metadata["gmail_has_to"], true);
         assert_eq!(incoming.metadata["gmail_to_count"], 1);
         assert_eq!(incoming.metadata["gmail_to_domains"][0], "example.com");
+        assert_eq!(incoming.metadata["gmail_has_to_domains"], true);
         assert_eq!(incoming.metadata["gmail_cc"][0], "cc@example.com");
         assert_eq!(incoming.metadata["gmail_cc_count"], 1);
         assert_eq!(incoming.metadata["gmail_has_cc"], true);
         assert_eq!(incoming.metadata["gmail_cc_domains"][0], "example.com");
+        assert_eq!(incoming.metadata["gmail_has_cc_domains"], true);
         assert_eq!(incoming.metadata["gmail_from_domain"], "example.com");
+        assert_eq!(incoming.metadata["gmail_has_from_domain"], true);
         assert_eq!(incoming.metadata["gmail_has_labels"], true);
         assert_eq!(incoming.metadata["gmail_label_count"], 2);
         assert_eq!(incoming.metadata["gmail_is_unread"], true);
@@ -1506,11 +1529,13 @@ mod tests {
         assert_eq!(incoming.metadata["gmail_received_at"], "2024-03-09T16:00:00+00:00");
         assert_eq!(incoming.metadata["gmail_has_attachments"], true);
         assert_eq!(incoming.metadata["gmail_attachment_names"][0], "report.pdf");
+        assert_eq!(incoming.metadata["gmail_has_attachment_names"], true);
         assert_eq!(incoming.metadata["gmail_attachment_total_size"], 2048);
         assert_eq!(
             incoming.metadata["gmail_attachment_mime_types"][0],
             "application/pdf"
         );
+        assert_eq!(incoming.metadata["gmail_has_attachment_mime_types"], true);
         assert_eq!(incoming.metadata["gmail_message_id_header"], "<msg-1@example.com>");
         assert_eq!(incoming.metadata["gmail_has_message_id_header"], true);
         assert_eq!(incoming.metadata["gmail_references"], "<root@example.com>");

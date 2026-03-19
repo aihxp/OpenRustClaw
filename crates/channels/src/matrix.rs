@@ -537,6 +537,7 @@ impl MatrixChannel {
                                 "matrix_msgtype": "m.room.redaction",
                                 "matrix_is_group": true,
                                 "matrix_redacts": event.content.get("redacts").and_then(|value| value.as_str()),
+                                "matrix_has_redacts": event.content.get("redacts").and_then(|value| value.as_str()).is_some(),
                                 "matrix_redaction_reason": event.content.get("reason").and_then(|value| value.as_str()),
                                 "matrix_has_redaction_reason": event.content.get("reason").and_then(|value| value.as_str()).is_some(),
                             });
@@ -573,6 +574,7 @@ impl MatrixChannel {
                                 "matrix_reaction": reaction_key,
                                 "matrix_reaction_target": reaction_target,
                                 "matrix_reaction_rel_type": relates_to.get("rel_type").and_then(|value| value.as_str()),
+                                "matrix_has_reaction_rel_type": relates_to.get("rel_type").and_then(|value| value.as_str()).is_some(),
                                 "matrix_reaction_has_target": reaction_target.is_some(),
                             });
 
@@ -608,6 +610,7 @@ impl MatrixChannel {
                                 "matrix_membership": membership,
                                 "matrix_state_key": event.state_key,
                                 "matrix_member_display_name": display_name,
+                                "matrix_has_member_display_name": display_name.is_some(),
                                 "matrix_member_avatar_url": event.content.get("avatar_url").and_then(|value| value.as_str()),
                                 "matrix_has_member_avatar": event.content.get("avatar_url").and_then(|value| value.as_str()).is_some(),
                             });
@@ -701,6 +704,9 @@ impl MatrixChannel {
                             if let Some(filename_hint) = filename_hint {
                                 metadata["matrix_media_filename"] =
                                     serde_json::json!(filename_hint);
+                                metadata["matrix_has_media_filename"] = serde_json::json!(true);
+                            } else {
+                                metadata["matrix_has_media_filename"] = serde_json::json!(false);
                             }
                             let mime = event
                                 .content
@@ -715,6 +721,9 @@ impl MatrixChannel {
                             }
                             if let Some(size) = size {
                                 metadata["matrix_media_size"] = serde_json::json!(size);
+                                metadata["matrix_has_media_size"] = serde_json::json!(true);
+                            } else {
+                                metadata["matrix_has_media_size"] = serde_json::json!(false);
                             }
                             metadata["file_references"] = serde_json::json!([serde_json::json!({
                                 "url": content_uri,
@@ -748,6 +757,8 @@ impl MatrixChannel {
                         } else {
                             metadata["matrix_has_content_uri"] = serde_json::json!(false);
                             metadata["matrix_has_media"] = serde_json::json!(false);
+                            metadata["matrix_has_media_filename"] = serde_json::json!(false);
+                            metadata["matrix_has_media_size"] = serde_json::json!(false);
                             metadata["matrix_file_reference_count"] = serde_json::json!(0);
                         }
 
@@ -1573,6 +1584,8 @@ mod tests {
         assert_eq!(incoming.metadata["matrix_has_formatted_body"], false);
         assert_eq!(incoming.metadata["matrix_has_media"], false);
         assert_eq!(incoming.metadata["matrix_has_content_uri"], false);
+        assert_eq!(incoming.metadata["matrix_has_media_filename"], false);
+        assert_eq!(incoming.metadata["matrix_has_media_size"], false);
         assert_eq!(incoming.metadata["matrix_file_reference_count"], 0);
         assert_eq!(incoming.user_id, "@alice:matrix.org");
         assert_eq!(incoming.content, "hello from matrix");
@@ -1706,6 +1719,7 @@ mod tests {
         assert_eq!(incoming.metadata["matrix_reaction"], "👍");
         assert_eq!(incoming.metadata["matrix_reaction_target"], "$target1");
         assert_eq!(incoming.metadata["matrix_reaction_rel_type"], "m.annotation");
+        assert_eq!(incoming.metadata["matrix_has_reaction_rel_type"], true);
         assert_eq!(incoming.metadata["matrix_reaction_has_target"], true);
 
         channel.disconnect().await.expect("disconnect succeeds");
@@ -1759,6 +1773,7 @@ mod tests {
 
         assert_eq!(incoming.content, "[matrix redaction]");
         assert_eq!(incoming.metadata["matrix_redacts"], "$target-redacted");
+        assert_eq!(incoming.metadata["matrix_has_redacts"], true);
         assert_eq!(incoming.metadata["matrix_redaction_reason"], "cleanup");
         assert_eq!(incoming.metadata["matrix_has_redaction_reason"], true);
 
@@ -1817,6 +1832,7 @@ mod tests {
         assert_eq!(incoming.metadata["matrix_membership"], "join");
         assert_eq!(incoming.metadata["matrix_state_key"], "@bob:matrix.org");
         assert_eq!(incoming.metadata["matrix_member_display_name"], "Bob");
+        assert_eq!(incoming.metadata["matrix_has_member_display_name"], true);
         assert_eq!(incoming.metadata["matrix_member_avatar_url"], "mxc://matrix.org/avatar1");
         assert_eq!(incoming.metadata["matrix_has_member_avatar"], true);
 
@@ -1883,9 +1899,11 @@ mod tests {
         assert_eq!(incoming.metadata["matrix_has_media"], true);
         assert_eq!(incoming.metadata["matrix_has_content_uri"], true);
         assert_eq!(incoming.metadata["matrix_media_filename"], "report.pdf");
+        assert_eq!(incoming.metadata["matrix_has_media_filename"], true);
         assert_eq!(incoming.metadata["matrix_content_uri"], "mxc://matrix.org/media-1");
         assert_eq!(incoming.metadata["matrix_media_mime_type"], "application/pdf");
         assert_eq!(incoming.metadata["matrix_media_size"], 2048);
+        assert_eq!(incoming.metadata["matrix_has_media_size"], true);
         assert_eq!(incoming.metadata["matrix_file_reference_count"], 1);
         assert_eq!(incoming.metadata["file_references"][0]["name"], "report.pdf");
         assert_eq!(incoming.metadata["file_references"][0]["mime"], "application/pdf");

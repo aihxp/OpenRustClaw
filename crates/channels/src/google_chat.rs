@@ -193,6 +193,7 @@ struct Space {
     name: String,
     #[serde(rename = "type")]
     space_type: String,
+    #[serde(rename = "displayName")]
     display_name: Option<String>,
 }
 
@@ -1043,9 +1044,15 @@ impl GoogleChatWebhookHandler {
         });
         if let Some(email) = user.email.as_ref() {
             metadata["google_chat_user_email"] = serde_json::json!(email);
+            metadata["google_chat_has_user_email"] = serde_json::json!(true);
+        } else {
+            metadata["google_chat_has_user_email"] = serde_json::json!(false);
         }
         if let Some(display_name) = event.space.display_name.as_ref() {
             metadata["google_chat_space_display_name"] = serde_json::json!(display_name);
+            metadata["google_chat_has_space_display_name"] = serde_json::json!(true);
+        } else {
+            metadata["google_chat_has_space_display_name"] = serde_json::json!(false);
         }
         if let Some(argument_text) = message.argument_text.as_ref() {
             metadata["google_chat_argument_text"] = serde_json::json!(argument_text);
@@ -1126,6 +1133,9 @@ impl GoogleChatWebhookHandler {
                 .collect();
             if !attachment_names.is_empty() {
                 metadata["google_chat_attachment_names"] = serde_json::json!(attachment_names);
+                metadata["google_chat_has_attachment_names"] = serde_json::json!(true);
+            } else {
+                metadata["google_chat_has_attachment_names"] = serde_json::json!(false);
             }
             let attachment_content_types: Vec<_> = message
                 .attachments
@@ -1140,6 +1150,9 @@ impl GoogleChatWebhookHandler {
             if !attachment_content_types.is_empty() {
                 metadata["google_chat_attachment_content_types"] =
                     serde_json::json!(attachment_content_types);
+                metadata["google_chat_has_attachment_content_types"] = serde_json::json!(true);
+            } else {
+                metadata["google_chat_has_attachment_content_types"] = serde_json::json!(false);
             }
             let attachment_data_refs: Vec<_> = message
                 .attachments
@@ -1153,6 +1166,9 @@ impl GoogleChatWebhookHandler {
             if !attachment_data_refs.is_empty() {
                 metadata["google_chat_attachment_data_refs"] =
                     serde_json::json!(attachment_data_refs);
+                metadata["google_chat_has_attachment_data_refs"] = serde_json::json!(true);
+            } else {
+                metadata["google_chat_has_attachment_data_refs"] = serde_json::json!(false);
             }
             let file_refs = GoogleChatChannel::attachment_file_references(&message.attachments);
             if !file_refs.is_empty() {
@@ -1164,6 +1180,9 @@ impl GoogleChatWebhookHandler {
         } else {
             metadata["google_chat_has_attachments"] = serde_json::json!(false);
             metadata["google_chat_file_reference_count"] = serde_json::json!(0);
+            metadata["google_chat_has_attachment_names"] = serde_json::json!(false);
+            metadata["google_chat_has_attachment_content_types"] = serde_json::json!(false);
+            metadata["google_chat_has_attachment_data_refs"] = serde_json::json!(false);
         }
 
         // Create incoming message
@@ -1241,9 +1260,15 @@ impl GoogleChatWebhookHandler {
         });
         if let Some(email) = user.email.as_ref() {
             metadata["google_chat_user_email"] = serde_json::json!(email);
+            metadata["google_chat_has_user_email"] = serde_json::json!(true);
+        } else {
+            metadata["google_chat_has_user_email"] = serde_json::json!(false);
         }
         if let Some(display_name) = event.space.display_name.as_ref() {
             metadata["google_chat_space_display_name"] = serde_json::json!(display_name);
+            metadata["google_chat_has_space_display_name"] = serde_json::json!(true);
+        } else {
+            metadata["google_chat_has_space_display_name"] = serde_json::json!(false);
         }
         if let Some(name) = action_name {
             metadata["google_chat_action_name"] = serde_json::json!(name);
@@ -1318,6 +1343,9 @@ impl GoogleChatWebhookHandler {
         });
         if let Some(display_name) = event.space.display_name.as_ref() {
             metadata["google_chat_space_display_name"] = serde_json::json!(display_name);
+            metadata["google_chat_has_space_display_name"] = serde_json::json!(true);
+        } else {
+            metadata["google_chat_has_space_display_name"] = serde_json::json!(false);
         }
         if let Some(user) = event.user.as_ref() {
             metadata["google_chat_user_id"] = serde_json::json!(user_id);
@@ -1325,7 +1353,12 @@ impl GoogleChatWebhookHandler {
             metadata["google_chat_user_display_name"] = serde_json::json!(user.display_name);
             if let Some(email) = user.email.as_ref() {
                 metadata["google_chat_user_email"] = serde_json::json!(email);
+                metadata["google_chat_has_user_email"] = serde_json::json!(true);
+            } else {
+                metadata["google_chat_has_user_email"] = serde_json::json!(false);
             }
+        } else {
+            metadata["google_chat_has_user_email"] = serde_json::json!(false);
         }
 
         let incoming = IncomingMessage {
@@ -1619,6 +1652,8 @@ mod tests {
         );
         assert_eq!(incoming.metadata["google_chat_space_id"], "AAA");
         assert_eq!(incoming.metadata["google_chat_user_id"], "123");
+        assert_eq!(incoming.metadata["google_chat_has_user_email"], true);
+        assert_eq!(incoming.metadata["google_chat_has_space_display_name"], true);
         assert_eq!(
             incoming.metadata["google_chat_form_inputs"]["report_id"]["stringInputs"]["value"][0],
             serde_json::json!("123")
@@ -1739,6 +1774,8 @@ mod tests {
         assert_eq!(incoming.metadata["google_chat_space_id"], "AAA");
         assert_eq!(incoming.metadata["google_chat_user_id"], "123");
         assert_eq!(incoming.metadata["google_chat_body_length"], 17);
+        assert_eq!(incoming.metadata["google_chat_has_user_email"], true);
+        assert_eq!(incoming.metadata["google_chat_has_space_display_name"], true);
         assert_eq!(incoming.metadata["google_chat_has_argument"], false);
         assert_eq!(incoming.metadata["google_chat_has_slash_command"], false);
         assert_eq!(incoming.metadata["google_chat_has_mentions"], false);
@@ -1796,6 +1833,9 @@ mod tests {
         assert_eq!(incoming.content, "attachment event");
         assert_eq!(incoming.metadata["google_chat_attachment_count"], 1);
         assert_eq!(incoming.metadata["google_chat_has_attachments"], true);
+        assert_eq!(incoming.metadata["google_chat_has_attachment_names"], true);
+        assert_eq!(incoming.metadata["google_chat_has_attachment_content_types"], true);
+        assert_eq!(incoming.metadata["google_chat_has_attachment_data_refs"], true);
         assert_eq!(incoming.metadata["google_chat_file_reference_count"], 1);
         assert_eq!(incoming.metadata["google_chat_attachment_names"][0], "incident-report.pdf");
         assert_eq!(
@@ -1882,6 +1922,8 @@ mod tests {
         assert_eq!(incoming.metadata["google_chat_has_argument"], true);
         assert_eq!(incoming.metadata["google_chat_has_slash_command"], true);
         assert_eq!(incoming.metadata["google_chat_has_mentions"], true);
+        assert_eq!(incoming.metadata["google_chat_has_user_email"], true);
+        assert_eq!(incoming.metadata["google_chat_has_space_display_name"], true);
         assert_eq!(incoming.metadata["google_chat_has_thread"], false);
         assert_eq!(incoming.metadata["google_chat_mention_count"], 1);
         assert_eq!(
