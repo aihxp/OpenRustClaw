@@ -1049,7 +1049,9 @@ impl GoogleChatWebhookHandler {
         }
         if let Some(argument_text) = message.argument_text.as_ref() {
             metadata["google_chat_argument_text"] = serde_json::json!(argument_text);
+            metadata["google_chat_argument_length"] = serde_json::json!(argument_text.len());
         }
+        metadata["google_chat_body_length"] = serde_json::json!(message.text.len());
         if let Some(slash_command) = message.slash_command.as_ref() {
             metadata["google_chat_slash_command_id"] = serde_json::json!(slash_command.command_id);
             if let Some(command_name) = slash_command.command_name.as_ref() {
@@ -1097,6 +1099,9 @@ impl GoogleChatWebhookHandler {
         // Add thread info if present
         if let Some(thread) = &message.thread {
             metadata["google_chat_thread"] = serde_json::json!(thread.name);
+            metadata["google_chat_has_thread"] = serde_json::json!(true);
+        } else {
+            metadata["google_chat_has_thread"] = serde_json::json!(false);
         }
 
         // Add message ID
@@ -1104,6 +1109,7 @@ impl GoogleChatWebhookHandler {
         if !message.attachments.is_empty() {
             metadata["google_chat_attachments"] = serde_json::json!(message.attachments);
             metadata["google_chat_attachment_count"] = serde_json::json!(message.attachments.len());
+            metadata["google_chat_has_attachments"] = serde_json::json!(true);
             let attachment_names: Vec<_> = message
                 .attachments
                 .iter()
@@ -1126,10 +1132,25 @@ impl GoogleChatWebhookHandler {
                 metadata["google_chat_attachment_content_types"] =
                     serde_json::json!(attachment_content_types);
             }
+            let attachment_data_refs: Vec<_> = message
+                .attachments
+                .iter()
+                .filter_map(|attachment| {
+                    attachment
+                        .get("attachmentDataRef")
+                        .and_then(|value| value.as_str())
+                })
+                .collect();
+            if !attachment_data_refs.is_empty() {
+                metadata["google_chat_attachment_data_refs"] =
+                    serde_json::json!(attachment_data_refs);
+            }
             let file_refs = GoogleChatChannel::attachment_file_references(&message.attachments);
             if !file_refs.is_empty() {
                 metadata["file_references"] = serde_json::json!(file_refs);
             }
+        } else {
+            metadata["google_chat_has_attachments"] = serde_json::json!(false);
         }
 
         // Create incoming message
@@ -1700,6 +1721,9 @@ mod tests {
         assert_eq!(incoming.metadata["google_chat_space"], "spaces/AAA");
         assert_eq!(incoming.metadata["google_chat_space_id"], "AAA");
         assert_eq!(incoming.metadata["google_chat_user_id"], "123");
+        assert_eq!(incoming.metadata["google_chat_body_length"], 17);
+        assert_eq!(incoming.metadata["google_chat_has_thread"], false);
+        assert_eq!(incoming.metadata["google_chat_has_attachments"], false);
         assert_eq!(
             incoming.metadata["google_chat_event_time"],
             serde_json::json!("2024-01-01T00:00:00Z")
@@ -1750,10 +1774,15 @@ mod tests {
         let incoming = rx.recv().await.expect("incoming message");
         assert_eq!(incoming.content, "attachment event");
         assert_eq!(incoming.metadata["google_chat_attachment_count"], 1);
+        assert_eq!(incoming.metadata["google_chat_has_attachments"], true);
         assert_eq!(incoming.metadata["google_chat_attachment_names"][0], "incident-report.pdf");
         assert_eq!(
             incoming.metadata["google_chat_attachment_content_types"][0],
             "application/pdf"
+        );
+        assert_eq!(
+            incoming.metadata["google_chat_attachment_data_refs"][0],
+            "spaces/AAA/attachments/1"
         );
         assert_eq!(
             incoming.metadata["file_references"][0]["url"],
@@ -1826,6 +1855,9 @@ mod tests {
         let incoming = rx.recv().await.expect("incoming message");
         assert_eq!(incoming.metadata["google_chat_slash_command_id"], "1");
         assert_eq!(incoming.metadata["google_chat_slash_command_name"], "/assign");
+        assert_eq!(incoming.metadata["google_chat_body_length"], 28);
+        assert_eq!(incoming.metadata["google_chat_argument_length"], 6);
+        assert_eq!(incoming.metadata["google_chat_has_thread"], false);
         assert_eq!(incoming.metadata["google_chat_mention_count"], 1);
         assert_eq!(
             incoming.metadata["google_chat_mentions"][0]["display_name"],
