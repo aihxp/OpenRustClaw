@@ -13,6 +13,7 @@ pub mod optimize;
 pub mod schedule;
 pub mod security;
 pub mod session;
+pub mod signal;
 pub mod skills;
 pub mod start;
 #[cfg(feature = "voice")]

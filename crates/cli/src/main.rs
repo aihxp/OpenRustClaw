@@ -54,6 +54,11 @@ enum Commands {
         #[command(subcommand)]
         action: MeetAction,
     },
+    /// Signal operator integration
+    Signal {
+        #[command(subcommand)]
+        action: SignalAction,
+    },
     /// Manage file-backed control-plane profiles and multi-claw runtime mode
     Control {
         #[command(subcommand)]
@@ -344,6 +349,35 @@ enum MeetAction {
     DecodeEvent {
         /// File path containing the raw JSON envelope, or '-' for stdin
         input: String,
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum SignalAction {
+    /// Register the configured Signal number
+    Register {
+        #[arg(long)]
+        voice: bool,
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+    },
+    /// Verify the configured Signal number with a received code
+    Verify {
+        code: String,
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+    },
+    /// Link a secondary Signal device and print the linking URI
+    Link {
+        #[arg(long, default_value = "OpenRustClaw")]
+        device_name: String,
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+    },
+    /// List known Signal groups for the configured account
+    ListGroups {
         #[arg(short, long, default_value = "config/default.toml")]
         config: String,
     },
@@ -1011,6 +1045,17 @@ async fn main() -> Result<()> {
             MeetAction::DecodeEvent { input, config } => {
                 commands::meet::decode_event(&config, &input).await
             }
+        },
+        Commands::Signal { action } => match action {
+            SignalAction::Register { voice, config } => {
+                commands::signal::register(&config, voice).await
+            }
+            SignalAction::Verify { code, config } => commands::signal::verify(&config, &code).await,
+            SignalAction::Link {
+                device_name,
+                config,
+            } => commands::signal::link(&config, &device_name).await,
+            SignalAction::ListGroups { config } => commands::signal::list_groups(&config).await,
         },
         Commands::Control { action } => match action {
             ControlAction::Init { path } => commands::control::init(path.as_deref()),

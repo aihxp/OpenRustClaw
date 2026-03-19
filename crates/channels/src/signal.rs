@@ -118,6 +118,16 @@ pub struct SignalAttachment {
     pub caption: Option<String>,
     #[serde(rename = "uploadTimestamp")]
     pub upload_timestamp: Option<u64>,
+    #[serde(
+        default,
+        rename = "storedFilename",
+        alias = "stored_filename",
+        alias = "path",
+        alias = "file",
+        alias = "localPath",
+        alias = "local_path"
+    )]
+    pub stored_filename: Option<String>,
 }
 
 /// Quote/reply information.
@@ -185,7 +195,10 @@ impl SignalChannel {
             }
         }
 
-        if let Some(entries) = metadata.get("file_references").and_then(|value| value.as_array()) {
+        if let Some(entries) = metadata
+            .get("file_references")
+            .and_then(|value| value.as_array())
+        {
             for entry in entries {
                 let maybe_path = entry
                     .get("local_path")
@@ -205,6 +218,31 @@ impl SignalChannel {
             }
         }
         deduped
+    }
+
+    fn resolve_attachment_local_path(
+        data_dir: &Path,
+        attachment: &SignalAttachment,
+    ) -> Option<String> {
+        let raw = attachment
+            .stored_filename
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())?;
+        let raw_path = PathBuf::from(raw);
+        let candidates = if raw_path.is_absolute() {
+            vec![raw_path]
+        } else {
+            vec![
+                data_dir.join(&raw_path),
+                data_dir.join("attachments").join(&raw_path),
+                data_dir.join("attachments").join(raw),
+            ]
+        };
+
+        candidates
+            .into_iter()
+            .find(|candidate| candidate.exists())
+            .map(|candidate| candidate.to_string_lossy().to_string())
     }
 
     fn validate_attachment_paths(paths: &[String]) -> Result<()> {
@@ -228,6 +266,7 @@ impl SignalChannel {
         source_uuid: &Option<String>,
         group_info: &Option<GroupInfo>,
         bot_phone_number: &str,
+        data_dir: &Path,
     ) -> Result<serde_json::Value> {
         let is_group = group_info.is_some();
         let recipient = source_number.clone().unwrap_or_else(|| source.to_string());
@@ -265,8 +304,13 @@ impl SignalChannel {
             metadata["signal_group_id"] = serde_json::json!(&group.group_id);
             metadata["signal_has_group_id"] = serde_json::json!(!group.group_id.is_empty());
             metadata["signal_group_name"] = serde_json::json!(&group.group_name);
-            metadata["signal_has_group_name"] =
-                serde_json::json!(group.group_name.as_ref().map(|value| !value.is_empty()).unwrap_or(false));
+            metadata["signal_has_group_name"] = serde_json::json!(
+                group
+                    .group_name
+                    .as_ref()
+                    .map(|value| !value.is_empty())
+                    .unwrap_or(false)
+            );
             metadata["signal_group_name_length"] =
                 serde_json::json!(group.group_name.as_ref().map(|value| value.chars().count()));
             if let Some(members) = group.members.as_ref() {
@@ -285,8 +329,7 @@ impl SignalChannel {
                     }
                 })?;
             metadata["signal_has_attachments"] = serde_json::json!(true);
-            metadata["signal_attachment_count"] =
-                serde_json::json!(data_message.attachments.len());
+            metadata["signal_attachment_count"] = serde_json::json!(data_message.attachments.len());
             let attachment_ids: Vec<_> = data_message
                 .attachments
                 .iter()
@@ -330,8 +373,7 @@ impl SignalChannel {
                 .map(|attachment| attachment.content_type.clone())
                 .collect();
             if !attachment_mime_types.is_empty() {
-                metadata["signal_attachment_mime_types"] =
-                    serde_json::json!(attachment_mime_types);
+                metadata["signal_attachment_mime_types"] = serde_json::json!(attachment_mime_types);
                 metadata["signal_has_attachment_mime_types"] = serde_json::json!(true);
             } else {
                 metadata["signal_has_attachment_mime_types"] = serde_json::json!(false);
@@ -367,6 +409,7 @@ impl SignalChannel {
                             "height": attachment.height,
                             "caption": attachment.caption,
                             "upload_timestamp": attachment.upload_timestamp,
+                            "local_path": Self::resolve_attachment_local_path(data_dir, attachment),
                         }))
                     }
                 })
@@ -401,8 +444,7 @@ impl SignalChannel {
             metadata["signal_reply_to_id"] = serde_json::json!(quote.id);
             if let Some(text) = quote.text.as_ref() {
                 metadata["signal_quote_text"] = serde_json::json!(text);
-                metadata["signal_quote_text_length"] =
-                    serde_json::json!(text.chars().count());
+                metadata["signal_quote_text_length"] = serde_json::json!(text.chars().count());
             }
         } else {
             metadata["signal_has_quote"] = serde_json::json!(false);
@@ -504,6 +546,7 @@ impl SignalChannel {
         let allowed_groups = self.config.allowed_groups.clone();
         let require_allowlist = self.config.require_allowlist;
         let bot_phone_number = self.config.phone_number.clone();
+        let data_dir = self.config.data_dir.clone();
 
         // Spawn task to process JSON output
         tokio::spawn(async move {
@@ -518,6 +561,7 @@ impl SignalChannel {
                         &allowed_groups,
                         require_allowlist,
                         &bot_phone_number,
+                        &data_dir,
                     )
                     .await
                     {
@@ -546,6 +590,7 @@ impl SignalChannel {
         allowed_groups: &[String],
         require_allowlist: bool,
         bot_phone_number: &str,
+        data_dir: &Path,
     ) -> Result<()> {
         match envelope {
             SignalEnvelope::DataMessage {
@@ -589,6 +634,7 @@ impl SignalChannel {
                         &source_uuid,
                         &group_info,
                         bot_phone_number,
+                        data_dir,
                     )?;
                     let content = if let Some(text) = data_message.message.as_ref() {
                         text.clone()
@@ -703,10 +749,7 @@ impl SignalChannel {
             .unwrap_or_else(|| "signal-cli".into());
 
         let mut command = Command::new(&cli_path);
-        command
-            .arg("-a")
-            .arg(&self.config.phone_number)
-            .arg("send");
+        command.arg("-a").arg(&self.config.phone_number).arg("send");
 
         if let Some(group_id) = group_id {
             command.arg("-g").arg(group_id);
@@ -722,7 +765,10 @@ impl SignalChannel {
             command.arg(recipient);
         }
 
-        let output = command.output().await.map_err(|e| ChannelError::Connection {
+        let output = command
+            .output()
+            .await
+            .map_err(|e| ChannelError::Connection {
                 platform: "signal".to_string(),
                 message: format!("Failed to execute signal-cli: {}", e),
             })?;
@@ -740,7 +786,12 @@ impl SignalChannel {
     }
 
     /// Send a message via signal-cli.
-    async fn send_via_cli(&self, recipient: &str, content: &str, attachments: &[String]) -> Result<()> {
+    async fn send_via_cli(
+        &self,
+        recipient: &str,
+        content: &str,
+        attachments: &[String],
+    ) -> Result<()> {
         self.send_command(Some(recipient), None, content, attachments)
             .await
     }
@@ -1208,6 +1259,10 @@ mod tests {
     #[tokio::test]
     async fn test_process_envelope_builds_structured_signal_file_references() {
         let (tx, mut rx) = mpsc::channel(4);
+        let temp_root = std::env::temp_dir().join(format!("orc-signal-attach-{}", Uuid::new_v4()));
+        fs::create_dir_all(&temp_root).unwrap();
+        let stored_path = temp_root.join("photo.jpg");
+        fs::write(&stored_path, b"image").unwrap();
         SignalChannel::process_envelope(
             SignalEnvelope::DataMessage {
                 data_message: DataMessage {
@@ -1221,6 +1276,7 @@ mod tests {
                         height: Some(600),
                         caption: Some("holiday".to_string()),
                         upload_timestamp: Some(1111),
+                        stored_filename: Some(stored_path.to_string_lossy().to_string()),
                     }],
                     quote: None,
                     mentions: vec![Mention {
@@ -1243,6 +1299,7 @@ mod tests {
             &[],
             false,
             "+19998887777",
+            temp_root.as_path(),
         )
         .await
         .unwrap();
@@ -1258,9 +1315,18 @@ mod tests {
         );
         assert_eq!(incoming.metadata["signal_has_source_uuid"], false);
         assert_eq!(incoming.metadata["signal_has_message_text"], true);
-        assert_eq!(incoming.metadata["signal_message_length"], serde_json::json!(5));
-        assert_eq!(incoming.metadata["signal_has_attachments"], serde_json::json!(true));
-        assert_eq!(incoming.metadata["signal_attachment_count"], serde_json::json!(1));
+        assert_eq!(
+            incoming.metadata["signal_message_length"],
+            serde_json::json!(5)
+        );
+        assert_eq!(
+            incoming.metadata["signal_has_attachments"],
+            serde_json::json!(true)
+        );
+        assert_eq!(
+            incoming.metadata["signal_attachment_count"],
+            serde_json::json!(1)
+        );
         assert_eq!(
             incoming.metadata["signal_attachment_total_size"],
             serde_json::json!(2048)
@@ -1294,10 +1360,7 @@ mod tests {
             incoming.metadata["file_references"][0]["url"],
             "signal-attachment://att-1"
         );
-        assert_eq!(
-            incoming.metadata["file_references"][0]["name"],
-            "photo.jpg"
-        );
+        assert_eq!(incoming.metadata["file_references"][0]["name"], "photo.jpg");
         assert_eq!(
             incoming.metadata["file_references"][0]["caption"],
             "holiday"
@@ -1306,9 +1369,21 @@ mod tests {
             incoming.metadata["file_references"][0]["width"],
             serde_json::json!(800)
         );
-        assert_eq!(incoming.metadata["signal_mention_count"], serde_json::json!(1));
-        assert_eq!(incoming.metadata["signal_mentions"][0]["name"], "OpenRustClaw");
+        assert_eq!(
+            incoming.metadata["file_references"][0]["local_path"],
+            serde_json::json!(stored_path.to_string_lossy().to_string())
+        );
+        assert_eq!(
+            incoming.metadata["signal_mention_count"],
+            serde_json::json!(1)
+        );
+        assert_eq!(
+            incoming.metadata["signal_mentions"][0]["name"],
+            "OpenRustClaw"
+        );
         assert_eq!(incoming.metadata["signal_bot_mentioned"], true);
+
+        let _ = fs::remove_dir_all(temp_root);
     }
 
     #[tokio::test]
@@ -1324,10 +1399,7 @@ mod tests {
                     group_info: Some(GroupInfo {
                         group_id: "group-1".to_string(),
                         group_name: Some("Ops".to_string()),
-                        members: Some(vec![
-                            "+15551230001".to_string(),
-                            "+15551230002".to_string(),
-                        ]),
+                        members: Some(vec!["+15551230001".to_string(), "+15551230002".to_string()]),
                     }),
                 },
                 timestamp: 456,
@@ -1337,10 +1409,7 @@ mod tests {
                 group_info: Some(GroupInfo {
                     group_id: "group-1".to_string(),
                     group_name: Some("Ops".to_string()),
-                    members: Some(vec![
-                        "+15551230001".to_string(),
-                        "+15551230002".to_string(),
-                    ]),
+                    members: Some(vec!["+15551230001".to_string(), "+15551230002".to_string()]),
                 }),
             },
             &tx,
@@ -1348,6 +1417,7 @@ mod tests {
             &[],
             false,
             "+19998887777",
+            Path::new("."),
         )
         .await
         .unwrap();
@@ -1388,6 +1458,7 @@ mod tests {
             &[],
             false,
             "+19998887777",
+            Path::new("."),
         )
         .await
         .unwrap();
@@ -1417,6 +1488,7 @@ mod tests {
                         height: None,
                         caption: None,
                         upload_timestamp: Some(4444),
+                        stored_filename: None,
                     }],
                     quote: None,
                     mentions: vec![],
@@ -1433,6 +1505,7 @@ mod tests {
             &[],
             false,
             "+19998887777",
+            Path::new("."),
         )
         .await
         .unwrap();
@@ -1441,7 +1514,10 @@ mod tests {
         assert_eq!(incoming.content, "[signal attachment]");
         assert_eq!(incoming.metadata["signal_attachment_only"], true);
         assert_eq!(incoming.metadata["signal_has_message_text"], false);
-        assert_eq!(incoming.metadata["signal_message_length"], serde_json::json!(0));
+        assert_eq!(
+            incoming.metadata["signal_message_length"],
+            serde_json::json!(0)
+        );
         assert_eq!(incoming.metadata["signal_has_attachments"], true);
         assert_eq!(incoming.metadata["signal_attachment_count"], 1);
         assert_eq!(
@@ -1479,6 +1555,7 @@ mod tests {
             &[],
             false,
             "+19998887777",
+            Path::new("."),
         )
         .await
         .unwrap();
@@ -1505,6 +1582,7 @@ mod tests {
             &[],
             false,
             "+19998887777",
+            Path::new("."),
         )
         .await
         .unwrap();
