@@ -9,6 +9,7 @@ use openrustclaw_automation::{Browser, BrowserConfig};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
+use walkdir::WalkDir;
 
 pub const DEFAULT_BROWSER_ROOT: &str = ".claw/browser";
 
@@ -110,6 +111,16 @@ pub struct BrowserPdfResult {
     pub title: String,
     pub path: String,
     pub bytes: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BrowserArtifactSummary {
+    pub kind: String,
+    pub name: String,
+    pub path: String,
+    pub bytes: u64,
+    #[serde(default)]
+    pub modified_at: Option<String>,
 }
 
 pub async fn navigate(
@@ -335,6 +346,50 @@ pub async fn pdf(workspace_root: &Path, request: BrowserPdfRequest) -> Result<Br
     })
 }
 
+pub fn list_artifacts(workspace_root: &Path, limit: usize) -> Result<Vec<BrowserArtifactSummary>> {
+    let root = browser_root_for(workspace_root);
+    if !root.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut artifacts = Vec::new();
+    for entry in WalkDir::new(&root)
+        .min_depth(1)
+        .max_depth(3)
+        .into_iter()
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| entry.file_type().is_file())
+    {
+        let metadata = entry.metadata()?;
+        let relative = entry
+            .path()
+            .strip_prefix(workspace_root)
+            .unwrap_or(entry.path())
+            .display()
+            .to_string();
+        let kind = entry
+            .path()
+            .parent()
+            .and_then(|parent| parent.file_name())
+            .map(|value| value.to_string_lossy().to_string())
+            .unwrap_or_else(|| "browser".to_string());
+        artifacts.push(BrowserArtifactSummary {
+            kind,
+            name: entry.file_name().to_string_lossy().to_string(),
+            path: relative,
+            bytes: metadata.len(),
+            modified_at: metadata
+                .modified()
+                .ok()
+                .map(|timestamp| chrono::DateTime::<chrono::Utc>::from(timestamp).to_rfc3339()),
+        });
+    }
+
+    artifacts.sort_by(|left, right| right.modified_at.cmp(&left.modified_at));
+    artifacts.truncate(limit);
+    Ok(artifacts)
+}
+
 async fn new_browser(workspace_root: &Path, timeout_ms: Option<u64>) -> Result<Browser> {
     let mut config = BrowserConfig::default();
     config.automation.timeout_ms = timeout_ms.unwrap_or(config.automation.timeout_ms);
@@ -448,5 +503,16 @@ mod tests {
         let path = resolve_output_path(root.path(), None, "screenshots", "png").unwrap();
         assert!(path.starts_with(root.path()));
         assert!(path.extension().is_some_and(|ext| ext == "png"));
+    }
+
+    #[test]
+    fn list_artifacts_reads_workspace_browser_outputs() {
+        let root = tempdir().unwrap();
+        let output = resolve_output_path(root.path(), None, "screenshots", "png").unwrap();
+        std::fs::write(&output, b"hello").unwrap();
+        let artifacts = super::list_artifacts(root.path(), 10).unwrap();
+        assert_eq!(artifacts.len(), 1);
+        assert_eq!(artifacts[0].kind, "screenshots");
+        assert_eq!(artifacts[0].bytes, 5);
     }
 }

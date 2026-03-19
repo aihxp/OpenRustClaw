@@ -122,6 +122,19 @@ pub struct OrchestrationRunRecord {
     pub receipt_path: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrchestrationRunSummary {
+    pub receipt_id: String,
+    pub run_id: String,
+    pub created_at: String,
+    pub mode: String,
+    pub route_source: String,
+    pub final_claw_id: String,
+    pub final_provider: String,
+    pub final_model: String,
+    pub receipt_path: String,
+}
+
 #[derive(Debug, Deserialize)]
 struct PlannerResponse {
     #[serde(default)]
@@ -208,6 +221,56 @@ pub async fn run(
         .display()
         .to_string();
     Ok(record)
+}
+
+pub fn list_runs(workspace_root: &Path, limit: usize) -> Result<Vec<OrchestrationRunSummary>> {
+    let runs_root = runs_root_for(workspace_root);
+    if !runs_root.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut runs = Vec::new();
+    for entry in fs::read_dir(&runs_root)
+        .with_context(|| format!("Failed to read '{}'", runs_root.display()))?
+    {
+        let entry = entry?;
+        if !entry.file_type()?.is_file() {
+            continue;
+        }
+        let path = entry.path();
+        if path.extension().and_then(|ext| ext.to_str()) != Some("json") {
+            continue;
+        }
+        let record: OrchestrationRunRecord = serde_json::from_slice(&fs::read(&path)?)
+            .with_context(|| format!("Failed to decode '{}'", path.display()))?;
+        runs.push(OrchestrationRunSummary {
+            receipt_id: path
+                .file_name()
+                .map(|value| value.to_string_lossy().to_string())
+                .unwrap_or_default(),
+            run_id: record.run_id,
+            created_at: record.created_at,
+            mode: record.mode,
+            route_source: record.routing.route_source,
+            final_claw_id: record.final_claw_id,
+            final_provider: record.final_provider,
+            final_model: record.final_model,
+            receipt_path: record.receipt_path,
+        });
+    }
+
+    runs.sort_by(|left, right| right.created_at.cmp(&left.created_at));
+    runs.truncate(limit);
+    Ok(runs)
+}
+
+pub fn read_run(workspace_root: &Path, receipt_id: &str) -> Result<OrchestrationRunRecord> {
+    if receipt_id.contains('/') || receipt_id.contains('\\') {
+        anyhow::bail!("invalid receipt id");
+    }
+    let path = runs_root_for(workspace_root).join(receipt_id);
+    let bytes = fs::read(&path).with_context(|| format!("Failed to read '{}'", path.display()))?;
+    serde_json::from_slice(&bytes).with_context(|| format!("Failed to decode '{}'", path.display()))
 }
 
 fn resolve_routing(
@@ -989,5 +1052,56 @@ mod tests {
         .expect("json");
         assert_eq!(parsed.final_mode.as_deref(), Some("answer_directly"));
         assert_eq!(parsed.direct_response.as_deref(), Some("ok"));
+    }
+
+    #[test]
+    fn list_runs_returns_saved_receipts() {
+        let root = tempfile::tempdir().unwrap();
+        let record = OrchestrationRunRecord {
+            run_id: "run-1".to_string(),
+            created_at: "2026-03-19T00:00:00Z".to_string(),
+            mode: "direct".to_string(),
+            request: OrchestrationRequest::default(),
+            routing: RoutingDecision {
+                execution_mode: "solo_claw".to_string(),
+                route_source: "default_claw".to_string(),
+                task_id: None,
+                category: None,
+                selected_claw_id: "claw-a".to_string(),
+                selected_claw_role: "primary".to_string(),
+                selected_agent_profile_id: "default".to_string(),
+                selected_model_profile_id: "primary".to_string(),
+                selected_model: ResolvedModelDecision {
+                    requested_profile_id: "primary".to_string(),
+                    selected_profile_id: "primary".to_string(),
+                    provider: "openrouter".to_string(),
+                    model: "test".to_string(),
+                    fallback_path: vec![],
+                    warnings: vec![],
+                },
+                available_workers: vec![],
+                allow_shared_context: false,
+                isolation_mode: "strict".to_string(),
+                warnings: vec![],
+            },
+            delegations: vec![],
+            worker_results: vec![],
+            final_output: "ok".to_string(),
+            final_claw_id: "claw-a".to_string(),
+            final_model_profile_id: "primary".to_string(),
+            final_provider: "openrouter".to_string(),
+            final_model: "test".to_string(),
+            receipt_path: "receipt.json".to_string(),
+        };
+        let path = runs_root_for(root.path()).join("receipt.json");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, serde_json::to_vec_pretty(&record).unwrap()).unwrap();
+
+        let runs = list_runs(root.path(), 10).unwrap();
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0].receipt_id, "receipt.json");
+        assert_eq!(runs[0].final_claw_id, "claw-a");
+        let loaded = read_run(root.path(), "receipt.json").unwrap();
+        assert_eq!(loaded.run_id, "run-1");
     }
 }

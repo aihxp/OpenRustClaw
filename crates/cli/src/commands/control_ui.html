@@ -1,0 +1,579 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OpenRustClaw Control UI</title>
+    <style>
+      :root {
+        --bg: #09111f;
+        --bg-alt: #101a2c;
+        --panel: rgba(16, 26, 44, 0.82);
+        --panel-strong: rgba(20, 32, 53, 0.94);
+        --line: rgba(150, 180, 220, 0.16);
+        --text: #eaf1ff;
+        --muted: #98a9ca;
+        --accent: #7ee081;
+        --accent-2: #61c4ff;
+        --warn: #ffca73;
+        --danger: #ff7f96;
+        --shadow: 0 18px 60px rgba(0, 0, 0, 0.32);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Space Grotesk", "Helvetica Neue", sans-serif;
+        color: var(--text);
+        background:
+          radial-gradient(circle at top left, rgba(97, 196, 255, 0.18), transparent 28%),
+          radial-gradient(circle at top right, rgba(126, 224, 129, 0.16), transparent 24%),
+          linear-gradient(180deg, #07101d 0%, #09111f 52%, #0b1526 100%);
+        min-height: 100vh;
+      }
+
+      .shell {
+        width: min(1440px, calc(100vw - 32px));
+        margin: 0 auto;
+        padding: 28px 0 40px;
+      }
+
+      .hero {
+        display: grid;
+        grid-template-columns: 1.5fr 1fr;
+        gap: 18px;
+        margin-bottom: 18px;
+      }
+
+      .hero-card,
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 22px;
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(18px);
+      }
+
+      .hero-card {
+        padding: 26px 24px;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .hero-card::after {
+        content: "";
+        position: absolute;
+        inset: auto -80px -110px auto;
+        width: 220px;
+        height: 220px;
+        border-radius: 999px;
+        background: radial-gradient(circle, rgba(97, 196, 255, 0.16), transparent 70%);
+        pointer-events: none;
+      }
+
+      .eyebrow {
+        text-transform: uppercase;
+        letter-spacing: 0.16em;
+        font-size: 11px;
+        color: var(--accent-2);
+        margin-bottom: 10px;
+      }
+
+      h1 {
+        margin: 0 0 8px;
+        font-size: clamp(32px, 5vw, 46px);
+        line-height: 0.95;
+      }
+
+      .hero p {
+        margin: 0;
+        color: var(--muted);
+        max-width: 58ch;
+        line-height: 1.55;
+      }
+
+      .status-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+        margin-top: 18px;
+      }
+
+      .status-pill {
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        padding: 12px 14px;
+        background: rgba(255, 255, 255, 0.02);
+      }
+
+      .status-pill label {
+        display: block;
+        color: var(--muted);
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin-bottom: 4px;
+      }
+
+      .status-pill strong {
+        display: block;
+        font-size: 18px;
+      }
+
+      .action-panel {
+        padding: 22px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+      }
+
+      .action-row {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      button,
+      select,
+      input,
+      textarea {
+        font: inherit;
+      }
+
+      button {
+        border: 0;
+        border-radius: 14px;
+        padding: 12px 16px;
+        cursor: pointer;
+        background: linear-gradient(135deg, var(--accent), #9be8b8);
+        color: #052311;
+        font-weight: 700;
+      }
+
+      button.secondary {
+        background: rgba(255, 255, 255, 0.05);
+        color: var(--text);
+        border: 1px solid var(--line);
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(12, 1fr);
+        gap: 18px;
+      }
+
+      .panel {
+        padding: 18px;
+      }
+
+      .panel h2 {
+        margin: 0 0 14px;
+        font-size: 18px;
+      }
+
+      .span-4 { grid-column: span 4; }
+      .span-5 { grid-column: span 5; }
+      .span-6 { grid-column: span 6; }
+      .span-7 { grid-column: span 7; }
+      .span-8 { grid-column: span 8; }
+      .span-12 { grid-column: span 12; }
+
+      .surface {
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: var(--panel-strong);
+        overflow: hidden;
+      }
+
+      pre {
+        margin: 0;
+        padding: 14px;
+        max-height: 360px;
+        overflow: auto;
+        font-family: "IBM Plex Mono", "SFMono-Regular", monospace;
+        font-size: 12px;
+        line-height: 1.45;
+        color: #dbe7ff;
+      }
+
+      .table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+
+      .table th,
+      .table td {
+        text-align: left;
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--line);
+        vertical-align: top;
+      }
+
+      .table th {
+        color: var(--muted);
+        font-weight: 600;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+
+      .table tbody tr:hover {
+        background: rgba(255, 255, 255, 0.03);
+      }
+
+      .muted {
+        color: var(--muted);
+      }
+
+      .stack {
+        display: grid;
+        gap: 12px;
+      }
+
+      .form-grid {
+        display: grid;
+        gap: 10px;
+      }
+
+      .form-grid input,
+      .form-grid select,
+      .form-grid textarea {
+        width: 100%;
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        color: var(--text);
+        padding: 12px 14px;
+      }
+
+      .diagnostic-status {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 10px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.05);
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        background: var(--warn);
+      }
+
+      .dot.live {
+        background: var(--accent);
+      }
+
+      .dot.error {
+        background: var(--danger);
+      }
+
+      @media (max-width: 1120px) {
+        .hero,
+        .grid {
+          grid-template-columns: 1fr;
+        }
+
+        .span-4,
+        .span-5,
+        .span-6,
+        .span-7,
+        .span-8,
+        .span-12 {
+          grid-column: span 1;
+        }
+
+        .status-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <section class="hero">
+        <div class="hero-card">
+          <div class="eyebrow">OpenRustClaw Control UI</div>
+          <h1>Runtime, channels, orchestration, and browser control.</h1>
+          <p>
+            This dashboard reuses the shipped <code>/control/...</code> APIs instead of inventing
+            a separate frontend-only state model. It is the Phase 6 UI shell, not the final parity
+            endpoint.
+          </p>
+          <div class="status-grid" id="status-cards">
+            <div class="status-pill"><label>Default Provider</label><strong id="status-provider">-</strong></div>
+            <div class="status-pill"><label>Fallback Chain</label><strong id="status-fallback">-</strong></div>
+            <div class="status-pill"><label>Vault</label><strong id="status-vault">-</strong></div>
+          </div>
+        </div>
+        <div class="hero-card action-panel">
+          <div>
+            <div class="eyebrow">Operator Actions</div>
+            <h2 style="margin-top: 0">Live control surfaces</h2>
+            <p class="muted">Use the same runtime endpoints as the CLI and future external clients.</p>
+          </div>
+          <div class="stack">
+            <div class="action-row">
+              <button id="refresh-all">Refresh Dashboard</button>
+              <button class="secondary" id="reload-runtime">Reload Runtime</button>
+            </div>
+            <div class="diagnostic-status">
+              <span class="dot" id="diagnostic-dot"></span>
+              <span id="diagnostic-state">Diagnostics stream connecting…</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="grid">
+        <article class="panel span-7">
+          <h2>Runtime Status</h2>
+          <div class="surface"><pre id="runtime-status">Loading…</pre></div>
+        </article>
+        <article class="panel span-5">
+          <h2>Control Registry</h2>
+          <div class="surface"><pre id="control-runtime">Loading…</pre></div>
+        </article>
+
+        <article class="panel span-6">
+          <h2>Browser Actions</h2>
+          <div class="form-grid">
+            <input id="browser-url" type="url" placeholder="https://example.com" />
+            <select id="browser-action">
+              <option value="extract">Extract text</option>
+              <option value="screenshot">Capture screenshot</option>
+              <option value="pdf">Render PDF</option>
+            </select>
+            <div class="action-row">
+              <button id="browser-run">Run Browser Action</button>
+              <button class="secondary" id="browser-artifacts-refresh">Refresh Artifacts</button>
+            </div>
+          </div>
+          <div class="surface" style="margin-top: 12px"><pre id="browser-result">No browser action executed yet.</pre></div>
+        </article>
+        <article class="panel span-6">
+          <h2>Browser Artifacts</h2>
+          <div class="surface">
+            <table class="table">
+              <thead>
+                <tr><th>Kind</th><th>Name</th><th>Bytes</th><th>Modified</th></tr>
+              </thead>
+              <tbody id="browser-artifacts"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="panel span-6">
+          <h2>Channels</h2>
+          <div class="surface">
+            <table class="table">
+              <thead>
+                <tr><th>Account</th><th>Platform</th><th>Status</th><th>Activation</th></tr>
+              </thead>
+              <tbody id="channels-table"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </article>
+        <article class="panel span-6">
+          <h2>Orchestration Runs</h2>
+          <div class="surface">
+            <table class="table">
+              <thead>
+                <tr><th>When</th><th>Mode</th><th>Final Route</th><th>Receipt</th></tr>
+              </thead>
+              <tbody id="orchestration-runs"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="panel span-6">
+          <h2>Diagnostics Stream</h2>
+          <div class="surface"><pre id="diagnostics-report">Waiting for the first diagnostics frame…</pre></div>
+        </article>
+        <article class="panel span-6">
+          <h2>Effective Config</h2>
+          <div class="surface"><pre id="config-view">Loading…</pre></div>
+        </article>
+      </section>
+    </div>
+
+    <script>
+      const pretty = (value) => JSON.stringify(value, null, 2);
+      const setText = (id, value) => {
+        document.getElementById(id).textContent = typeof value === "string" ? value : pretty(value);
+      };
+
+      async function fetchJson(url, options = {}) {
+        const response = await fetch(url, {
+          headers: { "content-type": "application/json" },
+          ...options,
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || `Request failed for ${url}`);
+        }
+        return data;
+      }
+
+      function renderTableRows(targetId, rows, emptyLabel) {
+        const target = document.getElementById(targetId);
+        if (!rows.length) {
+          target.innerHTML = `<tr><td colspan="4" class="muted">${emptyLabel}</td></tr>`;
+          return;
+        }
+        target.innerHTML = rows.join("");
+      }
+
+      async function loadRuntime() {
+        const [runtimeStatus, controlRuntime, config] = await Promise.all([
+          fetchJson("/control/runtime/status"),
+          fetchJson("/control/runtime"),
+          fetchJson("/control/config"),
+        ]);
+        setText("runtime-status", runtimeStatus);
+        setText("control-runtime", controlRuntime);
+        setText("config-view", config);
+        document.getElementById("status-provider").textContent = runtimeStatus.default_provider || "-";
+        document.getElementById("status-fallback").textContent = (runtimeStatus.fallback_chain || []).join(", ") || "none";
+        document.getElementById("status-vault").textContent = runtimeStatus.vault_present ? (runtimeStatus.vault_unlocked ? "unlocked" : "present") : "absent";
+      }
+
+      async function loadChannels() {
+        const payload = await fetchJson("/control/channels");
+        const rows = (payload.accounts || []).map((account) => {
+          return `<tr>
+            <td><strong>${account.id}</strong><div class="muted">${account.workspace_name || ""}</div></td>
+            <td>${account.platform}</td>
+            <td>${account.status || "-"}</td>
+            <td>${account.activation_mode || "-"}</td>
+          </tr>`;
+        });
+        renderTableRows("channels-table", rows, "No channel accounts registered.");
+      }
+
+      async function loadOrchestrationRuns() {
+        const payload = await fetchJson("/control/orchestration/runs");
+        const rows = (payload.runs || []).map((run) => {
+          return `<tr>
+            <td>${run.created_at || "-"}</td>
+            <td>${run.mode || "-"}</td>
+            <td>${run.final_claw_id || "-"}<div class="muted">${run.final_provider || "-"} / ${run.final_model || "-"}</div></td>
+            <td class="muted">${run.receipt_id || "-"}</td>
+          </tr>`;
+        });
+        renderTableRows("orchestration-runs", rows, "No orchestration receipts yet.");
+      }
+
+      async function loadBrowserArtifacts() {
+        const payload = await fetchJson("/control/browser/artifacts");
+        const rows = (payload.artifacts || []).map((artifact) => {
+          return `<tr>
+            <td>${artifact.kind}</td>
+            <td><strong>${artifact.name}</strong><div class="muted">${artifact.path}</div></td>
+            <td>${artifact.bytes}</td>
+            <td>${artifact.modified_at || "-"}</td>
+          </tr>`;
+        });
+        renderTableRows("browser-artifacts", rows, "No browser artifacts yet.");
+      }
+
+      async function refreshAll() {
+        try {
+          await Promise.all([loadRuntime(), loadChannels(), loadOrchestrationRuns(), loadBrowserArtifacts()]);
+        } catch (error) {
+          setText("diagnostics-report", { error: error.message });
+        }
+      }
+
+      async function triggerRuntimeReload() {
+        const result = await fetchJson("/control/runtime/reload", { method: "POST" });
+        setText("runtime-status", result);
+        await refreshAll();
+      }
+
+      async function runBrowserAction() {
+        const url = document.getElementById("browser-url").value.trim();
+        const action = document.getElementById("browser-action").value;
+        if (!url) {
+          setText("browser-result", { error: "URL is required" });
+          return;
+        }
+        const endpoint = `/control/browser/${action}`;
+        const payload = action === "extract"
+          ? { url, what: "text", max_chars: 2000 }
+          : { url };
+        const result = await fetchJson(endpoint, {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+        setText("browser-result", result);
+        await loadBrowserArtifacts();
+      }
+
+      function connectDiagnostics() {
+        const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+        const socket = new WebSocket(`${protocol}://${window.location.host}/control/diagnostics/ws?deep=true&interval_secs=5`);
+        const dot = document.getElementById("diagnostic-dot");
+        const label = document.getElementById("diagnostic-state");
+
+        socket.addEventListener("open", () => {
+          dot.className = "dot live";
+          label.textContent = "Diagnostics stream live";
+        });
+
+        socket.addEventListener("message", (event) => {
+          try {
+            setText("diagnostics-report", JSON.parse(event.data));
+          } catch {
+            setText("diagnostics-report", event.data);
+          }
+        });
+
+        socket.addEventListener("close", () => {
+          dot.className = "dot";
+          label.textContent = "Diagnostics stream disconnected";
+          setTimeout(connectDiagnostics, 3000);
+        });
+
+        socket.addEventListener("error", () => {
+          dot.className = "dot error";
+          label.textContent = "Diagnostics stream error";
+        });
+      }
+
+      document.getElementById("refresh-all").addEventListener("click", refreshAll);
+      document.getElementById("reload-runtime").addEventListener("click", async () => {
+        try {
+          await triggerRuntimeReload();
+        } catch (error) {
+          setText("runtime-status", { error: error.message });
+        }
+      });
+      document.getElementById("browser-run").addEventListener("click", async () => {
+        try {
+          await runBrowserAction();
+        } catch (error) {
+          setText("browser-result", { error: error.message });
+        }
+      });
+      document.getElementById("browser-artifacts-refresh").addEventListener("click", async () => {
+        try {
+          await loadBrowserArtifacts();
+        } catch (error) {
+          setText("browser-result", { error: error.message });
+        }
+      });
+
+      refreshAll();
+      connectDiagnostics();
+    </script>
+  </body>
+</html>

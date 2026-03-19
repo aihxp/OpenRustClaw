@@ -48,7 +48,7 @@ LangGraph may execute a bounded workflow run. It should not be the only durabili
 
 ## Where We Still Trail OpenClaw
 
-- Web Control UI
+- Full Web Control UI parity
 - Mobile nodes and device-command flows
 - Voice-note transcription parity
 - Broader extension/plugin-channel parity beyond the shipped Rust-native Mattermost channel
@@ -86,6 +86,6 @@ Today, OpenRustClaw can fairly claim:
 It cannot yet claim:
 
 - full OpenClaw feature parity,
-- Control UI parity,
+- full Control UI parity,
 - mobile node parity,
 - or all-Rust production ownership across every currently shipped orchestration path.

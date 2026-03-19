@@ -10,7 +10,7 @@ use axum::{
         ws::{Message as WsMessage, WebSocket, WebSocketUpgrade},
     },
     http::{HeaderMap, StatusCode},
-    response::IntoResponse,
+    response::{Html, IntoResponse},
     routing::{get, post, put},
 };
 use chrono::{DateTime, Utc};
@@ -73,7 +73,7 @@ use super::channels::{
     ChannelBindingSpec, ChannelRegistry, ChannelSendPolicy, ensure_account_manifest,
     identity_from_message, load_registry, message_bot_mentioned, resolve_root,
 };
-use super::{browser, control, doctor, orchestrate, runtime};
+use super::{browser, control, control_ui, doctor, orchestrate, runtime};
 
 /// Run the start command - load config, optionally start the compatibility/experimental sidecar, and start the gateway.
 pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
@@ -2399,6 +2399,7 @@ fn control_plane_router(state: ControlPlaneApiState) -> Router {
 
 fn runtime_control_router(state: RuntimeControlState) -> Router {
     Router::new()
+        .route("/control/ui", get(control_ui_handler))
         .route("/control/runtime/status", get(runtime_status_handler))
         .route("/control/runtime/reload", post(runtime_reload_handler))
         .route(
@@ -2422,8 +2423,17 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             "/control/orchestration/run",
             post(orchestration_run_handler),
         )
+        .route(
+            "/control/orchestration/runs",
+            get(orchestration_runs_handler),
+        )
+        .route(
+            "/control/orchestration/runs/{receipt_id}",
+            get(orchestration_run_receipt_handler),
+        )
         .route("/control/browser/navigate", post(browser_navigate_handler))
         .route("/control/browser/extract", post(browser_extract_handler))
+        .route("/control/browser/artifacts", get(browser_artifacts_handler))
         .route(
             "/control/browser/screenshot",
             post(browser_screenshot_handler),
@@ -2925,6 +2935,12 @@ struct RuntimeVaultValueRequest {
     value: String,
 }
 
+#[derive(serde::Deserialize, Default)]
+struct ListLimitQuery {
+    #[serde(default)]
+    limit: Option<usize>,
+}
+
 #[derive(serde::Deserialize)]
 struct OrchestrationRequestPayload {
     prompt: Option<String>,
@@ -2943,6 +2959,10 @@ async fn runtime_status_handler(State(state): State<RuntimeControlState>) -> imp
         )
             .into_response(),
     }
+}
+
+async fn control_ui_handler() -> Html<&'static str> {
+    control_ui::dashboard()
 }
 
 async fn runtime_reload_handler(State(state): State<RuntimeControlState>) -> impl IntoResponse {
@@ -3141,6 +3161,34 @@ async fn orchestration_run_handler(
     }
 }
 
+async fn orchestration_runs_handler(
+    State(state): State<RuntimeControlState>,
+    Query(query): Query<ListLimitQuery>,
+) -> impl IntoResponse {
+    match orchestrate::list_runs(&state.workspace_root, query.limit.unwrap_or(20)) {
+        Ok(runs) => (StatusCode::OK, Json(serde_json::json!({ "runs": runs }))).into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn orchestration_run_receipt_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(receipt_id): AxumPath<String>,
+) -> impl IntoResponse {
+    match orchestrate::read_run(&state.workspace_root, &receipt_id) {
+        Ok(run) => (StatusCode::OK, Json(serde_json::json!(run))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
 async fn browser_navigate_handler(
     State(state): State<RuntimeControlState>,
     Json(payload): Json<browser::BrowserNavigateRequest>,
@@ -3191,6 +3239,24 @@ async fn browser_pdf_handler(
         Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn browser_artifacts_handler(
+    State(state): State<RuntimeControlState>,
+    Query(query): Query<ListLimitQuery>,
+) -> impl IntoResponse {
+    match browser::list_artifacts(&state.workspace_root, query.limit.unwrap_or(50)) {
+        Ok(artifacts) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "artifacts": artifacts })),
+        )
+            .into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({"error": error.to_string()})),
         )
             .into_response(),

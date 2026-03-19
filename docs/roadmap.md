@@ -705,7 +705,7 @@ Exit criteria:
 
 Goal: match OpenClaw's operator UX and tooling surface while keeping Rust-native interfaces.
 
-Status: complete for shipped CLI/MCP control-plane surfaces, shared typed control/config/diagnostics APIs, channel account CRUD parity, encrypted runtime secret-vault support, validated provider/model switching, runtime reload/cutover APIs with rollback, bounded routed/orchestrated multi-model execution surfaces with receipt capture, onboarding scaffolding, doctor validation, and a bounded native browser operator slice; Web Control UI, richer browser/web tooling, deeper service diagnostics, and full orchestrated runtime execution remain open.
+Status: complete for shipped CLI/MCP control-plane surfaces, shared typed control/config/diagnostics APIs, channel account CRUD parity, encrypted runtime secret-vault support, validated provider/model switching, runtime reload/cutover APIs with rollback, bounded routed/orchestrated multi-model execution surfaces with receipt capture, onboarding scaffolding, doctor validation, a bounded native browser operator slice, and an initial Web Control UI shell; deeper Web Control UI parity, richer browser/web tooling, deeper service diagnostics, and full orchestrated runtime execution remain open.
 
 Additional later-surface work:
 
@@ -796,6 +796,12 @@ Completed:
   - `POST /control/browser/screenshot`,
   - `POST /control/browser/pdf`,
   - default artifact storage under `.claw/browser/`.
+- [x] Add an initial Web Control UI shell that reuses the shipped typed control APIs:
+  - `GET /control/ui`,
+  - live diagnostics stream via `/control/diagnostics/ws`,
+  - runtime/config/channel inspection,
+  - orchestration receipt inspection via `/control/orchestration/runs...`,
+  - browser artifact inspection and bounded browser action forms via `/control/browser/...`.
 
 Remaining:
 
@@ -1013,6 +1019,7 @@ Remaining:
     - latency/cost budgets,
     - regression suites for dynamic sites.
 - [ ] Build the Web Control UI with parity for:
+  - [x] initial dashboard shell for runtime/config/channels/orchestration/browser inspection
   - live chat,
   - configuration,
   - sessions,

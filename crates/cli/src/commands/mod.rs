@@ -2,6 +2,7 @@ pub mod browser;
 pub mod channels;
 pub mod chat;
 pub mod control;
+pub mod control_ui;
 #[cfg(feature = "cursor")]
 pub mod cursor;
 pub mod doctor;
