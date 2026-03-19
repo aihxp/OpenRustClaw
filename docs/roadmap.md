@@ -705,7 +705,7 @@ Exit criteria:
 
 Goal: match OpenClaw's operator UX and tooling surface while keeping Rust-native interfaces.
 
-Status: complete for shipped CLI/MCP control-plane surfaces, shared typed control/config/diagnostics APIs, shared service-status and scheduler inspection APIs, shared session/memory/job inspection APIs, channel account CRUD parity, encrypted runtime secret-vault support, validated provider/model switching, runtime reload/cutover APIs with rollback, bounded routed/orchestrated multi-model execution surfaces with receipt capture, onboarding scaffolding, doctor validation, a bounded native browser operator slice, and an initial Web Control UI shell; deeper Web Control UI parity, richer browser/web tooling, deeper channel/service probes, and full orchestrated runtime execution remain open.
+Status: complete for shipped CLI/MCP control-plane surfaces, shared typed control/config/diagnostics APIs, shared service-status and scheduler inspection APIs, shared session/memory/job inspection APIs, channel account CRUD parity, encrypted runtime secret-vault support, validated provider/model switching, runtime reload/cutover APIs with rollback, bounded routed/orchestrated multi-model execution surfaces with receipt capture, onboarding scaffolding, doctor validation, a bounded native browser operator slice, and an initial Web Control UI shell with config/vault editing; deeper Web Control UI parity, richer browser/web tooling, deeper channel/service probes, and full orchestrated runtime execution remain open.
 
 Additional later-surface work:
 
@@ -1035,17 +1035,18 @@ Remaining:
     - regression suites for dynamic sites.
 - [ ] Build the Web Control UI with parity for:
   - [x] initial dashboard shell for runtime/config/channels/orchestration/browser inspection
+  - [x] configuration editing via shared `/control/config` validate/apply flows
   - [x] sessions inspection
   - [x] memory inspection
   - [x] scheduled jobs inspection
   - [x] channel account inspection
   - [x] service-status inspection
   - live chat,
-  - configuration,
   - nodes,
   - logs,
   - extensions/plugins,
-  - secret editing and richer vault workflows.
+  - [x] basic secret editing on top of the shared runtime vault API
+  - richer vault workflows.
 - [ ] Finish onboarding parity beyond the shipped scaffold:
   - QuickStart vs Advanced path selection,
   - local gateway vs remote gateway/client mode,
@@ -1063,7 +1064,7 @@ Remaining:
   - safe downgrade back to solo mode.
 - [ ] Add user configuration and settings parity:
   - interactive `configure`-style flows by section,
-  - typed config editing from CLI and Control UI,
+  - [x] typed config editing from CLI and Control UI,
   - settings validation before apply,
   - config migration and legacy-key detection,
   - live reload where safe,
@@ -1082,7 +1083,7 @@ Remaining:
   - explicit approval gates for risky self-reconfiguration.
 - [ ] Extend secret-vault parity beyond the shipped runtime lane:
   - migrate more plaintext legacy secrets where feasible,
-  - add future Control UI secret editing on top of the shared runtime vault API,
+  - [x] add Control UI secret editing on top of the shared runtime vault API,
   - cover more non-provider secret classes with the same encrypted-at-rest flow.
 - [ ] Extend config and personality hot-reload beyond the shipped runtime rebind:
   - editable persona/DNA/system prompt artifacts that reload cleanly,

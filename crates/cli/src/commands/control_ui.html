@@ -462,12 +462,33 @@
         </article>
 
         <article class="panel span-6">
-          <h2>Diagnostics Stream</h2>
-          <div class="surface"><pre id="diagnostics-report">Waiting for the first diagnostics frame…</pre></div>
+          <h2>Config Editor</h2>
+          <div class="form-grid">
+            <textarea id="config-editor" rows="16" spellcheck="false" placeholder="Configuration JSON will load here."></textarea>
+            <div class="action-row">
+              <button id="config-validate">Validate Config</button>
+              <button class="secondary" id="config-save">Save Config</button>
+              <button class="secondary" id="config-reload">Reload From Runtime</button>
+            </div>
+          </div>
+          <div class="surface" style="margin-top: 12px"><pre id="config-view">Loading…</pre></div>
         </article>
         <article class="panel span-6">
-          <h2>Effective Config</h2>
-          <div class="surface"><pre id="config-view">Loading…</pre></div>
+          <h2>Vault Secrets</h2>
+          <div class="form-grid">
+            <input id="vault-key" type="text" placeholder="OPENAI_API_KEY" />
+            <textarea id="vault-value" rows="4" spellcheck="false" placeholder="Secret value for set/update."></textarea>
+            <div class="action-row">
+              <button id="vault-set">Set Secret</button>
+              <button class="secondary" id="vault-delete">Delete Secret</button>
+              <button class="secondary" id="vault-refresh">Refresh Vault</button>
+            </div>
+          </div>
+          <div class="surface" style="margin-top: 12px"><pre id="vault-status">Loading…</pre></div>
+        </article>
+        <article class="panel span-12">
+          <h2>Diagnostics Stream</h2>
+          <div class="surface"><pre id="diagnostics-report">Waiting for the first diagnostics frame…</pre></div>
         </article>
         <article class="panel span-12">
           <h2>Recent Runtime Events</h2>
@@ -485,6 +506,7 @@
 
     <script>
       const pretty = (value) => JSON.stringify(value, null, 2);
+      let configEditorDirty = false;
       const setText = (id, value) => {
         document.getElementById(id).textContent = typeof value === "string" ? value : pretty(value);
       };
@@ -524,9 +546,17 @@
         setText("runtime-status", runtimeStatus);
         setText("control-runtime", controlRuntime);
         setText("config-view", config);
+        if (!configEditorDirty) {
+          document.getElementById("config-editor").value = pretty(config);
+        }
         document.getElementById("status-provider").textContent = runtimeStatus.default_provider || "-";
         document.getElementById("status-fallback").textContent = (runtimeStatus.fallback_chain || []).join(", ") || "none";
         document.getElementById("status-vault").textContent = runtimeStatus.vault_present ? (runtimeStatus.vault_unlocked ? "unlocked" : "present") : "absent";
+      }
+
+      async function loadVaultStatus() {
+        const payload = await fetchJson("/control/runtime/vault");
+        setText("vault-status", payload);
       }
 
       async function loadSchedulerStatus() {
@@ -668,6 +698,7 @@
           await Promise.all([
             loadServiceStatus(),
             loadRuntime(),
+            loadVaultStatus(),
             loadSchedulerStatus(),
             loadChannels(),
             loadSessions(),
@@ -686,6 +717,71 @@
         const result = await fetchJson("/control/runtime/reload", { method: "POST" });
         setText("runtime-status", result);
         await refreshAll();
+      }
+
+      function parseConfigEditor() {
+        const raw = document.getElementById("config-editor").value.trim();
+        if (!raw) {
+          throw new Error("Config editor is empty");
+        }
+        return JSON.parse(raw);
+      }
+
+      async function validateConfigEditor() {
+        const payload = parseConfigEditor();
+        const result = await fetchJson("/control/config/validate", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+        setText("config-view", result);
+      }
+
+      async function saveConfigEditor() {
+        const payload = parseConfigEditor();
+        const result = await fetchJson("/control/config", {
+          method: "PUT",
+          body: JSON.stringify(payload),
+        });
+        configEditorDirty = false;
+        setText("config-view", result);
+        await refreshAll();
+      }
+
+      async function reloadConfigEditor() {
+        const payload = await fetchJson("/control/config");
+        document.getElementById("config-editor").value = pretty(payload);
+        configEditorDirty = false;
+        setText("config-view", payload);
+      }
+
+      async function setVaultSecret() {
+        const key = document.getElementById("vault-key").value.trim();
+        const value = document.getElementById("vault-value").value;
+        if (!key) {
+          throw new Error("Vault key is required");
+        }
+        const result = await fetchJson(`/control/runtime/vault/${encodeURIComponent(key)}`, {
+          method: "PUT",
+          body: JSON.stringify({ value }),
+        });
+        setText("vault-status", result);
+        document.getElementById("vault-value").value = "";
+        await loadVaultStatus();
+        await loadRuntime();
+      }
+
+      async function deleteVaultSecret() {
+        const key = document.getElementById("vault-key").value.trim();
+        if (!key) {
+          throw new Error("Vault key is required");
+        }
+        const result = await fetchJson(`/control/runtime/vault/${encodeURIComponent(key)}`, {
+          method: "DELETE",
+        });
+        setText("vault-status", result);
+        document.getElementById("vault-value").value = "";
+        await loadVaultStatus();
+        await loadRuntime();
       }
 
       async function runBrowserAction() {
@@ -739,6 +835,51 @@
       }
 
       document.getElementById("refresh-all").addEventListener("click", refreshAll);
+      document.getElementById("config-editor").addEventListener("input", () => {
+        configEditorDirty = true;
+      });
+      document.getElementById("config-validate").addEventListener("click", async () => {
+        try {
+          await validateConfigEditor();
+        } catch (error) {
+          setText("config-view", { error: error.message });
+        }
+      });
+      document.getElementById("config-save").addEventListener("click", async () => {
+        try {
+          await saveConfigEditor();
+        } catch (error) {
+          setText("config-view", { error: error.message });
+        }
+      });
+      document.getElementById("config-reload").addEventListener("click", async () => {
+        try {
+          await reloadConfigEditor();
+        } catch (error) {
+          setText("config-view", { error: error.message });
+        }
+      });
+      document.getElementById("vault-set").addEventListener("click", async () => {
+        try {
+          await setVaultSecret();
+        } catch (error) {
+          setText("vault-status", { error: error.message });
+        }
+      });
+      document.getElementById("vault-delete").addEventListener("click", async () => {
+        try {
+          await deleteVaultSecret();
+        } catch (error) {
+          setText("vault-status", { error: error.message });
+        }
+      });
+      document.getElementById("vault-refresh").addEventListener("click", async () => {
+        try {
+          await loadVaultStatus();
+        } catch (error) {
+          setText("vault-status", { error: error.message });
+        }
+      });
       document.getElementById("reload-runtime").addEventListener("click", async () => {
         try {
           await triggerRuntimeReload();
