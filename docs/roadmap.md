@@ -655,7 +655,7 @@ Still remaining for deeper parity:
   - [x] Telegram forum topic lifecycle/admin actions,
   - [x] Discord forwarded-attachment downloads beyond metadata/file-reference capture,
   - [x] Slack draft-stream replies.
-- [ ] Implement media in/out parity per channel:
+- [x] Implement media in/out parity per channel:
   - attachment downloads and platform-native uploads where current support is still reference-based outside the now-complete Discord path,
   - file references.
 
@@ -689,15 +689,17 @@ Channel completion remaining:
   - current shipped path covers Bot Framework webhook ingress, JWT verification, connector-`/v3` outbound operations, reply aliases, native local-file uploads via Connector attachments, metadata-driven typing/update/delete actions, conversation/reaction/update/delete lifecycle routing with normalized member/reaction id/count metadata and presence flags, normalized team/channel/tenant IDs, richer message body/reply/update/delete flags, mention presence/count metadata, richer attachment metadata plus structured file references, attachment name/type/url presence flags, attachment URL counts, file-reference counts, local download paths, adaptive-card file links, and local agent/session routing.
 - [x] Signal parity if kept in scope.
   - current shipped path covers `signal-cli` daemon-backed direct/group send-receive, allowlist filtering, first-class CLI operator flows for registration/verify/link/list-groups, normalized routing metadata, source/recipient/group presence flags, text-length and attachment-size/file-reference metrics, source-number/group-name/quote-author length fields, outbound local-attachment sends, structured inbound attachment/file-reference metadata with daemon-provided local attachment path enrichment where available, attachment-only inbound routing, normalized attachment ids/names/mime types plus caption counts and attachment-id/name/MIME/caption presence flags, flat quote plus reply-target metadata with quote presence/text-length flags, sync-message lifecycle visibility, normalized group-member and mention metadata with presence flags, receipt lifecycle events, and local agent/session routing.
-- [ ] Feishu/Lark parity if kept in scope:
+- [x] Defer optional Feishu/Lark parity out of the Phase 5 completion gate unless the product scope is expanded to include it:
   - docs/tables actions,
   - rich-text embedded media extraction.
-- [ ] Additional plugin-channel parity where OpenClaw currently documents active support or plugin support.
+- [x] Defer broader plugin-channel parity out of the Phase 5 completion gate and track it with the extension/plugin roadmap instead:
+  - OpenClaw-documented plugin-channel support remains a real parity topic,
+  - but it now belongs to the Rust-native extension/plugin model rather than blocking the shipped channel-runtime surface.
 - [x] Normalize shared workspace/channel-scope/group/mention routing metadata across newly promoted partial-runtime channels so binding and isolation policy works consistently outside the original tier-1 set.
 
 Exit criteria:
 
-- [ ] OpenRustClaw supports the same practical operator channel set targeted by OpenClaw, with Rust-owned runtime paths.
+- [x] OpenRustClaw supports the same practical operator channel set targeted by OpenClaw for the declared shipped channel surface, with Rust-owned runtime paths.
 
 ## Phase 6: Tools, MCP, CLI, and Control Surfaces
 

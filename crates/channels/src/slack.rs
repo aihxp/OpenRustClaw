@@ -11,6 +11,7 @@
 //! - Event handling
 
 use std::sync::Arc;
+use std::path::Path;
 
 use async_trait::async_trait;
 use futures::{SinkExt, StreamExt};
@@ -126,6 +127,184 @@ impl SlackChannel {
                 Some((label.to_string(), url.to_string()))
             })
             .collect()
+    }
+
+    fn parse_local_file_references(
+        metadata: &serde_json::Value,
+    ) -> Vec<(String, String, String)> {
+        metadata
+            .get("file_references")
+            .and_then(|value| value.as_array())
+            .into_iter()
+            .flatten()
+            .filter_map(|value| {
+                let local_path = value.get("local_path").and_then(|field| field.as_str())?;
+                let filename = value
+                    .get("name")
+                    .or_else(|| value.get("title"))
+                    .and_then(|field| field.as_str())
+                    .map(ToString::to_string)
+                    .unwrap_or_else(|| {
+                        Path::new(local_path)
+                            .file_name()
+                            .and_then(|name| name.to_str())
+                            .unwrap_or("attachment")
+                            .to_string()
+                    });
+                let title = value
+                    .get("title")
+                    .and_then(|field| field.as_str())
+                    .unwrap_or(&filename)
+                    .to_string();
+                Some((local_path.to_string(), filename, title))
+            })
+            .collect()
+    }
+
+    async fn upload_local_files(
+        &self,
+        channel_id: &str,
+        thread_ts: Option<&str>,
+        text_comment: Option<&str>,
+        local_files: &[(String, String, String)],
+    ) -> Result<()> {
+        if local_files.is_empty() {
+            return Ok(());
+        }
+
+        let mut completed_files = Vec::with_capacity(local_files.len());
+
+        for (local_path, filename, title) in local_files {
+            let bytes = tokio::fs::read(local_path)
+                .await
+                .map_err(|e| ChannelError::SendFailed {
+                    platform: "slack".to_string(),
+                    message: format!("Failed to read Slack upload '{}': {}", local_path, e),
+                })?;
+
+            let length = bytes.len();
+            let upload_url = format!("{}/files.getUploadURLExternal", self.api_base_url());
+            let upload_request = serde_json::json!({
+                "filename": filename,
+                "length": length,
+            });
+
+            let upload_response = self
+                .client
+                .post(upload_url)
+                .bearer_auth(&self.config.token)
+                .json(&upload_request)
+                .send()
+                .await
+                .map_err(|e| ChannelError::SendFailed {
+                    platform: "slack".to_string(),
+                    message: format!("Slack upload URL request failed: {}", e),
+                })?;
+
+            let status = upload_response.status();
+            let body: serde_json::Value = upload_response
+                .json()
+                .await
+                .unwrap_or_else(|_| serde_json::json!({}));
+
+            if !status.is_success() || body.get("ok").and_then(|v| v.as_bool()) != Some(true) {
+                return Err(ChannelError::SendFailed {
+                    platform: "slack".to_string(),
+                    message: body
+                        .get("error")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("Slack file upload URL request failed")
+                        .to_string(),
+                }
+                .into());
+            }
+
+            let upload_url = body
+                .get("upload_url")
+                .and_then(|value| value.as_str())
+                .ok_or_else(|| ChannelError::InvalidFormat {
+                    platform: "slack".to_string(),
+                    message: "Slack upload response missing upload_url".to_string(),
+                })?;
+            let file_id = body
+                .get("file_id")
+                .and_then(|value| value.as_str())
+                .ok_or_else(|| ChannelError::InvalidFormat {
+                    platform: "slack".to_string(),
+                    message: "Slack upload response missing file_id".to_string(),
+                })?;
+
+            let raw_upload = self
+                .client
+                .post(upload_url)
+                .header(reqwest::header::CONTENT_TYPE, "application/octet-stream")
+                .body(bytes)
+                .send()
+                .await
+                .map_err(|e| ChannelError::SendFailed {
+                    platform: "slack".to_string(),
+                    message: format!("Slack raw file upload failed: {}", e),
+                })?;
+
+            if !raw_upload.status().is_success() {
+                let body = raw_upload.text().await.unwrap_or_default();
+                return Err(ChannelError::SendFailed {
+                    platform: "slack".to_string(),
+                    message: format!("Slack raw file upload failed: {}", body),
+                }
+                .into());
+            }
+
+            completed_files.push(serde_json::json!({
+                "id": file_id,
+                "title": title,
+            }));
+        }
+
+        let mut complete_payload = serde_json::json!({
+            "files": completed_files,
+            "channel_id": channel_id,
+        });
+        if let Some(thread_ts) = thread_ts {
+            complete_payload["thread_ts"] = serde_json::json!(thread_ts);
+        }
+        if let Some(comment) = text_comment
+            && !comment.is_empty()
+        {
+            complete_payload["initial_comment"] = serde_json::json!(comment);
+        }
+
+        let complete_response = self
+            .client
+            .post(format!("{}/files.completeUploadExternal", self.api_base_url()))
+            .bearer_auth(&self.config.token)
+            .json(&complete_payload)
+            .send()
+            .await
+            .map_err(|e| ChannelError::SendFailed {
+                platform: "slack".to_string(),
+                message: format!("Slack complete upload failed: {}", e),
+            })?;
+
+        let status = complete_response.status();
+        let body: serde_json::Value = complete_response
+            .json()
+            .await
+            .unwrap_or_else(|_| serde_json::json!({}));
+
+        if !status.is_success() || body.get("ok").and_then(|v| v.as_bool()) != Some(true) {
+            return Err(ChannelError::SendFailed {
+                platform: "slack".to_string(),
+                message: body
+                    .get("error")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Slack complete upload failed")
+                    .to_string(),
+            }
+            .into());
+        }
+
+        Ok(())
     }
 
     fn parse_stream_chunks(msg: &OutgoingMessage) -> Vec<serde_json::Value> {
@@ -586,7 +765,7 @@ impl Channel for SlackChannel {
             "channel": channel_id,
             "text": formatted_content,
         });
-        if let Some(thread_ts) = thread_ts {
+        if let Some(thread_ts) = thread_ts.as_deref() {
             payload["thread_ts"] = serde_json::json!(thread_ts);
         }
         if let Some(reply_broadcast) = msg
@@ -616,6 +795,25 @@ impl Channel for SlackChannel {
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
         let file_refs = Self::parse_file_references(&msg.metadata);
+        let local_files = Self::parse_local_file_references(&msg.metadata);
+        let has_custom_rendering = blocks.is_some()
+            || msg.metadata.get("slack_attachments").and_then(|v| v.as_array()).is_some()
+            || download_actions
+            || !file_refs.is_empty();
+
+        if !local_files.is_empty() {
+            let upload_comment = if has_custom_rendering {
+                None
+            } else {
+                Some(formatted_content.as_str())
+            };
+            self.upload_local_files(&channel_id, thread_ts.as_deref(), upload_comment, &local_files)
+                .await?;
+            if !has_custom_rendering {
+                debug!("Slack message sent via native file upload");
+                return Ok(());
+            }
+        }
 
         if let Some(blocks) = blocks {
             payload["blocks"] = serde_json::json!(blocks);
@@ -1869,6 +2067,89 @@ mod tests {
             })
             .await
             .unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_send_slack_local_file_upload() {
+        use wiremock::matchers::{bearer_token, body_string_contains, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/auth.test"))
+            .and(bearer_token("xoxb-test"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "ok": true,
+                "team_id": "T123"
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/files.getUploadURLExternal"))
+            .and(bearer_token("xoxb-test"))
+            .and(body_string_contains("\"filename\":\"report.txt\""))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "ok": true,
+                "upload_url": format!("{}/upload/report.txt", server.uri()),
+                "file_id": "F123"
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/upload/report.txt"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("ok"))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/files.completeUploadExternal"))
+            .and(bearer_token("xoxb-test"))
+            .and(body_string_contains("\"channel_id\":\"C123\""))
+            .and(body_string_contains("\"title\":\"Report\""))
+            .and(body_string_contains("\"initial_comment\":\"Attached report\""))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "ok": true,
+                "files": [{"id":"F123"}]
+            })))
+            .mount(&server)
+            .await;
+
+        let attachment_path =
+            std::env::temp_dir().join(format!("openrustclaw-slack-upload-{}.txt", Uuid::new_v4()));
+        tokio::fs::write(&attachment_path, "report body")
+            .await
+            .unwrap();
+
+        let config = SlackConfig {
+            enabled: true,
+            token: "xoxb-test".to_string(),
+            api_base_url: Some(server.uri()),
+            app_token: None,
+            signing_secret: None,
+            mode: SlackMode::Http,
+            socket_mode: false,
+            rate_limit_requests_per_second: 10,
+            allowed_workspaces: vec!["T123".to_string()],
+            app_home_enabled: true,
+        };
+        let mut channel = SlackChannel::new(config);
+        channel.connect().await.unwrap();
+        channel
+            .send(OutgoingMessage {
+                session_id: uuid::Uuid::new_v4(),
+                content: "Attached report".to_string(),
+                metadata: serde_json::json!({
+                    "slack_channel": "C123",
+                    "slack_team_id": "T123",
+                    "file_references": [{
+                        "local_path": attachment_path,
+                        "name": "report.txt",
+                        "title": "Report"
+                    }]
+                }),
+            })
+            .await
+            .unwrap();
+        let _ = tokio::fs::remove_file(&attachment_path).await;
     }
 
     #[tokio::test]
