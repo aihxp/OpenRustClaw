@@ -246,6 +246,7 @@ impl SignalChannel {
             if let Some(members) = group.members.as_ref() {
                 metadata["signal_group_members"] = serde_json::json!(members);
                 metadata["signal_group_member_count"] = serde_json::json!(members.len());
+                metadata["signal_has_group_members"] = serde_json::json!(!members.is_empty());
             }
         }
 
@@ -287,6 +288,19 @@ impl SignalChannel {
                 metadata["signal_attachment_mime_types"] =
                     serde_json::json!(attachment_mime_types);
             }
+            let attachment_caption_count = data_message
+                .attachments
+                .iter()
+                .filter(|attachment| {
+                    attachment
+                        .caption
+                        .as_ref()
+                        .map(|value| !value.is_empty())
+                        .unwrap_or(false)
+                })
+                .count();
+            metadata["signal_attachment_caption_count"] =
+                serde_json::json!(attachment_caption_count);
             let file_references: Vec<serde_json::Value> = data_message
                 .attachments
                 .iter()
@@ -313,6 +327,7 @@ impl SignalChannel {
         }
 
         if let Some(quote) = data_message.quote.as_ref() {
+            metadata["signal_has_quote"] = serde_json::json!(true);
             metadata["quote"] = serde_json::json!({
                 "id": quote.id,
                 "author": quote.author,
@@ -328,7 +343,11 @@ impl SignalChannel {
             metadata["signal_reply_to_id"] = serde_json::json!(quote.id);
             if let Some(text) = quote.text.as_ref() {
                 metadata["signal_quote_text"] = serde_json::json!(text);
+                metadata["signal_quote_text_length"] =
+                    serde_json::json!(text.chars().count());
             }
+        } else {
+            metadata["signal_has_quote"] = serde_json::json!(false);
         }
 
         if !data_message.mentions.is_empty() {
@@ -347,6 +366,9 @@ impl SignalChannel {
                 .collect();
             metadata["signal_mentions"] = serde_json::json!(mentions);
             metadata["signal_mention_count"] = serde_json::json!(data_message.mentions.len());
+            metadata["signal_has_mentions"] = serde_json::json!(true);
+        } else {
+            metadata["signal_has_mentions"] = serde_json::json!(false);
         }
 
         let is_mention = data_message.mentions.iter().any(|mention| {
@@ -1177,6 +1199,11 @@ mod tests {
             "image/jpeg"
         );
         assert_eq!(
+            incoming.metadata["signal_attachment_caption_count"],
+            serde_json::json!(1)
+        );
+        assert_eq!(incoming.metadata["signal_has_mentions"], true);
+        assert_eq!(
             incoming.metadata["file_references"][0]["url"],
             "signal-attachment://att-1"
         );
@@ -1241,6 +1268,7 @@ mod tests {
         let incoming = rx.recv().await.expect("incoming group message");
         assert_eq!(incoming.metadata["signal_group_member_count"], 2);
         assert_eq!(incoming.metadata["signal_group_members"][1], "+15551230002");
+        assert_eq!(incoming.metadata["signal_has_group_members"], true);
     }
 
     #[tokio::test]
@@ -1275,9 +1303,11 @@ mod tests {
         .unwrap();
 
         let incoming = rx.recv().await.expect("incoming quoted message");
+        assert_eq!(incoming.metadata["signal_has_quote"], true);
         assert_eq!(incoming.metadata["signal_quote_id"], 42);
         assert_eq!(incoming.metadata["signal_quote_author"], "+15557654321");
         assert_eq!(incoming.metadata["signal_quote_text"], "original text");
+        assert_eq!(incoming.metadata["signal_quote_text_length"], 13);
     }
 
     #[tokio::test]
@@ -1321,6 +1351,12 @@ mod tests {
         assert_eq!(incoming.metadata["signal_attachment_only"], true);
         assert_eq!(incoming.metadata["signal_has_attachments"], true);
         assert_eq!(incoming.metadata["signal_attachment_count"], 1);
+        assert_eq!(
+            incoming.metadata["signal_attachment_caption_count"],
+            serde_json::json!(0)
+        );
+        assert_eq!(incoming.metadata["signal_has_quote"], false);
+        assert_eq!(incoming.metadata["signal_has_mentions"], false);
     }
 
     #[tokio::test]
