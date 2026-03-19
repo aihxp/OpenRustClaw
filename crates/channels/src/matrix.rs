@@ -22,7 +22,7 @@ use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{Mutex, RwLock, mpsc};
 use tokio::task::JoinHandle;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 use openrustclaw_core::config::MatrixConfig;
@@ -497,7 +497,9 @@ impl MatrixChannel {
                     }
 
                     for event in room_state.timeline.events {
-                        if event.event_type != "m.room.message" {
+                        if event.event_type != "m.room.message"
+                            && event.event_type != "m.reaction"
+                        {
                             continue;
                         }
                         if event.sender == user_id {
@@ -516,6 +518,45 @@ impl MatrixChannel {
                             if !seen.insert(event_id.clone()) {
                                 continue;
                             }
+                        }
+
+                        let relates_to = event
+                            .content
+                            .get("m.relates_to")
+                            .cloned()
+                            .unwrap_or_default();
+                        if event.event_type == "m.reaction" {
+                            let reaction_key =
+                                relates_to.get("key").and_then(|value| value.as_str());
+                            let reaction_target = relates_to
+                                .get("event_id")
+                                .and_then(|value| value.as_str());
+                            let Some(reaction_key) = reaction_key else {
+                                continue;
+                            };
+
+                            let metadata = serde_json::json!({
+                                "matrix_room_id": room_id,
+                                "matrix_event_id": event_id,
+                                "matrix_sender": event.sender,
+                                "matrix_msgtype": "m.reaction",
+                                "matrix_is_group": true,
+                                "matrix_reaction": reaction_key,
+                                "matrix_reaction_target": reaction_target,
+                            });
+
+                            let incoming = IncomingMessage {
+                                session_id: Uuid::new_v4(),
+                                user_id: event.sender.clone(),
+                                content: "[matrix reaction]".to_string(),
+                                platform: Platform::Matrix,
+                                metadata,
+                            };
+
+                            if incoming_tx.send(incoming).await.is_err() {
+                                debug!("matrix incoming channel closed");
+                            }
+                            continue;
                         }
 
                         let message_type = event
@@ -538,11 +579,6 @@ impl MatrixChannel {
                             .get("formatted_body")
                             .and_then(|value| value.as_str())
                             .map(Self::html_to_text);
-                        let relates_to = event
-                            .content
-                            .get("m.relates_to")
-                            .cloned()
-                            .unwrap_or_default();
                         let thread_root = relates_to
                             .get("event_id")
                             .and_then(|value| value.as_str())
@@ -1479,6 +1515,62 @@ mod tests {
 
         assert_eq!(incoming.metadata["matrix_reply_to"], "$root1");
         assert_eq!(incoming.metadata["matrix_thread_root"], "$root1");
+
+        channel.disconnect().await.expect("disconnect succeeds");
+    }
+
+    #[tokio::test]
+    async fn test_sync_receive_reaction_event() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/_matrix/client/v3/account/whoami"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "user_id": "@bot:matrix.org"
+            })))
+            .mount(&server)
+            .await;
+
+        Mock::given(method("GET"))
+            .and(path("/_matrix/client/v3/sync"))
+            .and(query_param("timeout", "30000"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "next_batch": "s1",
+                "rooms": {
+                    "join": {
+                        "!room:matrix.org": {
+                            "timeline": {
+                                "events": [{
+                                    "type": "m.reaction",
+                                    "sender": "@alice:matrix.org",
+                                    "event_id": "$reaction1",
+                                    "content": {
+                                        "m.relates_to": {
+                                            "rel_type": "m.annotation",
+                                            "event_id": "$target1",
+                                            "key": "👍"
+                                        }
+                                    }
+                                }]
+                            }
+                        }
+                    }
+                }
+            })))
+            .mount(&server)
+            .await;
+
+        let mut channel = MatrixChannel::new(test_config(&server.uri()));
+        channel.connect().await.expect("connect succeeds");
+
+        let incoming = tokio::time::timeout(Duration::from_secs(2), channel.receive())
+            .await
+            .expect("receive timeout")
+            .expect("incoming reaction");
+
+        assert_eq!(incoming.content, "[matrix reaction]");
+        assert_eq!(incoming.metadata["matrix_reaction"], "👍");
+        assert_eq!(incoming.metadata["matrix_reaction_target"], "$target1");
 
         channel.disconnect().await.expect("disconnect succeeds");
     }

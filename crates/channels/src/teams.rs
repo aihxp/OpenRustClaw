@@ -910,8 +910,20 @@ impl TeamsChannel {
                 }
                 "[teams reaction event]".to_string()
             }
-            "messageDelete" => "[teams message deleted]".to_string(),
+            "messageDelete" => {
+                if let Some(deleted_id) = activity
+                    .get("replyToId")
+                    .or_else(|| activity.get("deletedId"))
+                    .and_then(|value| value.as_str())
+                {
+                    metadata["teams_deleted_activity_id"] = serde_json::json!(deleted_id);
+                }
+                "[teams message deleted]".to_string()
+            }
             "messageUpdate" => {
+                if let Some(reply_to_id) = activity.get("replyToId").and_then(|value| value.as_str()) {
+                    metadata["teams_reply_to_id"] = serde_json::json!(reply_to_id);
+                }
                 if let Some(text) = activity.get("text").and_then(|value| value.as_str()) {
                     metadata["teams_updated_text"] = serde_json::json!(text);
                     text.to_string()
@@ -1689,6 +1701,79 @@ mod tests {
         assert_eq!(bytes, b"teams-file");
         let _ = tokio::fs::remove_file(downloaded_path).await;
         let _ = tokio::fs::remove_dir_all(download_dir).await;
+    }
+
+    #[tokio::test]
+    async fn test_handle_message_delete_activity_tracks_deleted_id() {
+        let config = TeamsConfig {
+            enabled: true,
+            app_id: "test".to_string(),
+            app_password: "test".to_string(),
+            tenant_id: None,
+            webhook_path: "/webhook".to_string(),
+            allowlist: vec![],
+            group_policy: TeamsGroupPolicy::Open,
+            rate_limit_requests_per_second: 10,
+            adaptive_cards_enabled: true,
+            attachment_download_dir: None,
+        };
+        let channel = TeamsChannel::new(config);
+        let incoming = channel
+            .handle_activity(serde_json::json!({
+                "type": "messageDelete",
+                "id": "activity-delete-1",
+                "replyToId": "activity-root-1",
+                "serviceUrl": "https://smba.trafficmanager.net/emea/",
+                "conversation": {
+                    "id": "19:conversation",
+                    "conversationType": "channel"
+                },
+                "from": {
+                    "id": "29:user"
+                }
+            }))
+            .await
+            .expect("delete event")
+            .expect("incoming");
+        assert_eq!(incoming.content, "[teams message deleted]");
+        assert_eq!(incoming.metadata["teams_deleted_activity_id"], "activity-root-1");
+    }
+
+    #[tokio::test]
+    async fn test_handle_message_update_activity_tracks_reply_id() {
+        let config = TeamsConfig {
+            enabled: true,
+            app_id: "test".to_string(),
+            app_password: "test".to_string(),
+            tenant_id: None,
+            webhook_path: "/webhook".to_string(),
+            allowlist: vec![],
+            group_policy: TeamsGroupPolicy::Open,
+            rate_limit_requests_per_second: 10,
+            adaptive_cards_enabled: true,
+            attachment_download_dir: None,
+        };
+        let channel = TeamsChannel::new(config);
+        let incoming = channel
+            .handle_activity(serde_json::json!({
+                "type": "messageUpdate",
+                "id": "activity-update-1",
+                "replyToId": "activity-root-2",
+                "text": "updated text",
+                "serviceUrl": "https://smba.trafficmanager.net/emea/",
+                "conversation": {
+                    "id": "19:conversation",
+                    "conversationType": "channel"
+                },
+                "from": {
+                    "id": "29:user"
+                }
+            }))
+            .await
+            .expect("update event")
+            .expect("incoming");
+        assert_eq!(incoming.metadata["teams_reply_to_id"], "activity-root-2");
+        assert_eq!(incoming.metadata["teams_updated_text"], "updated text");
     }
 
     #[test]

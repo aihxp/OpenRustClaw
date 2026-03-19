@@ -217,6 +217,9 @@ struct EventMessage {
 struct SlashCommand {
     #[serde(rename = "commandId")]
     command_id: String,
+    #[serde(rename = "commandName")]
+    #[serde(default)]
+    command_name: Option<String>,
 }
 
 /// Message annotation (e.g., user mention).
@@ -1043,6 +1046,31 @@ impl GoogleChatWebhookHandler {
         }
         if let Some(slash_command) = message.slash_command.as_ref() {
             metadata["google_chat_slash_command_id"] = serde_json::json!(slash_command.command_id);
+            if let Some(command_name) = slash_command.command_name.as_ref() {
+                metadata["google_chat_slash_command_name"] = serde_json::json!(command_name);
+            }
+        }
+        let mentioned_users: Vec<_> = message
+            .annotations
+            .as_ref()
+            .map(|annots| {
+                annots
+                    .iter()
+                    .filter_map(|annotation| {
+                        annotation.user_mention.as_ref().map(|mention| {
+                            serde_json::json!({
+                                "user_name": mention.user.name,
+                                "display_name": mention.user.display_name,
+                                "mention_type": mention.mention_type,
+                            })
+                        })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        if !mentioned_users.is_empty() {
+            metadata["google_chat_mentions"] = serde_json::json!(mentioned_users);
+            metadata["google_chat_mention_count"] = serde_json::json!(mentioned_users.len());
         }
         let bot_mentioned = message
             .annotations
@@ -1605,6 +1633,70 @@ mod tests {
         assert_eq!(
             incoming.metadata["file_references"][0]["attachment_data_ref"],
             "spaces/AAA/attachments/1"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_handle_message_event_preserves_mentions_and_slash_command_name() {
+        let (tx, mut rx) = mpsc::channel(4);
+        let handler = GoogleChatWebhookHandler::new(
+            GoogleChatConfig {
+                enabled: true,
+                service_account_key: String::new(),
+                project_id: String::new(),
+                webhook_url: Some("https://example.com/webhooks/google-chat/events".to_string()),
+                pubsub_subscription: None,
+                allowlist: vec![],
+                allowed_spaces: vec![],
+                rate_limit_requests_per_second: 10,
+                cards_enabled: true,
+                response_mode: GoogleChatResponseMode::Open,
+            },
+            tx,
+        );
+
+        handler
+            .handle_event(
+                br#"{
+                    "type": "MESSAGE",
+                    "eventTime": "2024-01-01T00:00:00Z",
+                    "space": {"name": "spaces/AAA", "type": "ROOM", "displayName": "Ops"},
+                    "user": {"name": "users/123", "displayName": "Alice", "email": "alice@example.com"},
+                    "message": {
+                        "name": "spaces/AAA/messages/2",
+                        "text": "/assign @OpenRustClaw ticket",
+                        "argumentText": "ticket",
+                        "slashCommand": {
+                            "commandId": "1",
+                            "commandName": "/assign"
+                        },
+                        "annotations": [{
+                            "type": "USER_MENTION",
+                            "userMention": {
+                                "user": {
+                                    "name": "users/bots/999",
+                                    "displayName": "OpenRustClaw"
+                                },
+                                "type": "MENTION"
+                            }
+                        }]
+                    }
+                }"#,
+            )
+            .await
+            .expect("message event");
+
+        let incoming = rx.recv().await.expect("incoming message");
+        assert_eq!(incoming.metadata["google_chat_slash_command_id"], "1");
+        assert_eq!(incoming.metadata["google_chat_slash_command_name"], "/assign");
+        assert_eq!(incoming.metadata["google_chat_mention_count"], 1);
+        assert_eq!(
+            incoming.metadata["google_chat_mentions"][0]["display_name"],
+            "OpenRustClaw"
+        );
+        assert_eq!(
+            incoming.metadata["google_chat_mentions"][0]["mention_type"],
+            "MENTION"
         );
     }
 }
