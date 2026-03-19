@@ -73,7 +73,7 @@ use super::channels::{
     ChannelBindingSpec, ChannelRegistry, ChannelSendPolicy, ensure_account_manifest,
     identity_from_message, load_registry, message_bot_mentioned, resolve_root,
 };
-use super::{browser, control, control_ui, doctor, orchestrate, runtime};
+use super::{browser, control, control_ui, doctor, orchestrate, runtime, services};
 
 /// Run the start command - load config, optionally start the compatibility/experimental sidecar, and start the gateway.
 pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
@@ -81,6 +81,7 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
     tracing_subscriber::fmt::init();
 
     info!("Starting OpenRustClaw...");
+    let started_at = Utc::now();
 
     // Load configuration
     let workspace_root =
@@ -514,6 +515,7 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
     app = app.merge(runtime_control_router(RuntimeControlState {
         config_path: config_path.to_string(),
         workspace_root: workspace_root.clone(),
+        pool: pool.clone(),
         memory_store: memory_store.clone(),
         core_memory_store: core_memory_store.clone(),
         session_manager: session_manager.clone(),
@@ -521,6 +523,9 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
         langsmith: channel_langsmith_client(&config),
         event_bus: event_bus.clone(),
         channel_agent: channel_agent.clone(),
+        gateway_addr: addr.clone(),
+        started_at,
+        sidecar_running: sidecar.is_some(),
     }));
 
     // Create shutdown signal handler
@@ -2316,6 +2321,7 @@ struct ControlPlaneApiState {
 struct RuntimeControlState {
     config_path: String,
     workspace_root: PathBuf,
+    pool: sqlx::SqlitePool,
     memory_store: Arc<SqliteMemoryStore>,
     core_memory_store: Arc<SqliteCoreMemoryStore>,
     session_manager: Arc<SessionManager>,
@@ -2323,6 +2329,9 @@ struct RuntimeControlState {
     langsmith: Option<LangSmithClient>,
     event_bus: DurableEventBus,
     channel_agent: Option<SharedChannelAgent>,
+    gateway_addr: String,
+    started_at: DateTime<Utc>,
+    sidecar_running: bool,
 }
 
 fn discord_ingress_router(
@@ -2434,6 +2443,15 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
         .route("/control/browser/navigate", post(browser_navigate_handler))
         .route("/control/browser/extract", post(browser_extract_handler))
         .route("/control/browser/artifacts", get(browser_artifacts_handler))
+        .route("/control/services/status", get(service_status_handler))
+        .route(
+            "/control/services/scheduler",
+            get(service_scheduler_handler),
+        )
+        .route(
+            "/control/services/runtime-events",
+            get(service_runtime_events_handler),
+        )
         .route(
             "/control/browser/screenshot",
             post(browser_screenshot_handler),
@@ -2939,6 +2957,8 @@ struct RuntimeVaultValueRequest {
 struct ListLimitQuery {
     #[serde(default)]
     limit: Option<usize>,
+    #[serde(default)]
+    name: Option<String>,
 }
 
 #[derive(serde::Deserialize)]
@@ -3253,6 +3273,74 @@ async fn browser_artifacts_handler(
         Ok(artifacts) => (
             StatusCode::OK,
             Json(serde_json::json!({ "artifacts": artifacts })),
+        )
+            .into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn service_status_handler(State(state): State<RuntimeControlState>) -> impl IntoResponse {
+    let registry = state.channel_registry.read().await;
+    let result = match runtime::load_effective_config(&state.config_path, &state.workspace_root) {
+        Ok(config) => {
+            services::status_with_pool(
+                &config,
+                &state.pool,
+                &registry,
+                &services::LiveRuntimeMetadata {
+                    config_path: state.config_path.clone(),
+                    gateway_addr: state.gateway_addr.clone(),
+                    started_at: Some(state.started_at),
+                    sidecar_running: state.sidecar_running,
+                },
+            )
+            .await
+        }
+        Err(error) => Err(error),
+    };
+    match result {
+        Ok(report) => (StatusCode::OK, Json(serde_json::json!(report))).into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn service_scheduler_handler(State(state): State<RuntimeControlState>) -> impl IntoResponse {
+    let result = match runtime::load_effective_config(&state.config_path, &state.workspace_root) {
+        Ok(config) => services::scheduler_with_pool(&config, &state.pool, 10).await,
+        Err(error) => Err(error),
+    };
+    match result {
+        Ok(report) => (StatusCode::OK, Json(serde_json::json!(report))).into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn service_runtime_events_handler(
+    State(state): State<RuntimeControlState>,
+    Query(query): Query<ListLimitQuery>,
+) -> impl IntoResponse {
+    match services::runtime_events_with_pool(
+        &state.pool,
+        query.name.as_deref(),
+        query.limit.unwrap_or(20),
+    )
+    .await
+    {
+        Ok(events) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "events": events })),
         )
             .into_response(),
         Err(error) => (

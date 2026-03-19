@@ -705,7 +705,7 @@ Exit criteria:
 
 Goal: match OpenClaw's operator UX and tooling surface while keeping Rust-native interfaces.
 
-Status: complete for shipped CLI/MCP control-plane surfaces, shared typed control/config/diagnostics APIs, channel account CRUD parity, encrypted runtime secret-vault support, validated provider/model switching, runtime reload/cutover APIs with rollback, bounded routed/orchestrated multi-model execution surfaces with receipt capture, onboarding scaffolding, doctor validation, a bounded native browser operator slice, and an initial Web Control UI shell; deeper Web Control UI parity, richer browser/web tooling, deeper service diagnostics, and full orchestrated runtime execution remain open.
+Status: complete for shipped CLI/MCP control-plane surfaces, shared typed control/config/diagnostics APIs, shared service-status and scheduler inspection APIs, channel account CRUD parity, encrypted runtime secret-vault support, validated provider/model switching, runtime reload/cutover APIs with rollback, bounded routed/orchestrated multi-model execution surfaces with receipt capture, onboarding scaffolding, doctor validation, a bounded native browser operator slice, and an initial Web Control UI shell; deeper Web Control UI parity, richer browser/web tooling, deeper channel/service probes, and full orchestrated runtime execution remain open.
 
 Additional later-surface work:
 
@@ -802,6 +802,12 @@ Completed:
   - runtime/config/channel inspection,
   - orchestration receipt inspection via `/control/orchestration/runs...`,
   - browser artifact inspection and bounded browser action forms via `/control/browser/...`.
+- [x] Add shipped service diagnostics and scheduler inspection surfaces:
+  - `openrustclaw runtime services status|scheduler|events`,
+  - `GET /control/services/status`,
+  - `GET /control/services/scheduler`,
+  - `GET /control/services/runtime-events`,
+  - service-status, scheduler-health, and recent-runtime-events panels in `/control/ui`.
 
 Remaining:
 
@@ -1078,12 +1084,11 @@ Remaining:
   - validation before cutover,
   - session-safe rebind and rollback,
   - degraded-mode fallback to the prior config if the requested model cannot start.
-- [ ] Extend operator-grade diagnostics beyond the shipped baseline:
-  - live gateway health/service status,
-  - channel connectivity and auth state,
-  - scheduler/job status,
-  - trace-link surfacing,
-  - richer secrets/service-state inspection.
+- [ ] Extend operator-grade diagnostics beyond the shipped service baseline:
+  - live channel connectivity and auth probes,
+  - deeper trace-link surfacing,
+  - richer secrets/service-state inspection,
+  - real log streaming and richer failure artifact drill-down.
 - [x] Expand `doctor` into a high-signal repair and migration surface inspired by OpenClaw:
   - `openrustclaw doctor`,
   - `openrustclaw doctor --repair`,

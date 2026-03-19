@@ -20,6 +20,7 @@ pub mod orchestrate;
 pub mod runtime;
 pub mod schedule;
 pub mod security;
+pub mod services;
 pub mod session;
 pub mod signal;
 pub mod skills;

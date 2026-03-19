@@ -301,6 +301,11 @@ enum RuntimeAction {
         #[command(subcommand)]
         action: RuntimeVaultAction,
     },
+    /// Inspect deeper service and scheduler diagnostics
+    Services {
+        #[command(subcommand)]
+        action: RuntimeServicesAction,
+    },
 }
 
 #[derive(Subcommand)]
@@ -317,6 +322,29 @@ enum RuntimeVaultAction {
     },
     /// Delete a secret value
     Delete { key: String },
+}
+
+#[derive(Subcommand)]
+enum RuntimeServicesAction {
+    /// Show service-level runtime diagnostics
+    Status {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+    },
+    /// Show scheduler/job/runtime-event health
+    Scheduler {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+    },
+    /// List recent runtime events
+    Events {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+        #[arg(long)]
+        name: Option<String>,
+        #[arg(short, long, default_value_t = 20)]
+        limit: usize,
+    },
 }
 
 #[derive(Subcommand)]
@@ -2092,6 +2120,37 @@ async fn main() -> Result<()> {
                     RuntimeVaultAction::Delete { key } => {
                         commands::runtime::delete_vault_secret(&workspace_root, &key)?;
                         println!("deleted {}", key);
+                        Ok(())
+                    }
+                }
+            }
+            RuntimeAction::Services { action } => {
+                let workspace_root = std::env::current_dir()?;
+                match action {
+                    RuntimeServicesAction::Status { config } => {
+                        let report = commands::services::status(&config, &workspace_root).await?;
+                        println!("{}", serde_json::to_string_pretty(&report)?);
+                        Ok(())
+                    }
+                    RuntimeServicesAction::Scheduler { config } => {
+                        let report =
+                            commands::services::scheduler(&config, &workspace_root).await?;
+                        println!("{}", serde_json::to_string_pretty(&report)?);
+                        Ok(())
+                    }
+                    RuntimeServicesAction::Events {
+                        config,
+                        name,
+                        limit,
+                    } => {
+                        let events = commands::services::runtime_events(
+                            &config,
+                            &workspace_root,
+                            name.as_deref(),
+                            limit,
+                        )
+                        .await?;
+                        println!("{}", serde_json::to_string_pretty(&events)?);
                         Ok(())
                     }
                 }

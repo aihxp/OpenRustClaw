@@ -87,5 +87,6 @@ It cannot yet claim:
 
 - full OpenClaw feature parity,
 - full Control UI parity,
+- full operator-grade diagnostics parity,
 - mobile node parity,
 - or all-Rust production ownership across every currently shipped orchestration path.

@@ -302,7 +302,7 @@
       <section class="hero">
         <div class="hero-card">
           <div class="eyebrow">OpenRustClaw Control UI</div>
-          <h1>Runtime, channels, orchestration, and browser control.</h1>
+          <h1>Runtime, services, channels, orchestration, and browser control.</h1>
           <p>
             This dashboard reuses the shipped <code>/control/...</code> APIs instead of inventing
             a separate frontend-only state model. It is the Phase 6 UI shell, not the final parity
@@ -334,13 +334,21 @@
       </section>
 
       <section class="grid">
-        <article class="panel span-7">
+        <article class="panel span-6">
+          <h2>Service Status</h2>
+          <div class="surface"><pre id="service-status">Loading…</pre></div>
+        </article>
+        <article class="panel span-6">
           <h2>Runtime Status</h2>
           <div class="surface"><pre id="runtime-status">Loading…</pre></div>
         </article>
-        <article class="panel span-5">
+        <article class="panel span-6">
           <h2>Control Registry</h2>
           <div class="surface"><pre id="control-runtime">Loading…</pre></div>
+        </article>
+        <article class="panel span-6">
+          <h2>Scheduler Health</h2>
+          <div class="surface"><pre id="scheduler-status">Loading…</pre></div>
         </article>
 
         <article class="panel span-6">
@@ -402,6 +410,17 @@
           <h2>Effective Config</h2>
           <div class="surface"><pre id="config-view">Loading…</pre></div>
         </article>
+        <article class="panel span-12">
+          <h2>Recent Runtime Events</h2>
+          <div class="surface">
+            <table class="table">
+              <thead>
+                <tr><th>When</th><th>Name</th><th>Type</th><th>Status</th></tr>
+              </thead>
+              <tbody id="runtime-events"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </article>
       </section>
     </div>
 
@@ -432,6 +451,11 @@
         target.innerHTML = rows.join("");
       }
 
+      async function loadServiceStatus() {
+        const report = await fetchJson("/control/services/status");
+        setText("service-status", report);
+      }
+
       async function loadRuntime() {
         const [runtimeStatus, controlRuntime, config] = await Promise.all([
           fetchJson("/control/runtime/status"),
@@ -444,6 +468,11 @@
         document.getElementById("status-provider").textContent = runtimeStatus.default_provider || "-";
         document.getElementById("status-fallback").textContent = (runtimeStatus.fallback_chain || []).join(", ") || "none";
         document.getElementById("status-vault").textContent = runtimeStatus.vault_present ? (runtimeStatus.vault_unlocked ? "unlocked" : "present") : "absent";
+      }
+
+      async function loadSchedulerStatus() {
+        const report = await fetchJson("/control/services/scheduler");
+        setText("scheduler-status", report);
       }
 
       async function loadChannels() {
@@ -485,9 +514,30 @@
         renderTableRows("browser-artifacts", rows, "No browser artifacts yet.");
       }
 
+      async function loadRuntimeEvents() {
+        const payload = await fetchJson("/control/services/runtime-events?limit=20");
+        const rows = (payload.events || []).map((event) => {
+          return `<tr>
+            <td>${event.created_at || "-"}</td>
+            <td><strong>${event.event_name || "-"}</strong><div class="muted">${event.session_id || ""}</div></td>
+            <td>${event.event_type || "-"}</td>
+            <td>${event.status || "-"}</td>
+          </tr>`;
+        });
+        renderTableRows("runtime-events", rows, "No runtime events recorded yet.");
+      }
+
       async function refreshAll() {
         try {
-          await Promise.all([loadRuntime(), loadChannels(), loadOrchestrationRuns(), loadBrowserArtifacts()]);
+          await Promise.all([
+            loadServiceStatus(),
+            loadRuntime(),
+            loadSchedulerStatus(),
+            loadChannels(),
+            loadOrchestrationRuns(),
+            loadBrowserArtifacts(),
+            loadRuntimeEvents(),
+          ]);
         } catch (error) {
           setText("diagnostics-report", { error: error.message });
         }
