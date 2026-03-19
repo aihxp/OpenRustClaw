@@ -73,7 +73,7 @@ use super::channels::{
     ChannelBindingSpec, ChannelRegistry, ChannelSendPolicy, ensure_account_manifest,
     identity_from_message, load_registry, message_bot_mentioned, resolve_root,
 };
-use super::{control, doctor, runtime};
+use super::{control, doctor, orchestrate, runtime};
 
 /// Run the start command - load config, optionally start the compatibility/experimental sidecar, and start the gateway.
 pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
@@ -2414,6 +2414,14 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             "/control/runtime/vault/{key}",
             put(runtime_vault_set_handler).delete(runtime_vault_delete_handler),
         )
+        .route(
+            "/control/orchestration/resolve",
+            post(orchestration_resolve_handler),
+        )
+        .route(
+            "/control/orchestration/run",
+            post(orchestration_run_handler),
+        )
         .with_state(state)
 }
 
@@ -2910,6 +2918,15 @@ struct RuntimeVaultValueRequest {
     value: String,
 }
 
+#[derive(serde::Deserialize)]
+struct OrchestrationRequestPayload {
+    prompt: Option<String>,
+    task_id: Option<String>,
+    category: Option<String>,
+    claw_id: Option<String>,
+    mode: Option<String>,
+}
+
 async fn runtime_status_handler(State(state): State<RuntimeControlState>) -> impl IntoResponse {
     match runtime::runtime_status(&state.config_path, &state.workspace_root) {
         Ok(status) => (StatusCode::OK, Json(serde_json::json!(status))).into_response(),
@@ -3052,6 +3069,63 @@ async fn runtime_vault_delete_handler(
             Json(serde_json::json!({"status": "ok", "key": key})),
         )
             .into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn orchestration_resolve_handler(
+    State(state): State<RuntimeControlState>,
+    Json(payload): Json<OrchestrationRequestPayload>,
+) -> impl IntoResponse {
+    match orchestrate::resolve(
+        orchestrate::OrchestrationRequest {
+            prompt: payload.prompt.unwrap_or_default(),
+            task_id: payload.task_id,
+            category: payload.category,
+            claw_id: payload.claw_id,
+            mode: payload.mode.unwrap_or_else(|| "auto".to_string()),
+        },
+        &state.workspace_root,
+    ) {
+        Ok(decision) => (StatusCode::OK, Json(serde_json::json!(decision))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn orchestration_run_handler(
+    State(state): State<RuntimeControlState>,
+    Json(payload): Json<OrchestrationRequestPayload>,
+) -> impl IntoResponse {
+    let prompt = payload.prompt.unwrap_or_default();
+    if prompt.trim().is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "prompt is required"})),
+        )
+            .into_response();
+    }
+
+    match orchestrate::run(
+        orchestrate::OrchestrationRequest {
+            prompt,
+            task_id: payload.task_id,
+            category: payload.category,
+            claw_id: payload.claw_id,
+            mode: payload.mode.unwrap_or_else(|| "auto".to_string()),
+        },
+        &state.workspace_root,
+    )
+    .await
+    {
+        Ok(run) => (StatusCode::OK, Json(serde_json::json!(run))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": error.to_string()})),

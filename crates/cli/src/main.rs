@@ -94,6 +94,11 @@ enum Commands {
         #[command(subcommand)]
         action: RuntimeAction,
     },
+    /// Execute bounded routed or orchestrated multi-model runs
+    Orchestrate {
+        #[command(subcommand)]
+        action: OrchestrateAction,
+    },
     /// Manage autonomous optimization targets and candidates
     Optimize {
         #[command(subcommand)]
@@ -247,6 +252,35 @@ enum RuntimeVaultAction {
     },
     /// Delete a secret value
     Delete { key: String },
+}
+
+#[derive(Subcommand)]
+enum OrchestrateAction {
+    /// Resolve which claw and model profile would handle a task
+    Resolve {
+        #[arg(long)]
+        task_id: Option<String>,
+        #[arg(long)]
+        category: Option<String>,
+        #[arg(long)]
+        claw: Option<String>,
+        #[arg(long, default_value = "auto")]
+        mode: String,
+    },
+    /// Run a bounded direct or orchestrated multi-model execution
+    Run {
+        prompt: String,
+        #[arg(long)]
+        task_id: Option<String>,
+        #[arg(long)]
+        category: Option<String>,
+        #[arg(long)]
+        claw: Option<String>,
+        #[arg(long, default_value = "auto")]
+        mode: String,
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -1899,6 +1933,64 @@ async fn main() -> Result<()> {
                         Ok(())
                     }
                 }
+            }
+        },
+        Commands::Orchestrate { action } => match action {
+            OrchestrateAction::Resolve {
+                task_id,
+                category,
+                claw,
+                mode,
+            } => {
+                let workspace_root = std::env::current_dir()?;
+                let decision = commands::orchestrate::resolve(
+                    commands::orchestrate::OrchestrationRequest {
+                        prompt: String::new(),
+                        task_id,
+                        category,
+                        claw_id: claw,
+                        mode,
+                    },
+                    &workspace_root,
+                )?;
+                println!("{}", serde_json::to_string_pretty(&decision)?);
+                Ok(())
+            }
+            OrchestrateAction::Run {
+                prompt,
+                task_id,
+                category,
+                claw,
+                mode,
+                json,
+            } => {
+                let workspace_root = std::env::current_dir()?;
+                let result = commands::orchestrate::run(
+                    commands::orchestrate::OrchestrationRequest {
+                        prompt,
+                        task_id,
+                        category,
+                        claw_id: claw,
+                        mode,
+                    },
+                    &workspace_root,
+                )
+                .await?;
+                if json {
+                    println!("{}", serde_json::to_string_pretty(&result)?);
+                } else {
+                    println!("{}", result.final_output);
+                    println!();
+                    println!("receipt: {}", result.receipt_path);
+                    println!(
+                        "route: {} -> {} ({}/{})",
+                        result.routing.route_source,
+                        result.final_claw_id,
+                        result.final_provider,
+                        result.final_model
+                    );
+                }
+                Ok(())
             }
         },
         Commands::Optimize { action } => match action {

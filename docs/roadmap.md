@@ -705,7 +705,7 @@ Exit criteria:
 
 Goal: match OpenClaw's operator UX and tooling surface while keeping Rust-native interfaces.
 
-Status: complete for shipped CLI/MCP control-plane surfaces, shared typed control/config/diagnostics APIs, channel account CRUD parity, encrypted runtime secret-vault support, validated provider/model switching, runtime reload/cutover APIs with rollback, onboarding scaffolding, and doctor validation; Web Control UI, richer browser/web tooling, deeper service diagnostics, and full orchestrated runtime execution remain open.
+Status: complete for shipped CLI/MCP control-plane surfaces, shared typed control/config/diagnostics APIs, channel account CRUD parity, encrypted runtime secret-vault support, validated provider/model switching, runtime reload/cutover APIs with rollback, bounded routed/orchestrated multi-model execution surfaces with receipt capture, onboarding scaffolding, and doctor validation; Web Control UI, richer browser/web tooling, deeper service diagnostics, and full orchestrated runtime execution remain open.
 
 Additional later-surface work:
 
@@ -782,6 +782,13 @@ Completed:
   - validation before cutover,
   - timestamped config backups,
   - rollback when runtime reload fails after a config change.
+- [x] Add bounded routed/orchestrated multi-model execution surfaces:
+  - `openrustclaw orchestrate resolve|run`,
+  - `POST /control/orchestration/resolve`,
+  - `POST /control/orchestration/run`,
+  - task/category/claw routing resolution against `.claw/control`,
+  - model-profile fallback resolution when a configured profile is unsupported or unavailable,
+  - persisted orchestration receipts under `.claw/control/orchestration-runs/`.
 
 Remaining:
 
@@ -810,11 +817,10 @@ Remaining:
   - local-only/private files,
   - YAML/TOML agent configs,
   - model-baked artifacts such as `Modelfile`.
-- [ ] Add multi-model execution support for users who want different models for different jobs:
+- [ ] Extend multi-model execution beyond the shipped bounded routing surface:
   - model-per-tool or model-per-workflow selection,
-  - model-per-agent-profile selection,
-  - routing by task type, cost, latency, privacy, or capability,
-  - operator-visible routing decisions and overrides.
+  - deeper automatic routing by cost, latency, privacy, or capability,
+  - richer live runtime overrides beyond the shipped CLI/control API receipts.
 - [x] Add a first-class multi-claw execution model so users can choose how many Claws exist and how work is assigned:
   - `solo_claw` mode where one Claw handles all work,
   - `task_assigned` mode where individual tasks bind to specific Claws,
@@ -832,11 +838,11 @@ Remaining:
   - default fallback Claw,
   - per-workspace overrides,
   - operator review and override surfaces.
-- [ ] Add a quarterback/orchestrator model mode:
+- [x] Add a bounded quarterback/orchestrator model mode:
   - one model plans or routes work,
-  - one or more worker models execute subtasks,
-  - bounded handoff contracts,
-  - explicit traceability of which model decided versus which model executed.
+  - one or more worker models execute bounded subtasks,
+  - structured worker completion envelopes,
+  - explicit receipts showing which model decided versus which model executed.
 - [ ] Extend quarterback/orchestrator mode into a full orchestrated multi-claw runtime:
   - primary Claw can delegate to named worker Claws,
   - worker Claws return structured completion envelopes,
