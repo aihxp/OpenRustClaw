@@ -120,6 +120,13 @@ pubsub_subscription = "google-chat-subscription"
 # Rate limiting (Google Chat allows ~30 msg/sec per bot)
 rate_limit_requests_per_second = 25
 
+# Card responses and optional local attachment downloads
+cards_enabled = true
+attachment_download_dir = "./data/google-chat/downloads"
+
+# Bot response policy
+response_mode = "mention"  # "mention", "open", or "slash_commands"
+
 # =============================================================================
 # Google Meet Configuration
 # =============================================================================

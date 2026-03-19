@@ -13,6 +13,7 @@
 //!
 //! - <https://developers.google.com/chat/api/reference/rest>
 
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -497,6 +498,27 @@ impl GoogleChatChannel {
             .collect()
     }
 
+    fn sanitize_download_name(message_id: &str, fallback: &str) -> String {
+        let safe_fallback = fallback
+            .chars()
+            .map(|ch| {
+                if ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | '-') {
+                    ch
+                } else {
+                    '_'
+                }
+            })
+            .collect::<String>();
+
+        let trimmed = if safe_fallback.is_empty() {
+            "attachment".to_string()
+        } else {
+            safe_fallback
+        };
+
+        format!("{}-{}", message_id.replace('/', "_"), trimmed)
+    }
+
     /// Convert markdown to Google Chat format (simplified).
     fn markdown_to_chat(text: &str) -> String {
         // Google Chat supports basic markdown-like formatting
@@ -915,6 +937,7 @@ impl Channel for GoogleChatChannel {
 pub struct GoogleChatWebhookHandler {
     config: GoogleChatConfig,
     incoming_tx: mpsc::Sender<IncomingMessage>,
+    http_client: reqwest::Client,
 }
 
 impl GoogleChatWebhookHandler {
@@ -923,7 +946,183 @@ impl GoogleChatWebhookHandler {
         Self {
             config,
             incoming_tx,
+            http_client: reqwest::Client::builder()
+                .timeout(Duration::from_secs(30))
+                .build()
+                .unwrap_or_default(),
         }
+    }
+
+    async fn authenticate(&self) -> Result<Option<String>> {
+        if let Some(token) = self.config.service_account_key.strip_prefix("token:") {
+            let token = token.trim();
+            if !token.is_empty() {
+                return Ok(Some(token.to_string()));
+            }
+        }
+
+        if let Some(var_name) = self.config.service_account_key.strip_prefix("env:") {
+            let value = std::env::var(var_name.trim()).map_err(|_| ChannelError::AuthFailed {
+                platform: "google_chat".to_string(),
+                message: format!(
+                    "Google Chat access token env var '{}' is not set",
+                    var_name.trim()
+                ),
+            })?;
+            if !value.trim().is_empty() {
+                return Ok(Some(value));
+            }
+        }
+
+        let key_path = std::path::Path::new(&self.config.service_account_key);
+        if !key_path.exists() {
+            return Ok(None);
+        }
+
+        let raw = tokio::fs::read_to_string(key_path).await.map_err(|e| {
+            ChannelError::AuthFailed {
+                platform: "google_chat".to_string(),
+                message: format!("Failed to read Google Chat key file: {}", e),
+            }
+        })?;
+
+        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&raw)
+            && let Some(token) = json.get("access_token").and_then(|value| value.as_str())
+            && !token.trim().is_empty()
+        {
+            return Ok(Some(token.to_string()));
+        }
+
+        if let Ok(service_account) = serde_json::from_str::<ServiceAccountKey>(&raw) {
+            let now = chrono::Utc::now().timestamp();
+            let claims = ServiceAccountClaims {
+                iss: service_account.client_email.clone(),
+                scope: GOOGLE_CHAT_SCOPE.to_string(),
+                aud: service_account.token_uri.clone(),
+                iat: now,
+                exp: now + 3600,
+            };
+
+            let jwt = encode(
+                &Header::new(Algorithm::RS256),
+                &claims,
+                &EncodingKey::from_rsa_pem(service_account.private_key.as_bytes()).map_err(
+                    |e| ChannelError::AuthFailed {
+                        platform: "google_chat".to_string(),
+                        message: format!("Invalid Google service account private key: {}", e),
+                    },
+                )?,
+            )
+            .map_err(|e| ChannelError::AuthFailed {
+                platform: "google_chat".to_string(),
+                message: format!("Failed to sign Google service account JWT: {}", e),
+            })?;
+
+            let response = self
+                .http_client
+                .post(&service_account.token_uri)
+                .form(&[
+                    ("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer"),
+                    ("assertion", jwt.as_str()),
+                ])
+                .send()
+                .await
+                .map_err(|e| ChannelError::AuthFailed {
+                    platform: "google_chat".to_string(),
+                    message: format!("Google OAuth token exchange failed: {}", e),
+                })?;
+
+            let status = response.status();
+            let body: serde_json::Value = response
+                .json()
+                .await
+                .unwrap_or_else(|_| serde_json::json!({}));
+
+            if !status.is_success() {
+                return Err(ChannelError::AuthFailed {
+                    platform: "google_chat".to_string(),
+                    message: body
+                        .get("error_description")
+                        .and_then(|value| value.as_str())
+                        .or_else(|| body.get("error").and_then(|value| value.as_str()))
+                        .unwrap_or("Google OAuth token exchange failed")
+                        .to_string(),
+                }
+                .into());
+            }
+
+            return Ok(body
+                .get("access_token")
+                .and_then(|value| value.as_str())
+                .map(|value| value.to_string()));
+        }
+
+        Ok(None)
+    }
+
+    async fn download_attachment_to_dir(
+        &self,
+        downloads_dir: &PathBuf,
+        message_id: &str,
+        attachment: &serde_json::Value,
+        token: Option<&str>,
+    ) -> Result<Option<String>> {
+        let Some(download_url) = attachment
+            .get("downloadUri")
+            .or_else(|| attachment.get("download_url"))
+            .and_then(|value| value.as_str())
+        else {
+            return Ok(None);
+        };
+
+        if !downloads_dir.exists() {
+            tokio::fs::create_dir_all(downloads_dir)
+                .await
+                .map_err(|e| ChannelError::Connection {
+                    platform: "google_chat".to_string(),
+                    message: format!("Failed to create Google Chat downloads directory: {}", e),
+                })?;
+        }
+
+        let filename = attachment
+            .get("name")
+            .or_else(|| attachment.get("contentName"))
+            .and_then(|value| value.as_str())
+            .unwrap_or("attachment");
+        let path = downloads_dir.join(GoogleChatChannel::sanitize_download_name(message_id, filename));
+
+        let mut request = self.http_client.get(download_url);
+        if let Some(token) = token {
+            request = request.bearer_auth(token);
+        }
+
+        let response = request.send().await.map_err(|e| ChannelError::Connection {
+            platform: "google_chat".to_string(),
+            message: format!("Google Chat attachment download failed: {}", e),
+        })?;
+
+        if !response.status().is_success() {
+            let body = response.text().await.unwrap_or_default();
+            return Err(ChannelError::Connection {
+                platform: "google_chat".to_string(),
+                message: format!("Google Chat attachment download failed: {}", body),
+            }
+            .into());
+        }
+
+        let bytes = response.bytes().await.map_err(|e| ChannelError::Connection {
+            platform: "google_chat".to_string(),
+            message: format!("Failed to read Google Chat attachment download: {}", e),
+        })?;
+
+        tokio::fs::write(&path, &bytes)
+            .await
+            .map_err(|e| ChannelError::Connection {
+                platform: "google_chat".to_string(),
+                message: format!("Failed to persist Google Chat attachment download: {}", e),
+            })?;
+
+        Ok(Some(path.display().to_string()))
     }
 
     fn should_respond(&self, event: &ChatEvent) -> bool {
@@ -1204,12 +1403,67 @@ impl GoogleChatWebhookHandler {
             } else {
                 metadata["google_chat_file_reference_count"] = serde_json::json!(0);
             }
+
+            if let Some(download_dir) = self.config.attachment_download_dir.as_ref() {
+                let token = self.authenticate().await?;
+                let downloads_dir = PathBuf::from(download_dir);
+                let mut downloaded_paths = Vec::new();
+                for attachment in &message.attachments {
+                    match self
+                        .download_attachment_to_dir(
+                            &downloads_dir,
+                            &message.name,
+                            attachment,
+                            token.as_deref(),
+                        )
+                        .await
+                    {
+                        Ok(Some(path)) => downloaded_paths.push(path),
+                        Ok(None) => {}
+                        Err(error) => {
+                            warn!(error = %error, message_id = %message.name, "Failed to download Google Chat attachment");
+                        }
+                    }
+                }
+
+                if !downloaded_paths.is_empty() {
+                    metadata["google_chat_has_download_paths"] = serde_json::json!(true);
+                    metadata["google_chat_download_paths"] = serde_json::json!(downloaded_paths);
+                    metadata["google_chat_downloaded_attachment_count"] = serde_json::json!(
+                        metadata["google_chat_download_paths"]
+                            .as_array()
+                            .map(|items| items.len())
+                            .unwrap_or(0)
+                    );
+                    let download_paths = metadata["google_chat_download_paths"]
+                        .as_array()
+                        .cloned()
+                        .unwrap_or_default();
+                    if let Some(file_refs) = metadata
+                        .get_mut("file_references")
+                        .and_then(|value| value.as_array_mut())
+                    {
+                        for (idx, path) in download_paths.iter().enumerate() {
+                            if let Some(local_path) = path.as_str()
+                                && let Some(entry) = file_refs.get_mut(idx)
+                            {
+                                entry["local_path"] = serde_json::json!(local_path);
+                            }
+                        }
+                    }
+                } else {
+                    metadata["google_chat_has_download_paths"] = serde_json::json!(false);
+                    metadata["google_chat_downloaded_attachment_count"] = serde_json::json!(0);
+                }
+            }
         } else {
             metadata["google_chat_has_attachment_count"] = serde_json::json!(false);
             metadata["google_chat_has_attachments"] = serde_json::json!(false);
             metadata["google_chat_file_reference_count"] = serde_json::json!(0);
             metadata["google_chat_attachment_name_count"] = serde_json::json!(0);
             metadata["google_chat_attachment_content_type_count"] = serde_json::json!(0);
+            metadata["google_chat_has_download_paths"] = serde_json::json!(false);
+            metadata["google_chat_downloaded_attachment_count"] = serde_json::json!(0);
             metadata["google_chat_has_attachment_names"] = serde_json::json!(false);
             metadata["google_chat_has_attachment_content_types"] = serde_json::json!(false);
             metadata["google_chat_has_attachment_data_refs"] = serde_json::json!(false);
@@ -1491,6 +1745,8 @@ mod tests {
     use super::*;
     use serde_json::json;
     use tokio::sync::mpsc;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
 
     #[test]
     fn test_markdown_to_chat() {
@@ -1570,6 +1826,7 @@ mod tests {
             allowed_spaces: vec![],
             rate_limit_requests_per_second: 10,
             cards_enabled: true,
+            attachment_download_dir: None,
             response_mode: GoogleChatResponseMode::Mention,
         };
 
@@ -1589,6 +1846,7 @@ mod tests {
             allowed_spaces: vec![],
             rate_limit_requests_per_second: 10,
             cards_enabled: true,
+            attachment_download_dir: None,
             response_mode: GoogleChatResponseMode::Mention,
         };
 
@@ -1609,6 +1867,7 @@ mod tests {
             allowed_spaces: vec![],
             rate_limit_requests_per_second: 10,
             cards_enabled: true,
+            attachment_download_dir: None,
             response_mode: GoogleChatResponseMode::SlashCommands,
         };
 
@@ -1653,6 +1912,7 @@ mod tests {
                 allowed_spaces: vec![],
                 rate_limit_requests_per_second: 10,
                 cards_enabled: true,
+                attachment_download_dir: None,
                 response_mode: GoogleChatResponseMode::Open,
             },
             tx,
@@ -1753,6 +2013,7 @@ mod tests {
                 allowed_spaces: vec![],
                 rate_limit_requests_per_second: 10,
                 cards_enabled: true,
+                attachment_download_dir: None,
                 response_mode: GoogleChatResponseMode::Open,
             },
             tx,
@@ -1812,6 +2073,7 @@ mod tests {
                 allowed_spaces: vec![],
                 rate_limit_requests_per_second: 10,
                 cards_enabled: true,
+                attachment_download_dir: None,
                 response_mode: GoogleChatResponseMode::Open,
             },
             tx,
@@ -1885,6 +2147,7 @@ mod tests {
                 allowed_spaces: vec![],
                 rate_limit_requests_per_second: 10,
                 cards_enabled: true,
+                attachment_download_dir: None,
                 response_mode: GoogleChatResponseMode::Open,
             },
             tx,
@@ -1952,6 +2215,75 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_handle_message_event_downloads_attachments() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/download/attachment-1"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(b"attachment-data".to_vec()))
+            .mount(&server)
+            .await;
+
+        let temp_dir = std::env::temp_dir().join(format!("orc-google-chat-{}", Uuid::new_v4()));
+        let (tx, mut rx) = mpsc::channel(4);
+        let handler = GoogleChatWebhookHandler::new(
+            GoogleChatConfig {
+                enabled: true,
+                service_account_key: "token:test-token".to_string(),
+                project_id: String::new(),
+                webhook_url: Some("https://example.com/webhooks/google-chat/events".to_string()),
+                pubsub_subscription: None,
+                allowlist: vec![],
+                allowed_spaces: vec![],
+                rate_limit_requests_per_second: 10,
+                cards_enabled: true,
+                attachment_download_dir: Some(temp_dir.display().to_string()),
+                response_mode: GoogleChatResponseMode::Open,
+            },
+            tx,
+        );
+
+        let body = serde_json::json!({
+            "type": "MESSAGE",
+            "eventTime": "2024-01-01T00:00:00Z",
+            "space": {"name": "spaces/AAA", "type": "ROOM", "displayName": "Ops"},
+            "user": {"name": "users/123", "displayName": "Alice", "email": "alice@example.com"},
+            "message": {
+                "name": "spaces/AAA/messages/3",
+                "text": "attachment event",
+                "attachments": [{
+                    "downloadUri": format!("{}/download/attachment-1", server.uri()),
+                    "name": "incident-report.pdf",
+                    "contentType": "application/pdf",
+                    "attachmentDataRef": "spaces/AAA/attachments/1"
+                }]
+            }
+        });
+
+        handler
+            .handle_event(body.to_string().as_bytes())
+            .await
+            .expect("message event");
+
+        let incoming = rx.recv().await.expect("incoming message");
+        assert_eq!(incoming.metadata["google_chat_has_download_paths"], true);
+        assert_eq!(incoming.metadata["google_chat_downloaded_attachment_count"], 1);
+        let local_path = incoming.metadata["google_chat_download_paths"][0]
+            .as_str()
+            .expect("download path");
+        assert!(
+            incoming.metadata["file_references"][0]["local_path"]
+                .as_str()
+                .expect("file reference local path")
+                .contains("incident-report.pdf")
+        );
+        let bytes = tokio::fs::read(local_path).await.expect("downloaded bytes");
+        assert_eq!(bytes, b"attachment-data");
+
+        let _ = tokio::fs::remove_file(local_path).await;
+        let _ = tokio::fs::remove_dir_all(temp_dir).await;
+    }
+
+    #[tokio::test]
     async fn test_handle_message_event_preserves_mentions_and_slash_command_name() {
         let (tx, mut rx) = mpsc::channel(4);
         let handler = GoogleChatWebhookHandler::new(
@@ -1965,6 +2297,7 @@ mod tests {
                 allowed_spaces: vec![],
                 rate_limit_requests_per_second: 10,
                 cards_enabled: true,
+                attachment_download_dir: None,
                 response_mode: GoogleChatResponseMode::Open,
             },
             tx,

@@ -143,3 +143,17 @@ signal_cli_path = null  # Path to signal-cli binary (null = use system PATH)
 use_libsignal = false  # Use native libsignal-client (experimental)
 rate_limit_per_minute = 20  # Signal rate limit (~20 messages/minute)
 require_allowlist = true  # Require allowlist for security (recommended)
+
+# Google Chat Bot Configuration
+[channels.google_chat]
+enabled = false
+service_account_key = ""  # Path to service-account JSON, token:<value>, or env:VAR
+project_id = ""  # Google Cloud project ID
+webhook_url = null  # Optional public webhook URL for Google Chat HTTP push
+pubsub_subscription = null  # Optional Pub/Sub subscription for push-envelope mode
+allowlist = []  # Allowed user emails or Google Workspace IDs (empty = allow all)
+allowed_spaces = []  # Allowed Google Chat space IDs (empty = allow all)
+rate_limit_requests_per_second = 10
+cards_enabled = true
+attachment_download_dir = "./data/google-chat/downloads"  # Optional local download root for inbound attachments
+response_mode = "mention"  # "mention", "open", or "slash_commands"

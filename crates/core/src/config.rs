@@ -400,6 +400,9 @@ pub struct GoogleChatConfig {
     pub rate_limit_requests_per_second: u32,
     /// Enable Card-based responses
     pub cards_enabled: bool,
+    /// Optional local download root for inbound Google Chat attachments
+    #[serde(default)]
+    pub attachment_download_dir: Option<String>,
     /// Response mode for the bot
     pub response_mode: GoogleChatResponseMode,
 }
@@ -907,6 +910,7 @@ impl Default for AppConfig {
                     allowed_spaces: Vec::new(),
                     rate_limit_requests_per_second: 10,
                     cards_enabled: true,
+                    attachment_download_dir: None,
                     response_mode: GoogleChatResponseMode::Mention,
                 },
                 google_meet: GoogleMeetConfig {
