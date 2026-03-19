@@ -540,6 +540,7 @@ impl MatrixChannel {
                                 "matrix_has_redacts": event.content.get("redacts").and_then(|value| value.as_str()).is_some(),
                                 "matrix_redaction_reason": event.content.get("reason").and_then(|value| value.as_str()),
                                 "matrix_has_redaction_reason": event.content.get("reason").and_then(|value| value.as_str()).is_some(),
+                                "matrix_redaction_reason_length": event.content.get("reason").and_then(|value| value.as_str()).map(|value| value.chars().count()),
                             });
 
                             let incoming = IncomingMessage {
@@ -572,6 +573,7 @@ impl MatrixChannel {
                                 "matrix_msgtype": "m.reaction",
                                 "matrix_is_group": true,
                                 "matrix_reaction": reaction_key,
+                                "matrix_reaction_length": reaction_key.chars().count(),
                                 "matrix_reaction_target": reaction_target,
                                 "matrix_reaction_rel_type": relates_to.get("rel_type").and_then(|value| value.as_str()),
                                 "matrix_has_reaction_rel_type": relates_to.get("rel_type").and_then(|value| value.as_str()).is_some(),
@@ -608,6 +610,7 @@ impl MatrixChannel {
                                 "matrix_msgtype": "m.room.member",
                                 "matrix_is_group": true,
                                 "matrix_membership": membership,
+                                "matrix_membership_length": membership.map(|value| value.chars().count()),
                                 "matrix_state_key": event.state_key,
                                 "matrix_member_display_name": display_name,
                                 "matrix_has_member_display_name": display_name.is_some(),
@@ -710,6 +713,8 @@ impl MatrixChannel {
                             if let Some(filename_hint) = filename_hint {
                                 metadata["matrix_media_filename"] =
                                     serde_json::json!(filename_hint);
+                                metadata["matrix_media_filename_length"] =
+                                    serde_json::json!(filename_hint.chars().count());
                                 metadata["matrix_has_media_filename"] = serde_json::json!(true);
                             } else {
                                 metadata["matrix_has_media_filename"] = serde_json::json!(false);
@@ -755,6 +760,11 @@ impl MatrixChannel {
                             {
                                 Ok(Some(path)) => {
                                     metadata["matrix_download_path"] = serde_json::json!(path);
+                                    metadata["matrix_download_path_length"] = serde_json::json!(
+                                        metadata["matrix_download_path"]
+                                            .as_str()
+                                            .map(|value| value.chars().count())
+                                    );
                                     metadata["matrix_has_download_path"] = serde_json::json!(true);
                                     metadata["file_references"][0]["local_path"] =
                                         serde_json::json!(metadata["matrix_download_path"].as_str());
@@ -1735,6 +1745,7 @@ mod tests {
 
         assert_eq!(incoming.content, "[matrix reaction]");
         assert_eq!(incoming.metadata["matrix_reaction"], "👍");
+        assert_eq!(incoming.metadata["matrix_reaction_length"], 1);
         assert_eq!(incoming.metadata["matrix_reaction_target"], "$target1");
         assert_eq!(incoming.metadata["matrix_reaction_rel_type"], "m.annotation");
         assert_eq!(incoming.metadata["matrix_has_reaction_rel_type"], true);
@@ -1793,6 +1804,7 @@ mod tests {
         assert_eq!(incoming.metadata["matrix_redacts"], "$target-redacted");
         assert_eq!(incoming.metadata["matrix_has_redacts"], true);
         assert_eq!(incoming.metadata["matrix_redaction_reason"], "cleanup");
+        assert_eq!(incoming.metadata["matrix_redaction_reason_length"], 7);
         assert_eq!(incoming.metadata["matrix_has_redaction_reason"], true);
 
         channel.disconnect().await.expect("disconnect succeeds");
@@ -1848,6 +1860,7 @@ mod tests {
 
         assert_eq!(incoming.content, "[matrix membership event]");
         assert_eq!(incoming.metadata["matrix_membership"], "join");
+        assert_eq!(incoming.metadata["matrix_membership_length"], 4);
         assert_eq!(incoming.metadata["matrix_state_key"], "@bob:matrix.org");
         assert_eq!(incoming.metadata["matrix_member_display_name"], "Bob");
         assert_eq!(incoming.metadata["matrix_has_member_display_name"], true);
@@ -1917,6 +1930,7 @@ mod tests {
         assert_eq!(incoming.metadata["matrix_has_media"], true);
         assert_eq!(incoming.metadata["matrix_has_content_uri"], true);
         assert_eq!(incoming.metadata["matrix_media_filename"], "report.pdf");
+        assert_eq!(incoming.metadata["matrix_media_filename_length"], 10);
         assert_eq!(incoming.metadata["matrix_has_media_filename"], true);
         assert_eq!(incoming.metadata["matrix_content_uri"], "mxc://matrix.org/media-1");
         assert_eq!(incoming.metadata["matrix_media_mime_type"], "application/pdf");
@@ -1929,6 +1943,12 @@ mod tests {
         assert_eq!(incoming.metadata["file_references"][0]["mime"], "application/pdf");
         assert_eq!(incoming.metadata["file_references"][0]["size"], 2048);
         assert_eq!(incoming.metadata["matrix_has_download_path"], true);
+        assert!(
+            incoming.metadata["matrix_download_path_length"]
+                .as_u64()
+                .expect("download path length")
+                > 0
+        );
         assert!(incoming.metadata["file_references"][0]["local_path"]
             .as_str()
             .expect("local path")

@@ -231,6 +231,16 @@ impl SignalChannel {
     ) -> Result<serde_json::Value> {
         let is_group = group_info.is_some();
         let recipient = source_number.clone().unwrap_or_else(|| source.to_string());
+        let message_text = data_message.message.as_deref().unwrap_or("");
+        let attachment_total_size: usize = data_message
+            .attachments
+            .iter()
+            .map(|attachment| attachment.size.unwrap_or(0))
+            .sum();
+        let has_attachment_dimensions = data_message
+            .attachments
+            .iter()
+            .any(|attachment| attachment.width.is_some() || attachment.height.is_some());
         let mut metadata = serde_json::json!({
             "signal_timestamp": timestamp,
             "signal_source": source,
@@ -243,6 +253,11 @@ impl SignalChannel {
             "signal_has_recipient": !recipient.is_empty(),
             "signal_has_source_number": source_number.is_some(),
             "signal_has_source_uuid": source_uuid.is_some(),
+            "signal_has_message_text": !message_text.is_empty(),
+            "signal_message_length": message_text.chars().count(),
+            "signal_attachment_total_size": attachment_total_size,
+            "signal_file_reference_count": 0,
+            "signal_has_attachment_dimensions": has_attachment_dimensions,
         });
 
         if let Some(group) = group_info {
@@ -342,6 +357,12 @@ impl SignalChannel {
                 .collect();
             if !file_references.is_empty() {
                 metadata["file_references"] = serde_json::json!(file_references);
+                metadata["signal_file_reference_count"] = serde_json::json!(
+                    metadata["file_references"]
+                        .as_array()
+                        .map(|items| items.len())
+                        .unwrap_or(0)
+                );
             }
         }
 
@@ -1214,8 +1235,14 @@ mod tests {
         assert_eq!(incoming.metadata["signal_has_recipient"], true);
         assert_eq!(incoming.metadata["signal_has_source_number"], true);
         assert_eq!(incoming.metadata["signal_has_source_uuid"], false);
+        assert_eq!(incoming.metadata["signal_has_message_text"], true);
+        assert_eq!(incoming.metadata["signal_message_length"], serde_json::json!(5));
         assert_eq!(incoming.metadata["signal_has_attachments"], serde_json::json!(true));
         assert_eq!(incoming.metadata["signal_attachment_count"], serde_json::json!(1));
+        assert_eq!(
+            incoming.metadata["signal_attachment_total_size"],
+            serde_json::json!(2048)
+        );
         assert_eq!(incoming.metadata["signal_attachment_ids"][0], "att-1");
         assert_eq!(incoming.metadata["signal_has_attachment_ids"], true);
         assert_eq!(incoming.metadata["signal_attachment_names"][0], "photo.jpg");
@@ -1230,7 +1257,12 @@ mod tests {
             serde_json::json!(1)
         );
         assert_eq!(incoming.metadata["signal_has_attachment_captions"], true);
+        assert_eq!(incoming.metadata["signal_has_attachment_dimensions"], true);
         assert_eq!(incoming.metadata["signal_has_mentions"], true);
+        assert_eq!(
+            incoming.metadata["signal_file_reference_count"],
+            serde_json::json!(1)
+        );
         assert_eq!(
             incoming.metadata["file_references"][0]["url"],
             "signal-attachment://att-1"
@@ -1379,8 +1411,19 @@ mod tests {
         let incoming = rx.recv().await.expect("incoming attachment-only message");
         assert_eq!(incoming.content, "[signal attachment]");
         assert_eq!(incoming.metadata["signal_attachment_only"], true);
+        assert_eq!(incoming.metadata["signal_has_message_text"], false);
+        assert_eq!(incoming.metadata["signal_message_length"], serde_json::json!(0));
         assert_eq!(incoming.metadata["signal_has_attachments"], true);
         assert_eq!(incoming.metadata["signal_attachment_count"], 1);
+        assert_eq!(
+            incoming.metadata["signal_attachment_total_size"],
+            serde_json::json!(1024)
+        );
+        assert_eq!(incoming.metadata["signal_has_attachment_dimensions"], false);
+        assert_eq!(
+            incoming.metadata["signal_file_reference_count"],
+            serde_json::json!(1)
+        );
         assert_eq!(
             incoming.metadata["signal_attachment_caption_count"],
             serde_json::json!(0)
