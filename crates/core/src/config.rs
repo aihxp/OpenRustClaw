@@ -234,6 +234,7 @@ pub struct ChannelsConfig {
     pub slack: SlackConfig,
     pub whatsapp: WhatsAppConfig,
     pub teams: TeamsConfig,
+    pub mattermost: MattermostConfig,
     pub google_chat: GoogleChatConfig,
     pub google_meet: GoogleMeetConfig,
     pub gmail_pubsub: GmailPubSubConfig,
@@ -246,6 +247,28 @@ pub struct ChannelsConfig {
     pub line: LineConfig,
     pub viber: ViberConfig,
     pub wechat: WeChatConfig,
+}
+
+/// Mattermost bot / slash-command configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MattermostConfig {
+    pub enabled: bool,
+    /// Mattermost server base URL (e.g. "https://chat.example.com")
+    pub server_url: String,
+    /// Personal access token or bot token for REST API calls
+    pub bot_token: String,
+    /// Webhook path for incoming slash commands / outgoing webhooks
+    pub webhook_path: String,
+    /// Optional shared token used to validate incoming slash-command / webhook payloads
+    pub webhook_token: Option<String>,
+    /// Optional bot username used for mention detection
+    pub bot_username: Option<String>,
+    /// Allowed Mattermost user IDs or usernames
+    pub allowlist: Vec<String>,
+    /// Allowed Mattermost channel IDs (empty = all)
+    pub allowed_channels: Vec<String>,
+    /// Rate limit for outgoing REST API requests per second
+    pub rate_limit_requests_per_second: u32,
 }
 
 /// Skills/Plugins configuration.
@@ -899,6 +922,17 @@ impl Default for AppConfig {
                     rate_limit_requests_per_second: 10,
                     adaptive_cards_enabled: true,
                     attachment_download_dir: None,
+                },
+                mattermost: MattermostConfig {
+                    enabled: false,
+                    server_url: String::new(),
+                    bot_token: String::new(),
+                    webhook_path: "/webhooks/mattermost".to_string(),
+                    webhook_token: None,
+                    bot_username: None,
+                    allowlist: Vec::new(),
+                    allowed_channels: Vec::new(),
+                    rate_limit_requests_per_second: 10,
                 },
                 google_chat: GoogleChatConfig {
                     enabled: false,

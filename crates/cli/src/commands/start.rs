@@ -17,6 +17,7 @@ use openrustclaw_channels::discord::DiscordInteractionsHandler;
 use openrustclaw_channels::gmail_pubsub::GmailWebhookHandler;
 use openrustclaw_channels::google_chat::GoogleChatWebhookHandler;
 use openrustclaw_channels::imessage::{BlueBubblesMessage, IMessageWebhookHandler};
+use openrustclaw_channels::mattermost::MattermostWebhookHandler;
 use openrustclaw_channels::slack::SlackEventHandler;
 use openrustclaw_channels::teams::TeamsWebhookHandler;
 use openrustclaw_core::error::{ChannelError as CoreChannelError, Error as CoreError, McpError};
@@ -105,6 +106,10 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
                 ChannelType::Slack => {
                     config.channels.slack.enabled = true;
                     info!("Slack channel enabled");
+                }
+                ChannelType::Mattermost => {
+                    config.channels.mattermost.enabled = true;
+                    info!("Mattermost channel enabled");
                 }
                 ChannelType::WhatsApp => {
                     config.channels.whatsapp.enabled = true;
@@ -229,6 +234,7 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
     let mut discord_ingress_handler = None;
     let mut slack_ingress_handler = None;
     let mut teams_ingress_handler = None;
+    let mut mattermost_ingress_handler = None;
     let mut google_chat_ingress_handler = None;
     let mut gmail_ingress_handler = None;
     let mut imessage_ingress_handler = None;
@@ -277,6 +283,23 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
             Err(e) => {
                 error!(error = %e, "Failed to create Teams channel");
                 channel_config.teams.enabled = false;
+            }
+        }
+    }
+
+    if channel_config.mattermost.enabled {
+        match ChannelFactory::create_mattermost(channel_config.mattermost.clone()) {
+            Ok(mattermost_channel) => {
+                mattermost_ingress_handler = Some((
+                    channel_config.mattermost.webhook_path.clone(),
+                    mattermost_channel.webhook_handler(),
+                ));
+                enabled_channels.push(Box::new(mattermost_channel) as Box<dyn Channel>);
+                channel_config.mattermost.enabled = false;
+            }
+            Err(e) => {
+                error!(error = %e, "Failed to create Mattermost channel");
+                channel_config.mattermost.enabled = false;
             }
         }
     }
@@ -403,6 +426,10 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
     if let Some((webhook_path, handler)) = teams_ingress_handler {
         app = app.merge(teams_ingress_router(webhook_path.as_str(), handler));
         info!(path = %webhook_path, "Teams ingress enabled");
+    }
+    if let Some((webhook_path, handler)) = mattermost_ingress_handler {
+        app = app.merge(mattermost_ingress_router(webhook_path.as_str(), handler));
+        info!(path = %webhook_path, "Mattermost ingress enabled");
     }
     if let Some(handler) = google_chat_ingress_handler {
         app = app.merge(google_chat_ingress_router(handler));
@@ -2409,6 +2436,11 @@ struct TeamsIngressState {
     handler: Arc<TeamsWebhookHandler>,
 }
 
+#[derive(Clone)]
+struct MattermostIngressState {
+    handler: Arc<MattermostWebhookHandler>,
+}
+
 fn teams_ingress_router(path: &str, handler: TeamsWebhookHandler) -> Router {
     Router::new()
         .route(path, post(teams_events_handler))
@@ -2440,6 +2472,29 @@ async fn teams_events_handler(
     }
 
     match state.handler.handle_request(payload).await {
+        Ok(response) => (StatusCode::OK, Json(response)).into_response(),
+        Err(error) => (StatusCode::BAD_REQUEST, error.to_string()).into_response(),
+    }
+}
+
+fn mattermost_ingress_router(path: &str, handler: MattermostWebhookHandler) -> Router {
+    Router::new()
+        .route(path, post(mattermost_events_handler))
+        .with_state(MattermostIngressState {
+            handler: Arc::new(handler),
+        })
+}
+
+async fn mattermost_events_handler(
+    State(state): State<MattermostIngressState>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> impl IntoResponse {
+    let content_type = headers
+        .get(axum::http::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok());
+
+    match state.handler.handle_request(content_type, &body).await {
         Ok(response) => (StatusCode::OK, Json(response)).into_response(),
         Err(error) => (StatusCode::BAD_REQUEST, error.to_string()).into_response(),
     }
@@ -4717,6 +4772,7 @@ fn parse_mcp_platform(raw: &str) -> Platform {
         "telegram" => Platform::Telegram,
         "discord" => Platform::Discord,
         "slack" => Platform::Slack,
+        "mattermost" => Platform::Mattermost,
         "cli" => Platform::Cli,
         "api" => Platform::Api,
         _ => Platform::WebChat,

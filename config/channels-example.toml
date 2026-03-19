@@ -100,6 +100,35 @@ allowed_channels = []  # List of allowed channel IDs
 rate_limit_per_second = 15
 
 # =============================================================================
+# Mattermost Configuration
+# =============================================================================
+[channels.mattermost]
+enabled = false
+
+# Mattermost server base URL
+server_url = "https://chat.example.com"
+
+# Personal access token or bot token
+bot_token = "${MATTERMOST_BOT_TOKEN}"
+
+# Webhook path for slash commands / outgoing webhooks
+webhook_path = "/webhooks/mattermost"
+
+# Optional shared token to verify inbound webhook payloads
+# webhook_token = "${MATTERMOST_WEBHOOK_TOKEN}"
+
+# Optional bot username used for mention detection
+# bot_username = "claw"
+
+# Allowed Mattermost user IDs or usernames
+allowlist = []
+
+# Allowed Mattermost channel IDs
+allowed_channels = []
+
+rate_limit_requests_per_second = 10
+
+# =============================================================================
 # Google Chat Configuration
 # =============================================================================
 [channels.google_chat]

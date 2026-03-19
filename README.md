@@ -111,9 +111,9 @@ Provider fallback chain with configurable cooldowns routes requests through avai
 
 Current channel modules available in the repo:
 
-Telegram, Discord, Slack, WhatsApp (Baileys bridge), Microsoft Teams, Google Chat, Gmail (Pub/Sub), Matrix, iMessage, LINE, Viber, WeChat, Messenger, Instagram DMs, WebChat
+Telegram, Discord, Slack, WhatsApp (Baileys bridge), Microsoft Teams, Mattermost, Google Chat, Gmail (Pub/Sub), Matrix, iMessage, Signal, LINE, Viber, WeChat, Messenger, Instagram DMs, WebChat
 
-The current shipped startup path actively supports WebChat, Telegram, Discord, Slack, WhatsApp, iMessage, Google Chat, Gmail Pub/Sub, Matrix, and Signal, and it also allows Microsoft Teams on a partial shipped path. Other channel modules remain in the repo but are gated or deferred from the shipped runtime surface.
+The current shipped startup path actively supports WebChat, Telegram, Discord, Slack, WhatsApp, Mattermost, iMessage, Google Chat, Gmail Pub/Sub, Matrix, and Signal, and it also allows Microsoft Teams on a partial shipped path. Other channel modules remain in the repo but are gated or deferred from the shipped runtime surface.
 
 Current tier-1 status:
 
@@ -121,6 +121,7 @@ Current tier-1 status:
 - Discord: auth probe, outbound send, edit/reaction operations, verified Interactions HTTP ingress, Gateway `MESSAGE_CREATE` receive, reconnect/session recovery, thread-aware session routing with parent-channel binding inheritance, thread-preferred replies, reply-reference propagation aliases, mention detection, attachment/embed metadata capture, forwarded-attachment local downloads plus file references, and local agent/session routing are implemented; deeper gateway polish still remains
 - Slack: auth probe, outbound send, edit/reaction operations, built-in HTTP Events API ingress, mention-aware routing metadata, thread ownership plus stream-mode metadata, draft-stream replies, attachment/file-reference metadata, download-action blocks, and local agent/session routing are implemented for HTTP mode; Socket Mode remains incomplete
 - WhatsApp: Baileys bridge pairing/QR, reconnect behavior, DM/group routing, mentions, replies, media send/receive, and local agent/session routing are implemented
+- Mattermost: Rust-native outbound sends, slash-command and outgoing-webhook ingress, shared-token validation, user/channel allowlists, trigger-word stripping, bot-mention detection, threaded replies via `root_id`, REST-backed local file uploads from `file_references`, and local agent/session routing are implemented
 - iMessage: BlueBubbles/macOS direct send, BlueBubbles inbound webhook routing, tapbacks including normal channel-send reactions, group/participant metadata normalization, structured attachment metadata, and local agent/session routing are implemented; richer group/contact mapping still remains
 - Google Chat: direct webhook ingress plus Pub/Sub push-envelope decoding, token-backed or service-account outbound auth, response-mode gating, normalized space/user IDs, slash-command metadata plus mention capture, message ID plus body/thread/argument/slash/mention presence metadata, identity and event-time presence flags, derived display-name/action/attachment count and length metadata, card-click and space lifecycle routing, card/file-reference responses, structured attachment/file-reference metadata plus attachment-name/type/data-ref presence capture and attachment/file-reference counts, optional local attachment downloads with normalized `local_path` enrichment, and local agent/session routing are implemented for the shipped Google Chat workflow surface
 - Google Meet: native Rust operator integration now covers space creation/inspection, active-conference termination, conference-record/participant/recording/transcript inspection, and Google Workspace Events/Pub/Sub payload decoding with transcript hydration; add-on UI/runtime embedding remains a later track

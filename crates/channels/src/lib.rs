@@ -24,6 +24,7 @@ pub mod google_chat;
 pub mod google_meet;
 pub mod imessage;
 pub mod line;
+pub mod mattermost;
 pub mod matrix;
 pub mod meta;
 pub mod signal;
@@ -45,6 +46,7 @@ pub use google_chat::GoogleChatChannel;
 pub use google_meet::{DecodedGoogleMeetEvent, GoogleMeetClient, GoogleMeetWebhookHandler};
 pub use imessage::IMessageChannel;
 pub use line::LineChannel;
+pub use mattermost::{MattermostChannel, MattermostWebhookHandler};
 pub use matrix::MatrixChannel;
 pub use meta::MetaChannel;
 pub use signal::SignalChannel;
@@ -110,6 +112,14 @@ impl ChannelFactory {
             match Self::create_teams(config.teams.clone()) {
                 Ok(channel) => channels.push(Box::new(channel)),
                 Err(e) => tracing::error!("Failed to create Teams channel: {}", e),
+            }
+        }
+
+        if config.mattermost.enabled {
+            tracing::info!("Creating Mattermost channel");
+            match Self::create_mattermost(config.mattermost.clone()) {
+                Ok(channel) => channels.push(Box::new(channel)),
+                Err(e) => tracing::error!("Failed to create Mattermost channel: {}", e),
             }
         }
 
@@ -266,6 +276,25 @@ impl ChannelFactory {
             ));
         }
         Ok(TeamsChannel::new(config))
+    }
+
+    /// Create a Mattermost channel.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the configuration is invalid.
+    pub fn create_mattermost(
+        config: openrustclaw_core::config::MattermostConfig,
+    ) -> Result<MattermostChannel> {
+        if config.server_url.is_empty() || config.bot_token.is_empty() {
+            return Err(openrustclaw_core::error::Error::Channel(
+                ChannelError::Config {
+                    platform: "mattermost".to_string(),
+                    message: "server_url and bot_token are required".to_string(),
+                },
+            ));
+        }
+        Ok(MattermostChannel::new(config))
     }
 
     /// Create a Google Chat channel.
@@ -464,6 +493,8 @@ pub enum ChannelType {
     Slack,
     /// Microsoft Teams channel
     Teams,
+    /// Mattermost channel
+    Mattermost,
     /// Google Chat channel
     GoogleChat,
     /// WhatsApp channel
@@ -498,6 +529,7 @@ impl std::str::FromStr for ChannelType {
             "discord" => Ok(ChannelType::Discord),
             "slack" => Ok(ChannelType::Slack),
             "teams" | "microsoft_teams" => Ok(ChannelType::Teams),
+            "mattermost" => Ok(ChannelType::Mattermost),
             "googlechat" | "google_chat" => Ok(ChannelType::GoogleChat),
             "whatsapp" | "whats_app" => Ok(ChannelType::WhatsApp),
             "gmail" | "gmail_pubsub" => Ok(ChannelType::Gmail),
@@ -522,6 +554,7 @@ impl std::fmt::Display for ChannelType {
             ChannelType::Discord => write!(f, "discord"),
             ChannelType::Slack => write!(f, "slack"),
             ChannelType::Teams => write!(f, "teams"),
+            ChannelType::Mattermost => write!(f, "mattermost"),
             ChannelType::GoogleChat => write!(f, "google_chat"),
             ChannelType::WhatsApp => write!(f, "whatsapp"),
             ChannelType::Gmail => write!(f, "gmail"),
@@ -558,23 +591,24 @@ mod tests {
 
     #[test]
     fn test_parse_channels_list() {
-        let result = parse_channels_list("telegram,discord,slack,teams,google_chat,whatsapp,gmail,signal,matrix,imessage,line,viber,wechat,messenger,instagram").expect("valid channel list");
-        assert_eq!(result.len(), 15);
+        let result = parse_channels_list("telegram,discord,slack,teams,mattermost,google_chat,whatsapp,gmail,signal,matrix,imessage,line,viber,wechat,messenger,instagram").expect("valid channel list");
+        assert_eq!(result.len(), 16);
         assert_eq!(result[0], ChannelType::Telegram);
         assert_eq!(result[1], ChannelType::Discord);
         assert_eq!(result[2], ChannelType::Slack);
         assert_eq!(result[3], ChannelType::Teams);
-        assert_eq!(result[4], ChannelType::GoogleChat);
-        assert_eq!(result[5], ChannelType::WhatsApp);
-        assert_eq!(result[6], ChannelType::Gmail);
-        assert_eq!(result[7], ChannelType::Signal);
-        assert_eq!(result[8], ChannelType::Matrix);
-        assert_eq!(result[9], ChannelType::IMessage);
-        assert_eq!(result[10], ChannelType::Line);
-        assert_eq!(result[11], ChannelType::Viber);
-        assert_eq!(result[12], ChannelType::WeChat);
-        assert_eq!(result[13], ChannelType::Messenger);
-        assert_eq!(result[14], ChannelType::Instagram);
+        assert_eq!(result[4], ChannelType::Mattermost);
+        assert_eq!(result[5], ChannelType::GoogleChat);
+        assert_eq!(result[6], ChannelType::WhatsApp);
+        assert_eq!(result[7], ChannelType::Gmail);
+        assert_eq!(result[8], ChannelType::Signal);
+        assert_eq!(result[9], ChannelType::Matrix);
+        assert_eq!(result[10], ChannelType::IMessage);
+        assert_eq!(result[11], ChannelType::Line);
+        assert_eq!(result[12], ChannelType::Viber);
+        assert_eq!(result[13], ChannelType::WeChat);
+        assert_eq!(result[14], ChannelType::Messenger);
+        assert_eq!(result[15], ChannelType::Instagram);
     }
 
     #[test]
@@ -589,6 +623,7 @@ mod tests {
         assert_eq!(ChannelType::Discord.to_string(), "discord");
         assert_eq!(ChannelType::Slack.to_string(), "slack");
         assert_eq!(ChannelType::Teams.to_string(), "teams");
+        assert_eq!(ChannelType::Mattermost.to_string(), "mattermost");
         assert_eq!(ChannelType::GoogleChat.to_string(), "google_chat");
         assert_eq!(ChannelType::WhatsApp.to_string(), "whatsapp");
         assert_eq!(ChannelType::WebChat.to_string(), "webchat");

@@ -435,6 +435,7 @@ pub fn message_workspace_id(message: &IncomingMessage) -> Option<String> {
         "slack_team_id",
         "discord_guild_id",
         "teams_conversation_id",
+        "mattermost_team_id",
         "google_chat_space",
         "matrix_room_id",
         "telegram_chat_id",
@@ -454,6 +455,8 @@ pub fn message_channel_scope(message: &IncomingMessage) -> Option<String> {
         "discord_thread_id",
         "discord_channel_id",
         "teams_conversation_id",
+        "mattermost_root_id",
+        "mattermost_channel_id",
         "google_chat_thread",
         "google_chat_space",
         "matrix_thread_root",
@@ -514,6 +517,12 @@ pub fn message_is_group(message: &IncomingMessage) -> bool {
         return value;
     }
     if let Some(value) = metadata
+        .get("mattermost_is_group")
+        .and_then(|value| value.as_bool())
+    {
+        return value;
+    }
+    if let Some(value) = metadata
         .get("teams_is_group")
         .and_then(|value| value.as_bool())
     {
@@ -543,6 +552,7 @@ pub fn message_bot_mentioned(message: &IncomingMessage) -> bool {
         "whatsapp_bot_mentioned",
         "imessage_bot_mentioned",
         "signal_bot_mentioned",
+        "mattermost_bot_mentioned",
         "teams_bot_mentioned",
         "google_chat_bot_mentioned",
         "webchat_bot_mentioned",

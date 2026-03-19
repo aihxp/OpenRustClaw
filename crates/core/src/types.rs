@@ -188,6 +188,8 @@ pub enum Platform {
     WhatsApp,
     /// Microsoft Teams bot integration.
     Teams,
+    /// Mattermost bot integration.
+    Mattermost,
     /// Google Chat bot integration.
     GoogleChat,
     /// Gmail Pub/Sub integration.
@@ -738,6 +740,7 @@ impl std::fmt::Display for Platform {
             Platform::Discord => write!(f, "discord"),
             Platform::Slack => write!(f, "slack"),
             Platform::Teams => write!(f, "teams"),
+            Platform::Mattermost => write!(f, "mattermost"),
             Platform::GoogleChat => write!(f, "google_chat"),
             Platform::Gmail => write!(f, "gmail"),
             Platform::WhatsApp => write!(f, "whatsapp"),

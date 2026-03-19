@@ -132,6 +132,18 @@ rate_limit_requests_per_second = 10  # Teams outbound rate limit
 adaptive_cards_enabled = true  # Enable Adaptive Card responses
 attachment_download_dir = "./data/teams/downloads"  # Optional local download root for inbound attachments
 
+# Mattermost Bot Configuration
+[channels.mattermost]
+enabled = false
+server_url = ""  # Mattermost base URL, e.g. https://chat.example.com
+bot_token = ""  # Personal access token or bot token for API calls
+webhook_path = "/webhooks/mattermost"  # Slash command / outgoing webhook ingress path
+webhook_token = null  # Optional shared token for inbound request validation
+bot_username = null  # Optional bot username for mention detection
+allowlist = []  # Allowed user IDs or usernames (empty = allow all)
+allowed_channels = []  # Allowed channel IDs (empty = allow all)
+rate_limit_requests_per_second = 10
+
 # Signal Messenger Configuration
 [channels.signal]
 enabled = false
