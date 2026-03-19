@@ -889,6 +889,7 @@ impl GmailRuntime {
                     metadata: serde_json::json!({
                         "gmail_message_id": email.id,
                         "gmail_thread_id": email.thread_id,
+                        "gmail_history_id": email.history_id,
                         "gmail_subject": email.subject,
                         "gmail_from": email.from,
                         "gmail_from_domain": email.from_domain,
@@ -896,6 +897,7 @@ impl GmailRuntime {
                         "gmail_to_count": email.to.len(),
                         "gmail_cc": email.cc,
                         "gmail_cc_count": email.cc.len(),
+                        "gmail_has_cc": !email.cc.is_empty(),
                         "gmail_labels": email.labels,
                         "gmail_label_count": email.labels.len(),
                         "gmail_has_attachments": !email.attachments.is_empty(),
@@ -904,11 +906,14 @@ impl GmailRuntime {
                         "gmail_attachments": email.attachments,
                         "file_references": Self::attachment_file_references(&email),
                         "gmail_has_html_body": email.body_html.is_some(),
+                        "gmail_body_text_length": email.body_text.chars().count(),
                         "gmail_received_at": email.received_at.to_rfc3339(),
                         "gmail_is_unread": email.is_unread,
                         "gmail_message_id_header": email.message_id_header,
                         "gmail_references": email.references_header,
+                        "gmail_has_references": email.references_header.is_some(),
                         "gmail_in_reply_to": email.in_reply_to_header,
+                        "gmail_has_in_reply_to": email.in_reply_to_header.is_some(),
                     }),
                 };
 
@@ -1455,19 +1460,24 @@ mod tests {
         assert_eq!(incoming.user_id, "sender@example.com");
         assert_eq!(incoming.metadata["gmail_message_id"], "msg-1");
         assert_eq!(incoming.metadata["gmail_thread_id"], "thread-1");
+        assert_eq!(incoming.metadata["gmail_history_id"], 100);
         assert_eq!(incoming.metadata["gmail_to"][0], "user@example.com");
         assert_eq!(incoming.metadata["gmail_to_count"], 1);
         assert_eq!(incoming.metadata["gmail_cc"][0], "cc@example.com");
         assert_eq!(incoming.metadata["gmail_cc_count"], 1);
+        assert_eq!(incoming.metadata["gmail_has_cc"], true);
         assert_eq!(incoming.metadata["gmail_from_domain"], "example.com");
         assert_eq!(incoming.metadata["gmail_label_count"], 2);
         assert_eq!(incoming.metadata["gmail_is_unread"], true);
+        assert_eq!(incoming.metadata["gmail_body_text_length"], 16);
         assert_eq!(incoming.metadata["gmail_received_at"], "2024-03-09T16:00:00+00:00");
         assert_eq!(incoming.metadata["gmail_has_attachments"], true);
         assert_eq!(incoming.metadata["gmail_attachment_names"][0], "report.pdf");
         assert_eq!(incoming.metadata["gmail_message_id_header"], "<msg-1@example.com>");
         assert_eq!(incoming.metadata["gmail_references"], "<root@example.com>");
+        assert_eq!(incoming.metadata["gmail_has_references"], true);
         assert_eq!(incoming.metadata["gmail_in_reply_to"], "<root@example.com>");
+        assert_eq!(incoming.metadata["gmail_has_in_reply_to"], true);
         assert_eq!(incoming.metadata["gmail_attachment_count"], serde_json::json!(1));
         assert_eq!(
             incoming.metadata["file_references"][0]["url"],
