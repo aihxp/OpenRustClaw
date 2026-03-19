@@ -101,6 +101,7 @@ enabled = false
 token = ""  # Bot token from Discord Developer Portal
 application_id = ""  # Application ID for slash commands
 interaction_public_key = ""  # Public key for verified Discord Interactions ingress
+attachment_download_dir = "./data/discord/downloads"  # Optional local download root for inbound forwarded attachments
 rate_limit_requests_per_second = 5  # Discord global rate limit
 allowed_guilds = []  # List of allowed server IDs (empty = allow all)
 allowed_channels = []  # List of allowed channel IDs (empty = allow all)

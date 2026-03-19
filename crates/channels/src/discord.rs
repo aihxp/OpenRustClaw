@@ -12,6 +12,7 @@
 //! - Rate limiting
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::Instant;
@@ -169,6 +170,7 @@ impl DiscordChannel {
 
     async fn start_gateway_loop(&self, gateway_url: String) -> Result<()> {
         let config = self.config.clone();
+        let client = self.client.clone();
         let incoming_tx = self.incoming_tx.clone();
         let gateway_session = self.gateway_session.clone();
         let initial_stream = connect_async(&gateway_url)
@@ -203,6 +205,7 @@ impl DiscordChannel {
 
                 match run_gateway_loop(
                     stream,
+                    client.clone(),
                     config.clone(),
                     incoming_tx.clone(),
                     gateway_session.clone(),
@@ -573,6 +576,7 @@ impl Channel for DiscordChannel {
 
 async fn run_gateway_loop<S>(
     mut stream: tokio_tungstenite::WebSocketStream<S>,
+    client: Client,
     config: DiscordConfig,
     incoming_tx: mpsc::Sender<IncomingMessage>,
     gateway_session: Arc<RwLock<GatewaySessionState>>,
@@ -702,7 +706,7 @@ where
                                         platform: "discord".to_string(),
                                         message: format!("Failed to parse Discord message event: {}", e),
                                     })?;
-                                    if let Some(message) = normalize_gateway_message(&config, event)? {
+                                    if let Some(message) = normalize_gateway_message(&client, &config, event).await? {
                                         incoming_tx
                                             .send(message)
                                             .await
@@ -762,7 +766,65 @@ where
     }
 }
 
-fn normalize_gateway_message(
+fn sanitize_download_name(message_id: &str, filename: &str) -> String {
+    let message = message_id.replace(['/', '\\', ':'], "_");
+    let filename = filename.replace(['/', '\\'], "_");
+    format!("{}-{}", message, filename)
+}
+
+async fn download_discord_attachment(
+    client: &Client,
+    download_dir: &PathBuf,
+    message_id: &str,
+    attachment: &serde_json::Value,
+) -> Result<Option<String>> {
+    let Some(url) = attachment.get("url").and_then(|value| value.as_str()) else {
+        return Ok(None);
+    };
+    let filename = attachment
+        .get("filename")
+        .and_then(|value| value.as_str())
+        .unwrap_or("attachment");
+    if !download_dir.exists() {
+        tokio::fs::create_dir_all(download_dir)
+            .await
+            .map_err(|e| ChannelError::SendFailed {
+                platform: "discord".to_string(),
+                message: format!("Failed to create Discord attachment download directory: {}", e),
+            })?;
+    }
+    let path = download_dir.join(sanitize_download_name(message_id, filename));
+    let response = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| ChannelError::SendFailed {
+            platform: "discord".to_string(),
+            message: format!("Failed to download Discord attachment: {}", e),
+        })?;
+    if !response.status().is_success() {
+        let body = response.text().await.unwrap_or_default();
+        return Err(ChannelError::SendFailed {
+            platform: "discord".to_string(),
+            message: format!("Discord attachment download failed: {}", body),
+        }
+        .into());
+    }
+    let bytes = response.bytes().await.map_err(|e| ChannelError::SendFailed {
+        platform: "discord".to_string(),
+        message: format!("Failed to read Discord attachment download: {}", e),
+    })?;
+    tokio::fs::write(&path, &bytes)
+        .await
+        .map_err(|e| ChannelError::SendFailed {
+            platform: "discord".to_string(),
+            message: format!("Failed to persist Discord attachment download: {}", e),
+        })?;
+    Ok(Some(path.display().to_string()))
+}
+
+async fn normalize_gateway_message(
+    client: &Client,
     config: &DiscordConfig,
     event: GatewayMessageCreate,
 ) -> Result<Option<IncomingMessage>> {
@@ -816,28 +878,49 @@ fn normalize_gateway_message(
                 .collect::<Vec<_>>()
         );
         metadata["discord_forwarded_attachment_count"] = serde_json::json!(event.attachments.len());
-        metadata["file_references"] = serde_json::json!(
-            event
-                .attachments
-                .iter()
-                .filter_map(|attachment| {
-                    let url = attachment.get("url").and_then(|value| value.as_str())?;
-                    let mut reference = serde_json::json!({ "url": url });
-                    if let Some(name) = attachment.get("filename").and_then(|value| value.as_str())
-                    {
-                        reference["name"] = serde_json::json!(name);
-                        reference["title"] = serde_json::json!(name);
+        let mut download_paths = Vec::new();
+        let mut references = Vec::new();
+        let download_dir = config
+            .attachment_download_dir
+            .as_ref()
+            .filter(|value| !value.trim().is_empty())
+            .map(PathBuf::from);
+        for attachment in &event.attachments {
+            let Some(url) = attachment.get("url").and_then(|value| value.as_str()) else {
+                continue;
+            };
+            let mut reference = serde_json::json!({ "url": url });
+            if let Some(name) = attachment.get("filename").and_then(|value| value.as_str()) {
+                reference["name"] = serde_json::json!(name);
+                reference["title"] = serde_json::json!(name);
+            }
+            if let Some(content_type) = attachment
+                .get("content_type")
+                .and_then(|value| value.as_str())
+            {
+                reference["content_type"] = serde_json::json!(content_type);
+            }
+            if let Some(download_dir) = download_dir.as_ref() {
+                match download_discord_attachment(client, download_dir, &event.id, attachment).await
+                {
+                    Ok(Some(path)) => {
+                        reference["local_path"] = serde_json::json!(path);
+                        download_paths.push(path);
                     }
-                    if let Some(content_type) = attachment
-                        .get("content_type")
-                        .and_then(|value| value.as_str())
-                    {
-                        reference["content_type"] = serde_json::json!(content_type);
+                    Ok(None) => {}
+                    Err(error) => {
+                        warn!(error = %error, message_id = %event.id, "Failed to download Discord attachment");
                     }
-                    Some(reference)
-                })
-                .collect::<Vec<_>>()
-        );
+                }
+            }
+            references.push(reference);
+        }
+        metadata["file_references"] = serde_json::json!(references);
+        if !download_paths.is_empty() {
+            metadata["discord_download_paths"] = serde_json::json!(download_paths);
+            metadata["discord_downloaded_attachment_count"] =
+                serde_json::json!(download_paths.len());
+        }
     }
     if let Some(guild_id) = event.guild_id {
         metadata["discord_guild_id"] = serde_json::json!(guild_id);
@@ -1555,6 +1638,7 @@ mod tests {
             application_id: "app-1".to_string(),
             interaction_public_key: None,
             api_base_url: Some(server.uri()),
+            attachment_download_dir: None,
             rate_limit_requests_per_second: 5,
             allowed_guilds: vec![],
             allowed_channels: vec![],
@@ -1608,6 +1692,7 @@ mod tests {
             application_id: "app-1".to_string(),
             interaction_public_key: None,
             api_base_url: Some(server.uri()),
+            attachment_download_dir: None,
             rate_limit_requests_per_second: 5,
             allowed_guilds: vec![],
             allowed_channels: vec![],
@@ -1653,6 +1738,7 @@ mod tests {
             application_id: "app-1".to_string(),
             interaction_public_key: None,
             api_base_url: Some(server.uri()),
+            attachment_download_dir: None,
             rate_limit_requests_per_second: 5,
             allowed_guilds: vec![],
             allowed_channels: vec![],
@@ -1679,6 +1765,13 @@ mod tests {
         use wiremock::matchers::{header, method, path};
         use wiremock::{Mock, MockServer, ResponseTemplate};
 
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/files/file-1"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(b"discord-file".to_vec()))
+            .mount(&server)
+            .await;
+
         let gateway_url = spawn_mock_gateway(Some(serde_json::json!({
             "op": 0,
             "t": "MESSAGE_CREATE",
@@ -1695,7 +1788,7 @@ mod tests {
                 },
                 "attachments": [{
                     "id":"attachment-1",
-                    "url":"https://cdn.example.com/file-1",
+                    "url": format!("{}/files/file-1", server.uri()),
                     "filename":"report.pdf",
                     "content_type":"application/pdf"
                 }],
@@ -1709,7 +1802,6 @@ mod tests {
         })))
         .await;
 
-        let server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/users/@me"))
             .and(header("authorization", "Bot token"))
@@ -1734,11 +1826,18 @@ mod tests {
             application_id: "app-1".to_string(),
             interaction_public_key: None,
             api_base_url: Some(server.uri()),
+            attachment_download_dir: Some(
+                std::env::temp_dir()
+                    .join(format!("orc-discord-downloads-{}", Uuid::new_v4()))
+                    .display()
+                    .to_string(),
+            ),
             rate_limit_requests_per_second: 5,
             allowed_guilds: vec![],
             allowed_channels: vec![],
             dm_enabled: true,
         };
+        let download_dir = PathBuf::from(config.attachment_download_dir.clone().unwrap());
         let mut channel = DiscordChannel::new(config);
         channel.connect().await.unwrap();
         let incoming = channel.receive().await.unwrap();
@@ -1755,12 +1854,23 @@ mod tests {
         assert_eq!(incoming.metadata["discord_forwarded_attachment_count"], 1);
         assert_eq!(
             incoming.metadata["discord_attachment_urls"][0],
-            "https://cdn.example.com/file-1"
+            serde_json::json!(format!("{}/files/file-1", server.uri()))
         );
         assert_eq!(
             incoming.metadata["file_references"][0]["name"],
             "report.pdf"
         );
+        assert_eq!(
+            incoming.metadata["discord_downloaded_attachment_count"],
+            serde_json::json!(1)
+        );
+        let downloaded_path = incoming.metadata["discord_download_paths"][0]
+            .as_str()
+            .expect("download path");
+        let bytes = tokio::fs::read(downloaded_path).await.expect("downloaded bytes");
+        assert_eq!(bytes, b"discord-file");
+        let _ = tokio::fs::remove_file(downloaded_path).await;
+        let _ = tokio::fs::remove_dir_all(download_dir).await;
         assert_eq!(incoming.metadata["discord_embed_count"], 1);
         assert_eq!(
             incoming.metadata["discord_timestamp"],
@@ -1772,12 +1882,14 @@ mod tests {
     #[tokio::test]
     async fn test_gateway_ignores_webhook_and_self_authored_messages() {
         let ignored_webhook = normalize_gateway_message(
+            &Client::new(),
             &DiscordConfig {
                 enabled: true,
                 token: "token".to_string(),
                 application_id: "app-1".to_string(),
                 interaction_public_key: None,
                 api_base_url: None,
+                attachment_download_dir: None,
                 rate_limit_requests_per_second: 5,
                 allowed_guilds: vec![],
                 allowed_channels: vec![],
@@ -1803,16 +1915,19 @@ mod tests {
                 },
             },
         )
+        .await
         .unwrap();
         assert!(ignored_webhook.is_none());
 
         let ignored_self = normalize_gateway_message(
+            &Client::new(),
             &DiscordConfig {
                 enabled: true,
                 token: "token".to_string(),
                 application_id: "app-1".to_string(),
                 interaction_public_key: None,
                 api_base_url: None,
+                attachment_download_dir: None,
                 rate_limit_requests_per_second: 5,
                 allowed_guilds: vec![],
                 allowed_channels: vec![],
@@ -1838,6 +1953,7 @@ mod tests {
                 },
             },
         )
+        .await
         .unwrap();
         assert!(ignored_self.is_none());
     }
@@ -1908,6 +2024,7 @@ mod tests {
             application_id: "app-1".to_string(),
             interaction_public_key: None,
             api_base_url: Some(server.uri()),
+            attachment_download_dir: None,
             rate_limit_requests_per_second: 5,
             allowed_guilds: vec![],
             allowed_channels: vec![],
@@ -1994,6 +2111,7 @@ mod tests {
             application_id: "app-1".to_string(),
             interaction_public_key: None,
             api_base_url: Some(server.uri()),
+            attachment_download_dir: None,
             rate_limit_requests_per_second: 5,
             allowed_guilds: vec![],
             allowed_channels: vec![],
@@ -2061,6 +2179,7 @@ mod tests {
             application_id: "app-1".to_string(),
             interaction_public_key: None,
             api_base_url: Some(server.uri()),
+            attachment_download_dir: None,
             rate_limit_requests_per_second: 5,
             allowed_guilds: vec![],
             allowed_channels: vec![],
@@ -2125,6 +2244,7 @@ mod tests {
             application_id: "app-1".to_string(),
             interaction_public_key: None,
             api_base_url: Some(server.uri()),
+            attachment_download_dir: None,
             rate_limit_requests_per_second: 5,
             allowed_guilds: vec![],
             allowed_channels: vec![],
@@ -2152,6 +2272,7 @@ mod tests {
             application_id: "app-1".to_string(),
             interaction_public_key: Some(hex::encode(verifying_key.to_bytes())),
             api_base_url: None,
+            attachment_download_dir: None,
             rate_limit_requests_per_second: 5,
             allowed_guilds: vec![],
             allowed_channels: vec![],

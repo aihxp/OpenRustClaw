@@ -17,6 +17,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
+use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
 use governor::{Quota, RateLimiter};
 use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
 use std::num::NonZeroU32;
@@ -152,6 +153,23 @@ struct ServiceAccountClaims {
     aud: String,
     exp: i64,
     iat: i64,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+struct PubSubPushEnvelope {
+    message: PubSubPushMessage,
+    #[serde(default)]
+    subscription: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+struct PubSubPushMessage {
+    data: String,
+    #[serde(rename = "messageId")]
+    #[allow(dead_code)]
+    message_id: Option<String>,
+    #[serde(default)]
+    attributes: Option<std::collections::HashMap<String, String>>,
 }
 
 /// Incoming Google Chat event.
@@ -607,6 +625,51 @@ impl GoogleChatChannel {
                 .into()
             })
     }
+
+    fn decode_pubsub_event_body(
+        raw_body: &[u8],
+    ) -> Result<(serde_json::Value, Option<String>)> {
+        let outer_value: serde_json::Value =
+            serde_json::from_slice(raw_body).map_err(|e| ChannelError::InvalidFormat {
+                platform: "google_chat".to_string(),
+                message: format!("Failed to parse raw event: {}", e),
+            })?;
+
+        if outer_value.get("message").is_none() {
+            return Ok((outer_value, None));
+        }
+
+        let envelope: PubSubPushEnvelope =
+            serde_json::from_value(outer_value).map_err(|e| ChannelError::InvalidFormat {
+                platform: "google_chat".to_string(),
+                message: format!("Failed to parse Google Chat Pub/Sub envelope: {}", e),
+            })?;
+
+        let decoded = BASE64
+            .decode(envelope.message.data.as_bytes())
+            .map_err(|e| ChannelError::InvalidFormat {
+                platform: "google_chat".to_string(),
+                message: format!("Failed to decode Google Chat Pub/Sub payload: {}", e),
+            })?;
+
+        let inner_value: serde_json::Value =
+            serde_json::from_slice(&decoded).map_err(|e| ChannelError::InvalidFormat {
+                platform: "google_chat".to_string(),
+                message: format!("Failed to parse decoded Google Chat Pub/Sub payload: {}", e),
+            })?;
+
+        let subscription = envelope
+            .subscription
+            .or_else(|| {
+                envelope
+                    .message
+                    .attributes
+                    .as_ref()
+                    .and_then(|attrs| attrs.get("subscription").cloned())
+            });
+
+        Ok((inner_value, subscription))
+    }
 }
 
 #[async_trait]
@@ -779,9 +842,14 @@ impl Channel for GoogleChatChannel {
         // 3. Handle events: MESSAGE, CARD_CLICKED, SLASH_COMMAND
 
         if self.config.pubsub_subscription.is_some() {
-            warn!(
-                "Google Chat Pub/Sub receive loop is not implemented yet; outbound configuration loaded only"
+            info!(
+                "Google Chat Pub/Sub push mode enabled - webhook ingress can decode Pub/Sub envelopes"
             );
+            if self.config.webhook_url.is_none() {
+                warn!(
+                    "Google Chat Pub/Sub subscription is configured without webhook_url; ensure Pub/Sub push targets /webhooks/google-chat/events"
+                );
+            }
         } else if self.config.webhook_url.is_some() {
             info!("Google Chat HTTP webhook mode - events will be received via webhooks");
         } else {
@@ -852,16 +920,20 @@ impl GoogleChatWebhookHandler {
     /// This should be called by your HTTP server when a webhook is received
     /// from Google Chat.
     pub async fn handle_event(&self, body: &[u8]) -> Result<Option<serde_json::Value>> {
-        let raw_event: serde_json::Value =
-            serde_json::from_slice(body).map_err(|e| ChannelError::InvalidFormat {
-                platform: "google_chat".to_string(),
-                message: format!("Failed to parse raw event: {}", e),
-            })?;
+        let (raw_event, pubsub_subscription) = GoogleChatChannel::decode_pubsub_event_body(body)?;
         let event: ChatEvent =
             serde_json::from_value(raw_event.clone()).map_err(|e| ChannelError::InvalidFormat {
                 platform: "google_chat".to_string(),
                 message: format!("Failed to parse event: {}", e),
             })?;
+
+        if let Some(subscription) = pubsub_subscription.as_ref() {
+            debug!(
+                subscription = %subscription,
+                event_type = %event.event_type,
+                "Decoded Google Chat Pub/Sub push envelope"
+            );
+        }
 
         // Handle different event types
         match event.event_type.as_str() {
@@ -1399,5 +1471,56 @@ mod tests {
             incoming.metadata["google_chat_interaction_type"],
             serde_json::json!("ADDED_TO_SPACE")
         );
+    }
+
+    #[tokio::test]
+    async fn test_handle_pubsub_wrapped_message_event() {
+        let (tx, mut rx) = mpsc::channel(4);
+        let handler = GoogleChatWebhookHandler::new(
+            GoogleChatConfig {
+                enabled: true,
+                service_account_key: String::new(),
+                project_id: String::new(),
+                webhook_url: Some("https://example.com/webhooks/google-chat/events".to_string()),
+                pubsub_subscription: Some("projects/demo/subscriptions/google-chat".to_string()),
+                allowlist: vec![],
+                allowed_spaces: vec![],
+                rate_limit_requests_per_second: 10,
+                cards_enabled: true,
+                response_mode: GoogleChatResponseMode::Open,
+            },
+            tx,
+        );
+
+        let inner = serde_json::json!({
+            "type": "MESSAGE",
+            "eventTime": "2024-01-01T00:00:00Z",
+            "space": {"name": "spaces/AAA", "type": "ROOM", "displayName": "Ops"},
+            "user": {"name": "users/123", "displayName": "Alice", "email": "alice@example.com"},
+            "message": {
+                "name": "spaces/AAA/messages/1",
+                "text": "hello from pubsub"
+            }
+        });
+        let outer = serde_json::json!({
+            "subscription": "projects/demo/subscriptions/google-chat",
+            "message": {
+                "data": BASE64.encode(inner.to_string()),
+                "messageId": "msg-1",
+                "attributes": {
+                    "subscription": "projects/demo/subscriptions/google-chat"
+                }
+            }
+        });
+
+        handler
+            .handle_event(outer.to_string().as_bytes())
+            .await
+            .expect("pubsub event");
+
+        let incoming = rx.recv().await.expect("incoming message");
+        assert_eq!(incoming.content, "hello from pubsub");
+        assert_eq!(incoming.platform, Platform::GoogleChat);
+        assert_eq!(incoming.metadata["google_chat_space"], "spaces/AAA");
     }
 }

@@ -653,7 +653,7 @@ Still remaining for deeper parity:
 - [x] Extend the shipped registry/operator surfaces into Control UI parity.
 - [ ] Implement higher-fidelity channel UX parity where it materially affects operator experience:
   - [x] Telegram forum topic lifecycle/admin actions,
-  - Discord forwarded-attachment downloads beyond metadata/file-reference capture,
+  - [x] Discord forwarded-attachment downloads beyond metadata/file-reference capture,
   - [x] Slack draft-stream replies.
 - [ ] Implement media in/out parity per channel:
   - attachment downloads and platform-native uploads where current support is still reference-based,
@@ -676,7 +676,7 @@ Channel completion remaining:
   - contact/group mapping.
 - [ ] Mattermost parity via Rust-native plugin/channel implementation.
 - [ ] Google Chat parity.
-  - current shipped path covers webhook ingress, token or service-account outbound auth, response-mode gating, slash-command metadata capture, card-click and space lifecycle routing, file-reference cards, attachment metadata capture, and local agent/session routing;
+  - current shipped path covers direct webhook ingress plus Pub/Sub push-envelope decoding, token or service-account outbound auth, response-mode gating, slash-command metadata capture, card-click and space lifecycle routing, file-reference cards, attachment metadata capture, and local agent/session routing;
   - richer operator/media parity still remains.
 - [ ] Google Meet parity.
   - current shipped Rust operator path covers space creation/inspection, active-conference termination, conference-record/participant/recording/transcript inspection, and Google Workspace Events / Pub/Sub payload decoding with transcript hydration;

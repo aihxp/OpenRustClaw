@@ -291,6 +291,8 @@ pub struct DiscordConfig {
     pub interaction_public_key: Option<String>,
     #[serde(default)]
     pub api_base_url: Option<String>,
+    #[serde(default)]
+    pub attachment_download_dir: Option<String>,
     pub rate_limit_requests_per_second: u32,
     pub allowed_guilds: Vec<String>,
     pub allowed_channels: Vec<String>,
@@ -851,6 +853,7 @@ impl Default for AppConfig {
                     application_id: String::new(),
                     interaction_public_key: None,
                     api_base_url: None,
+                    attachment_download_dir: None,
                     rate_limit_requests_per_second: 5,
                     allowed_guilds: Vec::new(),
                     allowed_channels: Vec::new(),
