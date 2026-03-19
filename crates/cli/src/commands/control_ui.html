@@ -302,7 +302,7 @@
       <section class="hero">
         <div class="hero-card">
           <div class="eyebrow">OpenRustClaw Control UI</div>
-          <h1>Runtime, services, channels, orchestration, and browser control.</h1>
+          <h1>Runtime, services, sessions, memory, jobs, channels, orchestration, and browser control.</h1>
           <p>
             This dashboard reuses the shipped <code>/control/...</code> APIs instead of inventing
             a separate frontend-only state model. It is the Phase 6 UI shell, not the final parity
@@ -403,6 +403,65 @@
         </article>
 
         <article class="panel span-6">
+          <h2>Sessions</h2>
+          <div class="surface">
+            <table class="table">
+              <thead>
+                <tr><th>Status</th><th>User</th><th>Channel</th><th>Inspect</th></tr>
+              </thead>
+              <tbody id="sessions-table"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </article>
+        <article class="panel span-6">
+          <h2>Session Detail</h2>
+          <div class="surface"><pre id="session-detail">Select a session to inspect.</pre></div>
+        </article>
+
+        <article class="panel span-4">
+          <h2>Memory Namespaces</h2>
+          <div class="surface"><pre id="memory-namespaces">Loading…</pre></div>
+        </article>
+        <article class="panel span-8">
+          <h2>Memory Timeline</h2>
+          <div class="surface">
+            <table class="table">
+              <thead>
+                <tr><th>When</th><th>Type</th><th>Namespace</th><th>Content</th></tr>
+              </thead>
+              <tbody id="memory-timeline"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </article>
+        <article class="panel span-12">
+          <h2>Memory Archive</h2>
+          <div class="surface">
+            <table class="table">
+              <thead>
+                <tr><th>When</th><th>Namespace</th><th>Id</th><th>Summary</th></tr>
+              </thead>
+              <tbody id="memory-archive"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="panel span-6">
+          <h2>Scheduled Jobs</h2>
+          <div class="surface">
+            <table class="table">
+              <thead>
+                <tr><th>State</th><th>Name</th><th>Priority</th><th>Inspect</th></tr>
+              </thead>
+              <tbody id="jobs-table"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </article>
+        <article class="panel span-6">
+          <h2>Job Detail</h2>
+          <div class="surface"><pre id="job-detail">Select a scheduled job to inspect.</pre></div>
+        </article>
+
+        <article class="panel span-6">
           <h2>Diagnostics Stream</h2>
           <div class="surface"><pre id="diagnostics-report">Waiting for the first diagnostics frame…</pre></div>
         </article>
@@ -488,6 +547,83 @@
         renderTableRows("channels-table", rows, "No channel accounts registered.");
       }
 
+      async function loadSessions() {
+        const payload = await fetchJson("/control/sessions?limit=12");
+        const sessions = payload.sessions || [];
+        const rows = sessions.map((session) => {
+          const s = session.session || {};
+          return `<tr>
+            <td>${session.status || "-"}</td>
+            <td><strong>${s.user_id || "-"}</strong><div class="muted">${s.id || "-"}</div></td>
+            <td>${s.channel || "-"}</td>
+            <td><button class="secondary" onclick="inspectSession('${s.id}')">Inspect</button></td>
+          </tr>`;
+        });
+        renderTableRows("sessions-table", rows, "No sessions recorded yet.");
+        if (sessions.length) {
+          await inspectSession(sessions[0].session.id);
+        } else {
+          setText("session-detail", "No session selected.");
+        }
+      }
+
+      async function inspectSession(id) {
+        const payload = await fetchJson(`/control/sessions/${encodeURIComponent(id)}?history_limit=25`);
+        setText("session-detail", payload);
+      }
+
+      async function loadMemory() {
+        const [namespaces, timeline, archive] = await Promise.all([
+          fetchJson("/control/memory/namespaces"),
+          fetchJson("/control/memory/timeline?limit=12"),
+          fetchJson("/control/memory/archive?limit=12"),
+        ]);
+        setText("memory-namespaces", namespaces);
+        const timelineRows = (timeline.entries || []).map((entry) => {
+          return `<tr>
+            <td>${entry.created_at || "-"}</td>
+            <td>${entry.memory_type || "-"}</td>
+            <td>${entry.namespace || "-"}</td>
+            <td>${(entry.content || "").slice(0, 120)}</td>
+          </tr>`;
+        });
+        renderTableRows("memory-timeline", timelineRows, "No recent memory entries.");
+
+        const archiveRows = (archive.entries || []).map((entry) => {
+          return `<tr>
+            <td>${entry.created_at || "-"}</td>
+            <td>${entry.namespace || "-"}</td>
+            <td>${entry.id || "-"}</td>
+            <td>${(entry.summary || "").slice(0, 160)}</td>
+          </tr>`;
+        });
+        renderTableRows("memory-archive", archiveRows, "No archive summaries yet.");
+      }
+
+      async function loadJobs() {
+        const payload = await fetchJson("/control/jobs?limit=12");
+        const jobs = payload.jobs || [];
+        const rows = jobs.map((job) => {
+          return `<tr>
+            <td>${job.state || "-"}</td>
+            <td><strong>${job.name || "-"}</strong><div class="muted">${job.id || "-"}</div></td>
+            <td>${job.priority ?? "-"}</td>
+            <td><button class="secondary" onclick="inspectJob('${job.id}')">Inspect</button></td>
+          </tr>`;
+        });
+        renderTableRows("jobs-table", rows, "No scheduled jobs configured.");
+        if (jobs.length) {
+          await inspectJob(jobs[0].id);
+        } else {
+          setText("job-detail", "No scheduled job selected.");
+        }
+      }
+
+      async function inspectJob(id) {
+        const payload = await fetchJson(`/control/jobs/${encodeURIComponent(id)}?run_limit=10&dead_letter_limit=10`);
+        setText("job-detail", payload);
+      }
+
       async function loadOrchestrationRuns() {
         const payload = await fetchJson("/control/orchestration/runs");
         const rows = (payload.runs || []).map((run) => {
@@ -534,6 +670,9 @@
             loadRuntime(),
             loadSchedulerStatus(),
             loadChannels(),
+            loadSessions(),
+            loadMemory(),
+            loadJobs(),
             loadOrchestrationRuns(),
             loadBrowserArtifacts(),
             loadRuntimeEvents(),

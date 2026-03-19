@@ -73,7 +73,7 @@ use super::channels::{
     ChannelBindingSpec, ChannelRegistry, ChannelSendPolicy, ensure_account_manifest,
     identity_from_message, load_registry, message_bot_mentioned, resolve_root,
 };
-use super::{browser, control, control_ui, doctor, orchestrate, runtime, services};
+use super::{browser, control, control_ui, doctor, inspect, orchestrate, runtime, services};
 
 /// Run the start command - load config, optionally start the compatibility/experimental sidecar, and start the gateway.
 pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
@@ -2452,6 +2452,22 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             "/control/services/runtime-events",
             get(service_runtime_events_handler),
         )
+        .route("/control/sessions", get(control_sessions_handler))
+        .route("/control/sessions/{id}", get(control_session_handler))
+        .route(
+            "/control/memory/namespaces",
+            get(control_memory_namespaces_handler),
+        )
+        .route(
+            "/control/memory/timeline",
+            get(control_memory_timeline_handler),
+        )
+        .route(
+            "/control/memory/archive",
+            get(control_memory_archive_handler),
+        )
+        .route("/control/jobs", get(control_jobs_handler))
+        .route("/control/jobs/{id}", get(control_job_handler))
         .route(
             "/control/browser/screenshot",
             post(browser_screenshot_handler),
@@ -2961,6 +2977,44 @@ struct ListLimitQuery {
     name: Option<String>,
 }
 
+#[derive(serde::Deserialize, Default)]
+struct SessionListQuery {
+    #[serde(default)]
+    status: Option<String>,
+    #[serde(default)]
+    limit: Option<usize>,
+}
+
+#[derive(serde::Deserialize, Default)]
+struct SessionInspectQuery {
+    #[serde(default)]
+    history_limit: Option<usize>,
+}
+
+#[derive(serde::Deserialize, Default)]
+struct MemoryListQuery {
+    #[serde(default)]
+    namespace: Option<String>,
+    #[serde(default)]
+    limit: Option<usize>,
+}
+
+#[derive(serde::Deserialize, Default)]
+struct JobsListQuery {
+    #[serde(default)]
+    state: Option<String>,
+    #[serde(default)]
+    limit: Option<usize>,
+}
+
+#[derive(serde::Deserialize, Default)]
+struct JobInspectQuery {
+    #[serde(default)]
+    run_limit: Option<usize>,
+    #[serde(default)]
+    dead_letter_limit: Option<usize>,
+}
+
 #[derive(serde::Deserialize)]
 struct OrchestrationRequestPayload {
     prompt: Option<String>,
@@ -3343,6 +3397,162 @@ async fn service_runtime_events_handler(
             Json(serde_json::json!({ "events": events })),
         )
             .into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn control_sessions_handler(
+    State(state): State<RuntimeControlState>,
+    Query(query): Query<SessionListQuery>,
+) -> impl IntoResponse {
+    match inspect::list_sessions(
+        &state.pool,
+        query.status.as_deref(),
+        query.limit.unwrap_or(20),
+    )
+    .await
+    {
+        Ok(sessions) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "sessions": sessions })),
+        )
+            .into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn control_session_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(id): AxumPath<String>,
+    Query(query): Query<SessionInspectQuery>,
+) -> impl IntoResponse {
+    match inspect::inspect_session(&state.pool, &id, query.history_limit.unwrap_or(50)).await {
+        Ok(report) => {
+            if report.session.is_none() {
+                return (
+                    StatusCode::NOT_FOUND,
+                    Json(serde_json::json!({"error": "session not found"})),
+                )
+                    .into_response();
+            }
+            (StatusCode::OK, Json(serde_json::json!(report))).into_response()
+        }
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn control_memory_namespaces_handler(
+    State(state): State<RuntimeControlState>,
+) -> impl IntoResponse {
+    match inspect::memory_namespaces(&state.memory_store).await {
+        Ok(namespaces) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "namespaces": namespaces })),
+        )
+            .into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn control_memory_timeline_handler(
+    State(state): State<RuntimeControlState>,
+    Query(query): Query<MemoryListQuery>,
+) -> impl IntoResponse {
+    match inspect::memory_timeline(
+        &state.memory_store,
+        query.namespace.as_deref(),
+        query.limit.unwrap_or(20),
+    )
+    .await
+    {
+        Ok(report) => (StatusCode::OK, Json(serde_json::json!(report))).into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn control_memory_archive_handler(
+    State(state): State<RuntimeControlState>,
+    Query(query): Query<MemoryListQuery>,
+) -> impl IntoResponse {
+    match inspect::memory_archive(
+        &state.memory_store,
+        query.namespace.as_deref(),
+        query.limit.unwrap_or(20),
+    )
+    .await
+    {
+        Ok(report) => (StatusCode::OK, Json(serde_json::json!(report))).into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn control_jobs_handler(
+    State(state): State<RuntimeControlState>,
+    Query(query): Query<JobsListQuery>,
+) -> impl IntoResponse {
+    match inspect::list_jobs(
+        &state.pool,
+        query.state.as_deref(),
+        query.limit.unwrap_or(20),
+    )
+    .await
+    {
+        Ok(jobs) => (StatusCode::OK, Json(serde_json::json!({ "jobs": jobs }))).into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn control_job_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(id): AxumPath<String>,
+    Query(query): Query<JobInspectQuery>,
+) -> impl IntoResponse {
+    match inspect::inspect_job(
+        &state.pool,
+        &id,
+        query.run_limit.unwrap_or(10),
+        query.dead_letter_limit.unwrap_or(10),
+    )
+    .await
+    {
+        Ok(report) => {
+            if report.job.is_none() {
+                return (
+                    StatusCode::NOT_FOUND,
+                    Json(serde_json::json!({"error": "job not found"})),
+                )
+                    .into_response();
+            }
+            (StatusCode::OK, Json(serde_json::json!(report))).into_response()
+        }
         Err(error) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({"error": error.to_string()})),

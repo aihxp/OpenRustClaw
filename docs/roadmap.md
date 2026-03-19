@@ -705,7 +705,7 @@ Exit criteria:
 
 Goal: match OpenClaw's operator UX and tooling surface while keeping Rust-native interfaces.
 
-Status: complete for shipped CLI/MCP control-plane surfaces, shared typed control/config/diagnostics APIs, shared service-status and scheduler inspection APIs, channel account CRUD parity, encrypted runtime secret-vault support, validated provider/model switching, runtime reload/cutover APIs with rollback, bounded routed/orchestrated multi-model execution surfaces with receipt capture, onboarding scaffolding, doctor validation, a bounded native browser operator slice, and an initial Web Control UI shell; deeper Web Control UI parity, richer browser/web tooling, deeper channel/service probes, and full orchestrated runtime execution remain open.
+Status: complete for shipped CLI/MCP control-plane surfaces, shared typed control/config/diagnostics APIs, shared service-status and scheduler inspection APIs, shared session/memory/job inspection APIs, channel account CRUD parity, encrypted runtime secret-vault support, validated provider/model switching, runtime reload/cutover APIs with rollback, bounded routed/orchestrated multi-model execution surfaces with receipt capture, onboarding scaffolding, doctor validation, a bounded native browser operator slice, and an initial Web Control UI shell; deeper Web Control UI parity, richer browser/web tooling, deeper channel/service probes, and full orchestrated runtime execution remain open.
 
 Additional later-surface work:
 
@@ -808,6 +808,15 @@ Completed:
   - `GET /control/services/scheduler`,
   - `GET /control/services/runtime-events`,
   - service-status, scheduler-health, and recent-runtime-events panels in `/control/ui`.
+- [x] Add shipped session, memory, and scheduled-job inspection surfaces for shared HTTP/UI parity:
+  - `GET /control/sessions`,
+  - `GET /control/sessions/{id}`,
+  - `GET /control/memory/namespaces`,
+  - `GET /control/memory/timeline`,
+  - `GET /control/memory/archive`,
+  - `GET /control/jobs`,
+  - `GET /control/jobs/{id}`,
+  - `/control/ui` panels for sessions, memory namespaces/timeline/archive, and scheduled-job inspection.
 
 Remaining:
 
@@ -1026,16 +1035,17 @@ Remaining:
     - regression suites for dynamic sites.
 - [ ] Build the Web Control UI with parity for:
   - [x] initial dashboard shell for runtime/config/channels/orchestration/browser inspection
+  - [x] sessions inspection
+  - [x] memory inspection
+  - [x] scheduled jobs inspection
+  - [x] channel account inspection
+  - [x] service-status inspection
   - live chat,
   - configuration,
-  - sessions,
-  - memory inspection,
-  - scheduled jobs,
   - nodes,
-  - channel accounts,
   - logs,
   - extensions/plugins,
-  - secrets/service status.
+  - secret editing and richer vault workflows.
 - [ ] Finish onboarding parity beyond the shipped scaffold:
   - QuickStart vs Advanced path selection,
   - local gateway vs remote gateway/client mode,
