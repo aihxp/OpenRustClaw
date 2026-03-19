@@ -5,6 +5,7 @@
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use tokio::process::Command;
 use tokio::sync::{Mutex, RwLock, mpsc};
 use tracing::{debug, info};
@@ -100,20 +101,135 @@ impl IMessageChannel {
             .or(payload.handle.last_name.clone())
             .unwrap_or_else(|| payload.handle.address.clone());
 
+        let participant_addresses: Vec<String> = payload
+            .participants
+            .as_deref()
+            .map(Self::participant_addresses)
+            .unwrap_or_default();
+        let is_group = payload
+            .is_group
+            .unwrap_or_else(|| !participant_addresses.is_empty() && participant_addresses.len() > 1);
+        let chat_display_name = payload
+            .chat_display_name
+            .clone()
+            .filter(|value| !value.trim().is_empty());
+        let file_references: Vec<Value> = payload
+            .attachments
+            .as_deref()
+            .map(Self::attachment_file_references)
+            .unwrap_or_default();
+
+        let mut metadata = serde_json::json!({
+            "imessage_chat_guid": payload.chat_guid,
+            "imessage_message_guid": payload.guid,
+            "imessage_handle_address": payload.handle.address,
+            "imessage_handle_name": name,
+            "imessage_is_reaction": is_reaction,
+            "imessage_is_group": is_group,
+            "imessage_associated_message_guid": payload.associated_message_guid,
+        });
+        if let Some(display_name) = chat_display_name {
+            metadata["imessage_chat_display_name"] = serde_json::json!(display_name);
+        }
+        if !participant_addresses.is_empty() {
+            metadata["imessage_participants"] = serde_json::json!(participant_addresses);
+            metadata["imessage_participant_count"] = serde_json::json!(
+                metadata["imessage_participants"]
+                    .as_array()
+                    .map(|items| items.len())
+                    .unwrap_or(0)
+            );
+        }
+        if !file_references.is_empty() {
+            metadata["imessage_attachment_count"] = serde_json::json!(file_references.len());
+            metadata["file_references"] = serde_json::json!(file_references);
+        }
+
         Some(IncomingMessage {
             session_id: Uuid::new_v4(),
             user_id: payload.handle.address.clone(),
             content,
             platform: Platform::IMessage,
-            metadata: serde_json::json!({
-                "imessage_chat_guid": payload.chat_guid,
-                "imessage_message_guid": payload.guid,
-                "imessage_handle_address": payload.handle.address,
-                "imessage_handle_name": name,
-                "imessage_is_reaction": is_reaction,
-                "imessage_is_group": false,
-                "imessage_associated_message_guid": payload.associated_message_guid,
-            }),
+            metadata,
+        })
+    }
+
+    fn participant_addresses(participants: &[Value]) -> Vec<String> {
+        participants
+            .iter()
+            .filter_map(|participant| {
+                participant
+                    .as_str()
+                    .map(|value| value.to_string())
+                    .or_else(|| {
+                        participant
+                            .get("address")
+                            .or_else(|| participant.get("id"))
+                            .or_else(|| participant.get("identifier"))
+                            .and_then(|value| value.as_str())
+                            .map(|value| value.to_string())
+                    })
+            })
+            .collect()
+    }
+
+    fn attachment_file_references(attachments: &[Value]) -> Vec<Value> {
+        attachments
+            .iter()
+            .filter_map(|attachment| {
+                let local_path = attachment
+                    .get("path")
+                    .or_else(|| attachment.get("transferPath"))
+                    .or_else(|| attachment.get("tempPath"))
+                    .or_else(|| attachment.get("filename"))
+                    .and_then(|value| value.as_str());
+                let url = attachment
+                    .get("url")
+                    .or_else(|| attachment.get("downloadUrl"))
+                    .and_then(|value| value.as_str());
+
+                if local_path.is_none() && url.is_none() {
+                    return None;
+                }
+
+                Some(serde_json::json!({
+                    "local_path": local_path,
+                    "url": url,
+                    "name": attachment
+                        .get("name")
+                        .or_else(|| attachment.get("filename"))
+                        .and_then(|value| value.as_str()),
+                    "mime": attachment
+                        .get("mimeType")
+                        .or_else(|| attachment.get("mime"))
+                        .and_then(|value| value.as_str()),
+                    "size": attachment.get("size").and_then(|value| value.as_u64()),
+                }))
+            })
+            .collect()
+    }
+
+    fn parse_tapback(value: &Value) -> Option<TapbackType> {
+        if let Some(number) = value.as_i64() {
+            return match number {
+                0 => Some(TapbackType::Love),
+                1 => Some(TapbackType::Like),
+                2 => Some(TapbackType::Dislike),
+                3 => Some(TapbackType::Laugh),
+                4 => Some(TapbackType::Emphasize),
+                5 => Some(TapbackType::Question),
+                _ => None,
+            };
+        }
+
+        value.as_str().and_then(|value| match value.to_lowercase().as_str() {
+            "love" | "heart" => Some(TapbackType::Love),
+            "like" | "thumbs_up" | "thumbsup" => Some(TapbackType::Like),
+            "dislike" | "thumbs_down" | "thumbsdown" => Some(TapbackType::Dislike),
+            "laugh" | "ha" | "haha" => Some(TapbackType::Laugh),
+            "emphasize" | "emphasis" | "exclaim" => Some(TapbackType::Emphasize),
+            "question" | "question_mark" => Some(TapbackType::Question),
+            _ => None,
         })
     }
 
@@ -294,6 +410,41 @@ impl Channel for IMessageChannel {
     }
 
     async fn send(&self, msg: OutgoingMessage) -> Result<()> {
+        if let Some(tapback) = msg
+            .metadata
+            .get("imessage_tapback")
+            .or_else(|| msg.metadata.get("imessage_reaction"))
+            .and_then(Self::parse_tapback)
+        {
+            if !self.config.enable_tapbacks {
+                return Err(ChannelError::Config {
+                    platform: "imessage".to_string(),
+                    message: "Tapbacks are disabled in iMessage config".to_string(),
+                }
+                .into());
+            }
+
+            let chat_guid = msg
+                .metadata
+                .get("imessage_chat_guid")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| ChannelError::InvalidFormat {
+                    platform: "imessage".to_string(),
+                    message: "Missing imessage_chat_guid in metadata".to_string(),
+                })?;
+            let message_guid = msg
+                .metadata
+                .get("imessage_associated_message_guid")
+                .or_else(|| msg.metadata.get("imessage_message_guid"))
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| ChannelError::InvalidFormat {
+                    platform: "imessage".to_string(),
+                    message: "Missing target message guid for iMessage tapback".to_string(),
+                })?;
+
+            return self.send_tapback(chat_guid, message_guid, tapback).await;
+        }
+
         // Extract chat GUID or recipient ID from metadata
         let chat_guid = msg
             .metadata
@@ -425,6 +576,18 @@ pub struct BlueBubblesMessage {
     /// Associated message type (tapback type)
     #[serde(rename = "associatedMessageType")]
     pub associated_message_type: Option<i32>,
+    /// Whether the chat is a group conversation
+    #[serde(rename = "isGroup")]
+    pub is_group: Option<bool>,
+    /// Group or conversation display name
+    #[serde(rename = "chatDisplayName")]
+    pub chat_display_name: Option<String>,
+    /// Participants in the conversation, when provided by BlueBubbles
+    #[serde(rename = "participants")]
+    pub participants: Option<Vec<Value>>,
+    /// Attachments carried by the message, when provided by BlueBubbles
+    #[serde(rename = "attachments")]
+    pub attachments: Option<Vec<Value>>,
 }
 
 /// BlueBubbles sender handle information.
@@ -449,6 +612,10 @@ pub fn is_macos() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use openrustclaw_core::traits::Channel;
+    use openrustclaw_core::types::OutgoingMessage;
+    use tokio::net::TcpListener;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     #[test]
     fn test_is_macos() {
@@ -546,5 +713,111 @@ mod tests {
             Some("original-msg-guid".to_string())
         );
         assert_eq!(msg.associated_message_type, Some(0));
+    }
+
+    #[test]
+    fn test_incoming_from_bluebubbles_group_mapping_and_attachments() {
+        let config = IMessageConfig {
+            enabled: true,
+            bridge_mode: IMessageBridgeMode::MacOSDirect,
+            allowlist: vec![],
+            enable_tapbacks: true,
+            enable_typing_indicator: false,
+        };
+
+        let payload: BlueBubblesMessage = serde_json::from_value(serde_json::json!({
+            "guid": "group-guid-1",
+            "text": "hello group",
+            "handle": {
+                "address": "+1234567890",
+                "firstName": "Alice",
+                "lastName": null
+            },
+            "dateCreated": "2024-01-15T10:30:00Z",
+            "isFromMe": false,
+            "chatGUID": "chat-guid-group",
+            "isGroup": true,
+            "chatDisplayName": "Weekend Plans",
+            "participants": [
+                {"address": "+1234567890"},
+                {"address": "+1098765432"}
+            ],
+            "attachments": [{
+                "path": "/tmp/photo.jpg",
+                "name": "photo.jpg",
+                "mimeType": "image/jpeg",
+                "size": 2048
+            }]
+        }))
+        .unwrap();
+
+        let incoming = IMessageChannel::incoming_from_bluebubbles(&config, payload).unwrap();
+        assert_eq!(incoming.metadata["imessage_is_group"], true);
+        assert_eq!(incoming.metadata["imessage_chat_display_name"], "Weekend Plans");
+        assert_eq!(incoming.metadata["imessage_participant_count"], 2);
+        assert_eq!(incoming.metadata["file_references"][0]["local_path"], "/tmp/photo.jpg");
+        assert_eq!(incoming.metadata["file_references"][0]["mime"], "image/jpeg");
+    }
+
+    #[test]
+    fn test_parse_tapback_aliases() {
+        assert_eq!(
+            IMessageChannel::parse_tapback(&serde_json::json!("heart")),
+            Some(TapbackType::Love)
+        );
+        assert_eq!(
+            IMessageChannel::parse_tapback(&serde_json::json!("thumbs_down")),
+            Some(TapbackType::Dislike)
+        );
+        assert_eq!(
+            IMessageChannel::parse_tapback(&serde_json::json!(3)),
+            Some(TapbackType::Laugh)
+        );
+    }
+
+    #[tokio::test]
+    async fn test_send_uses_tapback_metadata_path() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut buf = vec![0u8; 4096];
+            let n = socket.read(&mut buf).await.unwrap();
+            let request = String::from_utf8_lossy(&buf[..n]).to_string();
+            let response =
+                b"HTTP/1.1 200 OK\r\ncontent-length: 2\r\ncontent-type: application/json\r\n\r\n{}";
+            socket.write_all(response).await.unwrap();
+            request
+        });
+
+        let channel = IMessageChannel::new(IMessageConfig {
+            enabled: true,
+            bridge_mode: IMessageBridgeMode::BlueBubbles {
+                server_url: format!("http://{}", addr),
+                password: "test-password".to_string(),
+            },
+            allowlist: vec![],
+            enable_tapbacks: true,
+            enable_typing_indicator: false,
+        });
+
+        channel
+            .send(OutgoingMessage {
+                session_id: Uuid::new_v4(),
+                content: "ignored".to_string(),
+                metadata: serde_json::json!({
+                    "imessage_chat_guid": "chat-guid-1",
+                    "imessage_message_guid": "message-guid-1",
+                    "imessage_tapback": "heart"
+                }),
+            })
+            .await
+            .unwrap();
+
+        let request = server.await.unwrap();
+        assert!(request.contains("POST /api/v1/message/react"));
+        assert!(request.contains("chat-guid-1"));
+        assert!(request.contains("message-guid-1"));
+        assert!(request.contains("\"reaction\":0"));
     }
 }

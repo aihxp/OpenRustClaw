@@ -1,6 +1,7 @@
 //! Gmail Pub/Sub integration for email-driven workflows.
 
 use std::collections::{HashMap, HashSet};
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -80,6 +81,13 @@ pub struct Attachment {
     pub mime_type: String,
     pub size: usize,
     pub attachment_id: String,
+}
+
+#[derive(Debug, Clone)]
+struct OutgoingAttachment {
+    filename: String,
+    mime_type: String,
+    bytes: Vec<u8>,
 }
 
 #[derive(Debug, Clone)]
@@ -252,6 +260,185 @@ impl GmailPubSub {
 }
 
 impl GmailRuntime {
+    fn sanitize_header_value(value: &str) -> String {
+        value.replace('"', "'").replace(['\r', '\n'], " ")
+    }
+
+    async fn outgoing_attachments_from_metadata(
+        metadata: &serde_json::Value,
+    ) -> Result<Vec<OutgoingAttachment>> {
+        let mut attachments = Vec::new();
+        let Some(entries) = metadata.get("file_references").and_then(|value| value.as_array()) else {
+            return Ok(attachments);
+        };
+
+        for entry in entries {
+            let Some(local_path) = entry.get("local_path").and_then(|value| value.as_str()) else {
+                continue;
+            };
+
+            let bytes = tokio::fs::read(local_path).await.map_err(|e| ChannelError::SendFailed {
+                platform: "gmail".to_string(),
+                message: format!("Failed to read Gmail attachment '{}': {}", local_path, e),
+            })?;
+
+            let filename = entry
+                .get("name")
+                .and_then(|value| value.as_str())
+                .map(|value| value.to_string())
+                .or_else(|| {
+                    Path::new(local_path)
+                        .file_name()
+                        .and_then(|value| value.to_str())
+                        .map(|value| value.to_string())
+                })
+                .unwrap_or_else(|| "attachment".to_string());
+
+            let mime_type = entry
+                .get("mime")
+                .or_else(|| entry.get("content_type"))
+                .and_then(|value| value.as_str())
+                .unwrap_or("application/octet-stream")
+                .to_string();
+
+            attachments.push(OutgoingAttachment {
+                filename,
+                mime_type,
+                bytes,
+            });
+        }
+
+        Ok(attachments)
+    }
+
+    fn build_reply_mime(
+        reply_to: &str,
+        subject: &str,
+        message_id_header: Option<&str>,
+        references: Option<&str>,
+        body: &str,
+        attachments: &[OutgoingAttachment],
+    ) -> String {
+        let mut mime = format!(
+            "To: {}\r\nSubject: {}\r\n",
+            reply_to,
+            Self::sanitize_header_value(subject)
+        );
+        if let Some(message_id) = message_id_header {
+            mime.push_str(&format!("In-Reply-To: {}\r\n", message_id));
+            let references = references
+                .map(|existing| format!("{} {}", existing, message_id))
+                .unwrap_or_else(|| message_id.to_string());
+            mime.push_str(&format!("References: {}\r\n", references));
+        }
+
+        if attachments.is_empty() {
+            mime.push_str("Content-Type: text/plain; charset=\"UTF-8\"\r\n\r\n");
+            mime.push_str(body);
+            return mime;
+        }
+
+        let boundary = "openrustclaw-gmail-boundary";
+        mime.push_str("MIME-Version: 1.0\r\n");
+        mime.push_str(&format!(
+            "Content-Type: multipart/mixed; boundary=\"{}\"\r\n\r\n",
+            boundary
+        ));
+        mime.push_str(&format!(
+            "--{}\r\nContent-Type: text/plain; charset=\"UTF-8\"\r\n\r\n{}\r\n",
+            boundary, body
+        ));
+
+        for attachment in attachments {
+            mime.push_str(&format!(
+                "--{}\r\nContent-Type: {}; name=\"{}\"\r\nContent-Disposition: attachment; filename=\"{}\"\r\nContent-Transfer-Encoding: base64\r\n\r\n{}\r\n",
+                boundary,
+                attachment.mime_type,
+                Self::sanitize_header_value(&attachment.filename),
+                Self::sanitize_header_value(&attachment.filename),
+                STANDARD.encode(&attachment.bytes)
+            ));
+        }
+
+        mime.push_str(&format!("--{}--", boundary));
+        mime
+    }
+
+    fn build_new_message_mime(
+        to: &[String],
+        cc: &[String],
+        bcc: &[String],
+        subject: &str,
+        body: &str,
+        attachments: &[OutgoingAttachment],
+    ) -> String {
+        let mut mime = format!(
+            "To: {}\r\nSubject: {}\r\n",
+            to.join(", "),
+            Self::sanitize_header_value(subject)
+        );
+        if !cc.is_empty() {
+            mime.push_str(&format!("Cc: {}\r\n", cc.join(", ")));
+        }
+        if !bcc.is_empty() {
+            mime.push_str(&format!("Bcc: {}\r\n", bcc.join(", ")));
+        }
+
+        if attachments.is_empty() {
+            mime.push_str("Content-Type: text/plain; charset=\"UTF-8\"\r\n\r\n");
+            mime.push_str(body);
+            return mime;
+        }
+
+        let boundary = "openrustclaw-gmail-boundary";
+        mime.push_str("MIME-Version: 1.0\r\n");
+        mime.push_str(&format!(
+            "Content-Type: multipart/mixed; boundary=\"{}\"\r\n\r\n",
+            boundary
+        ));
+        mime.push_str(&format!(
+            "--{}\r\nContent-Type: text/plain; charset=\"UTF-8\"\r\n\r\n{}\r\n",
+            boundary, body
+        ));
+
+        for attachment in attachments {
+            mime.push_str(&format!(
+                "--{}\r\nContent-Type: {}; name=\"{}\"\r\nContent-Disposition: attachment; filename=\"{}\"\r\nContent-Transfer-Encoding: base64\r\n\r\n{}\r\n",
+                boundary,
+                attachment.mime_type,
+                Self::sanitize_header_value(&attachment.filename),
+                Self::sanitize_header_value(&attachment.filename),
+                STANDARD.encode(&attachment.bytes)
+            ));
+        }
+
+        mime.push_str(&format!("--{}--", boundary));
+        mime
+    }
+
+    fn metadata_address_list(metadata: &serde_json::Value, key: &str) -> Vec<String> {
+        if let Some(values) = metadata.get(key).and_then(|value| value.as_array()) {
+            return values
+                .iter()
+                .filter_map(|value| value.as_str())
+                .map(|value| value.to_string())
+                .collect();
+        }
+
+        metadata
+            .get(key)
+            .and_then(|value| value.as_str())
+            .map(|value| {
+                value
+                    .split(',')
+                    .map(|item| item.trim())
+                    .filter(|item| !item.is_empty())
+                    .map(|item| item.to_string())
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
     fn attachment_file_references(email: &EmailMessage) -> Vec<serde_json::Value> {
         email.attachments
             .iter()
@@ -718,7 +905,9 @@ impl GmailRuntime {
     async fn take_action(&self, email_id: &str, action: EmailAction) -> Result<()> {
         let token = self.require_access_token().await?;
         match action {
-            EmailAction::Reply { body } => self.reply_to_message(email_id, &body, &token).await,
+            EmailAction::Reply { body } => {
+                self.reply_to_message(email_id, &body, &[], &token).await
+            }
             EmailAction::Label { add, remove } => {
                 self.modify_labels(email_id, add, remove, &token).await
             }
@@ -805,7 +994,13 @@ impl GmailRuntime {
         Ok(())
     }
 
-    async fn reply_to_message(&self, email_id: &str, body: &str, token: &str) -> Result<()> {
+    async fn reply_to_message(
+        &self,
+        email_id: &str,
+        body: &str,
+        attachments: &[OutgoingAttachment],
+        token: &str,
+    ) -> Result<()> {
         let message = self.get_gmail_message(email_id, token).await?;
         let headers = Self::parse_headers(&message.payload.headers);
         let reply_to = headers
@@ -826,19 +1021,14 @@ impl GmailRuntime {
         let message_id_header = headers.get("Message-ID").cloned();
         let references = headers.get("References").cloned();
 
-        let mut mime = format!(
-            "To: {}\r\nSubject: {}\r\nContent-Type: text/plain; charset=\"UTF-8\"\r\n",
-            reply_to, subject
+        let mime = Self::build_reply_mime(
+            &reply_to,
+            &subject,
+            message_id_header.as_deref(),
+            references.as_deref(),
+            body,
+            attachments,
         );
-        if let Some(message_id) = message_id_header.clone() {
-            mime.push_str(&format!("In-Reply-To: {}\r\n", message_id));
-            let references = references
-                .map(|existing| format!("{} {}", existing, message_id))
-                .unwrap_or(message_id);
-            mime.push_str(&format!("References: {}\r\n", references));
-        }
-        mime.push_str("\r\n");
-        mime.push_str(body);
 
         let response = self
             .http_client
@@ -919,6 +1109,48 @@ impl GmailRuntime {
 
         Ok(())
     }
+
+    async fn send_new_message(
+        &self,
+        to: &[String],
+        cc: &[String],
+        bcc: &[String],
+        subject: &str,
+        body: &str,
+        attachments: &[OutgoingAttachment],
+        token: &str,
+    ) -> Result<()> {
+        let mime = Self::build_new_message_mime(to, cc, bcc, subject, body, attachments);
+
+        let response = self
+            .http_client
+            .post(format!(
+                "{}/users/{}/messages/send",
+                self.gmail_api_base(),
+                self.user_path()
+            ))
+            .bearer_auth(token)
+            .json(&serde_json::json!({
+                "raw": URL_SAFE_NO_PAD.encode(mime.as_bytes()),
+            }))
+            .send()
+            .await
+            .map_err(|e| ChannelError::SendFailed {
+                platform: "gmail".to_string(),
+                message: format!("Gmail send request failed: {}", e),
+            })?;
+
+        if !response.status().is_success() {
+            let body = response.text().await.unwrap_or_default();
+            return Err(ChannelError::SendFailed {
+                platform: "gmail".to_string(),
+                message: format!("Gmail send request failed: {}", body),
+            }
+            .into());
+        }
+
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -937,18 +1169,39 @@ impl Channel for GmailPubSub {
 
         self.runtime.rate_limiter.until_ready().await;
 
-        let message_id = msg
+        let token = self.runtime.require_access_token().await?;
+        let attachments = GmailRuntime::outgoing_attachments_from_metadata(&msg.metadata).await?;
+        if let Some(message_id) = msg
             .metadata
             .get("gmail_message_id")
             .and_then(|value| value.as_str())
-            .ok_or_else(|| ChannelError::InvalidFormat {
-                platform: "gmail".to_string(),
-                message: "Missing gmail_message_id in metadata for Gmail reply".to_string(),
-            })?;
+        {
+            return self
+                .runtime
+                .reply_to_message(message_id, &msg.content, &attachments, &token)
+                .await;
+        }
 
-        let token = self.runtime.require_access_token().await?;
+        let to = GmailRuntime::metadata_address_list(&msg.metadata, "gmail_to");
+        if to.is_empty() {
+            return Err(ChannelError::InvalidFormat {
+                platform: "gmail".to_string(),
+                message: "Missing gmail_message_id for reply or gmail_to for direct Gmail send"
+                    .to_string(),
+            }
+            .into());
+        }
+
+        let cc = GmailRuntime::metadata_address_list(&msg.metadata, "gmail_cc");
+        let bcc = GmailRuntime::metadata_address_list(&msg.metadata, "gmail_bcc");
+        let subject = msg
+            .metadata
+            .get("gmail_subject")
+            .and_then(|value| value.as_str())
+            .unwrap_or("OpenRustClaw");
+
         self.runtime
-            .reply_to_message(message_id, &msg.content, &token)
+            .send_new_message(&to, &cc, &bcc, subject, &msg.content, &attachments, &token)
             .await
     }
 
@@ -1243,5 +1496,170 @@ mod tests {
             })
             .await
             .unwrap();
+    }
+
+    #[test]
+    fn test_build_reply_mime_with_attachment() {
+        let mime = GmailRuntime::build_reply_mime(
+            "sender@example.com",
+            "Re: Original subject",
+            Some("<msg-1@example.com>"),
+            None,
+            "Reply body",
+            &[OutgoingAttachment {
+                filename: "notes.txt".to_string(),
+                mime_type: "text/plain".to_string(),
+                bytes: b"attachment body".to_vec(),
+            }],
+        );
+
+        assert!(mime.contains("Content-Type: multipart/mixed"));
+        assert!(mime.contains("Content-Disposition: attachment; filename=\"notes.txt\""));
+        assert!(mime.contains(&STANDARD.encode("attachment body")));
+    }
+
+    #[test]
+    fn test_build_new_message_mime_with_attachment() {
+        let mime = GmailRuntime::build_new_message_mime(
+            &[String::from("to@example.com")],
+            &[String::from("cc@example.com")],
+            &[],
+            "Status update",
+            "Message body",
+            &[OutgoingAttachment {
+                filename: "report.txt".to_string(),
+                mime_type: "text/plain".to_string(),
+                bytes: b"report bytes".to_vec(),
+            }],
+        );
+
+        assert!(mime.contains("To: to@example.com"));
+        assert!(mime.contains("Cc: cc@example.com"));
+        assert!(mime.contains("Subject: Status update"));
+        assert!(mime.contains("Content-Type: multipart/mixed"));
+        assert!(mime.contains("Content-Disposition: attachment; filename=\"report.txt\""));
+        assert!(mime.contains(&STANDARD.encode("report bytes")));
+    }
+
+    #[tokio::test]
+    async fn test_reply_send_with_local_attachment() {
+        let server = MockServer::start().await;
+        let config = gmail_config(&server, "token:test-token".to_string());
+
+        Mock::given(method("POST"))
+            .and(path("/gmail/v1/users/user%40example.com/watch"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "historyId": "100",
+                "expiration": "999999"
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/gmail/v1/users/user%40example.com/messages/msg-1"))
+            .and(query_param("format", "full"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "msg-1",
+                "threadId": "thread-1",
+                "labelIds": ["INBOX"],
+                "internalDate": "1710000000000",
+                "historyId": "100",
+                "payload": {
+                    "mimeType": "text/plain",
+                    "headers": [
+                        {"name": "From", "value": "sender@example.com"},
+                        {"name": "Subject", "value": "Original subject"},
+                        {"name": "Message-ID", "value": "<msg-1@example.com>"}
+                    ],
+                    "body": {
+                        "data": "SGVsbG8="
+                    }
+                }
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/gmail/v1/users/user%40example.com/messages/send"))
+            .and(body_string_contains("threadId"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "sent-1"
+            })))
+            .mount(&server)
+            .await;
+
+        let attachment_path =
+            std::env::temp_dir().join(format!("orc-gmail-attachment-{}.txt", Uuid::new_v4()));
+        tokio::fs::write(&attachment_path, b"attachment body")
+            .await
+            .expect("write attachment");
+
+        let mut gmail = GmailPubSub::new(config);
+        gmail.connect().await.unwrap();
+        gmail
+            .send(OutgoingMessage {
+                session_id: Uuid::new_v4(),
+                content: "Reply body".to_string(),
+                metadata: serde_json::json!({
+                    "gmail_message_id": "msg-1",
+                    "file_references": [{
+                        "local_path": attachment_path,
+                        "name": "notes.txt",
+                        "mime": "text/plain"
+                    }]
+                }),
+            })
+            .await
+            .unwrap();
+
+        let _ = tokio::fs::remove_file(attachment_path).await;
+    }
+
+    #[tokio::test]
+    async fn test_direct_send_with_local_attachment() {
+        let server = MockServer::start().await;
+        let config = gmail_config(&server, "token:test-token".to_string());
+
+        Mock::given(method("POST"))
+            .and(path("/gmail/v1/users/user%40example.com/watch"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "historyId": "100",
+                "expiration": "999999"
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/gmail/v1/users/user%40example.com/messages/send"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "sent-2"
+            })))
+            .mount(&server)
+            .await;
+
+        let attachment_path =
+            std::env::temp_dir().join(format!("orc-gmail-direct-attachment-{}.txt", Uuid::new_v4()));
+        tokio::fs::write(&attachment_path, b"direct attachment body")
+            .await
+            .expect("write attachment");
+
+        let mut gmail = GmailPubSub::new(config);
+        gmail.connect().await.unwrap();
+        gmail
+            .send(OutgoingMessage {
+                session_id: Uuid::new_v4(),
+                content: "Direct body".to_string(),
+                metadata: serde_json::json!({
+                    "gmail_to": ["person@example.com"],
+                    "gmail_cc": "copy@example.com",
+                    "gmail_subject": "Status update",
+                    "file_references": [{
+                        "local_path": attachment_path,
+                        "name": "report.txt",
+                        "mime": "text/plain"
+                    }]
+                }),
+            })
+            .await
+            .unwrap();
+
+        let _ = tokio::fs::remove_file(attachment_path).await;
     }
 }
