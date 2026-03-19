@@ -160,6 +160,26 @@ impl MatrixChannel {
             .map(ToString::to_string)
     }
 
+    fn parse_upload_file_reference(
+        metadata: &serde_json::Value,
+    ) -> Option<(String, Option<String>)> {
+        let refs = metadata.get("file_references")?.as_array()?;
+        for entry in refs {
+            let local_path = entry
+                .get("local_path")
+                .or_else(|| entry.get("path"))
+                .and_then(|value| value.as_str())
+                .filter(|value| !value.trim().is_empty())?;
+            let name = entry
+                .get("name")
+                .or_else(|| entry.get("title"))
+                .and_then(|value| value.as_str())
+                .map(ToString::to_string);
+            return Some((local_path.to_string(), name));
+        }
+        None
+    }
+
     fn data_dir(&self) -> PathBuf {
         PathBuf::from(&self.config.data_dir)
     }
@@ -201,6 +221,67 @@ impl MatrixChannel {
             .replace(['/', '\\', ':'], "_");
         let fallback = fallback.replace(['/', '\\'], "_");
         format!("{}-{}", event, fallback)
+    }
+
+    async fn upload_file_to_matrix(
+        &self,
+        token: &str,
+        file_path: &str,
+        filename: Option<&str>,
+    ) -> Result<String> {
+        let bytes = tokio::fs::read(file_path)
+            .await
+            .map_err(|e| ChannelError::SendFailed {
+                platform: "matrix".to_string(),
+                message: format!("Failed to read Matrix upload file: {}", e),
+            })?;
+        let filename = filename
+            .map(ToString::to_string)
+            .or_else(|| {
+                PathBuf::from(file_path)
+                    .file_name()
+                    .map(|name| name.to_string_lossy().to_string())
+            })
+            .unwrap_or_else(|| "file".to_string());
+
+        let upload = self
+            .http
+            .post(self.media_endpoint("/upload"))
+            .bearer_auth(token)
+            .query(&[("filename", filename.as_str())])
+            .body(bytes)
+            .send()
+            .await
+            .map_err(|e| ChannelError::SendFailed {
+                platform: "matrix".to_string(),
+                message: format!("Matrix upload failed: {}", e),
+            })?;
+
+        if !upload.status().is_success() {
+            let body = upload.text().await.unwrap_or_default();
+            return Err(ChannelError::SendFailed {
+                platform: "matrix".to_string(),
+                message: format!("Matrix upload failed: {}", body),
+            }
+            .into());
+        }
+
+        let upload_body: serde_json::Value =
+            upload.json().await.map_err(|e| ChannelError::SendFailed {
+                platform: "matrix".to_string(),
+                message: format!("Failed to parse Matrix upload response: {}", e),
+            })?;
+        upload_body
+            .get("content_uri")
+            .and_then(|value| value.as_str())
+            .map(|value| value.to_string())
+            .ok_or_else(|| {
+                ChannelError::SendFailed {
+                    platform: "matrix".to_string(),
+                    message: "Matrix upload response missing content_uri".to_string(),
+                }
+                .into()
+            })
     }
 
     async fn download_media_to_dir(
@@ -562,6 +643,23 @@ impl Channel for MatrixChannel {
             .get("matrix_reaction")
             .and_then(|value| value.as_str());
         let txn_id = Uuid::new_v4().to_string();
+        let uploaded_content_uri = if msg
+            .metadata
+            .get("matrix_content_uri")
+            .and_then(|value| value.as_str())
+            .is_none()
+        {
+            if let Some((file_path, filename)) = Self::parse_upload_file_reference(&msg.metadata) {
+                Some(
+                    self.upload_file_to_matrix(&token, &file_path, filename.as_deref())
+                        .await?,
+                )
+            } else {
+                None
+            }
+        } else {
+            None
+        };
 
         let (event_type, payload) = if let Some(emoji) = reaction {
             let target_event_id = reply_to_event_id.ok_or_else(|| ChannelError::InvalidFormat {
@@ -578,11 +676,11 @@ impl Channel for MatrixChannel {
                     }
                 }),
             )
-        } else if let Some(content_uri) = msg
-            .metadata
-            .get("matrix_content_uri")
-            .and_then(|value| value.as_str())
-        {
+        } else if let Some(content_uri) = uploaded_content_uri.as_deref().or_else(|| {
+            msg.metadata
+                .get("matrix_content_uri")
+                .and_then(|value| value.as_str())
+        }) {
             (
                 "m.room.message",
                 serde_json::json!({
@@ -852,13 +950,7 @@ impl MatrixChannel {
         filename: Option<&str>,
     ) -> Result<()> {
         let token = self.bearer_token().await?;
-        let bytes = tokio::fs::read(file_path)
-            .await
-            .map_err(|e| ChannelError::SendFailed {
-                platform: "matrix".to_string(),
-                message: format!("Failed to read Matrix upload file: {}", e),
-            })?;
-        let filename = filename
+        let resolved_filename = filename
             .map(ToString::to_string)
             .or_else(|| {
                 PathBuf::from(file_path)
@@ -866,45 +958,13 @@ impl MatrixChannel {
                     .map(|name| name.to_string_lossy().to_string())
             })
             .unwrap_or_else(|| "file".to_string());
-
-        let upload = self
-            .http
-            .post(self.media_endpoint("/upload"))
-            .bearer_auth(&token)
-            .query(&[("filename", filename.as_str())])
-            .body(bytes)
-            .send()
-            .await
-            .map_err(|e| ChannelError::SendFailed {
-                platform: "matrix".to_string(),
-                message: format!("Matrix upload failed: {}", e),
-            })?;
-
-        if !upload.status().is_success() {
-            let body = upload.text().await.unwrap_or_default();
-            return Err(ChannelError::SendFailed {
-                platform: "matrix".to_string(),
-                message: format!("Matrix upload failed: {}", body),
-            }
-            .into());
-        }
-
-        let upload_body: serde_json::Value =
-            upload.json().await.map_err(|e| ChannelError::SendFailed {
-                platform: "matrix".to_string(),
-                message: format!("Failed to parse Matrix upload response: {}", e),
-            })?;
-        let content_uri = upload_body
-            .get("content_uri")
-            .and_then(|value| value.as_str())
-            .ok_or_else(|| ChannelError::SendFailed {
-                platform: "matrix".to_string(),
-                message: "Matrix upload response missing content_uri".to_string(),
-            })?;
+        let content_uri = self
+            .upload_file_to_matrix(&token, file_path, Some(resolved_filename.as_str()))
+            .await?;
 
         self.send(OutgoingMessage {
             session_id: Uuid::new_v4(),
-            content: filename.clone(),
+            content: resolved_filename.clone(),
             metadata: serde_json::json!({
                 "matrix_room_id": room_id,
                 "matrix_content_uri": content_uri,
@@ -1034,7 +1094,7 @@ impl MatrixChannel {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use wiremock::matchers::{method, path, path_regex, query_param};
+    use wiremock::matchers::{body_partial_json, method, path, path_regex, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     fn test_config(homeserver: &str) -> MatrixConfig {
@@ -1209,6 +1269,81 @@ mod tests {
             .expect("send succeeds");
 
         channel.disconnect().await.expect("disconnect succeeds");
+    }
+
+    #[tokio::test]
+    async fn test_send_uploads_local_file_reference() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/_matrix/client/v3/account/whoami"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "user_id": "@bot:matrix.org"
+            })))
+            .mount(&server)
+            .await;
+
+        Mock::given(method("GET"))
+            .and(path("/_matrix/client/v3/sync"))
+            .and(query_param("timeout", "30000"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "next_batch": "s1",
+                "rooms": {}
+            })))
+            .mount(&server)
+            .await;
+
+        Mock::given(method("POST"))
+            .and(path("/_matrix/media/v3/upload"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "content_uri": "mxc://matrix.org/uploaded123"
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        Mock::given(method("PUT"))
+            .and(path_regex(
+                r"^/_matrix/client/v3/rooms/%21room%3Amatrix\.org/send/m\.room\.message/.*$",
+            ))
+            .and(body_partial_json(serde_json::json!({
+                "msgtype": "m.file",
+                "url": "mxc://matrix.org/uploaded123"
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "event_id": "$event"
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let temp_root = std::env::temp_dir().join(format!("orc-matrix-upload-{}", Uuid::new_v4()));
+        tokio::fs::create_dir_all(&temp_root).await.expect("temp dir");
+        let file_path = temp_root.join("report.pdf");
+        tokio::fs::write(&file_path, b"matrix-file")
+            .await
+            .expect("write temp file");
+
+        let mut channel = MatrixChannel::new(test_config(&server.uri()));
+        channel.connect().await.expect("connect succeeds");
+
+        channel
+            .send(OutgoingMessage {
+                session_id: Uuid::new_v4(),
+                content: "report.pdf".to_string(),
+                metadata: serde_json::json!({
+                    "matrix_room_id": "!room:matrix.org",
+                    "file_references": [{
+                        "local_path": file_path,
+                        "name": "report.pdf"
+                    }],
+                }),
+            })
+            .await
+            .expect("send succeeds");
+
+        channel.disconnect().await.expect("disconnect succeeds");
+        let _ = tokio::fs::remove_dir_all(temp_root).await;
     }
 
     #[tokio::test]

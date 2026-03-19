@@ -640,7 +640,7 @@ Completed:
 - [x] Telegram outbound and polling ingress exist.
 - [x] Slack outbound and HTTP Events ingress exist.
 - [x] Discord outbound, interactions ingress, and gateway message ingress exist.
-- [x] Matrix access-token/password auth, `/sync` polling ingress, outbound room sends, reactions, join/leave, and basic file upload support exist.
+- [x] Matrix access-token/password auth, `/sync` polling ingress, outbound room sends, reactions, join/leave, and local file upload support exist.
 - [x] File-backed channel account and binding registry exists under `.claw/channels/`.
 - [x] Shipped runtime now applies channel/account/workspace binding precedence plus pairing approval for tier-1 channels.
 - [x] Group mention activation rules now exist on the shipped runtime path.
@@ -685,7 +685,7 @@ Channel completion remaining:
   - current shipped path covers Gmail watch setup, Pub/Sub webhook ingress, history fetch, message hydration, mail-triggered local agent/session routing, replies, label/archive/delete actions, and forwarding;
   - richer operator parity still remains.
 - [ ] Matrix parity.
-  - current shipped path covers auth, send, polling ingress, room actions, basic file upload, and inbound media downloads into the Matrix data directory;
+  - current shipped path covers auth, send, polling ingress, room actions, helper-driven plus normal-send local file uploads, and inbound media downloads into the Matrix data directory;
   - deeper E2EE and richer operator/media parity still remain.
 - [ ] Microsoft Teams parity.
   - current shipped path covers Bot Framework webhook ingress, JWT verification, outbound sends, conversation/reaction lifecycle routing, attachment metadata capture plus opt-in local downloads, adaptive-card file links, and local agent/session routing;
