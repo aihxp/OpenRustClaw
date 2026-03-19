@@ -43,6 +43,50 @@ fn default_isolation_mode() -> String {
     "strict".to_string()
 }
 
+fn default_autonomy_level() -> String {
+    "managed".to_string()
+}
+
+fn default_approval_policy() -> String {
+    "side_effects".to_string()
+}
+
+fn default_steering_enabled() -> bool {
+    true
+}
+
+fn default_decision_learning_enabled() -> bool {
+    true
+}
+
+fn default_critic_enabled() -> bool {
+    true
+}
+
+fn default_max_delegations() -> usize {
+    4
+}
+
+fn default_max_iterations() -> usize {
+    8
+}
+
+fn default_max_runtime_secs() -> u64 {
+    600
+}
+
+fn default_max_lesson_hints() -> usize {
+    5
+}
+
+fn default_confidence() -> f32 {
+    0.7
+}
+
+fn default_lesson_source() -> String {
+    "operator".to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentProfileManifest {
     #[serde(default = "default_version")]
@@ -165,6 +209,93 @@ pub struct RuntimeModeSpec {
     #[serde(default = "default_isolation_mode")]
     pub isolation_mode: String,
     #[serde(default)]
+    pub autonomy: AutonomyPolicy,
+    #[serde(default)]
+    pub metadata: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AutonomyPolicy {
+    #[serde(default = "default_autonomy_level")]
+    pub autonomy_level: String,
+    #[serde(default)]
+    pub yolo_mode: bool,
+    #[serde(default = "default_steering_enabled")]
+    pub steering_enabled: bool,
+    #[serde(default = "default_decision_learning_enabled")]
+    pub decision_learning_enabled: bool,
+    #[serde(default = "default_critic_enabled")]
+    pub critic_enabled: bool,
+    #[serde(default = "default_max_delegations")]
+    pub max_delegations: usize,
+    #[serde(default = "default_max_iterations")]
+    pub max_iterations: usize,
+    #[serde(default = "default_max_runtime_secs")]
+    pub max_runtime_secs: u64,
+    #[serde(default = "default_max_lesson_hints")]
+    pub max_lesson_hints: usize,
+    #[serde(default = "default_approval_policy")]
+    pub approval_policy: String,
+}
+
+impl Default for AutonomyPolicy {
+    fn default() -> Self {
+        Self {
+            autonomy_level: default_autonomy_level(),
+            yolo_mode: false,
+            steering_enabled: default_steering_enabled(),
+            decision_learning_enabled: default_decision_learning_enabled(),
+            critic_enabled: default_critic_enabled(),
+            max_delegations: default_max_delegations(),
+            max_iterations: default_max_iterations(),
+            max_runtime_secs: default_max_runtime_secs(),
+            max_lesson_hints: default_max_lesson_hints(),
+            approval_policy: default_approval_policy(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DecisionLessonManifest {
+    #[serde(default = "default_version")]
+    pub version: u32,
+    pub lesson: DecisionLessonSpec,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct DecisionLessonScope {
+    #[serde(default)]
+    pub task_id: Option<String>,
+    #[serde(default)]
+    pub category: Option<String>,
+    #[serde(default)]
+    pub claw_id: Option<String>,
+    #[serde(default)]
+    pub model_profile_id: Option<String>,
+    #[serde(default)]
+    pub provider: Option<String>,
+    #[serde(default)]
+    pub autonomy_level: Option<String>,
+    #[serde(default)]
+    pub execution_mode: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DecisionLessonSpec {
+    pub id: String,
+    #[serde(default = "default_true")]
+    pub active: bool,
+    pub signal: String,
+    pub recommendation: String,
+    #[serde(default)]
+    pub rationale: Option<String>,
+    #[serde(default = "default_confidence")]
+    pub confidence: f32,
+    #[serde(default = "default_lesson_source")]
+    pub source: String,
+    #[serde(default)]
+    pub scope: DecisionLessonScope,
+    #[serde(default)]
     pub metadata: Value,
 }
 
@@ -173,6 +304,7 @@ pub struct ControlRegistry {
     pub agent_profiles: BTreeMap<String, AgentProfileSpec>,
     pub model_profiles: BTreeMap<String, ModelProfileSpec>,
     pub claws: BTreeMap<String, ClawSpec>,
+    pub lessons: BTreeMap<String, DecisionLessonSpec>,
     pub runtime: Option<RuntimeModeSpec>,
 }
 
@@ -190,6 +322,10 @@ fn models_dir(root: &Path) -> PathBuf {
 
 fn claws_dir(root: &Path) -> PathBuf {
     root.join("claws")
+}
+
+fn lessons_dir(root: &Path) -> PathBuf {
+    root.join("lessons")
 }
 
 fn runtime_path(root: &Path) -> PathBuf {
@@ -223,6 +359,8 @@ pub fn init(root: Option<&str>) -> Result<()> {
         .with_context(|| format!("Failed to create '{}'", models_dir(&root).display()))?;
     fs::create_dir_all(claws_dir(&root))
         .with_context(|| format!("Failed to create '{}'", claws_dir(&root).display()))?;
+    fs::create_dir_all(lessons_dir(&root))
+        .with_context(|| format!("Failed to create '{}'", lessons_dir(&root).display()))?;
 
     write_if_missing(
         &agents_dir(&root).join("default.yaml"),
@@ -396,6 +534,7 @@ pub fn init(root: Option<&str>) -> Result<()> {
                 category_assignments: BTreeMap::new(),
                 allow_shared_context: false,
                 isolation_mode: "strict".to_string(),
+                autonomy: AutonomyPolicy::default(),
                 metadata: serde_json::json!({}),
             },
         };
@@ -426,6 +565,34 @@ pub fn list(root: Option<&str>) -> Result<()> {
             .as_ref()
             .and_then(|runtime| runtime.orchestrator_claw_id.as_deref())
             .unwrap_or("-")
+    );
+    println!(
+        "Autonomy: {} (yolo={}, steering={}, learning={}, critic={})",
+        registry
+            .runtime
+            .as_ref()
+            .map(|runtime| runtime.autonomy.autonomy_level.as_str())
+            .unwrap_or("managed"),
+        registry
+            .runtime
+            .as_ref()
+            .map(|runtime| runtime.autonomy.yolo_mode)
+            .unwrap_or(false),
+        registry
+            .runtime
+            .as_ref()
+            .map(|runtime| runtime.autonomy.steering_enabled)
+            .unwrap_or(true),
+        registry
+            .runtime
+            .as_ref()
+            .map(|runtime| runtime.autonomy.decision_learning_enabled)
+            .unwrap_or(true),
+        registry
+            .runtime
+            .as_ref()
+            .map(|runtime| runtime.autonomy.critic_enabled)
+            .unwrap_or(true)
     );
 
     println!("Agent profiles:");
@@ -480,6 +647,20 @@ pub fn list(root: Option<&str>) -> Result<()> {
         );
     }
 
+    println!("Decision lessons:");
+    for lesson in registry.lessons.values() {
+        println!(
+            "- {} active={} signal={} scope(category={}, claw={}, model={}, autonomy={})",
+            lesson.id,
+            lesson.active,
+            lesson.signal,
+            lesson.scope.category.as_deref().unwrap_or("-"),
+            lesson.scope.claw_id.as_deref().unwrap_or("-"),
+            lesson.scope.model_profile_id.as_deref().unwrap_or("-"),
+            lesson.scope.autonomy_level.as_deref().unwrap_or("-")
+        );
+    }
+
     Ok(())
 }
 
@@ -498,6 +679,7 @@ pub fn show(root: Option<&str>, kind: &str, id: Option<&str>) -> Result<()> {
                     category_assignments: BTreeMap::new(),
                     allow_shared_context: false,
                     isolation_mode: default_isolation_mode(),
+                    autonomy: AutonomyPolicy::default(),
                     metadata: serde_json::json!({}),
                 }),
             })?
@@ -544,7 +726,21 @@ pub fn show(root: Option<&str>, kind: &str, id: Option<&str>) -> Result<()> {
                 })?
             );
         }
-        _ => anyhow::bail!("kind must be one of: runtime, agent, model, claw"),
+        "lesson" => {
+            let id = id.context("lesson show requires --id")?;
+            let lesson = registry
+                .lessons
+                .get(id)
+                .with_context(|| format!("Unknown lesson '{id}'"))?;
+            println!(
+                "{}",
+                serde_yaml::to_string(&DecisionLessonManifest {
+                    version: 1,
+                    lesson: lesson.clone(),
+                })?
+            );
+        }
+        _ => anyhow::bail!("kind must be one of: runtime, agent, model, claw, lesson"),
     }
     Ok(())
 }
@@ -554,10 +750,11 @@ pub fn validate(root: Option<&str>) -> Result<()> {
     let registry = load_registry(root.clone())?;
     validate_registry(&registry)?;
     println!(
-        "Control registry is valid: {} agent profiles, {} model profiles, {} claws",
+        "Control registry is valid: {} agent profiles, {} model profiles, {} claws, {} lessons",
         registry.agent_profiles.len(),
         registry.model_profiles.len(),
-        registry.claws.len()
+        registry.claws.len(),
+        registry.lessons.len()
     );
     Ok(())
 }
@@ -588,6 +785,12 @@ pub fn describe(root: Option<&str>, json: bool) -> Result<()> {
         println!(
             "Isolation mode: {}",
             description["isolation_mode"].as_str().unwrap_or("-")
+        );
+        println!(
+            "Autonomy level: {}",
+            description["autonomy"]["autonomy_level"]
+                .as_str()
+                .unwrap_or("managed")
         );
     }
     Ok(())
@@ -748,6 +951,16 @@ pub fn configure_mode(
     orchestrator_claw_id: Option<&str>,
     allow_shared_context: bool,
     isolation_mode: Option<&str>,
+    autonomy_level: Option<&str>,
+    yolo_mode: Option<bool>,
+    steering_enabled: Option<bool>,
+    decision_learning_enabled: Option<bool>,
+    critic_enabled: Option<bool>,
+    max_delegations: Option<usize>,
+    max_iterations: Option<usize>,
+    max_runtime_secs: Option<u64>,
+    max_lesson_hints: Option<usize>,
+    approval_policy: Option<&str>,
 ) -> Result<()> {
     let root = resolve_root(root)?;
     let mut runtime = read_runtime(&root)?;
@@ -757,6 +970,36 @@ pub fn configure_mode(
     runtime.runtime.allow_shared_context = allow_shared_context;
     if let Some(isolation_mode) = isolation_mode {
         runtime.runtime.isolation_mode = isolation_mode.to_string();
+    }
+    if let Some(autonomy_level) = autonomy_level {
+        runtime.runtime.autonomy.autonomy_level = autonomy_level.to_string();
+    }
+    if let Some(yolo_mode) = yolo_mode {
+        runtime.runtime.autonomy.yolo_mode = yolo_mode;
+    }
+    if let Some(steering_enabled) = steering_enabled {
+        runtime.runtime.autonomy.steering_enabled = steering_enabled;
+    }
+    if let Some(decision_learning_enabled) = decision_learning_enabled {
+        runtime.runtime.autonomy.decision_learning_enabled = decision_learning_enabled;
+    }
+    if let Some(critic_enabled) = critic_enabled {
+        runtime.runtime.autonomy.critic_enabled = critic_enabled;
+    }
+    if let Some(max_delegations) = max_delegations {
+        runtime.runtime.autonomy.max_delegations = max_delegations;
+    }
+    if let Some(max_iterations) = max_iterations {
+        runtime.runtime.autonomy.max_iterations = max_iterations;
+    }
+    if let Some(max_runtime_secs) = max_runtime_secs {
+        runtime.runtime.autonomy.max_runtime_secs = max_runtime_secs;
+    }
+    if let Some(max_lesson_hints) = max_lesson_hints {
+        runtime.runtime.autonomy.max_lesson_hints = max_lesson_hints;
+    }
+    if let Some(approval_policy) = approval_policy {
+        runtime.runtime.autonomy.approval_policy = approval_policy.to_string();
     }
     write_yaml(&runtime_path(&root), &runtime)?;
     sync_runtime_artifact(&root)?;
@@ -844,6 +1087,22 @@ pub fn load_registry(root: PathBuf) -> Result<ControlRegistry> {
         }
     }
 
+    let lessons_root = lessons_dir(&root);
+    if lessons_root.exists() {
+        for entry in WalkDir::new(&lessons_root)
+            .into_iter()
+            .filter_map(|entry| entry.ok())
+        {
+            if !entry.file_type().is_file() || !is_yaml(entry.path()) {
+                continue;
+            }
+            let manifest: DecisionLessonManifest = read_yaml(entry.path())?;
+            registry
+                .lessons
+                .insert(manifest.lesson.id.clone(), manifest.lesson);
+        }
+    }
+
     if runtime_path(&root).exists() {
         registry.runtime = Some(read_runtime(&root)?.runtime);
     }
@@ -879,6 +1138,7 @@ pub fn describe_registry(root: PathBuf) -> Result<Value> {
         category_assignments: BTreeMap::new(),
         allow_shared_context: false,
         isolation_mode: default_isolation_mode(),
+        autonomy: AutonomyPolicy::default(),
         metadata: serde_json::json!({}),
     });
 
@@ -888,6 +1148,7 @@ pub fn describe_registry(root: PathBuf) -> Result<Value> {
         "orchestrator_claw": runtime.orchestrator_claw_id,
         "allow_shared_context": runtime.allow_shared_context,
         "isolation_mode": runtime.isolation_mode,
+        "autonomy": runtime.autonomy,
         "task_assignments": runtime.task_assignments,
         "category_assignments": runtime.category_assignments,
         "available_claws": available_claws,
@@ -905,6 +1166,15 @@ pub fn describe_registry(root: PathBuf) -> Result<Value> {
             "role_tags": profile.role_tags,
             "artifact_preferences": profile.artifact_preferences,
             "fallback_order": profile.fallback_order,
+        })).collect::<Vec<_>>(),
+        "decision_lessons": registry.lessons.values().map(|lesson| serde_json::json!({
+            "id": lesson.id,
+            "active": lesson.active,
+            "signal": lesson.signal,
+            "recommendation": lesson.recommendation,
+            "confidence": lesson.confidence,
+            "source": lesson.source,
+            "scope": lesson.scope,
         })).collect::<Vec<_>>(),
     }))
 }
@@ -959,6 +1229,30 @@ pub fn validate_registry(registry: &ControlRegistry) -> Result<()> {
                 );
             }
         }
+
+        match runtime.autonomy.autonomy_level.as_str() {
+            "assisted" | "supervised" | "managed" | "autonomous" | "yolo" => {}
+            other => anyhow::bail!("invalid autonomy level '{}'", other),
+        }
+        match runtime.autonomy.approval_policy.as_str() {
+            "none" | "side_effects" | "always" => {}
+            other => anyhow::bail!("invalid approval policy '{}'", other),
+        }
+        if runtime.autonomy.yolo_mode && runtime.autonomy.autonomy_level != "yolo" {
+            anyhow::bail!("yolo_mode requires autonomy_level 'yolo'");
+        }
+        if runtime.autonomy.max_delegations == 0 {
+            anyhow::bail!("autonomy.max_delegations must be at least 1");
+        }
+        if runtime.autonomy.max_iterations == 0 {
+            anyhow::bail!("autonomy.max_iterations must be at least 1");
+        }
+        if runtime.autonomy.max_runtime_secs == 0 {
+            anyhow::bail!("autonomy.max_runtime_secs must be at least 1");
+        }
+        if runtime.autonomy.max_lesson_hints == 0 {
+            anyhow::bail!("autonomy.max_lesson_hints must be at least 1");
+        }
     }
 
     for profile in registry.agent_profiles.values() {
@@ -1011,6 +1305,53 @@ pub fn validate_registry(registry: &ControlRegistry) -> Result<()> {
         }
     }
 
+    for lesson in registry.lessons.values() {
+        if lesson.signal.trim().is_empty() {
+            anyhow::bail!("lesson '{}' is missing signal", lesson.id);
+        }
+        if lesson.recommendation.trim().is_empty() {
+            anyhow::bail!("lesson '{}' is missing recommendation", lesson.id);
+        }
+        if let Some(claw_id) = &lesson.scope.claw_id
+            && !registry.claws.contains_key(claw_id)
+        {
+            anyhow::bail!(
+                "lesson '{}' references missing claw '{}'",
+                lesson.id,
+                claw_id
+            );
+        }
+        if let Some(model_profile_id) = &lesson.scope.model_profile_id
+            && !registry.model_profiles.contains_key(model_profile_id)
+        {
+            anyhow::bail!(
+                "lesson '{}' references missing model profile '{}'",
+                lesson.id,
+                model_profile_id
+            );
+        }
+        if let Some(autonomy_level) = &lesson.scope.autonomy_level {
+            match autonomy_level.as_str() {
+                "assisted" | "supervised" | "managed" | "autonomous" | "yolo" => {}
+                other => anyhow::bail!(
+                    "lesson '{}' uses invalid autonomy level '{}'",
+                    lesson.id,
+                    other
+                ),
+            }
+        }
+        if let Some(execution_mode) = &lesson.scope.execution_mode {
+            match execution_mode.as_str() {
+                "solo_claw" | "task_assigned" | "category_assigned" | "orchestrated" => {}
+                other => anyhow::bail!(
+                    "lesson '{}' uses invalid execution mode '{}'",
+                    lesson.id,
+                    other
+                ),
+            }
+        }
+    }
+
     Ok(())
 }
 
@@ -1038,6 +1379,55 @@ fn render_runtime_markdown(description: &Value) -> String {
     output.push_str(&format!(
         "- Isolation mode: `{}`\n\n",
         description["isolation_mode"].as_str().unwrap_or("strict")
+    ));
+    output.push_str("## Autonomy Policy\n\n");
+    output.push_str(&format!(
+        "- Autonomy level: `{}`\n",
+        description["autonomy"]["autonomy_level"]
+            .as_str()
+            .unwrap_or("managed")
+    ));
+    output.push_str(&format!(
+        "- Yolo mode: `{}`\n",
+        description["autonomy"]["yolo_mode"]
+            .as_bool()
+            .unwrap_or(false)
+    ));
+    output.push_str(&format!(
+        "- Steering enabled: `{}`\n",
+        description["autonomy"]["steering_enabled"]
+            .as_bool()
+            .unwrap_or(true)
+    ));
+    output.push_str(&format!(
+        "- Decision learning enabled: `{}`\n",
+        description["autonomy"]["decision_learning_enabled"]
+            .as_bool()
+            .unwrap_or(true)
+    ));
+    output.push_str(&format!(
+        "- Critic enabled: `{}`\n",
+        description["autonomy"]["critic_enabled"]
+            .as_bool()
+            .unwrap_or(true)
+    ));
+    output.push_str(&format!(
+        "- Approval policy: `{}`\n",
+        description["autonomy"]["approval_policy"]
+            .as_str()
+            .unwrap_or("side_effects")
+    ));
+    output.push_str(&format!(
+        "- Max delegations: `{}`\n",
+        description["autonomy"]["max_delegations"]
+            .as_u64()
+            .unwrap_or(4)
+    ));
+    output.push_str(&format!(
+        "- Max lesson hints: `{}`\n\n",
+        description["autonomy"]["max_lesson_hints"]
+            .as_u64()
+            .unwrap_or(5)
     ));
     output.push_str("## Available Claws\n\n");
     if let Some(items) = description["available_claws"].as_array() {
@@ -1069,6 +1459,26 @@ fn render_runtime_markdown(description: &Value) -> String {
     output.push_str(
         "- Use delegation only when another Claw is available and better suited for the task.\n",
     );
+    if let Some(lessons) = description["decision_lessons"].as_array() {
+        output.push_str("\n## Active Decision Lessons\n\n");
+        let mut any = false;
+        for lesson in lessons
+            .iter()
+            .filter(|lesson| lesson["active"].as_bool().unwrap_or(false))
+        {
+            any = true;
+            output.push_str(&format!(
+                "- `{}` signal=`{}` recommendation=`{}` confidence={}\n",
+                lesson["id"].as_str().unwrap_or("unknown"),
+                lesson["signal"].as_str().unwrap_or("-"),
+                lesson["recommendation"].as_str().unwrap_or("-"),
+                lesson["confidence"].as_f64().unwrap_or(0.0)
+            ));
+        }
+        if !any {
+            output.push_str("- No active decision lessons yet.\n");
+        }
+    }
     output
 }
 
@@ -1084,11 +1494,121 @@ fn read_runtime(root: &Path) -> Result<RuntimeModeManifest> {
                 category_assignments: BTreeMap::new(),
                 allow_shared_context: false,
                 isolation_mode: default_isolation_mode(),
+                autonomy: AutonomyPolicy::default(),
                 metadata: serde_json::json!({}),
             },
         });
     }
     read_yaml(&runtime_path(root))
+}
+
+pub fn list_lessons(root: Option<&str>, active_only: bool) -> Result<()> {
+    let registry = load_registry(resolve_root(root)?)?;
+    for lesson in registry.lessons.values() {
+        if active_only && !lesson.active {
+            continue;
+        }
+        println!(
+            "{}  active={}  signal={}  recommendation={}  scope(category={}, claw={}, model={}, autonomy={})",
+            lesson.id,
+            lesson.active,
+            lesson.signal,
+            lesson.recommendation,
+            lesson.scope.category.as_deref().unwrap_or("-"),
+            lesson.scope.claw_id.as_deref().unwrap_or("-"),
+            lesson.scope.model_profile_id.as_deref().unwrap_or("-"),
+            lesson.scope.autonomy_level.as_deref().unwrap_or("-")
+        );
+    }
+    Ok(())
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct NewLessonInput<'a> {
+    pub id: &'a str,
+    pub active: bool,
+    pub signal: &'a str,
+    pub recommendation: &'a str,
+    pub rationale: Option<&'a str>,
+    pub confidence: f32,
+    pub source: Option<&'a str>,
+    pub task_id: Option<&'a str>,
+    pub category: Option<&'a str>,
+    pub claw_id: Option<&'a str>,
+    pub model_profile_id: Option<&'a str>,
+    pub provider: Option<&'a str>,
+    pub autonomy_level: Option<&'a str>,
+    pub execution_mode: Option<&'a str>,
+}
+
+pub fn create_lesson(root: Option<&str>, input: NewLessonInput<'_>) -> Result<()> {
+    let root = resolve_root(root)?;
+    let registry = load_registry(root.clone())?;
+    if let Some(claw_id) = input.claw_id
+        && !registry.claws.contains_key(claw_id)
+    {
+        anyhow::bail!("missing claw '{}'", claw_id);
+    }
+    if let Some(model_profile_id) = input.model_profile_id
+        && !registry.model_profiles.contains_key(model_profile_id)
+    {
+        anyhow::bail!("missing model profile '{}'", model_profile_id);
+    }
+    let manifest = DecisionLessonManifest {
+        version: 1,
+        lesson: DecisionLessonSpec {
+            id: input.id.to_string(),
+            active: input.active,
+            signal: input.signal.to_string(),
+            recommendation: input.recommendation.to_string(),
+            rationale: input.rationale.map(ToString::to_string),
+            confidence: input.confidence,
+            source: input
+                .source
+                .map(ToString::to_string)
+                .unwrap_or_else(default_lesson_source),
+            scope: DecisionLessonScope {
+                task_id: input.task_id.map(ToString::to_string),
+                category: input.category.map(ToString::to_string),
+                claw_id: input.claw_id.map(ToString::to_string),
+                model_profile_id: input.model_profile_id.map(ToString::to_string),
+                provider: input.provider.map(ToString::to_string),
+                autonomy_level: input.autonomy_level.map(ToString::to_string),
+                execution_mode: input.execution_mode.map(ToString::to_string),
+            },
+            metadata: serde_json::json!({}),
+        },
+    };
+    write_yaml(
+        &lessons_dir(&root).join(format!("{}.yaml", slugify(input.id))),
+        &manifest,
+    )?;
+    sync_runtime_artifact(&root)?;
+    println!("Wrote decision lesson {}", input.id);
+    Ok(())
+}
+
+pub fn deactivate_lesson(root: Option<&str>, id: &str) -> Result<()> {
+    let root = resolve_root(root)?;
+    let mut registry = load_registry(root.clone())?;
+    let lesson = registry
+        .lessons
+        .remove(id)
+        .with_context(|| format!("Unknown lesson '{}'", id))?;
+    let manifest = DecisionLessonManifest {
+        version: 1,
+        lesson: DecisionLessonSpec {
+            active: false,
+            ..lesson
+        },
+    };
+    write_yaml(
+        &lessons_dir(&root).join(format!("{}.yaml", slugify(id))),
+        &manifest,
+    )?;
+    sync_runtime_artifact(&root)?;
+    println!("Deactivated decision lesson {}", id);
+    Ok(())
 }
 
 fn write_if_missing(path: &Path, content: &str) -> Result<()> {
@@ -1174,5 +1694,36 @@ mod tests {
                 .cloned(),
             Some("main".to_string())
         );
+    }
+
+    #[test]
+    fn create_lesson_persists_in_registry() {
+        let dir = tempdir().unwrap();
+        init(Some(dir.path().to_str().unwrap())).unwrap();
+        create_lesson(
+            Some(dir.path().to_str().unwrap()),
+            NewLessonInput {
+                id: "prefer-local-fallback",
+                active: true,
+                signal: "provider timeout",
+                recommendation: "prefer local fallback on repeated timeouts",
+                rationale: None,
+                confidence: 0.9,
+                source: None,
+                task_id: None,
+                category: Some("code"),
+                claw_id: Some("main"),
+                model_profile_id: Some("core-groq"),
+                provider: Some("groq"),
+                autonomy_level: Some("managed"),
+                execution_mode: Some("solo_claw"),
+            },
+        )
+        .unwrap();
+        let registry = load_registry(dir.path().to_path_buf()).unwrap();
+        let lesson = registry.lessons.get("prefer-local-fallback").unwrap();
+        assert!(lesson.active);
+        assert_eq!(lesson.scope.category.as_deref(), Some("code"));
+        assert_eq!(lesson.scope.claw_id.as_deref(), Some("main"));
     }
 }

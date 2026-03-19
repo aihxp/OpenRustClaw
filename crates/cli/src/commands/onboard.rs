@@ -404,6 +404,16 @@ async fn run_control_plane_setup(wizard: &mut OnboardingWizard) -> Result<bool> 
         orchestrator,
         allow_shared_context,
         Some("strict"),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
     )?;
 
     wizard.state.execution_mode = Some(mode.to_string());

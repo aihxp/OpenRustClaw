@@ -350,6 +350,35 @@
           <h2>Scheduler Health</h2>
           <div class="surface"><pre id="scheduler-status">Loading…</pre></div>
         </article>
+        <article class="panel span-6">
+          <h2>Autonomy Policy</h2>
+          <div class="surface"><pre id="autonomy-policy">Loading…</pre></div>
+        </article>
+        <article class="panel span-6">
+          <h2>Decision Lessons</h2>
+          <div class="form-grid">
+            <input id="lesson-id" type="text" placeholder="prefer-local-fallback" />
+            <input id="lesson-signal" type="text" placeholder="signal: provider timeout after retries" />
+            <textarea id="lesson-recommendation" rows="3" spellcheck="false" placeholder="recommendation: switch to local fallback before a third remote retry"></textarea>
+            <div class="action-row">
+              <input id="lesson-category" type="text" placeholder="optional category scope" />
+              <input id="lesson-claw" type="text" placeholder="optional claw scope" />
+              <input id="lesson-autonomy" type="text" placeholder="optional autonomy level" />
+            </div>
+            <div class="action-row">
+              <button id="lesson-create">Add Lesson</button>
+              <button class="secondary" id="lessons-refresh">Refresh Lessons</button>
+            </div>
+          </div>
+          <div class="surface" style="margin-top: 12px">
+            <table class="table">
+              <thead>
+                <tr><th>Lesson</th><th>Signal</th><th>Recommendation</th><th>Action</th></tr>
+              </thead>
+              <tbody id="autonomy-lessons"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </article>
 
         <article class="panel span-6">
           <h2>Browser Actions</h2>
@@ -564,6 +593,58 @@
         setText("scheduler-status", report);
       }
 
+      function emptyToNull(value) {
+        const trimmed = value.trim();
+        return trimmed ? trimmed : null;
+      }
+
+      async function loadAutonomy() {
+        const payload = await fetchJson("/control/autonomy");
+        setText("autonomy-policy", payload);
+        const rows = (payload.decision_lessons || []).map((lesson) => {
+          const scope = lesson.scope || {};
+          return `<tr>
+            <td><strong>${lesson.id || "-"}</strong><div class="muted">active=${lesson.active} category=${scope.category || "-"} claw=${scope.claw_id || "-"} autonomy=${scope.autonomy_level || "-"}</div></td>
+            <td>${lesson.signal || "-"}</td>
+            <td>${lesson.recommendation || "-"}</td>
+            <td><button class="secondary" onclick="deactivateLesson('${lesson.id}')">Deactivate</button></td>
+          </tr>`;
+        });
+        renderTableRows("autonomy-lessons", rows, "No decision lessons recorded.");
+      }
+
+      async function createLesson() {
+        const id = document.getElementById("lesson-id").value.trim();
+        const signal = document.getElementById("lesson-signal").value.trim();
+        const recommendation = document.getElementById("lesson-recommendation").value.trim();
+        if (!id || !signal || !recommendation) {
+          throw new Error("Lesson id, signal, and recommendation are required");
+        }
+        await fetchJson("/control/autonomy/lessons", {
+          method: "POST",
+          body: JSON.stringify({
+            id,
+            active: true,
+            signal,
+            recommendation,
+            category: emptyToNull(document.getElementById("lesson-category").value),
+            claw_id: emptyToNull(document.getElementById("lesson-claw").value),
+            autonomy_level: emptyToNull(document.getElementById("lesson-autonomy").value),
+          }),
+        });
+        document.getElementById("lesson-id").value = "";
+        document.getElementById("lesson-signal").value = "";
+        document.getElementById("lesson-recommendation").value = "";
+        await loadAutonomy();
+      }
+
+      async function deactivateLesson(id) {
+        await fetchJson(`/control/autonomy/lessons/${encodeURIComponent(id)}/deactivate`, {
+          method: "POST",
+        });
+        await loadAutonomy();
+      }
+
       async function loadChannels() {
         const payload = await fetchJson("/control/channels");
         const rows = (payload.accounts || []).map((account) => {
@@ -700,6 +781,7 @@
             loadRuntime(),
             loadVaultStatus(),
             loadSchedulerStatus(),
+            loadAutonomy(),
             loadChannels(),
             loadSessions(),
             loadMemory(),
@@ -901,6 +983,24 @@
           setText("browser-result", { error: error.message });
         }
       });
+      document.getElementById("lesson-create").addEventListener("click", async () => {
+        try {
+          await createLesson();
+        } catch (error) {
+          setText("autonomy-policy", { error: error.message });
+        }
+      });
+      document.getElementById("lessons-refresh").addEventListener("click", async () => {
+        try {
+          await loadAutonomy();
+        } catch (error) {
+          setText("autonomy-policy", { error: error.message });
+        }
+      });
+
+      window.inspectSession = inspectSession;
+      window.inspectJob = inspectJob;
+      window.deactivateLesson = deactivateLesson;
 
       refreshAll();
       connectDiagnostics();

@@ -70,8 +70,14 @@ pub struct RoutingDecision {
     pub selected_model: ResolvedModelDecision,
     #[serde(default)]
     pub available_workers: Vec<String>,
+    #[serde(default)]
+    pub autonomy: control::AutonomyPolicy,
     pub allow_shared_context: bool,
     pub isolation_mode: String,
+    #[serde(default)]
+    pub applied_lessons: Vec<control::DecisionLessonSpec>,
+    #[serde(default)]
+    pub steering_notes: Vec<String>,
     #[serde(default)]
     pub warnings: Vec<String>,
 }
@@ -114,6 +120,8 @@ pub struct OrchestrationRunRecord {
     pub delegations: Vec<DelegationTask>,
     #[serde(default)]
     pub worker_results: Vec<WorkerResultEnvelope>,
+    #[serde(default)]
+    pub reflection_notes: Vec<String>,
     pub final_output: String,
     pub final_claw_id: String,
     pub final_model_profile_id: String,
@@ -289,6 +297,7 @@ fn resolve_routing(
             category_assignments: BTreeMap::new(),
             allow_shared_context: false,
             isolation_mode: "strict".to_string(),
+            autonomy: control::AutonomyPolicy::default(),
             metadata: serde_json::json!({}),
         });
 
@@ -387,6 +396,15 @@ fn resolve_routing(
         .with_context(|| format!("Unknown claw '{}'", claw_id))?;
     let model = resolve_model_with_fallback(&claw.model_profile_id, registry, config)?;
     warnings.extend(model.decision.warnings.clone());
+    let applied_lessons = matching_lessons(
+        registry,
+        request,
+        claw,
+        &runtime,
+        &model.decision.selected_profile_id,
+        &model.decision.provider,
+    );
+    let steering_notes = build_steering_notes(&runtime.autonomy, &applied_lessons);
     let available_workers = registry
         .claws
         .values()
@@ -405,8 +423,11 @@ fn resolve_routing(
         selected_model_profile_id: claw.model_profile_id.clone(),
         selected_model: model.decision,
         available_workers,
+        autonomy: runtime.autonomy,
         allow_shared_context: runtime.allow_shared_context,
         isolation_mode: runtime.isolation_mode,
+        applied_lessons,
+        steering_notes,
         warnings,
     })
 }
@@ -417,6 +438,94 @@ fn first_enabled_claw_id(registry: &control::ControlRegistry) -> Option<String> 
         .values()
         .find(|claw| claw.enabled)
         .map(|claw| claw.id.clone())
+}
+
+fn matching_lessons(
+    registry: &control::ControlRegistry,
+    request: &OrchestrationRequest,
+    claw: &control::ClawSpec,
+    runtime: &control::RuntimeModeSpec,
+    model_profile_id: &str,
+    provider: &str,
+) -> Vec<control::DecisionLessonSpec> {
+    let mut matches = registry
+        .lessons
+        .values()
+        .filter(|lesson| lesson.active)
+        .filter(|lesson| {
+            scope_matches(lesson.scope.task_id.as_deref(), request.task_id.as_deref())
+                && scope_matches(
+                    lesson.scope.category.as_deref(),
+                    request.category.as_deref(),
+                )
+                && scope_matches(lesson.scope.claw_id.as_deref(), Some(claw.id.as_str()))
+                && scope_matches(
+                    lesson.scope.model_profile_id.as_deref(),
+                    Some(model_profile_id),
+                )
+                && scope_matches(lesson.scope.provider.as_deref(), Some(provider))
+                && scope_matches(
+                    lesson.scope.autonomy_level.as_deref(),
+                    Some(runtime.autonomy.autonomy_level.as_str()),
+                )
+                && scope_matches(
+                    lesson.scope.execution_mode.as_deref(),
+                    Some(runtime.mode.as_str()),
+                )
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    matches.sort_by(|left, right| {
+        right
+            .confidence
+            .partial_cmp(&left.confidence)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| left.id.cmp(&right.id))
+    });
+    matches
+        .into_iter()
+        .take(runtime.autonomy.max_lesson_hints)
+        .collect()
+}
+
+fn scope_matches(expected: Option<&str>, actual: Option<&str>) -> bool {
+    match expected {
+        Some(expected) => actual == Some(expected),
+        None => true,
+    }
+}
+
+fn build_steering_notes(
+    autonomy: &control::AutonomyPolicy,
+    lessons: &[control::DecisionLessonSpec],
+) -> Vec<String> {
+    let mut notes = vec![format!(
+        "autonomy={} approval_policy={} max_delegations={} max_iterations={} max_runtime_secs={}",
+        autonomy.autonomy_level,
+        autonomy.approval_policy,
+        autonomy.max_delegations,
+        autonomy.max_iterations,
+        autonomy.max_runtime_secs
+    )];
+    if autonomy.yolo_mode {
+        notes.push(
+            "yolo mode is enabled; keep actions bounded by explicit budgets, approvals, and kill switches"
+                .to_string(),
+        );
+    }
+    if !autonomy.steering_enabled {
+        notes.push("steering is disabled; use lessons as soft guidance only".to_string());
+    }
+    if !autonomy.decision_learning_enabled {
+        notes.push("decision learning is disabled for this run".to_string());
+    }
+    if !autonomy.critic_enabled {
+        notes.push("critic loop is disabled; favor conservative execution".to_string());
+    }
+    for lesson in lessons {
+        notes.push(format!("lesson {}: {}", lesson.id, lesson.recommendation));
+    }
+    notes
 }
 
 fn resolve_model_with_fallback(
@@ -577,6 +686,7 @@ async fn run_direct(
         routing: routing.clone(),
         delegations: Vec::new(),
         worker_results: Vec::new(),
+        reflection_notes: routing.steering_notes.clone(),
         final_output: prompt.message.content,
         final_claw_id: claw.id.clone(),
         final_model_profile_id: executable.decision.selected_profile_id.clone(),
@@ -625,8 +735,9 @@ async fn run_orchestrated(
             })
         })
         .collect::<Vec<_>>();
+    let max_delegations = routing.autonomy.max_delegations.max(1);
     let planner_system = format!(
-        "{}\nReturn JSON only with this schema:\n{{\"final_mode\":\"delegate|answer_directly\",\"direct_response\":\"...\",\"delegations\":[{{\"claw_id\":\"worker-id\",\"instruction\":\"bounded instruction\",\"reason\":\"why this worker\"}}]}}\nIf delegation is needed, keep it to at most 4 worker tasks and only use these claw ids: {}.",
+        "{}\nReturn JSON only with this schema:\n{{\"final_mode\":\"delegate|answer_directly\",\"direct_response\":\"...\",\"delegations\":[{{\"claw_id\":\"worker-id\",\"instruction\":\"bounded instruction\",\"reason\":\"why this worker\"}}]}}\nIf delegation is needed, keep it to at most {} worker tasks and only use these claw ids: {}.",
         build_claw_system_prompt(
             orchestrator,
             orchestrator_agent,
@@ -634,6 +745,7 @@ async fn run_orchestrated(
             workspace_root,
             "orchestrator_planner",
         ),
+        max_delegations,
         available_workers
             .iter()
             .filter_map(|item| item["id"].as_str())
@@ -669,6 +781,7 @@ async fn run_orchestrated(
             routing: routing.clone(),
             delegations: Vec::new(),
             worker_results: Vec::new(),
+            reflection_notes: routing.steering_notes.clone(),
             final_output: plan
                 .direct_response
                 .unwrap_or(planner_response.message.content),
@@ -682,7 +795,7 @@ async fn run_orchestrated(
 
     let mut delegations = Vec::new();
     let mut worker_results = Vec::new();
-    for item in plan.delegations.into_iter().take(4) {
+    for item in plan.delegations.into_iter().take(max_delegations) {
         let worker = registry
             .claws
             .get(&item.claw_id)
@@ -772,6 +885,7 @@ async fn run_orchestrated(
         routing: routing.clone(),
         delegations,
         worker_results,
+        reflection_notes: routing.steering_notes.clone(),
         final_output: final_response.message.content,
         final_claw_id: orchestrator.id.clone(),
         final_model_profile_id: orchestrator_model.decision.selected_profile_id.clone(),
@@ -788,6 +902,27 @@ fn build_claw_system_prompt(
     workspace_root: &Path,
     mode: &str,
 ) -> String {
+    let lesson_hints = if routing.applied_lessons.is_empty() {
+        "Decision lessons: none".to_string()
+    } else {
+        let joined = routing
+            .applied_lessons
+            .iter()
+            .map(|lesson| {
+                format!(
+                    "{} => {} (confidence {:.2})",
+                    lesson.signal, lesson.recommendation, lesson.confidence
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("; ");
+        format!("Decision lessons: {joined}")
+    };
+    let steering_notes = if routing.steering_notes.is_empty() {
+        "-".to_string()
+    } else {
+        routing.steering_notes.join(" | ")
+    };
     format!(
         "You are Claw '{claw_id}' operating in OpenRustClaw.\n\
 Role: {role}\n\
@@ -797,11 +932,22 @@ Output policy: {output_policy}\n\
 Execution mode: {execution_mode}\n\
 Isolation mode: {isolation_mode}\n\
 Shared context allowed: {shared_context}\n\
+Autonomy level: {autonomy_level}\n\
+Yolo mode: {yolo_mode}\n\
+Approval policy: {approval_policy}\n\
+Steering enabled: {steering_enabled}\n\
+Decision learning enabled: {decision_learning_enabled}\n\
+Critic enabled: {critic_enabled}\n\
+Max delegations: {max_delegations}\n\
+Max iterations: {max_iterations}\n\
+Max runtime secs: {max_runtime_secs}\n\
 Workspace: {workspace}\n\
 Task category: {category}\n\
 Task id: {task_id}\n\
 Run mode: {mode}\n\
-Stay within your assigned responsibility. Cross-task contamination is disallowed unless shared context is explicitly enabled.",
+Steering notes: {steering_notes}\n\
+{lesson_hints}\n\
+Stay within your assigned responsibility. Cross-task contamination is disallowed unless shared context is explicitly enabled. Respect the autonomy policy as risk limits, not as a replacement for sound model judgment.",
         claw_id = claw.id,
         role = claw.role,
         agent_profile_id = agent_profile.id,
@@ -810,10 +956,21 @@ Stay within your assigned responsibility. Cross-task contamination is disallowed
         execution_mode = routing.execution_mode,
         isolation_mode = routing.isolation_mode,
         shared_context = routing.allow_shared_context,
+        autonomy_level = routing.autonomy.autonomy_level,
+        yolo_mode = routing.autonomy.yolo_mode,
+        approval_policy = routing.autonomy.approval_policy,
+        steering_enabled = routing.autonomy.steering_enabled,
+        decision_learning_enabled = routing.autonomy.decision_learning_enabled,
+        critic_enabled = routing.autonomy.critic_enabled,
+        max_delegations = routing.autonomy.max_delegations,
+        max_iterations = routing.autonomy.max_iterations,
+        max_runtime_secs = routing.autonomy.max_runtime_secs,
         workspace = workspace_root.display(),
         category = routing.category.as_deref().unwrap_or("-"),
         task_id = routing.task_id.as_deref().unwrap_or("-"),
         mode = mode,
+        steering_notes = steering_notes,
+        lesson_hints = lesson_hints,
     )
 }
 
@@ -991,6 +1148,7 @@ mod tests {
             category_assignments: BTreeMap::from([("code".to_string(), "main".to_string())]),
             allow_shared_context: false,
             isolation_mode: "strict".to_string(),
+            autonomy: control::AutonomyPolicy::default(),
             metadata: serde_json::json!({}),
         });
         registry
@@ -1080,12 +1238,16 @@ mod tests {
                     warnings: vec![],
                 },
                 available_workers: vec![],
+                autonomy: control::AutonomyPolicy::default(),
                 allow_shared_context: false,
                 isolation_mode: "strict".to_string(),
+                applied_lessons: vec![],
+                steering_notes: vec![],
                 warnings: vec![],
             },
             delegations: vec![],
             worker_results: vec![],
+            reflection_notes: vec![],
             final_output: "ok".to_string(),
             final_claw_id: "claw-a".to_string(),
             final_model_profile_id: "primary".to_string(),

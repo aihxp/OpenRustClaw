@@ -2390,6 +2390,15 @@ fn channel_registry_router(registry: Arc<tokio::sync::RwLock<ChannelRegistry>>) 
 fn control_plane_router(state: ControlPlaneApiState) -> Router {
     Router::new()
         .route("/control/runtime", get(control_runtime_handler))
+        .route("/control/autonomy", get(control_autonomy_handler))
+        .route(
+            "/control/autonomy/lessons",
+            get(control_autonomy_lessons_handler).post(control_autonomy_create_lesson_handler),
+        )
+        .route(
+            "/control/autonomy/lessons/{id}/deactivate",
+            post(control_autonomy_deactivate_lesson_handler),
+        )
         .route(
             "/control/config",
             get(control_config_handler).put(control_config_update_handler),
@@ -2818,6 +2827,157 @@ async fn control_runtime_handler(State(state): State<ControlPlaneApiState>) -> i
         Ok(description) => (StatusCode::OK, Json(description)).into_response(),
         Err(error) => (
             StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn control_autonomy_handler(State(state): State<ControlPlaneApiState>) -> impl IntoResponse {
+    match control::describe_registry(state.control_root.clone()) {
+        Ok(description) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "execution_mode": description["execution_mode"].clone(),
+                "default_claw": description["default_claw"].clone(),
+                "orchestrator_claw": description["orchestrator_claw"].clone(),
+                "allow_shared_context": description["allow_shared_context"].clone(),
+                "isolation_mode": description["isolation_mode"].clone(),
+                "autonomy": description["autonomy"].clone(),
+                "decision_lessons": description["decision_lessons"].clone(),
+            })),
+        )
+            .into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn control_autonomy_lessons_handler(
+    State(state): State<ControlPlaneApiState>,
+) -> impl IntoResponse {
+    match control::describe_registry(state.control_root.clone()) {
+        Ok(description) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "decision_lessons": description["decision_lessons"].clone(),
+            })),
+        )
+            .into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct AutonomyLessonPayload {
+    id: String,
+    #[serde(default = "default_active_true")]
+    active: bool,
+    signal: String,
+    recommendation: String,
+    #[serde(default)]
+    rationale: Option<String>,
+    #[serde(default)]
+    confidence: Option<f32>,
+    #[serde(default)]
+    source: Option<String>,
+    #[serde(default)]
+    task_id: Option<String>,
+    #[serde(default)]
+    category: Option<String>,
+    #[serde(default)]
+    claw_id: Option<String>,
+    #[serde(default)]
+    model_profile_id: Option<String>,
+    #[serde(default)]
+    provider: Option<String>,
+    #[serde(default)]
+    autonomy_level: Option<String>,
+    #[serde(default)]
+    execution_mode: Option<String>,
+}
+
+fn default_active_true() -> bool {
+    true
+}
+
+async fn control_autonomy_create_lesson_handler(
+    State(state): State<ControlPlaneApiState>,
+    Json(payload): Json<AutonomyLessonPayload>,
+) -> impl IntoResponse {
+    let control_root = state.control_root.to_string_lossy().to_string();
+    match control::create_lesson(
+        Some(&control_root),
+        control::NewLessonInput {
+            id: &payload.id,
+            active: payload.active,
+            signal: &payload.signal,
+            recommendation: &payload.recommendation,
+            rationale: payload.rationale.as_deref(),
+            confidence: payload.confidence.unwrap_or(0.7),
+            source: payload.source.as_deref(),
+            task_id: payload.task_id.as_deref(),
+            category: payload.category.as_deref(),
+            claw_id: payload.claw_id.as_deref(),
+            model_profile_id: payload.model_profile_id.as_deref(),
+            provider: payload.provider.as_deref(),
+            autonomy_level: payload.autonomy_level.as_deref(),
+            execution_mode: payload.execution_mode.as_deref(),
+        },
+    ) {
+        Ok(()) => match control::describe_registry(state.control_root.clone()) {
+            Ok(description) => (
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "status": "ok",
+                    "decision_lessons": description["decision_lessons"].clone(),
+                })),
+            )
+                .into_response(),
+            Err(error) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": error.to_string()})),
+            )
+                .into_response(),
+        },
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn control_autonomy_deactivate_lesson_handler(
+    State(state): State<ControlPlaneApiState>,
+    AxumPath(id): AxumPath<String>,
+) -> impl IntoResponse {
+    let control_root = state.control_root.to_string_lossy().to_string();
+    match control::deactivate_lesson(Some(&control_root), &id) {
+        Ok(()) => match control::describe_registry(state.control_root.clone()) {
+            Ok(description) => (
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "status": "ok",
+                    "decision_lessons": description["decision_lessons"].clone(),
+                })),
+            )
+                .into_response(),
+            Err(error) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": error.to_string()})),
+            )
+                .into_response(),
+        },
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": error.to_string()})),
         )
             .into_response(),

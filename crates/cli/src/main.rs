@@ -1342,6 +1342,71 @@ enum ControlAction {
         #[arg(long)]
         isolation_mode: Option<String>,
         #[arg(long)]
+        autonomy_level: Option<String>,
+        #[arg(long)]
+        yolo_mode: Option<bool>,
+        #[arg(long)]
+        steering_enabled: Option<bool>,
+        #[arg(long)]
+        decision_learning_enabled: Option<bool>,
+        #[arg(long)]
+        critic_enabled: Option<bool>,
+        #[arg(long)]
+        max_delegations: Option<usize>,
+        #[arg(long)]
+        max_iterations: Option<usize>,
+        #[arg(long)]
+        max_runtime_secs: Option<u64>,
+        #[arg(long)]
+        max_lesson_hints: Option<usize>,
+        #[arg(long)]
+        approval_policy: Option<String>,
+        #[arg(long)]
+        path: Option<String>,
+    },
+    /// List decision lessons from the control registry
+    Lessons {
+        #[arg(long)]
+        active_only: bool,
+        #[arg(long)]
+        path: Option<String>,
+    },
+    /// Create or replace a decision lesson manifest
+    AddLesson {
+        id: String,
+        #[arg(long, default_value_t = true)]
+        active: bool,
+        #[arg(long)]
+        signal: String,
+        #[arg(long)]
+        recommendation: String,
+        #[arg(long)]
+        rationale: Option<String>,
+        #[arg(long, default_value_t = 0.7)]
+        confidence: f32,
+        #[arg(long)]
+        source: Option<String>,
+        #[arg(long)]
+        task_id: Option<String>,
+        #[arg(long)]
+        category: Option<String>,
+        #[arg(long)]
+        claw_id: Option<String>,
+        #[arg(long)]
+        model_profile: Option<String>,
+        #[arg(long)]
+        provider: Option<String>,
+        #[arg(long)]
+        autonomy_level: Option<String>,
+        #[arg(long)]
+        execution_mode: Option<String>,
+        #[arg(long)]
+        path: Option<String>,
+    },
+    /// Mark a decision lesson inactive without deleting it
+    DeactivateLesson {
+        id: String,
+        #[arg(long)]
         path: Option<String>,
     },
     /// Assign one task id to a Claw
@@ -2006,6 +2071,16 @@ async fn main() -> Result<()> {
                 orchestrator_claw,
                 allow_shared_context,
                 isolation_mode,
+                autonomy_level,
+                yolo_mode,
+                steering_enabled,
+                decision_learning_enabled,
+                critic_enabled,
+                max_delegations,
+                max_iterations,
+                max_runtime_secs,
+                max_lesson_hints,
+                approval_policy,
                 path,
             } => commands::control::configure_mode(
                 path.as_deref(),
@@ -2014,7 +2089,58 @@ async fn main() -> Result<()> {
                 orchestrator_claw.as_deref(),
                 allow_shared_context,
                 isolation_mode.as_deref(),
+                autonomy_level.as_deref(),
+                yolo_mode,
+                steering_enabled,
+                decision_learning_enabled,
+                critic_enabled,
+                max_delegations,
+                max_iterations,
+                max_runtime_secs,
+                max_lesson_hints,
+                approval_policy.as_deref(),
             ),
+            ControlAction::Lessons { active_only, path } => {
+                commands::control::list_lessons(path.as_deref(), active_only)
+            }
+            ControlAction::AddLesson {
+                id,
+                active,
+                signal,
+                recommendation,
+                rationale,
+                confidence,
+                source,
+                task_id,
+                category,
+                claw_id,
+                model_profile,
+                provider,
+                autonomy_level,
+                execution_mode,
+                path,
+            } => commands::control::create_lesson(
+                path.as_deref(),
+                commands::control::NewLessonInput {
+                    id: &id,
+                    active,
+                    signal: &signal,
+                    recommendation: &recommendation,
+                    rationale: rationale.as_deref(),
+                    confidence,
+                    source: source.as_deref(),
+                    task_id: task_id.as_deref(),
+                    category: category.as_deref(),
+                    claw_id: claw_id.as_deref(),
+                    model_profile_id: model_profile.as_deref(),
+                    provider: provider.as_deref(),
+                    autonomy_level: autonomy_level.as_deref(),
+                    execution_mode: execution_mode.as_deref(),
+                },
+            ),
+            ControlAction::DeactivateLesson { id, path } => {
+                commands::control::deactivate_lesson(path.as_deref(), &id)
+            }
             ControlAction::AssignTask {
                 task_id,
                 claw_id,

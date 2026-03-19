@@ -705,7 +705,7 @@ Exit criteria:
 
 Goal: match OpenClaw's operator UX and tooling surface while keeping Rust-native interfaces.
 
-Status: complete for shipped CLI/MCP control-plane surfaces, shared typed control/config/diagnostics APIs, shared service-status and scheduler inspection APIs, shared session/memory/job inspection APIs, channel account CRUD parity, encrypted runtime secret-vault support, validated provider/model switching, runtime reload/cutover APIs with rollback, bounded routed/orchestrated multi-model execution surfaces with receipt capture, onboarding scaffolding, doctor validation, a bounded native browser operator slice, and an initial Web Control UI shell with config/vault editing; deeper Web Control UI parity, richer browser/web tooling, deeper channel/service probes, and full orchestrated runtime execution remain open.
+Status: complete for shipped CLI/MCP control-plane surfaces, shared typed control/config/diagnostics APIs, autonomy-tier and decision-lesson control surfaces, shared service-status and scheduler inspection APIs, shared session/memory/job inspection APIs, channel account CRUD parity, encrypted runtime secret-vault support, validated provider/model switching, runtime reload/cutover APIs with rollback, bounded routed/orchestrated multi-model execution surfaces with receipt capture and lesson-aware steering context, onboarding scaffolding, doctor validation, a bounded native browser operator slice, and an initial Web Control UI shell with config/vault editing plus autonomy/lesson inspection; deeper Web Control UI parity, richer browser/web tooling, deeper channel/service probes, and full orchestrated runtime execution remain open.
 
 Additional later-surface work:
 
@@ -722,6 +722,8 @@ Completed:
   - model profiles,
   - Claw manifests,
   - runtime mode,
+  - autonomy policy,
+  - decision lessons,
   - task/category bindings.
 - [x] Add CLI control-plane surfaces:
   - `openrustclaw control init`,
@@ -789,6 +791,20 @@ Completed:
   - task/category/claw routing resolution against `.claw/control`,
   - model-profile fallback resolution when a configured profile is unsupported or unavailable,
   - persisted orchestration receipts under `.claw/control/orchestration-runs/`.
+- [x] Add trust-first autonomy and decision-memory surfaces on top of the control plane:
+  - autonomy tiers: `assisted`, `supervised`, `managed`, `autonomous`, `yolo`,
+  - runtime guardrails for approvals, delegation caps, iteration caps, runtime budgets, and lesson-hint caps,
+  - file-backed decision lessons under `.claw/control/lessons/`,
+  - `openrustclaw control lessons|add-lesson|deactivate-lesson`,
+  - `GET /control/autonomy`,
+  - `GET/POST /control/autonomy/lessons`,
+  - `POST /control/autonomy/lessons/{id}/deactivate`,
+  - `/control/ui` autonomy-policy and decision-lesson panels.
+- [x] Feed autonomy policy and scoped decision lessons into the shipped bounded orchestration surface:
+  - lesson-aware steering notes on routing decisions,
+  - runtime-capped delegation counts instead of hardcoded planner limits,
+  - autonomy/lesson context in planner and worker prompts,
+  - orchestration receipts that preserve the steering context used for a run.
 - [x] Add a bounded native browser operator surface backed by the Rust automation crate:
   - `openrustclaw browser navigate|extract|screenshot|pdf`,
   - `POST /control/browser/navigate`,
