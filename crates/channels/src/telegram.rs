@@ -13,7 +13,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use governor::{Quota, RateLimiter};
-use reqwest::Client;
+use reqwest::{Client, multipart::{Form, Part}};
 use std::num::NonZeroU32;
 use tokio::sync::{Mutex, RwLock, mpsc};
 use tokio::task::JoinHandle;
@@ -41,7 +41,7 @@ pub struct TelegramChannel {
     >,
     is_connected: RwLock<bool>,
     polling_task: Mutex<Option<JoinHandle<()>>>,
-    bot_username: RwLock<Option<String>>,
+    bot_username: Arc<RwLock<Option<String>>>,
 }
 
 impl TelegramChannel {
@@ -64,7 +64,7 @@ impl TelegramChannel {
             rate_limiter,
             is_connected: RwLock::new(false),
             polling_task: Mutex::new(None),
-            bot_username: RwLock::new(None),
+            bot_username: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -90,6 +90,230 @@ impl TelegramChannel {
             .unwrap_or_else(|| "https://api.telegram.org".to_string())
             .trim_end_matches('/')
             .to_string()
+    }
+
+    fn build_file_references(message: &serde_json::Value) -> Vec<serde_json::Value> {
+        fn push_file_ref(
+            refs: &mut Vec<serde_json::Value>,
+            message_id: Option<i64>,
+            media_type: &str,
+            item: &serde_json::Value,
+        ) {
+            let Some(file_id) = item.get("file_id").and_then(|value| value.as_str()) else {
+                return;
+            };
+            let mut file_ref = serde_json::Map::new();
+            file_ref.insert("id".into(), serde_json::json!(file_id));
+            file_ref.insert("platform_ref".into(), serde_json::json!(file_id));
+            file_ref.insert("media_type".into(), serde_json::json!(media_type));
+            if let Some(message_id) = message_id {
+                file_ref.insert("message_id".into(), serde_json::json!(message_id));
+            }
+            if let Some(name) = item.get("file_name").and_then(|value| value.as_str()) {
+                file_ref.insert("name".into(), serde_json::json!(name));
+            }
+            if let Some(mime) = item.get("mime_type").and_then(|value| value.as_str()) {
+                file_ref.insert("mime_type".into(), serde_json::json!(mime));
+            }
+            if let Some(size) = item.get("file_size").and_then(|value| value.as_u64()) {
+                file_ref.insert("size".into(), serde_json::json!(size));
+            }
+            refs.push(serde_json::Value::Object(file_ref));
+        }
+
+        let mut refs = Vec::new();
+        let message_id = message.get("message_id").and_then(|value| value.as_i64());
+        if let Some(photo) = message.get("photo").and_then(|value| value.as_array()) {
+            for item in photo {
+                push_file_ref(&mut refs, message_id, "image", item);
+            }
+        } else if let Some(document) = message.get("document") {
+            push_file_ref(&mut refs, message_id, "document", document);
+        } else if let Some(audio) = message.get("audio") {
+            push_file_ref(&mut refs, message_id, "audio", audio);
+        } else if let Some(voice) = message.get("voice") {
+            push_file_ref(&mut refs, message_id, "voice", voice);
+        } else if let Some(video) = message.get("video") {
+            push_file_ref(&mut refs, message_id, "video", video);
+        }
+        refs
+    }
+
+    fn normalize_incoming_message(
+        message: &serde_json::Value,
+        allowed_users: &[String],
+        bot_username: Option<&str>,
+    ) -> Option<IncomingMessage> {
+        let from = message.get("from")?;
+        let user_id = from
+            .get("id")
+            .and_then(|value| value.as_i64())
+            .map(|value| value.to_string())
+            .unwrap_or_default();
+
+        if !allowed_users.is_empty() && !allowed_users.contains(&user_id) {
+            debug!(user_id = %user_id, "Skipping Telegram user outside allowlist");
+            return None;
+        }
+
+        let content = message
+            .get("text")
+            .and_then(|value| value.as_str())
+            .map(ToString::to_string)
+            .or_else(|| {
+                message
+                    .get("caption")
+                    .and_then(|value| value.as_str())
+                    .map(ToString::to_string)
+            })
+            .or_else(|| {
+                message.get("poll").map(|poll| {
+                    let question = poll
+                        .get("question")
+                        .and_then(|value| value.as_str())
+                        .unwrap_or("Poll");
+                    let options = poll
+                        .get("options")
+                        .and_then(|value| value.as_array())
+                        .map(|values| {
+                            values
+                                .iter()
+                                .filter_map(|option| option.get("text").and_then(|value| value.as_str()))
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        })
+                        .unwrap_or_default();
+                    if options.is_empty() {
+                        format!("[Poll] {question}")
+                    } else {
+                        format!("[Poll] {question} Options: {options}")
+                    }
+                })
+            })
+            .or_else(|| {
+                if message.get("photo").is_some() {
+                    Some("[Image]".to_string())
+                } else if message.get("document").is_some() {
+                    Some("[Document]".to_string())
+                } else if message.get("audio").is_some() {
+                    Some("[Audio]".to_string())
+                } else if message.get("voice").is_some() {
+                    Some("[Voice message]".to_string())
+                } else if message.get("video").is_some() {
+                    Some("[Video]".to_string())
+                } else if let Some(topic_created) = message.get("forum_topic_created") {
+                    let name = topic_created
+                        .get("name")
+                        .and_then(|value| value.as_str())
+                        .unwrap_or("topic");
+                    Some(format!("[Forum topic created] {name}"))
+                } else if message.get("forum_topic_closed").is_some() {
+                    Some("[Forum topic closed]".to_string())
+                } else if message.get("forum_topic_reopened").is_some() {
+                    Some("[Forum topic reopened]".to_string())
+                } else if let Some(topic_edited) = message.get("forum_topic_edited") {
+                    let name = topic_edited
+                        .get("name")
+                        .and_then(|value| value.as_str())
+                        .unwrap_or("topic");
+                    Some(format!("[Forum topic edited] {name}"))
+                } else {
+                    None
+                }
+            })?;
+
+        let chat_id = message
+            .get("chat")
+            .and_then(|chat| chat.get("id"))
+            .and_then(|value| value.as_i64())
+            .map(|value| value.to_string())
+            .unwrap_or_default();
+
+        let mut metadata = serde_json::json!({
+            "telegram_chat_id": chat_id,
+            "telegram_chat_type": message
+                .get("chat")
+                .and_then(|chat| chat.get("type"))
+                .and_then(|value| value.as_str())
+                .unwrap_or("private"),
+            "telegram_is_group": message
+                .get("chat")
+                .and_then(|chat| chat.get("type"))
+                .and_then(|value| value.as_str())
+                .map(|value| matches!(value, "group" | "supergroup"))
+                .unwrap_or(false),
+        });
+        if let Some(message_id) = message.get("message_id").and_then(|value| value.as_i64()) {
+            metadata["telegram_message_id"] = serde_json::json!(message_id);
+        }
+        if let Some(username) = from.get("username").and_then(|value| value.as_str()) {
+            metadata["telegram_username"] = serde_json::json!(username);
+        }
+        if let Some(reply_to) = message
+            .get("reply_to_message")
+            .and_then(|value| value.get("message_id"))
+            .and_then(|value| value.as_i64())
+        {
+            metadata["telegram_reply_to_message_id"] = serde_json::json!(reply_to);
+        }
+        if let Some(thread_id) = message
+            .get("message_thread_id")
+            .and_then(|value| value.as_i64())
+        {
+            metadata["telegram_message_thread_id"] = serde_json::json!(thread_id);
+        }
+        if message
+            .get("is_topic_message")
+            .and_then(|value| value.as_bool())
+            == Some(true)
+        {
+            metadata["telegram_is_topic_message"] = serde_json::json!(true);
+        }
+        if let Some(topic_created) = message.get("forum_topic_created") {
+            metadata["telegram_forum_topic_created"] = topic_created.clone();
+        }
+        if message.get("forum_topic_closed").is_some() {
+            metadata["telegram_forum_topic_closed"] = serde_json::json!(true);
+        }
+        if message.get("forum_topic_reopened").is_some() {
+            metadata["telegram_forum_topic_reopened"] = serde_json::json!(true);
+        }
+        if let Some(topic_edited) = message.get("forum_topic_edited") {
+            metadata["telegram_forum_topic_edited"] = topic_edited.clone();
+        }
+        if let Some(poll) = message.get("poll") {
+            metadata["telegram_poll"] = poll.clone();
+        }
+
+        let file_refs = Self::build_file_references(message);
+        if !file_refs.is_empty() {
+            metadata["file_references"] = serde_json::json!(file_refs);
+            metadata["telegram_file_references"] = serde_json::json!(file_refs);
+        }
+        if message.get("photo").is_some() {
+            metadata["telegram_media_type"] = serde_json::json!("image");
+        } else if message.get("document").is_some() {
+            metadata["telegram_media_type"] = serde_json::json!("document");
+        } else if message.get("audio").is_some() {
+            metadata["telegram_media_type"] = serde_json::json!("audio");
+        } else if message.get("voice").is_some() {
+            metadata["telegram_media_type"] = serde_json::json!("voice");
+        } else if message.get("video").is_some() {
+            metadata["telegram_media_type"] = serde_json::json!("video");
+        }
+
+        if let Some(bot_username) = bot_username {
+            metadata["telegram_bot_mentioned"] =
+                serde_json::json!(content.contains(&format!("@{bot_username}")));
+        }
+
+        Some(IncomingMessage {
+            session_id: Uuid::new_v4(),
+            user_id,
+            content,
+            platform: Platform::Telegram,
+            metadata,
+        })
     }
 
     fn chat_id_from_metadata(metadata: &serde_json::Value) -> Result<String> {
@@ -181,203 +405,12 @@ impl TelegramChannel {
                         continue;
                     };
 
-                    let Some(from) = message.get("from") else {
+                    let Some(incoming) = TelegramChannel::normalize_incoming_message(
+                        message,
+                        &allowed_users,
+                        bot_username.as_deref(),
+                    ) else {
                         continue;
-                    };
-
-                    let user_id = from
-                        .get("id")
-                        .and_then(|value| value.as_i64())
-                        .map(|value| value.to_string())
-                        .unwrap_or_default();
-
-                    if !allowed_users.is_empty() && !allowed_users.contains(&user_id) {
-                        debug!(user_id = %user_id, "Skipping Telegram user outside allowlist");
-                        continue;
-                    }
-
-                    let content = message
-                        .get("text")
-                        .and_then(|value| value.as_str())
-                        .map(ToString::to_string)
-                        .or_else(|| {
-                            message
-                                .get("caption")
-                                .and_then(|value| value.as_str())
-                                .map(ToString::to_string)
-                        })
-                        .or_else(|| {
-                            message.get("poll").map(|poll| {
-                                let question = poll
-                                    .get("question")
-                                    .and_then(|value| value.as_str())
-                                    .unwrap_or("Poll");
-                                let options = poll
-                                    .get("options")
-                                    .and_then(|value| value.as_array())
-                                    .map(|values| {
-                                        values
-                                            .iter()
-                                            .filter_map(|option| {
-                                                option.get("text").and_then(|value| value.as_str())
-                                            })
-                                            .collect::<Vec<_>>()
-                                            .join(", ")
-                                    })
-                                    .unwrap_or_default();
-                                if options.is_empty() {
-                                    format!("[Poll] {question}")
-                                } else {
-                                    format!("[Poll] {question} Options: {options}")
-                                }
-                            })
-                        })
-                        .or_else(|| {
-                            if message.get("photo").is_some() {
-                                Some("[Image]".to_string())
-                            } else if message.get("document").is_some() {
-                                Some("[Document]".to_string())
-                            } else if message.get("audio").is_some() {
-                                Some("[Audio]".to_string())
-                            } else if message.get("voice").is_some() {
-                                Some("[Voice message]".to_string())
-                            } else if message.get("video").is_some() {
-                                Some("[Video]".to_string())
-                            } else if let Some(topic_created) = message.get("forum_topic_created") {
-                                let name = topic_created
-                                    .get("name")
-                                    .and_then(|value| value.as_str())
-                                    .unwrap_or("topic");
-                                Some(format!("[Forum topic created] {name}"))
-                            } else if message.get("forum_topic_closed").is_some() {
-                                Some("[Forum topic closed]".to_string())
-                            } else if message.get("forum_topic_reopened").is_some() {
-                                Some("[Forum topic reopened]".to_string())
-                            } else if let Some(topic_edited) = message.get("forum_topic_edited") {
-                                let name = topic_edited
-                                    .get("name")
-                                    .and_then(|value| value.as_str())
-                                    .unwrap_or("topic");
-                                Some(format!("[Forum topic edited] {name}"))
-                            } else {
-                                None
-                            }
-                        });
-
-                    let Some(content) = content else {
-                        continue;
-                    };
-
-                    let chat_id = message
-                        .get("chat")
-                        .and_then(|chat| chat.get("id"))
-                        .and_then(|value| value.as_i64())
-                        .map(|value| value.to_string())
-                        .unwrap_or_default();
-
-                    let mut metadata = serde_json::json!({
-                        "telegram_chat_id": chat_id,
-                        "telegram_chat_type": message
-                            .get("chat")
-                            .and_then(|chat| chat.get("type"))
-                            .and_then(|value| value.as_str())
-                            .unwrap_or("private"),
-                        "telegram_is_group": message
-                            .get("chat")
-                            .and_then(|chat| chat.get("type"))
-                            .and_then(|value| value.as_str())
-                            .map(|value| matches!(value, "group" | "supergroup"))
-                            .unwrap_or(false),
-                    });
-                    if let Some(message_id) =
-                        message.get("message_id").and_then(|value| value.as_i64())
-                    {
-                        metadata["telegram_message_id"] = serde_json::json!(message_id);
-                    }
-                    if let Some(username) = from.get("username").and_then(|value| value.as_str()) {
-                        metadata["telegram_username"] = serde_json::json!(username);
-                    }
-                    if let Some(reply_to) = message
-                        .get("reply_to_message")
-                        .and_then(|value| value.get("message_id"))
-                        .and_then(|value| value.as_i64())
-                    {
-                        metadata["telegram_reply_to_message_id"] = serde_json::json!(reply_to);
-                    }
-                    if let Some(thread_id) = message
-                        .get("message_thread_id")
-                        .and_then(|value| value.as_i64())
-                    {
-                        metadata["telegram_message_thread_id"] = serde_json::json!(thread_id);
-                    }
-                    if message
-                        .get("is_topic_message")
-                        .and_then(|value| value.as_bool())
-                        == Some(true)
-                    {
-                        metadata["telegram_is_topic_message"] = serde_json::json!(true);
-                    }
-                    if let Some(topic_created) = message.get("forum_topic_created") {
-                        metadata["telegram_forum_topic_created"] = topic_created.clone();
-                    }
-                    if message.get("forum_topic_closed").is_some() {
-                        metadata["telegram_forum_topic_closed"] = serde_json::json!(true);
-                    }
-                    if message.get("forum_topic_reopened").is_some() {
-                        metadata["telegram_forum_topic_reopened"] = serde_json::json!(true);
-                    }
-                    if let Some(topic_edited) = message.get("forum_topic_edited") {
-                        metadata["telegram_forum_topic_edited"] = topic_edited.clone();
-                    }
-                    if let Some(poll) = message.get("poll") {
-                        metadata["telegram_poll"] = poll.clone();
-                    }
-                    if let Some(photo) = message.get("photo").and_then(|value| value.as_array()) {
-                        metadata["telegram_media_type"] = serde_json::json!("image");
-                        metadata["telegram_file_references"] = serde_json::json!(
-                            photo
-                                .iter()
-                                .filter_map(|entry| entry
-                                    .get("file_id")
-                                    .and_then(|value| value.as_str()))
-                                .collect::<Vec<_>>()
-                        );
-                    } else if let Some(document) = message.get("document") {
-                        metadata["telegram_media_type"] = serde_json::json!("document");
-                        metadata["telegram_file_references"] = serde_json::json!([document
-                            .get("file_id")
-                            .and_then(|value| value.as_str())
-                            .unwrap_or_default()]);
-                    } else if let Some(audio) = message.get("audio") {
-                        metadata["telegram_media_type"] = serde_json::json!("audio");
-                        metadata["telegram_file_references"] = serde_json::json!([audio
-                            .get("file_id")
-                            .and_then(|value| value.as_str())
-                            .unwrap_or_default()]);
-                    } else if let Some(voice) = message.get("voice") {
-                        metadata["telegram_media_type"] = serde_json::json!("voice");
-                        metadata["telegram_file_references"] = serde_json::json!([voice
-                            .get("file_id")
-                            .and_then(|value| value.as_str())
-                            .unwrap_or_default()]);
-                    } else if let Some(video) = message.get("video") {
-                        metadata["telegram_media_type"] = serde_json::json!("video");
-                        metadata["telegram_file_references"] = serde_json::json!([video
-                            .get("file_id")
-                            .and_then(|value| value.as_str())
-                            .unwrap_or_default()]);
-                    }
-                    if let Some(bot_username) = bot_username.as_deref() {
-                        metadata["telegram_bot_mentioned"] =
-                            serde_json::json!(content.contains(&format!("@{bot_username}")));
-                    }
-
-                    let incoming = IncomingMessage {
-                        session_id: Uuid::new_v4(),
-                        user_id,
-                        content,
-                        platform: Platform::Telegram,
-                        metadata,
                     };
 
                     if let Err(error) = incoming_tx.send(incoming).await {
@@ -389,6 +422,218 @@ impl TelegramChannel {
         }));
 
         Ok(())
+    }
+
+    async fn set_webhook(&self, webhook_url: &str) -> Result<()> {
+        let response = self
+            .client
+            .post(format!("{}/bot{}/setWebhook", self.api_base_url(), self.config.token))
+            .json(&serde_json::json!({
+                "url": webhook_url,
+                "allowed_updates": ["message"],
+            }))
+            .send()
+            .await
+            .map_err(|e| ChannelError::Connection {
+                platform: "telegram".to_string(),
+                message: format!("Failed to configure Telegram webhook: {}", e),
+            })?;
+
+        let status = response.status();
+        let body: serde_json::Value = response
+            .json()
+            .await
+            .unwrap_or_else(|_| serde_json::json!({}));
+        if !status.is_success() || body.get("ok").and_then(|v| v.as_bool()) != Some(true) {
+            return Err(ChannelError::Connection {
+                platform: "telegram".to_string(),
+                message: body
+                    .get("description")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Telegram setWebhook failed")
+                    .to_string(),
+            }
+            .into());
+        }
+
+        Ok(())
+    }
+
+    async fn delete_webhook(&self) -> Result<()> {
+        let response = self
+            .client
+            .post(format!(
+                "{}/bot{}/deleteWebhook",
+                self.api_base_url(),
+                self.config.token
+            ))
+            .send()
+            .await
+            .map_err(|e| ChannelError::Connection {
+                platform: "telegram".to_string(),
+                message: format!("Failed to delete Telegram webhook: {}", e),
+            })?;
+
+        let status = response.status();
+        let body: serde_json::Value = response
+            .json()
+            .await
+            .unwrap_or_else(|_| serde_json::json!({}));
+        if !status.is_success() || body.get("ok").and_then(|v| v.as_bool()) != Some(true) {
+            return Err(ChannelError::Connection {
+                platform: "telegram".to_string(),
+                message: body
+                    .get("description")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Telegram deleteWebhook failed")
+                    .to_string(),
+            }
+            .into());
+        }
+
+        Ok(())
+    }
+
+    pub fn webhook_handler(&self) -> TelegramWebhookHandler {
+        TelegramWebhookHandler::new(
+            self.config.allowed_users.clone(),
+            self.incoming_tx.clone(),
+            self.bot_username.clone(),
+        )
+    }
+}
+
+#[derive(Clone)]
+pub struct TelegramWebhookHandler {
+    allowed_users: Vec<String>,
+    incoming_tx: mpsc::Sender<IncomingMessage>,
+    bot_username: Arc<RwLock<Option<String>>>,
+}
+
+impl TelegramWebhookHandler {
+    fn new(
+        allowed_users: Vec<String>,
+        incoming_tx: mpsc::Sender<IncomingMessage>,
+        bot_username: Arc<RwLock<Option<String>>>,
+    ) -> Self {
+        Self {
+            allowed_users,
+            incoming_tx,
+            bot_username,
+        }
+    }
+
+    pub async fn handle_event(&self, body: &[u8]) -> Result<()> {
+        let update: serde_json::Value =
+            serde_json::from_slice(body).map_err(|e| ChannelError::InvalidFormat {
+                platform: "telegram".to_string(),
+                message: format!("Failed to parse Telegram webhook payload: {}", e),
+            })?;
+        let Some(message) = update.get("message") else {
+            return Ok(());
+        };
+        let bot_username = self.bot_username.read().await.clone();
+        let Some(incoming) = TelegramChannel::normalize_incoming_message(
+            message,
+            &self.allowed_users,
+            bot_username.as_deref(),
+        ) else {
+            return Ok(());
+        };
+        self.incoming_tx
+            .send(incoming)
+            .await
+            .map_err(|e| ChannelError::Connection {
+                platform: "telegram".to_string(),
+                message: format!("Failed to enqueue Telegram webhook message: {}", e),
+            })?;
+        Ok(())
+    }
+}
+
+impl TelegramChannel {
+    fn media_reference(metadata: &serde_json::Value) -> Option<serde_json::Value> {
+        metadata
+            .get("telegram_media")
+            .cloned()
+            .or_else(|| metadata.get("telegram_media_url").cloned())
+            .or_else(|| metadata.get("telegram_media_path").cloned())
+            .or_else(|| {
+                metadata
+                    .get("file_references")
+                    .and_then(|value| value.as_array())
+                    .and_then(|values| values.first())
+                    .cloned()
+            })
+    }
+
+    fn media_reference_string(reference: &serde_json::Value) -> Option<String> {
+        if let Some(value) = reference.as_str() {
+            return Some(value.to_string());
+        }
+        reference
+            .get("url")
+            .or_else(|| reference.get("platform_ref"))
+            .or_else(|| reference.get("id"))
+            .or_else(|| reference.get("telegram_file_id"))
+            .and_then(|value| value.as_str())
+            .map(ToString::to_string)
+    }
+
+    fn media_reference_local_path(reference: &serde_json::Value) -> Option<String> {
+        if let Some(value) = reference.get("local_path").and_then(|value| value.as_str()) {
+            return Some(value.to_string());
+        }
+        reference
+            .as_str()
+            .filter(|value| std::path::Path::new(value).exists())
+            .map(ToString::to_string)
+    }
+
+    async fn post_telegram_payload(
+        &self,
+        url: String,
+        payload: serde_json::Value,
+        upload: Option<(&str, String, Option<String>)>,
+    ) -> Result<reqwest::Response> {
+        let request = if let Some((field, local_path, filename)) = upload {
+            let bytes = tokio::fs::read(&local_path)
+                .await
+                .map_err(|e| ChannelError::SendFailed {
+                    platform: "telegram".to_string(),
+                    message: format!("Failed to read Telegram upload '{}': {}", local_path, e),
+                })?;
+            let mut form = Form::new();
+            if let Some(object) = payload.as_object() {
+                for (key, value) in object {
+                    if value.is_null() {
+                        continue;
+                    }
+                    let text = match value {
+                        serde_json::Value::String(text) => text.clone(),
+                        _ => value.to_string(),
+                    };
+                    form = form.text(key.clone(), text);
+                }
+            }
+            let mut part = Part::bytes(bytes);
+            if let Some(filename) = filename.or_else(|| {
+                std::path::Path::new(&local_path)
+                    .file_name()
+                    .and_then(|value| value.to_str())
+                    .map(ToString::to_string)
+            }) {
+                part = part.file_name(filename);
+            }
+            self.client.post(url).multipart(form.part(field.to_string(), part))
+        } else {
+            self.client.post(url).json(&payload)
+        };
+
+        Ok(request.send().await.map_err(|e| ChannelError::SendFailed {
+            platform: "telegram".to_string(),
+            message: e.to_string(),
+        })?)
     }
 }
 
@@ -423,17 +668,7 @@ impl Channel for TelegramChannel {
             .metadata
             .get("telegram_media_type")
             .and_then(|value| value.as_str());
-        let media_ref = msg
-            .metadata
-            .get("telegram_media_url")
-            .or_else(|| msg.metadata.get("telegram_media_path"))
-            .or_else(|| {
-                msg.metadata
-                    .get("file_references")
-                    .and_then(|value| value.as_array())
-                    .and_then(|values| values.first())
-            })
-            .and_then(|value| value.as_str());
+        let media_ref = Self::media_reference(&msg.metadata);
         let is_poll = msg
             .metadata
             .get("telegram_poll_options")
@@ -473,7 +708,8 @@ impl Channel for TelegramChannel {
             match media_type {
                 Some("image") => "sendPhoto",
                 Some("document") => "sendDocument",
-                Some("audio") | Some("voice") => "sendAudio",
+                Some("audio") => "sendAudio",
+                Some("voice") => "sendVoice",
                 Some("video") => "sendVideo",
                 _ => "sendMessage",
             }
@@ -584,15 +820,18 @@ impl Channel for TelegramChannel {
         } else if let Some(options) = is_poll {
             payload["question"] = serde_json::json!(msg.content);
             payload["options"] = serde_json::json!(options);
-        } else if let (Some(kind), Some(reference)) = (media_type, media_ref) {
+        } else if let (Some(kind), Some(reference)) = (media_type, media_ref.as_ref()) {
             let field = match kind {
                 "image" => "photo",
                 "document" => "document",
-                "audio" | "voice" => "audio",
+                "audio" => "audio",
+                "voice" => "voice",
                 "video" => "video",
                 _ => "text",
             };
-            payload[field] = serde_json::json!(reference);
+            if let Some(reference) = Self::media_reference_string(reference) {
+                payload[field] = serde_json::json!(reference);
+            }
             if !msg.content.is_empty() {
                 payload["caption"] = serde_json::json!(msg.content);
             }
@@ -617,16 +856,30 @@ impl Channel for TelegramChannel {
             payload["reply_markup"] = reply_markup;
         }
 
-        let response = self
-            .client
-            .post(url)
-            .json(&payload)
-            .send()
-            .await
-            .map_err(|e| ChannelError::SendFailed {
-                platform: "telegram".to_string(),
-                message: e.to_string(),
-            })?;
+        let upload = if admin_action.is_none() && reaction.is_none() && is_poll.is_none() {
+            media_type
+                .zip(media_ref.as_ref())
+                .and_then(|(kind, reference)| {
+                    let field = match kind {
+                        "image" => Some("photo"),
+                        "document" => Some("document"),
+                        "audio" => Some("audio"),
+                        "voice" => Some("voice"),
+                        "video" => Some("video"),
+                        _ => None,
+                    }?;
+                    let local_path = Self::media_reference_local_path(reference)?;
+                    let filename = reference
+                        .get("name")
+                        .and_then(|value| value.as_str())
+                        .map(ToString::to_string);
+                    Some((field, local_path, filename))
+                })
+        } else {
+            None
+        };
+
+        let response = self.post_telegram_payload(url, payload, upload).await?;
 
         let status = response.status();
         let body: serde_json::Value =
@@ -757,8 +1010,22 @@ impl Channel for TelegramChannel {
             *self.bot_username.write().await = Some(username.to_string());
         }
 
-        if self.config.mode == TelegramMode::Polling {
-            self.spawn_polling_task().await?;
+        match self.config.mode {
+            TelegramMode::Polling => {
+                self.spawn_polling_task().await?;
+            }
+            TelegramMode::Webhook => {
+                let webhook_url =
+                    self.config
+                        .webhook_url
+                        .as_deref()
+                        .ok_or_else(|| ChannelError::Config {
+                            platform: "telegram".to_string(),
+                            message: "telegram.webhook_url is required for webhook mode"
+                                .to_string(),
+                        })?;
+                self.set_webhook(webhook_url).await?;
+            }
         }
 
         *self.is_connected.write().await = true;
@@ -772,6 +1039,9 @@ impl Channel for TelegramChannel {
         *self.is_connected.write().await = false;
         if let Some(task) = self.polling_task.lock().await.take() {
             task.abort();
+        }
+        if self.config.mode == TelegramMode::Webhook && self.config.webhook_url.is_some() {
+            self.delete_webhook().await?;
         }
 
         info!("Telegram channel disconnected");
@@ -1128,5 +1398,151 @@ mod tests {
         assert_eq!(incoming.user_id, "999");
         assert_eq!(incoming.metadata["telegram_chat_id"], "12345");
         channel.disconnect().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_connect_webhook_sets_and_deletes_webhook() {
+        use wiremock::matchers::{body_partial_json, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/bottoken/getMe"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "ok": true,
+                "result": {"id": 1, "is_bot": true, "username": "test_bot"}
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/bottoken/setWebhook"))
+            .and(body_partial_json(serde_json::json!({
+                "url": "https://example.com/webhooks/telegram/events"
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "ok": true,
+                "result": true
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/bottoken/deleteWebhook"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "ok": true,
+                "result": true
+            })))
+            .mount(&server)
+            .await;
+
+        let config = TelegramConfig {
+            enabled: true,
+            token: "token".to_string(),
+            api_base_url: Some(server.uri()),
+            mode: openrustclaw_core::config::TelegramMode::Webhook,
+            webhook_url: Some("https://example.com/webhooks/telegram/events".to_string()),
+            webhook_port: Some(8080),
+            allowed_users: vec![],
+            rate_limit_per_second: 30,
+        };
+        let mut channel = TelegramChannel::new(config);
+        channel.connect().await.unwrap();
+        channel.disconnect().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_send_local_photo_via_multipart_upload() {
+        use wiremock::matchers::{body_string_contains, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/bottoken/getMe"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "ok": true,
+                "result": {"id": 1, "is_bot": true, "username": "test_bot"}
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/bottoken/sendPhoto"))
+            .and(body_string_contains("name=\"photo\""))
+            .and(body_string_contains("local-photo.txt"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "ok": true,
+                "result": {"message_id": 42}
+            })))
+            .mount(&server)
+            .await;
+
+        let upload_path = std::env::temp_dir().join("local-photo.txt");
+        tokio::fs::write(&upload_path, b"telegram local upload")
+            .await
+            .unwrap();
+
+        let config = TelegramConfig {
+            enabled: true,
+            token: "token".to_string(),
+            api_base_url: Some(server.uri()),
+            mode: openrustclaw_core::config::TelegramMode::Polling,
+            webhook_url: None,
+            webhook_port: None,
+            allowed_users: vec![],
+            rate_limit_per_second: 30,
+        };
+        let mut channel = TelegramChannel::new(config);
+        channel.connect().await.unwrap();
+        channel
+            .send(OutgoingMessage {
+                session_id: uuid::Uuid::new_v4(),
+                content: "caption".to_string(),
+                metadata: serde_json::json!({
+                    "telegram_chat_id": "123",
+                    "telegram_media_type": "image",
+                    "file_references": [{
+                        "local_path": upload_path.to_string_lossy().to_string(),
+                        "name": "local-photo.txt"
+                    }]
+                }),
+            })
+            .await
+            .unwrap();
+        channel.disconnect().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_webhook_handler_enqueues_message() {
+        let config = TelegramConfig {
+            enabled: true,
+            token: "token".to_string(),
+            api_base_url: None,
+            mode: openrustclaw_core::config::TelegramMode::Webhook,
+            webhook_url: Some("https://example.com/webhooks/telegram/events".to_string()),
+            webhook_port: Some(8080),
+            allowed_users: vec![],
+            rate_limit_per_second: 30,
+        };
+        let channel = TelegramChannel::new(config);
+        *channel.bot_username.write().await = Some("test_bot".to_string());
+        let handler = channel.webhook_handler();
+
+        handler
+            .handle_event(
+                br#"{
+                    "update_id": 200,
+                    "message": {
+                        "message_id": 7,
+                        "text": "hello @test_bot",
+                        "chat": {"id": 12345, "type": "supergroup"},
+                        "from": {"id": 999, "username": "alice"}
+                    }
+                }"#,
+            )
+            .await
+            .unwrap();
+
+        let incoming = channel.receive().await.unwrap();
+        assert_eq!(incoming.content, "hello @test_bot");
+        assert_eq!(incoming.metadata["telegram_chat_id"], "12345");
+        assert_eq!(incoming.metadata["telegram_bot_mentioned"], true);
     }
 }

@@ -20,6 +20,7 @@ use openrustclaw_channels::google_meet::GoogleMeetWebhookHandler;
 use openrustclaw_channels::imessage::{BlueBubblesMessage, IMessageWebhookHandler};
 use openrustclaw_channels::mattermost::MattermostWebhookHandler;
 use openrustclaw_channels::slack::SlackEventHandler;
+use openrustclaw_channels::telegram::TelegramWebhookHandler;
 use openrustclaw_channels::teams::TeamsWebhookHandler;
 use openrustclaw_core::error::{ChannelError as CoreChannelError, Error as CoreError, McpError};
 use openrustclaw_core::traits::{Channel, LlmProvider};
@@ -233,6 +234,7 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
     let sidecar_addr = format!("http://127.0.0.1:{}", config.sidecar.grpc_port);
     let mut channel_config = config.channels.clone();
     let mut discord_ingress_handler = None;
+    let mut telegram_ingress_handler = None;
     let mut slack_ingress_handler = None;
     let mut teams_ingress_handler = None;
     let mut mattermost_ingress_handler = None;
@@ -247,6 +249,22 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
             ChannelRegistry::default()
         }),
     ));
+
+    if channel_config.telegram.enabled
+        && channel_config.telegram.mode == openrustclaw_core::config::TelegramMode::Webhook
+    {
+        match ChannelFactory::create_telegram(channel_config.telegram.clone()) {
+            Ok(telegram_channel) => {
+                telegram_ingress_handler = Some(telegram_channel.webhook_handler());
+                enabled_channels.push(Box::new(telegram_channel) as Box<dyn Channel>);
+                channel_config.telegram.enabled = false;
+            }
+            Err(e) => {
+                error!(error = %e, "Failed to create Telegram channel");
+                channel_config.telegram.enabled = false;
+            }
+        }
+    }
 
     if channel_config.discord.enabled {
         match ChannelFactory::create_discord(channel_config.discord.clone()) {
@@ -437,6 +455,13 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
             channel_langsmith_client(&config),
         ));
         info!("Slack HTTP ingress enabled at /webhooks/slack/events");
+    }
+    if let Some(handler) = telegram_ingress_handler {
+        app = app.merge(telegram_ingress_router(
+            handler,
+            channel_langsmith_client(&config),
+        ));
+        info!("Telegram webhook ingress enabled at /webhooks/telegram/events");
     }
     if let Some(handler) = discord_ingress_handler {
         app = app.merge(discord_ingress_router(
@@ -2115,10 +2140,28 @@ struct SlackIngressState {
     langsmith: Option<LangSmithClient>,
 }
 
+#[derive(Clone)]
+struct TelegramIngressState {
+    handler: Arc<TelegramWebhookHandler>,
+    langsmith: Option<LangSmithClient>,
+}
+
 fn slack_ingress_router(handler: SlackEventHandler, langsmith: Option<LangSmithClient>) -> Router {
     Router::new()
         .route("/webhooks/slack/events", post(slack_events_handler))
         .with_state(SlackIngressState {
+            handler: Arc::new(handler),
+            langsmith,
+        })
+}
+
+fn telegram_ingress_router(
+    handler: TelegramWebhookHandler,
+    langsmith: Option<LangSmithClient>,
+) -> Router {
+    Router::new()
+        .route("/webhooks/telegram/events", post(telegram_events_handler))
+        .with_state(TelegramIngressState {
             handler: Arc::new(handler),
             langsmith,
         })
@@ -2218,6 +2261,55 @@ async fn slack_events_handler(
             )
             .await;
             (StatusCode::BAD_REQUEST, error.to_string()).into_response()
+        }
+    }
+}
+
+async fn telegram_events_handler(
+    State(state): State<TelegramIngressState>,
+    body: Bytes,
+) -> impl IntoResponse {
+    let mut trace = ingress_trace(
+        state.langsmith.as_ref(),
+        "telegram_ingress",
+        serde_json::json!({
+            "body_bytes": body.len(),
+        }),
+    );
+    start_ingress_trace(state.langsmith.as_ref(), trace.as_ref()).await;
+
+    match state.handler.handle_event(&body).await {
+        Ok(()) => {
+            complete_ingress_trace(
+                state.langsmith.as_ref(),
+                trace.as_mut(),
+                Some(serde_json::json!({
+                    "status": StatusCode::OK.as_u16(),
+                    "outcome": "accepted",
+                })),
+                None,
+            )
+            .await;
+            StatusCode::OK.into_response()
+        }
+        Err(error) => {
+            let message = error.to_string();
+            warn!(error = %message, "Failed to handle Telegram webhook");
+            complete_ingress_trace(
+                state.langsmith.as_ref(),
+                trace.as_mut(),
+                Some(serde_json::json!({
+                    "status": StatusCode::BAD_REQUEST.as_u16(),
+                    "outcome": "error",
+                })),
+                Some(message.clone()),
+            )
+            .await;
+            (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({ "error": message })),
+            )
+                .into_response()
         }
     }
 }

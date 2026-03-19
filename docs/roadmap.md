@@ -637,7 +637,7 @@ Goal: reach practical parity with OpenClaw's documented channel and routing surf
 Completed:
 
 - [x] WebChat baseline exists.
-- [x] Telegram outbound and polling ingress exist.
+- [x] Telegram outbound, polling ingress, and webhook ingress exist.
 - [x] Slack outbound, HTTP Events ingress, and Socket Mode websocket ingress exist.
 - [x] Discord outbound, interactions ingress, and gateway message ingress exist.
 - [x] Matrix access-token/password auth, `/sync` polling ingress, outbound room sends, reactions, join/leave, and local file upload support exist.
