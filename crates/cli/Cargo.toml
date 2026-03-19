@@ -24,6 +24,7 @@ openrustclaw-security.workspace = true
 openrustclaw-optimization.workspace = true
 openrustclaw-langbridge.workspace = true
 openrustclaw-observability.workspace = true
+openrustclaw-automation.workspace = true
 openrustclaw-cursor = { workspace = true, optional = true }
 openrustclaw-mcp2cli.workspace = true
 openrustclaw-voice = { workspace = true, optional = true }

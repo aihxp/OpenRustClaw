@@ -34,6 +34,11 @@ enum Commands {
         #[arg(short, long)]
         model: Option<String>,
     },
+    /// Bounded browser automation and page extraction
+    Browser {
+        #[command(subcommand)]
+        action: BrowserAction,
+    },
     /// Manage LLM models
     Models {
         #[command(subcommand)]
@@ -195,6 +200,66 @@ enum ModelsAction {
     Info { name: String },
     /// Scan configured providers and recommend model-role assignments
     Scan,
+}
+
+#[derive(Subcommand)]
+enum BrowserAction {
+    /// Navigate to a page and return basic metadata
+    Navigate {
+        url: String,
+        #[arg(long)]
+        wait_until: Option<String>,
+        #[arg(long)]
+        timeout_ms: Option<u64>,
+    },
+    /// Extract text, HTML, links, images, or headings from a page
+    Extract {
+        url: String,
+        #[arg(long, default_value = "text")]
+        what: String,
+        #[arg(long)]
+        selector: Option<String>,
+        #[arg(long)]
+        wait_until: Option<String>,
+        #[arg(long)]
+        timeout_ms: Option<u64>,
+        #[arg(long)]
+        max_results: Option<usize>,
+        #[arg(long)]
+        max_chars: Option<usize>,
+    },
+    /// Capture a screenshot to `.claw/browser/screenshots/` or an explicit path
+    Screenshot {
+        url: String,
+        #[arg(long)]
+        path: Option<String>,
+        #[arg(long)]
+        selector: Option<String>,
+        #[arg(long, default_value_t = false)]
+        full_page: bool,
+        #[arg(long)]
+        format: Option<String>,
+        #[arg(long)]
+        quality: Option<u8>,
+        #[arg(long)]
+        wait_until: Option<String>,
+        #[arg(long)]
+        timeout_ms: Option<u64>,
+    },
+    /// Render a page to PDF in `.claw/browser/pdf/` or an explicit path
+    Pdf {
+        url: String,
+        #[arg(long)]
+        path: Option<String>,
+        #[arg(long)]
+        format: Option<String>,
+        #[arg(long)]
+        print_background: Option<bool>,
+        #[arg(long)]
+        wait_until: Option<String>,
+        #[arg(long)]
+        timeout_ms: Option<u64>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -1407,6 +1472,103 @@ async fn main() -> Result<()> {
         }
         Commands::Chat { provider, model } => {
             commands::chat::run(&provider, model.as_deref()).await
+        }
+        Commands::Browser { action } => {
+            let workspace_root = std::env::current_dir()?;
+            match action {
+                BrowserAction::Navigate {
+                    url,
+                    wait_until,
+                    timeout_ms,
+                } => {
+                    let result = commands::browser::navigate(
+                        &workspace_root,
+                        commands::browser::BrowserNavigateRequest {
+                            url,
+                            wait_until,
+                            timeout_ms,
+                        },
+                    )
+                    .await?;
+                    println!("{}", serde_json::to_string_pretty(&result)?);
+                    Ok(())
+                }
+                BrowserAction::Extract {
+                    url,
+                    what,
+                    selector,
+                    wait_until,
+                    timeout_ms,
+                    max_results,
+                    max_chars,
+                } => {
+                    let result = commands::browser::extract(
+                        &workspace_root,
+                        commands::browser::BrowserExtractRequest {
+                            url,
+                            what,
+                            selector,
+                            wait_until,
+                            timeout_ms,
+                            max_results,
+                            max_chars,
+                        },
+                    )
+                    .await?;
+                    println!("{}", serde_json::to_string_pretty(&result)?);
+                    Ok(())
+                }
+                BrowserAction::Screenshot {
+                    url,
+                    path,
+                    selector,
+                    full_page,
+                    format,
+                    quality,
+                    wait_until,
+                    timeout_ms,
+                } => {
+                    let result = commands::browser::screenshot(
+                        &workspace_root,
+                        commands::browser::BrowserScreenshotRequest {
+                            url,
+                            path,
+                            selector,
+                            full_page,
+                            format,
+                            quality,
+                            wait_until,
+                            timeout_ms,
+                        },
+                    )
+                    .await?;
+                    println!("{}", serde_json::to_string_pretty(&result)?);
+                    Ok(())
+                }
+                BrowserAction::Pdf {
+                    url,
+                    path,
+                    format,
+                    print_background,
+                    wait_until,
+                    timeout_ms,
+                } => {
+                    let result = commands::browser::pdf(
+                        &workspace_root,
+                        commands::browser::BrowserPdfRequest {
+                            url,
+                            path,
+                            format,
+                            print_background,
+                            wait_until,
+                            timeout_ms,
+                        },
+                    )
+                    .await?;
+                    println!("{}", serde_json::to_string_pretty(&result)?);
+                    Ok(())
+                }
+            }
         }
         Commands::Models { action } => match action {
             ModelsAction::List => commands::models::list().await,

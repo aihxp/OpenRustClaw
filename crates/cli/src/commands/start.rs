@@ -73,7 +73,7 @@ use super::channels::{
     ChannelBindingSpec, ChannelRegistry, ChannelSendPolicy, ensure_account_manifest,
     identity_from_message, load_registry, message_bot_mentioned, resolve_root,
 };
-use super::{control, doctor, orchestrate, runtime};
+use super::{browser, control, doctor, orchestrate, runtime};
 
 /// Run the start command - load config, optionally start the compatibility/experimental sidecar, and start the gateway.
 pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
@@ -2422,6 +2422,13 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             "/control/orchestration/run",
             post(orchestration_run_handler),
         )
+        .route("/control/browser/navigate", post(browser_navigate_handler))
+        .route("/control/browser/extract", post(browser_extract_handler))
+        .route(
+            "/control/browser/screenshot",
+            post(browser_screenshot_handler),
+        )
+        .route("/control/browser/pdf", post(browser_pdf_handler))
         .with_state(state)
 }
 
@@ -3126,6 +3133,62 @@ async fn orchestration_run_handler(
     .await
     {
         Ok(run) => (StatusCode::OK, Json(serde_json::json!(run))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn browser_navigate_handler(
+    State(state): State<RuntimeControlState>,
+    Json(payload): Json<browser::BrowserNavigateRequest>,
+) -> impl IntoResponse {
+    match browser::navigate(&state.workspace_root, payload).await {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn browser_extract_handler(
+    State(state): State<RuntimeControlState>,
+    Json(payload): Json<browser::BrowserExtractRequest>,
+) -> impl IntoResponse {
+    match browser::extract(&state.workspace_root, payload).await {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn browser_screenshot_handler(
+    State(state): State<RuntimeControlState>,
+    Json(payload): Json<browser::BrowserScreenshotRequest>,
+) -> impl IntoResponse {
+    match browser::screenshot(&state.workspace_root, payload).await {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn browser_pdf_handler(
+    State(state): State<RuntimeControlState>,
+    Json(payload): Json<browser::BrowserPdfRequest>,
+) -> impl IntoResponse {
+    match browser::pdf(&state.workspace_root, payload).await {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": error.to_string()})),

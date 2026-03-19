@@ -5756,6 +5756,7 @@ dependencies = [
  "hex",
  "indicatif",
  "openrustclaw-agent",
+ "openrustclaw-automation",
  "openrustclaw-channels",
  "openrustclaw-core",
  "openrustclaw-cursor",

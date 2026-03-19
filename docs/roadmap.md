@@ -705,7 +705,7 @@ Exit criteria:
 
 Goal: match OpenClaw's operator UX and tooling surface while keeping Rust-native interfaces.
 
-Status: complete for shipped CLI/MCP control-plane surfaces, shared typed control/config/diagnostics APIs, channel account CRUD parity, encrypted runtime secret-vault support, validated provider/model switching, runtime reload/cutover APIs with rollback, bounded routed/orchestrated multi-model execution surfaces with receipt capture, onboarding scaffolding, and doctor validation; Web Control UI, richer browser/web tooling, deeper service diagnostics, and full orchestrated runtime execution remain open.
+Status: complete for shipped CLI/MCP control-plane surfaces, shared typed control/config/diagnostics APIs, channel account CRUD parity, encrypted runtime secret-vault support, validated provider/model switching, runtime reload/cutover APIs with rollback, bounded routed/orchestrated multi-model execution surfaces with receipt capture, onboarding scaffolding, doctor validation, and a bounded native browser operator slice; Web Control UI, richer browser/web tooling, deeper service diagnostics, and full orchestrated runtime execution remain open.
 
 Additional later-surface work:
 
@@ -789,6 +789,13 @@ Completed:
   - task/category/claw routing resolution against `.claw/control`,
   - model-profile fallback resolution when a configured profile is unsupported or unavailable,
   - persisted orchestration receipts under `.claw/control/orchestration-runs/`.
+- [x] Add a bounded native browser operator surface backed by the Rust automation crate:
+  - `openrustclaw browser navigate|extract|screenshot|pdf`,
+  - `POST /control/browser/navigate`,
+  - `POST /control/browser/extract`,
+  - `POST /control/browser/screenshot`,
+  - `POST /control/browser/pdf`,
+  - default artifact storage under `.claw/browser/`.
 
 Remaining:
 
@@ -913,13 +920,14 @@ Remaining:
     - bounded retry semantics,
     - operator approval gates for sensitive actions.
   - [ ] Add browser/web tool surfaces to MCP, CLI, and runtime APIs:
-    - read page,
-    - crawl site,
-    - open session,
-    - inspect DOM/accessibility tree,
-    - run bounded action sequences,
-    - capture screenshots/artifacts,
-    - export artifacts for later inspection.
+    - [x] bounded CLI/runtime browser surfaces for navigate, extract, screenshot, and PDF capture
+    - [ ] read page
+    - [ ] crawl site
+    - [ ] open session
+    - [ ] inspect DOM/accessibility tree
+    - [ ] run bounded action sequences
+    - [ ] capture screenshots/artifacts
+    - [ ] export artifacts for later inspection
   - [ ] Add a compatibility bridge for Playwright MCP or equivalent external browser runtimes only as Tier B:
     - optional operator-configured backend,
     - typed event translation,
