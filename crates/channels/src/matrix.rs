@@ -84,6 +84,8 @@ struct SyncEvent {
     #[serde(default)]
     event_id: Option<String>,
     #[serde(default)]
+    state_key: Option<String>,
+    #[serde(default)]
     content: serde_json::Value,
 }
 
@@ -499,6 +501,8 @@ impl MatrixChannel {
                     for event in room_state.timeline.events {
                         if event.event_type != "m.room.message"
                             && event.event_type != "m.reaction"
+                            && event.event_type != "m.room.redaction"
+                            && event.event_type != "m.room.member"
                         {
                             continue;
                         }
@@ -525,6 +529,29 @@ impl MatrixChannel {
                             .get("m.relates_to")
                             .cloned()
                             .unwrap_or_default();
+                        if event.event_type == "m.room.redaction" {
+                            let metadata = serde_json::json!({
+                                "matrix_room_id": room_id,
+                                "matrix_event_id": event_id,
+                                "matrix_sender": event.sender,
+                                "matrix_msgtype": "m.room.redaction",
+                                "matrix_is_group": true,
+                                "matrix_redacts": event.content.get("redacts").and_then(|value| value.as_str()),
+                            });
+
+                            let incoming = IncomingMessage {
+                                session_id: Uuid::new_v4(),
+                                user_id: event.sender.clone(),
+                                content: "[matrix redaction]".to_string(),
+                                platform: Platform::Matrix,
+                                metadata,
+                            };
+
+                            if incoming_tx.send(incoming).await.is_err() {
+                                debug!("matrix incoming channel closed");
+                            }
+                            continue;
+                        }
                         if event.event_type == "m.reaction" {
                             let reaction_key =
                                 relates_to.get("key").and_then(|value| value.as_str());
@@ -549,6 +576,40 @@ impl MatrixChannel {
                                 session_id: Uuid::new_v4(),
                                 user_id: event.sender.clone(),
                                 content: "[matrix reaction]".to_string(),
+                                platform: Platform::Matrix,
+                                metadata,
+                            };
+
+                            if incoming_tx.send(incoming).await.is_err() {
+                                debug!("matrix incoming channel closed");
+                            }
+                            continue;
+                        }
+                        if event.event_type == "m.room.member" {
+                            let membership = event
+                                .content
+                                .get("membership")
+                                .and_then(|value| value.as_str());
+                            let display_name = event
+                                .content
+                                .get("displayname")
+                                .and_then(|value| value.as_str());
+
+                            let metadata = serde_json::json!({
+                                "matrix_room_id": room_id,
+                                "matrix_event_id": event_id,
+                                "matrix_sender": event.sender,
+                                "matrix_msgtype": "m.room.member",
+                                "matrix_is_group": true,
+                                "matrix_membership": membership,
+                                "matrix_state_key": event.state_key,
+                                "matrix_member_display_name": display_name,
+                            });
+
+                            let incoming = IncomingMessage {
+                                session_id: Uuid::new_v4(),
+                                user_id: event.sender.clone(),
+                                content: "[matrix membership event]".to_string(),
                                 platform: Platform::Matrix,
                                 metadata,
                             };
@@ -1571,6 +1632,112 @@ mod tests {
         assert_eq!(incoming.content, "[matrix reaction]");
         assert_eq!(incoming.metadata["matrix_reaction"], "👍");
         assert_eq!(incoming.metadata["matrix_reaction_target"], "$target1");
+
+        channel.disconnect().await.expect("disconnect succeeds");
+    }
+
+    #[tokio::test]
+    async fn test_sync_receive_redaction_event() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/_matrix/client/v3/account/whoami"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "user_id": "@bot:matrix.org"
+            })))
+            .mount(&server)
+            .await;
+
+        Mock::given(method("GET"))
+            .and(path("/_matrix/client/v3/sync"))
+            .and(query_param("timeout", "30000"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "next_batch": "s1",
+                "rooms": {
+                    "join": {
+                        "!room:matrix.org": {
+                            "timeline": {
+                                "events": [{
+                                    "type": "m.room.redaction",
+                                    "sender": "@alice:matrix.org",
+                                    "event_id": "$redaction1",
+                                    "content": {
+                                        "redacts": "$target-redacted"
+                                    }
+                                }]
+                            }
+                        }
+                    }
+                }
+            })))
+            .mount(&server)
+            .await;
+
+        let mut channel = MatrixChannel::new(test_config(&server.uri()));
+        channel.connect().await.expect("connect succeeds");
+
+        let incoming = tokio::time::timeout(Duration::from_secs(2), channel.receive())
+            .await
+            .expect("receive timeout")
+            .expect("incoming redaction");
+
+        assert_eq!(incoming.content, "[matrix redaction]");
+        assert_eq!(incoming.metadata["matrix_redacts"], "$target-redacted");
+
+        channel.disconnect().await.expect("disconnect succeeds");
+    }
+
+    #[tokio::test]
+    async fn test_sync_receive_membership_event() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/_matrix/client/v3/account/whoami"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "user_id": "@bot:matrix.org"
+            })))
+            .mount(&server)
+            .await;
+
+        Mock::given(method("GET"))
+            .and(path("/_matrix/client/v3/sync"))
+            .and(query_param("timeout", "30000"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "next_batch": "s1",
+                "rooms": {
+                    "join": {
+                        "!room:matrix.org": {
+                            "timeline": {
+                                "events": [{
+                                    "type": "m.room.member",
+                                    "sender": "@alice:matrix.org",
+                                    "state_key": "@bob:matrix.org",
+                                    "event_id": "$member1",
+                                    "content": {
+                                        "membership": "join",
+                                        "displayname": "Bob"
+                                    }
+                                }]
+                            }
+                        }
+                    }
+                }
+            })))
+            .mount(&server)
+            .await;
+
+        let mut channel = MatrixChannel::new(test_config(&server.uri()));
+        channel.connect().await.expect("connect succeeds");
+
+        let incoming = tokio::time::timeout(Duration::from_secs(2), channel.receive())
+            .await
+            .expect("receive timeout")
+            .expect("incoming membership");
+
+        assert_eq!(incoming.content, "[matrix membership event]");
+        assert_eq!(incoming.metadata["matrix_membership"], "join");
+        assert_eq!(incoming.metadata["matrix_state_key"], "@bob:matrix.org");
+        assert_eq!(incoming.metadata["matrix_member_display_name"], "Bob");
 
         channel.disconnect().await.expect("disconnect succeeds");
     }
