@@ -663,11 +663,14 @@ impl MatrixChannel {
                             "matrix_sender": event.sender,
                             "matrix_msgtype": message_type,
                             "matrix_thread_root": thread_root,
+                            "matrix_has_thread": thread_root.is_some(),
                             "matrix_is_group": true,
+                            "matrix_body_length": body.chars().count(),
                         });
                         if let Some(reply_to) = reply_to {
                             metadata["matrix_reply_to"] = serde_json::json!(reply_to);
                         }
+                        metadata["matrix_has_reply"] = serde_json::json!(reply_to.is_some());
                         if let Some(format) =
                             event.content.get("format").and_then(|value| value.as_str())
                         {
@@ -694,6 +697,12 @@ impl MatrixChannel {
                                 .content
                                 .pointer("/info/size")
                                 .and_then(|value| value.as_u64());
+                            if let Some(mime) = mime {
+                                metadata["matrix_media_mime_type"] = serde_json::json!(mime);
+                            }
+                            if let Some(size) = size {
+                                metadata["matrix_media_size"] = serde_json::json!(size);
+                            }
                             metadata["file_references"] = serde_json::json!([serde_json::json!({
                                 "url": content_uri,
                                 "name": filename_hint,
@@ -1539,6 +1548,9 @@ mod tests {
             .expect("receive timeout")
             .expect("incoming message");
 
+        assert_eq!(incoming.metadata["matrix_body_length"], 17);
+        assert_eq!(incoming.metadata["matrix_has_reply"], false);
+        assert_eq!(incoming.metadata["matrix_has_thread"], false);
         assert_eq!(incoming.user_id, "@alice:matrix.org");
         assert_eq!(incoming.content, "hello from matrix");
         assert_eq!(
@@ -1607,6 +1619,9 @@ mod tests {
 
         assert_eq!(incoming.metadata["matrix_reply_to"], "$root1");
         assert_eq!(incoming.metadata["matrix_thread_root"], "$root1");
+        assert_eq!(incoming.metadata["matrix_has_reply"], true);
+        assert_eq!(incoming.metadata["matrix_has_thread"], true);
+        assert_eq!(incoming.metadata["matrix_body_length"], 17);
         assert_eq!(incoming.metadata["matrix_format"], "org.matrix.custom.html");
         assert_eq!(incoming.metadata["matrix_formatted_body"], "<b>reply</b> from matrix");
 
@@ -1838,6 +1853,8 @@ mod tests {
             .expect("incoming media");
 
         assert_eq!(incoming.metadata["matrix_content_uri"], "mxc://matrix.org/media-1");
+        assert_eq!(incoming.metadata["matrix_media_mime_type"], "application/pdf");
+        assert_eq!(incoming.metadata["matrix_media_size"], 2048);
         assert_eq!(incoming.metadata["file_references"][0]["name"], "report.pdf");
         assert_eq!(incoming.metadata["file_references"][0]["mime"], "application/pdf");
         assert_eq!(incoming.metadata["file_references"][0]["size"], 2048);
