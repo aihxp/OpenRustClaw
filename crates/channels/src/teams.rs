@@ -740,11 +740,19 @@ impl TeamsChannel {
             "teams_mentioned": mention_info.mentioned_users,
             "teams_bot_mentioned": mention_info.bot_mentioned,
             "teams_is_group": conversation_type != "personal",
+            "teams_body_length": mention_info.clean_text.chars().count(),
         });
+        if let Some(reply_to_id) = activity.get("replyToId").and_then(|value| value.as_str()) {
+            metadata["teams_reply_to_id"] = serde_json::json!(reply_to_id);
+            metadata["teams_has_reply_to"] = serde_json::json!(true);
+        } else {
+            metadata["teams_has_reply_to"] = serde_json::json!(false);
+        }
         if let Some(channel_data) = activity.get("channelData") {
             Self::apply_channel_data_metadata(&mut metadata, channel_data);
         }
         if let Some(attachments) = activity.get("attachments").and_then(|v| v.as_array()) {
+            metadata["teams_has_attachments"] = serde_json::json!(true);
             metadata["teams_attachments"] = serde_json::json!(attachments);
             metadata["teams_attachment_count"] = serde_json::json!(attachments.len());
             let attachment_names: Vec<_> = attachments
@@ -820,8 +828,26 @@ impl TeamsChannel {
                     metadata["teams_download_paths"] = serde_json::json!(downloaded_paths);
                     metadata["teams_downloaded_attachment_count"] =
                         serde_json::json!(metadata["teams_download_paths"].as_array().map(|items| items.len()).unwrap_or(0));
+                    let download_paths = metadata["teams_download_paths"]
+                        .as_array()
+                        .cloned()
+                        .unwrap_or_default();
+                    if let Some(file_refs) = metadata
+                        .get_mut("file_references")
+                        .and_then(|value| value.as_array_mut())
+                    {
+                        for (idx, path) in download_paths.iter().enumerate() {
+                            if let Some(local_path) = path.as_str()
+                                && let Some(file_ref) = file_refs.get_mut(idx)
+                            {
+                                file_ref["local_path"] = serde_json::json!(local_path);
+                            }
+                        }
+                    }
                 }
             }
+        } else {
+            metadata["teams_has_attachments"] = serde_json::json!(false);
         }
 
         // Send typing indicator
@@ -1772,6 +1798,7 @@ mod tests {
                 "type": "message",
                 "id": "activity-attachment-1",
                 "text": "report attached",
+                "replyToId": "activity-parent-1",
                 "serviceUrl": "https://smba.trafficmanager.net/emea/",
                 "conversation": {
                     "id": "19:conversation",
@@ -1790,6 +1817,10 @@ mod tests {
             .expect("message activity")
             .expect("incoming");
 
+        assert_eq!(incoming.metadata["teams_body_length"], serde_json::json!(15));
+        assert_eq!(incoming.metadata["teams_has_reply_to"], true);
+        assert_eq!(incoming.metadata["teams_reply_to_id"], "activity-parent-1");
+        assert_eq!(incoming.metadata["teams_has_attachments"], true);
         assert_eq!(incoming.metadata["teams_attachment_count"], serde_json::json!(1));
         assert_eq!(incoming.metadata["teams_attachment_names"][0], "report.pdf");
         assert_eq!(
@@ -1804,13 +1835,17 @@ mod tests {
             incoming.metadata["file_references"][0]["mime"],
             "application/pdf"
         );
+        let downloaded_path = incoming.metadata["teams_download_paths"][0]
+            .as_str()
+            .expect("download path");
+        assert_eq!(
+            incoming.metadata["file_references"][0]["local_path"],
+            serde_json::json!(downloaded_path)
+        );
         assert_eq!(
             incoming.metadata["teams_downloaded_attachment_count"],
             serde_json::json!(1)
         );
-        let downloaded_path = incoming.metadata["teams_download_paths"][0]
-            .as_str()
-            .expect("download path");
         let bytes = tokio::fs::read(downloaded_path).await.expect("downloaded bytes");
         assert_eq!(bytes, b"teams-file");
         let _ = tokio::fs::remove_file(downloaded_path).await;
