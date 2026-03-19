@@ -4,6 +4,7 @@ pub mod control;
 #[cfg(feature = "cursor")]
 pub mod cursor;
 pub mod doctor;
+pub mod gmail;
 pub mod google_chat;
 pub mod imessage;
 pub mod mcp2cli;
