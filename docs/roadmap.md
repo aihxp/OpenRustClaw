@@ -688,7 +688,7 @@ Channel completion remaining:
   - current shipped path covers auth, send, polling ingress, room actions, basic file upload, and inbound media downloads into the Matrix data directory;
   - deeper E2EE and richer operator/media parity still remain.
 - [ ] Microsoft Teams parity.
-  - current shipped path covers Bot Framework webhook ingress, JWT verification, outbound sends, conversation/reaction lifecycle routing, attachment metadata capture, adaptive-card file links, and local agent/session routing;
+  - current shipped path covers Bot Framework webhook ingress, JWT verification, outbound sends, conversation/reaction lifecycle routing, attachment metadata capture plus opt-in local downloads, adaptive-card file links, and local agent/session routing;
   - deeper operator/media parity still remains.
 - [ ] Signal parity if kept in scope.
   - current shipped path covers `signal-cli` daemon-backed direct/group send-receive, allowlist filtering, registration/verify/link helpers, normalized routing metadata, attachment/file-reference capture, mention-aware group routing, and local agent/session routing;

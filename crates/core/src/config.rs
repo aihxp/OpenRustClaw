@@ -365,6 +365,9 @@ pub struct TeamsConfig {
     pub rate_limit_requests_per_second: u32,
     /// Enable Adaptive Cards support
     pub adaptive_cards_enabled: bool,
+    /// Optional local download root for inbound Teams attachments
+    #[serde(default)]
+    pub attachment_download_dir: Option<String>,
 }
 
 /// Group policy for Microsoft Teams mentions.
@@ -892,6 +895,7 @@ impl Default for AppConfig {
                     group_policy: TeamsGroupPolicy::Mention,
                     rate_limit_requests_per_second: 10,
                     adaptive_cards_enabled: true,
+                    attachment_download_dir: None,
                 },
                 google_chat: GoogleChatConfig {
                     enabled: false,

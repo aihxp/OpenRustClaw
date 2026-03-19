@@ -127,7 +127,7 @@ Current tier-1 status:
 - Gmail Pub/Sub: Gmail watch setup, Pub/Sub webhook ingress, history fetch, message hydration, mail-triggered local agent/session routing, replies, label/archive/delete actions, and forwarding are implemented; richer operator surfaces still remain
 - Matrix: access-token or password auth, `/sync` polling ingress, outbound room sends, reactions, room join/leave, joined-room inspection, file uploads, inbound media downloads into the Matrix data directory, and local agent/session routing are implemented; deeper E2EE and richer operator parity still remain
 - Signal: `signal-cli` daemon-backed direct/group send-receive, allowlist handling, registration/verify/link helpers, normalized route metadata, attachment/file-reference capture, mention-aware group routing, and local agent/session routing are implemented; richer operator UX and media download parity still remain
-- Teams: Bot Framework webhook ingress, JWT verification, outbound sends, conversation/reaction lifecycle routing, attachment metadata capture, adaptive-card file links, and local agent/session routing are on the shipped runtime path, but it is still partial relative to the tier-1 surfaces
+- Teams: Bot Framework webhook ingress, JWT verification, outbound sends, conversation/reaction lifecycle routing, attachment metadata capture plus opt-in local downloads, adaptive-card file links, and local agent/session routing are on the shipped runtime path, but it is still partial relative to the tier-1 surfaces
 
 Channel routing/operator controls:
 

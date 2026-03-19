@@ -23,6 +23,7 @@
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use std::path::PathBuf;
 
 use async_trait::async_trait;
 use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
@@ -546,6 +547,80 @@ impl TeamsChannel {
         })))
     }
 
+    fn sanitize_download_name(activity_id: &str, fallback: &str) -> String {
+        let cleaned: String = fallback
+            .chars()
+            .map(|ch| match ch {
+                'a'..='z' | 'A'..='Z' | '0'..='9' | '.' | '-' | '_' => ch,
+                _ => '_',
+            })
+            .collect();
+        format!("{activity_id}-{}", cleaned.trim_matches('_'))
+    }
+
+    async fn download_attachment_to_dir(
+        &self,
+        downloads_dir: &PathBuf,
+        activity_id: &str,
+        attachment: &serde_json::Value,
+    ) -> Result<Option<String>> {
+        let url = attachment
+            .get("contentUrl")
+            .or_else(|| attachment.get("content_url"))
+            .and_then(|value| value.as_str());
+        let Some(url) = url else {
+            return Ok(None);
+        };
+
+        if !downloads_dir.exists() {
+            tokio::fs::create_dir_all(downloads_dir)
+                .await
+                .map_err(|e| ChannelError::Connection {
+                    platform: "teams".to_string(),
+                    message: format!("Failed to create Teams downloads directory: {}", e),
+                })?;
+        }
+
+        let filename = attachment
+            .get("name")
+            .and_then(|value| value.as_str())
+            .unwrap_or("attachment.bin");
+        let path = downloads_dir.join(Self::sanitize_download_name(activity_id, filename));
+
+        let mut request = self.http.get(url);
+        if let Some(token) = self.token.read().await.as_ref().map(|value| value.token.clone()) {
+            request = request.bearer_auth(token);
+        }
+
+        let response = request.send().await.map_err(|e| ChannelError::Connection {
+            platform: "teams".to_string(),
+            message: format!("Teams attachment download failed: {}", e),
+        })?;
+
+        if !response.status().is_success() {
+            let body = response.text().await.unwrap_or_default();
+            return Err(ChannelError::Connection {
+                platform: "teams".to_string(),
+                message: format!("Teams attachment download failed: {}", body),
+            }
+            .into());
+        }
+
+        let bytes = response.bytes().await.map_err(|e| ChannelError::Connection {
+            platform: "teams".to_string(),
+            message: format!("Failed to read Teams attachment download: {}", e),
+        })?;
+
+        tokio::fs::write(&path, &bytes)
+            .await
+            .map_err(|e| ChannelError::Connection {
+                platform: "teams".to_string(),
+                message: format!("Failed to persist Teams attachment download: {}", e),
+            })?;
+
+        Ok(Some(path.to_string_lossy().to_string()))
+    }
+
     /// Handle an incoming Activity from the Bot Framework webhook.
     ///
     /// This method processes incoming webhook payloads, validates them,
@@ -661,6 +736,36 @@ impl TeamsChannel {
                 .collect();
             if !file_refs.is_empty() {
                 metadata["file_references"] = serde_json::json!(file_refs);
+            }
+            if let Some(download_dir) = self
+                .config
+                .attachment_download_dir
+                .as_ref()
+                .filter(|value| !value.trim().is_empty())
+            {
+                let downloads_dir = PathBuf::from(download_dir);
+                let activity_id = activity
+                    .get("id")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or("teams-attachment");
+                let mut downloaded_paths = Vec::new();
+                for attachment in attachments {
+                    match self
+                        .download_attachment_to_dir(&downloads_dir, activity_id, attachment)
+                        .await
+                    {
+                        Ok(Some(path)) => downloaded_paths.push(path),
+                        Ok(None) => {}
+                        Err(error) => {
+                            warn!(error = %error, activity_id = %activity_id, "Failed to download Teams attachment");
+                        }
+                    }
+                }
+                if !downloaded_paths.is_empty() {
+                    metadata["teams_download_paths"] = serde_json::json!(downloaded_paths);
+                    metadata["teams_downloaded_attachment_count"] =
+                        serde_json::json!(metadata["teams_download_paths"].as_array().map(|items| items.len()).unwrap_or(0));
+                }
             }
         }
 
@@ -1231,6 +1336,8 @@ pub fn create_adaptive_card_activity(card: AdaptiveCard) -> serde_json::Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
 
     #[test]
     fn test_adaptive_card_creation() {
@@ -1268,6 +1375,7 @@ mod tests {
             group_policy: TeamsGroupPolicy::Mention,
             rate_limit_requests_per_second: 10,
             adaptive_cards_enabled: true,
+            attachment_download_dir: None,
         };
 
         let channel = TeamsChannel::new(config);
@@ -1291,6 +1399,7 @@ mod tests {
             group_policy: TeamsGroupPolicy::Open,
             rate_limit_requests_per_second: 10,
             adaptive_cards_enabled: true,
+            attachment_download_dir: None,
         };
 
         let channel = TeamsChannel::new(config);
@@ -1319,6 +1428,7 @@ mod tests {
             group_policy: TeamsGroupPolicy::Open,
             rate_limit_requests_per_second: 10,
             adaptive_cards_enabled: true,
+            attachment_download_dir: None,
         };
         let channel = TeamsChannel::new(config);
         let card = channel
@@ -1350,6 +1460,7 @@ mod tests {
             group_policy: TeamsGroupPolicy::Open,
             rate_limit_requests_per_second: 10,
             adaptive_cards_enabled: true,
+            attachment_download_dir: None,
         };
         let channel = TeamsChannel::new(config);
         let incoming = channel
@@ -1392,6 +1503,7 @@ mod tests {
             group_policy: TeamsGroupPolicy::Open,
             rate_limit_requests_per_second: 10,
             adaptive_cards_enabled: true,
+            attachment_download_dir: None,
         };
         let channel = TeamsChannel::new(config);
         let incoming = channel
@@ -1416,6 +1528,67 @@ mod tests {
             incoming.metadata["teams_members_added"][0]["id"],
             serde_json::json!("29:new-user")
         );
+    }
+
+    #[tokio::test]
+    async fn test_handle_message_activity_downloads_attachments() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/files/report.pdf"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(b"teams-file".to_vec()))
+            .mount(&server)
+            .await;
+
+        let download_dir =
+            std::env::temp_dir().join(format!("orc-teams-downloads-{}", Uuid::new_v4()));
+        let config = TeamsConfig {
+            enabled: true,
+            app_id: "test".to_string(),
+            app_password: "test".to_string(),
+            tenant_id: None,
+            webhook_path: "/webhook".to_string(),
+            allowlist: vec![],
+            group_policy: TeamsGroupPolicy::Open,
+            rate_limit_requests_per_second: 10,
+            adaptive_cards_enabled: true,
+            attachment_download_dir: Some(download_dir.display().to_string()),
+        };
+        let channel = TeamsChannel::new(config);
+        let incoming = channel
+            .handle_activity(serde_json::json!({
+                "type": "message",
+                "id": "activity-attachment-1",
+                "text": "report attached",
+                "serviceUrl": "https://smba.trafficmanager.net/emea/",
+                "conversation": {
+                    "id": "19:conversation",
+                    "conversationType": "channel"
+                },
+                "from": {
+                    "id": "29:user"
+                },
+                "attachments": [{
+                    "contentType": "application/pdf",
+                    "contentUrl": format!("{}/files/report.pdf", server.uri()),
+                    "name": "report.pdf"
+                }]
+            }))
+            .await
+            .expect("message activity")
+            .expect("incoming");
+
+        assert_eq!(incoming.metadata["teams_attachment_count"], serde_json::json!(1));
+        assert_eq!(
+            incoming.metadata["teams_downloaded_attachment_count"],
+            serde_json::json!(1)
+        );
+        let downloaded_path = incoming.metadata["teams_download_paths"][0]
+            .as_str()
+            .expect("download path");
+        let bytes = tokio::fs::read(downloaded_path).await.expect("downloaded bytes");
+        assert_eq!(bytes, b"teams-file");
+        let _ = tokio::fs::remove_file(downloaded_path).await;
+        let _ = tokio::fs::remove_dir_all(download_dir).await;
     }
 
     #[test]

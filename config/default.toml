@@ -119,6 +119,19 @@ rate_limit_requests_per_second = 10  # Slack rate limit
 allowed_workspaces = []  # List of allowed team IDs (empty = allow all)
 app_home_enabled = true  # Enable App Home tab
 
+# Microsoft Teams Bot Configuration
+[channels.teams]
+enabled = false
+app_id = ""  # Microsoft App ID from Azure Bot registration
+app_password = ""  # Microsoft App Password / client secret
+tenant_id = null  # Azure tenant ID for single-tenant apps
+webhook_path = "/webhooks/teams"  # Bot Framework webhook path
+allowlist = []  # Allowed user emails or AAD object IDs (empty = allow all)
+group_policy = "mention"  # "mention" or "open"
+rate_limit_requests_per_second = 10  # Teams outbound rate limit
+adaptive_cards_enabled = true  # Enable Adaptive Card responses
+attachment_download_dir = "./data/teams/downloads"  # Optional local download root for inbound attachments
+
 # Signal Messenger Configuration
 [channels.signal]
 enabled = false
