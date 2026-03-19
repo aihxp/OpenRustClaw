@@ -747,13 +747,46 @@ impl TeamsChannel {
         if let Some(attachments) = activity.get("attachments").and_then(|v| v.as_array()) {
             metadata["teams_attachments"] = serde_json::json!(attachments);
             metadata["teams_attachment_count"] = serde_json::json!(attachments.len());
-            let file_refs: Vec<_> = attachments
+            let attachment_names: Vec<_> = attachments
                 .iter()
                 .filter_map(|attachment| {
                     attachment
+                        .get("name")
+                        .and_then(|value| value.as_str())
+                })
+                .collect();
+            if !attachment_names.is_empty() {
+                metadata["teams_attachment_names"] = serde_json::json!(attachment_names);
+            }
+            let attachment_content_types: Vec<_> = attachments
+                .iter()
+                .filter_map(|attachment| {
+                    attachment
+                        .get("contentType")
+                        .or_else(|| attachment.get("content_type"))
+                        .and_then(|value| value.as_str())
+                })
+                .collect();
+            if !attachment_content_types.is_empty() {
+                metadata["teams_attachment_content_types"] =
+                    serde_json::json!(attachment_content_types);
+            }
+            let file_refs: Vec<_> = attachments
+                .iter()
+                .filter_map(|attachment| {
+                    let url = attachment
                         .get("contentUrl")
                         .or_else(|| attachment.get("content_url"))
-                        .and_then(|value| value.as_str())
+                        .and_then(|value| value.as_str())?;
+                    Some(serde_json::json!({
+                        "url": url,
+                        "name": attachment.get("name").and_then(|value| value.as_str()),
+                        "mime": attachment
+                            .get("contentType")
+                            .or_else(|| attachment.get("content_type"))
+                            .and_then(|value| value.as_str()),
+                        "content_url": url,
+                    }))
                 })
                 .collect();
             if !file_refs.is_empty() {
@@ -959,11 +992,17 @@ impl TeamsChannel {
                 {
                     metadata["teams_deleted_activity_id"] = serde_json::json!(deleted_id);
                 }
+                if let Some(channel_data) = activity.get("channelData") {
+                    Self::apply_channel_data_metadata(&mut metadata, channel_data);
+                }
                 "[teams message deleted]".to_string()
             }
             "messageUpdate" => {
                 if let Some(reply_to_id) = activity.get("replyToId").and_then(|value| value.as_str()) {
                     metadata["teams_reply_to_id"] = serde_json::json!(reply_to_id);
+                }
+                if let Some(channel_data) = activity.get("channelData") {
+                    Self::apply_channel_data_metadata(&mut metadata, channel_data);
                 }
                 if let Some(text) = activity.get("text").and_then(|value| value.as_str()) {
                     metadata["teams_updated_text"] = serde_json::json!(text);
@@ -1752,6 +1791,19 @@ mod tests {
             .expect("incoming");
 
         assert_eq!(incoming.metadata["teams_attachment_count"], serde_json::json!(1));
+        assert_eq!(incoming.metadata["teams_attachment_names"][0], "report.pdf");
+        assert_eq!(
+            incoming.metadata["teams_attachment_content_types"][0],
+            "application/pdf"
+        );
+        assert_eq!(
+            incoming.metadata["file_references"][0]["name"],
+            "report.pdf"
+        );
+        assert_eq!(
+            incoming.metadata["file_references"][0]["mime"],
+            "application/pdf"
+        );
         assert_eq!(
             incoming.metadata["teams_downloaded_attachment_count"],
             serde_json::json!(1)
@@ -1790,6 +1842,11 @@ mod tests {
                     "id": "19:conversation",
                     "conversationType": "channel"
                 },
+                "channelData": {
+                    "team": {"id": "team-delete"},
+                    "channel": {"id": "channel-delete"},
+                    "tenant": {"id": "tenant-delete"}
+                },
                 "from": {
                     "id": "29:user"
                 }
@@ -1799,6 +1856,9 @@ mod tests {
             .expect("incoming");
         assert_eq!(incoming.content, "[teams message deleted]");
         assert_eq!(incoming.metadata["teams_deleted_activity_id"], "activity-root-1");
+        assert_eq!(incoming.metadata["teams_team_id"], "team-delete");
+        assert_eq!(incoming.metadata["teams_channel_id"], "channel-delete");
+        assert_eq!(incoming.metadata["teams_tenant_id"], "tenant-delete");
     }
 
     #[tokio::test]
@@ -1827,6 +1887,11 @@ mod tests {
                     "id": "19:conversation",
                     "conversationType": "channel"
                 },
+                "channelData": {
+                    "team": {"id": "team-update"},
+                    "channel": {"id": "channel-update"},
+                    "tenant": {"id": "tenant-update"}
+                },
                 "from": {
                     "id": "29:user"
                 }
@@ -1836,6 +1901,9 @@ mod tests {
             .expect("incoming");
         assert_eq!(incoming.metadata["teams_reply_to_id"], "activity-root-2");
         assert_eq!(incoming.metadata["teams_updated_text"], "updated text");
+        assert_eq!(incoming.metadata["teams_team_id"], "team-update");
+        assert_eq!(incoming.metadata["teams_channel_id"], "channel-update");
+        assert_eq!(incoming.metadata["teams_tenant_id"], "tenant-update");
     }
 
     #[test]
