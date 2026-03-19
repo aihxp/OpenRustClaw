@@ -467,6 +467,32 @@ impl GoogleChatChannel {
         }])
     }
 
+    fn attachment_file_references(attachments: &[serde_json::Value]) -> Vec<serde_json::Value> {
+        attachments
+            .iter()
+            .filter_map(|attachment| {
+                let url = attachment
+                    .get("downloadUri")
+                    .or_else(|| attachment.get("attachmentDataRef"))
+                    .and_then(|value| value.as_str())?;
+                Some(serde_json::json!({
+                    "url": url,
+                    "name": attachment
+                        .get("name")
+                        .or_else(|| attachment.get("contentName"))
+                        .and_then(|value| value.as_str()),
+                    "mime": attachment
+                        .get("contentType")
+                        .or_else(|| attachment.get("mimeType"))
+                        .and_then(|value| value.as_str()),
+                    "attachment_data_ref": attachment
+                        .get("attachmentDataRef")
+                        .and_then(|value| value.as_str()),
+                }))
+            })
+            .collect()
+    }
+
     /// Convert markdown to Google Chat format (simplified).
     fn markdown_to_chat(text: &str) -> String {
         // Google Chat supports basic markdown-like formatting
@@ -635,7 +661,13 @@ impl GoogleChatChannel {
                 message: format!("Failed to parse raw event: {}", e),
             })?;
 
-        if outer_value.get("message").is_none() {
+        let maybe_message = outer_value.get("message");
+        let is_pubsub_envelope = maybe_message
+            .and_then(|value| value.as_object())
+            .map(|message| message.contains_key("data"))
+            .unwrap_or(false);
+
+        if !is_pubsub_envelope {
             return Ok((outer_value, None));
         }
 
@@ -1038,17 +1070,7 @@ impl GoogleChatWebhookHandler {
         if !message.attachments.is_empty() {
             metadata["google_chat_attachments"] = serde_json::json!(message.attachments);
             metadata["google_chat_attachment_count"] = serde_json::json!(message.attachments.len());
-            let file_refs: Vec<_> = message
-                .attachments
-                .iter()
-                .filter_map(|attachment| {
-                    attachment
-                        .get("downloadUri")
-                        .or_else(|| attachment.get("downloadUri"))
-                        .or_else(|| attachment.get("attachmentDataRef"))
-                        .and_then(|value| value.as_str())
-                })
-                .collect();
+            let file_refs = GoogleChatChannel::attachment_file_references(&message.attachments);
             if !file_refs.is_empty() {
                 metadata["file_references"] = serde_json::json!(file_refs);
             }
@@ -1522,5 +1544,67 @@ mod tests {
         assert_eq!(incoming.content, "hello from pubsub");
         assert_eq!(incoming.platform, Platform::GoogleChat);
         assert_eq!(incoming.metadata["google_chat_space"], "spaces/AAA");
+    }
+
+    #[tokio::test]
+    async fn test_handle_message_event_normalizes_attachment_file_references() {
+        let (tx, mut rx) = mpsc::channel(4);
+        let handler = GoogleChatWebhookHandler::new(
+            GoogleChatConfig {
+                enabled: true,
+                service_account_key: String::new(),
+                project_id: String::new(),
+                webhook_url: Some("https://example.com/webhooks/google-chat/events".to_string()),
+                pubsub_subscription: None,
+                allowlist: vec![],
+                allowed_spaces: vec![],
+                rate_limit_requests_per_second: 10,
+                cards_enabled: true,
+                response_mode: GoogleChatResponseMode::Open,
+            },
+            tx,
+        );
+
+        handler
+            .handle_event(
+                br#"{
+                    "type": "MESSAGE",
+                    "eventTime": "2024-01-01T00:00:00Z",
+                    "space": {"name": "spaces/AAA", "type": "ROOM", "displayName": "Ops"},
+                    "user": {"name": "users/123", "displayName": "Alice", "email": "alice@example.com"},
+                    "message": {
+                        "name": "spaces/AAA/messages/1",
+                        "text": "attachment event",
+                        "attachments": [{
+                            "downloadUri": "https://chat.google.com/download/attachment-1",
+                            "name": "incident-report.pdf",
+                            "contentType": "application/pdf",
+                            "attachmentDataRef": "spaces/AAA/attachments/1"
+                        }]
+                    }
+                }"#,
+            )
+            .await
+            .expect("message event");
+
+        let incoming = rx.recv().await.expect("incoming message");
+        assert_eq!(incoming.content, "attachment event");
+        assert_eq!(incoming.metadata["google_chat_attachment_count"], 1);
+        assert_eq!(
+            incoming.metadata["file_references"][0]["url"],
+            "https://chat.google.com/download/attachment-1"
+        );
+        assert_eq!(
+            incoming.metadata["file_references"][0]["name"],
+            "incident-report.pdf"
+        );
+        assert_eq!(
+            incoming.metadata["file_references"][0]["mime"],
+            "application/pdf"
+        );
+        assert_eq!(
+            incoming.metadata["file_references"][0]["attachment_data_ref"],
+            "spaces/AAA/attachments/1"
+        );
     }
 }
