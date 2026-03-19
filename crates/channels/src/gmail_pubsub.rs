@@ -881,11 +881,17 @@ impl GmailRuntime {
                         "gmail_subject": email.subject,
                         "gmail_from": email.from,
                         "gmail_to": email.to,
+                        "gmail_to_count": email.to.len(),
+                        "gmail_cc": email.cc,
+                        "gmail_cc_count": email.cc.len(),
                         "gmail_labels": email.labels,
+                        "gmail_label_count": email.labels.len(),
                         "gmail_attachment_count": email.attachments.len(),
                         "gmail_attachments": email.attachments,
                         "file_references": Self::attachment_file_references(&email),
                         "gmail_has_html_body": email.body_html.is_some(),
+                        "gmail_received_at": email.received_at.to_rfc3339(),
+                        "gmail_is_unread": email.is_unread,
                     }),
                 };
 
@@ -1380,6 +1386,7 @@ mod tests {
                     "headers": [
                         {"name": "From", "value": "sender@example.com"},
                         {"name": "To", "value": "user@example.com"},
+                        {"name": "Cc", "value": "cc@example.com"},
                         {"name": "Subject", "value": "Test subject"}
                     ],
                     "parts": [{
@@ -1428,6 +1435,13 @@ mod tests {
         assert_eq!(incoming.user_id, "sender@example.com");
         assert_eq!(incoming.metadata["gmail_message_id"], "msg-1");
         assert_eq!(incoming.metadata["gmail_thread_id"], "thread-1");
+        assert_eq!(incoming.metadata["gmail_to"][0], "user@example.com");
+        assert_eq!(incoming.metadata["gmail_to_count"], 1);
+        assert_eq!(incoming.metadata["gmail_cc"][0], "cc@example.com");
+        assert_eq!(incoming.metadata["gmail_cc_count"], 1);
+        assert_eq!(incoming.metadata["gmail_label_count"], 2);
+        assert_eq!(incoming.metadata["gmail_is_unread"], true);
+        assert_eq!(incoming.metadata["gmail_received_at"], "2024-03-09T16:00:00+00:00");
         assert_eq!(incoming.metadata["gmail_attachment_count"], serde_json::json!(1));
         assert_eq!(
             incoming.metadata["file_references"][0]["url"],
