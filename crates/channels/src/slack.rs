@@ -13,12 +13,15 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use futures::{SinkExt, StreamExt};
 use governor::{Quota, RateLimiter};
 use hmac::{Hmac, Mac};
 use reqwest::Client;
 use sha2::Sha256;
 use std::num::NonZeroU32;
+use tokio::task::JoinHandle;
 use tokio::sync::{Mutex, RwLock, mpsc};
+use tokio_tungstenite::{connect_async, tungstenite::Message as WsMessage};
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 
@@ -42,6 +45,7 @@ pub struct SlackChannel {
         >,
     >,
     is_connected: RwLock<bool>,
+    socket_task: Mutex<Option<JoinHandle<()>>>,
 }
 
 impl SlackChannel {
@@ -63,6 +67,7 @@ impl SlackChannel {
             incoming_rx: Mutex::new(incoming_rx),
             rate_limiter,
             is_connected: RwLock::new(false),
+            socket_task: Mutex::new(None),
         }
     }
 
@@ -359,12 +364,120 @@ impl SlackChannel {
     }
 
     fn api_base_url(&self) -> String {
-        self.config
+        Self::api_base_url_for(&self.config)
+    }
+
+    fn api_base_url_for(config: &SlackConfig) -> String {
+        config
             .api_base_url
             .clone()
             .unwrap_or_else(|| "https://slack.com/api".to_string())
             .trim_end_matches('/')
             .to_string()
+    }
+
+    async fn open_socket_mode_url_for(config: &SlackConfig, client: &Client) -> Result<String> {
+        let app_token = config.app_token.as_ref().ok_or_else(|| ChannelError::Config {
+            platform: "slack".to_string(),
+            message: "Slack app_token is required for Socket Mode".to_string(),
+        })?;
+        let url = format!("{}/apps.connections.open", Self::api_base_url_for(config));
+        let response = client
+            .post(url)
+            .bearer_auth(app_token)
+            .send()
+            .await
+            .map_err(|e| ChannelError::Connection {
+                platform: "slack".to_string(),
+                message: format!("Failed to open Slack Socket Mode connection: {}", e),
+            })?;
+
+        let status = response.status();
+        let body: serde_json::Value = response
+            .json()
+            .await
+            .unwrap_or_else(|_| serde_json::json!({}));
+        if !status.is_success() || body.get("ok").and_then(|v| v.as_bool()) != Some(true) {
+            return Err(ChannelError::Connection {
+                platform: "slack".to_string(),
+                message: body
+                    .get("error")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Slack Socket Mode open failed")
+                    .to_string(),
+            }
+            .into());
+        }
+
+        body.get("url")
+            .and_then(|v| v.as_str())
+            .map(ToString::to_string)
+            .ok_or_else(|| {
+                ChannelError::InvalidFormat {
+                    platform: "slack".to_string(),
+                    message: "Slack Socket Mode open response missing url".to_string(),
+                }
+                .into()
+            })
+    }
+
+    async fn start_socket_mode_loop(&self) -> Result<()> {
+        let config = self.config.clone();
+        let client = self.client.clone();
+        let handler = self.event_handler();
+        let socket_task = tokio::spawn(async move {
+            let mut backoff = std::time::Duration::from_secs(1);
+            let max_backoff = std::time::Duration::from_secs(30);
+
+            loop {
+                let ws_url = match SlackChannel::open_socket_mode_url_for(&config, &client).await {
+                    Ok(url) => url,
+                    Err(error) => {
+                        warn!(
+                            error = %error,
+                            retry_in = ?backoff,
+                            "Failed to open Slack Socket Mode URL"
+                        );
+                        tokio::time::sleep(backoff).await;
+                        backoff = (backoff * 2).min(max_backoff);
+                        continue;
+                    }
+                };
+
+                let stream = match connect_async(&ws_url).await {
+                    Ok((stream, _)) => stream,
+                    Err(error) => {
+                        warn!(
+                            error = %error,
+                            retry_in = ?backoff,
+                            "Failed to connect Slack Socket Mode websocket"
+                        );
+                        tokio::time::sleep(backoff).await;
+                        backoff = (backoff * 2).min(max_backoff);
+                        continue;
+                    }
+                };
+
+                match run_socket_mode_loop(stream, handler.clone()).await {
+                    Ok(()) => {
+                        info!("Slack Socket Mode loop exited cleanly");
+                        break;
+                    }
+                    Err(error) => {
+                        warn!(
+                            error = %error,
+                            retry_in = ?backoff,
+                            "Slack Socket Mode loop exited; reconnecting"
+                        );
+                        tokio::time::sleep(backoff).await;
+                        backoff = (backoff * 2).min(max_backoff);
+                    }
+                }
+            }
+        });
+
+        *self.socket_task.lock().await = Some(socket_task);
+        Ok(())
     }
 
     fn workspace_allowed(&self, workspace_id: Option<&str>) -> bool {
@@ -667,7 +780,11 @@ impl Channel for SlackChannel {
         match self.config.mode {
             SlackMode::SocketMode => {
                 if self.config.app_token.is_none() {
-                    warn!("Socket Mode enabled but no app_token provided");
+                    return Err(ChannelError::Config {
+                        platform: "slack".to_string(),
+                        message: "Slack app_token is required for Socket Mode".to_string(),
+                    }
+                    .into());
                 }
             }
             SlackMode::Http => {}
@@ -728,6 +845,9 @@ impl Channel for SlackChannel {
         }
 
         *self.is_connected.write().await = true;
+        if self.config.mode == SlackMode::SocketMode {
+            self.start_socket_mode_loop().await?;
+        }
         info!(mode = ?self.config.mode, "Slack channel connected");
         Ok(())
     }
@@ -736,6 +856,9 @@ impl Channel for SlackChannel {
         info!("Disconnecting from Slack...");
 
         *self.is_connected.write().await = false;
+        if let Some(task) = self.socket_task.lock().await.take() {
+            task.abort();
+        }
 
         info!("Slack channel disconnected");
         Ok(())
@@ -743,6 +866,7 @@ impl Channel for SlackChannel {
 }
 
 /// Handle Slack Events API HTTP requests and enqueue normalized incoming messages.
+#[derive(Clone)]
 pub struct SlackEventHandler {
     config: SlackConfig,
     incoming_tx: mpsc::Sender<IncomingMessage>,
@@ -957,15 +1081,7 @@ impl SlackEventHandler {
             metadata,
         };
 
-        self.incoming_tx
-            .send(incoming)
-            .await
-            .map_err(|e| ChannelError::Connection {
-                platform: "slack".to_string(),
-                message: format!("Failed to enqueue Slack incoming message: {}", e),
-            })?;
-
-        Ok(())
+        self.enqueue_incoming(incoming).await
     }
 
     fn normalize_slack_text(text: &str) -> String {
@@ -981,11 +1097,349 @@ impl SlackEventHandler {
             .map(|id| self.config.allowed_workspaces.contains(&id.to_string()))
             .unwrap_or(false)
     }
+
+    async fn handle_socket_envelope(
+        &self,
+        envelope_type: &str,
+        payload: &serde_json::Value,
+    ) -> Result<()> {
+        match envelope_type {
+            "events_api" => self.handle_event_callback(payload).await,
+            "slash_commands" => self.handle_socket_slash_command(payload).await,
+            "interactive" => self.handle_socket_interaction(payload).await,
+            "hello" => Ok(()),
+            other => {
+                debug!(envelope_type = %other, "Ignoring unsupported Slack Socket Mode envelope");
+                Ok(())
+            }
+        }
+    }
+
+    async fn handle_socket_slash_command(&self, payload: &serde_json::Value) -> Result<()> {
+        let user_id = payload
+            .get("user_id")
+            .and_then(|value| value.as_str())
+            .ok_or_else(|| ChannelError::InvalidFormat {
+                platform: "slack".to_string(),
+                message: "Slack slash command payload missing user_id".to_string(),
+            })?;
+        let channel_id = payload
+            .get("channel_id")
+            .and_then(|value| value.as_str())
+            .ok_or_else(|| ChannelError::InvalidFormat {
+                platform: "slack".to_string(),
+                message: "Slack slash command payload missing channel_id".to_string(),
+            })?;
+        let team_id = payload.get("team_id").and_then(|value| value.as_str());
+        if !self.workspace_allowed(team_id) {
+            return Err(ChannelError::PermissionDenied {
+                platform: "slack".to_string(),
+                message: format!(
+                    "workspace {} is not allowed",
+                    team_id.unwrap_or("<missing>")
+                ),
+            }
+            .into());
+        }
+
+        let command = payload
+            .get("command")
+            .and_then(|value| value.as_str())
+            .unwrap_or_default();
+        let text = payload
+            .get("text")
+            .and_then(|value| value.as_str())
+            .unwrap_or_default()
+            .trim()
+            .to_string();
+        let content = if text.is_empty() {
+            if command.is_empty() {
+                "[slack slash command]".to_string()
+            } else {
+                command.to_string()
+            }
+        } else {
+            text
+        };
+
+        let mut metadata = serde_json::json!({
+            "slack_channel": channel_id,
+            "slack_is_group": !channel_id.starts_with('D'),
+            "slack_bot_mentioned": true,
+            "slack_stream_mode": "slash_command",
+            "slack_user_id": user_id,
+            "slack_command": command,
+            "slack_socket_mode": true,
+        });
+        if let Some(team_id) = team_id {
+            metadata["slack_team_id"] = serde_json::json!(team_id);
+        }
+        if let Some(trigger_id) = payload.get("trigger_id").and_then(|value| value.as_str()) {
+            metadata["slack_trigger_id"] = serde_json::json!(trigger_id);
+        }
+        if let Some(response_url) = payload
+            .get("response_url")
+            .and_then(|value| value.as_str())
+        {
+            metadata["slack_response_url"] = serde_json::json!(response_url);
+        }
+
+        self.enqueue_incoming(IncomingMessage {
+            session_id: Uuid::new_v4(),
+            user_id: user_id.to_string(),
+            content: Self::normalize_slack_text(&content),
+            platform: Platform::Slack,
+            metadata,
+        })
+        .await
+    }
+
+    async fn handle_socket_interaction(&self, payload: &serde_json::Value) -> Result<()> {
+        let user = payload.get("user").and_then(|value| value.as_object()).ok_or_else(|| {
+            ChannelError::InvalidFormat {
+                platform: "slack".to_string(),
+                message: "Slack interaction payload missing user".to_string(),
+            }
+        })?;
+        let user_id = user
+            .get("id")
+            .and_then(|value| value.as_str())
+            .ok_or_else(|| ChannelError::InvalidFormat {
+                platform: "slack".to_string(),
+                message: "Slack interaction payload missing user.id".to_string(),
+            })?;
+        let channel = payload
+            .get("channel")
+            .and_then(|value| value.as_object())
+            .ok_or_else(|| ChannelError::InvalidFormat {
+                platform: "slack".to_string(),
+                message: "Slack interaction payload missing channel".to_string(),
+            })?;
+        let channel_id = channel
+            .get("id")
+            .and_then(|value| value.as_str())
+            .ok_or_else(|| ChannelError::InvalidFormat {
+                platform: "slack".to_string(),
+                message: "Slack interaction payload missing channel.id".to_string(),
+            })?;
+        let team_id = payload
+            .get("team")
+            .and_then(|value| value.get("id"))
+            .and_then(|value| value.as_str());
+        if !self.workspace_allowed(team_id) {
+            return Err(ChannelError::PermissionDenied {
+                platform: "slack".to_string(),
+                message: format!(
+                    "workspace {} is not allowed",
+                    team_id.unwrap_or("<missing>")
+                ),
+            }
+            .into());
+        }
+
+        let interaction_type = payload
+            .get("type")
+            .and_then(|value| value.as_str())
+            .unwrap_or("interactive");
+        let actions = payload
+            .get("actions")
+            .and_then(|value| value.as_array())
+            .cloned()
+            .unwrap_or_default();
+        let action_ids: Vec<_> = actions
+            .iter()
+            .filter_map(|action| action.get("action_id").and_then(|value| value.as_str()))
+            .collect();
+        let content = actions
+            .iter()
+            .find_map(|action| {
+                action
+                    .get("value")
+                    .and_then(|value| value.as_str())
+                    .or_else(|| {
+                        action
+                            .get("text")
+                            .and_then(|value| value.get("text"))
+                            .and_then(|value| value.as_str())
+                    })
+            })
+            .unwrap_or("[slack interaction]")
+            .to_string();
+
+        let mut metadata = serde_json::json!({
+            "slack_channel": channel_id,
+            "slack_is_group": !channel_id.starts_with('D'),
+            "slack_bot_mentioned": true,
+            "slack_stream_mode": "interactive",
+            "slack_user_id": user_id,
+            "slack_socket_mode": true,
+            "slack_interaction_type": interaction_type,
+            "slack_action_ids": action_ids,
+            "slack_action_count": actions.len(),
+        });
+        if let Some(team_id) = team_id {
+            metadata["slack_team_id"] = serde_json::json!(team_id);
+        }
+        if let Some(trigger_id) = payload.get("trigger_id").and_then(|value| value.as_str()) {
+            metadata["slack_trigger_id"] = serde_json::json!(trigger_id);
+        }
+        if let Some(response_url) = payload
+            .get("response_url")
+            .and_then(|value| value.as_str())
+        {
+            metadata["slack_response_url"] = serde_json::json!(response_url);
+        }
+        if let Some(container) = payload.get("container").and_then(|value| value.as_object()) {
+            if let Some(message_ts) = container.get("message_ts").and_then(|value| value.as_str()) {
+                metadata["slack_event_ts"] = serde_json::json!(message_ts);
+                metadata["slack_thread_ts"] = serde_json::json!(message_ts);
+            }
+        }
+
+        self.enqueue_incoming(IncomingMessage {
+            session_id: Uuid::new_v4(),
+            user_id: user_id.to_string(),
+            content: Self::normalize_slack_text(&content),
+            platform: Platform::Slack,
+            metadata,
+        })
+        .await
+    }
+
+    async fn enqueue_incoming(&self, incoming: IncomingMessage) -> Result<()> {
+        self.incoming_tx
+            .send(incoming)
+            .await
+            .map_err(|e| ChannelError::Connection {
+                platform: "slack".to_string(),
+                message: format!("Failed to enqueue Slack incoming message: {}", e),
+            })?;
+
+        Ok(())
+    }
+}
+
+async fn run_socket_mode_loop<S>(
+    mut stream: tokio_tungstenite::WebSocketStream<S>,
+    handler: SlackEventHandler,
+) -> Result<()>
+where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+{
+    while let Some(message) = stream.next().await {
+        match message.map_err(|e| ChannelError::Connection {
+            platform: "slack".to_string(),
+            message: format!("Slack Socket Mode websocket read failed: {}", e),
+        })? {
+            WsMessage::Text(text) => {
+                let envelope: serde_json::Value =
+                    serde_json::from_str(&text).map_err(|e| ChannelError::InvalidFormat {
+                        platform: "slack".to_string(),
+                        message: format!("Failed to parse Slack Socket Mode payload: {}", e),
+                    })?;
+                let envelope_type = envelope
+                    .get("type")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or("");
+
+                if let Some(envelope_id) = envelope.get("envelope_id").and_then(|v| v.as_str()) {
+                    stream
+                        .send(WsMessage::Text(
+                            serde_json::json!({ "envelope_id": envelope_id })
+                                .to_string()
+                                .into(),
+                        ))
+                        .await
+                        .map_err(|e| ChannelError::Connection {
+                            platform: "slack".to_string(),
+                            message: format!("Failed to ACK Slack Socket Mode envelope: {}", e),
+                        })?;
+                }
+
+                if envelope_type == "disconnect" || envelope_type == "connection_error" {
+                    return Err(ChannelError::Connection {
+                        platform: "slack".to_string(),
+                        message: envelope
+                            .get("reason")
+                            .and_then(|value| value.as_str())
+                            .unwrap_or("Slack Socket Mode disconnected")
+                            .to_string(),
+                    }
+                    .into());
+                }
+
+                let payload = envelope.get("payload").cloned().unwrap_or(envelope.clone());
+                handler.handle_socket_envelope(envelope_type, &payload).await?;
+            }
+            WsMessage::Ping(payload) => {
+                stream
+                    .send(WsMessage::Pong(payload))
+                    .await
+                    .map_err(|e| ChannelError::Connection {
+                        platform: "slack".to_string(),
+                        message: format!("Failed to respond to Slack websocket ping: {}", e),
+                    })?;
+            }
+            WsMessage::Close(_) => {
+                return Err(ChannelError::Connection {
+                    platform: "slack".to_string(),
+                    message: "Slack Socket Mode websocket closed".to_string(),
+                }
+                .into());
+            }
+            _ => {}
+        }
+    }
+
+    Err(ChannelError::Connection {
+        platform: "slack".to_string(),
+        message: "Slack Socket Mode websocket ended".to_string(),
+    }
+    .into())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tokio::net::TcpListener;
+    use tokio_tungstenite::accept_async;
+
+    async fn spawn_mock_slack_socket(
+        envelopes: Vec<serde_json::Value>,
+    ) -> (String, tokio::sync::oneshot::Receiver<Vec<serde_json::Value>>) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let (ack_tx, ack_rx) = tokio::sync::oneshot::channel();
+        tokio::spawn(async move {
+            let (tcp_stream, _) = listener.accept().await.unwrap();
+            let mut ws_stream = accept_async(tcp_stream).await.unwrap();
+            ws_stream
+                .send(WsMessage::Text(
+                    serde_json::json!({
+                        "type": "hello",
+                        "num_connections": 1
+                    })
+                    .to_string()
+                    .into(),
+                ))
+                .await
+                .unwrap();
+
+            let mut acks = Vec::new();
+            for envelope in envelopes {
+                ws_stream
+                    .send(WsMessage::Text(envelope.to_string().into()))
+                    .await
+                    .unwrap();
+                let ack = ws_stream.next().await.unwrap().unwrap().into_text().unwrap();
+                acks.push(serde_json::from_str(&ack).unwrap());
+            }
+            let _ = ack_tx.send(acks);
+            ws_stream.close(None).await.unwrap();
+        });
+
+        (format!("ws://{}/socket", addr), ack_rx)
+    }
 
     #[test]
     fn test_slack_to_markdown() {
@@ -1139,6 +1593,219 @@ mod tests {
             incoming.metadata["file_references"][0],
             "https://files.example.com/file-1/download"
         );
+    }
+
+    #[tokio::test]
+    async fn test_socket_mode_events_api_enqueues_message() {
+        use wiremock::matchers::{bearer_token, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let (ws_url, ack_rx) = spawn_mock_slack_socket(vec![serde_json::json!({
+            "envelope_id": "1",
+            "type": "events_api",
+            "payload": {
+                "team_id": "T123",
+                "event": {
+                    "type": "app_mention",
+                    "user": "U123",
+                    "text": "hello from socket",
+                    "channel": "C456",
+                    "event_ts": "171234.000200"
+                }
+            }
+        })])
+        .await;
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/auth.test"))
+            .and(bearer_token("xoxb-test"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "ok": true,
+                "team_id": "T123"
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/apps.connections.open"))
+            .and(bearer_token("xapp-test"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "ok": true,
+                "url": ws_url
+            })))
+            .mount(&server)
+            .await;
+
+        let config = SlackConfig {
+            enabled: true,
+            token: "xoxb-test".to_string(),
+            api_base_url: Some(server.uri()),
+            app_token: Some("xapp-test".to_string()),
+            signing_secret: None,
+            mode: SlackMode::SocketMode,
+            socket_mode: true,
+            rate_limit_requests_per_second: 10,
+            allowed_workspaces: vec!["T123".to_string()],
+            app_home_enabled: true,
+        };
+        let mut channel = SlackChannel::new(config);
+        channel.connect().await.unwrap();
+
+        let incoming = tokio::time::timeout(std::time::Duration::from_secs(2), channel.receive())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(incoming.content, "hello from socket");
+        assert_eq!(incoming.metadata["slack_stream_mode"], "mention");
+        assert_eq!(incoming.metadata["slack_socket_mode"], serde_json::Value::Null);
+
+        let acks = ack_rx.await.unwrap();
+        assert_eq!(acks[0]["envelope_id"], "1");
+
+        channel.disconnect().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_socket_mode_slash_command_enqueues_message() {
+        use wiremock::matchers::{bearer_token, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let (ws_url, ack_rx) = spawn_mock_slack_socket(vec![serde_json::json!({
+            "envelope_id": "2",
+            "type": "slash_commands",
+            "payload": {
+                "team_id": "T123",
+                "channel_id": "C456",
+                "user_id": "U123",
+                "command": "/assign",
+                "text": "take this",
+                "trigger_id": "trigger-1",
+                "response_url": "https://example.com/respond"
+            }
+        })])
+        .await;
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/auth.test"))
+            .and(bearer_token("xoxb-test"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "ok": true,
+                "team_id": "T123"
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/apps.connections.open"))
+            .and(bearer_token("xapp-test"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "ok": true,
+                "url": ws_url
+            })))
+            .mount(&server)
+            .await;
+
+        let config = SlackConfig {
+            enabled: true,
+            token: "xoxb-test".to_string(),
+            api_base_url: Some(server.uri()),
+            app_token: Some("xapp-test".to_string()),
+            signing_secret: None,
+            mode: SlackMode::SocketMode,
+            socket_mode: true,
+            rate_limit_requests_per_second: 10,
+            allowed_workspaces: vec!["T123".to_string()],
+            app_home_enabled: true,
+        };
+        let mut channel = SlackChannel::new(config);
+        channel.connect().await.unwrap();
+
+        let incoming = tokio::time::timeout(std::time::Duration::from_secs(2), channel.receive())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(incoming.content, "take this");
+        assert_eq!(incoming.metadata["slack_command"], "/assign");
+        assert_eq!(incoming.metadata["slack_stream_mode"], "slash_command");
+        assert_eq!(incoming.metadata["slack_socket_mode"], true);
+
+        let acks = ack_rx.await.unwrap();
+        assert_eq!(acks[0]["envelope_id"], "2");
+
+        channel.disconnect().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_socket_mode_interactive_enqueues_message() {
+        use wiremock::matchers::{bearer_token, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let (ws_url, ack_rx) = spawn_mock_slack_socket(vec![serde_json::json!({
+            "envelope_id": "3",
+            "type": "interactive",
+            "payload": {
+                "type": "block_actions",
+                "team": {"id": "T123"},
+                "user": {"id": "U123"},
+                "channel": {"id": "C456"},
+                "container": {"message_ts": "171234.000300"},
+                "trigger_id": "trigger-2",
+                "actions": [{
+                    "action_id": "approve",
+                    "value": "yes"
+                }]
+            }
+        })])
+        .await;
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/auth.test"))
+            .and(bearer_token("xoxb-test"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "ok": true,
+                "team_id": "T123"
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/apps.connections.open"))
+            .and(bearer_token("xapp-test"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "ok": true,
+                "url": ws_url
+            })))
+            .mount(&server)
+            .await;
+
+        let config = SlackConfig {
+            enabled: true,
+            token: "xoxb-test".to_string(),
+            api_base_url: Some(server.uri()),
+            app_token: Some("xapp-test".to_string()),
+            signing_secret: None,
+            mode: SlackMode::SocketMode,
+            socket_mode: true,
+            rate_limit_requests_per_second: 10,
+            allowed_workspaces: vec!["T123".to_string()],
+            app_home_enabled: true,
+        };
+        let mut channel = SlackChannel::new(config);
+        channel.connect().await.unwrap();
+
+        let incoming = tokio::time::timeout(std::time::Duration::from_secs(2), channel.receive())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(incoming.content, "yes");
+        assert_eq!(incoming.metadata["slack_interaction_type"], "block_actions");
+        assert_eq!(incoming.metadata["slack_action_ids"][0], "approve");
+        assert_eq!(incoming.metadata["slack_socket_mode"], true);
+
+        let acks = ack_rx.await.unwrap();
+        assert_eq!(acks[0]["envelope_id"], "3");
+
+        channel.disconnect().await.unwrap();
     }
 
     #[tokio::test]

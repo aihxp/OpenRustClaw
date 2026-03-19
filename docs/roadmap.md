@@ -638,7 +638,7 @@ Completed:
 
 - [x] WebChat baseline exists.
 - [x] Telegram outbound and polling ingress exist.
-- [x] Slack outbound and HTTP Events ingress exist.
+- [x] Slack outbound, HTTP Events ingress, and Socket Mode websocket ingress exist.
 - [x] Discord outbound, interactions ingress, and gateway message ingress exist.
 - [x] Matrix access-token/password auth, `/sync` polling ingress, outbound room sends, reactions, join/leave, and local file upload support exist.
 - [x] File-backed channel account and binding registry exists under `.claw/channels/`.
