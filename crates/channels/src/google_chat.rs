@@ -678,9 +678,7 @@ impl GoogleChatChannel {
             })
     }
 
-    fn decode_pubsub_event_body(
-        raw_body: &[u8],
-    ) -> Result<(serde_json::Value, Option<String>)> {
+    fn decode_pubsub_event_body(raw_body: &[u8]) -> Result<(serde_json::Value, Option<String>)> {
         let outer_value: serde_json::Value =
             serde_json::from_slice(raw_body).map_err(|e| ChannelError::InvalidFormat {
                 platform: "google_chat".to_string(),
@@ -716,15 +714,13 @@ impl GoogleChatChannel {
                 message: format!("Failed to parse decoded Google Chat Pub/Sub payload: {}", e),
             })?;
 
-        let subscription = envelope
-            .subscription
-            .or_else(|| {
-                envelope
-                    .message
-                    .attributes
-                    .as_ref()
-                    .and_then(|attrs| attrs.get("subscription").cloned())
-            });
+        let subscription = envelope.subscription.or_else(|| {
+            envelope
+                .message
+                .attributes
+                .as_ref()
+                .and_then(|attrs| attrs.get("subscription").cloned())
+        });
 
         Ok((inner_value, subscription))
     }
@@ -979,12 +975,13 @@ impl GoogleChatWebhookHandler {
             return Ok(None);
         }
 
-        let raw = tokio::fs::read_to_string(key_path).await.map_err(|e| {
-            ChannelError::AuthFailed {
-                platform: "google_chat".to_string(),
-                message: format!("Failed to read Google Chat key file: {}", e),
-            }
-        })?;
+        let raw =
+            tokio::fs::read_to_string(key_path)
+                .await
+                .map_err(|e| ChannelError::AuthFailed {
+                    platform: "google_chat".to_string(),
+                    message: format!("Failed to read Google Chat key file: {}", e),
+                })?;
 
         if let Ok(json) = serde_json::from_str::<serde_json::Value>(&raw)
             && let Some(token) = json.get("access_token").and_then(|value| value.as_str())
@@ -1089,7 +1086,9 @@ impl GoogleChatWebhookHandler {
             .or_else(|| attachment.get("contentName"))
             .and_then(|value| value.as_str())
             .unwrap_or("attachment");
-        let path = downloads_dir.join(GoogleChatChannel::sanitize_download_name(message_id, filename));
+        let path = downloads_dir.join(GoogleChatChannel::sanitize_download_name(
+            message_id, filename,
+        ));
 
         let mut request = self.http_client.get(download_url);
         if let Some(token) = token {
@@ -1110,10 +1109,13 @@ impl GoogleChatWebhookHandler {
             .into());
         }
 
-        let bytes = response.bytes().await.map_err(|e| ChannelError::Connection {
-            platform: "google_chat".to_string(),
-            message: format!("Failed to read Google Chat attachment download: {}", e),
-        })?;
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|e| ChannelError::Connection {
+                platform: "google_chat".to_string(),
+                message: format!("Failed to read Google Chat attachment download: {}", e),
+            })?;
 
         tokio::fs::write(&path, &bytes)
             .await
@@ -1376,8 +1378,7 @@ impl GoogleChatWebhookHandler {
                 );
                 metadata["google_chat_has_attachment_content_types"] = serde_json::json!(true);
             } else {
-                metadata["google_chat_attachment_content_type_count"] =
-                    serde_json::json!(0);
+                metadata["google_chat_attachment_content_type_count"] = serde_json::json!(0);
                 metadata["google_chat_has_attachment_content_types"] = serde_json::json!(false);
             }
             let attachment_data_refs: Vec<_> = message
@@ -1564,8 +1565,7 @@ impl GoogleChatWebhookHandler {
             serde_json::json!(user.display_name.chars().count());
         if let Some(name) = action_name {
             metadata["google_chat_action_name"] = serde_json::json!(name);
-            metadata["google_chat_action_name_length"] =
-                serde_json::json!(name.chars().count());
+            metadata["google_chat_action_name_length"] = serde_json::json!(name.chars().count());
             metadata["google_chat_has_action_name"] = serde_json::json!(true);
         } else {
             metadata["google_chat_has_action_name"] = serde_json::json!(false);
@@ -1578,8 +1578,12 @@ impl GoogleChatWebhookHandler {
         }
         if !action_parameters.is_empty() {
             metadata["google_chat_action_parameters"] = serde_json::json!(action_parameters);
-            metadata["google_chat_action_parameter_count"] =
-                serde_json::json!(metadata["google_chat_action_parameters"].as_array().map(|items| items.len()).unwrap_or(0));
+            metadata["google_chat_action_parameter_count"] = serde_json::json!(
+                metadata["google_chat_action_parameters"]
+                    .as_array()
+                    .map(|items| items.len())
+                    .unwrap_or(0)
+            );
             metadata["google_chat_has_action_parameters"] = serde_json::json!(true);
         } else {
             metadata["google_chat_has_action_parameters"] = serde_json::json!(false);
@@ -1978,8 +1982,14 @@ mod tests {
         assert_eq!(incoming.metadata["google_chat_user_display_name_length"], 5);
         assert_eq!(incoming.metadata["google_chat_has_event_time"], true);
         assert_eq!(incoming.metadata["google_chat_has_user_email"], true);
-        assert_eq!(incoming.metadata["google_chat_has_space_display_name"], true);
-        assert_eq!(incoming.metadata["google_chat_space_display_name_length"], 3);
+        assert_eq!(
+            incoming.metadata["google_chat_has_space_display_name"],
+            true
+        );
+        assert_eq!(
+            incoming.metadata["google_chat_space_display_name_length"],
+            3
+        );
         assert_eq!(incoming.metadata["google_chat_has_action_name"], true);
         assert_eq!(incoming.metadata["google_chat_action_name_length"], 11);
         assert_eq!(incoming.metadata["google_chat_has_invoked_function"], true);
@@ -2048,7 +2058,10 @@ mod tests {
             incoming.metadata["google_chat_space_event_added"],
             serde_json::json!(true)
         );
-        assert_eq!(incoming.metadata["google_chat_space_display_name_length"], 3);
+        assert_eq!(
+            incoming.metadata["google_chat_space_display_name_length"],
+            3
+        );
         assert_eq!(
             incoming.metadata["google_chat_event_time"],
             serde_json::json!("2024-01-01T00:00:00Z")
@@ -2119,7 +2132,10 @@ mod tests {
         assert_eq!(incoming.metadata["google_chat_has_message_id"], true);
         assert_eq!(incoming.metadata["google_chat_body_length"], 17);
         assert_eq!(incoming.metadata["google_chat_has_user_email"], true);
-        assert_eq!(incoming.metadata["google_chat_has_space_display_name"], true);
+        assert_eq!(
+            incoming.metadata["google_chat_has_space_display_name"],
+            true
+        );
         assert_eq!(incoming.metadata["google_chat_has_argument"], false);
         assert_eq!(incoming.metadata["google_chat_has_slash_command"], false);
         assert_eq!(incoming.metadata["google_chat_has_mentions"], false);
@@ -2182,12 +2198,24 @@ mod tests {
         assert_eq!(incoming.metadata["google_chat_has_attachment_count"], true);
         assert_eq!(incoming.metadata["google_chat_has_attachments"], true);
         assert_eq!(incoming.metadata["google_chat_attachment_name_count"], 1);
-        assert_eq!(incoming.metadata["google_chat_attachment_content_type_count"], 1);
+        assert_eq!(
+            incoming.metadata["google_chat_attachment_content_type_count"],
+            1
+        );
         assert_eq!(incoming.metadata["google_chat_has_attachment_names"], true);
-        assert_eq!(incoming.metadata["google_chat_has_attachment_content_types"], true);
-        assert_eq!(incoming.metadata["google_chat_has_attachment_data_refs"], true);
+        assert_eq!(
+            incoming.metadata["google_chat_has_attachment_content_types"],
+            true
+        );
+        assert_eq!(
+            incoming.metadata["google_chat_has_attachment_data_refs"],
+            true
+        );
         assert_eq!(incoming.metadata["google_chat_file_reference_count"], 1);
-        assert_eq!(incoming.metadata["google_chat_attachment_names"][0], "incident-report.pdf");
+        assert_eq!(
+            incoming.metadata["google_chat_attachment_names"][0],
+            "incident-report.pdf"
+        );
         assert_eq!(
             incoming.metadata["google_chat_attachment_content_types"][0],
             "application/pdf"
@@ -2266,7 +2294,10 @@ mod tests {
 
         let incoming = rx.recv().await.expect("incoming message");
         assert_eq!(incoming.metadata["google_chat_has_download_paths"], true);
-        assert_eq!(incoming.metadata["google_chat_downloaded_attachment_count"], 1);
+        assert_eq!(
+            incoming.metadata["google_chat_downloaded_attachment_count"],
+            1
+        );
         let local_path = incoming.metadata["google_chat_download_paths"][0]
             .as_str()
             .expect("download path");
@@ -2336,7 +2367,10 @@ mod tests {
 
         let incoming = rx.recv().await.expect("incoming message");
         assert_eq!(incoming.metadata["google_chat_slash_command_id"], "1");
-        assert_eq!(incoming.metadata["google_chat_slash_command_name"], "/assign");
+        assert_eq!(
+            incoming.metadata["google_chat_slash_command_name"],
+            "/assign"
+        );
         assert_eq!(incoming.metadata["google_chat_body_length"], 28);
         assert_eq!(incoming.metadata["google_chat_argument_length"], 6);
         assert_eq!(incoming.metadata["google_chat_has_argument"], true);
@@ -2349,11 +2383,20 @@ mod tests {
         assert_eq!(incoming.metadata["google_chat_user_display_name_length"], 5);
         assert_eq!(incoming.metadata["google_chat_has_event_time"], true);
         assert_eq!(incoming.metadata["google_chat_has_user_email"], true);
-        assert_eq!(incoming.metadata["google_chat_has_space_display_name"], true);
-        assert_eq!(incoming.metadata["google_chat_space_display_name_length"], 3);
+        assert_eq!(
+            incoming.metadata["google_chat_has_space_display_name"],
+            true
+        );
+        assert_eq!(
+            incoming.metadata["google_chat_space_display_name_length"],
+            3
+        );
         assert_eq!(incoming.metadata["google_chat_has_thread"], false);
         assert_eq!(incoming.metadata["google_chat_mention_count"], 1);
-        assert_eq!(incoming.metadata["google_chat_slash_command_name_length"], 7);
+        assert_eq!(
+            incoming.metadata["google_chat_slash_command_name_length"],
+            7
+        );
         assert_eq!(
             incoming.metadata["google_chat_mentions"][0]["display_name"],
             "OpenRustClaw"

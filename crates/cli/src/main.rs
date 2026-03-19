@@ -59,6 +59,11 @@ enum Commands {
         #[command(subcommand)]
         action: MatrixAction,
     },
+    /// Google Chat operator integration
+    GoogleChat {
+        #[command(subcommand)]
+        action: GoogleChatAction,
+    },
     /// iMessage / BlueBubbles operator integration
     IMessage {
         #[command(subcommand)]
@@ -429,6 +434,63 @@ enum MatrixAction {
         reason: Option<String>,
         #[arg(short, long, default_value = "config/default.toml")]
         config: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum GoogleChatAction {
+    /// Show Google Chat config/operator state
+    Status {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+    },
+    /// Validate Google Chat auth/config by connecting once
+    Connect {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+    },
+    /// Send a text message to a Google Chat space
+    Send {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+        #[arg(long)]
+        space: String,
+        #[arg(long)]
+        message: String,
+        #[arg(long)]
+        thread: Option<String>,
+    },
+    /// Send a Google Chat card message
+    SendCard {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+        #[arg(long)]
+        space: String,
+        #[arg(long)]
+        title: String,
+        #[arg(long)]
+        content: String,
+        #[arg(long)]
+        thread: Option<String>,
+        #[arg(long)]
+        subtitle: Option<String>,
+        #[arg(long)]
+        image_url: Option<String>,
+        #[arg(long)]
+        section_header: Option<String>,
+    },
+    /// Send a file-reference/open-link card
+    SendLinkCard {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+        #[arg(long)]
+        space: String,
+        #[arg(long)]
+        url: String,
+        #[arg(long)]
+        title: Option<String>,
+        #[arg(long)]
+        thread: Option<String>,
     },
 }
 
@@ -1254,6 +1316,54 @@ async fn main() -> Result<()> {
                 reason,
                 config,
             } => commands::matrix::redact(&config, &room, &event_id, reason.as_deref()).await,
+        },
+        Commands::GoogleChat { action } => match action {
+            GoogleChatAction::Status { config } => commands::google_chat::status(&config).await,
+            GoogleChatAction::Connect { config } => commands::google_chat::connect(&config).await,
+            GoogleChatAction::Send {
+                config,
+                space,
+                message,
+                thread,
+            } => commands::google_chat::send(&config, &space, &message, thread.as_deref()).await,
+            GoogleChatAction::SendCard {
+                config,
+                space,
+                title,
+                content,
+                thread,
+                subtitle,
+                image_url,
+                section_header,
+            } => {
+                commands::google_chat::send_card(
+                    &config,
+                    &space,
+                    &title,
+                    &content,
+                    thread.as_deref(),
+                    subtitle.as_deref(),
+                    image_url.as_deref(),
+                    section_header.as_deref(),
+                )
+                .await
+            }
+            GoogleChatAction::SendLinkCard {
+                config,
+                space,
+                url,
+                title,
+                thread,
+            } => {
+                commands::google_chat::send_link_card(
+                    &config,
+                    &space,
+                    &url,
+                    title.as_deref(),
+                    thread.as_deref(),
+                )
+                .await
+            }
         },
         Commands::IMessage { action } => match action {
             IMessageAction::Ping { config } => commands::imessage::ping(&config).await,
