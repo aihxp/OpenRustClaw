@@ -252,6 +252,7 @@ impl SignalChannel {
             "signal_has_source": !source.is_empty(),
             "signal_has_recipient": !recipient.is_empty(),
             "signal_has_source_number": source_number.is_some(),
+            "signal_source_number_length": source_number.as_ref().map(|value| value.chars().count()),
             "signal_has_source_uuid": source_uuid.is_some(),
             "signal_has_message_text": !message_text.is_empty(),
             "signal_message_length": message_text.chars().count(),
@@ -266,6 +267,8 @@ impl SignalChannel {
             metadata["signal_group_name"] = serde_json::json!(&group.group_name);
             metadata["signal_has_group_name"] =
                 serde_json::json!(group.group_name.as_ref().map(|value| !value.is_empty()).unwrap_or(false));
+            metadata["signal_group_name_length"] =
+                serde_json::json!(group.group_name.as_ref().map(|value| value.chars().count()));
             if let Some(members) = group.members.as_ref() {
                 metadata["signal_group_members"] = serde_json::json!(members);
                 metadata["signal_group_member_count"] = serde_json::json!(members.len());
@@ -304,10 +307,23 @@ impl SignalChannel {
                 .collect();
             if !attachment_names.is_empty() {
                 metadata["signal_attachment_names"] = serde_json::json!(attachment_names);
+                metadata["signal_attachment_name_count"] = serde_json::json!(
+                    metadata["signal_attachment_names"]
+                        .as_array()
+                        .map(|items| items.len())
+                        .unwrap_or(0)
+                );
                 metadata["signal_has_attachment_names"] = serde_json::json!(true);
             } else {
+                metadata["signal_attachment_name_count"] = serde_json::json!(0);
                 metadata["signal_has_attachment_names"] = serde_json::json!(false);
             }
+            metadata["signal_has_attachment_sizes"] = serde_json::json!(
+                data_message
+                    .attachments
+                    .iter()
+                    .any(|attachment| attachment.size.is_some())
+            );
             let attachment_mime_types: Vec<_> = data_message
                 .attachments
                 .iter()
@@ -380,6 +396,8 @@ impl SignalChannel {
             });
             metadata["signal_quote_id"] = serde_json::json!(quote.id);
             metadata["signal_quote_author"] = serde_json::json!(quote.author);
+            metadata["signal_quote_author_length"] =
+                serde_json::json!(quote.author.chars().count());
             metadata["signal_reply_to_id"] = serde_json::json!(quote.id);
             if let Some(text) = quote.text.as_ref() {
                 metadata["signal_quote_text"] = serde_json::json!(text);
@@ -1234,6 +1252,10 @@ mod tests {
         assert_eq!(incoming.metadata["signal_has_source"], true);
         assert_eq!(incoming.metadata["signal_has_recipient"], true);
         assert_eq!(incoming.metadata["signal_has_source_number"], true);
+        assert_eq!(
+            incoming.metadata["signal_source_number_length"],
+            serde_json::json!(12)
+        );
         assert_eq!(incoming.metadata["signal_has_source_uuid"], false);
         assert_eq!(incoming.metadata["signal_has_message_text"], true);
         assert_eq!(incoming.metadata["signal_message_length"], serde_json::json!(5));
@@ -1246,7 +1268,12 @@ mod tests {
         assert_eq!(incoming.metadata["signal_attachment_ids"][0], "att-1");
         assert_eq!(incoming.metadata["signal_has_attachment_ids"], true);
         assert_eq!(incoming.metadata["signal_attachment_names"][0], "photo.jpg");
+        assert_eq!(
+            incoming.metadata["signal_attachment_name_count"],
+            serde_json::json!(1)
+        );
         assert_eq!(incoming.metadata["signal_has_attachment_names"], true);
+        assert_eq!(incoming.metadata["signal_has_attachment_sizes"], true);
         assert_eq!(
             incoming.metadata["signal_attachment_mime_types"][0],
             "image/jpeg"
@@ -1328,6 +1355,7 @@ mod tests {
         let incoming = rx.recv().await.expect("incoming group message");
         assert_eq!(incoming.metadata["signal_has_group_id"], true);
         assert_eq!(incoming.metadata["signal_has_group_name"], true);
+        assert_eq!(incoming.metadata["signal_group_name_length"], 3);
         assert_eq!(incoming.metadata["signal_group_member_count"], 2);
         assert_eq!(incoming.metadata["signal_group_members"][1], "+15551230002");
         assert_eq!(incoming.metadata["signal_has_group_members"], true);
@@ -1368,6 +1396,7 @@ mod tests {
         assert_eq!(incoming.metadata["signal_has_quote"], true);
         assert_eq!(incoming.metadata["signal_quote_id"], 42);
         assert_eq!(incoming.metadata["signal_quote_author"], "+15557654321");
+        assert_eq!(incoming.metadata["signal_quote_author_length"], 12);
         assert_eq!(incoming.metadata["signal_quote_text"], "original text");
         assert_eq!(incoming.metadata["signal_quote_text_length"], 13);
     }

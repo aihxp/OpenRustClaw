@@ -532,8 +532,11 @@ impl MatrixChannel {
                         if event.event_type == "m.room.redaction" {
                             let metadata = serde_json::json!({
                                 "matrix_room_id": room_id,
+                                "matrix_room_id_length": room_id.chars().count(),
                                 "matrix_event_id": event_id,
+                                "matrix_event_id_length": event_id.chars().count(),
                                 "matrix_sender": event.sender,
+                                "matrix_sender_length": event.sender.chars().count(),
                                 "matrix_msgtype": "m.room.redaction",
                                 "matrix_is_group": true,
                                 "matrix_redacts": event.content.get("redacts").and_then(|value| value.as_str()),
@@ -568,8 +571,11 @@ impl MatrixChannel {
 
                             let metadata = serde_json::json!({
                                 "matrix_room_id": room_id,
+                                "matrix_room_id_length": room_id.chars().count(),
                                 "matrix_event_id": event_id,
+                                "matrix_event_id_length": event_id.chars().count(),
                                 "matrix_sender": event.sender,
+                                "matrix_sender_length": event.sender.chars().count(),
                                 "matrix_msgtype": "m.reaction",
                                 "matrix_is_group": true,
                                 "matrix_reaction": reaction_key,
@@ -605,8 +611,11 @@ impl MatrixChannel {
 
                             let metadata = serde_json::json!({
                                 "matrix_room_id": room_id,
+                                "matrix_room_id_length": room_id.chars().count(),
                                 "matrix_event_id": event_id,
+                                "matrix_event_id_length": event_id.chars().count(),
                                 "matrix_sender": event.sender,
+                                "matrix_sender_length": event.sender.chars().count(),
                                 "matrix_msgtype": "m.room.member",
                                 "matrix_is_group": true,
                                 "matrix_membership": membership,
@@ -668,8 +677,11 @@ impl MatrixChannel {
 
                         let mut metadata = serde_json::json!({
                             "matrix_room_id": room_id,
+                            "matrix_room_id_length": room_id.chars().count(),
                             "matrix_event_id": event_id,
+                            "matrix_event_id_length": event_id.chars().count(),
                             "matrix_sender": event.sender,
+                            "matrix_sender_length": event.sender.chars().count(),
                             "matrix_msgtype": message_type,
                             "matrix_thread_root": thread_root,
                             "matrix_has_thread": thread_root.is_some(),
@@ -678,6 +690,8 @@ impl MatrixChannel {
                         });
                         if let Some(reply_to) = reply_to {
                             metadata["matrix_reply_to"] = serde_json::json!(reply_to);
+                            metadata["matrix_reply_to_length"] =
+                                serde_json::json!(reply_to.chars().count());
                         }
                         metadata["matrix_has_reply"] = serde_json::json!(reply_to.is_some());
                         if let Some(format) =
@@ -706,6 +720,8 @@ impl MatrixChannel {
                             event.content.get("url").and_then(|value| value.as_str())
                         {
                             metadata["matrix_content_uri"] = serde_json::json!(content_uri);
+                            metadata["matrix_content_uri_length"] =
+                                serde_json::json!(content_uri.chars().count());
                             metadata["matrix_has_content_uri"] = serde_json::json!(true);
                             metadata["matrix_has_media"] = serde_json::json!(true);
                             let filename_hint =
@@ -1679,7 +1695,11 @@ mod tests {
             .expect("receive timeout")
             .expect("incoming message");
 
+        assert_eq!(incoming.metadata["matrix_room_id_length"], 16);
+        assert_eq!(incoming.metadata["matrix_event_id_length"], 5);
+        assert_eq!(incoming.metadata["matrix_sender_length"], 17);
         assert_eq!(incoming.metadata["matrix_reply_to"], "$root1");
+        assert_eq!(incoming.metadata["matrix_reply_to_length"], 6);
         assert_eq!(incoming.metadata["matrix_thread_root"], "$root1");
         assert_eq!(incoming.metadata["matrix_has_reply"], true);
         assert_eq!(incoming.metadata["matrix_has_thread"], true);
@@ -1744,6 +1764,9 @@ mod tests {
             .expect("incoming reaction");
 
         assert_eq!(incoming.content, "[matrix reaction]");
+        assert_eq!(incoming.metadata["matrix_room_id_length"], 16);
+        assert_eq!(incoming.metadata["matrix_event_id_length"], 10);
+        assert_eq!(incoming.metadata["matrix_sender_length"], 17);
         assert_eq!(incoming.metadata["matrix_reaction"], "👍");
         assert_eq!(incoming.metadata["matrix_reaction_length"], 1);
         assert_eq!(incoming.metadata["matrix_reaction_target"], "$target1");
@@ -1801,6 +1824,9 @@ mod tests {
             .expect("incoming redaction");
 
         assert_eq!(incoming.content, "[matrix redaction]");
+        assert_eq!(incoming.metadata["matrix_room_id_length"], 16);
+        assert_eq!(incoming.metadata["matrix_event_id_length"], 11);
+        assert_eq!(incoming.metadata["matrix_sender_length"], 17);
         assert_eq!(incoming.metadata["matrix_redacts"], "$target-redacted");
         assert_eq!(incoming.metadata["matrix_has_redacts"], true);
         assert_eq!(incoming.metadata["matrix_redaction_reason"], "cleanup");
@@ -1859,6 +1885,9 @@ mod tests {
             .expect("incoming membership");
 
         assert_eq!(incoming.content, "[matrix membership event]");
+        assert_eq!(incoming.metadata["matrix_room_id_length"], 16);
+        assert_eq!(incoming.metadata["matrix_event_id_length"], 8);
+        assert_eq!(incoming.metadata["matrix_sender_length"], 17);
         assert_eq!(incoming.metadata["matrix_membership"], "join");
         assert_eq!(incoming.metadata["matrix_membership_length"], 4);
         assert_eq!(incoming.metadata["matrix_state_key"], "@bob:matrix.org");
@@ -1928,7 +1957,11 @@ mod tests {
             .expect("incoming media");
 
         assert_eq!(incoming.metadata["matrix_has_media"], true);
+        assert_eq!(incoming.metadata["matrix_room_id_length"], 16);
+        assert_eq!(incoming.metadata["matrix_event_id_length"], 10);
+        assert_eq!(incoming.metadata["matrix_sender_length"], 17);
         assert_eq!(incoming.metadata["matrix_has_content_uri"], true);
+        assert_eq!(incoming.metadata["matrix_content_uri_length"], 24);
         assert_eq!(incoming.metadata["matrix_media_filename"], "report.pdf");
         assert_eq!(incoming.metadata["matrix_media_filename_length"], 10);
         assert_eq!(incoming.metadata["matrix_has_media_filename"], true);
