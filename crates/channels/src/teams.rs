@@ -742,6 +742,10 @@ impl TeamsChannel {
             "teams_is_group": conversation_type != "personal",
             "teams_body_length": mention_info.clean_text.chars().count(),
         });
+        metadata["teams_has_mentions"] =
+            serde_json::json!(!mention_info.mentioned_users.is_empty());
+        metadata["teams_mention_count"] =
+            serde_json::json!(mention_info.mentioned_users.len());
         if let Some(reply_to_id) = activity.get("replyToId").and_then(|value| value.as_str()) {
             metadata["teams_reply_to_id"] = serde_json::json!(reply_to_id);
             metadata["teams_has_reply_to"] = serde_json::json!(true);
@@ -765,6 +769,9 @@ impl TeamsChannel {
                 .collect();
             if !attachment_names.is_empty() {
                 metadata["teams_attachment_names"] = serde_json::json!(attachment_names);
+                metadata["teams_has_attachment_names"] = serde_json::json!(true);
+            } else {
+                metadata["teams_has_attachment_names"] = serde_json::json!(false);
             }
             let attachment_content_types: Vec<_> = attachments
                 .iter()
@@ -778,6 +785,9 @@ impl TeamsChannel {
             if !attachment_content_types.is_empty() {
                 metadata["teams_attachment_content_types"] =
                     serde_json::json!(attachment_content_types);
+                metadata["teams_has_attachment_content_types"] = serde_json::json!(true);
+            } else {
+                metadata["teams_has_attachment_content_types"] = serde_json::json!(false);
             }
             let attachment_urls: Vec<_> = attachments
                 .iter()
@@ -790,6 +800,12 @@ impl TeamsChannel {
                 .collect();
             if !attachment_urls.is_empty() {
                 metadata["teams_attachment_urls"] = serde_json::json!(attachment_urls);
+                metadata["teams_has_attachment_urls"] = serde_json::json!(true);
+                metadata["teams_attachment_url_count"] =
+                    serde_json::json!(attachment_urls.len());
+            } else {
+                metadata["teams_has_attachment_urls"] = serde_json::json!(false);
+                metadata["teams_attachment_url_count"] = serde_json::json!(0);
             }
             let file_refs: Vec<_> = attachments
                 .iter()
@@ -866,6 +882,10 @@ impl TeamsChannel {
             }
         } else {
             metadata["teams_has_attachments"] = serde_json::json!(false);
+            metadata["teams_has_attachment_names"] = serde_json::json!(false);
+            metadata["teams_has_attachment_content_types"] = serde_json::json!(false);
+            metadata["teams_has_attachment_urls"] = serde_json::json!(false);
+            metadata["teams_attachment_url_count"] = serde_json::json!(0);
             metadata["teams_file_reference_count"] = serde_json::json!(0);
         }
 
@@ -966,6 +986,7 @@ impl TeamsChannel {
                     .get("membersAdded")
                     .and_then(|value| value.as_array())
                 {
+                    metadata["teams_has_members_added"] = serde_json::json!(true);
                     metadata["teams_members_added"] = serde_json::json!(added);
                     let member_ids: Vec<_> = added
                         .iter()
@@ -975,11 +996,14 @@ impl TeamsChannel {
                         metadata["teams_member_ids_added"] = serde_json::json!(member_ids);
                     }
                     metadata["teams_members_added_count"] = serde_json::json!(added.len());
+                } else {
+                    metadata["teams_has_members_added"] = serde_json::json!(false);
                 }
                 if let Some(removed) = activity
                     .get("membersRemoved")
                     .and_then(|value| value.as_array())
                 {
+                    metadata["teams_has_members_removed"] = serde_json::json!(true);
                     metadata["teams_members_removed"] = serde_json::json!(removed);
                     let member_ids: Vec<_> = removed
                         .iter()
@@ -989,6 +1013,8 @@ impl TeamsChannel {
                         metadata["teams_member_ids_removed"] = serde_json::json!(member_ids);
                     }
                     metadata["teams_members_removed_count"] = serde_json::json!(removed.len());
+                } else {
+                    metadata["teams_has_members_removed"] = serde_json::json!(false);
                 }
                 if let Some(channel_data) = activity.get("channelData") {
                     Self::apply_channel_data_metadata(&mut metadata, channel_data);
@@ -1000,6 +1026,7 @@ impl TeamsChannel {
                     .get("reactionsAdded")
                     .and_then(|value| value.as_array())
                 {
+                    metadata["teams_has_reactions_added"] = serde_json::json!(true);
                     metadata["teams_reactions_added"] = serde_json::json!(added);
                     metadata["teams_reactions_added_count"] = serde_json::json!(added.len());
                     let types: Vec<_> = added
@@ -1009,11 +1036,14 @@ impl TeamsChannel {
                     if !types.is_empty() {
                         metadata["teams_reaction_types_added"] = serde_json::json!(types);
                     }
+                } else {
+                    metadata["teams_has_reactions_added"] = serde_json::json!(false);
                 }
                 if let Some(removed) = activity
                     .get("reactionsRemoved")
                     .and_then(|value| value.as_array())
                 {
+                    metadata["teams_has_reactions_removed"] = serde_json::json!(true);
                     metadata["teams_reactions_removed"] = serde_json::json!(removed);
                     metadata["teams_reactions_removed_count"] = serde_json::json!(removed.len());
                     let types: Vec<_> = removed
@@ -1023,6 +1053,8 @@ impl TeamsChannel {
                     if !types.is_empty() {
                         metadata["teams_reaction_types_removed"] = serde_json::json!(types);
                     }
+                } else {
+                    metadata["teams_has_reactions_removed"] = serde_json::json!(false);
                 }
                 if let Some(channel_data) = activity.get("channelData") {
                     Self::apply_channel_data_metadata(&mut metadata, channel_data);
@@ -1653,8 +1685,10 @@ mod tests {
             incoming.metadata["teams_reactions_added"][0]["type"],
             serde_json::json!("like")
         );
+        assert_eq!(incoming.metadata["teams_has_reactions_added"], true);
         assert_eq!(incoming.metadata["teams_reactions_added_count"], 1);
         assert_eq!(incoming.metadata["teams_reaction_types_added"][0], "like");
+        assert_eq!(incoming.metadata["teams_has_reactions_removed"], true);
         assert_eq!(incoming.metadata["teams_reactions_removed_count"], 1);
         assert_eq!(incoming.metadata["teams_reaction_types_removed"][0], "heart");
         assert_eq!(incoming.metadata["teams_team_id"], "team-123");
@@ -1704,6 +1738,7 @@ mod tests {
             incoming.metadata["teams_members_added"][0]["id"],
             serde_json::json!("29:new-user")
         );
+        assert_eq!(incoming.metadata["teams_has_members_added"], true);
         assert_eq!(incoming.metadata["teams_members_added_count"], 1);
         assert_eq!(incoming.metadata["teams_member_ids_added"][0], "29:new-user");
         assert_eq!(incoming.metadata["teams_team_id"], "team-123");
@@ -1743,6 +1778,8 @@ mod tests {
             .await
             .expect("conversation update")
             .expect("incoming");
+        assert_eq!(incoming.metadata["teams_has_members_added"], false);
+        assert_eq!(incoming.metadata["teams_has_members_removed"], true);
         assert_eq!(incoming.metadata["teams_members_removed_count"], 1);
         assert_eq!(incoming.metadata["teams_member_ids_removed"][0], "29:old-user");
     }
@@ -1842,18 +1879,24 @@ mod tests {
 
         assert_eq!(incoming.metadata["teams_body_length"], serde_json::json!(15));
         assert_eq!(incoming.metadata["teams_has_reply_to"], true);
+        assert_eq!(incoming.metadata["teams_has_mentions"], false);
+        assert_eq!(incoming.metadata["teams_mention_count"], 0);
         assert_eq!(incoming.metadata["teams_reply_to_id"], "activity-parent-1");
         assert_eq!(incoming.metadata["teams_has_attachments"], true);
         assert_eq!(incoming.metadata["teams_attachment_count"], serde_json::json!(1));
         assert_eq!(incoming.metadata["teams_attachment_names"][0], "report.pdf");
+        assert_eq!(incoming.metadata["teams_has_attachment_names"], true);
         assert_eq!(
             incoming.metadata["teams_attachment_urls"][0],
             serde_json::json!(format!("{}/files/report.pdf", server.uri()))
         );
+        assert_eq!(incoming.metadata["teams_has_attachment_urls"], true);
+        assert_eq!(incoming.metadata["teams_attachment_url_count"], serde_json::json!(1));
         assert_eq!(
             incoming.metadata["teams_attachment_content_types"][0],
             "application/pdf"
         );
+        assert_eq!(incoming.metadata["teams_has_attachment_content_types"], true);
         assert_eq!(
             incoming.metadata["teams_file_reference_count"],
             serde_json::json!(1)
