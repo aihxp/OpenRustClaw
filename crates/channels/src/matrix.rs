@@ -537,6 +537,7 @@ impl MatrixChannel {
                                 "matrix_msgtype": "m.room.redaction",
                                 "matrix_is_group": true,
                                 "matrix_redacts": event.content.get("redacts").and_then(|value| value.as_str()),
+                                "matrix_redaction_reason": event.content.get("reason").and_then(|value| value.as_str()),
                             });
 
                             let incoming = IncomingMessage {
@@ -570,6 +571,7 @@ impl MatrixChannel {
                                 "matrix_is_group": true,
                                 "matrix_reaction": reaction_key,
                                 "matrix_reaction_target": reaction_target,
+                                "matrix_reaction_rel_type": relates_to.get("rel_type").and_then(|value| value.as_str()),
                             });
 
                             let incoming = IncomingMessage {
@@ -604,6 +606,7 @@ impl MatrixChannel {
                                 "matrix_membership": membership,
                                 "matrix_state_key": event.state_key,
                                 "matrix_member_display_name": display_name,
+                                "matrix_member_avatar_url": event.content.get("avatar_url").and_then(|value| value.as_str()),
                             });
 
                             let incoming = IncomingMessage {
@@ -665,14 +668,38 @@ impl MatrixChannel {
                         if let Some(reply_to) = reply_to {
                             metadata["matrix_reply_to"] = serde_json::json!(reply_to);
                         }
+                        if let Some(format) =
+                            event.content.get("format").and_then(|value| value.as_str())
+                        {
+                            metadata["matrix_format"] = serde_json::json!(format);
+                        }
+                        if let Some(formatted_body) = event
+                            .content
+                            .get("formatted_body")
+                            .and_then(|value| value.as_str())
+                        {
+                            metadata["matrix_formatted_body"] = serde_json::json!(formatted_body);
+                        }
                         if let Some(content_uri) =
                             event.content.get("url").and_then(|value| value.as_str())
                         {
                             metadata["matrix_content_uri"] = serde_json::json!(content_uri);
-                            metadata["file_references"] =
-                                serde_json::json!([serde_json::json!({ "url": content_uri })]);
                             let filename_hint =
                                 event.content.get("body").and_then(|value| value.as_str());
+                            let mime = event
+                                .content
+                                .pointer("/info/mimetype")
+                                .and_then(|value| value.as_str());
+                            let size = event
+                                .content
+                                .pointer("/info/size")
+                                .and_then(|value| value.as_u64());
+                            metadata["file_references"] = serde_json::json!([serde_json::json!({
+                                "url": content_uri,
+                                "name": filename_hint,
+                                "mime": mime,
+                                "size": size,
+                            })]);
                             match Self::download_media_to_dir(
                                 &http,
                                 &homeserver,
@@ -686,6 +713,8 @@ impl MatrixChannel {
                             {
                                 Ok(Some(path)) => {
                                     metadata["matrix_download_path"] = serde_json::json!(path);
+                                    metadata["file_references"][0]["local_path"] =
+                                        serde_json::json!(metadata["matrix_download_path"].as_str());
                                 }
                                 Ok(None) => {}
                                 Err(error) => {
@@ -1551,6 +1580,8 @@ mod tests {
                                     "content": {
                                         "msgtype": "m.text",
                                         "body": "reply from matrix",
+                                        "format": "org.matrix.custom.html",
+                                        "formatted_body": "<b>reply</b> from matrix",
                                         "m.relates_to": {
                                             "m.in_reply_to": {
                                                 "event_id": "$root1"
@@ -1576,6 +1607,8 @@ mod tests {
 
         assert_eq!(incoming.metadata["matrix_reply_to"], "$root1");
         assert_eq!(incoming.metadata["matrix_thread_root"], "$root1");
+        assert_eq!(incoming.metadata["matrix_format"], "org.matrix.custom.html");
+        assert_eq!(incoming.metadata["matrix_formatted_body"], "<b>reply</b> from matrix");
 
         channel.disconnect().await.expect("disconnect succeeds");
     }
@@ -1632,6 +1665,7 @@ mod tests {
         assert_eq!(incoming.content, "[matrix reaction]");
         assert_eq!(incoming.metadata["matrix_reaction"], "👍");
         assert_eq!(incoming.metadata["matrix_reaction_target"], "$target1");
+        assert_eq!(incoming.metadata["matrix_reaction_rel_type"], "m.annotation");
 
         channel.disconnect().await.expect("disconnect succeeds");
     }
@@ -1662,7 +1696,8 @@ mod tests {
                                     "sender": "@alice:matrix.org",
                                     "event_id": "$redaction1",
                                     "content": {
-                                        "redacts": "$target-redacted"
+                                        "redacts": "$target-redacted",
+                                        "reason": "cleanup"
                                     }
                                 }]
                             }
@@ -1683,6 +1718,7 @@ mod tests {
 
         assert_eq!(incoming.content, "[matrix redaction]");
         assert_eq!(incoming.metadata["matrix_redacts"], "$target-redacted");
+        assert_eq!(incoming.metadata["matrix_redaction_reason"], "cleanup");
 
         channel.disconnect().await.expect("disconnect succeeds");
     }
@@ -1715,7 +1751,8 @@ mod tests {
                                     "event_id": "$member1",
                                     "content": {
                                         "membership": "join",
-                                        "displayname": "Bob"
+                                        "displayname": "Bob",
+                                        "avatar_url": "mxc://matrix.org/avatar1"
                                     }
                                 }]
                             }
@@ -1738,6 +1775,81 @@ mod tests {
         assert_eq!(incoming.metadata["matrix_membership"], "join");
         assert_eq!(incoming.metadata["matrix_state_key"], "@bob:matrix.org");
         assert_eq!(incoming.metadata["matrix_member_display_name"], "Bob");
+        assert_eq!(incoming.metadata["matrix_member_avatar_url"], "mxc://matrix.org/avatar1");
+
+        channel.disconnect().await.expect("disconnect succeeds");
+    }
+
+    #[tokio::test]
+    async fn test_sync_receive_media_message_preserves_structured_file_reference() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/_matrix/client/v3/account/whoami"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "user_id": "@bot:matrix.org"
+            })))
+            .mount(&server)
+            .await;
+
+        Mock::given(method("GET"))
+            .and(path("/_matrix/media/v3/download/matrix.org/media-1"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(b"matrix-media".to_vec()))
+            .mount(&server)
+            .await;
+
+        Mock::given(method("GET"))
+            .and(path("/_matrix/client/v3/sync"))
+            .and(query_param("timeout", "30000"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "next_batch": "s1",
+                "rooms": {
+                    "join": {
+                        "!room:matrix.org": {
+                            "timeline": {
+                                "events": [{
+                                    "type": "m.room.message",
+                                    "sender": "@alice:matrix.org",
+                                    "event_id": "$evt-media",
+                                    "content": {
+                                        "msgtype": "m.file",
+                                        "body": "report.pdf",
+                                        "url": "mxc://matrix.org/media-1",
+                                        "info": {
+                                            "mimetype": "application/pdf",
+                                            "size": 2048
+                                        }
+                                    }
+                                }]
+                            }
+                        }
+                    }
+                }
+            })))
+            .mount(&server)
+            .await;
+
+        let mut channel = MatrixChannel::new(test_config(&server.uri()));
+        channel.connect().await.expect("connect succeeds");
+
+        let incoming = tokio::time::timeout(Duration::from_secs(2), channel.receive())
+            .await
+            .expect("receive timeout")
+            .expect("incoming media");
+
+        assert_eq!(incoming.metadata["matrix_content_uri"], "mxc://matrix.org/media-1");
+        assert_eq!(incoming.metadata["file_references"][0]["name"], "report.pdf");
+        assert_eq!(incoming.metadata["file_references"][0]["mime"], "application/pdf");
+        assert_eq!(incoming.metadata["file_references"][0]["size"], 2048);
+        assert!(incoming.metadata["file_references"][0]["local_path"]
+            .as_str()
+            .expect("local path")
+            .contains("report.pdf"));
+
+        if let Some(path) = incoming.metadata["matrix_download_path"].as_str() {
+            let _ = tokio::fs::remove_file(path).await;
+        }
+        let _ = tokio::fs::remove_dir_all(PathBuf::from(test_config(&server.uri()).data_dir).join("downloads")).await;
 
         channel.disconnect().await.expect("disconnect succeeds");
     }

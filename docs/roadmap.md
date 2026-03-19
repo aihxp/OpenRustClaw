@@ -685,7 +685,7 @@ Channel completion remaining:
   - current shipped path covers Gmail watch setup, Pub/Sub webhook ingress, history fetch, message hydration, structured attachment/file-reference metadata, mail-triggered local agent/session routing, direct sends, replies including local-file attachments, label/archive/delete actions, and forwarding;
   - richer operator parity still remains.
 - [ ] Matrix parity.
-  - current shipped path covers auth, send, reply/thread relations, polling ingress, inbound reaction, redaction, and membership events, room actions, helper-driven plus normal-send local file uploads, and inbound media downloads into the Matrix data directory;
+  - current shipped path covers auth, send, reply/thread relations, polling ingress, inbound reaction, redaction, and membership events with richer lifecycle metadata, room actions, helper-driven plus normal-send local file uploads, and inbound media downloads into the Matrix data directory with structured file-reference metadata;
   - deeper E2EE and richer operator/media parity still remain.
 - [ ] Microsoft Teams parity.
   - current shipped path covers Bot Framework webhook ingress, JWT verification, outbound sends, reply aliases, conversation/reaction/update/delete lifecycle routing with normalized member id/count metadata, normalized reaction counts/types, normalized team/channel/tenant IDs, attachment metadata capture plus opt-in local downloads, adaptive-card file links, and local agent/session routing;
