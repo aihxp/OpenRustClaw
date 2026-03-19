@@ -22,6 +22,7 @@ use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use futures::{SinkExt, StreamExt};
 use governor::{Quota, RateLimiter};
 use reqwest::Client;
+use reqwest::multipart::{Form, Part};
 use std::num::NonZeroU32;
 use tokio::sync::{Mutex, RwLock, mpsc};
 use tokio::task::JoinHandle;
@@ -107,6 +108,75 @@ impl DiscordChannel {
 
     fn header_value(&self) -> String {
         format!("Bot {}", self.config.token)
+    }
+
+    async fn outgoing_attachments(
+        metadata: &serde_json::Value,
+    ) -> Result<Vec<OutgoingAttachment>> {
+        let mut attachments = Vec::new();
+        let Some(entries) = metadata.get("file_references").and_then(|value| value.as_array()) else {
+            return Ok(attachments);
+        };
+
+        for entry in entries {
+            let Some(local_path) = entry.get("local_path").and_then(|value| value.as_str()) else {
+                continue;
+            };
+
+            let bytes = tokio::fs::read(local_path)
+                .await
+                .map_err(|e| ChannelError::SendFailed {
+                    platform: "discord".to_string(),
+                    message: format!("Failed to read Discord attachment '{}': {}", local_path, e),
+                })?;
+
+            let filename = entry
+                .get("name")
+                .and_then(|value| value.as_str())
+                .map(|value| value.to_string())
+                .or_else(|| {
+                    std::path::Path::new(local_path)
+                        .file_name()
+                        .and_then(|value| value.to_str())
+                        .map(|value| value.to_string())
+                })
+                .unwrap_or_else(|| "attachment".to_string());
+
+            let content_type = entry
+                .get("content_type")
+                .or_else(|| entry.get("mime"))
+                .and_then(|value| value.as_str())
+                .map(|value| value.to_string());
+
+            attachments.push(OutgoingAttachment {
+                bytes,
+                filename,
+                content_type,
+            });
+        }
+
+        Ok(attachments)
+    }
+
+    fn multipart_form(
+        payload: &serde_json::Value,
+        attachments: &[OutgoingAttachment],
+    ) -> Form {
+        let mut form = Form::new().text("payload_json", payload.to_string());
+        for (index, attachment) in attachments.iter().enumerate() {
+            let part = if let Some(content_type) = &attachment.content_type {
+                Part::bytes(attachment.bytes.clone())
+                    .file_name(attachment.filename.clone())
+                    .mime_str(content_type)
+                    .unwrap_or_else(|_| {
+                        Part::bytes(attachment.bytes.clone()).file_name(attachment.filename.clone())
+                    })
+            } else {
+                Part::bytes(attachment.bytes.clone()).file_name(attachment.filename.clone())
+            };
+            form = form.part(format!("files[{}]", index), part);
+        }
+        form
     }
 
     /// Create a verified Discord Interactions handler.
@@ -365,6 +435,7 @@ impl Channel for DiscordChannel {
                     .get("discord_reply_to_message_id")
                     .and_then(|v| v.as_str())
             });
+        let outgoing_attachments = Self::outgoing_attachments(&msg.metadata).await?;
 
         let (request_builder, expects_auth_body) =
             if let (Some(emoji), Some(target)) = (reaction_emoji, reaction_target) {
@@ -393,6 +464,14 @@ impl Channel for DiscordChannel {
                 );
                 (self.client.post(followup_url), false)
             } else if let Some(message_id) = edit_message_id {
+                if !outgoing_attachments.is_empty() {
+                    return Err(ChannelError::SendFailed {
+                        platform: "discord".to_string(),
+                        message: "Discord edit with local file uploads is not supported yet"
+                            .to_string(),
+                    }
+                    .into());
+                }
                 let url = format!(
                     "{}/channels/{}/messages/{}",
                     self.api_base_url(),
@@ -429,6 +508,11 @@ impl Channel for DiscordChannel {
 
         let response = if reaction_emoji.is_some() && reaction_target.is_some() {
             request_builder.send().await
+        } else if !outgoing_attachments.is_empty() {
+            request_builder
+                .multipart(Self::multipart_form(&payload, &outgoing_attachments))
+                .send()
+                .await
         } else {
             request_builder.json(&payload).send().await
         }
@@ -701,18 +785,20 @@ where
                                     })?;
                                     gateway_session.write().await.session_id = Some(ready.session_id);
                                 }
-                                if envelope.t.as_deref() == Some("MESSAGE_CREATE") {
-                                    let event: GatewayMessageCreate = serde_json::from_value(envelope.d).map_err(|e| ChannelError::InvalidFormat {
-                                        platform: "discord".to_string(),
-                                        message: format!("Failed to parse Discord message event: {}", e),
-                                    })?;
-                                    if let Some(message) = normalize_gateway_message(&client, &config, event).await? {
+                                if let Some(event_type) = envelope.t.as_deref() {
+                                    if let Some(message) = normalize_gateway_event(
+                                        &client,
+                                        &config,
+                                        event_type,
+                                        envelope.d,
+                                    )
+                                    .await? {
                                         incoming_tx
                                             .send(message)
                                             .await
                                             .map_err(|e| ChannelError::Connection {
                                                 platform: "discord".to_string(),
-                                                message: format!("Failed to enqueue Discord gateway message: {}", e),
+                                                message: format!("Failed to enqueue Discord gateway event: {}", e),
                                             })?;
                                     }
                                 }
@@ -790,7 +876,10 @@ async fn download_discord_attachment(
             .await
             .map_err(|e| ChannelError::SendFailed {
                 platform: "discord".to_string(),
-                message: format!("Failed to create Discord attachment download directory: {}", e),
+                message: format!(
+                    "Failed to create Discord attachment download directory: {}",
+                    e
+                ),
             })?;
     }
     let path = download_dir.join(sanitize_download_name(message_id, filename));
@@ -810,10 +899,13 @@ async fn download_discord_attachment(
         }
         .into());
     }
-    let bytes = response.bytes().await.map_err(|e| ChannelError::SendFailed {
-        platform: "discord".to_string(),
-        message: format!("Failed to read Discord attachment download: {}", e),
-    })?;
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|e| ChannelError::SendFailed {
+            platform: "discord".to_string(),
+            message: format!("Failed to read Discord attachment download: {}", e),
+        })?;
     tokio::fs::write(&path, &bytes)
         .await
         .map_err(|e| ChannelError::SendFailed {
@@ -947,6 +1039,253 @@ async fn normalize_gateway_message(
         platform: Platform::Discord,
         metadata,
     }))
+}
+
+async fn normalize_gateway_event(
+    client: &Client,
+    config: &DiscordConfig,
+    event_type: &str,
+    payload: serde_json::Value,
+) -> Result<Option<IncomingMessage>> {
+    match event_type {
+        "MESSAGE_CREATE" => {
+            let event: GatewayMessageCreate =
+                serde_json::from_value(payload).map_err(|e| ChannelError::InvalidFormat {
+                    platform: "discord".to_string(),
+                    message: format!("Failed to parse Discord message event: {}", e),
+                })?;
+            normalize_gateway_message(client, config, event).await
+        }
+        "MESSAGE_UPDATE" => {
+            let event: GatewayMessageUpdate =
+                serde_json::from_value(payload).map_err(|e| ChannelError::InvalidFormat {
+                    platform: "discord".to_string(),
+                    message: format!("Failed to parse Discord message update: {}", e),
+                })?;
+            Ok(normalize_gateway_update(config, event))
+        }
+        "MESSAGE_DELETE" => {
+            let event: GatewayMessageDelete =
+                serde_json::from_value(payload).map_err(|e| ChannelError::InvalidFormat {
+                    platform: "discord".to_string(),
+                    message: format!("Failed to parse Discord message delete: {}", e),
+                })?;
+            Ok(normalize_gateway_delete(config, event))
+        }
+        "TYPING_START" => {
+            let event: GatewayTypingStart =
+                serde_json::from_value(payload).map_err(|e| ChannelError::InvalidFormat {
+                    platform: "discord".to_string(),
+                    message: format!("Failed to parse Discord typing event: {}", e),
+                })?;
+            Ok(normalize_gateway_typing(config, event))
+        }
+        "THREAD_CREATE" | "THREAD_UPDATE" | "THREAD_DELETE" => {
+            let event: GatewayThreadEvent =
+                serde_json::from_value(payload).map_err(|e| ChannelError::InvalidFormat {
+                    platform: "discord".to_string(),
+                    message: format!("Failed to parse Discord thread event: {}", e),
+                })?;
+            Ok(normalize_gateway_thread(config, event_type, event))
+        }
+        _ => Ok(None),
+    }
+}
+
+fn normalize_gateway_update(
+    config: &DiscordConfig,
+    event: GatewayMessageUpdate,
+) -> Option<IncomingMessage> {
+    if !config.allowed_channels.is_empty() && !config.allowed_channels.contains(&event.channel_id) {
+        return None;
+    }
+    if let Some(guild_id) = event.guild_id.as_ref()
+        && !config.allowed_guilds.is_empty()
+        && !config.allowed_guilds.contains(guild_id)
+    {
+        return None;
+    }
+
+    let user_id = event
+        .author
+        .as_ref()
+        .map(|author| author.id.clone())
+        .unwrap_or_else(|| "discord-system".to_string());
+    let content = event
+        .content
+        .clone()
+        .unwrap_or_else(|| "[discord message updated]".to_string());
+
+    let mut metadata = serde_json::json!({
+        "discord_channel_id": event.channel_id,
+        "discord_message_id": event.id,
+        "discord_gateway": true,
+        "discord_event_type": "MESSAGE_UPDATE",
+        "discord_is_dm": event.guild_id.is_none(),
+    });
+    if let Some(guild_id) = event.guild_id {
+        metadata["discord_guild_id"] = serde_json::json!(guild_id);
+    }
+    if let Some(thread_id) = event.thread_id {
+        metadata["discord_thread_id"] = serde_json::json!(thread_id);
+    }
+    if let Some(parent_id) = event.parent_id {
+        metadata["discord_parent_channel_id"] = serde_json::json!(parent_id);
+    }
+    if let Some(edited_timestamp) = event.edited_timestamp {
+        metadata["discord_edited_timestamp"] = serde_json::json!(edited_timestamp);
+    }
+    metadata["discord_updated_attachment_count"] = serde_json::json!(event.attachments.len());
+    metadata["discord_updated_embed_count"] = serde_json::json!(event.embeds.len());
+    metadata["discord_updated_text_length"] = serde_json::json!(content.chars().count());
+    metadata["discord_has_updated_text"] = serde_json::json!(!content.is_empty());
+
+    Some(IncomingMessage {
+        session_id: Uuid::new_v4(),
+        user_id,
+        content,
+        platform: Platform::Discord,
+        metadata,
+    })
+}
+
+fn normalize_gateway_delete(
+    config: &DiscordConfig,
+    event: GatewayMessageDelete,
+) -> Option<IncomingMessage> {
+    if !config.allowed_channels.is_empty() && !config.allowed_channels.contains(&event.channel_id) {
+        return None;
+    }
+    if let Some(guild_id) = event.guild_id.as_ref()
+        && !config.allowed_guilds.is_empty()
+        && !config.allowed_guilds.contains(guild_id)
+    {
+        return None;
+    }
+
+    let mut metadata = serde_json::json!({
+        "discord_channel_id": event.channel_id,
+        "discord_deleted_message_id": event.id,
+        "discord_gateway": true,
+        "discord_event_type": "MESSAGE_DELETE",
+        "discord_has_deleted_message_id": true,
+        "discord_is_dm": event.guild_id.is_none(),
+    });
+    if let Some(guild_id) = event.guild_id {
+        metadata["discord_guild_id"] = serde_json::json!(guild_id);
+    }
+    if let Some(thread_id) = event.thread_id {
+        metadata["discord_thread_id"] = serde_json::json!(thread_id);
+    }
+
+    Some(IncomingMessage {
+        session_id: Uuid::new_v4(),
+        user_id: "discord-system".to_string(),
+        content: "[discord message deleted]".to_string(),
+        platform: Platform::Discord,
+        metadata,
+    })
+}
+
+fn normalize_gateway_typing(
+    config: &DiscordConfig,
+    event: GatewayTypingStart,
+) -> Option<IncomingMessage> {
+    if !config.allowed_channels.is_empty() && !config.allowed_channels.contains(&event.channel_id) {
+        return None;
+    }
+    if let Some(guild_id) = event.guild_id.as_ref()
+        && !config.allowed_guilds.is_empty()
+        && !config.allowed_guilds.contains(guild_id)
+    {
+        return None;
+    }
+    if event.user_id == config.application_id {
+        return None;
+    }
+
+    let mut metadata = serde_json::json!({
+        "discord_channel_id": event.channel_id,
+        "discord_gateway": true,
+        "discord_event_type": "TYPING_START",
+        "discord_typing": true,
+        "discord_is_dm": event.guild_id.is_none(),
+    });
+    if let Some(guild_id) = event.guild_id {
+        metadata["discord_guild_id"] = serde_json::json!(guild_id);
+    }
+    if let Some(thread_id) = event.thread_id {
+        metadata["discord_thread_id"] = serde_json::json!(thread_id);
+    }
+    if let Some(timestamp) = event.timestamp {
+        metadata["discord_typing_timestamp"] = serde_json::json!(timestamp);
+    }
+
+    Some(IncomingMessage {
+        session_id: Uuid::new_v4(),
+        user_id: event.user_id,
+        content: "[discord typing]".to_string(),
+        platform: Platform::Discord,
+        metadata,
+    })
+}
+
+fn normalize_gateway_thread(
+    config: &DiscordConfig,
+    event_type: &str,
+    event: GatewayThreadEvent,
+) -> Option<IncomingMessage> {
+    if !config.allowed_channels.is_empty() && !config.allowed_channels.contains(&event.id) {
+        if let Some(parent_id) = event.parent_id.as_ref() {
+            if !config.allowed_channels.contains(parent_id) {
+                return None;
+            }
+        } else {
+            return None;
+        }
+    }
+    if let Some(guild_id) = event.guild_id.as_ref()
+        && !config.allowed_guilds.is_empty()
+        && !config.allowed_guilds.contains(guild_id)
+    {
+        return None;
+    }
+
+    let mut metadata = serde_json::json!({
+        "discord_channel_id": event.id,
+        "discord_thread_id": event.id,
+        "discord_gateway": true,
+        "discord_event_type": event_type,
+    });
+    if let Some(guild_id) = event.guild_id {
+        metadata["discord_guild_id"] = serde_json::json!(guild_id);
+    }
+    if let Some(parent_id) = event.parent_id {
+        metadata["discord_parent_channel_id"] = serde_json::json!(parent_id);
+    }
+    if let Some(owner_id) = event.owner_id {
+        metadata["discord_thread_owner_id"] = serde_json::json!(owner_id);
+    }
+    if let Some(name) = event.name.clone() {
+        metadata["discord_thread_name"] = serde_json::json!(name);
+    }
+    if let Some(metadata_value) = event.thread_metadata {
+        metadata["discord_thread_metadata"] = metadata_value;
+    }
+
+    Some(IncomingMessage {
+        session_id: Uuid::new_v4(),
+        user_id: "discord-system".to_string(),
+        content: format!(
+            "[discord {}]",
+            event
+                .name
+                .map(|name| format!("thread {} {}", event_type.to_lowercase(), name))
+                .unwrap_or_else(|| format!("thread {}", event_type.to_lowercase()))
+        ),
+        platform: Platform::Discord,
+        metadata,
+    })
 }
 
 /// Handler for verified Discord Interactions HTTP requests.
@@ -1252,6 +1591,65 @@ struct GatewayMessageCreate {
 }
 
 #[derive(Debug, serde::Deserialize)]
+struct GatewayMessageUpdate {
+    id: String,
+    channel_id: String,
+    #[serde(default)]
+    thread_id: Option<String>,
+    #[serde(default)]
+    parent_id: Option<String>,
+    #[serde(default)]
+    guild_id: Option<String>,
+    #[serde(default)]
+    content: Option<String>,
+    #[serde(default)]
+    edited_timestamp: Option<String>,
+    #[serde(default)]
+    attachments: Vec<serde_json::Value>,
+    #[serde(default)]
+    embeds: Vec<serde_json::Value>,
+    #[serde(default)]
+    author: Option<GatewayAuthor>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct GatewayMessageDelete {
+    id: String,
+    channel_id: String,
+    #[serde(default)]
+    thread_id: Option<String>,
+    #[serde(default)]
+    guild_id: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct GatewayTypingStart {
+    channel_id: String,
+    #[serde(default)]
+    thread_id: Option<String>,
+    #[serde(default)]
+    guild_id: Option<String>,
+    user_id: String,
+    #[serde(default)]
+    timestamp: Option<u64>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct GatewayThreadEvent {
+    id: String,
+    #[serde(default)]
+    guild_id: Option<String>,
+    #[serde(default)]
+    parent_id: Option<String>,
+    #[serde(default)]
+    owner_id: Option<String>,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    thread_metadata: Option<serde_json::Value>,
+}
+
+#[derive(Debug, serde::Deserialize)]
 struct GatewayAuthor {
     id: String,
     username: String,
@@ -1265,6 +1663,12 @@ struct GatewayAuthor {
 struct GatewayMessageReference {
     #[serde(default)]
     message_id: Option<String>,
+}
+
+struct OutgoingAttachment {
+    bytes: Vec<u8>,
+    filename: String,
+    content_type: Option<String>,
 }
 
 fn extract_interaction_content(data: &DiscordInteractionData) -> String {
@@ -1761,6 +2165,58 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_send_uploads_local_file_references_natively() {
+        use wiremock::matchers::{header, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/channels/channel-1/messages"))
+            .and(header("authorization", "Bot token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "message-1"
+            })))
+            .mount(&server)
+            .await;
+
+        let attachment_path =
+            std::env::temp_dir().join(format!("orc-discord-upload-{}.txt", Uuid::new_v4()));
+        tokio::fs::write(&attachment_path, b"discord attachment")
+            .await
+            .unwrap();
+
+        let channel = DiscordChannel::new(DiscordConfig {
+            enabled: true,
+            token: "token".to_string(),
+            application_id: "app-1".to_string(),
+            interaction_public_key: None,
+            api_base_url: Some(server.uri()),
+            attachment_download_dir: None,
+            rate_limit_requests_per_second: 5,
+            allowed_guilds: vec![],
+            allowed_channels: vec![],
+            dm_enabled: true,
+        });
+        *channel.is_connected.write().await = true;
+
+        channel
+            .send(OutgoingMessage {
+                session_id: uuid::Uuid::new_v4(),
+                content: "hello with file".to_string(),
+                metadata: serde_json::json!({
+                    "discord_channel_id": "channel-1",
+                    "file_references": [{
+                        "local_path": attachment_path,
+                        "name": "note.txt",
+                        "mime": "text/plain"
+                    }]
+                }),
+            })
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
     async fn test_gateway_message_create_is_enqueued() {
         use wiremock::matchers::{header, method, path};
         use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -1867,7 +2323,9 @@ mod tests {
         let downloaded_path = incoming.metadata["discord_download_paths"][0]
             .as_str()
             .expect("download path");
-        let bytes = tokio::fs::read(downloaded_path).await.expect("downloaded bytes");
+        let bytes = tokio::fs::read(downloaded_path)
+            .await
+            .expect("downloaded bytes");
         assert_eq!(bytes, b"discord-file");
         let _ = tokio::fs::remove_file(downloaded_path).await;
         let _ = tokio::fs::remove_dir_all(download_dir).await;
@@ -1876,6 +2334,203 @@ mod tests {
             incoming.metadata["discord_timestamp"],
             "2026-01-01T00:00:00Z"
         );
+        channel.disconnect().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_gateway_message_update_is_enqueued() {
+        use wiremock::matchers::{header, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let gateway_url = spawn_mock_gateway(Some(serde_json::json!({
+            "op": 0,
+            "t": "MESSAGE_UPDATE",
+            "s": 1,
+            "d": {
+                "id": "message-1",
+                "channel_id": "channel-1",
+                "guild_id": "guild-1",
+                "content": "edited text",
+                "edited_timestamp": "2026-01-01T01:00:00Z",
+                "author": {
+                    "id": "user-1",
+                    "username": "alice",
+                    "bot": false
+                }
+            }
+        })))
+        .await;
+
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/users/@me"))
+            .and(header("authorization", "Bot token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "123",
+                "username": "test-bot"
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/gateway/bot"))
+            .and(header("authorization", "Bot token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "url": gateway_url,
+            })))
+            .mount(&server)
+            .await;
+
+        let mut channel = DiscordChannel::new(DiscordConfig {
+            enabled: true,
+            token: "token".to_string(),
+            application_id: "app-1".to_string(),
+            interaction_public_key: None,
+            api_base_url: Some(server.uri()),
+            attachment_download_dir: None,
+            rate_limit_requests_per_second: 5,
+            allowed_guilds: vec![],
+            allowed_channels: vec![],
+            dm_enabled: true,
+        });
+        channel.connect().await.unwrap();
+        let incoming = channel.receive().await.unwrap();
+        assert_eq!(incoming.content, "edited text");
+        assert_eq!(incoming.metadata["discord_event_type"], "MESSAGE_UPDATE");
+        assert_eq!(incoming.metadata["discord_has_updated_text"], true);
+        channel.disconnect().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_gateway_message_delete_is_enqueued() {
+        use wiremock::matchers::{header, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let gateway_url = spawn_mock_gateway(Some(serde_json::json!({
+            "op": 0,
+            "t": "MESSAGE_DELETE",
+            "s": 1,
+            "d": {
+                "id": "message-1",
+                "channel_id": "channel-1",
+                "guild_id": "guild-1"
+            }
+        })))
+        .await;
+
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/users/@me"))
+            .and(header("authorization", "Bot token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "123",
+                "username": "test-bot"
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/gateway/bot"))
+            .and(header("authorization", "Bot token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "url": gateway_url,
+            })))
+            .mount(&server)
+            .await;
+
+        let mut channel = DiscordChannel::new(DiscordConfig {
+            enabled: true,
+            token: "token".to_string(),
+            application_id: "app-1".to_string(),
+            interaction_public_key: None,
+            api_base_url: Some(server.uri()),
+            attachment_download_dir: None,
+            rate_limit_requests_per_second: 5,
+            allowed_guilds: vec![],
+            allowed_channels: vec![],
+            dm_enabled: true,
+        });
+        channel.connect().await.unwrap();
+        let incoming = channel.receive().await.unwrap();
+        assert_eq!(incoming.content, "[discord message deleted]");
+        assert_eq!(incoming.metadata["discord_event_type"], "MESSAGE_DELETE");
+        assert_eq!(incoming.metadata["discord_has_deleted_message_id"], true);
+        channel.disconnect().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_gateway_typing_and_thread_events_are_enqueued() {
+        use wiremock::matchers::{header, method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let gateway_url = spawn_mock_reconnecting_gateway(
+            serde_json::json!({
+                "op": 0,
+                "t": "TYPING_START",
+                "s": 1,
+                "d": {
+                    "channel_id": "channel-1",
+                    "guild_id": "guild-1",
+                    "user_id": "user-1",
+                    "timestamp": 1700000000
+                }
+            }),
+            serde_json::json!({
+                "op": 0,
+                "t": "THREAD_CREATE",
+                "s": 2,
+                "d": {
+                    "id": "thread-1",
+                    "guild_id": "guild-1",
+                    "parent_id": "channel-1",
+                    "owner_id": "user-2",
+                    "name": "investigation-thread"
+                }
+            }),
+        )
+        .await;
+
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/users/@me"))
+            .and(header("authorization", "Bot token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "123",
+                "username": "test-bot"
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/gateway/bot"))
+            .and(header("authorization", "Bot token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "url": gateway_url,
+            })))
+            .mount(&server)
+            .await;
+
+        let mut channel = DiscordChannel::new(DiscordConfig {
+            enabled: true,
+            token: "token".to_string(),
+            application_id: "app-1".to_string(),
+            interaction_public_key: None,
+            api_base_url: Some(server.uri()),
+            attachment_download_dir: None,
+            rate_limit_requests_per_second: 5,
+            allowed_guilds: vec![],
+            allowed_channels: vec![],
+            dm_enabled: true,
+        });
+        channel.connect().await.unwrap();
+
+        let typing = channel.receive().await.unwrap();
+        assert_eq!(typing.content, "[discord typing]");
+        assert_eq!(typing.metadata["discord_event_type"], "TYPING_START");
+
+        let thread = tokio::time::timeout(Duration::from_secs(3), channel.receive())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(thread.metadata["discord_event_type"], "THREAD_CREATE");
+        assert_eq!(thread.metadata["discord_thread_name"], "investigation-thread");
         channel.disconnect().await.unwrap();
     }
 

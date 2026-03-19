@@ -651,12 +651,12 @@ Completed:
 Still remaining for deeper parity:
 
 - [x] Extend the shipped registry/operator surfaces into Control UI parity.
-- [ ] Implement higher-fidelity channel UX parity where it materially affects operator experience:
+- [x] Implement higher-fidelity channel UX parity where it materially affects operator experience:
   - [x] Telegram forum topic lifecycle/admin actions,
   - [x] Discord forwarded-attachment downloads beyond metadata/file-reference capture,
   - [x] Slack draft-stream replies.
 - [ ] Implement media in/out parity per channel:
-  - attachment downloads and platform-native uploads where current support is still reference-based,
+  - attachment downloads and platform-native uploads where current support is still reference-based outside the now-complete Discord path,
   - file references.
 
 Channel completion remaining:

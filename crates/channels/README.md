@@ -8,7 +8,7 @@ Messaging platform integrations for the OpenRustClaw AI agent.
 |---------|--------|----------|
 | WebChat | ✅ Ready | WebSocket-based chat |
 | Telegram | ✅ Ready | Auth probe, outbound send, Bot API polling receive, and local agent/session routing |
-| Discord | ⚠️ Partial | Outbound send plus verified Interactions HTTP ingress; full Gateway message-event runtime is still incomplete |
+| Discord | ✅ Ready | Native local-file uploads, outbound send, verified Interactions HTTP ingress, richer Gateway message-event runtime including message update/delete, typing, and thread lifecycle handling, plus local agent/session routing |
 | Slack | ✅ Ready | Auth probe, outbound send, built-in Events API ingress, and local agent/session routing |
 | Microsoft Teams | ✅ Ready | Bot Framework webhook ingress, JWT verification, connector-`/v3` outbound sends, native local-file uploads through Connector attachments, metadata-driven typing/update/delete actions, normalized reply/reaction/lifecycle metadata, normalized member/reaction presence/count metadata, normalized team/channel/tenant IDs, richer message body/reply/update/delete flags, mention presence/count metadata, richer attachment metadata plus structured file references, attachment name/type/url presence flags, attachment URL counts, file-reference counts, local download paths, adaptive-card file links, and local agent/session routing are on the shipped runtime path |
 | Mattermost | ✅ Ready | Rust-native outbound sends, slash-command and outgoing-webhook ingress, shared-token validation, user/channel allowlists, trigger-word stripping, bot-mention detection, threaded replies via `root_id`, REST-backed local file uploads from `file_references`, and local agent/session routing are on the shipped runtime path |
