@@ -384,8 +384,37 @@ impl SignalChannel {
                             platform: "signal".to_string(),
                             message: e.to_string(),
                         })?;
+                        metadata["signal_has_attachments"] = serde_json::json!(true);
                         metadata["signal_attachment_count"] =
                             serde_json::json!(data_message.attachments.len());
+                        let attachment_ids: Vec<_> = data_message
+                            .attachments
+                            .iter()
+                            .filter(|attachment| !attachment.id.is_empty())
+                            .map(|attachment| attachment.id.clone())
+                            .collect();
+                        if !attachment_ids.is_empty() {
+                            metadata["signal_attachment_ids"] = serde_json::json!(attachment_ids);
+                        }
+                        let attachment_names: Vec<_> = data_message
+                            .attachments
+                            .iter()
+                            .filter_map(|attachment| attachment.filename.as_ref())
+                            .cloned()
+                            .collect();
+                        if !attachment_names.is_empty() {
+                            metadata["signal_attachment_names"] =
+                                serde_json::json!(attachment_names);
+                        }
+                        let attachment_mime_types: Vec<_> = data_message
+                            .attachments
+                            .iter()
+                            .map(|attachment| attachment.content_type.clone())
+                            .collect();
+                        if !attachment_mime_types.is_empty() {
+                            metadata["signal_attachment_mime_types"] =
+                                serde_json::json!(attachment_mime_types);
+                        }
                         let file_references: Vec<serde_json::Value> = data_message
                             .attachments
                             .iter()
@@ -423,6 +452,11 @@ impl SignalChannel {
                             "author": quote.author,
                             "text": quote.text,
                         });
+                        metadata["signal_quote_id"] = serde_json::json!(quote.id);
+                        metadata["signal_quote_author"] = serde_json::json!(quote.author);
+                        if let Some(text) = quote.text.as_ref() {
+                            metadata["signal_quote_text"] = serde_json::json!(text);
+                        }
                     }
 
                     if !data_message.mentions.is_empty() {
@@ -1086,7 +1120,14 @@ mod tests {
         .unwrap();
 
         let incoming = rx.recv().await.expect("incoming message");
+        assert_eq!(incoming.metadata["signal_has_attachments"], serde_json::json!(true));
         assert_eq!(incoming.metadata["signal_attachment_count"], serde_json::json!(1));
+        assert_eq!(incoming.metadata["signal_attachment_ids"][0], "att-1");
+        assert_eq!(incoming.metadata["signal_attachment_names"][0], "photo.jpg");
+        assert_eq!(
+            incoming.metadata["signal_attachment_mime_types"][0],
+            "image/jpeg"
+        );
         assert_eq!(
             incoming.metadata["file_references"][0]["url"],
             "signal-attachment://att-1"
@@ -1152,6 +1193,43 @@ mod tests {
         let incoming = rx.recv().await.expect("incoming group message");
         assert_eq!(incoming.metadata["signal_group_member_count"], 2);
         assert_eq!(incoming.metadata["signal_group_members"][1], "+15551230002");
+    }
+
+    #[tokio::test]
+    async fn test_process_envelope_preserves_flat_quote_metadata() {
+        let (tx, mut rx) = mpsc::channel(4);
+        SignalChannel::process_envelope(
+            SignalEnvelope::DataMessage {
+                data_message: DataMessage {
+                    message: Some("reply".to_string()),
+                    attachments: vec![],
+                    quote: Some(Quote {
+                        id: 42,
+                        author: "+15557654321".to_string(),
+                        text: Some("original text".to_string()),
+                    }),
+                    mentions: vec![],
+                    group_info: None,
+                },
+                timestamp: 777,
+                source: "+15551230001".to_string(),
+                source_number: Some("+15551230001".to_string()),
+                source_uuid: None,
+                group_info: None,
+            },
+            &tx,
+            &[],
+            &[],
+            false,
+            "+19998887777",
+        )
+        .await
+        .unwrap();
+
+        let incoming = rx.recv().await.expect("incoming quoted message");
+        assert_eq!(incoming.metadata["signal_quote_id"], 42);
+        assert_eq!(incoming.metadata["signal_quote_author"], "+15557654321");
+        assert_eq!(incoming.metadata["signal_quote_text"], "original text");
     }
 
     #[tokio::test]
