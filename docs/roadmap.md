@@ -691,7 +691,7 @@ Channel completion remaining:
   - current shipped path covers Bot Framework webhook ingress, JWT verification, outbound sends, conversation/reaction lifecycle routing, attachment metadata capture plus opt-in local downloads, adaptive-card file links, and local agent/session routing;
   - deeper operator/media parity still remains.
 - [ ] Signal parity if kept in scope.
-  - current shipped path covers `signal-cli` daemon-backed direct/group send-receive, allowlist filtering, registration/verify/link helpers, normalized routing metadata, outbound local-attachment sends, attachment/file-reference capture, mention-aware group routing, and local agent/session routing;
+  - current shipped path covers `signal-cli` daemon-backed direct/group send-receive, allowlist filtering, registration/verify/link helpers, normalized routing metadata, outbound local-attachment sends, structured inbound attachment/file-reference metadata, mention-aware group routing, and local agent/session routing;
   - richer operator UX and inbound media download parity still remain.
 - [ ] Feishu/Lark parity if kept in scope:
   - docs/tables actions,

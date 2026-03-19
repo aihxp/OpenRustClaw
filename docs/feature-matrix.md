@@ -56,7 +56,7 @@ Status values:
 | Gmail Pub/Sub | partial | Shipped runtime now supports Gmail watch setup, Pub/Sub webhook ingress, history fetch, message hydration, mail-triggered local agent/session routing, replies, label/archive/delete actions, and forwarding; richer operator parity remains open |
 | WhatsApp | real | Baileys bridge runtime, pairing/QR support, reconnect handling, DM/group routing, mentions, replies, media send/receive, and local agent/session routing are part of the shipped surface |
 | iMessage | partial | BlueBubbles/macOS direct send, BlueBubbles inbound webhook ingress, tapbacks, contact routing, and local agent/session routing are on the shipped runtime path; richer attachment/group mapping still trails OpenClaw |
-| Signal | partial | `signal-cli` daemon-backed direct/group send-receive, allowlist handling, registration/verify/link helpers, normalized route metadata, outbound local-attachment sends, attachment/file-reference capture, mention-aware group routing, and local agent/session routing are on the shipped runtime path; richer operator UX and inbound media download parity remain open |
+| Signal | partial | `signal-cli` daemon-backed direct/group send-receive, allowlist handling, registration/verify/link helpers, normalized route metadata, outbound local-attachment sends, structured inbound attachment/file-reference metadata, mention-aware group routing, and local agent/session routing are on the shipped runtime path; richer operator UX and inbound media download parity remain open |
 | LINE / Viber / WeChat / Messenger / Instagram | gated | Present in repo, not part of the current shipped surface |
 | Twilio / X/Twitter | gated | Present in repo, not part of the current shipped surface |
 

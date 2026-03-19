@@ -110,9 +110,14 @@ pub struct SentMessage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SignalAttachment {
     pub content_type: String,
-    pub filename: String,
-    pub size: usize,
+    pub filename: Option<String>,
     pub id: String,
+    pub size: Option<usize>,
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+    pub caption: Option<String>,
+    #[serde(rename = "uploadTimestamp")]
+    pub upload_timestamp: Option<u64>,
 }
 
 /// Quote/reply information.
@@ -374,14 +379,25 @@ impl SignalChannel {
                             platform: "signal".to_string(),
                             message: e.to_string(),
                         })?;
-                        let file_references: Vec<String> = data_message
+                        metadata["signal_attachment_count"] =
+                            serde_json::json!(data_message.attachments.len());
+                        let file_references: Vec<serde_json::Value> = data_message
                             .attachments
                             .iter()
                             .filter_map(|attachment| {
                                 if attachment.id.is_empty() {
                                     None
                                 } else {
-                                    Some(format!("signal-attachment://{}", attachment.id))
+                                    Some(serde_json::json!({
+                                        "url": format!("signal-attachment://{}", attachment.id),
+                                        "name": attachment.filename,
+                                        "mime": attachment.content_type,
+                                        "size": attachment.size,
+                                        "width": attachment.width,
+                                        "height": attachment.height,
+                                        "caption": attachment.caption,
+                                        "upload_timestamp": attachment.upload_timestamp,
+                                    }))
                                 }
                             })
                             .collect();
@@ -441,9 +457,9 @@ impl SignalChannel {
                 // Process attachments even without text
                 for attachment in &data_message.attachments {
                     debug!(
-                        filename = %attachment.filename,
+                        filename = ?attachment.filename,
                         content_type = %attachment.content_type,
-                        size = attachment.size,
+                        size = ?attachment.size,
                         "Processing attachment"
                     );
                 }
@@ -861,13 +877,21 @@ mod tests {
             "content_type": "image/jpeg",
             "filename": "image.jpg",
             "size": 1024,
-            "id": "abc123"
+            "id": "abc123",
+            "width": 640,
+            "height": 480,
+            "caption": "preview",
+            "uploadTimestamp": 1234567890
         }"#;
 
         let attachment: SignalAttachment = serde_json::from_str(json).unwrap();
         assert_eq!(attachment.content_type, "image/jpeg");
-        assert_eq!(attachment.filename, "image.jpg");
-        assert_eq!(attachment.size, 1024);
+        assert_eq!(attachment.filename, Some("image.jpg".to_string()));
+        assert_eq!(attachment.size, Some(1024));
+        assert_eq!(attachment.width, Some(640));
+        assert_eq!(attachment.height, Some(480));
+        assert_eq!(attachment.caption, Some("preview".to_string()));
+        assert_eq!(attachment.upload_timestamp, Some(1234567890));
     }
 
     #[test]
@@ -972,5 +996,61 @@ mod tests {
         assert!(!args.contains("+15551234567\n"));
 
         let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[tokio::test]
+    async fn test_process_envelope_builds_structured_signal_file_references() {
+        let (tx, mut rx) = mpsc::channel(4);
+        SignalChannel::process_envelope(
+            SignalEnvelope::DataMessage {
+                data_message: DataMessage {
+                    message: Some("photo".to_string()),
+                    attachments: vec![SignalAttachment {
+                        content_type: "image/jpeg".to_string(),
+                        filename: Some("photo.jpg".to_string()),
+                        id: "att-1".to_string(),
+                        size: Some(2048),
+                        width: Some(800),
+                        height: Some(600),
+                        caption: Some("holiday".to_string()),
+                        upload_timestamp: Some(1111),
+                    }],
+                    quote: None,
+                    mentions: vec![],
+                    group_info: None,
+                },
+                timestamp: 123,
+                source: "+15551234567".to_string(),
+                source_number: Some("+15551234567".to_string()),
+                source_uuid: None,
+                group_info: None,
+            },
+            &tx,
+            &[],
+            &[],
+            false,
+            "+19998887777",
+        )
+        .await
+        .unwrap();
+
+        let incoming = rx.recv().await.expect("incoming message");
+        assert_eq!(incoming.metadata["signal_attachment_count"], serde_json::json!(1));
+        assert_eq!(
+            incoming.metadata["file_references"][0]["url"],
+            "signal-attachment://att-1"
+        );
+        assert_eq!(
+            incoming.metadata["file_references"][0]["name"],
+            "photo.jpg"
+        );
+        assert_eq!(
+            incoming.metadata["file_references"][0]["caption"],
+            "holiday"
+        );
+        assert_eq!(
+            incoming.metadata["file_references"][0]["width"],
+            serde_json::json!(800)
+        );
     }
 }
