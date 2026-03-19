@@ -1033,7 +1033,9 @@ impl GoogleChatWebhookHandler {
         // Build metadata
         let mut metadata = serde_json::json!({
             "google_chat_space": event.space.name,
+            "google_chat_space_id": space_id,
             "google_chat_space_type": event.space.space_type,
+            "google_chat_user_id": user_id,
             "google_chat_user_name": user.name,
             "google_chat_user_display_name": user.display_name,
             "google_chat_is_group": event.space.space_type != "DM",
@@ -1102,6 +1104,28 @@ impl GoogleChatWebhookHandler {
         if !message.attachments.is_empty() {
             metadata["google_chat_attachments"] = serde_json::json!(message.attachments);
             metadata["google_chat_attachment_count"] = serde_json::json!(message.attachments.len());
+            let attachment_names: Vec<_> = message
+                .attachments
+                .iter()
+                .filter_map(|attachment| attachment.get("name").and_then(|value| value.as_str()))
+                .collect();
+            if !attachment_names.is_empty() {
+                metadata["google_chat_attachment_names"] = serde_json::json!(attachment_names);
+            }
+            let attachment_content_types: Vec<_> = message
+                .attachments
+                .iter()
+                .filter_map(|attachment| {
+                    attachment
+                        .get("contentType")
+                        .or_else(|| attachment.get("mimeType"))
+                        .and_then(|value| value.as_str())
+                })
+                .collect();
+            if !attachment_content_types.is_empty() {
+                metadata["google_chat_attachment_content_types"] =
+                    serde_json::json!(attachment_content_types);
+            }
             let file_refs = GoogleChatChannel::attachment_file_references(&message.attachments);
             if !file_refs.is_empty() {
                 metadata["file_references"] = serde_json::json!(file_refs);
@@ -1162,10 +1186,18 @@ impl GoogleChatWebhookHandler {
             .and_then(|value| value.as_array())
             .cloned()
             .unwrap_or_default();
+        let form_inputs = raw_event
+            .pointer("/common/formInputs")
+            .cloned()
+            .unwrap_or(serde_json::Value::Null);
+        let user_id = GoogleChatChannel::extract_user_id(&user.name);
+        let space_id = GoogleChatChannel::extract_space_id(&event.space.name);
 
         let mut metadata = serde_json::json!({
             "google_chat_space": event.space.name,
+            "google_chat_space_id": space_id,
             "google_chat_space_type": event.space.space_type,
+            "google_chat_user_id": user_id,
             "google_chat_user_name": user.name,
             "google_chat_user_display_name": user.display_name,
             "google_chat_is_group": event.space.space_type != "DM",
@@ -1189,6 +1221,15 @@ impl GoogleChatWebhookHandler {
             metadata["google_chat_action_parameters"] = serde_json::json!(action_parameters);
             metadata["google_chat_action_parameter_count"] =
                 serde_json::json!(metadata["google_chat_action_parameters"].as_array().map(|items| items.len()).unwrap_or(0));
+        }
+        if form_inputs.is_object() {
+            metadata["google_chat_form_inputs"] = form_inputs.clone();
+            metadata["google_chat_form_input_count"] = serde_json::json!(
+                form_inputs
+                    .as_object()
+                    .map(|items| items.len())
+                    .unwrap_or(0)
+            );
         }
 
         let incoming = IncomingMessage {
@@ -1226,9 +1267,11 @@ impl GoogleChatWebhookHandler {
             .as_ref()
             .map(|user| GoogleChatChannel::extract_user_id(&user.name))
             .unwrap_or_else(|| "system".to_string());
+        let space_id = GoogleChatChannel::extract_space_id(&event.space.name);
 
         let mut metadata = serde_json::json!({
             "google_chat_space": event.space.name,
+            "google_chat_space_id": space_id,
             "google_chat_space_type": event.space.space_type,
             "google_chat_is_group": event.space.space_type != "DM",
             "google_chat_interaction_type": event_type,
@@ -1240,6 +1283,7 @@ impl GoogleChatWebhookHandler {
             metadata["google_chat_space_display_name"] = serde_json::json!(display_name);
         }
         if let Some(user) = event.user.as_ref() {
+            metadata["google_chat_user_id"] = serde_json::json!(user_id);
             metadata["google_chat_user_name"] = serde_json::json!(user.name);
             metadata["google_chat_user_display_name"] = serde_json::json!(user.display_name);
             if let Some(email) = user.email.as_ref() {
@@ -1491,7 +1535,16 @@ mod tests {
                     "eventTime": "2024-01-01T00:00:00Z",
                     "space": {"name": "spaces/AAA", "type": "ROOM", "displayName": "Ops"},
                     "user": {"name": "users/123", "displayName": "Alice", "email": "alice@example.com"},
-                    "common": {"invokedFunction": "open_report"},
+                    "common": {
+                        "invokedFunction": "open_report",
+                        "formInputs": {
+                            "report_id": {
+                                "stringInputs": {
+                                    "value": ["123"]
+                                }
+                            }
+                        }
+                    },
                     "action": {
                         "actionMethodName": "open_report",
                         "parameters": [
@@ -1526,6 +1579,13 @@ mod tests {
             incoming.metadata["google_chat_action_parameters"][0]["key"],
             serde_json::json!("report_id")
         );
+        assert_eq!(incoming.metadata["google_chat_space_id"], "AAA");
+        assert_eq!(incoming.metadata["google_chat_user_id"], "123");
+        assert_eq!(
+            incoming.metadata["google_chat_form_inputs"]["report_id"]["stringInputs"]["value"][0],
+            serde_json::json!("123")
+        );
+        assert_eq!(incoming.metadata["google_chat_form_input_count"], 1);
         assert_eq!(
             incoming.metadata["google_chat_event_time"],
             serde_json::json!("2024-01-01T00:00:00Z")
@@ -1573,6 +1633,8 @@ mod tests {
             incoming.metadata["google_chat_interaction_type"],
             serde_json::json!("ADDED_TO_SPACE")
         );
+        assert_eq!(incoming.metadata["google_chat_space_id"], "AAA");
+        assert_eq!(incoming.metadata["google_chat_user_id"], "123");
         assert_eq!(
             incoming.metadata["google_chat_space_event_added"],
             serde_json::json!(true)
@@ -1636,6 +1698,8 @@ mod tests {
         assert_eq!(incoming.content, "hello from pubsub");
         assert_eq!(incoming.platform, Platform::GoogleChat);
         assert_eq!(incoming.metadata["google_chat_space"], "spaces/AAA");
+        assert_eq!(incoming.metadata["google_chat_space_id"], "AAA");
+        assert_eq!(incoming.metadata["google_chat_user_id"], "123");
         assert_eq!(
             incoming.metadata["google_chat_event_time"],
             serde_json::json!("2024-01-01T00:00:00Z")
@@ -1686,6 +1750,11 @@ mod tests {
         let incoming = rx.recv().await.expect("incoming message");
         assert_eq!(incoming.content, "attachment event");
         assert_eq!(incoming.metadata["google_chat_attachment_count"], 1);
+        assert_eq!(incoming.metadata["google_chat_attachment_names"][0], "incident-report.pdf");
+        assert_eq!(
+            incoming.metadata["google_chat_attachment_content_types"][0],
+            "application/pdf"
+        );
         assert_eq!(
             incoming.metadata["file_references"][0]["url"],
             "https://chat.google.com/download/attachment-1"
