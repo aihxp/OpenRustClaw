@@ -5,7 +5,7 @@ use chrono::Utc;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 
-use super::control;
+use super::{control, runtime};
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -313,6 +313,9 @@ async fn check_migrations(config_path: Option<&str>) -> Result<()> {
 
 /// Check API key configuration.
 fn check_api_keys() -> Result<()> {
+    if let Ok(workspace_root) = std::env::current_dir() {
+        let _ = runtime::apply_runtime_secret_sources(&workspace_root);
+    }
     check_api_keys_with(|env_var| std::env::var(env_var).ok())
 }
 
@@ -420,9 +423,11 @@ fn check_config(config_path: Option<&str>) -> Result<()> {
 }
 
 fn load_app_config(config_path: Option<&str>) -> openrustclaw_core::config::AppConfig {
+    let workspace_root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     match config_path {
-        Some(path) => openrustclaw_core::config::AppConfig::load_from(path).unwrap_or_default(),
-        None => openrustclaw_core::config::AppConfig::load().unwrap_or_default(),
+        Some(path) => runtime::load_effective_config(path, &workspace_root).unwrap_or_default(),
+        None => runtime::load_effective_config("config/default.toml", &workspace_root)
+            .unwrap_or_default(),
     }
 }
 

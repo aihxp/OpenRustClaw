@@ -25,7 +25,7 @@ The roadmap further includes model-aware artifact sync, memory rehydration on mo
 The model-awareness track now also includes a canonical instruction/context artifact registry so OpenRustClaw can understand and translate common project guidance files like `AGENTS.md`, `AI.md`, `CONTEXT.md`, `ARCHITECTURE.md`, `CLAUDE.md`, `GEMINI.md`, Copilot instruction files, Cursor/Continue rules, and local open-weight `Modelfile` packaging.
 The roadmap also now calls for onboarding-time provider/model scans and role-aware recommendations: Groq for low-latency core runtime use, OpenRouter for broad fallback/control-plane coverage, SiliconFlow for higher-capability secondary routing, and Ollama as the local/offline safety net, all validated against user-supplied keys rather than hardcoded assumptions.
 The operator roadmap also now explicitly includes an OpenClaw-inspired onboarding journey, typed user configuration/settings flows, solo-versus-multi-claw setup choices, and a stronger `doctor` repair/migration surface rather than leaving these as ad hoc setup utilities.
-The shipped control-plane surface now includes a file-backed `.claw/control/` registry for agent profiles, model profiles, Claw manifests, runtime-mode/task/category bindings, runtime self-description, shared typed control/config/diagnostics APIs, and MCP/CLI inspection tools; the future Web Control UI is expected to reuse this registry instead of inventing a separate state model.
+The shipped control-plane surface now includes a file-backed `.claw/control/` registry for agent profiles, model profiles, Claw manifests, runtime-mode/task/category bindings, runtime self-description, shared typed control/config/diagnostics APIs, encrypted runtime secret-vault support, validated provider/model switching, and MCP/CLI inspection tools; the future Web Control UI is expected to reuse this registry instead of inventing a separate state model.
 
 ## Quick Start
 
@@ -156,6 +156,18 @@ Channel routing/operator controls:
   - `POST /control/config/validate`
   - `GET /control/diagnostics`
   - `GET /control/diagnostics/ws`
+- shared runtime reconfiguration surfaces now exist at:
+  - `GET /control/runtime/status`
+  - `POST /control/runtime/reload`
+  - `POST /control/runtime/switch-provider`
+  - `POST /control/runtime/switch-model`
+  - `GET /control/runtime/vault`
+  - `PUT /control/runtime/vault/{key}`
+  - `DELETE /control/runtime/vault/{key}`
+- `openrustclaw runtime status|reload|switch-provider|switch-model`
+- `openrustclaw runtime vault status|list|set|delete`
+- runtime secret sources now load from workspace `.env` and an encrypted `.claw/control/runtime-vault.json` when `OPENRUSTCLAW_VAULT_PASSPHRASE` is set
+- provider/model cutovers are validated before config writes, runtime API cutovers roll back on failed reload, and config writes create timestamped backup files
 - `openrustclaw doctor --repair --deep --non-interactive` now validates and, where safe, scaffolds the shipped control-plane registry while exposing the same typed diagnostic model used by `/control/diagnostics`
 - the runtime syncs `.claw/control/CLAW_RUNTIME.md` so Claw itself can see whether it is running solo or alongside other Claws and what delegation/isolation policies exist
 

@@ -89,6 +89,11 @@ enum Commands {
         #[command(subcommand)]
         action: ControlAction,
     },
+    /// Manage runtime config, vault, and hot-reload/model switching
+    Runtime {
+        #[command(subcommand)]
+        action: RuntimeAction,
+    },
     /// Manage autonomous optimization targets and candidates
     Optimize {
         #[command(subcommand)]
@@ -185,6 +190,63 @@ enum ModelsAction {
     Info { name: String },
     /// Scan configured providers and recommend model-role assignments
     Scan,
+}
+
+#[derive(Subcommand)]
+enum RuntimeAction {
+    /// Inspect the effective runtime configuration status
+    Status {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+    },
+    /// Re-read secret sources and validate that the effective runtime config can be reloaded safely
+    Reload {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+    },
+    /// Switch the default provider and optionally model/account key reference
+    SwitchProvider {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+        #[arg(long)]
+        provider: String,
+        #[arg(long)]
+        model: Option<String>,
+        #[arg(long)]
+        api_key_env: Option<String>,
+        #[arg(long = "fallback")]
+        fallback_chain: Vec<String>,
+    },
+    /// Switch the configured model for a provider
+    SwitchModel {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+        #[arg(long)]
+        provider: String,
+        #[arg(long)]
+        model: String,
+    },
+    /// Manage the encrypted runtime secret vault
+    Vault {
+        #[command(subcommand)]
+        action: RuntimeVaultAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum RuntimeVaultAction {
+    /// Show vault status and configured secret keys
+    Status,
+    /// List stored secret keys without revealing values
+    List,
+    /// Set or replace a secret value
+    Set {
+        key: String,
+        #[arg(long)]
+        value: String,
+    },
+    /// Delete a secret value
+    Delete { key: String },
 }
 
 #[derive(Subcommand)]
@@ -1739,6 +1801,105 @@ async fn main() -> Result<()> {
                 claw_id,
                 path,
             } => commands::control::assign_category(path.as_deref(), &category, &claw_id),
+        },
+        Commands::Runtime { action } => match action {
+            RuntimeAction::Status { config } => {
+                let workspace_root = std::env::current_dir()?;
+                let status = commands::runtime::runtime_status(&config, &workspace_root)?;
+                println!("{}", serde_json::to_string_pretty(&status)?);
+                Ok(())
+            }
+            RuntimeAction::Reload { config } => {
+                let workspace_root = std::env::current_dir()?;
+                let status = commands::runtime::validate_runtime_reload(&config, &workspace_root)?;
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&serde_json::json!({
+                        "status": "validated",
+                        "runtime": status,
+                    }))?
+                );
+                Ok(())
+            }
+            RuntimeAction::SwitchProvider {
+                config,
+                provider,
+                model,
+                api_key_env,
+                fallback_chain,
+            } => {
+                let workspace_root = std::env::current_dir()?;
+                let updated = commands::runtime::switch_provider(
+                    &config,
+                    &workspace_root,
+                    &provider,
+                    model.as_deref(),
+                    api_key_env.as_deref(),
+                    (!fallback_chain.is_empty()).then_some(fallback_chain),
+                )?;
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&serde_json::json!({
+                        "status": "ok",
+                        "default_provider": updated.providers.default_provider,
+                        "fallback_chain": updated.providers.fallback_chain,
+                    }))?
+                );
+                Ok(())
+            }
+            RuntimeAction::SwitchModel {
+                config,
+                provider,
+                model,
+            } => {
+                let workspace_root = std::env::current_dir()?;
+                let _updated =
+                    commands::runtime::switch_model(&config, &workspace_root, &provider, &model)?;
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&serde_json::json!({
+                        "status": "ok",
+                        "provider": provider,
+                        "model": model,
+                    }))?
+                );
+                Ok(())
+            }
+            RuntimeAction::Vault { action } => {
+                let workspace_root = std::env::current_dir()?;
+                match action {
+                    RuntimeVaultAction::Status => {
+                        let vault_path = commands::runtime::vault_path_for(&workspace_root);
+                        let keys =
+                            commands::runtime::list_vault_keys(&workspace_root).unwrap_or_default();
+                        println!(
+                            "{}",
+                            serde_json::to_string_pretty(&serde_json::json!({
+                                "path": vault_path,
+                                "present": vault_path.exists(),
+                                "entries": keys,
+                                "count": keys.len(),
+                            }))?
+                        );
+                        Ok(())
+                    }
+                    RuntimeVaultAction::List => {
+                        let keys = commands::runtime::list_vault_keys(&workspace_root)?;
+                        println!("{}", serde_json::to_string_pretty(&keys)?);
+                        Ok(())
+                    }
+                    RuntimeVaultAction::Set { key, value } => {
+                        commands::runtime::set_vault_secret(&workspace_root, &key, &value)?;
+                        println!("stored {}", key);
+                        Ok(())
+                    }
+                    RuntimeVaultAction::Delete { key } => {
+                        commands::runtime::delete_vault_secret(&workspace_root, &key)?;
+                        println!("deleted {}", key);
+                        Ok(())
+                    }
+                }
+            }
         },
         Commands::Optimize { action } => match action {
             OptimizeAction::ListTargets => commands::optimize::list_targets().await,

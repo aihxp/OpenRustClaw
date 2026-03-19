@@ -9,13 +9,12 @@ use openrustclaw_db::{
     SessionStatus, SqliteCoreMemoryStore, SqliteMemoryStore, SqliteSessionStore, init_pool,
     run_migrations,
 };
-use openrustclaw_providers::{
-    AnthropicProvider, OllamaProvider, OpenAiProvider, OpenRouterProvider, ProviderChain,
-    openrouter::RouteStrategy,
-};
+use openrustclaw_providers::ProviderChain;
 use serde_json::json;
 use std::collections::HashSet;
 use std::sync::Arc;
+
+use super::runtime;
 
 pub async fn list(status: Option<&str>, limit: usize) -> Result<()> {
     let (store, _) = open_store().await?;
@@ -147,7 +146,9 @@ pub async fn send(id: &str, content: &str) -> Result<()> {
 }
 
 async fn open_store() -> Result<(SqliteSessionStore, AppConfig)> {
-    let config = AppConfig::load().unwrap_or_default();
+    let workspace_root = std::env::current_dir()?;
+    let config =
+        runtime::load_effective_config("config/default.toml", &workspace_root).unwrap_or_default();
     let pool = open_pool(&config).await?;
     Ok((SqliteSessionStore::new(pool), config))
 }
@@ -173,7 +174,7 @@ fn build_provider(config: &AppConfig) -> Result<Arc<dyn LlmProvider>> {
         if !seen.insert(name.clone()) {
             continue;
         }
-        match create_provider_from_config(&name, config) {
+        match runtime::create_provider_from_config(&name, config) {
             Ok(provider) => providers.push(provider),
             Err(error) if providers.is_empty() => return Err(error),
             Err(_) => {}
@@ -188,50 +189,6 @@ fn build_provider(config: &AppConfig) -> Result<Arc<dyn LlmProvider>> {
     }
     let primary = providers[0].clone();
     Ok(Arc::new(SessionProviderChain::new(providers, primary)))
-}
-
-fn create_provider_from_config(
-    provider_name: &str,
-    config: &AppConfig,
-) -> Result<Arc<dyn LlmProvider>> {
-    match provider_name.to_lowercase().as_str() {
-        "anthropic" => {
-            let api_key = std::env::var("ANTHROPIC_API_KEY")
-                .context("ANTHROPIC_API_KEY environment variable not set")?;
-            Ok(Arc::new(AnthropicProvider::new(
-                api_key,
-                config.providers.anthropic.model.clone(),
-            )))
-        }
-        "openai" => {
-            let api_key = std::env::var("OPENAI_API_KEY")
-                .context("OPENAI_API_KEY environment variable not set")?;
-            Ok(Arc::new(OpenAiProvider::new(
-                api_key,
-                config.providers.openai.model.clone(),
-            )))
-        }
-        "openrouter" => {
-            let api_key = std::env::var("OPENROUTER_API_KEY")
-                .context("OPENROUTER_API_KEY environment variable not set")?;
-            let strategy = match config.providers.openrouter.route_strategy.as_str() {
-                "price" => RouteStrategy::Price,
-                "throughput" => RouteStrategy::Throughput,
-                "web_search" | "online" => RouteStrategy::WebSearch,
-                _ => RouteStrategy::Quality,
-            };
-            Ok(Arc::new(OpenRouterProvider::with_strategy(
-                api_key,
-                "anthropic/claude-sonnet-4".to_string(),
-                strategy,
-            )))
-        }
-        "ollama" => Ok(Arc::new(OllamaProvider::with_base_url(
-            config.providers.ollama.model.clone(),
-            config.providers.ollama.base_url.clone(),
-        ))),
-        _ => anyhow::bail!("Unknown provider '{}'", provider_name),
-    }
 }
 
 struct SessionProviderChain {

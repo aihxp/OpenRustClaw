@@ -102,6 +102,8 @@ pub struct ProvidersConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnthropicConfig {
     pub model: String,
+    #[serde(default)]
+    pub api_key_env: Option<String>,
     pub api_version: String,
     pub strict_tools: bool,
     pub streaming_tool_deltas: bool,
@@ -111,6 +113,8 @@ pub struct AnthropicConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpenAiConfig {
     pub model: String,
+    #[serde(default)]
+    pub api_key_env: Option<String>,
     pub use_responses_api: bool,
     pub strict_tools: bool,
 }
@@ -118,6 +122,9 @@ pub struct OpenAiConfig {
 /// OpenRouter provider configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpenRouterConfig {
+    pub model: String,
+    #[serde(default)]
+    pub api_key_env: Option<String>,
     pub route_strategy: String,
 }
 
@@ -723,6 +730,7 @@ pub struct IMessageConfig {
 #[serde(rename_all = "snake_case", tag = "mode")]
 pub enum IMessageBridgeMode {
     /// BlueBubbles server (works remotely)
+    #[serde(rename = "bluebubbles", alias = "blue_bubbles")]
     BlueBubbles {
         /// BlueBubbles server URL
         server_url: String,
@@ -731,6 +739,7 @@ pub enum IMessageBridgeMode {
     },
     /// Direct macOS AppleScript (local only, requires macOS)
     #[default]
+    #[serde(rename = "macos_direct", alias = "mac_o_s_direct")]
     MacOSDirect,
     /// macOS Messages.app private API (advanced)
     PrivateApi,
@@ -794,16 +803,20 @@ impl Default for AppConfig {
                 ],
                 anthropic: AnthropicConfig {
                     model: "claude-sonnet-4-20250514".to_string(),
+                    api_key_env: None,
                     api_version: "2023-06-01".to_string(),
                     strict_tools: true,
                     streaming_tool_deltas: true,
                 },
                 openai: OpenAiConfig {
                     model: "gpt-4o".to_string(),
+                    api_key_env: None,
                     use_responses_api: true,
                     strict_tools: true,
                 },
                 openrouter: OpenRouterConfig {
+                    model: "anthropic/claude-sonnet-4".to_string(),
+                    api_key_env: None,
                     route_strategy: "quality".to_string(),
                 },
                 ollama: OllamaConfig {

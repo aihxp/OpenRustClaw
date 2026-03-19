@@ -11,7 +11,7 @@ use axum::{
     },
     http::{HeaderMap, StatusCode},
     response::IntoResponse,
-    routing::{get, post},
+    routing::{get, post, put},
 };
 use chrono::{DateTime, Utc};
 use futures::{SinkExt, Stream, StreamExt};
@@ -62,10 +62,7 @@ use openrustclaw_optimization::{
     CandidateChange, CandidateRunner, CandidateRunnerConfig, EvaluationSpec, MutationPolicy,
     OptimizationStore, PromotionPolicy, TargetRegistration,
 };
-use openrustclaw_providers::{
-    AnthropicProvider, OllamaProvider, OpenAiProvider, OpenRouterProvider, ProviderChain,
-    openrouter::RouteStrategy,
-};
+use openrustclaw_providers::ProviderChain;
 use openrustclaw_scheduler::{DurableEventBus, ReminderSender, RustWorkflowDispatcher};
 use openrustclaw_scheduler::{SchedulerWorker, worker::SchedulerConfig as WorkerSchedulerConfig};
 use openrustclaw_security::OriginValidator;
@@ -76,7 +73,7 @@ use super::channels::{
     ChannelBindingSpec, ChannelRegistry, ChannelSendPolicy, ensure_account_manifest,
     identity_from_message, load_registry, message_bot_mentioned, resolve_root,
 };
-use super::{control, doctor};
+use super::{control, doctor, runtime};
 
 /// Run the start command - load config, optionally start the compatibility/experimental sidecar, and start the gateway.
 pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
@@ -86,8 +83,9 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
     info!("Starting OpenRustClaw...");
 
     // Load configuration
-    let mut config = AppConfig::load_from(config_path)
-        .with_context(|| format!("Failed to load config from {}", config_path))?;
+    let workspace_root =
+        std::env::current_dir().context("Failed to determine current workspace root")?;
+    let mut config = runtime::load_effective_config(config_path, &workspace_root)?;
 
     info!(config_path = %config_path, "Configuration loaded");
 
@@ -257,8 +255,6 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
             }
         }),
     ));
-    let workspace_root =
-        std::env::current_dir().context("Failed to determine current workspace root")?;
     let control_root = control::control_root_for(&workspace_root);
 
     if channel_config.telegram.enabled
@@ -421,7 +417,7 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
     let channel_agent = if enabled_channels.is_empty() {
         None
     } else {
-        Some(Arc::new(build_channel_agent(
+        Some(Arc::new(tokio::sync::RwLock::new(build_channel_agent(
             &config,
             memory_store.clone(),
             core_memory_store.clone(),
@@ -429,7 +425,7 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
             channel_langsmith_client(&config),
             event_bus.clone(),
             channel_registry.clone(),
-        )?))
+        )?)))
     };
 
     let mut delivery_router = ChannelDeliveryRouter::default();
@@ -512,7 +508,19 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
     app = app.merge(channel_registry_router(channel_registry.clone()));
     app = app.merge(control_plane_router(ControlPlaneApiState {
         control_root,
+        workspace_root: workspace_root.clone(),
         config_path: config_path.to_string(),
+    }));
+    app = app.merge(runtime_control_router(RuntimeControlState {
+        config_path: config_path.to_string(),
+        workspace_root: workspace_root.clone(),
+        memory_store: memory_store.clone(),
+        core_memory_store: core_memory_store.clone(),
+        session_manager: session_manager.clone(),
+        channel_registry: channel_registry.clone(),
+        langsmith: channel_langsmith_client(&config),
+        event_bus: event_bus.clone(),
+        channel_agent: channel_agent.clone(),
     }));
 
     // Create shutdown signal handler
@@ -622,8 +630,7 @@ pub async fn run_mcp_server(transport: &str, config_path: &str) -> Result<()> {
     info!("Starting MCP server (stdio transport)");
     let workspace_root =
         std::env::current_dir().context("Failed to determine current directory")?;
-    let config = AppConfig::load_from(config_path)
-        .with_context(|| format!("Failed to load config from {}", config_path))?;
+    let config = runtime::load_effective_config(config_path, &workspace_root)?;
     let pool = init_pool(&config.database.url, 4)
         .await
         .context("Failed to initialize database for MCP server")?;
@@ -818,7 +825,7 @@ fn internal_api_addr(host: &str, port: u16) -> String {
 
 fn spawn_channel_task(
     channel: SharedChannel,
-    channel_agent: Option<Arc<ChannelAgent>>,
+    channel_agent: Option<SharedChannelAgent>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let platform = channel.platform();
@@ -836,6 +843,8 @@ fn spawn_channel_task(
                     );
                     if let Some(agent) = channel_agent.as_ref() {
                         match agent
+                            .read()
+                            .await
                             .handle_incoming_message(&mut route_sessions, message)
                             .await
                         {
@@ -883,6 +892,8 @@ fn spawn_channel_task(
 
         if let Some(agent) = channel_agent.as_ref() {
             agent
+                .read()
+                .await
                 .close_route_sessions(&mut route_sessions, platform, "channel_receive_ended")
                 .await;
         }
@@ -1569,7 +1580,7 @@ fn build_channel_provider(config: &AppConfig) -> Result<Arc<dyn LlmProvider>> {
             continue;
         }
 
-        match create_provider_from_config(&provider_name, config) {
+        match runtime::create_provider_from_config(&provider_name, config) {
             Ok(provider) => providers.push(provider),
             Err(error) if providers.is_empty() => {
                 return Err(error).with_context(|| {
@@ -1596,54 +1607,6 @@ fn build_channel_provider(config: &AppConfig) -> Result<Arc<dyn LlmProvider>> {
 
     let primary = providers[0].clone();
     Ok(Arc::new(ChannelProviderChain::new(providers, primary)))
-}
-
-fn create_provider_from_config(
-    provider_name: &str,
-    config: &AppConfig,
-) -> Result<Arc<dyn LlmProvider>> {
-    match provider_name.to_lowercase().as_str() {
-        "anthropic" => {
-            let api_key = std::env::var("ANTHROPIC_API_KEY")
-                .context("ANTHROPIC_API_KEY environment variable not set")?;
-            let provider =
-                AnthropicProvider::new(api_key, config.providers.anthropic.model.clone());
-            Ok(Arc::new(provider))
-        }
-        "openai" => {
-            let api_key = std::env::var("OPENAI_API_KEY")
-                .context("OPENAI_API_KEY environment variable not set")?;
-            let provider = OpenAiProvider::new(api_key, config.providers.openai.model.clone());
-            Ok(Arc::new(provider))
-        }
-        "openrouter" => {
-            let api_key = std::env::var("OPENROUTER_API_KEY")
-                .context("OPENROUTER_API_KEY environment variable not set")?;
-            let strategy = match config.providers.openrouter.route_strategy.as_str() {
-                "price" => RouteStrategy::Price,
-                "throughput" => RouteStrategy::Throughput,
-                "web_search" | "online" => RouteStrategy::WebSearch,
-                _ => RouteStrategy::Quality,
-            };
-            let provider = OpenRouterProvider::with_strategy(
-                api_key,
-                "anthropic/claude-sonnet-4".to_string(),
-                strategy,
-            );
-            Ok(Arc::new(provider))
-        }
-        "ollama" => {
-            let provider = OllamaProvider::with_base_url(
-                config.providers.ollama.model.clone(),
-                config.providers.ollama.base_url.clone(),
-            );
-            Ok(Arc::new(provider))
-        }
-        _ => anyhow::bail!(
-            "Unknown provider '{}'. Available: anthropic, openai, openrouter, ollama",
-            provider_name
-        ),
-    }
 }
 
 struct ChannelProviderChain {
@@ -2340,10 +2303,26 @@ struct ChannelRegistryApiState {
     registry: Arc<tokio::sync::RwLock<ChannelRegistry>>,
 }
 
+type SharedChannelAgent = Arc<tokio::sync::RwLock<ChannelAgent>>;
+
 #[derive(Clone)]
 struct ControlPlaneApiState {
     control_root: PathBuf,
+    workspace_root: PathBuf,
     config_path: String,
+}
+
+#[derive(Clone)]
+struct RuntimeControlState {
+    config_path: String,
+    workspace_root: PathBuf,
+    memory_store: Arc<SqliteMemoryStore>,
+    core_memory_store: Arc<SqliteCoreMemoryStore>,
+    session_manager: Arc<SessionManager>,
+    channel_registry: Arc<tokio::sync::RwLock<ChannelRegistry>>,
+    langsmith: Option<LangSmithClient>,
+    event_bus: DurableEventBus,
+    channel_agent: Option<SharedChannelAgent>,
 }
 
 fn discord_ingress_router(
@@ -2414,6 +2393,26 @@ fn control_plane_router(state: ControlPlaneApiState) -> Router {
         .route(
             "/control/diagnostics/ws",
             get(control_diagnostics_ws_handler),
+        )
+        .with_state(state)
+}
+
+fn runtime_control_router(state: RuntimeControlState) -> Router {
+    Router::new()
+        .route("/control/runtime/status", get(runtime_status_handler))
+        .route("/control/runtime/reload", post(runtime_reload_handler))
+        .route(
+            "/control/runtime/switch-provider",
+            post(runtime_switch_provider_handler),
+        )
+        .route(
+            "/control/runtime/switch-model",
+            post(runtime_switch_model_handler),
+        )
+        .route("/control/runtime/vault", get(runtime_vault_status_handler))
+        .route(
+            "/control/runtime/vault/{key}",
+            put(runtime_vault_set_handler).delete(runtime_vault_delete_handler),
         )
         .with_state(state)
 }
@@ -2767,7 +2766,7 @@ async fn control_runtime_handler(State(state): State<ControlPlaneApiState>) -> i
 }
 
 async fn control_config_handler(State(state): State<ControlPlaneApiState>) -> impl IntoResponse {
-    match AppConfig::load_from(&state.config_path) {
+    match runtime::load_effective_config(&state.config_path, &state.workspace_root) {
         Ok(config) => (
             StatusCode::OK,
             Json(serde_json::json!({
@@ -2810,7 +2809,11 @@ async fn control_config_update_handler(
     State(state): State<ControlPlaneApiState>,
     Json(payload): Json<AppConfig>,
 ) -> impl IntoResponse {
-    match write_control_config(&state.config_path, &payload) {
+    let rendered_len = validate_control_config(&payload).map(|value| value.len());
+    match rendered_len.and_then(|bytes| {
+        runtime::write_config_with_backup(&state.config_path, &payload)?;
+        Ok(bytes)
+    }) {
         Ok(bytes) => (
             StatusCode::OK,
             Json(serde_json::json!({
@@ -2888,16 +2891,215 @@ fn validate_control_config(config: &AppConfig) -> Result<String> {
     toml::to_string_pretty(config).context("Failed to render config TOML")
 }
 
-fn write_control_config(path: &str, config: &AppConfig) -> Result<usize> {
-    let rendered = validate_control_config(config)?;
-    let path = PathBuf::from(path);
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .with_context(|| format!("Failed to create '{}'", parent.display()))?;
+#[derive(serde::Deserialize)]
+struct RuntimeSwitchProviderRequest {
+    provider: String,
+    model: Option<String>,
+    api_key_env: Option<String>,
+    fallback_chain: Option<Vec<String>>,
+}
+
+#[derive(serde::Deserialize)]
+struct RuntimeSwitchModelRequest {
+    provider: String,
+    model: String,
+}
+
+#[derive(serde::Deserialize)]
+struct RuntimeVaultValueRequest {
+    value: String,
+}
+
+async fn runtime_status_handler(State(state): State<RuntimeControlState>) -> impl IntoResponse {
+    match runtime::runtime_status(&state.config_path, &state.workspace_root) {
+        Ok(status) => (StatusCode::OK, Json(serde_json::json!(status))).into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
     }
-    std::fs::write(&path, rendered.as_bytes())
-        .with_context(|| format!("Failed to write '{}'", path.display()))?;
-    Ok(rendered.len())
+}
+
+async fn runtime_reload_handler(State(state): State<RuntimeControlState>) -> impl IntoResponse {
+    match reload_runtime_agent(&state).await {
+        Ok(summary) => (StatusCode::OK, Json(summary)).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn runtime_switch_provider_handler(
+    State(state): State<RuntimeControlState>,
+    Json(payload): Json<RuntimeSwitchProviderRequest>,
+) -> impl IntoResponse {
+    let previous = std::fs::read_to_string(&state.config_path).unwrap_or_default();
+    let result = runtime::switch_provider(
+        &state.config_path,
+        &state.workspace_root,
+        &payload.provider,
+        payload.model.as_deref(),
+        payload.api_key_env.as_deref(),
+        payload.fallback_chain,
+    );
+
+    match result {
+        Ok(_) => match reload_runtime_agent(&state).await {
+            Ok(summary) => (StatusCode::OK, Json(summary)).into_response(),
+            Err(error) => {
+                let _ = std::fs::write(&state.config_path, previous);
+                let _ = reload_runtime_agent(&state).await;
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({"error": error.to_string(), "rolled_back": true})),
+                )
+                    .into_response()
+            }
+        },
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn runtime_switch_model_handler(
+    State(state): State<RuntimeControlState>,
+    Json(payload): Json<RuntimeSwitchModelRequest>,
+) -> impl IntoResponse {
+    let previous = std::fs::read_to_string(&state.config_path).unwrap_or_default();
+    let result = runtime::switch_model(
+        &state.config_path,
+        &state.workspace_root,
+        &payload.provider,
+        &payload.model,
+    );
+
+    match result {
+        Ok(_) => match reload_runtime_agent(&state).await {
+            Ok(summary) => (StatusCode::OK, Json(summary)).into_response(),
+            Err(error) => {
+                let _ = std::fs::write(&state.config_path, previous);
+                let _ = reload_runtime_agent(&state).await;
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({"error": error.to_string(), "rolled_back": true})),
+                )
+                    .into_response()
+            }
+        },
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn runtime_vault_status_handler(
+    State(state): State<RuntimeControlState>,
+) -> impl IntoResponse {
+    let path = runtime::vault_path_for(&state.workspace_root);
+    match runtime::list_vault_keys(&state.workspace_root) {
+        Ok(keys) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "path": path,
+                "present": path.exists(),
+                "entries": keys,
+                "count": keys.len(),
+            })),
+        )
+            .into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string(), "path": path})),
+        )
+            .into_response(),
+    }
+}
+
+async fn runtime_vault_set_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(key): AxumPath<String>,
+    Json(payload): Json<RuntimeVaultValueRequest>,
+) -> impl IntoResponse {
+    match runtime::set_vault_secret(&state.workspace_root, &key, &payload.value) {
+        Ok(()) => (
+            StatusCode::OK,
+            Json(serde_json::json!({"status": "ok", "key": key})),
+        )
+            .into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn runtime_vault_delete_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(key): AxumPath<String>,
+) -> impl IntoResponse {
+    match runtime::delete_vault_secret(&state.workspace_root, &key) {
+        Ok(()) => (
+            StatusCode::OK,
+            Json(serde_json::json!({"status": "ok", "key": key})),
+        )
+            .into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn reload_runtime_agent(state: &RuntimeControlState) -> Result<serde_json::Value> {
+    let config = runtime::load_effective_config(&state.config_path, &state.workspace_root)?;
+    if let Some(channel_agent) = &state.channel_agent {
+        let agent = build_channel_agent(
+            &config,
+            state.memory_store.clone(),
+            state.core_memory_store.clone(),
+            state.session_manager.clone(),
+            state.langsmith.clone(),
+            state.event_bus.clone(),
+            state.channel_registry.clone(),
+        )?;
+        *channel_agent.write().await = agent;
+    }
+
+    let _ = state
+        .event_bus
+        .publish_named(
+            "runtime.reloaded",
+            "runtime_control",
+            None,
+            &serde_json::json!({
+                "default_provider": config.providers.default_provider,
+                "fallback_chain": config.providers.fallback_chain,
+            }),
+            None,
+        )
+        .await;
+
+    Ok(serde_json::json!({
+        "status": "ok",
+        "default_provider": config.providers.default_provider,
+        "fallback_chain": config.providers.fallback_chain,
+        "models": {
+            "anthropic": config.providers.anthropic.model,
+            "openai": config.providers.openai.model,
+            "openrouter": config.providers.openrouter.model,
+            "ollama": config.providers.ollama.model,
+        }
+    }))
 }
 
 #[derive(Clone)]
@@ -5752,8 +5954,9 @@ mod tests {
         let rendered = validate_control_config(&config).expect("render config");
         assert!(rendered.contains("[gateway]"));
 
-        let bytes =
-            write_control_config(path.to_str().expect("utf8 path"), &config).expect("write config");
+        std::fs::create_dir_all(path.parent().expect("parent dir")).expect("mkdirs");
+        std::fs::write(&path, rendered.as_bytes()).expect("write config");
+        let bytes = rendered.len();
         assert!(bytes > 0);
 
         let written = std::fs::read_to_string(path).expect("read written config");

@@ -24,6 +24,7 @@ use_responses_api = true
 strict_tools = true
 
 [providers.openrouter]
+model = "anthropic/claude-sonnet-4"
 route_strategy = "quality"  # price, throughput, quality, web_search
 
 [providers.ollama]
@@ -69,7 +70,7 @@ require_auth = true
 origin_validation = true
 prompt_injection_defense = true
 skill_signature_required = false  # marketplace only; workspace skills exempt
-skill_verifying_key = null        # 32-byte Ed25519 public key as lowercase hex
+# skill_verifying_key = "..."     # Optional 32-byte Ed25519 public key as lowercase hex
 
 [sidecar]
 grpc_port = 50051
@@ -90,8 +91,8 @@ metrics_port = 9090
 enabled = false
 token = ""  # Bot token from @BotFather
 mode = "polling"  # "polling" or "webhook"
-webhook_url = null  # Required for webhook mode (e.g., "https://yourdomain.com/webhook")
-webhook_port = null  # Port to listen on for webhooks (e.g., 8080)
+# webhook_url = "https://yourdomain.com/webhook"  # Required for webhook mode
+# webhook_port = 8080  # Port to listen on for webhooks
 allowed_users = []  # List of allowed user IDs (empty = allow all)
 rate_limit_per_second = 30  # Telegram allows ~30 msg/sec
 
@@ -107,12 +108,24 @@ allowed_guilds = []  # List of allowed server IDs (empty = allow all)
 allowed_channels = []  # List of allowed channel IDs (empty = allow all)
 dm_enabled = true  # Allow direct messages
 
+# WhatsApp Bridge Configuration
+[channels.whatsapp]
+enabled = false
+session_path = "./data/whatsapp-session"
+pairing_mode = false
+allowlist = []
+# webhook_url = "https://yourdomain.com/webhooks/whatsapp"
+bridge_path = "./crates/channels/baileys-bridge/index.js"
+rate_limit_per_second = 10
+max_reconnect_attempts = 10
+reconnect_delay_secs = 5
+
 # Slack App Configuration
 [channels.slack]
 enabled = false
 token = ""  # Bot User OAuth Token (xoxb-...)
-app_token = null  # App-Level Token (xapp-...) for Socket Mode
-signing_secret = null  # Signing secret for HTTP mode webhook verification
+# app_token = "xapp-..."  # App-Level Token for Socket Mode
+# signing_secret = "..."  # Signing secret for HTTP mode webhook verification
 mode = "socket_mode"  # "socket_mode" or "http"
 socket_mode = true  # Use Socket Mode (recommended)
 rate_limit_requests_per_second = 10  # Slack rate limit
@@ -124,7 +137,7 @@ app_home_enabled = true  # Enable App Home tab
 enabled = false
 app_id = ""  # Microsoft App ID from Azure Bot registration
 app_password = ""  # Microsoft App Password / client secret
-tenant_id = null  # Azure tenant ID for single-tenant apps
+# tenant_id = "..."  # Optional Azure tenant ID for single-tenant apps
 webhook_path = "/webhooks/teams"  # Bot Framework webhook path
 allowlist = []  # Allowed user emails or AAD object IDs (empty = allow all)
 group_policy = "mention"  # "mention" or "open"
@@ -138,8 +151,8 @@ enabled = false
 server_url = ""  # Mattermost base URL, e.g. https://chat.example.com
 bot_token = ""  # Personal access token or bot token for API calls
 webhook_path = "/webhooks/mattermost"  # Slash command / outgoing webhook ingress path
-webhook_token = null  # Optional shared token for inbound request validation
-bot_username = null  # Optional bot username for mention detection
+# webhook_token = "..."  # Optional shared token for inbound request validation
+# bot_username = "claw"  # Optional bot username for mention detection
 allowlist = []  # Allowed user IDs or usernames (empty = allow all)
 allowed_channels = []  # Allowed channel IDs (empty = allow all)
 rate_limit_requests_per_second = 10
@@ -151,7 +164,7 @@ phone_number = ""  # Your Signal phone number (E.164 format, e.g., +1234567890)
 data_dir = "./data/signal"  # Path to store signal-cli data (keep secure!)
 allowlist = []  # Allowed phone numbers (empty = allow all if require_allowlist = false)
 allowed_groups = []  # Allowed group IDs (empty = allow all if require_allowlist = false)
-signal_cli_path = null  # Path to signal-cli binary (null = use system PATH)
+# signal_cli_path = "/usr/local/bin/signal-cli"  # Optional override; otherwise use PATH
 use_libsignal = false  # Use native libsignal-client (experimental)
 rate_limit_per_minute = 20  # Signal rate limit (~20 messages/minute)
 require_allowlist = true  # Require allowlist for security (recommended)
@@ -171,8 +184,8 @@ mode = "macos_direct"  # "macos_direct", "bluebubbles", or "private_api"
 enabled = false
 service_account_key = ""  # Path to service-account JSON, token:<value>, or env:VAR
 project_id = ""  # Google Cloud project ID
-webhook_url = null  # Optional public webhook URL for Google Chat HTTP push
-pubsub_subscription = null  # Optional Pub/Sub subscription for push-envelope mode
+# webhook_url = "https://yourdomain.com/webhooks/google-chat/events"  # Optional public webhook URL
+# pubsub_subscription = "projects/.../subscriptions/..."  # Optional Pub/Sub subscription
 allowlist = []  # Allowed user emails or Google Workspace IDs (empty = allow all)
 allowed_spaces = []  # Allowed Google Chat space IDs (empty = allow all)
 rate_limit_requests_per_second = 10
@@ -188,7 +201,122 @@ delegated_user_email = ""  # Workspace user for domain-wide delegation
 webhook_path = "/webhooks/google-meet/events"  # Workspace Events / Pub/Sub push endpoint
 allowed_spaces = []  # Optional allowlist of Meet spaces
 rate_limit_requests_per_second = 5
-api_base_url = null  # Optional override for Meet API base URL
-oauth_token_url = null  # Optional override for OAuth token URL
+# api_base_url = "https://meet.googleapis.com/"  # Optional override for Meet API base URL
+# oauth_token_url = "https://oauth2.googleapis.com/token"  # Optional override for OAuth token URL
 additional_scopes = []  # Extra Meet/Workspace scopes if needed
 hydrate_transcript_events = true  # Fetch transcript entries for transcript events
+
+# Gmail Pub/Sub Configuration
+[channels.gmail_pubsub]
+enabled = false
+project_id = ""
+subscription_name = ""
+# topic_name = "projects/.../topics/..."
+service_account_key_path = ""  # Path to service-account JSON, token:<value>, or env:VAR
+user_email = ""
+label_filters = ["INBOX", "UNREAD"]
+# query_filter = "label:important"
+auto_reply = false
+max_history_fetch = 100
+rate_limit_requests_per_second = 10
+# api_base_url = "https://gmail.googleapis.com/gmail/v1"
+# oauth_token_url = "https://oauth2.googleapis.com/token"
+
+# Matrix Configuration
+[channels.matrix]
+enabled = false
+homeserver = ""
+user_id = ""
+# access_token = "..."
+# password = "..."
+# device_id = "..."
+data_dir = "./data/matrix"
+allowlist = []
+room_allowlist = []
+auto_join_rooms = true
+enable_encryption = true
+rate_limit_per_second = 10
+
+# X / Twitter Configuration
+[channels.x]
+enabled = false
+bearer_token = ""
+api_key = ""
+api_secret = ""
+access_token = ""
+access_token_secret = ""
+bot_user_id = ""
+allowlist = []
+respond_to_mentions = true
+respond_to_dms = true
+max_tweet_length = 280
+mention_poll_interval_secs = 60
+dm_poll_interval_secs = 120
+rate_limit_per_minute = 10
+
+# Twilio Configuration
+[channels.twilio]
+enabled = false
+account_sid = ""
+auth_token = ""
+phone_number = ""
+# webhook_url = "https://yourdomain.com/webhooks/twilio"
+allowlist = []
+max_message_length = 1600
+enable_mms = true
+rate_limit_per_second = 10
+
+# Meta Messenger / Instagram Configuration
+[channels.meta]
+enabled = false
+app_id = ""
+app_secret = ""
+page_access_token = ""
+verify_token = ""
+webhook_path = "/webhooks/meta"
+page_id = ""
+# instagram_account_id = "..."
+allowlist = []
+respond_to_messenger = true
+respond_to_instagram = true
+show_typing_indicator = true
+rate_limit_per_second = 10
+
+# LINE Messaging API Configuration
+[channels.line]
+enabled = false
+channel_access_token = ""
+channel_secret = ""
+webhook_path = "/webhook/line"
+allowlist = []
+rate_limit_per_second = 1000
+enable_rich_menu = true
+enable_quick_replies = true
+
+# Viber Bot Configuration
+[channels.viber]
+enabled = false
+auth_token = ""
+# webhook_url = "https://yourdomain.com/webhook/viber"
+webhook_path = "/webhook/viber"
+allowlist = []
+rate_limit_per_minute = 300
+allow_broadcast = false
+# welcome_message = "Hello"
+enable_keyboards = true
+
+# WeChat Configuration
+[channels.wechat]
+enabled = false
+app_type = "work"
+corp_id = ""
+corp_secret = ""
+agent_id = ""
+app_id = ""
+app_secret = ""
+token = ""
+# encoding_aes_key = "..."
+webhook_path = "/webhook/wechat"
+allowlist = []
+rate_limit_per_second = 20
+enable_encryption = false

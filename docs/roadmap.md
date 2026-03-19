@@ -705,7 +705,7 @@ Exit criteria:
 
 Goal: match OpenClaw's operator UX and tooling surface while keeping Rust-native interfaces.
 
-Status: complete for shipped CLI/MCP control-plane surfaces, shared typed control/config/diagnostics APIs, channel account CRUD parity, onboarding scaffolding, and doctor validation; Web Control UI, richer browser/web tooling, deeper service diagnostics, and full orchestrated runtime execution remain open.
+Status: complete for shipped CLI/MCP control-plane surfaces, shared typed control/config/diagnostics APIs, channel account CRUD parity, encrypted runtime secret-vault support, validated provider/model switching, runtime reload/cutover APIs with rollback, onboarding scaffolding, and doctor validation; Web Control UI, richer browser/web tooling, deeper service diagnostics, and full orchestrated runtime execution remain open.
 
 Additional later-surface work:
 
@@ -768,6 +768,20 @@ Completed:
   - `openrustclaw doctor --non-interactive`,
   - `GET /control/diagnostics`,
   - `GET /control/diagnostics/ws`.
+- [x] Add encrypted runtime secret-vault and secret-source loading:
+  - workspace `.env` support for runtime/provider loading,
+  - encrypted `.claw/control/runtime-vault.json` storage,
+  - CLI secret management via `openrustclaw runtime vault ...`,
+  - shared Control API secret management via `/control/runtime/vault/...`.
+- [x] Add runtime reconfiguration surfaces for safe provider/model cutover:
+  - `openrustclaw runtime status|reload|switch-provider|switch-model`,
+  - `GET /control/runtime/status`,
+  - `POST /control/runtime/reload`,
+  - `POST /control/runtime/switch-provider`,
+  - `POST /control/runtime/switch-model`,
+  - validation before cutover,
+  - timestamped config backups,
+  - rollback when runtime reload fails after a config change.
 
 Remaining:
 
@@ -1029,20 +1043,20 @@ Remaining:
   - safe config-edit proposals with validation before apply,
   - dry-run explanations and rollback points,
   - explicit approval gates for risky self-reconfiguration.
-- [ ] Add secure credential-vault parity:
-  - encrypted storage for provider keys and channel tokens at rest,
-  - CLI/UI secret management,
-  - migration from plaintext legacy configs where feasible.
-- [ ] Add config and personality hot-reload:
-  - runtime config reload without restart,
+- [ ] Extend secret-vault parity beyond the shipped runtime lane:
+  - migrate more plaintext legacy secrets where feasible,
+  - add future Control UI secret editing on top of the shared runtime vault API,
+  - cover more non-provider secret classes with the same encrypted-at-rest flow.
+- [ ] Extend config and personality hot-reload beyond the shipped runtime rebind:
   - editable persona/DNA/system prompt artifacts that reload cleanly,
-  - provider/channel updates that do not require process restarts when safe.
-- [ ] Add runtime provider and account switching without full restart where the active runtime can rebind safely.
-- [ ] Add model-switch hardening so changing providers/models does not crash the runtime:
+  - broader channel/provider updates that can rebind without process restart when safe,
+  - richer operator feedback for partial reload versus full restart requirements.
+- [x] Add runtime provider and account switching without full restart where the active runtime can rebind safely.
+- [x] Add model-switch hardening so changing providers/models does not crash the runtime:
   - transactional config swap,
   - validation before cutover,
   - session-safe rebind and rollback,
-  - degraded-mode fallback if the requested model cannot start.
+  - degraded-mode fallback to the prior config if the requested model cannot start.
 - [ ] Extend operator-grade diagnostics beyond the shipped baseline:
   - live gateway health/service status,
   - channel connectivity and auth state,

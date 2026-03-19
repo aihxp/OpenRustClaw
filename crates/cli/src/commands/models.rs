@@ -4,6 +4,8 @@ use anyhow::Result;
 use std::collections::HashMap;
 use std::time::Duration;
 
+use super::runtime;
+
 /// Model information for display.
 #[derive(Debug)]
 struct ModelInfo {
@@ -164,6 +166,9 @@ fn get_default_models() -> HashMap<&'static str, Vec<ModelInfo>> {
 
 /// List all available providers and their models.
 pub async fn list() -> Result<()> {
+    if let Ok(workspace_root) = std::env::current_dir() {
+        let _ = runtime::apply_runtime_secret_sources(&workspace_root);
+    }
     println!("╔══════════════════════════════════════════════════════════╗");
     println!("║              Available LLM Providers                     ║");
     println!("╚══════════════════════════════════════════════════════════╝");
@@ -266,6 +271,9 @@ pub async fn info(name: &str) -> Result<()> {
 
 /// Scan configured providers and recommend role assignments.
 pub async fn scan() -> Result<()> {
+    if let Ok(workspace_root) = std::env::current_dir() {
+        let _ = runtime::apply_runtime_secret_sources(&workspace_root);
+    }
     let ollama_available = check_ollama().await;
     let providers = vec![
         ProviderScan {

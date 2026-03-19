@@ -7,9 +7,8 @@ use std::sync::Arc;
 use openrustclaw_agent::runtime::AgentRuntime;
 use openrustclaw_agent::tools::ToolRegistry;
 use openrustclaw_core::types::{Message, Platform, Session};
-use openrustclaw_providers::{
-    AnthropicProvider, OllamaProvider, OpenAiProvider, OpenRouterProvider,
-};
+
+use super::runtime;
 
 /// Run the interactive chat REPL.
 pub async fn run(provider: &str, model: Option<&str>) -> Result<()> {
@@ -214,35 +213,34 @@ async fn create_provider(
     provider_name: &str,
     model: Option<&str>,
 ) -> Result<Arc<dyn openrustclaw_core::traits::LlmProvider>> {
+    let workspace_root = std::env::current_dir()?;
+    let mut config =
+        runtime::load_effective_config("config/default.toml", &workspace_root).unwrap_or_default();
     match provider_name.to_lowercase().as_str() {
         "anthropic" => {
-            let api_key = std::env::var("ANTHROPIC_API_KEY")
-                .context("ANTHROPIC_API_KEY environment variable not set")?;
-            let model = model.unwrap_or("claude-sonnet-4-20250514");
-            let provider = AnthropicProvider::new(api_key, model.to_string());
-            Ok(Arc::new(provider))
+            if let Some(model) = model {
+                config.providers.anthropic.model = model.to_string();
+            }
         }
         "openai" => {
-            let api_key = std::env::var("OPENAI_API_KEY")
-                .context("OPENAI_API_KEY environment variable not set")?;
-            let model = model.unwrap_or("gpt-4o");
-            let provider = OpenAiProvider::new(api_key, model.to_string());
-            Ok(Arc::new(provider))
+            if let Some(model) = model {
+                config.providers.openai.model = model.to_string();
+            }
         }
         "openrouter" => {
-            let api_key = std::env::var("OPENROUTER_API_KEY")
-                .context("OPENROUTER_API_KEY environment variable not set")?;
-            let model = model.unwrap_or("anthropic/claude-sonnet-4");
-            let provider = OpenRouterProvider::new(api_key, model.to_string());
-            Ok(Arc::new(provider))
+            if let Some(model) = model {
+                config.providers.openrouter.model = model.to_string();
+            }
         }
         "ollama" => {
-            let provider = OllamaProvider::new(model.unwrap_or("llama3.1").to_string());
-            Ok(Arc::new(provider))
+            if let Some(model) = model {
+                config.providers.ollama.model = model.to_string();
+            }
         }
         _ => anyhow::bail!(
             "Unknown provider: {}. Available: anthropic, openai, openrouter, ollama",
             provider_name
         ),
     }
+    runtime::create_provider_from_config(provider_name, &config)
 }

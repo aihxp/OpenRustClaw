@@ -8,8 +8,8 @@
 enabled = true
 token = "${TELEGRAM_TOKEN}"  # Bot token from @BotFather
 mode = "polling"  # "polling" or "webhook"
-webhook_url = null  # Required for webhook mode (e.g., "https://yourdomain.com/webhook")
-webhook_port = null  # Port to listen on for webhooks (e.g., 8080)
+# webhook_url = "https://yourdomain.com/webhook"  # Required for webhook mode
+# webhook_port = 8080  # Port to listen on for webhooks
 allowed_users = []  # List of allowed user IDs (empty = allow all)
 rate_limit_per_second = 30  # Telegram allows ~30 msg/sec
 

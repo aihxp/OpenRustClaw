@@ -95,6 +95,7 @@ tonic-build = "0.12"
 ed25519-dalek = { version = "2", features = ["rand_core"] }
 sha2 = "0.10"
 argon2 = "0.5"
+chacha20poly1305 = "0.10"
 jsonwebtoken = "9"
 rand = "0.8"
 secrecy = { version = "0.10", features = ["serde"] }
