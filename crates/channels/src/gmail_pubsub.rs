@@ -443,6 +443,15 @@ impl GmailRuntime {
             .unwrap_or_default()
     }
 
+    fn metadata_string(metadata: &serde_json::Value, key: &str) -> Option<String> {
+        metadata
+            .get(key)
+            .and_then(|value| value.as_str())
+            .map(|value| value.trim())
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string)
+    }
+
     fn attachment_file_references(email: &EmailMessage) -> Vec<serde_json::Value> {
         email.attachments
             .iter()
@@ -829,6 +838,34 @@ impl GmailRuntime {
         })
     }
 
+    async fn stop_watch(&self, token: &str) -> Result<()> {
+        let response = self
+            .http_client
+            .post(format!(
+                "{}/users/{}/stop",
+                self.gmail_api_base(),
+                self.user_path()
+            ))
+            .bearer_auth(token)
+            .send()
+            .await
+            .map_err(|e| ChannelError::Connection {
+                platform: "gmail".to_string(),
+                message: format!("Failed to stop Gmail watch: {}", e),
+            })?;
+
+        if !response.status().is_success() {
+            let body = response.text().await.unwrap_or_default();
+            return Err(ChannelError::Connection {
+                platform: "gmail".to_string(),
+                message: format!("Failed to stop Gmail watch: {}", body),
+            }
+            .into());
+        }
+
+        Ok(())
+    }
+
     async fn get_new_messages(&self, history_id: u64, token: &str) -> Result<Vec<MessageMetadata>> {
         let response: HistoryResponse = self
             .get_json(
@@ -1003,7 +1040,7 @@ impl GmailRuntime {
             }
             EmailAction::Delete => self.delete_message(email_id, &token).await,
             EmailAction::Forward { to, body } => {
-                self.forward_message(email_id, &to, &body, &token).await
+                self.forward_message(email_id, &to, &body, &[], &token).await
             }
             EmailAction::TriggerWorkflow { workflow_name } => {
                 info!(workflow = %workflow_name, email_id = %email_id, "Gmail workflow trigger requested");
@@ -1152,6 +1189,7 @@ impl GmailRuntime {
         email_id: &str,
         to: &str,
         body: &str,
+        attachments: &[OutgoingAttachment],
         token: &str,
     ) -> Result<()> {
         let message = self.parse_message(self.get_gmail_message(email_id, token).await?);
@@ -1160,40 +1198,22 @@ impl GmailRuntime {
         } else {
             format!("Fwd: {}", message.subject)
         };
-
-        let mime = format!(
-            "To: {}\r\nSubject: {}\r\nContent-Type: text/plain; charset=\"UTF-8\"\r\n\r\n{}\n\n--- Forwarded message ---\nFrom: {}\nSubject: {}\n\n{}",
-            to, subject, body, message.from, message.subject, message.body_text
+        let forward_body = format!(
+            "{}\n\n--- Forwarded message ---\nFrom: {}\nSubject: {}\n\n{}",
+            body, message.from, message.subject, message.body_text
         );
 
-        let response = self
-            .http_client
-            .post(format!(
-                "{}/users/{}/messages/send",
-                self.gmail_api_base(),
-                self.user_path()
-            ))
-            .bearer_auth(token)
-            .json(&serde_json::json!({
-                "raw": URL_SAFE_NO_PAD.encode(mime.as_bytes()),
-            }))
-            .send()
-            .await
-            .map_err(|e| ChannelError::SendFailed {
-                platform: "gmail".to_string(),
-                message: format!("Gmail forward request failed: {}", e),
-            })?;
-
-        if !response.status().is_success() {
-            let body = response.text().await.unwrap_or_default();
-            return Err(ChannelError::SendFailed {
-                platform: "gmail".to_string(),
-                message: format!("Gmail forward request failed: {}", body),
-            }
-            .into());
-        }
-
-        Ok(())
+        self.send_new_message(
+            &[to.to_string()],
+            &[],
+            &[],
+            &subject,
+            &forward_body,
+            attachments,
+            None,
+            token,
+        )
+        .await
     }
 
     async fn send_new_message(
@@ -1204,9 +1224,17 @@ impl GmailRuntime {
         subject: &str,
         body: &str,
         attachments: &[OutgoingAttachment],
+        thread_id: Option<&str>,
         token: &str,
     ) -> Result<()> {
         let mime = Self::build_new_message_mime(to, cc, bcc, subject, body, attachments);
+
+        let mut payload = serde_json::json!({
+            "raw": URL_SAFE_NO_PAD.encode(mime.as_bytes()),
+        });
+        if let Some(thread_id) = thread_id.filter(|value| !value.is_empty()) {
+            payload["threadId"] = serde_json::json!(thread_id);
+        }
 
         let response = self
             .http_client
@@ -1216,9 +1244,7 @@ impl GmailRuntime {
                 self.user_path()
             ))
             .bearer_auth(token)
-            .json(&serde_json::json!({
-                "raw": URL_SAFE_NO_PAD.encode(mime.as_bytes()),
-            }))
+            .json(&payload)
             .send()
             .await
             .map_err(|e| ChannelError::SendFailed {
@@ -1257,6 +1283,111 @@ impl Channel for GmailPubSub {
 
         let token = self.runtime.require_access_token().await?;
         let attachments = GmailRuntime::outgoing_attachments_from_metadata(&msg.metadata).await?;
+        if let Some(action) = msg
+            .metadata
+            .get("gmail_action")
+            .and_then(|value| value.as_str())
+            .map(|value| value.to_ascii_lowercase())
+        {
+            if action != "send" {
+                let message_id = GmailRuntime::metadata_string(&msg.metadata, "gmail_message_id");
+                return match action.as_str() {
+                    "reply" => {
+                        let Some(message_id) = message_id else {
+                            return Err(ChannelError::InvalidFormat {
+                                platform: "gmail".to_string(),
+                                message: "Missing gmail_message_id for gmail_action=reply"
+                                    .to_string(),
+                            }
+                            .into());
+                        };
+                        self.runtime
+                            .reply_to_message(&message_id, &msg.content, &attachments, &token)
+                            .await
+                    }
+                    "label" => {
+                        let Some(message_id) = message_id else {
+                            return Err(ChannelError::InvalidFormat {
+                                platform: "gmail".to_string(),
+                                message: "Missing gmail_message_id for gmail_action=label"
+                                    .to_string(),
+                            }
+                            .into());
+                        };
+                        let add =
+                            GmailRuntime::metadata_address_list(&msg.metadata, "gmail_add_labels");
+                        let remove =
+                            GmailRuntime::metadata_address_list(&msg.metadata, "gmail_remove_labels");
+                        self.runtime.modify_labels(&message_id, add, remove, &token).await
+                    }
+                    "archive" => {
+                        let Some(message_id) = message_id else {
+                            return Err(ChannelError::InvalidFormat {
+                                platform: "gmail".to_string(),
+                                message: "Missing gmail_message_id for gmail_action=archive"
+                                    .to_string(),
+                            }
+                            .into());
+                        };
+                        self.runtime
+                            .modify_labels(
+                                &message_id,
+                                Vec::new(),
+                                vec!["INBOX".to_string()],
+                                &token,
+                            )
+                            .await
+                    }
+                    "delete" => {
+                        let Some(message_id) = message_id else {
+                            return Err(ChannelError::InvalidFormat {
+                                platform: "gmail".to_string(),
+                                message: "Missing gmail_message_id for gmail_action=delete"
+                                    .to_string(),
+                            }
+                            .into());
+                        };
+                        self.runtime.delete_message(&message_id, &token).await
+                    }
+                    "forward" => {
+                        let Some(message_id) = message_id else {
+                            return Err(ChannelError::InvalidFormat {
+                                platform: "gmail".to_string(),
+                                message: "Missing gmail_message_id for gmail_action=forward"
+                                    .to_string(),
+                            }
+                            .into());
+                        };
+                        let Some(forward_to) =
+                            GmailRuntime::metadata_string(&msg.metadata, "gmail_forward_to")
+                        else {
+                            return Err(ChannelError::InvalidFormat {
+                                platform: "gmail".to_string(),
+                                message: "Missing gmail_forward_to for gmail_action=forward"
+                                    .to_string(),
+                            }
+                            .into());
+                        };
+                        self.runtime
+                            .forward_message(
+                                &message_id,
+                                &forward_to,
+                                &msg.content,
+                                &attachments,
+                                &token,
+                            )
+                            .await
+                    }
+                    other => {
+                        return Err(ChannelError::InvalidFormat {
+                            platform: "gmail".to_string(),
+                            message: format!("Unsupported gmail_action '{}'", other),
+                        }
+                        .into())
+                    }
+                };
+            }
+        }
         if let Some(message_id) = msg
             .metadata
             .get("gmail_message_id")
@@ -1285,9 +1416,19 @@ impl Channel for GmailPubSub {
             .get("gmail_subject")
             .and_then(|value| value.as_str())
             .unwrap_or("OpenRustClaw");
+        let thread_id = GmailRuntime::metadata_string(&msg.metadata, "gmail_thread_id");
 
         self.runtime
-            .send_new_message(&to, &cc, &bcc, subject, &msg.content, &attachments, &token)
+            .send_new_message(
+                &to,
+                &cc,
+                &bcc,
+                subject,
+                &msg.content,
+                &attachments,
+                thread_id.as_deref(),
+                &token,
+            )
             .await
     }
 
@@ -1348,6 +1489,11 @@ impl Channel for GmailPubSub {
     }
 
     async fn disconnect(&mut self) -> Result<()> {
+        if let Some(token) = self.runtime.access_token.read().await.clone() {
+            if let Err(error) = self.runtime.stop_watch(&token).await {
+                info!(error = %error, "Failed to stop Gmail watch during disconnect");
+            }
+        }
         *self.runtime.is_connected.write().await = false;
         *self.runtime.access_token.write().await = None;
         info!("Gmail Pub/Sub channel disconnected");
@@ -1361,6 +1507,10 @@ pub struct GmailWebhookHandler {
 
 impl GmailWebhookHandler {
     pub async fn handle_push(&self, body: &[u8]) -> Result<()> {
+        if let Ok(notification) = serde_json::from_slice::<GmailNotification>(body) {
+            return self.runtime.process_notification(notification).await;
+        }
+
         let envelope: serde_json::Value =
             serde_json::from_slice(body).map_err(|e| ChannelError::InvalidFormat {
                 platform: "gmail".to_string(),
@@ -1808,5 +1958,301 @@ mod tests {
             .unwrap();
 
         let _ = tokio::fs::remove_file(attachment_path).await;
+    }
+
+    #[tokio::test]
+    async fn test_handle_direct_notification_payload() {
+        let server = MockServer::start().await;
+        let config = gmail_config(&server, "token:test-token".to_string());
+
+        Mock::given(method("POST"))
+            .and(path("/gmail/v1/users/user%40example.com/watch"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "historyId": "100",
+                "expiration": "999999"
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/gmail/v1/users/user%40example.com/history"))
+            .and(query_param("startHistoryId", "100"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "history": [{
+                    "messagesAdded": [{
+                        "message": {
+                            "id": "msg-1",
+                            "threadId": "thread-1"
+                        }
+                    }]
+                }]
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/gmail/v1/users/user%40example.com/messages/msg-1"))
+            .and(query_param("format", "full"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "msg-1",
+                "threadId": "thread-1",
+                "labelIds": ["INBOX"],
+                "internalDate": "1710000000000",
+                "historyId": "100",
+                "payload": {
+                    "mimeType": "text/plain",
+                    "headers": [
+                        {"name": "From", "value": "sender@example.com"},
+                        {"name": "To", "value": "user@example.com"},
+                        {"name": "Subject", "value": "Direct notification"}
+                    ],
+                    "body": {
+                        "data": "SGVsbG8="
+                    }
+                }
+            })))
+            .mount(&server)
+            .await;
+
+        let mut gmail = GmailPubSub::new(config);
+        gmail.connect().await.unwrap();
+
+        gmail
+            .webhook_handler()
+            .handle_push(
+                br#"{"emailAddress":"user@example.com","historyId":100}"#,
+            )
+            .await
+            .unwrap();
+
+        let incoming = gmail.receive().await.unwrap();
+        assert_eq!(incoming.metadata["gmail_message_id"], "msg-1");
+        assert_eq!(incoming.content, "Subject: Direct notification\n\nHello");
+    }
+
+    #[tokio::test]
+    async fn test_disconnect_stops_watch() {
+        let server = MockServer::start().await;
+        let config = gmail_config(&server, "token:test-token".to_string());
+
+        Mock::given(method("POST"))
+            .and(path("/gmail/v1/users/user%40example.com/watch"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "historyId": "100",
+                "expiration": "999999"
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/gmail/v1/users/user%40example.com/stop"))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let mut gmail = GmailPubSub::new(config);
+        gmail.connect().await.unwrap();
+        gmail.disconnect().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_send_label_action_via_metadata() {
+        let server = MockServer::start().await;
+        let config = gmail_config(&server, "token:test-token".to_string());
+
+        Mock::given(method("POST"))
+            .and(path("/gmail/v1/users/user%40example.com/watch"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "historyId": "100",
+                "expiration": "999999"
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/gmail/v1/users/user%40example.com/messages/msg-1/modify"))
+            .and(body_string_contains("STARRED"))
+            .and(body_string_contains("UNREAD"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "msg-1"
+            })))
+            .mount(&server)
+            .await;
+
+        let mut gmail = GmailPubSub::new(config);
+        gmail.connect().await.unwrap();
+        gmail
+            .send(OutgoingMessage {
+                session_id: Uuid::new_v4(),
+                content: String::new(),
+                metadata: serde_json::json!({
+                    "gmail_action": "label",
+                    "gmail_message_id": "msg-1",
+                    "gmail_add_labels": ["STARRED"],
+                    "gmail_remove_labels": ["UNREAD"]
+                }),
+            })
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_send_archive_and_delete_actions_via_metadata() {
+        let server = MockServer::start().await;
+        let config = gmail_config(&server, "token:test-token".to_string());
+
+        Mock::given(method("POST"))
+            .and(path("/gmail/v1/users/user%40example.com/watch"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "historyId": "100",
+                "expiration": "999999"
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/gmail/v1/users/user%40example.com/messages/msg-1/modify"))
+            .and(body_string_contains("INBOX"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "msg-1"
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("DELETE"))
+            .and(path("/gmail/v1/users/user%40example.com/messages/msg-2"))
+            .respond_with(ResponseTemplate::new(204))
+            .mount(&server)
+            .await;
+
+        let mut gmail = GmailPubSub::new(config);
+        gmail.connect().await.unwrap();
+        gmail
+            .send(OutgoingMessage {
+                session_id: Uuid::new_v4(),
+                content: String::new(),
+                metadata: serde_json::json!({
+                    "gmail_action": "archive",
+                    "gmail_message_id": "msg-1"
+                }),
+            })
+            .await
+            .unwrap();
+        gmail
+            .send(OutgoingMessage {
+                session_id: Uuid::new_v4(),
+                content: String::new(),
+                metadata: serde_json::json!({
+                    "gmail_action": "delete",
+                    "gmail_message_id": "msg-2"
+                }),
+            })
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_send_forward_action_with_local_attachment() {
+        let server = MockServer::start().await;
+        let config = gmail_config(&server, "token:test-token".to_string());
+
+        Mock::given(method("POST"))
+            .and(path("/gmail/v1/users/user%40example.com/watch"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "historyId": "100",
+                "expiration": "999999"
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/gmail/v1/users/user%40example.com/messages/msg-1"))
+            .and(query_param("format", "full"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "msg-1",
+                "threadId": "thread-1",
+                "labelIds": ["INBOX"],
+                "internalDate": "1710000000000",
+                "historyId": "100",
+                "payload": {
+                    "mimeType": "text/plain",
+                    "headers": [
+                        {"name": "From", "value": "sender@example.com"},
+                        {"name": "Subject", "value": "Original subject"}
+                    ],
+                    "body": {
+                        "data": "SGVsbG8="
+                    }
+                }
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/gmail/v1/users/user%40example.com/messages/send"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "sent-forward"
+            })))
+            .mount(&server)
+            .await;
+
+        let attachment_path =
+            std::env::temp_dir().join(format!("orc-gmail-forward-attachment-{}.txt", Uuid::new_v4()));
+        tokio::fs::write(&attachment_path, b"forward attachment")
+            .await
+            .expect("write attachment");
+
+        let mut gmail = GmailPubSub::new(config);
+        gmail.connect().await.unwrap();
+        gmail
+            .send(OutgoingMessage {
+                session_id: Uuid::new_v4(),
+                content: "Please see below".to_string(),
+                metadata: serde_json::json!({
+                    "gmail_action": "forward",
+                    "gmail_message_id": "msg-1",
+                    "gmail_forward_to": "forward@example.com",
+                    "file_references": [{
+                        "local_path": attachment_path,
+                        "name": "notes.txt",
+                        "mime": "text/plain"
+                    }]
+                }),
+            })
+            .await
+            .unwrap();
+
+        let _ = tokio::fs::remove_file(attachment_path).await;
+    }
+
+    #[tokio::test]
+    async fn test_direct_send_supports_gmail_thread_id() {
+        let server = MockServer::start().await;
+        let config = gmail_config(&server, "token:test-token".to_string());
+
+        Mock::given(method("POST"))
+            .and(path("/gmail/v1/users/user%40example.com/watch"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "historyId": "100",
+                "expiration": "999999"
+            })))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/gmail/v1/users/user%40example.com/messages/send"))
+            .and(body_string_contains("thread-99"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "sent-threaded"
+            })))
+            .mount(&server)
+            .await;
+
+        let mut gmail = GmailPubSub::new(config);
+        gmail.connect().await.unwrap();
+        gmail
+            .send(OutgoingMessage {
+                session_id: Uuid::new_v4(),
+                content: "Threaded send".to_string(),
+                metadata: serde_json::json!({
+                    "gmail_to": ["person@example.com"],
+                    "gmail_subject": "Thread update",
+                    "gmail_thread_id": "thread-99"
+                }),
+            })
+            .await
+            .unwrap();
     }
 }
