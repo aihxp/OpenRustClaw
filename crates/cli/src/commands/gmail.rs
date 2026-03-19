@@ -28,7 +28,8 @@ async fn read_input(path: &str) -> Result<String> {
 }
 
 fn file_reference_values(paths: &[String]) -> Vec<serde_json::Value> {
-    paths.iter()
+    paths
+        .iter()
         .map(|path| {
             let name = std::path::Path::new(path)
                 .file_name()
@@ -170,7 +171,9 @@ pub async fn label(
 pub async fn archive(config_path: &str, message_id: &str) -> Result<()> {
     let mut channel = channel_from_config(config_path);
     channel.connect().await?;
-    channel.take_action(message_id, EmailAction::Archive).await?;
+    channel
+        .take_action(message_id, EmailAction::Archive)
+        .await?;
     channel.disconnect().await?;
     println!("archived Gmail message {}", message_id);
     Ok(())

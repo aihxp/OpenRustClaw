@@ -705,7 +705,7 @@ Exit criteria:
 
 Goal: match OpenClaw's operator UX and tooling surface while keeping Rust-native interfaces.
 
-Status: complete for shipped CLI/MCP control-plane surfaces, onboarding scaffolding, and doctor validation; Web Control UI, richer browser/web tooling, and full orchestrated runtime execution remain open.
+Status: complete for shipped CLI/MCP control-plane surfaces, shared typed control/config/diagnostics APIs, channel account CRUD parity, onboarding scaffolding, and doctor validation; Web Control UI, richer browser/web tooling, deeper service diagnostics, and full orchestrated runtime execution remain open.
 
 Additional later-surface work:
 
@@ -752,6 +752,22 @@ Completed:
   - show model-role recommendations during setup.
 - [x] Add `models scan` as the shipped recommendation/health surface for role-aware provider defaults.
 - [x] Expand `doctor` so it can validate and, where safe, repair the shipped control-plane registry.
+- [x] Build typed HTTP and WebSocket APIs that the Control UI and external clients share:
+  - `GET /control/runtime`,
+  - `GET/PUT /control/config`,
+  - `POST /control/config/validate`,
+  - `GET /control/diagnostics`,
+  - `GET /control/diagnostics/ws`,
+  - shared typed channel-registry HTTP routes under `/control/channels/...`.
+- [x] Add a shared typed configuration protocol so CLI, future Control UI, and future external clients can read, validate, and write the same `AppConfig` model instead of diverging ad hoc flows.
+- [x] Add channel account CRUD parity to the CLI and shared Control API:
+  - `openrustclaw channels create-account|show-account|delete-account|show-binding|delete-binding`,
+  - HTTP create/show/update/delete routes for channel accounts and bindings under `/control/channels/...`.
+- [x] Add baseline operator diagnostics surfaces:
+  - reusable typed `doctor` reports,
+  - `openrustclaw doctor --non-interactive`,
+  - `GET /control/diagnostics`,
+  - `GET /control/diagnostics/ws`.
 
 Remaining:
 
@@ -979,7 +995,6 @@ Remaining:
   - logs,
   - extensions/plugins,
   - secrets/service status.
-- [ ] Build typed HTTP and WebSocket APIs that the Control UI and external clients share.
 - [ ] Finish onboarding parity beyond the shipped scaffold:
   - QuickStart vs Advanced path selection,
   - local gateway vs remote gateway/client mode,
@@ -988,7 +1003,6 @@ Remaining:
   - daemon/service install polish,
   - post-onboarding health check and first dashboard/chat handoff,
   - richer remote access guidance.
-- [ ] Add a shared onboarding/config protocol so CLI, future Control UI, and future desktop/mobile onboarding all write the same typed configuration model instead of diverging flows.
 - [ ] Make multi-claw mode and assignment state part of the shared typed configuration model:
   - current execution mode,
   - registered Claws,
@@ -1029,15 +1043,12 @@ Remaining:
   - validation before cutover,
   - session-safe rebind and rollback,
   - degraded-mode fallback if the requested model cannot start.
-- [ ] Add channel account CRUD parity to the CLI and Control UI.
-- [ ] Add operator-grade diagnostics:
-  - gateway health,
-  - channel status,
-  - auth status,
-  - job status,
-  - trace links,
-  - config validation,
-  - secrets/service state.
+- [ ] Extend operator-grade diagnostics beyond the shipped baseline:
+  - live gateway health/service status,
+  - channel connectivity and auth state,
+  - scheduler/job status,
+  - trace-link surfacing,
+  - richer secrets/service-state inspection.
 - [x] Expand `doctor` into a high-signal repair and migration surface inspired by OpenClaw:
   - `openrustclaw doctor`,
   - `openrustclaw doctor --repair`,

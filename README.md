@@ -25,7 +25,7 @@ The roadmap further includes model-aware artifact sync, memory rehydration on mo
 The model-awareness track now also includes a canonical instruction/context artifact registry so OpenRustClaw can understand and translate common project guidance files like `AGENTS.md`, `AI.md`, `CONTEXT.md`, `ARCHITECTURE.md`, `CLAUDE.md`, `GEMINI.md`, Copilot instruction files, Cursor/Continue rules, and local open-weight `Modelfile` packaging.
 The roadmap also now calls for onboarding-time provider/model scans and role-aware recommendations: Groq for low-latency core runtime use, OpenRouter for broad fallback/control-plane coverage, SiliconFlow for higher-capability secondary routing, and Ollama as the local/offline safety net, all validated against user-supplied keys rather than hardcoded assumptions.
 The operator roadmap also now explicitly includes an OpenClaw-inspired onboarding journey, typed user configuration/settings flows, solo-versus-multi-claw setup choices, and a stronger `doctor` repair/migration surface rather than leaving these as ad hoc setup utilities.
-The shipped control-plane surface now includes a file-backed `.claw/control/` registry for agent profiles, model profiles, Claw manifests, runtime-mode/task/category bindings, runtime self-description, and MCP/CLI inspection tools; the future Web Control UI is expected to reuse this registry instead of inventing a separate state model.
+The shipped control-plane surface now includes a file-backed `.claw/control/` registry for agent profiles, model profiles, Claw manifests, runtime-mode/task/category bindings, runtime self-description, shared typed control/config/diagnostics APIs, and MCP/CLI inspection tools; the future Web Control UI is expected to reuse this registry instead of inventing a separate state model.
 
 ## Quick Start
 
@@ -133,10 +133,10 @@ Current tier-1 status:
 Channel routing/operator controls:
 
 - `.claw/channels/` is the standard operator-visible registry for pending/approved accounts and channel bindings
-- `openrustclaw channels init|list|approve|block|activation|bind` manages tier-1 channel pairing state and binding policy
+- `openrustclaw channels init|list|show-account|create-account|delete-account|approve|block|activation|bind|show-binding|delete-binding` manages the shipped channel registry and binding policy
 - `openrustclaw imessage ping|server|chats|contacts|send|send-file|tapback` exposes the shipped iMessage / BlueBubbles operator flows directly in the CLI
 - `openrustclaw signal register|verify|link|list-groups` exposes the shipped Signal setup and operator flows directly in the CLI
-- `GET/POST /control/channels...` exposes the same shipped channel registry over typed HTTP so the future Control UI can reuse the runtime state model
+- `GET/POST/PUT/DELETE /control/channels...` exposes the same shipped channel registry over typed HTTP so the future Control UI can reuse the runtime state model
 - shipped channel routing now applies workspace/account/channel binding precedence, pairing approval gates, group mention activation, and shared reply chunking/coalescing/pacing policy
 - shipped channel routing now normalizes workspace/scope/group/mention metadata across Teams, Google Chat, Matrix, and Signal as well, so the same binding and isolation rules apply across the newer shipped channels too
 - `openrustclaw matrix join|leave|rooms|send-formatted|react|send-file|typing|redact` exposes the shipped Matrix operator flows directly in the CLI
@@ -150,7 +150,13 @@ Channel routing/operator controls:
   - solo/task/category/orchestrated runtime mode
   - task/category-to-Claw assignments
 - `openrustclaw control init|list|show|validate|describe|create-agent|create-model|create-claw|mode|assign-task|assign-category`
-- `openrustclaw doctor --repair --deep` now validates and, where safe, scaffolds the shipped control-plane registry
+- shared typed control surfaces now exist at:
+  - `GET /control/runtime`
+  - `GET/PUT /control/config`
+  - `POST /control/config/validate`
+  - `GET /control/diagnostics`
+  - `GET /control/diagnostics/ws`
+- `openrustclaw doctor --repair --deep --non-interactive` now validates and, where safe, scaffolds the shipped control-plane registry while exposing the same typed diagnostic model used by `/control/diagnostics`
 - the runtime syncs `.claw/control/CLAW_RUNTIME.md` so Claw itself can see whether it is running solo or alongside other Claws and what delegation/isolation policies exist
 
 ## Memory System

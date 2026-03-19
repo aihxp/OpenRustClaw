@@ -1,141 +1,93 @@
 //! Diagnostics command - Check system health.
 
 use anyhow::Result;
+use chrono::Utc;
+use serde::Serialize;
 use std::path::{Path, PathBuf};
 
 use super::control;
 
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum DiagnosticStatus {
+    Ok,
+    Warning,
+    Failed,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DiagnosticCheck {
+    pub id: String,
+    pub label: String,
+    pub status: DiagnosticStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DiagnosticReport {
+    pub generated_at: chrono::DateTime<chrono::Utc>,
+    pub config_path: String,
+    pub deep: bool,
+    pub checks: Vec<DiagnosticCheck>,
+    pub passed: usize,
+    pub warnings: usize,
+    pub failed: usize,
+    pub healthy: bool,
+}
+
 /// Run diagnostics.
-pub async fn run(repair: bool, deep: bool, _non_interactive: bool) -> Result<()> {
+pub async fn run(repair: bool, deep: bool, non_interactive: bool) -> Result<()> {
+    let report = collect_report(repair, deep, None).await?;
+    if non_interactive {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&report).expect("diagnostic report should serialize")
+        );
+        return Ok(());
+    }
+
     println!("╔══════════════════════════════════════════════════════════╗");
     println!("║           OpenRustClaw Diagnostics                       ║");
     println!("╚══════════════════════════════════════════════════════════╝");
     println!();
 
-    let mut checks_passed = 0;
-    let mut checks_failed = 0;
-    let mut checks_warning = 0;
-
-    // 1. Check database connection
-    print!("[1/8] Checking database connection... ");
-    match check_database().await {
-        Ok(()) => {
-            println!("\x1b[32m✓ OK\x1b[0m");
-            checks_passed += 1;
+    for (index, check) in report.checks.iter().enumerate() {
+        print!(
+            "[{}/{}] Checking {}... ",
+            index + 1,
+            report.checks.len(),
+            check.label
+        );
+        match check.status {
+            DiagnosticStatus::Ok => println!("\x1b[32m✓ OK\x1b[0m"),
+            DiagnosticStatus::Warning => println!("\x1b[33m⚠ WARNING\x1b[0m"),
+            DiagnosticStatus::Failed => println!("\x1b[31m✗ FAILED\x1b[0m"),
         }
-        Err(e) => {
-            println!("\x1b[31m✗ FAILED\x1b[0m");
-            println!("      Error: {}", e);
-            checks_failed += 1;
-        }
-    }
-
-    // 2. Check database migrations
-    print!("[2/8] Checking database migrations... ");
-    match check_migrations().await {
-        Ok(()) => {
-            println!("\x1b[32m✓ OK\x1b[0m");
-            checks_passed += 1;
-        }
-        Err(e) => {
-            println!("\x1b[31m✗ FAILED\x1b[0m");
-            println!("      Error: {}", e);
-            checks_failed += 1;
+        if let Some(message) = &check.message {
+            let prefix = if check.status == DiagnosticStatus::Failed {
+                "Error"
+            } else {
+                ""
+            };
+            if prefix.is_empty() {
+                println!("      {}", message);
+            } else {
+                println!("      {}: {}", prefix, message);
+            }
         }
     }
 
-    // 3. Check provider API keys
-    print!("[3/8] Checking provider API keys... ");
-    match check_api_keys() {
-        Ok(()) => {
-            println!("\x1b[32m✓ OK\x1b[0m");
-            checks_passed += 1;
-        }
-        Err(e) => {
-            println!("\x1b[33m⚠ WARNING\x1b[0m");
-            println!("      {}", e);
-            checks_warning += 1;
-        }
-    }
-
-    // 4. Check sidecar availability
-    print!("[4/8] Checking sidecar availability... ");
-    match check_sidecar().await {
-        Ok(()) => {
-            println!("\x1b[32m✓ OK\x1b[0m");
-            checks_passed += 1;
-        }
-        Err(e) => {
-            println!("\x1b[33m⚠ WARNING\x1b[0m");
-            println!("      {}", e);
-            checks_warning += 1;
-        }
-    }
-
-    // 5. Check configuration files
-    print!("[5/8] Checking configuration files... ");
-    match check_config() {
-        Ok(()) => {
-            println!("\x1b[32m✓ OK\x1b[0m");
-            checks_passed += 1;
-        }
-        Err(e) => {
-            println!("\x1b[31m✗ FAILED\x1b[0m");
-            println!("      Error: {}", e);
-            checks_failed += 1;
-        }
-    }
-
-    // 6. Check skill directory
-    print!("[6/8] Checking skill directory... ");
-    match check_skills_dir().await {
-        Ok(()) => {
-            println!("\x1b[32m✓ OK\x1b[0m");
-            checks_passed += 1;
-        }
-        Err(e) => {
-            println!("\x1b[33m⚠ WARNING\x1b[0m");
-            println!("      {}", e);
-            checks_warning += 1;
-        }
-    }
-
-    // 7. Check data directory
-    print!("[7/8] Checking data directory... ");
-    match check_data_dir().await {
-        Ok(()) => {
-            println!("\x1b[32m✓ OK\x1b[0m");
-            checks_passed += 1;
-        }
-        Err(e) => {
-            println!("\x1b[31m✗ FAILED\x1b[0m");
-            println!("      Error: {}", e);
-            checks_failed += 1;
-        }
-    }
-
-    // 8. Check control-plane registry
-    print!("[8/8] Checking control-plane registry... ");
-    match check_control_registry(repair).await {
-        Ok(()) => {
-            println!("\x1b[32m✓ OK\x1b[0m");
-            checks_passed += 1;
-        }
-        Err(e) => {
-            println!("\x1b[33m⚠ WARNING\x1b[0m");
-            println!("      {}", e);
-            checks_warning += 1;
-        }
-    }
-
-    if deep {
+    if report.deep {
         println!();
         println!("Deep diagnostics:");
-        print!("  • Ollama availability... ");
-        if check_ollama().await {
-            println!("\x1b[32mOK\x1b[0m");
-        } else {
-            println!("\x1b[90mnot detected\x1b[0m");
+        if let Some(check) = report.checks.iter().find(|check| check.id == "ollama") {
+            print!("  • Ollama availability... ");
+            match check.status {
+                DiagnosticStatus::Ok => println!("\x1b[32mOK\x1b[0m"),
+                DiagnosticStatus::Warning => println!("\x1b[90mnot detected\x1b[0m"),
+                DiagnosticStatus::Failed => println!("\x1b[31mfailed\x1b[0m"),
+            }
         }
     }
 
@@ -143,31 +95,31 @@ pub async fn run(repair: bool, deep: bool, _non_interactive: bool) -> Result<()>
     println!();
     println!("══════════════════════════════════════════════════════════");
 
-    let total = checks_passed + checks_failed + checks_warning;
+    let total = report.passed + report.failed + report.warnings;
 
-    if checks_failed == 0 && checks_warning == 0 {
+    if report.failed == 0 && report.warnings == 0 {
         println!("\x1b[32m✓ All {} checks passed!\x1b[0m", total);
         println!();
         println!("Your OpenRustClaw installation is ready to use.");
     } else {
         println!(
             "Results: {} passed, {} failed, {} warnings",
-            checks_passed, checks_failed, checks_warning
+            report.passed, report.failed, report.warnings
         );
 
-        if checks_failed > 0 {
+        if report.failed > 0 {
             println!();
             println!(
                 "\x1b[31m{} critical issue(s) need to be resolved.\x1b[0m",
-                checks_failed
+                report.failed
             );
         }
 
-        if checks_warning > 0 {
+        if report.warnings > 0 {
             println!();
             println!(
                 "\x1b[33m{} warning(s) - you may want to address these.\x1b[0m",
-                checks_warning
+                report.warnings
             );
         }
     }
@@ -175,6 +127,127 @@ pub async fn run(repair: bool, deep: bool, _non_interactive: bool) -> Result<()>
     println!();
 
     Ok(())
+}
+
+pub async fn collect_report(
+    repair: bool,
+    deep: bool,
+    config_path: Option<&str>,
+) -> Result<DiagnosticReport> {
+    let config_path = config_path.unwrap_or("config/default.toml").to_string();
+    let mut checks = Vec::new();
+
+    checks.push(diagnostic_check(
+        "database",
+        "database connection",
+        check_database(Some(&config_path)).await,
+        false,
+    ));
+    checks.push(diagnostic_check(
+        "migrations",
+        "database migrations",
+        check_migrations(Some(&config_path)).await,
+        false,
+    ));
+    checks.push(diagnostic_check(
+        "api_keys",
+        "provider API keys",
+        check_api_keys(),
+        true,
+    ));
+    checks.push(diagnostic_check(
+        "sidecar",
+        "sidecar availability",
+        check_sidecar(Some(&config_path)).await,
+        true,
+    ));
+    checks.push(diagnostic_check(
+        "config",
+        "configuration files",
+        check_config(Some(&config_path)),
+        false,
+    ));
+    checks.push(diagnostic_check(
+        "skills_dir",
+        "skill directory",
+        check_skills_dir().await,
+        true,
+    ));
+    checks.push(diagnostic_check(
+        "data_dir",
+        "data directory",
+        check_data_dir().await,
+        false,
+    ));
+    checks.push(diagnostic_check(
+        "control_registry",
+        "control-plane registry",
+        check_control_registry(repair).await,
+        true,
+    ));
+
+    if deep {
+        checks.push(diagnostic_check(
+            "ollama",
+            "ollama availability",
+            if check_ollama().await {
+                Ok(())
+            } else {
+                anyhow::bail!("Ollama not detected")
+            },
+            true,
+        ));
+    }
+
+    let passed = checks
+        .iter()
+        .filter(|check| check.status == DiagnosticStatus::Ok)
+        .count();
+    let warnings = checks
+        .iter()
+        .filter(|check| check.status == DiagnosticStatus::Warning)
+        .count();
+    let failed = checks
+        .iter()
+        .filter(|check| check.status == DiagnosticStatus::Failed)
+        .count();
+
+    Ok(DiagnosticReport {
+        generated_at: Utc::now(),
+        config_path,
+        deep,
+        checks,
+        passed,
+        warnings,
+        failed,
+        healthy: failed == 0,
+    })
+}
+
+fn diagnostic_check(
+    id: &str,
+    label: &str,
+    result: Result<()>,
+    warning_on_error: bool,
+) -> DiagnosticCheck {
+    match result {
+        Ok(()) => DiagnosticCheck {
+            id: id.to_string(),
+            label: label.to_string(),
+            status: DiagnosticStatus::Ok,
+            message: None,
+        },
+        Err(error) => DiagnosticCheck {
+            id: id.to_string(),
+            label: label.to_string(),
+            status: if warning_on_error {
+                DiagnosticStatus::Warning
+            } else {
+                DiagnosticStatus::Failed
+            },
+            message: Some(error.to_string()),
+        },
+    }
 }
 
 async fn check_control_registry(repair: bool) -> Result<()> {
@@ -196,8 +269,8 @@ async fn check_control_registry(repair: bool) -> Result<()> {
 }
 
 /// Check database connection.
-async fn check_database() -> Result<()> {
-    let config = openrustclaw_core::config::AppConfig::load().unwrap_or_default();
+async fn check_database(config_path: Option<&str>) -> Result<()> {
+    let config = load_app_config(config_path);
 
     let pool = openrustclaw_db::init_pool(&config.database.url, 1).await?;
 
@@ -208,8 +281,8 @@ async fn check_database() -> Result<()> {
 }
 
 /// Check database migrations status.
-async fn check_migrations() -> Result<()> {
-    let config = openrustclaw_core::config::AppConfig::load().unwrap_or_default();
+async fn check_migrations(config_path: Option<&str>) -> Result<()> {
+    let config = load_app_config(config_path);
 
     let pool = openrustclaw_db::init_pool(&config.database.url, 1).await?;
 
@@ -275,8 +348,8 @@ where
 }
 
 /// Check sidecar availability.
-async fn check_sidecar() -> Result<()> {
-    let config = openrustclaw_core::config::AppConfig::load().unwrap_or_default();
+async fn check_sidecar(config_path: Option<&str>) -> Result<()> {
+    let config = load_app_config(config_path);
 
     // Check if Python is available
     let output = tokio::process::Command::new(&config.sidecar.python_path)
@@ -333,17 +406,24 @@ fn sidecar_source_dir() -> PathBuf {
 }
 
 /// Check configuration files.
-fn check_config() -> Result<()> {
+fn check_config(config_path: Option<&str>) -> Result<()> {
+    let path = config_path.unwrap_or("config/default.toml");
     // Check default config exists
-    if !Path::new("config/default.toml").exists() {
-        anyhow::bail!("config/default.toml not found");
+    if !Path::new(path).exists() {
+        anyhow::bail!("{} not found", path);
     }
 
     // Try to load config
-    let _config = openrustclaw_core::config::AppConfig::load()
-        .map_err(|e| anyhow::anyhow!("Failed to load config: {}", e))?;
+    let _config = load_app_config(config_path);
 
     Ok(())
+}
+
+fn load_app_config(config_path: Option<&str>) -> openrustclaw_core::config::AppConfig {
+    match config_path {
+        Some(path) => openrustclaw_core::config::AppConfig::load_from(path).unwrap_or_default(),
+        None => openrustclaw_core::config::AppConfig::load().unwrap_or_default(),
+    }
 }
 
 /// Check skills directory.
@@ -438,7 +518,7 @@ mod tests {
         // This tests that check_config fails when config/default.toml doesn't exist
         // We can't guarantee this file exists in test env, so we test the function signature
         // The function itself checks Path::new("config/default.toml").exists()
-        let _result = check_config();
+        let _result = check_config(None);
         // Just verify it doesn't panic
     }
 }

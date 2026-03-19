@@ -13,7 +13,10 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use governor::{Quota, RateLimiter};
-use reqwest::{Client, multipart::{Form, Part}};
+use reqwest::{
+    Client,
+    multipart::{Form, Part},
+};
 use std::num::NonZeroU32;
 use tokio::sync::{Mutex, RwLock, mpsc};
 use tokio::task::JoinHandle;
@@ -178,7 +181,9 @@ impl TelegramChannel {
                         .map(|values| {
                             values
                                 .iter()
-                                .filter_map(|option| option.get("text").and_then(|value| value.as_str()))
+                                .filter_map(|option| {
+                                    option.get("text").and_then(|value| value.as_str())
+                                })
                                 .collect::<Vec<_>>()
                                 .join(", ")
                         })
@@ -427,7 +432,11 @@ impl TelegramChannel {
     async fn set_webhook(&self, webhook_url: &str) -> Result<()> {
         let response = self
             .client
-            .post(format!("{}/bot{}/setWebhook", self.api_base_url(), self.config.token))
+            .post(format!(
+                "{}/bot{}/setWebhook",
+                self.api_base_url(),
+                self.config.token
+            ))
             .json(&serde_json::json!({
                 "url": webhook_url,
                 "allowed_updates": ["message"],
@@ -597,12 +606,13 @@ impl TelegramChannel {
         upload: Option<(&str, String, Option<String>)>,
     ) -> Result<reqwest::Response> {
         let request = if let Some((field, local_path, filename)) = upload {
-            let bytes = tokio::fs::read(&local_path)
-                .await
-                .map_err(|e| ChannelError::SendFailed {
-                    platform: "telegram".to_string(),
-                    message: format!("Failed to read Telegram upload '{}': {}", local_path, e),
-                })?;
+            let bytes =
+                tokio::fs::read(&local_path)
+                    .await
+                    .map_err(|e| ChannelError::SendFailed {
+                        platform: "telegram".to_string(),
+                        message: format!("Failed to read Telegram upload '{}': {}", local_path, e),
+                    })?;
             let mut form = Form::new();
             if let Some(object) = payload.as_object() {
                 for (key, value) in object {
@@ -625,7 +635,9 @@ impl TelegramChannel {
             }) {
                 part = part.file_name(filename);
             }
-            self.client.post(url).multipart(form.part(field.to_string(), part))
+            self.client
+                .post(url)
+                .multipart(form.part(field.to_string(), part))
         } else {
             self.client.post(url).json(&payload)
         };

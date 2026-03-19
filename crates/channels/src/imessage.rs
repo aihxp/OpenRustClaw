@@ -323,7 +323,10 @@ impl IMessageChannel {
 
     async fn outgoing_attachments(metadata: &Value) -> Result<Vec<OutgoingAttachment>> {
         let mut attachments = Vec::new();
-        let Some(entries) = metadata.get("file_references").and_then(|value| value.as_array()) else {
+        let Some(entries) = metadata
+            .get("file_references")
+            .and_then(|value| value.as_array())
+        else {
             return Ok(attachments);
         };
 
@@ -332,12 +335,16 @@ impl IMessageChannel {
                 continue;
             };
 
-            let bytes = tokio::fs::read(local_path)
-                .await
-                .map_err(|e| ChannelError::SendFailed {
-                    platform: "imessage".to_string(),
-                    message: format!("Failed to read iMessage attachment '{}': {}", local_path, e),
-                })?;
+            let bytes =
+                tokio::fs::read(local_path)
+                    .await
+                    .map_err(|e| ChannelError::SendFailed {
+                        platform: "imessage".to_string(),
+                        message: format!(
+                            "Failed to read iMessage attachment '{}': {}",
+                            local_path, e
+                        ),
+                    })?;
 
             let filename = entry
                 .get("name")
@@ -396,13 +403,13 @@ impl IMessageChannel {
             password,
             "api/v1/message/text",
         )
-            .json(&payload)
-            .send()
-            .await
-            .map_err(|e| ChannelError::SendFailed {
-                platform: "imessage".to_string(),
-                message: format!("HTTP request failed: {}", e),
-            })?;
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| ChannelError::SendFailed {
+            platform: "imessage".to_string(),
+            message: format!("HTTP request failed: {}", e),
+        })?;
 
         if !response.status().is_success() {
             let error_text = response
@@ -559,13 +566,13 @@ impl IMessageChannel {
                     password,
                     "api/v1/message/react",
                 )
-                    .json(&payload)
-                    .send()
-                    .await
-                    .map_err(|e| ChannelError::SendFailed {
-                        platform: "imessage".to_string(),
-                        message: format!("Failed to send tapback: {}", e),
-                    })?;
+                .json(&payload)
+                .send()
+                .await
+                .map_err(|e| ChannelError::SendFailed {
+                    platform: "imessage".to_string(),
+                    message: format!("Failed to send tapback: {}", e),
+                })?;
 
                 Ok(())
             }
@@ -599,7 +606,10 @@ impl IMessageChannel {
                 })?;
 
                 let status = response.status();
-                let value: Value = response.json().await.unwrap_or_else(|_| serde_json::json!({}));
+                let value: Value = response
+                    .json()
+                    .await
+                    .unwrap_or_else(|_| serde_json::json!({}));
                 if !status.is_success() {
                     return Err(ChannelError::Connection {
                         platform: "imessage".to_string(),
@@ -644,7 +654,10 @@ impl IMessageChannel {
                 })?;
 
                 let status = response.status();
-                let value: Value = response.json().await.unwrap_or_else(|_| serde_json::json!({}));
+                let value: Value = response
+                    .json()
+                    .await
+                    .unwrap_or_else(|_| serde_json::json!({}));
                 if !status.is_success() {
                     return Err(ChannelError::Connection {
                         platform: "imessage".to_string(),
@@ -677,7 +690,7 @@ impl IMessageChannel {
                     platform: "imessage".to_string(),
                     message: "Chat listing is only supported in BlueBubbles mode".to_string(),
                 }
-                .into())
+                .into());
             }
         };
 
@@ -701,7 +714,10 @@ impl IMessageChannel {
         })?;
 
         let status = response.status();
-        let value: Value = response.json().await.unwrap_or_else(|_| serde_json::json!({}));
+        let value: Value = response
+            .json()
+            .await
+            .unwrap_or_else(|_| serde_json::json!({}));
         if !status.is_success() {
             return Err(ChannelError::Connection {
                 platform: "imessage".to_string(),
@@ -724,7 +740,7 @@ impl IMessageChannel {
                     platform: "imessage".to_string(),
                     message: "Contact listing is only supported in BlueBubbles mode".to_string(),
                 }
-                .into())
+                .into());
             }
         };
 
@@ -745,7 +761,10 @@ impl IMessageChannel {
         })?;
 
         let status = response.status();
-        let value: Value = response.json().await.unwrap_or_else(|_| serde_json::json!({}));
+        let value: Value = response
+            .json()
+            .await
+            .unwrap_or_else(|_| serde_json::json!({}));
         if !status.is_success() {
             return Err(ChannelError::Connection {
                 platform: "imessage".to_string(),
@@ -840,13 +859,14 @@ impl Channel for IMessageChannel {
                 server_url,
                 password,
             } => {
-                let chat_guid = Self::direct_target_from_metadata(&msg.metadata).ok_or_else(|| {
-                    ChannelError::InvalidFormat {
-                        platform: "imessage".to_string(),
-                        message: "Missing imessage_chat_guid or imessage_recipient in metadata"
-                            .to_string(),
-                    }
-                })?;
+                let chat_guid =
+                    Self::direct_target_from_metadata(&msg.metadata).ok_or_else(|| {
+                        ChannelError::InvalidFormat {
+                            platform: "imessage".to_string(),
+                            message: "Missing imessage_chat_guid or imessage_recipient in metadata"
+                                .to_string(),
+                        }
+                    })?;
 
                 if attachments.is_empty() {
                     self.send_bluebubbles(server_url, password, &chat_guid, &msg.content)
@@ -870,13 +890,14 @@ impl Channel for IMessageChannel {
                     }
                     .into());
                 }
-                let recipient = Self::applescript_target_from_metadata(&msg.metadata).ok_or_else(
-                    || ChannelError::InvalidFormat {
-                        platform: "imessage".to_string(),
-                        message: "Missing imessage_recipient or imessage_chat_guid in metadata"
-                            .to_string(),
-                    },
-                )?;
+                let recipient =
+                    Self::applescript_target_from_metadata(&msg.metadata).ok_or_else(|| {
+                        ChannelError::InvalidFormat {
+                            platform: "imessage".to_string(),
+                            message: "Missing imessage_recipient or imessage_chat_guid in metadata"
+                                .to_string(),
+                        }
+                    })?;
                 self.send_applescript(&recipient, &msg.content).await
             }
             IMessageBridgeMode::PrivateApi => Err(ChannelError::Config {
@@ -1375,10 +1396,8 @@ mod tests {
             request
         });
 
-        let attachment_path = std::env::temp_dir().join(format!(
-            "orc-imessage-attachment-{}.txt",
-            Uuid::new_v4()
-        ));
+        let attachment_path =
+            std::env::temp_dir().join(format!("orc-imessage-attachment-{}.txt", Uuid::new_v4()));
         tokio::fs::write(&attachment_path, b"hello from attachment")
             .await
             .unwrap();

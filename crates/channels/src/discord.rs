@@ -110,11 +110,12 @@ impl DiscordChannel {
         format!("Bot {}", self.config.token)
     }
 
-    async fn outgoing_attachments(
-        metadata: &serde_json::Value,
-    ) -> Result<Vec<OutgoingAttachment>> {
+    async fn outgoing_attachments(metadata: &serde_json::Value) -> Result<Vec<OutgoingAttachment>> {
         let mut attachments = Vec::new();
-        let Some(entries) = metadata.get("file_references").and_then(|value| value.as_array()) else {
+        let Some(entries) = metadata
+            .get("file_references")
+            .and_then(|value| value.as_array())
+        else {
             return Ok(attachments);
         };
 
@@ -123,12 +124,16 @@ impl DiscordChannel {
                 continue;
             };
 
-            let bytes = tokio::fs::read(local_path)
-                .await
-                .map_err(|e| ChannelError::SendFailed {
-                    platform: "discord".to_string(),
-                    message: format!("Failed to read Discord attachment '{}': {}", local_path, e),
-                })?;
+            let bytes =
+                tokio::fs::read(local_path)
+                    .await
+                    .map_err(|e| ChannelError::SendFailed {
+                        platform: "discord".to_string(),
+                        message: format!(
+                            "Failed to read Discord attachment '{}': {}",
+                            local_path, e
+                        ),
+                    })?;
 
             let filename = entry
                 .get("name")
@@ -158,10 +163,7 @@ impl DiscordChannel {
         Ok(attachments)
     }
 
-    fn multipart_form(
-        payload: &serde_json::Value,
-        attachments: &[OutgoingAttachment],
-    ) -> Form {
+    fn multipart_form(payload: &serde_json::Value, attachments: &[OutgoingAttachment]) -> Form {
         let mut form = Form::new().text("payload_json", payload.to_string());
         for (index, attachment) in attachments.iter().enumerate() {
             let part = if let Some(content_type) = &attachment.content_type {
@@ -2530,7 +2532,10 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(thread.metadata["discord_event_type"], "THREAD_CREATE");
-        assert_eq!(thread.metadata["discord_thread_name"], "investigation-thread");
+        assert_eq!(
+            thread.metadata["discord_thread_name"],
+            "investigation-thread"
+        );
         channel.disconnect().await.unwrap();
     }
 

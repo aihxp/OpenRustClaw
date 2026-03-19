@@ -10,8 +10,8 @@
 //! - Socket Mode or HTTP mode
 //! - Event handling
 
-use std::sync::Arc;
 use std::path::Path;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use futures::{SinkExt, StreamExt};
@@ -20,8 +20,8 @@ use hmac::{Hmac, Mac};
 use reqwest::Client;
 use sha2::Sha256;
 use std::num::NonZeroU32;
-use tokio::task::JoinHandle;
 use tokio::sync::{Mutex, RwLock, mpsc};
+use tokio::task::JoinHandle;
 use tokio_tungstenite::{connect_async, tungstenite::Message as WsMessage};
 use tracing::{debug, info, warn};
 use uuid::Uuid;
@@ -129,9 +129,7 @@ impl SlackChannel {
             .collect()
     }
 
-    fn parse_local_file_references(
-        metadata: &serde_json::Value,
-    ) -> Vec<(String, String, String)> {
+    fn parse_local_file_references(metadata: &serde_json::Value) -> Vec<(String, String, String)> {
         metadata
             .get("file_references")
             .and_then(|value| value.as_array())
@@ -175,12 +173,13 @@ impl SlackChannel {
         let mut completed_files = Vec::with_capacity(local_files.len());
 
         for (local_path, filename, title) in local_files {
-            let bytes = tokio::fs::read(local_path)
-                .await
-                .map_err(|e| ChannelError::SendFailed {
-                    platform: "slack".to_string(),
-                    message: format!("Failed to read Slack upload '{}': {}", local_path, e),
-                })?;
+            let bytes =
+                tokio::fs::read(local_path)
+                    .await
+                    .map_err(|e| ChannelError::SendFailed {
+                        platform: "slack".to_string(),
+                        message: format!("Failed to read Slack upload '{}': {}", local_path, e),
+                    })?;
 
             let length = bytes.len();
             let upload_url = format!("{}/files.getUploadURLExternal", self.api_base_url());
@@ -276,7 +275,10 @@ impl SlackChannel {
 
         let complete_response = self
             .client
-            .post(format!("{}/files.completeUploadExternal", self.api_base_url()))
+            .post(format!(
+                "{}/files.completeUploadExternal",
+                self.api_base_url()
+            ))
             .bearer_auth(&self.config.token)
             .json(&complete_payload)
             .send()
@@ -556,10 +558,13 @@ impl SlackChannel {
     }
 
     async fn open_socket_mode_url_for(config: &SlackConfig, client: &Client) -> Result<String> {
-        let app_token = config.app_token.as_ref().ok_or_else(|| ChannelError::Config {
-            platform: "slack".to_string(),
-            message: "Slack app_token is required for Socket Mode".to_string(),
-        })?;
+        let app_token = config
+            .app_token
+            .as_ref()
+            .ok_or_else(|| ChannelError::Config {
+                platform: "slack".to_string(),
+                message: "Slack app_token is required for Socket Mode".to_string(),
+            })?;
         let url = format!("{}/apps.connections.open", Self::api_base_url_for(config));
         let response = client
             .post(url)
@@ -797,7 +802,11 @@ impl Channel for SlackChannel {
         let file_refs = Self::parse_file_references(&msg.metadata);
         let local_files = Self::parse_local_file_references(&msg.metadata);
         let has_custom_rendering = blocks.is_some()
-            || msg.metadata.get("slack_attachments").and_then(|v| v.as_array()).is_some()
+            || msg
+                .metadata
+                .get("slack_attachments")
+                .and_then(|v| v.as_array())
+                .is_some()
             || download_actions
             || !file_refs.is_empty();
 
@@ -807,8 +816,13 @@ impl Channel for SlackChannel {
             } else {
                 Some(formatted_content.as_str())
             };
-            self.upload_local_files(&channel_id, thread_ts.as_deref(), upload_comment, &local_files)
-                .await?;
+            self.upload_local_files(
+                &channel_id,
+                thread_ts.as_deref(),
+                upload_comment,
+                &local_files,
+            )
+            .await?;
             if !has_custom_rendering {
                 debug!("Slack message sent via native file upload");
                 return Ok(());
@@ -1375,10 +1389,7 @@ impl SlackEventHandler {
         if let Some(trigger_id) = payload.get("trigger_id").and_then(|value| value.as_str()) {
             metadata["slack_trigger_id"] = serde_json::json!(trigger_id);
         }
-        if let Some(response_url) = payload
-            .get("response_url")
-            .and_then(|value| value.as_str())
-        {
+        if let Some(response_url) = payload.get("response_url").and_then(|value| value.as_str()) {
             metadata["slack_response_url"] = serde_json::json!(response_url);
         }
 
@@ -1393,12 +1404,13 @@ impl SlackEventHandler {
     }
 
     async fn handle_socket_interaction(&self, payload: &serde_json::Value) -> Result<()> {
-        let user = payload.get("user").and_then(|value| value.as_object()).ok_or_else(|| {
-            ChannelError::InvalidFormat {
+        let user = payload
+            .get("user")
+            .and_then(|value| value.as_object())
+            .ok_or_else(|| ChannelError::InvalidFormat {
                 platform: "slack".to_string(),
                 message: "Slack interaction payload missing user".to_string(),
-            }
-        })?;
+            })?;
         let user_id = user
             .get("id")
             .and_then(|value| value.as_str())
@@ -1481,10 +1493,7 @@ impl SlackEventHandler {
         if let Some(trigger_id) = payload.get("trigger_id").and_then(|value| value.as_str()) {
             metadata["slack_trigger_id"] = serde_json::json!(trigger_id);
         }
-        if let Some(response_url) = payload
-            .get("response_url")
-            .and_then(|value| value.as_str())
-        {
+        if let Some(response_url) = payload.get("response_url").and_then(|value| value.as_str()) {
             metadata["slack_response_url"] = serde_json::json!(response_url);
         }
         if let Some(container) = payload.get("container").and_then(|value| value.as_object()) {
@@ -1567,16 +1576,17 @@ where
                 }
 
                 let payload = envelope.get("payload").cloned().unwrap_or(envelope.clone());
-                handler.handle_socket_envelope(envelope_type, &payload).await?;
+                handler
+                    .handle_socket_envelope(envelope_type, &payload)
+                    .await?;
             }
             WsMessage::Ping(payload) => {
-                stream
-                    .send(WsMessage::Pong(payload))
-                    .await
-                    .map_err(|e| ChannelError::Connection {
+                stream.send(WsMessage::Pong(payload)).await.map_err(|e| {
+                    ChannelError::Connection {
                         platform: "slack".to_string(),
                         message: format!("Failed to respond to Slack websocket ping: {}", e),
-                    })?;
+                    }
+                })?;
             }
             WsMessage::Close(_) => {
                 return Err(ChannelError::Connection {
@@ -1604,7 +1614,10 @@ mod tests {
 
     async fn spawn_mock_slack_socket(
         envelopes: Vec<serde_json::Value>,
-    ) -> (String, tokio::sync::oneshot::Receiver<Vec<serde_json::Value>>) {
+    ) -> (
+        String,
+        tokio::sync::oneshot::Receiver<Vec<serde_json::Value>>,
+    ) {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         let (ack_tx, ack_rx) = tokio::sync::oneshot::channel();
@@ -1629,7 +1642,13 @@ mod tests {
                     .send(WsMessage::Text(envelope.to_string().into()))
                     .await
                     .unwrap();
-                let ack = ws_stream.next().await.unwrap().unwrap().into_text().unwrap();
+                let ack = ws_stream
+                    .next()
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .into_text()
+                    .unwrap();
                 acks.push(serde_json::from_str(&ack).unwrap());
             }
             let _ = ack_tx.send(acks);
@@ -1855,7 +1874,10 @@ mod tests {
             .unwrap();
         assert_eq!(incoming.content, "hello from socket");
         assert_eq!(incoming.metadata["slack_stream_mode"], "mention");
-        assert_eq!(incoming.metadata["slack_socket_mode"], serde_json::Value::Null);
+        assert_eq!(
+            incoming.metadata["slack_socket_mode"],
+            serde_json::Value::Null
+        );
 
         let acks = ack_rx.await.unwrap();
         assert_eq!(acks[0]["envelope_id"], "1");
@@ -2105,7 +2127,9 @@ mod tests {
             .and(bearer_token("xoxb-test"))
             .and(body_string_contains("\"channel_id\":\"C123\""))
             .and(body_string_contains("\"title\":\"Report\""))
-            .and(body_string_contains("\"initial_comment\":\"Attached report\""))
+            .and(body_string_contains(
+                "\"initial_comment\":\"Attached report\"",
+            ))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "ok": true,
                 "files": [{"id":"F123"}]

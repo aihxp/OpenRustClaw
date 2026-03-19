@@ -5,13 +5,16 @@ use async_trait::async_trait;
 use axum::{
     Json, Router,
     body::Bytes,
-    extract::{Path as AxumPath, Query, State},
+    extract::{
+        Path as AxumPath, Query, State,
+        ws::{Message as WsMessage, WebSocket, WebSocketUpgrade},
+    },
     http::{HeaderMap, StatusCode},
     response::IntoResponse,
     routing::{get, post},
 };
 use chrono::{DateTime, Utc};
-use futures::Stream;
+use futures::{SinkExt, Stream, StreamExt};
 use openrustclaw_agent::runtime::AgentRuntime;
 use openrustclaw_channels::discord::DiscordInteractionsHandler;
 use openrustclaw_channels::gmail_pubsub::GmailWebhookHandler;
@@ -20,8 +23,8 @@ use openrustclaw_channels::google_meet::GoogleMeetWebhookHandler;
 use openrustclaw_channels::imessage::{BlueBubblesMessage, IMessageWebhookHandler};
 use openrustclaw_channels::mattermost::MattermostWebhookHandler;
 use openrustclaw_channels::slack::SlackEventHandler;
-use openrustclaw_channels::telegram::TelegramWebhookHandler;
 use openrustclaw_channels::teams::TeamsWebhookHandler;
+use openrustclaw_channels::telegram::TelegramWebhookHandler;
 use openrustclaw_core::error::{ChannelError as CoreChannelError, Error as CoreError, McpError};
 use openrustclaw_core::traits::{Channel, LlmProvider};
 use openrustclaw_core::types::{
@@ -36,6 +39,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::signal;
+use tokio::time::{Duration, interval};
 use tracing::{error, info, warn};
 
 use openrustclaw_channels::{ChannelFactory, ChannelType, parse_channels_list};
@@ -72,7 +76,7 @@ use super::channels::{
     ChannelBindingSpec, ChannelRegistry, ChannelSendPolicy, ensure_account_manifest,
     identity_from_message, load_registry, message_bot_mentioned, resolve_root,
 };
-use super::control;
+use super::{control, doctor};
 
 /// Run the start command - load config, optionally start the compatibility/experimental sidecar, and start the gateway.
 pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
@@ -243,12 +247,19 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
     let mut gmail_ingress_handler = None;
     let mut imessage_ingress_handler = None;
     let mut enabled_channels = Vec::new();
+    let channel_registry_root = resolve_root(None)?;
     let channel_registry = Arc::new(tokio::sync::RwLock::new(
-        load_registry(resolve_root(None)?).unwrap_or_else(|error| {
+        load_registry(channel_registry_root.clone()).unwrap_or_else(|error| {
             warn!(error = %error, "Failed to load file-backed channel registry; continuing with defaults");
-            ChannelRegistry::default()
+            ChannelRegistry {
+                root: channel_registry_root.clone(),
+                ..ChannelRegistry::default()
+            }
         }),
     ));
+    let workspace_root =
+        std::env::current_dir().context("Failed to determine current workspace root")?;
+    let control_root = control::control_root_for(&workspace_root);
 
     if channel_config.telegram.enabled
         && channel_config.telegram.mode == openrustclaw_core::config::TelegramMode::Webhook
@@ -498,7 +509,11 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
         app = app.merge(imessage_ingress_router(handler));
         info!("iMessage BlueBubbles ingress enabled at /webhooks/imessage/bluebubbles");
     }
-    app = app.merge(channel_registry_router(channel_registry));
+    app = app.merge(channel_registry_router(channel_registry.clone()));
+    app = app.merge(control_plane_router(ControlPlaneApiState {
+        control_root,
+        config_path: config_path.to_string(),
+    }));
 
     // Create shutdown signal handler
     let shutdown = async {
@@ -2325,6 +2340,12 @@ struct ChannelRegistryApiState {
     registry: Arc<tokio::sync::RwLock<ChannelRegistry>>,
 }
 
+#[derive(Clone)]
+struct ControlPlaneApiState {
+    control_root: PathBuf,
+    config_path: String,
+}
+
 fn discord_ingress_router(
     handler: DiscordInteractionsHandler,
     langsmith: Option<LangSmithClient>,
@@ -2344,8 +2365,14 @@ fn channel_registry_router(registry: Arc<tokio::sync::RwLock<ChannelRegistry>>) 
     Router::new()
         .route("/control/channels", get(channel_registry_index_handler))
         .route(
+            "/control/channels/accounts",
+            get(channel_registry_accounts_handler).post(channel_registry_create_account_handler),
+        )
+        .route(
             "/control/channels/accounts/{id}",
-            get(channel_registry_account_handler),
+            get(channel_registry_account_handler)
+                .put(channel_registry_update_account_handler)
+                .delete(channel_registry_delete_account_handler),
         )
         .route(
             "/control/channels/accounts/{id}/approve",
@@ -2363,7 +2390,32 @@ fn channel_registry_router(registry: Arc<tokio::sync::RwLock<ChannelRegistry>>) 
             "/control/channels/bindings",
             post(channel_registry_bind_handler),
         )
+        .route(
+            "/control/channels/bindings/{id}",
+            get(channel_registry_binding_handler)
+                .put(channel_registry_update_binding_handler)
+                .delete(channel_registry_delete_binding_handler),
+        )
         .with_state(ChannelRegistryApiState { registry })
+}
+
+fn control_plane_router(state: ControlPlaneApiState) -> Router {
+    Router::new()
+        .route("/control/runtime", get(control_runtime_handler))
+        .route(
+            "/control/config",
+            get(control_config_handler).put(control_config_update_handler),
+        )
+        .route(
+            "/control/config/validate",
+            post(control_config_validate_handler),
+        )
+        .route("/control/diagnostics", get(control_diagnostics_handler))
+        .route(
+            "/control/diagnostics/ws",
+            get(control_diagnostics_ws_handler),
+        )
+        .with_state(state)
 }
 
 async fn channel_registry_index_handler(
@@ -2379,6 +2431,15 @@ async fn channel_registry_index_handler(
     }))
 }
 
+async fn channel_registry_accounts_handler(
+    State(state): State<ChannelRegistryApiState>,
+) -> Json<serde_json::Value> {
+    let registry = state.registry.read().await;
+    let mut accounts: Vec<_> = registry.accounts.values().cloned().collect();
+    accounts.sort_by(|left, right| left.id.cmp(&right.id));
+    Json(serde_json::json!({ "accounts": accounts }))
+}
+
 async fn channel_registry_account_handler(
     State(state): State<ChannelRegistryApiState>,
     AxumPath(id): AxumPath<String>,
@@ -2389,6 +2450,55 @@ async fn channel_registry_account_handler(
         None => (
             StatusCode::NOT_FOUND,
             Json(serde_json::json!({"error": "account not found"})),
+        )
+            .into_response(),
+    }
+}
+
+async fn channel_registry_create_account_handler(
+    State(state): State<ChannelRegistryApiState>,
+    Json(payload): Json<super::channels::ChannelAccountSpec>,
+) -> impl IntoResponse {
+    upsert_channel_registry_account(state.registry, None, payload).await
+}
+
+async fn channel_registry_update_account_handler(
+    State(state): State<ChannelRegistryApiState>,
+    AxumPath(id): AxumPath<String>,
+    Json(payload): Json<super::channels::ChannelAccountSpec>,
+) -> impl IntoResponse {
+    upsert_channel_registry_account(state.registry, Some(id), payload).await
+}
+
+async fn channel_registry_delete_account_handler(
+    State(state): State<ChannelRegistryApiState>,
+    AxumPath(id): AxumPath<String>,
+) -> impl IntoResponse {
+    let root = {
+        state
+            .registry
+            .read()
+            .await
+            .root
+            .to_string_lossy()
+            .to_string()
+    };
+    match super::channels::delete_account(Some(&root), &id) {
+        Ok(()) => match reload_channel_registry(&state.registry).await {
+            Ok(()) => (
+                StatusCode::OK,
+                Json(serde_json::json!({"status": "ok", "account_id": id, "action": "delete"})),
+            )
+                .into_response(),
+            Err(error) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": error.to_string()})),
+            )
+                .into_response(),
+        },
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
         )
             .into_response(),
     }
@@ -2437,6 +2547,56 @@ async fn channel_registry_bind_handler(
     State(state): State<ChannelRegistryApiState>,
     Json(payload): Json<ChannelBindingRequest>,
 ) -> impl IntoResponse {
+    upsert_channel_registry_binding(
+        state.registry,
+        None,
+        ChannelBindingSpec {
+            id: payload.id,
+            platform: payload.platform,
+            enabled: true,
+            priority: 100,
+            workspace_match: payload.workspace_match,
+            account_match: payload.account_match,
+            channel_match: payload.channel_match,
+            workspace_target: payload.workspace_target,
+            agent_id: payload.agent_id,
+            activation_mode: payload.activation_mode,
+            direct_strategy: None,
+            group_strategy: None,
+            send_policy: None,
+            metadata: serde_json::json!({}),
+        },
+    )
+    .await
+}
+
+async fn channel_registry_binding_handler(
+    State(state): State<ChannelRegistryApiState>,
+    AxumPath(id): AxumPath<String>,
+) -> impl IntoResponse {
+    let registry = state.registry.read().await;
+    match registry.bindings.iter().find(|binding| binding.id == id) {
+        Some(binding) => (StatusCode::OK, Json(serde_json::json!(binding))).into_response(),
+        None => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": "binding not found"})),
+        )
+            .into_response(),
+    }
+}
+
+async fn channel_registry_update_binding_handler(
+    State(state): State<ChannelRegistryApiState>,
+    AxumPath(id): AxumPath<String>,
+    Json(payload): Json<ChannelBindingSpec>,
+) -> impl IntoResponse {
+    upsert_channel_registry_binding(state.registry, Some(id), payload).await
+}
+
+async fn channel_registry_delete_binding_handler(
+    State(state): State<ChannelRegistryApiState>,
+    AxumPath(id): AxumPath<String>,
+) -> impl IntoResponse {
     let root = {
         state
             .registry
@@ -2446,18 +2606,82 @@ async fn channel_registry_bind_handler(
             .to_string_lossy()
             .to_string()
     };
-    match super::channels::bind(
-        Some(&root),
-        &payload.id,
-        &payload.platform,
-        payload.workspace_match.as_deref(),
-        payload.account_match.as_deref(),
-        payload.channel_match.as_deref(),
-        payload.workspace_target.as_deref(),
-        payload.agent_id.as_deref(),
-        payload.activation_mode.as_deref(),
-    ) {
+    match super::channels::delete_binding(Some(&root), &id) {
         Ok(()) => match reload_channel_registry(&state.registry).await {
+            Ok(()) => (
+                StatusCode::OK,
+                Json(serde_json::json!({"status": "ok", "binding_id": id, "action": "delete"})),
+            )
+                .into_response(),
+            Err(error) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": error.to_string()})),
+            )
+                .into_response(),
+        },
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn upsert_channel_registry_account(
+    registry: Arc<tokio::sync::RwLock<ChannelRegistry>>,
+    expected_id: Option<String>,
+    payload: super::channels::ChannelAccountSpec,
+) -> axum::response::Response {
+    if let Some(expected_id) = expected_id.as_deref()
+        && payload.id != expected_id
+    {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "account id does not match path"})),
+        )
+            .into_response();
+    }
+
+    let root = { registry.read().await.root.to_string_lossy().to_string() };
+    match super::channels::upsert_account(Some(&root), payload.clone()) {
+        Ok(()) => match reload_channel_registry(&registry).await {
+            Ok(()) => (
+                StatusCode::OK,
+                Json(serde_json::json!({"status": "ok", "account_id": payload.id})),
+            )
+                .into_response(),
+            Err(error) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": error.to_string()})),
+            )
+                .into_response(),
+        },
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn upsert_channel_registry_binding(
+    registry: Arc<tokio::sync::RwLock<ChannelRegistry>>,
+    expected_id: Option<String>,
+    payload: ChannelBindingSpec,
+) -> axum::response::Response {
+    if let Some(expected_id) = expected_id.as_deref()
+        && payload.id != expected_id
+    {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "binding id does not match path"})),
+        )
+            .into_response();
+    }
+
+    let root = { registry.read().await.root.to_string_lossy().to_string() };
+    match super::channels::upsert_binding(Some(&root), payload.clone()) {
+        Ok(()) => match reload_channel_registry(&registry).await {
             Ok(()) => (
                 StatusCode::OK,
                 Json(serde_json::json!({"status": "ok", "binding_id": payload.id})),
@@ -2521,6 +2745,161 @@ async fn reload_channel_registry(
     Ok(())
 }
 
+#[derive(serde::Deserialize, Default)]
+struct DiagnosticsQuery {
+    #[serde(default)]
+    deep: bool,
+    #[serde(default)]
+    repair: bool,
+    #[serde(default)]
+    interval_secs: Option<u64>,
+}
+
+async fn control_runtime_handler(State(state): State<ControlPlaneApiState>) -> impl IntoResponse {
+    match control::describe_registry(state.control_root.clone()) {
+        Ok(description) => (StatusCode::OK, Json(description)).into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn control_config_handler(State(state): State<ControlPlaneApiState>) -> impl IntoResponse {
+    match AppConfig::load_from(&state.config_path) {
+        Ok(config) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "path": state.config_path,
+                "config": config,
+            })),
+        )
+            .into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn control_config_validate_handler(
+    State(state): State<ControlPlaneApiState>,
+    Json(payload): Json<AppConfig>,
+) -> impl IntoResponse {
+    match validate_control_config(&payload) {
+        Ok(rendered) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "status": "ok",
+                "path": state.config_path,
+                "bytes": rendered.len(),
+            })),
+        )
+            .into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn control_config_update_handler(
+    State(state): State<ControlPlaneApiState>,
+    Json(payload): Json<AppConfig>,
+) -> impl IntoResponse {
+    match write_control_config(&state.config_path, &payload) {
+        Ok(bytes) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "status": "ok",
+                "path": state.config_path,
+                "bytes": bytes,
+            })),
+        )
+            .into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn control_diagnostics_handler(
+    State(state): State<ControlPlaneApiState>,
+    Query(query): Query<DiagnosticsQuery>,
+) -> impl IntoResponse {
+    match doctor::collect_report(query.repair, query.deep, Some(&state.config_path)).await {
+        Ok(report) => (StatusCode::OK, Json(serde_json::json!(report))).into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn control_diagnostics_ws_handler(
+    ws: WebSocketUpgrade,
+    State(state): State<ControlPlaneApiState>,
+    Query(query): Query<DiagnosticsQuery>,
+) -> impl IntoResponse {
+    ws.on_upgrade(move |socket| diagnostics_ws_session(socket, state, query))
+}
+
+async fn diagnostics_ws_session(
+    socket: WebSocket,
+    state: ControlPlaneApiState,
+    query: DiagnosticsQuery,
+) {
+    let (mut sender, mut receiver) = socket.split();
+    let mut ticker = interval(Duration::from_secs(query.interval_secs.unwrap_or(5).max(1)));
+
+    loop {
+        tokio::select! {
+            _ = ticker.tick() => {
+                let payload = match doctor::collect_report(query.repair, query.deep, Some(&state.config_path)).await {
+                    Ok(report) => serde_json::json!({"type": "diagnostics", "report": report}),
+                    Err(error) => serde_json::json!({"type": "error", "error": error.to_string()}),
+                };
+                if sender
+                    .send(WsMessage::Text(payload.to_string().into()))
+                    .await
+                    .is_err()
+                {
+                    break;
+                }
+            }
+            message = receiver.next() => {
+                match message {
+                    Some(Ok(WsMessage::Close(_))) | None => break,
+                    Some(Ok(_)) => {}
+                    Some(Err(_)) => break,
+                }
+            }
+        }
+    }
+}
+
+fn validate_control_config(config: &AppConfig) -> Result<String> {
+    toml::to_string_pretty(config).context("Failed to render config TOML")
+}
+
+fn write_control_config(path: &str, config: &AppConfig) -> Result<usize> {
+    let rendered = validate_control_config(config)?;
+    let path = PathBuf::from(path);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("Failed to create '{}'", parent.display()))?;
+    }
+    std::fs::write(&path, rendered.as_bytes())
+        .with_context(|| format!("Failed to write '{}'", path.display()))?;
+    Ok(rendered.len())
+}
+
 #[derive(Clone)]
 struct IMessageIngressState {
     handler: Arc<IMessageWebhookHandler>,
@@ -2548,7 +2927,11 @@ async fn imessage_bluebubbles_handler(
         .or_else(|| params.get("guid"))
         .or_else(|| params.get("token"))
         .map(|value| value.as_str())
-        .or_else(|| headers.get("x-password").and_then(|value| value.to_str().ok()))
+        .or_else(|| {
+            headers
+                .get("x-password")
+                .and_then(|value| value.to_str().ok())
+        })
         .or_else(|| headers.get("x-guid").and_then(|value| value.to_str().ok()));
 
     if !state.handler.verify_password(candidate) {
@@ -2676,9 +3059,7 @@ fn google_meet_ingress_router(
         })
 }
 
-fn google_meet_dedupe_key(
-    event: &openrustclaw_channels::DecodedGoogleMeetEvent,
-) -> Option<String> {
+fn google_meet_dedupe_key(event: &openrustclaw_channels::DecodedGoogleMeetEvent) -> Option<String> {
     let resource = event
         .transcript
         .as_deref()
@@ -5360,6 +5741,23 @@ mod tests {
         assert!(!config.viber.enabled);
         assert!(!config.wechat.enabled);
         assert!(!config.meta.enabled);
+    }
+
+    #[test]
+    fn control_config_round_trip_writes_toml() {
+        let temp = tempdir().expect("tempdir");
+        let path = temp.path().join("config").join("runtime.toml");
+        let config = AppConfig::default();
+
+        let rendered = validate_control_config(&config).expect("render config");
+        assert!(rendered.contains("[gateway]"));
+
+        let bytes =
+            write_control_config(path.to_str().expect("utf8 path"), &config).expect("write config");
+        assert!(bytes > 0);
+
+        let written = std::fs::read_to_string(path).expect("read written config");
+        assert!(written.contains("[providers]"));
     }
 
     #[tokio::test]

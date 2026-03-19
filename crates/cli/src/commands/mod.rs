@@ -7,9 +7,9 @@ pub mod doctor;
 pub mod gmail;
 pub mod google_chat;
 pub mod imessage;
+pub mod matrix;
 pub mod mcp2cli;
 pub mod meet;
-pub mod matrix;
 pub mod memory;
 pub mod models;
 pub mod onboard;
@@ -22,5 +22,5 @@ pub mod skills;
 pub mod start;
 #[cfg(feature = "voice")]
 pub mod talk;
-pub mod whatsapp;
 pub mod webhooks;
+pub mod whatsapp;

@@ -177,6 +177,10 @@ fn account_manifest_path(root: &Path, account_id: &str) -> PathBuf {
     accounts_dir(root).join(format!("{}.yaml", slugify(account_id)))
 }
 
+fn binding_manifest_path(root: &Path, binding_id: &str) -> PathBuf {
+    bindings_dir(root).join(format!("{}.yaml", slugify(binding_id)))
+}
+
 pub fn init(root: Option<&str>) -> Result<()> {
     let root = resolve_root(root)?;
     fs::create_dir_all(accounts_dir(&root))
@@ -220,6 +224,74 @@ pub fn list(root: Option<&str>) -> Result<()> {
     Ok(())
 }
 
+pub fn show_account(root: Option<&str>, id: &str) -> Result<()> {
+    let account = read_account(resolve_root(root)?, id)?;
+    println!(
+        "{}",
+        serde_yaml::to_string(&ChannelAccountManifest {
+            version: 1,
+            account,
+        })
+        .context("Failed to render account manifest")?
+    );
+    Ok(())
+}
+
+pub fn create_account(
+    root: Option<&str>,
+    id: &str,
+    platform: &str,
+    external_user_id: &str,
+    display_name: Option<&str>,
+    workspace_id: Option<&str>,
+    channel_scope: Option<&str>,
+    workspace_target: Option<&str>,
+    agent_id: Option<&str>,
+    approved: bool,
+    blocked: bool,
+    enabled: bool,
+    activation_mode: Option<&str>,
+) -> Result<()> {
+    let root = resolve_root(root)?;
+    write_account_manifest(
+        &root,
+        ChannelAccountSpec {
+            id: id.to_string(),
+            platform: platform.to_string(),
+            external_user_id: external_user_id.to_string(),
+            display_name: display_name.map(ToString::to_string),
+            workspace_id: workspace_id.map(ToString::to_string),
+            channel_scope: channel_scope.map(ToString::to_string),
+            enabled,
+            approved,
+            blocked,
+            workspace_target: workspace_target.map(ToString::to_string),
+            agent_id: agent_id.map(ToString::to_string),
+            activation_mode: activation_mode.map(ToString::to_string),
+            direct_strategy: None,
+            group_strategy: None,
+            send_policy: None,
+            metadata: serde_json::json!({}),
+        },
+    )?;
+    println!(
+        "Wrote account manifest {}",
+        account_manifest_path(&root, id).display()
+    );
+    Ok(())
+}
+
+pub fn delete_account(root: Option<&str>, id: &str) -> Result<()> {
+    let root = resolve_root(root)?;
+    let path = account_manifest_path(&root, id);
+    if !path.exists() {
+        anyhow::bail!("Account '{}' not found", id);
+    }
+    fs::remove_file(&path).with_context(|| format!("Failed to remove '{}'", path.display()))?;
+    println!("Deleted {}", path.display());
+    Ok(())
+}
+
 pub fn approve(root: Option<&str>, id: &str) -> Result<()> {
     mutate_account(root, id, |account| {
         account.approved = true;
@@ -258,9 +330,9 @@ pub fn bind(
     fs::create_dir_all(bindings_dir(&root))
         .with_context(|| format!("Failed to create '{}'", bindings_dir(&root).display()))?;
 
-    let manifest = ChannelBindingManifest {
-        version: 1,
-        binding: ChannelBindingSpec {
+    write_binding_manifest(
+        &root,
+        ChannelBindingSpec {
             id: id.to_string(),
             platform: platform.to_string(),
             enabled: true,
@@ -276,16 +348,62 @@ pub fn bind(
             send_policy: None,
             metadata: serde_json::json!({}),
         },
-    };
-
-    let path = bindings_dir(&root).join(format!("{}.yaml", slugify(id)));
-    fs::write(
-        &path,
-        serde_yaml::to_string(&manifest).context("Failed to render binding manifest")?,
-    )
-    .with_context(|| format!("Failed to write '{}'", path.display()))?;
+    )?;
+    let path = binding_manifest_path(&root, id);
     println!("Wrote binding manifest {}", path.display());
     Ok(())
+}
+
+pub fn show_binding(root: Option<&str>, id: &str) -> Result<()> {
+    let binding = read_binding(resolve_root(root)?, id)?;
+    println!(
+        "{}",
+        serde_yaml::to_string(&ChannelBindingManifest {
+            version: 1,
+            binding,
+        })
+        .context("Failed to render binding manifest")?
+    );
+    Ok(())
+}
+
+pub fn delete_binding(root: Option<&str>, id: &str) -> Result<()> {
+    let root = resolve_root(root)?;
+    let path = binding_manifest_path(&root, id);
+    if !path.exists() {
+        anyhow::bail!("Binding '{}' not found", id);
+    }
+    fs::remove_file(&path).with_context(|| format!("Failed to remove '{}'", path.display()))?;
+    println!("Deleted {}", path.display());
+    Ok(())
+}
+
+pub fn upsert_account(root: Option<&str>, account: ChannelAccountSpec) -> Result<()> {
+    let root = resolve_root(root)?;
+    write_account_manifest(&root, account)
+}
+
+pub fn upsert_binding(root: Option<&str>, binding: ChannelBindingSpec) -> Result<()> {
+    let root = resolve_root(root)?;
+    write_binding_manifest(&root, binding)
+}
+
+pub fn read_account(root: PathBuf, id: &str) -> Result<ChannelAccountSpec> {
+    let path = account_manifest_path(&root, id);
+    let raw = fs::read_to_string(&path)
+        .with_context(|| format!("Failed to read account manifest '{}'", path.display()))?;
+    let manifest: ChannelAccountManifest =
+        serde_yaml::from_str(&raw).context("Failed to parse account manifest")?;
+    Ok(manifest.account)
+}
+
+pub fn read_binding(root: PathBuf, id: &str) -> Result<ChannelBindingSpec> {
+    let path = binding_manifest_path(&root, id);
+    let raw = fs::read_to_string(&path)
+        .with_context(|| format!("Failed to read binding manifest '{}'", path.display()))?;
+    let manifest: ChannelBindingManifest =
+        serde_yaml::from_str(&raw).context("Failed to parse binding manifest")?;
+    Ok(manifest.binding)
 }
 
 fn mutate_account(
@@ -306,6 +424,38 @@ fn mutate_account(
     )
     .with_context(|| format!("Failed to write '{}'", path.display()))?;
     println!("Updated {}", path.display());
+    Ok(())
+}
+
+fn write_account_manifest(root: &Path, account: ChannelAccountSpec) -> Result<()> {
+    fs::create_dir_all(accounts_dir(root))
+        .with_context(|| format!("Failed to create '{}'", accounts_dir(root).display()))?;
+    let manifest = ChannelAccountManifest {
+        version: 1,
+        account,
+    };
+    let path = account_manifest_path(root, &manifest.account.id);
+    fs::write(
+        &path,
+        serde_yaml::to_string(&manifest).context("Failed to render account manifest")?,
+    )
+    .with_context(|| format!("Failed to write '{}'", path.display()))?;
+    Ok(())
+}
+
+fn write_binding_manifest(root: &Path, binding: ChannelBindingSpec) -> Result<()> {
+    fs::create_dir_all(bindings_dir(root))
+        .with_context(|| format!("Failed to create '{}'", bindings_dir(root).display()))?;
+    let manifest = ChannelBindingManifest {
+        version: 1,
+        binding,
+    };
+    let path = binding_manifest_path(root, &manifest.binding.id);
+    fs::write(
+        &path,
+        serde_yaml::to_string(&manifest).context("Failed to render binding manifest")?,
+    )
+    .with_context(|| format!("Failed to write '{}'", path.display()))?;
     Ok(())
 }
 
@@ -624,6 +774,7 @@ fn slugify(input: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::tempdir;
 
     #[test]
     fn message_identity_uses_workspace_and_user() {
@@ -738,5 +889,55 @@ mod tests {
         );
         assert_eq!(matrix_identity.channel_scope.as_deref(), Some("$event"));
         assert!(matrix_identity.is_group);
+    }
+
+    #[test]
+    fn account_and_binding_crud_round_trip() {
+        let temp = tempdir().expect("tempdir");
+        let root = temp.path().join(".claw/channels");
+        let root_str = root.to_string_lossy().to_string();
+
+        init(Some(&root_str)).expect("init registry");
+        create_account(
+            Some(&root_str),
+            "acct-1",
+            "slack",
+            "U123",
+            Some("Workspace Bot"),
+            Some("T123"),
+            Some("C123"),
+            Some("workspace-a"),
+            Some("agent-a"),
+            true,
+            false,
+            true,
+            Some("mention"),
+        )
+        .expect("create account");
+        bind(
+            Some(&root_str),
+            "binding-1",
+            "slack",
+            Some("T123"),
+            Some("acct-1"),
+            Some("C123"),
+            Some("workspace-a"),
+            Some("agent-a"),
+            Some("mention"),
+        )
+        .expect("create binding");
+
+        let account = read_account(root.clone(), "acct-1").expect("read account");
+        assert_eq!(account.external_user_id, "U123");
+        assert!(account.approved);
+
+        let binding = read_binding(root.clone(), "binding-1").expect("read binding");
+        assert_eq!(binding.account_match.as_deref(), Some("acct-1"));
+
+        delete_binding(Some(&root_str), "binding-1").expect("delete binding");
+        delete_account(Some(&root_str), "acct-1").expect("delete account");
+
+        assert!(read_binding(root.clone(), "binding-1").is_err());
+        assert!(read_account(root, "acct-1").is_err());
     }
 }

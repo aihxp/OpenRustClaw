@@ -750,7 +750,10 @@ mod tests {
             event.event_type,
             "google.workspace.meet.conference.v2.started"
         );
-        assert_eq!(event.conference_record.as_deref(), Some("conferenceRecords/987"));
+        assert_eq!(
+            event.conference_record.as_deref(),
+            Some("conferenceRecords/987")
+        );
         assert_eq!(event.space.as_deref(), Some("spaces/xyz"));
     }
 

@@ -5738,6 +5738,7 @@ dependencies = [
  "sqlx",
  "tempfile",
  "tokio",
+ "toml 0.8.23",
  "tower-http 0.6.8",
  "tracing",
  "tracing-subscriber",

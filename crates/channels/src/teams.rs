@@ -703,7 +703,8 @@ impl TeamsChannel {
             .get("file_references")
             .and_then(|value| value.as_array())
             .map(|items| {
-                items.iter()
+                items
+                    .iter()
                     .filter_map(|item| {
                         let local_path = item
                             .get("local_path")
@@ -813,7 +814,9 @@ impl TeamsChannel {
     }
 
     fn teams_action(msg: &OutgoingMessage) -> Option<&str> {
-        msg.metadata.get("teams_action").and_then(|value| value.as_str())
+        msg.metadata
+            .get("teams_action")
+            .and_then(|value| value.as_str())
     }
 
     fn target_activity_id(msg: &OutgoingMessage, action_key: &str) -> Option<String> {
@@ -1392,7 +1395,8 @@ impl TeamsChannel {
     /// Send a message to Teams using the Bot Framework REST API.
     async fn send_to_teams(&self, msg: &OutgoingMessage) -> Result<()> {
         let token = self.get_token().await?;
-        let (service_url, conversation_id, activity) = self.build_message_activity(msg, &token).await?;
+        let (service_url, conversation_id, activity) =
+            self.build_message_activity(msg, &token).await?;
         let url = Self::conversation_activities_url(&service_url, &conversation_id);
 
         let response = self
@@ -1432,7 +1436,8 @@ impl TeamsChannel {
                     message: "Missing Teams activity id for update".to_string(),
                 }
             })?;
-        let (service_url, conversation_id, mut activity) = self.build_message_activity(msg, &token).await?;
+        let (service_url, conversation_id, mut activity) =
+            self.build_message_activity(msg, &token).await?;
         activity["id"] = serde_json::json!(activity_id);
         let url = Self::conversation_activity_url(&service_url, &conversation_id, &activity_id);
 
@@ -2200,7 +2205,9 @@ mod tests {
     async fn test_send_supports_update_action() {
         let server = MockServer::start().await;
         Mock::given(method("PUT"))
-            .and(path("/v3/conversations/19:conversation/activities/activity-123"))
+            .and(path(
+                "/v3/conversations/19:conversation/activities/activity-123",
+            ))
             .and(body_partial_json(serde_json::json!({
                 "id": "activity-123",
                 "text": "updated body"
@@ -2248,7 +2255,9 @@ mod tests {
     async fn test_send_supports_delete_action() {
         let server = MockServer::start().await;
         Mock::given(method("DELETE"))
-            .and(path("/v3/conversations/19:conversation/activities/activity-321"))
+            .and(path(
+                "/v3/conversations/19:conversation/activities/activity-321",
+            ))
             .respond_with(ResponseTemplate::new(200))
             .mount(&server)
             .await;

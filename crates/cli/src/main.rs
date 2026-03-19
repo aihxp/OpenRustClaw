@@ -950,6 +950,46 @@ enum ChannelAction {
         #[arg(long)]
         path: Option<String>,
     },
+    /// Show one channel account manifest
+    ShowAccount {
+        id: String,
+        #[arg(long)]
+        path: Option<String>,
+    },
+    /// Create or replace a channel account manifest
+    CreateAccount {
+        id: String,
+        #[arg(long)]
+        platform: String,
+        #[arg(long)]
+        external_user_id: String,
+        #[arg(long)]
+        display_name: Option<String>,
+        #[arg(long)]
+        workspace_id: Option<String>,
+        #[arg(long)]
+        channel_scope: Option<String>,
+        #[arg(long)]
+        workspace_target: Option<String>,
+        #[arg(long)]
+        agent_id: Option<String>,
+        #[arg(long, default_value_t = false)]
+        approved: bool,
+        #[arg(long, default_value_t = false)]
+        blocked: bool,
+        #[arg(long, default_value_t = true)]
+        enabled: bool,
+        #[arg(long)]
+        activation_mode: Option<String>,
+        #[arg(long)]
+        path: Option<String>,
+    },
+    /// Delete a channel account manifest
+    DeleteAccount {
+        id: String,
+        #[arg(long)]
+        path: Option<String>,
+    },
     /// Approve a pending channel account
     Approve {
         id: String,
@@ -986,6 +1026,18 @@ enum ChannelAction {
         agent_id: Option<String>,
         #[arg(long)]
         activation_mode: Option<String>,
+        #[arg(long)]
+        path: Option<String>,
+    },
+    /// Show one binding manifest
+    ShowBinding {
+        id: String,
+        #[arg(long)]
+        path: Option<String>,
+    },
+    /// Delete a binding manifest
+    DeleteBinding {
+        id: String,
         #[arg(long)]
         path: Option<String>,
     },
@@ -1579,14 +1631,8 @@ async fn main() -> Result<()> {
                 path,
                 caption,
             } => {
-                commands::whatsapp::send_media(
-                    &config,
-                    &to,
-                    &media_type,
-                    &path,
-                    caption.as_deref(),
-                )
-                .await
+                commands::whatsapp::send_media(&config, &to, &media_type, &path, caption.as_deref())
+                    .await
             }
         },
         Commands::Control { action } => match action {
@@ -1857,6 +1903,41 @@ async fn main() -> Result<()> {
         Commands::Channels { action } => match action {
             ChannelAction::Init { path } => commands::channels::init(path.as_deref()),
             ChannelAction::List { path } => commands::channels::list(path.as_deref()),
+            ChannelAction::ShowAccount { id, path } => {
+                commands::channels::show_account(path.as_deref(), &id)
+            }
+            ChannelAction::CreateAccount {
+                id,
+                platform,
+                external_user_id,
+                display_name,
+                workspace_id,
+                channel_scope,
+                workspace_target,
+                agent_id,
+                approved,
+                blocked,
+                enabled,
+                activation_mode,
+                path,
+            } => commands::channels::create_account(
+                path.as_deref(),
+                &id,
+                &platform,
+                &external_user_id,
+                display_name.as_deref(),
+                workspace_id.as_deref(),
+                channel_scope.as_deref(),
+                workspace_target.as_deref(),
+                agent_id.as_deref(),
+                approved,
+                blocked,
+                enabled,
+                activation_mode.as_deref(),
+            ),
+            ChannelAction::DeleteAccount { id, path } => {
+                commands::channels::delete_account(path.as_deref(), &id)
+            }
             ChannelAction::Approve { id, path } => {
                 commands::channels::approve(path.as_deref(), &id)
             }
@@ -1885,6 +1966,12 @@ async fn main() -> Result<()> {
                 agent_id.as_deref(),
                 activation_mode.as_deref(),
             ),
+            ChannelAction::ShowBinding { id, path } => {
+                commands::channels::show_binding(path.as_deref(), &id)
+            }
+            ChannelAction::DeleteBinding { id, path } => {
+                commands::channels::delete_binding(path.as_deref(), &id)
+            }
         },
         Commands::Doctor {
             repair,
