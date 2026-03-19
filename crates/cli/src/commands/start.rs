@@ -547,16 +547,10 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
 }
 
 fn gate_nonshipping_channels(config: &mut openrustclaw_core::config::ChannelsConfig) {
-    if config.teams.enabled {
-        warn!("Teams is on a partial shipped path; deeper parity is still incomplete");
-    }
     if config.gmail_pubsub.enabled {
         warn!(
             "Gmail Pub/Sub is on a partial shipped path; deeper operator parity is still incomplete"
         );
-    }
-    if config.matrix.enabled {
-        warn!("Matrix is on a partial shipped path; deeper parity is still incomplete");
     }
     if config.line.enabled {
         warn!("LINE is currently gated and will not be started by `openrustclaw start`");

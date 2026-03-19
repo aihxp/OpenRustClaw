@@ -54,6 +54,11 @@ enum Commands {
         #[command(subcommand)]
         action: MeetAction,
     },
+    /// Matrix operator integration
+    Matrix {
+        #[command(subcommand)]
+        action: MatrixAction,
+    },
     /// Signal operator integration
     Signal {
         #[command(subcommand)]
@@ -349,6 +354,69 @@ enum MeetAction {
     DecodeEvent {
         /// File path containing the raw JSON envelope, or '-' for stdin
         input: String,
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum MatrixAction {
+    /// Join a Matrix room by room id or alias
+    Join {
+        room: String,
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+    },
+    /// Leave a Matrix room
+    Leave {
+        room: String,
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+    },
+    /// List joined Matrix rooms
+    Rooms {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+    },
+    /// Send formatted HTML/plaintext content to a Matrix room
+    SendFormatted {
+        room: String,
+        text: String,
+        html: String,
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+    },
+    /// React to a Matrix event
+    React {
+        room: String,
+        event_id: String,
+        emoji: String,
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+    },
+    /// Upload and send a file to a Matrix room
+    SendFile {
+        room: String,
+        file_path: String,
+        #[arg(long)]
+        filename: Option<String>,
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+    },
+    /// Toggle typing indicator in a Matrix room
+    Typing {
+        room: String,
+        #[arg(long, default_value_t = true)]
+        typing: bool,
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+    },
+    /// Redact a Matrix event
+    Redact {
+        room: String,
+        event_id: String,
+        #[arg(long)]
+        reason: Option<String>,
         #[arg(short, long, default_value = "config/default.toml")]
         config: String,
     },
@@ -1045,6 +1113,40 @@ async fn main() -> Result<()> {
             MeetAction::DecodeEvent { input, config } => {
                 commands::meet::decode_event(&config, &input).await
             }
+        },
+        Commands::Matrix { action } => match action {
+            MatrixAction::Join { room, config } => commands::matrix::join(&config, &room).await,
+            MatrixAction::Leave { room, config } => commands::matrix::leave(&config, &room).await,
+            MatrixAction::Rooms { config } => commands::matrix::rooms(&config).await,
+            MatrixAction::SendFormatted {
+                room,
+                text,
+                html,
+                config,
+            } => commands::matrix::send_formatted(&config, &room, &text, &html).await,
+            MatrixAction::React {
+                room,
+                event_id,
+                emoji,
+                config,
+            } => commands::matrix::react(&config, &room, &event_id, &emoji).await,
+            MatrixAction::SendFile {
+                room,
+                file_path,
+                filename,
+                config,
+            } => commands::matrix::send_file(&config, &room, &file_path, filename.as_deref()).await,
+            MatrixAction::Typing {
+                room,
+                typing,
+                config,
+            } => commands::matrix::typing(&config, &room, typing).await,
+            MatrixAction::Redact {
+                room,
+                event_id,
+                reason,
+                config,
+            } => commands::matrix::redact(&config, &room, &event_id, reason.as_deref()).await,
         },
         Commands::Signal { action } => match action {
             SignalAction::Register { voice, config } => {

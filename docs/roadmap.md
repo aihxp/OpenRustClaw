@@ -683,9 +683,8 @@ Channel completion remaining:
 - [x] Gmail inbound automation parity for mail-triggered workflows.
   - current shipped path covers Gmail watch setup and stop, Pub/Sub or direct-notification webhook ingress, history fetch, message hydration, structured attachment/file-reference metadata, normalized recipient/label counts plus recipient domains, message/thread/history/subject/body/received-at presence flags, recipient/domain/label/header presence flags, file-reference counts, attachment total-size metadata, address/domain length and attachment-name/MIME count metadata, unread and received-at metadata, parsed header/thread metadata, history/body-length metadata, subject/body/file-reference presence metrics, mail-triggered local agent/session routing, direct sends, threaded direct sends, replies including local-file attachments, metadata-driven label/archive/delete/forward actions, and forwarded local-file attachments;
   - richer operator parity still remains.
-- [ ] Matrix parity.
-  - current shipped path covers auth, send, reply/thread relations with explicit presence flags, format/formatted-body presence metadata, media-presence metadata, polling ingress, inbound reaction, redaction, and membership events with richer lifecycle metadata plus target/reason/avatar/display-name presence flags, reaction/redaction/membership/media length metadata, room/event/sender/reply/content-URI derived lengths, room actions, helper-driven plus normal-send local file uploads, and inbound media downloads into the Matrix data directory with structured file-reference metadata plus media MIME/size fields and download/content-uri/filename/size/file-reference presence flags;
-  - deeper E2EE and richer operator/media parity still remain.
+- [x] Matrix parity.
+  - current shipped path covers auth, send, reply/thread relations with explicit presence flags, format/formatted-body presence metadata, media-presence metadata, polling ingress, inbound reaction, redaction, and membership events with richer lifecycle metadata plus target/reason/avatar/display-name presence flags, reaction/redaction/membership/media length metadata, room/event/sender/reply/content-URI derived lengths, room actions, helper-driven plus normal-send local file uploads, inbound media downloads into the Matrix data directory with structured file-reference metadata plus media MIME/size fields and download/content-uri/filename/size/file-reference presence flags, and first-class CLI operator flows for join/leave/list-rooms/send-formatted/react/send-file/typing/redact.
 - [x] Microsoft Teams parity.
   - current shipped path covers Bot Framework webhook ingress, JWT verification, connector-`/v3` outbound operations, reply aliases, native local-file uploads via Connector attachments, metadata-driven typing/update/delete actions, conversation/reaction/update/delete lifecycle routing with normalized member/reaction id/count metadata and presence flags, normalized team/channel/tenant IDs, richer message body/reply/update/delete flags, mention presence/count metadata, richer attachment metadata plus structured file references, attachment name/type/url presence flags, attachment URL counts, file-reference counts, local download paths, adaptive-card file links, and local agent/session routing.
 - [x] Signal parity if kept in scope.
@@ -709,6 +708,7 @@ Status: complete for shipped CLI/MCP control-plane surfaces, onboarding scaffold
 Additional later-surface work:
 
 - [ ] Google Meet add-on UI embedding and live in-meeting collaboration surfaces.
+- [ ] Matrix E2EE and advanced device-state management.
 
 Completed:
 

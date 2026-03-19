@@ -562,9 +562,8 @@ impl MatrixChannel {
                         if event.event_type == "m.reaction" {
                             let reaction_key =
                                 relates_to.get("key").and_then(|value| value.as_str());
-                            let reaction_target = relates_to
-                                .get("event_id")
-                                .and_then(|value| value.as_str());
+                            let reaction_target =
+                                relates_to.get("event_id").and_then(|value| value.as_str());
                             let Some(reaction_key) = reaction_key else {
                                 continue;
                             };
@@ -782,8 +781,9 @@ impl MatrixChannel {
                                             .map(|value| value.chars().count())
                                     );
                                     metadata["matrix_has_download_path"] = serde_json::json!(true);
-                                    metadata["file_references"][0]["local_path"] =
-                                        serde_json::json!(metadata["matrix_download_path"].as_str());
+                                    metadata["file_references"][0]["local_path"] = serde_json::json!(
+                                        metadata["matrix_download_path"].as_str()
+                                    );
                                 }
                                 Ok(None) => {}
                                 Err(error) => {
@@ -1542,7 +1542,9 @@ mod tests {
             .await;
 
         let temp_root = std::env::temp_dir().join(format!("orc-matrix-upload-{}", Uuid::new_v4()));
-        tokio::fs::create_dir_all(&temp_root).await.expect("temp dir");
+        tokio::fs::create_dir_all(&temp_root)
+            .await
+            .expect("temp dir");
         let file_path = temp_root.join("report.pdf");
         tokio::fs::write(&file_path, b"matrix-file")
             .await
@@ -1709,7 +1711,10 @@ mod tests {
         assert_eq!(incoming.metadata["matrix_has_formatted_body_length"], true);
         assert_eq!(incoming.metadata["matrix_formatted_body_length"], 24);
         assert_eq!(incoming.metadata["matrix_format"], "org.matrix.custom.html");
-        assert_eq!(incoming.metadata["matrix_formatted_body"], "<b>reply</b> from matrix");
+        assert_eq!(
+            incoming.metadata["matrix_formatted_body"],
+            "<b>reply</b> from matrix"
+        );
 
         channel.disconnect().await.expect("disconnect succeeds");
     }
@@ -1770,7 +1775,10 @@ mod tests {
         assert_eq!(incoming.metadata["matrix_reaction"], "👍");
         assert_eq!(incoming.metadata["matrix_reaction_length"], 1);
         assert_eq!(incoming.metadata["matrix_reaction_target"], "$target1");
-        assert_eq!(incoming.metadata["matrix_reaction_rel_type"], "m.annotation");
+        assert_eq!(
+            incoming.metadata["matrix_reaction_rel_type"],
+            "m.annotation"
+        );
         assert_eq!(incoming.metadata["matrix_has_reaction_rel_type"], true);
         assert_eq!(incoming.metadata["matrix_reaction_has_target"], true);
 
@@ -1893,7 +1901,10 @@ mod tests {
         assert_eq!(incoming.metadata["matrix_state_key"], "@bob:matrix.org");
         assert_eq!(incoming.metadata["matrix_member_display_name"], "Bob");
         assert_eq!(incoming.metadata["matrix_has_member_display_name"], true);
-        assert_eq!(incoming.metadata["matrix_member_avatar_url"], "mxc://matrix.org/avatar1");
+        assert_eq!(
+            incoming.metadata["matrix_member_avatar_url"],
+            "mxc://matrix.org/avatar1"
+        );
         assert_eq!(incoming.metadata["matrix_has_member_avatar"], true);
 
         channel.disconnect().await.expect("disconnect succeeds");
@@ -1965,15 +1976,27 @@ mod tests {
         assert_eq!(incoming.metadata["matrix_media_filename"], "report.pdf");
         assert_eq!(incoming.metadata["matrix_media_filename_length"], 10);
         assert_eq!(incoming.metadata["matrix_has_media_filename"], true);
-        assert_eq!(incoming.metadata["matrix_content_uri"], "mxc://matrix.org/media-1");
-        assert_eq!(incoming.metadata["matrix_media_mime_type"], "application/pdf");
+        assert_eq!(
+            incoming.metadata["matrix_content_uri"],
+            "mxc://matrix.org/media-1"
+        );
+        assert_eq!(
+            incoming.metadata["matrix_media_mime_type"],
+            "application/pdf"
+        );
         assert_eq!(incoming.metadata["matrix_has_media_mime_type"], true);
         assert_eq!(incoming.metadata["matrix_media_size"], 2048);
         assert_eq!(incoming.metadata["matrix_has_media_size"], true);
         assert_eq!(incoming.metadata["matrix_has_file_references"], true);
         assert_eq!(incoming.metadata["matrix_file_reference_count"], 1);
-        assert_eq!(incoming.metadata["file_references"][0]["name"], "report.pdf");
-        assert_eq!(incoming.metadata["file_references"][0]["mime"], "application/pdf");
+        assert_eq!(
+            incoming.metadata["file_references"][0]["name"],
+            "report.pdf"
+        );
+        assert_eq!(
+            incoming.metadata["file_references"][0]["mime"],
+            "application/pdf"
+        );
         assert_eq!(incoming.metadata["file_references"][0]["size"], 2048);
         assert_eq!(incoming.metadata["matrix_has_download_path"], true);
         assert!(
@@ -1982,15 +2005,20 @@ mod tests {
                 .expect("download path length")
                 > 0
         );
-        assert!(incoming.metadata["file_references"][0]["local_path"]
-            .as_str()
-            .expect("local path")
-            .contains("report.pdf"));
+        assert!(
+            incoming.metadata["file_references"][0]["local_path"]
+                .as_str()
+                .expect("local path")
+                .contains("report.pdf")
+        );
 
         if let Some(path) = incoming.metadata["matrix_download_path"].as_str() {
             let _ = tokio::fs::remove_file(path).await;
         }
-        let _ = tokio::fs::remove_dir_all(PathBuf::from(test_config(&server.uri()).data_dir).join("downloads")).await;
+        let _ = tokio::fs::remove_dir_all(
+            PathBuf::from(test_config(&server.uri()).data_dir).join("downloads"),
+        )
+        .await;
 
         channel.disconnect().await.expect("disconnect succeeds");
     }
