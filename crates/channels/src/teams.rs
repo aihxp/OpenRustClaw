@@ -779,6 +779,18 @@ impl TeamsChannel {
                 metadata["teams_attachment_content_types"] =
                     serde_json::json!(attachment_content_types);
             }
+            let attachment_urls: Vec<_> = attachments
+                .iter()
+                .filter_map(|attachment| {
+                    attachment
+                        .get("contentUrl")
+                        .or_else(|| attachment.get("content_url"))
+                        .and_then(|value| value.as_str())
+                })
+                .collect();
+            if !attachment_urls.is_empty() {
+                metadata["teams_attachment_urls"] = serde_json::json!(attachment_urls);
+            }
             let file_refs: Vec<_> = attachments
                 .iter()
                 .filter_map(|attachment| {
@@ -798,7 +810,10 @@ impl TeamsChannel {
                 })
                 .collect();
             if !file_refs.is_empty() {
+                metadata["teams_file_reference_count"] = serde_json::json!(file_refs.len());
                 metadata["file_references"] = serde_json::json!(file_refs);
+            } else {
+                metadata["teams_file_reference_count"] = serde_json::json!(0);
             }
             if let Some(download_dir) = self
                 .config
@@ -825,6 +840,7 @@ impl TeamsChannel {
                     }
                 }
                 if !downloaded_paths.is_empty() {
+                    metadata["teams_has_download_paths"] = serde_json::json!(true);
                     metadata["teams_download_paths"] = serde_json::json!(downloaded_paths);
                     metadata["teams_downloaded_attachment_count"] =
                         serde_json::json!(metadata["teams_download_paths"].as_array().map(|items| items.len()).unwrap_or(0));
@@ -844,10 +860,13 @@ impl TeamsChannel {
                             }
                         }
                     }
+                } else {
+                    metadata["teams_has_download_paths"] = serde_json::json!(false);
                 }
             }
         } else {
             metadata["teams_has_attachments"] = serde_json::json!(false);
+            metadata["teams_file_reference_count"] = serde_json::json!(0);
         }
 
         // Send typing indicator
@@ -1017,6 +1036,9 @@ impl TeamsChannel {
                     .and_then(|value| value.as_str())
                 {
                     metadata["teams_deleted_activity_id"] = serde_json::json!(deleted_id);
+                    metadata["teams_has_deleted_activity_id"] = serde_json::json!(true);
+                } else {
+                    metadata["teams_has_deleted_activity_id"] = serde_json::json!(false);
                 }
                 if let Some(channel_data) = activity.get("channelData") {
                     Self::apply_channel_data_metadata(&mut metadata, channel_data);
@@ -1032,6 +1054,7 @@ impl TeamsChannel {
                 }
                 if let Some(text) = activity.get("text").and_then(|value| value.as_str()) {
                     metadata["teams_updated_text"] = serde_json::json!(text);
+                    metadata["teams_updated_text_length"] = serde_json::json!(text.chars().count());
                     text.to_string()
                 } else {
                     "[teams message updated]".to_string()
@@ -1824,8 +1847,16 @@ mod tests {
         assert_eq!(incoming.metadata["teams_attachment_count"], serde_json::json!(1));
         assert_eq!(incoming.metadata["teams_attachment_names"][0], "report.pdf");
         assert_eq!(
+            incoming.metadata["teams_attachment_urls"][0],
+            serde_json::json!(format!("{}/files/report.pdf", server.uri()))
+        );
+        assert_eq!(
             incoming.metadata["teams_attachment_content_types"][0],
             "application/pdf"
+        );
+        assert_eq!(
+            incoming.metadata["teams_file_reference_count"],
+            serde_json::json!(1)
         );
         assert_eq!(
             incoming.metadata["file_references"][0]["name"],
@@ -1846,6 +1877,7 @@ mod tests {
             incoming.metadata["teams_downloaded_attachment_count"],
             serde_json::json!(1)
         );
+        assert_eq!(incoming.metadata["teams_has_download_paths"], true);
         let bytes = tokio::fs::read(downloaded_path).await.expect("downloaded bytes");
         assert_eq!(bytes, b"teams-file");
         let _ = tokio::fs::remove_file(downloaded_path).await;
@@ -1891,6 +1923,7 @@ mod tests {
             .expect("incoming");
         assert_eq!(incoming.content, "[teams message deleted]");
         assert_eq!(incoming.metadata["teams_deleted_activity_id"], "activity-root-1");
+        assert_eq!(incoming.metadata["teams_has_deleted_activity_id"], true);
         assert_eq!(incoming.metadata["teams_team_id"], "team-delete");
         assert_eq!(incoming.metadata["teams_channel_id"], "channel-delete");
         assert_eq!(incoming.metadata["teams_tenant_id"], "tenant-delete");
@@ -1936,6 +1969,7 @@ mod tests {
             .expect("incoming");
         assert_eq!(incoming.metadata["teams_reply_to_id"], "activity-root-2");
         assert_eq!(incoming.metadata["teams_updated_text"], "updated text");
+        assert_eq!(incoming.metadata["teams_updated_text_length"], 12);
         assert_eq!(incoming.metadata["teams_team_id"], "team-update");
         assert_eq!(incoming.metadata["teams_channel_id"], "channel-update");
         assert_eq!(incoming.metadata["teams_tenant_id"], "tenant-update");
