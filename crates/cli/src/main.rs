@@ -367,6 +367,11 @@ enum RuntimeServicesAction {
         #[arg(short, long, default_value_t = 20)]
         limit: usize,
     },
+    /// Show readiness probes for enabled channels
+    Channels {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+    },
     /// Show recent runtime logs captured by the running gateway process
     Logs {
         #[arg(short, long, default_value_t = 50)]
@@ -2418,6 +2423,12 @@ async fn main() -> Result<()> {
                         )
                         .await?;
                         println!("{}", serde_json::to_string_pretty(&events)?);
+                        Ok(())
+                    }
+                    RuntimeServicesAction::Channels { config } => {
+                        let report =
+                            commands::services::channel_probes(&config, &workspace_root).await?;
+                        println!("{}", serde_json::to_string_pretty(&report)?);
                         Ok(())
                     }
                     RuntimeServicesAction::Logs { limit } => {

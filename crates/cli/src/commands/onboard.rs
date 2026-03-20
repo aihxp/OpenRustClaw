@@ -1,14 +1,16 @@
 //! Interactive Onboarding Wizard
 
 use anyhow::Result;
+use chrono::Utc;
 use console::style;
 use dialoguer::{Confirm, Input, MultiSelect, Password, Select, theme::ColorfulTheme};
 use indicatif::{ProgressBar, ProgressStyle};
-use std::path::Path;
+use serde::Serialize;
+use std::path::{Path, PathBuf};
 use tokio::fs;
 
-use super::control;
 use super::models;
+use super::{channels, control, doctor};
 
 /// Onboarding wizard state
 #[derive(Default)]
@@ -19,12 +21,36 @@ pub struct OnboardingState {
     pub execution_mode: Option<String>,
     pub daemon_installed: bool,
     pub skills_installed: Vec<String>,
+    pub profile: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct OnboardingWorkspaceStatus {
+    pub workspace_root: String,
+    pub env_present: bool,
+    pub control_registry_present: bool,
+    pub channels_registry_present: bool,
+    pub user_service_present: bool,
 }
 
 /// Interactive onboarding wizard
 pub struct OnboardingWizard {
     theme: ColorfulTheme,
     state: OnboardingState,
+}
+
+enum OnboardingProfile {
+    QuickStart,
+    Advanced,
+}
+
+impl OnboardingProfile {
+    fn label(&self) -> &'static str {
+        match self {
+            OnboardingProfile::QuickStart => "QuickStart",
+            OnboardingProfile::Advanced => "Advanced",
+        }
+    }
 }
 
 /// Enum representing all onboarding steps
@@ -85,7 +111,63 @@ impl OnboardingWizard {
     pub async fn run(&mut self) -> Result<()> {
         self.print_welcome();
 
-        let steps = vec![
+        let workspace_status = workspace_status(std::env::current_dir()?.as_path());
+        if workspace_status.env_present
+            || workspace_status.control_registry_present
+            || workspace_status.channels_registry_present
+        {
+            let choices = vec![
+                "Modify existing workspace state",
+                "Keep existing state and only run a health check",
+                "Reset onboarding-managed state with backup",
+            ];
+            let selection = Select::with_theme(&self.theme)
+                .with_prompt("Existing OpenRustClaw workspace state was detected")
+                .items(&choices)
+                .default(0)
+                .interact()?;
+
+            match selection {
+                1 => {
+                    self.print_workspace_status(&workspace_status);
+                    self.run_post_onboarding_health_check().await?;
+                    self.print_completion();
+                    return Ok(());
+                }
+                2 => {
+                    let backup_path = backup_and_reset_workspace_state().await?;
+                    println!(
+                        "✓ Existing onboarding-managed state backed up to {}",
+                        backup_path.display()
+                    );
+                }
+                _ => {
+                    self.print_workspace_status(&workspace_status);
+                }
+            }
+        }
+
+        let profile = match Select::with_theme(&self.theme)
+            .with_prompt("Choose your onboarding path")
+            .items(&[
+                "QuickStart - gateway, one channel, provider, and control plane",
+                "Advanced - everything in QuickStart plus skills and system service",
+            ])
+            .default(0)
+            .interact()?
+        {
+            1 => OnboardingProfile::Advanced,
+            _ => OnboardingProfile::QuickStart,
+        };
+        self.state.profile = Some(profile.label().to_string());
+
+        let quickstart_steps = vec![
+            OnboardingStep::Gateway,
+            OnboardingStep::Channel,
+            OnboardingStep::Model,
+            OnboardingStep::ControlPlane,
+        ];
+        let advanced_steps = vec![
             OnboardingStep::Gateway,
             OnboardingStep::Channel,
             OnboardingStep::Model,
@@ -93,6 +175,11 @@ impl OnboardingWizard {
             OnboardingStep::Skill,
             OnboardingStep::Daemon,
         ];
+
+        let steps = match profile {
+            OnboardingProfile::QuickStart => quickstart_steps,
+            OnboardingProfile::Advanced => advanced_steps,
+        };
 
         for step in steps {
             println!("\n{}", style(format!("📋 {}", step.name())).bold().cyan());
@@ -110,6 +197,7 @@ impl OnboardingWizard {
             }
         }
 
+        self.run_post_onboarding_health_check().await?;
         self.print_completion();
         Ok(())
     }
@@ -135,6 +223,10 @@ Let's get started!
     fn print_completion(&self) {
         println!("\n{}", style("✅ Onboarding complete!").bold().green());
         println!("\nConfiguration summary:");
+        println!(
+            "  Path: {}",
+            self.state.profile.as_deref().unwrap_or("QuickStart")
+        );
         println!(
             "  Gateway: {}",
             if self.state.gateway_configured {
@@ -186,6 +278,61 @@ Let's get started!
         println!("  openrustclaw start    # Start the gateway");
         println!("  openrustclaw chat     # Start chatting");
         println!("  openrustclaw doctor   # Verify everything works");
+        println!("  Open http://127.0.0.1:18789/control/ui after startup for the dashboard");
+    }
+
+    fn print_workspace_status(&self, status: &OnboardingWorkspaceStatus) {
+        println!("\nExisting workspace state:");
+        println!(
+            "  .env: {}",
+            if status.env_present {
+                "present"
+            } else {
+                "absent"
+            }
+        );
+        println!(
+            "  .claw/control: {}",
+            if status.control_registry_present {
+                "present"
+            } else {
+                "absent"
+            }
+        );
+        println!(
+            "  .claw/channels: {}",
+            if status.channels_registry_present {
+                "present"
+            } else {
+                "absent"
+            }
+        );
+        println!(
+            "  user service: {}",
+            if status.user_service_present {
+                "present"
+            } else {
+                "absent"
+            }
+        );
+    }
+
+    async fn run_post_onboarding_health_check(&self) -> Result<()> {
+        println!(
+            "\n{}",
+            style("Running post-onboarding health check...").cyan()
+        );
+        let report = doctor::collect_report(false, true, None).await?;
+        println!(
+            "  Health check: {} passed, {} warnings, {} failed",
+            report.passed, report.warnings, report.failed
+        );
+        if report.failed == 0 {
+            println!("  ✓ The workspace is ready for first start.");
+        } else {
+            println!("  ⚠ Review `openrustclaw doctor --deep` before first start.");
+        }
+        Ok(())
     }
 }
 
@@ -194,6 +341,23 @@ Let's get started!
 // ============================================================================
 
 async fn run_gateway_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
+    let gateway_modes = vec![
+        "Local gateway on this machine",
+        "Remote gateway/client guidance only",
+    ];
+    let mode = Select::with_theme(&wizard.theme)
+        .with_prompt("Gateway mode")
+        .items(&gateway_modes)
+        .default(0)
+        .interact()?;
+
+    if mode == 1 {
+        println!("Remote gateway/client mode is not a separate shipped runtime yet.");
+        println!(
+            "Use the local gateway for now and expose it through your own tunnel or reverse proxy if needed."
+        );
+    }
+
     let host: String = Input::with_theme(&wizard.theme)
         .with_prompt("Gateway host")
         .default("127.0.0.1".to_string())
@@ -614,6 +778,76 @@ WantedBy=default.target
     Ok(())
 }
 
+pub fn workspace_status(workspace_root: &Path) -> OnboardingWorkspaceStatus {
+    let control_root = control::control_root_for(workspace_root);
+    let channels_root = channels::channels_root_for(workspace_root);
+    let service_present = dirs::config_dir()
+        .map(|dir| dir.join("systemd/user/openrustclaw.service").exists())
+        .unwrap_or(false);
+
+    OnboardingWorkspaceStatus {
+        workspace_root: workspace_root.display().to_string(),
+        env_present: workspace_root.join(".env").exists(),
+        control_registry_present: control_root.exists(),
+        channels_registry_present: channels_root.exists(),
+        user_service_present: service_present,
+    }
+}
+
+async fn backup_and_reset_workspace_state() -> Result<PathBuf> {
+    let workspace_root = std::env::current_dir()?;
+    let backup_root = workspace_root
+        .join(".claw")
+        .join("onboard-backups")
+        .join(Utc::now().format("%Y%m%d%H%M%S").to_string());
+    fs::create_dir_all(&backup_root).await?;
+
+    let env_path = workspace_root.join(".env");
+    if env_path.exists() {
+        fs::copy(&env_path, backup_root.join("env.backup")).await?;
+        fs::remove_file(&env_path).await?;
+    }
+
+    let control_root = control::control_root_for(&workspace_root);
+    if control_root.exists() {
+        copy_dir_recursive(&control_root, &backup_root.join("control")).await?;
+        fs::remove_dir_all(&control_root).await?;
+    }
+
+    let channels_root = channels::channels_root_for(&workspace_root);
+    if channels_root.exists() {
+        copy_dir_recursive(&channels_root, &backup_root.join("channels")).await?;
+        fs::remove_dir_all(&channels_root).await?;
+    }
+
+    Ok(backup_root)
+}
+
+async fn copy_dir_recursive(source: &Path, dest: &Path) -> Result<()> {
+    let source = source.to_path_buf();
+    let dest = dest.to_path_buf();
+    tokio::task::spawn_blocking(move || -> Result<()> {
+        fn copy_dir(source: &Path, dest: &Path) -> Result<()> {
+            std::fs::create_dir_all(dest)?;
+            for entry in std::fs::read_dir(source)? {
+                let entry = entry?;
+                let entry_path = entry.path();
+                let target = dest.join(entry.file_name());
+                if entry.file_type()?.is_dir() {
+                    copy_dir(&entry_path, &target)?;
+                } else {
+                    std::fs::copy(&entry_path, &target)?;
+                }
+            }
+            Ok(())
+        }
+
+        copy_dir(&source, &dest)
+    })
+    .await??;
+    Ok(())
+}
+
 // ============================================================================
 // Entry Point
 // ============================================================================
@@ -636,6 +870,7 @@ mod tests {
         assert!(!state.model_configured);
         assert!(!state.daemon_installed);
         assert!(state.skills_installed.is_empty());
+        assert!(state.profile.is_none());
     }
 
     #[test]
@@ -646,6 +881,7 @@ mod tests {
         assert!(!wizard.state.model_configured);
         assert!(!wizard.state.daemon_installed);
         assert!(wizard.state.skills_installed.is_empty());
+        assert!(wizard.state.profile.is_none());
     }
 
     #[test]
@@ -715,5 +951,14 @@ mod tests {
         assert!(state.gateway_configured);
         assert!(state.model_configured);
         assert!(state.daemon_installed);
+    }
+
+    #[test]
+    fn test_workspace_status_defaults_to_absent() {
+        let dir = tempfile::tempdir().unwrap();
+        let status = workspace_status(dir.path());
+        assert!(!status.env_present);
+        assert!(!status.control_registry_present);
+        assert!(!status.channels_registry_present);
     }
 }

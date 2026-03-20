@@ -5,7 +5,7 @@ use chrono::Utc;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 
-use super::{control, runtime};
+use super::{channels, control, onboard, runtime, services};
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -185,6 +185,24 @@ pub async fn collect_report(
         check_control_registry(repair).await,
         true,
     ));
+    checks.push(diagnostic_check(
+        "channels_registry",
+        "channel registry",
+        check_channels_registry(repair).await,
+        true,
+    ));
+    checks.push(diagnostic_check(
+        "onboarding_state",
+        "onboarding-managed workspace state",
+        check_onboarding_state(),
+        true,
+    ));
+    checks.push(diagnostic_check(
+        "channel_readiness",
+        "enabled channel readiness probes",
+        check_channel_readiness(&config_path).await,
+        true,
+    ));
 
     if deep {
         checks.push(diagnostic_check(
@@ -265,6 +283,50 @@ async fn check_control_registry(repair: bool) -> Result<()> {
         anyhow::bail!("Control registry not initialized. Run `openrustclaw control init`.");
     }
     control::validate_registry(&registry)?;
+    Ok(())
+}
+
+async fn check_channels_registry(repair: bool) -> Result<()> {
+    let cwd = std::env::current_dir()?;
+    let channels_root = channels::channels_root_for(&cwd);
+    if repair && !channels_root.exists() {
+        channels::init(None)?;
+    }
+    if !channels_root.exists() {
+        anyhow::bail!("Channel registry not initialized. Run `openrustclaw channels init`.");
+    }
+    let _registry = channels::load_registry(channels_root)?;
+    Ok(())
+}
+
+fn check_onboarding_state() -> Result<()> {
+    let cwd = std::env::current_dir()?;
+    let status = onboard::workspace_status(&cwd);
+    if !status.env_present && !status.control_registry_present && !status.channels_registry_present
+    {
+        anyhow::bail!(
+            "No onboarding-managed workspace state detected yet. Run `openrustclaw onboard` or scaffold control/channel state manually."
+        );
+    }
+    Ok(())
+}
+
+async fn check_channel_readiness(config_path: &str) -> Result<()> {
+    let cwd = std::env::current_dir()?;
+    let report = services::channel_probes(config_path, &cwd).await?;
+    if report.entries.is_empty() {
+        anyhow::bail!("No shipped channels are enabled in the effective config.");
+    }
+
+    let failed: Vec<_> = report
+        .entries
+        .iter()
+        .filter(|entry| entry.status == services::ChannelProbeStatus::Failed)
+        .map(|entry| format!("{}: {}", entry.platform, entry.detail))
+        .collect();
+    if !failed.is_empty() {
+        anyhow::bail!("Channel readiness failures: {}", failed.join("; "));
+    }
     Ok(())
 }
 

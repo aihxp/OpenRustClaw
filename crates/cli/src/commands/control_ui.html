@@ -350,6 +350,17 @@
           <h2>Scheduler Health</h2>
           <div class="surface"><pre id="scheduler-status">Loading…</pre></div>
         </article>
+        <article class="panel span-12">
+          <h2>Channel Readiness</h2>
+          <div class="surface">
+            <table class="table">
+              <thead>
+                <tr><th>Platform</th><th>Status</th><th>Probe</th><th>Detail</th></tr>
+              </thead>
+              <tbody id="channel-probes"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </article>
         <article class="panel span-6">
           <h2>Autonomy Policy</h2>
           <div class="surface"><pre id="autonomy-policy">Loading…</pre></div>
@@ -631,6 +642,19 @@
         setText("scheduler-status", report);
       }
 
+      async function loadChannelProbes() {
+        const payload = await fetchJson("/control/services/channels");
+        const rows = (payload.entries || []).map((entry) => {
+          return `<tr>
+            <td><strong>${entry.platform || "-"}</strong></td>
+            <td>${entry.status || "-"}</td>
+            <td>${entry.probe_kind || "-"}</td>
+            <td>${entry.detail || "-"}</td>
+          </tr>`;
+        });
+        renderTableRows("channel-probes", rows, "No enabled channels to probe.");
+      }
+
       function emptyToNull(value) {
         const trimmed = value.trim();
         return trimmed ? trimmed : null;
@@ -885,6 +909,7 @@
             loadRuntime(),
             loadVaultStatus(),
             loadSchedulerStatus(),
+            loadChannelProbes(),
             loadAutonomy(),
             loadChannels(),
             loadSessions(),

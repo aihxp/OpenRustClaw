@@ -1,8 +1,9 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use anyhow::Result;
 use chrono::{DateTime, Utc};
-use openrustclaw_core::config::AppConfig;
+use openrustclaw_core::config::{AppConfig, IMessageBridgeMode};
 use openrustclaw_db::{SqlitePool, init_pool};
 use serde::Serialize;
 use sqlx::Row;
@@ -90,6 +91,29 @@ pub struct RuntimeEventSummary {
     pub status: String,
     pub created_at: String,
     pub processed_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ChannelProbeStatus {
+    Ready,
+    Warning,
+    Failed,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ChannelProbeEntry {
+    pub platform: String,
+    pub enabled: bool,
+    pub status: ChannelProbeStatus,
+    pub probe_kind: String,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ChannelProbeReport {
+    pub generated_at: String,
+    pub entries: Vec<ChannelProbeEntry>,
 }
 
 #[derive(Debug, Clone)]
@@ -302,6 +326,63 @@ pub async fn runtime_events(
     runtime_events_with_pool(&pool, event_name, limit).await
 }
 
+pub async fn channel_probes(
+    config_path: &str,
+    workspace_root: &Path,
+) -> Result<ChannelProbeReport> {
+    let config = runtime::load_effective_config(config_path, workspace_root)?;
+    channel_probes_with_config(&config).await
+}
+
+pub async fn channel_probes_with_config(config: &AppConfig) -> Result<ChannelProbeReport> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(4))
+        .build()?;
+    let mut entries = Vec::new();
+
+    if config.channels.telegram.enabled {
+        entries.push(probe_telegram(&client, &config.channels.telegram).await);
+    }
+    if config.channels.discord.enabled {
+        entries.push(probe_discord(&client, &config.channels.discord).await);
+    }
+    if config.channels.slack.enabled {
+        entries.push(probe_slack(&client, &config.channels.slack).await);
+    }
+    if config.channels.mattermost.enabled {
+        entries.push(probe_mattermost(&client, &config.channels.mattermost).await);
+    }
+    if config.channels.matrix.enabled {
+        entries.push(probe_matrix(&client, &config.channels.matrix).await);
+    }
+    if config.channels.whatsapp.enabled {
+        entries.push(probe_whatsapp(&config.channels.whatsapp));
+    }
+    if config.channels.teams.enabled {
+        entries.push(probe_teams(&config.channels.teams));
+    }
+    if config.channels.google_chat.enabled {
+        entries.push(probe_google_chat(&config.channels.google_chat));
+    }
+    if config.channels.google_meet.enabled {
+        entries.push(probe_google_meet(&config.channels.google_meet));
+    }
+    if config.channels.gmail_pubsub.enabled {
+        entries.push(probe_gmail(&config.channels.gmail_pubsub));
+    }
+    if config.channels.signal.enabled {
+        entries.push(probe_signal(&config.channels.signal));
+    }
+    if config.channels.imessage.enabled {
+        entries.push(probe_imessage(&config.channels.imessage));
+    }
+
+    Ok(ChannelProbeReport {
+        generated_at: Utc::now().to_rfc3339(),
+        entries,
+    })
+}
+
 pub async fn runtime_events_with_pool(
     pool: &SqlitePool,
     event_name: Option<&str>,
@@ -348,6 +429,339 @@ pub async fn runtime_events_with_pool(
             })
         })
         .collect()
+}
+
+async fn probe_telegram(
+    client: &reqwest::Client,
+    config: &openrustclaw_core::config::TelegramConfig,
+) -> ChannelProbeEntry {
+    if config.token.trim().is_empty() {
+        return failed_entry("telegram", "remote_auth", "telegram token is missing");
+    }
+    let base = config
+        .api_base_url
+        .as_deref()
+        .unwrap_or("https://api.telegram.org")
+        .trim_end_matches('/');
+    let url = format!("{base}/bot{}/getMe", config.token);
+    match client.get(url).send().await {
+        Ok(resp) if resp.status().is_success() => {
+            ready_entry("telegram", "remote_auth", "Bot API auth probe succeeded")
+        }
+        Ok(resp) => failed_entry(
+            "telegram",
+            "remote_auth",
+            format!("Bot API probe failed with status {}", resp.status()),
+        ),
+        Err(error) => failed_entry("telegram", "remote_auth", error.to_string()),
+    }
+}
+
+async fn probe_discord(
+    client: &reqwest::Client,
+    config: &openrustclaw_core::config::DiscordConfig,
+) -> ChannelProbeEntry {
+    if config.token.trim().is_empty() {
+        return failed_entry("discord", "remote_auth", "discord bot token is missing");
+    }
+    let base = config
+        .api_base_url
+        .as_deref()
+        .unwrap_or("https://discord.com/api/v10")
+        .trim_end_matches('/');
+    let url = format!("{base}/users/@me");
+    match client
+        .get(url)
+        .header("authorization", format!("Bot {}", config.token))
+        .send()
+        .await
+    {
+        Ok(resp) if resp.status().is_success() => {
+            ready_entry("discord", "remote_auth", "Discord auth probe succeeded")
+        }
+        Ok(resp) => failed_entry(
+            "discord",
+            "remote_auth",
+            format!("Discord auth probe failed with status {}", resp.status()),
+        ),
+        Err(error) => failed_entry("discord", "remote_auth", error.to_string()),
+    }
+}
+
+async fn probe_slack(
+    client: &reqwest::Client,
+    config: &openrustclaw_core::config::SlackConfig,
+) -> ChannelProbeEntry {
+    if config.token.trim().is_empty() {
+        return failed_entry("slack", "remote_auth", "slack bot token is missing");
+    }
+    let base = config
+        .api_base_url
+        .as_deref()
+        .unwrap_or("https://slack.com/api")
+        .trim_end_matches('/');
+    let url = format!("{base}/auth.test");
+    match client.post(url).bearer_auth(&config.token).send().await {
+        Ok(resp) if resp.status().is_success() => {
+            ready_entry("slack", "remote_auth", "Slack auth probe succeeded")
+        }
+        Ok(resp) => failed_entry(
+            "slack",
+            "remote_auth",
+            format!("Slack auth probe failed with status {}", resp.status()),
+        ),
+        Err(error) => failed_entry("slack", "remote_auth", error.to_string()),
+    }
+}
+
+async fn probe_mattermost(
+    client: &reqwest::Client,
+    config: &openrustclaw_core::config::MattermostConfig,
+) -> ChannelProbeEntry {
+    if config.bot_token.trim().is_empty() {
+        return failed_entry(
+            "mattermost",
+            "remote_auth",
+            "mattermost bot token is missing",
+        );
+    }
+    let url = format!(
+        "{}/api/v4/users/me",
+        config.server_url.trim_end_matches('/')
+    );
+    match client.get(url).bearer_auth(&config.bot_token).send().await {
+        Ok(resp) if resp.status().is_success() => ready_entry(
+            "mattermost",
+            "remote_auth",
+            "Mattermost auth probe succeeded",
+        ),
+        Ok(resp) => failed_entry(
+            "mattermost",
+            "remote_auth",
+            format!("Mattermost auth probe failed with status {}", resp.status()),
+        ),
+        Err(error) => failed_entry("mattermost", "remote_auth", error.to_string()),
+    }
+}
+
+async fn probe_matrix(
+    client: &reqwest::Client,
+    config: &openrustclaw_core::config::MatrixConfig,
+) -> ChannelProbeEntry {
+    let Some(token) = config.access_token.as_deref() else {
+        return warning_entry(
+            "matrix",
+            "config_readiness",
+            "Matrix is enabled but no access token is configured; password-based live probe is skipped",
+        );
+    };
+    let url = format!(
+        "{}/_matrix/client/v3/account/whoami",
+        config.homeserver.trim_end_matches('/')
+    );
+    match client.get(url).bearer_auth(token).send().await {
+        Ok(resp) if resp.status().is_success() => {
+            ready_entry("matrix", "remote_auth", "Matrix whoami probe succeeded")
+        }
+        Ok(resp) => failed_entry(
+            "matrix",
+            "remote_auth",
+            format!("Matrix whoami probe failed with status {}", resp.status()),
+        ),
+        Err(error) => failed_entry("matrix", "remote_auth", error.to_string()),
+    }
+}
+
+fn probe_whatsapp(config: &openrustclaw_core::config::WhatsAppConfig) -> ChannelProbeEntry {
+    if !Path::new(&config.bridge_path).exists() {
+        return failed_entry(
+            "whatsapp",
+            "local_runtime",
+            format!("bridge path '{}' does not exist", config.bridge_path),
+        );
+    }
+    let session_dir = Path::new(&config.session_path);
+    if session_dir.exists() {
+        ready_entry(
+            "whatsapp",
+            "local_runtime",
+            "Baileys bridge path exists and session directory is present",
+        )
+    } else {
+        warning_entry(
+            "whatsapp",
+            "local_runtime",
+            "Baileys bridge path exists but session directory is not initialized yet",
+        )
+    }
+}
+
+fn probe_teams(config: &openrustclaw_core::config::TeamsConfig) -> ChannelProbeEntry {
+    if config.app_id.trim().is_empty() || config.app_password.trim().is_empty() {
+        failed_entry(
+            "teams",
+            "config_readiness",
+            "teams app_id/app_password are required",
+        )
+    } else {
+        ready_entry(
+            "teams",
+            "config_readiness",
+            "Teams app credentials and webhook path are configured",
+        )
+    }
+}
+
+fn probe_google_chat(config: &openrustclaw_core::config::GoogleChatConfig) -> ChannelProbeEntry {
+    if config.service_account_key.trim().is_empty() || config.project_id.trim().is_empty() {
+        return failed_entry(
+            "google_chat",
+            "config_readiness",
+            "service account key and project id are required",
+        );
+    }
+    if !probe_key_path_like(&config.service_account_key) {
+        return warning_entry(
+            "google_chat",
+            "config_readiness",
+            "service account key path does not exist yet",
+        );
+    }
+    ready_entry(
+        "google_chat",
+        "config_readiness",
+        "Google Chat credentials are configured",
+    )
+}
+
+fn probe_google_meet(config: &openrustclaw_core::config::GoogleMeetConfig) -> ChannelProbeEntry {
+    if config.service_account_key_path.trim().is_empty()
+        || config.delegated_user_email.trim().is_empty()
+    {
+        return failed_entry(
+            "google_meet",
+            "config_readiness",
+            "service account key path and delegated user email are required",
+        );
+    }
+    if !probe_key_path_like(&config.service_account_key_path) {
+        return warning_entry(
+            "google_meet",
+            "config_readiness",
+            "service account key path does not exist yet",
+        );
+    }
+    ready_entry(
+        "google_meet",
+        "config_readiness",
+        "Google Meet credentials are configured",
+    )
+}
+
+fn probe_gmail(config: &openrustclaw_core::config::GmailPubSubConfig) -> ChannelProbeEntry {
+    if config.service_account_key_path.trim().is_empty()
+        || config.project_id.trim().is_empty()
+        || config.user_email.trim().is_empty()
+    {
+        return failed_entry(
+            "gmail_pubsub",
+            "config_readiness",
+            "service account key path, project id, and user email are required",
+        );
+    }
+    if !probe_key_path_like(&config.service_account_key_path) {
+        return warning_entry(
+            "gmail_pubsub",
+            "config_readiness",
+            "service account key path does not exist yet",
+        );
+    }
+    ready_entry(
+        "gmail_pubsub",
+        "config_readiness",
+        "Gmail Pub/Sub credentials are configured",
+    )
+}
+
+fn probe_signal(config: &openrustclaw_core::config::SignalConfig) -> ChannelProbeEntry {
+    let path = config
+        .signal_cli_path
+        .clone()
+        .unwrap_or_else(|| PathBuf::from("signal-cli"));
+    if path.exists() || path == PathBuf::from("signal-cli") {
+        ready_entry("signal", "local_runtime", "Signal CLI path is configured")
+    } else {
+        failed_entry(
+            "signal",
+            "local_runtime",
+            format!("signal-cli path '{}' does not exist", path.display()),
+        )
+    }
+}
+
+fn probe_imessage(config: &openrustclaw_core::config::IMessageConfig) -> ChannelProbeEntry {
+    match &config.bridge_mode {
+        IMessageBridgeMode::BlueBubbles {
+            server_url,
+            password,
+        } => {
+            if server_url.trim().is_empty() || password.trim().is_empty() {
+                failed_entry(
+                    "imessage",
+                    "config_readiness",
+                    "BlueBubbles server_url and password are required",
+                )
+            } else {
+                ready_entry(
+                    "imessage",
+                    "config_readiness",
+                    "BlueBubbles server credentials are configured",
+                )
+            }
+        }
+        IMessageBridgeMode::MacOSDirect => {
+            ready_entry("imessage", "local_runtime", "macOS direct mode selected")
+        }
+        IMessageBridgeMode::PrivateApi => warning_entry(
+            "imessage",
+            "local_runtime",
+            "private API mode requires local macOS validation",
+        ),
+    }
+}
+
+fn probe_key_path_like(value: &str) -> bool {
+    value.starts_with("token:") || value.starts_with("env:") || Path::new(value).exists()
+}
+
+fn ready_entry(platform: &str, probe_kind: &str, detail: impl Into<String>) -> ChannelProbeEntry {
+    ChannelProbeEntry {
+        platform: platform.to_string(),
+        enabled: true,
+        status: ChannelProbeStatus::Ready,
+        probe_kind: probe_kind.to_string(),
+        detail: detail.into(),
+    }
+}
+
+fn warning_entry(platform: &str, probe_kind: &str, detail: impl Into<String>) -> ChannelProbeEntry {
+    ChannelProbeEntry {
+        platform: platform.to_string(),
+        enabled: true,
+        status: ChannelProbeStatus::Warning,
+        probe_kind: probe_kind.to_string(),
+        detail: detail.into(),
+    }
+}
+
+fn failed_entry(platform: &str, probe_kind: &str, detail: impl Into<String>) -> ChannelProbeEntry {
+    ChannelProbeEntry {
+        platform: platform.to_string(),
+        enabled: true,
+        status: ChannelProbeStatus::Failed,
+        probe_kind: probe_kind.to_string(),
+        detail: detail.into(),
+    }
 }
 
 fn enabled_channels(config: &AppConfig) -> Vec<String> {

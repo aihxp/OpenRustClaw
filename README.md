@@ -170,6 +170,7 @@ Channel routing/operator controls:
   - `GET /control/services/status`
   - `GET /control/services/scheduler`
   - `GET /control/services/runtime-events`
+  - `GET /control/services/channels`
 - shared operator inspection surfaces now exist at:
   - `GET /control/sessions`
   - `GET /control/sessions/{id}`
@@ -187,7 +188,7 @@ Channel routing/operator controls:
   - `PUT /control/runtime/vault/{key}`
   - `DELETE /control/runtime/vault/{key}`
 - `openrustclaw runtime status|reload|switch-provider|switch-model`
-- `openrustclaw runtime services status|scheduler|events`
+- `openrustclaw runtime services status|scheduler|events|channels`
 - `openrustclaw runtime services logs`
 - `openrustclaw runtime vault status|list|set|delete`
 - `openrustclaw orchestrate resolve|run`
@@ -209,7 +210,8 @@ Channel routing/operator controls:
 - bounded orchestration receipts now also preserve planner/worker/synthesis trace entries, parent/child delegation relationships, and estimated token/duration summaries so operators can inspect execution flow and resource shape without over-steering the models themselves
 - reflection candidates can now be promoted into scoped decision lessons through CLI, API, or `/control/ui`, so decision learning stays explicit and operator-auditable
 - routed/orchestrated runs now persist receipts under `.claw/control/orchestration-runs/` so operators can inspect which Claw planned, which Claws executed, which model-profile fallback path was used, which checkpoints were hit, which trace edges connected the run, and which autonomy/reflection context shaped the run
-- the shipped `/control/ui` dashboard now reuses the same typed runtime/config/diagnostics/services/session/memory/job/channel/orchestration/browser APIs for an initial browser-based operator shell, including live diagnostics, live runtime logs, service/scheduler/runtime-event inspection, session/memory/job inspection, config validate/apply, vault key set/delete, autonomy-policy/decision-lesson inspection, orchestration run supervision/trace/resource detail, and bounded browser actions
+- the shipped `/control/ui` dashboard now reuses the same typed runtime/config/diagnostics/services/session/memory/job/channel/orchestration/browser APIs for an initial browser-based operator shell, including live diagnostics, live runtime logs, enabled-channel readiness inspection, service/scheduler/runtime-event inspection, session/memory/job inspection, config validate/apply, vault key set/delete, autonomy-policy/decision-lesson inspection, orchestration run supervision/trace/resource detail, and bounded browser actions
+- onboarding now detects existing workspace state, offers keep/modify/reset-with-backup choices, supports QuickStart vs Advanced paths, and finishes with a `doctor`-backed health handoff instead of stopping at raw config writes
 - the browser operator lane now includes read-first HTTP fetch and bounded same-domain crawl actions, so operators can gather page/site context without invoking a full browser session for every task
 - `openrustclaw doctor --repair --deep --non-interactive` now validates and, where safe, scaffolds the shipped control-plane registry while exposing the same typed diagnostic model used by `/control/diagnostics`
 - the runtime syncs `.claw/control/CLAW_RUNTIME.md` so Claw itself can see whether it is running solo or alongside other Claws and what delegation/isolation policies exist

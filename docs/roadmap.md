@@ -705,7 +705,7 @@ Exit criteria:
 
 Goal: match OpenClaw's operator UX and tooling surface while keeping Rust-native interfaces.
 
-Status: complete for shipped CLI/MCP control-plane surfaces, shared typed control/config/diagnostics APIs, autonomy-tier and decision-lesson control surfaces, shared service-status and scheduler inspection APIs, shared session/memory/job inspection APIs, channel account CRUD parity, encrypted runtime secret-vault support, validated provider/model switching, runtime reload/cutover APIs with rollback, bounded routed/orchestrated multi-model execution surfaces with receipt capture, checkpoints, trace logs, parent/child delegation relationships, estimated token/duration resource summaries, request-scoped model/autonomy override lanes, reflection candidates, reflection-to-lesson promotion, and lesson-aware steering context, onboarding scaffolding, doctor validation, a bounded native browser operator slice with read-page/crawl-site/navigate/extract/screenshot/pdf surfaces, and an initial Web Control UI shell with config/vault editing plus autonomy/lesson, run-supervision/run-trace/run-resource inspection, and recent/live runtime log visibility; deeper Web Control UI parity, richer browser/web tooling, deeper channel/service probes, and full orchestrated runtime execution remain open.
+Status: complete for shipped CLI/MCP control-plane surfaces, shared typed control/config/diagnostics APIs, autonomy-tier and decision-lesson control surfaces, shared service-status, scheduler, channel-readiness, and runtime-log inspection APIs, shared session/memory/job inspection APIs, channel account CRUD parity, encrypted runtime secret-vault support, validated provider/model switching, runtime reload/cutover APIs with rollback, bounded routed/orchestrated multi-model execution surfaces with receipt capture, checkpoints, trace logs, parent/child delegation relationships, estimated token/duration resource summaries, request-scoped model/autonomy override lanes, reflection candidates, reflection-to-lesson promotion, and lesson-aware steering context, stronger onboarding flows with existing-state handling plus post-onboarding doctor handoff, doctor validation, a bounded native browser operator slice with read-page/crawl-site/navigate/extract/screenshot/pdf surfaces, and an initial Web Control UI shell with config/vault editing plus autonomy/lesson, run-supervision/run-trace/run-resource inspection, enabled-channel readiness, and recent/live runtime log visibility; deeper Web Control UI parity, richer browser/web tooling, deeper channel/service probes, and full orchestrated runtime execution remain open.
 
 Additional later-surface work:
 
@@ -856,6 +856,12 @@ Completed:
   - `GET /control/services/scheduler`,
   - `GET /control/services/runtime-events`,
   - service-status, scheduler-health, and recent-runtime-events panels in `/control/ui`.
+- [x] Add shipped enabled-channel readiness probes on top of the service baseline:
+  - `openrustclaw runtime services channels`,
+  - `GET /control/services/channels`,
+  - enabled-channel readiness panel in `/control/ui`,
+  - remote auth probes where the shipped channel path can do it cheaply and safely,
+  - config/local-runtime readiness checks for the remaining shipped channels.
 - [x] Add shipped runtime log visibility surfaces for operators:
   - file-backed runtime log capture under `.claw/control/runtime.log`,
   - `openrustclaw runtime services logs`,
@@ -1102,12 +1108,12 @@ Remaining:
   - [x] basic secret editing on top of the shared runtime vault API
   - richer vault workflows.
 - [ ] Finish onboarding parity beyond the shipped scaffold:
-  - QuickStart vs Advanced path selection,
+  - [x] QuickStart vs Advanced path selection,
   - local gateway vs remote gateway/client mode,
-  - existing config detection with keep/modify/reset choices,
+  - [x] existing config detection with keep/modify/reset choices,
   - workspace/bootstrap file setup,
   - daemon/service install polish,
-  - post-onboarding health check and first dashboard/chat handoff,
+  - [x] post-onboarding health check and first dashboard/chat handoff,
   - richer remote access guidance.
 - [ ] Make multi-claw mode and assignment state part of the shared typed configuration model:
   - current execution mode,
@@ -1150,7 +1156,7 @@ Remaining:
   - session-safe rebind and rollback,
   - degraded-mode fallback to the prior config if the requested model cannot start.
 - [ ] Extend operator-grade diagnostics beyond the shipped service baseline:
-  - live channel connectivity and auth probes,
+  - [x] enabled-channel readiness and auth probes where feasible,
   - deeper trace-link surfacing,
   - richer secrets/service-state inspection,
   - [x] real log streaming,

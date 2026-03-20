@@ -2488,6 +2488,10 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             "/control/services/runtime-events",
             get(service_runtime_events_handler),
         )
+        .route(
+            "/control/services/channels",
+            get(service_channel_probes_handler),
+        )
         .route("/control/logs/recent", get(control_logs_recent_handler))
         .route("/control/logs/ws", get(control_logs_ws_handler))
         .route("/control/sessions", get(control_sessions_handler))
@@ -3763,6 +3767,23 @@ async fn service_runtime_events_handler(
             Json(serde_json::json!({ "events": events })),
         )
             .into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn service_channel_probes_handler(
+    State(state): State<RuntimeControlState>,
+) -> impl IntoResponse {
+    let result = match runtime::load_effective_config(&state.config_path, &state.workspace_root) {
+        Ok(config) => services::channel_probes_with_config(&config).await,
+        Err(error) => Err(error),
+    };
+    match result {
+        Ok(report) => (StatusCode::OK, Json(serde_json::json!(report))).into_response(),
         Err(error) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({"error": error.to_string()})),
