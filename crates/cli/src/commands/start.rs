@@ -2681,6 +2681,14 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             get(mobile_node_status_handler),
         )
         .route(
+            "/control/mobile/nodes/{id}/push",
+            get(mobile_node_push_handler).post(mobile_node_register_push_handler),
+        )
+        .route(
+            "/control/mobile/nodes/{id}/sync",
+            get(mobile_node_sync_handler).post(mobile_node_report_sync_handler),
+        )
+        .route(
             "/control/mobile/nodes/{id}/capabilities",
             get(mobile_node_capabilities_handler),
         )
@@ -4876,6 +4884,64 @@ async fn mobile_node_runtime_handler(
 ) -> impl IntoResponse {
     match mobile::node_runtime_data(&state.workspace_root, &id) {
         Ok(runtime) => (StatusCode::OK, Json(serde_json::json!(runtime))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn mobile_node_push_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(id): AxumPath<String>,
+) -> impl IntoResponse {
+    match mobile::node_push_state_data(&state.workspace_root, &id) {
+        Ok(push) => (StatusCode::OK, Json(serde_json::json!(push))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn mobile_node_register_push_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(id): AxumPath<String>,
+    Json(payload): Json<mobile::MobilePushRegistrationRequest>,
+) -> impl IntoResponse {
+    match mobile::register_push_data(&state.workspace_root, &id, payload) {
+        Ok(push) => (StatusCode::OK, Json(serde_json::json!(push))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn mobile_node_sync_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(id): AxumPath<String>,
+) -> impl IntoResponse {
+    match mobile::node_sync_state_data(&state.workspace_root, &id) {
+        Ok(sync) => (StatusCode::OK, Json(serde_json::json!(sync))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn mobile_node_report_sync_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(id): AxumPath<String>,
+    Json(payload): Json<mobile::MobileSyncReportRequest>,
+) -> impl IntoResponse {
+    match mobile::report_sync_data(&state.workspace_root, &id, payload) {
+        Ok(sync) => (StatusCode::OK, Json(serde_json::json!(sync))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": error.to_string()})),

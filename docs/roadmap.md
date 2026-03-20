@@ -1305,6 +1305,7 @@ Remaining:
   - SMS where applicable,
   - [x] bounded runtime-state receipts plus push-wake / disconnected-node rehydration requests for the shipped node operator lane,
   - [x] bounded capability inventory plus preview/operator surfaces for camera, screen recording, location, contacts, calendar, photos, canvas, and SMS-style lanes on the shipped node control plane,
+  - [x] bounded push-registration and sync-state reporting surfaces for the shipped node operator lane,
   - richer paired-node/mobile app runtime capability parity where OpenClaw documents it.
 - [x] Add typed node protocols in Rust for the shipped node command/control lane rather than ad hoc compatibility layers.
 - [x] Add secure device capability gating and operator approval for node commands.

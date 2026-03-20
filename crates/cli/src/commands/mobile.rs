@@ -160,6 +160,12 @@ pub struct MobileNodeRuntimeState {
     #[serde(default)]
     pub push_token_present: bool,
     #[serde(default)]
+    pub notifications_authorized: bool,
+    #[serde(default)]
+    pub push_provider: Option<String>,
+    #[serde(default)]
+    pub push_token_updated_at: Option<String>,
+    #[serde(default)]
     pub battery_percent: Option<u8>,
     #[serde(default)]
     pub last_heartbeat_at: Option<String>,
@@ -185,6 +191,16 @@ pub struct MobileNodeRuntimeState {
     pub rehydrate_pending_change_count: Option<usize>,
     #[serde(default)]
     pub last_rehydrate_command_id: Option<String>,
+    #[serde(default)]
+    pub sync_state: String,
+    #[serde(default)]
+    pub pending_change_count: Option<usize>,
+    #[serde(default)]
+    pub last_sync_requested_at: Option<String>,
+    #[serde(default)]
+    pub last_sync_at: Option<String>,
+    #[serde(default)]
+    pub last_sync_result: Option<String>,
     #[serde(default)]
     pub metadata: Value,
 }
@@ -235,6 +251,53 @@ pub struct MobileNodeRuntimeActionResult {
     pub command: Option<MobileCommandRecord>,
     #[serde(default)]
     pub preview: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MobileNodePushState {
+    pub node_id: String,
+    pub push_token_present: bool,
+    pub notifications_authorized: bool,
+    #[serde(default)]
+    pub push_provider: Option<String>,
+    #[serde(default)]
+    pub push_token_updated_at: Option<String>,
+    pub runtime_status: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MobilePushRegistrationRequest {
+    #[serde(default)]
+    pub push_provider: Option<String>,
+    #[serde(default)]
+    pub push_token_present: Option<bool>,
+    #[serde(default)]
+    pub notifications_authorized: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MobileNodeSyncState {
+    pub node_id: String,
+    pub sync_state: String,
+    #[serde(default)]
+    pub pending_change_count: Option<usize>,
+    #[serde(default)]
+    pub last_sync_requested_at: Option<String>,
+    #[serde(default)]
+    pub last_sync_at: Option<String>,
+    #[serde(default)]
+    pub last_sync_result: Option<String>,
+    pub runtime_status: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MobileSyncReportRequest {
+    #[serde(default)]
+    pub sync_state: Option<String>,
+    #[serde(default)]
+    pub pending_change_count: Option<usize>,
+    #[serde(default)]
+    pub last_sync_result: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -337,6 +400,10 @@ fn default_rehydrate_state() -> String {
     "idle".to_string()
 }
 
+fn default_sync_state() -> String {
+    "idle".to_string()
+}
+
 impl Default for MobileSyncSpec {
     fn default() -> Self {
         Self {
@@ -374,6 +441,9 @@ impl MobileNodeRuntimeState {
             network: default_network_state(),
             reachable: false,
             push_token_present: false,
+            notifications_authorized: false,
+            push_provider: None,
+            push_token_updated_at: None,
             battery_percent: None,
             last_heartbeat_at: None,
             wake_state: default_wake_state(),
@@ -387,6 +457,11 @@ impl MobileNodeRuntimeState {
             rehydrate_reason: None,
             rehydrate_pending_change_count: None,
             last_rehydrate_command_id: None,
+            sync_state: default_sync_state(),
+            pending_change_count: None,
+            last_sync_requested_at: None,
+            last_sync_at: None,
+            last_sync_result: None,
             metadata: Value::Null,
         }
     }
@@ -579,6 +654,96 @@ pub fn heartbeat_node_data(
     refresh_runtime_status(&mut runtime);
     save_runtime_state(workspace_root, &runtime)?;
     Ok(runtime)
+}
+
+pub fn node_push_state_data(workspace_root: &Path, node_id: &str) -> Result<MobileNodePushState> {
+    inspect_node_data(workspace_root, node_id)?;
+    let runtime = load_runtime_state(workspace_root, node_id)?;
+    Ok(MobileNodePushState {
+        node_id: node_id.to_string(),
+        push_token_present: runtime.push_token_present,
+        notifications_authorized: runtime.notifications_authorized,
+        push_provider: runtime.push_provider,
+        push_token_updated_at: runtime.push_token_updated_at,
+        runtime_status: runtime.runtime_status,
+    })
+}
+
+pub fn register_push_data(
+    workspace_root: &Path,
+    node_id: &str,
+    request: MobilePushRegistrationRequest,
+) -> Result<MobileNodePushState> {
+    inspect_node_data(workspace_root, node_id)?;
+    let mut runtime = load_runtime_state(workspace_root, node_id)?;
+    let now = Utc::now().to_rfc3339();
+    if let Some(push_provider) = request
+        .push_provider
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        runtime.push_provider = Some(push_provider.to_string());
+    }
+    if let Some(push_token_present) = request.push_token_present {
+        runtime.push_token_present = push_token_present;
+        runtime.push_token_updated_at = Some(now.clone());
+    }
+    if let Some(notifications_authorized) = request.notifications_authorized {
+        runtime.notifications_authorized = notifications_authorized;
+    }
+    refresh_runtime_status(&mut runtime);
+    save_runtime_state(workspace_root, &runtime)?;
+    node_push_state_data(workspace_root, node_id)
+}
+
+pub fn node_sync_state_data(workspace_root: &Path, node_id: &str) -> Result<MobileNodeSyncState> {
+    inspect_node_data(workspace_root, node_id)?;
+    let runtime = load_runtime_state(workspace_root, node_id)?;
+    Ok(MobileNodeSyncState {
+        node_id: node_id.to_string(),
+        sync_state: runtime.sync_state,
+        pending_change_count: runtime.pending_change_count,
+        last_sync_requested_at: runtime.last_sync_requested_at,
+        last_sync_at: runtime.last_sync_at,
+        last_sync_result: runtime.last_sync_result,
+        runtime_status: runtime.runtime_status,
+    })
+}
+
+pub fn report_sync_data(
+    workspace_root: &Path,
+    node_id: &str,
+    request: MobileSyncReportRequest,
+) -> Result<MobileNodeSyncState> {
+    inspect_node_data(workspace_root, node_id)?;
+    let mut runtime = load_runtime_state(workspace_root, node_id)?;
+    let now = Utc::now().to_rfc3339();
+    let sync_state = request
+        .sync_state
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("synced")
+        .to_string();
+    runtime.sync_state = sync_state.clone();
+    runtime.pending_change_count = request.pending_change_count;
+    if matches!(sync_state.as_str(), "requested" | "syncing" | "in_progress") {
+        runtime.last_sync_requested_at = Some(now);
+    } else {
+        runtime.last_sync_at = Some(now);
+    }
+    if let Some(last_sync_result) = request
+        .last_sync_result
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        runtime.last_sync_result = Some(last_sync_result.to_string());
+    }
+    refresh_runtime_status(&mut runtime);
+    save_runtime_state(workspace_root, &runtime)?;
+    node_sync_state_data(workspace_root, node_id)
 }
 
 pub fn preview_notification_data(
@@ -1231,6 +1396,38 @@ pub async fn node_runtime(workspace_root: &Path, node_id: &str) -> Result<()> {
     Ok(())
 }
 
+pub async fn node_push_state(workspace_root: &Path, node_id: &str) -> Result<()> {
+    let push = node_push_state_data(workspace_root, node_id)?;
+    println!("{}", serde_json::to_string_pretty(&push)?);
+    Ok(())
+}
+
+pub async fn register_push(
+    workspace_root: &Path,
+    node_id: &str,
+    request: MobilePushRegistrationRequest,
+) -> Result<()> {
+    let push = register_push_data(workspace_root, node_id, request)?;
+    println!("{}", serde_json::to_string_pretty(&push)?);
+    Ok(())
+}
+
+pub async fn node_sync_state(workspace_root: &Path, node_id: &str) -> Result<()> {
+    let sync = node_sync_state_data(workspace_root, node_id)?;
+    println!("{}", serde_json::to_string_pretty(&sync)?);
+    Ok(())
+}
+
+pub async fn report_sync(
+    workspace_root: &Path,
+    node_id: &str,
+    request: MobileSyncReportRequest,
+) -> Result<()> {
+    let sync = report_sync_data(workspace_root, node_id, request)?;
+    println!("{}", serde_json::to_string_pretty(&sync)?);
+    Ok(())
+}
+
 pub async fn heartbeat_node(
     workspace_root: &Path,
     node_id: &str,
@@ -1803,6 +2000,80 @@ mod tests {
         assert_eq!(runtime.runtime_status, "active");
         assert_eq!(runtime.battery_percent, Some(84));
         assert!(runtime.last_heartbeat_at.is_some());
+    }
+
+    #[test]
+    fn register_push_updates_runtime_receipt() {
+        let temp = tempdir().expect("tempdir");
+        pair_node_data(
+            temp.path(),
+            MobilePairRequest {
+                id: "iphone-push".to_string(),
+                gateway_url: "wss://example.com/gateway".to_string(),
+                auth_token_env: "MOBILE_PUSH_TOKEN".to_string(),
+                device_name: Some("Push iPhone".to_string()),
+                platform: Some("ios".to_string()),
+                capabilities: vec!["mobile".to_string(), "notifications".to_string()],
+                enabled: true,
+                sync: None,
+                notifications: None,
+                metadata: Value::Null,
+            },
+        )
+        .expect("pair node");
+
+        let push = register_push_data(
+            temp.path(),
+            "iphone-push",
+            MobilePushRegistrationRequest {
+                push_provider: Some("apns".to_string()),
+                push_token_present: Some(true),
+                notifications_authorized: Some(true),
+            },
+        )
+        .expect("register push");
+
+        assert!(push.push_token_present);
+        assert!(push.notifications_authorized);
+        assert_eq!(push.push_provider.as_deref(), Some("apns"));
+        assert!(push.push_token_updated_at.is_some());
+    }
+
+    #[test]
+    fn report_sync_updates_runtime_receipt() {
+        let temp = tempdir().expect("tempdir");
+        pair_node_data(
+            temp.path(),
+            MobilePairRequest {
+                id: "iphone-sync".to_string(),
+                gateway_url: "wss://example.com/gateway".to_string(),
+                auth_token_env: "MOBILE_SYNC_TOKEN".to_string(),
+                device_name: Some("Sync iPhone".to_string()),
+                platform: Some("ios".to_string()),
+                capabilities: vec!["mobile".to_string()],
+                enabled: true,
+                sync: None,
+                notifications: None,
+                metadata: Value::Null,
+            },
+        )
+        .expect("pair node");
+
+        let sync = report_sync_data(
+            temp.path(),
+            "iphone-sync",
+            MobileSyncReportRequest {
+                sync_state: Some("synced".to_string()),
+                pending_change_count: Some(0),
+                last_sync_result: Some("ok".to_string()),
+            },
+        )
+        .expect("report sync");
+
+        assert_eq!(sync.sync_state, "synced");
+        assert_eq!(sync.pending_change_count, Some(0));
+        assert_eq!(sync.last_sync_result.as_deref(), Some("ok"));
+        assert!(sync.last_sync_at.is_some());
     }
 
     #[tokio::test]

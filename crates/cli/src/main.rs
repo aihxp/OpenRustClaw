@@ -1356,6 +1356,32 @@ enum MobileAction {
     Status { id: String },
     /// Show bounded runtime state for a configured mobile node
     Runtime { id: String },
+    /// Show bounded push-registration/runtime state for a configured mobile node
+    PushStatus { id: String },
+    /// Record bounded push-registration/runtime state for a configured mobile node
+    RegisterPush {
+        #[arg(long)]
+        id: String,
+        #[arg(long)]
+        push_provider: Option<String>,
+        #[arg(long)]
+        push_token_present: Option<bool>,
+        #[arg(long)]
+        notifications_authorized: Option<bool>,
+    },
+    /// Show bounded sync-runtime state for a configured mobile node
+    SyncStatus { id: String },
+    /// Record bounded sync-runtime state for a configured mobile node
+    ReportSync {
+        #[arg(long)]
+        id: String,
+        #[arg(long)]
+        sync_state: Option<String>,
+        #[arg(long)]
+        pending_change_count: Option<usize>,
+        #[arg(long)]
+        last_sync_result: Option<String>,
+    },
     /// Show bounded capability inventory for a configured mobile node
     Capabilities { id: String },
     /// Record a bounded mobile node heartbeat/runtime receipt
@@ -3133,6 +3159,46 @@ async fn main() -> Result<()> {
                 }
                 MobileAction::Runtime { id } => {
                     commands::mobile::node_runtime(&workspace_root, &id).await
+                }
+                MobileAction::PushStatus { id } => {
+                    commands::mobile::node_push_state(&workspace_root, &id).await
+                }
+                MobileAction::RegisterPush {
+                    id,
+                    push_provider,
+                    push_token_present,
+                    notifications_authorized,
+                } => {
+                    commands::mobile::register_push(
+                        &workspace_root,
+                        &id,
+                        commands::mobile::MobilePushRegistrationRequest {
+                            push_provider,
+                            push_token_present,
+                            notifications_authorized,
+                        },
+                    )
+                    .await
+                }
+                MobileAction::SyncStatus { id } => {
+                    commands::mobile::node_sync_state(&workspace_root, &id).await
+                }
+                MobileAction::ReportSync {
+                    id,
+                    sync_state,
+                    pending_change_count,
+                    last_sync_result,
+                } => {
+                    commands::mobile::report_sync(
+                        &workspace_root,
+                        &id,
+                        commands::mobile::MobileSyncReportRequest {
+                            sync_state,
+                            pending_change_count,
+                            last_sync_result,
+                        },
+                    )
+                    .await
                 }
                 MobileAction::Capabilities { id } => {
                     commands::mobile::node_capabilities(&workspace_root, &id).await

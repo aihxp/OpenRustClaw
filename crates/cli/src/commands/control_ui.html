@@ -727,9 +727,21 @@
             <input id="mobile-runtime-network" type="text" placeholder="wifi | cellular | offline" />
             <input id="mobile-runtime-battery" type="number" min="0" max="100" placeholder="battery %" />
             <div class="action-row">
+              <input id="mobile-push-provider" type="text" placeholder="apns | fcm" />
+              <input id="mobile-sync-state" type="text" placeholder="requested | syncing | synced | failed" />
+            </div>
+            <div class="action-row">
+              <input id="mobile-sync-pending" type="number" min="0" placeholder="pending changes" />
+              <input id="mobile-sync-result" type="text" placeholder="optional sync result" />
+            </div>
+            <div class="action-row">
               <button id="mobile-runtime-heartbeat">Heartbeat</button>
               <button class="secondary" id="mobile-runtime-refresh">Refresh Runtime</button>
               <button class="secondary" id="mobile-capabilities-refresh">Refresh Capabilities</button>
+            </div>
+            <div class="action-row">
+              <button class="secondary" id="mobile-register-push">Register Push</button>
+              <button class="secondary" id="mobile-report-sync">Report Sync</button>
             </div>
             <input id="mobile-runtime-reason" type="text" placeholder="operator reason" />
             <div class="action-row">
@@ -738,6 +750,8 @@
             </div>
           </div>
           <div class="surface"><pre id="mobile-node-detail">Select a mobile node to inspect.</pre></div>
+          <div class="surface" style="margin-top: 12px"><pre id="mobile-node-push">No mobile push state loaded yet.</pre></div>
+          <div class="surface" style="margin-top: 12px"><pre id="mobile-node-sync">No mobile sync state loaded yet.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="mobile-node-capabilities">No mobile capabilities loaded yet.</pre></div>
         </article>
         <article class="panel span-6">
@@ -1732,19 +1746,27 @@
       }
 
       async function inspectMobileNode(id) {
-        const [manifest, status, runtime, capabilities] = await Promise.all([
+        const [manifest, status, runtime, push, sync, capabilities] = await Promise.all([
           fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}`),
           fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}/status`),
           fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}/runtime`),
+          fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}/push`),
+          fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}/sync`),
           fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}/capabilities`),
         ]);
         setText("mobile-node-detail", { manifest, status, runtime });
+        setText("mobile-node-push", push);
+        setText("mobile-node-sync", sync);
         setText("mobile-node-capabilities", capabilities);
         document.getElementById("mobile-source-node").value = id;
         document.getElementById("mobile-command-node").value = id;
         document.getElementById("mobile-runtime-app-state").value = runtime.app_state || "";
         document.getElementById("mobile-runtime-network").value = runtime.network || "";
         document.getElementById("mobile-runtime-battery").value = runtime.battery_percent ?? "";
+        document.getElementById("mobile-push-provider").value = push.push_provider || "";
+        document.getElementById("mobile-sync-state").value = sync.sync_state || "";
+        document.getElementById("mobile-sync-pending").value = sync.pending_change_count ?? "";
+        document.getElementById("mobile-sync-result").value = sync.last_sync_result || "";
       }
 
       async function refreshMobileRuntime() {
@@ -1767,6 +1789,34 @@
           }),
         });
         setText("mobile-node-detail", result);
+        await inspectMobileNode(id);
+      }
+
+      async function registerMobilePush() {
+        const id = document.getElementById("mobile-source-node").value.trim();
+        const result = await fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}/push`, {
+          method: "POST",
+          body: JSON.stringify({
+            push_provider: emptyToNull(document.getElementById("mobile-push-provider").value),
+            push_token_present: true,
+            notifications_authorized: true,
+          }),
+        });
+        setText("mobile-node-push", result);
+        await inspectMobileNode(id);
+      }
+
+      async function reportMobileSync() {
+        const id = document.getElementById("mobile-source-node").value.trim();
+        const result = await fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}/sync`, {
+          method: "POST",
+          body: JSON.stringify({
+            sync_state: emptyToNull(document.getElementById("mobile-sync-state").value),
+            pending_change_count: numberOrNull(document.getElementById("mobile-sync-pending").value),
+            last_sync_result: emptyToNull(document.getElementById("mobile-sync-result").value),
+          }),
+        });
+        setText("mobile-node-sync", result);
         await inspectMobileNode(id);
       }
 
@@ -2687,6 +2737,20 @@
           await heartbeatMobileNode();
         } catch (error) {
           setText("mobile-node-detail", { error: error.message });
+        }
+      });
+      document.getElementById("mobile-register-push").addEventListener("click", async () => {
+        try {
+          await registerMobilePush();
+        } catch (error) {
+          setText("mobile-node-push", { error: error.message });
+        }
+      });
+      document.getElementById("mobile-report-sync").addEventListener("click", async () => {
+        try {
+          await reportMobileSync();
+        } catch (error) {
+          setText("mobile-node-sync", { error: error.message });
         }
       });
       document.getElementById("mobile-runtime-wake").addEventListener("click", async () => {
