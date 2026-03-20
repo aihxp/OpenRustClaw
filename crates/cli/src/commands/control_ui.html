@@ -351,6 +351,21 @@
           <div class="surface"><pre id="runtime-health">Loading…</pre></div>
         </article>
         <article class="panel span-6">
+          <h2>Runtime Beacon</h2>
+          <div class="action-row" style="margin-bottom: 12px">
+            <button class="secondary" id="runtime-beacon-refresh">Refresh Beacon</button>
+          </div>
+          <div class="surface"><pre id="runtime-beacon">Loading…</pre></div>
+        </article>
+        <article class="panel span-6">
+          <h2>Reload Plan</h2>
+          <div class="action-row" style="margin-bottom: 12px">
+            <button class="secondary" id="runtime-reload-plan-refresh">Refresh Plan</button>
+            <button class="secondary" id="runtime-reload-plan-apply">Apply Live Reload</button>
+          </div>
+          <div class="surface"><pre id="runtime-reload-plan">Loading…</pre></div>
+        </article>
+        <article class="panel span-6">
           <h2>Control Registry</h2>
           <div class="surface"><pre id="control-runtime">Loading…</pre></div>
         </article>
@@ -360,6 +375,9 @@
         </article>
         <article class="panel span-12">
           <h2>Channel Readiness</h2>
+          <div class="action-row" style="margin-bottom: 12px">
+            <button class="secondary" id="channel-probes-refresh">Refresh Readiness</button>
+          </div>
           <div class="surface">
             <table class="table">
               <thead>
@@ -746,6 +764,16 @@
         setText("runtime-health", payload);
       }
 
+      async function loadRuntimeBeacon(refresh = false) {
+        const payload = await fetchJson(`/control/runtime/beacon${refresh ? "?refresh=true" : ""}`);
+        setText("runtime-beacon", payload);
+      }
+
+      async function loadRuntimeReloadPlan() {
+        const payload = await fetchJson("/control/runtime/reload-plan");
+        setText("runtime-reload-plan", payload);
+      }
+
       async function scanRuntimeHealth() {
         const payload = await fetchJson("/control/runtime/health/scan", {
           method: "POST",
@@ -763,8 +791,8 @@
         setText("scheduler-status", report);
       }
 
-      async function loadChannelProbes() {
-        const payload = await fetchJson("/control/services/channels");
+      async function loadChannelProbes(refresh = false) {
+        const payload = await fetchJson(`/control/services/channels${refresh ? "?refresh=true" : ""}`);
         const rows = (payload.entries || []).map((entry) => {
           return `<tr>
             <td><strong>${entry.platform || "-"}</strong></td>
@@ -1185,6 +1213,8 @@
             loadServiceStatus(),
             loadRuntime(),
             loadRuntimeHealth(),
+            loadRuntimeBeacon(),
+            loadRuntimeReloadPlan(),
             loadVaultStatus(),
             loadSchedulerStatus(),
             loadChannelProbes(),
@@ -1210,6 +1240,10 @@
       async function triggerRuntimeReload() {
         const result = await fetchJson("/control/runtime/reload", { method: "POST" });
         setText("runtime-status", result);
+        setText("runtime-reload-plan", result.reload_plan || result);
+        if (result.beacon) {
+          setText("runtime-beacon", result.beacon);
+        }
         await refreshAll();
       }
 
@@ -1484,6 +1518,34 @@
           await scanRuntimeHealth();
         } catch (error) {
           setText("runtime-health", { error: error.message });
+        }
+      });
+      document.getElementById("runtime-beacon-refresh").addEventListener("click", async () => {
+        try {
+          await loadRuntimeBeacon(true);
+        } catch (error) {
+          setText("runtime-beacon", { error: error.message });
+        }
+      });
+      document.getElementById("runtime-reload-plan-refresh").addEventListener("click", async () => {
+        try {
+          await loadRuntimeReloadPlan();
+        } catch (error) {
+          setText("runtime-reload-plan", { error: error.message });
+        }
+      });
+      document.getElementById("runtime-reload-plan-apply").addEventListener("click", async () => {
+        try {
+          await triggerRuntimeReload();
+        } catch (error) {
+          setText("runtime-reload-plan", { error: error.message });
+        }
+      });
+      document.getElementById("channel-probes-refresh").addEventListener("click", async () => {
+        try {
+          await loadChannelProbes(true);
+        } catch (error) {
+          renderTableRows("channel-probes", [], error.message);
         }
       });
       document.getElementById("browser-run").addEventListener("click", async () => {

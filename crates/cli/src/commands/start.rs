@@ -529,6 +529,17 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
         sidecar_running: sidecar.is_some(),
     }));
 
+    runtime::mark_runtime_applied(config_path, &workspace_root)?;
+    let _ = runtime::refresh_runtime_beacon(
+        config_path,
+        &workspace_root,
+        &addr,
+        Some(started_at),
+        sidecar.is_some(),
+    )
+    .await;
+    let _ = services::channel_probes_status(config_path, &workspace_root, true).await;
+
     let runtime_health_config_path = config_path.to_string();
     let runtime_health_root = workspace_root.clone();
     let runtime_health_events = event_bus.clone();
@@ -552,6 +563,69 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
                 }
                 Err(error) => {
                     warn!(error = %error, "Failed to refresh runtime health report");
+                }
+            }
+        }
+    }));
+
+    let beacon_config_path = config_path.to_string();
+    let beacon_root = workspace_root.clone();
+    let beacon_addr = addr.clone();
+    let beacon_started_at = started_at;
+    let beacon_sidecar_running = sidecar.is_some();
+    let beacon_events = event_bus.clone();
+    channel_tasks.push(tokio::spawn(async move {
+        let mut ticker = interval(Duration::from_secs(15));
+        loop {
+            ticker.tick().await;
+            match runtime::refresh_runtime_beacon(
+                &beacon_config_path,
+                &beacon_root,
+                &beacon_addr,
+                Some(beacon_started_at),
+                beacon_sidecar_running,
+            )
+            .await
+            {
+                Ok(beacon) => {
+                    let _ = beacon_events
+                        .publish_named(
+                            "runtime.beacon_refreshed",
+                            "runtime_control",
+                            None,
+                            &serde_json::json!(beacon),
+                            None,
+                        )
+                        .await;
+                }
+                Err(error) => {
+                    warn!(error = %error, "Failed to refresh runtime beacon");
+                }
+            }
+        }
+    }));
+
+    let probe_config_path = config_path.to_string();
+    let probe_root = workspace_root.clone();
+    let probe_events = event_bus.clone();
+    channel_tasks.push(tokio::spawn(async move {
+        let mut ticker = interval(Duration::from_secs(300));
+        loop {
+            ticker.tick().await;
+            match services::channel_probes_status(&probe_config_path, &probe_root, true).await {
+                Ok(report) => {
+                    let _ = probe_events
+                        .publish_named(
+                            "runtime.channel_probes_scanned",
+                            "runtime_control",
+                            None,
+                            &serde_json::json!(report),
+                            None,
+                        )
+                        .await;
+                }
+                Err(error) => {
+                    warn!(error = %error, "Failed to refresh channel readiness probes");
                 }
             }
         }
@@ -2449,6 +2523,11 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
         .route("/control/ui", get(control_ui_handler))
         .route("/control/runtime/status", get(runtime_status_handler))
         .route("/control/runtime/health", get(runtime_health_handler))
+        .route("/control/runtime/beacon", get(runtime_beacon_handler))
+        .route(
+            "/control/runtime/reload-plan",
+            get(runtime_reload_plan_handler),
+        )
         .route(
             "/control/runtime/health/scan",
             post(runtime_health_scan_handler),
@@ -2599,6 +2678,7 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             "/control/services/channels",
             get(service_channel_probes_handler),
         )
+        .route("/control/services/beacon", get(service_beacon_handler))
         .route("/control/logs/recent", get(control_logs_recent_handler))
         .route("/control/logs/ws", get(control_logs_ws_handler))
         .route("/control/sessions", get(control_sessions_handler))
@@ -3479,6 +3559,12 @@ struct ActiveRunListQuery {
     limit: Option<usize>,
 }
 
+#[derive(serde::Deserialize, Default)]
+struct RefreshQuery {
+    #[serde(default)]
+    refresh: bool,
+}
+
 async fn runtime_status_handler(State(state): State<RuntimeControlState>) -> impl IntoResponse {
     match runtime::runtime_status(&state.config_path, &state.workspace_root) {
         Ok(status) => (StatusCode::OK, Json(serde_json::json!(status))).into_response(),
@@ -3493,6 +3579,42 @@ async fn runtime_status_handler(State(state): State<RuntimeControlState>) -> imp
 async fn runtime_health_handler(State(state): State<RuntimeControlState>) -> impl IntoResponse {
     match runtime::runtime_health_status(&state.config_path, &state.workspace_root, false).await {
         Ok(report) => (StatusCode::OK, Json(serde_json::json!(report))).into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn runtime_beacon_handler(
+    State(state): State<RuntimeControlState>,
+    Query(query): Query<RefreshQuery>,
+) -> impl IntoResponse {
+    match runtime::runtime_beacon_status(
+        &state.config_path,
+        &state.workspace_root,
+        query.refresh,
+        &state.gateway_addr,
+        Some(state.started_at),
+        state.sidecar_running,
+    )
+    .await
+    {
+        Ok(beacon) => (StatusCode::OK, Json(serde_json::json!(beacon))).into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn runtime_reload_plan_handler(
+    State(state): State<RuntimeControlState>,
+) -> impl IntoResponse {
+    match runtime::runtime_reload_plan(&state.config_path, &state.workspace_root) {
+        Ok(plan) => (StatusCode::OK, Json(serde_json::json!(plan))).into_response(),
         Err(error) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({"error": error.to_string()})),
@@ -4270,13 +4392,36 @@ async fn service_runtime_events_handler(
 
 async fn service_channel_probes_handler(
     State(state): State<RuntimeControlState>,
+    Query(query): Query<RefreshQuery>,
 ) -> impl IntoResponse {
-    let result = match runtime::load_effective_config(&state.config_path, &state.workspace_root) {
-        Ok(config) => services::channel_probes_with_config(&config).await,
-        Err(error) => Err(error),
-    };
+    let result =
+        services::channel_probes_status(&state.config_path, &state.workspace_root, query.refresh)
+            .await;
     match result {
         Ok(report) => (StatusCode::OK, Json(serde_json::json!(report))).into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn service_beacon_handler(
+    State(state): State<RuntimeControlState>,
+    Query(query): Query<RefreshQuery>,
+) -> impl IntoResponse {
+    match runtime::runtime_beacon_status(
+        &state.config_path,
+        &state.workspace_root,
+        query.refresh,
+        &state.gateway_addr,
+        Some(state.started_at),
+        state.sidecar_running,
+    )
+    .await
+    {
+        Ok(beacon) => (StatusCode::OK, Json(serde_json::json!(beacon))).into_response(),
         Err(error) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({"error": error.to_string()})),
@@ -4526,6 +4671,14 @@ async fn control_job_handler(
 }
 
 async fn reload_runtime_agent(state: &RuntimeControlState) -> Result<serde_json::Value> {
+    let plan = runtime::runtime_reload_plan(&state.config_path, &state.workspace_root)?;
+    if plan.restart_required {
+        return Ok(serde_json::json!({
+            "status": "restart_required",
+            "reload_plan": plan,
+        }));
+    }
+
     let config = runtime::load_effective_config(&state.config_path, &state.workspace_root)?;
     if let Some(channel_agent) = &state.channel_agent {
         let agent = build_channel_agent(
@@ -4540,6 +4693,18 @@ async fn reload_runtime_agent(state: &RuntimeControlState) -> Result<serde_json:
         *channel_agent.write().await = agent;
     }
 
+    let _ = runtime::mark_runtime_applied(&state.config_path, &state.workspace_root)?;
+    let beacon = runtime::refresh_runtime_beacon(
+        &state.config_path,
+        &state.workspace_root,
+        &state.gateway_addr,
+        Some(state.started_at),
+        state.sidecar_running,
+    )
+    .await
+    .ok();
+    let reload_plan = plan.clone();
+
     let _ = state
         .event_bus
         .publish_named(
@@ -4549,15 +4714,18 @@ async fn reload_runtime_agent(state: &RuntimeControlState) -> Result<serde_json:
             &serde_json::json!({
                 "default_provider": config.providers.default_provider,
                 "fallback_chain": config.providers.fallback_chain,
+                "reload_plan": reload_plan,
             }),
             None,
         )
         .await;
 
     Ok(serde_json::json!({
-        "status": "ok",
+        "status": if plan.live_reload_ready { "reloaded" } else { "up_to_date" },
         "default_provider": config.providers.default_provider,
         "fallback_chain": config.providers.fallback_chain,
+        "reload_plan": plan,
+        "beacon": beacon,
         "models": {
             "anthropic": config.providers.anthropic.model,
             "openai": config.providers.openai.model,

@@ -369,8 +369,13 @@ enum RuntimeAction {
         #[arg(long)]
         refresh: bool,
     },
-    /// Re-read secret sources and validate that the effective runtime config can be reloaded safely
+    /// Inspect how the current effective config would reload and which changes still require restart
     Reload {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+    },
+    /// Inspect the last runtime-applied snapshot and current live-reload plan
+    ReloadPlan {
         #[arg(short, long, default_value = "config/default.toml")]
         config: String,
     },
@@ -449,11 +454,20 @@ enum RuntimeServicesAction {
     Channels {
         #[arg(short, long, default_value = "config/default.toml")]
         config: String,
+        #[arg(long)]
+        refresh: bool,
     },
     /// Show recent runtime logs captured by the running gateway process
     Logs {
         #[arg(short, long, default_value_t = 50)]
         limit: usize,
+    },
+    /// Show the current runtime liveness beacon
+    Beacon {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+        #[arg(long)]
+        refresh: bool,
     },
 }
 
@@ -2547,13 +2561,21 @@ async fn main() -> Result<()> {
             RuntimeAction::Reload { config } => {
                 let workspace_root = std::env::current_dir()?;
                 let status = commands::runtime::validate_runtime_reload(&config, &workspace_root)?;
+                let plan = commands::runtime::runtime_reload_plan(&config, &workspace_root)?;
                 println!(
                     "{}",
                     serde_json::to_string_pretty(&serde_json::json!({
                         "status": "validated",
                         "runtime": status,
+                        "reload_plan": plan,
                     }))?
                 );
+                Ok(())
+            }
+            RuntimeAction::ReloadPlan { config } => {
+                let workspace_root = std::env::current_dir()?;
+                let plan = commands::runtime::runtime_reload_plan(&config, &workspace_root)?;
+                println!("{}", serde_json::to_string_pretty(&plan)?);
                 Ok(())
             }
             RuntimeAction::SwitchProvider {
@@ -2664,15 +2686,32 @@ async fn main() -> Result<()> {
                         println!("{}", serde_json::to_string_pretty(&events)?);
                         Ok(())
                     }
-                    RuntimeServicesAction::Channels { config } => {
-                        let report =
-                            commands::services::channel_probes(&config, &workspace_root).await?;
+                    RuntimeServicesAction::Channels { config, refresh } => {
+                        let report = commands::services::channel_probes_status(
+                            &config,
+                            &workspace_root,
+                            refresh,
+                        )
+                        .await?;
                         println!("{}", serde_json::to_string_pretty(&report)?);
                         Ok(())
                     }
                     RuntimeServicesAction::Logs { limit } => {
                         let entries = commands::logs::read_recent_logs(&workspace_root, limit)?;
                         println!("{}", serde_json::to_string_pretty(&entries)?);
+                        Ok(())
+                    }
+                    RuntimeServicesAction::Beacon { config, refresh } => {
+                        let beacon = commands::runtime::runtime_beacon_status(
+                            &config,
+                            &workspace_root,
+                            refresh,
+                            "not_running",
+                            None,
+                            false,
+                        )
+                        .await?;
+                        println!("{}", serde_json::to_string_pretty(&beacon)?);
                         Ok(())
                     }
                 }

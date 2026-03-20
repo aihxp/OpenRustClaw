@@ -705,7 +705,7 @@ Exit criteria:
 
 Goal: match OpenClaw's operator UX and tooling surface while keeping Rust-native interfaces.
 
-Status: complete for shipped CLI/MCP control-plane surfaces, shared typed control/config/diagnostics APIs, autonomy-tier and decision-lesson control surfaces, shared service-status, scheduler, channel-readiness, runtime-health, and runtime-log inspection APIs, shared session/memory/job inspection APIs, channel account CRUD parity, encrypted runtime secret-vault support, validated provider/model switching, runtime reload/cutover APIs with rollback, basic persisted provider/fallback health scans with degraded-mode warnings, full trust-first routed/orchestrated multi-model execution surfaces with receipt capture, checkpoints, trace logs, transcript persistence, parent/child delegation relationships, active supervision state, pause/resume/kill controls, estimated token/duration resource summaries, request-scoped model/autonomy override lanes, reflection candidates, reflection-to-lesson promotion, and lesson-aware steering context, stronger onboarding flows with existing-state handling plus post-onboarding doctor handoff, doctor validation, a shipped browser/tool-group slice with open-session/sessions/inspect/run-sequence/artifact inspection plus read-page/crawl-site/navigate/extract/screenshot/pdf surfaces across CLI, MCP, `/control/browser/...`, and `/control/ui`, including a Tier B `agent-browser` compatibility backend under the same Rust-owned control contract, typed extension-management APIs for `/control/skills...`, and an initial Web Control UI shell with config/vault editing plus runtime-health, autonomy/lesson, installed-extension inspection and registry discovery, active-run supervision, run-supervision/run-trace/run-transcript/run-resource inspection, enabled-channel readiness, and recent/live runtime log visibility; deeper Web Control UI parity, broader hot-reload and channel/service resilience, and deeper channel/service probes remain open.
+Status: complete for shipped CLI/MCP control-plane surfaces, shared typed control/config/diagnostics APIs, autonomy-tier and decision-lesson control surfaces, shared service-status, scheduler, channel-readiness, runtime-health, runtime-beacon, runtime-reload-plan, and runtime-log inspection APIs, shared session/memory/job inspection APIs, channel account CRUD parity, encrypted runtime secret-vault support, validated provider/model switching, runtime reload/cutover APIs with rollback plus partial-reload versus restart-required guidance, persisted applied-runtime snapshots, basic persisted provider/fallback health scans with degraded-mode warnings, full trust-first routed/orchestrated multi-model execution surfaces with receipt capture, checkpoints, trace logs, transcript persistence, parent/child delegation relationships, active supervision state, pause/resume/kill controls, estimated token/duration resource summaries, request-scoped model/autonomy override lanes, reflection candidates, reflection-to-lesson promotion, and lesson-aware steering context, stronger onboarding flows with existing-state handling plus post-onboarding doctor handoff, doctor validation, a shipped browser/tool-group slice with open-session/sessions/inspect/run-sequence/artifact inspection plus read-page/crawl-site/navigate/extract/screenshot/pdf surfaces across CLI, MCP, `/control/browser/...`, and `/control/ui`, including a Tier B `agent-browser` compatibility backend under the same Rust-owned control contract, typed extension-management APIs for `/control/skills...`, and an initial Web Control UI shell with config/vault editing plus runtime-health, runtime-beacon, runtime-reload-plan, autonomy/lesson, installed-extension inspection and registry discovery, active-run supervision, run-supervision/run-trace/run-transcript/run-resource inspection, enabled-channel readiness, persisted readiness snapshots, and recent/live runtime log visibility; deeper Web Control UI parity and deeper diagnostics still remain open, and channel auto-restart remains an operations hardening item rather than a Phase 6 Wave 3 blocker.
 
 Additional later-surface work:
 
@@ -1156,10 +1156,10 @@ Remaining:
   - migrate more plaintext legacy secrets where feasible,
   - [x] add Control UI secret editing on top of the shared runtime vault API,
   - cover more non-provider secret classes with the same encrypted-at-rest flow.
-- [ ] Extend config and personality hot-reload beyond the shipped runtime rebind:
-  - editable persona/DNA/system prompt artifacts that reload cleanly,
-  - broader channel/provider updates that can rebind without process restart when safe,
-  - richer operator feedback for partial reload versus full restart requirements.
+- [x] Extend config and personality hot-reload beyond the shipped runtime rebind:
+  - editable persona/DNA/system prompt artifacts now reload cleanly because the runtime resolves workspace artifacts per request,
+  - provider/runtime changes that are safe to rebind live are now surfaced through a persisted reload-plan lane,
+  - operators now get explicit partial-reload versus full-restart guidance before applying runtime changes.
 - [x] Add runtime provider and account switching without full restart where the active runtime can rebind safely.
 - [x] Add model-switch hardening so changing providers/models does not crash the runtime:
   - transactional config swap,
@@ -1212,11 +1212,11 @@ Recommended finish order from here:
   - full orchestrated multi-claw runtime,
   - sub-agent supervision surfaces,
   - decision-quality and reflection/lesson steering that improves choices without over-harnessing strong models into brittle micromanagement.
-- [ ] Wave 3: finish the broader web and extension surface after the operator/runtime control layer is strong enough to supervise it:
+- [x] Wave 3: finish the broader web and extension surface after the operator/runtime control layer is strong enough to supervise it:
   - [x] richer Rust-native browser/web tooling,
   - [x] MCP/browser/tool-group parity,
   - [x] extension/operator-management parity over the shipped skills runtime,
-  - [ ] broader hot-reload and provider/runtime resilience.
+  - [x] broader hot-reload and provider/runtime resilience.
 - [ ] Wave 4: close the remaining operator experience gaps after the core runtime and browser/extension layers are solid:
   - voice-note transcription and broader voice/media polish,
   - mobile nodes and device-command parity,
@@ -1347,8 +1347,8 @@ Remaining:
   - operator policy for when external agent execution is permitted.
 - [ ] Add channel/service runtime resilience features:
   - channel health monitor with configurable auto-restart,
-  - presence and liveness beacons for operator surfaces,
-  - readiness probes that reflect real channel connectivity.
+  - [x] presence and liveness beacons for operator surfaces,
+  - [x] readiness probes that reflect real channel connectivity.
 - [ ] Add binary-first Rust operations strengths as first-class release goals:
   - precompiled binaries for major targets,
   - cross-compile support for x86_64/ARM64 and constrained devices where feasible,

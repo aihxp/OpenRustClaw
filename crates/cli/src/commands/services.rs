@@ -1,3 +1,4 @@
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -9,6 +10,8 @@ use serde::Serialize;
 use sqlx::Row;
 
 use super::{channels::ChannelRegistry, runtime};
+
+pub const DEFAULT_CHANNEL_PROBES_PATH: &str = ".claw/control/channel-probes.json";
 
 #[derive(Debug, Clone, Serialize)]
 pub struct SessionCounts {
@@ -93,7 +96,7 @@ pub struct RuntimeEventSummary {
     pub processed_at: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, serde::Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum ChannelProbeStatus {
     Ready,
@@ -101,7 +104,7 @@ pub enum ChannelProbeStatus {
     Failed,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, serde::Deserialize)]
 pub struct ChannelProbeEntry {
     pub platform: String,
     pub enabled: bool,
@@ -110,7 +113,7 @@ pub struct ChannelProbeEntry {
     pub detail: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, serde::Deserialize)]
 pub struct ChannelProbeReport {
     pub generated_at: String,
     pub entries: Vec<ChannelProbeEntry>,
@@ -330,8 +333,21 @@ pub async fn channel_probes(
     config_path: &str,
     workspace_root: &Path,
 ) -> Result<ChannelProbeReport> {
+    channel_probes_status(config_path, workspace_root, false).await
+}
+
+pub async fn channel_probes_status(
+    config_path: &str,
+    workspace_root: &Path,
+    refresh: bool,
+) -> Result<ChannelProbeReport> {
+    if !refresh && let Some(report) = load_cached_channel_probes(workspace_root)? {
+        return Ok(report);
+    }
     let config = runtime::load_effective_config(config_path, workspace_root)?;
-    channel_probes_with_config(&config).await
+    let report = channel_probes_with_config(&config).await?;
+    save_channel_probes(workspace_root, &report)?;
+    Ok(report)
 }
 
 pub async fn channel_probes_with_config(config: &AppConfig) -> Result<ChannelProbeReport> {
@@ -732,6 +748,30 @@ fn probe_imessage(config: &openrustclaw_core::config::IMessageConfig) -> Channel
 
 fn probe_key_path_like(value: &str) -> bool {
     value.starts_with("token:") || value.starts_with("env:") || Path::new(value).exists()
+}
+
+pub fn channel_probe_path_for(workspace_root: impl AsRef<Path>) -> PathBuf {
+    workspace_root.as_ref().join(DEFAULT_CHANNEL_PROBES_PATH)
+}
+
+pub fn load_cached_channel_probes(workspace_root: &Path) -> Result<Option<ChannelProbeReport>> {
+    let path = channel_probe_path_for(workspace_root);
+    if !path.exists() {
+        return Ok(None);
+    }
+    let raw = fs::read_to_string(&path)?;
+    let report = serde_json::from_str(&raw)?;
+    Ok(Some(report))
+}
+
+pub fn save_channel_probes(workspace_root: &Path, report: &ChannelProbeReport) -> Result<()> {
+    let path = channel_probe_path_for(workspace_root);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let rendered = serde_json::to_string_pretty(report)?;
+    fs::write(path, rendered.as_bytes())?;
+    Ok(())
 }
 
 fn ready_entry(platform: &str, probe_kind: &str, detail: impl Into<String>) -> ChannelProbeEntry {

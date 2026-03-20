@@ -19,10 +19,13 @@ use openrustclaw_providers::{
 };
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::time::Duration;
 
 pub const DEFAULT_VAULT_PATH: &str = ".claw/control/runtime-vault.json";
 pub const DEFAULT_RUNTIME_HEALTH_PATH: &str = ".claw/control/runtime-health.json";
+pub const DEFAULT_RUNTIME_RELOAD_STATE_PATH: &str = ".claw/control/runtime-reload-state.json";
+pub const DEFAULT_RUNTIME_BEACON_PATH: &str = ".claw/control/runtime-beacon.json";
 const DEFAULT_PASSPHRASE_ENV: &str = "OPENRUSTCLAW_VAULT_PASSPHRASE";
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -92,6 +95,55 @@ pub struct RuntimeHealthReport {
     pub artifacts: RuntimeArtifactHealth,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RuntimeAppliedSnapshot {
+    pub captured_at: String,
+    pub config_path: String,
+    pub default_provider: String,
+    pub enabled_channels: Vec<String>,
+    pub provider_fingerprint: String,
+    pub gateway_fingerprint: String,
+    pub security_fingerprint: String,
+    pub scheduler_fingerprint: String,
+    pub sidecar_fingerprint: String,
+    pub channel_fingerprint: String,
+    pub channel_route_fingerprint: String,
+    pub artifact_fingerprint: String,
+    pub artifact_paths: Vec<String>,
+    pub persona_paths: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RuntimeReloadPlan {
+    pub generated_at: String,
+    pub config_path: String,
+    pub applied_snapshot_at: Option<String>,
+    pub status: String,
+    pub live_reload_ready: bool,
+    pub restart_required: bool,
+    pub live_reload_changes: Vec<String>,
+    pub provider_changes: Vec<String>,
+    pub artifact_changes: Vec<String>,
+    pub restart_required_reasons: Vec<String>,
+    pub changed_artifacts: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RuntimeBeacon {
+    pub generated_at: String,
+    pub process_id: u32,
+    pub gateway_addr: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub started_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub uptime_seconds: Option<i64>,
+    pub sidecar_running: bool,
+    pub default_provider: String,
+    pub degraded_control_plane_mode: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recommended_control_plane_provider: Option<String>,
+}
+
 static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
 fn env_lock() -> &'static Mutex<()> {
@@ -104,6 +156,16 @@ pub fn vault_path_for(workspace_root: impl AsRef<Path>) -> PathBuf {
 
 pub fn runtime_health_path_for(workspace_root: impl AsRef<Path>) -> PathBuf {
     workspace_root.as_ref().join(DEFAULT_RUNTIME_HEALTH_PATH)
+}
+
+pub fn runtime_reload_state_path_for(workspace_root: impl AsRef<Path>) -> PathBuf {
+    workspace_root
+        .as_ref()
+        .join(DEFAULT_RUNTIME_RELOAD_STATE_PATH)
+}
+
+pub fn runtime_beacon_path_for(workspace_root: impl AsRef<Path>) -> PathBuf {
+    workspace_root.as_ref().join(DEFAULT_RUNTIME_BEACON_PATH)
 }
 
 pub fn load_effective_config(config_path: &str, workspace_root: &Path) -> Result<AppConfig> {
@@ -160,6 +222,34 @@ pub fn load_cached_runtime_health(workspace_root: &Path) -> Result<Option<Runtim
     Ok(Some(report))
 }
 
+pub fn load_applied_runtime_snapshot(
+    workspace_root: &Path,
+) -> Result<Option<RuntimeAppliedSnapshot>> {
+    let path = runtime_reload_state_path_for(workspace_root);
+    if !path.exists() {
+        return Ok(None);
+    }
+
+    let raw = fs::read_to_string(&path)
+        .with_context(|| format!("Failed to read '{}'", path.display()))?;
+    let snapshot: RuntimeAppliedSnapshot =
+        serde_json::from_str(&raw).context("Failed to parse runtime reload state")?;
+    Ok(Some(snapshot))
+}
+
+pub fn load_cached_runtime_beacon(workspace_root: &Path) -> Result<Option<RuntimeBeacon>> {
+    let path = runtime_beacon_path_for(workspace_root);
+    if !path.exists() {
+        return Ok(None);
+    }
+
+    let raw = fs::read_to_string(&path)
+        .with_context(|| format!("Failed to read '{}'", path.display()))?;
+    let beacon: RuntimeBeacon =
+        serde_json::from_str(&raw).context("Failed to parse runtime beacon")?;
+    Ok(Some(beacon))
+}
+
 pub async fn scan_runtime_health(
     config_path: &str,
     workspace_root: &Path,
@@ -212,6 +302,168 @@ pub async fn scan_runtime_health(
     Ok(report)
 }
 
+pub fn runtime_reload_plan(config_path: &str, workspace_root: &Path) -> Result<RuntimeReloadPlan> {
+    let current = capture_runtime_snapshot(config_path, workspace_root)?;
+    let applied = load_applied_runtime_snapshot(workspace_root)?;
+
+    let mut live_reload_changes = Vec::new();
+    let mut provider_changes = Vec::new();
+    let mut artifact_changes = Vec::new();
+    let mut restart_required_reasons = Vec::new();
+
+    if let Some(previous) = &applied {
+        if previous.provider_fingerprint != current.provider_fingerprint {
+            provider_changes.push(format!(
+                "Provider/model routing changed: {} -> {}",
+                previous.default_provider, current.default_provider
+            ));
+            live_reload_changes.push(
+                "Provider and model routing can rebind live through the shipped runtime reload path."
+                    .to_string(),
+            );
+        }
+
+        if previous.artifact_fingerprint != current.artifact_fingerprint {
+            artifact_changes.push(
+                "Workspace persona/instruction artifacts changed and will be read on the next turn."
+                    .to_string(),
+            );
+            live_reload_changes.push(
+                "Prompt artifact changes are live-safe because the agent runtime resolves workspace artifacts per request."
+                    .to_string(),
+            );
+        }
+
+        if previous.gateway_fingerprint != current.gateway_fingerprint {
+            restart_required_reasons.push(
+                "Gateway host/port settings changed and require a process restart.".to_string(),
+            );
+        }
+        if previous.security_fingerprint != current.security_fingerprint {
+            restart_required_reasons.push(
+                "Gateway auth/origin policy changed and requires a process restart.".to_string(),
+            );
+        }
+        if previous.scheduler_fingerprint != current.scheduler_fingerprint {
+            restart_required_reasons
+                .push("Scheduler timing changed and requires worker restart.".to_string());
+        }
+        if previous.sidecar_fingerprint != current.sidecar_fingerprint {
+            restart_required_reasons
+                .push("Sidecar launch settings changed and require process restart.".to_string());
+        }
+        if previous.enabled_channels != current.enabled_channels {
+            restart_required_reasons.push(
+                "Enabled channel set changed and requires channel transport restart.".to_string(),
+            );
+        } else if previous.channel_route_fingerprint != current.channel_route_fingerprint {
+            restart_required_reasons.push(
+                "Webhook or transport-routing paths changed and require process restart."
+                    .to_string(),
+            );
+        } else if previous.channel_fingerprint != current.channel_fingerprint {
+            restart_required_reasons.push(
+                "Running channel transport settings changed; restart is required to reconnect safely."
+                    .to_string(),
+            );
+        }
+    }
+
+    let changed_artifacts = applied
+        .as_ref()
+        .map(|previous| {
+            current
+                .artifact_paths
+                .iter()
+                .filter(|path| !previous.artifact_paths.contains(*path))
+                .cloned()
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    let restart_required = !restart_required_reasons.is_empty();
+    let live_reload_ready = !restart_required
+        && (!live_reload_changes.is_empty()
+            || applied
+                .as_ref()
+                .map(|previous| previous.provider_fingerprint != current.provider_fingerprint)
+                .unwrap_or(false));
+    let status = if restart_required {
+        "restart_required"
+    } else if live_reload_ready {
+        "live_reload_ready"
+    } else {
+        "up_to_date"
+    };
+
+    Ok(RuntimeReloadPlan {
+        generated_at: Utc::now().to_rfc3339(),
+        config_path: config_path.to_string(),
+        applied_snapshot_at: applied.map(|snapshot| snapshot.captured_at),
+        status: status.to_string(),
+        live_reload_ready,
+        restart_required,
+        live_reload_changes,
+        provider_changes,
+        artifact_changes,
+        restart_required_reasons,
+        changed_artifacts,
+    })
+}
+
+pub fn mark_runtime_applied(
+    config_path: &str,
+    workspace_root: &Path,
+) -> Result<RuntimeAppliedSnapshot> {
+    let snapshot = capture_runtime_snapshot(config_path, workspace_root)?;
+    save_runtime_snapshot(workspace_root, &snapshot)?;
+    Ok(snapshot)
+}
+
+pub async fn runtime_beacon_status(
+    config_path: &str,
+    workspace_root: &Path,
+    refresh: bool,
+    gateway_addr: &str,
+    started_at: Option<chrono::DateTime<Utc>>,
+    sidecar_running: bool,
+) -> Result<RuntimeBeacon> {
+    if !refresh && let Some(beacon) = load_cached_runtime_beacon(workspace_root)? {
+        return Ok(beacon);
+    }
+    refresh_runtime_beacon(
+        config_path,
+        workspace_root,
+        gateway_addr,
+        started_at,
+        sidecar_running,
+    )
+    .await
+}
+
+pub async fn refresh_runtime_beacon(
+    config_path: &str,
+    workspace_root: &Path,
+    gateway_addr: &str,
+    started_at: Option<chrono::DateTime<Utc>>,
+    sidecar_running: bool,
+) -> Result<RuntimeBeacon> {
+    let health = runtime_health_status(config_path, workspace_root, false).await?;
+    let beacon = RuntimeBeacon {
+        generated_at: Utc::now().to_rfc3339(),
+        process_id: std::process::id(),
+        gateway_addr: gateway_addr.to_string(),
+        started_at: started_at.map(|value| value.to_rfc3339()),
+        uptime_seconds: started_at.map(|value| (Utc::now() - value).num_seconds().max(0)),
+        sidecar_running,
+        default_provider: health.default_provider,
+        degraded_control_plane_mode: health.degraded_control_plane_mode,
+        recommended_control_plane_provider: health.recommended_control_plane_provider,
+    };
+    save_runtime_beacon(workspace_root, &beacon)?;
+    Ok(beacon)
+}
+
 pub fn validate_runtime_reload(config_path: &str, workspace_root: &Path) -> Result<RuntimeStatus> {
     let config = load_effective_config(config_path, workspace_root)?;
     validate_runtime_provider(&config, &config.providers.default_provider)?;
@@ -232,6 +484,122 @@ fn save_runtime_health(workspace_root: &Path, report: &RuntimeHealthReport) -> R
     fs::write(&path, rendered.as_bytes())
         .with_context(|| format!("Failed to write '{}'", path.display()))?;
     Ok(())
+}
+
+fn save_runtime_snapshot(workspace_root: &Path, snapshot: &RuntimeAppliedSnapshot) -> Result<()> {
+    let path = runtime_reload_state_path_for(workspace_root);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("Failed to create '{}'", parent.display()))?;
+    }
+    let rendered = serde_json::to_string_pretty(snapshot)
+        .context("Failed to serialize runtime reload state")?;
+    fs::write(&path, rendered.as_bytes())
+        .with_context(|| format!("Failed to write '{}'", path.display()))?;
+    Ok(())
+}
+
+fn save_runtime_beacon(workspace_root: &Path, beacon: &RuntimeBeacon) -> Result<()> {
+    let path = runtime_beacon_path_for(workspace_root);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("Failed to create '{}'", parent.display()))?;
+    }
+    let rendered =
+        serde_json::to_string_pretty(beacon).context("Failed to serialize runtime beacon")?;
+    fs::write(&path, rendered.as_bytes())
+        .with_context(|| format!("Failed to write '{}'", path.display()))?;
+    Ok(())
+}
+
+fn capture_runtime_snapshot(
+    config_path: &str,
+    workspace_root: &Path,
+) -> Result<RuntimeAppliedSnapshot> {
+    let config = load_effective_config(config_path, workspace_root)?;
+    let artifacts = WorkspaceArtifactRegistry::scan(workspace_root)?;
+    let artifact_paths = artifacts
+        .iter()
+        .map(|artifact| artifact.path.display().to_string())
+        .collect::<Vec<_>>();
+    let persona_paths = artifacts
+        .iter()
+        .filter(|artifact| artifact.class == ArtifactClass::Persona)
+        .map(|artifact| artifact.path.display().to_string())
+        .collect::<Vec<_>>();
+    let artifact_fingerprint = artifact_bundle_fingerprint(workspace_root, &artifact_paths)?;
+
+    Ok(RuntimeAppliedSnapshot {
+        captured_at: Utc::now().to_rfc3339(),
+        config_path: config_path.to_string(),
+        default_provider: config.providers.default_provider.clone(),
+        enabled_channels: enabled_channels(&config),
+        provider_fingerprint: fingerprint_json(&serde_json::json!({
+            "default_provider": config.providers.default_provider,
+            "fallback_chain": config.providers.fallback_chain,
+            "anthropic": config.providers.anthropic,
+            "openai": config.providers.openai,
+            "openrouter": config.providers.openrouter,
+            "ollama": config.providers.ollama,
+        }))?,
+        gateway_fingerprint: fingerprint_json(&config.gateway)?,
+        security_fingerprint: fingerprint_json(&config.security)?,
+        scheduler_fingerprint: fingerprint_json(&config.scheduler)?,
+        sidecar_fingerprint: fingerprint_json(&config.sidecar)?,
+        channel_fingerprint: fingerprint_json(&config.channels)?,
+        channel_route_fingerprint: fingerprint_json(&serde_json::json!({
+            "telegram": {
+                "enabled": config.channels.telegram.enabled,
+                "mode": config.channels.telegram.mode,
+                "webhook_url": config.channels.telegram.webhook_url,
+                "webhook_port": config.channels.telegram.webhook_port,
+            },
+            "slack": {
+                "enabled": config.channels.slack.enabled,
+                "mode": config.channels.slack.mode,
+                "socket_mode": config.channels.slack.socket_mode,
+            },
+            "mattermost": {
+                "enabled": config.channels.mattermost.enabled,
+                "webhook_path": config.channels.mattermost.webhook_path,
+            },
+            "teams": {
+                "enabled": config.channels.teams.enabled,
+                "webhook_path": config.channels.teams.webhook_path,
+            },
+            "google_meet": {
+                "enabled": config.channels.google_meet.enabled,
+                "webhook_path": config.channels.google_meet.webhook_path,
+            },
+            "gmail_pubsub": {
+                "enabled": config.channels.gmail_pubsub.enabled,
+            },
+            "google_chat": {
+                "enabled": config.channels.google_chat.enabled,
+            }
+        }))?,
+        artifact_fingerprint,
+        artifact_paths,
+        persona_paths,
+    })
+}
+
+fn artifact_bundle_fingerprint(workspace_root: &Path, artifact_paths: &[String]) -> Result<String> {
+    let mut hasher = Sha256::new();
+    for path in artifact_paths {
+        hasher.update(path.as_bytes());
+        let bytes = fs::read(workspace_root.join(path))
+            .with_context(|| format!("Failed to read artifact '{}'", path))?;
+        hasher.update(&bytes);
+    }
+    Ok(hex::encode(hasher.finalize()))
+}
+
+fn fingerprint_json<T: Serialize>(value: &T) -> Result<String> {
+    let bytes = serde_json::to_vec(value).context("Failed to serialize runtime fingerprint")?;
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    Ok(hex::encode(hasher.finalize()))
 }
 
 async fn scan_provider_health(provider: &str, config: &AppConfig) -> RuntimeHealthProviderEntry {
@@ -322,6 +690,47 @@ fn default_model_for_provider(config: &AppConfig) -> &str {
         "ollama" => &config.providers.ollama.model,
         _ => &config.providers.anthropic.model,
     }
+}
+
+fn enabled_channels(config: &AppConfig) -> Vec<String> {
+    let mut channels = Vec::new();
+    if config.channels.telegram.enabled {
+        channels.push("telegram".to_string());
+    }
+    if config.channels.discord.enabled {
+        channels.push("discord".to_string());
+    }
+    if config.channels.slack.enabled {
+        channels.push("slack".to_string());
+    }
+    if config.channels.whatsapp.enabled {
+        channels.push("whatsapp".to_string());
+    }
+    if config.channels.teams.enabled {
+        channels.push("teams".to_string());
+    }
+    if config.channels.mattermost.enabled {
+        channels.push("mattermost".to_string());
+    }
+    if config.channels.google_chat.enabled {
+        channels.push("google_chat".to_string());
+    }
+    if config.channels.google_meet.enabled {
+        channels.push("google_meet".to_string());
+    }
+    if config.channels.gmail_pubsub.enabled {
+        channels.push("gmail_pubsub".to_string());
+    }
+    if config.channels.signal.enabled {
+        channels.push("signal".to_string());
+    }
+    if config.channels.matrix.enabled {
+        channels.push("matrix".to_string());
+    }
+    if config.channels.imessage.enabled {
+        channels.push("imessage".to_string());
+    }
+    channels
 }
 
 pub fn apply_runtime_secret_sources(workspace_root: &Path) -> Result<()> {
