@@ -2642,6 +2642,7 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
         .route("/control/runtime/health", get(runtime_health_handler))
         .route("/control/runtime/beacon", get(runtime_beacon_handler))
         .route("/control/voice/status", get(voice_status_handler))
+        .route("/control/voice/providers", get(voice_providers_handler))
         .route("/control/voice/voices", get(voice_voices_handler))
         .route("/control/voice/transcribe", post(voice_transcribe_handler))
         .route("/control/voice/synthesize", post(voice_synthesize_handler))
@@ -4421,6 +4422,23 @@ async fn voice_status_handler(State(state): State<RuntimeControlState>) -> impl 
             Json(serde_json::json!(voice_runtime::voice_status(
                 &config,
                 &state.workspace_root,
+            ))),
+        )
+            .into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn voice_providers_handler(State(state): State<RuntimeControlState>) -> impl IntoResponse {
+    match runtime::load_effective_config(&state.config_path, &state.workspace_root) {
+        Ok(config) => (
+            StatusCode::OK,
+            Json(serde_json::json!(voice_runtime::voice_provider_catalog(
+                &config
             ))),
         )
             .into_response(),

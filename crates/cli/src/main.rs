@@ -1412,6 +1412,11 @@ enum VoiceAction {
         #[arg(short, long, default_value = "config/default.toml")]
         config: String,
     },
+    /// Show supported voice providers and current readiness for STT/TTS lanes
+    Providers {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+    },
     /// List the current provider's discoverable TTS voices
     Voices {
         #[arg(short, long, default_value = "config/default.toml")]
@@ -3989,6 +3994,7 @@ async fn main() -> Result<()> {
         }
         Commands::Voice { action } => match action {
             VoiceAction::Status { config } => commands::voice::status(&config).await,
+            VoiceAction::Providers { config } => commands::voice::providers(&config).await,
             VoiceAction::Voices { config } => commands::voice::voices(&config).await,
             VoiceAction::Transcribe {
                 config,

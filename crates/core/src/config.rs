@@ -302,6 +302,8 @@ pub struct VoiceSttRuntimeConfig {
     #[serde(default)]
     pub api_base_url: Option<String>,
     #[serde(default)]
+    pub api_key_env: Option<String>,
+    #[serde(default)]
     pub prompt: Option<String>,
     #[serde(default)]
     pub transcribe_inbound_notes: bool,
@@ -320,6 +322,7 @@ impl Default for VoiceSttRuntimeConfig {
             model: default_voice_stt_model(),
             language: default_voice_language(),
             api_base_url: None,
+            api_key_env: None,
             prompt: None,
             transcribe_inbound_notes: false,
             download_dir: None,
@@ -358,6 +361,10 @@ pub struct VoiceTtsRuntimeConfig {
     pub model: String,
     #[serde(default = "default_voice_tts_voice")]
     pub voice: String,
+    #[serde(default)]
+    pub api_base_url: Option<String>,
+    #[serde(default)]
+    pub api_key_env: Option<String>,
 }
 
 impl Default for VoiceTtsRuntimeConfig {
@@ -366,6 +373,8 @@ impl Default for VoiceTtsRuntimeConfig {
             provider: default_voice_tts_provider(),
             model: default_voice_tts_model(),
             voice: default_voice_tts_voice(),
+            api_base_url: None,
+            api_key_env: None,
         }
     }
 }

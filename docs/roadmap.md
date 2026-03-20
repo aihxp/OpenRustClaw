@@ -1272,13 +1272,15 @@ Remaining:
   - image receive/send,
   - audio receive/send,
   - document receive/send,
-  - voice-note transcription,
-  - transcript injection,
-  - provider pluggability.
+  - [x] voice-note transcription,
+  - [x] transcript injection,
+  - [x] provider pluggability for the shipped OpenAI-compatible voice STT/TTS lane,
+  - broader image/audio/document provider pluggability across all media lanes.
 - [ ] Add richer provider support for media parity where OpenClaw documents active integrations.
 - [ ] Add voice runtime parity:
   - wake/talk flows,
   - [x] provider-backed inbound attachment STT and transcript injection for supported runtime message flows,
+  - [x] explicit provider catalog/readiness plus request-scoped provider overrides for the shipped OpenAI-compatible STT/TTS lane,
   - [ ] broader STT parity,
   - [x] bounded operator/runtime TTS artifact synthesis,
   - [x] bounded voice-note transcription plus transcript injection for supported runtime message flows,

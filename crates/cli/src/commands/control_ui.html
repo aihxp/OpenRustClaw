@@ -391,9 +391,11 @@
           <h2>Voice Runtime</h2>
           <div class="action-row" style="margin-bottom: 12px">
             <button class="secondary" id="voice-status-refresh">Refresh Voice Status</button>
+            <button class="secondary" id="voice-providers-refresh">List Providers</button>
             <button class="secondary" id="voice-voices-refresh">List Voices</button>
           </div>
           <div class="surface"><pre id="voice-status">Loading…</pre></div>
+          <div class="surface" style="margin-top: 12px"><pre id="voice-providers">No provider catalog loaded yet.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="voice-voices">No voice catalog loaded yet.</pre></div>
         </article>
         <article class="panel span-6">
@@ -988,6 +990,11 @@
       async function loadVoiceStatus() {
         const payload = await fetchJson("/control/voice/status");
         setText("voice-status", payload);
+      }
+
+      async function loadVoiceProviders() {
+        const payload = await fetchJson("/control/voice/providers");
+        setText("voice-providers", payload);
       }
 
       async function loadVoiceVoices() {
@@ -1791,6 +1798,7 @@
             loadSchedulerStatus(),
             loadChannelProbes(),
             loadVoiceStatus(),
+            loadVoiceProviders(),
             loadVoiceVoices(),
             loadAutonomy(),
             loadInstalledSkills(),
@@ -2129,6 +2137,13 @@
           await loadVoiceStatus();
         } catch (error) {
           setText("voice-status", { error: error.message });
+        }
+      });
+      document.getElementById("voice-providers-refresh").addEventListener("click", async () => {
+        try {
+          await loadVoiceProviders();
+        } catch (error) {
+          setText("voice-providers", { error: error.message });
         }
       });
       document.getElementById("voice-voices-refresh").addEventListener("click", async () => {

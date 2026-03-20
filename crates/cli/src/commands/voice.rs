@@ -17,6 +17,13 @@ pub async fn status(config_path: &str) -> Result<()> {
     Ok(())
 }
 
+pub async fn providers(config_path: &str) -> Result<()> {
+    let config = load_config(config_path);
+    let providers = voice_runtime::voice_provider_catalog(&config);
+    println!("{}", serde_json::to_string_pretty(&providers)?);
+    Ok(())
+}
+
 pub async fn transcribe(
     config_path: &str,
     path: Option<&str>,

@@ -14,8 +14,10 @@ use uuid::Uuid;
 #[derive(Clone)]
 pub struct InboundVoiceTranscriber {
     client: reqwest::Client,
+    provider: String,
     stt: VoiceSttRuntimeConfig,
     api_key_env: String,
+    api_base_url: String,
     cache_dir: PathBuf,
 }
 
@@ -35,6 +37,28 @@ pub struct VoiceStatus {
     pub tts_provider: String,
     pub tts_model: String,
     pub tts_voice: String,
+    pub tts_api_base_url: Option<String>,
+    pub tts_api_key_env: String,
+    pub tts_api_key_present: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceProviderStatus {
+    pub provider: String,
+    pub lane: String,
+    pub kind: String,
+    pub api_base_url: String,
+    pub api_key_env: String,
+    pub api_key_present: bool,
+    pub supports_inbound_notes: bool,
+    pub supports_voice_catalog: bool,
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceProviderCatalog {
+    pub stt: Vec<VoiceProviderStatus>,
+    pub tts: Vec<VoiceProviderStatus>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -114,6 +138,17 @@ pub struct VoiceSynthesizeResult {
 }
 
 #[derive(Debug, Clone)]
+struct ResolvedVoiceProvider {
+    provider: String,
+    api_key_env: String,
+    api_base_url: String,
+    lane: String,
+    supports_inbound_notes: bool,
+    supports_voice_catalog: bool,
+    notes: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
 struct AudioCandidate {
     index: usize,
     media_kind: String,
@@ -153,20 +188,204 @@ struct OpenAiSpeechRequest<'a> {
     response_format: &'a str,
 }
 
+fn normalize_voice_provider_name(value: &str) -> String {
+    value.trim().to_ascii_lowercase()
+}
+
+fn default_voice_api_base_url(provider: &str) -> Option<&'static str> {
+    match provider {
+        "openai" => Some("https://api.openai.com/v1"),
+        "openrouter" => Some("https://openrouter.ai/api/v1"),
+        _ => None,
+    }
+}
+
+fn default_voice_api_key_env(config: &AppConfig, provider: &str) -> Option<String> {
+    match provider {
+        "openai" => Some(
+            config
+                .providers
+                .openai
+                .api_key_env
+                .clone()
+                .unwrap_or_else(|| "OPENAI_API_KEY".to_string()),
+        ),
+        "openrouter" => Some(
+            config
+                .providers
+                .openrouter
+                .api_key_env
+                .clone()
+                .unwrap_or_else(|| "OPENROUTER_API_KEY".to_string()),
+        ),
+        _ => None,
+    }
+}
+
+fn resolve_voice_provider_for_stt(
+    config: &AppConfig,
+    provider_override: Option<&str>,
+) -> Result<ResolvedVoiceProvider> {
+    let requested = provider_override
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or(config.voice.stt.provider.as_str());
+    let provider = normalize_voice_provider_name(requested);
+    let api_base_url = config
+        .voice
+        .stt
+        .api_base_url
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .or_else(|| default_voice_api_base_url(&provider).map(ToString::to_string))
+        .ok_or_else(|| {
+            anyhow!(
+                "voice STT provider '{}' requires voice.stt.api_base_url for OpenAI-compatible routing",
+                provider
+            )
+        })?;
+    let api_key_env = config
+        .voice
+        .stt
+        .api_key_env
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .or_else(|| default_voice_api_key_env(config, &provider))
+        .ok_or_else(|| {
+            anyhow!(
+                "voice STT provider '{}' requires voice.stt.api_key_env or a known provider key binding",
+                provider
+            )
+        })?;
+
+    let mut notes = vec!["openai_compatible".to_string()];
+    if provider != "openai" {
+        notes.push("endpoint must expose /audio/transcriptions".to_string());
+    }
+
+    Ok(ResolvedVoiceProvider {
+        provider,
+        api_key_env,
+        api_base_url: api_base_url.trim_end_matches('/').to_string(),
+        lane: "openai_compatible".to_string(),
+        supports_inbound_notes: true,
+        supports_voice_catalog: false,
+        notes,
+    })
+}
+
+fn resolve_voice_provider_for_tts(
+    config: &AppConfig,
+    provider_override: Option<&str>,
+) -> Result<ResolvedVoiceProvider> {
+    let requested = provider_override
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or(config.voice.tts.provider.as_str());
+    let provider = normalize_voice_provider_name(requested);
+    let api_base_url = config
+        .voice
+        .tts
+        .api_base_url
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .or_else(|| default_voice_api_base_url(&provider).map(ToString::to_string))
+        .ok_or_else(|| {
+            anyhow!(
+                "voice TTS provider '{}' requires voice.tts.api_base_url for OpenAI-compatible routing",
+                provider
+            )
+        })?;
+    let api_key_env = config
+        .voice
+        .tts
+        .api_key_env
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .or_else(|| default_voice_api_key_env(config, &provider))
+        .ok_or_else(|| {
+            anyhow!(
+                "voice TTS provider '{}' requires voice.tts.api_key_env or a known provider key binding",
+                provider
+            )
+        })?;
+
+    let mut notes = vec!["openai_compatible".to_string()];
+    if provider != "openai" {
+        notes.push("endpoint must expose /audio/speech".to_string());
+    }
+
+    Ok(ResolvedVoiceProvider {
+        provider,
+        api_key_env,
+        api_base_url: api_base_url.trim_end_matches('/').to_string(),
+        lane: "openai_compatible".to_string(),
+        supports_inbound_notes: false,
+        supports_voice_catalog: true,
+        notes,
+    })
+}
+
+fn provider_status_from_resolved(
+    profile: ResolvedVoiceProvider,
+    kind: &str,
+) -> VoiceProviderStatus {
+    VoiceProviderStatus {
+        provider: profile.provider,
+        lane: profile.lane,
+        kind: kind.to_string(),
+        api_base_url: profile.api_base_url,
+        api_key_env: profile.api_key_env.clone(),
+        api_key_present: std::env::var(&profile.api_key_env).is_ok(),
+        supports_inbound_notes: profile.supports_inbound_notes,
+        supports_voice_catalog: profile.supports_voice_catalog,
+        notes: profile.notes,
+    }
+}
+
+pub fn voice_provider_catalog(config: &AppConfig) -> VoiceProviderCatalog {
+    let mut stt = Vec::new();
+    let mut tts = Vec::new();
+
+    for provider in ["openai", "openrouter"] {
+        if let Ok(profile) = resolve_voice_provider_for_stt(config, Some(provider)) {
+            stt.push(provider_status_from_resolved(profile, "stt"));
+        }
+        if let Ok(profile) = resolve_voice_provider_for_tts(config, Some(provider)) {
+            tts.push(provider_status_from_resolved(profile, "tts"));
+        }
+    }
+
+    let configured_stt = normalize_voice_provider_name(&config.voice.stt.provider);
+    if !["openai", "openrouter"].contains(&configured_stt.as_str()) {
+        if let Ok(profile) = resolve_voice_provider_for_stt(config, Some(&configured_stt)) {
+            stt.push(provider_status_from_resolved(profile, "stt"));
+        }
+    }
+
+    let configured_tts = normalize_voice_provider_name(&config.voice.tts.provider);
+    if !["openai", "openrouter"].contains(&configured_tts.as_str()) {
+        if let Ok(profile) = resolve_voice_provider_for_tts(config, Some(&configured_tts)) {
+            tts.push(provider_status_from_resolved(profile, "tts"));
+        }
+    }
+
+    VoiceProviderCatalog { stt, tts }
+}
+
 impl InboundVoiceTranscriber {
     pub fn try_from_config(config: &AppConfig, workspace_root: &Path) -> Result<Option<Self>> {
         if !config.voice.enabled || !config.voice.stt.transcribe_inbound_notes {
             return Ok(None);
         }
 
-        let provider = config.voice.stt.provider.trim().to_ascii_lowercase();
-        if provider != "openai" {
-            warn!(
-                provider = %config.voice.stt.provider,
-                "Inbound voice transcription is enabled, but only the OpenAI-compatible STT lane is currently supported",
-            );
-            return Ok(None);
-        }
+        let provider = resolve_voice_provider_for_stt(config, None)?;
 
         let cache_dir = config
             .voice
@@ -183,13 +402,10 @@ impl InboundVoiceTranscriber {
 
         Ok(Some(Self {
             client,
+            provider: provider.provider,
             stt: config.voice.stt.clone(),
-            api_key_env: config
-                .providers
-                .openai
-                .api_key_env
-                .clone()
-                .unwrap_or_else(|| "OPENAI_API_KEY".to_string()),
+            api_key_env: provider.api_key_env,
+            api_base_url: provider.api_base_url,
             cache_dir,
         }))
     }
@@ -204,7 +420,13 @@ impl InboundVoiceTranscriber {
                 if transcribed.text.trim().is_empty() {
                     return incoming;
                 }
-                apply_transcription(&mut incoming, &candidate, transcribed, &self.stt.model);
+                apply_transcription(
+                    &mut incoming,
+                    &candidate,
+                    transcribed,
+                    &self.provider,
+                    &self.stt.model,
+                );
             }
             Err(error) => {
                 warn!(
@@ -297,12 +519,6 @@ impl InboundVoiceTranscriber {
             ));
         }
 
-        let base_url = self
-            .stt
-            .api_base_url
-            .as_deref()
-            .unwrap_or("https://api.openai.com/v1")
-            .trim_end_matches('/');
         let mut form = Form::new().text("model", self.stt.model.clone()).part(
             "file",
             match candidate.mime.as_deref() {
@@ -327,7 +543,7 @@ impl InboundVoiceTranscriber {
 
         let response = self
             .client
-            .post(format!("{base_url}/audio/transcriptions"))
+            .post(format!("{}/audio/transcriptions", self.api_base_url))
             .bearer_auth(api_key)
             .multipart(form)
             .send()
@@ -418,28 +634,46 @@ pub fn voice_status(config: &AppConfig, workspace_root: &Path) -> VoiceStatus {
             .to_string_lossy()
             .to_string()
     });
-    let api_key_env = config
-        .providers
-        .openai
-        .api_key_env
-        .clone()
-        .unwrap_or_else(|| "OPENAI_API_KEY".to_string());
+    let stt_provider =
+        resolve_voice_provider_for_stt(config, None).unwrap_or_else(|_| ResolvedVoiceProvider {
+            provider: normalize_voice_provider_name(&config.voice.stt.provider),
+            api_key_env: config.voice.stt.api_key_env.clone().unwrap_or_default(),
+            api_base_url: config.voice.stt.api_base_url.clone().unwrap_or_default(),
+            lane: "openai_compatible".to_string(),
+            supports_inbound_notes: false,
+            supports_voice_catalog: false,
+            notes: Vec::new(),
+        });
+    let tts_provider =
+        resolve_voice_provider_for_tts(config, None).unwrap_or_else(|_| ResolvedVoiceProvider {
+            provider: normalize_voice_provider_name(&config.voice.tts.provider),
+            api_key_env: config.voice.tts.api_key_env.clone().unwrap_or_default(),
+            api_base_url: config.voice.tts.api_base_url.clone().unwrap_or_default(),
+            lane: "openai_compatible".to_string(),
+            supports_inbound_notes: false,
+            supports_voice_catalog: false,
+            notes: Vec::new(),
+        });
 
     VoiceStatus {
         enabled: config.voice.enabled,
-        stt_provider: config.voice.stt.provider.clone(),
+        stt_provider: stt_provider.provider,
         stt_model: config.voice.stt.model.clone(),
         stt_language: config.voice.stt.language.clone(),
         transcribe_inbound_notes: config.voice.stt.transcribe_inbound_notes,
         download_dir,
         timeout_secs: config.voice.stt.timeout_secs,
         max_audio_bytes: config.voice.stt.max_audio_bytes,
-        api_base_url: config.voice.stt.api_base_url.clone(),
-        api_key_env: api_key_env.clone(),
-        api_key_present: std::env::var(&api_key_env).is_ok(),
-        tts_provider: config.voice.tts.provider.clone(),
+        api_base_url: (!stt_provider.api_base_url.is_empty()).then_some(stt_provider.api_base_url),
+        api_key_env: stt_provider.api_key_env.clone(),
+        api_key_present: std::env::var(&stt_provider.api_key_env).is_ok(),
+        tts_provider: tts_provider.provider,
         tts_model: config.voice.tts.model.clone(),
         tts_voice: config.voice.tts.voice.clone(),
+        tts_api_base_url: (!tts_provider.api_base_url.is_empty())
+            .then_some(tts_provider.api_base_url),
+        tts_api_key_env: tts_provider.api_key_env.clone(),
+        tts_api_key_present: std::env::var(&tts_provider.api_key_env).is_ok(),
     }
 }
 
@@ -490,6 +724,9 @@ pub async fn transcribe_with_config(
     effective.voice.enabled = true;
     effective.voice.stt.transcribe_inbound_notes = true;
 
+    let resolved_provider =
+        resolve_voice_provider_for_stt(&effective, request.provider.as_deref())?;
+
     let transcriber = InboundVoiceTranscriber::try_from_config(&effective, workspace_root)?
         .ok_or_else(|| anyhow!("voice transcription is not enabled for the current config"))?;
 
@@ -521,7 +758,7 @@ pub async fn transcribe_with_config(
 
     Ok(VoiceTranscribeResult {
         text: transcribed.text,
-        provider: "openai".to_string(),
+        provider: resolved_provider.provider,
         model: transcriber.stt.model.clone(),
         language: transcribed.language,
         duration_secs: transcribed.duration_secs,
@@ -537,22 +774,13 @@ pub fn list_voices_with_config(
     config: &AppConfig,
     _workspace_root: &Path,
 ) -> Result<VoiceVoicesResult> {
-    let provider = config.voice.tts.provider.trim().to_ascii_lowercase();
+    let provider = resolve_voice_provider_for_tts(config, None)?;
     let model = config.voice.tts.model.trim().to_string();
     let default_voice = config.voice.tts.voice.trim().to_string();
-    let voices = match provider.as_str() {
-        // OpenAI-compatible speech lanes do not currently expose a voice-list endpoint,
-        // so we expose the known shipped voice set explicitly.
-        "openai" => openai_voice_catalog(),
-        other => {
-            return Err(anyhow!(
-                "voice discovery is not implemented for provider '{other}'"
-            ));
-        }
-    };
+    let voices = openai_voice_catalog();
 
     Ok(VoiceVoicesResult {
-        provider,
+        provider: provider.provider,
         model,
         default_voice,
         voices,
@@ -593,20 +821,11 @@ pub async fn synthesize_with_config(
     }
 
     let format = normalize_speech_format(request.format.as_deref())?;
-    let provider = effective.voice.tts.provider.trim().to_ascii_lowercase();
+    let provider = resolve_voice_provider_for_tts(&effective, request.provider.as_deref())?;
     let output_path =
         resolve_speech_output_path(workspace_root, request.output_path.as_deref(), format);
 
-    let bytes = match provider.as_str() {
-        "openai" => {
-            synthesize_openai_compatible(config, &effective.voice.tts, text, format).await?
-        }
-        other => {
-            return Err(anyhow!(
-                "voice synthesis is not implemented for provider '{other}'"
-            ));
-        }
-    };
+    let bytes = synthesize_openai_compatible(&effective.voice.tts, &provider, text, format).await?;
 
     if bytes.is_empty() {
         return Err(anyhow!("voice synthesis returned an empty audio payload"));
@@ -625,7 +844,7 @@ pub async fn synthesize_with_config(
     })?;
 
     Ok(VoiceSynthesizeResult {
-        provider,
+        provider: provider.provider,
         model: effective.voice.tts.model.clone(),
         voice: effective.voice.tts.voice.clone(),
         format: format.to_string(),
@@ -639,6 +858,7 @@ fn apply_transcription(
     incoming: &mut IncomingMessage,
     candidate: &AudioCandidate,
     transcribed: TranscribedAudio,
+    provider: &str,
     model: &str,
 ) {
     let transcript = transcribed.text.trim();
@@ -653,7 +873,7 @@ fn apply_transcription(
         .unwrap_or_else(Map::new);
     metadata.insert("voice_has_transcript".into(), json!(true));
     metadata.insert("voice_transcript".into(), json!(transcript));
-    metadata.insert("voice_transcription_provider".into(), json!("openai"));
+    metadata.insert("voice_transcription_provider".into(), json!(provider));
     metadata.insert("voice_transcription_model".into(), json!(model));
     metadata.insert(
         "voice_transcription_media_kind".into(),
@@ -706,34 +926,21 @@ fn apply_transcription(
 }
 
 async fn synthesize_openai_compatible(
-    config: &AppConfig,
     tts: &VoiceTtsRuntimeConfig,
+    provider: &ResolvedVoiceProvider,
     text: &str,
     format: &str,
 ) -> Result<Vec<u8>> {
-    let api_key_env = config
-        .providers
-        .openai
-        .api_key_env
-        .clone()
-        .unwrap_or_else(|| "OPENAI_API_KEY".to_string());
-    let api_key = std::env::var(&api_key_env)
-        .with_context(|| format!("{} environment variable not set", api_key_env))?;
-    let base_url = config
-        .voice
-        .stt
-        .api_base_url
-        .as_deref()
-        .unwrap_or("https://api.openai.com/v1")
-        .trim_end_matches('/');
+    let api_key = std::env::var(&provider.api_key_env)
+        .with_context(|| format!("{} environment variable not set", provider.api_key_env))?;
 
     let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(config.voice.stt.timeout_secs.max(1)))
+        .timeout(Duration::from_secs(60))
         .build()
         .context("failed to build voice synthesis HTTP client")?;
 
     let response = client
-        .post(format!("{base_url}/audio/speech"))
+        .post(format!("{}/audio/speech", provider.api_base_url))
         .bearer_auth(api_key)
         .json(&OpenAiSpeechRequest {
             model: &tts.model,
@@ -984,12 +1191,15 @@ mod tests {
         config.voice.enabled = true;
         config.voice.stt.transcribe_inbound_notes = true;
         config.voice.stt.api_base_url = Some(base_url.to_string());
+        config.voice.stt.api_key_env = Some(api_key_env.to_string());
         config.voice.stt.download_dir = Some(
             workspace_root
                 .join("voice-cache")
                 .to_string_lossy()
                 .to_string(),
         );
+        config.voice.tts.api_base_url = Some(base_url.to_string());
+        config.voice.tts.api_key_env = Some(api_key_env.to_string());
         config.providers.openai.api_key_env = Some(api_key_env.to_string());
         config
     }
@@ -1177,5 +1387,38 @@ mod tests {
         assert_eq!(result.provider, "openai");
         assert!(result.voices.iter().any(|voice| voice.id == "alloy"));
         assert!(result.voices.iter().any(|voice| voice.id == "nova"));
+    }
+
+    #[test]
+    fn provider_catalog_reports_openai_and_openrouter_lanes() {
+        let mut config = AppConfig::default();
+        config.providers.openai.api_key_env = Some("OPENAI_TEST_KEY".to_string());
+        config.providers.openrouter.api_key_env = Some("OPENROUTER_TEST_KEY".to_string());
+        let catalog = voice_provider_catalog(&config);
+
+        assert!(catalog.stt.iter().any(|entry| entry.provider == "openai"));
+        assert!(
+            catalog
+                .stt
+                .iter()
+                .any(|entry| entry.provider == "openrouter")
+        );
+        assert!(catalog.tts.iter().any(|entry| entry.provider == "openai"));
+        assert!(
+            catalog
+                .tts
+                .iter()
+                .any(|entry| entry.provider == "openrouter")
+        );
+        assert!(
+            catalog
+                .tts
+                .iter()
+                .find(|entry| entry.provider == "openrouter")
+                .expect("openrouter tts")
+                .notes
+                .iter()
+                .any(|note| note.contains("/audio/speech"))
+        );
     }
 }

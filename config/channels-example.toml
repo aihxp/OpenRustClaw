@@ -318,9 +318,11 @@ sensitivity = 0.7  # 0.0 to 1.0, higher = more sensitive
 
 # Speech-to-Text
 [voice.stt]
-provider = "openai"  # "openai" or "local"
+provider = "openai"  # "openai", "openrouter", or a custom OpenAI-compatible provider name
 model = "whisper-1"
 language = "auto"  # "auto" for auto-detect or ISO code (e.g., "en")
+# api_base_url = "https://api.openai.com/v1"  # Optional override for OpenAI-compatible STT endpoints
+# api_key_env = "OPENAI_API_KEY"  # Optional override for the STT provider API key env
 transcribe_inbound_notes = false
 download_dir = "./data/voice/inbound"
 max_audio_bytes = 26214400
@@ -328,9 +330,11 @@ timeout_secs = 60
 
 # Text-to-Speech
 [voice.tts]
-provider = "openai"  # "openai", "elevenlabs", or "local"
+provider = "openai"  # "openai", "openrouter", or a custom OpenAI-compatible provider name
 model = "tts-1"
 voice = "alloy"  # alloy, echo, fable, onyx, nova, shimmer
+# api_base_url = "https://api.openai.com/v1"  # Optional override for OpenAI-compatible TTS endpoints
+# api_key_env = "OPENAI_API_KEY"  # Optional override for the TTS provider API key env
 
 # Talk Mode (continuous conversation)
 [voice.talk_mode]
