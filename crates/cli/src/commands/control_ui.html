@@ -755,6 +755,7 @@
           <div class="surface" style="margin-top: 12px"><pre id="mobile-node-push">No mobile push state loaded yet.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="mobile-node-sync">No mobile sync state loaded yet.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="mobile-node-capabilities">No mobile capabilities loaded yet.</pre></div>
+          <div class="surface" style="margin-top: 12px"><pre id="mobile-notification-detail">No mobile notification selected.</pre></div>
         </article>
         <article class="panel span-6">
           <h2>Mobile Preview</h2>
@@ -770,6 +771,7 @@
             <textarea id="mobile-notification-body" rows="2" spellcheck="false" placeholder="notification body"></textarea>
             <div class="action-row">
               <button class="secondary" id="mobile-preview-notification">Preview Notification</button>
+              <button id="mobile-send-notification">Send Notification</button>
             </div>
             <div class="action-row">
               <input id="mobile-capability-name" type="text" placeholder="camera | location | photos | calendar | sms" />
@@ -784,6 +786,20 @@
             </div>
           </div>
           <div class="surface" style="margin-top: 12px"><pre id="mobile-preview-result">No mobile preview executed yet.</pre></div>
+        </article>
+        <article class="panel span-6">
+          <h2>Mobile Notifications</h2>
+          <div class="action-row" style="margin-bottom: 12px">
+            <button class="secondary" id="mobile-notifications-refresh">Refresh Notifications</button>
+          </div>
+          <div class="surface">
+            <table class="table">
+              <thead>
+                <tr><th>Notification</th><th>Status</th><th>Action</th></tr>
+              </thead>
+              <tbody id="mobile-notifications"><tr><td colspan="3" class="muted">Loading…</td></tr></tbody>
+            </table>
+          </div>
         </article>
         <article class="panel span-6">
           <h2>Mobile Commands</h2>
@@ -1816,6 +1832,7 @@
         document.getElementById("mobile-sync-state").value = sync.sync_state || "";
         document.getElementById("mobile-sync-pending").value = sync.pending_change_count ?? "";
         document.getElementById("mobile-sync-result").value = sync.last_sync_result || "";
+        await loadMobileNotifications(id);
       }
 
       async function refreshMobileRuntime() {
@@ -1917,6 +1934,61 @@
           }),
         });
         setText("mobile-preview-result", result);
+      }
+
+      async function loadMobileNotifications(nodeId) {
+        const currentNodeId = nodeId || document.getElementById("mobile-source-node").value.trim();
+        const query = currentNodeId ? `?node_id=${encodeURIComponent(currentNodeId)}&limit=20` : "?limit=20";
+        const payload = await fetchJson(`/control/mobile/notifications${query}`);
+        const notifications = payload.notifications || [];
+        const rows = notifications.map((entry) => {
+          const action = entry.status === "acknowledged"
+            ? `<button class="secondary" onclick="inspectMobileNotification('${entry.id}')">Inspect</button>`
+            : `<button class="secondary" onclick="acknowledgeMobileNotification('${entry.id}')">Acknowledge</button>`;
+          return `<tr>
+            <td><strong>${entry.title || "-"}</strong><div class="muted">${entry.node_id || "-"}</div></td>
+            <td>${entry.status || "-"}</td>
+            <td>${action}</td>
+          </tr>`;
+        });
+        renderTableRows("mobile-notifications", rows, "No mobile notifications recorded.");
+        if (notifications.length) {
+          await inspectMobileNotification(notifications[0].id);
+        } else {
+          setText("mobile-notification-detail", "No mobile notification selected.");
+        }
+      }
+
+      async function inspectMobileNotification(id) {
+        const payload = await fetchJson(`/control/mobile/notifications/${encodeURIComponent(id)}`);
+        setText("mobile-notification-detail", payload);
+      }
+
+      async function sendMobileNotification() {
+        const result = await fetchJson("/control/mobile/notifications", {
+          method: "POST",
+          body: JSON.stringify({
+            node_id: document.getElementById("mobile-source-node").value.trim(),
+            title: document.getElementById("mobile-notification-title").value.trim(),
+            body: document.getElementById("mobile-notification-body").value,
+            requested_by: "control_ui",
+          }),
+        });
+        setText("mobile-notification-detail", result);
+        await loadMobileNotifications(document.getElementById("mobile-source-node").value.trim());
+        await inspectMobileNode(document.getElementById("mobile-source-node").value.trim());
+      }
+
+      async function acknowledgeMobileNotification(id) {
+        const result = await fetchJson(`/control/mobile/notifications/${encodeURIComponent(id)}/ack`, {
+          method: "POST",
+          body: JSON.stringify({
+            acknowledged_by: "control_ui",
+          }),
+        });
+        setText("mobile-notification-detail", result);
+        await loadMobileNotifications(document.getElementById("mobile-source-node").value.trim());
+        await inspectMobileNode(document.getElementById("mobile-source-node").value.trim());
       }
 
       async function previewMobileSync() {
@@ -2807,6 +2879,20 @@
           await reportMobileSync();
         } catch (error) {
           setText("mobile-node-sync", { error: error.message });
+        }
+      });
+      document.getElementById("mobile-notifications-refresh").addEventListener("click", async () => {
+        try {
+          await loadMobileNotifications();
+        } catch (error) {
+          setText("mobile-notification-detail", { error: error.message });
+        }
+      });
+      document.getElementById("mobile-send-notification").addEventListener("click", async () => {
+        try {
+          await sendMobileNotification();
+        } catch (error) {
+          setText("mobile-notification-detail", { error: error.message });
         }
       });
       document.getElementById("mobile-runtime-wake").addEventListener("click", async () => {

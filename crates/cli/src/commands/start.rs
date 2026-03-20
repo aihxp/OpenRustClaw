@@ -2727,6 +2727,18 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             post(mobile_command_reject_handler),
         )
         .route(
+            "/control/mobile/notifications",
+            get(mobile_notifications_handler).post(mobile_notification_send_handler),
+        )
+        .route(
+            "/control/mobile/notifications/{id}",
+            get(mobile_notification_handler),
+        )
+        .route(
+            "/control/mobile/notifications/{id}/ack",
+            post(mobile_notification_ack_handler),
+        )
+        .route(
             "/control/mobile/messages/preview",
             post(mobile_message_preview_handler),
         )
@@ -5155,6 +5167,71 @@ async fn mobile_command_reject_handler(
 ) -> impl IntoResponse {
     match mobile::reject_command_data(&state.workspace_root, &id, payload) {
         Ok(command) => (StatusCode::OK, Json(serde_json::json!(command))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn mobile_notifications_handler(
+    State(state): State<RuntimeControlState>,
+    Query(query): Query<MobileCommandsQuery>,
+) -> impl IntoResponse {
+    match mobile::list_notification_data(
+        &state.workspace_root,
+        query.node_id.as_deref(),
+        query.limit,
+    ) {
+        Ok(notifications) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "notifications": notifications })),
+        )
+            .into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn mobile_notification_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(id): AxumPath<String>,
+) -> impl IntoResponse {
+    match mobile::inspect_notification_data(&state.workspace_root, &id) {
+        Ok(notification) => (StatusCode::OK, Json(serde_json::json!(notification))).into_response(),
+        Err(error) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn mobile_notification_send_handler(
+    State(state): State<RuntimeControlState>,
+    Json(payload): Json<mobile::MobileNotificationSendRequest>,
+) -> impl IntoResponse {
+    match mobile::send_notification_data(&state.workspace_root, payload).await {
+        Ok(notification) => (StatusCode::OK, Json(serde_json::json!(notification))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn mobile_notification_ack_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(id): AxumPath<String>,
+    Json(payload): Json<mobile::MobileNotificationAckRequest>,
+) -> impl IntoResponse {
+    match mobile::acknowledge_notification_data(&state.workspace_root, &id, payload) {
+        Ok(notification) => (StatusCode::OK, Json(serde_json::json!(notification))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": error.to_string()})),

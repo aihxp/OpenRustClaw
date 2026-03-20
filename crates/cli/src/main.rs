@@ -1461,6 +1461,39 @@ enum MobileAction {
         #[arg(long = "data")]
         data: Vec<String>,
     },
+    /// List persisted bounded mobile notification receipts
+    Notifications {
+        #[arg(long)]
+        node_id: Option<String>,
+        #[arg(long)]
+        limit: Option<usize>,
+    },
+    /// Inspect one bounded mobile notification receipt
+    NotificationStatus { id: String },
+    /// Send a bounded mobile notification through the shipped runtime lane
+    SendNotification {
+        #[arg(long)]
+        node_id: String,
+        #[arg(long)]
+        title: String,
+        #[arg(long)]
+        body: String,
+        #[arg(long)]
+        priority: Option<String>,
+        #[arg(long = "type")]
+        notification_type: Option<String>,
+        #[arg(long = "data")]
+        data: Vec<String>,
+        #[arg(long)]
+        requested_by: Option<String>,
+    },
+    /// Acknowledge one bounded mobile notification receipt
+    AcknowledgeNotification {
+        #[arg(long)]
+        id: String,
+        #[arg(long)]
+        acknowledged_by: String,
+    },
     /// Preview whether a node would sync under the given conditions
     PreviewSync {
         #[arg(long)]
@@ -3347,6 +3380,54 @@ async fn main() -> Result<()> {
                             notification_type,
                             data,
                         },
+                    )
+                    .await
+                }
+                MobileAction::Notifications { node_id, limit } => {
+                    commands::mobile::list_notifications(&workspace_root, node_id.as_deref(), limit)
+                        .await
+                }
+                MobileAction::NotificationStatus { id } => {
+                    commands::mobile::inspect_notification(&workspace_root, &id).await
+                }
+                MobileAction::SendNotification {
+                    node_id,
+                    title,
+                    body,
+                    priority,
+                    notification_type,
+                    data,
+                    requested_by,
+                } => {
+                    let data = data
+                        .into_iter()
+                        .filter_map(|entry| {
+                            let (key, value) = entry.split_once('=')?;
+                            Some((key.to_string(), value.to_string()))
+                        })
+                        .collect();
+                    commands::mobile::send_notification(
+                        &workspace_root,
+                        commands::mobile::MobileNotificationSendRequest {
+                            node_id,
+                            title,
+                            body,
+                            priority,
+                            notification_type,
+                            data,
+                            requested_by,
+                        },
+                    )
+                    .await
+                }
+                MobileAction::AcknowledgeNotification {
+                    id,
+                    acknowledged_by,
+                } => {
+                    commands::mobile::acknowledge_notification(
+                        &workspace_root,
+                        &id,
+                        commands::mobile::MobileNotificationAckRequest { acknowledged_by },
                     )
                     .await
                 }

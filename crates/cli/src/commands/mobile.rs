@@ -202,6 +202,12 @@ pub struct MobileNodeRuntimeState {
     #[serde(default)]
     pub last_sync_result: Option<String>,
     #[serde(default)]
+    pub last_notification_at: Option<String>,
+    #[serde(default)]
+    pub pending_notification_count: usize,
+    #[serde(default)]
+    pub delivered_notification_count: usize,
+    #[serde(default)]
     pub metadata: Value,
 }
 
@@ -340,6 +346,51 @@ pub struct MobileCapabilityPreviewRecord {
     pub preview: Value,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MobileNotificationRecord {
+    pub id: String,
+    pub node_id: String,
+    pub title: String,
+    pub body: String,
+    pub status: String,
+    #[serde(default)]
+    pub priority: Option<String>,
+    #[serde(default)]
+    pub notification_type: Option<String>,
+    #[serde(default)]
+    pub data: HashMap<String, String>,
+    pub created_at: String,
+    #[serde(default)]
+    pub dispatched_at: Option<String>,
+    #[serde(default)]
+    pub acknowledged_at: Option<String>,
+    #[serde(default)]
+    pub acknowledged_by: Option<String>,
+    #[serde(default)]
+    pub command_id: Option<String>,
+    pub preview: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MobileNotificationSendRequest {
+    pub node_id: String,
+    pub title: String,
+    pub body: String,
+    #[serde(default)]
+    pub priority: Option<String>,
+    #[serde(default)]
+    pub notification_type: Option<String>,
+    #[serde(default)]
+    pub data: HashMap<String, String>,
+    #[serde(default)]
+    pub requested_by: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MobileNotificationAckRequest {
+    pub acknowledged_by: String,
+}
+
 fn default_true() -> bool {
     true
 }
@@ -462,6 +513,9 @@ impl MobileNodeRuntimeState {
             last_sync_requested_at: None,
             last_sync_at: None,
             last_sync_result: None,
+            last_notification_at: None,
+            pending_notification_count: 0,
+            delivered_notification_count: 0,
             metadata: Value::Null,
         }
     }
@@ -936,6 +990,149 @@ pub fn preview_capability_data(
         }),
     };
     write_capability_preview_record(workspace_root, &record)?;
+    Ok(record)
+}
+
+pub fn list_notification_data(
+    workspace_root: &Path,
+    node_id: Option<&str>,
+    limit: Option<usize>,
+) -> Result<Vec<MobileNotificationRecord>> {
+    let mut entries = Vec::new();
+    let dir = notifications_dir(workspace_root);
+    if !dir.exists() {
+        return Ok(entries);
+    }
+
+    for entry in fs::read_dir(&dir).with_context(|| format!("failed to read {}", dir.display()))? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.extension().and_then(|value| value.to_str()) != Some("json") {
+            continue;
+        }
+        let bytes = fs::read_to_string(&path)
+            .with_context(|| format!("failed to read {}", path.display()))?;
+        let record: MobileNotificationRecord = serde_json::from_str(&bytes)
+            .with_context(|| format!("failed to parse {}", path.display()))?;
+        if let Some(node_id) = node_id
+            && record.node_id != node_id
+        {
+            continue;
+        }
+        entries.push(record);
+    }
+
+    entries.sort_by(|left, right| right.created_at.cmp(&left.created_at));
+    if let Some(limit) = limit {
+        entries.truncate(limit);
+    }
+    Ok(entries)
+}
+
+pub fn inspect_notification_data(
+    workspace_root: &Path,
+    notification_id: &str,
+) -> Result<MobileNotificationRecord> {
+    let path = notification_path(workspace_root, notification_id);
+    let bytes =
+        fs::read_to_string(&path).with_context(|| format!("failed to read {}", path.display()))?;
+    serde_json::from_str(&bytes).with_context(|| format!("failed to parse {}", path.display()))
+}
+
+pub async fn send_notification_data(
+    workspace_root: &Path,
+    request: MobileNotificationSendRequest,
+) -> Result<MobileNotificationRecord> {
+    if request.node_id.trim().is_empty() {
+        return Err(anyhow!("node_id is required"));
+    }
+    let manifest = inspect_node_data(workspace_root, &request.node_id)?;
+    let status = node_status_data(workspace_root, &request.node_id)?;
+    let mut runtime = load_runtime_state(workspace_root, &request.node_id)?;
+    let preview = preview_notification_data(MobileNotificationPreviewRequest {
+        title: request.title.clone(),
+        body: request.body.clone(),
+        priority: request.priority.clone(),
+        notification_type: request.notification_type.clone(),
+        data: request.data.clone(),
+    })?;
+
+    let now = Utc::now();
+    let mut record = MobileNotificationRecord {
+        id: uuid::Uuid::new_v4().to_string(),
+        node_id: request.node_id.clone(),
+        title: request.title,
+        body: request.body,
+        status: "queued".to_string(),
+        priority: request.priority,
+        notification_type: request.notification_type,
+        data: request.data,
+        created_at: now.to_rfc3339(),
+        dispatched_at: None,
+        acknowledged_at: None,
+        acknowledged_by: None,
+        command_id: None,
+        preview: serde_json::to_value(&preview)
+            .context("failed to serialize notification preview")?,
+    };
+
+    if status.readiness == "ready_for_runtime"
+        && has_capability(&manifest.node.capabilities, "notifications")
+    {
+        let command = dispatch_command_data(
+            workspace_root,
+            MobileCommandDispatchRequest {
+                node_id: request.node_id.clone(),
+                command: DeviceCommandKind::PushNotification,
+                payload: json!({
+                    "title": record.title,
+                    "body": record.body,
+                    "priority": record.priority,
+                    "type": record.notification_type,
+                    "data": record.data,
+                }),
+                approved_by: request
+                    .requested_by
+                    .clone()
+                    .or_else(|| Some("mobile_runtime".to_string())),
+                require_approval: Some(false),
+            },
+        )
+        .await?;
+        record.status = "dispatched".to_string();
+        record.dispatched_at = Some(Utc::now().to_rfc3339());
+        record.command_id = Some(command.id);
+    }
+
+    runtime.last_notification_at = Some(Utc::now().to_rfc3339());
+    runtime.pending_notification_count = runtime.pending_notification_count.saturating_add(1);
+    refresh_runtime_status(&mut runtime);
+    save_runtime_state(workspace_root, &runtime)?;
+    write_notification_record(workspace_root, &record)?;
+    Ok(record)
+}
+
+pub fn acknowledge_notification_data(
+    workspace_root: &Path,
+    notification_id: &str,
+    request: MobileNotificationAckRequest,
+) -> Result<MobileNotificationRecord> {
+    if request.acknowledged_by.trim().is_empty() {
+        return Err(anyhow!("acknowledged_by is required"));
+    }
+    let mut record = inspect_notification_data(workspace_root, notification_id)?;
+    if record.status == "acknowledged" {
+        return Ok(record);
+    }
+    let mut runtime = load_runtime_state(workspace_root, &record.node_id)?;
+    record.status = "acknowledged".to_string();
+    record.acknowledged_by = Some(request.acknowledged_by);
+    record.acknowledged_at = Some(Utc::now().to_rfc3339());
+    runtime.pending_notification_count = runtime.pending_notification_count.saturating_sub(1);
+    runtime.delivered_notification_count = runtime.delivered_notification_count.saturating_add(1);
+    refresh_runtime_status(&mut runtime);
+    save_runtime_state(workspace_root, &runtime)?;
+    write_notification_record(workspace_root, &record)?;
     Ok(record)
 }
 
@@ -1464,6 +1661,44 @@ pub async fn preview_notification(request: MobileNotificationPreviewRequest) -> 
     Ok(())
 }
 
+pub async fn list_notifications(
+    workspace_root: &Path,
+    node_id: Option<&str>,
+    limit: Option<usize>,
+) -> Result<()> {
+    let notifications = list_notification_data(workspace_root, node_id, limit)?;
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&json!({ "notifications": notifications }))?
+    );
+    Ok(())
+}
+
+pub async fn inspect_notification(workspace_root: &Path, notification_id: &str) -> Result<()> {
+    let notification = inspect_notification_data(workspace_root, notification_id)?;
+    println!("{}", serde_json::to_string_pretty(&notification)?);
+    Ok(())
+}
+
+pub async fn send_notification(
+    workspace_root: &Path,
+    request: MobileNotificationSendRequest,
+) -> Result<()> {
+    let record = send_notification_data(workspace_root, request).await?;
+    println!("{}", serde_json::to_string_pretty(&record)?);
+    Ok(())
+}
+
+pub async fn acknowledge_notification(
+    workspace_root: &Path,
+    notification_id: &str,
+    request: MobileNotificationAckRequest,
+) -> Result<()> {
+    let record = acknowledge_notification_data(workspace_root, notification_id, request)?;
+    println!("{}", serde_json::to_string_pretty(&record)?);
+    Ok(())
+}
+
 pub async fn preview_message(request: MobileMessagePreviewRequest) -> Result<()> {
     let preview = preview_message_data(request)?;
     println!("{}", serde_json::to_string_pretty(&preview)?);
@@ -1551,6 +1786,10 @@ fn commands_dir(workspace_root: &Path) -> PathBuf {
     mobile_root(workspace_root).join("commands")
 }
 
+fn notifications_dir(workspace_root: &Path) -> PathBuf {
+    mobile_root(workspace_root).join("notifications")
+}
+
 fn runtime_dir(workspace_root: &Path) -> PathBuf {
     mobile_root(workspace_root).join("runtime")
 }
@@ -1561,6 +1800,10 @@ fn manifest_path(workspace_root: &Path, node_id: &str) -> PathBuf {
 
 fn command_path(workspace_root: &Path, command_id: &str) -> PathBuf {
     commands_dir(workspace_root).join(format!("{command_id}.json"))
+}
+
+fn notification_path(workspace_root: &Path, notification_id: &str) -> PathBuf {
+    notifications_dir(workspace_root).join(format!("{notification_id}.json"))
 }
 
 fn runtime_path(workspace_root: &Path, node_id: &str) -> PathBuf {
@@ -1587,6 +1830,25 @@ fn save_runtime_state(workspace_root: &Path, runtime: &MobileNodeRuntimeState) -
     fs::write(
         &path,
         serde_json::to_vec_pretty(runtime).context("failed to serialize mobile runtime state")?,
+    )
+    .with_context(|| format!("failed to write {}", path.display()))
+}
+
+fn write_notification_record(
+    workspace_root: &Path,
+    record: &MobileNotificationRecord,
+) -> Result<()> {
+    fs::create_dir_all(notifications_dir(workspace_root)).with_context(|| {
+        format!(
+            "failed to create {}",
+            notifications_dir(workspace_root).display()
+        )
+    })?;
+    let path = notification_path(workspace_root, &record.id);
+    fs::write(
+        &path,
+        serde_json::to_vec_pretty(record)
+            .context("failed to serialize mobile notification record")?,
     )
     .with_context(|| format!("failed to write {}", path.display()))
 }
@@ -2199,5 +2461,122 @@ mod tests {
         assert_eq!(record.capability, "camera");
         assert_eq!(record.preview["preview"]["kind"], "camera_capture_preview");
         assert!(capability_preview_path(temp.path(), &record.id).exists());
+    }
+
+    #[tokio::test]
+    async fn send_notification_persists_runtime_receipt() {
+        let temp = tempdir().expect("tempdir");
+        unsafe {
+            std::env::set_var("MOBILE_NOTIFY_TOKEN", "secret");
+        }
+        pair_node_data(
+            temp.path(),
+            MobilePairRequest {
+                id: "iphone-notify".to_string(),
+                gateway_url: "wss://example.com/gateway".to_string(),
+                auth_token_env: "MOBILE_NOTIFY_TOKEN".to_string(),
+                device_name: Some("Notify iPhone".to_string()),
+                platform: Some("ios".to_string()),
+                capabilities: vec!["mobile".to_string(), "notifications".to_string()],
+                enabled: true,
+                sync: None,
+                notifications: None,
+                metadata: Value::Null,
+            },
+        )
+        .expect("pair node");
+        register_push_data(
+            temp.path(),
+            "iphone-notify",
+            MobilePushRegistrationRequest {
+                push_provider: Some("apns".to_string()),
+                push_token_present: Some(true),
+                notifications_authorized: Some(true),
+            },
+        )
+        .expect("register push");
+
+        let record = send_notification_data(
+            temp.path(),
+            MobileNotificationSendRequest {
+                node_id: "iphone-notify".to_string(),
+                title: "Studio alert".to_string(),
+                body: "Track export finished".to_string(),
+                priority: Some("high".to_string()),
+                notification_type: Some("update".to_string()),
+                data: HashMap::from([(String::from("job"), String::from("export"))]),
+                requested_by: Some("test".to_string()),
+            },
+        )
+        .await
+        .expect("send notification");
+
+        assert_eq!(record.status, "dispatched");
+        assert!(record.command_id.is_some());
+
+        let runtime = node_runtime_data(temp.path(), "iphone-notify").expect("runtime");
+        assert_eq!(runtime.pending_notification_count, 1);
+        assert!(runtime.last_notification_at.is_some());
+        unsafe {
+            std::env::remove_var("MOBILE_NOTIFY_TOKEN");
+        }
+    }
+
+    #[tokio::test]
+    async fn acknowledge_notification_updates_runtime_counters() {
+        let temp = tempdir().expect("tempdir");
+        unsafe {
+            std::env::set_var("MOBILE_NOTIFY_ACK_TOKEN", "secret");
+        }
+        pair_node_data(
+            temp.path(),
+            MobilePairRequest {
+                id: "iphone-notify-ack".to_string(),
+                gateway_url: "wss://example.com/gateway".to_string(),
+                auth_token_env: "MOBILE_NOTIFY_ACK_TOKEN".to_string(),
+                device_name: Some("Ack iPhone".to_string()),
+                platform: Some("ios".to_string()),
+                capabilities: vec!["mobile".to_string(), "notifications".to_string()],
+                enabled: true,
+                sync: None,
+                notifications: None,
+                metadata: Value::Null,
+            },
+        )
+        .expect("pair node");
+
+        let record = send_notification_data(
+            temp.path(),
+            MobileNotificationSendRequest {
+                node_id: "iphone-notify-ack".to_string(),
+                title: "Ops".to_string(),
+                body: "Acknowledge me".to_string(),
+                priority: None,
+                notification_type: None,
+                data: HashMap::new(),
+                requested_by: Some("test".to_string()),
+            },
+        )
+        .await
+        .expect("send notification");
+
+        let acknowledged = acknowledge_notification_data(
+            temp.path(),
+            &record.id,
+            MobileNotificationAckRequest {
+                acknowledged_by: "operator".to_string(),
+            },
+        )
+        .expect("acknowledge");
+
+        assert_eq!(acknowledged.status, "acknowledged");
+        assert_eq!(acknowledged.acknowledged_by.as_deref(), Some("operator"));
+
+        let runtime = node_runtime_data(temp.path(), "iphone-notify-ack").expect("runtime");
+        assert_eq!(runtime.pending_notification_count, 0);
+        assert_eq!(runtime.delivered_notification_count, 1);
+        unsafe {
+            std::env::remove_var("MOBILE_NOTIFY_ACK_TOKEN");
+        }
     }
 }
