@@ -148,6 +148,12 @@ openrustclaw skills schedule-background web-search --every-seconds 900
 
 # Bind a compiled skill background service to a channel binding
 openrustclaw skills bind-channel-extension dm-default web-search --trigger mentioned
+
+# Bind a compiled skill to an OIDC auth-provider lane
+openrustclaw skills bind-auth-plugin okta-prod web-search --issuer https://issuer.example.com --redirect-uri https://app.example.com/control/skills/auth-plugins/callback
+
+# Start an authorization flow for a configured auth plugin
+openrustclaw skills auth-authorize okta-prod
 ```
 
 ---

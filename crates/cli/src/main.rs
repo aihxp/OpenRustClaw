@@ -658,6 +658,8 @@ enum SkillsAction {
     BackgroundServices { name: String },
     /// List channel bindings that currently attach compiled skill background extensions
     ListChannelExtensions,
+    /// List configured auth-plugin bindings over compiled skills
+    ListAuthPlugins,
     /// Bind a compiled skill background service to a file-backed channel binding
     BindChannelExtension {
         binding_id: String,
@@ -668,6 +670,47 @@ enum SkillsAction {
         component: Option<String>,
         #[arg(long)]
         trigger: Option<String>,
+    },
+    /// Bind a compiled skill to a bounded OIDC auth-provider lane
+    BindAuthPlugin {
+        provider_id: String,
+        skill_name: String,
+        #[arg(long)]
+        redirect_uri: Option<String>,
+        #[arg(long)]
+        issuer: Option<String>,
+        #[arg(long)]
+        authorization_endpoint: Option<String>,
+        #[arg(long)]
+        token_endpoint: Option<String>,
+        #[arg(long)]
+        client_id_key: Option<String>,
+        #[arg(long)]
+        client_secret_key: Option<String>,
+        #[arg(long)]
+        scopes: Option<String>,
+        #[arg(long)]
+        vault_key_prefix: Option<String>,
+        #[arg(long)]
+        service: Option<String>,
+        #[arg(long)]
+        component: Option<String>,
+    },
+    /// Start an authorization-code flow for a configured auth plugin
+    AuthAuthorize {
+        provider_id: String,
+        #[arg(long)]
+        redirect_uri: Option<String>,
+    },
+    /// Exchange an authorization code for tokens and store them in the runtime vault
+    AuthExchange {
+        provider_id: String,
+        #[arg(long)]
+        code: String,
+        #[arg(long)]
+        state: String,
+        #[arg(long)]
+        redirect_uri: Option<String>,
     },
     /// Execute a bounded `.wasm` or `.wat` component from a compiled skill
     Execute {
@@ -2333,6 +2376,7 @@ async fn main() -> Result<()> {
             SkillsAction::ListChannelExtensions => {
                 commands::skills::list_channel_extensions().await
             }
+            SkillsAction::ListAuthPlugins => commands::skills::list_auth_plugins().await,
             SkillsAction::BindChannelExtension {
                 binding_id,
                 skill_name,
@@ -2346,6 +2390,56 @@ async fn main() -> Result<()> {
                     service.as_deref(),
                     component.as_deref(),
                     trigger.as_deref(),
+                )
+                .await
+            }
+            SkillsAction::BindAuthPlugin {
+                provider_id,
+                skill_name,
+                redirect_uri,
+                issuer,
+                authorization_endpoint,
+                token_endpoint,
+                client_id_key,
+                client_secret_key,
+                scopes,
+                vault_key_prefix,
+                service,
+                component,
+            } => {
+                commands::skills::bind_auth_plugin(
+                    &provider_id,
+                    &skill_name,
+                    redirect_uri.as_deref(),
+                    issuer.as_deref(),
+                    authorization_endpoint.as_deref(),
+                    token_endpoint.as_deref(),
+                    client_id_key.as_deref(),
+                    client_secret_key.as_deref(),
+                    scopes.as_deref(),
+                    vault_key_prefix.as_deref(),
+                    service.as_deref(),
+                    component.as_deref(),
+                )
+                .await
+            }
+            SkillsAction::AuthAuthorize {
+                provider_id,
+                redirect_uri,
+            } => {
+                commands::skills::authorize_auth_plugin(&provider_id, redirect_uri.as_deref()).await
+            }
+            SkillsAction::AuthExchange {
+                provider_id,
+                code,
+                state,
+                redirect_uri,
+            } => {
+                commands::skills::exchange_auth_plugin(
+                    &provider_id,
+                    &code,
+                    &state,
+                    redirect_uri.as_deref(),
                 )
                 .await
             }

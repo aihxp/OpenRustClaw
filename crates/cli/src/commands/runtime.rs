@@ -758,6 +758,15 @@ pub fn list_vault_keys(workspace_root: &Path) -> Result<Vec<String>> {
     Ok(vault.entries.keys().cloned().collect())
 }
 
+pub fn get_vault_secret(workspace_root: &Path, key: &str) -> Result<String> {
+    let vault = load_vault(workspace_root, None)?;
+    vault
+        .entries
+        .get(key)
+        .cloned()
+        .ok_or_else(|| anyhow::anyhow!("Vault key '{}' not found", key))
+}
+
 pub fn set_vault_secret(workspace_root: &Path, key: &str, value: &str) -> Result<()> {
     let mut vault = load_vault(workspace_root, None).unwrap_or_default();
     vault.version = 1;

@@ -3,7 +3,7 @@
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use indicatif::{ProgressBar, ProgressStyle};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sqlx::Row;
 use std::collections::{BTreeMap, HashSet};
 use std::fs;
@@ -13,6 +13,7 @@ use tracing::debug;
 use openrustclaw_core::types::SkillSource;
 use openrustclaw_scheduler::DurableEventBus;
 use openrustclaw_security::SkillVerifier;
+use openrustclaw_security::sso::{OidcClient, OidcConfig, SsoClient};
 use openrustclaw_skills::{
     ClawHubRegistry, CompiledBackgroundService, CompiledSkillArtifact, CompiledSkillManifest,
     ExtensionManifest, SearchFilters, SortBy, compile_skill_to_dir,
@@ -25,6 +26,7 @@ use openrustclaw_skills::{
 use super::channels::{
     ChannelBindingSpec, load_registry, read_binding, resolve_root, upsert_binding,
 };
+use super::{control, runtime};
 
 fn parse_hex_bytes(input: &str) -> Result<Vec<u8>> {
     let trimmed = input.trim();
@@ -402,6 +404,153 @@ pub struct SkillBindChannelExtensionResult {
     pub component: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SkillAuthPluginBinding {
+    pub provider_id: String,
+    pub skill_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub redirect_uri: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub issuer: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub authorization_endpoint: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub token_endpoint: Option<String>,
+    pub client_id_key: String,
+    pub client_secret_key: String,
+    pub scopes: Vec<String>,
+    pub vault_key_prefix: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub service: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub component: Option<String>,
+    pub configured_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+struct SkillAuthPluginRegistry {
+    pub bindings: BTreeMap<String, SkillAuthPluginBinding>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SkillAuthPendingSession {
+    pub provider_id: String,
+    pub state: String,
+    pub redirect_uri: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+struct SkillAuthPendingSessions {
+    pub sessions: Vec<SkillAuthPendingSession>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SkillAuthPluginSummary {
+    pub provider_id: String,
+    pub skill_name: String,
+    pub blocked: bool,
+    pub declared_by_skill: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub redirect_uri: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub issuer: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub authorization_endpoint: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub token_endpoint: Option<String>,
+    pub client_id_key: String,
+    pub client_secret_key: String,
+    pub scopes: Vec<String>,
+    pub vault_key_prefix: String,
+    pub client_id_present: bool,
+    pub client_secret_present: bool,
+    pub access_token_present: bool,
+    pub refresh_token_present: bool,
+    pub pending_states: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub service: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub component: Option<String>,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SkillAuthPluginsResult {
+    pub status: String,
+    pub count: usize,
+    pub auth_plugins: Vec<SkillAuthPluginSummary>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SkillBindAuthPluginOptions<'a> {
+    pub redirect_uri: Option<&'a str>,
+    pub issuer: Option<&'a str>,
+    pub authorization_endpoint: Option<&'a str>,
+    pub token_endpoint: Option<&'a str>,
+    pub client_id_key: Option<&'a str>,
+    pub client_secret_key: Option<&'a str>,
+    pub scopes: Option<&'a str>,
+    pub vault_key_prefix: Option<&'a str>,
+    pub service: Option<&'a str>,
+    pub component: Option<&'a str>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SkillBindAuthPluginResult {
+    pub status: String,
+    pub provider_id: String,
+    pub skill_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub redirect_uri: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub authorization_endpoint: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub token_endpoint: Option<String>,
+    pub client_id_key: String,
+    pub client_secret_key: String,
+    pub vault_key_prefix: String,
+    pub scopes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SkillAuthAuthorizeOptions<'a> {
+    pub redirect_uri: Option<&'a str>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SkillAuthAuthorizeResult {
+    pub status: String,
+    pub provider_id: String,
+    pub skill_name: String,
+    pub redirect_uri: String,
+    pub state: String,
+    pub authorization_url: String,
+    pub vault_key_prefix: String,
+    pub pending_states: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct SkillAuthExchangeOptions<'a> {
+    pub code: &'a str,
+    pub state: &'a str,
+    pub redirect_uri: Option<&'a str>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SkillAuthExchangeResult {
+    pub status: String,
+    pub provider_id: String,
+    pub skill_name: String,
+    pub redirect_uri: String,
+    pub stored_keys: Vec<String>,
+    pub token_type: String,
+    pub expires_in: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scope: Option<String>,
+}
+
 async fn load_skill_config_and_pool()
 -> Result<(openrustclaw_core::config::AppConfig, sqlx::SqlitePool)> {
     let config = openrustclaw_core::config::AppConfig::load().unwrap_or_default();
@@ -442,6 +591,138 @@ fn ensure_compiled_root() -> Result<PathBuf> {
     std::fs::create_dir_all(&root)
         .with_context(|| format!("Failed to create {}", root.display()))?;
     Ok(root)
+}
+
+fn current_workspace_root() -> Result<PathBuf> {
+    std::env::current_dir().context("Failed to determine current workspace root")
+}
+
+fn auth_plugin_registry_path(workspace_root: &Path) -> PathBuf {
+    control::control_root_for(workspace_root).join("skill-auth-plugins.json")
+}
+
+fn auth_plugin_sessions_path(workspace_root: &Path) -> PathBuf {
+    control::control_root_for(workspace_root).join("skill-auth-plugin-sessions.json")
+}
+
+fn load_auth_plugin_registry(workspace_root: &Path) -> Result<SkillAuthPluginRegistry> {
+    let path = auth_plugin_registry_path(workspace_root);
+    if !path.exists() {
+        return Ok(SkillAuthPluginRegistry::default());
+    }
+    let bytes = fs::read(&path).with_context(|| format!("Failed to read {}", path.display()))?;
+    serde_json::from_slice(&bytes).with_context(|| format!("Failed to parse {}", path.display()))
+}
+
+fn save_auth_plugin_registry(
+    workspace_root: &Path,
+    registry: &SkillAuthPluginRegistry,
+) -> Result<()> {
+    let path = auth_plugin_registry_path(workspace_root);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("Failed to create {}", parent.display()))?;
+    }
+    fs::write(&path, serde_json::to_vec_pretty(registry)?)
+        .with_context(|| format!("Failed to write {}", path.display()))
+}
+
+fn load_auth_plugin_sessions(workspace_root: &Path) -> Result<SkillAuthPendingSessions> {
+    let path = auth_plugin_sessions_path(workspace_root);
+    if !path.exists() {
+        return Ok(SkillAuthPendingSessions::default());
+    }
+    let bytes = fs::read(&path).with_context(|| format!("Failed to read {}", path.display()))?;
+    serde_json::from_slice(&bytes).with_context(|| format!("Failed to parse {}", path.display()))
+}
+
+fn save_auth_plugin_sessions(
+    workspace_root: &Path,
+    sessions: &SkillAuthPendingSessions,
+) -> Result<()> {
+    let path = auth_plugin_sessions_path(workspace_root);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("Failed to create {}", parent.display()))?;
+    }
+    fs::write(&path, serde_json::to_vec_pretty(sessions)?)
+        .with_context(|| format!("Failed to write {}", path.display()))
+}
+
+fn sanitize_env_fragment(value: &str) -> String {
+    let sanitized = value
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() {
+                ch.to_ascii_uppercase()
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>();
+    let collapsed = sanitized
+        .split('_')
+        .filter(|segment| !segment.is_empty())
+        .collect::<Vec<_>>()
+        .join("_");
+    if collapsed.is_empty() {
+        "SKILL".to_string()
+    } else {
+        collapsed
+    }
+}
+
+fn default_auth_prefix(provider_id: &str) -> String {
+    format!("AUTH_PLUGIN_{}", sanitize_env_fragment(provider_id))
+}
+
+fn auth_scope_list(raw: Option<&str>) -> Vec<String> {
+    let scopes = raw
+        .map(|value| {
+            value
+                .split(|ch: char| ch == ',' || ch.is_whitespace())
+                .filter(|segment| !segment.trim().is_empty())
+                .map(|segment| segment.trim().to_string())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    if scopes.is_empty() {
+        vec![
+            "openid".to_string(),
+            "email".to_string(),
+            "profile".to_string(),
+        ]
+    } else {
+        scopes
+    }
+}
+
+fn access_token_key(binding: &SkillAuthPluginBinding) -> String {
+    format!("{}_ACCESS_TOKEN", binding.vault_key_prefix)
+}
+
+fn refresh_token_key(binding: &SkillAuthPluginBinding) -> String {
+    format!("{}_REFRESH_TOKEN", binding.vault_key_prefix)
+}
+
+fn id_token_key(binding: &SkillAuthPluginBinding) -> String {
+    format!("{}_ID_TOKEN", binding.vault_key_prefix)
+}
+
+fn expires_in_key(binding: &SkillAuthPluginBinding) -> String {
+    format!("{}_EXPIRES_IN", binding.vault_key_prefix)
+}
+
+fn scope_key(binding: &SkillAuthPluginBinding) -> String {
+    format!("{}_SCOPE", binding.vault_key_prefix)
+}
+
+fn provider_from_pending_state(sessions: &SkillAuthPendingSessions, state: &str) -> Option<String> {
+    sessions
+        .sessions
+        .iter()
+        .find(|session| session.state == state)
+        .map(|session| session.provider_id.clone())
 }
 
 async fn build_registry_client(
@@ -1256,6 +1537,417 @@ pub async fn bind_channel_extension_data(
     })
 }
 
+fn auth_plugin_summary(
+    binding: &SkillAuthPluginBinding,
+    artifact: Option<&CompiledSkillArtifact>,
+    vault_keys: &HashSet<String>,
+    pending_states: usize,
+) -> SkillAuthPluginSummary {
+    let declared_by_skill = artifact.is_some_and(|artifact| {
+        artifact
+            .manifest
+            .declared_auth_providers
+            .iter()
+            .any(|provider| provider == &binding.provider_id)
+    });
+    let blocked = artifact.is_some_and(|artifact| {
+        matches!(
+            artifact.manifest.status,
+            openrustclaw_skills::CompiledSkillStatus::Blocked
+        )
+    });
+
+    SkillAuthPluginSummary {
+        provider_id: binding.provider_id.clone(),
+        skill_name: binding.skill_name.clone(),
+        blocked,
+        declared_by_skill,
+        redirect_uri: binding.redirect_uri.clone(),
+        issuer: binding.issuer.clone(),
+        authorization_endpoint: binding.authorization_endpoint.clone(),
+        token_endpoint: binding.token_endpoint.clone(),
+        client_id_key: binding.client_id_key.clone(),
+        client_secret_key: binding.client_secret_key.clone(),
+        scopes: binding.scopes.clone(),
+        vault_key_prefix: binding.vault_key_prefix.clone(),
+        client_id_present: vault_keys.contains(&binding.client_id_key),
+        client_secret_present: vault_keys.contains(&binding.client_secret_key),
+        access_token_present: vault_keys.contains(&access_token_key(binding)),
+        refresh_token_present: vault_keys.contains(&refresh_token_key(binding)),
+        pending_states,
+        service: binding.service.clone(),
+        component: binding.component.clone(),
+        updated_at: binding.updated_at.clone(),
+    }
+}
+
+async fn hydrated_auth_binding(
+    workspace_root: &Path,
+    provider_id: &str,
+) -> Result<(SkillAuthPluginBinding, OidcClient)> {
+    let mut registry = load_auth_plugin_registry(workspace_root)?;
+    let mut binding = registry
+        .bindings
+        .get(provider_id)
+        .cloned()
+        .ok_or_else(|| anyhow::anyhow!("Auth plugin '{}' not found", provider_id))?;
+    let issuer = binding.issuer.clone().ok_or_else(|| {
+        anyhow::anyhow!(
+            "Auth plugin '{}' is missing an issuer URL; re-bind with --issuer",
+            provider_id
+        )
+    })?;
+
+    let force_discovery =
+        binding.authorization_endpoint.is_none() || binding.token_endpoint.is_none();
+    let mut config = OidcConfig::new(
+        provider_id,
+        runtime::get_vault_secret(workspace_root, &binding.client_id_key)?,
+        runtime::get_vault_secret(workspace_root, &binding.client_secret_key)?,
+        issuer,
+    );
+    config.scopes = binding.scopes.clone();
+    if !force_discovery {
+        config.authorization_endpoint = binding.authorization_endpoint.clone();
+        config.token_endpoint = binding.token_endpoint.clone();
+    }
+
+    let mut client = OidcClient::new(config);
+    if force_discovery {
+        client
+            .discover_metadata()
+            .await
+            .map_err(|error| anyhow::anyhow!("OIDC discovery failed: {}", error))?;
+        let metadata = client.metadata().clone();
+        binding.authorization_endpoint = Some(metadata.authorization_endpoint);
+        binding.token_endpoint = Some(metadata.token_endpoint);
+        binding.updated_at = Utc::now().to_rfc3339();
+        registry
+            .bindings
+            .insert(provider_id.to_string(), binding.clone());
+        save_auth_plugin_registry(workspace_root, &registry)?;
+    }
+
+    Ok((binding, client))
+}
+
+pub async fn auth_plugins_data() -> Result<SkillAuthPluginsResult> {
+    let workspace_root = current_workspace_root()?;
+    let registry = load_auth_plugin_registry(&workspace_root)?;
+    let sessions = load_auth_plugin_sessions(&workspace_root)?;
+    let vault_keys = runtime::list_vault_keys(&workspace_root)
+        .unwrap_or_default()
+        .into_iter()
+        .collect::<HashSet<_>>();
+    let mut auth_plugins = Vec::new();
+
+    for binding in registry.bindings.values() {
+        let artifact = compiled_skill_detail_or_compile(&binding.skill_name)
+            .await
+            .ok();
+        let pending_count = sessions
+            .sessions
+            .iter()
+            .filter(|session| session.provider_id == binding.provider_id)
+            .count();
+        auth_plugins.push(auth_plugin_summary(
+            binding,
+            artifact.as_ref(),
+            &vault_keys,
+            pending_count,
+        ));
+    }
+
+    auth_plugins.sort_by(|left, right| left.provider_id.cmp(&right.provider_id));
+    Ok(SkillAuthPluginsResult {
+        status: "ok".to_string(),
+        count: auth_plugins.len(),
+        auth_plugins,
+    })
+}
+
+pub async fn auth_plugins_for_skill_data(skill_name: &str) -> Result<SkillAuthPluginsResult> {
+    let mut result = auth_plugins_data().await?;
+    result
+        .auth_plugins
+        .retain(|binding| binding.skill_name == skill_name);
+    result.count = result.auth_plugins.len();
+    Ok(result)
+}
+
+pub async fn bind_auth_plugin_data(
+    provider_id: &str,
+    skill_name: &str,
+    options: SkillBindAuthPluginOptions<'_>,
+) -> Result<SkillBindAuthPluginResult> {
+    let workspace_root = current_workspace_root()?;
+    let artifact = compiled_skill_detail_or_compile(skill_name).await?;
+    if matches!(
+        artifact.manifest.status,
+        openrustclaw_skills::CompiledSkillStatus::Blocked
+    ) {
+        anyhow::bail!(
+            "Compiled skill '{}' is blocked and cannot be bound as an auth plugin",
+            artifact.manifest.name
+        );
+    }
+    if !artifact.manifest.declared_auth_providers.is_empty()
+        && !artifact
+            .manifest
+            .declared_auth_providers
+            .iter()
+            .any(|provider| provider == provider_id)
+    {
+        anyhow::bail!(
+            "Compiled skill '{}' declares auth providers [{}], not '{}'",
+            artifact.manifest.name,
+            artifact.manifest.declared_auth_providers.join(", "),
+            provider_id
+        );
+    }
+    if options.issuer.is_none()
+        && (options.authorization_endpoint.is_none() || options.token_endpoint.is_none())
+    {
+        anyhow::bail!(
+            "Bind auth plugin '{}' with either --issuer for OIDC discovery or both --authorization-endpoint and --token-endpoint",
+            provider_id
+        );
+    }
+
+    if options.service.is_some() || options.component.is_some() {
+        let _ = resolve_compiled_skill_background_service(
+            &artifact,
+            options.service,
+            options.component,
+        )
+        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+    }
+
+    let default_prefix = default_auth_prefix(provider_id);
+    let vault_key_prefix = options
+        .vault_key_prefix
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or(default_prefix);
+    let client_id_key = options
+        .client_id_key
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| format!("{}_CLIENT_ID", vault_key_prefix));
+    let client_secret_key = options
+        .client_secret_key
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| format!("{}_CLIENT_SECRET", vault_key_prefix));
+    let now = Utc::now().to_rfc3339();
+
+    let mut registry = load_auth_plugin_registry(&workspace_root)?;
+    let existing_configured_at = registry
+        .bindings
+        .get(provider_id)
+        .map(|binding| binding.configured_at.clone())
+        .unwrap_or_else(|| now.clone());
+
+    let binding = SkillAuthPluginBinding {
+        provider_id: provider_id.to_string(),
+        skill_name: artifact.manifest.name.clone(),
+        redirect_uri: options.redirect_uri.map(ToString::to_string),
+        issuer: options.issuer.map(ToString::to_string),
+        authorization_endpoint: options.authorization_endpoint.map(ToString::to_string),
+        token_endpoint: options.token_endpoint.map(ToString::to_string),
+        client_id_key: client_id_key.clone(),
+        client_secret_key: client_secret_key.clone(),
+        scopes: auth_scope_list(options.scopes),
+        vault_key_prefix: vault_key_prefix.clone(),
+        service: options.service.map(ToString::to_string),
+        component: options.component.map(ToString::to_string),
+        configured_at: existing_configured_at,
+        updated_at: now,
+    };
+    registry
+        .bindings
+        .insert(provider_id.to_string(), binding.clone());
+    save_auth_plugin_registry(&workspace_root, &registry)?;
+
+    let (_, pool) = load_skill_config_and_pool().await?;
+    publish_plugin_event(
+        &pool,
+        "plugin.auth_plugin_bound",
+        serde_json::json!({
+            "provider_id": provider_id,
+            "skill_name": binding.skill_name,
+            "redirect_uri": binding.redirect_uri,
+            "issuer": binding.issuer,
+            "vault_key_prefix": binding.vault_key_prefix,
+        }),
+    )
+    .await;
+
+    Ok(SkillBindAuthPluginResult {
+        status: "ok".to_string(),
+        provider_id: provider_id.to_string(),
+        skill_name: binding.skill_name,
+        redirect_uri: binding.redirect_uri,
+        authorization_endpoint: binding.authorization_endpoint,
+        token_endpoint: binding.token_endpoint,
+        client_id_key,
+        client_secret_key,
+        vault_key_prefix,
+        scopes: binding.scopes,
+    })
+}
+
+pub async fn authorize_auth_plugin_data(
+    provider_id: &str,
+    options: SkillAuthAuthorizeOptions<'_>,
+) -> Result<SkillAuthAuthorizeResult> {
+    let workspace_root = current_workspace_root()?;
+    let (binding, client) = hydrated_auth_binding(&workspace_root, provider_id).await?;
+    let redirect_uri = options
+        .redirect_uri
+        .map(ToString::to_string)
+        .or_else(|| binding.redirect_uri.clone())
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "Auth plugin '{}' has no redirect URI configured; pass --redirect-uri or re-bind with one",
+                provider_id
+            )
+        })?;
+    let state = uuid::Uuid::new_v4().to_string();
+    let authorization_url = client.authorization_url(&state, &redirect_uri);
+
+    let mut sessions = load_auth_plugin_sessions(&workspace_root)?;
+    sessions.sessions.retain(|session| {
+        !(session.provider_id == provider_id && session.redirect_uri == redirect_uri)
+    });
+    sessions.sessions.push(SkillAuthPendingSession {
+        provider_id: provider_id.to_string(),
+        state: state.clone(),
+        redirect_uri: redirect_uri.clone(),
+        created_at: Utc::now().to_rfc3339(),
+    });
+    save_auth_plugin_sessions(&workspace_root, &sessions)?;
+
+    Ok(SkillAuthAuthorizeResult {
+        status: "ok".to_string(),
+        provider_id: provider_id.to_string(),
+        skill_name: binding.skill_name,
+        redirect_uri,
+        state,
+        authorization_url,
+        vault_key_prefix: binding.vault_key_prefix,
+        pending_states: sessions
+            .sessions
+            .iter()
+            .filter(|session| session.provider_id == provider_id)
+            .count(),
+    })
+}
+
+pub async fn exchange_auth_plugin_data(
+    provider_id: &str,
+    options: SkillAuthExchangeOptions<'_>,
+) -> Result<SkillAuthExchangeResult> {
+    let workspace_root = current_workspace_root()?;
+    let (binding, client) = hydrated_auth_binding(&workspace_root, provider_id).await?;
+    let mut sessions = load_auth_plugin_sessions(&workspace_root)?;
+    let session_index = sessions
+        .sessions
+        .iter()
+        .position(|session| session.provider_id == provider_id && session.state == options.state)
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "No pending authorization state '{}' was found for auth plugin '{}'",
+                options.state,
+                provider_id
+            )
+        })?;
+    let pending = sessions.sessions.remove(session_index);
+    save_auth_plugin_sessions(&workspace_root, &sessions)?;
+
+    let redirect_uri = options
+        .redirect_uri
+        .map(ToString::to_string)
+        .unwrap_or(pending.redirect_uri);
+    let tokens = client
+        .exchange_code(options.code, &redirect_uri)
+        .await
+        .map_err(|error| anyhow::anyhow!("OIDC code exchange failed: {}", error))?;
+
+    let mut stored_keys = Vec::new();
+    runtime::set_vault_secret(
+        &workspace_root,
+        &access_token_key(&binding),
+        &tokens.access_token,
+    )?;
+    stored_keys.push(access_token_key(&binding));
+    if let Some(refresh_token) = tokens.refresh_token.as_deref() {
+        runtime::set_vault_secret(&workspace_root, &refresh_token_key(&binding), refresh_token)?;
+        stored_keys.push(refresh_token_key(&binding));
+    }
+    if let Some(id_token) = tokens.id_token.as_deref() {
+        runtime::set_vault_secret(&workspace_root, &id_token_key(&binding), id_token)?;
+        stored_keys.push(id_token_key(&binding));
+    }
+    runtime::set_vault_secret(
+        &workspace_root,
+        &expires_in_key(&binding),
+        &tokens.expires_in.to_string(),
+    )?;
+    stored_keys.push(expires_in_key(&binding));
+    if let Some(scope) = tokens.scope.as_deref() {
+        runtime::set_vault_secret(&workspace_root, &scope_key(&binding), scope)?;
+        stored_keys.push(scope_key(&binding));
+    }
+
+    let (_, pool) = load_skill_config_and_pool().await?;
+    publish_plugin_event(
+        &pool,
+        "plugin.auth_plugin_connected",
+        serde_json::json!({
+            "provider_id": provider_id,
+            "skill_name": binding.skill_name,
+            "redirect_uri": redirect_uri,
+            "stored_keys": stored_keys,
+        }),
+    )
+    .await;
+
+    Ok(SkillAuthExchangeResult {
+        status: "ok".to_string(),
+        provider_id: provider_id.to_string(),
+        skill_name: binding.skill_name,
+        redirect_uri,
+        stored_keys,
+        token_type: tokens.token_type,
+        expires_in: tokens.expires_in,
+        scope: tokens.scope,
+    })
+}
+
+pub async fn exchange_auth_plugin_callback_data(
+    provider_id: Option<&str>,
+    code: &str,
+    state: &str,
+    redirect_uri: Option<&str>,
+) -> Result<SkillAuthExchangeResult> {
+    let workspace_root = current_workspace_root()?;
+    let sessions = load_auth_plugin_sessions(&workspace_root)?;
+    let resolved_provider = provider_id
+        .map(ToString::to_string)
+        .or_else(|| provider_from_pending_state(&sessions, state))
+        .ok_or_else(|| anyhow::anyhow!("No auth plugin could be resolved for state '{}'", state))?;
+    exchange_auth_plugin_data(
+        &resolved_provider,
+        SkillAuthExchangeOptions {
+            code,
+            state,
+            redirect_uri,
+        },
+    )
+    .await
+}
+
 pub async fn compile_data(name: Option<&str>) -> Result<SkillCompileResult> {
     let root = ensure_compiled_root()?;
     let mut compiled = Vec::new();
@@ -2039,6 +2731,77 @@ pub async fn bind_channel_extension(
             service,
             component,
             trigger,
+        },
+    )
+    .await?;
+    println!("{}", serde_json::to_string_pretty(&result)?);
+    Ok(())
+}
+
+/// List configured auth-plugin bindings over compiled skills.
+pub async fn list_auth_plugins() -> Result<()> {
+    let result = auth_plugins_data().await?;
+    println!("{}", serde_json::to_string_pretty(&result)?);
+    Ok(())
+}
+
+/// Bind a compiled skill to a bounded OIDC auth-provider lane.
+pub async fn bind_auth_plugin(
+    provider_id: &str,
+    skill_name: &str,
+    redirect_uri: Option<&str>,
+    issuer: Option<&str>,
+    authorization_endpoint: Option<&str>,
+    token_endpoint: Option<&str>,
+    client_id_key: Option<&str>,
+    client_secret_key: Option<&str>,
+    scopes: Option<&str>,
+    vault_key_prefix: Option<&str>,
+    service: Option<&str>,
+    component: Option<&str>,
+) -> Result<()> {
+    let result = bind_auth_plugin_data(
+        provider_id,
+        skill_name,
+        SkillBindAuthPluginOptions {
+            redirect_uri,
+            issuer,
+            authorization_endpoint,
+            token_endpoint,
+            client_id_key,
+            client_secret_key,
+            scopes,
+            vault_key_prefix,
+            service,
+            component,
+        },
+    )
+    .await?;
+    println!("{}", serde_json::to_string_pretty(&result)?);
+    Ok(())
+}
+
+/// Start an authorization-code flow for a configured auth plugin.
+pub async fn authorize_auth_plugin(provider_id: &str, redirect_uri: Option<&str>) -> Result<()> {
+    let result =
+        authorize_auth_plugin_data(provider_id, SkillAuthAuthorizeOptions { redirect_uri }).await?;
+    println!("{}", serde_json::to_string_pretty(&result)?);
+    Ok(())
+}
+
+/// Exchange an authorization code for tokens and store them in the runtime vault.
+pub async fn exchange_auth_plugin(
+    provider_id: &str,
+    code: &str,
+    state: &str,
+    redirect_uri: Option<&str>,
+) -> Result<()> {
+    let result = exchange_auth_plugin_data(
+        provider_id,
+        SkillAuthExchangeOptions {
+            code,
+            state,
+            redirect_uri,
         },
     )
     .await?;

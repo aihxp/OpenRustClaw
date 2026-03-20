@@ -199,6 +199,28 @@ impl OidcClient {
         Ok(doc)
     }
 
+    /// Discover endpoints and provider metadata without forcing JWKS validation.
+    pub async fn discover_metadata(&mut self) -> Result<(), SsoError> {
+        if self.config.authorization_endpoint.is_none() {
+            let discovery = self.discover().await?;
+
+            self.metadata.authorization_endpoint = discovery.authorization_endpoint;
+            self.metadata.token_endpoint = discovery.token_endpoint;
+            self.metadata.userinfo_endpoint = discovery.userinfo_endpoint;
+            self.metadata.jwks_uri = discovery.jwks_uri;
+            self.metadata.end_session_endpoint = discovery.end_session_endpoint;
+
+            if let Some(scopes) = discovery.scopes_supported {
+                self.metadata.scopes_supported = scopes;
+            }
+            if let Some(claims) = discovery.claims_supported {
+                self.metadata.claims_supported = claims;
+            }
+        }
+
+        Ok(())
+    }
+
     /// Fetch JWKS
     async fn fetch_jwks(&mut self) -> Result<(), SsoError> {
         let jwks_uri = self
@@ -267,23 +289,7 @@ impl OidcClient {
 #[async_trait]
 impl SsoClient for OidcClient {
     async fn init(&mut self) -> Result<(), SsoError> {
-        // Discover endpoints if not provided
-        if self.config.authorization_endpoint.is_none() {
-            let discovery = self.discover().await?;
-
-            self.metadata.authorization_endpoint = discovery.authorization_endpoint;
-            self.metadata.token_endpoint = discovery.token_endpoint;
-            self.metadata.userinfo_endpoint = discovery.userinfo_endpoint;
-            self.metadata.jwks_uri = discovery.jwks_uri;
-            self.metadata.end_session_endpoint = discovery.end_session_endpoint;
-
-            if let Some(scopes) = discovery.scopes_supported {
-                self.metadata.scopes_supported = scopes;
-            }
-            if let Some(claims) = discovery.claims_supported {
-                self.metadata.claims_supported = claims;
-            }
-        }
+        self.discover_metadata().await?;
 
         // Fetch JWKS
         self.fetch_jwks().await?;

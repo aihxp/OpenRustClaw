@@ -40,8 +40,8 @@ flowchart TB
 
 The current operator surfaces for skills/extensions are shared across CLI, typed control APIs, MCP, and the Web Control UI:
 
-- CLI: `openrustclaw skills list|list-extensions|compile|refresh|inspect-compiled|inspect-extension|background-services|list-channel-extensions|bind-channel-extension|invoke|execute|schedule-background|search|install|update|uninstall|verify|popular|trending`
-- Control API: `/control/skills...`, including `/control/skills/extensions...`, `/control/skills/channel-extensions...`, `/control/skills/{name}/invoke`, `/control/skills/{name}/execute`, and `/control/skills/{name}/background-services...`
+- CLI: `openrustclaw skills list|list-extensions|compile|refresh|inspect-compiled|inspect-extension|background-services|list-channel-extensions|bind-channel-extension|list-auth-plugins|bind-auth-plugin|auth-authorize|auth-exchange|invoke|execute|schedule-background|search|install|update|uninstall|verify|popular|trending`
+- Control API: `/control/skills...`, including `/control/skills/extensions...`, `/control/skills/channel-extensions...`, `/control/skills/auth-plugins...`, `/control/skills/{name}/invoke`, `/control/skills/{name}/execute`, and `/control/skills/{name}/background-services...`
 - MCP: `list_compiled_skills`, `inspect_compiled_skill`, plus dynamic `skill.<name>.summary|details|reference...|execute|schedule` tools from the compiled skill cache
 - Control UI: `/control/ui` extension discovery and installed-extension management panels
 
@@ -62,7 +62,7 @@ Compiled skills can now also expose bounded background services through the same
 - MCP: dynamic `skill.<name>.schedule` tools when the compiled skill exposes a schedulable background service or executable component
 - Control UI: the extension detail panel can schedule the same bounded background workflow
 
-This background lane is still intentionally bounded: it routes compiled background services through the Rust durable scheduler and the same verification-aware execution path used by `skills execute`, rather than pretending auth plugins, channel extensions, or voice-call plugins are already complete.
+This background lane is still intentionally bounded: it routes compiled background services through the Rust durable scheduler and the same verification-aware execution path used by `skills execute`, rather than pretending voice-call plugins are already complete.
 
 File-backed channel bindings can now opt into a bounded compiled-skill extension lane:
 
@@ -71,6 +71,14 @@ File-backed channel bindings can now opt into a bounded compiled-skill extension
 - Control UI: the extension detail panel can bind the selected compiled skill to an existing channel binding
 
 This does not create a second plugin router. It reuses the existing file-backed channel-binding manifests and, when triggered, schedules the compiled background service through the same Rust-owned durable scheduler used by the background workflow lane above.
+
+Compiled skills can now also own a bounded auth-provider lane over the same Rust-owned control plane:
+
+- CLI: `openrustclaw skills list-auth-plugins`, `openrustclaw skills bind-auth-plugin <provider-id> <skill-name> ...`, `openrustclaw skills auth-authorize <provider-id>`, and `openrustclaw skills auth-exchange <provider-id> --code ... --state ...`
+- Control API: `GET /control/skills/auth-plugins`, `POST /control/skills/auth-plugins/bind`, `POST /control/skills/auth-plugins/{provider_id}/authorize`, `POST /control/skills/auth-plugins/{provider_id}/exchange`, and `GET /control/skills/auth-plugins/callback`
+- Control UI: the extension detail panel can bind an auth plugin and open the provider authorization flow for the selected compiled skill
+
+This auth lane is also intentionally bounded: it reuses the existing Rust OIDC primitives and encrypted runtime vault, stores provider bindings under `.claw/control/skill-auth-plugins.json`, and persists issued tokens back into the runtime vault instead of introducing a separate auth host or opaque plugin secret store.
 
 The compile pipeline now also emits `.claw/skills/compiled/<skill>/extension_manifest.json`. That manifest is the durable Rust-native extension contract for this later Phase 7 work:
 

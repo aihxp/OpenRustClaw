@@ -546,6 +546,22 @@
             <div class="action-row">
               <button class="secondary" id="skill-channel-bind">Bind Channel Extension</button>
             </div>
+            <div class="action-row">
+              <input id="skill-auth-provider" type="text" placeholder="auth provider id, e.g. okta-prod" />
+              <input id="skill-auth-issuer" type="url" placeholder="OIDC issuer, e.g. https://issuer.example.com" />
+            </div>
+            <div class="action-row">
+              <input id="skill-auth-redirect-uri" type="url" placeholder="redirect URI, usually /control/skills/auth-plugins/callback" />
+              <input id="skill-auth-client-id-key" type="text" placeholder="optional vault key for client id" />
+            </div>
+            <div class="action-row">
+              <input id="skill-auth-client-secret-key" type="text" placeholder="optional vault key for client secret" />
+              <input id="skill-auth-scopes" type="text" placeholder="optional scopes, e.g. openid email profile" />
+            </div>
+            <div class="action-row">
+              <button class="secondary" id="skill-auth-bind">Bind Auth Plugin</button>
+              <button class="secondary" id="skill-auth-authorize">Authorize Auth Plugin</button>
+            </div>
           </div>
           <div class="surface"><pre id="skill-detail">Select an installed or discovered extension to inspect.</pre></div>
         </article>
@@ -1136,6 +1152,53 @@
           }),
         });
         setText("skill-detail", payload);
+      }
+
+      async function bindCurrentSkillAuthPlugin() {
+        if (!currentSkillName) {
+          throw new Error("Select an installed extension first");
+        }
+        const providerId = document.getElementById("skill-auth-provider").value.trim();
+        if (!providerId) {
+          throw new Error("Enter an auth provider id first");
+        }
+        const issuer = document.getElementById("skill-auth-issuer").value.trim();
+        const redirectUri = document.getElementById("skill-auth-redirect-uri").value.trim();
+        const clientIdKey = document.getElementById("skill-auth-client-id-key").value.trim();
+        const clientSecretKey = document.getElementById("skill-auth-client-secret-key").value.trim();
+        const scopes = document.getElementById("skill-auth-scopes").value.trim();
+        const payload = await fetchJson("/control/skills/auth-plugins/bind", {
+          method: "POST",
+          body: JSON.stringify({
+            provider_id: providerId,
+            skill_name: currentSkillName,
+            issuer: issuer || null,
+            redirect_uri: redirectUri || null,
+            client_id_key: clientIdKey || null,
+            client_secret_key: clientSecretKey || null,
+            scopes: scopes || null,
+          }),
+        });
+        setText("skill-detail", payload);
+        await inspectSkill(currentSkillName);
+      }
+
+      async function authorizeCurrentSkillAuthPlugin() {
+        const providerId = document.getElementById("skill-auth-provider").value.trim();
+        if (!providerId) {
+          throw new Error("Enter an auth provider id first");
+        }
+        const redirectUri = document.getElementById("skill-auth-redirect-uri").value.trim();
+        const payload = await fetchJson(`/control/skills/auth-plugins/${encodeURIComponent(providerId)}/authorize`, {
+          method: "POST",
+          body: JSON.stringify({
+            redirect_uri: redirectUri || null,
+          }),
+        });
+        setText("skill-detail", payload);
+        if (payload.authorization_url) {
+          window.open(payload.authorization_url, "_blank", "noopener,noreferrer");
+        }
       }
 
       async function loadSkillCatalog(mode = "popular") {
@@ -2142,6 +2205,20 @@
       document.getElementById("skill-channel-bind").addEventListener("click", async () => {
         try {
           await bindCurrentSkillChannelExtension();
+        } catch (error) {
+          setText("skill-detail", { error: error.message });
+        }
+      });
+      document.getElementById("skill-auth-bind").addEventListener("click", async () => {
+        try {
+          await bindCurrentSkillAuthPlugin();
+        } catch (error) {
+          setText("skill-detail", { error: error.message });
+        }
+      });
+      document.getElementById("skill-auth-authorize").addEventListener("click", async () => {
+        try {
+          await authorizeCurrentSkillAuthPlugin();
         } catch (error) {
           setText("skill-detail", { error: error.message });
         }

@@ -2814,6 +2814,18 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             get(control_extension_manifest_handler),
         )
         .route(
+            "/control/skills/auth-plugins",
+            get(control_skill_auth_plugins_handler),
+        )
+        .route(
+            "/control/skills/auth-plugins/bind",
+            post(control_skill_bind_auth_plugin_handler),
+        )
+        .route(
+            "/control/skills/auth-plugins/callback",
+            get(control_skill_auth_callback_handler),
+        )
+        .route(
             "/control/skills/channel-extensions",
             get(control_skill_channel_extensions_handler),
         )
@@ -2866,6 +2878,14 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
         .route(
             "/control/skills/{name}/background-services/schedule",
             post(control_skill_schedule_background_handler),
+        )
+        .route(
+            "/control/skills/auth-plugins/{provider_id}/authorize",
+            post(control_skill_auth_authorize_handler),
+        )
+        .route(
+            "/control/skills/auth-plugins/{provider_id}/exchange",
+            post(control_skill_auth_exchange_handler),
         )
         .route("/control/services/status", get(service_status_handler))
         .route(
@@ -3436,6 +3456,32 @@ struct SkillBindChannelExtensionPayload {
 }
 
 #[derive(serde::Deserialize)]
+struct SkillBindAuthPluginPayload {
+    provider_id: String,
+    skill_name: String,
+    #[serde(default)]
+    redirect_uri: Option<String>,
+    #[serde(default)]
+    issuer: Option<String>,
+    #[serde(default)]
+    authorization_endpoint: Option<String>,
+    #[serde(default)]
+    token_endpoint: Option<String>,
+    #[serde(default)]
+    client_id_key: Option<String>,
+    #[serde(default)]
+    client_secret_key: Option<String>,
+    #[serde(default)]
+    scopes: Option<String>,
+    #[serde(default)]
+    vault_key_prefix: Option<String>,
+    #[serde(default)]
+    service: Option<String>,
+    #[serde(default)]
+    component: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
 struct SkillCompilePayload {
     #[serde(default)]
     name: Option<String>,
@@ -3459,6 +3505,36 @@ struct SkillExecutePayload {
     component: Option<String>,
     #[serde(default)]
     input: Option<String>,
+}
+
+#[derive(serde::Deserialize, Default)]
+struct SkillAuthAuthorizePayload {
+    #[serde(default)]
+    redirect_uri: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
+struct SkillAuthExchangePayload {
+    code: String,
+    state: String,
+    #[serde(default)]
+    redirect_uri: Option<String>,
+}
+
+#[derive(serde::Deserialize, Default)]
+struct SkillAuthCallbackQuery {
+    #[serde(default)]
+    provider_id: Option<String>,
+    #[serde(default)]
+    code: Option<String>,
+    #[serde(default)]
+    state: Option<String>,
+    #[serde(default)]
+    redirect_uri: Option<String>,
+    #[serde(default)]
+    error: Option<String>,
+    #[serde(default)]
+    error_description: Option<String>,
 }
 
 #[derive(serde::Deserialize, Default)]
@@ -3502,6 +3578,7 @@ async fn control_skill_detail_handler(AxumPath(name): AxumPath<String>) -> impl 
             let compiled = skills::compiled_skill_detail_data(&name).await.ok();
             let extension_manifest = skills::extension_manifest_data(&name).await.ok();
             let background_services = skills::background_services_data(&name).await.ok();
+            let auth_plugins = skills::auth_plugins_for_skill_data(&name).await.ok();
             (
                 StatusCode::OK,
                 Json(serde_json::json!({
@@ -3509,6 +3586,7 @@ async fn control_skill_detail_handler(AxumPath(name): AxumPath<String>) -> impl 
                     "compiled": compiled,
                     "extension_manifest": extension_manifest,
                     "background_services": background_services,
+                    "auth_plugins": auth_plugins,
                 })),
             )
                 .into_response()
@@ -3652,6 +3730,93 @@ async fn control_extension_manifest_handler(AxumPath(name): AxumPath<String>) ->
     }
 }
 
+async fn control_skill_auth_plugins_handler() -> impl IntoResponse {
+    match skills::auth_plugins_data().await {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": error.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
+async fn control_skill_bind_auth_plugin_handler(
+    Json(payload): Json<SkillBindAuthPluginPayload>,
+) -> impl IntoResponse {
+    match skills::bind_auth_plugin_data(
+        &payload.provider_id,
+        &payload.skill_name,
+        skills::SkillBindAuthPluginOptions {
+            redirect_uri: payload.redirect_uri.as_deref(),
+            issuer: payload.issuer.as_deref(),
+            authorization_endpoint: payload.authorization_endpoint.as_deref(),
+            token_endpoint: payload.token_endpoint.as_deref(),
+            client_id_key: payload.client_id_key.as_deref(),
+            client_secret_key: payload.client_secret_key.as_deref(),
+            scopes: payload.scopes.as_deref(),
+            vault_key_prefix: payload.vault_key_prefix.as_deref(),
+            service: payload.service.as_deref(),
+            component: payload.component.as_deref(),
+        },
+    )
+    .await
+    {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": error.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
+async fn control_skill_auth_callback_handler(
+    Query(query): Query<SkillAuthCallbackQuery>,
+) -> impl IntoResponse {
+    if let Some(error_code) = query.error.as_deref() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({
+                "error": error_code,
+                "description": query.error_description,
+            })),
+        )
+            .into_response();
+    }
+
+    let Some(code) = query.code.as_deref() else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": "query parameter `code` is required" })),
+        )
+            .into_response();
+    };
+    let Some(state) = query.state.as_deref() else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": "query parameter `state` is required" })),
+        )
+            .into_response();
+    };
+
+    match skills::exchange_auth_plugin_callback_data(
+        query.provider_id.as_deref(),
+        code,
+        state,
+        query.redirect_uri.as_deref(),
+    )
+    .await
+    {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": error.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
 async fn control_skill_channel_extensions_handler() -> impl IntoResponse {
     match skills::channel_extensions_data().await {
         Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
@@ -3732,6 +3897,50 @@ async fn control_skill_execute_handler(
         skills::SkillExecuteOptions {
             component: payload.component.as_deref(),
             input: payload.input.as_deref(),
+        },
+    )
+    .await
+    {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": error.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
+async fn control_skill_auth_authorize_handler(
+    AxumPath(provider_id): AxumPath<String>,
+    Json(payload): Json<SkillAuthAuthorizePayload>,
+) -> impl IntoResponse {
+    match skills::authorize_auth_plugin_data(
+        &provider_id,
+        skills::SkillAuthAuthorizeOptions {
+            redirect_uri: payload.redirect_uri.as_deref(),
+        },
+    )
+    .await
+    {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": error.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
+async fn control_skill_auth_exchange_handler(
+    AxumPath(provider_id): AxumPath<String>,
+    Json(payload): Json<SkillAuthExchangePayload>,
+) -> impl IntoResponse {
+    match skills::exchange_auth_plugin_data(
+        &provider_id,
+        skills::SkillAuthExchangeOptions {
+            code: &payload.code,
+            state: &payload.state,
+            redirect_uri: payload.redirect_uri.as_deref(),
         },
     )
     .await

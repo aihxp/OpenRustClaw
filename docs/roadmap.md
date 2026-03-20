@@ -1265,7 +1265,7 @@ Remaining:
 - [ ] Add plugin parity for:
   - [x] agent tools through bounded compiled-skill MCP execution,
   - [x] background workflows through bounded compiled-skill scheduler execution,
-  - auth plugins,
+  - [x] auth plugins through a file-backed compiled-skill auth registry, bounded OIDC authorize/code-exchange surfaces, callback handling, and encrypted runtime-vault token persistence,
   - voice-call plugins,
   - [x] channel extensions through file-backed channel binding metadata and bounded compiled-skill background hooks.
 - [ ] Add media pipeline parity:

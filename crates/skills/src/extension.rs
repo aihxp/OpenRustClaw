@@ -158,6 +158,19 @@ pub fn build_extension_manifest(
             });
         }
     }
+    if !artifact.manifest.declared_auth_providers.is_empty() {
+        runtime_modes.push("auth_plugins".to_string());
+        for provider in &artifact.manifest.declared_auth_providers {
+            triggers.push(ExtensionTriggerBinding {
+                name: format!("openrustclaw.skills.auth.{}", provider),
+                kind: "auth_provider".to_string(),
+                status: declared_status,
+                command_preview: None,
+                args_hint: Some("authorization code flow via the runtime vault".to_string()),
+                source_path: None,
+            });
+        }
+    }
 
     let mut component_candidates = artifact
         .manifest
@@ -215,6 +228,7 @@ pub fn build_extension_manifest(
         );
     }
     if artifact.manifest.declared_background_services.is_empty()
+        && artifact.manifest.declared_auth_providers.is_empty()
         && artifact.manifest.declared_command_hooks.is_empty()
         && artifact.manifest.declared_tool_injections.is_empty()
         && artifact.manifest.declared_wasi_components.is_empty()
@@ -339,6 +353,7 @@ mod tests {
                 references: vec!["references/guide.md".to_string()],
                 declared_wasi_components: vec!["analyzer".to_string()],
                 declared_background_services: vec!["sync-loop".to_string()],
+                declared_auth_providers: vec!["okta-prod".to_string()],
                 declared_command_hooks: vec!["post_install".to_string()],
                 declared_tool_injections: vec!["repo_audit".to_string()],
                 compiled_at: Utc::now(),
@@ -395,6 +410,12 @@ mod tests {
                 .runtime_modes
                 .iter()
                 .any(|mode| mode == "background_services")
+        );
+        assert!(
+            manifest
+                .runtime_modes
+                .iter()
+                .any(|mode| mode == "auth_plugins")
         );
         assert!(
             manifest
