@@ -22,6 +22,10 @@ use openrustclaw_skills::{
     resolve_compiled_skill_background_service,
 };
 
+use super::channels::{
+    ChannelBindingSpec, load_registry, read_binding, resolve_root, upsert_binding,
+};
+
 fn parse_hex_bytes(input: &str) -> Result<Vec<u8>> {
     let trimmed = input.trim();
     if trimmed.len() % 2 != 0 {
@@ -351,6 +355,51 @@ pub struct SkillScheduleBackgroundResult {
     pub trigger_type: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub next_run_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SkillChannelExtensionSummary {
+    pub binding_id: String,
+    pub platform: String,
+    pub enabled: bool,
+    pub trigger: String,
+    pub skill_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub service: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub component: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub workspace_match: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub account_match: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub channel_match: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SkillChannelExtensionsResult {
+    pub status: String,
+    pub count: usize,
+    pub extensions: Vec<SkillChannelExtensionSummary>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SkillBindChannelExtensionOptions<'a> {
+    pub service: Option<&'a str>,
+    pub component: Option<&'a str>,
+    pub trigger: Option<&'a str>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SkillBindChannelExtensionResult {
+    pub status: String,
+    pub binding_id: String,
+    pub skill_name: String,
+    pub trigger: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub service: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub component: Option<String>,
 }
 
 async fn load_skill_config_and_pool()
@@ -1096,6 +1145,117 @@ pub async fn schedule_background_service_data(
     })
 }
 
+fn channel_extension_summary(binding: &ChannelBindingSpec) -> Option<SkillChannelExtensionSummary> {
+    let extension = binding
+        .metadata
+        .get("skill_channel_extension")?
+        .as_object()?;
+    let trigger = extension
+        .get("trigger")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("message")
+        .to_string();
+    let skill_name = extension
+        .get("skill_name")
+        .and_then(serde_json::Value::as_str)?
+        .to_string();
+
+    Some(SkillChannelExtensionSummary {
+        binding_id: binding.id.clone(),
+        platform: binding.platform.clone(),
+        enabled: binding.enabled,
+        trigger,
+        skill_name,
+        service: extension
+            .get("service")
+            .and_then(serde_json::Value::as_str)
+            .map(ToString::to_string),
+        component: extension
+            .get("component")
+            .and_then(serde_json::Value::as_str)
+            .map(ToString::to_string),
+        workspace_match: binding.workspace_match.clone(),
+        account_match: binding.account_match.clone(),
+        channel_match: binding.channel_match.clone(),
+    })
+}
+
+pub async fn channel_extensions_data() -> Result<SkillChannelExtensionsResult> {
+    let root = resolve_root(None)?;
+    let registry = load_registry(root)?;
+    let mut extensions = registry
+        .bindings
+        .iter()
+        .filter_map(channel_extension_summary)
+        .collect::<Vec<_>>();
+    extensions.sort_by(|left, right| left.binding_id.cmp(&right.binding_id));
+    Ok(SkillChannelExtensionsResult {
+        status: "ok".to_string(),
+        count: extensions.len(),
+        extensions,
+    })
+}
+
+pub async fn bind_channel_extension_data(
+    binding_id: &str,
+    skill_name: &str,
+    options: SkillBindChannelExtensionOptions<'_>,
+) -> Result<SkillBindChannelExtensionResult> {
+    let root = resolve_root(None)?;
+    let mut binding = read_binding(root.clone(), binding_id)?;
+    let artifact = compiled_skill_detail_or_compile(skill_name).await?;
+    let resolved =
+        resolve_compiled_skill_background_service(&artifact, options.service, options.component)
+            .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+    let component = resolved.component.clone().ok_or_else(|| {
+        anyhow::anyhow!(
+            "Channel extension service '{}' for '{}' has no executable component mapping",
+            resolved.name,
+            artifact.manifest.name
+        )
+    })?;
+    let trigger = options.trigger.unwrap_or("message");
+    if !matches!(trigger, "message" | "mentioned") {
+        anyhow::bail!(
+            "Unsupported trigger '{}'; use `message` or `mentioned`",
+            trigger
+        );
+    }
+
+    binding.metadata["skill_channel_extension"] = serde_json::json!({
+        "skill_name": artifact.manifest.name,
+        "service": resolved.name,
+        "component": component,
+        "trigger": trigger,
+        "mode": "background_schedule",
+    });
+    upsert_binding(None, binding.clone())?;
+
+    let (_, pool) = load_skill_config_and_pool().await?;
+    publish_plugin_event(
+        &pool,
+        "plugin.channel_extension_bound",
+        serde_json::json!({
+            "binding_id": binding.id,
+            "platform": binding.platform,
+            "skill_name": artifact.manifest.name,
+            "service": resolved.name,
+            "component": component,
+            "trigger": trigger,
+        }),
+    )
+    .await;
+
+    Ok(SkillBindChannelExtensionResult {
+        status: "ok".to_string(),
+        binding_id: binding.id,
+        skill_name: artifact.manifest.name,
+        trigger: trigger.to_string(),
+        service: Some(resolved.name),
+        component: Some(component),
+    })
+}
+
 pub async fn compile_data(name: Option<&str>) -> Result<SkillCompileResult> {
     let root = ensure_compiled_root()?;
     let mut compiled = Vec::new();
@@ -1803,6 +1963,13 @@ pub async fn background_services(name: &str) -> Result<()> {
     Ok(())
 }
 
+/// List channel bindings that currently attach a compiled skill background extension.
+pub async fn list_channel_extensions() -> Result<()> {
+    let result = channel_extensions_data().await?;
+    println!("{}", serde_json::to_string_pretty(&result)?);
+    Ok(())
+}
+
 /// Invoke the generated CLI/help bridge for a compiled skill.
 pub async fn invoke(
     name: &str,
@@ -1850,6 +2017,28 @@ pub async fn schedule_background(
             every_seconds,
             at,
             priority,
+        },
+    )
+    .await?;
+    println!("{}", serde_json::to_string_pretty(&result)?);
+    Ok(())
+}
+
+/// Bind a compiled skill background service to a channel binding.
+pub async fn bind_channel_extension(
+    binding_id: &str,
+    skill_name: &str,
+    service: Option<&str>,
+    component: Option<&str>,
+    trigger: Option<&str>,
+) -> Result<()> {
+    let result = bind_channel_extension_data(
+        binding_id,
+        skill_name,
+        SkillBindChannelExtensionOptions {
+            service,
+            component,
+            trigger,
         },
     )
     .await?;

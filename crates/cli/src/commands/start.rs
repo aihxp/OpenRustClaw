@@ -1047,6 +1047,15 @@ struct ChannelRouteDecision {
     send_policy: ChannelSendPolicy,
     account_id: String,
     binding_id: Option<String>,
+    channel_extension: Option<BoundChannelExtension>,
+}
+
+#[derive(Debug, Clone)]
+struct BoundChannelExtension {
+    skill_name: String,
+    service: Option<String>,
+    component: Option<String>,
+    trigger: String,
 }
 
 type SharedChannel = Arc<dyn Channel>;
@@ -1247,6 +1256,18 @@ impl ChannelAgent {
             warn!(error = %error, "Failed to persist inbound session message");
         }
         route_state.history.push(inbound_message);
+        if let Err(error) = self
+            .maybe_schedule_channel_extension(
+                &incoming,
+                trimmed_content,
+                route_state.session_id,
+                &route_key,
+                &decision,
+            )
+            .await
+        {
+            warn!(error = %error, route_key = %route_key, "Failed to schedule bound channel extension");
+        }
         let drained_before = trim_history(&mut route_state.history, self.max_history_messages);
         if drained_before > 0 {
             let _ = self
@@ -1588,7 +1609,51 @@ impl ChannelAgent {
             send_policy,
             account_id: account.id,
             binding_id: binding.map(|value| value.id.clone()),
+            channel_extension: parse_channel_extension_binding(binding),
         }))
+    }
+
+    async fn maybe_schedule_channel_extension(
+        &self,
+        incoming: &openrustclaw_core::types::IncomingMessage,
+        trimmed_content: &str,
+        session_id: Uuid,
+        route_key: &str,
+        decision: &ChannelRouteDecision,
+    ) -> Result<()> {
+        let Some(extension) = decision.channel_extension.as_ref() else {
+            return Ok(());
+        };
+        if !channel_extension_should_trigger(extension, incoming) {
+            return Ok(());
+        }
+
+        let input = serde_json::json!({
+            "channel": incoming.platform.to_string(),
+            "user_id": incoming.user_id,
+            "content": trimmed_content,
+            "metadata": incoming.metadata,
+            "session_id": session_id,
+            "route_key": route_key,
+            "workspace_id": decision.workspace_id,
+            "agent_id": decision.agent_id,
+            "binding_id": decision.binding_id,
+        });
+        let run_at = chrono::Utc::now().to_rfc3339();
+        let input_json = input.to_string();
+        skills::schedule_background_service_data(
+            &extension.skill_name,
+            skills::SkillScheduleBackgroundOptions {
+                service: extension.service.as_deref(),
+                component: extension.component.as_deref(),
+                input: Some(input_json.as_str()),
+                every_seconds: None,
+                at: Some(run_at.as_str()),
+                priority: 90,
+            },
+        )
+        .await?;
+        Ok(())
     }
 
     async fn capture_turn_memory(
@@ -1936,6 +2001,42 @@ fn default_send_policy(policy: &SessionRoutingConfig) -> ChannelSendPolicy {
         chunk_delay_ms: policy.default_chunk_delay_ms,
         coalesce_below_chars: Some(320),
         preview_chars: 280,
+    }
+}
+
+fn parse_channel_extension_binding(
+    binding: Option<&ChannelBindingSpec>,
+) -> Option<BoundChannelExtension> {
+    let binding = binding?;
+    let extension = binding
+        .metadata
+        .get("skill_channel_extension")?
+        .as_object()?;
+    Some(BoundChannelExtension {
+        skill_name: extension.get("skill_name")?.as_str()?.to_string(),
+        service: extension
+            .get("service")
+            .and_then(serde_json::Value::as_str)
+            .map(ToString::to_string),
+        component: extension
+            .get("component")
+            .and_then(serde_json::Value::as_str)
+            .map(ToString::to_string),
+        trigger: extension
+            .get("trigger")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("message")
+            .to_string(),
+    })
+}
+
+fn channel_extension_should_trigger(
+    extension: &BoundChannelExtension,
+    incoming: &openrustclaw_core::types::IncomingMessage,
+) -> bool {
+    match extension.trigger.as_str() {
+        "mentioned" => !message_is_group_candidate(incoming) || message_bot_mentioned(incoming),
+        _ => true,
     }
 }
 
@@ -2712,6 +2813,14 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             "/control/skills/extensions/{name}",
             get(control_extension_manifest_handler),
         )
+        .route(
+            "/control/skills/channel-extensions",
+            get(control_skill_channel_extensions_handler),
+        )
+        .route(
+            "/control/skills/channel-extensions/bind",
+            post(control_skill_bind_channel_extension_handler),
+        )
         .route("/control/skills/search", get(control_skills_search_handler))
         .route(
             "/control/skills/popular",
@@ -3315,6 +3424,18 @@ struct SkillInstallPayload {
 }
 
 #[derive(serde::Deserialize)]
+struct SkillBindChannelExtensionPayload {
+    binding_id: String,
+    skill_name: String,
+    #[serde(default)]
+    service: Option<String>,
+    #[serde(default)]
+    component: Option<String>,
+    #[serde(default)]
+    trigger: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
 struct SkillCompilePayload {
     #[serde(default)]
     name: Option<String>,
@@ -3525,6 +3646,40 @@ async fn control_extension_manifest_handler(AxumPath(name): AxumPath<String>) ->
         Ok(extension) => (StatusCode::OK, Json(serde_json::json!(extension))).into_response(),
         Err(error) => (
             StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": error.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
+async fn control_skill_channel_extensions_handler() -> impl IntoResponse {
+    match skills::channel_extensions_data().await {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": error.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
+async fn control_skill_bind_channel_extension_handler(
+    Json(payload): Json<SkillBindChannelExtensionPayload>,
+) -> impl IntoResponse {
+    match skills::bind_channel_extension_data(
+        &payload.binding_id,
+        &payload.skill_name,
+        skills::SkillBindChannelExtensionOptions {
+            service: payload.service.as_deref(),
+            component: payload.component.as_deref(),
+            trigger: payload.trigger.as_deref(),
+        },
+    )
+    .await
+    {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "error": error.to_string() })),
         )
             .into_response(),

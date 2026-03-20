@@ -52,7 +52,7 @@ LangGraph may execute a bounded workflow run. It should not be the only durabili
 - Full Web Control UI parity
 - Full mobile nodes/runtime capability flows beyond the newly shipped bounded command lane
 - Full live voice runtime parity beyond the shipped note-transcription/operator lane
-- Broader extension/plugin-channel parity beyond the shipped Rust-native Mattermost channel
+- Broader extension/plugin-channel parity beyond the shipped Rust-native Mattermost channel and the new bounded compiled-skill channel-extension lane
 - Full executable plugin parity beyond the newly shipped bounded Rust/WASM extension lane and bounded scheduler-backed background-service lane
 - Optional deferred channel scope such as Feishu/Lark if the product scope expands to include it
 

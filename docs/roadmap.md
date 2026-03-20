@@ -1267,7 +1267,7 @@ Remaining:
   - [x] background workflows through bounded compiled-skill scheduler execution,
   - auth plugins,
   - voice-call plugins,
-  - channel extensions.
+  - [x] channel extensions through file-backed channel binding metadata and bounded compiled-skill background hooks.
 - [ ] Add media pipeline parity:
   - image receive/send,
   - audio receive/send,

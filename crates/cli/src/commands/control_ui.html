@@ -536,6 +536,16 @@
             <div class="action-row">
               <button class="secondary" id="skill-background-schedule">Schedule Background Workflow</button>
             </div>
+            <div class="action-row">
+              <input id="skill-channel-binding-id" type="text" placeholder="channel binding id for extension hook" />
+              <select id="skill-channel-trigger">
+                <option value="message">On Message</option>
+                <option value="mentioned">On Mention</option>
+              </select>
+            </div>
+            <div class="action-row">
+              <button class="secondary" id="skill-channel-bind">Bind Channel Extension</button>
+            </div>
           </div>
           <div class="surface"><pre id="skill-detail">Select an installed or discovered extension to inspect.</pre></div>
         </article>
@@ -1099,6 +1109,30 @@
             component: component || null,
             input: input || null,
             every_seconds: everySeconds ? Number(everySeconds) : null,
+          }),
+        });
+        setText("skill-detail", payload);
+      }
+
+      async function bindCurrentSkillChannelExtension() {
+        if (!currentSkillName) {
+          throw new Error("Select an installed extension first");
+        }
+        const bindingId = document.getElementById("skill-channel-binding-id").value.trim();
+        if (!bindingId) {
+          throw new Error("Enter a channel binding id first");
+        }
+        const service = document.getElementById("skill-background-service").value.trim();
+        const component = document.getElementById("skill-background-component").value.trim();
+        const trigger = document.getElementById("skill-channel-trigger").value;
+        const payload = await fetchJson("/control/skills/channel-extensions/bind", {
+          method: "POST",
+          body: JSON.stringify({
+            binding_id: bindingId,
+            skill_name: currentSkillName,
+            service: service || null,
+            component: component || null,
+            trigger,
           }),
         });
         setText("skill-detail", payload);
@@ -2101,6 +2135,13 @@
       document.getElementById("skill-background-schedule").addEventListener("click", async () => {
         try {
           await scheduleCurrentSkillBackground();
+        } catch (error) {
+          setText("skill-detail", { error: error.message });
+        }
+      });
+      document.getElementById("skill-channel-bind").addEventListener("click", async () => {
+        try {
+          await bindCurrentSkillChannelExtension();
         } catch (error) {
           setText("skill-detail", { error: error.message });
         }

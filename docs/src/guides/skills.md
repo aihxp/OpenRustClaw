@@ -40,8 +40,8 @@ flowchart TB
 
 The current operator surfaces for skills/extensions are shared across CLI, typed control APIs, MCP, and the Web Control UI:
 
-- CLI: `openrustclaw skills list|list-extensions|compile|refresh|inspect-compiled|inspect-extension|background-services|invoke|execute|schedule-background|search|install|update|uninstall|verify|popular|trending`
-- Control API: `/control/skills...`, including `/control/skills/extensions...`, `/control/skills/{name}/invoke`, `/control/skills/{name}/execute`, and `/control/skills/{name}/background-services...`
+- CLI: `openrustclaw skills list|list-extensions|compile|refresh|inspect-compiled|inspect-extension|background-services|list-channel-extensions|bind-channel-extension|invoke|execute|schedule-background|search|install|update|uninstall|verify|popular|trending`
+- Control API: `/control/skills...`, including `/control/skills/extensions...`, `/control/skills/channel-extensions...`, `/control/skills/{name}/invoke`, `/control/skills/{name}/execute`, and `/control/skills/{name}/background-services...`
 - MCP: `list_compiled_skills`, `inspect_compiled_skill`, plus dynamic `skill.<name>.summary|details|reference...|execute|schedule` tools from the compiled skill cache
 - Control UI: `/control/ui` extension discovery and installed-extension management panels
 
@@ -63,6 +63,14 @@ Compiled skills can now also expose bounded background services through the same
 - Control UI: the extension detail panel can schedule the same bounded background workflow
 
 This background lane is still intentionally bounded: it routes compiled background services through the Rust durable scheduler and the same verification-aware execution path used by `skills execute`, rather than pretending auth plugins, channel extensions, or voice-call plugins are already complete.
+
+File-backed channel bindings can now opt into a bounded compiled-skill extension lane:
+
+- CLI: `openrustclaw skills list-channel-extensions` and `openrustclaw skills bind-channel-extension <binding-id> <skill-name> [--service ...] [--component ...] [--trigger message|mentioned]`
+- Control API: `GET /control/skills/channel-extensions` and `POST /control/skills/channel-extensions/bind`
+- Control UI: the extension detail panel can bind the selected compiled skill to an existing channel binding
+
+This does not create a second plugin router. It reuses the existing file-backed channel-binding manifests and, when triggered, schedules the compiled background service through the same Rust-owned durable scheduler used by the background workflow lane above.
 
 The compile pipeline now also emits `.claw/skills/compiled/<skill>/extension_manifest.json`. That manifest is the durable Rust-native extension contract for this later Phase 7 work:
 

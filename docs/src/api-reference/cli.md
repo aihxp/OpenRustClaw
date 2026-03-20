@@ -145,6 +145,9 @@ openrustclaw skills background-services web-search
 
 # Schedule a background workflow for a compiled skill
 openrustclaw skills schedule-background web-search --every-seconds 900
+
+# Bind a compiled skill background service to a channel binding
+openrustclaw skills bind-channel-extension dm-default web-search --trigger mentioned
 ```
 
 ---

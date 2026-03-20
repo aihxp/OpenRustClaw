@@ -656,6 +656,19 @@ enum SkillsAction {
     InspectExtension { name: String },
     /// List declared and inferred background services for one compiled skill
     BackgroundServices { name: String },
+    /// List channel bindings that currently attach compiled skill background extensions
+    ListChannelExtensions,
+    /// Bind a compiled skill background service to a file-backed channel binding
+    BindChannelExtension {
+        binding_id: String,
+        skill_name: String,
+        #[arg(long)]
+        service: Option<String>,
+        #[arg(long)]
+        component: Option<String>,
+        #[arg(long)]
+        trigger: Option<String>,
+    },
     /// Execute a bounded `.wasm` or `.wat` component from a compiled skill
     Execute {
         name: String,
@@ -2316,6 +2329,25 @@ async fn main() -> Result<()> {
             }
             SkillsAction::BackgroundServices { name } => {
                 commands::skills::background_services(&name).await
+            }
+            SkillsAction::ListChannelExtensions => {
+                commands::skills::list_channel_extensions().await
+            }
+            SkillsAction::BindChannelExtension {
+                binding_id,
+                skill_name,
+                service,
+                component,
+                trigger,
+            } => {
+                commands::skills::bind_channel_extension(
+                    &binding_id,
+                    &skill_name,
+                    service.as_deref(),
+                    component.as_deref(),
+                    trigger.as_deref(),
+                )
+                .await
             }
             SkillsAction::Execute {
                 name,
