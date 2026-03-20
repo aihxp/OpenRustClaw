@@ -47,6 +47,14 @@ The current operator surfaces for skills/extensions are shared across CLI, typed
 
 `openrustclaw skills invoke <name>` is intentionally bounded today. It reuses the compiled artifact cache to return the generated CLI/help bundle, optional detail payloads, and safe reference reads under the skill root. It does not claim arbitrary script execution or full plugin-runtime parity yet.
 
+For compiled `.wasm` and `.wat` artifacts, there is now a real bounded execution lane:
+
+- CLI: `openrustclaw skills execute <name> [--component path] [--input '{"key":"value"}']`
+- Control API: `POST /control/skills/{name}/execute`
+- Control UI: the extension detail panel can trigger the same execution path
+
+This execution path uses the Rust `WasmSandbox`, applies declared capability policy before execution, and keeps blocked skills inspection-only.
+
 The compile pipeline now also emits `.claw/skills/compiled/<skill>/extension_manifest.json`. That manifest is the durable Rust-native extension contract for this later Phase 7 work:
 
 - manifest-driven capability declarations
@@ -338,8 +346,15 @@ impl Tool for FileSearchTool {
 
 ## 🔒 WASM Sandbox Status
 
-WASM skill execution is planned, but the current sandbox module is still scaffolding.
-Today, use this section as design guidance rather than an available execution path.
+WASM skill execution is now available for compiled `.wasm` and `.wat` artifacts through the bounded `skills execute` lane.
+The current path is intentionally narrow:
+
+- no imports are allowed
+- the module must export `memory`, `alloc(i32) -> i32`, and `run(i32, i32) -> i64`
+- JSON input is copied into memory and JSON output is read back out
+- capability declarations and verification/trust policy are enforced before execution
+
+This gives OpenRustClaw a real Rust-native extension execution path without claiming the rest of plugin parity is finished.
 
 ### WASM Skill Example (Rust)
 

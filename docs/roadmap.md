@@ -1255,10 +1255,13 @@ Completed:
   - compiled skills now also emit `extension_manifest.json` beside the cached help/schema artifacts,
   - the manifest defines the Rust-native contract for WASI components, manifest-driven capability declarations, background services, command hooks, and tool injection without overstating current execution parity,
   - `openrustclaw skills list-extensions|inspect-extension`, `/control/skills/extensions...`, and `/control/ui` all expose the same manifest shape for operator inspection.
+- [x] JavaScript/TypeScript plugin-host expectations are now superseded by a real Rust/WASM execution lane for shipped skills:
+  - `openrustclaw skills execute <name> [--component ...] [--input ...]` now runs bounded `.wasm`/`.wat` components through the Rust `WasmSandbox`,
+  - `/control/skills/{name}/execute` and `/control/ui` expose the same bounded execution lane,
+  - compile-time capability declarations and verification/trust policy are applied before execution instead of trusting a JS-side plugin host.
 
 Remaining:
 
-- [ ] Replace or supersede JavaScript/TypeScript plugin-host expectations with Rust/WASM plugin parity.
 - [ ] Add plugin parity for:
   - agent tools,
   - auth plugins,

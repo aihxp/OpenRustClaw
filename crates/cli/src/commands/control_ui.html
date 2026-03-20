@@ -518,6 +518,13 @@
               <button id="skill-invoke">Invoke Selected Skill</button>
               <button class="secondary" id="skill-invoke-detail">Invoke With Detail</button>
             </div>
+            <div class="action-row">
+              <input id="skill-execute-component" type="text" placeholder="optional wasm/wat component path, e.g. scripts/plugin.wat" />
+              <input id="skill-execute-input" type="text" placeholder='optional JSON input, e.g. {"text":"hello"}' />
+            </div>
+            <div class="action-row">
+              <button class="secondary" id="skill-execute">Execute WASM Component</button>
+            </div>
           </div>
           <div class="surface"><pre id="skill-detail">Select an installed or discovered extension to inspect.</pre></div>
         </article>
@@ -1045,6 +1052,22 @@
             args: args || null,
             reference: reference || null,
             detail,
+          }),
+        });
+        setText("skill-detail", payload);
+      }
+
+      async function executeCurrentSkill() {
+        if (!currentSkillName) {
+          throw new Error("Select an installed extension first");
+        }
+        const component = document.getElementById("skill-execute-component").value.trim();
+        const input = document.getElementById("skill-execute-input").value.trim();
+        const payload = await fetchJson(`/control/skills/${encodeURIComponent(currentSkillName)}/execute`, {
+          method: "POST",
+          body: JSON.stringify({
+            component: component || null,
+            input: input || null,
           }),
         });
         setText("skill-detail", payload);
@@ -2033,6 +2056,13 @@
       document.getElementById("skill-invoke-detail").addEventListener("click", async () => {
         try {
           await invokeCurrentSkill(true);
+        } catch (error) {
+          setText("skill-detail", { error: error.message });
+        }
+      });
+      document.getElementById("skill-execute").addEventListener("click", async () => {
+        try {
+          await executeCurrentSkill();
         } catch (error) {
           setText("skill-detail", { error: error.message });
         }

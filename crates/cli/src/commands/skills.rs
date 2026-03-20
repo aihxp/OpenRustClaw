@@ -12,6 +12,7 @@ use tracing::debug;
 use openrustclaw_core::types::SkillSource;
 use openrustclaw_scheduler::DurableEventBus;
 use openrustclaw_security::SkillVerifier;
+use openrustclaw_skills::sandbox::{SandboxConfig, WasmSandbox};
 use openrustclaw_skills::{
     ClawHubRegistry, CompiledSkillArtifact, CompiledSkillManifest, ExtensionManifest,
     SearchFilters, SortBy, compile_skill_to_dir, list_compiled_manifests, list_extension_manifests,
@@ -296,6 +297,26 @@ pub struct SkillInvokeResult {
     pub reference_result: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub guidance: Option<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SkillExecuteOptions<'a> {
+    pub component: Option<&'a str>,
+    pub input: Option<&'a str>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SkillExecuteResult {
+    pub status: String,
+    pub skill_name: String,
+    pub component: String,
+    pub source_path: String,
+    pub verified_execution: bool,
+    pub runtime: String,
+    pub input: serde_json::Value,
+    pub output: serde_json::Value,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub capabilities: Vec<String>,
 }
 
 async fn load_skill_config_and_pool()
@@ -679,27 +700,7 @@ fn read_compiled_skill_reference(
         );
     }
 
-    let skill_file = PathBuf::from(&artifact.manifest.local_path);
-    let skill_root = skill_file.parent().ok_or_else(|| {
-        anyhow::anyhow!(
-            "Compiled skill '{}' does not have a resolvable root",
-            artifact.manifest.name
-        )
-    })?;
-    let canonical_root = skill_root
-        .canonicalize()
-        .with_context(|| format!("Failed to canonicalize {}", skill_root.display()))?;
-    let candidate = skill_root.join(reference);
-    let canonical_candidate = candidate
-        .canonicalize()
-        .with_context(|| format!("Failed to resolve {}", candidate.display()))?;
-    if !canonical_candidate.starts_with(&canonical_root) {
-        anyhow::bail!(
-            "Reference '{}' escapes the skill root for '{}'",
-            reference,
-            artifact.manifest.name
-        );
-    }
+    let canonical_candidate = resolve_skill_relative_path(artifact, reference)?;
 
     let bytes = fs::read(&canonical_candidate)
         .with_context(|| format!("Failed to read {}", canonical_candidate.display()))?;
@@ -734,9 +735,85 @@ fn read_compiled_skill_reference(
     }
 }
 
+fn resolve_skill_relative_path(
+    artifact: &CompiledSkillArtifact,
+    relative: &str,
+) -> Result<PathBuf> {
+    let skill_file = PathBuf::from(&artifact.manifest.local_path);
+    let skill_root = skill_file.parent().ok_or_else(|| {
+        anyhow::anyhow!(
+            "Compiled skill '{}' does not have a resolvable root",
+            artifact.manifest.name
+        )
+    })?;
+    let canonical_root = skill_root
+        .canonicalize()
+        .with_context(|| format!("Failed to canonicalize {}", skill_root.display()))?;
+    let candidate = skill_root.join(relative);
+    let canonical_candidate = candidate
+        .canonicalize()
+        .with_context(|| format!("Failed to resolve {}", candidate.display()))?;
+    if !canonical_candidate.starts_with(&canonical_root) {
+        anyhow::bail!(
+            "Path '{}' escapes the skill root for '{}'",
+            relative,
+            artifact.manifest.name
+        );
+    }
+    Ok(canonical_candidate)
+}
+
+fn executable_component_candidates(artifact: &CompiledSkillArtifact) -> Vec<String> {
+    artifact
+        .manifest
+        .scripts
+        .iter()
+        .chain(artifact.manifest.references.iter())
+        .filter(|path| path.ends_with(".wasm") || path.ends_with(".wat"))
+        .cloned()
+        .collect()
+}
+
+fn resolve_executable_component(
+    artifact: &CompiledSkillArtifact,
+    requested: Option<&str>,
+) -> Result<String> {
+    let candidates = executable_component_candidates(artifact);
+    if let Some(component) = requested {
+        if candidates.iter().any(|candidate| candidate == component) {
+            return Ok(component.to_string());
+        }
+        anyhow::bail!(
+            "Component '{}' is not an executable `.wasm`/`.wat` artifact for '{}'",
+            component,
+            artifact.manifest.name
+        );
+    }
+
+    match candidates.as_slice() {
+        [only] => Ok(only.clone()),
+        [] => anyhow::bail!(
+            "Skill '{}' does not expose an executable `.wasm` or `.wat` artifact yet",
+            artifact.manifest.name
+        ),
+        _ => anyhow::bail!(
+            "Skill '{}' has multiple executable components; choose one with --component",
+            artifact.manifest.name
+        ),
+    }
+}
+
 pub async fn invoke_data(name: &str, options: SkillInvokeOptions<'_>) -> Result<SkillInvokeResult> {
     let artifact = compiled_skill_detail_or_compile(name).await?;
     invoke_compiled_skill(&artifact, options)
+}
+
+pub async fn execute_data(
+    name: &str,
+    options: SkillExecuteOptions<'_>,
+) -> Result<SkillExecuteResult> {
+    let artifact = compiled_skill_detail_or_compile(name).await?;
+    execute_compiled_skill(&artifact, options).await
 }
 
 fn invoke_compiled_skill(
@@ -823,6 +900,66 @@ fn invoke_compiled_skill(
         invocation,
         reference_result,
         guidance,
+    })
+}
+
+async fn execute_compiled_skill(
+    artifact: &CompiledSkillArtifact,
+    options: SkillExecuteOptions<'_>,
+) -> Result<SkillExecuteResult> {
+    if matches!(
+        artifact.manifest.status,
+        openrustclaw_skills::CompiledSkillStatus::Blocked
+    ) {
+        anyhow::bail!(
+            "Compiled skill '{}' is blocked; executable extension runtime is disabled",
+            artifact.manifest.name
+        );
+    }
+
+    let component = resolve_executable_component(artifact, options.component)?;
+    let source_path = resolve_skill_relative_path(artifact, &component)?;
+    let wasm_bytes = fs::read(&source_path)
+        .with_context(|| format!("Failed to read {}", source_path.display()))?;
+    let input = match options.input {
+        Some(raw) if !raw.trim().is_empty() => serde_json::from_str(raw).with_context(|| {
+            format!(
+                "Failed to parse JSON input for '{}'",
+                artifact.manifest.name
+            )
+        })?,
+        _ => serde_json::json!({}),
+    };
+
+    let verified_execution = artifact.manifest.verified
+        || matches!(
+            artifact.manifest.source,
+            SkillSource::Workspace | SkillSource::Bundled
+        );
+    let sandbox = WasmSandbox::new(
+        SandboxConfig::with_declared_capabilities(&artifact.manifest.capabilities)
+            .map_err(|error| anyhow::anyhow!(error.to_string()))?,
+    );
+    let output = sandbox
+        .execute_with_verified_declared_capabilities(
+            &wasm_bytes,
+            &artifact.manifest.capabilities,
+            verified_execution,
+            input.clone(),
+        )
+        .await
+        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+
+    Ok(SkillExecuteResult {
+        status: "ok".to_string(),
+        skill_name: artifact.manifest.name.clone(),
+        component,
+        source_path: source_path.display().to_string(),
+        verified_execution,
+        runtime: "rust_wasm_sandbox".to_string(),
+        input,
+        output,
+        capabilities: artifact.manifest.capabilities.clone(),
     })
 }
 
@@ -1543,6 +1680,13 @@ pub async fn invoke(
         },
     )
     .await?;
+    println!("{}", serde_json::to_string_pretty(&result)?);
+    Ok(())
+}
+
+/// Execute a bounded `.wasm` or `.wat` component from a compiled skill.
+pub async fn execute(name: &str, component: Option<&str>, input: Option<&str>) -> Result<()> {
+    let result = execute_data(name, SkillExecuteOptions { component, input }).await?;
     println!("{}", serde_json::to_string_pretty(&result)?);
     Ok(())
 }
@@ -2687,5 +2831,59 @@ mod tests {
         .unwrap_err();
 
         assert!(error.to_string().contains("blocked"));
+    }
+
+    #[tokio::test]
+    async fn test_execute_compiled_skill_runs_wat_component() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_dir = tmp.path().join("runner");
+        std::fs::create_dir_all(skill_dir.join("scripts")).unwrap();
+        std::fs::write(
+            skill_dir.join("SKILL.md"),
+            r#"---
+name: runner
+description: "Runs a bounded wasm component"
+capabilities:
+  - file_read
+---
+
+# Runner
+"#,
+        )
+        .unwrap();
+        std::fs::write(
+            skill_dir.join("scripts").join("echo.wat"),
+            r#"(module
+              (memory (export "memory") 1 1)
+              (data (i32.const 1024) "{\"ok\":true}")
+              (func (export "alloc") (param i32) (result i32) i32.const 0)
+              (func (export "run") (param i32 i32) (result i64)
+                (i64.or
+                  (i64.shl (i64.extend_i32_u (i32.const 1024)) (i64.const 32))
+                  (i64.extend_i32_u (i32.const 11)))))"#,
+        )
+        .unwrap();
+        let artifact = compile_skill_to_dir(
+            &skill_dir.join("SKILL.md"),
+            &tmp.path().join("compiled"),
+            SkillSource::Workspace,
+            true,
+        )
+        .unwrap();
+
+        let result = execute_compiled_skill(
+            &artifact,
+            SkillExecuteOptions {
+                component: Some("scripts/echo.wat"),
+                input: Some(r#"{"text":"hello"}"#),
+            },
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(result.skill_name, "runner");
+        assert_eq!(result.component, "scripts/echo.wat");
+        assert_eq!(result.output, serde_json::json!({"ok": true}));
+        assert_eq!(result.input, serde_json::json!({"text": "hello"}));
     }
 }

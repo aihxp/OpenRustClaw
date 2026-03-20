@@ -654,6 +654,14 @@ enum SkillsAction {
     InspectCompiled { name: String },
     /// Inspect one compiled Rust-native extension manifest
     InspectExtension { name: String },
+    /// Execute a bounded `.wasm` or `.wat` component from a compiled skill
+    Execute {
+        name: String,
+        #[arg(long)]
+        component: Option<String>,
+        #[arg(long)]
+        input: Option<String>,
+    },
     /// Invoke the generated CLI/help bridge for one compiled skill
     Invoke {
         name: String,
@@ -2288,6 +2296,11 @@ async fn main() -> Result<()> {
             SkillsAction::InspectExtension { name } => {
                 commands::skills::inspect_extension(&name).await
             }
+            SkillsAction::Execute {
+                name,
+                component,
+                input,
+            } => commands::skills::execute(&name, component.as_deref(), input.as_deref()).await,
             SkillsAction::Invoke {
                 name,
                 args,

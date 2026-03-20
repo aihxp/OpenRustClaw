@@ -2745,6 +2745,10 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             "/control/skills/{name}/invoke",
             post(control_skill_invoke_handler),
         )
+        .route(
+            "/control/skills/{name}/execute",
+            post(control_skill_execute_handler),
+        )
         .route("/control/services/status", get(service_status_handler))
         .route(
             "/control/services/scheduler",
@@ -3319,6 +3323,14 @@ struct SkillInvokePayload {
     detail: bool,
 }
 
+#[derive(serde::Deserialize, Default)]
+struct SkillExecutePayload {
+    #[serde(default)]
+    component: Option<String>,
+    #[serde(default)]
+    input: Option<String>,
+}
+
 async fn control_skills_handler() -> impl IntoResponse {
     match skills::installed_skills_data().await {
         Ok(entries) => (
@@ -3512,6 +3524,28 @@ async fn control_skill_invoke_handler(
             reference: payload.reference.as_deref(),
             max_chars: payload.max_chars,
             detail: payload.detail,
+        },
+    )
+    .await
+    {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": error.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
+async fn control_skill_execute_handler(
+    AxumPath(name): AxumPath<String>,
+    Json(payload): Json<SkillExecutePayload>,
+) -> impl IntoResponse {
+    match skills::execute_data(
+        &name,
+        skills::SkillExecuteOptions {
+            component: payload.component.as_deref(),
+            input: payload.input.as_deref(),
         },
     )
     .await
