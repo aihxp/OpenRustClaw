@@ -564,6 +564,42 @@
           </div>
         </article>
         <article class="panel span-6">
+          <h2>Mobile Nodes</h2>
+          <div class="action-row" style="margin-bottom: 12px">
+            <button class="secondary" id="mobile-refresh">Refresh Nodes</button>
+          </div>
+          <div class="surface">
+            <table class="table">
+              <thead>
+                <tr><th>Node</th><th>Platform</th><th>Gateway</th><th>Inspect</th></tr>
+              </thead>
+              <tbody id="mobile-nodes"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </article>
+        <article class="panel span-6">
+          <h2>Mobile Node Detail</h2>
+          <div class="surface"><pre id="mobile-node-detail">Select a mobile node to inspect.</pre></div>
+        </article>
+        <article class="panel span-6">
+          <h2>Mobile Preview</h2>
+          <div class="form-grid">
+            <input id="mobile-source-node" type="text" placeholder="source node id" />
+            <input id="mobile-target" type="text" placeholder="message target" />
+            <textarea id="mobile-message-content" rows="3" spellcheck="false" placeholder="message content"></textarea>
+            <div class="action-row">
+              <button id="mobile-preview-message">Preview Message</button>
+              <button class="secondary" id="mobile-preview-sync">Preview Sync</button>
+            </div>
+            <input id="mobile-notification-title" type="text" placeholder="notification title" />
+            <textarea id="mobile-notification-body" rows="2" spellcheck="false" placeholder="notification body"></textarea>
+            <div class="action-row">
+              <button class="secondary" id="mobile-preview-notification">Preview Notification</button>
+            </div>
+          </div>
+          <div class="surface" style="margin-top: 12px"><pre id="mobile-preview-result">No mobile preview executed yet.</pre></div>
+        </article>
+        <article class="panel span-6">
           <h2>Active Orchestration</h2>
           <div class="surface">
             <table class="table">
@@ -1022,6 +1058,70 @@
         renderTableRows("channels-table", rows, "No channel accounts registered.");
       }
 
+      async function loadMobileNodes() {
+        const payload = await fetchJson("/control/mobile/nodes");
+        const nodes = payload.nodes || [];
+        const rows = nodes.map((entry) => {
+          const node = entry.node || {};
+          return `<tr>
+            <td><strong>${node.id || "-"}</strong><div class="muted">${node.device_name || "-"}</div></td>
+            <td>${node.platform || "-"}</td>
+            <td>${node.gateway_url || "-"}</td>
+            <td><button class="secondary" onclick="inspectMobileNode('${node.id || ""}')">Inspect</button></td>
+          </tr>`;
+        });
+        renderTableRows("mobile-nodes", rows, "No mobile nodes registered.");
+        if (nodes.length) {
+          await inspectMobileNode(nodes[0].node.id);
+        } else {
+          setText("mobile-node-detail", "No mobile node selected.");
+        }
+      }
+
+      async function inspectMobileNode(id) {
+        const [manifest, status] = await Promise.all([
+          fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}`),
+          fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}/status`),
+        ]);
+        setText("mobile-node-detail", { manifest, status });
+        document.getElementById("mobile-source-node").value = id;
+      }
+
+      async function previewMobileMessage() {
+        const result = await fetchJson("/control/mobile/messages/preview", {
+          method: "POST",
+          body: JSON.stringify({
+            source_node_id: document.getElementById("mobile-source-node").value.trim(),
+            target: document.getElementById("mobile-target").value.trim(),
+            content: document.getElementById("mobile-message-content").value,
+          }),
+        });
+        setText("mobile-preview-result", result);
+      }
+
+      async function previewMobileNotification() {
+        const result = await fetchJson("/control/mobile/notifications/preview", {
+          method: "POST",
+          body: JSON.stringify({
+            title: document.getElementById("mobile-notification-title").value.trim(),
+            body: document.getElementById("mobile-notification-body").value,
+          }),
+        });
+        setText("mobile-preview-result", result);
+      }
+
+      async function previewMobileSync() {
+        const result = await fetchJson("/control/mobile/sync/preview", {
+          method: "POST",
+          body: JSON.stringify({
+            node_id: document.getElementById("mobile-source-node").value.trim(),
+            battery_percent: 50,
+            pending_change_count: 1,
+          }),
+        });
+        setText("mobile-preview-result", result);
+      }
+
       async function loadSessions() {
         const payload = await fetchJson("/control/sessions?limit=12");
         const sessions = payload.sessions || [];
@@ -1276,6 +1376,7 @@
             loadAutonomy(),
             loadInstalledSkills(),
             loadChannels(),
+            loadMobileNodes(),
             loadSessions(),
             loadMemory(),
             loadJobs(),
@@ -1645,6 +1746,34 @@
           setText("browser-result", { error: error.message });
         }
       });
+      document.getElementById("mobile-refresh").addEventListener("click", async () => {
+        try {
+          await loadMobileNodes();
+        } catch (error) {
+          setText("mobile-node-detail", { error: error.message });
+        }
+      });
+      document.getElementById("mobile-preview-message").addEventListener("click", async () => {
+        try {
+          await previewMobileMessage();
+        } catch (error) {
+          setText("mobile-preview-result", { error: error.message });
+        }
+      });
+      document.getElementById("mobile-preview-notification").addEventListener("click", async () => {
+        try {
+          await previewMobileNotification();
+        } catch (error) {
+          setText("mobile-preview-result", { error: error.message });
+        }
+      });
+      document.getElementById("mobile-preview-sync").addEventListener("click", async () => {
+        try {
+          await previewMobileSync();
+        } catch (error) {
+          setText("mobile-preview-result", { error: error.message });
+        }
+      });
       document.getElementById("logs-refresh").addEventListener("click", async () => {
         try {
           await loadLogs();
@@ -1712,6 +1841,7 @@
       window.inspectSkill = inspectSkill;
       window.mutateSkill = mutateSkill;
       window.prefillSkillInstall = prefillSkillInstall;
+      window.inspectMobileNode = inspectMobileNode;
 
       refreshAll();
       setInterval(() => {

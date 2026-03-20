@@ -87,5 +87,5 @@ Status values:
 | Area | Status | Notes |
 | --- | --- | --- |
 | Voice | partial | Talk mode remains feature-gated, but provider-backed inbound voice-note transcription and transcript injection now exist on the runtime path for supported channel attachments with local paths or directly fetchable media URLs, and operators now have CLI/API/UI `voice status|transcribe` surfaces; broader voice/runtime parity is still open |
-| Mobile sync | gated | Repo surface exists, not part of current shipped surface |
+| Mobile sync | partial | File-backed mobile node manifests plus CLI/API/UI inspection and preview surfaces now exist for node readiness, message-envelope preview, notification preview, and sync-readiness preview; real device-command and paired-node parity are still open |
 | Distributed clustering | gated | Repo surface exists, not part of current shipped surface |

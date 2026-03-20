@@ -15,6 +15,7 @@ pub mod matrix;
 pub mod mcp2cli;
 pub mod meet;
 pub mod memory;
+pub mod mobile;
 pub mod models;
 pub mod onboard;
 pub mod optimize;

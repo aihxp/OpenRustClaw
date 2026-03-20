@@ -1220,7 +1220,8 @@ Recommended finish order from here:
 - [ ] Wave 4: close the remaining operator experience gaps after the core runtime and browser/extension layers are solid:
   - [x] provider-backed inbound voice-note transcription and transcript injection for supported attachment refs,
   - [ ] broader voice/media polish, including operator-grade voice status/transcription surfaces beyond the initial runtime injection lane,
-  - mobile nodes and device-command parity,
+  - [x] file-backed mobile node registry plus CLI/API/UI preview/operator surfaces,
+  - [ ] mobile nodes and device-command parity,
   - final parity audit, docs alignment, and explicit intentional-difference review.
 
 Exit criteria:

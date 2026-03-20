@@ -76,7 +76,8 @@ use super::channels::{
 use super::voice_runtime;
 use super::voice_runtime::InboundVoiceTranscriber;
 use super::{
-    browser, control, control_ui, doctor, inspect, logs, orchestrate, runtime, services, skills,
+    browser, control, control_ui, doctor, inspect, logs, mobile, orchestrate, runtime, services,
+    skills,
 };
 
 /// Run the start command - load config, optionally start the compatibility/experimental sidecar, and start the gateway.
@@ -2537,6 +2538,25 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
         .route("/control/runtime/beacon", get(runtime_beacon_handler))
         .route("/control/voice/status", get(voice_status_handler))
         .route("/control/voice/transcribe", post(voice_transcribe_handler))
+        .route("/control/mobile/nodes", get(mobile_nodes_handler))
+        .route("/control/mobile/nodes/pair", post(mobile_pair_handler))
+        .route("/control/mobile/nodes/{id}", get(mobile_node_handler))
+        .route(
+            "/control/mobile/nodes/{id}/status",
+            get(mobile_node_status_handler),
+        )
+        .route(
+            "/control/mobile/messages/preview",
+            post(mobile_message_preview_handler),
+        )
+        .route(
+            "/control/mobile/notifications/preview",
+            post(mobile_notification_preview_handler),
+        )
+        .route(
+            "/control/mobile/sync/preview",
+            post(mobile_sync_preview_handler),
+        )
         .route(
             "/control/runtime/reload-plan",
             get(runtime_reload_plan_handler),
@@ -3626,6 +3646,99 @@ async fn voice_transcribe_handler(
         }
         Err(error) => (
             StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn mobile_nodes_handler(State(state): State<RuntimeControlState>) -> impl IntoResponse {
+    match mobile::list_nodes_data(&state.workspace_root) {
+        Ok(nodes) => (StatusCode::OK, Json(serde_json::json!({ "nodes": nodes }))).into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn mobile_pair_handler(
+    State(state): State<RuntimeControlState>,
+    Json(payload): Json<mobile::MobilePairRequest>,
+) -> impl IntoResponse {
+    match mobile::pair_node_data(&state.workspace_root, payload) {
+        Ok(node) => (StatusCode::OK, Json(serde_json::json!(node))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn mobile_node_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(id): AxumPath<String>,
+) -> impl IntoResponse {
+    match mobile::inspect_node_data(&state.workspace_root, &id) {
+        Ok(node) => (StatusCode::OK, Json(serde_json::json!(node))).into_response(),
+        Err(error) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn mobile_node_status_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(id): AxumPath<String>,
+) -> impl IntoResponse {
+    match mobile::node_status_data(&state.workspace_root, &id) {
+        Ok(status) => (StatusCode::OK, Json(serde_json::json!(status))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn mobile_message_preview_handler(
+    Json(payload): Json<mobile::MobileMessagePreviewRequest>,
+) -> impl IntoResponse {
+    match mobile::preview_message_data(payload) {
+        Ok(preview) => (StatusCode::OK, Json(serde_json::json!(preview))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn mobile_notification_preview_handler(
+    Json(payload): Json<mobile::MobileNotificationPreviewRequest>,
+) -> impl IntoResponse {
+    match mobile::preview_notification_data(payload) {
+        Ok(preview) => (StatusCode::OK, Json(serde_json::json!(preview))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn mobile_sync_preview_handler(
+    State(state): State<RuntimeControlState>,
+    Json(payload): Json<mobile::MobileSyncPreviewRequest>,
+) -> impl IntoResponse {
+    match mobile::preview_sync_data(&state.workspace_root, payload) {
+        Ok(preview) => (StatusCode::OK, Json(serde_json::json!(preview))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": error.to_string()})),
         )
             .into_response(),

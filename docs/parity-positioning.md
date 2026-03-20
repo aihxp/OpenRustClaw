@@ -49,7 +49,7 @@ LangGraph may execute a bounded workflow run. It should not be the only durabili
 ## Where We Still Trail OpenClaw
 
 - Full Web Control UI parity
-- Mobile nodes and device-command flows
+- Full mobile nodes and device-command flows
 - Voice-note transcription parity
 - Broader extension/plugin-channel parity beyond the shipped Rust-native Mattermost channel
 - Optional deferred channel scope such as Feishu/Lark if the product scope expands to include it
@@ -74,7 +74,7 @@ From here, the preferred remaining order is:
 
 - close the remaining Wave 4 operator-experience gaps:
   - broader voice/media polish beyond the newly landed provider-backed inbound voice-note transcription lane and voice status/transcription control surfaces,
-  - mobile nodes/device-command parity,
+  - full mobile nodes/device-command parity beyond the newly landed registry and preview/operator surfaces,
   - the final parity audit;
 - keep the later channel auto-restart and broader operations hardening work explicit instead of blurring it into the already-shipped Wave 3 runtime reload/resilience surfaces.
 

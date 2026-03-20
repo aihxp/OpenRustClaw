@@ -89,6 +89,11 @@ enum Commands {
         #[command(subcommand)]
         action: WhatsAppAction,
     },
+    /// Mobile node registry and operator preview surfaces
+    Mobile {
+        #[command(subcommand)]
+        action: MobileAction,
+    },
     /// Manage file-backed control-plane profiles and multi-claw runtime mode
     Control {
         #[command(subcommand)]
@@ -1154,6 +1159,66 @@ enum WhatsAppAction {
         path: String,
         #[arg(long)]
         caption: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum MobileAction {
+    /// List configured mobile nodes
+    List,
+    /// Pair or register a mobile node manifest
+    Pair {
+        #[arg(long)]
+        id: String,
+        #[arg(long)]
+        gateway_url: String,
+        #[arg(long)]
+        auth_token_env: String,
+        #[arg(long)]
+        device_name: Option<String>,
+        #[arg(long)]
+        platform: Option<String>,
+        #[arg(long = "capability")]
+        capabilities: Vec<String>,
+        #[arg(long, default_value_t = true)]
+        enabled: bool,
+    },
+    /// Inspect a configured mobile node manifest
+    Inspect { id: String },
+    /// Show derived readiness for a configured mobile node
+    Status { id: String },
+    /// Preview a mobile message envelope without sending it
+    PreviewMessage {
+        #[arg(long)]
+        source_node_id: String,
+        #[arg(long)]
+        target: String,
+        #[arg(long)]
+        content: String,
+        #[arg(long)]
+        content_type: Option<String>,
+    },
+    /// Preview a mobile push notification payload
+    PreviewNotification {
+        #[arg(long)]
+        title: String,
+        #[arg(long)]
+        body: String,
+        #[arg(long)]
+        priority: Option<String>,
+        #[arg(long = "type")]
+        notification_type: Option<String>,
+        #[arg(long = "data")]
+        data: Vec<String>,
+    },
+    /// Preview whether a node would sync under the given conditions
+    PreviewSync {
+        #[arg(long)]
+        node_id: String,
+        #[arg(long, default_value_t = 50)]
+        battery_percent: u8,
+        #[arg(long, default_value_t = 0)]
+        pending_change_count: usize,
     },
 }
 
@@ -2408,6 +2473,100 @@ async fn main() -> Result<()> {
                     .await
             }
         },
+        Commands::Mobile { action } => {
+            let workspace_root = std::env::current_dir()?;
+            match action {
+                MobileAction::List => commands::mobile::list_nodes(&workspace_root).await,
+                MobileAction::Pair {
+                    id,
+                    gateway_url,
+                    auth_token_env,
+                    device_name,
+                    platform,
+                    capabilities,
+                    enabled,
+                } => {
+                    commands::mobile::pair_node(
+                        &workspace_root,
+                        commands::mobile::MobilePairRequest {
+                            id,
+                            gateway_url,
+                            auth_token_env,
+                            device_name,
+                            platform,
+                            capabilities,
+                            enabled,
+                            sync: None,
+                            notifications: None,
+                            metadata: serde_json::Value::Null,
+                        },
+                    )
+                    .await
+                }
+                MobileAction::Inspect { id } => {
+                    commands::mobile::inspect_node(&workspace_root, &id).await
+                }
+                MobileAction::Status { id } => {
+                    commands::mobile::node_status(&workspace_root, &id).await
+                }
+                MobileAction::PreviewMessage {
+                    source_node_id,
+                    target,
+                    content,
+                    content_type,
+                } => {
+                    commands::mobile::preview_message(
+                        commands::mobile::MobileMessagePreviewRequest {
+                            source_node_id,
+                            target,
+                            content,
+                            content_type,
+                        },
+                    )
+                    .await
+                }
+                MobileAction::PreviewNotification {
+                    title,
+                    body,
+                    priority,
+                    notification_type,
+                    data,
+                } => {
+                    let data = data
+                        .into_iter()
+                        .filter_map(|entry| {
+                            let (key, value) = entry.split_once('=')?;
+                            Some((key.to_string(), value.to_string()))
+                        })
+                        .collect();
+                    commands::mobile::preview_notification(
+                        commands::mobile::MobileNotificationPreviewRequest {
+                            title,
+                            body,
+                            priority,
+                            notification_type,
+                            data,
+                        },
+                    )
+                    .await
+                }
+                MobileAction::PreviewSync {
+                    node_id,
+                    battery_percent,
+                    pending_change_count,
+                } => {
+                    commands::mobile::preview_sync(
+                        &workspace_root,
+                        commands::mobile::MobileSyncPreviewRequest {
+                            node_id,
+                            battery_percent,
+                            pending_change_count,
+                        },
+                    )
+                    .await
+                }
+            }
+        }
         Commands::Control { action } => match action {
             ControlAction::Init { path } => commands::control::init(path.as_deref()),
             ControlAction::List { path } => commands::control::list(path.as_deref()),

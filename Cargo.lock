@@ -5766,6 +5766,7 @@ dependencies = [
  "openrustclaw-mcp",
  "openrustclaw-mcp2cli",
  "openrustclaw-memory",
+ "openrustclaw-mobile",
  "openrustclaw-observability",
  "openrustclaw-optimization",
  "openrustclaw-providers",
