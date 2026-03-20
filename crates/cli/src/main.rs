@@ -650,6 +650,16 @@ enum SkillsAction {
     Refresh,
     /// Inspect one compiled skill artifact bundle
     InspectCompiled { name: String },
+    /// Invoke the generated CLI/help bridge for one compiled skill
+    Invoke {
+        name: String,
+        #[arg(long)]
+        args: Option<String>,
+        #[arg(long)]
+        reference: Option<String>,
+        #[arg(long)]
+        detail: bool,
+    },
     /// Search for skills in the registry
     Search {
         query: String,
@@ -2234,6 +2244,14 @@ async fn main() -> Result<()> {
             SkillsAction::Refresh => commands::skills::refresh_compiled().await,
             SkillsAction::InspectCompiled { name } => {
                 commands::skills::inspect_compiled(&name).await
+            }
+            SkillsAction::Invoke {
+                name,
+                args,
+                reference,
+                detail,
+            } => {
+                commands::skills::invoke(&name, args.as_deref(), reference.as_deref(), detail).await
             }
             SkillsAction::Search {
                 query,

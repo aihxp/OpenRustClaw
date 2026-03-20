@@ -1247,6 +1247,10 @@ Completed:
   - `inspect_compiled_skill`,
   - dynamic `skill.<name>.summary|details|reference...` tools for approved/scanned compiled skills,
   - blocked compiled skills remain inspection-only with redacted content.
+- [x] The generated compiled-skill CLI bridge is now real:
+  - `openrustclaw skills invoke <name>` reuses the compiled cache instead of reparsing raw `SKILL.md`,
+  - `/control/skills/{name}/invoke` and `/control/ui` expose the same bounded summary/detail/reference invocation lane,
+  - blocked compiled skills remain redacted rather than pretending executable runtime parity already exists.
 
 Remaining:
 

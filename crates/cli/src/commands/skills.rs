@@ -5,6 +5,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 use serde::Serialize;
 use sqlx::Row;
 use std::collections::{BTreeMap, HashSet};
+use std::fs;
 use std::path::{Path, PathBuf};
 use tracing::debug;
 
@@ -268,6 +269,32 @@ pub struct SkillCompileResult {
     pub compiled_count: usize,
     pub blocked_count: usize,
     pub compiled: Vec<CompiledSkillManifest>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SkillInvokeOptions<'a> {
+    pub args: Option<&'a str>,
+    pub reference: Option<&'a str>,
+    pub max_chars: Option<usize>,
+    pub detail: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SkillInvokeResult {
+    pub status: String,
+    pub skill_name: String,
+    pub blocked: bool,
+    pub detail: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub requested_args: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub requested_reference: Option<String>,
+    pub command_preview: String,
+    pub invocation: serde_json::Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reference_result: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub guidance: Option<String>,
 }
 
 async fn load_skill_config_and_pool()
@@ -604,6 +631,178 @@ pub async fn compiled_skill_detail_data(name: &str) -> Result<CompiledSkillArtif
     load_compiled_artifact(&root, name)
         .map_err(|error| anyhow::anyhow!(error.to_string()))
         .with_context(|| format!("Failed to load compiled skill '{}'", name))
+}
+
+async fn compiled_skill_detail_or_compile(name: &str) -> Result<CompiledSkillArtifact> {
+    match compiled_skill_detail_data(name).await {
+        Ok(artifact) => Ok(artifact),
+        Err(_) => compile_skill_by_name_internal(name).await,
+    }
+}
+
+fn read_compiled_skill_reference(
+    artifact: &CompiledSkillArtifact,
+    reference: &str,
+    max_chars: Option<usize>,
+) -> Result<serde_json::Value> {
+    if !artifact
+        .manifest
+        .references
+        .iter()
+        .any(|entry| entry == reference)
+    {
+        anyhow::bail!(
+            "Reference '{}' is not part of compiled skill '{}'",
+            reference,
+            artifact.manifest.name
+        );
+    }
+
+    let skill_file = PathBuf::from(&artifact.manifest.local_path);
+    let skill_root = skill_file.parent().ok_or_else(|| {
+        anyhow::anyhow!(
+            "Compiled skill '{}' does not have a resolvable root",
+            artifact.manifest.name
+        )
+    })?;
+    let canonical_root = skill_root
+        .canonicalize()
+        .with_context(|| format!("Failed to canonicalize {}", skill_root.display()))?;
+    let candidate = skill_root.join(reference);
+    let canonical_candidate = candidate
+        .canonicalize()
+        .with_context(|| format!("Failed to resolve {}", candidate.display()))?;
+    if !canonical_candidate.starts_with(&canonical_root) {
+        anyhow::bail!(
+            "Reference '{}' escapes the skill root for '{}'",
+            reference,
+            artifact.manifest.name
+        );
+    }
+
+    let bytes = fs::read(&canonical_candidate)
+        .with_context(|| format!("Failed to read {}", canonical_candidate.display()))?;
+    let metadata = fs::metadata(&canonical_candidate)
+        .with_context(|| format!("Failed to stat {}", canonical_candidate.display()))?;
+    let max_chars = max_chars.unwrap_or(4000).max(1);
+    match String::from_utf8(bytes) {
+        Ok(text) => {
+            let char_len = text.chars().count();
+            let truncated = char_len > max_chars;
+            let content = if truncated {
+                text.chars().take(max_chars).collect::<String>()
+            } else {
+                text
+            };
+            Ok(serde_json::json!({
+                "reference": reference,
+                "path": canonical_candidate.display().to_string(),
+                "binary": false,
+                "bytes": metadata.len(),
+                "truncated": truncated,
+                "content": content,
+            }))
+        }
+        Err(error) => Ok(serde_json::json!({
+            "reference": reference,
+            "path": canonical_candidate.display().to_string(),
+            "binary": true,
+            "bytes": metadata.len(),
+            "encoding_error": error.to_string(),
+        })),
+    }
+}
+
+pub async fn invoke_data(name: &str, options: SkillInvokeOptions<'_>) -> Result<SkillInvokeResult> {
+    let artifact = compiled_skill_detail_or_compile(name).await?;
+    invoke_compiled_skill(&artifact, options)
+}
+
+fn invoke_compiled_skill(
+    artifact: &CompiledSkillArtifact,
+    options: SkillInvokeOptions<'_>,
+) -> Result<SkillInvokeResult> {
+    let blocked = matches!(
+        artifact.manifest.status,
+        openrustclaw_skills::CompiledSkillStatus::Blocked
+    );
+    let requested_args = options.args.map(str::to_string);
+    let requested_reference = options.reference.map(str::to_string);
+    let command_preview = match requested_args.as_deref() {
+        Some(args) if !args.trim().is_empty() => {
+            format!("{} {}", artifact.cli_schema.command, args.trim())
+        }
+        _ => artifact.cli_schema.usage.clone(),
+    };
+
+    let invocation = serde_json::json!({
+        "manifest": &artifact.manifest,
+        "help": {
+            "summary": &artifact.help_index.summary,
+            "body_excerpt": if blocked { serde_json::Value::Null } else if options.detail { serde_json::json!(&artifact.help_index.body_excerpt) } else { serde_json::Value::Null },
+            "argument_hint": &artifact.help_index.argument_hint,
+            "allowed_tools": &artifact.help_index.allowed_tools,
+            "capabilities": &artifact.help_index.capabilities,
+            "scripts": &artifact.help_index.scripts,
+            "references": &artifact.help_index.references,
+            "examples": if blocked || !options.detail { serde_json::json!([]) } else { serde_json::json!(&artifact.help_index.examples) },
+            "safety_notes": &artifact.help_index.safety_notes,
+        },
+        "cli": &artifact.cli_schema,
+        "mcp": &artifact.mcp_schema,
+        "scan_report": &artifact.scan_report,
+    });
+
+    let reference_result = match options.reference {
+        Some(reference) if blocked => {
+            anyhow::bail!(
+                "Compiled skill '{}' is blocked; reference access is disabled",
+                artifact.manifest.name
+            );
+        }
+        Some(reference) => Some(read_compiled_skill_reference(
+            &artifact,
+            reference,
+            options.max_chars,
+        )?),
+        None => None,
+    };
+
+    let guidance = if blocked {
+        Some(format!(
+            "Skill '{}' is blocked by the compile scanner and remains inspection-only.",
+            artifact.manifest.name
+        ))
+    } else if artifact.help_index.scripts.is_empty() {
+        Some(format!(
+            "Skill '{}' is currently exposed through compiled help/reference surfaces. Executable plugin runtime parity is still a later Phase 7 track.",
+            artifact.manifest.name
+        ))
+    } else {
+        Some(format!(
+            "Skill '{}' exposes {} script entr{} through compiled metadata. This invoke surface currently returns the cached command/help bundle instead of executing those scripts directly.",
+            artifact.manifest.name,
+            artifact.help_index.scripts.len(),
+            if artifact.help_index.scripts.len() == 1 {
+                "y"
+            } else {
+                "ies"
+            }
+        ))
+    };
+
+    Ok(SkillInvokeResult {
+        status: "ok".to_string(),
+        skill_name: artifact.manifest.name.clone(),
+        blocked,
+        detail: options.detail,
+        requested_args,
+        requested_reference,
+        command_preview,
+        invocation,
+        reference_result,
+        guidance,
+    })
 }
 
 pub async fn compile_data(name: Option<&str>) -> Result<SkillCompileResult> {
@@ -1266,6 +1465,27 @@ pub async fn refresh_compiled() -> Result<()> {
 pub async fn inspect_compiled(name: &str) -> Result<()> {
     let artifact = compiled_skill_detail_data(name).await?;
     println!("{}", serde_json::to_string_pretty(&artifact)?);
+    Ok(())
+}
+
+/// Invoke the generated CLI/help bridge for a compiled skill.
+pub async fn invoke(
+    name: &str,
+    args: Option<&str>,
+    reference: Option<&str>,
+    detail: bool,
+) -> Result<()> {
+    let result = invoke_data(
+        name,
+        SkillInvokeOptions {
+            args,
+            reference,
+            max_chars: None,
+            detail,
+        },
+    )
+    .await?;
+    println!("{}", serde_json::to_string_pretty(&result)?);
     Ok(())
 }
 
@@ -2325,5 +2545,87 @@ mod tests {
         assert_eq!(verified, 0);
 
         let _ = std::fs::remove_file(db_path);
+    }
+
+    #[test]
+    fn test_invoke_compiled_skill_includes_reference_preview() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_dir = tmp.path().join("demo");
+        std::fs::create_dir_all(skill_dir.join("references")).unwrap();
+        std::fs::write(
+            skill_dir.join("SKILL.md"),
+            "# Demo Skill\n\nUseful compiled skill.\n",
+        )
+        .unwrap();
+        std::fs::write(
+            skill_dir.join("references").join("guide.md"),
+            "This is the guide for the demo skill.",
+        )
+        .unwrap();
+        let artifact = compile_skill_to_dir(
+            &skill_dir.join("SKILL.md"),
+            &tmp.path().join("compiled"),
+            SkillSource::Workspace,
+            true,
+        )
+        .unwrap();
+
+        let result = invoke_compiled_skill(
+            &artifact,
+            SkillInvokeOptions {
+                args: Some("--topic rust"),
+                reference: Some("references/guide.md"),
+                max_chars: Some(4),
+                detail: true,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(result.skill_name, "Demo Skill");
+        assert_eq!(
+            result.command_preview,
+            "openrustclaw skills invoke Demo Skill --topic rust"
+        );
+        assert_eq!(result.reference_result.as_ref().unwrap()["content"], "This");
+        assert_eq!(result.reference_result.as_ref().unwrap()["truncated"], true);
+        assert!(result.invocation["help"]["body_excerpt"]
+            .as_str()
+            .unwrap()
+            .contains("Useful compiled skill."));
+    }
+
+    #[test]
+    fn test_invoke_compiled_skill_rejects_blocked_reference_access() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skill_dir = tmp.path().join("danger");
+        std::fs::create_dir_all(skill_dir.join("scripts")).unwrap();
+        std::fs::create_dir_all(skill_dir.join("references")).unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), "# Danger Skill\n\nNope.\n").unwrap();
+        std::fs::write(skill_dir.join("scripts").join("run.sh"), "rm -rf /\n").unwrap();
+        std::fs::write(
+            skill_dir.join("references").join("guide.md"),
+            "blocked reference",
+        )
+        .unwrap();
+        let artifact = compile_skill_to_dir(
+            &skill_dir.join("SKILL.md"),
+            &tmp.path().join("compiled"),
+            SkillSource::Marketplace,
+            false,
+        )
+        .unwrap();
+
+        let error = invoke_compiled_skill(
+            &artifact,
+            SkillInvokeOptions {
+                args: None,
+                reference: Some("references/guide.md"),
+                max_chars: None,
+                detail: true,
+            },
+        )
+        .unwrap_err();
+
+        assert!(error.to_string().contains("blocked"));
     }
 }

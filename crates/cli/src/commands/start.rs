@@ -2733,6 +2733,10 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             "/control/skills/{name}/verify",
             post(control_skill_verify_handler),
         )
+        .route(
+            "/control/skills/{name}/invoke",
+            post(control_skill_invoke_handler),
+        )
         .route("/control/services/status", get(service_status_handler))
         .route(
             "/control/services/scheduler",
@@ -3295,6 +3299,18 @@ struct SkillCompilePayload {
     name: Option<String>,
 }
 
+#[derive(serde::Deserialize, Default)]
+struct SkillInvokePayload {
+    #[serde(default)]
+    args: Option<String>,
+    #[serde(default)]
+    reference: Option<String>,
+    #[serde(default)]
+    max_chars: Option<usize>,
+    #[serde(default)]
+    detail: bool,
+}
+
 async fn control_skills_handler() -> impl IntoResponse {
     match skills::installed_skills_data().await {
         Ok(entries) => (
@@ -3440,6 +3456,30 @@ async fn control_skill_compile_by_name_handler(
     AxumPath(name): AxumPath<String>,
 ) -> impl IntoResponse {
     match skills::compile_data(Some(&name)).await {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": error.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
+async fn control_skill_invoke_handler(
+    AxumPath(name): AxumPath<String>,
+    Json(payload): Json<SkillInvokePayload>,
+) -> impl IntoResponse {
+    match skills::invoke_data(
+        &name,
+        skills::SkillInvokeOptions {
+            args: payload.args.as_deref(),
+            reference: payload.reference.as_deref(),
+            max_chars: payload.max_chars,
+            detail: payload.detail,
+        },
+    )
+    .await
+    {
         Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,

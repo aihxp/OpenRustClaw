@@ -509,6 +509,16 @@
         </article>
         <article class="panel span-12">
           <h2>Extension Detail</h2>
+          <div class="form-grid" style="margin-bottom: 12px">
+            <div class="action-row">
+              <input id="skill-invoke-args" type="text" placeholder="optional invoke args" />
+              <input id="skill-invoke-reference" type="text" placeholder="optional reference path, e.g. references/guide.md" />
+            </div>
+            <div class="action-row">
+              <button id="skill-invoke">Invoke Selected Skill</button>
+              <button class="secondary" id="skill-invoke-detail">Invoke With Detail</button>
+            </div>
+          </div>
           <div class="surface"><pre id="skill-detail">Select an installed or discovered extension to inspect.</pre></div>
         </article>
 
@@ -1021,6 +1031,23 @@
         });
         setText("skill-detail", payload);
         await inspectSkill(name);
+      }
+
+      async function invokeCurrentSkill(detail = false) {
+        if (!currentSkillName) {
+          throw new Error("Select an installed extension first");
+        }
+        const args = document.getElementById("skill-invoke-args").value.trim();
+        const reference = document.getElementById("skill-invoke-reference").value.trim();
+        const payload = await fetchJson(`/control/skills/${encodeURIComponent(currentSkillName)}/invoke`, {
+          method: "POST",
+          body: JSON.stringify({
+            args: args || null,
+            reference: reference || null,
+            detail,
+          }),
+        });
+        setText("skill-detail", payload);
       }
 
       async function loadSkillCatalog(mode = "popular") {
@@ -1992,6 +2019,20 @@
       document.getElementById("skills-refresh").addEventListener("click", async () => {
         try {
           await loadInstalledSkills();
+        } catch (error) {
+          setText("skill-detail", { error: error.message });
+        }
+      });
+      document.getElementById("skill-invoke").addEventListener("click", async () => {
+        try {
+          await invokeCurrentSkill(false);
+        } catch (error) {
+          setText("skill-detail", { error: error.message });
+        }
+      });
+      document.getElementById("skill-invoke-detail").addEventListener("click", async () => {
+        try {
+          await invokeCurrentSkill(true);
         } catch (error) {
           setText("skill-detail", { error: error.message });
         }
