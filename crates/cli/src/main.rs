@@ -1229,6 +1229,11 @@ enum VoiceAction {
         #[arg(short, long, default_value = "config/default.toml")]
         config: String,
     },
+    /// List the current provider's discoverable TTS voices
+    Voices {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+    },
     /// Transcribe a local audio file or remote audio URL through the configured provider lane
     Transcribe {
         #[arg(short, long, default_value = "config/default.toml")]
@@ -1245,6 +1250,23 @@ enum VoiceAction {
         language: Option<String>,
         #[arg(long)]
         prompt: Option<String>,
+    },
+    /// Synthesize text to an audio artifact through the configured provider lane
+    Synthesize {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+        #[arg(long)]
+        text: String,
+        #[arg(long)]
+        provider: Option<String>,
+        #[arg(long)]
+        model: Option<String>,
+        #[arg(long)]
+        voice: Option<String>,
+        #[arg(long)]
+        format: Option<String>,
+        #[arg(long)]
+        output_path: Option<String>,
     },
 }
 
@@ -3488,6 +3510,7 @@ async fn main() -> Result<()> {
         }
         Commands::Voice { action } => match action {
             VoiceAction::Status { config } => commands::voice::status(&config).await,
+            VoiceAction::Voices { config } => commands::voice::voices(&config).await,
             VoiceAction::Transcribe {
                 config,
                 path,
@@ -3505,6 +3528,26 @@ async fn main() -> Result<()> {
                     model.as_deref(),
                     language.as_deref(),
                     prompt.as_deref(),
+                )
+                .await
+            }
+            VoiceAction::Synthesize {
+                config,
+                text,
+                provider,
+                model,
+                voice,
+                format,
+                output_path,
+            } => {
+                commands::voice::synthesize(
+                    &config,
+                    &text,
+                    provider.as_deref(),
+                    model.as_deref(),
+                    voice.as_deref(),
+                    format.as_deref(),
+                    output_path.as_deref(),
                 )
                 .await
             }

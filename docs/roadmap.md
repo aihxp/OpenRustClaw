@@ -1219,7 +1219,7 @@ Recommended finish order from here:
   - [x] broader hot-reload and provider/runtime resilience.
 - [ ] Wave 4: close the remaining operator experience gaps after the core runtime and browser/extension layers are solid:
   - [x] provider-backed inbound voice-note transcription and transcript injection for supported attachment refs,
-  - [ ] broader voice/media polish, including operator-grade voice status/transcription surfaces beyond the initial runtime injection lane,
+  - [x] broader voice/media polish, including operator-grade voice status/voices/transcription/synthesis surfaces beyond the initial runtime injection lane,
   - [x] file-backed mobile node registry plus CLI/API/UI preview/operator surfaces,
   - [ ] mobile nodes and device-command parity,
   - final parity audit, docs alignment, and explicit intentional-difference review.
@@ -1398,7 +1398,7 @@ Do not claim "OpenClaw parity" until all of the following are true:
 - [ ] Control UI exists with practical operator parity.
 - [ ] WhatsApp, Telegram, Discord, Slack, and iMessage parity targets are complete.
 - [ ] Session tooling parity is complete.
-- [ ] Media send/receive and voice-note transcription parity is complete.
+- [x] Media send/receive and voice-note transcription parity is complete.
 - [ ] Multi-agent routing and pairing flows match documented behavior.
 - [ ] Plugin and node capability surface is implemented or intentionally excluded with clear product rationale.
 - [ ] Python is not required for the shipped runtime path.

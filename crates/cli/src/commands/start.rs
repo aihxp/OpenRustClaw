@@ -2537,7 +2537,9 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
         .route("/control/runtime/health", get(runtime_health_handler))
         .route("/control/runtime/beacon", get(runtime_beacon_handler))
         .route("/control/voice/status", get(voice_status_handler))
+        .route("/control/voice/voices", get(voice_voices_handler))
         .route("/control/voice/transcribe", post(voice_transcribe_handler))
+        .route("/control/voice/synthesize", post(voice_synthesize_handler))
         .route("/control/mobile/nodes", get(mobile_nodes_handler))
         .route("/control/mobile/nodes/pair", post(mobile_pair_handler))
         .route("/control/mobile/nodes/{id}", get(mobile_node_handler))
@@ -3627,6 +3629,26 @@ async fn voice_status_handler(State(state): State<RuntimeControlState>) -> impl 
     }
 }
 
+async fn voice_voices_handler(State(state): State<RuntimeControlState>) -> impl IntoResponse {
+    match runtime::load_effective_config(&state.config_path, &state.workspace_root) {
+        Ok(config) => {
+            match voice_runtime::list_voices_with_config(&config, &state.workspace_root) {
+                Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+                Err(error) => (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({"error": error.to_string()})),
+                )
+                    .into_response(),
+            }
+        }
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
 async fn voice_transcribe_handler(
     State(state): State<RuntimeControlState>,
     Json(payload): Json<voice_runtime::VoiceTranscribeRequest>,
@@ -3634,6 +3656,31 @@ async fn voice_transcribe_handler(
     match runtime::load_effective_config(&state.config_path, &state.workspace_root) {
         Ok(config) => {
             match voice_runtime::transcribe_with_config(&config, &state.workspace_root, payload)
+                .await
+            {
+                Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+                Err(error) => (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({"error": error.to_string()})),
+                )
+                    .into_response(),
+            }
+        }
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn voice_synthesize_handler(
+    State(state): State<RuntimeControlState>,
+    Json(payload): Json<voice_runtime::VoiceSynthesizeRequest>,
+) -> impl IntoResponse {
+    match runtime::load_effective_config(&state.config_path, &state.workspace_root) {
+        Ok(config) => {
+            match voice_runtime::synthesize_with_config(&config, &state.workspace_root, payload)
                 .await
             {
                 Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),

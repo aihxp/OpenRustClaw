@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow};
-use openrustclaw_core::config::{AppConfig, VoiceSttRuntimeConfig};
+use openrustclaw_core::config::{AppConfig, VoiceSttRuntimeConfig, VoiceTtsRuntimeConfig};
 use openrustclaw_core::types::IncomingMessage;
 use reqwest::multipart::{Form, Part};
 use serde::{Deserialize, Serialize};
@@ -32,6 +32,9 @@ pub struct VoiceStatus {
     pub api_base_url: Option<String>,
     pub api_key_env: String,
     pub api_key_present: bool,
+    pub tts_provider: String,
+    pub tts_model: String,
+    pub tts_voice: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -66,6 +69,50 @@ pub struct VoiceTranscribeResult {
     pub max_audio_bytes: usize,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceInfoRecord {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub language: Option<String>,
+    #[serde(default)]
+    pub preview_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceVoicesResult {
+    pub provider: String,
+    pub model: String,
+    pub default_voice: String,
+    pub voices: Vec<VoiceInfoRecord>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceSynthesizeRequest {
+    pub text: String,
+    #[serde(default)]
+    pub provider: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub voice: Option<String>,
+    #[serde(default)]
+    pub format: Option<String>,
+    #[serde(default)]
+    pub output_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceSynthesizeResult {
+    pub provider: String,
+    pub model: String,
+    pub voice: String,
+    pub format: String,
+    pub text_length: usize,
+    pub output_path: String,
+    pub bytes: usize,
+}
+
 #[derive(Debug, Clone)]
 struct AudioCandidate {
     index: usize,
@@ -96,6 +143,14 @@ struct TranscribedAudio {
     language: Option<String>,
     duration_secs: Option<f64>,
     cached_local_path: Option<PathBuf>,
+}
+
+#[derive(Debug, Serialize)]
+struct OpenAiSpeechRequest<'a> {
+    model: &'a str,
+    input: &'a str,
+    voice: &'a str,
+    response_format: &'a str,
 }
 
 impl InboundVoiceTranscriber {
@@ -382,6 +437,9 @@ pub fn voice_status(config: &AppConfig, workspace_root: &Path) -> VoiceStatus {
         api_base_url: config.voice.stt.api_base_url.clone(),
         api_key_env: api_key_env.clone(),
         api_key_present: std::env::var(&api_key_env).is_ok(),
+        tts_provider: config.voice.tts.provider.clone(),
+        tts_model: config.voice.tts.model.clone(),
+        tts_voice: config.voice.tts.voice.clone(),
     }
 }
 
@@ -475,6 +533,108 @@ pub async fn transcribe_with_config(
     })
 }
 
+pub fn list_voices_with_config(
+    config: &AppConfig,
+    _workspace_root: &Path,
+) -> Result<VoiceVoicesResult> {
+    let provider = config.voice.tts.provider.trim().to_ascii_lowercase();
+    let model = config.voice.tts.model.trim().to_string();
+    let default_voice = config.voice.tts.voice.trim().to_string();
+    let voices = match provider.as_str() {
+        // OpenAI-compatible speech lanes do not currently expose a voice-list endpoint,
+        // so we expose the known shipped voice set explicitly.
+        "openai" => openai_voice_catalog(),
+        other => {
+            return Err(anyhow!(
+                "voice discovery is not implemented for provider '{other}'"
+            ));
+        }
+    };
+
+    Ok(VoiceVoicesResult {
+        provider,
+        model,
+        default_voice,
+        voices,
+    })
+}
+
+pub async fn synthesize_with_config(
+    config: &AppConfig,
+    workspace_root: &Path,
+    request: VoiceSynthesizeRequest,
+) -> Result<VoiceSynthesizeResult> {
+    let text = request.text.trim();
+    if text.is_empty() {
+        return Err(anyhow!("text is required"));
+    }
+
+    let mut effective = config.clone();
+    if let Some(provider) = request
+        .provider
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        effective.voice.tts.provider = provider.to_string();
+    }
+    if let Some(model) = request
+        .model
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        effective.voice.tts.model = model.to_string();
+    }
+    if let Some(voice) = request
+        .voice
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        effective.voice.tts.voice = voice.to_string();
+    }
+
+    let format = normalize_speech_format(request.format.as_deref())?;
+    let provider = effective.voice.tts.provider.trim().to_ascii_lowercase();
+    let output_path =
+        resolve_speech_output_path(workspace_root, request.output_path.as_deref(), format);
+
+    let bytes = match provider.as_str() {
+        "openai" => {
+            synthesize_openai_compatible(config, &effective.voice.tts, text, format).await?
+        }
+        other => {
+            return Err(anyhow!(
+                "voice synthesis is not implemented for provider '{other}'"
+            ));
+        }
+    };
+
+    if bytes.is_empty() {
+        return Err(anyhow!("voice synthesis returned an empty audio payload"));
+    }
+
+    if let Some(parent) = output_path.parent() {
+        fs::create_dir_all(parent)
+            .await
+            .with_context(|| format!("failed to create {}", parent.display()))?;
+    }
+    fs::write(&output_path, &bytes).await.with_context(|| {
+        format!(
+            "failed to write synthesized audio {}",
+            output_path.display()
+        )
+    })?;
+
+    Ok(VoiceSynthesizeResult {
+        provider,
+        model: effective.voice.tts.model.clone(),
+        voice: effective.voice.tts.voice.clone(),
+        format: format.to_string(),
+        text_length: text.chars().count(),
+        output_path: output_path.to_string_lossy().to_string(),
+        bytes: bytes.len(),
+    })
+}
+
 fn apply_transcription(
     incoming: &mut IncomingMessage,
     candidate: &AudioCandidate,
@@ -543,6 +703,55 @@ fn apply_transcription(
 
     incoming.metadata = Value::Object(metadata);
     incoming.content = append_transcript_to_content(&incoming.content, transcript);
+}
+
+async fn synthesize_openai_compatible(
+    config: &AppConfig,
+    tts: &VoiceTtsRuntimeConfig,
+    text: &str,
+    format: &str,
+) -> Result<Vec<u8>> {
+    let api_key_env = config
+        .providers
+        .openai
+        .api_key_env
+        .clone()
+        .unwrap_or_else(|| "OPENAI_API_KEY".to_string());
+    let api_key = std::env::var(&api_key_env)
+        .with_context(|| format!("{} environment variable not set", api_key_env))?;
+    let base_url = config
+        .voice
+        .stt
+        .api_base_url
+        .as_deref()
+        .unwrap_or("https://api.openai.com/v1")
+        .trim_end_matches('/');
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(config.voice.stt.timeout_secs.max(1)))
+        .build()
+        .context("failed to build voice synthesis HTTP client")?;
+
+    let response = client
+        .post(format!("{base_url}/audio/speech"))
+        .bearer_auth(api_key)
+        .json(&OpenAiSpeechRequest {
+            model: &tts.model,
+            input: text,
+            voice: &tts.voice,
+            response_format: format,
+        })
+        .send()
+        .await
+        .context("failed to call voice synthesis endpoint")?;
+    let response = response
+        .error_for_status()
+        .context("voice synthesis endpoint returned an error")?;
+    let bytes = response
+        .bytes()
+        .await
+        .context("failed to read voice synthesis response body")?;
+    Ok(bytes.to_vec())
 }
 
 fn append_transcript_to_content(existing: &str, transcript: &str) -> String {
@@ -618,6 +827,52 @@ fn default_audio_filename(media_kind: &str) -> String {
     }
 }
 
+fn openai_voice_catalog() -> Vec<VoiceInfoRecord> {
+    [
+        "alloy", "ash", "ballad", "coral", "echo", "fable", "onyx", "nova", "sage", "shimmer",
+    ]
+    .into_iter()
+    .map(|id| VoiceInfoRecord {
+        id: id.to_string(),
+        name: id.to_string(),
+        language: Some("multilingual".to_string()),
+        preview_url: None,
+    })
+    .collect()
+}
+
+fn normalize_speech_format(raw: Option<&str>) -> Result<&'static str> {
+    Ok(
+        match raw.unwrap_or("mp3").trim().to_ascii_lowercase().as_str() {
+            "mp3" => "mp3",
+            "wav" => "wav",
+            "opus" => "opus",
+            "aac" => "aac",
+            "flac" => "flac",
+            other => return Err(anyhow!("unsupported speech format '{other}'")),
+        },
+    )
+}
+
+fn resolve_speech_output_path(
+    workspace_root: &Path,
+    raw_output_path: Option<&str>,
+    format: &str,
+) -> PathBuf {
+    if let Some(path) = raw_output_path
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| resolve_runtime_path(workspace_root, value))
+    {
+        return path;
+    }
+
+    workspace_root
+        .join(".claw")
+        .join("voice")
+        .join("synthesized")
+        .join(format!("{}-speech.{format}", Uuid::new_v4()))
+}
+
 fn mime_from_filename(name: &str) -> Option<String> {
     let extension = name.rsplit('.').next()?.to_ascii_lowercase();
     let mime = match extension.as_str() {
@@ -667,6 +922,7 @@ mod tests {
     #[derive(Clone, Default)]
     struct TestServerState {
         bodies: Arc<Mutex<Vec<String>>>,
+        speech_bodies: Arc<Mutex<Vec<String>>>,
     }
 
     async fn handle_transcription(
@@ -696,11 +952,31 @@ mod tests {
         let state = TestServerState::default();
         let app = Router::new()
             .route("/audio/transcriptions", post(handle_transcription))
+            .route("/audio/speech", post(handle_speech))
             .with_state(state.clone());
         let handle = tokio::spawn(async move {
             axum::serve(listener, app).await.expect("serve");
         });
         (addr, state, handle)
+    }
+
+    async fn handle_speech(
+        State(state): State<TestServerState>,
+        headers: HeaderMap,
+        body: Bytes,
+    ) -> &'static [u8] {
+        assert_eq!(
+            headers
+                .get(reqwest::header::AUTHORIZATION)
+                .and_then(|value| value.to_str().ok()),
+            Some("Bearer test-openai-key")
+        );
+        state
+            .speech_bodies
+            .lock()
+            .await
+            .push(String::from_utf8_lossy(body.as_ref()).to_string());
+        b"fake-mp3-audio"
     }
 
     fn test_config(base_url: &str, workspace_root: &Path, api_key_env: &str) -> AppConfig {
@@ -841,5 +1117,65 @@ mod tests {
         );
 
         server_handle.abort();
+    }
+
+    #[tokio::test]
+    async fn synthesize_writes_audio_artifact_and_records_request() {
+        let temp = tempdir().expect("tempdir");
+        let (addr, state, server_handle) = spawn_test_server().await;
+        let config = test_config(
+            &format!("http://{}", addr),
+            temp.path(),
+            "OPENRUSTCLAW_VOICE_TEST_KEY_THREE",
+        );
+
+        unsafe {
+            std::env::set_var("OPENRUSTCLAW_VOICE_TEST_KEY_THREE", "test-openai-key");
+        }
+        let result = synthesize_with_config(
+            &config,
+            temp.path(),
+            VoiceSynthesizeRequest {
+                text: "hello from synthesized voice".to_string(),
+                provider: None,
+                model: Some("tts-1-hd".to_string()),
+                voice: Some("nova".to_string()),
+                format: Some("mp3".to_string()),
+                output_path: None,
+            },
+        )
+        .await
+        .expect("synthesize");
+        unsafe {
+            std::env::remove_var("OPENRUSTCLAW_VOICE_TEST_KEY_THREE");
+        }
+
+        assert_eq!(result.provider, "openai");
+        assert_eq!(result.model, "tts-1-hd");
+        assert_eq!(result.voice, "nova");
+        assert_eq!(result.format, "mp3");
+        assert!(result.output_path.contains(".claw/voice/synthesized/"));
+        assert_eq!(
+            fs::read(&result.output_path).await.expect("read output"),
+            b"fake-mp3-audio"
+        );
+
+        let bodies = state.speech_bodies.lock().await;
+        assert_eq!(bodies.len(), 1);
+        assert!(bodies[0].contains("\"model\":\"tts-1-hd\""));
+        assert!(bodies[0].contains("\"voice\":\"nova\""));
+        assert!(bodies[0].contains("\"response_format\":\"mp3\""));
+
+        server_handle.abort();
+    }
+
+    #[test]
+    fn list_voices_returns_known_openai_voice_catalog() {
+        let temp = tempdir().expect("tempdir");
+        let config = AppConfig::default();
+        let result = list_voices_with_config(&config, temp.path()).expect("list voices");
+        assert_eq!(result.provider, "openai");
+        assert!(result.voices.iter().any(|voice| voice.id == "alloy"));
+        assert!(result.voices.iter().any(|voice| voice.id == "nova"));
     }
 }
