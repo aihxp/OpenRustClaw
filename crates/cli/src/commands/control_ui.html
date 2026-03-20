@@ -618,6 +618,33 @@
           <div class="surface" style="margin-top: 12px"><pre id="mobile-preview-result">No mobile preview executed yet.</pre></div>
         </article>
         <article class="panel span-6">
+          <h2>Mobile Commands</h2>
+          <div class="action-row" style="margin-bottom: 12px">
+            <button class="secondary" id="mobile-commands-refresh">Refresh Commands</button>
+          </div>
+          <div class="form-grid">
+            <input id="mobile-command-node" type="text" placeholder="node id" />
+            <input id="mobile-command-name" type="text" placeholder="send_message | push_notification | sync_now" />
+            <textarea id="mobile-command-payload" rows="4" spellcheck="false" placeholder='{"target":"ops-room","content":"hello"}'></textarea>
+            <div class="action-row">
+              <input id="mobile-command-approved-by" type="text" placeholder="optional approve+execute as operator id" />
+              <button id="mobile-command-dispatch">Dispatch Command</button>
+            </div>
+          </div>
+          <div class="surface" style="margin-top: 12px">
+            <table class="table">
+              <thead>
+                <tr><th>Command</th><th>Status</th><th>Capability</th><th>Action</th></tr>
+              </thead>
+              <tbody id="mobile-commands"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </article>
+        <article class="panel span-12">
+          <h2>Mobile Command Detail</h2>
+          <div class="surface"><pre id="mobile-command-detail">No mobile command selected.</pre></div>
+        </article>
+        <article class="panel span-6">
           <h2>Active Orchestration</h2>
           <div class="surface">
             <table class="table">
@@ -1127,6 +1154,7 @@
         ]);
         setText("mobile-node-detail", { manifest, status });
         document.getElementById("mobile-source-node").value = id;
+        document.getElementById("mobile-command-node").value = id;
       }
 
       async function previewMobileMessage() {
@@ -1162,6 +1190,77 @@
           }),
         });
         setText("mobile-preview-result", result);
+      }
+
+      async function loadMobileCommands() {
+        const payload = await fetchJson("/control/mobile/commands?limit=20");
+        const commands = payload.commands || [];
+        const rows = commands.map((entry) => {
+          const action = entry.status === "pending_approval"
+            ? `<button class="secondary" onclick="approveMobileCommand('${entry.id}')">Approve</button>
+               <button class="secondary" onclick="rejectMobileCommand('${entry.id}')">Reject</button>`
+            : `<button class="secondary" onclick="inspectMobileCommand('${entry.id}')">Inspect</button>`;
+          return `<tr>
+            <td><strong>${entry.command || "-"}</strong><div class="muted">${entry.node_id || "-"}</div></td>
+            <td>${entry.status || "-"}</td>
+            <td>${entry.required_capability || "-"}</td>
+            <td>${action}</td>
+          </tr>`;
+        });
+        renderTableRows("mobile-commands", rows, "No mobile commands recorded.");
+        if (commands.length) {
+          await inspectMobileCommand(commands[0].id);
+        } else {
+          setText("mobile-command-detail", "No mobile command selected.");
+        }
+      }
+
+      async function inspectMobileCommand(id) {
+        const payload = await fetchJson(`/control/mobile/commands/${encodeURIComponent(id)}`);
+        setText("mobile-command-detail", payload);
+      }
+
+      async function dispatchMobileCommand() {
+        const payloadText = document.getElementById("mobile-command-payload").value.trim();
+        let payload = {};
+        if (payloadText) {
+          payload = JSON.parse(payloadText);
+        }
+        const result = await fetchJson("/control/mobile/commands/dispatch", {
+          method: "POST",
+          body: JSON.stringify({
+            node_id: document.getElementById("mobile-command-node").value.trim(),
+            command: document.getElementById("mobile-command-name").value.trim(),
+            payload,
+            approved_by: emptyToNull(document.getElementById("mobile-command-approved-by").value),
+          }),
+        });
+        setText("mobile-command-detail", result);
+        await loadMobileCommands();
+      }
+
+      async function approveMobileCommand(id) {
+        const result = await fetchJson(`/control/mobile/commands/${encodeURIComponent(id)}/approve`, {
+          method: "POST",
+          body: JSON.stringify({
+            decided_by: "control_ui",
+            reason: "approved from control ui",
+          }),
+        });
+        setText("mobile-command-detail", result);
+        await loadMobileCommands();
+      }
+
+      async function rejectMobileCommand(id) {
+        const result = await fetchJson(`/control/mobile/commands/${encodeURIComponent(id)}/reject`, {
+          method: "POST",
+          body: JSON.stringify({
+            decided_by: "control_ui",
+            reason: "rejected from control ui",
+          }),
+        });
+        setText("mobile-command-detail", result);
+        await loadMobileCommands();
       }
 
       async function loadSessions() {
@@ -1420,6 +1519,7 @@
             loadInstalledSkills(),
             loadChannels(),
             loadMobileNodes(),
+            loadMobileCommands(),
             loadSessions(),
             loadMemory(),
             loadJobs(),
@@ -1808,6 +1908,20 @@
           await loadMobileNodes();
         } catch (error) {
           setText("mobile-node-detail", { error: error.message });
+        }
+      });
+      document.getElementById("mobile-commands-refresh").addEventListener("click", async () => {
+        try {
+          await loadMobileCommands();
+        } catch (error) {
+          setText("mobile-command-detail", { error: error.message });
+        }
+      });
+      document.getElementById("mobile-command-dispatch").addEventListener("click", async () => {
+        try {
+          await dispatchMobileCommand();
+        } catch (error) {
+          setText("mobile-command-detail", { error: error.message });
         }
       });
       document.getElementById("mobile-preview-message").addEventListener("click", async () => {

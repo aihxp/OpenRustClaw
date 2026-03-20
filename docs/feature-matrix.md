@@ -87,5 +87,5 @@ Status values:
 | Area | Status | Notes |
 | --- | --- | --- |
 | Voice | partial | Talk mode still remains feature-gated, but the shipped voice runtime now covers provider-backed inbound voice-note transcription plus CLI/API/UI `voice status|voices|transcribe|synthesize` operator surfaces with synthesized audio artifacts; the remaining gap is full live voice/talk-mode parity rather than the core voice-note runtime lane |
-| Mobile sync | partial | File-backed mobile node manifests plus CLI/API/UI inspection and preview surfaces now exist for node readiness, message-envelope preview, notification preview, and sync-readiness preview; real device-command and paired-node parity are still open |
+| Mobile sync | partial | File-backed mobile node manifests plus CLI/API/UI inspection and preview surfaces now exist for node readiness, message-envelope preview, notification preview, sync-readiness preview, and a bounded approval-gated device-command lane with persisted receipts; richer paired-node/runtime capability parity remains a Phase 7 track |
 | Distributed clustering | gated | Repo surface exists, not part of current shipped surface |

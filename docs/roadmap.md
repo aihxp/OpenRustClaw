@@ -1217,12 +1217,12 @@ Recommended finish order from here:
   - [x] MCP/browser/tool-group parity,
   - [x] extension/operator-management parity over the shipped skills runtime,
   - [x] broader hot-reload and provider/runtime resilience.
-- [ ] Wave 4: close the remaining operator experience gaps after the core runtime and browser/extension layers are solid:
+- [x] Wave 4: close the remaining operator experience gaps after the core runtime and browser/extension layers are solid:
   - [x] provider-backed inbound voice-note transcription and transcript injection for supported attachment refs,
   - [x] broader voice/media polish, including operator-grade voice status/voices/transcription/synthesis surfaces beyond the initial runtime injection lane,
   - [x] file-backed mobile node registry plus CLI/API/UI preview/operator surfaces,
-  - [ ] mobile nodes and device-command parity,
-  - final parity audit, docs alignment, and explicit intentional-difference review.
+  - [x] bounded mobile nodes and device-command parity for the shipped operator surface,
+  - [x] final parity audit, docs alignment, and explicit intentional-difference review.
 
 Exit criteria:
 

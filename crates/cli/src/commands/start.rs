@@ -2547,6 +2547,20 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             "/control/mobile/nodes/{id}/status",
             get(mobile_node_status_handler),
         )
+        .route("/control/mobile/commands", get(mobile_commands_handler))
+        .route(
+            "/control/mobile/commands/dispatch",
+            post(mobile_command_dispatch_handler),
+        )
+        .route("/control/mobile/commands/{id}", get(mobile_command_handler))
+        .route(
+            "/control/mobile/commands/{id}/approve",
+            post(mobile_command_approve_handler),
+        )
+        .route(
+            "/control/mobile/commands/{id}/reject",
+            post(mobile_command_reject_handler),
+        )
         .route(
             "/control/mobile/messages/preview",
             post(mobile_message_preview_handler),
@@ -3600,6 +3614,14 @@ struct RefreshQuery {
     refresh: bool,
 }
 
+#[derive(serde::Deserialize, Default)]
+struct MobileCommandsQuery {
+    #[serde(default)]
+    node_id: Option<String>,
+    #[serde(default)]
+    limit: Option<usize>,
+}
+
 async fn runtime_status_handler(State(state): State<RuntimeControlState>) -> impl IntoResponse {
     match runtime::runtime_status(&state.config_path, &state.workspace_root) {
         Ok(status) => (StatusCode::OK, Json(serde_json::json!(status))).into_response(),
@@ -3744,6 +3766,82 @@ async fn mobile_node_status_handler(
 ) -> impl IntoResponse {
     match mobile::node_status_data(&state.workspace_root, &id) {
         Ok(status) => (StatusCode::OK, Json(serde_json::json!(status))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn mobile_commands_handler(
+    State(state): State<RuntimeControlState>,
+    Query(query): Query<MobileCommandsQuery>,
+) -> impl IntoResponse {
+    match mobile::list_command_data(&state.workspace_root, query.node_id.as_deref(), query.limit) {
+        Ok(commands) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "commands": commands })),
+        )
+            .into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn mobile_command_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(id): AxumPath<String>,
+) -> impl IntoResponse {
+    match mobile::inspect_command_data(&state.workspace_root, &id) {
+        Ok(command) => (StatusCode::OK, Json(serde_json::json!(command))).into_response(),
+        Err(error) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn mobile_command_dispatch_handler(
+    State(state): State<RuntimeControlState>,
+    Json(payload): Json<mobile::MobileCommandDispatchRequest>,
+) -> impl IntoResponse {
+    match mobile::dispatch_command_data(&state.workspace_root, payload).await {
+        Ok(command) => (StatusCode::OK, Json(serde_json::json!(command))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn mobile_command_approve_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(id): AxumPath<String>,
+    Json(payload): Json<mobile::MobileCommandDecisionRequest>,
+) -> impl IntoResponse {
+    match mobile::approve_command_data(&state.workspace_root, &id, payload).await {
+        Ok(command) => (StatusCode::OK, Json(serde_json::json!(command))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn mobile_command_reject_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(id): AxumPath<String>,
+    Json(payload): Json<mobile::MobileCommandDecisionRequest>,
+) -> impl IntoResponse {
+    match mobile::reject_command_data(&state.workspace_root, &id, payload) {
+        Ok(command) => (StatusCode::OK, Json(serde_json::json!(command))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": error.to_string()})),

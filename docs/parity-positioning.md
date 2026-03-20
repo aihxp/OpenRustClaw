@@ -49,7 +49,7 @@ LangGraph may execute a bounded workflow run. It should not be the only durabili
 ## Where We Still Trail OpenClaw
 
 - Full Web Control UI parity
-- Full mobile nodes and device-command flows
+- Full mobile nodes/runtime capability flows beyond the newly shipped bounded command lane
 - Voice-note transcription parity
 - Broader extension/plugin-channel parity beyond the shipped Rust-native Mattermost channel
 - Optional deferred channel scope such as Feishu/Lark if the product scope expands to include it
@@ -72,9 +72,9 @@ The remaining parity work is not being treated as "add every autonomous feature 
 
 From here, the preferred remaining order is:
 
-- close the remaining Wave 4 operator-experience gaps:
-  - full mobile nodes/device-command parity beyond the newly landed registry and preview/operator surfaces,
-  - the final parity audit;
+- keep the richer Phase 7 mobile/runtime capability work explicit:
+  - full mobile node runtime and broader device capability flows beyond the newly shipped bounded command lane,
+  - typed node protocols and deeper platform capability coverage;
 - keep the later channel auto-restart and broader operations hardening work explicit instead of blurring it into the already-shipped Wave 3 runtime reload/resilience surfaces.
 
 This order is intentional. OpenRustClaw should get more autonomous only when operators can still see what it is doing, understand why it made a decision, and stop or steer it safely.

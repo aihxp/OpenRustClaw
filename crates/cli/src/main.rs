@@ -1220,6 +1220,46 @@ enum MobileAction {
         #[arg(long, default_value_t = 0)]
         pending_change_count: usize,
     },
+    /// List persisted mobile command receipts
+    Commands {
+        #[arg(long)]
+        node_id: Option<String>,
+        #[arg(long)]
+        limit: Option<usize>,
+    },
+    /// Inspect one mobile command receipt
+    CommandStatus { id: String },
+    /// Dispatch a capability-gated mobile command
+    DispatchCommand {
+        #[arg(long)]
+        node_id: String,
+        #[arg(long)]
+        command: String,
+        #[arg(long = "payload")]
+        payload: Vec<String>,
+        #[arg(long)]
+        approved_by: Option<String>,
+        #[arg(long)]
+        require_approval: Option<bool>,
+    },
+    /// Approve and execute a pending mobile command
+    ApproveCommand {
+        #[arg(long)]
+        id: String,
+        #[arg(long)]
+        decided_by: String,
+        #[arg(long)]
+        reason: Option<String>,
+    },
+    /// Reject a pending mobile command
+    RejectCommand {
+        #[arg(long)]
+        id: String,
+        #[arg(long)]
+        decided_by: String,
+        #[arg(long)]
+        reason: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -2584,6 +2624,66 @@ async fn main() -> Result<()> {
                             battery_percent,
                             pending_change_count,
                         },
+                    )
+                    .await
+                }
+                MobileAction::Commands { node_id, limit } => {
+                    commands::mobile::list_commands(&workspace_root, node_id.as_deref(), limit)
+                        .await
+                }
+                MobileAction::CommandStatus { id } => {
+                    commands::mobile::inspect_command(&workspace_root, &id).await
+                }
+                MobileAction::DispatchCommand {
+                    node_id,
+                    command,
+                    payload,
+                    approved_by,
+                    require_approval,
+                } => {
+                    let payload = payload
+                        .into_iter()
+                        .filter_map(|entry| {
+                            let (key, value) = entry.split_once('=')?;
+                            Some((
+                                key.to_string(),
+                                serde_json::Value::String(value.to_string()),
+                            ))
+                        })
+                        .collect::<serde_json::Map<String, serde_json::Value>>();
+                    commands::mobile::dispatch_command(
+                        &workspace_root,
+                        commands::mobile::MobileCommandDispatchRequest {
+                            node_id,
+                            command,
+                            payload: serde_json::Value::Object(payload),
+                            approved_by,
+                            require_approval,
+                        },
+                    )
+                    .await
+                }
+                MobileAction::ApproveCommand {
+                    id,
+                    decided_by,
+                    reason,
+                } => {
+                    commands::mobile::approve_command(
+                        &workspace_root,
+                        &id,
+                        commands::mobile::MobileCommandDecisionRequest { decided_by, reason },
+                    )
+                    .await
+                }
+                MobileAction::RejectCommand {
+                    id,
+                    decided_by,
+                    reason,
+                } => {
+                    commands::mobile::reject_command(
+                        &workspace_root,
+                        &id,
+                        commands::mobile::MobileCommandDecisionRequest { decided_by, reason },
                     )
                     .await
                 }

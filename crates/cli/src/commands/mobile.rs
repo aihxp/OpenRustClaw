@@ -3,6 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, anyhow};
+use chrono::{DateTime, Utc};
 use openrustclaw_mobile::node::MobileMessage;
 use openrustclaw_mobile::notifications::{
     Notification, NotificationConfig, NotificationPriority, NotificationType,
@@ -10,6 +11,7 @@ use openrustclaw_mobile::notifications::{
 use openrustclaw_mobile::sync::{
     ConflictResolution, SyncConfig, SyncManager, SyncMode, SyncPriority,
 };
+use openrustclaw_mobile::{MobileNodeHandle, NodeConfig};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -139,6 +141,48 @@ pub struct MobileSyncPreviewRequest {
     pub battery_percent: u8,
     #[serde(default)]
     pub pending_change_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MobileCommandDispatchRequest {
+    pub node_id: String,
+    pub command: String,
+    #[serde(default)]
+    pub payload: Value,
+    #[serde(default)]
+    pub approved_by: Option<String>,
+    #[serde(default)]
+    pub require_approval: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MobileCommandDecisionRequest {
+    pub decided_by: String,
+    #[serde(default)]
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MobileCommandRecord {
+    pub id: String,
+    pub node_id: String,
+    pub command: String,
+    pub required_capability: String,
+    pub approval_required: bool,
+    pub status: String,
+    #[serde(default)]
+    pub payload: Value,
+    #[serde(default)]
+    pub result: Value,
+    pub created_at: DateTime<Utc>,
+    #[serde(default)]
+    pub approved_by: Option<String>,
+    #[serde(default)]
+    pub decided_reason: Option<String>,
+    #[serde(default)]
+    pub approved_at: Option<DateTime<Utc>>,
+    #[serde(default)]
+    pub executed_at: Option<DateTime<Utc>>,
 }
 
 fn default_true() -> bool {
@@ -387,6 +431,322 @@ pub fn preview_sync_data(
     }))
 }
 
+pub fn list_command_data(
+    workspace_root: &Path,
+    node_id: Option<&str>,
+    limit: Option<usize>,
+) -> Result<Vec<MobileCommandRecord>> {
+    let mut entries = Vec::new();
+    let dir = commands_dir(workspace_root);
+    if !dir.exists() {
+        return Ok(entries);
+    }
+
+    for entry in fs::read_dir(&dir).with_context(|| format!("failed to read {}", dir.display()))? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.extension().and_then(|value| value.to_str()) != Some("json") {
+            continue;
+        }
+        let bytes = fs::read_to_string(&path)
+            .with_context(|| format!("failed to read {}", path.display()))?;
+        let record: MobileCommandRecord = serde_json::from_str(&bytes)
+            .with_context(|| format!("failed to parse {}", path.display()))?;
+        if let Some(node_id) = node_id
+            && record.node_id != node_id
+        {
+            continue;
+        }
+        entries.push(record);
+    }
+
+    entries.sort_by(|left, right| right.created_at.cmp(&left.created_at));
+    if let Some(limit) = limit {
+        entries.truncate(limit);
+    }
+    Ok(entries)
+}
+
+pub fn inspect_command_data(
+    workspace_root: &Path,
+    command_id: &str,
+) -> Result<MobileCommandRecord> {
+    let path = command_path(workspace_root, command_id);
+    let bytes =
+        fs::read_to_string(&path).with_context(|| format!("failed to read {}", path.display()))?;
+    serde_json::from_str(&bytes).with_context(|| format!("failed to parse {}", path.display()))
+}
+
+pub async fn dispatch_command_data(
+    workspace_root: &Path,
+    request: MobileCommandDispatchRequest,
+) -> Result<MobileCommandRecord> {
+    let manifest = inspect_node_data(workspace_root, &request.node_id)?;
+    let status = node_status_data(workspace_root, &request.node_id)?;
+    let command = request.command.trim().to_ascii_lowercase();
+    if command.is_empty() {
+        return Err(anyhow!("command is required"));
+    }
+
+    let capability = required_capability_for_command(&command);
+    if !manifest
+        .node
+        .capabilities
+        .iter()
+        .any(|entry| entry == capability)
+    {
+        return Err(anyhow!(
+            "node '{}' does not advertise required capability '{}'",
+            manifest.node.id,
+            capability
+        ));
+    }
+
+    let approval_required = request
+        .require_approval
+        .unwrap_or_else(|| default_command_requires_approval(&command));
+    let mut record = MobileCommandRecord {
+        id: uuid::Uuid::new_v4().to_string(),
+        node_id: manifest.node.id.clone(),
+        command: command.clone(),
+        required_capability: capability.to_string(),
+        approval_required,
+        status: if approval_required && request.approved_by.is_none() {
+            "pending_approval".to_string()
+        } else {
+            "approved".to_string()
+        },
+        payload: request.payload,
+        result: Value::Null,
+        created_at: Utc::now(),
+        approved_by: request.approved_by.clone(),
+        decided_reason: None,
+        approved_at: request.approved_by.as_ref().map(|_| Utc::now()),
+        executed_at: None,
+    };
+
+    if record.status == "approved" {
+        record.result = execute_command_for_node(&manifest, &status, &record).await?;
+        record.status = "executed".to_string();
+        record.executed_at = Some(Utc::now());
+    }
+
+    write_command_record(workspace_root, &record)?;
+    Ok(record)
+}
+
+pub async fn approve_command_data(
+    workspace_root: &Path,
+    command_id: &str,
+    request: MobileCommandDecisionRequest,
+) -> Result<MobileCommandRecord> {
+    let mut record = inspect_command_data(workspace_root, command_id)?;
+    if record.status != "pending_approval" {
+        return Err(anyhow!("command '{}' is not pending approval", record.id));
+    }
+    let manifest = inspect_node_data(workspace_root, &record.node_id)?;
+    let status = node_status_data(workspace_root, &record.node_id)?;
+
+    record.status = "approved".to_string();
+    record.approved_by = Some(request.decided_by);
+    record.decided_reason = request.reason;
+    record.approved_at = Some(Utc::now());
+    record.result = execute_command_for_node(&manifest, &status, &record).await?;
+    record.status = "executed".to_string();
+    record.executed_at = Some(Utc::now());
+
+    write_command_record(workspace_root, &record)?;
+    Ok(record)
+}
+
+pub fn reject_command_data(
+    workspace_root: &Path,
+    command_id: &str,
+    request: MobileCommandDecisionRequest,
+) -> Result<MobileCommandRecord> {
+    let mut record = inspect_command_data(workspace_root, command_id)?;
+    if record.status != "pending_approval" {
+        return Err(anyhow!("command '{}' is not pending approval", record.id));
+    }
+
+    record.status = "rejected".to_string();
+    record.approved_by = Some(request.decided_by);
+    record.decided_reason = request.reason;
+    record.approved_at = Some(Utc::now());
+    write_command_record(workspace_root, &record)?;
+    Ok(record)
+}
+
+fn write_command_record(workspace_root: &Path, record: &MobileCommandRecord) -> Result<()> {
+    fs::create_dir_all(commands_dir(workspace_root)).with_context(|| {
+        format!(
+            "failed to create {}",
+            commands_dir(workspace_root).display()
+        )
+    })?;
+    let path = command_path(workspace_root, &record.id);
+    fs::write(
+        &path,
+        serde_json::to_vec_pretty(record).context("failed to serialize mobile command record")?,
+    )
+    .with_context(|| format!("failed to write {}", path.display()))
+}
+
+async fn execute_command_for_node(
+    manifest: &MobileNodeManifest,
+    status: &MobileNodeStatus,
+    record: &MobileCommandRecord,
+) -> Result<Value> {
+    if status.readiness != "ready_for_runtime" {
+        return Err(anyhow!(
+            "node '{}' is not ready for runtime execution ({})",
+            manifest.node.id,
+            status.readiness
+        ));
+    }
+
+    match record.command.as_str() {
+        "send_message" => execute_send_message_command(manifest, &record.payload).await,
+        "push_notification" => execute_push_notification_command(manifest, &record.payload),
+        "sync_now" => execute_sync_now_command(manifest, &record.payload).await,
+        other => Err(anyhow!("unsupported mobile command '{}'", other)),
+    }
+}
+
+async fn execute_send_message_command(
+    manifest: &MobileNodeManifest,
+    payload: &Value,
+) -> Result<Value> {
+    let target = payload
+        .get("target")
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| anyhow!("send_message requires payload.target"))?;
+    let content = payload
+        .get("content")
+        .and_then(Value::as_str)
+        .ok_or_else(|| anyhow!("send_message requires payload.content"))?;
+    let auth_token = std::env::var(&manifest.node.auth_token_env).with_context(|| {
+        format!(
+            "{} environment variable not set",
+            manifest.node.auth_token_env
+        )
+    })?;
+    let config = NodeConfig::new(
+        manifest.node.id.clone(),
+        manifest.node.gateway_url.clone(),
+        auth_token,
+    )
+    .with_device_name(manifest.node.device_name.clone())
+    .with_capabilities(manifest.node.capabilities.clone())
+    .with_sync_config(sync_config_from_spec(&manifest.node.sync)?);
+    let target = target.to_string();
+    let content = content.to_string();
+    let target_for_send = target.clone();
+    let content_for_send = content.clone();
+
+    let message_id = tokio::task::spawn_blocking(move || -> Result<String> {
+        let handle = MobileNodeHandle::new(config).context("failed to initialize mobile node")?;
+        handle.start().context("failed to start mobile node")?;
+        let result = handle
+            .send_message(&target_for_send, &content_for_send)
+            .context("failed to send mobile message")?;
+        handle.stop();
+        Ok(result)
+    })
+    .await
+    .context("failed to join mobile message task")??;
+
+    Ok(json!({
+        "transport": "mobile_node_handle",
+        "target": target,
+        "content_length": content.chars().count(),
+        "message_id": message_id,
+    }))
+}
+
+fn execute_push_notification_command(
+    manifest: &MobileNodeManifest,
+    payload: &Value,
+) -> Result<Value> {
+    let preview = preview_notification_data(MobileNotificationPreviewRequest {
+        title: payload
+            .get("title")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        body: payload
+            .get("body")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        priority: payload
+            .get("priority")
+            .and_then(Value::as_str)
+            .map(ToString::to_string),
+        notification_type: payload
+            .get("type")
+            .and_then(Value::as_str)
+            .map(ToString::to_string),
+        data: payload
+            .get("data")
+            .and_then(Value::as_object)
+            .map(|object| {
+                object
+                    .iter()
+                    .filter_map(|(key, value)| {
+                        value.as_str().map(|value| (key.clone(), value.to_string()))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default(),
+    })?;
+    Ok(json!({
+        "transport": "notification_preview",
+        "node_id": manifest.node.id,
+        "notification": preview,
+    }))
+}
+
+async fn execute_sync_now_command(manifest: &MobileNodeManifest, payload: &Value) -> Result<Value> {
+    let mut manager = SyncManager::new(sync_config_from_spec(&manifest.node.sync)?);
+    let pending_change_count = payload
+        .get("pending_change_count")
+        .and_then(Value::as_u64)
+        .unwrap_or(0) as usize;
+    for index in 0..pending_change_count {
+        manager.queue_change(openrustclaw_mobile::sync::SyncChange::new(
+            format!("queued-{index}"),
+            "mobile_command",
+            openrustclaw_mobile::sync::SyncOperation::Update,
+            json!({ "index": index }),
+        ));
+    }
+    let result = manager
+        .sync()
+        .await
+        .context("failed to execute sync manager")?;
+    Ok(json!({
+        "transport": "sync_manager",
+        "node_id": manifest.node.id,
+        "pending_change_count": pending_change_count,
+        "sync_result": result,
+    }))
+}
+
+fn required_capability_for_command(command: &str) -> &'static str {
+    match command {
+        "send_message" => "mobile",
+        "push_notification" => "notifications",
+        "sync_now" => "mobile",
+        _ => "mobile",
+    }
+}
+
+fn default_command_requires_approval(command: &str) -> bool {
+    !matches!(command, "sync_now")
+}
+
 pub async fn list_nodes(workspace_root: &Path) -> Result<()> {
     let entries = list_nodes_data(workspace_root)?;
     println!(
@@ -432,6 +792,54 @@ pub async fn preview_sync(workspace_root: &Path, request: MobileSyncPreviewReque
     Ok(())
 }
 
+pub async fn list_commands(
+    workspace_root: &Path,
+    node_id: Option<&str>,
+    limit: Option<usize>,
+) -> Result<()> {
+    let commands = list_command_data(workspace_root, node_id, limit)?;
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&json!({ "commands": commands }))?
+    );
+    Ok(())
+}
+
+pub async fn inspect_command(workspace_root: &Path, command_id: &str) -> Result<()> {
+    let command = inspect_command_data(workspace_root, command_id)?;
+    println!("{}", serde_json::to_string_pretty(&command)?);
+    Ok(())
+}
+
+pub async fn dispatch_command(
+    workspace_root: &Path,
+    request: MobileCommandDispatchRequest,
+) -> Result<()> {
+    let command = dispatch_command_data(workspace_root, request).await?;
+    println!("{}", serde_json::to_string_pretty(&command)?);
+    Ok(())
+}
+
+pub async fn approve_command(
+    workspace_root: &Path,
+    command_id: &str,
+    request: MobileCommandDecisionRequest,
+) -> Result<()> {
+    let command = approve_command_data(workspace_root, command_id, request).await?;
+    println!("{}", serde_json::to_string_pretty(&command)?);
+    Ok(())
+}
+
+pub async fn reject_command(
+    workspace_root: &Path,
+    command_id: &str,
+    request: MobileCommandDecisionRequest,
+) -> Result<()> {
+    let command = reject_command_data(workspace_root, command_id, request)?;
+    println!("{}", serde_json::to_string_pretty(&command)?);
+    Ok(())
+}
+
 fn mobile_root(workspace_root: &Path) -> PathBuf {
     workspace_root.join(DEFAULT_MOBILE_ROOT)
 }
@@ -440,8 +848,16 @@ fn nodes_dir(workspace_root: &Path) -> PathBuf {
     mobile_root(workspace_root).join("nodes")
 }
 
+fn commands_dir(workspace_root: &Path) -> PathBuf {
+    mobile_root(workspace_root).join("commands")
+}
+
 fn manifest_path(workspace_root: &Path, node_id: &str) -> PathBuf {
     nodes_dir(workspace_root).join(format!("{node_id}.json"))
+}
+
+fn command_path(workspace_root: &Path, command_id: &str) -> PathBuf {
+    commands_dir(workspace_root).join(format!("{command_id}.json"))
 }
 
 fn parse_notification_priority(raw: Option<&str>) -> Result<NotificationPriority> {
@@ -578,5 +994,144 @@ mod tests {
         assert_eq!(preview["target"], "main-gateway");
         assert_eq!(preview["content_type"], "text/plain");
         assert_eq!(preview["content_preview"], "hello");
+    }
+
+    #[tokio::test]
+    async fn dispatch_command_requires_approval_by_default() {
+        let temp = tempdir().expect("tempdir");
+        unsafe {
+            std::env::set_var("MOBILE_TOKEN_APPROVAL", "secret");
+        }
+        pair_node_data(
+            temp.path(),
+            MobilePairRequest {
+                id: "iphone-2".to_string(),
+                gateway_url: "wss://example.com/gateway".to_string(),
+                auth_token_env: "MOBILE_TOKEN_APPROVAL".to_string(),
+                device_name: Some("Studio iPhone".to_string()),
+                platform: Some("ios".to_string()),
+                capabilities: vec!["mobile".to_string(), "notifications".to_string()],
+                enabled: true,
+                sync: None,
+                notifications: None,
+                metadata: Value::Null,
+            },
+        )
+        .expect("pair node");
+
+        let record = dispatch_command_data(
+            temp.path(),
+            MobileCommandDispatchRequest {
+                node_id: "iphone-2".to_string(),
+                command: "send_message".to_string(),
+                payload: json!({"target":"ops-room","content":"hello"}),
+                approved_by: None,
+                require_approval: None,
+            },
+        )
+        .await
+        .expect("dispatch command");
+
+        assert_eq!(record.status, "pending_approval");
+        unsafe {
+            std::env::remove_var("MOBILE_TOKEN_APPROVAL");
+        }
+    }
+
+    #[tokio::test]
+    async fn approve_command_executes_mobile_message_lane() {
+        let temp = tempdir().expect("tempdir");
+        unsafe {
+            std::env::set_var("MOBILE_TOKEN_EXEC", "secret");
+        }
+        pair_node_data(
+            temp.path(),
+            MobilePairRequest {
+                id: "iphone-3".to_string(),
+                gateway_url: "wss://example.com/gateway".to_string(),
+                auth_token_env: "MOBILE_TOKEN_EXEC".to_string(),
+                device_name: Some("Studio iPhone".to_string()),
+                platform: Some("ios".to_string()),
+                capabilities: vec!["mobile".to_string(), "notifications".to_string()],
+                enabled: true,
+                sync: None,
+                notifications: None,
+                metadata: Value::Null,
+            },
+        )
+        .expect("pair node");
+
+        let pending = dispatch_command_data(
+            temp.path(),
+            MobileCommandDispatchRequest {
+                node_id: "iphone-3".to_string(),
+                command: "send_message".to_string(),
+                payload: json!({"target":"ops-room","content":"hello"}),
+                approved_by: None,
+                require_approval: Some(true),
+            },
+        )
+        .await
+        .expect("dispatch command");
+
+        let approved = approve_command_data(
+            temp.path(),
+            &pending.id,
+            MobileCommandDecisionRequest {
+                decided_by: "operator".to_string(),
+                reason: Some("ship it".to_string()),
+            },
+        )
+        .await
+        .expect("approve command");
+
+        assert_eq!(approved.status, "executed");
+        assert_eq!(approved.result["transport"], "mobile_node_handle");
+        assert!(approved.result["message_id"].as_str().is_some());
+        unsafe {
+            std::env::remove_var("MOBILE_TOKEN_EXEC");
+        }
+    }
+
+    #[tokio::test]
+    async fn dispatch_command_rejects_missing_capability() {
+        let temp = tempdir().expect("tempdir");
+        unsafe {
+            std::env::set_var("MOBILE_TOKEN_CAPS", "secret");
+        }
+        pair_node_data(
+            temp.path(),
+            MobilePairRequest {
+                id: "iphone-4".to_string(),
+                gateway_url: "wss://example.com/gateway".to_string(),
+                auth_token_env: "MOBILE_TOKEN_CAPS".to_string(),
+                device_name: Some("Studio iPhone".to_string()),
+                platform: Some("ios".to_string()),
+                capabilities: vec!["mobile".to_string()],
+                enabled: true,
+                sync: None,
+                notifications: None,
+                metadata: Value::Null,
+            },
+        )
+        .expect("pair node");
+
+        let error = dispatch_command_data(
+            temp.path(),
+            MobileCommandDispatchRequest {
+                node_id: "iphone-4".to_string(),
+                command: "push_notification".to_string(),
+                payload: json!({"title":"hello","body":"world"}),
+                approved_by: Some("operator".to_string()),
+                require_approval: Some(false),
+            },
+        )
+        .await
+        .expect_err("missing capability should fail");
+
+        assert!(error.to_string().contains("required capability"));
+        unsafe {
+            std::env::remove_var("MOBILE_TOKEN_CAPS");
+        }
     }
 }
