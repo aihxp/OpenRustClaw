@@ -13,6 +13,7 @@ pub mod inspect;
 pub mod logs;
 pub mod matrix;
 pub mod mcp2cli;
+pub mod media;
 pub mod meet;
 pub mod memory;
 pub mod mobile;

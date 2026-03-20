@@ -1272,6 +1272,7 @@ Remaining:
   - image receive/send,
   - audio receive/send,
   - document receive/send,
+  - [x] bounded local image/document inspection and text extraction operator surfaces,
   - [x] voice-note transcription,
   - [x] transcript injection,
   - [x] provider pluggability for the shipped OpenAI-compatible voice STT/TTS lane plus the bounded Deepgram STT lane,

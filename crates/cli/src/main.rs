@@ -95,6 +95,11 @@ enum Commands {
         #[command(subcommand)]
         action: MobileAction,
     },
+    /// Bounded local media inspection and text extraction
+    Media {
+        #[command(subcommand)]
+        action: MediaAction,
+    },
     /// Manage file-backed control-plane profiles and multi-claw runtime mode
     Control {
         #[command(subcommand)]
@@ -1477,6 +1482,20 @@ enum MobileAction {
         decided_by: String,
         #[arg(long)]
         reason: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum MediaAction {
+    /// Inspect a local media artifact and report bounded metadata
+    Inspect {
+        #[arg(long)]
+        path: String,
+    },
+    /// Extract bounded text from a supported local media artifact
+    ExtractText {
+        #[arg(long)]
+        path: String,
     },
 }
 
@@ -3268,6 +3287,15 @@ async fn main() -> Result<()> {
                 }
             }
         }
+        Commands::Media { action } => match action {
+            MediaAction::Inspect { path } => {
+                commands::media::inspect(commands::media::MediaInspectRequest { path }).await
+            }
+            MediaAction::ExtractText { path } => {
+                commands::media::extract_text(commands::media::MediaExtractTextRequest { path })
+                    .await
+            }
+        },
         Commands::Control { action } => match action {
             ControlAction::Init { path } => commands::control::init(path.as_deref()),
             ControlAction::List { path } => commands::control::list(path.as_deref()),

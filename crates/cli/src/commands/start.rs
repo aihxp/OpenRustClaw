@@ -2721,6 +2721,11 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             "/control/mobile/capabilities/preview",
             post(mobile_capability_preview_handler),
         )
+        .route("/control/media/inspect", post(media_inspect_handler))
+        .route(
+            "/control/media/extract-text",
+            post(media_extract_text_handler),
+        )
         .route(
             "/control/runtime/reload-plan",
             get(runtime_reload_plan_handler),
@@ -4997,6 +5002,32 @@ async fn mobile_capability_preview_handler(
 ) -> impl IntoResponse {
     match mobile::preview_capability_data(&state.workspace_root, payload) {
         Ok(preview) => (StatusCode::OK, Json(serde_json::json!(preview))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn media_inspect_handler(
+    Json(payload): Json<super::media::MediaInspectRequest>,
+) -> impl IntoResponse {
+    match super::media::inspect_data(payload).await {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn media_extract_text_handler(
+    Json(payload): Json<super::media::MediaExtractTextRequest>,
+) -> impl IntoResponse {
+    match super::media::extract_text_data(payload).await {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": error.to_string()})),

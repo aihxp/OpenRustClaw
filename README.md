@@ -321,7 +321,7 @@ openrustclaw talk --wake-word "Hey Assistant"
 ```
 
 Wake word detection (Porcupine), speech-to-text, text-to-speech, and continuous talk mode. Audio dependencies are feature-gated behind `audio`.
-Inbound voice-note transcription can be enabled on the runtime path for supported channel attachments that already expose a local file path or a directly fetchable media URL, and operators now also have explicit `openrustclaw voice status|providers|sessions|voices|transcribe|synthesize|start-session|session-status|append-user|respond|end-session` plus matching `/control/voice/...` surfaces for readiness inspection, provider catalog/status across OpenAI-compatible STT/TTS plus Deepgram STT, bounded persisted voice-session receipts, ad hoc transcription, TTS voice discovery, and synthesized audio artifacts.
+Inbound voice-note transcription can be enabled on the runtime path for supported channel attachments that already expose a local file path or a directly fetchable media URL, and operators now also have explicit `openrustclaw voice status|providers|sessions|voices|transcribe|synthesize|start-session|session-status|append-user|respond|end-session` plus matching `/control/voice/...` surfaces for readiness inspection, provider catalog/status across OpenAI-compatible STT/TTS plus Deepgram STT, bounded persisted voice-session receipts, ad hoc transcription, TTS voice discovery, and synthesized audio artifacts. A new bounded local media lane also exists through `openrustclaw media inspect|extract-text` and `/control/media/inspect|extract-text` for local image/document inspection and text extraction where the shipped runtime already has real local primitives.
 
 ## Configuration
 
