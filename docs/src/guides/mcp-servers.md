@@ -109,6 +109,16 @@ This is the current production-ready transport for the built-in MCP server. The 
 
 Cursor and other MCP-capable tools use the same basic model: launch `openrustclaw mcp-server` as a stdio subprocess.
 
+The built-in MCP server now also includes the compiled skill cache as a live retrieval surface. When a local or installed skill has been compiled into `.claw/skills/compiled/`, MCP clients can inspect it through:
+
+- `list_compiled_skills`
+- `inspect_compiled_skill`
+- dynamic `skill.<name>.summary`
+- dynamic `skill.<name>.details`
+- dynamic `skill.<name>.reference...` tools for non-blocked compiled references
+
+This is intentionally retrieval-focused today. It exposes cached summaries, scan state, CLI/MCP schemas, and safe reference reads without pretending compiled skills are already a full executable plugin runtime.
+
 ---
 
 ## mcp2cli

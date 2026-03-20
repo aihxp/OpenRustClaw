@@ -65,7 +65,7 @@ Status values:
 
 | Area | Status | Notes |
 | --- | --- | --- |
-| MCP stdio server | real | Supported transport with workspace, memory, scheduling, and RAG collection/chunk inspection tools |
+| MCP stdio server | real | Supported transport with workspace, memory, scheduling, RAG collection/chunk inspection, and compiled-skill retrieval tools for summary/detail/reference access |
 | MCP remote HTTP/SSE | partial | `mcp2-cli --mcp` now supports remote legacy MCP SSE endpoints for tool discovery and execution; broader generic remote MCP transport parity is still not the main shipped runtime path |
 | `mcp2-cli` | real | Real stdio/OpenAPI discovery path plus remote legacy SSE support for the operator/debug lane |
 | Control-plane registry | real | `.claw/control/` now provides agent profiles, model profiles, Claw manifests, runtime-mode/task/category bindings, autonomy tiers and execution guardrails, operator-curated decision lessons, MCP inspection tools, onboarding scaffolding, doctor validation, and shared `/control/runtime` plus `/control/autonomy...` API inspection |

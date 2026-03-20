@@ -66,6 +66,9 @@ use openrustclaw_providers::ProviderChain;
 use openrustclaw_scheduler::{DurableEventBus, ReminderSender, RustWorkflowDispatcher};
 use openrustclaw_scheduler::{SchedulerWorker, worker::SchedulerConfig as WorkerSchedulerConfig};
 use openrustclaw_security::OriginValidator;
+use openrustclaw_skills::{
+    CompiledSkillArtifact, CompiledSkillStatus, list_compiled_manifests, load_compiled_artifact,
+};
 use sqlx::Row;
 use uuid::Uuid;
 
@@ -5527,10 +5530,12 @@ fn build_mcp_server(
     let session_store = SqliteSessionStore::new(pool.clone());
     let optimization_store = OptimizationStore::new(pool.clone());
     let event_bus = DurableEventBus::new(pool.clone(), 256);
+    let compiled_skill_artifacts = load_compiled_skill_artifacts(&workspace_root);
     let mut server = McpServer::new(McpServerConfig {
         name: "openrustclaw".to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
-        tools: vec![
+        tools: {
+            let mut tools = vec![
             McpServerTool {
                 name: "health".to_string(),
                 description: "Return basic OpenRustClaw workspace health".to_string(),
@@ -6160,7 +6165,10 @@ fn build_mcp_server(
                     }
                 }),
             },
-        ],
+            ];
+            tools.extend(compiled_skill_mcp_tools(&compiled_skill_artifacts));
+            tools
+        },
     });
 
     let root_for_health = workspace_root.clone();
@@ -6366,6 +6374,8 @@ fn build_mcp_server(
             })
         }),
     );
+
+    register_compiled_skill_mcp_handlers(&mut server, &compiled_skill_artifacts, langsmith.clone());
 
     let memory_store_for_search = memory_store.clone();
     let event_bus_for_search = event_bus.clone();
@@ -7771,6 +7781,346 @@ fn build_mcp_server(
     server
 }
 
+fn compiled_skill_root(workspace_root: &Path) -> PathBuf {
+    workspace_root.join(".claw").join("skills").join("compiled")
+}
+
+fn sanitize_compiled_skill_name(value: &str) -> String {
+    value
+        .chars()
+        .map(|ch| match ch {
+            'a'..='z' | 'A'..='Z' | '0'..='9' | '-' | '_' | '.' | '/' => ch,
+            _ => '-',
+        })
+        .collect::<String>()
+        .replace('/', "__")
+}
+
+fn compiled_skill_tool_prefix(name: &str) -> String {
+    format!("skill.{}", sanitize_compiled_skill_name(name))
+}
+
+fn compiled_skill_summary_tool_name(artifact: &CompiledSkillArtifact) -> String {
+    format!(
+        "{}.summary",
+        compiled_skill_tool_prefix(&artifact.manifest.name)
+    )
+}
+
+fn compiled_skill_details_tool_name(artifact: &CompiledSkillArtifact) -> String {
+    format!(
+        "{}.details",
+        compiled_skill_tool_prefix(&artifact.manifest.name)
+    )
+}
+
+fn compiled_skill_reference_tool_name(artifact: &CompiledSkillArtifact, reference: &str) -> String {
+    format!(
+        "{}.reference.{}",
+        compiled_skill_tool_prefix(&artifact.manifest.name),
+        sanitize_compiled_skill_name(reference)
+    )
+}
+
+fn load_compiled_skill_artifacts(workspace_root: &Path) -> Vec<CompiledSkillArtifact> {
+    let root = compiled_skill_root(workspace_root);
+    let manifests = match list_compiled_manifests(&root) {
+        Ok(manifests) => manifests,
+        Err(error) => {
+            warn!(
+                path = %root.display(),
+                error = %error,
+                "Failed to load compiled skill manifests for MCP registration"
+            );
+            return Vec::new();
+        }
+    };
+
+    manifests
+        .into_iter()
+        .filter_map(
+            |manifest| match load_compiled_artifact(&root, &manifest.name) {
+                Ok(artifact) => Some(artifact),
+                Err(error) => {
+                    warn!(
+                        skill = %manifest.name,
+                        path = %root.display(),
+                        error = %error,
+                        "Failed to load compiled skill artifact for MCP registration"
+                    );
+                    None
+                }
+            },
+        )
+        .collect()
+}
+
+fn compiled_skill_mcp_tools(artifacts: &[CompiledSkillArtifact]) -> Vec<McpServerTool> {
+    if artifacts.is_empty() {
+        return Vec::new();
+    }
+
+    let mut tools = vec![
+        McpServerTool {
+            name: "list_compiled_skills".to_string(),
+            description: "List compiled skills that are available to the MCP server.".to_string(),
+            input_schema: serde_json::json!({"type": "object", "properties": {}}),
+        },
+        McpServerTool {
+            name: "inspect_compiled_skill".to_string(),
+            description: "Inspect one compiled skill artifact bundle from the workspace cache."
+                .to_string(),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"}
+                },
+                "required": ["name"]
+            }),
+        },
+    ];
+
+    for artifact in artifacts {
+        tools.push(McpServerTool {
+            name: compiled_skill_summary_tool_name(artifact),
+            description: format!(
+                "Return the token-efficient compiled summary for skill '{}'.",
+                artifact.manifest.name
+            ),
+            input_schema: serde_json::json!({"type": "object", "properties": {}}),
+        });
+        tools.push(McpServerTool {
+            name: compiled_skill_details_tool_name(artifact),
+            description: format!(
+                "Return the compiled detail bundle for skill '{}'.",
+                artifact.manifest.name
+            ),
+            input_schema: serde_json::json!({"type": "object", "properties": {}}),
+        });
+
+        if !matches!(artifact.manifest.status, CompiledSkillStatus::Blocked) {
+            for reference in &artifact.manifest.references {
+                tools.push(McpServerTool {
+                    name: compiled_skill_reference_tool_name(artifact, reference),
+                    description: format!(
+                        "Read compiled skill reference '{}' from skill '{}'.",
+                        reference, artifact.manifest.name
+                    ),
+                    input_schema: serde_json::json!({
+                        "type": "object",
+                        "properties": {
+                            "max_chars": {"type": "integer", "minimum": 1}
+                        }
+                    }),
+                });
+            }
+        }
+    }
+
+    tools
+}
+
+fn compiled_skill_summary_payload(artifact: &CompiledSkillArtifact) -> serde_json::Value {
+    serde_json::json!({
+        "manifest": &artifact.manifest,
+        "help": {
+            "summary": &artifact.help_index.summary,
+            "argument_hint": &artifact.help_index.argument_hint,
+            "allowed_tools": &artifact.help_index.allowed_tools,
+            "capabilities": &artifact.help_index.capabilities,
+            "scripts": &artifact.help_index.scripts,
+            "references": &artifact.help_index.references,
+            "safety_notes": &artifact.help_index.safety_notes,
+        },
+        "cli": &artifact.cli_schema,
+        "mcp": {
+            "summary_tool": compiled_skill_summary_tool_name(artifact),
+            "details_tool": compiled_skill_details_tool_name(artifact),
+            "reference_tools": artifact
+                .manifest
+                .references
+                .iter()
+                .map(|reference| compiled_skill_reference_tool_name(artifact, reference))
+                .collect::<Vec<_>>(),
+        },
+        "scan_report": &artifact.scan_report,
+    })
+}
+
+fn compiled_skill_detail_payload(artifact: &CompiledSkillArtifact) -> serde_json::Value {
+    let blocked = matches!(artifact.manifest.status, CompiledSkillStatus::Blocked);
+    serde_json::json!({
+        "manifest": &artifact.manifest,
+        "help_index": {
+            "summary": &artifact.help_index.summary,
+            "body_excerpt": if blocked { serde_json::Value::Null } else { serde_json::json!(&artifact.help_index.body_excerpt) },
+            "argument_hint": &artifact.help_index.argument_hint,
+            "allowed_tools": &artifact.help_index.allowed_tools,
+            "capabilities": &artifact.help_index.capabilities,
+            "scripts": &artifact.help_index.scripts,
+            "references": &artifact.help_index.references,
+            "examples": if blocked { serde_json::json!([]) } else { serde_json::json!(&artifact.help_index.examples) },
+            "safety_notes": &artifact.help_index.safety_notes,
+        },
+        "mcp_schema": &artifact.mcp_schema,
+        "cli_schema": &artifact.cli_schema,
+        "scan_report": &artifact.scan_report,
+        "blocked_content_redacted": blocked,
+    })
+}
+
+fn read_compiled_skill_reference(
+    artifact: &CompiledSkillArtifact,
+    reference: &str,
+    max_chars: Option<usize>,
+) -> openrustclaw_core::error::Result<serde_json::Value> {
+    let skill_file = PathBuf::from(&artifact.manifest.local_path);
+    let skill_root = skill_file.parent().ok_or_else(|| {
+        mcp_tool_error(format!(
+            "Compiled skill '{}' does not have a resolvable root",
+            artifact.manifest.name
+        ))
+    })?;
+    let canonical_root = skill_root.canonicalize().map_err(|error| {
+        mcp_tool_error(format!(
+            "Failed to canonicalize skill root for '{}': {}",
+            artifact.manifest.name, error
+        ))
+    })?;
+    let reference_path = skill_root.join(reference);
+    let canonical_reference = reference_path.canonicalize().map_err(|error| {
+        mcp_tool_error(format!(
+            "Failed to resolve reference '{}' for '{}': {}",
+            reference, artifact.manifest.name, error
+        ))
+    })?;
+    if !canonical_reference.starts_with(&canonical_root) {
+        return Err(mcp_tool_error(format!(
+            "Reference '{}' escapes the skill root for '{}'",
+            reference, artifact.manifest.name
+        )));
+    }
+
+    let bytes = std::fs::read(&canonical_reference).map_err(|error| {
+        mcp_tool_error(format!(
+            "Failed to read reference '{}' for '{}': {}",
+            reference, artifact.manifest.name, error
+        ))
+    })?;
+    let metadata = std::fs::metadata(&canonical_reference).map_err(|error| {
+        mcp_tool_error(format!(
+            "Failed to stat reference '{}' for '{}': {}",
+            reference, artifact.manifest.name, error
+        ))
+    })?;
+    let max_chars = max_chars.unwrap_or(4000).max(1);
+    match String::from_utf8(bytes) {
+        Ok(text) => {
+            let char_len = text.chars().count();
+            let truncated = char_len > max_chars;
+            let content = if truncated {
+                text.chars().take(max_chars).collect::<String>()
+            } else {
+                text
+            };
+            Ok(serde_json::json!({
+                "skill": artifact.manifest.name,
+                "reference": reference,
+                "path": canonical_reference.display().to_string(),
+                "binary": false,
+                "bytes": metadata.len(),
+                "truncated": truncated,
+                "content": content,
+            }))
+        }
+        Err(error) => Ok(serde_json::json!({
+            "skill": artifact.manifest.name,
+            "reference": reference,
+            "path": canonical_reference.display().to_string(),
+            "binary": true,
+            "bytes": metadata.len(),
+            "encoding_error": error.to_string(),
+        })),
+    }
+}
+
+fn register_compiled_skill_mcp_handlers(
+    server: &mut McpServer,
+    artifacts: &[CompiledSkillArtifact],
+    langsmith: Option<LangSmithClient>,
+) {
+    if artifacts.is_empty() {
+        return;
+    }
+
+    let manifests = artifacts
+        .iter()
+        .map(|artifact| artifact.manifest.clone())
+        .collect::<Vec<_>>();
+    server.register_handler(
+        "list_compiled_skills",
+        traced_mcp_handler(langsmith.clone(), "list_compiled_skills", move |_| {
+            Ok(serde_json::json!({ "skills": manifests }))
+        }),
+    );
+
+    let artifacts_by_name = artifacts
+        .iter()
+        .map(|artifact| (artifact.manifest.name.clone(), artifact.clone()))
+        .collect::<HashMap<_, _>>();
+    server.register_handler(
+        "inspect_compiled_skill",
+        traced_mcp_handler(langsmith.clone(), "inspect_compiled_skill", move |args| {
+            let request: McpInspectCompiledSkillArgs = parse_tool_args(args)?;
+            let artifact = artifacts_by_name.get(&request.name).ok_or_else(|| {
+                mcp_tool_error(format!("Compiled skill '{}' was not found", request.name))
+            })?;
+            Ok(compiled_skill_detail_payload(artifact))
+        }),
+    );
+
+    for artifact in artifacts {
+        let summary_artifact = artifact.clone();
+        let summary_tool = compiled_skill_summary_tool_name(artifact);
+        server.register_handler(
+            &summary_tool,
+            traced_mcp_handler(langsmith.clone(), "compiled_skill_summary", move |_| {
+                Ok(compiled_skill_summary_payload(&summary_artifact))
+            }),
+        );
+
+        let detail_artifact = artifact.clone();
+        let detail_tool = compiled_skill_details_tool_name(artifact);
+        server.register_handler(
+            &detail_tool,
+            traced_mcp_handler(langsmith.clone(), "compiled_skill_details", move |_| {
+                Ok(compiled_skill_detail_payload(&detail_artifact))
+            }),
+        );
+
+        if matches!(artifact.manifest.status, CompiledSkillStatus::Blocked) {
+            continue;
+        }
+
+        for reference in &artifact.manifest.references {
+            let reference_name = reference.clone();
+            let reference_tool = compiled_skill_reference_tool_name(artifact, &reference_name);
+            let reference_artifact = artifact.clone();
+            server.register_handler(
+                &reference_tool,
+                traced_mcp_handler(langsmith.clone(), "compiled_skill_reference", move |args| {
+                    let request: McpCompiledSkillReferenceArgs = parse_tool_args(args)?;
+                    read_compiled_skill_reference(
+                        &reference_artifact,
+                        &reference_name,
+                        request.max_chars,
+                    )
+                }),
+            );
+        }
+    }
+}
+
 fn traced_mcp_handler<F>(
     langsmith: Option<LangSmithClient>,
     tool_name: &'static str,
@@ -8064,6 +8414,16 @@ struct McpListRagCollectionsArgs {
 struct McpLoadRagChunksArgs {
     collection_name: String,
     limit: Option<usize>,
+}
+
+#[derive(serde::Deserialize)]
+struct McpInspectCompiledSkillArgs {
+    name: String,
+}
+
+#[derive(serde::Deserialize, Default)]
+struct McpCompiledSkillReferenceArgs {
+    max_chars: Option<usize>,
 }
 
 #[derive(serde::Deserialize)]
@@ -8904,6 +9264,194 @@ mod tests {
         assert_eq!(load_payload["collection_name"], "docs");
         assert_eq!(load_payload["chunks"].as_array().unwrap().len(), 1);
         assert_eq!(load_payload["chunks"][0]["content"], "Rust ownership");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn mcp_server_exposes_compiled_skill_tools() {
+        let workspace = tempdir().unwrap();
+        let skill_dir = workspace.path().join("skills").join("demo");
+        std::fs::create_dir_all(skill_dir.join("references")).unwrap();
+        std::fs::write(
+            skill_dir.join("SKILL.md"),
+            r#"# Demo Skill
+
+Useful compiled skill.
+
+argument_hint: <topic>
+"#,
+        )
+        .unwrap();
+        std::fs::write(
+            skill_dir.join("references").join("guide.md"),
+            "This is the guide for the demo skill.",
+        )
+        .unwrap();
+        openrustclaw_skills::compile_skill_to_dir(
+            &skill_dir.join("SKILL.md"),
+            &workspace
+                .path()
+                .join(".claw")
+                .join("skills")
+                .join("compiled"),
+            openrustclaw_core::types::SkillSource::Workspace,
+            true,
+        )
+        .unwrap();
+
+        let db_path = workspace.path().join("mcp-compiled-skill.db");
+        let db_url = format!("sqlite://{}", db_path.display());
+        let pool = init_pool(&db_url, 1).await.unwrap();
+        run_migrations(&pool).await.unwrap();
+        let server = build_mcp_server(
+            workspace.path().to_path_buf(),
+            pool,
+            AppConfig::default(),
+            None,
+        );
+
+        let list_req = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 40,
+            "method": "tools/list",
+            "params": {}
+        });
+        let list_resp = server.handle_request(&list_req);
+        let tools = list_resp["result"]["tools"].as_array().unwrap();
+        assert!(
+            tools
+                .iter()
+                .any(|tool| tool["name"] == "list_compiled_skills")
+        );
+        assert!(
+            tools
+                .iter()
+                .any(|tool| tool["name"] == "skill.Demo-Skill.summary")
+        );
+        assert!(
+            tools
+                .iter()
+                .any(|tool| tool["name"] == "skill.Demo-Skill.details")
+        );
+        assert!(
+            tools
+                .iter()
+                .any(|tool| { tool["name"] == "skill.Demo-Skill.reference.references__guide.md" })
+        );
+
+        let summary_req = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 41,
+            "method": "tools/call",
+            "params": {
+                "name": "skill.Demo-Skill.summary",
+                "arguments": {}
+            }
+        });
+        let summary_resp = server.handle_request(&summary_req);
+        let summary_text = summary_resp["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap();
+        let summary_payload: serde_json::Value = serde_json::from_str(summary_text).unwrap();
+        assert_eq!(summary_payload["manifest"]["name"], "Demo Skill");
+        assert_eq!(summary_payload["help"]["summary"], "Useful compiled skill.");
+        assert_eq!(
+            summary_payload["cli"]["command"],
+            "openrustclaw skills invoke Demo Skill"
+        );
+
+        let reference_req = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 42,
+            "method": "tools/call",
+            "params": {
+                "name": "skill.Demo-Skill.reference.references__guide.md",
+                "arguments": {
+                    "max_chars": 4
+                }
+            }
+        });
+        let reference_resp = server.handle_request(&reference_req);
+        let reference_text = reference_resp["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap();
+        let reference_payload: serde_json::Value = serde_json::from_str(reference_text).unwrap();
+        assert_eq!(reference_payload["reference"], "references/guide.md");
+        assert_eq!(reference_payload["content"], "This");
+        assert_eq!(reference_payload["truncated"], true);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn mcp_server_redacts_blocked_compiled_skill_content() {
+        let workspace = tempdir().unwrap();
+        let skill_dir = workspace.path().join("skills").join("danger");
+        std::fs::create_dir_all(skill_dir.join("scripts")).unwrap();
+        std::fs::create_dir_all(skill_dir.join("references")).unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), "# Danger Skill\n\nSecretive.\n").unwrap();
+        std::fs::write(skill_dir.join("scripts").join("run.sh"), "rm -rf /\n").unwrap();
+        std::fs::write(
+            skill_dir.join("references").join("notes.md"),
+            "should not be exposed",
+        )
+        .unwrap();
+        openrustclaw_skills::compile_skill_to_dir(
+            &skill_dir.join("SKILL.md"),
+            &workspace
+                .path()
+                .join(".claw")
+                .join("skills")
+                .join("compiled"),
+            openrustclaw_core::types::SkillSource::Marketplace,
+            false,
+        )
+        .unwrap();
+
+        let db_path = workspace.path().join("mcp-blocked-skill.db");
+        let db_url = format!("sqlite://{}", db_path.display());
+        let pool = init_pool(&db_url, 1).await.unwrap();
+        run_migrations(&pool).await.unwrap();
+        let server = build_mcp_server(
+            workspace.path().to_path_buf(),
+            pool,
+            AppConfig::default(),
+            None,
+        );
+
+        let list_req = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 43,
+            "method": "tools/list",
+            "params": {}
+        });
+        let list_resp = server.handle_request(&list_req);
+        let tools = list_resp["result"]["tools"].as_array().unwrap();
+        assert!(
+            tools
+                .iter()
+                .any(|tool| tool["name"] == "skill.Danger-Skill.summary")
+        );
+        assert!(
+            !tools.iter().any(|tool| {
+                tool["name"] == "skill.Danger-Skill.reference.references__notes.md"
+            })
+        );
+
+        let details_req = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 44,
+            "method": "tools/call",
+            "params": {
+                "name": "skill.Danger-Skill.details",
+                "arguments": {}
+            }
+        });
+        let details_resp = server.handle_request(&details_req);
+        let details_text = details_resp["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap();
+        let details_payload: serde_json::Value = serde_json::from_str(details_text).unwrap();
+        assert_eq!(details_payload["manifest"]["status"], "blocked");
+        assert!(details_payload["help_index"]["body_excerpt"].is_null());
+        assert_eq!(details_payload["blocked_content_redacted"], true);
     }
 
     #[tokio::test(flavor = "multi_thread")]

@@ -1242,6 +1242,11 @@ Completed:
   - file-backed compiled manifests, help indexes, scan reports, and generated MCP/CLI schemas under `.claw/skills/compiled/`,
   - compile-on-install/update/verify behavior for local skill paths,
   - token-efficient skill summaries for model/tool routing and operator inspection.
+- [x] Compiled skills now expose a real MCP retrieval surface at startup:
+  - `list_compiled_skills`,
+  - `inspect_compiled_skill`,
+  - dynamic `skill.<name>.summary|details|reference...` tools for approved/scanned compiled skills,
+  - blocked compiled skills remain inspection-only with redacted content.
 
 Remaining:
 
