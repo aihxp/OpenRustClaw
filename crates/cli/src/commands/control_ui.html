@@ -445,6 +445,10 @@
             </table>
           </div>
         </article>
+        <article class="panel span-12">
+          <h2>Run Trace</h2>
+          <div class="surface"><pre id="orchestration-trace">Select an orchestration receipt to inspect trace entries.</pre></div>
+        </article>
 
         <article class="panel span-6">
           <h2>Sessions</h2>
@@ -767,13 +771,18 @@
           await inspectOrchestrationRun(runs[0].receipt_id);
         } else {
           setText("orchestration-detail", "No orchestration receipt selected.");
+          setText("orchestration-trace", "No orchestration receipt selected.");
         }
       }
 
       async function inspectOrchestrationRun(receiptId) {
         currentOrchestrationReceipt = receiptId;
-        const payload = await fetchJson(`/control/orchestration/runs/${encodeURIComponent(receiptId)}/supervision`);
+        const [payload, tracePayload] = await Promise.all([
+          fetchJson(`/control/orchestration/runs/${encodeURIComponent(receiptId)}/supervision`),
+          fetchJson(`/control/orchestration/runs/${encodeURIComponent(receiptId)}/trace`),
+        ]);
         setText("orchestration-detail", payload);
+        setText("orchestration-trace", tracePayload);
         const rows = (payload.reflection_candidates || []).map((candidate, index) => {
           return `<tr>
             <td><strong>${candidate.kind || "-"}</strong><div class="muted">${candidate.provider || "-"}</div></td>

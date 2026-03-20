@@ -705,7 +705,7 @@ Exit criteria:
 
 Goal: match OpenClaw's operator UX and tooling surface while keeping Rust-native interfaces.
 
-Status: complete for shipped CLI/MCP control-plane surfaces, shared typed control/config/diagnostics APIs, autonomy-tier and decision-lesson control surfaces, shared service-status and scheduler inspection APIs, shared session/memory/job inspection APIs, channel account CRUD parity, encrypted runtime secret-vault support, validated provider/model switching, runtime reload/cutover APIs with rollback, bounded routed/orchestrated multi-model execution surfaces with receipt capture, checkpoints, reflection candidates, reflection-to-lesson promotion, and lesson-aware steering context, onboarding scaffolding, doctor validation, a bounded native browser operator slice, and an initial Web Control UI shell with config/vault editing plus autonomy/lesson and run-supervision inspection; deeper Web Control UI parity, richer browser/web tooling, deeper channel/service probes, and full orchestrated runtime execution remain open.
+Status: complete for shipped CLI/MCP control-plane surfaces, shared typed control/config/diagnostics APIs, autonomy-tier and decision-lesson control surfaces, shared service-status and scheduler inspection APIs, shared session/memory/job inspection APIs, channel account CRUD parity, encrypted runtime secret-vault support, validated provider/model switching, runtime reload/cutover APIs with rollback, bounded routed/orchestrated multi-model execution surfaces with receipt capture, checkpoints, trace logs, parent/child delegation relationships, reflection candidates, reflection-to-lesson promotion, and lesson-aware steering context, onboarding scaffolding, doctor validation, a bounded native browser operator slice, and an initial Web Control UI shell with config/vault editing plus autonomy/lesson and run-supervision/run-trace inspection; deeper Web Control UI parity, richer browser/web tooling, deeper channel/service probes, and full orchestrated runtime execution remain open.
 
 Additional later-surface work:
 
@@ -817,6 +817,12 @@ Completed:
   - `POST /control/orchestration/runs/{receipt_id}/reflection-candidates/{index}/promote`,
   - `/control/ui` reflection-candidate promotion controls,
   - promoted lessons inherit scoped task/category/claw/model/provider/autonomy defaults from the run receipt instead of relying on hidden automatic policy mutation.
+- [x] Add orchestration trace visibility surfaces without forcing constant outer-loop intervention:
+  - planner/worker/synthesis trace entries persisted in receipts,
+  - parent/child delegation relationships persisted alongside the trace,
+  - `openrustclaw orchestrate trace`,
+  - `GET /control/orchestration/runs/{receipt_id}/trace`,
+  - `/control/ui` run-trace inspection panel.
 - [x] Add a bounded native browser operator surface backed by the Rust automation crate:
   - `openrustclaw browser navigate|extract|screenshot|pdf`,
   - `POST /control/browser/navigate`,
