@@ -299,7 +299,7 @@ List available tools (~16 tokens/tool vs 300-800 native).
 openrustclaw mcp2-cli list [OPTIONS]
 
 Options:
-      --mcp <URL>          MCP server URL (currently returns an unsupported error)
+      --mcp <URL>          MCP server URL for remote legacy SSE endpoints
       --mcp-stdio <CMD>    MCP server via stdio command line
       --spec <SPEC>        OpenAPI spec URL or file
       --base-url <URL>     Base URL for OpenAPI

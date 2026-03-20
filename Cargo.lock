@@ -6065,6 +6065,8 @@ dependencies = [
  "clap",
  "clap_complete",
  "dashmap",
+ "eventsource-stream",
+ "futures",
  "openapiv3",
  "openrustclaw-core",
  "openrustclaw-mcp",

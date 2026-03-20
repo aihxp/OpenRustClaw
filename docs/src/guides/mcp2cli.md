@@ -105,7 +105,7 @@ openrustclaw mcp2-cli cache stats
 | MCP stdio | `--mcp-stdio` | Supported | `npx -y @modelcontextprotocol/server-filesystem /tmp` |
 | OpenAPI URL | `--spec` | Supported | `https://api.example.com/openapi.json` |
 | OpenAPI file | `--spec` | Supported | `./api.yaml` |
-| MCP HTTP/SSE | `--mcp` | Not implemented in this repo | `https://mcp.example.com/sse` |
+| MCP HTTP/SSE | `--mcp` | Supported for remote legacy SSE endpoints | `https://mcp.example.com/sse` |
 
 ## Output Formats
 
@@ -178,8 +178,8 @@ registry.register(Arc::new(mcp_tool));
 
 ## Current Limitations
 
-- `--mcp-stdio` and OpenAPI sources are the supported runtime paths today.
-- The `--mcp` URL flag is present, but returns an explicit unsupported error until a real MCP HTTP/SSE transport is added.
+- `--mcp-stdio` and OpenAPI sources remain the simplest paths.
+- `--mcp` now supports remote legacy MCP SSE endpoints. It is intended for remote MCP servers that expose the older SSE handshake pattern rather than only local stdio servers.
 
 ## Comparison with Alternatives
 

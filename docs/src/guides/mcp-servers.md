@@ -178,4 +178,12 @@ Avoid broad access like `/` unless you fully trust the server and its callers.
 
 ### Remote MCP over SSE
 
-The current `mcp2-cli` implementation in this repo supports OpenAPI sources and MCP stdio sources. The `--mcp` URL flag exists, but it currently returns an explicit unsupported error because the HTTP/SSE transport is not implemented yet.
+`mcp2-cli` now supports remote legacy MCP SSE endpoints through `--mcp`:
+
+```bash
+openrustclaw mcp2-cli list --mcp https://mcp.example.com/sse
+openrustclaw mcp2-cli help --mcp https://mcp.example.com/sse read_file
+openrustclaw mcp2-cli run --mcp https://mcp.example.com/sse read_file --args '{"path":"README.md"}'
+```
+
+This is the remote SSE compatibility lane for `mcp2-cli`. It is separate from the local stdio `McpRegistry` path and should be treated as an operator/debug bridge rather than the durable source of truth for built-in tool surfaces.

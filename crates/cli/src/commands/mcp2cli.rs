@@ -14,6 +14,7 @@ use openrustclaw_mcp2cli::{
 
 /// mcp2cli subcommands
 #[derive(Subcommand)]
+#[command(disable_help_subcommand = true)]
 pub enum Mcp2CliCommands {
     /// List available tools from an MCP server or OpenAPI spec (~16 tokens/tool)
     List {

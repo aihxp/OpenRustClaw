@@ -1863,6 +1863,7 @@ enum CursorAction {
 
 #[derive(Subcommand)]
 #[clap(rename_all = "kebab-case")]
+#[command(disable_help_subcommand = true)]
 enum Mcp2CliAction {
     /// List available tools (~16 tokens/tool)
     List {
