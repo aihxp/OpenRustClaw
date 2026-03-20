@@ -26,7 +26,7 @@ The roadmap further includes model-aware artifact sync, memory rehydration on mo
 The model-awareness track now also includes a canonical instruction/context artifact registry so OpenRustClaw can understand and translate common project guidance files like `AGENTS.md`, `AI.md`, `CONTEXT.md`, `ARCHITECTURE.md`, `CLAUDE.md`, `GEMINI.md`, Copilot instruction files, Cursor/Continue rules, and local open-weight `Modelfile` packaging.
 The roadmap also now calls for onboarding-time provider/model scans and role-aware recommendations: Groq for low-latency core runtime use, OpenRouter for broad fallback/control-plane coverage, SiliconFlow for higher-capability secondary routing, and Ollama as the local/offline safety net, all validated against user-supplied keys rather than hardcoded assumptions.
 The operator roadmap also now explicitly includes an OpenClaw-inspired onboarding journey, typed user configuration/settings flows, solo-versus-multi-claw setup choices, and a stronger `doctor` repair/migration surface rather than leaving these as ad hoc setup utilities.
-The shipped control-plane surface now includes a file-backed `.claw/control/` registry for agent profiles, model profiles, Claw manifests, runtime-mode/task/category bindings, trust-first autonomy policy, operator-curated decision lessons, runtime self-description, shared typed control/config/diagnostics APIs, runtime service-status and scheduler inspection surfaces, shared session/memory/job inspection APIs, an initial `/control/ui` dashboard with config validate/apply, vault editing, autonomy/lesson inspection, and orchestration supervision plus trace detail, encrypted runtime secret-vault support, validated provider/model switching, bounded multi-model orchestration surfaces with receipt capture, checkpoints, trace logs, reflection candidates, parent/child delegation relationships, and MCP/CLI inspection tools; the deeper Web Control UI parity path still reuses this registry instead of inventing a separate state model.
+The shipped control-plane surface now includes a file-backed `.claw/control/` registry for agent profiles, model profiles, Claw manifests, runtime-mode/task/category bindings, trust-first autonomy policy, operator-curated decision lessons, runtime self-description, shared typed control/config/diagnostics APIs, runtime service-status and scheduler inspection surfaces, shared session/memory/job inspection APIs, an initial `/control/ui` dashboard with config validate/apply, vault editing, autonomy/lesson inspection, and orchestration supervision plus trace/resource detail, encrypted runtime secret-vault support, validated provider/model switching, bounded multi-model orchestration surfaces with receipt capture, checkpoints, trace logs, estimated token/duration summaries, reflection candidates, parent/child delegation relationships, and MCP/CLI inspection tools; the deeper Web Control UI parity path still reuses this registry instead of inventing a separate state model.
 
 ## Quick Start
 
@@ -187,7 +187,7 @@ Channel routing/operator controls:
 - `openrustclaw runtime services status|scheduler|events`
 - `openrustclaw runtime vault status|list|set|delete`
 - `openrustclaw orchestrate resolve|run`
-- `openrustclaw orchestrate list|inspect|trace|promote-candidate`
+- `openrustclaw orchestrate list|inspect|trace|resources|promote-candidate`
 - runtime secret sources now load from workspace `.env` and an encrypted `.claw/control/runtime-vault.json` when `OPENRUSTCLAW_VAULT_PASSPHRASE` is set
 - provider/model cutovers are validated before config writes, runtime API cutovers roll back on failed reload, and config writes create timestamped backup files
 - bounded orchestration surfaces now exist at:
@@ -198,12 +198,13 @@ Channel routing/operator controls:
   - `GET /control/orchestration/runs/{receipt_id}/checkpoints`
   - `GET /control/orchestration/runs/{receipt_id}/supervision`
   - `GET /control/orchestration/runs/{receipt_id}/trace`
+  - `GET /control/orchestration/runs/{receipt_id}/resources`
 - `POST /control/orchestration/runs/{receipt_id}/reflection-candidates/{index}/promote`
 - bounded orchestration now carries runtime autonomy policy, lesson-aware steering notes, runtime-capped delegation limits, execution checkpoints, and reflection candidates into receipts without turning the outer loop into a constant micromanager
-- bounded orchestration receipts now also preserve planner/worker/synthesis trace entries and parent/child delegation relationships so operators can inspect execution flow without over-steering the models themselves
+- bounded orchestration receipts now also preserve planner/worker/synthesis trace entries, parent/child delegation relationships, and estimated token/duration summaries so operators can inspect execution flow and resource shape without over-steering the models themselves
 - reflection candidates can now be promoted into scoped decision lessons through CLI, API, or `/control/ui`, so decision learning stays explicit and operator-auditable
 - routed/orchestrated runs now persist receipts under `.claw/control/orchestration-runs/` so operators can inspect which Claw planned, which Claws executed, which model-profile fallback path was used, which checkpoints were hit, which trace edges connected the run, and which autonomy/reflection context shaped the run
-- the shipped `/control/ui` dashboard now reuses the same typed runtime/config/diagnostics/services/session/memory/job/channel/orchestration/browser APIs for an initial browser-based operator shell, including live diagnostics, service/scheduler/runtime-event inspection, session/memory/job inspection, config validate/apply, vault key set/delete, autonomy-policy/decision-lesson inspection, orchestration run supervision and trace detail, and bounded browser actions
+- the shipped `/control/ui` dashboard now reuses the same typed runtime/config/diagnostics/services/session/memory/job/channel/orchestration/browser APIs for an initial browser-based operator shell, including live diagnostics, service/scheduler/runtime-event inspection, session/memory/job inspection, config validate/apply, vault key set/delete, autonomy-policy/decision-lesson inspection, orchestration run supervision/trace/resource detail, and bounded browser actions
 - `openrustclaw doctor --repair --deep --non-interactive` now validates and, where safe, scaffolds the shipped control-plane registry while exposing the same typed diagnostic model used by `/control/diagnostics`
 - the runtime syncs `.claw/control/CLAW_RUNTIME.md` so Claw itself can see whether it is running solo or alongside other Claws and what delegation/isolation policies exist
 

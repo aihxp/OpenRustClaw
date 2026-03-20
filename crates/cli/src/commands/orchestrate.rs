@@ -4,6 +4,7 @@ use std::collections::{BTreeMap, HashSet, VecDeque};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Instant;
 
 use anyhow::{Context, Result};
 use chrono::Utc;
@@ -193,6 +194,12 @@ pub struct OrchestrationTraceEntry {
     pub input_excerpt: Option<String>,
     #[serde(default)]
     pub output_excerpt: Option<String>,
+    #[serde(default)]
+    pub estimated_input_tokens: Option<usize>,
+    #[serde(default)]
+    pub estimated_output_tokens: Option<usize>,
+    #[serde(default)]
+    pub duration_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -329,6 +336,32 @@ struct ExecutableModel {
     decision: ResolvedModelDecision,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrchestrationResourceTotals {
+    pub trace_count: usize,
+    pub estimated_input_tokens: usize,
+    pub estimated_output_tokens: usize,
+    pub duration_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrchestrationActorResourceSummary {
+    pub actor_type: String,
+    pub actor_id: String,
+    pub stage_count: usize,
+    pub estimated_input_tokens: usize,
+    pub estimated_output_tokens: usize,
+    pub duration_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct CompletionTelemetry {
+    response: openrustclaw_core::types::CompletionResponse,
+    estimated_input_tokens: usize,
+    estimated_output_tokens: usize,
+    duration_ms: u64,
+}
+
 pub fn runs_root_for(workspace_root: impl AsRef<Path>) -> PathBuf {
     workspace_root.as_ref().join(DEFAULT_RUNS_DIR)
 }
@@ -442,6 +475,18 @@ pub fn read_run_trace(workspace_root: &Path, receipt_id: &str) -> Result<serde_j
         "run_id": run.run_id,
         "trace": run.trace,
         "relationships": run.relationships,
+    }))
+}
+
+pub fn read_run_resources(workspace_root: &Path, receipt_id: &str) -> Result<serde_json::Value> {
+    let run = read_run(workspace_root, receipt_id)?;
+    let totals = summarize_trace_resources(&run.trace);
+    let actors = summarize_actor_resources(&run.trace);
+    Ok(serde_json::json!({
+        "run_id": run.run_id,
+        "totals": totals,
+        "actors": actors,
+        "trace": run.trace,
     }))
 }
 
@@ -830,6 +875,9 @@ fn make_trace_entry(
     note: impl Into<String>,
     input_excerpt: Option<String>,
     output_excerpt: Option<String>,
+    estimated_input_tokens: Option<usize>,
+    estimated_output_tokens: Option<usize>,
+    duration_ms: Option<u64>,
 ) -> OrchestrationTraceEntry {
     OrchestrationTraceEntry {
         trace_id: Uuid::new_v4().to_string(),
@@ -846,6 +894,9 @@ fn make_trace_entry(
         note: note.into(),
         input_excerpt,
         output_excerpt,
+        estimated_input_tokens,
+        estimated_output_tokens,
+        duration_ms,
     }
 }
 
@@ -872,6 +923,55 @@ fn make_relationship(
 
 fn excerpt(input: &str, max_chars: usize) -> String {
     input.chars().take(max_chars).collect()
+}
+
+fn estimate_tokens(input: &str) -> usize {
+    let chars = input.chars().count();
+    chars.div_ceil(4)
+}
+
+fn summarize_trace_resources(trace: &[OrchestrationTraceEntry]) -> OrchestrationResourceTotals {
+    OrchestrationResourceTotals {
+        trace_count: trace.len(),
+        estimated_input_tokens: trace
+            .iter()
+            .map(|entry| entry.estimated_input_tokens.unwrap_or(0))
+            .sum(),
+        estimated_output_tokens: trace
+            .iter()
+            .map(|entry| entry.estimated_output_tokens.unwrap_or(0))
+            .sum(),
+        duration_ms: trace
+            .iter()
+            .map(|entry| entry.duration_ms.unwrap_or(0))
+            .sum(),
+    }
+}
+
+fn summarize_actor_resources(
+    trace: &[OrchestrationTraceEntry],
+) -> Vec<OrchestrationActorResourceSummary> {
+    let mut by_actor: BTreeMap<(String, String), OrchestrationActorResourceSummary> =
+        BTreeMap::new();
+    for entry in trace {
+        let key = (entry.actor_type.clone(), entry.actor_id.clone());
+        let summary =
+            by_actor
+                .entry(key.clone())
+                .or_insert_with(|| OrchestrationActorResourceSummary {
+                    actor_type: key.0.clone(),
+                    actor_id: key.1.clone(),
+                    stage_count: 0,
+                    estimated_input_tokens: 0,
+                    estimated_output_tokens: 0,
+                    duration_ms: 0,
+                });
+        summary.stage_count += 1;
+        summary.estimated_input_tokens += entry.estimated_input_tokens.unwrap_or(0);
+        summary.estimated_output_tokens += entry.estimated_output_tokens.unwrap_or(0);
+        summary.duration_ms += entry.duration_ms.unwrap_or(0);
+    }
+    by_actor.into_values().collect()
 }
 
 fn make_lesson_id(run_id: &str, candidate_index: usize, kind: &str) -> String {
@@ -1172,7 +1272,7 @@ async fn run_direct(
         Some(executable.decision.provider.as_str()),
         Some(executable.decision.model.as_str()),
         Some(excerpt(&request.prompt, 240)),
-        Some(excerpt(&prompt.message.content, 240)),
+        Some(excerpt(&prompt.response.message.content, 240)),
     )];
     let trace = vec![make_trace_entry(
         "direct_response",
@@ -1186,7 +1286,10 @@ async fn run_direct(
         Some(executable.decision.model.as_str()),
         "direct run completed",
         Some(excerpt(&request.prompt, 240)),
-        Some(excerpt(&prompt.message.content, 240)),
+        Some(excerpt(&prompt.response.message.content, 240)),
+        Some(prompt.estimated_input_tokens),
+        Some(prompt.estimated_output_tokens),
+        Some(prompt.duration_ms),
     )];
     let reflection_candidates = build_reflection_candidates(routing, &[]);
     let supervision = summarize_supervision(&checkpoints, &[], &reflection_candidates);
@@ -1205,7 +1308,7 @@ async fn run_direct(
         reflection_notes: routing.steering_notes.clone(),
         reflection_candidates,
         supervision: Some(supervision),
-        final_output: prompt.message.content,
+        final_output: prompt.response.message.content,
         final_claw_id: claw.id.clone(),
         final_model_profile_id: executable.decision.selected_profile_id.clone(),
         final_provider: executable.decision.provider.clone(),
@@ -1269,6 +1372,9 @@ async fn run_orchestrated(
         ),
         Some(excerpt(&request.prompt, 240)),
         None,
+        None,
+        None,
+        None,
     ));
 
     if worker_candidates.is_empty() {
@@ -1327,7 +1433,10 @@ async fn run_orchestrated(
         Some(orchestrator_model.decision.model.as_str()),
         "orchestrator planner completed",
         Some(excerpt(&request.prompt, 240)),
-        Some(excerpt(&planner_response.message.content, 240)),
+        Some(excerpt(&planner_response.response.message.content, 240)),
+        Some(planner_response.estimated_input_tokens),
+        Some(planner_response.estimated_output_tokens),
+        Some(planner_response.duration_ms),
     );
     let planner_trace_id = planner_trace.trace_id.clone();
     trace.push(planner_trace);
@@ -1340,15 +1449,14 @@ async fn run_orchestrated(
         Some(orchestrator_model.decision.provider.as_str()),
         Some(orchestrator_model.decision.model.as_str()),
         Some(excerpt(&request.prompt, 240)),
-        Some(excerpt(&planner_response.message.content, 240)),
+        Some(excerpt(&planner_response.response.message.content, 240)),
     ));
-    let plan = parse_json_payload::<PlannerResponse>(&planner_response.message.content).unwrap_or(
-        PlannerResponse {
+    let plan = parse_json_payload::<PlannerResponse>(&planner_response.response.message.content)
+        .unwrap_or(PlannerResponse {
             final_mode: Some("answer_directly".to_string()),
-            direct_response: Some(planner_response.message.content.clone()),
+            direct_response: Some(planner_response.response.message.content.clone()),
             delegations: Vec::new(),
-        },
-    );
+        });
 
     if matches!(plan.final_mode.as_deref(), Some("answer_directly")) || plan.delegations.is_empty()
     {
@@ -1370,7 +1478,7 @@ async fn run_orchestrated(
             supervision: Some(supervision),
             final_output: plan
                 .direct_response
-                .unwrap_or(planner_response.message.content),
+                .unwrap_or(planner_response.response.message.content),
             final_claw_id: orchestrator.id.clone(),
             final_model_profile_id: orchestrator_model.decision.selected_profile_id.clone(),
             final_provider: orchestrator_model.decision.provider.clone(),
@@ -1428,15 +1536,22 @@ async fn run_orchestrated(
         );
         let worker_response =
             execute_completion(worker_model.provider.clone(), worker_system, worker_user).await?;
-        let parsed = parse_json_payload::<WorkerEnvelopeResponse>(&worker_response.message.content)
-            .unwrap_or(WorkerEnvelopeResponse {
-                status: "completed".to_string(),
-                summary: worker_response.message.content.chars().take(240).collect(),
-                full_output: Some(worker_response.message.content.clone()),
-                questions: Vec::new(),
-                confidence: None,
-                next_step_recommendation: None,
-            });
+        let parsed =
+            parse_json_payload::<WorkerEnvelopeResponse>(&worker_response.response.message.content)
+                .unwrap_or(WorkerEnvelopeResponse {
+                    status: "completed".to_string(),
+                    summary: worker_response
+                        .response
+                        .message
+                        .content
+                        .chars()
+                        .take(240)
+                        .collect(),
+                    full_output: Some(worker_response.response.message.content.clone()),
+                    questions: Vec::new(),
+                    confidence: None,
+                    next_step_recommendation: None,
+                });
         checkpoints.push(make_checkpoint(
             "worker_execution",
             &parsed.status,
@@ -1446,7 +1561,7 @@ async fn run_orchestrated(
             Some(worker_model.decision.provider.as_str()),
             Some(worker_model.decision.model.as_str()),
             Some(excerpt(&item.instruction, 240)),
-            Some(excerpt(&worker_response.message.content, 240)),
+            Some(excerpt(&worker_response.response.message.content, 240)),
         ));
         trace.push(make_trace_entry(
             "worker_execution",
@@ -1460,7 +1575,10 @@ async fn run_orchestrated(
             Some(worker_model.decision.model.as_str()),
             format!("worker '{}' completed delegated step", worker.id),
             Some(excerpt(&item.instruction, 240)),
-            Some(excerpt(&worker_response.message.content, 240)),
+            Some(excerpt(&worker_response.response.message.content, 240)),
+            Some(worker_response.estimated_input_tokens),
+            Some(worker_response.estimated_output_tokens),
+            Some(worker_response.duration_ms),
         ));
         worker_results.push(WorkerResultEnvelope {
             claw_id: worker.id.clone(),
@@ -1472,7 +1590,7 @@ async fn run_orchestrated(
             summary: parsed.summary,
             full_output: parsed
                 .full_output
-                .unwrap_or_else(|| worker_response.message.content.clone()),
+                .unwrap_or_else(|| worker_response.response.message.content.clone()),
             questions: parsed.questions,
             confidence: parsed.confidence,
             next_step_recommendation: parsed.next_step_recommendation,
@@ -1513,7 +1631,10 @@ async fn run_orchestrated(
         Some(orchestrator_model.decision.model.as_str()),
         "orchestrator synthesized final response",
         Some(synthesis_input_excerpt.clone()),
-        Some(excerpt(&final_response.message.content, 240)),
+        Some(excerpt(&final_response.response.message.content, 240)),
+        Some(final_response.estimated_input_tokens),
+        Some(final_response.estimated_output_tokens),
+        Some(final_response.duration_ms),
     ));
     checkpoints.push(make_checkpoint(
         "synthesis",
@@ -1524,7 +1645,7 @@ async fn run_orchestrated(
         Some(orchestrator_model.decision.provider.as_str()),
         Some(orchestrator_model.decision.model.as_str()),
         Some(synthesis_input_excerpt),
-        Some(excerpt(&final_response.message.content, 240)),
+        Some(excerpt(&final_response.response.message.content, 240)),
     ));
     let reflection_candidates = build_reflection_candidates(routing, &worker_results);
     let mut reflection_notes = routing.steering_notes.clone();
@@ -1550,7 +1671,7 @@ async fn run_orchestrated(
         reflection_notes,
         reflection_candidates,
         supervision: Some(supervision),
-        final_output: final_response.message.content,
+        final_output: final_response.response.message.content,
         final_claw_id: orchestrator.id.clone(),
         final_model_profile_id: orchestrator_model.decision.selected_profile_id.clone(),
         final_provider: orchestrator_model.decision.provider.clone(),
@@ -1642,8 +1763,11 @@ async fn execute_completion(
     provider: Arc<dyn LlmProvider>,
     system_prompt: String,
     user_prompt: String,
-) -> Result<openrustclaw_core::types::CompletionResponse> {
-    provider
+) -> Result<CompletionTelemetry> {
+    let estimated_input_tokens =
+        estimate_tokens(&system_prompt).saturating_add(estimate_tokens(&user_prompt));
+    let started_at = Instant::now();
+    let response = provider
         .complete(CompletionRequest {
             messages: vec![Message::user(user_prompt)],
             model: Some(provider.model_id().to_string()),
@@ -1654,7 +1778,15 @@ async fn execute_completion(
             stream: false,
         })
         .await
-        .map_err(Into::into)
+        .map_err(anyhow::Error::from)?;
+    let duration_ms = started_at.elapsed().as_millis() as u64;
+    let estimated_output_tokens = estimate_tokens(&response.message.content);
+    Ok(CompletionTelemetry {
+        response,
+        estimated_input_tokens,
+        estimated_output_tokens,
+        duration_ms,
+    })
 }
 
 fn parse_json_payload<T: for<'de> Deserialize<'de>>(raw: &str) -> Result<T> {
@@ -1987,6 +2119,9 @@ mod tests {
                 note: "planner completed".to_string(),
                 input_excerpt: Some("input".to_string()),
                 output_excerpt: Some("output".to_string()),
+                estimated_input_tokens: Some(42),
+                estimated_output_tokens: Some(18),
+                duration_ms: Some(125),
             }],
             relationships: vec![OrchestrationRelationship {
                 relationship_id: "relationship-1".to_string(),
@@ -2016,6 +2151,106 @@ mod tests {
         assert_eq!(payload["run_id"], "run-1");
         assert_eq!(payload["trace"][0]["trace_id"], "trace-1");
         assert_eq!(payload["relationships"][0]["child_id"], "worker-a");
+    }
+
+    #[test]
+    fn read_run_resources_summarizes_trace_metrics() {
+        let root = tempfile::tempdir().unwrap();
+        let record = OrchestrationRunRecord {
+            run_id: "run-1".to_string(),
+            created_at: "2026-03-19T00:00:00Z".to_string(),
+            mode: "orchestrated".to_string(),
+            request: OrchestrationRequest::default(),
+            routing: RoutingDecision {
+                execution_mode: "orchestrated".to_string(),
+                route_source: "default_claw".to_string(),
+                task_id: None,
+                category: None,
+                selected_claw_id: "main".to_string(),
+                selected_claw_role: "orchestrator".to_string(),
+                selected_agent_profile_id: "default".to_string(),
+                selected_model_profile_id: "primary".to_string(),
+                selected_model: ResolvedModelDecision {
+                    requested_profile_id: "primary".to_string(),
+                    selected_profile_id: "primary".to_string(),
+                    provider: "openrouter".to_string(),
+                    model: "test".to_string(),
+                    fallback_path: vec![],
+                    warnings: vec![],
+                },
+                available_workers: vec![],
+                autonomy: control::AutonomyPolicy::default(),
+                allow_shared_context: false,
+                isolation_mode: "strict".to_string(),
+                applied_lessons: vec![],
+                steering_notes: vec![],
+                warnings: vec![],
+            },
+            delegations: vec![],
+            worker_results: vec![],
+            checkpoints: vec![],
+            trace: vec![
+                OrchestrationTraceEntry {
+                    trace_id: "trace-1".to_string(),
+                    created_at: "2026-03-19T00:00:01Z".to_string(),
+                    stage: "planner".to_string(),
+                    actor_type: "orchestrator".to_string(),
+                    actor_id: "main".to_string(),
+                    parent_trace_id: None,
+                    status: "completed".to_string(),
+                    claw_id: Some("main".to_string()),
+                    model_profile_id: Some("primary".to_string()),
+                    provider: Some("openrouter".to_string()),
+                    model: Some("test".to_string()),
+                    note: "planner completed".to_string(),
+                    input_excerpt: Some("input".to_string()),
+                    output_excerpt: Some("output".to_string()),
+                    estimated_input_tokens: Some(40),
+                    estimated_output_tokens: Some(12),
+                    duration_ms: Some(120),
+                },
+                OrchestrationTraceEntry {
+                    trace_id: "trace-2".to_string(),
+                    created_at: "2026-03-19T00:00:02Z".to_string(),
+                    stage: "worker_execution".to_string(),
+                    actor_type: "worker".to_string(),
+                    actor_id: "worker-a".to_string(),
+                    parent_trace_id: Some("trace-1".to_string()),
+                    status: "completed".to_string(),
+                    claw_id: Some("worker-a".to_string()),
+                    model_profile_id: Some("worker-profile".to_string()),
+                    provider: Some("openrouter".to_string()),
+                    model: Some("test-worker".to_string()),
+                    note: "worker completed".to_string(),
+                    input_excerpt: Some("worker input".to_string()),
+                    output_excerpt: Some("worker output".to_string()),
+                    estimated_input_tokens: Some(24),
+                    estimated_output_tokens: Some(10),
+                    duration_ms: Some(80),
+                },
+            ],
+            relationships: vec![],
+            reflection_notes: vec![],
+            reflection_candidates: vec![],
+            supervision: None,
+            final_output: "ok".to_string(),
+            final_claw_id: "main".to_string(),
+            final_model_profile_id: "primary".to_string(),
+            final_provider: "openrouter".to_string(),
+            final_model: "test".to_string(),
+            receipt_path: "resources.json".to_string(),
+        };
+        let path = runs_root_for(root.path()).join("resources.json");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, serde_json::to_vec_pretty(&record).unwrap()).unwrap();
+
+        let payload = read_run_resources(root.path(), "resources.json").unwrap();
+        assert_eq!(payload["totals"]["trace_count"], 2);
+        assert_eq!(payload["totals"]["estimated_input_tokens"], 64);
+        assert_eq!(payload["totals"]["estimated_output_tokens"], 22);
+        assert_eq!(payload["totals"]["duration_ms"], 200);
+        assert_eq!(payload["actors"][0]["actor_id"], "main");
+        assert_eq!(payload["actors"][1]["actor_id"], "worker-a");
     }
 
     #[test]

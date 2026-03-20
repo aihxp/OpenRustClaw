@@ -705,7 +705,7 @@ Exit criteria:
 
 Goal: match OpenClaw's operator UX and tooling surface while keeping Rust-native interfaces.
 
-Status: complete for shipped CLI/MCP control-plane surfaces, shared typed control/config/diagnostics APIs, autonomy-tier and decision-lesson control surfaces, shared service-status and scheduler inspection APIs, shared session/memory/job inspection APIs, channel account CRUD parity, encrypted runtime secret-vault support, validated provider/model switching, runtime reload/cutover APIs with rollback, bounded routed/orchestrated multi-model execution surfaces with receipt capture, checkpoints, trace logs, parent/child delegation relationships, reflection candidates, reflection-to-lesson promotion, and lesson-aware steering context, onboarding scaffolding, doctor validation, a bounded native browser operator slice, and an initial Web Control UI shell with config/vault editing plus autonomy/lesson and run-supervision/run-trace inspection; deeper Web Control UI parity, richer browser/web tooling, deeper channel/service probes, and full orchestrated runtime execution remain open.
+Status: complete for shipped CLI/MCP control-plane surfaces, shared typed control/config/diagnostics APIs, autonomy-tier and decision-lesson control surfaces, shared service-status and scheduler inspection APIs, shared session/memory/job inspection APIs, channel account CRUD parity, encrypted runtime secret-vault support, validated provider/model switching, runtime reload/cutover APIs with rollback, bounded routed/orchestrated multi-model execution surfaces with receipt capture, checkpoints, trace logs, parent/child delegation relationships, estimated token/duration resource summaries, reflection candidates, reflection-to-lesson promotion, and lesson-aware steering context, onboarding scaffolding, doctor validation, a bounded native browser operator slice, and an initial Web Control UI shell with config/vault editing plus autonomy/lesson and run-supervision/run-trace/run-resource inspection; deeper Web Control UI parity, richer browser/web tooling, deeper channel/service probes, and full orchestrated runtime execution remain open.
 
 Additional later-surface work:
 
@@ -823,6 +823,12 @@ Completed:
   - `openrustclaw orchestrate trace`,
   - `GET /control/orchestration/runs/{receipt_id}/trace`,
   - `/control/ui` run-trace inspection panel.
+- [x] Add orchestration resource-visibility surfaces so operators can audit cost/latency shape without turning the agent into a micromanaged script:
+  - per-trace estimated input/output token counts,
+  - per-trace duration measurements,
+  - `openrustclaw orchestrate resources`,
+  - `GET /control/orchestration/runs/{receipt_id}/resources`,
+  - `/control/ui` run-resource inspection panel.
 - [x] Add a bounded native browser operator surface backed by the Rust automation crate:
   - `openrustclaw browser navigate|extract|screenshot|pdf`,
   - `POST /control/browser/navigate`,

@@ -373,6 +373,8 @@ enum OrchestrateAction {
     },
     /// Inspect structured trace entries and parent/child relationships for one receipt
     Trace { receipt_id: String },
+    /// Inspect estimated token and duration summaries for one receipt
+    Resources { receipt_id: String },
     /// Promote one reflection candidate from a receipt into a decision lesson
     PromoteCandidate {
         receipt_id: String,
@@ -2367,6 +2369,13 @@ async fn main() -> Result<()> {
             OrchestrateAction::Trace { receipt_id } => {
                 let workspace_root = std::env::current_dir()?;
                 let payload = commands::orchestrate::read_run_trace(&workspace_root, &receipt_id)?;
+                println!("{}", serde_json::to_string_pretty(&payload)?);
+                Ok(())
+            }
+            OrchestrateAction::Resources { receipt_id } => {
+                let workspace_root = std::env::current_dir()?;
+                let payload =
+                    commands::orchestrate::read_run_resources(&workspace_root, &receipt_id)?;
                 println!("{}", serde_json::to_string_pretty(&payload)?);
                 Ok(())
             }

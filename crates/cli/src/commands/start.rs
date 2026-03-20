@@ -2462,6 +2462,10 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             get(orchestration_run_trace_handler),
         )
         .route(
+            "/control/orchestration/runs/{receipt_id}/resources",
+            get(orchestration_run_resources_handler),
+        )
+        .route(
             "/control/orchestration/runs/{receipt_id}/reflection-candidates/{index}/promote",
             post(orchestration_promote_reflection_candidate_handler),
         )
@@ -3477,6 +3481,20 @@ async fn orchestration_run_trace_handler(
 ) -> impl IntoResponse {
     match orchestrate::read_run_trace(&state.workspace_root, &receipt_id) {
         Ok(trace) => (StatusCode::OK, Json(trace)).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn orchestration_run_resources_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(receipt_id): AxumPath<String>,
+) -> impl IntoResponse {
+    match orchestrate::read_run_resources(&state.workspace_root, &receipt_id) {
+        Ok(resources) => (StatusCode::OK, Json(resources)).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": error.to_string()})),
