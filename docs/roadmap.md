@@ -1276,6 +1276,7 @@ Remaining:
   - [x] voice-note transcription,
   - [x] transcript injection,
   - [x] provider pluggability for the shipped OpenAI-compatible voice STT/TTS lane plus the bounded Deepgram STT lane,
+  - [x] bounded media provider catalog/readiness plus local-audio text extraction over the shipped STT lanes,
   - broader image/audio/document provider pluggability across all media lanes.
 - [ ] Add richer provider support for media parity where OpenClaw documents active integrations.
 - [ ] Add voice runtime parity:

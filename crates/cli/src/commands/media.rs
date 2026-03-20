@@ -3,8 +3,11 @@ use std::path::Path;
 use anyhow::{Context, Result, anyhow};
 use openrustclaw_automation::browser::{Screenshot, ScreenshotFormat};
 use openrustclaw_automation::vision::VisionCapabilities;
+use openrustclaw_core::config::AppConfig;
 use serde::{Deserialize, Serialize};
 use tokio::fs;
+
+use super::voice_runtime;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MediaInspectRequest {
@@ -28,8 +31,34 @@ pub struct MediaInspectResult {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MediaProviderStatus {
+    pub provider: String,
+    pub lane: String,
+    pub kind: String,
+    pub ready: bool,
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MediaProviderCatalog {
+    pub extractors: Vec<MediaProviderStatus>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MediaExtractTextRequest {
     pub path: String,
+    #[serde(default)]
+    pub provider: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub language: Option<String>,
+    #[serde(default)]
+    pub prompt: Option<String>,
+    #[serde(default)]
+    pub max_audio_bytes: Option<usize>,
+    #[serde(default)]
+    pub timeout_secs: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -40,16 +69,72 @@ pub struct MediaExtractTextResult {
     pub text: String,
 }
 
+fn load_config(config_path: &str) -> AppConfig {
+    AppConfig::load_from(config_path)
+        .or_else(|_| AppConfig::load())
+        .unwrap_or_default()
+}
+
 pub async fn inspect(request: MediaInspectRequest) -> Result<()> {
     let result = inspect_data(request).await?;
     println!("{}", serde_json::to_string_pretty(&result)?);
     Ok(())
 }
 
-pub async fn extract_text(request: MediaExtractTextRequest) -> Result<()> {
-    let result = extract_text_data(request).await?;
+pub async fn providers(config_path: &str) -> Result<()> {
+    let config = load_config(config_path);
+    let result = media_provider_catalog(&config);
     println!("{}", serde_json::to_string_pretty(&result)?);
     Ok(())
+}
+
+pub async fn extract_text(config_path: &str, request: MediaExtractTextRequest) -> Result<()> {
+    let config = load_config(config_path);
+    let workspace_root = std::env::current_dir()?;
+    let result = extract_text_with_config(&config, &workspace_root, request).await?;
+    println!("{}", serde_json::to_string_pretty(&result)?);
+    Ok(())
+}
+
+pub fn media_provider_catalog(config: &AppConfig) -> MediaProviderCatalog {
+    let mut extractors = Vec::new();
+
+    extractors.push(MediaProviderStatus {
+        provider: "local".to_string(),
+        lane: "plain_text".to_string(),
+        kind: "document_text".to_string(),
+        ready: true,
+        notes: vec!["txt md json yaml toml csv html xml log".to_string()],
+    });
+
+    let ocr_ready = VisionCapabilities::new().ocr_enabled();
+    extractors.push(MediaProviderStatus {
+        provider: "local".to_string(),
+        lane: "ocr".to_string(),
+        kind: "image_text".to_string(),
+        ready: ocr_ready,
+        notes: if ocr_ready {
+            vec!["local_ocr_available".to_string()]
+        } else {
+            vec!["local_ocr_unavailable".to_string()]
+        },
+    });
+
+    for provider in voice_runtime::voice_provider_catalog(config).stt {
+        let mut notes = provider.notes;
+        if provider.supports_inbound_notes {
+            notes.push("usable_for_bounded_audio_text_extraction".to_string());
+        }
+        extractors.push(MediaProviderStatus {
+            provider: provider.provider,
+            lane: provider.lane,
+            kind: "audio_text".to_string(),
+            ready: provider.api_key_present,
+            notes,
+        });
+    }
+
+    MediaProviderCatalog { extractors }
 }
 
 pub async fn inspect_data(request: MediaInspectRequest) -> Result<MediaInspectResult> {
@@ -70,7 +155,8 @@ pub async fn inspect_data(request: MediaInspectRequest) -> Result<MediaInspectRe
         image_width = Some(image.width());
         image_height = Some(image.height());
     }
-    let text_extractable = is_text_document(path) || media_kind == "image";
+    let text_extractable =
+        is_text_document(path) || matches!(media_kind.as_str(), "image" | "audio");
     let text_preview = if is_text_document(path) {
         Some(load_text_preview(&bytes))
     } else {
@@ -91,7 +177,11 @@ pub async fn inspect_data(request: MediaInspectRequest) -> Result<MediaInspectRe
     })
 }
 
-pub async fn extract_text_data(request: MediaExtractTextRequest) -> Result<MediaExtractTextResult> {
+pub async fn extract_text_with_config(
+    config: &AppConfig,
+    workspace_root: &Path,
+    request: MediaExtractTextRequest,
+) -> Result<MediaExtractTextResult> {
     let path = Path::new(&request.path);
     if !path.exists() {
         return Err(anyhow!("path '{}' does not exist", path.display()));
@@ -130,6 +220,30 @@ pub async fn extract_text_data(request: MediaExtractTextRequest) -> Result<Media
             media_kind,
             extractor: "ocr".to_string(),
             text,
+        });
+    }
+
+    if media_kind == "audio" {
+        let result = voice_runtime::transcribe_with_config(
+            config,
+            workspace_root,
+            voice_runtime::VoiceTranscribeRequest {
+                path: Some(path.display().to_string()),
+                url: None,
+                provider: request.provider,
+                model: request.model,
+                language: request.language,
+                prompt: request.prompt,
+                max_audio_bytes: request.max_audio_bytes,
+                timeout_secs: request.timeout_secs,
+            },
+        )
+        .await?;
+        return Ok(MediaExtractTextResult {
+            path: path.display().to_string(),
+            media_kind,
+            extractor: format!("audio_stt:{}", result.provider),
+            text: result.text,
         });
     }
 
@@ -233,9 +347,19 @@ mod tests {
         let path = temp.path().join("notes.md");
         fs::write(&path, "# heading").await.expect("write text");
 
-        let result = extract_text_data(MediaExtractTextRequest {
-            path: path.display().to_string(),
-        })
+        let result = extract_text_with_config(
+            &AppConfig::default(),
+            temp.path(),
+            MediaExtractTextRequest {
+                path: path.display().to_string(),
+                provider: None,
+                model: None,
+                language: None,
+                prompt: None,
+                max_audio_bytes: None,
+                timeout_secs: None,
+            },
+        )
         .await
         .expect("extract");
 
@@ -260,5 +384,32 @@ mod tests {
         assert_eq!(result.mime, "image/png");
         assert_eq!(result.image_width, Some(1));
         assert_eq!(result.image_height, Some(1));
+    }
+
+    #[test]
+    fn provider_catalog_includes_audio_stt_and_local_extractors() {
+        let mut config = AppConfig::default();
+        config.providers.openai.api_key_env = Some("OPENAI_TEST_KEY".to_string());
+        config.providers.openrouter.api_key_env = Some("OPENROUTER_TEST_KEY".to_string());
+        let catalog = media_provider_catalog(&config);
+
+        assert!(
+            catalog
+                .extractors
+                .iter()
+                .any(|entry| entry.kind == "document_text" && entry.provider == "local")
+        );
+        assert!(
+            catalog
+                .extractors
+                .iter()
+                .any(|entry| entry.kind == "image_text" && entry.provider == "local")
+        );
+        assert!(
+            catalog
+                .extractors
+                .iter()
+                .any(|entry| entry.kind == "audio_text" && entry.provider == "openai")
+        );
     }
 }

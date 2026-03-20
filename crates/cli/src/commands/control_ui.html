@@ -462,10 +462,20 @@
           <div class="form-grid">
             <input id="media-path" type="text" placeholder="/path/to/file.png or notes.txt" />
             <div class="action-row">
+              <button class="secondary" id="media-providers-refresh">List Providers</button>
               <button id="media-inspect">Inspect Media</button>
               <button class="secondary" id="media-extract-text">Extract Text</button>
             </div>
+            <div class="action-row">
+              <input id="media-provider" type="text" placeholder="optional audio provider override" />
+              <input id="media-model" type="text" placeholder="optional audio model override" />
+            </div>
+            <div class="action-row">
+              <input id="media-language" type="text" placeholder="optional audio language override" />
+            </div>
+            <textarea id="media-prompt" rows="3" spellcheck="false" placeholder="optional audio transcription prompt"></textarea>
           </div>
+          <div class="surface" style="margin-top: 12px"><pre id="media-providers">No media providers loaded yet.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="media-result">No media action executed yet.</pre></div>
         </article>
         <article class="panel span-6">
@@ -1267,6 +1277,11 @@
         setText("media-result", result);
       }
 
+      async function loadMediaProviders() {
+        const result = await fetchJson("/control/media/providers");
+        setText("media-providers", result);
+      }
+
       async function extractMediaText() {
         const path = document.getElementById("media-path").value.trim();
         if (!path) {
@@ -1274,7 +1289,13 @@
         }
         const result = await fetchJson("/control/media/extract-text", {
           method: "POST",
-          body: JSON.stringify({ path }),
+          body: JSON.stringify({
+            path,
+            provider: emptyToNull(document.getElementById("media-provider").value),
+            model: emptyToNull(document.getElementById("media-model").value),
+            language: emptyToNull(document.getElementById("media-language").value),
+            prompt: emptyToNull(document.getElementById("media-prompt").value),
+          }),
         });
         setText("media-result", result);
       }
@@ -2160,6 +2181,7 @@
             loadVoiceSessions(),
             loadVoiceSessionHealth(),
             loadVoiceVoices(),
+            loadMediaProviders(),
             loadAutonomy(),
             loadInstalledSkills(),
             loadChannels(),
@@ -2595,6 +2617,13 @@
           await inspectMedia();
         } catch (error) {
           setText("media-result", { error: error.message });
+        }
+      });
+      document.getElementById("media-providers-refresh").addEventListener("click", async () => {
+        try {
+          await loadMediaProviders();
+        } catch (error) {
+          setText("media-providers", { error: error.message });
         }
       });
       document.getElementById("media-extract-text").addEventListener("click", async () => {

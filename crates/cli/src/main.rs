@@ -1487,6 +1487,11 @@ enum MobileAction {
 
 #[derive(Subcommand)]
 enum MediaAction {
+    /// Show bounded media provider and extractor readiness
+    Providers {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+    },
     /// Inspect a local media artifact and report bounded metadata
     Inspect {
         #[arg(long)]
@@ -1494,8 +1499,18 @@ enum MediaAction {
     },
     /// Extract bounded text from a supported local media artifact
     ExtractText {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
         #[arg(long)]
         path: String,
+        #[arg(long)]
+        provider: Option<String>,
+        #[arg(long)]
+        model: Option<String>,
+        #[arg(long)]
+        language: Option<String>,
+        #[arg(long)]
+        prompt: Option<String>,
     },
 }
 
@@ -3321,12 +3336,31 @@ async fn main() -> Result<()> {
             }
         }
         Commands::Media { action } => match action {
+            MediaAction::Providers { config } => commands::media::providers(&config).await,
             MediaAction::Inspect { path } => {
                 commands::media::inspect(commands::media::MediaInspectRequest { path }).await
             }
-            MediaAction::ExtractText { path } => {
-                commands::media::extract_text(commands::media::MediaExtractTextRequest { path })
-                    .await
+            MediaAction::ExtractText {
+                config,
+                path,
+                provider,
+                model,
+                language,
+                prompt,
+            } => {
+                commands::media::extract_text(
+                    &config,
+                    commands::media::MediaExtractTextRequest {
+                        path,
+                        provider,
+                        model,
+                        language,
+                        prompt,
+                        max_audio_bytes: None,
+                        timeout_secs: None,
+                    },
+                )
+                .await
             }
         },
         Commands::Control { action } => match action {
