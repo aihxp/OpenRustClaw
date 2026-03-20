@@ -813,7 +813,14 @@ pub async fn execute_data(
     options: SkillExecuteOptions<'_>,
 ) -> Result<SkillExecuteResult> {
     let artifact = compiled_skill_detail_or_compile(name).await?;
-    execute_compiled_skill(&artifact, options).await
+    execute_compiled_artifact_data(&artifact, options).await
+}
+
+pub async fn execute_compiled_artifact_data(
+    artifact: &CompiledSkillArtifact,
+    options: SkillExecuteOptions<'_>,
+) -> Result<SkillExecuteResult> {
+    execute_compiled_skill(artifact, options).await
 }
 
 fn invoke_compiled_skill(

@@ -1263,7 +1263,7 @@ Completed:
 Remaining:
 
 - [ ] Add plugin parity for:
-  - agent tools,
+  - [x] agent tools through bounded compiled-skill MCP execution,
   - auth plugins,
   - voice-call plugins,
   - channel extensions,

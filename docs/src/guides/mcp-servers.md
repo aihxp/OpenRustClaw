@@ -116,8 +116,9 @@ The built-in MCP server now also includes the compiled skill cache as a live ret
 - dynamic `skill.<name>.summary`
 - dynamic `skill.<name>.details`
 - dynamic `skill.<name>.reference...` tools for non-blocked compiled references
+- dynamic `skill.<name>.execute` tools for non-blocked compiled `.wasm`/`.wat` components
 
-This is intentionally retrieval-focused today. It exposes cached summaries, scan state, CLI/MCP schemas, and safe reference reads without pretending compiled skills are already a full executable plugin runtime.
+This is still intentionally bounded today. It exposes cached summaries, scan state, CLI/MCP schemas, safe reference reads, and bounded Rust/WASM execution for compiled components without pretending compiled skills are already a full executable plugin runtime.
 
 ---
 

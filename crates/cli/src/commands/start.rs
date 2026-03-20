@@ -7932,6 +7932,24 @@ fn compiled_skill_reference_tool_name(artifact: &CompiledSkillArtifact, referenc
     )
 }
 
+fn compiled_skill_execute_tool_name(artifact: &CompiledSkillArtifact) -> String {
+    format!(
+        "{}.execute",
+        compiled_skill_tool_prefix(&artifact.manifest.name)
+    )
+}
+
+fn compiled_skill_executable_components(artifact: &CompiledSkillArtifact) -> Vec<String> {
+    artifact
+        .manifest
+        .scripts
+        .iter()
+        .chain(artifact.manifest.references.iter())
+        .filter(|path| path.ends_with(".wasm") || path.ends_with(".wat"))
+        .cloned()
+        .collect()
+}
+
 fn load_compiled_skill_artifacts(workspace_root: &Path) -> Vec<CompiledSkillArtifact> {
     let root = compiled_skill_root(workspace_root);
     let manifests = match list_compiled_manifests(&root) {
@@ -8008,6 +8026,45 @@ fn compiled_skill_mcp_tools(artifacts: &[CompiledSkillArtifact]) -> Vec<McpServe
             input_schema: serde_json::json!({"type": "object", "properties": {}}),
         });
 
+        let executable_components = compiled_skill_executable_components(artifact);
+        if !matches!(artifact.manifest.status, CompiledSkillStatus::Blocked)
+            && !executable_components.is_empty()
+        {
+            let mut execute_schema = serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "input": {
+                        "description": "Optional JSON value forwarded into the bounded Rust/WASM skill executor."
+                    }
+                }
+            });
+            if executable_components.len() > 1 {
+                execute_schema["properties"]["component"] = serde_json::json!({
+                    "type": "string",
+                    "description": "Executable `.wasm` or `.wat` component path from the compiled skill artifact."
+                });
+                execute_schema["required"] = serde_json::json!(["component"]);
+            } else {
+                execute_schema["properties"]["component"] = serde_json::json!({
+                    "type": "string",
+                    "description": "Optional executable component path. Omit to use the only available `.wasm`/`.wat` artifact."
+                });
+            }
+            tools.push(McpServerTool {
+                name: compiled_skill_execute_tool_name(artifact),
+                description: format!(
+                    "Execute bounded Rust/WASM component{} for skill '{}'.",
+                    if executable_components.len() == 1 {
+                        format!(" '{}'", executable_components[0])
+                    } else {
+                        "s".to_string()
+                    },
+                    artifact.manifest.name
+                ),
+                input_schema: execute_schema,
+            });
+        }
+
         if !matches!(artifact.manifest.status, CompiledSkillStatus::Blocked) {
             for reference in &artifact.manifest.references {
                 tools.push(McpServerTool {
@@ -8046,6 +8103,12 @@ fn compiled_skill_summary_payload(artifact: &CompiledSkillArtifact) -> serde_jso
         "mcp": {
             "summary_tool": compiled_skill_summary_tool_name(artifact),
             "details_tool": compiled_skill_details_tool_name(artifact),
+            "execute_tool": if compiled_skill_executable_components(artifact).is_empty() {
+                serde_json::Value::Null
+            } else {
+                serde_json::json!(compiled_skill_execute_tool_name(artifact))
+            },
+            "executable_components": compiled_skill_executable_components(artifact),
             "reference_tools": artifact
                 .manifest
                 .references
@@ -8210,6 +8273,46 @@ fn register_compiled_skill_mcp_handlers(
 
         if matches!(artifact.manifest.status, CompiledSkillStatus::Blocked) {
             continue;
+        }
+
+        let executable_components = compiled_skill_executable_components(artifact);
+        if !executable_components.is_empty() {
+            let execute_tool = compiled_skill_execute_tool_name(artifact);
+            let execute_artifact = artifact.clone();
+            let available_components = executable_components.clone();
+            server.register_handler(
+                &execute_tool,
+                traced_mcp_handler(langsmith.clone(), "compiled_skill_execute", move |args| {
+                    let request: McpCompiledSkillExecuteArgs = parse_tool_args(args)?;
+                    let execute_artifact = execute_artifact.clone();
+                    let available_components = available_components.clone();
+                    block_on_tool(async move {
+                        let requested_component = request.component.as_deref();
+                        if let Some(component) = requested_component
+                            && !available_components
+                                .iter()
+                                .any(|candidate| candidate == component)
+                        {
+                            return Err(mcp_tool_error(format!(
+                                "Component '{}' is not executable for compiled skill '{}'",
+                                component, execute_artifact.manifest.name
+                            )));
+                        }
+                        let input = request.input.as_ref().map(serde_json::Value::to_string);
+                        let result = skills::execute_compiled_artifact_data(
+                            &execute_artifact,
+                            skills::SkillExecuteOptions {
+                                component: requested_component,
+                                input: input.as_deref(),
+                            },
+                        )
+                        .await
+                        .map_err(|error| mcp_tool_error(error.to_string()))?;
+                        Ok(serde_json::to_value(result)
+                            .map_err(|error| mcp_tool_error(error.to_string()))?)
+                    })
+                }),
+            );
         }
 
         for reference in &artifact.manifest.references {
@@ -8534,6 +8637,12 @@ struct McpInspectCompiledSkillArgs {
 #[derive(serde::Deserialize, Default)]
 struct McpCompiledSkillReferenceArgs {
     max_chars: Option<usize>,
+}
+
+#[derive(serde::Deserialize, Default)]
+struct McpCompiledSkillExecuteArgs {
+    component: Option<String>,
+    input: Option<serde_json::Value>,
 }
 
 #[derive(serde::Deserialize)]
@@ -9380,6 +9489,7 @@ mod tests {
     async fn mcp_server_exposes_compiled_skill_tools() {
         let workspace = tempdir().unwrap();
         let skill_dir = workspace.path().join("skills").join("demo");
+        std::fs::create_dir_all(skill_dir.join("scripts")).unwrap();
         std::fs::create_dir_all(skill_dir.join("references")).unwrap();
         std::fs::write(
             skill_dir.join("SKILL.md"),
@@ -9389,6 +9499,18 @@ Useful compiled skill.
 
 argument_hint: <topic>
 "#,
+        )
+        .unwrap();
+        std::fs::write(
+            skill_dir.join("scripts").join("echo.wat"),
+            r#"(module
+              (memory (export "memory") 1 1)
+              (data (i32.const 1024) "{\"ok\":true}")
+              (func (export "alloc") (param i32) (result i32) i32.const 0)
+              (func (export "run") (param i32 i32) (result i64)
+                (i64.or
+                  (i64.shl (i64.extend_i32_u (i32.const 1024)) (i64.const 32))
+                  (i64.extend_i32_u (i32.const 11)))))"#,
         )
         .unwrap();
         std::fs::write(
@@ -9447,6 +9569,11 @@ argument_hint: <topic>
                 .iter()
                 .any(|tool| { tool["name"] == "skill.Demo-Skill.reference.references__guide.md" })
         );
+        assert!(
+            tools
+                .iter()
+                .any(|tool| tool["name"] == "skill.Demo-Skill.execute")
+        );
 
         let summary_req = serde_json::json!({
             "jsonrpc": "2.0",
@@ -9468,6 +9595,14 @@ argument_hint: <topic>
             summary_payload["cli"]["command"],
             "openrustclaw skills invoke Demo Skill"
         );
+        assert_eq!(
+            summary_payload["mcp"]["execute_tool"],
+            "skill.Demo-Skill.execute"
+        );
+        assert_eq!(
+            summary_payload["mcp"]["executable_components"][0],
+            "scripts/echo.wat"
+        );
 
         let reference_req = serde_json::json!({
             "jsonrpc": "2.0",
@@ -9488,6 +9623,32 @@ argument_hint: <topic>
         assert_eq!(reference_payload["reference"], "references/guide.md");
         assert_eq!(reference_payload["content"], "This");
         assert_eq!(reference_payload["truncated"], true);
+
+        let execute_req = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 43,
+            "method": "tools/call",
+            "params": {
+                "name": "skill.Demo-Skill.execute",
+                "arguments": {
+                    "input": {
+                        "text": "hello"
+                    }
+                }
+            }
+        });
+        let execute_resp = server.handle_request(&execute_req);
+        let execute_text = execute_resp["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap();
+        let execute_payload: serde_json::Value = serde_json::from_str(execute_text).unwrap();
+        assert_eq!(execute_payload["skill_name"], "Demo Skill");
+        assert_eq!(execute_payload["component"], "scripts/echo.wat");
+        assert_eq!(execute_payload["output"], serde_json::json!({"ok": true}));
+        assert_eq!(
+            execute_payload["input"],
+            serde_json::json!({"text": "hello"})
+        );
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -9543,6 +9704,11 @@ argument_hint: <topic>
             !tools.iter().any(|tool| {
                 tool["name"] == "skill.Danger-Skill.reference.references__notes.md"
             })
+        );
+        assert!(
+            !tools
+                .iter()
+                .any(|tool| tool["name"] == "skill.Danger-Skill.execute")
         );
 
         let details_req = serde_json::json!({
