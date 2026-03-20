@@ -1283,8 +1283,8 @@ Remaining:
   - photos,
   - SMS where applicable,
   - push-wake / disconnected-node rehydration where mobile nodes need it.
-- [ ] Add typed node protocols in Rust rather than ad hoc compatibility layers.
-- [ ] Add secure device capability gating and operator approval for node commands.
+- [x] Add typed node protocols in Rust for the shipped node command/control lane rather than ad hoc compatibility layers.
+- [x] Add secure device capability gating and operator approval for node commands.
 
 Exit criteria:
 

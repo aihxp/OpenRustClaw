@@ -3,10 +3,14 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, anyhow};
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use openrustclaw_mobile::node::MobileMessage;
 use openrustclaw_mobile::notifications::{
     Notification, NotificationConfig, NotificationPriority, NotificationType,
+};
+pub use openrustclaw_mobile::protocol::{
+    DeviceCommandKind, MobileCommandDecisionRequest, MobileCommandDispatchRequest,
+    MobileCommandRecord,
 };
 use openrustclaw_mobile::sync::{
     ConflictResolution, SyncConfig, SyncManager, SyncMode, SyncPriority,
@@ -141,48 +145,6 @@ pub struct MobileSyncPreviewRequest {
     pub battery_percent: u8,
     #[serde(default)]
     pub pending_change_count: usize,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MobileCommandDispatchRequest {
-    pub node_id: String,
-    pub command: String,
-    #[serde(default)]
-    pub payload: Value,
-    #[serde(default)]
-    pub approved_by: Option<String>,
-    #[serde(default)]
-    pub require_approval: Option<bool>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MobileCommandDecisionRequest {
-    pub decided_by: String,
-    #[serde(default)]
-    pub reason: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MobileCommandRecord {
-    pub id: String,
-    pub node_id: String,
-    pub command: String,
-    pub required_capability: String,
-    pub approval_required: bool,
-    pub status: String,
-    #[serde(default)]
-    pub payload: Value,
-    #[serde(default)]
-    pub result: Value,
-    pub created_at: DateTime<Utc>,
-    #[serde(default)]
-    pub approved_by: Option<String>,
-    #[serde(default)]
-    pub decided_reason: Option<String>,
-    #[serde(default)]
-    pub approved_at: Option<DateTime<Utc>>,
-    #[serde(default)]
-    pub executed_at: Option<DateTime<Utc>>,
 }
 
 fn default_true() -> bool {
@@ -483,12 +445,7 @@ pub async fn dispatch_command_data(
 ) -> Result<MobileCommandRecord> {
     let manifest = inspect_node_data(workspace_root, &request.node_id)?;
     let status = node_status_data(workspace_root, &request.node_id)?;
-    let command = request.command.trim().to_ascii_lowercase();
-    if command.is_empty() {
-        return Err(anyhow!("command is required"));
-    }
-
-    let capability = required_capability_for_command(&command);
+    let capability = request.command.required_capability();
     if !manifest
         .node
         .capabilities
@@ -504,11 +461,11 @@ pub async fn dispatch_command_data(
 
     let approval_required = request
         .require_approval
-        .unwrap_or_else(|| default_command_requires_approval(&command));
+        .unwrap_or_else(|| request.command.default_requires_approval());
     let mut record = MobileCommandRecord {
         id: uuid::Uuid::new_v4().to_string(),
         node_id: manifest.node.id.clone(),
-        command: command.clone(),
+        command: request.command.clone(),
         required_capability: capability.to_string(),
         approval_required,
         status: if approval_required && request.approved_by.is_none() {
@@ -605,11 +562,14 @@ async fn execute_command_for_node(
         ));
     }
 
-    match record.command.as_str() {
-        "send_message" => execute_send_message_command(manifest, &record.payload).await,
-        "push_notification" => execute_push_notification_command(manifest, &record.payload),
-        "sync_now" => execute_sync_now_command(manifest, &record.payload).await,
-        other => Err(anyhow!("unsupported mobile command '{}'", other)),
+    match &record.command {
+        DeviceCommandKind::SendMessage => {
+            execute_send_message_command(manifest, &record.payload).await
+        }
+        DeviceCommandKind::PushNotification => {
+            execute_push_notification_command(manifest, &record.payload)
+        }
+        DeviceCommandKind::SyncNow => execute_sync_now_command(manifest, &record.payload).await,
     }
 }
 
@@ -732,19 +692,6 @@ async fn execute_sync_now_command(manifest: &MobileNodeManifest, payload: &Value
         "pending_change_count": pending_change_count,
         "sync_result": result,
     }))
-}
-
-fn required_capability_for_command(command: &str) -> &'static str {
-    match command {
-        "send_message" => "mobile",
-        "push_notification" => "notifications",
-        "sync_now" => "mobile",
-        _ => "mobile",
-    }
-}
-
-fn default_command_requires_approval(command: &str) -> bool {
-    !matches!(command, "sync_now")
 }
 
 pub async fn list_nodes(workspace_root: &Path) -> Result<()> {
@@ -1023,7 +970,7 @@ mod tests {
             temp.path(),
             MobileCommandDispatchRequest {
                 node_id: "iphone-2".to_string(),
-                command: "send_message".to_string(),
+                command: DeviceCommandKind::SendMessage,
                 payload: json!({"target":"ops-room","content":"hello"}),
                 approved_by: None,
                 require_approval: None,
@@ -1065,7 +1012,7 @@ mod tests {
             temp.path(),
             MobileCommandDispatchRequest {
                 node_id: "iphone-3".to_string(),
-                command: "send_message".to_string(),
+                command: DeviceCommandKind::SendMessage,
                 payload: json!({"target":"ops-room","content":"hello"}),
                 approved_by: None,
                 require_approval: Some(true),
@@ -1120,7 +1067,7 @@ mod tests {
             temp.path(),
             MobileCommandDispatchRequest {
                 node_id: "iphone-4".to_string(),
-                command: "push_notification".to_string(),
+                command: DeviceCommandKind::PushNotification,
                 payload: json!({"title":"hello","body":"world"}),
                 approved_by: Some("operator".to_string()),
                 require_approval: Some(false),

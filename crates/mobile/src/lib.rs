@@ -5,6 +5,7 @@
 
 pub mod node;
 pub mod notifications;
+pub mod protocol;
 pub mod sync;
 
 #[cfg(all(target_os = "ios", feature = "ios"))]
@@ -14,6 +15,10 @@ pub mod ios;
 pub mod android;
 
 // MobileNodeHandle is defined in this module below
+pub use protocol::{
+    DeviceCommandKind, MobileCommandDecisionRequest, MobileCommandDispatchRequest,
+    MobileCommandRecord,
+};
 pub use sync::{SyncConfig, SyncManager};
 
 use serde::Serialize;

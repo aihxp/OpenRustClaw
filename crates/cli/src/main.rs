@@ -2,6 +2,7 @@
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use openrustclaw_mobile::DeviceCommandKind;
 
 mod commands;
 
@@ -2641,6 +2642,9 @@ async fn main() -> Result<()> {
                     approved_by,
                     require_approval,
                 } => {
+                    let command = command
+                        .parse::<DeviceCommandKind>()
+                        .map_err(anyhow::Error::msg)?;
                     let payload = payload
                         .into_iter()
                         .filter_map(|entry| {
