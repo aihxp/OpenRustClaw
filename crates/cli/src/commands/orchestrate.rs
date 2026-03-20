@@ -169,6 +169,43 @@ pub struct SupervisionSummary {
     pub escalation_recommended: bool,
 }
 
+#[derive(Debug, Clone)]
+pub struct PromoteReflectionInput {
+    pub lesson_id: Option<String>,
+    pub active: bool,
+    pub signal: Option<String>,
+    pub recommendation: Option<String>,
+    pub rationale: Option<String>,
+    pub confidence: Option<f32>,
+    pub source: Option<String>,
+    pub category: Option<String>,
+    pub claw_id: Option<String>,
+    pub model_profile_id: Option<String>,
+    pub provider: Option<String>,
+    pub autonomy_level: Option<String>,
+    pub execution_mode: Option<String>,
+}
+
+impl Default for PromoteReflectionInput {
+    fn default() -> Self {
+        Self {
+            lesson_id: None,
+            active: true,
+            signal: None,
+            recommendation: None,
+            rationale: None,
+            confidence: None,
+            source: None,
+            category: None,
+            claw_id: None,
+            model_profile_id: None,
+            provider: None,
+            autonomy_level: None,
+            execution_mode: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OrchestrationRunRecord {
     pub run_id: String,
@@ -363,6 +400,91 @@ pub fn read_run_supervision(workspace_root: &Path, receipt_id: &str) -> Result<s
         "reflection_notes": run.reflection_notes,
         "reflection_candidates": run.reflection_candidates,
         "checkpoints": run.checkpoints,
+    }))
+}
+
+pub fn promote_reflection_candidate(
+    workspace_root: &Path,
+    receipt_id: &str,
+    candidate_index: usize,
+    input: PromoteReflectionInput,
+) -> Result<serde_json::Value> {
+    let run = read_run(workspace_root, receipt_id)?;
+    let candidate = run
+        .reflection_candidates
+        .get(candidate_index)
+        .cloned()
+        .with_context(|| {
+            format!(
+                "reflection candidate {} not found for receipt '{}'",
+                candidate_index, receipt_id
+            )
+        })?;
+
+    let lesson_id = input
+        .lesson_id
+        .unwrap_or_else(|| make_lesson_id(&run.run_id, candidate_index, &candidate.kind));
+    let signal = input.signal.unwrap_or(candidate.signal.clone());
+    let recommendation = input
+        .recommendation
+        .unwrap_or(candidate.recommendation.clone());
+    let rationale = input.rationale.or(candidate.rationale.clone());
+    let confidence = input.confidence.or(candidate.confidence).unwrap_or(0.7);
+    let source = input
+        .source
+        .unwrap_or_else(|| "reflection_candidate".to_string());
+    let category = input.category.or(run.request.category.clone());
+    let claw_id = input
+        .claw_id
+        .or(candidate.claw_id.clone())
+        .or(Some(run.routing.selected_claw_id.clone()));
+    let model_profile_id = input
+        .model_profile_id
+        .or(candidate.model_profile_id.clone())
+        .or(Some(run.routing.selected_model_profile_id.clone()));
+    let provider = input
+        .provider
+        .or(candidate.provider.clone())
+        .or(Some(run.routing.selected_model.provider.clone()));
+    let autonomy_level = input
+        .autonomy_level
+        .or(Some(run.routing.autonomy.autonomy_level.clone()));
+    let execution_mode = input
+        .execution_mode
+        .or(Some(run.routing.execution_mode.clone()));
+    let control_root = control::control_root_for(workspace_root);
+    let control_root_str = control_root.to_string_lossy().to_string();
+
+    control::create_lesson(
+        Some(&control_root_str),
+        control::NewLessonInput {
+            id: &lesson_id,
+            active: input.active,
+            signal: &signal,
+            recommendation: &recommendation,
+            rationale: rationale.as_deref(),
+            confidence,
+            source: Some(&source),
+            task_id: run.request.task_id.as_deref(),
+            category: category.as_deref(),
+            claw_id: claw_id.as_deref(),
+            model_profile_id: model_profile_id.as_deref(),
+            provider: provider.as_deref(),
+            autonomy_level: autonomy_level.as_deref(),
+            execution_mode: execution_mode.as_deref(),
+        },
+    )?;
+
+    let registry = control::load_registry(control_root)?;
+    let lesson =
+        registry.lessons.get(&lesson_id).cloned().with_context(|| {
+            format!("Promoted lesson '{}' was not found after write", lesson_id)
+        })?;
+    Ok(serde_json::json!({
+        "status": "ok",
+        "receipt_id": receipt_id,
+        "candidate_index": candidate_index,
+        "lesson": lesson,
     }))
 }
 
@@ -641,6 +763,33 @@ fn make_checkpoint(
 
 fn excerpt(input: &str, max_chars: usize) -> String {
     input.chars().take(max_chars).collect()
+}
+
+fn make_lesson_id(run_id: &str, candidate_index: usize, kind: &str) -> String {
+    format!(
+        "reflection-{}-{}-{}",
+        simple_slug(run_id),
+        candidate_index,
+        simple_slug(kind)
+    )
+}
+
+fn simple_slug(input: &str) -> String {
+    let mut slug = String::with_capacity(input.len());
+    let mut last_dash = false;
+    for ch in input.chars() {
+        let next = if ch.is_ascii_alphanumeric() {
+            last_dash = false;
+            ch.to_ascii_lowercase()
+        } else if !last_dash {
+            last_dash = true;
+            '-'
+        } else {
+            continue;
+        };
+        slug.push(next);
+    }
+    slug.trim_matches('-').to_string()
 }
 
 fn build_reflection_candidates(
@@ -1639,5 +1788,96 @@ mod tests {
                 .iter()
                 .any(|candidate| candidate.kind == "open_questions")
         );
+    }
+
+    #[test]
+    fn promote_reflection_candidate_writes_decision_lesson() {
+        let root = tempfile::tempdir().unwrap();
+        let control_root = control::control_root_for(root.path());
+        control::init(Some(control_root.to_str().unwrap())).unwrap();
+        let record = OrchestrationRunRecord {
+            run_id: "run-1".to_string(),
+            created_at: "2026-03-19T00:00:00Z".to_string(),
+            mode: "orchestrated".to_string(),
+            request: OrchestrationRequest {
+                prompt: "test".to_string(),
+                task_id: Some("task-1".to_string()),
+                category: Some("code".to_string()),
+                claw_id: None,
+                mode: "auto".to_string(),
+            },
+            routing: RoutingDecision {
+                execution_mode: "orchestrated".to_string(),
+                route_source: "orchestrated_default".to_string(),
+                task_id: Some("task-1".to_string()),
+                category: Some("code".to_string()),
+                selected_claw_id: "main".to_string(),
+                selected_claw_role: "primary".to_string(),
+                selected_agent_profile_id: "default".to_string(),
+                selected_model_profile_id: "core-groq".to_string(),
+                selected_model: ResolvedModelDecision {
+                    requested_profile_id: "core-groq".to_string(),
+                    selected_profile_id: "core-groq".to_string(),
+                    provider: "groq".to_string(),
+                    model: "llama-3.3-70b-versatile".to_string(),
+                    fallback_path: vec![],
+                    warnings: vec![],
+                },
+                available_workers: vec!["orchestrator".to_string()],
+                autonomy: control::AutonomyPolicy::default(),
+                allow_shared_context: false,
+                isolation_mode: "strict".to_string(),
+                applied_lessons: vec![],
+                steering_notes: vec![],
+                warnings: vec![],
+            },
+            delegations: vec![],
+            worker_results: vec![],
+            checkpoints: vec![],
+            reflection_notes: vec![],
+            reflection_candidates: vec![ReflectionCandidate {
+                kind: "worker_status".to_string(),
+                signal: "worker failed".to_string(),
+                recommendation: "route a safer model".to_string(),
+                rationale: Some("worker returned failed".to_string()),
+                confidence: Some(0.8),
+                claw_id: Some("main".to_string()),
+                model_profile_id: Some("core-groq".to_string()),
+                provider: Some("groq".to_string()),
+            }],
+            supervision: Some(SupervisionSummary {
+                checkpoint_count: 0,
+                worker_count: 0,
+                needs_input_count: 0,
+                failed_count: 1,
+                low_confidence_workers: vec![],
+                reflection_candidate_count: 1,
+                escalation_recommended: true,
+            }),
+            final_output: "ok".to_string(),
+            final_claw_id: "main".to_string(),
+            final_model_profile_id: "core-groq".to_string(),
+            final_provider: "groq".to_string(),
+            final_model: "llama-3.3-70b-versatile".to_string(),
+            receipt_path: "test.json".to_string(),
+        };
+        let path = runs_root_for(root.path()).join("test.json");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, serde_json::to_vec_pretty(&record).unwrap()).unwrap();
+
+        let result = promote_reflection_candidate(
+            root.path(),
+            "test.json",
+            0,
+            PromoteReflectionInput::default(),
+        )
+        .unwrap();
+        assert_eq!(result["status"], "ok");
+        let registry = control::load_registry(control::control_root_for(root.path())).unwrap();
+        assert_eq!(registry.lessons.len(), 1);
+        let lesson = registry.lessons.values().next().unwrap();
+        assert_eq!(lesson.signal, "worker failed");
+        assert_eq!(lesson.recommendation, "route a safer model");
+        assert_eq!(lesson.scope.category.as_deref(), Some("code"));
     }
 }

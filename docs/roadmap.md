@@ -705,7 +705,7 @@ Exit criteria:
 
 Goal: match OpenClaw's operator UX and tooling surface while keeping Rust-native interfaces.
 
-Status: complete for shipped CLI/MCP control-plane surfaces, shared typed control/config/diagnostics APIs, autonomy-tier and decision-lesson control surfaces, shared service-status and scheduler inspection APIs, shared session/memory/job inspection APIs, channel account CRUD parity, encrypted runtime secret-vault support, validated provider/model switching, runtime reload/cutover APIs with rollback, bounded routed/orchestrated multi-model execution surfaces with receipt capture, checkpoints, reflection candidates, and lesson-aware steering context, onboarding scaffolding, doctor validation, a bounded native browser operator slice, and an initial Web Control UI shell with config/vault editing plus autonomy/lesson and run-supervision inspection; deeper Web Control UI parity, richer browser/web tooling, deeper channel/service probes, and full orchestrated runtime execution remain open.
+Status: complete for shipped CLI/MCP control-plane surfaces, shared typed control/config/diagnostics APIs, autonomy-tier and decision-lesson control surfaces, shared service-status and scheduler inspection APIs, shared session/memory/job inspection APIs, channel account CRUD parity, encrypted runtime secret-vault support, validated provider/model switching, runtime reload/cutover APIs with rollback, bounded routed/orchestrated multi-model execution surfaces with receipt capture, checkpoints, reflection candidates, reflection-to-lesson promotion, and lesson-aware steering context, onboarding scaffolding, doctor validation, a bounded native browser operator slice, and an initial Web Control UI shell with config/vault editing plus autonomy/lesson and run-supervision inspection; deeper Web Control UI parity, richer browser/web tooling, deeper channel/service probes, and full orchestrated runtime execution remain open.
 
 Additional later-surface work:
 
@@ -812,6 +812,11 @@ Completed:
   - `GET /control/orchestration/runs/{receipt_id}/checkpoints`,
   - `GET /control/orchestration/runs/{receipt_id}/supervision`,
   - `/control/ui` run-supervision inspection panel.
+- [x] Close the operator feedback loop on bounded orchestration:
+  - `openrustclaw orchestrate promote-candidate`,
+  - `POST /control/orchestration/runs/{receipt_id}/reflection-candidates/{index}/promote`,
+  - `/control/ui` reflection-candidate promotion controls,
+  - promoted lessons inherit scoped task/category/claw/model/provider/autonomy defaults from the run receipt instead of relying on hidden automatic policy mutation.
 - [x] Add a bounded native browser operator surface backed by the Rust automation crate:
   - `openrustclaw browser navigate|extract|screenshot|pdf`,
   - `POST /control/browser/navigate`,

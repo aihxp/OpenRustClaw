@@ -434,6 +434,17 @@
           <h2>Run Supervision</h2>
           <div class="surface"><pre id="orchestration-detail">Select an orchestration receipt to inspect.</pre></div>
         </article>
+        <article class="panel span-6">
+          <h2>Reflection Candidates</h2>
+          <div class="surface">
+            <table class="table">
+              <thead>
+                <tr><th>Kind</th><th>Signal</th><th>Recommendation</th><th>Action</th></tr>
+              </thead>
+              <tbody id="reflection-candidates"><tr><td colspan="4" class="muted">Select a run to inspect candidates.</td></tr></tbody>
+            </table>
+          </div>
+        </article>
 
         <article class="panel span-6">
           <h2>Sessions</h2>
@@ -540,6 +551,7 @@
     <script>
       const pretty = (value) => JSON.stringify(value, null, 2);
       let configEditorDirty = false;
+      let currentOrchestrationReceipt = null;
       const setText = (id, value) => {
         document.getElementById(id).textContent = typeof value === "string" ? value : pretty(value);
       };
@@ -759,8 +771,31 @@
       }
 
       async function inspectOrchestrationRun(receiptId) {
+        currentOrchestrationReceipt = receiptId;
         const payload = await fetchJson(`/control/orchestration/runs/${encodeURIComponent(receiptId)}/supervision`);
         setText("orchestration-detail", payload);
+        const rows = (payload.reflection_candidates || []).map((candidate, index) => {
+          return `<tr>
+            <td><strong>${candidate.kind || "-"}</strong><div class="muted">${candidate.provider || "-"}</div></td>
+            <td>${candidate.signal || "-"}</td>
+            <td>${candidate.recommendation || "-"}</td>
+            <td><button class="secondary" onclick="promoteReflectionCandidate(${index})">Promote</button></td>
+          </tr>`;
+        });
+        renderTableRows("reflection-candidates", rows, "No reflection candidates on this run.");
+      }
+
+      async function promoteReflectionCandidate(index) {
+        if (!currentOrchestrationReceipt) {
+          throw new Error("No orchestration receipt selected");
+        }
+        const result = await fetchJson(`/control/orchestration/runs/${encodeURIComponent(currentOrchestrationReceipt)}/reflection-candidates/${index}/promote`, {
+          method: "POST",
+          body: JSON.stringify({ active: true }),
+        });
+        setText("autonomy-policy", result);
+        await loadAutonomy();
+        await inspectOrchestrationRun(currentOrchestrationReceipt);
       }
 
       async function loadBrowserArtifacts() {
@@ -1016,6 +1051,7 @@
       window.inspectSession = inspectSession;
       window.inspectJob = inspectJob;
       window.inspectOrchestrationRun = inspectOrchestrationRun;
+      window.promoteReflectionCandidate = promoteReflectionCandidate;
       window.deactivateLesson = deactivateLesson;
 
       refreshAll();

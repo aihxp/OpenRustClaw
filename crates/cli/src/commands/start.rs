@@ -2457,6 +2457,10 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             "/control/orchestration/runs/{receipt_id}/supervision",
             get(orchestration_run_supervision_handler),
         )
+        .route(
+            "/control/orchestration/runs/{receipt_id}/reflection-candidates/{index}/promote",
+            post(orchestration_promote_reflection_candidate_handler),
+        )
         .route("/control/browser/navigate", post(browser_navigate_handler))
         .route("/control/browser/extract", post(browser_extract_handler))
         .route("/control/browser/artifacts", get(browser_artifacts_handler))
@@ -3455,6 +3459,70 @@ async fn orchestration_run_supervision_handler(
 ) -> impl IntoResponse {
     match orchestrate::read_run_supervision(&state.workspace_root, &receipt_id) {
         Ok(summary) => (StatusCode::OK, Json(summary)).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct PromoteReflectionPayload {
+    #[serde(default)]
+    lesson_id: Option<String>,
+    #[serde(default = "default_active_true")]
+    active: bool,
+    #[serde(default)]
+    signal: Option<String>,
+    #[serde(default)]
+    recommendation: Option<String>,
+    #[serde(default)]
+    rationale: Option<String>,
+    #[serde(default)]
+    confidence: Option<f32>,
+    #[serde(default)]
+    source: Option<String>,
+    #[serde(default)]
+    category: Option<String>,
+    #[serde(default)]
+    claw_id: Option<String>,
+    #[serde(default)]
+    model_profile_id: Option<String>,
+    #[serde(default)]
+    provider: Option<String>,
+    #[serde(default)]
+    autonomy_level: Option<String>,
+    #[serde(default)]
+    execution_mode: Option<String>,
+}
+
+async fn orchestration_promote_reflection_candidate_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath((receipt_id, index)): AxumPath<(String, usize)>,
+    Json(payload): Json<PromoteReflectionPayload>,
+) -> impl IntoResponse {
+    match orchestrate::promote_reflection_candidate(
+        &state.workspace_root,
+        &receipt_id,
+        index,
+        orchestrate::PromoteReflectionInput {
+            lesson_id: payload.lesson_id,
+            active: payload.active,
+            signal: payload.signal,
+            recommendation: payload.recommendation,
+            rationale: payload.rationale,
+            confidence: payload.confidence,
+            source: payload.source,
+            category: payload.category,
+            claw_id: payload.claw_id,
+            model_profile_id: payload.model_profile_id,
+            provider: payload.provider,
+            autonomy_level: payload.autonomy_level,
+            execution_mode: payload.execution_mode,
+        },
+    ) {
+        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": error.to_string()})),

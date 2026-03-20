@@ -187,7 +187,7 @@ Channel routing/operator controls:
 - `openrustclaw runtime services status|scheduler|events`
 - `openrustclaw runtime vault status|list|set|delete`
 - `openrustclaw orchestrate resolve|run`
-- `openrustclaw orchestrate list|inspect`
+- `openrustclaw orchestrate list|inspect|promote-candidate`
 - runtime secret sources now load from workspace `.env` and an encrypted `.claw/control/runtime-vault.json` when `OPENRUSTCLAW_VAULT_PASSPHRASE` is set
 - provider/model cutovers are validated before config writes, runtime API cutovers roll back on failed reload, and config writes create timestamped backup files
 - bounded orchestration surfaces now exist at:
@@ -197,7 +197,9 @@ Channel routing/operator controls:
   - `GET /control/orchestration/runs/{receipt_id}`
   - `GET /control/orchestration/runs/{receipt_id}/checkpoints`
   - `GET /control/orchestration/runs/{receipt_id}/supervision`
+- `POST /control/orchestration/runs/{receipt_id}/reflection-candidates/{index}/promote`
 - bounded orchestration now carries runtime autonomy policy, lesson-aware steering notes, runtime-capped delegation limits, execution checkpoints, and reflection candidates into receipts without turning the outer loop into a constant micromanager
+- reflection candidates can now be promoted into scoped decision lessons through CLI, API, or `/control/ui`, so decision learning stays explicit and operator-auditable
 - routed/orchestrated runs now persist receipts under `.claw/control/orchestration-runs/` so operators can inspect which Claw planned, which Claws executed, which model-profile fallback path was used, which checkpoints were hit, and which autonomy/reflection context shaped the run
 - the shipped `/control/ui` dashboard now reuses the same typed runtime/config/diagnostics/services/session/memory/job/channel/orchestration/browser APIs for an initial browser-based operator shell, including live diagnostics, service/scheduler/runtime-event inspection, session/memory/job inspection, config validate/apply, vault key set/delete, autonomy-policy/decision-lesson inspection, orchestration run supervision detail, and bounded browser actions
 - `openrustclaw doctor --repair --deep --non-interactive` now validates and, where safe, scaffolds the shipped control-plane registry while exposing the same typed diagnostic model used by `/control/diagnostics`

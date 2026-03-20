@@ -371,6 +371,37 @@ enum OrchestrateAction {
         #[arg(long)]
         json: bool,
     },
+    /// Promote one reflection candidate from a receipt into a decision lesson
+    PromoteCandidate {
+        receipt_id: String,
+        index: usize,
+        #[arg(long)]
+        lesson_id: Option<String>,
+        #[arg(long, default_value_t = true)]
+        active: bool,
+        #[arg(long)]
+        signal: Option<String>,
+        #[arg(long)]
+        recommendation: Option<String>,
+        #[arg(long)]
+        rationale: Option<String>,
+        #[arg(long)]
+        confidence: Option<f32>,
+        #[arg(long)]
+        source: Option<String>,
+        #[arg(long)]
+        category: Option<String>,
+        #[arg(long)]
+        claw_id: Option<String>,
+        #[arg(long)]
+        model_profile: Option<String>,
+        #[arg(long)]
+        provider: Option<String>,
+        #[arg(long)]
+        autonomy_level: Option<String>,
+        #[arg(long)]
+        execution_mode: Option<String>,
+    },
     /// Run a bounded direct or orchestrated multi-model execution
     Run {
         prompt: String,
@@ -2329,6 +2360,47 @@ async fn main() -> Result<()> {
                 } else {
                     println!("{}", serde_json::to_string_pretty(&payload)?);
                 }
+                Ok(())
+            }
+            OrchestrateAction::PromoteCandidate {
+                receipt_id,
+                index,
+                lesson_id,
+                active,
+                signal,
+                recommendation,
+                rationale,
+                confidence,
+                source,
+                category,
+                claw_id,
+                model_profile,
+                provider,
+                autonomy_level,
+                execution_mode,
+            } => {
+                let workspace_root = std::env::current_dir()?;
+                let payload = commands::orchestrate::promote_reflection_candidate(
+                    &workspace_root,
+                    &receipt_id,
+                    index,
+                    commands::orchestrate::PromoteReflectionInput {
+                        lesson_id,
+                        active,
+                        signal,
+                        recommendation,
+                        rationale,
+                        confidence,
+                        source,
+                        category,
+                        claw_id,
+                        model_profile_id: model_profile,
+                        provider,
+                        autonomy_level,
+                        execution_mode,
+                    },
+                )?;
+                println!("{}", serde_json::to_string_pretty(&payload)?);
                 Ok(())
             }
             OrchestrateAction::Run {
