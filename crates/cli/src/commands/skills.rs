@@ -4,13 +4,18 @@ use anyhow::{Context, Result};
 use indicatif::{ProgressBar, ProgressStyle};
 use serde::Serialize;
 use sqlx::Row;
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 use tracing::debug;
 
+use openrustclaw_core::types::SkillSource;
 use openrustclaw_scheduler::DurableEventBus;
 use openrustclaw_security::SkillVerifier;
-use openrustclaw_skills::{ClawHubRegistry, SearchFilters, SortBy, normalize_capability_names};
+use openrustclaw_skills::{
+    ClawHubRegistry, CompiledSkillArtifact, CompiledSkillManifest, SearchFilters, SortBy,
+    compile_skill_to_dir, list_compiled_manifests, load_compiled_artifact,
+    normalize_capability_names, remove_compiled_artifact,
+};
 
 fn parse_hex_bytes(input: &str) -> Result<Vec<u8>> {
     let trimmed = input.trim();
@@ -256,6 +261,15 @@ pub struct SkillMutationResult {
     pub verified: Option<bool>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct SkillCompileResult {
+    pub status: String,
+    pub output_root: String,
+    pub compiled_count: usize,
+    pub blocked_count: usize,
+    pub compiled: Vec<CompiledSkillManifest>,
+}
+
 async fn load_skill_config_and_pool()
 -> Result<(openrustclaw_core::config::AppConfig, sqlx::SqlitePool)> {
     let config = openrustclaw_core::config::AppConfig::load().unwrap_or_default();
@@ -276,6 +290,26 @@ fn skill_registry_endpoint(config: &openrustclaw_core::config::AppConfig) -> Str
         .as_ref()
         .and_then(|skills| skills.registry_url.clone())
         .unwrap_or_else(|| "https://clawhub.openrustclaw.dev".to_string())
+}
+
+fn compiled_skill_root() -> PathBuf {
+    Path::new(".claw").join("skills").join("compiled")
+}
+
+fn source_from_string(source: &str) -> SkillSource {
+    match source {
+        "bundled" => SkillSource::Bundled,
+        "managed" => SkillSource::Managed,
+        "marketplace" => SkillSource::Marketplace,
+        _ => SkillSource::Workspace,
+    }
+}
+
+fn ensure_compiled_root() -> Result<PathBuf> {
+    let root = compiled_skill_root();
+    std::fs::create_dir_all(&root)
+        .with_context(|| format!("Failed to create {}", root.display()))?;
+    Ok(root)
 }
 
 async fn build_registry_client(
@@ -487,6 +521,143 @@ pub async fn installed_skill_detail_data(name: &str) -> Result<InstalledSkillDet
     })
 }
 
+fn discover_workspace_skill_paths() -> BTreeMap<String, (PathBuf, SkillSource, bool)> {
+    let mut discovered = BTreeMap::new();
+    let skills_root = Path::new("skills");
+    if !skills_root.exists() {
+        return discovered;
+    }
+
+    if let Ok(entries) = std::fs::read_dir(skills_root) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let skill_file = if path.is_dir() {
+                let candidate = path.join("SKILL.md");
+                candidate.exists().then_some(candidate)
+            } else if path
+                .extension()
+                .and_then(|ext| ext.to_str())
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
+            {
+                Some(path.clone())
+            } else {
+                None
+            };
+
+            if let Some(skill_file) = skill_file {
+                let name = if path.is_dir() {
+                    path.file_name()
+                        .and_then(|value| value.to_str())
+                        .unwrap_or("unknown")
+                        .to_string()
+                } else {
+                    path.file_stem()
+                        .and_then(|value| value.to_str())
+                        .unwrap_or("unknown")
+                        .to_string()
+                };
+                discovered.insert(name, (skill_file, SkillSource::Workspace, true));
+            }
+        }
+    }
+
+    discovered
+}
+
+async fn compile_skill_target(
+    name: &str,
+    path: &Path,
+    source: SkillSource,
+    verified: bool,
+) -> Result<CompiledSkillArtifact> {
+    let root = ensure_compiled_root()?;
+    compile_skill_to_dir(path, &root, source, verified)
+        .map_err(|error| anyhow::anyhow!(error.to_string()))
+        .with_context(|| format!("Failed to compile skill '{}'", name))
+}
+
+async fn compile_skill_by_name_internal(name: &str) -> Result<CompiledSkillArtifact> {
+    if let Some(path) = resolve_workspace_skill_file(name) {
+        return compile_skill_target(name, &path, SkillSource::Workspace, true).await;
+    }
+
+    if let Ok(detail) = installed_skill_detail_data(name).await
+        && let Some(local_path) = detail.skill.local_path.clone()
+    {
+        let source = source_from_string(&detail.skill.source);
+        return compile_skill_target(name, Path::new(&local_path), source, detail.skill.verified)
+            .await;
+    }
+
+    anyhow::bail!("No local skill file found for '{}'", name)
+}
+
+pub async fn compiled_skills_data() -> Result<Vec<CompiledSkillManifest>> {
+    let root = compiled_skill_root();
+    list_compiled_manifests(&root)
+        .map_err(|error| anyhow::anyhow!(error.to_string()))
+        .context("Failed to load compiled skill manifests")
+}
+
+pub async fn compiled_skill_detail_data(name: &str) -> Result<CompiledSkillArtifact> {
+    let root = compiled_skill_root();
+    load_compiled_artifact(&root, name)
+        .map_err(|error| anyhow::anyhow!(error.to_string()))
+        .with_context(|| format!("Failed to load compiled skill '{}'", name))
+}
+
+pub async fn compile_data(name: Option<&str>) -> Result<SkillCompileResult> {
+    let root = ensure_compiled_root()?;
+    let mut compiled = Vec::new();
+
+    if let Some(name) = name {
+        compiled.push(compile_skill_by_name_internal(name).await?.manifest);
+    } else {
+        let mut targets = discover_workspace_skill_paths();
+        for installed in installed_skills_data().await.unwrap_or_default() {
+            if let Some(local_path) = installed.local_path {
+                targets.insert(
+                    installed.name.clone(),
+                    (
+                        PathBuf::from(local_path),
+                        source_from_string(&installed.source),
+                        installed.verified,
+                    ),
+                );
+            }
+        }
+
+        for (name, (path, source, verified)) in targets {
+            if !path.exists() {
+                continue;
+            }
+            compiled.push(
+                compile_skill_target(&name, &path, source, verified)
+                    .await?
+                    .manifest,
+            );
+        }
+    }
+
+    let blocked_count = compiled
+        .iter()
+        .filter(|manifest| {
+            matches!(
+                manifest.status,
+                openrustclaw_skills::CompiledSkillStatus::Blocked
+            )
+        })
+        .count();
+    compiled.sort_by(|left, right| left.name.cmp(&right.name));
+    Ok(SkillCompileResult {
+        status: "ok".to_string(),
+        output_root: root.display().to_string(),
+        compiled_count: compiled.len(),
+        blocked_count,
+        compiled,
+    })
+}
+
 pub async fn search_data(
     query: &str,
     category: Option<&str>,
@@ -617,6 +788,9 @@ pub async fn install_data(name: &str) -> Result<SkillMutationResult> {
         )
         .await;
 
+        let _ =
+            compile_skill_target(&metadata.name, &skill_file, SkillSource::Workspace, true).await;
+
         return Ok(SkillMutationResult {
             status: "ok".to_string(),
             action: "install".to_string(),
@@ -668,7 +842,7 @@ pub async fn install_data(name: &str) -> Result<SkillMutationResult> {
         openrustclaw_skills::InstallResult::Installed {
             name,
             version,
-            path: _,
+            path,
         } => {
             let capabilities_json = serialize_capabilities(&registry_metadata.capabilities)?;
             let version_string = version.to_string();
@@ -695,6 +869,12 @@ pub async fn install_data(name: &str) -> Result<SkillMutationResult> {
                 }),
             )
             .await;
+
+            let skill_file = path.join("SKILL.md");
+            if skill_file.exists() {
+                let _ =
+                    compile_skill_target(&name, &skill_file, SkillSource::Marketplace, false).await;
+            }
 
             Ok(SkillMutationResult {
                 status: "ok".to_string(),
@@ -771,6 +951,8 @@ pub async fn update_data(name: &str) -> Result<SkillMutationResult> {
             )
             .await;
 
+            let _ = compile_skill_by_name_internal(name).await;
+
             Ok(SkillMutationResult {
                 status: "ok".to_string(),
                 action: "update".to_string(),
@@ -813,6 +995,8 @@ pub async fn uninstall_data(name: &str) -> Result<SkillMutationResult> {
         .execute(&pool)
         .await?;
 
+    let _ = remove_compiled_artifact(&compiled_skill_root(), name);
+
     publish_plugin_event(
         &pool,
         "plugin.skill_uninstalled",
@@ -850,6 +1034,7 @@ pub async fn verify_data(name: &str) -> Result<SkillMutationResult> {
 
     if source == "workspace" || source == "bundled" {
         persist_verified_state(&pool, &id, true).await?;
+        let _ = compile_skill_by_name_internal(name).await;
         publish_plugin_event(
             &pool,
             "plugin.skill_verified",
@@ -937,6 +1122,7 @@ pub async fn verify_data(name: &str) -> Result<SkillMutationResult> {
     };
 
     persist_verified_state(&pool, &id, verified_result).await?;
+    let _ = compile_skill_by_name_internal(name).await;
     publish_plugin_event(
         &pool,
         "plugin.skill_verified",
@@ -1047,6 +1233,39 @@ pub async fn list() -> Result<()> {
         println!();
     }
 
+    Ok(())
+}
+
+/// Compile one skill or refresh compiled artifacts for all discoverable skills.
+pub async fn compile(name: Option<&str>) -> Result<()> {
+    let result = compile_data(name).await?;
+    println!("Compiled skills root: {}", result.output_root);
+    println!(
+        "Compiled {} skill(s) ({} blocked).",
+        result.compiled_count, result.blocked_count
+    );
+    for manifest in result.compiled {
+        println!(
+            "- {} [{}] {}",
+            manifest.name,
+            serde_json::to_string(&manifest.status)
+                .unwrap_or_else(|_| "\"unknown\"".to_string())
+                .trim_matches('"'),
+            manifest.local_path
+        );
+    }
+    Ok(())
+}
+
+/// Refresh the compiled skill registry for all discoverable local skills.
+pub async fn refresh_compiled() -> Result<()> {
+    compile(None).await
+}
+
+/// Inspect one compiled skill artifact bundle.
+pub async fn inspect_compiled(name: &str) -> Result<()> {
+    let artifact = compiled_skill_detail_data(name).await?;
+    println!("{}", serde_json::to_string_pretty(&artifact)?);
     Ok(())
 }
 
@@ -1219,6 +1438,8 @@ pub async fn install(name: &str) -> Result<()> {
         if !metadata.capabilities.is_empty() {
             println!("  Capabilities: {}", metadata.capabilities.join(", "));
         }
+        let _ =
+            compile_skill_target(&metadata.name, &skill_file, SkillSource::Workspace, true).await;
     } else {
         // Try to install from ClawHub registry
         println!("Skill not found locally. Checking ClawHub registry...");
@@ -1304,6 +1525,16 @@ pub async fn install(name: &str) -> Result<()> {
 
                                 println!("✓ Skill '{}' v{} installed successfully", name, version);
                                 println!("  Path: {}", path.display());
+                                let skill_file = path.join("SKILL.md");
+                                if skill_file.exists() {
+                                    let _ = compile_skill_target(
+                                        &name,
+                                        &skill_file,
+                                        SkillSource::Marketplace,
+                                        false,
+                                    )
+                                    .await;
+                                }
                             }
                         }
                     }
@@ -1419,6 +1650,7 @@ pub async fn update(name: &str) -> Result<()> {
                                 }),
                             )
                             .await;
+                            let _ = compile_skill_by_name_internal(name).await;
                         }
                     }
                 }
@@ -1481,6 +1713,7 @@ pub async fn uninstall(name: &str) -> Result<()> {
         .bind(name)
         .execute(&pool)
         .await?;
+    let _ = remove_compiled_artifact(&compiled_skill_root(), name);
 
     publish_plugin_event(
         &pool,
@@ -1535,6 +1768,7 @@ pub async fn verify(name: &str) -> Result<()> {
         );
 
         persist_verified_state(&pool, &id, true).await?;
+        let _ = compile_skill_by_name_internal(name).await;
         publish_plugin_event(
             &pool,
             "plugin.skill_verified",
@@ -1586,6 +1820,7 @@ pub async fn verify(name: &str) -> Result<()> {
         Ok(true) => {
             println!("✓ Skill '{}' signature verified successfully", name);
             persist_verified_state(&pool, &id, true).await?;
+            let _ = compile_skill_by_name_internal(name).await;
             publish_plugin_event(
                 &pool,
                 "plugin.skill_verified",
@@ -1601,6 +1836,7 @@ pub async fn verify(name: &str) -> Result<()> {
         Ok(false) => {
             println!("✗ Skill '{}' signature verification failed", name);
             persist_verified_state(&pool, &id, false).await?;
+            let _ = compile_skill_by_name_internal(name).await;
             publish_plugin_event(
                 &pool,
                 "plugin.skill_verified",
@@ -1616,6 +1852,7 @@ pub async fn verify(name: &str) -> Result<()> {
         Err(e) => {
             println!("✗ Error verifying skill '{}': {}", name, e);
             persist_verified_state(&pool, &id, false).await?;
+            let _ = compile_skill_by_name_internal(name).await;
             publish_plugin_event(
                 &pool,
                 "plugin.skill_verified",

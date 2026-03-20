@@ -4,6 +4,7 @@
 //! and WASM sandbox scaffolding for untrusted skills.
 
 pub mod capabilities;
+pub mod compiler;
 pub mod loader;
 pub mod marketplace;
 pub mod registry;
@@ -13,6 +14,12 @@ pub use capabilities::{
     canonical_capability_name, declared_sensitive_capability_names, is_sensitive_capability,
     normalize_capability_names, parse_capability_name, parse_capability_names,
     sensitive_capabilities,
+};
+pub use compiler::{
+    CompiledCliSchema, CompiledHelpIndex, CompiledMcpSchema, CompiledSkillArtifact,
+    CompiledSkillManifest, CompiledSkillScanFinding, CompiledSkillScanReport, CompiledSkillStatus,
+    FindingSeverity, compile_skill_file, compile_skill_to_dir, list_compiled_manifests,
+    load_compiled_artifact, remove_compiled_artifact,
 };
 pub use loader::SkillLoader;
 pub use marketplace::{MarketplaceClient, MarketplaceListing};

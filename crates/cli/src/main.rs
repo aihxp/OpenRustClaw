@@ -641,6 +641,15 @@ enum OrchestrateAction {
 enum SkillsAction {
     /// List installed skills
     List,
+    /// Compile cached MCP/CLI/help artifacts for one skill or all discoverable skills
+    Compile {
+        /// Optional skill name. Omit to compile all discoverable skills.
+        name: Option<String>,
+    },
+    /// Refresh compiled skill artifacts for all discoverable skills
+    Refresh,
+    /// Inspect one compiled skill artifact bundle
+    InspectCompiled { name: String },
     /// Search for skills in the registry
     Search {
         query: String,
@@ -2220,6 +2229,11 @@ async fn main() -> Result<()> {
         },
         Commands::Skills { action } => match action {
             SkillsAction::List => commands::skills::list().await,
+            SkillsAction::Compile { name } => commands::skills::compile(name.as_deref()).await,
+            SkillsAction::Refresh => commands::skills::refresh_compiled().await,
+            SkillsAction::InspectCompiled { name } => {
+                commands::skills::inspect_compiled(&name).await
+            }
             SkillsAction::Search {
                 query,
                 category,

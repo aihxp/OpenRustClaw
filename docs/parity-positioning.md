@@ -19,6 +19,7 @@ The goal is not to imitate OpenClaw's internals. The goal is to deliver the same
 
 - Rust-native durability and process ownership rather than a JS-first gateway runtime
 - Stronger skill capability enforcement and verification-aware execution controls
+- Compiled skill help/schema artifacts so models can route through cached summaries instead of re-reading raw skill files every turn
 - Broader multi-provider model support
 - First-class MCP and `mcp2-cli` workflows
 - Stricter runtime/docs truthfulness and CI gates around shipped features

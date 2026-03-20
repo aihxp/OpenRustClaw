@@ -2688,6 +2688,18 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
         .route("/control/browser/extract", post(browser_extract_handler))
         .route("/control/browser/artifacts", get(browser_artifacts_handler))
         .route("/control/skills", get(control_skills_handler))
+        .route(
+            "/control/skills/compile",
+            post(control_skill_compile_handler),
+        )
+        .route(
+            "/control/skills/compiled",
+            get(control_compiled_skills_handler),
+        )
+        .route(
+            "/control/skills/compiled/{name}",
+            get(control_compiled_skill_detail_handler),
+        )
         .route("/control/skills/search", get(control_skills_search_handler))
         .route(
             "/control/skills/popular",
@@ -2702,6 +2714,10 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             post(control_skill_install_handler),
         )
         .route("/control/skills/{name}", get(control_skill_detail_handler))
+        .route(
+            "/control/skills/{name}/compile",
+            post(control_skill_compile_by_name_handler),
+        )
         .route(
             "/control/skills/{name}/update",
             post(control_skill_update_handler),
@@ -3270,6 +3286,12 @@ struct SkillInstallPayload {
     name: String,
 }
 
+#[derive(serde::Deserialize)]
+struct SkillCompilePayload {
+    #[serde(default)]
+    name: Option<String>,
+}
+
 async fn control_skills_handler() -> impl IntoResponse {
     match skills::installed_skills_data().await {
         Ok(entries) => (
@@ -3287,7 +3309,17 @@ async fn control_skills_handler() -> impl IntoResponse {
 
 async fn control_skill_detail_handler(AxumPath(name): AxumPath<String>) -> impl IntoResponse {
     match skills::installed_skill_detail_data(&name).await {
-        Ok(skill) => (StatusCode::OK, Json(serde_json::json!(skill))).into_response(),
+        Ok(skill) => {
+            let compiled = skills::compiled_skill_detail_data(&name).await.ok();
+            (
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "skill": skill,
+                    "compiled": compiled,
+                })),
+            )
+                .into_response()
+        }
         Err(error) => (
             StatusCode::NOT_FOUND,
             Json(serde_json::json!({ "error": error.to_string() })),
@@ -3351,6 +3383,60 @@ async fn control_skill_install_handler(
     Json(payload): Json<SkillInstallPayload>,
 ) -> impl IntoResponse {
     match skills::install_data(&payload.name).await {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": error.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
+async fn control_skill_compile_handler(
+    Json(payload): Json<SkillCompilePayload>,
+) -> impl IntoResponse {
+    match skills::compile_data(payload.name.as_deref()).await {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": error.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
+async fn control_compiled_skills_handler() -> impl IntoResponse {
+    match skills::compiled_skills_data().await {
+        Ok(compiled) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "compiled": compiled })),
+        )
+            .into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": error.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
+async fn control_compiled_skill_detail_handler(
+    AxumPath(name): AxumPath<String>,
+) -> impl IntoResponse {
+    match skills::compiled_skill_detail_data(&name).await {
+        Ok(compiled) => (StatusCode::OK, Json(serde_json::json!(compiled))).into_response(),
+        Err(error) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": error.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
+async fn control_skill_compile_by_name_handler(
+    AxumPath(name): AxumPath<String>,
+) -> impl IntoResponse {
+    match skills::compile_data(Some(&name)).await {
         Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,

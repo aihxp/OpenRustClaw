@@ -1238,6 +1238,10 @@ Completed:
 - [x] Skills install/update/remove/verify lifecycle exists.
 - [x] Marketplace sync exists.
 - [x] A real WASM executor with capability-aware enforcement exists.
+- [x] A compiled skill artifact pipeline now exists:
+  - file-backed compiled manifests, help indexes, scan reports, and generated MCP/CLI schemas under `.claw/skills/compiled/`,
+  - compile-on-install/update/verify behavior for local skill paths,
+  - token-efficient skill summaries for model/tool routing and operator inspection.
 
 Remaining:
 

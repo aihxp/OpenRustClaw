@@ -994,6 +994,7 @@
             <td>${trust}<div class="muted">${(skill.capabilities || []).join(", ") || "no capabilities"}</div></td>
             <td>
               <button class="secondary" onclick="inspectSkill('${skill.name}')">Inspect</button>
+              <button class="secondary" onclick="compileSkill('${skill.name}')">Compile</button>
               <button class="secondary" onclick="mutateSkill('${skill.name}', 'update')">Update</button>
               <button class="secondary" onclick="mutateSkill('${skill.name}', 'verify')">Verify</button>
               <button class="secondary" onclick="mutateSkill('${skill.name}', 'uninstall')">Uninstall</button>
@@ -1012,6 +1013,14 @@
         currentSkillName = name;
         const payload = await fetchJson(`/control/skills/${encodeURIComponent(name)}`);
         setText("skill-detail", payload);
+      }
+
+      async function compileSkill(name) {
+        const payload = await fetchJson(`/control/skills/${encodeURIComponent(name)}/compile`, {
+          method: "POST",
+        });
+        setText("skill-detail", payload);
+        await inspectSkill(name);
       }
 
       async function loadSkillCatalog(mode = "popular") {
