@@ -1218,7 +1218,8 @@ Recommended finish order from here:
   - [x] extension/operator-management parity over the shipped skills runtime,
   - [x] broader hot-reload and provider/runtime resilience.
 - [ ] Wave 4: close the remaining operator experience gaps after the core runtime and browser/extension layers are solid:
-  - voice-note transcription and broader voice/media polish,
+  - [x] provider-backed inbound voice-note transcription and transcript injection for supported attachment refs,
+  - [ ] broader voice/media polish,
   - mobile nodes and device-command parity,
   - final parity audit, docs alignment, and explicit intentional-difference review.
 
@@ -1262,7 +1263,8 @@ Remaining:
 - [ ] Add richer provider support for media parity where OpenClaw documents active integrations.
 - [ ] Add voice runtime parity:
   - wake/talk flows,
-  - STT,
+  - [x] provider-backed inbound attachment STT and transcript injection for supported runtime message flows,
+  - [ ] broader STT parity,
   - TTS,
   - voice notes,
   - call/phone plugin support if kept in scope,

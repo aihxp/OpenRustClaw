@@ -19,6 +19,7 @@ pub struct AppConfig {
     pub sidecar: SidecarConfig,
     pub observability: ObservabilityConfig,
     pub channels: ChannelsConfig,
+    pub voice: VoiceConfig,
     pub skills: Option<SkillsConfig>,
 }
 
@@ -69,6 +70,10 @@ fn default_send_mode() -> String {
 
 fn default_chunk_chars() -> usize {
     1600
+}
+
+fn default_true() -> bool {
+    true
 }
 
 /// Gateway (WebSocket server) configuration.
@@ -231,6 +236,172 @@ pub struct ObservabilityConfig {
     pub tracing_enabled: bool,
     pub metrics_enabled: bool,
     pub metrics_port: u16,
+}
+
+/// Voice runtime configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub wake_word: VoiceWakeWordConfig,
+    #[serde(default)]
+    pub stt: VoiceSttRuntimeConfig,
+    #[serde(default)]
+    pub tts: VoiceTtsRuntimeConfig,
+    #[serde(default)]
+    pub talk_mode: VoiceTalkModeRuntimeConfig,
+}
+
+impl Default for VoiceConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            wake_word: VoiceWakeWordConfig::default(),
+            stt: VoiceSttRuntimeConfig::default(),
+            tts: VoiceTtsRuntimeConfig::default(),
+            talk_mode: VoiceTalkModeRuntimeConfig::default(),
+        }
+    }
+}
+
+/// Wake-word configuration for voice flows.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceWakeWordConfig {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub model_path: Option<String>,
+    #[serde(default = "default_wake_word_sensitivity")]
+    pub sensitivity: f32,
+}
+
+impl Default for VoiceWakeWordConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            model_path: None,
+            sensitivity: default_wake_word_sensitivity(),
+        }
+    }
+}
+
+fn default_wake_word_sensitivity() -> f32 {
+    0.7
+}
+
+/// Speech-to-text runtime configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceSttRuntimeConfig {
+    #[serde(default = "default_voice_stt_provider")]
+    pub provider: String,
+    #[serde(default = "default_voice_stt_model")]
+    pub model: String,
+    #[serde(default = "default_voice_language")]
+    pub language: String,
+    #[serde(default)]
+    pub api_base_url: Option<String>,
+    #[serde(default)]
+    pub prompt: Option<String>,
+    #[serde(default)]
+    pub transcribe_inbound_notes: bool,
+    #[serde(default)]
+    pub download_dir: Option<String>,
+    #[serde(default = "default_voice_max_audio_bytes")]
+    pub max_audio_bytes: usize,
+    #[serde(default = "default_voice_timeout_secs")]
+    pub timeout_secs: u64,
+}
+
+impl Default for VoiceSttRuntimeConfig {
+    fn default() -> Self {
+        Self {
+            provider: default_voice_stt_provider(),
+            model: default_voice_stt_model(),
+            language: default_voice_language(),
+            api_base_url: None,
+            prompt: None,
+            transcribe_inbound_notes: false,
+            download_dir: None,
+            max_audio_bytes: default_voice_max_audio_bytes(),
+            timeout_secs: default_voice_timeout_secs(),
+        }
+    }
+}
+
+fn default_voice_stt_provider() -> String {
+    "openai".to_string()
+}
+
+fn default_voice_stt_model() -> String {
+    "whisper-1".to_string()
+}
+
+fn default_voice_language() -> String {
+    "auto".to_string()
+}
+
+fn default_voice_max_audio_bytes() -> usize {
+    25 * 1024 * 1024
+}
+
+fn default_voice_timeout_secs() -> u64 {
+    60
+}
+
+/// Text-to-speech runtime configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceTtsRuntimeConfig {
+    #[serde(default = "default_voice_tts_provider")]
+    pub provider: String,
+    #[serde(default = "default_voice_tts_model")]
+    pub model: String,
+    #[serde(default = "default_voice_tts_voice")]
+    pub voice: String,
+}
+
+impl Default for VoiceTtsRuntimeConfig {
+    fn default() -> Self {
+        Self {
+            provider: default_voice_tts_provider(),
+            model: default_voice_tts_model(),
+            voice: default_voice_tts_voice(),
+        }
+    }
+}
+
+fn default_voice_tts_provider() -> String {
+    "openai".to_string()
+}
+
+fn default_voice_tts_model() -> String {
+    "tts-1".to_string()
+}
+
+fn default_voice_tts_voice() -> String {
+    "alloy".to_string()
+}
+
+/// Continuous talk-mode configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceTalkModeRuntimeConfig {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default = "default_talk_timeout_secs")]
+    pub timeout_secs: u64,
+}
+
+impl Default for VoiceTalkModeRuntimeConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            timeout_secs: default_talk_timeout_secs(),
+        }
+    }
+}
+
+fn default_talk_timeout_secs() -> u64 {
+    30
 }
 
 /// Channel integrations configuration.
@@ -878,6 +1049,7 @@ impl Default for AppConfig {
                 metrics_enabled: true,
                 metrics_port: 9090,
             },
+            voice: VoiceConfig::default(),
             channels: ChannelsConfig {
                 telegram: TelegramConfig {
                     enabled: false,

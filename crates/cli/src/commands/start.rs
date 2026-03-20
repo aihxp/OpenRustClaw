@@ -73,6 +73,7 @@ use super::channels::{
     ChannelBindingSpec, ChannelRegistry, ChannelSendPolicy, ensure_account_manifest,
     identity_from_message, load_registry, message_bot_mentioned, resolve_root,
 };
+use super::voice_runtime::InboundVoiceTranscriber;
 use super::{
     browser, control, control_ui, doctor, inspect, logs, orchestrate, runtime, services, skills,
 };
@@ -1018,6 +1019,7 @@ struct ChannelAgent {
     channel_registry: Arc<tokio::sync::RwLock<ChannelRegistry>>,
     langsmith: Option<LangSmithClient>,
     event_bus: DurableEventBus,
+    voice_transcriber: Option<Arc<InboundVoiceTranscriber>>,
 }
 
 struct ChannelConversationState {
@@ -1132,6 +1134,11 @@ impl ChannelAgent {
         route_sessions: &mut HashMap<String, ChannelConversationState>,
         incoming: openrustclaw_core::types::IncomingMessage,
     ) -> Result<Option<OutgoingMessage>> {
+        let incoming = if let Some(transcriber) = self.voice_transcriber.as_ref() {
+            transcriber.enrich_incoming_message(incoming).await
+        } else {
+            incoming
+        };
         let trimmed_content = incoming.content.trim();
         if trimmed_content.is_empty() {
             return Ok(None);
@@ -1661,7 +1668,9 @@ fn build_channel_agent(
         memory_store,
         core_memory_store.clone(),
     )
-    .with_workspace_path(workspace_root);
+    .with_workspace_path(workspace_root.clone());
+    let voice_transcriber =
+        InboundVoiceTranscriber::try_from_config(config, &workspace_root)?.map(Arc::new);
 
     Ok(ChannelAgent {
         runtime: Arc::new(runtime),
@@ -1672,6 +1681,7 @@ fn build_channel_agent(
         channel_registry,
         langsmith,
         event_bus,
+        voice_transcriber,
     })
 }
 
@@ -7818,6 +7828,7 @@ mod tests {
                 })),
                 langsmith: None,
                 event_bus: DurableEventBus::new(pool.clone(), 16),
+                voice_transcriber: None,
             },
             pool,
         )

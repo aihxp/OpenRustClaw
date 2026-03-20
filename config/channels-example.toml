@@ -318,9 +318,13 @@ sensitivity = 0.7  # 0.0 to 1.0, higher = more sensitive
 
 # Speech-to-Text
 [voice.stt]
-provider = "whisper"  # "whisper" or "local"
-model = "base"  # tiny, base, small, medium, large
+provider = "openai"  # "openai" or "local"
+model = "whisper-1"
 language = "auto"  # "auto" for auto-detect or ISO code (e.g., "en")
+transcribe_inbound_notes = false
+download_dir = "./data/voice/inbound"
+max_audio_bytes = 26214400
+timeout_secs = 60
 
 # Text-to-Speech
 [voice.tts]

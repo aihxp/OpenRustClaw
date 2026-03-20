@@ -86,6 +86,6 @@ Status values:
 
 | Area | Status | Notes |
 | --- | --- | --- |
-| Voice | gated | Feature-gated and not part of current shipped surface |
+| Voice | partial | Talk mode remains feature-gated, but provider-backed inbound voice-note transcription and transcript injection now exist on the runtime path for supported channel attachments with local paths or directly fetchable media URLs; broader voice/runtime parity is still open |
 | Mobile sync | gated | Repo surface exists, not part of current shipped surface |
 | Distributed clustering | gated | Repo surface exists, not part of current shipped surface |
