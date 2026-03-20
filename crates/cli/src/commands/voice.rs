@@ -1,7 +1,10 @@
 use anyhow::Result;
 use openrustclaw_core::config::AppConfig;
 
-use super::voice_runtime::{self, VoiceSynthesizeRequest, VoiceTranscribeRequest};
+use super::voice_runtime::{
+    self, VoiceSessionAppendRequest, VoiceSessionEndRequest, VoiceSessionRespondRequest,
+    VoiceSessionStartRequest, VoiceSynthesizeRequest, VoiceTranscribeRequest,
+};
 
 fn load_config(config_path: &str) -> AppConfig {
     AppConfig::load_from(config_path)
@@ -83,6 +86,104 @@ pub async fn synthesize(
             voice: voice.map(ToString::to_string),
             format: format.map(ToString::to_string),
             output_path: output_path.map(ToString::to_string),
+        },
+    )
+    .await?;
+    println!("{}", serde_json::to_string_pretty(&result)?);
+    Ok(())
+}
+
+pub async fn sessions(config_path: &str) -> Result<()> {
+    let _config = load_config(config_path);
+    let workspace_root = std::env::current_dir()?;
+    let result = voice_runtime::list_voice_sessions(&workspace_root).await?;
+    println!("{}", serde_json::to_string_pretty(&result)?);
+    Ok(())
+}
+
+pub async fn start_session(
+    config_path: &str,
+    session_id: Option<&str>,
+    assistant_prompt: Option<&str>,
+    voice: Option<&str>,
+) -> Result<()> {
+    let config = load_config(config_path);
+    let workspace_root = std::env::current_dir()?;
+    let result = voice_runtime::start_voice_session(
+        &config,
+        &workspace_root,
+        VoiceSessionStartRequest {
+            session_id: session_id.map(ToString::to_string),
+            assistant_prompt: assistant_prompt.map(ToString::to_string),
+            voice: voice.map(ToString::to_string),
+        },
+    )
+    .await?;
+    println!("{}", serde_json::to_string_pretty(&result)?);
+    Ok(())
+}
+
+pub async fn session_status(config_path: &str, session_id: &str) -> Result<()> {
+    let _config = load_config(config_path);
+    let workspace_root = std::env::current_dir()?;
+    let result = voice_runtime::inspect_voice_session(&workspace_root, session_id).await?;
+    println!("{}", serde_json::to_string_pretty(&result)?);
+    Ok(())
+}
+
+pub async fn append_user(config_path: &str, session_id: &str, text: &str) -> Result<()> {
+    let _config = load_config(config_path);
+    let workspace_root = std::env::current_dir()?;
+    let result = voice_runtime::append_voice_session_user(
+        &workspace_root,
+        session_id,
+        VoiceSessionAppendRequest {
+            text: text.to_string(),
+        },
+    )
+    .await?;
+    println!("{}", serde_json::to_string_pretty(&result)?);
+    Ok(())
+}
+
+pub async fn respond(
+    config_path: &str,
+    session_id: &str,
+    text: &str,
+    provider: Option<&str>,
+    model: Option<&str>,
+    voice: Option<&str>,
+    format: Option<&str>,
+    output_path: Option<&str>,
+) -> Result<()> {
+    let config = load_config(config_path);
+    let workspace_root = std::env::current_dir()?;
+    let result = voice_runtime::respond_voice_session(
+        &config,
+        &workspace_root,
+        session_id,
+        VoiceSessionRespondRequest {
+            text: text.to_string(),
+            provider: provider.map(ToString::to_string),
+            model: model.map(ToString::to_string),
+            voice: voice.map(ToString::to_string),
+            format: format.map(ToString::to_string),
+            output_path: output_path.map(ToString::to_string),
+        },
+    )
+    .await?;
+    println!("{}", serde_json::to_string_pretty(&result)?);
+    Ok(())
+}
+
+pub async fn end_session(config_path: &str, session_id: &str, reason: Option<&str>) -> Result<()> {
+    let _config = load_config(config_path);
+    let workspace_root = std::env::current_dir()?;
+    let result = voice_runtime::end_voice_session(
+        &workspace_root,
+        session_id,
+        VoiceSessionEndRequest {
+            reason: reason.map(ToString::to_string),
         },
     )
     .await?;

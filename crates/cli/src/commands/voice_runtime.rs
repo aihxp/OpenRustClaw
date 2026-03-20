@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow};
+use chrono::Utc;
 use openrustclaw_core::config::{AppConfig, VoiceSttRuntimeConfig, VoiceTtsRuntimeConfig};
 use openrustclaw_core::types::IncomingMessage;
 use reqwest::Url;
@@ -136,6 +137,81 @@ pub struct VoiceSynthesizeResult {
     pub text_length: usize,
     pub output_path: String,
     pub bytes: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceSessionTurn {
+    pub role: String,
+    pub text: String,
+    pub created_at: String,
+    #[serde(default)]
+    pub synthesized_output_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceSessionRecord {
+    pub id: String,
+    pub status: String,
+    pub stt_provider: String,
+    pub tts_provider: String,
+    pub tts_voice: String,
+    #[serde(default)]
+    pub assistant_prompt: Option<String>,
+    #[serde(default)]
+    pub end_reason: Option<String>,
+    pub created_at: String,
+    pub last_activity_at: String,
+    #[serde(default)]
+    pub closed_at: Option<String>,
+    #[serde(default)]
+    pub turns: Vec<VoiceSessionTurn>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceSessionList {
+    pub sessions: Vec<VoiceSessionRecord>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceSessionStartRequest {
+    #[serde(default)]
+    pub session_id: Option<String>,
+    #[serde(default)]
+    pub assistant_prompt: Option<String>,
+    #[serde(default)]
+    pub voice: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceSessionAppendRequest {
+    pub text: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceSessionRespondRequest {
+    pub text: String,
+    #[serde(default)]
+    pub provider: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub voice: Option<String>,
+    #[serde(default)]
+    pub format: Option<String>,
+    #[serde(default)]
+    pub output_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceSessionEndRequest {
+    #[serde(default)]
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceSessionRespondResult {
+    pub session: VoiceSessionRecord,
+    pub synthesis: VoiceSynthesizeResult,
 }
 
 #[derive(Debug, Clone)]
@@ -1236,6 +1312,194 @@ fn resolve_runtime_path(workspace_root: &Path, value: &str) -> PathBuf {
     }
 }
 
+fn voice_sessions_dir(workspace_root: &Path) -> PathBuf {
+    workspace_root.join(".claw").join("voice").join("sessions")
+}
+
+fn voice_session_path(workspace_root: &Path, session_id: &str) -> PathBuf {
+    voice_sessions_dir(workspace_root).join(format!("{session_id}.json"))
+}
+
+pub async fn list_voice_sessions(workspace_root: &Path) -> Result<VoiceSessionList> {
+    let dir = voice_sessions_dir(workspace_root);
+    let mut sessions = Vec::new();
+    if !dir.exists() {
+        return Ok(VoiceSessionList { sessions });
+    }
+    let mut entries = fs::read_dir(&dir)
+        .await
+        .with_context(|| format!("failed to read {}", dir.display()))?;
+    while let Some(entry) = entries
+        .next_entry()
+        .await
+        .context("failed to iterate voice sessions")?
+    {
+        let path = entry.path();
+        if path.extension().and_then(|value| value.to_str()) != Some("json") {
+            continue;
+        }
+        let bytes = fs::read_to_string(&path)
+            .await
+            .with_context(|| format!("failed to read {}", path.display()))?;
+        let session: VoiceSessionRecord = serde_json::from_str(&bytes)
+            .with_context(|| format!("failed to parse {}", path.display()))?;
+        sessions.push(session);
+    }
+    sessions.sort_by(|left, right| right.last_activity_at.cmp(&left.last_activity_at));
+    Ok(VoiceSessionList { sessions })
+}
+
+pub async fn inspect_voice_session(
+    workspace_root: &Path,
+    session_id: &str,
+) -> Result<VoiceSessionRecord> {
+    let path = voice_session_path(workspace_root, session_id);
+    let bytes = fs::read_to_string(&path)
+        .await
+        .with_context(|| format!("failed to read {}", path.display()))?;
+    serde_json::from_str(&bytes).with_context(|| format!("failed to parse {}", path.display()))
+}
+
+pub async fn start_voice_session(
+    config: &AppConfig,
+    workspace_root: &Path,
+    request: VoiceSessionStartRequest,
+) -> Result<VoiceSessionRecord> {
+    let session_id = request
+        .session_id
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| Uuid::new_v4().to_string());
+    let now = Utc::now().to_rfc3339();
+    let stt_provider = resolve_voice_provider_for_stt(config, None)?.provider;
+    let tts_provider = resolve_voice_provider_for_tts(config, None)?.provider;
+    let tts_voice = request
+        .voice
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| config.voice.tts.voice.clone());
+    let session = VoiceSessionRecord {
+        id: session_id,
+        status: "active".to_string(),
+        stt_provider,
+        tts_provider,
+        tts_voice,
+        assistant_prompt: request.assistant_prompt,
+        end_reason: None,
+        created_at: now.clone(),
+        last_activity_at: now,
+        closed_at: None,
+        turns: Vec::new(),
+    };
+    save_voice_session(workspace_root, &session).await?;
+    Ok(session)
+}
+
+pub async fn append_voice_session_user(
+    workspace_root: &Path,
+    session_id: &str,
+    request: VoiceSessionAppendRequest,
+) -> Result<VoiceSessionRecord> {
+    let mut session = inspect_voice_session(workspace_root, session_id).await?;
+    ensure_voice_session_active(&session)?;
+    let text = request.text.trim();
+    if text.is_empty() {
+        return Err(anyhow!("text is required"));
+    }
+    session.turns.push(VoiceSessionTurn {
+        role: "user".to_string(),
+        text: text.to_string(),
+        created_at: Utc::now().to_rfc3339(),
+        synthesized_output_path: None,
+    });
+    session.last_activity_at = Utc::now().to_rfc3339();
+    save_voice_session(workspace_root, &session).await?;
+    Ok(session)
+}
+
+pub async fn respond_voice_session(
+    config: &AppConfig,
+    workspace_root: &Path,
+    session_id: &str,
+    request: VoiceSessionRespondRequest,
+) -> Result<VoiceSessionRespondResult> {
+    let mut session = inspect_voice_session(workspace_root, session_id).await?;
+    ensure_voice_session_active(&session)?;
+    let text = request.text.trim();
+    if text.is_empty() {
+        return Err(anyhow!("text is required"));
+    }
+
+    let synthesis = synthesize_with_config(
+        config,
+        workspace_root,
+        VoiceSynthesizeRequest {
+            text: text.to_string(),
+            provider: request.provider,
+            model: request.model,
+            voice: request
+                .voice
+                .clone()
+                .or_else(|| Some(session.tts_voice.clone())),
+            format: request.format,
+            output_path: request.output_path,
+        },
+    )
+    .await?;
+    if let Some(voice) = request.voice.filter(|value| !value.trim().is_empty()) {
+        session.tts_voice = voice;
+    }
+    session.turns.push(VoiceSessionTurn {
+        role: "assistant".to_string(),
+        text: text.to_string(),
+        created_at: Utc::now().to_rfc3339(),
+        synthesized_output_path: Some(synthesis.output_path.clone()),
+    });
+    session.last_activity_at = Utc::now().to_rfc3339();
+    save_voice_session(workspace_root, &session).await?;
+
+    Ok(VoiceSessionRespondResult { session, synthesis })
+}
+
+pub async fn end_voice_session(
+    workspace_root: &Path,
+    session_id: &str,
+    request: VoiceSessionEndRequest,
+) -> Result<VoiceSessionRecord> {
+    let mut session = inspect_voice_session(workspace_root, session_id).await?;
+    ensure_voice_session_active(&session)?;
+    session.status = "ended".to_string();
+    session.end_reason = request.reason;
+    let now = Utc::now().to_rfc3339();
+    session.last_activity_at = now.clone();
+    session.closed_at = Some(now);
+    save_voice_session(workspace_root, &session).await?;
+    Ok(session)
+}
+
+async fn save_voice_session(workspace_root: &Path, session: &VoiceSessionRecord) -> Result<()> {
+    let dir = voice_sessions_dir(workspace_root);
+    fs::create_dir_all(&dir)
+        .await
+        .with_context(|| format!("failed to create {}", dir.display()))?;
+    let path = voice_session_path(workspace_root, &session.id);
+    fs::write(
+        &path,
+        serde_json::to_vec_pretty(session).context("failed to serialize voice session")?,
+    )
+    .await
+    .with_context(|| format!("failed to write {}", path.display()))
+}
+
+fn ensure_voice_session_active(session: &VoiceSessionRecord) -> Result<()> {
+    if session.status != "active" {
+        return Err(anyhow!(
+            "voice session '{}' is not active ({})",
+            session.id,
+            session.status
+        ));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1618,5 +1882,85 @@ mod tests {
                 .iter()
                 .any(|note| note.contains("/audio/speech"))
         );
+    }
+
+    #[tokio::test]
+    async fn voice_session_round_trip_persists_turns_and_audio_artifact() {
+        let temp = tempdir().expect("tempdir");
+        let (addr, _state, server_handle) = spawn_test_server().await;
+        let config = test_config(
+            &format!("http://{}", addr),
+            temp.path(),
+            "OPENRUSTCLAW_VOICE_TEST_KEY_FIVE",
+        );
+
+        let session = start_voice_session(
+            &config,
+            temp.path(),
+            VoiceSessionStartRequest {
+                session_id: Some("voice-session-1".to_string()),
+                assistant_prompt: Some("be concise".to_string()),
+                voice: Some("nova".to_string()),
+            },
+        )
+        .await
+        .expect("start session");
+        assert_eq!(session.status, "active");
+
+        let session = append_voice_session_user(
+            temp.path(),
+            "voice-session-1",
+            VoiceSessionAppendRequest {
+                text: "hello operator".to_string(),
+            },
+        )
+        .await
+        .expect("append user");
+        assert_eq!(session.turns.len(), 1);
+
+        unsafe {
+            std::env::set_var("OPENRUSTCLAW_VOICE_TEST_KEY_FIVE", "test-openai-key");
+        }
+        let response = respond_voice_session(
+            &config,
+            temp.path(),
+            "voice-session-1",
+            VoiceSessionRespondRequest {
+                text: "hello back".to_string(),
+                provider: None,
+                model: None,
+                voice: None,
+                format: Some("mp3".to_string()),
+                output_path: None,
+            },
+        )
+        .await
+        .expect("respond");
+        unsafe {
+            std::env::remove_var("OPENRUSTCLAW_VOICE_TEST_KEY_FIVE");
+        }
+        assert_eq!(response.session.turns.len(), 2);
+        assert!(
+            response
+                .synthesis
+                .output_path
+                .contains(".claw/voice/synthesized/")
+        );
+
+        let ended = end_voice_session(
+            temp.path(),
+            "voice-session-1",
+            VoiceSessionEndRequest {
+                reason: Some("done".to_string()),
+            },
+        )
+        .await
+        .expect("end");
+        assert_eq!(ended.status, "ended");
+
+        let listed = list_voice_sessions(temp.path()).await.expect("list");
+        assert_eq!(listed.sessions.len(), 1);
+
+        server_handle.abort();
     }
 }

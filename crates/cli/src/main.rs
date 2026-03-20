@@ -1477,6 +1477,62 @@ enum VoiceAction {
         #[arg(short, long, default_value = "config/default.toml")]
         config: String,
     },
+    /// List persisted bounded voice sessions
+    Sessions {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+    },
+    /// Start a bounded voice session receipt
+    StartSession {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+        #[arg(long)]
+        session_id: Option<String>,
+        #[arg(long)]
+        assistant_prompt: Option<String>,
+        #[arg(long)]
+        voice: Option<String>,
+    },
+    /// Inspect one bounded voice session receipt
+    SessionStatus {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+        id: String,
+    },
+    /// Append a user turn to one bounded voice session receipt
+    AppendUser {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+        id: String,
+        #[arg(long)]
+        text: String,
+    },
+    /// Generate a bounded assistant response for one voice session receipt
+    Respond {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+        id: String,
+        #[arg(long)]
+        text: String,
+        #[arg(long)]
+        provider: Option<String>,
+        #[arg(long)]
+        model: Option<String>,
+        #[arg(long)]
+        voice: Option<String>,
+        #[arg(long)]
+        format: Option<String>,
+        #[arg(long)]
+        output_path: Option<String>,
+    },
+    /// End one bounded voice session receipt
+    EndSession {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+        id: String,
+        #[arg(long)]
+        reason: Option<String>,
+    },
     /// List the current provider's discoverable TTS voices
     Voices {
         #[arg(short, long, default_value = "config/default.toml")]
@@ -4135,6 +4191,52 @@ async fn main() -> Result<()> {
         Commands::Voice { action } => match action {
             VoiceAction::Status { config } => commands::voice::status(&config).await,
             VoiceAction::Providers { config } => commands::voice::providers(&config).await,
+            VoiceAction::Sessions { config } => commands::voice::sessions(&config).await,
+            VoiceAction::StartSession {
+                config,
+                session_id,
+                assistant_prompt,
+                voice,
+            } => {
+                commands::voice::start_session(
+                    &config,
+                    session_id.as_deref(),
+                    assistant_prompt.as_deref(),
+                    voice.as_deref(),
+                )
+                .await
+            }
+            VoiceAction::SessionStatus { config, id } => {
+                commands::voice::session_status(&config, &id).await
+            }
+            VoiceAction::AppendUser { config, id, text } => {
+                commands::voice::append_user(&config, &id, &text).await
+            }
+            VoiceAction::Respond {
+                config,
+                id,
+                text,
+                provider,
+                model,
+                voice,
+                format,
+                output_path,
+            } => {
+                commands::voice::respond(
+                    &config,
+                    &id,
+                    &text,
+                    provider.as_deref(),
+                    model.as_deref(),
+                    voice.as_deref(),
+                    format.as_deref(),
+                    output_path.as_deref(),
+                )
+                .await
+            }
+            VoiceAction::EndSession { config, id, reason } => {
+                commands::voice::end_session(&config, &id, reason.as_deref()).await
+            }
             VoiceAction::Voices { config } => commands::voice::voices(&config).await,
             VoiceAction::Transcribe {
                 config,

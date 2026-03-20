@@ -2643,6 +2643,24 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
         .route("/control/runtime/beacon", get(runtime_beacon_handler))
         .route("/control/voice/status", get(voice_status_handler))
         .route("/control/voice/providers", get(voice_providers_handler))
+        .route("/control/voice/sessions", get(voice_sessions_handler))
+        .route(
+            "/control/voice/sessions/start",
+            post(voice_start_session_handler),
+        )
+        .route("/control/voice/sessions/{id}", get(voice_session_handler))
+        .route(
+            "/control/voice/sessions/{id}/append-user",
+            post(voice_append_user_handler),
+        )
+        .route(
+            "/control/voice/sessions/{id}/respond",
+            post(voice_respond_handler),
+        )
+        .route(
+            "/control/voice/sessions/{id}/end",
+            post(voice_end_session_handler),
+        )
         .route("/control/voice/voices", get(voice_voices_handler))
         .route("/control/voice/transcribe", post(voice_transcribe_handler))
         .route("/control/voice/synthesize", post(voice_synthesize_handler))
@@ -4542,6 +4560,111 @@ async fn voice_providers_handler(State(state): State<RuntimeControlState>) -> im
             .into_response(),
         Err(error) => (
             StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn voice_sessions_handler(State(state): State<RuntimeControlState>) -> impl IntoResponse {
+    match voice_runtime::list_voice_sessions(&state.workspace_root).await {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn voice_start_session_handler(
+    State(state): State<RuntimeControlState>,
+    Json(payload): Json<voice_runtime::VoiceSessionStartRequest>,
+) -> impl IntoResponse {
+    match runtime::load_effective_config(&state.config_path, &state.workspace_root) {
+        Ok(config) => {
+            match voice_runtime::start_voice_session(&config, &state.workspace_root, payload).await
+            {
+                Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+                Err(error) => (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({"error": error.to_string()})),
+                )
+                    .into_response(),
+            }
+        }
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn voice_session_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(id): AxumPath<String>,
+) -> impl IntoResponse {
+    match voice_runtime::inspect_voice_session(&state.workspace_root, &id).await {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn voice_append_user_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(id): AxumPath<String>,
+    Json(payload): Json<voice_runtime::VoiceSessionAppendRequest>,
+) -> impl IntoResponse {
+    match voice_runtime::append_voice_session_user(&state.workspace_root, &id, payload).await {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn voice_respond_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(id): AxumPath<String>,
+    Json(payload): Json<voice_runtime::VoiceSessionRespondRequest>,
+) -> impl IntoResponse {
+    match runtime::load_effective_config(&state.config_path, &state.workspace_root) {
+        Ok(config) => {
+            match voice_runtime::respond_voice_session(&config, &state.workspace_root, &id, payload)
+                .await
+            {
+                Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+                Err(error) => (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({"error": error.to_string()})),
+                )
+                    .into_response(),
+            }
+        }
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn voice_end_session_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(id): AxumPath<String>,
+    Json(payload): Json<voice_runtime::VoiceSessionEndRequest>,
+) -> impl IntoResponse {
+    match voice_runtime::end_voice_session(&state.workspace_root, &id, payload).await {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": error.to_string()})),
         )
             .into_response(),

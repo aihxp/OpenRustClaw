@@ -1284,6 +1284,7 @@ Remaining:
   - [x] broader STT parity through a second shipped pre-recorded STT provider lane,
   - [x] bounded operator/runtime TTS artifact synthesis,
   - [x] bounded voice-note transcription plus transcript injection for supported runtime message flows,
+  - [x] bounded persisted voice-session receipts plus start/respond/end operator surfaces over the shipped STT/TTS lanes,
   - [x] bounded call/phone plugin support through the compiled-skill voice-plugin lane,
   - [x] bounded voice-call lifecycle health summaries plus stale-call reaping and greeting prewarm for the compiled-skill voice-plugin lane,
   - reconnect and deeper live call-runtime behavior if call surfaces stay in scope.
