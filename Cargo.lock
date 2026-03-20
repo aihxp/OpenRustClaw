@@ -6234,6 +6234,7 @@ dependencies = [
  "openrustclaw-langbridge",
  "openrustclaw-observability",
  "openrustclaw-providers",
+ "openrustclaw-skills",
  "reqwest 0.12.28",
  "serde",
  "serde_json",

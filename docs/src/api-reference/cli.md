@@ -139,6 +139,12 @@ openrustclaw skills install web-search
 
 # Verify skill signature
 openrustclaw skills verify web-search
+
+# Inspect schedulable background services for a compiled skill
+openrustclaw skills background-services web-search
+
+# Schedule a background workflow for a compiled skill
+openrustclaw skills schedule-background web-search --every-seconds 900
 ```
 
 ---

@@ -654,6 +654,8 @@ enum SkillsAction {
     InspectCompiled { name: String },
     /// Inspect one compiled Rust-native extension manifest
     InspectExtension { name: String },
+    /// List declared and inferred background services for one compiled skill
+    BackgroundServices { name: String },
     /// Execute a bounded `.wasm` or `.wat` component from a compiled skill
     Execute {
         name: String,
@@ -661,6 +663,22 @@ enum SkillsAction {
         component: Option<String>,
         #[arg(long)]
         input: Option<String>,
+    },
+    /// Schedule a compiled skill background workflow through the durable scheduler
+    ScheduleBackground {
+        name: String,
+        #[arg(long)]
+        service: Option<String>,
+        #[arg(long)]
+        component: Option<String>,
+        #[arg(long)]
+        input: Option<String>,
+        #[arg(long)]
+        every_seconds: Option<u64>,
+        #[arg(long)]
+        at: Option<String>,
+        #[arg(long, default_value_t = 100)]
+        priority: i64,
     },
     /// Invoke the generated CLI/help bridge for one compiled skill
     Invoke {
@@ -2296,11 +2314,34 @@ async fn main() -> Result<()> {
             SkillsAction::InspectExtension { name } => {
                 commands::skills::inspect_extension(&name).await
             }
+            SkillsAction::BackgroundServices { name } => {
+                commands::skills::background_services(&name).await
+            }
             SkillsAction::Execute {
                 name,
                 component,
                 input,
             } => commands::skills::execute(&name, component.as_deref(), input.as_deref()).await,
+            SkillsAction::ScheduleBackground {
+                name,
+                service,
+                component,
+                input,
+                every_seconds,
+                at,
+                priority,
+            } => {
+                commands::skills::schedule_background(
+                    &name,
+                    service.as_deref(),
+                    component.as_deref(),
+                    input.as_deref(),
+                    every_seconds,
+                    at.as_deref(),
+                    priority,
+                )
+                .await
+            }
             SkillsAction::Invoke {
                 name,
                 args,

@@ -9,6 +9,7 @@ pub mod extension;
 pub mod loader;
 pub mod marketplace;
 pub mod registry;
+pub mod runtime;
 pub mod sandbox;
 
 pub use capabilities::{
@@ -32,4 +33,9 @@ pub use marketplace::{MarketplaceClient, MarketplaceListing};
 pub use registry::{
     ClawHubRegistry, InstallResult, InstalledSkill, SearchFilters, SkillCache, SkillDependency,
     SkillMetadata, SkillRegistry, SortBy, UpdateResult,
+};
+pub use runtime::{
+    CompiledBackgroundService, CompiledSkillExecutionResult, compiled_skill_background_services,
+    compiled_skill_executable_components, execute_compiled_skill_artifact,
+    resolve_compiled_skill_background_service,
 };

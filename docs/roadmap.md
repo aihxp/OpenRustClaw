@@ -1264,10 +1264,10 @@ Remaining:
 
 - [ ] Add plugin parity for:
   - [x] agent tools through bounded compiled-skill MCP execution,
+  - [x] background workflows through bounded compiled-skill scheduler execution,
   - auth plugins,
   - voice-call plugins,
-  - channel extensions,
-  - background workflows.
+  - channel extensions.
 - [ ] Add media pipeline parity:
   - image receive/send,
   - audio receive/send,

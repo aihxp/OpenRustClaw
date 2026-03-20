@@ -1,6 +1,7 @@
 //! Skill management commands.
 
 use anyhow::{Context, Result};
+use chrono::{DateTime, Utc};
 use indicatif::{ProgressBar, ProgressStyle};
 use serde::Serialize;
 use sqlx::Row;
@@ -12,12 +13,13 @@ use tracing::debug;
 use openrustclaw_core::types::SkillSource;
 use openrustclaw_scheduler::DurableEventBus;
 use openrustclaw_security::SkillVerifier;
-use openrustclaw_skills::sandbox::{SandboxConfig, WasmSandbox};
 use openrustclaw_skills::{
-    ClawHubRegistry, CompiledSkillArtifact, CompiledSkillManifest, ExtensionManifest,
-    SearchFilters, SortBy, compile_skill_to_dir, list_compiled_manifests, list_extension_manifests,
-    load_compiled_artifact, load_extension_manifest, normalize_capability_names,
-    remove_compiled_artifact,
+    ClawHubRegistry, CompiledBackgroundService, CompiledSkillArtifact, CompiledSkillManifest,
+    ExtensionManifest, SearchFilters, SortBy, compile_skill_to_dir,
+    compiled_skill_background_services, execute_compiled_skill_artifact, list_compiled_manifests,
+    list_extension_manifests, load_compiled_artifact, load_extension_manifest,
+    normalize_capability_names, remove_compiled_artifact,
+    resolve_compiled_skill_background_service,
 };
 
 fn parse_hex_bytes(input: &str) -> Result<Vec<u8>> {
@@ -317,6 +319,38 @@ pub struct SkillExecuteResult {
     pub output: serde_json::Value,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub capabilities: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SkillBackgroundServicesResult {
+    pub status: String,
+    pub skill_name: String,
+    pub blocked: bool,
+    pub services: Vec<CompiledBackgroundService>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SkillScheduleBackgroundOptions<'a> {
+    pub service: Option<&'a str>,
+    pub component: Option<&'a str>,
+    pub input: Option<&'a str>,
+    pub every_seconds: Option<u64>,
+    pub at: Option<&'a str>,
+    pub priority: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SkillScheduleBackgroundResult {
+    pub status: String,
+    pub job_id: String,
+    pub workflow_id: String,
+    pub skill_name: String,
+    pub service: String,
+    pub component: String,
+    pub compiled_root: String,
+    pub trigger_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_run_at: Option<String>,
 }
 
 async fn load_skill_config_and_pool()
@@ -763,46 +797,6 @@ fn resolve_skill_relative_path(
     Ok(canonical_candidate)
 }
 
-fn executable_component_candidates(artifact: &CompiledSkillArtifact) -> Vec<String> {
-    artifact
-        .manifest
-        .scripts
-        .iter()
-        .chain(artifact.manifest.references.iter())
-        .filter(|path| path.ends_with(".wasm") || path.ends_with(".wat"))
-        .cloned()
-        .collect()
-}
-
-fn resolve_executable_component(
-    artifact: &CompiledSkillArtifact,
-    requested: Option<&str>,
-) -> Result<String> {
-    let candidates = executable_component_candidates(artifact);
-    if let Some(component) = requested {
-        if candidates.iter().any(|candidate| candidate == component) {
-            return Ok(component.to_string());
-        }
-        anyhow::bail!(
-            "Component '{}' is not an executable `.wasm`/`.wat` artifact for '{}'",
-            component,
-            artifact.manifest.name
-        );
-    }
-
-    match candidates.as_slice() {
-        [only] => Ok(only.clone()),
-        [] => anyhow::bail!(
-            "Skill '{}' does not expose an executable `.wasm` or `.wat` artifact yet",
-            artifact.manifest.name
-        ),
-        _ => anyhow::bail!(
-            "Skill '{}' has multiple executable components; choose one with --component",
-            artifact.manifest.name
-        ),
-    }
-}
-
 pub async fn invoke_data(name: &str, options: SkillInvokeOptions<'_>) -> Result<SkillInvokeResult> {
     let artifact = compiled_skill_detail_or_compile(name).await?;
     invoke_compiled_skill(&artifact, options)
@@ -814,6 +808,19 @@ pub async fn execute_data(
 ) -> Result<SkillExecuteResult> {
     let artifact = compiled_skill_detail_or_compile(name).await?;
     execute_compiled_artifact_data(&artifact, options).await
+}
+
+pub async fn background_services_data(name: &str) -> Result<SkillBackgroundServicesResult> {
+    let artifact = compiled_skill_detail_or_compile(name).await?;
+    Ok(SkillBackgroundServicesResult {
+        status: "ok".to_string(),
+        skill_name: artifact.manifest.name.clone(),
+        blocked: matches!(
+            artifact.manifest.status,
+            openrustclaw_skills::CompiledSkillStatus::Blocked
+        ),
+        services: compiled_skill_background_services(&artifact),
+    })
 }
 
 pub async fn execute_compiled_artifact_data(
@@ -914,20 +921,6 @@ async fn execute_compiled_skill(
     artifact: &CompiledSkillArtifact,
     options: SkillExecuteOptions<'_>,
 ) -> Result<SkillExecuteResult> {
-    if matches!(
-        artifact.manifest.status,
-        openrustclaw_skills::CompiledSkillStatus::Blocked
-    ) {
-        anyhow::bail!(
-            "Compiled skill '{}' is blocked; executable extension runtime is disabled",
-            artifact.manifest.name
-        );
-    }
-
-    let component = resolve_executable_component(artifact, options.component)?;
-    let source_path = resolve_skill_relative_path(artifact, &component)?;
-    let wasm_bytes = fs::read(&source_path)
-        .with_context(|| format!("Failed to read {}", source_path.display()))?;
     let input = match options.input {
         Some(raw) if !raw.trim().is_empty() => serde_json::from_str(raw).with_context(|| {
             format!(
@@ -937,36 +930,169 @@ async fn execute_compiled_skill(
         })?,
         _ => serde_json::json!({}),
     };
-
-    let verified_execution = artifact.manifest.verified
-        || matches!(
-            artifact.manifest.source,
-            SkillSource::Workspace | SkillSource::Bundled
-        );
-    let sandbox = WasmSandbox::new(
-        SandboxConfig::with_declared_capabilities(&artifact.manifest.capabilities)
-            .map_err(|error| anyhow::anyhow!(error.to_string()))?,
-    );
-    let output = sandbox
-        .execute_with_verified_declared_capabilities(
-            &wasm_bytes,
-            &artifact.manifest.capabilities,
-            verified_execution,
-            input.clone(),
-        )
+    let execution = execute_compiled_skill_artifact(artifact, options.component, input)
         .await
         .map_err(|error| anyhow::anyhow!(error.to_string()))?;
 
     Ok(SkillExecuteResult {
         status: "ok".to_string(),
-        skill_name: artifact.manifest.name.clone(),
+        skill_name: execution.skill_name,
+        component: execution.component,
+        source_path: execution.source_path,
+        verified_execution: execution.verified_execution,
+        runtime: execution.runtime,
+        input: execution.input,
+        output: execution.output,
+        capabilities: execution.capabilities,
+    })
+}
+
+fn background_trigger(
+    every_seconds: Option<u64>,
+    at: Option<&str>,
+) -> Result<(String, serde_json::Value, Option<DateTime<Utc>>)> {
+    if every_seconds.is_some() && at.is_some() {
+        anyhow::bail!("Use either --every-seconds or --at, not both");
+    }
+
+    if let Some(run_at) = at {
+        let run_at = DateTime::parse_from_rfc3339(run_at)
+            .with_context(|| format!("Invalid RFC3339 timestamp for --at: {}", run_at))?
+            .with_timezone(&Utc);
+        Ok((
+            "absolute".to_string(),
+            serde_json::json!({
+                "type": "absolute",
+                "run_at": run_at.to_rfc3339(),
+            }),
+            Some(run_at),
+        ))
+    } else {
+        let every_seconds = every_seconds.unwrap_or(3600);
+        Ok((
+            "interval".to_string(),
+            serde_json::json!({
+                "type": "interval",
+                "interval_secs": every_seconds,
+            }),
+            Some(Utc::now() + chrono::Duration::seconds(every_seconds as i64)),
+        ))
+    }
+}
+
+pub async fn schedule_background_service_data(
+    name: &str,
+    options: SkillScheduleBackgroundOptions<'_>,
+) -> Result<SkillScheduleBackgroundResult> {
+    let artifact = compiled_skill_detail_or_compile(name).await?;
+    let resolved =
+        resolve_compiled_skill_background_service(&artifact, options.service, options.component)
+            .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+    let component = resolved.component.clone().ok_or_else(|| {
+        anyhow::anyhow!(
+            "Background service '{}' for '{}' does not resolve to an executable component",
+            resolved.name,
+            artifact.manifest.name
+        )
+    })?;
+
+    let (config, pool) = load_skill_config_and_pool().await?;
+    let compiled_root = ensure_compiled_root()?;
+    let (trigger_type, trigger_config, next_run_at) =
+        background_trigger(options.every_seconds, options.at)?;
+    let skill_name = artifact.manifest.name.clone();
+    let service_name = resolved.name.clone();
+    let skill_input = match options.input {
+        Some(raw) if !raw.trim().is_empty() => serde_json::from_str::<serde_json::Value>(raw)
+            .with_context(|| format!("Invalid JSON for --input: {}", raw))?,
+        _ => serde_json::json!({}),
+    };
+
+    let job_id = uuid::Uuid::new_v4().to_string();
+    let idempotency_key = format!("{}:{}", job_id, uuid::Uuid::new_v4());
+    let job_name = format!(
+        "skill-bg-{}-{}",
+        skill_name.replace(' ', "-").to_lowercase(),
+        service_name.replace(' ', "-").to_lowercase()
+    );
+    let metadata = serde_json::json!({
+        "input": {
+            "compiled_root": compiled_root.display().to_string(),
+            "skill_name": &skill_name,
+            "service": &service_name,
+            "component": &component,
+            "skill_input": skill_input,
+        },
+        "workflow_metadata": {
+            "skill_name": &skill_name,
+            "background_service": &service_name,
+            "component": &component,
+            "source_kind": "plugin_background_workflow",
+            "workspace_database": config.database.url,
+        },
+        "task": {
+            "priority": options.priority,
+            "source_kind": "plugin_background_workflow",
+            "owner": "skills",
+            "tags": ["skill", "background-service", &service_name],
+        }
+    });
+
+    sqlx::query(
+        r#"
+        INSERT INTO scheduled_jobs (
+            id, name, description, workflow_id, trigger_type, trigger_config,
+            idempotency_key, state, timezone, max_retries, priority, source_kind, owner,
+            tags, next_run_at, run_count, metadata, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', 'UTC', 3, ?, 'skills', ?, ?, ?, 0, ?, datetime('now'))
+        "#,
+    )
+    .bind(&job_id)
+    .bind(&job_name)
+    .bind(format!(
+        "Compiled skill background workflow for {}:{}",
+        skill_name, service_name
+    ))
+    .bind("skill_background")
+    .bind(&trigger_type)
+    .bind(trigger_config.to_string())
+    .bind(idempotency_key)
+    .bind(options.priority)
+    .bind("skills")
+    .bind(serde_json::to_string(&vec![
+        "skill".to_string(),
+        "background-service".to_string(),
+        service_name.clone(),
+    ])?)
+    .bind(next_run_at.map(|value| value.to_rfc3339()))
+    .bind(metadata.to_string())
+    .execute(&pool)
+    .await
+    .context("Failed to create background skill workflow job")?;
+
+    publish_plugin_event(
+        &pool,
+        "plugin.background_workflow_scheduled",
+        serde_json::json!({
+            "job_id": &job_id,
+            "skill_name": &skill_name,
+            "service": &service_name,
+            "component": &component,
+            "trigger_type": &trigger_type,
+        }),
+    )
+    .await;
+
+    Ok(SkillScheduleBackgroundResult {
+        status: "ok".to_string(),
+        job_id,
+        workflow_id: "skill_background".to_string(),
+        skill_name,
+        service: service_name,
         component,
-        source_path: source_path.display().to_string(),
-        verified_execution,
-        runtime: "rust_wasm_sandbox".to_string(),
-        input,
-        output,
-        capabilities: artifact.manifest.capabilities.clone(),
+        compiled_root: compiled_root.display().to_string(),
+        trigger_type,
+        next_run_at: next_run_at.map(|value| value.to_rfc3339()),
     })
 }
 
@@ -1670,6 +1796,13 @@ pub async fn inspect_extension(name: &str) -> Result<()> {
     Ok(())
 }
 
+/// List declared and inferred background services for a compiled skill.
+pub async fn background_services(name: &str) -> Result<()> {
+    let result = background_services_data(name).await?;
+    println!("{}", serde_json::to_string_pretty(&result)?);
+    Ok(())
+}
+
 /// Invoke the generated CLI/help bridge for a compiled skill.
 pub async fn invoke(
     name: &str,
@@ -1694,6 +1827,32 @@ pub async fn invoke(
 /// Execute a bounded `.wasm` or `.wat` component from a compiled skill.
 pub async fn execute(name: &str, component: Option<&str>, input: Option<&str>) -> Result<()> {
     let result = execute_data(name, SkillExecuteOptions { component, input }).await?;
+    println!("{}", serde_json::to_string_pretty(&result)?);
+    Ok(())
+}
+
+/// Schedule a compiled skill background workflow through the durable scheduler.
+pub async fn schedule_background(
+    name: &str,
+    service: Option<&str>,
+    component: Option<&str>,
+    input: Option<&str>,
+    every_seconds: Option<u64>,
+    at: Option<&str>,
+    priority: i64,
+) -> Result<()> {
+    let result = schedule_background_service_data(
+        name,
+        SkillScheduleBackgroundOptions {
+            service,
+            component,
+            input,
+            every_seconds,
+            at,
+            priority,
+        },
+    )
+    .await?;
     println!("{}", serde_json::to_string_pretty(&result)?);
     Ok(())
 }

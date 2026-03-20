@@ -67,7 +67,8 @@ use openrustclaw_scheduler::{DurableEventBus, ReminderSender, RustWorkflowDispat
 use openrustclaw_scheduler::{SchedulerWorker, worker::SchedulerConfig as WorkerSchedulerConfig};
 use openrustclaw_security::OriginValidator;
 use openrustclaw_skills::{
-    CompiledSkillArtifact, CompiledSkillStatus, list_compiled_manifests, load_compiled_artifact,
+    CompiledSkillArtifact, CompiledSkillStatus, compiled_skill_background_services,
+    list_compiled_manifests, load_compiled_artifact,
 };
 use sqlx::Row;
 use uuid::Uuid;
@@ -2749,6 +2750,14 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             "/control/skills/{name}/execute",
             post(control_skill_execute_handler),
         )
+        .route(
+            "/control/skills/{name}/background-services",
+            get(control_skill_background_services_handler),
+        )
+        .route(
+            "/control/skills/{name}/background-services/schedule",
+            post(control_skill_schedule_background_handler),
+        )
         .route("/control/services/status", get(service_status_handler))
         .route(
             "/control/services/scheduler",
@@ -3331,6 +3340,26 @@ struct SkillExecutePayload {
     input: Option<String>,
 }
 
+#[derive(serde::Deserialize, Default)]
+struct SkillScheduleBackgroundPayload {
+    #[serde(default)]
+    service: Option<String>,
+    #[serde(default)]
+    component: Option<String>,
+    #[serde(default)]
+    input: Option<String>,
+    #[serde(default)]
+    every_seconds: Option<u64>,
+    #[serde(default)]
+    at: Option<String>,
+    #[serde(default = "default_skill_background_priority")]
+    priority: i64,
+}
+
+fn default_skill_background_priority() -> i64 {
+    100
+}
+
 async fn control_skills_handler() -> impl IntoResponse {
     match skills::installed_skills_data().await {
         Ok(entries) => (
@@ -3351,12 +3380,14 @@ async fn control_skill_detail_handler(AxumPath(name): AxumPath<String>) -> impl 
         Ok(skill) => {
             let compiled = skills::compiled_skill_detail_data(&name).await.ok();
             let extension_manifest = skills::extension_manifest_data(&name).await.ok();
+            let background_services = skills::background_services_data(&name).await.ok();
             (
                 StatusCode::OK,
                 Json(serde_json::json!({
                     "skill": skill,
                     "compiled": compiled,
                     "extension_manifest": extension_manifest,
+                    "background_services": background_services,
                 })),
             )
                 .into_response()
@@ -3546,6 +3577,45 @@ async fn control_skill_execute_handler(
         skills::SkillExecuteOptions {
             component: payload.component.as_deref(),
             input: payload.input.as_deref(),
+        },
+    )
+    .await
+    {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": error.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
+async fn control_skill_background_services_handler(
+    AxumPath(name): AxumPath<String>,
+) -> impl IntoResponse {
+    match skills::background_services_data(&name).await {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": error.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
+async fn control_skill_schedule_background_handler(
+    AxumPath(name): AxumPath<String>,
+    Json(payload): Json<SkillScheduleBackgroundPayload>,
+) -> impl IntoResponse {
+    match skills::schedule_background_service_data(
+        &name,
+        skills::SkillScheduleBackgroundOptions {
+            service: payload.service.as_deref(),
+            component: payload.component.as_deref(),
+            input: payload.input.as_deref(),
+            every_seconds: payload.every_seconds,
+            at: payload.at.as_deref(),
+            priority: payload.priority,
         },
     )
     .await
@@ -7939,6 +8009,13 @@ fn compiled_skill_execute_tool_name(artifact: &CompiledSkillArtifact) -> String 
     )
 }
 
+fn compiled_skill_schedule_tool_name(artifact: &CompiledSkillArtifact) -> String {
+    format!(
+        "{}.schedule",
+        compiled_skill_tool_prefix(&artifact.manifest.name)
+    )
+}
+
 fn compiled_skill_executable_components(artifact: &CompiledSkillArtifact) -> Vec<String> {
     artifact
         .manifest
@@ -8027,6 +8104,7 @@ fn compiled_skill_mcp_tools(artifacts: &[CompiledSkillArtifact]) -> Vec<McpServe
         });
 
         let executable_components = compiled_skill_executable_components(artifact);
+        let background_services = compiled_skill_background_services(artifact);
         if !matches!(artifact.manifest.status, CompiledSkillStatus::Blocked)
             && !executable_components.is_empty()
         {
@@ -8062,6 +8140,31 @@ fn compiled_skill_mcp_tools(artifacts: &[CompiledSkillArtifact]) -> Vec<McpServe
                     artifact.manifest.name
                 ),
                 input_schema: execute_schema,
+            });
+        }
+
+        if !matches!(artifact.manifest.status, CompiledSkillStatus::Blocked)
+            && !background_services.is_empty()
+        {
+            tools.push(McpServerTool {
+                name: compiled_skill_schedule_tool_name(artifact),
+                description: format!(
+                    "Schedule a durable background workflow for compiled skill '{}'.",
+                    artifact.manifest.name
+                ),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "service": {"type": "string"},
+                        "component": {"type": "string"},
+                        "input": {
+                            "description": "Optional JSON value forwarded into the background workflow executor."
+                        },
+                        "every_seconds": {"type": "integer", "minimum": 1},
+                        "at": {"type": "string", "description": "Optional RFC3339 timestamp for a one-shot execution."},
+                        "priority": {"type": "integer"}
+                    }
+                }),
             });
         }
 
@@ -8108,7 +8211,13 @@ fn compiled_skill_summary_payload(artifact: &CompiledSkillArtifact) -> serde_jso
             } else {
                 serde_json::json!(compiled_skill_execute_tool_name(artifact))
             },
+            "schedule_tool": if compiled_skill_background_services(artifact).is_empty() {
+                serde_json::Value::Null
+            } else {
+                serde_json::json!(compiled_skill_schedule_tool_name(artifact))
+            },
             "executable_components": compiled_skill_executable_components(artifact),
+            "background_services": compiled_skill_background_services(artifact),
             "reference_tools": artifact
                 .manifest
                 .references
@@ -8137,6 +8246,7 @@ fn compiled_skill_detail_payload(artifact: &CompiledSkillArtifact) -> serde_json
         },
         "mcp_schema": &artifact.mcp_schema,
         "cli_schema": &artifact.cli_schema,
+        "background_services": compiled_skill_background_services(artifact),
         "scan_report": &artifact.scan_report,
         "blocked_content_redacted": blocked,
     })
@@ -8304,6 +8414,37 @@ fn register_compiled_skill_mcp_handlers(
                             skills::SkillExecuteOptions {
                                 component: requested_component,
                                 input: input.as_deref(),
+                            },
+                        )
+                        .await
+                        .map_err(|error| mcp_tool_error(error.to_string()))?;
+                        Ok(serde_json::to_value(result)
+                            .map_err(|error| mcp_tool_error(error.to_string()))?)
+                    })
+                }),
+            );
+        }
+
+        let background_services = compiled_skill_background_services(artifact);
+        if !background_services.is_empty() {
+            let schedule_tool = compiled_skill_schedule_tool_name(artifact);
+            let skill_name = artifact.manifest.name.clone();
+            server.register_handler(
+                &schedule_tool,
+                traced_mcp_handler(langsmith.clone(), "compiled_skill_schedule", move |args| {
+                    let request: McpCompiledSkillScheduleArgs = parse_tool_args(args)?;
+                    let skill_name = skill_name.clone();
+                    block_on_tool(async move {
+                        let input = request.input.as_ref().map(serde_json::Value::to_string);
+                        let result = skills::schedule_background_service_data(
+                            &skill_name,
+                            skills::SkillScheduleBackgroundOptions {
+                                service: request.service.as_deref(),
+                                component: request.component.as_deref(),
+                                input: input.as_deref(),
+                                every_seconds: request.every_seconds,
+                                at: request.at.as_deref(),
+                                priority: request.priority.unwrap_or(100),
                             },
                         )
                         .await
@@ -8643,6 +8784,16 @@ struct McpCompiledSkillReferenceArgs {
 struct McpCompiledSkillExecuteArgs {
     component: Option<String>,
     input: Option<serde_json::Value>,
+}
+
+#[derive(serde::Deserialize, Default)]
+struct McpCompiledSkillScheduleArgs {
+    service: Option<String>,
+    component: Option<String>,
+    input: Option<serde_json::Value>,
+    every_seconds: Option<u64>,
+    at: Option<String>,
+    priority: Option<i64>,
 }
 
 #[derive(serde::Deserialize)]
@@ -9574,6 +9725,11 @@ argument_hint: <topic>
                 .iter()
                 .any(|tool| tool["name"] == "skill.Demo-Skill.execute")
         );
+        assert!(
+            tools
+                .iter()
+                .any(|tool| tool["name"] == "skill.Demo-Skill.schedule")
+        );
 
         let summary_req = serde_json::json!({
             "jsonrpc": "2.0",
@@ -9600,8 +9756,16 @@ argument_hint: <topic>
             "skill.Demo-Skill.execute"
         );
         assert_eq!(
+            summary_payload["mcp"]["schedule_tool"],
+            "skill.Demo-Skill.schedule"
+        );
+        assert_eq!(
             summary_payload["mcp"]["executable_components"][0],
             "scripts/echo.wat"
+        );
+        assert_eq!(
+            summary_payload["mcp"]["background_services"][0]["name"],
+            "echo"
         );
 
         let reference_req = serde_json::json!({
@@ -9709,6 +9873,11 @@ argument_hint: <topic>
             !tools
                 .iter()
                 .any(|tool| tool["name"] == "skill.Danger-Skill.execute")
+        );
+        assert!(
+            !tools
+                .iter()
+                .any(|tool| tool["name"] == "skill.Danger-Skill.schedule")
         );
 
         let details_req = serde_json::json!({

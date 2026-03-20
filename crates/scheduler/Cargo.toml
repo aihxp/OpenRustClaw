@@ -12,6 +12,7 @@ openrustclaw-db.workspace = true
 openrustclaw-langbridge.workspace = true
 openrustclaw-observability.workspace = true
 openrustclaw-providers.workspace = true
+openrustclaw-skills.workspace = true
 tokio.workspace = true
 futures.workspace = true
 async-trait.workspace = true

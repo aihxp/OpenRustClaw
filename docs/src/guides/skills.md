@@ -40,9 +40,9 @@ flowchart TB
 
 The current operator surfaces for skills/extensions are shared across CLI, typed control APIs, MCP, and the Web Control UI:
 
-- CLI: `openrustclaw skills list|list-extensions|compile|refresh|inspect-compiled|inspect-extension|invoke|search|install|update|uninstall|verify|popular|trending`
-- Control API: `/control/skills...`, including `/control/skills/extensions...` and `/control/skills/{name}/invoke`
-- MCP: `list_compiled_skills`, `inspect_compiled_skill`, plus dynamic `skill.<name>.summary|details|reference...|execute` tools from the compiled skill cache
+- CLI: `openrustclaw skills list|list-extensions|compile|refresh|inspect-compiled|inspect-extension|background-services|invoke|execute|schedule-background|search|install|update|uninstall|verify|popular|trending`
+- Control API: `/control/skills...`, including `/control/skills/extensions...`, `/control/skills/{name}/invoke`, `/control/skills/{name}/execute`, and `/control/skills/{name}/background-services...`
+- MCP: `list_compiled_skills`, `inspect_compiled_skill`, plus dynamic `skill.<name>.summary|details|reference...|execute|schedule` tools from the compiled skill cache
 - Control UI: `/control/ui` extension discovery and installed-extension management panels
 
 `openrustclaw skills invoke <name>` is intentionally bounded today. It reuses the compiled artifact cache to return the generated CLI/help bundle, optional detail payloads, and safe reference reads under the skill root. It does not claim arbitrary script execution or full plugin-runtime parity yet.
@@ -55,6 +55,15 @@ For compiled `.wasm` and `.wat` artifacts, there is now a real bounded execution
 
 This execution path uses the Rust `WasmSandbox`, applies declared capability policy before execution, and keeps blocked skills inspection-only.
 
+Compiled skills can now also expose bounded background services through the same cached manifest/runtime contract:
+
+- CLI: `openrustclaw skills background-services <name>` and `openrustclaw skills schedule-background <name> [--service ...] [--component ...] [--input ...] [--every-seconds ...|--at ...]`
+- Control API: `GET /control/skills/{name}/background-services` and `POST /control/skills/{name}/background-services/schedule`
+- MCP: dynamic `skill.<name>.schedule` tools when the compiled skill exposes a schedulable background service or executable component
+- Control UI: the extension detail panel can schedule the same bounded background workflow
+
+This background lane is still intentionally bounded: it routes compiled background services through the Rust durable scheduler and the same verification-aware execution path used by `skills execute`, rather than pretending auth plugins, channel extensions, or voice-call plugins are already complete.
+
 The compile pipeline now also emits `.claw/skills/compiled/<skill>/extension_manifest.json`. That manifest is the durable Rust-native extension contract for this later Phase 7 work:
 
 - manifest-driven capability declarations
@@ -63,7 +72,7 @@ The compile pipeline now also emits `.claw/skills/compiled/<skill>/extension_man
 - background services
 - WASI component bindings
 
-Today the manifest is for inspection and routing, not full runtime execution. It gives operators and future runtimes one stable shape without pretending JavaScript/TypeScript-style plugin hosting is already matched.
+Today the manifest is for inspection and routing first, with selected runtime execution paths. It gives operators and future runtimes one stable shape without pretending JavaScript/TypeScript-style plugin hosting is already matched.
 
 ---
 

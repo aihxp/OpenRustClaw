@@ -19,6 +19,10 @@ use openrustclaw_providers::{
     AnthropicProvider, OllamaProvider, OpenAiProvider, OpenRouterProvider, ProviderChain,
     openrouter::RouteStrategy,
 };
+use openrustclaw_skills::{
+    execute_compiled_skill_artifact, load_compiled_artifact,
+    resolve_compiled_skill_background_service,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use tracing::warn;
@@ -163,6 +167,12 @@ impl RustWorkflowDispatcher {
                         "Rust-native reminder delivery with channel-aware fallback policies"
                             .to_string(),
                 },
+                WorkflowDefinition {
+                    workflow_id: "skill_background".to_string(),
+                    tier: WorkflowTier::RustNative,
+                    description: "Rust-native bounded compiled-skill background workflow execution"
+                        .to_string(),
+                },
             ],
         }
     }
@@ -203,7 +213,7 @@ impl RustWorkflowDispatcher {
     fn has_rust_workflow(&self, workflow_id: &str) -> bool {
         matches!(
             workflow_id,
-            "agent" | "memory_maintenance" | "rag" | "scheduler" | "reminder"
+            "agent" | "memory_maintenance" | "rag" | "scheduler" | "reminder" | "skill_background"
         )
     }
 
@@ -233,6 +243,7 @@ impl RustWorkflowDispatcher {
             "rag" => self.execute_rag(invocation).await,
             "scheduler" => self.execute_scheduler(invocation).await,
             "reminder" => self.execute_reminder(invocation).await,
+            "skill_background" => self.execute_skill_background(invocation).await,
             other => Err(SchedulerError::WorkflowFailed(format!(
                 "unknown rust-native workflow: {other}"
             ))),
@@ -711,6 +722,128 @@ impl RustWorkflowDispatcher {
         Ok(WorkflowDispatchResult {
             status: "success".to_string(),
             output: Value::Object(output),
+            error: None,
+            trace_id: None,
+        })
+    }
+
+    async fn execute_skill_background(
+        &self,
+        invocation: WorkflowInvocation,
+    ) -> Result<WorkflowDispatchResult> {
+        let compiled_root = invocation
+            .input
+            .get("compiled_root")
+            .and_then(Value::as_str)
+            .ok_or_else(|| {
+                SchedulerError::WorkflowFailed(
+                    "skill_background workflow requires input.compiled_root".to_string(),
+                )
+            })?;
+        let skill_name = invocation
+            .input
+            .get("skill_name")
+            .and_then(Value::as_str)
+            .ok_or_else(|| {
+                SchedulerError::WorkflowFailed(
+                    "skill_background workflow requires input.skill_name".to_string(),
+                )
+            })?;
+        let requested_service = invocation.input.get("service").and_then(Value::as_str);
+        let requested_component = invocation.input.get("component").and_then(Value::as_str);
+        let skill_input = invocation
+            .input
+            .get("skill_input")
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!({}));
+
+        self.checkpoint(
+            &invocation,
+            0,
+            serde_json::json!({
+                "status": "loading_skill",
+                "skill_name": skill_name,
+                "service": requested_service,
+                "component": requested_component,
+            }),
+        )
+        .await?;
+
+        let artifact = load_compiled_artifact(std::path::Path::new(compiled_root), skill_name)
+            .map_err(|error| SchedulerError::WorkflowFailed(error.to_string()))?;
+        let service = resolve_compiled_skill_background_service(
+            &artifact,
+            requested_service,
+            requested_component,
+        )
+        .map_err(|error| SchedulerError::WorkflowFailed(error.to_string()))?;
+        let component = service.component.clone().ok_or_else(|| {
+            SchedulerError::WorkflowFailed(format!(
+                "background service '{}' for '{}' has no executable component",
+                service.name, artifact.manifest.name
+            ))
+        })?;
+
+        self.checkpoint(
+            &invocation,
+            1,
+            serde_json::json!({
+                "status": "executing",
+                "skill_name": artifact.manifest.name,
+                "service": service.name,
+                "component": component,
+            }),
+        )
+        .await?;
+
+        let execution =
+            execute_compiled_skill_artifact(&artifact, Some(component.as_str()), skill_input)
+                .await
+                .map_err(|error| SchedulerError::WorkflowFailed(error.to_string()))?;
+
+        let output = serde_json::json!({
+            "skill_name": artifact.manifest.name,
+            "service": service.name,
+            "component": execution.component,
+            "result": execution,
+        });
+
+        if let Some(event_bus) = &self.event_bus {
+            let event = serde_json::json!({
+                "workflow_id": "skill_background",
+                "skill_name": artifact.manifest.name,
+                "service": service.name,
+                "component": component,
+            });
+            if let Err(error) = event_bus
+                .publish_named(
+                    "plugin.background_workflow_executed",
+                    "plugin_runtime_event",
+                    None,
+                    &event,
+                    None,
+                )
+                .await
+            {
+                warn!(error = %error, skill = %artifact.manifest.name, "Failed to publish background workflow execution event");
+            }
+        }
+
+        self.checkpoint(
+            &invocation,
+            2,
+            serde_json::json!({
+                "status": "completed",
+                "skill_name": artifact.manifest.name,
+                "service": service.name,
+                "component": component,
+            }),
+        )
+        .await?;
+
+        Ok(WorkflowDispatchResult {
+            status: "success".to_string(),
+            output,
             error: None,
             trace_id: None,
         })
@@ -1667,7 +1800,10 @@ impl LlmProvider for WorkflowProviderChain {
 mod tests {
     use super::*;
     use async_trait::async_trait;
+    use openrustclaw_core::types::SkillSource;
     use openrustclaw_db::{init_pool, run_migrations};
+    use openrustclaw_skills::compile_skill_to_dir;
+    use tempfile::tempdir;
 
     #[derive(Default)]
     struct StubReminderSender {
@@ -1746,5 +1882,85 @@ mod tests {
                 .unwrap();
         assert!(event_names.contains(&"reminder.triggered".to_string()));
         assert!(event_names.contains(&"reminder.delivered".to_string()));
+    }
+
+    #[tokio::test]
+    async fn skill_background_workflow_executes_compiled_component() {
+        let workspace = tempdir().unwrap();
+        let skill_root = workspace.path().join("skills").join("demo");
+        std::fs::create_dir_all(skill_root.join("scripts")).unwrap();
+        std::fs::write(
+            skill_root.join("SKILL.md"),
+            r#"---
+name: Demo Skill
+description: Test background workflow
+background_services:
+  - sync-loop
+---
+
+Runs a background sync loop.
+"#,
+        )
+        .unwrap();
+        std::fs::write(
+            skill_root.join("scripts").join("sync-loop.wat"),
+            r#"(module
+              (memory (export "memory") 1 1)
+              (data (i32.const 1024) "{\"ok\":true}")
+              (func (export "alloc") (param i32) (result i32) i32.const 0)
+              (func (export "run") (param i32 i32) (result i64)
+                (i64.or
+                  (i64.shl (i64.extend_i32_u (i32.const 1024)) (i64.const 32))
+                  (i64.extend_i32_u (i32.const 11)))))"#,
+        )
+        .unwrap();
+
+        let compiled_root = workspace
+            .path()
+            .join(".claw")
+            .join("skills")
+            .join("compiled");
+        std::fs::create_dir_all(&compiled_root).unwrap();
+        compile_skill_to_dir(
+            &skill_root.join("SKILL.md"),
+            &compiled_root,
+            SkillSource::Workspace,
+            true,
+        )
+        .unwrap();
+
+        let pool = init_pool("sqlite::memory:", 1).await.unwrap();
+        run_migrations(&pool).await.unwrap();
+        let memory_store = Arc::new(SqliteMemoryStore::new(pool.clone()));
+        let core_memory_store = Arc::new(SqliteCoreMemoryStore::new(pool.clone()));
+        let rag_store = Arc::new(SqliteRagStore::new(pool.clone()));
+        let mut dispatcher = RustWorkflowDispatcher::from_runtime_parts(
+            pool.clone(),
+            memory_store,
+            core_memory_store,
+            rag_store,
+            None,
+            None,
+            None,
+            Some(DurableEventBus::new(pool.clone(), 16)),
+        );
+
+        let result = dispatcher
+            .dispatch(WorkflowInvocation::new(
+                "skill_background",
+                "thread-skill-bg",
+                serde_json::json!({
+                    "compiled_root": compiled_root.display().to_string(),
+                    "skill_name": "Demo Skill",
+                    "service": "sync-loop",
+                    "skill_input": {"mode": "nightly"},
+                }),
+            ))
+            .await
+            .unwrap();
+
+        assert_eq!(result.status, "success");
+        assert_eq!(result.output["service"], "sync-loop");
+        assert_eq!(result.output["result"]["runtime"], "rust_wasm_sandbox");
     }
 }

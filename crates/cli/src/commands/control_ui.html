@@ -525,6 +525,17 @@
             <div class="action-row">
               <button class="secondary" id="skill-execute">Execute WASM Component</button>
             </div>
+            <div class="action-row">
+              <input id="skill-background-service" type="text" placeholder="optional background service name" />
+              <input id="skill-background-component" type="text" placeholder="optional background component override" />
+            </div>
+            <div class="action-row">
+              <input id="skill-background-input" type="text" placeholder='optional background JSON input, e.g. {"mode":"sync"}' />
+              <input id="skill-background-every" type="number" min="1" placeholder="every seconds, default 3600" />
+            </div>
+            <div class="action-row">
+              <button class="secondary" id="skill-background-schedule">Schedule Background Workflow</button>
+            </div>
           </div>
           <div class="surface"><pre id="skill-detail">Select an installed or discovered extension to inspect.</pre></div>
         </article>
@@ -1068,6 +1079,26 @@
           body: JSON.stringify({
             component: component || null,
             input: input || null,
+          }),
+        });
+        setText("skill-detail", payload);
+      }
+
+      async function scheduleCurrentSkillBackground() {
+        if (!currentSkillName) {
+          throw new Error("Select an installed extension first");
+        }
+        const service = document.getElementById("skill-background-service").value.trim();
+        const component = document.getElementById("skill-background-component").value.trim();
+        const input = document.getElementById("skill-background-input").value.trim();
+        const everySeconds = document.getElementById("skill-background-every").value.trim();
+        const payload = await fetchJson(`/control/skills/${encodeURIComponent(currentSkillName)}/background-services/schedule`, {
+          method: "POST",
+          body: JSON.stringify({
+            service: service || null,
+            component: component || null,
+            input: input || null,
+            every_seconds: everySeconds ? Number(everySeconds) : null,
           }),
         });
         setText("skill-detail", payload);
@@ -2063,6 +2094,13 @@
       document.getElementById("skill-execute").addEventListener("click", async () => {
         try {
           await executeCurrentSkill();
+        } catch (error) {
+          setText("skill-detail", { error: error.message });
+        }
+      });
+      document.getElementById("skill-background-schedule").addEventListener("click", async () => {
+        try {
+          await scheduleCurrentSkillBackground();
         } catch (error) {
           setText("skill-detail", { error: error.message });
         }
