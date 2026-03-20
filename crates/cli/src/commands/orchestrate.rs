@@ -29,6 +29,14 @@ fn default_status_completed() -> String {
     "completed".to_string()
 }
 
+fn default_checkpoint_status_completed() -> String {
+    "completed".to_string()
+}
+
+fn default_reflection_kind() -> String {
+    "lesson_candidate".to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct OrchestrationRequest {
     #[serde(default)]
@@ -110,6 +118,58 @@ pub struct WorkerResultEnvelope {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrchestrationCheckpoint {
+    pub checkpoint_id: String,
+    pub created_at: String,
+    pub stage: String,
+    #[serde(default = "default_checkpoint_status_completed")]
+    pub status: String,
+    #[serde(default)]
+    pub claw_id: Option<String>,
+    #[serde(default)]
+    pub model_profile_id: Option<String>,
+    #[serde(default)]
+    pub provider: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
+    pub note: String,
+    #[serde(default)]
+    pub input_excerpt: Option<String>,
+    #[serde(default)]
+    pub output_excerpt: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReflectionCandidate {
+    #[serde(default = "default_reflection_kind")]
+    pub kind: String,
+    pub signal: String,
+    pub recommendation: String,
+    #[serde(default)]
+    pub rationale: Option<String>,
+    #[serde(default)]
+    pub confidence: Option<f32>,
+    #[serde(default)]
+    pub claw_id: Option<String>,
+    #[serde(default)]
+    pub model_profile_id: Option<String>,
+    #[serde(default)]
+    pub provider: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SupervisionSummary {
+    pub checkpoint_count: usize,
+    pub worker_count: usize,
+    pub needs_input_count: usize,
+    pub failed_count: usize,
+    #[serde(default)]
+    pub low_confidence_workers: Vec<String>,
+    pub reflection_candidate_count: usize,
+    pub escalation_recommended: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OrchestrationRunRecord {
     pub run_id: String,
     pub created_at: String,
@@ -121,7 +181,13 @@ pub struct OrchestrationRunRecord {
     #[serde(default)]
     pub worker_results: Vec<WorkerResultEnvelope>,
     #[serde(default)]
+    pub checkpoints: Vec<OrchestrationCheckpoint>,
+    #[serde(default)]
     pub reflection_notes: Vec<String>,
+    #[serde(default)]
+    pub reflection_candidates: Vec<ReflectionCandidate>,
+    #[serde(default)]
+    pub supervision: Option<SupervisionSummary>,
     pub final_output: String,
     pub final_claw_id: String,
     pub final_model_profile_id: String,
@@ -279,6 +345,25 @@ pub fn read_run(workspace_root: &Path, receipt_id: &str) -> Result<Orchestration
     let path = runs_root_for(workspace_root).join(receipt_id);
     let bytes = fs::read(&path).with_context(|| format!("Failed to read '{}'", path.display()))?;
     serde_json::from_slice(&bytes).with_context(|| format!("Failed to decode '{}'", path.display()))
+}
+
+pub fn read_run_checkpoints(
+    workspace_root: &Path,
+    receipt_id: &str,
+) -> Result<Vec<OrchestrationCheckpoint>> {
+    Ok(read_run(workspace_root, receipt_id)?.checkpoints)
+}
+
+pub fn read_run_supervision(workspace_root: &Path, receipt_id: &str) -> Result<serde_json::Value> {
+    let run = read_run(workspace_root, receipt_id)?;
+    Ok(serde_json::json!({
+        "run_id": run.run_id,
+        "mode": run.mode,
+        "supervision": run.supervision,
+        "reflection_notes": run.reflection_notes,
+        "reflection_candidates": run.reflection_candidates,
+        "checkpoints": run.checkpoints,
+    }))
 }
 
 fn resolve_routing(
@@ -528,6 +613,148 @@ fn build_steering_notes(
     notes
 }
 
+fn make_checkpoint(
+    stage: &str,
+    status: &str,
+    note: impl Into<String>,
+    claw_id: Option<&str>,
+    model_profile_id: Option<&str>,
+    provider: Option<&str>,
+    model: Option<&str>,
+    input_excerpt: Option<String>,
+    output_excerpt: Option<String>,
+) -> OrchestrationCheckpoint {
+    OrchestrationCheckpoint {
+        checkpoint_id: Uuid::new_v4().to_string(),
+        created_at: Utc::now().to_rfc3339(),
+        stage: stage.to_string(),
+        status: status.to_string(),
+        claw_id: claw_id.map(ToString::to_string),
+        model_profile_id: model_profile_id.map(ToString::to_string),
+        provider: provider.map(ToString::to_string),
+        model: model.map(ToString::to_string),
+        note: note.into(),
+        input_excerpt,
+        output_excerpt,
+    }
+}
+
+fn excerpt(input: &str, max_chars: usize) -> String {
+    input.chars().take(max_chars).collect()
+}
+
+fn build_reflection_candidates(
+    routing: &RoutingDecision,
+    worker_results: &[WorkerResultEnvelope],
+) -> Vec<ReflectionCandidate> {
+    let mut candidates = Vec::new();
+    if routing.selected_model.fallback_path.len() > 1 {
+        candidates.push(ReflectionCandidate {
+            kind: "fallback_path".to_string(),
+            signal: format!(
+                "model profile '{}' required fallback path {}",
+                routing.selected_model.requested_profile_id,
+                routing.selected_model.fallback_path.join(" -> ")
+            ),
+            recommendation:
+                "preflight this provider/model lane or promote a healthier fallback for this route"
+                    .to_string(),
+            rationale: Some(
+                "The primary model profile was unavailable or unsupported at run time.".to_string(),
+            ),
+            confidence: Some(0.82),
+            claw_id: Some(routing.selected_claw_id.clone()),
+            model_profile_id: Some(routing.selected_model_profile_id.clone()),
+            provider: Some(routing.selected_model.provider.clone()),
+        });
+    }
+
+    for worker in worker_results {
+        if worker.status == "failed" || worker.status == "needs_input" {
+            candidates.push(ReflectionCandidate {
+                kind: "worker_status".to_string(),
+                signal: format!("worker '{}' returned status '{}'", worker.claw_id, worker.status),
+                recommendation: if worker.status == "needs_input" {
+                    "tighten task framing or add an approval/escalation checkpoint before delegation".to_string()
+                } else {
+                    "capture a task-specific lesson and consider revising worker/model routing".to_string()
+                },
+                rationale: worker.next_step_recommendation.clone(),
+                confidence: worker.confidence.or(Some(0.7)),
+                claw_id: Some(worker.claw_id.clone()),
+                model_profile_id: Some(worker.model_profile_id.clone()),
+                provider: Some(worker.provider.clone()),
+            });
+        }
+        if let Some(confidence) = worker.confidence
+            && confidence < 0.6
+        {
+            candidates.push(ReflectionCandidate {
+                kind: "low_confidence".to_string(),
+                signal: format!(
+                    "worker '{}' reported low confidence {:.2}",
+                    worker.claw_id, confidence
+                ),
+                recommendation:
+                    "route a critic or human review step before exposing this output as final"
+                        .to_string(),
+                rationale: Some(worker.summary.clone()),
+                confidence: Some(confidence),
+                claw_id: Some(worker.claw_id.clone()),
+                model_profile_id: Some(worker.model_profile_id.clone()),
+                provider: Some(worker.provider.clone()),
+            });
+        }
+        if !worker.questions.is_empty() {
+            candidates.push(ReflectionCandidate {
+                kind: "open_questions".to_string(),
+                signal: format!("worker '{}' returned {} open questions", worker.claw_id, worker.questions.len()),
+                recommendation: "surface blockers explicitly or add a follow-up worker turn instead of treating the run as fully complete".to_string(),
+                rationale: Some(worker.questions.join(" | ")),
+                confidence: worker.confidence.or(Some(0.65)),
+                claw_id: Some(worker.claw_id.clone()),
+                model_profile_id: Some(worker.model_profile_id.clone()),
+                provider: Some(worker.provider.clone()),
+            });
+        }
+    }
+
+    candidates
+}
+
+fn summarize_supervision(
+    checkpoints: &[OrchestrationCheckpoint],
+    worker_results: &[WorkerResultEnvelope],
+    reflection_candidates: &[ReflectionCandidate],
+) -> SupervisionSummary {
+    let needs_input_count = worker_results
+        .iter()
+        .filter(|worker| worker.status == "needs_input")
+        .count();
+    let failed_count = worker_results
+        .iter()
+        .filter(|worker| worker.status == "failed")
+        .count();
+    let low_confidence_workers = worker_results
+        .iter()
+        .filter_map(|worker| match worker.confidence {
+            Some(confidence) if confidence < 0.6 => Some(worker.claw_id.clone()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    SupervisionSummary {
+        checkpoint_count: checkpoints.len(),
+        worker_count: worker_results.len(),
+        needs_input_count,
+        failed_count,
+        low_confidence_workers,
+        reflection_candidate_count: reflection_candidates.len(),
+        escalation_recommended: failed_count > 0
+            || needs_input_count > 0
+            || !reflection_candidates.is_empty(),
+    }
+}
+
 fn resolve_model_with_fallback(
     requested_profile_id: &str,
     registry: &control::ControlRegistry,
@@ -677,6 +904,19 @@ async fn run_direct(
         request.prompt.clone(),
     )
     .await?;
+    let checkpoints = vec![make_checkpoint(
+        "direct_response",
+        "completed",
+        "direct run completed",
+        Some(claw.id.as_str()),
+        Some(executable.decision.selected_profile_id.as_str()),
+        Some(executable.decision.provider.as_str()),
+        Some(executable.decision.model.as_str()),
+        Some(excerpt(&request.prompt, 240)),
+        Some(excerpt(&prompt.message.content, 240)),
+    )];
+    let reflection_candidates = build_reflection_candidates(routing, &[]);
+    let supervision = summarize_supervision(&checkpoints, &[], &reflection_candidates);
 
     Ok(OrchestrationRunRecord {
         run_id: Uuid::new_v4().to_string(),
@@ -686,7 +926,10 @@ async fn run_direct(
         routing: routing.clone(),
         delegations: Vec::new(),
         worker_results: Vec::new(),
+        checkpoints,
         reflection_notes: routing.steering_notes.clone(),
+        reflection_candidates,
+        supervision: Some(supervision),
         final_output: prompt.message.content,
         final_claw_id: claw.id.clone(),
         final_model_profile_id: executable.decision.selected_profile_id.clone(),
@@ -718,6 +961,20 @@ async fn run_orchestrated(
         .values()
         .filter(|claw| claw.enabled && claw.id != orchestrator.id)
         .collect::<Vec<_>>();
+    let mut checkpoints = vec![make_checkpoint(
+        "routing",
+        "completed",
+        format!(
+            "resolved route {} -> {} ({})",
+            routing.route_source, routing.selected_claw_id, routing.selected_model.model
+        ),
+        Some(orchestrator.id.as_str()),
+        Some(routing.selected_model.selected_profile_id.as_str()),
+        Some(routing.selected_model.provider.as_str()),
+        Some(routing.selected_model.model.as_str()),
+        Some(excerpt(&request.prompt, 240)),
+        None,
+    )];
 
     if worker_candidates.is_empty() {
         return run_direct(request, registry, config, routing, workspace_root).await;
@@ -763,6 +1020,17 @@ async fn run_orchestrated(
         planner_user,
     )
     .await?;
+    checkpoints.push(make_checkpoint(
+        "planner",
+        "completed",
+        "orchestrator planner completed",
+        Some(orchestrator.id.as_str()),
+        Some(orchestrator_model.decision.selected_profile_id.as_str()),
+        Some(orchestrator_model.decision.provider.as_str()),
+        Some(orchestrator_model.decision.model.as_str()),
+        Some(excerpt(&request.prompt, 240)),
+        Some(excerpt(&planner_response.message.content, 240)),
+    ));
     let plan = parse_json_payload::<PlannerResponse>(&planner_response.message.content).unwrap_or(
         PlannerResponse {
             final_mode: Some("answer_directly".to_string()),
@@ -773,6 +1041,8 @@ async fn run_orchestrated(
 
     if matches!(plan.final_mode.as_deref(), Some("answer_directly")) || plan.delegations.is_empty()
     {
+        let reflection_candidates = build_reflection_candidates(routing, &[]);
+        let supervision = summarize_supervision(&checkpoints, &[], &reflection_candidates);
         return Ok(OrchestrationRunRecord {
             run_id: Uuid::new_v4().to_string(),
             created_at: Utc::now().to_rfc3339(),
@@ -781,7 +1051,10 @@ async fn run_orchestrated(
             routing: routing.clone(),
             delegations: Vec::new(),
             worker_results: Vec::new(),
+            checkpoints,
             reflection_notes: routing.steering_notes.clone(),
+            reflection_candidates,
+            supervision: Some(supervision),
             final_output: plan
                 .direct_response
                 .unwrap_or(planner_response.message.content),
@@ -838,6 +1111,17 @@ async fn run_orchestrated(
                 confidence: None,
                 next_step_recommendation: None,
             });
+        checkpoints.push(make_checkpoint(
+            "worker_execution",
+            &parsed.status,
+            format!("worker '{}' completed delegated step", worker.id),
+            Some(worker.id.as_str()),
+            Some(worker_model.decision.selected_profile_id.as_str()),
+            Some(worker_model.decision.provider.as_str()),
+            Some(worker_model.decision.model.as_str()),
+            Some(excerpt(&item.instruction, 240)),
+            Some(excerpt(&worker_response.message.content, 240)),
+        ));
         worker_results.push(WorkerResultEnvelope {
             claw_id: worker.id.clone(),
             agent_profile_id: worker.agent_profile_id.clone(),
@@ -870,12 +1154,33 @@ async fn run_orchestrated(
         request.prompt,
         serde_json::to_string_pretty(&worker_results)?
     );
+    let synthesis_input_excerpt = excerpt(&synthesis_user, 240);
     let final_response = execute_completion(
         orchestrator_model.provider.clone(),
         synthesis_system,
         synthesis_user,
     )
     .await?;
+    checkpoints.push(make_checkpoint(
+        "synthesis",
+        "completed",
+        "orchestrator synthesized final response",
+        Some(orchestrator.id.as_str()),
+        Some(orchestrator_model.decision.selected_profile_id.as_str()),
+        Some(orchestrator_model.decision.provider.as_str()),
+        Some(orchestrator_model.decision.model.as_str()),
+        Some(synthesis_input_excerpt),
+        Some(excerpt(&final_response.message.content, 240)),
+    ));
+    let reflection_candidates = build_reflection_candidates(routing, &worker_results);
+    let mut reflection_notes = routing.steering_notes.clone();
+    if !reflection_candidates.is_empty() {
+        reflection_notes.push(format!(
+            "{} reflection candidate(s) generated for operator review",
+            reflection_candidates.len()
+        ));
+    }
+    let supervision = summarize_supervision(&checkpoints, &worker_results, &reflection_candidates);
 
     Ok(OrchestrationRunRecord {
         run_id: Uuid::new_v4().to_string(),
@@ -885,7 +1190,10 @@ async fn run_orchestrated(
         routing: routing.clone(),
         delegations,
         worker_results,
-        reflection_notes: routing.steering_notes.clone(),
+        checkpoints,
+        reflection_notes,
+        reflection_candidates,
+        supervision: Some(supervision),
         final_output: final_response.message.content,
         final_claw_id: orchestrator.id.clone(),
         final_model_profile_id: orchestrator_model.decision.selected_profile_id.clone(),
@@ -1247,7 +1555,10 @@ mod tests {
             },
             delegations: vec![],
             worker_results: vec![],
+            checkpoints: vec![],
             reflection_notes: vec![],
+            reflection_candidates: vec![],
+            supervision: None,
             final_output: "ok".to_string(),
             final_claw_id: "claw-a".to_string(),
             final_model_profile_id: "primary".to_string(),
@@ -1265,5 +1576,68 @@ mod tests {
         assert_eq!(runs[0].final_claw_id, "claw-a");
         let loaded = read_run(root.path(), "receipt.json").unwrap();
         assert_eq!(loaded.run_id, "run-1");
+    }
+
+    #[test]
+    fn reflection_candidates_capture_failed_worker() {
+        let routing = RoutingDecision {
+            execution_mode: "orchestrated".to_string(),
+            route_source: "orchestrated_default".to_string(),
+            task_id: None,
+            category: Some("code".to_string()),
+            selected_claw_id: "orchestrator".to_string(),
+            selected_claw_role: "orchestrator".to_string(),
+            selected_agent_profile_id: "orchestrator".to_string(),
+            selected_model_profile_id: "primary".to_string(),
+            selected_model: ResolvedModelDecision {
+                requested_profile_id: "primary".to_string(),
+                selected_profile_id: "local".to_string(),
+                provider: "ollama".to_string(),
+                model: "llama3.1".to_string(),
+                fallback_path: vec!["primary".to_string(), "local".to_string()],
+                warnings: vec![],
+            },
+            available_workers: vec!["worker-a".to_string()],
+            autonomy: control::AutonomyPolicy::default(),
+            allow_shared_context: false,
+            isolation_mode: "strict".to_string(),
+            applied_lessons: vec![],
+            steering_notes: vec![],
+            warnings: vec![],
+        };
+        let worker_results = vec![WorkerResultEnvelope {
+            claw_id: "worker-a".to_string(),
+            agent_profile_id: "default".to_string(),
+            model_profile_id: "primary".to_string(),
+            provider: "openrouter".to_string(),
+            model: "model-a".to_string(),
+            status: "failed".to_string(),
+            summary: "failed to complete".to_string(),
+            full_output: "failed to complete".to_string(),
+            questions: vec!["need credentials".to_string()],
+            confidence: Some(0.4),
+            next_step_recommendation: Some("ask for credentials".to_string()),
+        }];
+        let candidates = build_reflection_candidates(&routing, &worker_results);
+        assert!(
+            candidates
+                .iter()
+                .any(|candidate| candidate.kind == "fallback_path")
+        );
+        assert!(
+            candidates
+                .iter()
+                .any(|candidate| candidate.kind == "worker_status")
+        );
+        assert!(
+            candidates
+                .iter()
+                .any(|candidate| candidate.kind == "low_confidence")
+        );
+        assert!(
+            candidates
+                .iter()
+                .any(|candidate| candidate.kind == "open_questions")
+        );
     }
 }

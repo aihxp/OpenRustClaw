@@ -705,7 +705,7 @@ Exit criteria:
 
 Goal: match OpenClaw's operator UX and tooling surface while keeping Rust-native interfaces.
 
-Status: complete for shipped CLI/MCP control-plane surfaces, shared typed control/config/diagnostics APIs, autonomy-tier and decision-lesson control surfaces, shared service-status and scheduler inspection APIs, shared session/memory/job inspection APIs, channel account CRUD parity, encrypted runtime secret-vault support, validated provider/model switching, runtime reload/cutover APIs with rollback, bounded routed/orchestrated multi-model execution surfaces with receipt capture and lesson-aware steering context, onboarding scaffolding, doctor validation, a bounded native browser operator slice, and an initial Web Control UI shell with config/vault editing plus autonomy/lesson inspection; deeper Web Control UI parity, richer browser/web tooling, deeper channel/service probes, and full orchestrated runtime execution remain open.
+Status: complete for shipped CLI/MCP control-plane surfaces, shared typed control/config/diagnostics APIs, autonomy-tier and decision-lesson control surfaces, shared service-status and scheduler inspection APIs, shared session/memory/job inspection APIs, channel account CRUD parity, encrypted runtime secret-vault support, validated provider/model switching, runtime reload/cutover APIs with rollback, bounded routed/orchestrated multi-model execution surfaces with receipt capture, checkpoints, reflection candidates, and lesson-aware steering context, onboarding scaffolding, doctor validation, a bounded native browser operator slice, and an initial Web Control UI shell with config/vault editing plus autonomy/lesson and run-supervision inspection; deeper Web Control UI parity, richer browser/web tooling, deeper channel/service probes, and full orchestrated runtime execution remain open.
 
 Additional later-surface work:
 
@@ -805,6 +805,13 @@ Completed:
   - runtime-capped delegation counts instead of hardcoded planner limits,
   - autonomy/lesson context in planner and worker prompts,
   - orchestration receipts that preserve the steering context used for a run.
+- [x] Add supervision detail to the shipped bounded orchestration surface:
+  - execution checkpoints for routing, planning, worker steps, and synthesis,
+  - reflection candidates derived from fallback paths, failed workers, low-confidence outputs, and open questions,
+  - `openrustclaw orchestrate list|inspect`,
+  - `GET /control/orchestration/runs/{receipt_id}/checkpoints`,
+  - `GET /control/orchestration/runs/{receipt_id}/supervision`,
+  - `/control/ui` run-supervision inspection panel.
 - [x] Add a bounded native browser operator surface backed by the Rust automation crate:
   - `openrustclaw browser navigate|extract|screenshot|pdf`,
   - `POST /control/browser/navigate`,

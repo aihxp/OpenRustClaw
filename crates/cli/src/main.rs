@@ -360,6 +360,17 @@ enum OrchestrateAction {
         #[arg(long, default_value = "auto")]
         mode: String,
     },
+    /// List saved orchestration receipts
+    List {
+        #[arg(short, long, default_value_t = 20)]
+        limit: usize,
+    },
+    /// Inspect one saved orchestration receipt with checkpoints and supervision
+    Inspect {
+        receipt_id: String,
+        #[arg(long)]
+        json: bool,
+    },
     /// Run a bounded direct or orchestrated multi-model execution
     Run {
         prompt: String,
@@ -2301,6 +2312,23 @@ async fn main() -> Result<()> {
                     &workspace_root,
                 )?;
                 println!("{}", serde_json::to_string_pretty(&decision)?);
+                Ok(())
+            }
+            OrchestrateAction::List { limit } => {
+                let workspace_root = std::env::current_dir()?;
+                let runs = commands::orchestrate::list_runs(&workspace_root, limit)?;
+                println!("{}", serde_json::to_string_pretty(&runs)?);
+                Ok(())
+            }
+            OrchestrateAction::Inspect { receipt_id, json } => {
+                let workspace_root = std::env::current_dir()?;
+                let payload =
+                    commands::orchestrate::read_run_supervision(&workspace_root, &receipt_id)?;
+                if json {
+                    println!("{}", serde_json::to_string_pretty(&payload)?);
+                } else {
+                    println!("{}", serde_json::to_string_pretty(&payload)?);
+                }
                 Ok(())
             }
             OrchestrateAction::Run {

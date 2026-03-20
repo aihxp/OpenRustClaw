@@ -424,11 +424,15 @@
           <div class="surface">
             <table class="table">
               <thead>
-                <tr><th>When</th><th>Mode</th><th>Final Route</th><th>Receipt</th></tr>
+                <tr><th>When</th><th>Mode</th><th>Final Route</th><th>Inspect</th></tr>
               </thead>
               <tbody id="orchestration-runs"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
             </table>
           </div>
+        </article>
+        <article class="panel span-6">
+          <h2>Run Supervision</h2>
+          <div class="surface"><pre id="orchestration-detail">Select an orchestration receipt to inspect.</pre></div>
         </article>
 
         <article class="panel span-6">
@@ -737,15 +741,26 @@
 
       async function loadOrchestrationRuns() {
         const payload = await fetchJson("/control/orchestration/runs");
-        const rows = (payload.runs || []).map((run) => {
+        const runs = payload.runs || [];
+        const rows = runs.map((run) => {
           return `<tr>
             <td>${run.created_at || "-"}</td>
             <td>${run.mode || "-"}</td>
             <td>${run.final_claw_id || "-"}<div class="muted">${run.final_provider || "-"} / ${run.final_model || "-"}</div></td>
-            <td class="muted">${run.receipt_id || "-"}</td>
+            <td><button class="secondary" onclick="inspectOrchestrationRun('${run.receipt_id || ""}')">Inspect</button></td>
           </tr>`;
         });
         renderTableRows("orchestration-runs", rows, "No orchestration receipts yet.");
+        if (runs.length) {
+          await inspectOrchestrationRun(runs[0].receipt_id);
+        } else {
+          setText("orchestration-detail", "No orchestration receipt selected.");
+        }
+      }
+
+      async function inspectOrchestrationRun(receiptId) {
+        const payload = await fetchJson(`/control/orchestration/runs/${encodeURIComponent(receiptId)}/supervision`);
+        setText("orchestration-detail", payload);
       }
 
       async function loadBrowserArtifacts() {
@@ -1000,6 +1015,7 @@
 
       window.inspectSession = inspectSession;
       window.inspectJob = inspectJob;
+      window.inspectOrchestrationRun = inspectOrchestrationRun;
       window.deactivateLesson = deactivateLesson;
 
       refreshAll();
