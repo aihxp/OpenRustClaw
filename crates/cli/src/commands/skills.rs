@@ -578,6 +578,8 @@ pub struct SkillVoiceCallRecord {
     pub plugin_id: String,
     pub skill_name: String,
     pub status: String,
+    #[serde(default = "default_voice_call_health")]
+    pub health: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub remote: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -593,6 +595,10 @@ pub struct SkillVoiceCallRecord {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub end_hook_output: Option<serde_json::Value>,
     pub started_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_seen_at: Option<String>,
+    #[serde(default = "default_voice_call_stale_after_secs")]
+    pub stale_after_secs: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ended_at: Option<String>,
 }
@@ -634,6 +640,23 @@ pub struct SkillVoiceCallsResult {
     pub calls: Vec<SkillVoiceCallRecord>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct SkillVoiceCallHealthSummary {
+    pub total: usize,
+    pub active: usize,
+    pub stale: usize,
+    pub ended: usize,
+    pub reaped: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub oldest_active_call_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SkillVoiceCallHealthResult {
+    pub status: String,
+    pub health: SkillVoiceCallHealthSummary,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct SkillBindVoicePluginOptions<'a> {
     pub service: Option<&'a str>,
@@ -663,6 +686,7 @@ pub struct SkillStartVoiceCallOptions<'a> {
     pub greeting_text: Option<&'a str>,
     pub voice: Option<&'a str>,
     pub metadata: Option<&'a str>,
+    pub stale_after_secs: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -681,6 +705,37 @@ pub struct SkillEndVoiceCallOptions<'a> {
 pub struct SkillEndVoiceCallResult {
     pub status: String,
     pub call: SkillVoiceCallRecord,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SkillPrewarmVoicePluginOptions<'a> {
+    pub greeting_text: Option<&'a str>,
+    pub voice: Option<&'a str>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SkillPrewarmVoicePluginResult {
+    pub status: String,
+    pub plugin_id: String,
+    pub skill_name: String,
+    pub greeting_text: String,
+    pub voice: String,
+    pub output_path: String,
+    pub bytes: usize,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SkillReapVoiceCallsOptions {
+    pub stale_after_secs: Option<u64>,
+    pub limit: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SkillReapVoiceCallsResult {
+    pub status: String,
+    pub checked: usize,
+    pub reaped_count: usize,
+    pub calls: Vec<SkillVoiceCallRecord>,
 }
 
 async fn load_skill_config_and_pool()
@@ -716,6 +771,14 @@ fn source_from_string(source: &str) -> SkillSource {
         "marketplace" => SkillSource::Marketplace,
         _ => SkillSource::Workspace,
     }
+}
+
+fn default_voice_call_stale_after_secs() -> u64 {
+    900
+}
+
+fn default_voice_call_health() -> String {
+    "active".to_string()
 }
 
 fn ensure_compiled_root() -> Result<PathBuf> {
@@ -2296,6 +2359,10 @@ pub async fn bind_voice_plugin_data(
 pub async fn voice_calls_data() -> Result<SkillVoiceCallsResult> {
     let workspace_root = current_workspace_root()?;
     let mut registry = load_voice_call_registry(&workspace_root)?;
+    let now = Utc::now();
+    for call in &mut registry.calls {
+        refresh_voice_call_health(call, now);
+    }
     registry
         .calls
         .sort_by(|left, right| right.started_at.cmp(&left.started_at));
@@ -2303,6 +2370,14 @@ pub async fn voice_calls_data() -> Result<SkillVoiceCallsResult> {
         status: "ok".to_string(),
         count: registry.calls.len(),
         calls: registry.calls,
+    })
+}
+
+pub async fn voice_call_health_data() -> Result<SkillVoiceCallHealthResult> {
+    let result = voice_calls_data().await?;
+    Ok(SkillVoiceCallHealthResult {
+        status: "ok".to_string(),
+        health: voice_call_health_summary(&result.calls),
     })
 }
 
@@ -2336,6 +2411,74 @@ fn parse_optional_json(raw: Option<&str>, field_name: &str) -> Result<serde_json
             serde_json::from_str(value).with_context(|| format!("Invalid JSON for {}", field_name))
         }
         _ => Ok(serde_json::json!({})),
+    }
+}
+
+fn parse_rfc3339_utc(raw: &str) -> Option<DateTime<Utc>> {
+    chrono::DateTime::parse_from_rfc3339(raw)
+        .ok()
+        .map(|value| value.with_timezone(&Utc))
+}
+
+fn refresh_voice_call_health(call: &mut SkillVoiceCallRecord, now: DateTime<Utc>) {
+    if call.ended_at.is_some() {
+        if call.status == "reaped" {
+            call.health = "reaped".to_string();
+        } else {
+            call.health = "ended".to_string();
+        }
+        return;
+    }
+
+    let reference = call
+        .last_seen_at
+        .as_deref()
+        .and_then(parse_rfc3339_utc)
+        .or_else(|| parse_rfc3339_utc(&call.started_at))
+        .unwrap_or(now);
+    let stale_after_secs = call.stale_after_secs.max(1);
+    let age = now.signed_duration_since(reference).num_seconds().max(0) as u64;
+    call.health = if age > stale_after_secs {
+        "stale".to_string()
+    } else {
+        "active".to_string()
+    };
+}
+
+fn voice_call_health_summary(calls: &[SkillVoiceCallRecord]) -> SkillVoiceCallHealthSummary {
+    let mut active = 0usize;
+    let mut stale = 0usize;
+    let mut ended = 0usize;
+    let mut reaped = 0usize;
+    let mut oldest_active: Option<(DateTime<Utc>, String)> = None;
+
+    for call in calls {
+        match call.health.as_str() {
+            "active" => {
+                active += 1;
+                if let Some(started_at) = parse_rfc3339_utc(&call.started_at) {
+                    let replace = oldest_active
+                        .as_ref()
+                        .map(|(current, _)| started_at < *current)
+                        .unwrap_or(true);
+                    if replace {
+                        oldest_active = Some((started_at, call.call_id.clone()));
+                    }
+                }
+            }
+            "stale" => stale += 1,
+            "reaped" => reaped += 1,
+            _ => ended += 1,
+        }
+    }
+
+    SkillVoiceCallHealthSummary {
+        total: calls.len(),
+        active,
+        stale,
+        ended,
+        reaped,
+        oldest_active_call_id: oldest_active.map(|(_, id)| id),
     }
 }
 
@@ -2401,6 +2544,7 @@ pub async fn start_voice_call_data(
         plugin_id: plugin_id.to_string(),
         skill_name: binding.skill_name.clone(),
         status: "active".to_string(),
+        health: "active".to_string(),
         remote: options.remote.map(ToString::to_string),
         greeting_text: greeting_text.clone(),
         greeting_audio_path,
@@ -2409,6 +2553,10 @@ pub async fn start_voice_call_data(
         start_hook_output,
         end_hook_output: None,
         started_at: Utc::now().to_rfc3339(),
+        last_seen_at: Some(Utc::now().to_rfc3339()),
+        stale_after_secs: options
+            .stale_after_secs
+            .unwrap_or_else(default_voice_call_stale_after_secs),
         ended_at: None,
     };
 
@@ -2491,7 +2639,9 @@ pub async fn end_voice_call_data(
         }
     }
     call.status = "ended".to_string();
+    call.health = "ended".to_string();
     call.reason = options.reason.map(ToString::to_string);
+    call.last_seen_at = Some(Utc::now().to_rfc3339());
     call.ended_at = Some(Utc::now().to_rfc3339());
     call.end_hook_output = end_hook_output;
     let result_call = call.clone();
@@ -2512,6 +2662,162 @@ pub async fn end_voice_call_data(
     Ok(SkillEndVoiceCallResult {
         status: "ok".to_string(),
         call: result_call,
+    })
+}
+
+pub async fn prewarm_voice_plugin_data(
+    plugin_id: &str,
+    options: SkillPrewarmVoicePluginOptions<'_>,
+) -> Result<SkillPrewarmVoicePluginResult> {
+    let workspace_root = current_workspace_root()?;
+    let registry = load_voice_plugin_registry(&workspace_root)?;
+    let binding = registry
+        .bindings
+        .get(plugin_id)
+        .cloned()
+        .ok_or_else(|| anyhow::anyhow!("Voice plugin '{}' not found", plugin_id))?;
+    let (config, pool) = load_skill_config_and_pool().await?;
+    let greeting_text = options
+        .greeting_text
+        .map(ToString::to_string)
+        .or_else(|| binding.greeting_text.clone())
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "voice plugin '{}' has no greeting text to prewarm",
+                plugin_id
+            )
+        })?;
+    let voice = options
+        .voice
+        .map(ToString::to_string)
+        .or_else(|| binding.default_voice.clone())
+        .unwrap_or_else(|| config.voice.tts.voice.clone());
+    let result = voice_runtime::synthesize_with_config(
+        &config,
+        &workspace_root,
+        voice_runtime::VoiceSynthesizeRequest {
+            text: greeting_text.clone(),
+            provider: None,
+            model: None,
+            voice: Some(voice.clone()),
+            format: Some("mp3".to_string()),
+            output_path: None,
+        },
+    )
+    .await?;
+
+    publish_plugin_event(
+        &pool,
+        "plugin.voice_call_prewarmed",
+        serde_json::json!({
+            "plugin_id": plugin_id,
+            "skill_name": &binding.skill_name,
+            "voice": &voice,
+            "output_path": &result.output_path,
+        }),
+    )
+    .await;
+
+    Ok(SkillPrewarmVoicePluginResult {
+        status: "ok".to_string(),
+        plugin_id: plugin_id.to_string(),
+        skill_name: binding.skill_name,
+        greeting_text,
+        voice,
+        output_path: result.output_path,
+        bytes: result.bytes,
+    })
+}
+
+pub async fn reap_voice_calls_data(
+    options: SkillReapVoiceCallsOptions,
+) -> Result<SkillReapVoiceCallsResult> {
+    let workspace_root = current_workspace_root()?;
+    let plugin_registry = load_voice_plugin_registry(&workspace_root)?;
+    let mut call_registry = load_voice_call_registry(&workspace_root)?;
+    let (_, pool) = load_skill_config_and_pool().await?;
+    let now = Utc::now();
+    let stale_override = options.stale_after_secs;
+    let limit = options.limit.unwrap_or(usize::MAX);
+    let mut reaped_calls = Vec::new();
+
+    for call in &mut call_registry.calls {
+        refresh_voice_call_health(call, now);
+    }
+
+    let checked = call_registry.calls.len();
+
+    for call in &mut call_registry.calls {
+        if reaped_calls.len() >= limit {
+            break;
+        }
+        if call.ended_at.is_some() || call.health != "stale" {
+            continue;
+        }
+        if let Some(override_secs) = stale_override {
+            let reference = call
+                .last_seen_at
+                .as_deref()
+                .and_then(parse_rfc3339_utc)
+                .or_else(|| parse_rfc3339_utc(&call.started_at))
+                .unwrap_or(now);
+            let age = now.signed_duration_since(reference).num_seconds().max(0) as u64;
+            if age <= override_secs.max(1) {
+                continue;
+            }
+        }
+
+        let binding = plugin_registry.bindings.get(&call.plugin_id).cloned();
+        let end_hook_output = if let Some(binding) = binding.as_ref() {
+            match compiled_skill_detail_or_compile(&binding.skill_name).await {
+                Ok(artifact) => execute_voice_call_hook(
+                    &artifact,
+                    binding.service.as_deref(),
+                    binding.component.as_deref(),
+                    serde_json::json!({
+                        "action": "call_reap",
+                        "call_id": &call.call_id,
+                        "plugin_id": &binding.plugin_id,
+                        "skill_name": &binding.skill_name,
+                        "reason": "stale_timeout",
+                    }),
+                )
+                .await
+                .unwrap_or_else(|error| Some(serde_json::json!({ "error": error.to_string() }))),
+                Err(error) => Some(serde_json::json!({ "error": error.to_string() })),
+            }
+        } else {
+            Some(serde_json::json!({ "error": "voice plugin binding not found during reap" }))
+        };
+
+        call.status = "reaped".to_string();
+        call.health = "reaped".to_string();
+        call.reason = Some("stale_timeout".to_string());
+        call.last_seen_at = Some(now.to_rfc3339());
+        call.ended_at = Some(now.to_rfc3339());
+        call.end_hook_output = end_hook_output;
+        reaped_calls.push(call.clone());
+
+        publish_plugin_event(
+            &pool,
+            "plugin.voice_call_reaped",
+            serde_json::json!({
+                "call_id": &call.call_id,
+                "plugin_id": &call.plugin_id,
+                "skill_name": &call.skill_name,
+                "reason": "stale_timeout",
+            }),
+        )
+        .await;
+    }
+
+    save_voice_call_registry(&workspace_root, &call_registry)?;
+
+    Ok(SkillReapVoiceCallsResult {
+        status: "ok".to_string(),
+        checked,
+        reaped_count: reaped_calls.len(),
+        calls: reaped_calls,
     })
 }
 
@@ -3414,6 +3720,13 @@ pub async fn list_voice_calls() -> Result<()> {
     Ok(())
 }
 
+/// Summarize bounded voice-call lifecycle health.
+pub async fn voice_call_health() -> Result<()> {
+    let result = voice_call_health_data().await?;
+    println!("{}", serde_json::to_string_pretty(&result)?);
+    Ok(())
+}
+
 /// Start a bounded voice-call session for a configured plugin.
 pub async fn start_voice_call(
     plugin_id: &str,
@@ -3421,6 +3734,7 @@ pub async fn start_voice_call(
     greeting_text: Option<&str>,
     voice: Option<&str>,
     metadata: Option<&str>,
+    stale_after_secs: Option<u64>,
 ) -> Result<()> {
     let result = start_voice_call_data(
         plugin_id,
@@ -3429,6 +3743,7 @@ pub async fn start_voice_call(
             greeting_text,
             voice,
             metadata,
+            stale_after_secs,
         },
     )
     .await?;
@@ -3444,6 +3759,35 @@ pub async fn end_voice_call(
 ) -> Result<()> {
     let result =
         end_voice_call_data(call_id, SkillEndVoiceCallOptions { reason, metadata }).await?;
+    println!("{}", serde_json::to_string_pretty(&result)?);
+    Ok(())
+}
+
+/// Prewarm the greeting audio artifact for a configured voice plugin.
+pub async fn prewarm_voice_plugin(
+    plugin_id: &str,
+    greeting_text: Option<&str>,
+    voice: Option<&str>,
+) -> Result<()> {
+    let result = prewarm_voice_plugin_data(
+        plugin_id,
+        SkillPrewarmVoicePluginOptions {
+            greeting_text,
+            voice,
+        },
+    )
+    .await?;
+    println!("{}", serde_json::to_string_pretty(&result)?);
+    Ok(())
+}
+
+/// Reap stale bounded voice-call sessions.
+pub async fn reap_voice_calls(stale_after_secs: Option<u64>, limit: Option<usize>) -> Result<()> {
+    let result = reap_voice_calls_data(SkillReapVoiceCallsOptions {
+        stale_after_secs,
+        limit,
+    })
+    .await?;
     println!("{}", serde_json::to_string_pretty(&result)?);
     Ok(())
 }

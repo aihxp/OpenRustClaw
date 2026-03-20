@@ -82,11 +82,11 @@ This auth lane is also intentionally bounded: it reuses the existing Rust OIDC p
 
 Compiled skills can now also own a bounded voice-call plugin lane over the same Rust-owned control plane:
 
-- CLI: `openrustclaw skills list-voice-plugins`, `openrustclaw skills bind-voice-plugin <plugin-id> <skill-name> ...`, `openrustclaw skills list-voice-calls`, `openrustclaw skills start-voice-call <plugin-id> ...`, and `openrustclaw skills end-voice-call <call-id> ...`
-- Control API: `GET /control/skills/voice-plugins`, `POST /control/skills/voice-plugins/bind`, `GET /control/skills/voice-calls`, `POST /control/skills/voice-calls/start`, and `POST /control/skills/voice-calls/{call_id}/end`
-- Control UI: the extension detail panel can bind a voice-call plugin, start a bounded call session, inspect active call receipts, and end the selected call
+- CLI: `openrustclaw skills list-voice-plugins`, `openrustclaw skills bind-voice-plugin <plugin-id> <skill-name> ...`, `openrustclaw skills list-voice-calls`, `openrustclaw skills voice-call-health`, `openrustclaw skills start-voice-call <plugin-id> ...`, `openrustclaw skills prewarm-voice-plugin <plugin-id> ...`, `openrustclaw skills reap-voice-calls`, and `openrustclaw skills end-voice-call <call-id> ...`
+- Control API: `GET /control/skills/voice-plugins`, `POST /control/skills/voice-plugins/bind`, `GET /control/skills/voice-calls`, `GET /control/skills/voice-calls/health`, `POST /control/skills/voice-calls/start`, `POST /control/skills/voice-plugins/{plugin_id}/prewarm`, `POST /control/skills/voice-calls/reap`, and `POST /control/skills/voice-calls/{call_id}/end`
+- Control UI: the extension detail panel can bind a voice-call plugin, start a bounded call session, inspect active call receipts and health summaries, prewarm a greeting artifact, reap stale calls, and end the selected call
 
-This voice-call lane is intentionally bounded too: it stores bindings and call receipts under `.claw/control/`, can optionally synthesize a greeting artifact through the shipped voice runtime, and can trigger compiled skill service/component hooks on call start or end through the same sandboxed execution lane used by `skills execute`. It does not claim full telephony or long-lived call-runtime parity.
+This voice-call lane is intentionally bounded too: it stores bindings and call receipts under `.claw/control/`, can optionally synthesize a greeting artifact through the shipped voice runtime, can publish bounded health summaries over active/stale/ended/reaped sessions, can reap stale calls through the same Rust-owned control path, and can trigger compiled skill service/component hooks on call start or end through the same sandboxed execution lane used by `skills execute`. It does not claim full telephony or long-lived call-runtime parity.
 
 The compile pipeline now also emits `.claw/skills/compiled/<skill>/extension_manifest.json`. That manifest is the durable Rust-native extension contract for this later Phase 7 work:
 

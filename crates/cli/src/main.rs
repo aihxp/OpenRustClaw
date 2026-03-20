@@ -729,6 +729,8 @@ enum SkillsAction {
     },
     /// List persisted bounded voice-call session receipts
     ListVoiceCalls,
+    /// Summarize bounded voice-call lifecycle health
+    VoiceCallHealth,
     /// Start a bounded voice-call session for a configured plugin
     StartVoiceCall {
         plugin_id: String,
@@ -740,6 +742,8 @@ enum SkillsAction {
         voice: Option<String>,
         #[arg(long)]
         metadata: Option<String>,
+        #[arg(long)]
+        stale_after_secs: Option<u64>,
     },
     /// End a bounded voice-call session
     EndVoiceCall {
@@ -748,6 +752,21 @@ enum SkillsAction {
         reason: Option<String>,
         #[arg(long)]
         metadata: Option<String>,
+    },
+    /// Prewarm greeting audio for a configured voice-call plugin
+    PrewarmVoicePlugin {
+        plugin_id: String,
+        #[arg(long)]
+        greeting_text: Option<String>,
+        #[arg(long)]
+        voice: Option<String>,
+    },
+    /// Reap stale bounded voice-call sessions
+    ReapVoiceCalls {
+        #[arg(long)]
+        stale_after_secs: Option<u64>,
+        #[arg(long)]
+        limit: Option<usize>,
     },
     /// Execute a bounded `.wasm` or `.wat` component from a compiled skill
     Execute {
@@ -2505,12 +2524,14 @@ async fn main() -> Result<()> {
                 .await
             }
             SkillsAction::ListVoiceCalls => commands::skills::list_voice_calls().await,
+            SkillsAction::VoiceCallHealth => commands::skills::voice_call_health().await,
             SkillsAction::StartVoiceCall {
                 plugin_id,
                 remote,
                 greeting_text,
                 voice,
                 metadata,
+                stale_after_secs,
             } => {
                 commands::skills::start_voice_call(
                     &plugin_id,
@@ -2518,6 +2539,7 @@ async fn main() -> Result<()> {
                     greeting_text.as_deref(),
                     voice.as_deref(),
                     metadata.as_deref(),
+                    stale_after_secs,
                 )
                 .await
             }
@@ -2529,6 +2551,22 @@ async fn main() -> Result<()> {
                 commands::skills::end_voice_call(&call_id, reason.as_deref(), metadata.as_deref())
                     .await
             }
+            SkillsAction::PrewarmVoicePlugin {
+                plugin_id,
+                greeting_text,
+                voice,
+            } => {
+                commands::skills::prewarm_voice_plugin(
+                    &plugin_id,
+                    greeting_text.as_deref(),
+                    voice.as_deref(),
+                )
+                .await
+            }
+            SkillsAction::ReapVoiceCalls {
+                stale_after_secs,
+                limit,
+            } => commands::skills::reap_voice_calls(stale_after_secs, limit).await,
             SkillsAction::Execute {
                 name,
                 component,

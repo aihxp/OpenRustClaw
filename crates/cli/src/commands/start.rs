@@ -2835,8 +2835,16 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             post(control_skill_bind_voice_plugin_handler),
         )
         .route(
+            "/control/skills/voice-plugins/{plugin_id}/prewarm",
+            post(control_skill_prewarm_voice_plugin_handler),
+        )
+        .route(
             "/control/skills/voice-calls",
             get(control_skill_voice_calls_handler),
+        )
+        .route(
+            "/control/skills/voice-calls/health",
+            get(control_skill_voice_call_health_handler),
         )
         .route(
             "/control/skills/voice-calls/start",
@@ -2845,6 +2853,10 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
         .route(
             "/control/skills/voice-calls/{call_id}/end",
             post(control_skill_end_voice_call_handler),
+        )
+        .route(
+            "/control/skills/voice-calls/reap",
+            post(control_skill_reap_voice_calls_handler),
         )
         .route(
             "/control/skills/channel-extensions",
@@ -3583,6 +3595,8 @@ struct SkillStartVoiceCallPayload {
     voice: Option<String>,
     #[serde(default)]
     metadata: Option<String>,
+    #[serde(default)]
+    stale_after_secs: Option<u64>,
 }
 
 #[derive(serde::Deserialize, Default)]
@@ -3591,6 +3605,22 @@ struct SkillEndVoiceCallPayload {
     reason: Option<String>,
     #[serde(default)]
     metadata: Option<String>,
+}
+
+#[derive(serde::Deserialize, Default)]
+struct SkillPrewarmVoicePluginPayload {
+    #[serde(default)]
+    greeting_text: Option<String>,
+    #[serde(default)]
+    voice: Option<String>,
+}
+
+#[derive(serde::Deserialize, Default)]
+struct SkillReapVoiceCallsPayload {
+    #[serde(default)]
+    stale_after_secs: Option<u64>,
+    #[serde(default)]
+    limit: Option<usize>,
 }
 
 #[derive(serde::Deserialize, Default)]
@@ -3921,6 +3951,39 @@ async fn control_skill_voice_calls_handler() -> impl IntoResponse {
     }
 }
 
+async fn control_skill_voice_call_health_handler() -> impl IntoResponse {
+    match skills::voice_call_health_data().await {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": error.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
+async fn control_skill_prewarm_voice_plugin_handler(
+    AxumPath(plugin_id): AxumPath<String>,
+    Json(payload): Json<SkillPrewarmVoicePluginPayload>,
+) -> impl IntoResponse {
+    match skills::prewarm_voice_plugin_data(
+        &plugin_id,
+        skills::SkillPrewarmVoicePluginOptions {
+            greeting_text: payload.greeting_text.as_deref(),
+            voice: payload.voice.as_deref(),
+        },
+    )
+    .await
+    {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": error.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
 async fn control_skill_start_voice_call_handler(
     Json(payload): Json<SkillStartVoiceCallPayload>,
 ) -> impl IntoResponse {
@@ -3931,8 +3994,27 @@ async fn control_skill_start_voice_call_handler(
             greeting_text: payload.greeting_text.as_deref(),
             voice: payload.voice.as_deref(),
             metadata: payload.metadata.as_deref(),
+            stale_after_secs: payload.stale_after_secs,
         },
     )
+    .await
+    {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": error.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
+async fn control_skill_reap_voice_calls_handler(
+    Json(payload): Json<SkillReapVoiceCallsPayload>,
+) -> impl IntoResponse {
+    match skills::reap_voice_calls_data(skills::SkillReapVoiceCallsOptions {
+        stale_after_secs: payload.stale_after_secs,
+        limit: payload.limit,
+    })
     .await
     {
         Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
