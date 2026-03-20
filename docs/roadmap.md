@@ -716,7 +716,7 @@ Completed:
 
 - [x] MCP stdio server is real.
 - [x] MCP exposes memory, scheduling, and RAG inspection.
-- [x] `mcp2-cli` exists as an operator/debug tool, including remote legacy SSE support via `--mcp`.
+- [x] `mcp2-cli` exists as an operator/debug tool, including remote legacy SSE support via `--mcp` and a workspace-owned saved-source registry for reusable MCP/OpenAPI entries.
 - [x] Add a file-backed control-plane registry under `.claw/control/` for:
   - agent profiles,
   - model profiles,

@@ -5,6 +5,9 @@
 
 use anyhow::{Context, Result};
 use clap::Subcommand;
+use serde::{Deserialize, Serialize};
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use openrustclaw_mcp2cli::{
@@ -18,6 +21,9 @@ use openrustclaw_mcp2cli::{
 pub enum Mcp2CliCommands {
     /// List available tools from an MCP server or OpenAPI spec (~16 tokens/tool)
     List {
+        /// Saved source name from the workspace registry
+        #[arg(long, group = "source")]
+        saved: Option<String>,
         /// MCP server URL (HTTP/SSE)
         #[arg(long, group = "source")]
         mcp: Option<String>,
@@ -39,6 +45,9 @@ pub enum Mcp2CliCommands {
     },
     /// Get detailed help for a specific tool (~80-200 tokens)
     Help {
+        /// Saved source name from the workspace registry
+        #[arg(long, group = "source")]
+        saved: Option<String>,
         /// MCP server URL
         #[arg(long, group = "source")]
         mcp: Option<String>,
@@ -53,6 +62,9 @@ pub enum Mcp2CliCommands {
     },
     /// Execute a tool
     Run {
+        /// Saved source name from the workspace registry
+        #[arg(long, group = "source")]
+        saved: Option<String>,
         /// MCP server URL
         #[arg(long, group = "source")]
         mcp: Option<String>,
@@ -96,6 +108,11 @@ pub enum Mcp2CliCommands {
         #[command(subcommand)]
         action: CacheAction,
     },
+    /// Manage saved MCP/OpenAPI sources for later reuse
+    Sources {
+        #[command(subcommand)]
+        action: SourcesAction,
+    },
 }
 
 #[derive(Subcommand)]
@@ -104,6 +121,30 @@ pub enum CacheAction {
     Clear,
     /// Show cache statistics
     Stats,
+}
+
+#[derive(Subcommand)]
+pub enum SourcesAction {
+    /// List saved sources in the workspace registry
+    List,
+    /// Save a new source under a short name
+    Add {
+        name: String,
+        #[arg(long, group = "source")]
+        mcp: Option<String>,
+        #[arg(long, group = "source")]
+        mcp_stdio: Option<String>,
+        #[arg(long, group = "source")]
+        spec: Option<String>,
+        #[arg(long)]
+        base_url: Option<String>,
+        #[arg(long)]
+        description: Option<String>,
+    },
+    /// Show one saved source
+    Show { name: String },
+    /// Remove one saved source
+    Remove { name: String },
 }
 
 #[derive(Clone, Debug, Default, clap::ValueEnum)]
@@ -115,8 +156,103 @@ pub enum OutputFormat {
     Toon,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SavedSourceKind {
+    Mcp,
+    McpStdio,
+    Spec,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SavedMcp2CliSource {
+    pub name: String,
+    pub kind: SavedSourceKind,
+    pub value: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub base_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+fn mcp2cli_sources_path() -> Result<PathBuf> {
+    let workspace_root =
+        std::env::current_dir().context("Failed to determine current workspace")?;
+    Ok(mcp2cli_sources_path_from(&workspace_root))
+}
+
+fn mcp2cli_sources_path_from(workspace_root: &Path) -> PathBuf {
+    workspace_root
+        .join(".claw")
+        .join("control")
+        .join("mcp2cli-sources.json")
+}
+
+fn load_saved_sources_from(path: &Path) -> Result<Vec<SavedMcp2CliSource>> {
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let content =
+        fs::read_to_string(path).with_context(|| format!("Failed to read {}", path.display()))?;
+    serde_json::from_str(&content).with_context(|| format!("Failed to parse {}", path.display()))
+}
+
+fn save_saved_sources_to(path: &Path, sources: &[SavedMcp2CliSource]) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("Failed to create {}", parent.display()))?;
+    }
+    let content = serde_json::to_string_pretty(sources).context("Failed to serialize sources")?;
+    fs::write(path, content).with_context(|| format!("Failed to write {}", path.display()))?;
+    Ok(())
+}
+
+fn load_saved_sources() -> Result<Vec<SavedMcp2CliSource>> {
+    let path = mcp2cli_sources_path()?;
+    load_saved_sources_from(&path)
+}
+
+fn resolve_saved_source(name: &str) -> Result<SavedMcp2CliSource> {
+    let sources = load_saved_sources()?;
+    sources
+        .into_iter()
+        .find(|source| source.name == name)
+        .ok_or_else(|| anyhow::anyhow!("Saved mcp2cli source '{}' not found", name))
+}
+
+fn tool_source_from_saved(source: &SavedMcp2CliSource) -> Result<ToolSource> {
+    match source.kind {
+        SavedSourceKind::Mcp => Ok(ToolSource::McpUrl {
+            url: source.value.clone(),
+        }),
+        SavedSourceKind::McpStdio => {
+            let parts = shlex::split(&source.value)
+                .ok_or_else(|| anyhow::anyhow!("Invalid saved mcp_stdio command line"))?;
+            let (command, args) = parts
+                .split_first()
+                .ok_or_else(|| anyhow::anyhow!("Saved mcp_stdio source cannot be empty"))?;
+            Ok(ToolSource::McpStdio {
+                command: command.clone(),
+                args: args.to_vec(),
+            })
+        }
+        SavedSourceKind::Spec => {
+            if source.value.starts_with("http://") || source.value.starts_with("https://") {
+                Ok(ToolSource::OpenApiUrl {
+                    url: source.value.clone(),
+                })
+            } else {
+                Ok(ToolSource::OpenApiFile {
+                    path: source.value.clone(),
+                })
+            }
+        }
+    }
+}
+
 /// Run mcp2cli list command
 pub async fn list(
+    saved: Option<String>,
     mcp: Option<String>,
     mcp_stdio: Option<String>,
     spec: Option<String>,
@@ -124,7 +260,7 @@ pub async fn list(
     refresh: bool,
     format: OutputFormat,
 ) -> Result<()> {
-    let source = resolve_source(mcp, mcp_stdio, spec, base_url)?;
+    let source = resolve_source(saved, mcp, mcp_stdio, spec, base_url)?;
 
     let discovery = ToolDiscovery::with_ttl(Duration::from_secs(3600));
 
@@ -204,13 +340,14 @@ pub async fn list(
 
 /// Run mcp2cli help command
 pub async fn help_cmd(
+    saved: Option<String>,
     mcp: Option<String>,
     mcp_stdio: Option<String>,
     spec: Option<String>,
     tool_name: String,
     format: OutputFormat,
 ) -> Result<()> {
-    let source = resolve_source(mcp, mcp_stdio, spec, None)?;
+    let source = resolve_source(saved, mcp, mcp_stdio, spec, None)?;
 
     let discovery = ToolDiscovery::with_ttl(Duration::from_secs(3600));
 
@@ -275,6 +412,7 @@ pub async fn help_cmd(
 
 /// Run mcp2cli execute command
 pub async fn run(
+    saved: Option<String>,
     mcp: Option<String>,
     mcp_stdio: Option<String>,
     spec: Option<String>,
@@ -283,7 +421,7 @@ pub async fn run(
     stdin: bool,
     format: OutputFormat,
 ) -> Result<()> {
-    let source = resolve_source(mcp, mcp_stdio, spec, None)?;
+    let source = resolve_source(saved, mcp, mcp_stdio, spec, None)?;
 
     let args_json = if stdin {
         let mut input = String::new();
@@ -431,16 +569,104 @@ pub async fn cache_stats() -> Result<()> {
     Ok(())
 }
 
+pub async fn sources_list() -> Result<()> {
+    let path = mcp2cli_sources_path()?;
+    let sources = load_saved_sources_from(&path)?;
+    println!("Saved mcp2cli sources: {}", path.display());
+    if sources.is_empty() {
+        println!("(none)");
+        return Ok(());
+    }
+    for source in sources {
+        println!(
+            "- {} [{}] {}",
+            source.name,
+            serde_json::to_string(&source.kind)
+                .unwrap_or_else(|_| "\"unknown\"".to_string())
+                .trim_matches('"'),
+            source.value
+        );
+        if let Some(description) = source.description {
+            println!("  {}", description);
+        }
+        if let Some(base_url) = source.base_url {
+            println!("  base_url={}", base_url);
+        }
+    }
+    Ok(())
+}
+
+pub async fn sources_add(
+    name: String,
+    mcp: Option<String>,
+    mcp_stdio: Option<String>,
+    spec: Option<String>,
+    base_url: Option<String>,
+    description: Option<String>,
+) -> Result<()> {
+    let (kind, value) = match (mcp, mcp_stdio, spec) {
+        (Some(url), None, None) => (SavedSourceKind::Mcp, url),
+        (None, Some(command), None) => (SavedSourceKind::McpStdio, command),
+        (None, None, Some(spec)) => (SavedSourceKind::Spec, spec),
+        _ => anyhow::bail!("Exactly one source required: --mcp, --mcp-stdio, or --spec"),
+    };
+
+    let path = mcp2cli_sources_path()?;
+    let mut sources = load_saved_sources_from(&path)?;
+    if let Some(existing) = sources.iter_mut().find(|source| source.name == name) {
+        existing.kind = kind;
+        existing.value = value;
+        existing.base_url = base_url;
+        existing.description = description;
+    } else {
+        sources.push(SavedMcp2CliSource {
+            name: name.clone(),
+            kind,
+            value,
+            base_url,
+            description,
+        });
+        sources.sort_by(|left, right| left.name.cmp(&right.name));
+    }
+    save_saved_sources_to(&path, &sources)?;
+    println!("✓ Saved source '{}' in {}", name, path.display());
+    Ok(())
+}
+
+pub async fn sources_show(name: String) -> Result<()> {
+    let source = resolve_saved_source(&name)?;
+    println!("{}", serde_json::to_string_pretty(&source)?);
+    Ok(())
+}
+
+pub async fn sources_remove(name: String) -> Result<()> {
+    let path = mcp2cli_sources_path()?;
+    let mut sources = load_saved_sources_from(&path)?;
+    let original_len = sources.len();
+    sources.retain(|source| source.name != name);
+    if sources.len() == original_len {
+        anyhow::bail!("Saved mcp2cli source '{}' not found", name);
+    }
+    save_saved_sources_to(&path, &sources)?;
+    println!("✓ Removed source '{}' from {}", name, path.display());
+    Ok(())
+}
+
 /// Resolve source from CLI arguments
 fn resolve_source(
+    saved: Option<String>,
     mcp: Option<String>,
     mcp_stdio: Option<String>,
     spec: Option<String>,
     _base_url: Option<String>,
 ) -> Result<ToolSource> {
-    match (mcp, mcp_stdio, spec) {
-        (Some(url), None, None) => Ok(ToolSource::McpUrl { url }),
-        (None, Some(cmdline), None) => {
+    match (saved, mcp, mcp_stdio, spec) {
+        (Some(name), None, None, None) => {
+            let saved = resolve_saved_source(&name)?;
+            tool_source_from_saved(&saved)
+        }
+        (None, Some(url), None, None) => Ok(ToolSource::McpUrl { url }),
+        (None, None, Some(cmdline), None) => {
             let parts = shlex::split(&cmdline)
                 .ok_or_else(|| anyhow::anyhow!("Invalid --mcp-stdio command line"))?;
             let (command, args) = parts
@@ -451,7 +677,7 @@ fn resolve_source(
                 args: args.to_vec(),
             })
         }
-        (None, None, Some(spec)) => {
+        (None, None, None, Some(spec)) => {
             // Determine if it's a URL or file path
             if spec.starts_with("http://") || spec.starts_with("https://") {
                 Ok(ToolSource::OpenApiUrl { url: spec })
@@ -459,7 +685,7 @@ fn resolve_source(
                 Ok(ToolSource::OpenApiFile { path: spec })
             }
         }
-        _ => anyhow::bail!("Exactly one source required: --mcp, --mcp-stdio, or --spec"),
+        _ => anyhow::bail!("Exactly one source required: --saved, --mcp, --mcp-stdio, or --spec"),
     }
 }
 
@@ -504,7 +730,13 @@ mod tests {
 
     #[test]
     fn test_resolve_source_mcp_url() {
-        let result = resolve_source(Some("http://localhost:8080".to_string()), None, None, None);
+        let result = resolve_source(
+            None,
+            Some("http://localhost:8080".to_string()),
+            None,
+            None,
+            None,
+        );
         assert!(result.is_ok());
         match result.unwrap() {
             ToolSource::McpUrl { url } => assert_eq!(url, "http://localhost:8080"),
@@ -515,6 +747,7 @@ mod tests {
     #[test]
     fn test_resolve_source_mcp_stdio() {
         let result = resolve_source(
+            None,
             None,
             Some("npx -y @modelcontextprotocol/server-filesystem /tmp".to_string()),
             None,
@@ -539,13 +772,14 @@ mod tests {
 
     #[test]
     fn test_resolve_source_rejects_invalid_mcp_stdio() {
-        let result = resolve_source(None, Some("\"unterminated".to_string()), None, None);
+        let result = resolve_source(None, None, Some("\"unterminated".to_string()), None, None);
         assert!(result.is_err());
     }
 
     #[test]
     fn test_resolve_source_openapi_url() {
         let result = resolve_source(
+            None,
             None,
             None,
             Some("https://api.example.com/openapi.json".to_string()),
@@ -562,7 +796,7 @@ mod tests {
 
     #[test]
     fn test_resolve_source_openapi_file() {
-        let result = resolve_source(None, None, Some("./spec.yaml".to_string()), None);
+        let result = resolve_source(None, None, None, Some("./spec.yaml".to_string()), None);
         assert!(result.is_ok());
         match result.unwrap() {
             ToolSource::OpenApiFile { path } => assert_eq!(path, "./spec.yaml"),
@@ -572,7 +806,7 @@ mod tests {
 
     #[test]
     fn test_resolve_source_no_source() {
-        let result = resolve_source(None, None, None, None);
+        let result = resolve_source(None, None, None, None, None);
         assert!(result.is_err());
         assert!(
             result
@@ -587,6 +821,7 @@ mod tests {
         let result = resolve_source(
             None,
             None,
+            None,
             Some("http://localhost:3000/openapi.json".to_string()),
             None,
         );
@@ -594,6 +829,64 @@ mod tests {
         match result.unwrap() {
             ToolSource::OpenApiUrl { .. } => {}
             _ => panic!("http:// spec should resolve to OpenApiUrl"),
+        }
+    }
+
+    #[test]
+    fn test_save_and_load_sources_roundtrip() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = mcp2cli_sources_path_from(tmp.path());
+        let sources = vec![
+            SavedMcp2CliSource {
+                name: "docs".to_string(),
+                kind: SavedSourceKind::Mcp,
+                value: "https://mcp.example.com/sse".to_string(),
+                base_url: None,
+                description: Some("Docs MCP".to_string()),
+            },
+            SavedMcp2CliSource {
+                name: "pets".to_string(),
+                kind: SavedSourceKind::Spec,
+                value: "./openapi.yaml".to_string(),
+                base_url: Some("https://api.example.com".to_string()),
+                description: None,
+            },
+        ];
+
+        save_saved_sources_to(&path, &sources).unwrap();
+        let loaded = load_saved_sources_from(&path).unwrap();
+        assert_eq!(loaded.len(), 2);
+        assert_eq!(loaded[0].name, "docs");
+        assert_eq!(
+            loaded[1].base_url.as_deref(),
+            Some("https://api.example.com")
+        );
+    }
+
+    #[test]
+    fn test_tool_source_from_saved_mcp_stdio() {
+        let saved = SavedMcp2CliSource {
+            name: "fs".to_string(),
+            kind: SavedSourceKind::McpStdio,
+            value: "npx -y @modelcontextprotocol/server-filesystem /tmp".to_string(),
+            base_url: None,
+            description: None,
+        };
+
+        let source = tool_source_from_saved(&saved).unwrap();
+        match source {
+            ToolSource::McpStdio { command, args } => {
+                assert_eq!(command, "npx");
+                assert_eq!(
+                    args,
+                    vec![
+                        "-y".to_string(),
+                        "@modelcontextprotocol/server-filesystem".to_string(),
+                        "/tmp".to_string()
+                    ]
+                );
+            }
+            _ => panic!("Expected McpStdio"),
         }
     }
 

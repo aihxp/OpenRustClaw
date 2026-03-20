@@ -138,6 +138,16 @@ openrustclaw mcp2-cli run \
 
 This is separate from the Rust `McpRegistry` path. `mcp2-cli` is the documented CLI for MCP discovery and execution today.
 
+It also now supports a workspace-owned saved-source registry for repetitive MCP/OpenAPI workflows:
+
+```bash
+openrustclaw mcp2-cli sources add docs --mcp https://mcp.example.com/sse
+openrustclaw mcp2-cli sources add pets --spec ./openapi.yaml
+openrustclaw mcp2-cli sources list
+openrustclaw mcp2-cli list --saved docs
+openrustclaw mcp2-cli help --saved docs read_file
+```
+
 ## Token Costs
 
 For large MCP toolsets, prefer `mcp2-cli` over injecting full tool schemas into every turn. See [mcp2cli - Token-Efficient Discovery](./mcp2cli.md).

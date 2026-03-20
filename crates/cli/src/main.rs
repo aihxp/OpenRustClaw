@@ -1878,6 +1878,8 @@ enum Mcp2CliAction {
     /// List available tools (~16 tokens/tool)
     List {
         #[arg(long, group = "source")]
+        saved: Option<String>,
+        #[arg(long, group = "source")]
         mcp: Option<String>,
         #[arg(long, group = "source")]
         mcp_stdio: Option<String>,
@@ -1893,6 +1895,8 @@ enum Mcp2CliAction {
     /// Get tool help (~80-200 tokens)
     Help {
         #[arg(long, group = "source")]
+        saved: Option<String>,
+        #[arg(long, group = "source")]
         mcp: Option<String>,
         #[arg(long, group = "source")]
         mcp_stdio: Option<String>,
@@ -1904,6 +1908,8 @@ enum Mcp2CliAction {
     },
     /// Execute a tool
     Run {
+        #[arg(long, group = "source")]
+        saved: Option<String>,
         #[arg(long, group = "source")]
         mcp: Option<String>,
         #[arg(long, group = "source")]
@@ -1938,6 +1944,11 @@ enum Mcp2CliAction {
         #[command(subcommand)]
         action: Mcp2CliCacheAction,
     },
+    /// Save and manage reusable MCP/OpenAPI sources
+    Sources {
+        #[command(subcommand)]
+        action: Mcp2CliSourcesAction,
+    },
 }
 
 #[derive(Subcommand)]
@@ -1946,6 +1957,30 @@ enum Mcp2CliCacheAction {
     Clear,
     /// Show cache statistics
     Stats,
+}
+
+#[derive(Subcommand)]
+enum Mcp2CliSourcesAction {
+    /// List saved sources
+    List,
+    /// Save or update a source
+    Add {
+        name: String,
+        #[arg(long, group = "source")]
+        mcp: Option<String>,
+        #[arg(long, group = "source")]
+        mcp_stdio: Option<String>,
+        #[arg(long, group = "source")]
+        spec: Option<String>,
+        #[arg(long)]
+        base_url: Option<String>,
+        #[arg(long)]
+        description: Option<String>,
+    },
+    /// Show one saved source
+    Show { name: String },
+    /// Remove one saved source
+    Remove { name: String },
 }
 
 #[derive(Subcommand)]
@@ -3569,6 +3604,7 @@ async fn main() -> Result<()> {
         }
         Commands::Mcp2Cli { action } => match action {
             Mcp2CliAction::List {
+                saved,
                 mcp,
                 mcp_stdio,
                 spec,
@@ -3577,6 +3613,7 @@ async fn main() -> Result<()> {
                 format,
             } => {
                 commands::mcp2cli::list(
+                    saved,
                     mcp,
                     mcp_stdio,
                     spec,
@@ -3587,15 +3624,25 @@ async fn main() -> Result<()> {
                 .await
             }
             Mcp2CliAction::Help {
+                saved,
                 mcp,
                 mcp_stdio,
                 spec,
                 tool,
                 format,
             } => {
-                commands::mcp2cli::help_cmd(mcp, mcp_stdio, spec, tool, parse_format(&format)).await
+                commands::mcp2cli::help_cmd(
+                    saved,
+                    mcp,
+                    mcp_stdio,
+                    spec,
+                    tool,
+                    parse_format(&format),
+                )
+                .await
             }
             Mcp2CliAction::Run {
+                saved,
                 mcp,
                 mcp_stdio,
                 spec,
@@ -3605,6 +3652,7 @@ async fn main() -> Result<()> {
                 format,
             } => {
                 commands::mcp2cli::run(
+                    saved,
                     mcp,
                     mcp_stdio,
                     spec,
@@ -3624,6 +3672,31 @@ async fn main() -> Result<()> {
             Mcp2CliAction::Cache { action } => match action {
                 Mcp2CliCacheAction::Clear => commands::mcp2cli::cache_clear().await,
                 Mcp2CliCacheAction::Stats => commands::mcp2cli::cache_stats().await,
+            },
+            Mcp2CliAction::Sources { action } => match action {
+                Mcp2CliSourcesAction::List => commands::mcp2cli::sources_list().await,
+                Mcp2CliSourcesAction::Add {
+                    name,
+                    mcp,
+                    mcp_stdio,
+                    spec,
+                    base_url,
+                    description,
+                } => {
+                    commands::mcp2cli::sources_add(
+                        name,
+                        mcp,
+                        mcp_stdio,
+                        spec,
+                        base_url,
+                        description,
+                    )
+                    .await
+                }
+                Mcp2CliSourcesAction::Show { name } => commands::mcp2cli::sources_show(name).await,
+                Mcp2CliSourcesAction::Remove { name } => {
+                    commands::mcp2cli::sources_remove(name).await
+                }
             },
         },
         #[cfg(feature = "voice")]

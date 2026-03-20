@@ -47,13 +47,18 @@ openrustclaw mcp2-cli list --spec ./api.yaml
 openrustclaw mcp2-cli list \
   --mcp-stdio 'npx -y @modelcontextprotocol/server-filesystem /tmp' \
   --refresh
+
+# Or save the source once and reuse it
+openrustclaw mcp2-cli sources add fs \
+  --mcp-stdio 'npx -y @modelcontextprotocol/server-filesystem /tmp'
+openrustclaw mcp2-cli list --saved fs
 ```
 
 ### Get Tool Help
 
 ```bash
 openrustclaw mcp2-cli help \
-  --mcp-stdio 'npx -y @modelcontextprotocol/server-filesystem /tmp' \
+  --saved fs \
   read_file
 ```
 
@@ -62,7 +67,7 @@ openrustclaw mcp2-cli help \
 ```bash
 # With JSON arguments
 openrustclaw mcp2-cli run \
-  --mcp-stdio 'npx -y @modelcontextprotocol/server-filesystem /tmp' \
+  --saved fs \
   read_file --args '{"path": "notes.txt"}'
 
 # With stdin
@@ -98,6 +103,21 @@ openrustclaw mcp2-cli cache clear
 openrustclaw mcp2-cli cache stats
 ```
 
+### Saved Sources
+
+For repeated MCP/OpenAPI usage, you can persist a short named source in the workspace registry:
+
+```bash
+openrustclaw mcp2-cli sources add docs --mcp https://mcp.example.com/sse
+openrustclaw mcp2-cli sources add pets --spec ./openapi.yaml
+openrustclaw mcp2-cli sources show docs
+openrustclaw mcp2-cli sources remove pets
+```
+
+Saved sources live under:
+
+- `.claw/control/mcp2cli-sources.json`
+
 ## Supported Sources
 
 | Source | Flag | Status | Example |
@@ -106,6 +126,7 @@ openrustclaw mcp2-cli cache stats
 | OpenAPI URL | `--spec` | Supported | `https://api.example.com/openapi.json` |
 | OpenAPI file | `--spec` | Supported | `./api.yaml` |
 | MCP HTTP/SSE | `--mcp` | Supported for remote legacy SSE endpoints | `https://mcp.example.com/sse` |
+| Saved source | `--saved` | Supported | `fs`, `docs`, `pets` |
 
 ## Output Formats
 
