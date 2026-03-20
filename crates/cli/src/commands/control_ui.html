@@ -448,6 +448,7 @@
             <div class="action-row">
               <button id="voice-session-append">Append User</button>
               <button id="voice-session-respond">Respond + Synthesize</button>
+              <button class="secondary" id="voice-session-reconnect">Reconnect</button>
               <button class="secondary" id="voice-session-end">End Session</button>
             </div>
             <div class="action-row">
@@ -1199,6 +1200,32 @@
           },
         );
         setText("voice-session-detail", payload);
+        await loadVoiceSessions();
+        await loadVoiceSessionHealth();
+      }
+
+      async function reconnectVoiceSession() {
+        const sessionId = document.getElementById("voice-session-id").value.trim();
+        if (!sessionId) {
+          throw new Error("A voice session id is required");
+        }
+        const payload = await fetchJson(
+          `/control/voice/sessions/${encodeURIComponent(sessionId)}/reconnect`,
+          {
+            method: "POST",
+            body: JSON.stringify({
+              assistant_prompt: emptyToNull(document.getElementById("voice-session-prompt").value),
+              voice: emptyToNull(document.getElementById("voice-speak-voice").value),
+              greeting: emptyToNull(document.getElementById("voice-speak-text").value),
+              format: emptyToNull(document.getElementById("voice-speak-format").value),
+              output_path: emptyToNull(document.getElementById("voice-speak-output-path").value),
+            }),
+          },
+        );
+        setText("voice-session-detail", payload);
+        if (payload.synthesis) {
+          setText("voice-synthesis-result", payload.synthesis);
+        }
         await loadVoiceSessions();
         await loadVoiceSessionHealth();
       }
@@ -2659,6 +2686,13 @@
       document.getElementById("voice-session-respond").addEventListener("click", async () => {
         try {
           await respondVoiceSession();
+        } catch (error) {
+          setText("voice-session-detail", { error: error.message });
+        }
+      });
+      document.getElementById("voice-session-reconnect").addEventListener("click", async () => {
+        try {
+          await reconnectVoiceSession();
         } catch (error) {
           setText("voice-session-detail", { error: error.message });
         }

@@ -2666,6 +2666,10 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             post(voice_respond_handler),
         )
         .route(
+            "/control/voice/sessions/{id}/reconnect",
+            post(voice_reconnect_session_handler),
+        )
+        .route(
             "/control/voice/sessions/{id}/end",
             post(voice_end_session_handler),
         )
@@ -4741,6 +4745,37 @@ async fn voice_respond_handler(
         Ok(config) => {
             match voice_runtime::respond_voice_session(&config, &state.workspace_root, &id, payload)
                 .await
+            {
+                Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+                Err(error) => (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({"error": error.to_string()})),
+                )
+                    .into_response(),
+            }
+        }
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn voice_reconnect_session_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(id): AxumPath<String>,
+    Json(payload): Json<voice_runtime::VoiceSessionReconnectRequest>,
+) -> impl IntoResponse {
+    match runtime::load_effective_config(&state.config_path, &state.workspace_root) {
+        Ok(config) => {
+            match voice_runtime::reconnect_voice_session(
+                &config,
+                &state.workspace_root,
+                &id,
+                payload,
+            )
+            .await
             {
                 Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
                 Err(error) => (

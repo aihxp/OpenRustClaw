@@ -164,6 +164,10 @@ pub struct VoiceSessionRecord {
     #[serde(default)]
     pub closed_at: Option<String>,
     #[serde(default)]
+    pub reconnect_count: usize,
+    #[serde(default)]
+    pub last_reconnected_at: Option<String>,
+    #[serde(default)]
     pub turns: Vec<VoiceSessionTurn>,
 }
 
@@ -236,6 +240,26 @@ pub struct VoiceSessionEndRequest {
 pub struct VoiceSessionRespondResult {
     pub session: VoiceSessionRecord,
     pub synthesis: VoiceSynthesizeResult,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct VoiceSessionReconnectRequest {
+    #[serde(default)]
+    pub assistant_prompt: Option<String>,
+    #[serde(default)]
+    pub voice: Option<String>,
+    #[serde(default)]
+    pub greeting: Option<String>,
+    #[serde(default)]
+    pub format: Option<String>,
+    pub output_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceSessionReconnectResult {
+    pub session: VoiceSessionRecord,
+    #[serde(default)]
+    pub synthesis: Option<VoiceSynthesizeResult>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -1530,6 +1554,8 @@ pub async fn start_voice_session(
         created_at: now.clone(),
         last_activity_at: now,
         closed_at: None,
+        reconnect_count: 0,
+        last_reconnected_at: None,
         turns: Vec::new(),
     };
     save_voice_session(workspace_root, &session).await?;
@@ -1616,6 +1642,60 @@ pub async fn end_voice_session(
     session.closed_at = Some(now);
     save_voice_session(workspace_root, &session).await?;
     Ok(session)
+}
+
+pub async fn reconnect_voice_session(
+    config: &AppConfig,
+    workspace_root: &Path,
+    session_id: &str,
+    request: VoiceSessionReconnectRequest,
+) -> Result<VoiceSessionReconnectResult> {
+    let mut session = inspect_voice_session(workspace_root, session_id).await?;
+    ensure_voice_session_active(&session)?;
+
+    if let Some(assistant_prompt) = request
+        .assistant_prompt
+        .filter(|value| !value.trim().is_empty())
+    {
+        session.assistant_prompt = Some(assistant_prompt);
+    }
+    if let Some(voice) = request.voice.filter(|value| !value.trim().is_empty()) {
+        session.tts_voice = voice;
+    }
+
+    let now = Utc::now().to_rfc3339();
+    session.reconnect_count += 1;
+    session.last_reconnected_at = Some(now.clone());
+    session.last_activity_at = now;
+
+    let synthesis =
+        if let Some(greeting) = request.greeting.filter(|value| !value.trim().is_empty()) {
+            let synthesis = synthesize_with_config(
+                config,
+                workspace_root,
+                VoiceSynthesizeRequest {
+                    text: greeting.clone(),
+                    provider: Some(session.tts_provider.clone()),
+                    model: None,
+                    voice: Some(session.tts_voice.clone()),
+                    format: request.format,
+                    output_path: request.output_path,
+                },
+            )
+            .await?;
+            session.turns.push(VoiceSessionTurn {
+                role: "assistant".to_string(),
+                text: greeting,
+                created_at: Utc::now().to_rfc3339(),
+                synthesized_output_path: Some(synthesis.output_path.clone()),
+            });
+            Some(synthesis)
+        } else {
+            None
+        };
+
+    save_voice_session(workspace_root, &session).await?;
+    Ok(VoiceSessionReconnectResult { session, synthesis })
 }
 
 pub async fn voice_session_health(
@@ -2202,6 +2282,8 @@ mod tests {
             created_at: "2026-01-01T00:00:00Z".to_string(),
             last_activity_at: "2026-01-01T00:00:00Z".to_string(),
             closed_at: None,
+            reconnect_count: 0,
+            last_reconnected_at: None,
             turns: vec![VoiceSessionTurn {
                 role: "user".to_string(),
                 text: "hello".to_string(),
@@ -2242,6 +2324,8 @@ mod tests {
             created_at: "2026-01-01T00:00:00Z".to_string(),
             last_activity_at: "2026-01-01T00:00:00Z".to_string(),
             closed_at: None,
+            reconnect_count: 0,
+            last_reconnected_at: None,
             turns: Vec::new(),
         };
         save_voice_session(temp.path(), &session)
@@ -2269,6 +2353,68 @@ mod tests {
             .await
             .expect("inspect session");
         assert_eq!(stored.status, "ended");
+    }
+
+    #[tokio::test]
+    async fn reconnect_voice_session_updates_activity_and_optional_greeting() {
+        let temp = tempdir().expect("tempdir");
+        let (addr, _state, server_handle) = spawn_test_server().await;
+        let config = test_config(
+            &format!("http://{}", addr),
+            temp.path(),
+            "OPENRUSTCLAW_VOICE_TEST_KEY_RECONNECT",
+        );
+
+        start_voice_session(
+            &config,
+            temp.path(),
+            VoiceSessionStartRequest {
+                session_id: Some("voice-session-reconnect".to_string()),
+                assistant_prompt: Some("be concise".to_string()),
+                voice: Some("alloy".to_string()),
+            },
+        )
+        .await
+        .expect("start session");
+
+        unsafe {
+            std::env::set_var("OPENRUSTCLAW_VOICE_TEST_KEY_RECONNECT", "test-openai-key");
+        }
+        let result = reconnect_voice_session(
+            &config,
+            temp.path(),
+            "voice-session-reconnect",
+            VoiceSessionReconnectRequest {
+                assistant_prompt: Some("stay sharp".to_string()),
+                voice: Some("nova".to_string()),
+                greeting: Some("welcome back".to_string()),
+                format: Some("mp3".to_string()),
+                output_path: None,
+            },
+        )
+        .await
+        .expect("reconnect session");
+        unsafe {
+            std::env::remove_var("OPENRUSTCLAW_VOICE_TEST_KEY_RECONNECT");
+        }
+
+        assert_eq!(result.session.reconnect_count, 1);
+        assert!(result.session.last_reconnected_at.is_some());
+        assert_eq!(result.session.tts_voice, "nova");
+        assert_eq!(
+            result.session.assistant_prompt.as_deref(),
+            Some("stay sharp")
+        );
+        assert_eq!(result.session.turns.len(), 1);
+        assert!(result.synthesis.is_some());
+
+        let stored = inspect_voice_session(temp.path(), "voice-session-reconnect")
+            .await
+            .expect("inspect session");
+        assert_eq!(stored.reconnect_count, 1);
+        assert_eq!(stored.turns.len(), 1);
+
+        server_handle.abort();
     }
 
     #[tokio::test]

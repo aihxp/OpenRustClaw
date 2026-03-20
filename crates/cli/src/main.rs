@@ -1647,6 +1647,22 @@ enum VoiceAction {
         #[arg(long)]
         output_path: Option<String>,
     },
+    /// Reconnect one bounded voice session receipt and optionally emit a greeting
+    ReconnectSession {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+        id: String,
+        #[arg(long)]
+        assistant_prompt: Option<String>,
+        #[arg(long)]
+        voice: Option<String>,
+        #[arg(long)]
+        greeting: Option<String>,
+        #[arg(long)]
+        format: Option<String>,
+        #[arg(long)]
+        output_path: Option<String>,
+    },
     /// End one bounded voice session receipt
     EndSession {
         #[arg(short, long, default_value = "config/default.toml")]
@@ -4488,6 +4504,26 @@ async fn main() -> Result<()> {
                     provider.as_deref(),
                     model.as_deref(),
                     voice.as_deref(),
+                    format.as_deref(),
+                    output_path.as_deref(),
+                )
+                .await
+            }
+            VoiceAction::ReconnectSession {
+                config,
+                id,
+                assistant_prompt,
+                voice,
+                greeting,
+                format,
+                output_path,
+            } => {
+                commands::voice::reconnect_session(
+                    &config,
+                    &id,
+                    assistant_prompt.as_deref(),
+                    voice.as_deref(),
+                    greeting.as_deref(),
                     format.as_deref(),
                     output_path.as_deref(),
                 )

@@ -3,8 +3,9 @@ use openrustclaw_core::config::AppConfig;
 
 use super::voice_runtime::{
     self, VoicePrewarmRequest, VoiceSessionAppendRequest, VoiceSessionEndRequest,
-    VoiceSessionHealthRequest, VoiceSessionReapRequest, VoiceSessionRespondRequest,
-    VoiceSessionStartRequest, VoiceSynthesizeRequest, VoiceTranscribeRequest,
+    VoiceSessionHealthRequest, VoiceSessionReapRequest, VoiceSessionReconnectRequest,
+    VoiceSessionRespondRequest, VoiceSessionStartRequest, VoiceSynthesizeRequest,
+    VoiceTranscribeRequest,
 };
 
 fn load_config(config_path: &str) -> AppConfig {
@@ -227,6 +228,34 @@ pub async fn respond(
             provider: provider.map(ToString::to_string),
             model: model.map(ToString::to_string),
             voice: voice.map(ToString::to_string),
+            format: format.map(ToString::to_string),
+            output_path: output_path.map(ToString::to_string),
+        },
+    )
+    .await?;
+    println!("{}", serde_json::to_string_pretty(&result)?);
+    Ok(())
+}
+
+pub async fn reconnect_session(
+    config_path: &str,
+    session_id: &str,
+    assistant_prompt: Option<&str>,
+    voice: Option<&str>,
+    greeting: Option<&str>,
+    format: Option<&str>,
+    output_path: Option<&str>,
+) -> Result<()> {
+    let config = load_config(config_path);
+    let workspace_root = std::env::current_dir()?;
+    let result = voice_runtime::reconnect_voice_session(
+        &config,
+        &workspace_root,
+        session_id,
+        VoiceSessionReconnectRequest {
+            assistant_prompt: assistant_prompt.map(ToString::to_string),
+            voice: voice.map(ToString::to_string),
+            greeting: greeting.map(ToString::to_string),
             format: format.map(ToString::to_string),
             output_path: output_path.map(ToString::to_string),
         },
