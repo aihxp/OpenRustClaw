@@ -2672,6 +2672,10 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             get(mobile_node_status_handler),
         )
         .route(
+            "/control/mobile/nodes/{id}/capabilities",
+            get(mobile_node_capabilities_handler),
+        )
+        .route(
             "/control/mobile/nodes/{id}/runtime",
             get(mobile_node_runtime_handler),
         )
@@ -2712,6 +2716,10 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
         .route(
             "/control/mobile/sync/preview",
             post(mobile_sync_preview_handler),
+        )
+        .route(
+            "/control/mobile/capabilities/preview",
+            post(mobile_capability_preview_handler),
         )
         .route(
             "/control/runtime/reload-plan",
@@ -4808,6 +4816,20 @@ async fn mobile_node_runtime_handler(
     }
 }
 
+async fn mobile_node_capabilities_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(id): AxumPath<String>,
+) -> impl IntoResponse {
+    match mobile::node_capabilities_data(&state.workspace_root, &id) {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
 async fn mobile_node_heartbeat_handler(
     State(state): State<RuntimeControlState>,
     AxumPath(id): AxumPath<String>,
@@ -4960,6 +4982,20 @@ async fn mobile_sync_preview_handler(
     Json(payload): Json<mobile::MobileSyncPreviewRequest>,
 ) -> impl IntoResponse {
     match mobile::preview_sync_data(&state.workspace_root, payload) {
+        Ok(preview) => (StatusCode::OK, Json(serde_json::json!(preview))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn mobile_capability_preview_handler(
+    State(state): State<RuntimeControlState>,
+    Json(payload): Json<mobile::MobileCapabilityPreviewRequest>,
+) -> impl IntoResponse {
+    match mobile::preview_capability_data(&state.workspace_root, payload) {
         Ok(preview) => (StatusCode::OK, Json(serde_json::json!(preview))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,

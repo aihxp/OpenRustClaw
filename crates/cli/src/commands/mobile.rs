@@ -237,6 +237,46 @@ pub struct MobileNodeRuntimeActionResult {
     pub preview: Value,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MobileNodeCapabilityInfo {
+    pub capability: String,
+    pub advertised: bool,
+    pub preview_supported: bool,
+    #[serde(default)]
+    pub aliases: Vec<String>,
+    #[serde(default)]
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MobileNodeCapabilitiesResult {
+    pub node_id: String,
+    pub platform: String,
+    pub readiness: String,
+    pub capabilities: Vec<MobileNodeCapabilityInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MobileCapabilityPreviewRequest {
+    pub node_id: String,
+    pub capability: String,
+    #[serde(default)]
+    pub target: Option<String>,
+    #[serde(default)]
+    pub query: Option<String>,
+    #[serde(default)]
+    pub note: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MobileCapabilityPreviewRecord {
+    pub id: String,
+    pub node_id: String,
+    pub capability: String,
+    pub created_at: String,
+    pub preview: Value,
+}
+
 fn default_true() -> bool {
     true
 }
@@ -462,6 +502,45 @@ pub fn node_runtime_data(workspace_root: &Path, node_id: &str) -> Result<MobileN
     load_runtime_state(workspace_root, node_id)
 }
 
+pub fn node_capabilities_data(
+    workspace_root: &Path,
+    node_id: &str,
+) -> Result<MobileNodeCapabilitiesResult> {
+    let manifest = inspect_node_data(workspace_root, node_id)?;
+    let status = node_status_data(workspace_root, node_id)?;
+    let advertised = manifest.node.capabilities;
+    let mut capabilities = Vec::new();
+    for capability in [
+        "camera",
+        "screen_recording",
+        "location",
+        "contacts",
+        "calendar",
+        "photos",
+        "canvas",
+        "sms",
+        "notifications",
+    ] {
+        let aliases = capability_aliases(capability)
+            .iter()
+            .map(|entry| entry.to_string())
+            .collect::<Vec<_>>();
+        capabilities.push(MobileNodeCapabilityInfo {
+            capability: capability.to_string(),
+            advertised: has_capability(&advertised, capability),
+            preview_supported: is_preview_supported_capability(capability),
+            aliases,
+            notes: capability_notes(capability),
+        });
+    }
+    Ok(MobileNodeCapabilitiesResult {
+        node_id: node_id.to_string(),
+        platform: manifest.node.platform,
+        readiness: status.readiness,
+        capabilities,
+    })
+}
+
 pub fn heartbeat_node_data(
     workspace_root: &Path,
     node_id: &str,
@@ -573,6 +652,126 @@ pub fn preview_sync_data(
         "max_sync_interval_secs": manifest.node.sync.max_sync_interval_secs,
         "min_battery_percent": manifest.node.sync.min_battery_percent,
     }))
+}
+
+pub fn preview_capability_data(
+    workspace_root: &Path,
+    request: MobileCapabilityPreviewRequest,
+) -> Result<MobileCapabilityPreviewRecord> {
+    if request.node_id.trim().is_empty() {
+        return Err(anyhow!("node_id is required"));
+    }
+    let capability = normalize_capability_name(&request.capability);
+    if capability.is_empty() {
+        return Err(anyhow!("capability is required"));
+    }
+    if !is_preview_supported_capability(&capability) {
+        return Err(anyhow!(
+            "capability '{}' is not supported by the bounded preview lane",
+            capability
+        ));
+    }
+
+    let manifest = inspect_node_data(workspace_root, &request.node_id)?;
+    let status = node_status_data(workspace_root, &request.node_id)?;
+    if !has_capability(&manifest.node.capabilities, &capability) {
+        return Err(anyhow!(
+            "node '{}' does not advertise capability '{}'",
+            manifest.node.id,
+            capability
+        ));
+    }
+
+    let preview_id = format!(
+        "{}-{}-{}",
+        manifest.node.id,
+        capability,
+        Utc::now().timestamp_millis()
+    );
+    let receipt_path = capability_preview_path(workspace_root, &preview_id);
+    let preview = match capability.as_str() {
+        "camera" => json!({
+            "kind": "camera_capture_preview",
+            "output_path": receipt_path.to_string_lossy(),
+            "foreground_required": true,
+            "capture_mode": "single_photo",
+            "note": request.note,
+        }),
+        "screen_recording" => json!({
+            "kind": "screen_recording_preview",
+            "output_path": receipt_path.to_string_lossy(),
+            "foreground_required": true,
+            "capture_mode": "video_clip",
+            "note": request.note,
+        }),
+        "location" => json!({
+            "kind": "location_preview",
+            "precision": "coarse",
+            "output_path": receipt_path.to_string_lossy(),
+            "query": request.query,
+            "note": request.note,
+        }),
+        "contacts" => json!({
+            "kind": "contacts_preview",
+            "query": request.query,
+            "limit": 25,
+            "output_path": receipt_path.to_string_lossy(),
+        }),
+        "calendar" => json!({
+            "kind": "calendar_preview",
+            "query": request.query,
+            "range": "next_7_days",
+            "output_path": receipt_path.to_string_lossy(),
+        }),
+        "photos" => json!({
+            "kind": "photo_library_preview",
+            "query": request.query,
+            "selection_mode": "bounded_picker",
+            "output_path": receipt_path.to_string_lossy(),
+        }),
+        "canvas" => json!({
+            "kind": "canvas_preview",
+            "output_path": receipt_path.to_string_lossy(),
+            "surface": "sketch_overlay",
+            "note": request.note,
+        }),
+        "sms" => json!({
+            "kind": "sms_preview",
+            "target": request.target,
+            "draft_only": true,
+            "output_path": receipt_path.to_string_lossy(),
+            "note": request.note,
+        }),
+        "notifications" => json!({
+            "kind": "notification_preview_bridge",
+            "target": request.target,
+            "output_path": receipt_path.to_string_lossy(),
+            "note": request.note,
+        }),
+        other => {
+            return Err(anyhow!(
+                "capability '{}' is not supported by the bounded preview lane",
+                other
+            ));
+        }
+    };
+
+    let record = MobileCapabilityPreviewRecord {
+        id: preview_id,
+        node_id: manifest.node.id.clone(),
+        capability,
+        created_at: Utc::now().to_rfc3339(),
+        preview: json!({
+            "node_id": manifest.node.id,
+            "platform": manifest.node.platform,
+            "device_name": manifest.node.device_name,
+            "readiness": status.readiness,
+            "capabilities": manifest.node.capabilities,
+            "preview": preview,
+        }),
+    };
+    write_capability_preview_record(workspace_root, &record)?;
+    Ok(record)
 }
 
 pub fn list_command_data(
@@ -1080,6 +1279,21 @@ pub async fn preview_sync(workspace_root: &Path, request: MobileSyncPreviewReque
     Ok(())
 }
 
+pub async fn node_capabilities(workspace_root: &Path, node_id: &str) -> Result<()> {
+    let capabilities = node_capabilities_data(workspace_root, node_id)?;
+    println!("{}", serde_json::to_string_pretty(&capabilities)?);
+    Ok(())
+}
+
+pub async fn preview_capability(
+    workspace_root: &Path,
+    request: MobileCapabilityPreviewRequest,
+) -> Result<()> {
+    let preview = preview_capability_data(workspace_root, request)?;
+    println!("{}", serde_json::to_string_pretty(&preview)?);
+    Ok(())
+}
+
 pub async fn list_commands(
     workspace_root: &Path,
     node_id: Option<&str>,
@@ -1210,6 +1424,83 @@ fn parse_notification_priority(raw: Option<&str>) -> Result<NotificationPriority
             other => return Err(anyhow!("unsupported notification priority '{other}'")),
         },
     )
+}
+
+fn capability_aliases(capability: &str) -> &'static [&'static str] {
+    match capability {
+        "camera" => &["camera"],
+        "screen_recording" => &["screen_recording", "screen"],
+        "location" => &["location"],
+        "contacts" => &["contacts"],
+        "calendar" => &["calendar"],
+        "photos" => &["photos", "camera_roll"],
+        "canvas" => &["canvas"],
+        "sms" => &["sms"],
+        "notifications" => &["notifications"],
+        _ => &[],
+    }
+}
+
+fn capability_notes(capability: &str) -> Vec<String> {
+    match capability {
+        "camera" => vec!["bounded photo-capture preview only".to_string()],
+        "screen_recording" => vec!["bounded clip preview only".to_string()],
+        "location" => vec!["bounded coarse location preview".to_string()],
+        "contacts" => vec!["bounded query preview only".to_string()],
+        "calendar" => vec!["bounded range query preview only".to_string()],
+        "photos" => vec!["bounded picker preview only".to_string()],
+        "canvas" => vec!["bounded sketch/canvas preview only".to_string()],
+        "sms" => vec!["bounded draft preview only".to_string()],
+        "notifications" => vec!["reuses the shipped notification preview lane".to_string()],
+        _ => Vec::new(),
+    }
+}
+
+fn is_preview_supported_capability(capability: &str) -> bool {
+    !capability_aliases(capability).is_empty()
+}
+
+fn normalize_capability_name(capability: &str) -> String {
+    capability.trim().to_lowercase().replace('-', "_")
+}
+
+fn has_capability(advertised: &[String], capability: &str) -> bool {
+    let normalized = advertised
+        .iter()
+        .map(|entry| normalize_capability_name(entry))
+        .collect::<Vec<_>>();
+    capability_aliases(capability)
+        .iter()
+        .any(|alias| normalized.iter().any(|entry| entry == alias))
+}
+
+fn capability_previews_dir(workspace_root: &Path) -> PathBuf {
+    workspace_root
+        .join(DEFAULT_MOBILE_ROOT)
+        .join("capability-previews")
+}
+
+fn capability_preview_path(workspace_root: &Path, preview_id: &str) -> PathBuf {
+    capability_previews_dir(workspace_root).join(format!("{preview_id}.json"))
+}
+
+fn write_capability_preview_record(
+    workspace_root: &Path,
+    record: &MobileCapabilityPreviewRecord,
+) -> Result<()> {
+    fs::create_dir_all(capability_previews_dir(workspace_root)).with_context(|| {
+        format!(
+            "failed to create {}",
+            capability_previews_dir(workspace_root).display()
+        )
+    })?;
+    let path = capability_preview_path(workspace_root, &record.id);
+    fs::write(
+        &path,
+        serde_json::to_vec_pretty(record)
+            .context("failed to serialize mobile capability preview record")?,
+    )
+    .with_context(|| format!("failed to write {}", path.display()))
 }
 
 fn parse_notification_type(raw: Option<&str>) -> Result<NotificationType> {
@@ -1551,5 +1842,91 @@ mod tests {
 
         assert_eq!(result.runtime.rehydrate_state, "synced");
         assert!(result.command.is_some());
+    }
+
+    #[test]
+    fn node_capabilities_reports_advertised_preview_lanes() {
+        let temp = tempdir().expect("tempdir");
+        pair_node_data(
+            temp.path(),
+            MobilePairRequest {
+                id: "iphone-capabilities".to_string(),
+                gateway_url: "wss://example.com/gateway".to_string(),
+                auth_token_env: "MOBILE_CAPABILITY_TOKEN".to_string(),
+                device_name: Some("Capability iPhone".to_string()),
+                platform: Some("ios".to_string()),
+                capabilities: vec![
+                    "mobile".to_string(),
+                    "camera".to_string(),
+                    "location".to_string(),
+                    "photos".to_string(),
+                ],
+                enabled: true,
+                sync: None,
+                notifications: None,
+                metadata: Value::Null,
+            },
+        )
+        .expect("pair node");
+
+        let result = node_capabilities_data(temp.path(), "iphone-capabilities")
+            .expect("capability inventory");
+        assert_eq!(result.node_id, "iphone-capabilities");
+        assert!(
+            result
+                .capabilities
+                .iter()
+                .any(|entry| entry.capability == "camera" && entry.advertised)
+        );
+        assert!(
+            result
+                .capabilities
+                .iter()
+                .any(|entry| entry.capability == "location" && entry.advertised)
+        );
+        assert!(
+            result
+                .capabilities
+                .iter()
+                .any(|entry| entry.capability == "calendar" && !entry.advertised)
+        );
+    }
+
+    #[test]
+    fn preview_capability_persists_bounded_receipt() {
+        let temp = tempdir().expect("tempdir");
+        pair_node_data(
+            temp.path(),
+            MobilePairRequest {
+                id: "iphone-preview".to_string(),
+                gateway_url: "wss://example.com/gateway".to_string(),
+                auth_token_env: "MOBILE_PREVIEW_TOKEN".to_string(),
+                device_name: Some("Preview iPhone".to_string()),
+                platform: Some("ios".to_string()),
+                capabilities: vec!["mobile".to_string(), "camera".to_string()],
+                enabled: true,
+                sync: None,
+                notifications: None,
+                metadata: Value::Null,
+            },
+        )
+        .expect("pair node");
+
+        let record = preview_capability_data(
+            temp.path(),
+            MobileCapabilityPreviewRequest {
+                node_id: "iphone-preview".to_string(),
+                capability: "camera".to_string(),
+                target: None,
+                query: None,
+                note: Some("operator preview".to_string()),
+            },
+        )
+        .expect("capability preview");
+
+        assert_eq!(record.node_id, "iphone-preview");
+        assert_eq!(record.capability, "camera");
+        assert_eq!(record.preview["preview"]["kind"], "camera_capture_preview");
+        assert!(capability_preview_path(temp.path(), &record.id).exists());
     }
 }

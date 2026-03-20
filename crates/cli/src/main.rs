@@ -1351,6 +1351,8 @@ enum MobileAction {
     Status { id: String },
     /// Show bounded runtime state for a configured mobile node
     Runtime { id: String },
+    /// Show bounded capability inventory for a configured mobile node
+    Capabilities { id: String },
     /// Record a bounded mobile node heartbeat/runtime receipt
     Heartbeat {
         #[arg(long)]
@@ -1422,6 +1424,19 @@ enum MobileAction {
         battery_percent: u8,
         #[arg(long, default_value_t = 0)]
         pending_change_count: usize,
+    },
+    /// Preview a bounded mobile capability lane without executing it
+    PreviewCapability {
+        #[arg(long)]
+        node_id: String,
+        #[arg(long)]
+        capability: String,
+        #[arg(long)]
+        target: Option<String>,
+        #[arg(long)]
+        query: Option<String>,
+        #[arg(long)]
+        note: Option<String>,
     },
     /// List persisted mobile command receipts
     Commands {
@@ -3052,6 +3067,9 @@ async fn main() -> Result<()> {
                 MobileAction::Runtime { id } => {
                     commands::mobile::node_runtime(&workspace_root, &id).await
                 }
+                MobileAction::Capabilities { id } => {
+                    commands::mobile::node_capabilities(&workspace_root, &id).await
+                }
                 MobileAction::Heartbeat {
                     id,
                     app_state,
@@ -3162,6 +3180,25 @@ async fn main() -> Result<()> {
                             node_id,
                             battery_percent,
                             pending_change_count,
+                        },
+                    )
+                    .await
+                }
+                MobileAction::PreviewCapability {
+                    node_id,
+                    capability,
+                    target,
+                    query,
+                    note,
+                } => {
+                    commands::mobile::preview_capability(
+                        &workspace_root,
+                        commands::mobile::MobileCapabilityPreviewRequest {
+                            node_id,
+                            capability,
+                            target,
+                            query,
+                            note,
                         },
                     )
                     .await

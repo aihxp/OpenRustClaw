@@ -701,6 +701,7 @@
             <div class="action-row">
               <button id="mobile-runtime-heartbeat">Heartbeat</button>
               <button class="secondary" id="mobile-runtime-refresh">Refresh Runtime</button>
+              <button class="secondary" id="mobile-capabilities-refresh">Refresh Capabilities</button>
             </div>
             <input id="mobile-runtime-reason" type="text" placeholder="operator reason" />
             <div class="action-row">
@@ -709,6 +710,7 @@
             </div>
           </div>
           <div class="surface"><pre id="mobile-node-detail">Select a mobile node to inspect.</pre></div>
+          <div class="surface" style="margin-top: 12px"><pre id="mobile-node-capabilities">No mobile capabilities loaded yet.</pre></div>
         </article>
         <article class="panel span-6">
           <h2>Mobile Preview</h2>
@@ -724,6 +726,17 @@
             <textarea id="mobile-notification-body" rows="2" spellcheck="false" placeholder="notification body"></textarea>
             <div class="action-row">
               <button class="secondary" id="mobile-preview-notification">Preview Notification</button>
+            </div>
+            <div class="action-row">
+              <input id="mobile-capability-name" type="text" placeholder="camera | location | photos | calendar | sms" />
+              <input id="mobile-capability-target" type="text" placeholder="optional target / recipient" />
+            </div>
+            <div class="action-row">
+              <input id="mobile-capability-query" type="text" placeholder="optional query / filter" />
+              <input id="mobile-capability-note" type="text" placeholder="optional operator note" />
+            </div>
+            <div class="action-row">
+              <button class="secondary" id="mobile-preview-capability">Preview Capability</button>
             </div>
           </div>
           <div class="surface" style="margin-top: 12px"><pre id="mobile-preview-result">No mobile preview executed yet.</pre></div>
@@ -1610,12 +1623,14 @@
       }
 
       async function inspectMobileNode(id) {
-        const [manifest, status, runtime] = await Promise.all([
+        const [manifest, status, runtime, capabilities] = await Promise.all([
           fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}`),
           fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}/status`),
           fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}/runtime`),
+          fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}/capabilities`),
         ]);
         setText("mobile-node-detail", { manifest, status, runtime });
+        setText("mobile-node-capabilities", capabilities);
         document.getElementById("mobile-source-node").value = id;
         document.getElementById("mobile-command-node").value = id;
         document.getElementById("mobile-runtime-app-state").value = runtime.app_state || "";
@@ -1703,6 +1718,29 @@
             node_id: document.getElementById("mobile-source-node").value.trim(),
             battery_percent: 50,
             pending_change_count: 1,
+          }),
+        });
+        setText("mobile-preview-result", result);
+      }
+
+      async function refreshMobileCapabilities() {
+        const id = document.getElementById("mobile-source-node").value.trim();
+        if (!id) {
+          throw new Error("Select a mobile node first.");
+        }
+        const result = await fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}/capabilities`);
+        setText("mobile-node-capabilities", result);
+      }
+
+      async function previewMobileCapability() {
+        const result = await fetchJson("/control/mobile/capabilities/preview", {
+          method: "POST",
+          body: JSON.stringify({
+            node_id: document.getElementById("mobile-source-node").value.trim(),
+            capability: document.getElementById("mobile-capability-name").value.trim(),
+            target: emptyToNull(document.getElementById("mobile-capability-target").value),
+            query: emptyToNull(document.getElementById("mobile-capability-query").value),
+            note: emptyToNull(document.getElementById("mobile-capability-note").value),
           }),
         });
         setText("mobile-preview-result", result);
@@ -2484,6 +2522,13 @@
           setText("mobile-node-detail", { error: error.message });
         }
       });
+      document.getElementById("mobile-capabilities-refresh").addEventListener("click", async () => {
+        try {
+          await refreshMobileCapabilities();
+        } catch (error) {
+          setText("mobile-node-capabilities", { error: error.message });
+        }
+      });
       document.getElementById("mobile-runtime-heartbeat").addEventListener("click", async () => {
         try {
           await heartbeatMobileNode();
@@ -2536,6 +2581,13 @@
       document.getElementById("mobile-preview-sync").addEventListener("click", async () => {
         try {
           await previewMobileSync();
+        } catch (error) {
+          setText("mobile-preview-result", { error: error.message });
+        }
+      });
+      document.getElementById("mobile-preview-capability").addEventListener("click", async () => {
+        try {
+          await previewMobileCapability();
         } catch (error) {
           setText("mobile-preview-result", { error: error.message });
         }
