@@ -1251,15 +1251,13 @@ Completed:
   - `openrustclaw skills invoke <name>` reuses the compiled cache instead of reparsing raw `SKILL.md`,
   - `/control/skills/{name}/invoke` and `/control/ui` expose the same bounded summary/detail/reference invocation lane,
   - blocked compiled skills remain redacted rather than pretending executable runtime parity already exists.
+- [x] The long-term Rust-native extension model is now explicitly defined and emitted from the compile pipeline:
+  - compiled skills now also emit `extension_manifest.json` beside the cached help/schema artifacts,
+  - the manifest defines the Rust-native contract for WASI components, manifest-driven capability declarations, background services, command hooks, and tool injection without overstating current execution parity,
+  - `openrustclaw skills list-extensions|inspect-extension`, `/control/skills/extensions...`, and `/control/ui` all expose the same manifest shape for operator inspection.
 
 Remaining:
 
-- [ ] Define the long-term Rust-native extension model:
-  - WASI component plugins,
-  - manifest-driven capability declarations,
-  - background services,
-  - command hooks,
-  - tool injection.
 - [ ] Replace or supersede JavaScript/TypeScript plugin-host expectations with Rust/WASM plugin parity.
 - [ ] Add plugin parity for:
   - agent tools,

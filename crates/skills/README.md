@@ -8,8 +8,10 @@ The skills crate provides:
 
 - **Skill Registry**: Manage available skills
 - **Skill Loader**: Load skills from various sources
-- **Skill Sandbox**: WASM sandbox scaffolding and capability checks
+- **Skill Compiler**: Emit cached help/schema/extension artifacts under `.claw/skills/compiled/`
+- **Skill Sandbox**: Real WASM sandbox execution plus capability checks
 - **Skill Marketplace**: ClawHub registry integration plus marketplace scaffolding
+- **Extension Manifest Layer**: Define Rust-native extension/runtime contracts for later Phase 7 work
 
 ## Skill Structure
 
@@ -26,25 +28,14 @@ capabilities:
 entrypoint: skill.wasm
 ```
 
-## Creating a Skill
-
-```rust
-use openrustclaw_skills::{Skill, SkillManifest};
-
-let manifest = SkillManifest {
-    name: "weather".to_string(),
-    version: "1.0.0".to_string(),
-    description: "Get weather information".to_string(),
-    capabilities: vec!["http_client".to_string()],
-};
-
-let skill = Skill::new(manifest, wasm_bytes)?;
-```
-
 ## Security
 
-The crate currently provides capability metadata and verification plumbing.
-The WASM executor is planned, but not yet implemented.
+The crate now provides:
+
+- capability metadata and verification plumbing
+- compile-time scan reports and blocked-status handling
+- a real WASM executor with timeout and memory limits
+- explicit extension manifests for future Rust-native plugin/runtime parity
 
 ## License
 

@@ -40,12 +40,22 @@ flowchart TB
 
 The current operator surfaces for skills/extensions are shared across CLI, typed control APIs, MCP, and the Web Control UI:
 
-- CLI: `openrustclaw skills list|compile|refresh|inspect-compiled|invoke|search|install|update|uninstall|verify|popular|trending`
-- Control API: `/control/skills...`, including `/control/skills/{name}/invoke`
+- CLI: `openrustclaw skills list|list-extensions|compile|refresh|inspect-compiled|inspect-extension|invoke|search|install|update|uninstall|verify|popular|trending`
+- Control API: `/control/skills...`, including `/control/skills/extensions...` and `/control/skills/{name}/invoke`
 - MCP: `list_compiled_skills`, `inspect_compiled_skill`, plus dynamic `skill.<name>.summary|details|reference...` tools from the compiled skill cache
 - Control UI: `/control/ui` extension discovery and installed-extension management panels
 
 `openrustclaw skills invoke <name>` is intentionally bounded today. It reuses the compiled artifact cache to return the generated CLI/help bundle, optional detail payloads, and safe reference reads under the skill root. It does not claim arbitrary script execution or full plugin-runtime parity yet.
+
+The compile pipeline now also emits `.claw/skills/compiled/<skill>/extension_manifest.json`. That manifest is the durable Rust-native extension contract for this later Phase 7 work:
+
+- manifest-driven capability declarations
+- command hooks
+- tool injection
+- background services
+- WASI component bindings
+
+Today the manifest is for inspection and routing, not full runtime execution. It gives operators and future runtimes one stable shape without pretending JavaScript/TypeScript-style plugin hosting is already matched.
 
 ---
 

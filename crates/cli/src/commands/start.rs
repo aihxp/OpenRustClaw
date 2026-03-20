@@ -2703,6 +2703,14 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             "/control/skills/compiled/{name}",
             get(control_compiled_skill_detail_handler),
         )
+        .route(
+            "/control/skills/extensions",
+            get(control_extension_manifests_handler),
+        )
+        .route(
+            "/control/skills/extensions/{name}",
+            get(control_extension_manifest_handler),
+        )
         .route("/control/skills/search", get(control_skills_search_handler))
         .route(
             "/control/skills/popular",
@@ -3330,11 +3338,13 @@ async fn control_skill_detail_handler(AxumPath(name): AxumPath<String>) -> impl 
     match skills::installed_skill_detail_data(&name).await {
         Ok(skill) => {
             let compiled = skills::compiled_skill_detail_data(&name).await.ok();
+            let extension_manifest = skills::extension_manifest_data(&name).await.ok();
             (
                 StatusCode::OK,
                 Json(serde_json::json!({
                     "skill": skill,
                     "compiled": compiled,
+                    "extension_manifest": extension_manifest,
                 })),
             )
                 .into_response()
@@ -3444,6 +3454,32 @@ async fn control_compiled_skill_detail_handler(
 ) -> impl IntoResponse {
     match skills::compiled_skill_detail_data(&name).await {
         Ok(compiled) => (StatusCode::OK, Json(serde_json::json!(compiled))).into_response(),
+        Err(error) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": error.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
+async fn control_extension_manifests_handler() -> impl IntoResponse {
+    match skills::extension_manifests_data().await {
+        Ok(extensions) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "extensions": extensions })),
+        )
+            .into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": error.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
+async fn control_extension_manifest_handler(AxumPath(name): AxumPath<String>) -> impl IntoResponse {
+    match skills::extension_manifest_data(&name).await {
+        Ok(extension) => (StatusCode::OK, Json(serde_json::json!(extension))).into_response(),
         Err(error) => (
             StatusCode::NOT_FOUND,
             Json(serde_json::json!({ "error": error.to_string() })),

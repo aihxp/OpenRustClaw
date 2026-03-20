@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::declared_sensitive_capability_names;
+use crate::extension::build_extension_manifest;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -64,6 +65,10 @@ pub struct CompiledSkillManifest {
     pub argument_hint: Option<String>,
     pub scripts: Vec<String>,
     pub references: Vec<String>,
+    pub declared_wasi_components: Vec<String>,
+    pub declared_background_services: Vec<String>,
+    pub declared_command_hooks: Vec<String>,
+    pub declared_tool_injections: Vec<String>,
     pub compiled_at: DateTime<Utc>,
 }
 
@@ -116,6 +121,10 @@ struct ParsedSkillDocument {
     argument_hint: Option<String>,
     capabilities: Vec<String>,
     allowed_tools: Vec<String>,
+    declared_wasi_components: Vec<String>,
+    declared_background_services: Vec<String>,
+    declared_command_hooks: Vec<String>,
+    declared_tool_injections: Vec<String>,
     body: String,
 }
 
@@ -186,6 +195,10 @@ pub fn compile_skill_file(
         argument_hint: parsed.argument_hint.clone(),
         scripts: scripts.clone(),
         references: references.clone(),
+        declared_wasi_components: parsed.declared_wasi_components.clone(),
+        declared_background_services: parsed.declared_background_services.clone(),
+        declared_command_hooks: parsed.declared_command_hooks.clone(),
+        declared_tool_injections: parsed.declared_tool_injections.clone(),
         compiled_at,
     };
     let mcp_schema = CompiledMcpSchema {
@@ -267,6 +280,10 @@ pub fn compile_skill_to_dir(
     write_json(skill_root.join("mcp_schema.json"), &artifact.mcp_schema)?;
     write_json(skill_root.join("cli_schema.json"), &artifact.cli_schema)?;
     write_json(skill_root.join("scan_report.json"), &artifact.scan_report)?;
+    write_json(
+        skill_root.join("extension_manifest.json"),
+        &build_extension_manifest(&artifact, output_root),
+    )?;
     Ok(artifact)
 }
 
@@ -339,6 +356,11 @@ fn parse_skill_document(path: &Path, content: &str) -> ParsedSkillDocument {
     let argument_hint = field_string(&fields, &["argument-hint", "argument_hint"]);
     let capabilities = field_list(&fields, &["capabilities"]);
     let allowed_tools = field_list(&fields, &["allowed-tools", "allowed_tools"]);
+    let declared_wasi_components = field_list(&fields, &["wasi-components", "wasi_components"]);
+    let declared_background_services =
+        field_list(&fields, &["background-services", "background_services"]);
+    let declared_command_hooks = field_list(&fields, &["command-hooks", "command_hooks"]);
+    let declared_tool_injections = field_list(&fields, &["tool-injections", "tool_injections"]);
     let name = field_string(&fields, &["name"]).unwrap_or_else(|| title.to_string());
 
     ParsedSkillDocument {
@@ -349,6 +371,10 @@ fn parse_skill_document(path: &Path, content: &str) -> ParsedSkillDocument {
         argument_hint,
         capabilities,
         allowed_tools,
+        declared_wasi_components,
+        declared_background_services,
+        declared_command_hooks,
+        declared_tool_injections,
         body: body.trim().to_string(),
     }
 }
@@ -721,6 +747,14 @@ name: my-skill
 description: "Review repository hygiene"
 version: "1.2.0"
 argument-hint: "<repo> [--fix]"
+wasi-components:
+  - repo-auditor
+background-services:
+  - repo-watch
+command-hooks:
+  - post_install
+tool-injections:
+  - repo_audit
 allowed-tools:
   - Bash
   - Read
@@ -778,6 +812,28 @@ openrustclaw skills invoke my-skill repo --fix
                 .join("my-skill")
                 .join("help_index.json")
                 .exists()
+        );
+        assert!(
+            output_root
+                .join("my-skill")
+                .join("extension_manifest.json")
+                .exists()
+        );
+        assert_eq!(
+            artifact.manifest.declared_wasi_components,
+            vec!["repo-auditor"]
+        );
+        assert_eq!(
+            artifact.manifest.declared_background_services,
+            vec!["repo-watch"]
+        );
+        assert_eq!(
+            artifact.manifest.declared_command_hooks,
+            vec!["post_install"]
+        );
+        assert_eq!(
+            artifact.manifest.declared_tool_injections,
+            vec!["repo_audit"]
         );
     }
 

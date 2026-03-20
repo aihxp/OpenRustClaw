@@ -13,9 +13,10 @@ use openrustclaw_core::types::SkillSource;
 use openrustclaw_scheduler::DurableEventBus;
 use openrustclaw_security::SkillVerifier;
 use openrustclaw_skills::{
-    ClawHubRegistry, CompiledSkillArtifact, CompiledSkillManifest, SearchFilters, SortBy,
-    compile_skill_to_dir, list_compiled_manifests, load_compiled_artifact,
-    normalize_capability_names, remove_compiled_artifact,
+    ClawHubRegistry, CompiledSkillArtifact, CompiledSkillManifest, ExtensionManifest,
+    SearchFilters, SortBy, compile_skill_to_dir, list_compiled_manifests, list_extension_manifests,
+    load_compiled_artifact, load_extension_manifest, normalize_capability_names,
+    remove_compiled_artifact,
 };
 
 fn parse_hex_bytes(input: &str) -> Result<Vec<u8>> {
@@ -631,6 +632,26 @@ pub async fn compiled_skill_detail_data(name: &str) -> Result<CompiledSkillArtif
     load_compiled_artifact(&root, name)
         .map_err(|error| anyhow::anyhow!(error.to_string()))
         .with_context(|| format!("Failed to load compiled skill '{}'", name))
+}
+
+pub async fn extension_manifests_data() -> Result<Vec<ExtensionManifest>> {
+    let root = compiled_skill_root();
+    list_extension_manifests(&root)
+        .map_err(|error| anyhow::anyhow!(error.to_string()))
+        .context("Failed to load compiled extension manifests")
+}
+
+pub async fn extension_manifest_data(name: &str) -> Result<ExtensionManifest> {
+    let root = compiled_skill_root();
+    match load_extension_manifest(&root, name) {
+        Ok(manifest) => Ok(manifest),
+        Err(_) => {
+            let _ = compile_skill_by_name_internal(name).await?;
+            load_extension_manifest(&root, name)
+                .map_err(|error| anyhow::anyhow!(error.to_string()))
+                .with_context(|| format!("Failed to load extension manifest for '{}'", name))
+        }
+    }
 }
 
 async fn compiled_skill_detail_or_compile(name: &str) -> Result<CompiledSkillArtifact> {
@@ -1465,6 +1486,43 @@ pub async fn refresh_compiled() -> Result<()> {
 pub async fn inspect_compiled(name: &str) -> Result<()> {
     let artifact = compiled_skill_detail_data(name).await?;
     println!("{}", serde_json::to_string_pretty(&artifact)?);
+    Ok(())
+}
+
+/// List compiled extension manifests generated from cached skills.
+pub async fn list_extensions() -> Result<()> {
+    let manifests = extension_manifests_data().await?;
+    if manifests.is_empty() {
+        println!("No compiled extension manifests found.");
+        println!("Compile skills first with: openrustclaw skills compile");
+        return Ok(());
+    }
+
+    println!("Compiled extension manifests:");
+    for manifest in manifests {
+        println!(
+            "- {} [{}] modes={} capabilities={}",
+            manifest.name,
+            format!("{:?}", manifest.compiled_status).to_lowercase(),
+            if manifest.runtime_modes.is_empty() {
+                "-".to_string()
+            } else {
+                manifest.runtime_modes.join(",")
+            },
+            if manifest.capabilities.is_empty() {
+                "-".to_string()
+            } else {
+                manifest.capabilities.join(",")
+            }
+        );
+    }
+    Ok(())
+}
+
+/// Inspect one compiled extension manifest bundle.
+pub async fn inspect_extension(name: &str) -> Result<()> {
+    let manifest = extension_manifest_data(name).await?;
+    println!("{}", serde_json::to_string_pretty(&manifest)?);
     Ok(())
 }
 
@@ -2588,10 +2646,12 @@ mod tests {
         );
         assert_eq!(result.reference_result.as_ref().unwrap()["content"], "This");
         assert_eq!(result.reference_result.as_ref().unwrap()["truncated"], true);
-        assert!(result.invocation["help"]["body_excerpt"]
-            .as_str()
-            .unwrap()
-            .contains("Useful compiled skill."));
+        assert!(
+            result.invocation["help"]["body_excerpt"]
+                .as_str()
+                .unwrap()
+                .contains("Useful compiled skill.")
+        );
     }
 
     #[test]

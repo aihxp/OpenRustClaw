@@ -5,6 +5,7 @@
 
 pub mod capabilities;
 pub mod compiler;
+pub mod extension;
 pub mod loader;
 pub mod marketplace;
 pub mod registry;
@@ -20,6 +21,11 @@ pub use compiler::{
     CompiledSkillManifest, CompiledSkillScanFinding, CompiledSkillScanReport, CompiledSkillStatus,
     FindingSeverity, compile_skill_file, compile_skill_to_dir, list_compiled_manifests,
     load_compiled_artifact, remove_compiled_artifact,
+};
+pub use extension::{
+    ExtensionComponentBinding, ExtensionImplementationStatus, ExtensionManifest,
+    ExtensionToolBinding, ExtensionTriggerBinding, build_extension_manifest,
+    list_extension_manifests, load_extension_manifest,
 };
 pub use loader::SkillLoader;
 pub use marketplace::{MarketplaceClient, MarketplaceListing};

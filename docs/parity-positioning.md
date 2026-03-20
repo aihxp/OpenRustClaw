@@ -19,7 +19,7 @@ The goal is not to imitate OpenClaw's internals. The goal is to deliver the same
 
 - Rust-native durability and process ownership rather than a JS-first gateway runtime
 - Stronger skill capability enforcement and verification-aware execution controls
-- Compiled skill help/schema artifacts so models can route through cached summaries instead of re-reading raw skill files every turn
+- Compiled skill help/schema artifacts plus explicit extension manifests so models and operators can route through cached summaries instead of re-reading raw skill files every turn
 - Broader multi-provider model support
 - First-class MCP and `mcp2-cli` workflows
 - Stricter runtime/docs truthfulness and CI gates around shipped features
@@ -53,6 +53,7 @@ LangGraph may execute a bounded workflow run. It should not be the only durabili
 - Full mobile nodes/runtime capability flows beyond the newly shipped bounded command lane
 - Full live voice runtime parity beyond the shipped note-transcription/operator lane
 - Broader extension/plugin-channel parity beyond the shipped Rust-native Mattermost channel
+- Full executable plugin parity beyond the newly defined Rust-native extension manifest layer
 - Optional deferred channel scope such as Feishu/Lark if the product scope expands to include it
 
 These are parity gaps and are tracked as open work in [parity-matrix.md](parity-matrix.md) and [roadmap.md](roadmap.md).
