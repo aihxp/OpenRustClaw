@@ -1,16 +1,18 @@
-use std::collections::{HashSet, VecDeque};
+use std::collections::{BTreeMap, HashSet, VecDeque};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use openrustclaw_automation::browser::{
-    LoadState, PdfOptions, ScreenshotFormat, ScreenshotOptions,
+    Cookie, LoadState, PdfOptions, ScreenshotFormat, ScreenshotOptions,
 };
-use openrustclaw_automation::{Browser, BrowserConfig};
+use openrustclaw_automation::{Browser, BrowserConfig, Page};
 use regex::Regex;
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use tokio::process::Command;
+use tokio::time::{Duration, timeout};
 use uuid::Uuid;
 use walkdir::WalkDir;
 
@@ -20,9 +22,118 @@ fn default_extract_kind() -> String {
     "text".to_string()
 }
 
+fn default_browser_inspect_kind() -> String {
+    "snapshot".to_string()
+}
+
+fn default_browser_backend() -> String {
+    "native_cdp".to_string()
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BrowserBackendKind {
+    NativeCdp,
+    AgentBrowserCli,
+}
+
+impl BrowserBackendKind {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::NativeCdp => "native_cdp",
+            Self::AgentBrowserCli => "agent_browser_cli",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BrowserOpenSessionRequest {
+    #[serde(default)]
+    pub backend: Option<String>,
+    #[serde(default)]
+    pub session_id: Option<String>,
+    #[serde(default)]
+    pub label: Option<String>,
+    #[serde(default)]
+    pub timeout_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BrowserInspectRequest {
+    pub url: String,
+    #[serde(default = "default_browser_backend")]
+    pub backend: String,
+    #[serde(default = "default_browser_inspect_kind")]
+    pub kind: String,
+    #[serde(default)]
+    pub session_id: Option<String>,
+    #[serde(default)]
+    pub selector: Option<String>,
+    #[serde(default)]
+    pub interactive_only: bool,
+    #[serde(default)]
+    pub snapshot_depth: Option<usize>,
+    #[serde(default)]
+    pub wait_until: Option<String>,
+    #[serde(default)]
+    pub timeout_ms: Option<u64>,
+    #[serde(default)]
+    pub path: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BrowserRunSequenceRequest {
+    #[serde(default = "default_browser_backend")]
+    pub backend: String,
+    #[serde(default)]
+    pub session_id: Option<String>,
+    #[serde(default)]
+    pub timeout_ms: Option<u64>,
+    #[serde(default)]
+    pub path: Option<String>,
+    #[serde(default)]
+    pub steps: Vec<BrowserActionStep>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BrowserActionStep {
+    pub action: String,
+    #[serde(default)]
+    pub url: Option<String>,
+    #[serde(default)]
+    pub selector: Option<String>,
+    #[serde(default)]
+    pub text: Option<String>,
+    #[serde(default)]
+    pub key: Option<String>,
+    #[serde(default)]
+    pub values: Option<Vec<String>>,
+    #[serde(default)]
+    pub wait_ms: Option<u64>,
+    #[serde(default)]
+    pub what: Option<String>,
+    #[serde(default)]
+    pub max_chars: Option<usize>,
+    #[serde(default)]
+    pub wait_until: Option<String>,
+    #[serde(default)]
+    pub path: Option<String>,
+    #[serde(default)]
+    pub format: Option<String>,
+    #[serde(default)]
+    pub full_page: Option<bool>,
+    #[serde(default)]
+    pub storage_key: Option<String>,
+    #[serde(default)]
+    pub storage_value: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BrowserNavigateRequest {
     pub url: String,
+    #[serde(default = "default_browser_backend")]
+    pub backend: String,
+    #[serde(default)]
+    pub session_id: Option<String>,
     #[serde(default)]
     pub wait_until: Option<String>,
     #[serde(default)]
@@ -32,6 +143,10 @@ pub struct BrowserNavigateRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BrowserExtractRequest {
     pub url: String,
+    #[serde(default = "default_browser_backend")]
+    pub backend: String,
+    #[serde(default)]
+    pub session_id: Option<String>,
     #[serde(default = "default_extract_kind")]
     pub what: String,
     #[serde(default)]
@@ -49,6 +164,10 @@ pub struct BrowserExtractRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BrowserScreenshotRequest {
     pub url: String,
+    #[serde(default = "default_browser_backend")]
+    pub backend: String,
+    #[serde(default)]
+    pub session_id: Option<String>,
     #[serde(default)]
     pub path: Option<String>,
     #[serde(default)]
@@ -68,6 +187,10 @@ pub struct BrowserScreenshotRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BrowserPdfRequest {
     pub url: String,
+    #[serde(default = "default_browser_backend")]
+    pub backend: String,
+    #[serde(default)]
+    pub session_id: Option<String>,
     #[serde(default)]
     pub path: Option<String>,
     #[serde(default)]
@@ -179,23 +302,125 @@ pub struct BrowserArtifactSummary {
     pub modified_at: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BrowserSessionSummary {
+    pub id: String,
+    #[serde(default)]
+    pub label: Option<String>,
+    pub backend: String,
+    pub created_at: String,
+    pub updated_at: String,
+    pub state_path: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct BrowserInspectResult {
+    pub backend: String,
+    pub session_id: Option<String>,
+    pub url: String,
+    pub title: String,
+    pub kind: String,
+    pub data: Value,
+    pub artifact_path: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct BrowserActionStepResult {
+    pub index: usize,
+    pub action: String,
+    pub ok: bool,
+    pub detail: Value,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct BrowserRunSequenceResult {
+    pub backend: String,
+    pub session_id: Option<String>,
+    pub final_url: String,
+    pub title: String,
+    pub steps: Vec<BrowserActionStepResult>,
+    pub artifact_path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct BrowserSessionRecord {
+    pub id: String,
+    #[serde(default)]
+    pub label: Option<String>,
+    pub backend: String,
+    pub created_at: String,
+    pub updated_at: String,
+    pub state_path: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+struct BrowserSessionState {
+    #[serde(default)]
+    pub cookies: Vec<Cookie>,
+    #[serde(default)]
+    pub local_storage: BTreeMap<String, String>,
+    #[serde(default)]
+    pub session_storage: BTreeMap<String, String>,
+}
+
 pub async fn navigate(
     workspace_root: &Path,
     request: BrowserNavigateRequest,
 ) -> Result<BrowserNavigateResult> {
-    let browser = new_browser(workspace_root, request.timeout_ms).await?;
-    let backend = browser.config().automation.browser.to_string();
-    let page = open_page(&browser, &request.url, request.wait_until.as_deref()).await?;
-    let result = BrowserNavigateResult {
-        backend,
-        url: page
-            .url()
-            .await
-            .unwrap_or_else(|_| normalize_url(&request.url)),
-        title: page.title().await.unwrap_or_default(),
-    };
-    browser.close().await?;
-    Ok(result)
+    let backend = parse_browser_backend(Some(request.backend.as_str()))?;
+    let session = load_session_for_request(workspace_root, request.session_id.as_deref())?;
+    match backend {
+        BrowserBackendKind::NativeCdp => {
+            let browser = new_browser(workspace_root, request.timeout_ms).await?;
+            let session_state = load_session_state_for_record(workspace_root, session.as_ref())?;
+            let page = open_page(
+                &browser,
+                &request.url,
+                request.wait_until.as_deref(),
+                session_state.as_ref(),
+            )
+            .await?;
+            let result = BrowserNavigateResult {
+                backend: backend.as_str().to_string(),
+                url: page
+                    .url()
+                    .await
+                    .unwrap_or_else(|_| normalize_url(&request.url)),
+                title: page.title().await.unwrap_or_default(),
+            };
+            if let Some(record) = session.as_ref() {
+                persist_page_session_state(workspace_root, record, &page, session_state.as_ref())
+                    .await?;
+            }
+            browser.close().await?;
+            Ok(result)
+        }
+        BrowserBackendKind::AgentBrowserCli => {
+            let normalized = normalize_url(&request.url);
+            let output = agent_browser_open_url(
+                workspace_root,
+                session.as_ref(),
+                request.timeout_ms,
+                &normalized,
+            )
+            .await?;
+            Ok(BrowserNavigateResult {
+                backend: backend.as_str().to_string(),
+                url: output
+                    .get("data")
+                    .and_then(|data| data.get("url"))
+                    .and_then(Value::as_str)
+                    .unwrap_or(&request.url)
+                    .to_string(),
+                title: output
+                    .get("data")
+                    .and_then(|data| data.get("title"))
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string(),
+            })
+        }
+    }
 }
 
 pub async fn read_page(
@@ -296,204 +521,294 @@ pub async fn extract(
     workspace_root: &Path,
     request: BrowserExtractRequest,
 ) -> Result<BrowserExtractResult> {
-    let browser = new_browser(workspace_root, request.timeout_ms).await?;
-    let backend = browser.config().automation.browser.to_string();
-    let page = open_page(&browser, &request.url, request.wait_until.as_deref()).await?;
-    let title = page.title().await.unwrap_or_default();
-    let url = page
-        .url()
-        .await
-        .unwrap_or_else(|_| normalize_url(&request.url));
-    let what = request.what.trim().to_lowercase();
-    let max_results = request.max_results.unwrap_or(100);
-    let max_chars = request.max_chars.unwrap_or(4000);
-
-    let data = match what.as_str() {
-        "html" => Value::String(truncate_string(page.content().await?, max_chars)),
-        "links" => {
-            let value = page
-                .evaluate(
-                    r#"
-                    Array.from(document.querySelectorAll('a[href]')).map(a => ({
-                        text: (a.textContent || '').trim(),
-                        href: a.href,
-                        title: a.title || ''
-                    }))
-                    "#,
-                )
-                .await?;
-            limit_value_array(value, max_results)
+    let backend = parse_browser_backend(Some(request.backend.as_str()))?;
+    let session = load_session_for_request(workspace_root, request.session_id.as_deref())?;
+    match backend {
+        BrowserBackendKind::NativeCdp => {
+            let browser = new_browser(workspace_root, request.timeout_ms).await?;
+            let session_state = load_session_state_for_record(workspace_root, session.as_ref())?;
+            let page = open_page(
+                &browser,
+                &request.url,
+                request.wait_until.as_deref(),
+                session_state.as_ref(),
+            )
+            .await?;
+            let title = page.title().await.unwrap_or_default();
+            let url = page
+                .url()
+                .await
+                .unwrap_or_else(|_| normalize_url(&request.url));
+            let what = request.what.trim().to_lowercase();
+            let data = extract_from_page(&page, &request).await?;
+            if let Some(record) = session.as_ref() {
+                persist_page_session_state(workspace_root, record, &page, session_state.as_ref())
+                    .await?;
+            }
+            browser.close().await?;
+            Ok(BrowserExtractResult {
+                backend: backend.as_str().to_string(),
+                url,
+                title,
+                what,
+                data,
+            })
         }
-        "images" => {
-            let value = page
-                .evaluate(
-                    r#"
-                    Array.from(document.querySelectorAll('img')).map(img => ({
-                        src: img.src,
-                        alt: img.alt || '',
-                        width: img.naturalWidth || null,
-                        height: img.naturalHeight || null
-                    })).filter(img => img.src)
-                    "#,
-                )
-                .await?;
-            limit_value_array(value, max_results)
+        BrowserBackendKind::AgentBrowserCli => {
+            let normalized = normalize_url(&request.url);
+            agent_browser_open_url(
+                workspace_root,
+                session.as_ref(),
+                request.timeout_ms,
+                &normalized,
+            )
+            .await?;
+            let data = agent_browser_extract(
+                workspace_root,
+                session.as_ref(),
+                request.timeout_ms,
+                &request,
+            )
+            .await?;
+            let title = agent_browser_get(
+                workspace_root,
+                session.as_ref(),
+                request.timeout_ms,
+                "title",
+                None,
+            )
+            .await?;
+            let url = agent_browser_get(
+                workspace_root,
+                session.as_ref(),
+                request.timeout_ms,
+                "url",
+                None,
+            )
+            .await?
+            .as_str()
+            .unwrap_or(&normalized)
+            .to_string();
+            Ok(BrowserExtractResult {
+                backend: backend.as_str().to_string(),
+                url,
+                title: title.as_str().unwrap_or_default().to_string(),
+                what: request.what.trim().to_lowercase(),
+                data,
+            })
         }
-        "headings" => {
-            let value = page
-                .evaluate(
-                    r#"
-                    Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, h6')).map(node => ({
-                        level: Number(node.tagName.substring(1)),
-                        text: (node.textContent || '').trim()
-                    }))
-                    "#,
-                )
-                .await?;
-            limit_value_array(value, max_results)
-        }
-        "selector" => {
-            let selector = request
-                .selector
-                .as_deref()
-                .context("selector is required when what=selector")?;
-            let script = format!(
-                r#"
-                Array.from(document.querySelectorAll({selector:?})).map(node => ({{
-                    tag: node.tagName.toLowerCase(),
-                    text: (node.textContent || '').trim(),
-                    html: node.innerHTML || ''
-                }}))
-                "#
-            );
-            let value = page.evaluate(&script).await?;
-            limit_value_array(value, max_results)
-        }
-        _ => {
-            let value = page
-                .evaluate(
-                    r#"
-                    (function() {
-                        const walker = document.createTreeWalker(
-                            document.body,
-                            NodeFilter.SHOW_TEXT,
-                            null,
-                            false
-                        );
-                        let text = '';
-                        let node;
-                        while ((node = walker.nextNode())) {
-                            const parent = node.parentElement;
-                            if (parent && getComputedStyle(parent).display !== 'none') {
-                                text += (node.textContent || '') + ' ';
-                            }
-                        }
-                        return text.trim().replace(/\s+/g, ' ');
-                    })()
-                    "#,
-                )
-                .await?;
-            Value::String(truncate_string(
-                value.as_str().unwrap_or_default().to_string(),
-                max_chars,
-            ))
-        }
-    };
-
-    browser.close().await?;
-    Ok(BrowserExtractResult {
-        backend,
-        url,
-        title,
-        what,
-        data,
-    })
+    }
 }
 
 pub async fn screenshot(
     workspace_root: &Path,
     request: BrowserScreenshotRequest,
 ) -> Result<BrowserScreenshotResult> {
-    let browser = new_browser(workspace_root, request.timeout_ms).await?;
-    let backend = browser.config().automation.browser.to_string();
-    let page = open_page(&browser, &request.url, request.wait_until.as_deref()).await?;
-    let title = page.title().await.unwrap_or_default();
-    let url = page
-        .url()
-        .await
-        .unwrap_or_else(|_| normalize_url(&request.url));
+    let backend = parse_browser_backend(Some(request.backend.as_str()))?;
+    let session = load_session_for_request(workspace_root, request.session_id.as_deref())?;
+    match backend {
+        BrowserBackendKind::NativeCdp => {
+            let browser = new_browser(workspace_root, request.timeout_ms).await?;
+            let session_state = load_session_state_for_record(workspace_root, session.as_ref())?;
+            let page = open_page(
+                &browser,
+                &request.url,
+                request.wait_until.as_deref(),
+                session_state.as_ref(),
+            )
+            .await?;
+            let title = page.title().await.unwrap_or_default();
+            let url = page
+                .url()
+                .await
+                .unwrap_or_else(|_| normalize_url(&request.url));
 
-    let screenshot = if let Some(selector) = request.selector.as_deref() {
-        let element = page
-            .query_selector(selector)
-            .await?
-            .with_context(|| format!("Element not found for selector '{}'", selector))?;
-        element.screenshot().await?
-    } else {
-        let format = parse_screenshot_format(request.format.as_deref());
-        page.screenshot_with_options(ScreenshotOptions {
-            format,
-            quality: request.quality.map(|value| value.min(100)),
-            clip: None,
-            full_page: request.full_page,
-            hide_selectors: vec![],
-        })
-        .await?
-    };
+            let screenshot = if let Some(selector) = request.selector.as_deref() {
+                let element = page
+                    .query_selector(selector)
+                    .await?
+                    .with_context(|| format!("Element not found for selector '{}'", selector))?;
+                element.screenshot().await?
+            } else {
+                let format = parse_screenshot_format(request.format.as_deref());
+                page.screenshot_with_options(ScreenshotOptions {
+                    format,
+                    quality: request.quality.map(|value| value.min(100)),
+                    clip: None,
+                    full_page: request.full_page,
+                    hide_selectors: vec![],
+                })
+                .await?
+            };
 
-    let resolved_path = resolve_output_path(
-        workspace_root,
-        request.path.as_deref(),
-        "screenshots",
-        match screenshot.format {
-            ScreenshotFormat::Png => "png",
-            ScreenshotFormat::Jpeg => "jpg",
-        },
-    )?;
-    screenshot.save(&resolved_path.to_string_lossy())?;
-    browser.close().await?;
+            let resolved_path = resolve_output_path(
+                workspace_root,
+                request.path.as_deref(),
+                "screenshots",
+                match screenshot.format {
+                    ScreenshotFormat::Png => "png",
+                    ScreenshotFormat::Jpeg => "jpg",
+                },
+            )?;
+            screenshot.save(&resolved_path.to_string_lossy())?;
+            if let Some(record) = session.as_ref() {
+                persist_page_session_state(workspace_root, record, &page, session_state.as_ref())
+                    .await?;
+            }
+            browser.close().await?;
 
-    Ok(BrowserScreenshotResult {
-        backend,
-        url,
-        title,
-        path: resolved_path.display().to_string(),
-        width: screenshot.width,
-        height: screenshot.height,
-        format: match screenshot.format {
-            ScreenshotFormat::Png => "png".to_string(),
-            ScreenshotFormat::Jpeg => "jpeg".to_string(),
-        },
-    })
+            Ok(BrowserScreenshotResult {
+                backend: backend.as_str().to_string(),
+                url,
+                title,
+                path: resolved_path.display().to_string(),
+                width: screenshot.width,
+                height: screenshot.height,
+                format: match screenshot.format {
+                    ScreenshotFormat::Png => "png".to_string(),
+                    ScreenshotFormat::Jpeg => "jpeg".to_string(),
+                },
+            })
+        }
+        BrowserBackendKind::AgentBrowserCli => {
+            let normalized = normalize_url(&request.url);
+            agent_browser_open_url(
+                workspace_root,
+                session.as_ref(),
+                request.timeout_ms,
+                &normalized,
+            )
+            .await?;
+            let resolved_path = resolve_output_path(
+                workspace_root,
+                request.path.as_deref(),
+                "screenshots",
+                request
+                    .format
+                    .as_deref()
+                    .map(|value| {
+                        if value.eq_ignore_ascii_case("jpeg") || value.eq_ignore_ascii_case("jpg") {
+                            "jpg"
+                        } else {
+                            "png"
+                        }
+                    })
+                    .unwrap_or("png"),
+            )?;
+            let mut args = vec![
+                "screenshot".to_string(),
+                resolved_path.display().to_string(),
+            ];
+            if request.full_page {
+                args.push("--full".to_string());
+            }
+            run_agent_browser_command(workspace_root, session.as_ref(), request.timeout_ms, &args)
+                .await?;
+            Ok(BrowserScreenshotResult {
+                backend: backend.as_str().to_string(),
+                url: normalized,
+                title: agent_browser_get(
+                    workspace_root,
+                    session.as_ref(),
+                    request.timeout_ms,
+                    "title",
+                    None,
+                )
+                .await?
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
+                path: resolved_path.display().to_string(),
+                width: 0,
+                height: 0,
+                format: request.format.unwrap_or_else(|| "png".to_string()),
+            })
+        }
+    }
 }
 
 pub async fn pdf(workspace_root: &Path, request: BrowserPdfRequest) -> Result<BrowserPdfResult> {
-    let browser = new_browser(workspace_root, request.timeout_ms).await?;
-    let backend = browser.config().automation.browser.to_string();
-    let page = open_page(&browser, &request.url, request.wait_until.as_deref()).await?;
-    let title = page.title().await.unwrap_or_default();
-    let url = page
-        .url()
-        .await
-        .unwrap_or_else(|_| normalize_url(&request.url));
-    let path = resolve_output_path(workspace_root, request.path.as_deref(), "pdf", "pdf")?;
-    let pdf = page
-        .pdf(PdfOptions {
-            format: request.format.or_else(|| Some("A4".to_string())),
-            print_background: request.print_background.unwrap_or(true),
-            ..Default::default()
-        })
-        .await?;
-    fs::write(&path, &pdf).with_context(|| format!("Failed to write '{}'", path.display()))?;
-    browser.close().await?;
+    let backend = parse_browser_backend(Some(request.backend.as_str()))?;
+    let session = load_session_for_request(workspace_root, request.session_id.as_deref())?;
+    match backend {
+        BrowserBackendKind::NativeCdp => {
+            let browser = new_browser(workspace_root, request.timeout_ms).await?;
+            let session_state = load_session_state_for_record(workspace_root, session.as_ref())?;
+            let page = open_page(
+                &browser,
+                &request.url,
+                request.wait_until.as_deref(),
+                session_state.as_ref(),
+            )
+            .await?;
+            let title = page.title().await.unwrap_or_default();
+            let url = page
+                .url()
+                .await
+                .unwrap_or_else(|_| normalize_url(&request.url));
+            let path = resolve_output_path(workspace_root, request.path.as_deref(), "pdf", "pdf")?;
+            let pdf = page
+                .pdf(PdfOptions {
+                    format: request.format.or_else(|| Some("A4".to_string())),
+                    print_background: request.print_background.unwrap_or(true),
+                    ..Default::default()
+                })
+                .await?;
+            fs::write(&path, &pdf)
+                .with_context(|| format!("Failed to write '{}'", path.display()))?;
+            if let Some(record) = session.as_ref() {
+                persist_page_session_state(workspace_root, record, &page, session_state.as_ref())
+                    .await?;
+            }
+            browser.close().await?;
 
-    Ok(BrowserPdfResult {
-        backend,
-        url,
-        title,
-        path: path.display().to_string(),
-        bytes: pdf.len(),
-    })
+            Ok(BrowserPdfResult {
+                backend: backend.as_str().to_string(),
+                url,
+                title,
+                path: path.display().to_string(),
+                bytes: pdf.len(),
+            })
+        }
+        BrowserBackendKind::AgentBrowserCli => {
+            let normalized = normalize_url(&request.url);
+            agent_browser_open_url(
+                workspace_root,
+                session.as_ref(),
+                request.timeout_ms,
+                &normalized,
+            )
+            .await?;
+            let path = resolve_output_path(workspace_root, request.path.as_deref(), "pdf", "pdf")?;
+            run_agent_browser_command(
+                workspace_root,
+                session.as_ref(),
+                request.timeout_ms,
+                &["pdf".to_string(), path.display().to_string()],
+            )
+            .await?;
+            let bytes = fs::metadata(&path)
+                .with_context(|| format!("Failed to read '{}'", path.display()))?
+                .len() as usize;
+            Ok(BrowserPdfResult {
+                backend: backend.as_str().to_string(),
+                url: normalized,
+                title: agent_browser_get(
+                    workspace_root,
+                    session.as_ref(),
+                    request.timeout_ms,
+                    "title",
+                    None,
+                )
+                .await?
+                .as_str()
+                .unwrap_or_default()
+                .to_string(),
+                path: path.display().to_string(),
+                bytes,
+            })
+        }
+    }
 }
 
 pub fn list_artifacts(workspace_root: &Path, limit: usize) -> Result<Vec<BrowserArtifactSummary>> {
@@ -540,6 +855,883 @@ pub fn list_artifacts(workspace_root: &Path, limit: usize) -> Result<Vec<Browser
     Ok(artifacts)
 }
 
+pub fn open_session(
+    workspace_root: &Path,
+    request: BrowserOpenSessionRequest,
+) -> Result<BrowserSessionSummary> {
+    let backend = parse_browser_backend(Some(request.backend.as_deref().unwrap_or("native_cdp")))?;
+    let session_id = request
+        .session_id
+        .unwrap_or_else(|| Uuid::new_v4().to_string());
+    let state_path = browser_state_root_for(workspace_root).join(format!("{session_id}.json"));
+    let now = chrono::Utc::now().to_rfc3339();
+    let record = BrowserSessionRecord {
+        id: session_id.clone(),
+        label: request.label,
+        backend: backend.as_str().to_string(),
+        created_at: now.clone(),
+        updated_at: now,
+        state_path: workspace_relative_path(workspace_root, &state_path),
+    };
+    save_session_state(&state_path, &BrowserSessionState::default())?;
+    save_session_record(workspace_root, &record)?;
+    Ok(record_to_summary(record))
+}
+
+pub fn list_sessions(workspace_root: &Path, limit: usize) -> Result<Vec<BrowserSessionSummary>> {
+    let root = browser_sessions_root_for(workspace_root);
+    if !root.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut sessions = Vec::new();
+    for entry in WalkDir::new(&root)
+        .min_depth(1)
+        .max_depth(1)
+        .into_iter()
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| entry.file_type().is_file())
+    {
+        let raw = fs::read_to_string(entry.path())
+            .with_context(|| format!("Failed to read '{}'", entry.path().display()))?;
+        let record: BrowserSessionRecord = serde_json::from_str(&raw)
+            .with_context(|| format!("Failed to parse '{}'", entry.path().display()))?;
+        sessions.push(record_to_summary(record));
+    }
+    sessions.sort_by(|left, right| right.updated_at.cmp(&left.updated_at));
+    sessions.truncate(limit);
+    Ok(sessions)
+}
+
+pub async fn inspect(
+    workspace_root: &Path,
+    request: BrowserInspectRequest,
+) -> Result<BrowserInspectResult> {
+    let backend = parse_browser_backend(Some(request.backend.as_str()))?;
+    let session = load_session_for_request(workspace_root, request.session_id.as_deref())?;
+    let result = match backend {
+        BrowserBackendKind::NativeCdp => {
+            inspect_native(workspace_root, &request, session.as_ref()).await?
+        }
+        BrowserBackendKind::AgentBrowserCli => {
+            inspect_agent_browser(workspace_root, &request, session.as_ref()).await?
+        }
+    };
+    Ok(result)
+}
+
+pub async fn run_sequence(
+    workspace_root: &Path,
+    request: BrowserRunSequenceRequest,
+) -> Result<BrowserRunSequenceResult> {
+    if request.steps.is_empty() {
+        bail!("browser action sequence requires at least one step");
+    }
+    let backend = parse_browser_backend(Some(request.backend.as_str()))?;
+    let session = load_session_for_request(workspace_root, request.session_id.as_deref())?;
+    match backend {
+        BrowserBackendKind::NativeCdp => {
+            run_native_sequence(workspace_root, &request, session.as_ref()).await
+        }
+        BrowserBackendKind::AgentBrowserCli => {
+            run_agent_browser_sequence(workspace_root, &request, session.as_ref()).await
+        }
+    }
+}
+
+fn parse_browser_backend(raw: Option<&str>) -> Result<BrowserBackendKind> {
+    let normalized = raw
+        .unwrap_or("native_cdp")
+        .trim()
+        .to_ascii_lowercase()
+        .replace('-', "_");
+    match normalized.as_str() {
+        "native" | "native_cdp" | "native_browser" | "rust" => Ok(BrowserBackendKind::NativeCdp),
+        "agent_browser" | "agent_browser_cli" | "agentbrowser" => {
+            Ok(BrowserBackendKind::AgentBrowserCli)
+        }
+        other => bail!(
+            "unsupported browser backend '{}'; expected native_cdp or agent_browser_cli",
+            other
+        ),
+    }
+}
+
+fn browser_sessions_root_for(workspace_root: &Path) -> PathBuf {
+    browser_root_for(workspace_root).join("sessions")
+}
+
+fn browser_state_root_for(workspace_root: &Path) -> PathBuf {
+    browser_root_for(workspace_root).join("state")
+}
+
+fn session_record_path(workspace_root: &Path, session_id: &str) -> PathBuf {
+    browser_sessions_root_for(workspace_root).join(format!("{session_id}.json"))
+}
+
+fn workspace_relative_path(workspace_root: &Path, path: &Path) -> String {
+    path.strip_prefix(workspace_root)
+        .unwrap_or(path)
+        .display()
+        .to_string()
+}
+
+fn absolute_workspace_path(workspace_root: &Path, path: &str) -> PathBuf {
+    let value = PathBuf::from(path);
+    if value.is_absolute() {
+        value
+    } else {
+        workspace_root.join(value)
+    }
+}
+
+fn record_to_summary(record: BrowserSessionRecord) -> BrowserSessionSummary {
+    BrowserSessionSummary {
+        id: record.id,
+        label: record.label,
+        backend: record.backend,
+        created_at: record.created_at,
+        updated_at: record.updated_at,
+        state_path: record.state_path,
+    }
+}
+
+fn save_session_record(workspace_root: &Path, record: &BrowserSessionRecord) -> Result<()> {
+    let path = session_record_path(workspace_root, &record.id);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("Failed to create '{}'", parent.display()))?;
+    }
+    fs::write(&path, serde_json::to_vec_pretty(record)?)
+        .with_context(|| format!("Failed to write '{}'", path.display()))?;
+    Ok(())
+}
+
+fn load_session_record(workspace_root: &Path, session_id: &str) -> Result<BrowserSessionRecord> {
+    let path = session_record_path(workspace_root, session_id);
+    let raw = fs::read_to_string(&path)
+        .with_context(|| format!("Failed to read '{}'", path.display()))?;
+    serde_json::from_str(&raw).with_context(|| format!("Failed to parse '{}'", path.display()))
+}
+
+fn load_session_for_request(
+    workspace_root: &Path,
+    session_id: Option<&str>,
+) -> Result<Option<BrowserSessionRecord>> {
+    match session_id {
+        Some(session_id) => Ok(Some(load_session_record(workspace_root, session_id)?)),
+        None => Ok(None),
+    }
+}
+
+fn session_state_path(workspace_root: &Path, record: &BrowserSessionRecord) -> PathBuf {
+    absolute_workspace_path(workspace_root, &record.state_path)
+}
+
+fn save_session_state(path: &Path, state: &BrowserSessionState) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("Failed to create '{}'", parent.display()))?;
+    }
+    fs::write(path, serde_json::to_vec_pretty(state)?)
+        .with_context(|| format!("Failed to write '{}'", path.display()))?;
+    Ok(())
+}
+
+fn load_session_state(path: &Path) -> Result<BrowserSessionState> {
+    if !path.exists() {
+        return Ok(BrowserSessionState::default());
+    }
+    let raw =
+        fs::read_to_string(path).with_context(|| format!("Failed to read '{}'", path.display()))?;
+    serde_json::from_str(&raw).with_context(|| format!("Failed to parse '{}'", path.display()))
+}
+
+fn load_session_state_for_record(
+    workspace_root: &Path,
+    record: Option<&BrowserSessionRecord>,
+) -> Result<Option<BrowserSessionState>> {
+    match record {
+        Some(record) => Ok(Some(load_session_state(&session_state_path(
+            workspace_root,
+            record,
+        ))?)),
+        None => Ok(None),
+    }
+}
+
+async fn persist_page_session_state(
+    workspace_root: &Path,
+    record: &BrowserSessionRecord,
+    page: &Page,
+    base_state: Option<&BrowserSessionState>,
+) -> Result<()> {
+    let mut next_state = base_state.cloned().unwrap_or_default();
+    next_state.cookies = page
+        .cookies()
+        .await
+        .unwrap_or_else(|_| next_state.cookies.clone());
+
+    let local_keys: Vec<_> = next_state.local_storage.keys().cloned().collect();
+    for key in local_keys {
+        if let Some(value) = page.local_storage(&key).await? {
+            next_state.local_storage.insert(key, value);
+        }
+    }
+    let session_keys: Vec<_> = next_state.session_storage.keys().cloned().collect();
+    for key in session_keys {
+        if let Some(value) = page.session_storage(&key).await? {
+            next_state.session_storage.insert(key, value);
+        }
+    }
+
+    save_session_state(&session_state_path(workspace_root, record), &next_state)?;
+    let mut updated = record.clone();
+    updated.updated_at = chrono::Utc::now().to_rfc3339();
+    save_session_record(workspace_root, &updated)?;
+    Ok(())
+}
+
+async fn restore_page_session_state(page: &Page, state: &BrowserSessionState) -> Result<()> {
+    for (key, value) in &state.local_storage {
+        page.set_local_storage(key, value).await?;
+    }
+    for (key, value) in &state.session_storage {
+        page.set_session_storage(key, value).await?;
+    }
+    Ok(())
+}
+
+async fn inspect_native(
+    workspace_root: &Path,
+    request: &BrowserInspectRequest,
+    session: Option<&BrowserSessionRecord>,
+) -> Result<BrowserInspectResult> {
+    let browser = new_browser(workspace_root, request.timeout_ms).await?;
+    let session_state = load_session_state_for_record(workspace_root, session)?;
+    let page = open_page(
+        &browser,
+        &request.url,
+        request.wait_until.as_deref(),
+        session_state.as_ref(),
+    )
+    .await?;
+    let title = page.title().await.unwrap_or_default();
+    let url = page
+        .url()
+        .await
+        .unwrap_or_else(|_| normalize_url(&request.url));
+    let data = inspect_page(&page, request).await?;
+    let artifact_path =
+        resolve_output_path(workspace_root, request.path.as_deref(), "inspect", "json")?;
+    fs::write(
+        &artifact_path,
+        serde_json::to_vec_pretty(&serde_json::json!({
+            "backend": BrowserBackendKind::NativeCdp.as_str(),
+            "session_id": request.session_id,
+            "url": url,
+            "title": title,
+            "kind": request.kind,
+            "data": data,
+        }))?,
+    )
+    .with_context(|| format!("Failed to write '{}'", artifact_path.display()))?;
+    if let Some(record) = session {
+        persist_page_session_state(workspace_root, record, &page, session_state.as_ref()).await?;
+    }
+    browser.close().await?;
+    Ok(BrowserInspectResult {
+        backend: BrowserBackendKind::NativeCdp.as_str().to_string(),
+        session_id: request.session_id.clone(),
+        url,
+        title,
+        kind: request.kind.clone(),
+        data,
+        artifact_path: artifact_path.display().to_string(),
+    })
+}
+
+async fn inspect_agent_browser(
+    workspace_root: &Path,
+    request: &BrowserInspectRequest,
+    session: Option<&BrowserSessionRecord>,
+) -> Result<BrowserInspectResult> {
+    let normalized = normalize_url(&request.url);
+    let open_result =
+        agent_browser_open_url(workspace_root, session, request.timeout_ms, &normalized).await?;
+    let data = agent_browser_inspect(workspace_root, session, request).await?;
+    let title = agent_browser_get(workspace_root, session, request.timeout_ms, "title", None)
+        .await?
+        .as_str()
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            open_result
+                .get("data")
+                .and_then(|data| data.get("title"))
+                .and_then(Value::as_str)
+        })
+        .unwrap_or_default()
+        .to_string();
+    let url = agent_browser_get(workspace_root, session, request.timeout_ms, "url", None)
+        .await?
+        .as_str()
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            open_result
+                .get("data")
+                .and_then(|data| data.get("url"))
+                .and_then(Value::as_str)
+        })
+        .unwrap_or(&normalized)
+        .to_string();
+    let artifact_path =
+        resolve_output_path(workspace_root, request.path.as_deref(), "inspect", "json")?;
+    fs::write(
+        &artifact_path,
+        serde_json::to_vec_pretty(&serde_json::json!({
+            "backend": BrowserBackendKind::AgentBrowserCli.as_str(),
+            "session_id": request.session_id,
+            "url": url,
+            "title": title,
+            "kind": request.kind,
+            "data": data,
+        }))?,
+    )
+    .with_context(|| format!("Failed to write '{}'", artifact_path.display()))?;
+    Ok(BrowserInspectResult {
+        backend: BrowserBackendKind::AgentBrowserCli.as_str().to_string(),
+        session_id: request.session_id.clone(),
+        url,
+        title,
+        kind: request.kind.clone(),
+        data,
+        artifact_path: artifact_path.display().to_string(),
+    })
+}
+
+async fn run_native_sequence(
+    workspace_root: &Path,
+    request: &BrowserRunSequenceRequest,
+    session: Option<&BrowserSessionRecord>,
+) -> Result<BrowserRunSequenceResult> {
+    let browser = new_browser(workspace_root, request.timeout_ms).await?;
+    let mut session_state =
+        load_session_state_for_record(workspace_root, session)?.unwrap_or_default();
+    let page = browser.new_page().await?;
+    if !session_state.cookies.is_empty() {
+        page.add_cookies(session_state.cookies.clone()).await?;
+    }
+
+    let mut results = Vec::new();
+    let mut session_applied = false;
+    for (index, step) in request.steps.iter().enumerate() {
+        let action = step.action.trim().to_ascii_lowercase();
+        let detail = match action.as_str() {
+            "navigate" => {
+                let url = step.url.as_deref().context("navigate step requires url")?;
+                page.goto(&normalize_url(url)).await?;
+                if !session_applied {
+                    restore_page_session_state(&page, &session_state).await?;
+                    if !session_state.local_storage.is_empty()
+                        || !session_state.session_storage.is_empty()
+                    {
+                        page.reload().await?;
+                    }
+                    session_applied = true;
+                }
+                page.wait_for_load_state(parse_load_state(step.wait_until.as_deref()))
+                    .await?;
+                serde_json::json!({
+                    "url": page.url().await.unwrap_or_else(|_| normalize_url(url)),
+                    "title": page.title().await.unwrap_or_default(),
+                })
+            }
+            "wait" => {
+                if let Some(selector) = step.selector.as_deref() {
+                    page.wait_for_selector(selector).await?;
+                    serde_json::json!({"selector": selector, "ready": true})
+                } else if let Some(wait_ms) = step.wait_ms {
+                    page.wait_for_timeout(wait_ms).await?;
+                    serde_json::json!({"wait_ms": wait_ms})
+                } else {
+                    bail!("wait step requires selector or wait_ms");
+                }
+            }
+            "click" => {
+                let selector = step
+                    .selector
+                    .as_deref()
+                    .context("click step requires selector")?;
+                page.click(selector).await?;
+                serde_json::json!({"selector": selector})
+            }
+            "type" => {
+                let selector = step
+                    .selector
+                    .as_deref()
+                    .context("type step requires selector")?;
+                let text = step.text.as_deref().context("type step requires text")?;
+                page.type_text(selector, text).await?;
+                serde_json::json!({"selector": selector, "text_len": text.len()})
+            }
+            "fill" => {
+                let selector = step
+                    .selector
+                    .as_deref()
+                    .context("fill step requires selector")?;
+                let text = step.text.as_deref().context("fill step requires text")?;
+                page.fill(selector, text).await?;
+                serde_json::json!({"selector": selector, "text_len": text.len()})
+            }
+            "press" => {
+                let key = step.key.as_deref().context("press step requires key")?;
+                page.press(key).await?;
+                serde_json::json!({"key": key})
+            }
+            "select" => {
+                let selector = step
+                    .selector
+                    .as_deref()
+                    .context("select step requires selector")?;
+                let values = step
+                    .values
+                    .clone()
+                    .filter(|values| !values.is_empty())
+                    .context("select step requires values")?;
+                let element = page
+                    .query_selector(selector)
+                    .await?
+                    .with_context(|| format!("Element not found for selector '{}'", selector))?;
+                element.select_option(values.clone()).await?;
+                serde_json::json!({"selector": selector, "values": values})
+            }
+            "extract" => {
+                let data = extract_from_page(
+                    &page,
+                    &BrowserExtractRequest {
+                        url: page.url().await.unwrap_or_default(),
+                        backend: BrowserBackendKind::NativeCdp.as_str().to_string(),
+                        session_id: None,
+                        what: step.what.clone().unwrap_or_else(default_extract_kind),
+                        selector: step.selector.clone(),
+                        wait_until: None,
+                        timeout_ms: request.timeout_ms,
+                        max_results: None,
+                        max_chars: step.max_chars,
+                    },
+                )
+                .await?;
+                serde_json::json!({ "data": data })
+            }
+            "screenshot" => {
+                let result = screenshot_current_page(workspace_root, &page, step).await?;
+                serde_json::to_value(result)?
+            }
+            "pdf" => {
+                let result = pdf_current_page(workspace_root, &page, step).await?;
+                serde_json::to_value(result)?
+            }
+            "set_local_storage" => {
+                let key = step
+                    .storage_key
+                    .as_deref()
+                    .context("set_local_storage step requires storage_key")?;
+                let value = step
+                    .storage_value
+                    .as_deref()
+                    .context("set_local_storage step requires storage_value")?;
+                page.set_local_storage(key, value).await?;
+                session_state
+                    .local_storage
+                    .insert(key.to_string(), value.to_string());
+                serde_json::json!({"key": key})
+            }
+            "set_session_storage" => {
+                let key = step
+                    .storage_key
+                    .as_deref()
+                    .context("set_session_storage step requires storage_key")?;
+                let value = step
+                    .storage_value
+                    .as_deref()
+                    .context("set_session_storage step requires storage_value")?;
+                page.set_session_storage(key, value).await?;
+                session_state
+                    .session_storage
+                    .insert(key.to_string(), value.to_string());
+                serde_json::json!({"key": key})
+            }
+            "reload" => {
+                page.reload().await?;
+                serde_json::json!({"reloaded": true})
+            }
+            "back" => {
+                page.go_back().await?;
+                serde_json::json!({"direction": "back"})
+            }
+            "forward" => {
+                page.go_forward().await?;
+                serde_json::json!({"direction": "forward"})
+            }
+            other => bail!("unsupported browser step action '{}'", other),
+        };
+        results.push(BrowserActionStepResult {
+            index,
+            action,
+            ok: true,
+            detail,
+        });
+    }
+
+    let final_url = page.url().await.unwrap_or_default();
+    let title = page.title().await.unwrap_or_default();
+    if let Some(record) = session {
+        persist_page_session_state(workspace_root, record, &page, Some(&session_state)).await?;
+    }
+    browser.close().await?;
+    let artifact_path =
+        resolve_output_path(workspace_root, request.path.as_deref(), "sequences", "json")?;
+    fs::write(
+        &artifact_path,
+        serde_json::to_vec_pretty(&serde_json::json!({
+            "backend": BrowserBackendKind::NativeCdp.as_str(),
+            "session_id": request.session_id,
+            "final_url": final_url,
+            "title": title,
+            "steps": results,
+        }))?,
+    )
+    .with_context(|| format!("Failed to write '{}'", artifact_path.display()))?;
+    Ok(BrowserRunSequenceResult {
+        backend: BrowserBackendKind::NativeCdp.as_str().to_string(),
+        session_id: request.session_id.clone(),
+        final_url,
+        title,
+        steps: results,
+        artifact_path: artifact_path.display().to_string(),
+    })
+}
+
+async fn run_agent_browser_sequence(
+    workspace_root: &Path,
+    request: &BrowserRunSequenceRequest,
+    session: Option<&BrowserSessionRecord>,
+) -> Result<BrowserRunSequenceResult> {
+    let mut results = Vec::new();
+    let mut last_url = String::new();
+    let mut last_title = String::new();
+    for (index, step) in request.steps.iter().enumerate() {
+        let action = step.action.trim().to_ascii_lowercase();
+        let detail = match action.as_str() {
+            "navigate" => {
+                let url = step.url.as_deref().context("navigate step requires url")?;
+                let response = agent_browser_open_url(
+                    workspace_root,
+                    session,
+                    request.timeout_ms,
+                    &normalize_url(url),
+                )
+                .await?;
+                if let Some(value) = response
+                    .get("data")
+                    .and_then(|data| data.get("url"))
+                    .and_then(Value::as_str)
+                {
+                    last_url = value.to_string();
+                }
+                if let Some(value) = response
+                    .get("data")
+                    .and_then(|data| data.get("title"))
+                    .and_then(Value::as_str)
+                {
+                    last_title = value.to_string();
+                }
+                response
+            }
+            "wait" => {
+                let wait_target = step
+                    .selector
+                    .clone()
+                    .or_else(|| step.wait_ms.map(|value| value.to_string()))
+                    .context("wait step requires selector or wait_ms")?;
+                run_agent_browser_command(
+                    workspace_root,
+                    session,
+                    request.timeout_ms,
+                    &["wait".to_string(), wait_target],
+                )
+                .await?
+            }
+            "click" => {
+                let selector = step
+                    .selector
+                    .as_deref()
+                    .context("click step requires selector")?;
+                run_agent_browser_command(
+                    workspace_root,
+                    session,
+                    request.timeout_ms,
+                    &["click".to_string(), selector.to_string()],
+                )
+                .await?
+            }
+            "type" => {
+                let selector = step
+                    .selector
+                    .as_deref()
+                    .context("type step requires selector")?;
+                let text = step.text.as_deref().context("type step requires text")?;
+                run_agent_browser_command(
+                    workspace_root,
+                    session,
+                    request.timeout_ms,
+                    &["type".to_string(), selector.to_string(), text.to_string()],
+                )
+                .await?
+            }
+            "fill" => {
+                let selector = step
+                    .selector
+                    .as_deref()
+                    .context("fill step requires selector")?;
+                let text = step.text.as_deref().context("fill step requires text")?;
+                run_agent_browser_command(
+                    workspace_root,
+                    session,
+                    request.timeout_ms,
+                    &["fill".to_string(), selector.to_string(), text.to_string()],
+                )
+                .await?
+            }
+            "press" => {
+                let key = step.key.as_deref().context("press step requires key")?;
+                run_agent_browser_command(
+                    workspace_root,
+                    session,
+                    request.timeout_ms,
+                    &["press".to_string(), key.to_string()],
+                )
+                .await?
+            }
+            "select" => {
+                let selector = step
+                    .selector
+                    .as_deref()
+                    .context("select step requires selector")?;
+                let values = step
+                    .values
+                    .clone()
+                    .filter(|values| !values.is_empty())
+                    .context("select step requires values")?;
+                let mut args = vec!["select".to_string(), selector.to_string()];
+                args.extend(values);
+                run_agent_browser_command(workspace_root, session, request.timeout_ms, &args)
+                    .await?
+            }
+            "extract" => {
+                let extract_request = BrowserExtractRequest {
+                    url: agent_browser_get(
+                        workspace_root,
+                        session,
+                        request.timeout_ms,
+                        "url",
+                        None,
+                    )
+                    .await?
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_string(),
+                    backend: BrowserBackendKind::AgentBrowserCli.as_str().to_string(),
+                    session_id: request.session_id.clone(),
+                    what: step.what.clone().unwrap_or_else(default_extract_kind),
+                    selector: step.selector.clone(),
+                    wait_until: None,
+                    timeout_ms: request.timeout_ms,
+                    max_results: None,
+                    max_chars: step.max_chars,
+                };
+                serde_json::json!({
+                    "data": agent_browser_extract(workspace_root, session, request.timeout_ms, &extract_request).await?
+                })
+            }
+            "screenshot" => {
+                let path = resolve_output_path(
+                    workspace_root,
+                    step.path.as_deref(),
+                    "screenshots",
+                    step.format
+                        .as_deref()
+                        .map(|value| {
+                            if value.eq_ignore_ascii_case("jpeg")
+                                || value.eq_ignore_ascii_case("jpg")
+                            {
+                                "jpg"
+                            } else {
+                                "png"
+                            }
+                        })
+                        .unwrap_or("png"),
+                )?;
+                let mut args = vec!["screenshot".to_string(), path.display().to_string()];
+                if step.full_page.unwrap_or(false) {
+                    args.push("--full".to_string());
+                }
+                run_agent_browser_command(workspace_root, session, request.timeout_ms, &args)
+                    .await?;
+                serde_json::json!({"path": path.display().to_string()})
+            }
+            "pdf" => {
+                let path = resolve_output_path(workspace_root, step.path.as_deref(), "pdf", "pdf")?;
+                run_agent_browser_command(
+                    workspace_root,
+                    session,
+                    request.timeout_ms,
+                    &["pdf".to_string(), path.display().to_string()],
+                )
+                .await?;
+                serde_json::json!({
+                    "path": path.display().to_string(),
+                    "bytes": fs::metadata(&path).map(|metadata| metadata.len()).unwrap_or(0),
+                })
+            }
+            "set_local_storage" => {
+                let key = step
+                    .storage_key
+                    .as_deref()
+                    .context("set_local_storage step requires storage_key")?;
+                let value = step
+                    .storage_value
+                    .as_deref()
+                    .context("set_local_storage step requires storage_value")?;
+                agent_browser_eval_json(
+                    workspace_root,
+                    session,
+                    request.timeout_ms,
+                    &format!(
+                        "(() => {{ localStorage.setItem({key:?}, {value:?}); return {{ key: {key:?} }}; }})()"
+                    ),
+                )
+                .await?
+            }
+            "set_session_storage" => {
+                let key = step
+                    .storage_key
+                    .as_deref()
+                    .context("set_session_storage step requires storage_key")?;
+                let value = step
+                    .storage_value
+                    .as_deref()
+                    .context("set_session_storage step requires storage_value")?;
+                agent_browser_eval_json(
+                    workspace_root,
+                    session,
+                    request.timeout_ms,
+                    &format!(
+                        "(() => {{ sessionStorage.setItem({key:?}, {value:?}); return {{ key: {key:?} }}; }})()"
+                    ),
+                )
+                .await?
+            }
+            "reload" => {
+                run_agent_browser_command(
+                    workspace_root,
+                    session,
+                    request.timeout_ms,
+                    &["reload".to_string()],
+                )
+                .await?
+            }
+            "back" => {
+                run_agent_browser_command(
+                    workspace_root,
+                    session,
+                    request.timeout_ms,
+                    &["back".to_string()],
+                )
+                .await?
+            }
+            "forward" => {
+                run_agent_browser_command(
+                    workspace_root,
+                    session,
+                    request.timeout_ms,
+                    &["forward".to_string()],
+                )
+                .await?
+            }
+            other => bail!("unsupported browser step action '{}'", other),
+        };
+        results.push(BrowserActionStepResult {
+            index,
+            action,
+            ok: true,
+            detail: detail.get("data").cloned().unwrap_or(detail),
+        });
+    }
+
+    let final_url = agent_browser_get(workspace_root, session, request.timeout_ms, "url", None)
+        .await?
+        .as_str()
+        .filter(|value| !value.is_empty())
+        .unwrap_or(&last_url)
+        .to_string();
+    let title = agent_browser_get(workspace_root, session, request.timeout_ms, "title", None)
+        .await?
+        .as_str()
+        .filter(|value| !value.is_empty())
+        .unwrap_or(&last_title)
+        .to_string();
+    let final_url = if final_url.is_empty() {
+        results
+            .iter()
+            .rev()
+            .find_map(|step| {
+                step.detail
+                    .get("url")
+                    .and_then(Value::as_str)
+                    .map(ToString::to_string)
+            })
+            .unwrap_or(final_url)
+    } else {
+        final_url
+    };
+    let title = if title.is_empty() {
+        results
+            .iter()
+            .rev()
+            .find_map(|step| {
+                step.detail
+                    .get("title")
+                    .and_then(Value::as_str)
+                    .map(ToString::to_string)
+            })
+            .unwrap_or(title)
+    } else {
+        title
+    };
+    let artifact_path =
+        resolve_output_path(workspace_root, request.path.as_deref(), "sequences", "json")?;
+    fs::write(
+        &artifact_path,
+        serde_json::to_vec_pretty(&serde_json::json!({
+            "backend": BrowserBackendKind::AgentBrowserCli.as_str(),
+            "session_id": request.session_id,
+            "final_url": final_url,
+            "title": title,
+            "steps": results,
+        }))?,
+    )
+    .with_context(|| format!("Failed to write '{}'", artifact_path.display()))?;
+    Ok(BrowserRunSequenceResult {
+        backend: BrowserBackendKind::AgentBrowserCli.as_str().to_string(),
+        session_id: request.session_id.clone(),
+        final_url,
+        title,
+        steps: results,
+        artifact_path: artifact_path.display().to_string(),
+    })
+}
+
 async fn new_browser(workspace_root: &Path, timeout_ms: Option<u64>) -> Result<Browser> {
     let mut config = BrowserConfig::default();
     config.automation.timeout_ms = timeout_ms.unwrap_or(config.automation.timeout_ms);
@@ -554,9 +1746,21 @@ async fn open_page(
     browser: &Browser,
     url: &str,
     wait_until: Option<&str>,
+    session_state: Option<&BrowserSessionState>,
 ) -> Result<openrustclaw_automation::Page> {
     let page = browser.new_page().await?;
+    if let Some(session_state) = session_state {
+        if !session_state.cookies.is_empty() {
+            page.add_cookies(session_state.cookies.clone()).await?;
+        }
+    }
     page.goto(&normalize_url(url)).await?;
+    if let Some(session_state) = session_state {
+        restore_page_session_state(&page, session_state).await?;
+        if !session_state.local_storage.is_empty() || !session_state.session_storage.is_empty() {
+            page.reload().await?;
+        }
+    }
     page.wait_for_load_state(parse_load_state(wait_until))
         .await?;
     Ok(page)
@@ -577,8 +1781,511 @@ fn parse_screenshot_format(value: Option<&str>) -> ScreenshotFormat {
     }
 }
 
+async fn extract_from_page(page: &Page, request: &BrowserExtractRequest) -> Result<Value> {
+    let what = request.what.trim().to_lowercase();
+    let max_results = request.max_results.unwrap_or(100);
+    let max_chars = request.max_chars.unwrap_or(4000);
+    let data = match what.as_str() {
+        "html" => Value::String(truncate_string(page.content().await?, max_chars)),
+        "links" => limit_value_array(page.evaluate(links_script()).await?, max_results),
+        "images" => limit_value_array(page.evaluate(images_script()).await?, max_results),
+        "headings" => limit_value_array(page.evaluate(headings_script()).await?, max_results),
+        "forms" => limit_value_array(page.evaluate(forms_script()).await?, max_results),
+        "selector" => {
+            let selector = request
+                .selector
+                .as_deref()
+                .context("selector is required when what=selector")?;
+            limit_value_array(
+                page.evaluate(&selector_extract_script(selector)).await?,
+                max_results,
+            )
+        }
+        _ => {
+            let value = page.evaluate(text_extract_script()).await?;
+            Value::String(truncate_string(
+                value.as_str().unwrap_or_default().to_string(),
+                max_chars,
+            ))
+        }
+    };
+    Ok(data)
+}
+
+async fn inspect_page(page: &Page, request: &BrowserInspectRequest) -> Result<Value> {
+    let kind = request.kind.trim().to_ascii_lowercase();
+    match kind.as_str() {
+        "links" => Ok(page.evaluate(links_script()).await?),
+        "images" => Ok(page.evaluate(images_script()).await?),
+        "headings" => Ok(page.evaluate(headings_script()).await?),
+        "forms" => Ok(page.evaluate(forms_script()).await?),
+        "html" => Ok(Value::String(page.content().await?)),
+        _ => Ok(page
+            .evaluate(&snapshot_script(
+                request.selector.as_deref(),
+                request.snapshot_depth.unwrap_or(5),
+                request.interactive_only,
+            ))
+            .await?),
+    }
+}
+
+fn links_script() -> &'static str {
+    r#"
+    Array.from(document.querySelectorAll('a[href]')).map(a => ({
+        text: (a.textContent || '').trim(),
+        href: a.href,
+        title: a.title || ''
+    }))
+    "#
+}
+
+fn images_script() -> &'static str {
+    r#"
+    Array.from(document.querySelectorAll('img')).map(img => ({
+        src: img.src,
+        alt: img.alt || '',
+        width: img.naturalWidth || null,
+        height: img.naturalHeight || null
+    })).filter(img => img.src)
+    "#
+}
+
+fn headings_script() -> &'static str {
+    r#"
+    Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, h6')).map(node => ({
+        level: Number(node.tagName.substring(1)),
+        text: (node.textContent || '').trim()
+    }))
+    "#
+}
+
+fn forms_script() -> &'static str {
+    r#"
+    Array.from(document.querySelectorAll('form')).map((form, index) => ({
+        index,
+        id: form.id || null,
+        action: form.action || null,
+        method: form.method || null,
+        inputs: Array.from(form.querySelectorAll('input, select, textarea, button')).map(input => ({
+            tag: input.tagName.toLowerCase(),
+            type: input.getAttribute('type') || null,
+            name: input.getAttribute('name') || null,
+            id: input.id || null,
+            label: input.getAttribute('aria-label') || null,
+            placeholder: input.getAttribute('placeholder') || null
+        }))
+    }))
+    "#
+}
+
+fn selector_extract_script(selector: &str) -> String {
+    format!(
+        r#"
+        Array.from(document.querySelectorAll({selector:?})).map(node => ({{
+            tag: node.tagName.toLowerCase(),
+            text: (node.textContent || '').trim(),
+            html: node.innerHTML || ''
+        }}))
+        "#
+    )
+}
+
+fn text_extract_script() -> &'static str {
+    r#"
+    (function() {
+        const walker = document.createTreeWalker(
+            document.body,
+            NodeFilter.SHOW_TEXT,
+            null,
+            false
+        );
+        let text = '';
+        let node;
+        while ((node = walker.nextNode())) {
+            const parent = node.parentElement;
+            if (parent && getComputedStyle(parent).display !== 'none') {
+                text += (node.textContent || '') + ' ';
+            }
+        }
+        return text.trim().replace(/\s+/g, ' ');
+    })()
+    "#
+}
+
+fn snapshot_script(selector: Option<&str>, depth: usize, interactive_only: bool) -> String {
+    let selector_literal = selector
+        .map(|value| format!("{value:?}"))
+        .unwrap_or_else(|| "null".to_string());
+    format!(
+        r#"
+        (function() {{
+            const scopeSelector = {selector_literal};
+            const interactiveOnly = {interactive_only};
+            const maxDepth = {depth};
+            const root = scopeSelector ? document.querySelector(scopeSelector) : document.body;
+            if (!root) {{
+                return {{ error: `selector not found: ${{scopeSelector}}` }};
+            }}
+            function summarize(node, level) {{
+                if (!node || node.nodeType !== Node.ELEMENT_NODE || level > maxDepth) {{
+                    return null;
+                }}
+                const el = node;
+                const role = el.getAttribute('role') || null;
+                const ariaLabel = el.getAttribute('aria-label') || null;
+                const interactive = !!(
+                    el.matches('a,button,input,select,textarea,[tabindex],[onclick],[contenteditable=\"true\"]')
+                    || role
+                );
+                const children = Array.from(el.children)
+                    .map(child => summarize(child, level + 1))
+                    .filter(Boolean);
+                if (interactiveOnly && !interactive && !children.length && level > 0) {{
+                    return null;
+                }}
+                const summary = {{
+                    tag: el.tagName.toLowerCase(),
+                    role,
+                    aria_label: ariaLabel,
+                    id: el.id || null,
+                    classes: typeof el.className === 'string' ? el.className : null,
+                    text: (el.innerText || el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 180) || null,
+                    href: el.href || null,
+                    name: el.getAttribute('name') || null,
+                    interactive
+                }};
+                if (children.length) {{
+                    summary.children = children;
+                }}
+                return summary;
+            }}
+            return summarize(root, 0);
+        }})()
+        "#,
+        selector_literal = selector_literal,
+        interactive_only = if interactive_only { "true" } else { "false" },
+        depth = depth
+    )
+}
+
+async fn screenshot_current_page(
+    workspace_root: &Path,
+    page: &Page,
+    step: &BrowserActionStep,
+) -> Result<BrowserScreenshotResult> {
+    let screenshot = if let Some(selector) = step.selector.as_deref() {
+        let element = page
+            .query_selector(selector)
+            .await?
+            .with_context(|| format!("Element not found for selector '{}'", selector))?;
+        element.screenshot().await?
+    } else {
+        page.screenshot_with_options(ScreenshotOptions {
+            format: parse_screenshot_format(step.format.as_deref()),
+            quality: None,
+            clip: None,
+            full_page: step.full_page.unwrap_or(false),
+            hide_selectors: vec![],
+        })
+        .await?
+    };
+    let resolved_path = resolve_output_path(
+        workspace_root,
+        step.path.as_deref(),
+        "screenshots",
+        match screenshot.format {
+            ScreenshotFormat::Png => "png",
+            ScreenshotFormat::Jpeg => "jpg",
+        },
+    )?;
+    screenshot.save(&resolved_path.to_string_lossy())?;
+    Ok(BrowserScreenshotResult {
+        backend: BrowserBackendKind::NativeCdp.as_str().to_string(),
+        url: page.url().await.unwrap_or_default(),
+        title: page.title().await.unwrap_or_default(),
+        path: resolved_path.display().to_string(),
+        width: screenshot.width,
+        height: screenshot.height,
+        format: match screenshot.format {
+            ScreenshotFormat::Png => "png".to_string(),
+            ScreenshotFormat::Jpeg => "jpeg".to_string(),
+        },
+    })
+}
+
+async fn pdf_current_page(
+    workspace_root: &Path,
+    page: &Page,
+    step: &BrowserActionStep,
+) -> Result<BrowserPdfResult> {
+    let path = resolve_output_path(workspace_root, step.path.as_deref(), "pdf", "pdf")?;
+    let pdf = page
+        .pdf(PdfOptions {
+            format: step.format.clone().or_else(|| Some("A4".to_string())),
+            print_background: true,
+            ..Default::default()
+        })
+        .await?;
+    fs::write(&path, &pdf).with_context(|| format!("Failed to write '{}'", path.display()))?;
+    Ok(BrowserPdfResult {
+        backend: BrowserBackendKind::NativeCdp.as_str().to_string(),
+        url: page.url().await.unwrap_or_default(),
+        title: page.title().await.unwrap_or_default(),
+        path: path.display().to_string(),
+        bytes: pdf.len(),
+    })
+}
+
+fn agent_browser_binary() -> String {
+    std::env::var("AGENT_BROWSER_BIN").unwrap_or_else(|_| "agent-browser".to_string())
+}
+
+async fn run_agent_browser_command(
+    workspace_root: &Path,
+    session: Option<&BrowserSessionRecord>,
+    timeout_ms: Option<u64>,
+    args: &[String],
+) -> Result<Value> {
+    let mut command = Command::new(agent_browser_binary());
+    command.arg("--json");
+    command.arg("--download-path").arg(
+        browser_root_for(workspace_root)
+            .join("downloads")
+            .display()
+            .to_string(),
+    );
+    if let Some(session) = session {
+        command.arg("--session").arg(&session.id);
+    }
+    if args.iter().any(|arg| arg.starts_with("file://")) {
+        command.arg("--allow-file-access");
+    }
+    for arg in args {
+        command.arg(arg);
+    }
+
+    let output = timeout(
+        Duration::from_millis(timeout_ms.unwrap_or(25_000).max(1)),
+        command.output(),
+    )
+    .await
+    .context("agent-browser command timed out")??;
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    let parsed = if stdout.is_empty() {
+        serde_json::json!({
+            "success": output.status.success(),
+            "stderr": stderr,
+        })
+    } else {
+        serde_json::from_str(&stdout).unwrap_or_else(|_| {
+            serde_json::json!({
+                "success": output.status.success(),
+                "stdout": stdout,
+                "stderr": stderr,
+            })
+        })
+    };
+    if !output.status.success() {
+        let message = parsed
+            .get("error")
+            .and_then(Value::as_str)
+            .map(ToString::to_string)
+            .filter(|value| !value.is_empty())
+            .or_else(|| (!stderr.is_empty()).then_some(stderr.clone()))
+            .unwrap_or_else(|| "agent-browser command failed".to_string());
+        bail!("{message}");
+    }
+    Ok(parsed)
+}
+
+async fn agent_browser_open_url(
+    workspace_root: &Path,
+    session: Option<&BrowserSessionRecord>,
+    timeout_ms: Option<u64>,
+    url: &str,
+) -> Result<Value> {
+    let _ = run_agent_browser_command(workspace_root, session, timeout_ms, &["close".to_string()])
+        .await;
+    run_agent_browser_command(
+        workspace_root,
+        session,
+        timeout_ms,
+        &["open".to_string(), url.to_string()],
+    )
+    .await
+}
+
+async fn agent_browser_get(
+    workspace_root: &Path,
+    session: Option<&BrowserSessionRecord>,
+    timeout_ms: Option<u64>,
+    what: &str,
+    selector: Option<&str>,
+) -> Result<Value> {
+    let mut args = vec!["get".to_string(), what.to_string()];
+    if let Some(selector) = selector {
+        args.push(selector.to_string());
+    }
+    let output = run_agent_browser_command(workspace_root, session, timeout_ms, &args).await?;
+    Ok(output.get("data").cloned().unwrap_or(Value::Null))
+}
+
+async fn agent_browser_eval_json(
+    workspace_root: &Path,
+    session: Option<&BrowserSessionRecord>,
+    timeout_ms: Option<u64>,
+    script: &str,
+) -> Result<Value> {
+    let output = run_agent_browser_command(
+        workspace_root,
+        session,
+        timeout_ms,
+        &["eval".to_string(), script.to_string()],
+    )
+    .await?;
+    let data = output.get("data").cloned().unwrap_or(Value::Null);
+    if let Some(raw) = data.as_str() {
+        serde_json::from_str(raw).or(Ok(Value::String(raw.to_string())))
+    } else {
+        Ok(data)
+    }
+}
+
+async fn agent_browser_extract(
+    workspace_root: &Path,
+    session: Option<&BrowserSessionRecord>,
+    timeout_ms: Option<u64>,
+    request: &BrowserExtractRequest,
+) -> Result<Value> {
+    let what = request.what.trim().to_ascii_lowercase();
+    let max_chars = request.max_chars.unwrap_or(4000);
+    let max_results = request.max_results.unwrap_or(100);
+    match what.as_str() {
+        "html" => {
+            let html = agent_browser_get(
+                workspace_root,
+                session,
+                timeout_ms,
+                "html",
+                request.selector.as_deref(),
+            )
+            .await?;
+            Ok(Value::String(truncate_string(
+                html.as_str().unwrap_or_default().to_string(),
+                max_chars,
+            )))
+        }
+        "links" => Ok(limit_value_array(
+            agent_browser_eval_json(workspace_root, session, timeout_ms, links_script()).await?,
+            max_results,
+        )),
+        "images" => Ok(limit_value_array(
+            agent_browser_eval_json(workspace_root, session, timeout_ms, images_script()).await?,
+            max_results,
+        )),
+        "headings" => Ok(limit_value_array(
+            agent_browser_eval_json(workspace_root, session, timeout_ms, headings_script()).await?,
+            max_results,
+        )),
+        "forms" => Ok(limit_value_array(
+            agent_browser_eval_json(workspace_root, session, timeout_ms, forms_script()).await?,
+            max_results,
+        )),
+        "selector" => {
+            let selector = request
+                .selector
+                .as_deref()
+                .context("selector is required when what=selector")?;
+            Ok(limit_value_array(
+                agent_browser_eval_json(
+                    workspace_root,
+                    session,
+                    timeout_ms,
+                    &selector_extract_script(selector),
+                )
+                .await?,
+                max_results,
+            ))
+        }
+        _ => {
+            let value =
+                agent_browser_eval_json(workspace_root, session, timeout_ms, text_extract_script())
+                    .await?;
+            Ok(Value::String(truncate_string(
+                value.as_str().unwrap_or_default().to_string(),
+                max_chars,
+            )))
+        }
+    }
+}
+
+async fn agent_browser_inspect(
+    workspace_root: &Path,
+    session: Option<&BrowserSessionRecord>,
+    request: &BrowserInspectRequest,
+) -> Result<Value> {
+    let kind = request.kind.trim().to_ascii_lowercase();
+    match kind.as_str() {
+        "links" => {
+            agent_browser_eval_json(workspace_root, session, request.timeout_ms, links_script())
+                .await
+        }
+        "images" => {
+            agent_browser_eval_json(workspace_root, session, request.timeout_ms, images_script())
+                .await
+        }
+        "headings" => {
+            agent_browser_eval_json(
+                workspace_root,
+                session,
+                request.timeout_ms,
+                headings_script(),
+            )
+            .await
+        }
+        "forms" => {
+            agent_browser_eval_json(workspace_root, session, request.timeout_ms, forms_script())
+                .await
+        }
+        "html" => {
+            agent_browser_get(
+                workspace_root,
+                session,
+                request.timeout_ms,
+                "html",
+                request.selector.as_deref(),
+            )
+            .await
+        }
+        _ => {
+            let mut args = vec!["snapshot".to_string()];
+            if request.interactive_only {
+                args.push("-i".to_string());
+            }
+            if let Some(depth) = request.snapshot_depth {
+                args.push("-d".to_string());
+                args.push(depth.to_string());
+            }
+            if let Some(selector) = request.selector.as_deref() {
+                args.push("-s".to_string());
+                args.push(selector.to_string());
+            }
+            let output =
+                run_agent_browser_command(workspace_root, session, request.timeout_ms, &args)
+                    .await?;
+            Ok(output.get("data").cloned().unwrap_or(output))
+        }
+    }
+}
+
 fn normalize_url(url: &str) -> String {
-    if url.starts_with("http://") || url.starts_with("https://") {
+    if url.starts_with("http://")
+        || url.starts_with("https://")
+        || url.starts_with("file://")
+        || url.starts_with("data:")
+    {
         url.to_string()
     } else {
         format!("https://{}", url)

@@ -395,15 +395,32 @@
           <h2>Browser Actions</h2>
           <div class="form-grid">
             <input id="browser-url" type="url" placeholder="https://example.com" />
+            <select id="browser-backend">
+              <option value="native_cdp">Native Backend</option>
+              <option value="agent_browser_cli">agent-browser Backend</option>
+            </select>
             <select id="browser-action">
+              <option value="navigate">Navigate</option>
               <option value="read-page">Read page</option>
               <option value="crawl-site">Crawl site</option>
+              <option value="inspect">Inspect snapshot</option>
               <option value="extract">Extract text</option>
               <option value="screenshot">Capture screenshot</option>
               <option value="pdf">Render PDF</option>
+              <option value="run-sequence">Run sequence</option>
             </select>
+            <input id="browser-session-id" type="text" placeholder="optional browser session id" />
+            <input id="browser-selector" type="text" placeholder="optional selector or inspect scope" />
+            <textarea id="browser-sequence-spec" rows="6" spellcheck="false" placeholder='Optional action sequence JSON, for example:
+[
+  {"action":"navigate","url":"https://example.com"},
+  {"action":"wait","wait_ms":500},
+  {"action":"extract","what":"text","max_chars":500}
+]'></textarea>
             <div class="action-row">
               <button id="browser-run">Run Browser Action</button>
+              <button class="secondary" id="browser-open-session">Open Session</button>
+              <button class="secondary" id="browser-sessions-refresh">Refresh Sessions</button>
               <button class="secondary" id="browser-artifacts-refresh">Refresh Artifacts</button>
             </div>
           </div>
@@ -417,6 +434,17 @@
                 <tr><th>Kind</th><th>Name</th><th>Bytes</th><th>Modified</th></tr>
               </thead>
               <tbody id="browser-artifacts"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </article>
+        <article class="panel span-12">
+          <h2>Browser Sessions</h2>
+          <div class="surface">
+            <table class="table">
+              <thead>
+                <tr><th>Session</th><th>Backend</th><th>Updated</th><th>State</th></tr>
+              </thead>
+              <tbody id="browser-sessions"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
             </table>
           </div>
         </article>
@@ -930,6 +958,19 @@
         renderTableRows("browser-artifacts", rows, "No browser artifacts yet.");
       }
 
+      async function loadBrowserSessions() {
+        const payload = await fetchJson("/control/browser/sessions?limit=20");
+        const rows = (payload.sessions || []).map((session) => {
+          return `<tr>
+            <td><strong>${session.id}</strong><div class="muted">${session.label || "-"}</div></td>
+            <td>${session.backend || "-"}</td>
+            <td>${session.updated_at || "-"}</td>
+            <td>${session.state_path || "-"}</td>
+          </tr>`;
+        });
+        renderTableRows("browser-sessions", rows, "No browser sessions yet.");
+      }
+
       async function loadRuntimeEvents() {
         const payload = await fetchJson("/control/services/runtime-events?limit=20");
         const rows = (payload.events || []).map((event) => {
@@ -983,6 +1024,7 @@
             loadActiveOrchestrationRuns(),
             loadOrchestrationRuns(),
             loadBrowserArtifacts(),
+            loadBrowserSessions(),
             loadLogs(),
             loadRuntimeEvents(),
           ]);
@@ -1065,14 +1107,47 @@
       async function runBrowserAction() {
         const url = document.getElementById("browser-url").value.trim();
         const action = document.getElementById("browser-action").value;
-        if (!url) {
+        const backend = document.getElementById("browser-backend").value;
+        const sessionId = document.getElementById("browser-session-id").value.trim();
+        const selector = document.getElementById("browser-selector").value.trim();
+        const sequenceRaw = document.getElementById("browser-sequence-spec").value.trim();
+        if (action !== "run-sequence" && !url) {
           setText("browser-result", { error: "URL is required" });
           return;
         }
+        if (action === "run-sequence") {
+          const parsed = sequenceRaw ? JSON.parse(sequenceRaw) : [];
+          const steps = Array.isArray(parsed) ? parsed : parsed.steps;
+          if (!Array.isArray(steps) || !steps.length) {
+            setText("browser-result", { error: "A non-empty sequence JSON array is required" });
+            return;
+          }
+          const result = await fetchJson("/control/browser/run-sequence", {
+            method: "POST",
+            body: JSON.stringify({
+              backend,
+              session_id: sessionId || null,
+              steps,
+            }),
+          });
+          setText("browser-result", result);
+          await Promise.all([loadBrowserArtifacts(), loadBrowserSessions()]);
+          return;
+        }
         const endpoint = `/control/browser/${action}`;
-        let payload = { url };
+        let payload = { url, backend, session_id: sessionId || null };
         if (action === "extract") {
-          payload = { url, what: "text", max_chars: 2000 };
+          payload = { url, backend, session_id: sessionId || null, what: "text", max_chars: 2000, selector: selector || null };
+        } else if (action === "inspect") {
+          payload = {
+            url,
+            backend,
+            session_id: sessionId || null,
+            kind: selector ? "snapshot" : "snapshot",
+            selector: selector || null,
+            interactive_only: true,
+            snapshot_depth: 4,
+          };
         } else if (action === "read-page") {
           payload = { url, max_chars: 3000 };
         } else if (action === "crawl-site") {
@@ -1083,7 +1158,24 @@
           body: JSON.stringify(payload),
         });
         setText("browser-result", result);
-        await loadBrowserArtifacts();
+        await Promise.all([loadBrowserArtifacts(), loadBrowserSessions()]);
+      }
+
+      async function openBrowserSession() {
+        const backend = document.getElementById("browser-backend").value;
+        const sessionId = document.getElementById("browser-session-id").value.trim();
+        const result = await fetchJson("/control/browser/sessions", {
+          method: "POST",
+          body: JSON.stringify({
+            backend,
+            session_id: sessionId || null,
+          }),
+        });
+        if (result.id) {
+          document.getElementById("browser-session-id").value = result.id;
+        }
+        setText("browser-result", result);
+        await loadBrowserSessions();
       }
 
       function connectDiagnostics() {
@@ -1209,6 +1301,20 @@
       document.getElementById("browser-run").addEventListener("click", async () => {
         try {
           await runBrowserAction();
+        } catch (error) {
+          setText("browser-result", { error: error.message });
+        }
+      });
+      document.getElementById("browser-open-session").addEventListener("click", async () => {
+        try {
+          await openBrowserSession();
+        } catch (error) {
+          setText("browser-result", { error: error.message });
+        }
+      });
+      document.getElementById("browser-sessions-refresh").addEventListener("click", async () => {
+        try {
+          await loadBrowserSessions();
         } catch (error) {
           setText("browser-result", { error: error.message });
         }

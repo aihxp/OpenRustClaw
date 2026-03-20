@@ -2502,6 +2502,19 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
         )
         .route("/control/browser/navigate", post(browser_navigate_handler))
         .route(
+            "/control/browser/sessions",
+            post(browser_open_session_handler),
+        )
+        .route(
+            "/control/browser/sessions",
+            get(browser_list_sessions_handler),
+        )
+        .route("/control/browser/inspect", post(browser_inspect_handler))
+        .route(
+            "/control/browser/run-sequence",
+            post(browser_run_sequence_handler),
+        )
+        .route(
             "/control/browser/read-page",
             post(browser_read_page_handler),
         )
@@ -3804,6 +3817,66 @@ async fn browser_navigate_handler(
     Json(payload): Json<browser::BrowserNavigateRequest>,
 ) -> impl IntoResponse {
     match browser::navigate(&state.workspace_root, payload).await {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn browser_open_session_handler(
+    State(state): State<RuntimeControlState>,
+    Json(payload): Json<browser::BrowserOpenSessionRequest>,
+) -> impl IntoResponse {
+    match browser::open_session(&state.workspace_root, payload) {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn browser_list_sessions_handler(
+    State(state): State<RuntimeControlState>,
+    Query(query): Query<ListLimitQuery>,
+) -> impl IntoResponse {
+    match browser::list_sessions(&state.workspace_root, query.limit.unwrap_or(25)) {
+        Ok(sessions) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "sessions": sessions })),
+        )
+            .into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn browser_inspect_handler(
+    State(state): State<RuntimeControlState>,
+    Json(payload): Json<browser::BrowserInspectRequest>,
+) -> impl IntoResponse {
+    match browser::inspect(&state.workspace_root, payload).await {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn browser_run_sequence_handler(
+    State(state): State<RuntimeControlState>,
+    Json(payload): Json<browser::BrowserRunSequenceRequest>,
+) -> impl IntoResponse {
+    match browser::run_sequence(&state.workspace_root, payload).await {
         Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
@@ -5162,6 +5235,137 @@ fn build_mcp_server(
                     "required": ["candidate_id", "decision", "decided_by"]
                 }),
             },
+            McpServerTool {
+                name: "browser_open_session".to_string(),
+                description: "Create a durable browser session descriptor for native or agent-browser execution.".to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "backend": {"type": "string"},
+                        "session_id": {"type": "string"},
+                        "label": {"type": "string"},
+                        "timeout_ms": {"type": "integer", "minimum": 1}
+                    }
+                }),
+            },
+            McpServerTool {
+                name: "browser_list_sessions".to_string(),
+                description: "List durable browser session descriptors.".to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "limit": {"type": "integer", "minimum": 1}
+                    }
+                }),
+            },
+            McpServerTool {
+                name: "browser_read_page".to_string(),
+                description: "Fetch a page over HTTP and save a normalized read artifact.".to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "url": {"type": "string"},
+                        "max_chars": {"type": "integer", "minimum": 1},
+                        "path": {"type": "string"},
+                        "timeout_ms": {"type": "integer", "minimum": 1}
+                    },
+                    "required": ["url"]
+                }),
+            },
+            McpServerTool {
+                name: "browser_crawl_site".to_string(),
+                description: "Run a bounded same-domain crawl and save a crawl artifact.".to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "url": {"type": "string"},
+                        "max_pages": {"type": "integer", "minimum": 1},
+                        "max_chars_per_page": {"type": "integer", "minimum": 1},
+                        "path": {"type": "string"},
+                        "timeout_ms": {"type": "integer", "minimum": 1}
+                    },
+                    "required": ["url"]
+                }),
+            },
+            McpServerTool {
+                name: "browser_navigate".to_string(),
+                description: "Navigate to a page through the bounded browser runtime.".to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "url": {"type": "string"},
+                        "backend": {"type": "string"},
+                        "session_id": {"type": "string"},
+                        "wait_until": {"type": "string"},
+                        "timeout_ms": {"type": "integer", "minimum": 1}
+                    },
+                    "required": ["url"]
+                }),
+            },
+            McpServerTool {
+                name: "browser_extract".to_string(),
+                description: "Extract text, HTML, links, images, forms, or headings from a page.".to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "url": {"type": "string"},
+                        "backend": {"type": "string"},
+                        "session_id": {"type": "string"},
+                        "what": {"type": "string"},
+                        "selector": {"type": "string"},
+                        "wait_until": {"type": "string"},
+                        "timeout_ms": {"type": "integer", "minimum": 1},
+                        "max_results": {"type": "integer", "minimum": 1},
+                        "max_chars": {"type": "integer", "minimum": 1}
+                    },
+                    "required": ["url"]
+                }),
+            },
+            McpServerTool {
+                name: "browser_inspect".to_string(),
+                description: "Inspect a page as a DOM/accessibility snapshot or structured surface.".to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "url": {"type": "string"},
+                        "backend": {"type": "string"},
+                        "kind": {"type": "string"},
+                        "session_id": {"type": "string"},
+                        "selector": {"type": "string"},
+                        "interactive_only": {"type": "boolean"},
+                        "snapshot_depth": {"type": "integer", "minimum": 1},
+                        "wait_until": {"type": "string"},
+                        "timeout_ms": {"type": "integer", "minimum": 1},
+                        "path": {"type": "string"}
+                    },
+                    "required": ["url"]
+                }),
+            },
+            McpServerTool {
+                name: "browser_run_sequence".to_string(),
+                description: "Run a bounded browser action sequence through the shared control contract.".to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "backend": {"type": "string"},
+                        "session_id": {"type": "string"},
+                        "timeout_ms": {"type": "integer", "minimum": 1},
+                        "path": {"type": "string"},
+                        "steps": {"type": "array", "items": {"type": "object"}}
+                    },
+                    "required": ["steps"]
+                }),
+            },
+            McpServerTool {
+                name: "browser_list_artifacts".to_string(),
+                description: "List browser artifacts saved under the workspace browser root.".to_string(),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "limit": {"type": "integer", "minimum": 1}
+                    }
+                }),
+            },
         ],
     });
 
@@ -5228,6 +5432,144 @@ fn build_mcp_server(
                 "path": resolved,
                 "content": content,
             }))
+        }),
+    );
+
+    let root_for_browser_sessions = workspace_root.clone();
+    server.register_handler(
+        "browser_open_session",
+        traced_mcp_handler(langsmith.clone(), "browser_open_session", move |args| {
+            let request: browser::BrowserOpenSessionRequest = parse_tool_args(args)?;
+            let workspace_root = root_for_browser_sessions.clone();
+            block_on_tool(async move {
+                let result = browser::open_session(&workspace_root, request)
+                    .map_err(|error| mcp_tool_error(error.to_string()))?;
+                serde_json::to_value(result).map_err(|error| mcp_tool_error(error.to_string()))
+            })
+        }),
+    );
+
+    let root_for_browser_session_list = workspace_root.clone();
+    server.register_handler(
+        "browser_list_sessions",
+        traced_mcp_handler(langsmith.clone(), "browser_list_sessions", move |args| {
+            let limit = args
+                .get("limit")
+                .and_then(|value| value.as_u64())
+                .unwrap_or(20) as usize;
+            let workspace_root = root_for_browser_session_list.clone();
+            block_on_tool(async move {
+                browser::list_sessions(&workspace_root, limit)
+                    .map(|sessions| serde_json::json!({ "sessions": sessions }))
+                    .map_err(|error| mcp_tool_error(error.to_string()))
+            })
+        }),
+    );
+
+    let root_for_browser_read = workspace_root.clone();
+    server.register_handler(
+        "browser_read_page",
+        traced_mcp_handler(langsmith.clone(), "browser_read_page", move |args| {
+            let request: browser::BrowserReadPageRequest = parse_tool_args(args)?;
+            let workspace_root = root_for_browser_read.clone();
+            block_on_tool(async move {
+                let result = browser::read_page(&workspace_root, request)
+                    .await
+                    .map_err(|error| mcp_tool_error(error.to_string()))?;
+                serde_json::to_value(result).map_err(|error| mcp_tool_error(error.to_string()))
+            })
+        }),
+    );
+
+    let root_for_browser_crawl = workspace_root.clone();
+    server.register_handler(
+        "browser_crawl_site",
+        traced_mcp_handler(langsmith.clone(), "browser_crawl_site", move |args| {
+            let request: browser::BrowserCrawlRequest = parse_tool_args(args)?;
+            let workspace_root = root_for_browser_crawl.clone();
+            block_on_tool(async move {
+                let result = browser::crawl_site(&workspace_root, request)
+                    .await
+                    .map_err(|error| mcp_tool_error(error.to_string()))?;
+                serde_json::to_value(result).map_err(|error| mcp_tool_error(error.to_string()))
+            })
+        }),
+    );
+
+    let root_for_browser_navigate = workspace_root.clone();
+    server.register_handler(
+        "browser_navigate",
+        traced_mcp_handler(langsmith.clone(), "browser_navigate", move |args| {
+            let request: browser::BrowserNavigateRequest = parse_tool_args(args)?;
+            let workspace_root = root_for_browser_navigate.clone();
+            block_on_tool(async move {
+                let result = browser::navigate(&workspace_root, request)
+                    .await
+                    .map_err(|error| mcp_tool_error(error.to_string()))?;
+                serde_json::to_value(result).map_err(|error| mcp_tool_error(error.to_string()))
+            })
+        }),
+    );
+
+    let root_for_browser_extract = workspace_root.clone();
+    server.register_handler(
+        "browser_extract",
+        traced_mcp_handler(langsmith.clone(), "browser_extract", move |args| {
+            let request: browser::BrowserExtractRequest = parse_tool_args(args)?;
+            let workspace_root = root_for_browser_extract.clone();
+            block_on_tool(async move {
+                let result = browser::extract(&workspace_root, request)
+                    .await
+                    .map_err(|error| mcp_tool_error(error.to_string()))?;
+                serde_json::to_value(result).map_err(|error| mcp_tool_error(error.to_string()))
+            })
+        }),
+    );
+
+    let root_for_browser_inspect = workspace_root.clone();
+    server.register_handler(
+        "browser_inspect",
+        traced_mcp_handler(langsmith.clone(), "browser_inspect", move |args| {
+            let request: browser::BrowserInspectRequest = parse_tool_args(args)?;
+            let workspace_root = root_for_browser_inspect.clone();
+            block_on_tool(async move {
+                let result = browser::inspect(&workspace_root, request)
+                    .await
+                    .map_err(|error| mcp_tool_error(error.to_string()))?;
+                serde_json::to_value(result).map_err(|error| mcp_tool_error(error.to_string()))
+            })
+        }),
+    );
+
+    let root_for_browser_sequence = workspace_root.clone();
+    server.register_handler(
+        "browser_run_sequence",
+        traced_mcp_handler(langsmith.clone(), "browser_run_sequence", move |args| {
+            let request: browser::BrowserRunSequenceRequest = parse_tool_args(args)?;
+            let workspace_root = root_for_browser_sequence.clone();
+            block_on_tool(async move {
+                let result = browser::run_sequence(&workspace_root, request)
+                    .await
+                    .map_err(|error| mcp_tool_error(error.to_string()))?;
+                serde_json::to_value(result).map_err(|error| mcp_tool_error(error.to_string()))
+            })
+        }),
+    );
+
+    let root_for_browser_artifacts = workspace_root.clone();
+    server.register_handler(
+        "browser_list_artifacts",
+        traced_mcp_handler(langsmith.clone(), "browser_list_artifacts", move |args| {
+            let limit = args
+                .get("limit")
+                .and_then(|value| value.as_u64())
+                .unwrap_or(20) as usize;
+            let workspace_root = root_for_browser_artifacts.clone();
+            block_on_tool(async move {
+                browser::list_artifacts(&workspace_root, limit)
+                    .map(|artifacts| serde_json::json!({ "artifacts": artifacts }))
+                    .map_err(|error| mcp_tool_error(error.to_string()))
+            })
         }),
     );
 

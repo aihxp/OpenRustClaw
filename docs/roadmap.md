@@ -705,7 +705,7 @@ Exit criteria:
 
 Goal: match OpenClaw's operator UX and tooling surface while keeping Rust-native interfaces.
 
-Status: complete for shipped CLI/MCP control-plane surfaces, shared typed control/config/diagnostics APIs, autonomy-tier and decision-lesson control surfaces, shared service-status, scheduler, channel-readiness, and runtime-log inspection APIs, shared session/memory/job inspection APIs, channel account CRUD parity, encrypted runtime secret-vault support, validated provider/model switching, runtime reload/cutover APIs with rollback, full trust-first routed/orchestrated multi-model execution surfaces with receipt capture, checkpoints, trace logs, transcript persistence, parent/child delegation relationships, active supervision state, pause/resume/kill controls, estimated token/duration resource summaries, request-scoped model/autonomy override lanes, reflection candidates, reflection-to-lesson promotion, and lesson-aware steering context, stronger onboarding flows with existing-state handling plus post-onboarding doctor handoff, doctor validation, a bounded native browser operator slice with read-page/crawl-site/navigate/extract/screenshot/pdf surfaces, and an initial Web Control UI shell with config/vault editing plus autonomy/lesson, active-run supervision, run-supervision/run-trace/run-transcript/run-resource inspection, enabled-channel readiness, and recent/live runtime log visibility; deeper Web Control UI parity, richer browser/web tooling, and deeper channel/service probes remain open.
+Status: complete for shipped CLI/MCP control-plane surfaces, shared typed control/config/diagnostics APIs, autonomy-tier and decision-lesson control surfaces, shared service-status, scheduler, channel-readiness, and runtime-log inspection APIs, shared session/memory/job inspection APIs, channel account CRUD parity, encrypted runtime secret-vault support, validated provider/model switching, runtime reload/cutover APIs with rollback, full trust-first routed/orchestrated multi-model execution surfaces with receipt capture, checkpoints, trace logs, transcript persistence, parent/child delegation relationships, active supervision state, pause/resume/kill controls, estimated token/duration resource summaries, request-scoped model/autonomy override lanes, reflection candidates, reflection-to-lesson promotion, and lesson-aware steering context, stronger onboarding flows with existing-state handling plus post-onboarding doctor handoff, doctor validation, a shipped browser/tool-group slice with open-session/sessions/inspect/run-sequence/artifact inspection plus read-page/crawl-site/navigate/extract/screenshot/pdf surfaces across CLI, MCP, `/control/browser/...`, and `/control/ui`, including a Tier B `agent-browser` compatibility backend under the same Rust-owned control contract, and an initial Web Control UI shell with config/vault editing plus autonomy/lesson, active-run supervision, run-supervision/run-trace/run-transcript/run-resource inspection, enabled-channel readiness, and recent/live runtime log visibility; deeper Web Control UI parity, extension parity, broader runtime resilience, and deeper channel/service probes remain open.
 
 Additional later-surface work:
 
@@ -1013,26 +1013,26 @@ Remaining:
     - operator approval gates for sensitive actions.
   - [ ] Add browser/web tool surfaces to MCP, CLI, and runtime APIs:
     - [x] bounded CLI/runtime browser surfaces for navigate, extract, screenshot, and PDF capture
-    - [ ] read page
-    - [ ] crawl site
-    - [ ] open session
-    - [ ] inspect DOM/accessibility tree
-    - [ ] run bounded action sequences
-    - [ ] capture screenshots/artifacts
-    - [ ] export artifacts for later inspection
-  - [ ] Add a compatibility bridge for Playwright MCP or equivalent external browser runtimes only as Tier B:
+    - [x] read page
+    - [x] crawl site
+    - [x] open session
+    - [x] inspect DOM/accessibility tree
+    - [x] run bounded action sequences
+    - [x] capture screenshots/artifacts
+    - [x] export artifacts for later inspection
+  - [x] Add a compatibility bridge for Playwright MCP or equivalent external browser runtimes only as Tier B:
     - optional operator-configured backend,
     - typed event translation,
     - no durable truth outside Rust,
     - explicit "compatibility" labeling in docs and UI.
-  - [ ] Add `agent-browser` as a first-class Tier B Rust-compatible browser backend rather than treating it as an ad hoc external tool.
+  - [x] Add `agent-browser` as a first-class Tier B Rust-compatible browser backend rather than treating it as an ad hoc external tool.
     - Use it as a compatibility and operator-debug backend while the native CDP lane matures.
     - Keep OpenRustClaw as the durable source of truth for workflow state, retries, approvals, artifacts, and policy.
-    - Implement a shared `BrowserBackend` abstraction in Rust with at least:
+    - [x] Implement a shared `BrowserBackend` abstraction in Rust with at least:
       - `native_cdp`,
       - `agent_browser_cli`,
       - future managed/remote backends.
-    - Normalize `agent-browser` capabilities into the same internal contract used by the native lane:
+    - [x] Normalize `agent-browser` capabilities into the same internal contract used by the native lane:
       - open session,
       - navigate,
       - snapshot DOM/accessibility tree,
@@ -1041,7 +1041,7 @@ Remaining:
       - capture screenshot/PDF,
       - import/export state,
       - run bounded batch actions.
-    - Leverage `agent-browser` features where they clearly accelerate parity:
+    - [x] Leverage `agent-browser` features where they clearly accelerate parity:
       - machine-readable `--json` output,
       - `batch --json`,
       - ref-based targeting from snapshots,
@@ -1050,23 +1050,23 @@ Remaining:
       - action-policy files,
       - explicit confirmation categories,
       - local auth-vault and encrypted session support.
-    - Treat `agent-browser` as the preferred operator-debug and early-eval backend before full native parity:
+    - [x] Treat `agent-browser` as the preferred operator-debug and early-eval backend before full native parity:
       - easier reproducible browser sessions,
       - faster bounded multi-step runs,
       - better artifact capture during bring-up.
-    - Do not let `agent-browser` become the only browser path:
+    - [x] Do not let `agent-browser` become the only browser path:
       - crawl/map and long-term RAG ingestion remain Rust-owned,
       - safety policy remains OpenRustClaw-owned,
       - runtime APIs must not depend directly on raw CLI output shapes.
-    - Add backend selection policy:
+    - [x] Add backend selection policy:
       - `native_cdp` default for production when supported,
       - `agent_browser_cli` optional for compatibility/debug/operator workflows,
       - explicit UI/CLI labeling of which backend executed a run.
-    - Add backend-specific safety mapping:
+    - [ ] Add backend-specific safety mapping:
       - map OpenRustClaw domain allowlists to `--allowed-domains`,
       - map approval-gated action classes to `--action-policy` and `--confirm-actions`,
       - map session isolation rules to `--session`, `--session-name`, and profile/state paths.
-    - Add backend-specific observability:
+    - [x] Add backend-specific observability:
       - persist batch command receipts,
       - snapshots,
       - screenshots,
@@ -1213,10 +1213,10 @@ Recommended finish order from here:
   - sub-agent supervision surfaces,
   - decision-quality and reflection/lesson steering that improves choices without over-harnessing strong models into brittle micromanagement.
 - [ ] Wave 3: finish the broader web and extension surface after the operator/runtime control layer is strong enough to supervise it:
-  - richer Rust-native browser/web tooling,
-  - MCP/browser/tool-group parity,
-  - extension/plugin parity,
-  - broader hot-reload and provider/runtime resilience.
+  - [x] richer Rust-native browser/web tooling,
+  - [x] MCP/browser/tool-group parity,
+  - [ ] extension/plugin parity,
+  - [ ] broader hot-reload and provider/runtime resilience.
 - [ ] Wave 4: close the remaining operator experience gaps after the core runtime and browser/extension layers are solid:
   - voice-note transcription and broader voice/media polish,
   - mobile nodes and device-command parity,

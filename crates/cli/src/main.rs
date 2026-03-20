@@ -204,6 +204,61 @@ enum ModelsAction {
 
 #[derive(Subcommand)]
 enum BrowserAction {
+    /// Open a durable browser session descriptor for native or agent-browser execution
+    OpenSession {
+        #[arg(long, default_value = "native_cdp")]
+        backend: String,
+        #[arg(long)]
+        session_id: Option<String>,
+        #[arg(long)]
+        label: Option<String>,
+        #[arg(long)]
+        timeout_ms: Option<u64>,
+    },
+    /// List known browser sessions
+    Sessions {
+        #[arg(long, default_value_t = 20)]
+        limit: usize,
+    },
+    /// Inspect a page as a bounded DOM/accessibility snapshot or structured surface
+    Inspect {
+        url: String,
+        #[arg(long, default_value = "native_cdp")]
+        backend: String,
+        #[arg(long, default_value = "snapshot")]
+        kind: String,
+        #[arg(long)]
+        session_id: Option<String>,
+        #[arg(long)]
+        selector: Option<String>,
+        #[arg(long, default_value_t = false)]
+        interactive_only: bool,
+        #[arg(long)]
+        snapshot_depth: Option<usize>,
+        #[arg(long)]
+        wait_until: Option<String>,
+        #[arg(long)]
+        timeout_ms: Option<u64>,
+        #[arg(long)]
+        path: Option<String>,
+    },
+    /// Run a bounded browser action sequence from a JSON spec file
+    RunSequence {
+        spec: String,
+        #[arg(long)]
+        backend: Option<String>,
+        #[arg(long)]
+        session_id: Option<String>,
+        #[arg(long)]
+        timeout_ms: Option<u64>,
+        #[arg(long)]
+        path: Option<String>,
+    },
+    /// List browser artifacts already written under `.claw/browser/`
+    Artifacts {
+        #[arg(long, default_value_t = 20)]
+        limit: usize,
+    },
     /// Fetch a page over HTTP and save a normalized read artifact
     ReadPage {
         url: String,
@@ -229,6 +284,10 @@ enum BrowserAction {
     /// Navigate to a page and return basic metadata
     Navigate {
         url: String,
+        #[arg(long, default_value = "native_cdp")]
+        backend: String,
+        #[arg(long)]
+        session_id: Option<String>,
         #[arg(long)]
         wait_until: Option<String>,
         #[arg(long)]
@@ -237,6 +296,10 @@ enum BrowserAction {
     /// Extract text, HTML, links, images, or headings from a page
     Extract {
         url: String,
+        #[arg(long, default_value = "native_cdp")]
+        backend: String,
+        #[arg(long)]
+        session_id: Option<String>,
         #[arg(long, default_value = "text")]
         what: String,
         #[arg(long)]
@@ -253,6 +316,10 @@ enum BrowserAction {
     /// Capture a screenshot to `.claw/browser/screenshots/` or an explicit path
     Screenshot {
         url: String,
+        #[arg(long, default_value = "native_cdp")]
+        backend: String,
+        #[arg(long)]
+        session_id: Option<String>,
         #[arg(long)]
         path: Option<String>,
         #[arg(long)]
@@ -271,6 +338,10 @@ enum BrowserAction {
     /// Render a page to PDF in `.claw/browser/pdf/` or an explicit path
     Pdf {
         url: String,
+        #[arg(long, default_value = "native_cdp")]
+        backend: String,
+        #[arg(long)]
+        session_id: Option<String>,
         #[arg(long)]
         path: Option<String>,
         #[arg(long)]
@@ -1727,6 +1798,91 @@ async fn main() -> Result<()> {
         Commands::Browser { action } => {
             let workspace_root = std::env::current_dir()?;
             match action {
+                BrowserAction::OpenSession {
+                    backend,
+                    session_id,
+                    label,
+                    timeout_ms,
+                } => {
+                    let result = commands::browser::open_session(
+                        &workspace_root,
+                        commands::browser::BrowserOpenSessionRequest {
+                            backend: Some(backend),
+                            session_id,
+                            label,
+                            timeout_ms,
+                        },
+                    )?;
+                    println!("{}", serde_json::to_string_pretty(&result)?);
+                    Ok(())
+                }
+                BrowserAction::Sessions { limit } => {
+                    let result = commands::browser::list_sessions(&workspace_root, limit)?;
+                    println!("{}", serde_json::to_string_pretty(&result)?);
+                    Ok(())
+                }
+                BrowserAction::Inspect {
+                    url,
+                    backend,
+                    kind,
+                    session_id,
+                    selector,
+                    interactive_only,
+                    snapshot_depth,
+                    wait_until,
+                    timeout_ms,
+                    path,
+                } => {
+                    let result = commands::browser::inspect(
+                        &workspace_root,
+                        commands::browser::BrowserInspectRequest {
+                            url,
+                            backend,
+                            kind,
+                            session_id,
+                            selector,
+                            interactive_only,
+                            snapshot_depth,
+                            wait_until,
+                            timeout_ms,
+                            path,
+                        },
+                    )
+                    .await?;
+                    println!("{}", serde_json::to_string_pretty(&result)?);
+                    Ok(())
+                }
+                BrowserAction::RunSequence {
+                    spec,
+                    backend,
+                    session_id,
+                    timeout_ms,
+                    path,
+                } => {
+                    let raw = std::fs::read_to_string(&spec)?;
+                    let mut request: commands::browser::BrowserRunSequenceRequest =
+                        serde_json::from_str(&raw)?;
+                    if let Some(backend) = backend {
+                        request.backend = backend;
+                    }
+                    if session_id.is_some() {
+                        request.session_id = session_id;
+                    }
+                    if timeout_ms.is_some() {
+                        request.timeout_ms = timeout_ms;
+                    }
+                    if path.is_some() {
+                        request.path = path;
+                    }
+                    let result = commands::browser::run_sequence(&workspace_root, request).await?;
+                    println!("{}", serde_json::to_string_pretty(&result)?);
+                    Ok(())
+                }
+                BrowserAction::Artifacts { limit } => {
+                    let result = commands::browser::list_artifacts(&workspace_root, limit)?;
+                    println!("{}", serde_json::to_string_pretty(&result)?);
+                    Ok(())
+                }
                 BrowserAction::ReadPage {
                     url,
                     max_chars,
@@ -1769,6 +1925,8 @@ async fn main() -> Result<()> {
                 }
                 BrowserAction::Navigate {
                     url,
+                    backend,
+                    session_id,
                     wait_until,
                     timeout_ms,
                 } => {
@@ -1776,6 +1934,8 @@ async fn main() -> Result<()> {
                         &workspace_root,
                         commands::browser::BrowserNavigateRequest {
                             url,
+                            backend,
+                            session_id,
                             wait_until,
                             timeout_ms,
                         },
@@ -1786,6 +1946,8 @@ async fn main() -> Result<()> {
                 }
                 BrowserAction::Extract {
                     url,
+                    backend,
+                    session_id,
                     what,
                     selector,
                     wait_until,
@@ -1797,6 +1959,8 @@ async fn main() -> Result<()> {
                         &workspace_root,
                         commands::browser::BrowserExtractRequest {
                             url,
+                            backend,
+                            session_id,
                             what,
                             selector,
                             wait_until,
@@ -1811,6 +1975,8 @@ async fn main() -> Result<()> {
                 }
                 BrowserAction::Screenshot {
                     url,
+                    backend,
+                    session_id,
                     path,
                     selector,
                     full_page,
@@ -1823,6 +1989,8 @@ async fn main() -> Result<()> {
                         &workspace_root,
                         commands::browser::BrowserScreenshotRequest {
                             url,
+                            backend,
+                            session_id,
                             path,
                             selector,
                             full_page,
@@ -1838,6 +2006,8 @@ async fn main() -> Result<()> {
                 }
                 BrowserAction::Pdf {
                     url,
+                    backend,
+                    session_id,
                     path,
                     format,
                     print_background,
@@ -1848,6 +2018,8 @@ async fn main() -> Result<()> {
                         &workspace_root,
                         commands::browser::BrowserPdfRequest {
                             url,
+                            backend,
+                            session_id,
                             path,
                             format,
                             print_background,
