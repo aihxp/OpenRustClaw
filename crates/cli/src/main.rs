@@ -362,6 +362,13 @@ enum RuntimeAction {
         #[arg(short, long, default_value = "config/default.toml")]
         config: String,
     },
+    /// Inspect or refresh persisted runtime health and fallback validation state
+    Health {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+        #[arg(long)]
+        refresh: bool,
+    },
     /// Re-read secret sources and validate that the effective runtime config can be reloaded safely
     Reload {
         #[arg(short, long, default_value = "config/default.toml")]
@@ -2527,6 +2534,14 @@ async fn main() -> Result<()> {
                 let workspace_root = std::env::current_dir()?;
                 let status = commands::runtime::runtime_status(&config, &workspace_root)?;
                 println!("{}", serde_json::to_string_pretty(&status)?);
+                Ok(())
+            }
+            RuntimeAction::Health { config, refresh } => {
+                let workspace_root = std::env::current_dir()?;
+                let report =
+                    commands::runtime::runtime_health_status(&config, &workspace_root, refresh)
+                        .await?;
+                println!("{}", serde_json::to_string_pretty(&report)?);
                 Ok(())
             }
             RuntimeAction::Reload { config } => {

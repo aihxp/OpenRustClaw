@@ -1,6 +1,6 @@
 //! Runtime configuration, vault, and provider/model switching helpers.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -12,14 +12,17 @@ use chacha20poly1305::{Key, XChaCha20Poly1305, XNonce};
 use chrono::Utc;
 use openrustclaw_core::config::AppConfig;
 use openrustclaw_core::traits::LlmProvider;
+use openrustclaw_memory::{WorkspaceArtifactRegistry, artifacts::ArtifactClass};
 use openrustclaw_providers::{
     AnthropicProvider, OllamaProvider, OpenAiProvider, OpenRouterProvider,
     openrouter::RouteStrategy,
 };
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 
 pub const DEFAULT_VAULT_PATH: &str = ".claw/control/runtime-vault.json";
+pub const DEFAULT_RUNTIME_HEALTH_PATH: &str = ".claw/control/runtime-health.json";
 const DEFAULT_PASSPHRASE_ENV: &str = "OPENRUSTCLAW_VAULT_PASSPHRASE";
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -55,6 +58,40 @@ pub struct RuntimeStatus {
     pub vault_unlocked: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RuntimeHealthProviderEntry {
+    pub provider: String,
+    pub role: String,
+    pub model: String,
+    pub configured: bool,
+    pub healthy: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub issue: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RuntimeArtifactHealth {
+    pub artifact_count: usize,
+    pub persona_artifact_count: usize,
+    pub registry_path: String,
+    pub model_family: String,
+    pub included_for_default_model: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RuntimeHealthReport {
+    pub generated_at: String,
+    pub config_path: String,
+    pub default_provider: String,
+    pub fallback_chain: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recommended_control_plane_provider: Option<String>,
+    pub startup_fallback_valid: bool,
+    pub degraded_control_plane_mode: bool,
+    pub providers: Vec<RuntimeHealthProviderEntry>,
+    pub artifacts: RuntimeArtifactHealth,
+}
+
 static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
 fn env_lock() -> &'static Mutex<()> {
@@ -63,6 +100,10 @@ fn env_lock() -> &'static Mutex<()> {
 
 pub fn vault_path_for(workspace_root: impl AsRef<Path>) -> PathBuf {
     workspace_root.as_ref().join(DEFAULT_VAULT_PATH)
+}
+
+pub fn runtime_health_path_for(workspace_root: impl AsRef<Path>) -> PathBuf {
+    workspace_root.as_ref().join(DEFAULT_RUNTIME_HEALTH_PATH)
 }
 
 pub fn load_effective_config(config_path: &str, workspace_root: &Path) -> Result<AppConfig> {
@@ -95,6 +136,82 @@ pub fn runtime_status(config_path: &str, workspace_root: &Path) -> Result<Runtim
     })
 }
 
+pub async fn runtime_health_status(
+    config_path: &str,
+    workspace_root: &Path,
+    refresh: bool,
+) -> Result<RuntimeHealthReport> {
+    if !refresh && let Some(report) = load_cached_runtime_health(workspace_root)? {
+        return Ok(report);
+    }
+    scan_runtime_health(config_path, workspace_root).await
+}
+
+pub fn load_cached_runtime_health(workspace_root: &Path) -> Result<Option<RuntimeHealthReport>> {
+    let path = runtime_health_path_for(workspace_root);
+    if !path.exists() {
+        return Ok(None);
+    }
+
+    let raw = fs::read_to_string(&path)
+        .with_context(|| format!("Failed to read '{}'", path.display()))?;
+    let report: RuntimeHealthReport =
+        serde_json::from_str(&raw).context("Failed to parse cached runtime health report")?;
+    Ok(Some(report))
+}
+
+pub async fn scan_runtime_health(
+    config_path: &str,
+    workspace_root: &Path,
+) -> Result<RuntimeHealthReport> {
+    let config = load_effective_config(config_path, workspace_root)?;
+
+    let mut ordered = Vec::new();
+    let mut seen = BTreeSet::new();
+    for provider in std::iter::once(config.providers.default_provider.clone())
+        .chain(config.providers.fallback_chain.clone().into_iter())
+    {
+        if seen.insert(provider.clone()) {
+            ordered.push(provider);
+        }
+    }
+
+    let mut entries = Vec::new();
+    for provider in &ordered {
+        entries.push(scan_provider_health(provider, &config).await);
+    }
+
+    let startup_fallback_valid = entries
+        .iter()
+        .any(|entry| entry.provider != config.providers.default_provider && entry.healthy);
+    let default_healthy = entries
+        .iter()
+        .find(|entry| entry.provider == config.providers.default_provider)
+        .map(|entry| entry.healthy)
+        .unwrap_or(false);
+    let recommended_control_plane_provider = entries
+        .iter()
+        .find(|entry| entry.provider != config.providers.default_provider && entry.healthy)
+        .map(|entry| entry.provider.clone())
+        .or_else(|| default_healthy.then(|| config.providers.default_provider.clone()));
+
+    let artifacts = summarize_runtime_artifacts(workspace_root, &config)?;
+    let report = RuntimeHealthReport {
+        generated_at: Utc::now().to_rfc3339(),
+        config_path: config_path.to_string(),
+        default_provider: config.providers.default_provider.clone(),
+        fallback_chain: config.providers.fallback_chain.clone(),
+        recommended_control_plane_provider,
+        startup_fallback_valid,
+        degraded_control_plane_mode: !default_healthy && startup_fallback_valid,
+        providers: entries,
+        artifacts,
+    };
+
+    save_runtime_health(workspace_root, &report)?;
+    Ok(report)
+}
+
 pub fn validate_runtime_reload(config_path: &str, workspace_root: &Path) -> Result<RuntimeStatus> {
     let config = load_effective_config(config_path, workspace_root)?;
     validate_runtime_provider(&config, &config.providers.default_provider)?;
@@ -102,6 +219,109 @@ pub fn validate_runtime_reload(config_path: &str, workspace_root: &Path) -> Resu
         validate_runtime_provider(&config, provider)?;
     }
     runtime_status(config_path, workspace_root)
+}
+
+fn save_runtime_health(workspace_root: &Path, report: &RuntimeHealthReport) -> Result<()> {
+    let path = runtime_health_path_for(workspace_root);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("Failed to create '{}'", parent.display()))?;
+    }
+    let rendered = serde_json::to_string_pretty(report)
+        .context("Failed to serialize runtime health report")?;
+    fs::write(&path, rendered.as_bytes())
+        .with_context(|| format!("Failed to write '{}'", path.display()))?;
+    Ok(())
+}
+
+async fn scan_provider_health(provider: &str, config: &AppConfig) -> RuntimeHealthProviderEntry {
+    let role = if provider == config.providers.default_provider {
+        "primary".to_string()
+    } else {
+        let index = config
+            .providers
+            .fallback_chain
+            .iter()
+            .position(|value| value == provider)
+            .map(|value| value + 1)
+            .unwrap_or(0);
+        format!("fallback_{index}")
+    };
+
+    let model = match provider {
+        "anthropic" => config.providers.anthropic.model.clone(),
+        "openai" => config.providers.openai.model.clone(),
+        "openrouter" => config.providers.openrouter.model.clone(),
+        "ollama" => config.providers.ollama.model.clone(),
+        _ => String::new(),
+    };
+
+    let result = match provider {
+        "ollama" => validate_ollama_provider(config).await,
+        _ => validate_runtime_provider(config, provider),
+    };
+
+    match result {
+        Ok(()) => RuntimeHealthProviderEntry {
+            provider: provider.to_string(),
+            role,
+            model,
+            configured: true,
+            healthy: true,
+            issue: None,
+        },
+        Err(error) => RuntimeHealthProviderEntry {
+            provider: provider.to_string(),
+            role,
+            model,
+            configured: !error.to_string().contains("environment variable not set"),
+            healthy: false,
+            issue: Some(error.to_string()),
+        },
+    }
+}
+
+async fn validate_ollama_provider(config: &AppConfig) -> Result<()> {
+    let base_url = config.providers.ollama.base_url.trim_end_matches('/');
+    reqwest::Client::new()
+        .get(format!("{base_url}/api/tags"))
+        .timeout(Duration::from_secs(2))
+        .send()
+        .await
+        .context("Failed to reach Ollama")?
+        .error_for_status()
+        .context("Ollama health probe returned an error status")?;
+    Ok(())
+}
+
+fn summarize_runtime_artifacts(
+    workspace_root: &Path,
+    config: &AppConfig,
+) -> Result<RuntimeArtifactHealth> {
+    let artifacts = WorkspaceArtifactRegistry::scan(workspace_root)?;
+    let resolved =
+        WorkspaceArtifactRegistry::resolve(workspace_root, default_model_for_provider(config))?;
+    let registry_path = workspace_root.join(".claw/artifacts/registry.json");
+    Ok(RuntimeArtifactHealth {
+        artifact_count: artifacts.len(),
+        persona_artifact_count: artifacts
+            .iter()
+            .filter(|artifact| artifact.class == ArtifactClass::Persona)
+            .count(),
+        registry_path: registry_path.display().to_string(),
+        model_family: resolved.model_family,
+        included_for_default_model: resolved.included.len(),
+    })
+}
+
+fn default_model_for_provider(config: &AppConfig) -> &str {
+    match config.providers.default_provider.as_str() {
+        "anthropic" => &config.providers.anthropic.model,
+        "openai" => &config.providers.openai.model,
+        "openrouter" => &config.providers.openrouter.model,
+        "ollama" => &config.providers.ollama.model,
+        _ => &config.providers.anthropic.model,
+    }
 }
 
 pub fn apply_runtime_secret_sources(workspace_root: &Path) -> Result<()> {

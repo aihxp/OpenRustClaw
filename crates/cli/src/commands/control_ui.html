@@ -343,6 +343,14 @@
           <div class="surface"><pre id="runtime-status">Loading…</pre></div>
         </article>
         <article class="panel span-6">
+          <h2>Runtime Health</h2>
+          <div class="action-row" style="margin-bottom: 12px">
+            <button class="secondary" id="runtime-health-refresh">Refresh Health</button>
+            <button class="secondary" id="runtime-health-scan">Force Scan</button>
+          </div>
+          <div class="surface"><pre id="runtime-health">Loading…</pre></div>
+        </article>
+        <article class="panel span-6">
           <h2>Control Registry</h2>
           <div class="surface"><pre id="control-runtime">Loading…</pre></div>
         </article>
@@ -731,6 +739,18 @@
         document.getElementById("status-provider").textContent = runtimeStatus.default_provider || "-";
         document.getElementById("status-fallback").textContent = (runtimeStatus.fallback_chain || []).join(", ") || "none";
         document.getElementById("status-vault").textContent = runtimeStatus.vault_present ? (runtimeStatus.vault_unlocked ? "unlocked" : "present") : "absent";
+      }
+
+      async function loadRuntimeHealth() {
+        const payload = await fetchJson("/control/runtime/health");
+        setText("runtime-health", payload);
+      }
+
+      async function scanRuntimeHealth() {
+        const payload = await fetchJson("/control/runtime/health/scan", {
+          method: "POST",
+        });
+        setText("runtime-health", payload);
       }
 
       async function loadVaultStatus() {
@@ -1164,6 +1184,7 @@
           await Promise.all([
             loadServiceStatus(),
             loadRuntime(),
+            loadRuntimeHealth(),
             loadVaultStatus(),
             loadSchedulerStatus(),
             loadChannelProbes(),
@@ -1449,6 +1470,20 @@
           await triggerRuntimeReload();
         } catch (error) {
           setText("runtime-status", { error: error.message });
+        }
+      });
+      document.getElementById("runtime-health-refresh").addEventListener("click", async () => {
+        try {
+          await loadRuntimeHealth();
+        } catch (error) {
+          setText("runtime-health", { error: error.message });
+        }
+      });
+      document.getElementById("runtime-health-scan").addEventListener("click", async () => {
+        try {
+          await scanRuntimeHealth();
+        } catch (error) {
+          setText("runtime-health", { error: error.message });
         }
       });
       document.getElementById("browser-run").addEventListener("click", async () => {

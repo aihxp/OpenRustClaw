@@ -529,6 +529,34 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
         sidecar_running: sidecar.is_some(),
     }));
 
+    let runtime_health_config_path = config_path.to_string();
+    let runtime_health_root = workspace_root.clone();
+    let runtime_health_events = event_bus.clone();
+    channel_tasks.push(tokio::spawn(async move {
+        let mut ticker = interval(Duration::from_secs(300));
+        loop {
+            ticker.tick().await;
+            match runtime::scan_runtime_health(&runtime_health_config_path, &runtime_health_root)
+                .await
+            {
+                Ok(report) => {
+                    let _ = runtime_health_events
+                        .publish_named(
+                            "runtime.health_scanned",
+                            "runtime_control",
+                            None,
+                            &serde_json::json!(report),
+                            None,
+                        )
+                        .await;
+                }
+                Err(error) => {
+                    warn!(error = %error, "Failed to refresh runtime health report");
+                }
+            }
+        }
+    }));
+
     // Create shutdown signal handler
     let shutdown = async {
         let mut sigterm = match signal::unix::signal(signal::unix::SignalKind::terminate()) {
@@ -2420,6 +2448,11 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
     Router::new()
         .route("/control/ui", get(control_ui_handler))
         .route("/control/runtime/status", get(runtime_status_handler))
+        .route("/control/runtime/health", get(runtime_health_handler))
+        .route(
+            "/control/runtime/health/scan",
+            post(runtime_health_scan_handler),
+        )
         .route("/control/runtime/reload", post(runtime_reload_handler))
         .route(
             "/control/runtime/switch-provider",
@@ -3457,8 +3490,32 @@ async fn runtime_status_handler(State(state): State<RuntimeControlState>) -> imp
     }
 }
 
+async fn runtime_health_handler(State(state): State<RuntimeControlState>) -> impl IntoResponse {
+    match runtime::runtime_health_status(&state.config_path, &state.workspace_root, false).await {
+        Ok(report) => (StatusCode::OK, Json(serde_json::json!(report))).into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
 async fn control_ui_handler() -> Html<&'static str> {
     control_ui::dashboard()
+}
+
+async fn runtime_health_scan_handler(
+    State(state): State<RuntimeControlState>,
+) -> impl IntoResponse {
+    match runtime::scan_runtime_health(&state.config_path, &state.workspace_root).await {
+        Ok(report) => (StatusCode::OK, Json(serde_json::json!(report))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
 }
 
 async fn runtime_reload_handler(State(state): State<RuntimeControlState>) -> impl IntoResponse {
