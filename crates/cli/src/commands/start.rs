@@ -73,7 +73,9 @@ use super::channels::{
     ChannelBindingSpec, ChannelRegistry, ChannelSendPolicy, ensure_account_manifest,
     identity_from_message, load_registry, message_bot_mentioned, resolve_root,
 };
-use super::{browser, control, control_ui, doctor, inspect, logs, orchestrate, runtime, services};
+use super::{
+    browser, control, control_ui, doctor, inspect, logs, orchestrate, runtime, services, skills,
+};
 
 /// Run the start command - load config, optionally start the compatibility/experimental sidecar, and start the gateway.
 pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
@@ -2524,6 +2526,33 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
         )
         .route("/control/browser/extract", post(browser_extract_handler))
         .route("/control/browser/artifacts", get(browser_artifacts_handler))
+        .route("/control/skills", get(control_skills_handler))
+        .route("/control/skills/search", get(control_skills_search_handler))
+        .route(
+            "/control/skills/popular",
+            get(control_skills_popular_handler),
+        )
+        .route(
+            "/control/skills/trending",
+            get(control_skills_trending_handler),
+        )
+        .route(
+            "/control/skills/install",
+            post(control_skill_install_handler),
+        )
+        .route("/control/skills/{name}", get(control_skill_detail_handler))
+        .route(
+            "/control/skills/{name}/update",
+            post(control_skill_update_handler),
+        )
+        .route(
+            "/control/skills/{name}/uninstall",
+            post(control_skill_uninstall_handler),
+        )
+        .route(
+            "/control/skills/{name}/verify",
+            post(control_skill_verify_handler),
+        )
         .route("/control/services/status", get(service_status_handler))
         .route(
             "/control/services/scheduler",
@@ -3057,6 +3086,146 @@ async fn control_autonomy_deactivate_lesson_handler(
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+#[derive(serde::Deserialize, Default)]
+struct SkillSearchQuery {
+    #[serde(default)]
+    q: Option<String>,
+    #[serde(default)]
+    category: Option<String>,
+    #[serde(default)]
+    sort: Option<String>,
+    #[serde(default)]
+    limit: Option<usize>,
+}
+
+#[derive(serde::Deserialize)]
+struct SkillInstallPayload {
+    name: String,
+}
+
+async fn control_skills_handler() -> impl IntoResponse {
+    match skills::installed_skills_data().await {
+        Ok(entries) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "skills": entries })),
+        )
+            .into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": error.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
+async fn control_skill_detail_handler(AxumPath(name): AxumPath<String>) -> impl IntoResponse {
+    match skills::installed_skill_detail_data(&name).await {
+        Ok(skill) => (StatusCode::OK, Json(serde_json::json!(skill))).into_response(),
+        Err(error) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": error.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
+async fn control_skills_search_handler(Query(query): Query<SkillSearchQuery>) -> impl IntoResponse {
+    let Some(search) = query.q.as_deref().filter(|value| !value.trim().is_empty()) else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": "query parameter `q` is required" })),
+        )
+            .into_response();
+    };
+
+    match skills::search_data(
+        search,
+        query.category.as_deref(),
+        query.sort.as_deref().unwrap_or("relevance"),
+    )
+    .await
+    {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": error.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
+async fn control_skills_popular_handler(
+    Query(query): Query<SkillSearchQuery>,
+) -> impl IntoResponse {
+    match skills::popular_data(query.limit.unwrap_or(12).max(1)).await {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": error.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
+async fn control_skills_trending_handler(
+    Query(query): Query<SkillSearchQuery>,
+) -> impl IntoResponse {
+    match skills::trending_data(query.limit.unwrap_or(12).max(1)).await {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": error.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
+async fn control_skill_install_handler(
+    Json(payload): Json<SkillInstallPayload>,
+) -> impl IntoResponse {
+    match skills::install_data(&payload.name).await {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": error.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
+async fn control_skill_update_handler(AxumPath(name): AxumPath<String>) -> impl IntoResponse {
+    match skills::update_data(&name).await {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": error.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
+async fn control_skill_uninstall_handler(AxumPath(name): AxumPath<String>) -> impl IntoResponse {
+    match skills::uninstall_data(&name).await {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": error.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
+async fn control_skill_verify_handler(AxumPath(name): AxumPath<String>) -> impl IntoResponse {
+    match skills::verify_data(&name).await {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": error.to_string() })),
         )
             .into_response(),
     }

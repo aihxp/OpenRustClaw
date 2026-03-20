@@ -302,7 +302,7 @@
       <section class="hero">
         <div class="hero-card">
           <div class="eyebrow">OpenRustClaw Control UI</div>
-          <h1>Runtime, services, sessions, memory, jobs, channels, orchestration, and browser control.</h1>
+          <h1>Runtime, services, sessions, memory, jobs, channels, orchestration, browser, and extension control.</h1>
           <p>
             This dashboard reuses the shipped <code>/control/...</code> APIs instead of inventing
             a separate frontend-only state model. It is the Phase 6 UI shell, not the final parity
@@ -389,6 +389,57 @@
               <tbody id="autonomy-lessons"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
             </table>
           </div>
+        </article>
+
+        <article class="panel span-6">
+          <h2>Extension Discovery</h2>
+          <div class="form-grid">
+            <input id="skills-query" type="text" placeholder="search registry skills" />
+            <div class="action-row">
+              <input id="skills-category" type="text" placeholder="optional category" />
+              <select id="skills-sort">
+                <option value="relevance">relevance</option>
+                <option value="downloads">downloads</option>
+                <option value="rating">rating</option>
+                <option value="recent">recent</option>
+              </select>
+            </div>
+            <div class="action-row">
+              <button id="skills-search">Search</button>
+              <button class="secondary" id="skills-popular">Popular</button>
+              <button class="secondary" id="skills-trending">Trending</button>
+            </div>
+            <div class="action-row">
+              <input id="skill-install-name" type="text" placeholder="install by skill name" />
+              <button id="skills-install">Install</button>
+            </div>
+          </div>
+          <div class="surface" style="margin-top: 12px">
+            <table class="table">
+              <thead>
+                <tr><th>Skill</th><th>Stats</th><th>Capabilities</th><th>Action</th></tr>
+              </thead>
+              <tbody id="skills-marketplace"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </article>
+        <article class="panel span-6">
+          <h2>Installed Extensions</h2>
+          <div class="action-row" style="margin-bottom: 12px">
+            <button class="secondary" id="skills-refresh">Refresh Installed</button>
+          </div>
+          <div class="surface">
+            <table class="table">
+              <thead>
+                <tr><th>Skill</th><th>Source</th><th>Trust</th><th>Action</th></tr>
+              </thead>
+              <tbody id="skills-installed"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </article>
+        <article class="panel span-12">
+          <h2>Extension Detail</h2>
+          <div class="surface"><pre id="skill-detail">Select an installed or discovered extension to inspect.</pre></div>
         </article>
 
         <article class="panel span-6">
@@ -633,6 +684,7 @@
       let configEditorDirty = false;
       let currentOrchestrationReceipt = null;
       let currentActiveOrchestrationRun = null;
+      let currentSkillName = null;
       let currentLogEntries = [];
       const setText = (id, value) => {
         document.getElementById(id).textContent = typeof value === "string" ? value : pretty(value);
@@ -722,6 +774,105 @@
           </tr>`;
         });
         renderTableRows("autonomy-lessons", rows, "No decision lessons recorded.");
+      }
+
+      async function loadInstalledSkills() {
+        const payload = await fetchJson("/control/skills");
+        const skills = payload.skills || [];
+        const rows = skills.map((skill) => {
+          const trust = skill.verified ? "verified" : (skill.signature_present ? "signed/unverified" : "unsigned");
+          return `<tr>
+            <td><strong>${skill.name || "-"}</strong><div class="muted">${skill.description || "-"}</div></td>
+            <td>${skill.source || "-"}</td>
+            <td>${trust}<div class="muted">${(skill.capabilities || []).join(", ") || "no capabilities"}</div></td>
+            <td>
+              <button class="secondary" onclick="inspectSkill('${skill.name}')">Inspect</button>
+              <button class="secondary" onclick="mutateSkill('${skill.name}', 'update')">Update</button>
+              <button class="secondary" onclick="mutateSkill('${skill.name}', 'verify')">Verify</button>
+              <button class="secondary" onclick="mutateSkill('${skill.name}', 'uninstall')">Uninstall</button>
+            </td>
+          </tr>`;
+        });
+        renderTableRows("skills-installed", rows, "No extensions installed.");
+        if (skills.length && !currentSkillName) {
+          await inspectSkill(skills[0].name);
+        } else if (!skills.length) {
+          setText("skill-detail", "No installed extension selected.");
+        }
+      }
+
+      async function inspectSkill(name) {
+        currentSkillName = name;
+        const payload = await fetchJson(`/control/skills/${encodeURIComponent(name)}`);
+        setText("skill-detail", payload);
+      }
+
+      async function loadSkillCatalog(mode = "popular") {
+        let payload;
+        if (mode === "search") {
+          const query = document.getElementById("skills-query").value.trim();
+          if (!query) {
+            throw new Error("Search query is required");
+          }
+          const category = document.getElementById("skills-category").value.trim();
+          const sort = document.getElementById("skills-sort").value;
+          const params = new URLSearchParams({ q: query, sort });
+          if (category) {
+            params.set("category", category);
+          }
+          payload = await fetchJson(`/control/skills/search?${params.toString()}`);
+        } else if (mode === "trending") {
+          payload = await fetchJson("/control/skills/trending?limit=10");
+        } else {
+          payload = await fetchJson("/control/skills/popular?limit=10");
+        }
+        const rows = (payload.skills || []).map((skill) => {
+          return `<tr>
+            <td><strong>${skill.name || "-"}</strong><div class="muted">${skill.description || "-"}</div></td>
+            <td>${skill.downloads ?? "-"} downloads<div class="muted">★ ${skill.rating ?? "-"} (${skill.rating_count ?? 0})</div></td>
+            <td>${(skill.capabilities || []).join(", ") || "-"}</td>
+            <td>
+              <button class="secondary" onclick="prefillSkillInstall('${skill.name}')">Use</button>
+            </td>
+          </tr>`;
+        });
+        renderTableRows("skills-marketplace", rows, "No registry skills returned.");
+      }
+
+      function prefillSkillInstall(name) {
+        document.getElementById("skill-install-name").value = name;
+      }
+
+      async function installSkill() {
+        const name = document.getElementById("skill-install-name").value.trim();
+        if (!name) {
+          throw new Error("Skill name is required");
+        }
+        const result = await fetchJson("/control/skills/install", {
+          method: "POST",
+          body: JSON.stringify({ name }),
+        });
+        setText("skill-detail", result);
+        await loadInstalledSkills();
+        document.getElementById("skill-install-name").value = "";
+      }
+
+      async function mutateSkill(name, action) {
+        const result = await fetchJson(`/control/skills/${encodeURIComponent(name)}/${action}`, {
+          method: "POST",
+        });
+        setText("skill-detail", result);
+        if (action === "uninstall") {
+          if (currentSkillName === name) {
+            currentSkillName = null;
+          }
+        } else {
+          currentSkillName = name;
+        }
+        await loadInstalledSkills();
+        if (action !== "uninstall") {
+          await inspectSkill(name);
+        }
       }
 
       async function createLesson() {
@@ -1017,6 +1168,7 @@
             loadSchedulerStatus(),
             loadChannelProbes(),
             loadAutonomy(),
+            loadInstalledSkills(),
             loadChannels(),
             loadSessions(),
             loadMemory(),
@@ -1027,6 +1179,7 @@
             loadBrowserSessions(),
             loadLogs(),
             loadRuntimeEvents(),
+            loadSkillCatalog("popular"),
           ]);
         } catch (error) {
           setText("diagnostics-report", { error: error.message });
@@ -1333,6 +1486,41 @@
           setText("runtime-logs", { error: error.message });
         }
       });
+      document.getElementById("skills-search").addEventListener("click", async () => {
+        try {
+          await loadSkillCatalog("search");
+        } catch (error) {
+          setText("skill-detail", { error: error.message });
+        }
+      });
+      document.getElementById("skills-popular").addEventListener("click", async () => {
+        try {
+          await loadSkillCatalog("popular");
+        } catch (error) {
+          setText("skill-detail", { error: error.message });
+        }
+      });
+      document.getElementById("skills-trending").addEventListener("click", async () => {
+        try {
+          await loadSkillCatalog("trending");
+        } catch (error) {
+          setText("skill-detail", { error: error.message });
+        }
+      });
+      document.getElementById("skills-install").addEventListener("click", async () => {
+        try {
+          await installSkill();
+        } catch (error) {
+          setText("skill-detail", { error: error.message });
+        }
+      });
+      document.getElementById("skills-refresh").addEventListener("click", async () => {
+        try {
+          await loadInstalledSkills();
+        } catch (error) {
+          setText("skill-detail", { error: error.message });
+        }
+      });
       document.getElementById("lesson-create").addEventListener("click", async () => {
         try {
           await createLesson();
@@ -1355,6 +1543,9 @@
       window.inspectOrchestrationRun = inspectOrchestrationRun;
       window.promoteReflectionCandidate = promoteReflectionCandidate;
       window.deactivateLesson = deactivateLesson;
+      window.inspectSkill = inspectSkill;
+      window.mutateSkill = mutateSkill;
+      window.prefillSkillInstall = prefillSkillInstall;
 
       refreshAll();
       setInterval(() => {

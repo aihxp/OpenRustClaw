@@ -72,7 +72,7 @@ The remaining parity work is not being treated as "add every autonomous feature 
 
 From here, the preferred remaining order is:
 
-- finish the remaining extension/plugin and runtime-resilience work after the browser/tool-group half of Wave 3;
+- finish the remaining runtime-resilience work after the browser/tool-group and extension-management slices of Wave 3;
 - then close the remaining voice/media/mobile parity gaps and do a final parity audit.
 
 This order is intentional. OpenRustClaw should get more autonomous only when operators can still see what it is doing, understand why it made a decision, and stop or steer it safely.

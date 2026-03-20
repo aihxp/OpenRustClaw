@@ -705,7 +705,7 @@ Exit criteria:
 
 Goal: match OpenClaw's operator UX and tooling surface while keeping Rust-native interfaces.
 
-Status: complete for shipped CLI/MCP control-plane surfaces, shared typed control/config/diagnostics APIs, autonomy-tier and decision-lesson control surfaces, shared service-status, scheduler, channel-readiness, and runtime-log inspection APIs, shared session/memory/job inspection APIs, channel account CRUD parity, encrypted runtime secret-vault support, validated provider/model switching, runtime reload/cutover APIs with rollback, full trust-first routed/orchestrated multi-model execution surfaces with receipt capture, checkpoints, trace logs, transcript persistence, parent/child delegation relationships, active supervision state, pause/resume/kill controls, estimated token/duration resource summaries, request-scoped model/autonomy override lanes, reflection candidates, reflection-to-lesson promotion, and lesson-aware steering context, stronger onboarding flows with existing-state handling plus post-onboarding doctor handoff, doctor validation, a shipped browser/tool-group slice with open-session/sessions/inspect/run-sequence/artifact inspection plus read-page/crawl-site/navigate/extract/screenshot/pdf surfaces across CLI, MCP, `/control/browser/...`, and `/control/ui`, including a Tier B `agent-browser` compatibility backend under the same Rust-owned control contract, and an initial Web Control UI shell with config/vault editing plus autonomy/lesson, active-run supervision, run-supervision/run-trace/run-transcript/run-resource inspection, enabled-channel readiness, and recent/live runtime log visibility; deeper Web Control UI parity, extension parity, broader runtime resilience, and deeper channel/service probes remain open.
+Status: complete for shipped CLI/MCP control-plane surfaces, shared typed control/config/diagnostics APIs, autonomy-tier and decision-lesson control surfaces, shared service-status, scheduler, channel-readiness, and runtime-log inspection APIs, shared session/memory/job inspection APIs, channel account CRUD parity, encrypted runtime secret-vault support, validated provider/model switching, runtime reload/cutover APIs with rollback, full trust-first routed/orchestrated multi-model execution surfaces with receipt capture, checkpoints, trace logs, transcript persistence, parent/child delegation relationships, active supervision state, pause/resume/kill controls, estimated token/duration resource summaries, request-scoped model/autonomy override lanes, reflection candidates, reflection-to-lesson promotion, and lesson-aware steering context, stronger onboarding flows with existing-state handling plus post-onboarding doctor handoff, doctor validation, a shipped browser/tool-group slice with open-session/sessions/inspect/run-sequence/artifact inspection plus read-page/crawl-site/navigate/extract/screenshot/pdf surfaces across CLI, MCP, `/control/browser/...`, and `/control/ui`, including a Tier B `agent-browser` compatibility backend under the same Rust-owned control contract, typed extension-management APIs for `/control/skills...`, and an initial Web Control UI shell with config/vault editing plus autonomy/lesson, installed-extension inspection and registry discovery, active-run supervision, run-supervision/run-trace/run-transcript/run-resource inspection, enabled-channel readiness, and recent/live runtime log visibility; deeper Web Control UI parity, broader runtime resilience, and deeper channel/service probes remain open.
 
 Additional later-surface work:
 
@@ -1113,9 +1113,9 @@ Remaining:
   - [x] channel account inspection
   - [x] service-status inspection
   - [x] logs
+  - [x] extensions/plugins over the shipped skills runtime
   - live chat,
   - nodes,
-  - extensions/plugins,
   - [x] basic secret editing on top of the shared runtime vault API
   - richer vault workflows.
 - [ ] Finish onboarding parity beyond the shipped scaffold:
@@ -1215,7 +1215,7 @@ Recommended finish order from here:
 - [ ] Wave 3: finish the broader web and extension surface after the operator/runtime control layer is strong enough to supervise it:
   - [x] richer Rust-native browser/web tooling,
   - [x] MCP/browser/tool-group parity,
-  - [ ] extension/plugin parity,
+  - [x] extension/operator-management parity over the shipped skills runtime,
   - [ ] broader hot-reload and provider/runtime resilience.
 - [ ] Wave 4: close the remaining operator experience gaps after the core runtime and browser/extension layers are solid:
   - voice-note transcription and broader voice/media polish,

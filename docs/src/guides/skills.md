@@ -38,6 +38,12 @@ flowchart TB
     Registry --> Security
 ```
 
+The current operator surfaces for skills/extensions are shared across CLI, typed control APIs, and the Web Control UI:
+
+- CLI: `openrustclaw skills list|search|install|update|uninstall|verify|popular|trending`
+- Control API: `/control/skills...`
+- Control UI: `/control/ui` extension discovery and installed-extension management panels
+
 ---
 
 ## 📄 SKILL.md Format

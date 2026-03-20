@@ -2,9 +2,11 @@
 
 use anyhow::{Context, Result};
 use indicatif::{ProgressBar, ProgressStyle};
+use serde::Serialize;
 use sqlx::Row;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use tracing::debug;
 
 use openrustclaw_scheduler::DurableEventBus;
 use openrustclaw_security::SkillVerifier;
@@ -177,6 +179,788 @@ async fn persist_verified_state(pool: &sqlx::SqlitePool, id: &str, verified: boo
         .await
         .context("Failed to update skill verification state")?;
     Ok(())
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct InstalledSkillSummary {
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    pub source: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    pub verified: bool,
+    pub enabled: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created_at: Option<String>,
+    pub capabilities: Vec<String>,
+    pub signature_present: bool,
+    pub schema_present: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub local_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct InstalledSkillDetail {
+    pub skill: InstalledSkillSummary,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub schema: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signature: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub registry: Option<RegistrySkillSummary>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RegistrySkillSummary {
+    pub name: String,
+    pub version: String,
+    pub description: String,
+    pub author: String,
+    pub repository: String,
+    pub license: String,
+    pub downloads: u64,
+    pub rating: f32,
+    pub rating_count: u32,
+    pub categories: Vec<String>,
+    pub keywords: Vec<String>,
+    pub capabilities: Vec<String>,
+    pub signed: bool,
+    pub published_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SkillCatalogResult {
+    pub source: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub query: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub category: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sort: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<usize>,
+    pub skills: Vec<RegistrySkillSummary>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SkillMutationResult {
+    pub status: String,
+    pub action: String,
+    pub skill_name: String,
+    pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub skill: Option<InstalledSkillDetail>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub verified: Option<bool>,
+}
+
+async fn load_skill_config_and_pool()
+-> Result<(openrustclaw_core::config::AppConfig, sqlx::SqlitePool)> {
+    let config = openrustclaw_core::config::AppConfig::load().unwrap_or_default();
+    let pool = openrustclaw_db::init_pool(&config.database.url, 2)
+        .await
+        .context("Failed to connect to database")?;
+
+    openrustclaw_db::run_migrations(&pool)
+        .await
+        .context("Failed to run migrations")?;
+
+    Ok((config, pool))
+}
+
+fn skill_registry_endpoint(config: &openrustclaw_core::config::AppConfig) -> String {
+    config
+        .skills
+        .as_ref()
+        .and_then(|skills| skills.registry_url.clone())
+        .unwrap_or_else(|| "https://clawhub.openrustclaw.dev".to_string())
+}
+
+async fn build_registry_client(
+    config: &openrustclaw_core::config::AppConfig,
+) -> Result<ClawHubRegistry> {
+    ClawHubRegistry::new(skill_registry_endpoint(config))
+        .await
+        .context("Failed to connect to ClawHub registry")
+}
+
+fn parse_capabilities_json(raw: Option<&str>) -> Vec<String> {
+    raw.and_then(|value| serde_json::from_str::<Vec<String>>(value).ok())
+        .unwrap_or_default()
+}
+
+fn registry_skill_summary(metadata: openrustclaw_skills::SkillMetadata) -> RegistrySkillSummary {
+    RegistrySkillSummary {
+        name: metadata.name,
+        version: metadata.version.to_string(),
+        description: metadata.description,
+        author: metadata.author,
+        repository: metadata.repository,
+        license: metadata.license,
+        downloads: metadata.downloads,
+        rating: metadata.rating,
+        rating_count: metadata.rating_count,
+        categories: metadata.categories,
+        keywords: metadata.keywords,
+        capabilities: metadata.capabilities,
+        signed: metadata.signature.is_some(),
+        published_at: metadata.published_at.to_rfc3339(),
+        updated_at: metadata.updated_at.to_rfc3339(),
+    }
+}
+
+async fn registry_install_paths(
+    config: &openrustclaw_core::config::AppConfig,
+) -> HashSet<(String, String)> {
+    match build_registry_client(config).await {
+        Ok(registry) => match registry.list_installed().await {
+            Ok(skills) => skills
+                .into_iter()
+                .map(|skill| {
+                    (
+                        skill.name,
+                        skill.install_path.join("SKILL.md").display().to_string(),
+                    )
+                })
+                .collect(),
+            Err(error) => {
+                debug!(error = %error, "Failed to read installed registry skills");
+                HashSet::new()
+            }
+        },
+        Err(error) => {
+            debug!(error = %error, "Failed to build registry client for install-path lookup");
+            HashSet::new()
+        }
+    }
+}
+
+fn resolve_skill_local_path(
+    name: &str,
+    source: &str,
+    registry_paths: &HashSet<(String, String)>,
+) -> Option<String> {
+    if source == "workspace" || source == "bundled" {
+        return resolve_workspace_skill_file(name).map(|path| path.display().to_string());
+    }
+
+    registry_paths
+        .iter()
+        .find_map(|(skill_name, path)| (skill_name == name).then(|| path.clone()))
+        .or_else(|| {
+            let candidate = Path::new("skills").join(name).join("SKILL.md");
+            candidate.exists().then(|| candidate.display().to_string())
+        })
+}
+
+async fn list_installed_rows(
+    pool: &sqlx::SqlitePool,
+    config: &openrustclaw_core::config::AppConfig,
+) -> Result<Vec<InstalledSkillSummary>> {
+    let rows = sqlx::query(
+        r#"
+        SELECT
+            name,
+            description,
+            source,
+            version,
+            verified,
+            enabled,
+            created_at,
+            capabilities,
+            signature,
+            schema
+        FROM skills
+        ORDER BY name
+        "#,
+    )
+    .fetch_all(pool)
+    .await
+    .context("Failed to query skills from database")?;
+
+    let registry_paths = registry_install_paths(config).await;
+    let mut skills = Vec::with_capacity(rows.len());
+    for row in rows {
+        let name: String = row.get("name");
+        let source: String = row.get("source");
+        let capabilities_json: Option<String> = row.get("capabilities");
+        let signature: Option<String> = row.get("signature");
+        let schema: Option<String> = row.get("schema");
+        skills.push(InstalledSkillSummary {
+            name: name.clone(),
+            description: row.get("description"),
+            source: source.clone(),
+            version: row.get("version"),
+            verified: row.get::<i64, _>("verified") == 1,
+            enabled: row.get::<i64, _>("enabled") == 1,
+            created_at: row.get("created_at"),
+            capabilities: parse_capabilities_json(capabilities_json.as_deref()),
+            signature_present: signature.is_some(),
+            schema_present: schema
+                .as_ref()
+                .is_some_and(|value| !value.trim().is_empty()),
+            local_path: resolve_skill_local_path(&name, &source, &registry_paths),
+        });
+    }
+
+    Ok(skills)
+}
+
+pub async fn installed_skills_data() -> Result<Vec<InstalledSkillSummary>> {
+    let (config, pool) = load_skill_config_and_pool().await?;
+    list_installed_rows(&pool, &config).await
+}
+
+pub async fn installed_skill_detail_data(name: &str) -> Result<InstalledSkillDetail> {
+    let (config, pool) = load_skill_config_and_pool().await?;
+    let registry_paths = registry_install_paths(&config).await;
+    let row = sqlx::query(
+        r#"
+        SELECT
+            name,
+            description,
+            source,
+            version,
+            verified,
+            enabled,
+            created_at,
+            capabilities,
+            signature,
+            schema
+        FROM skills
+        WHERE name = ?
+        "#,
+    )
+    .bind(name)
+    .fetch_optional(&pool)
+    .await
+    .context("Failed to query skill detail from database")?;
+
+    let Some(row) = row else {
+        anyhow::bail!("Skill '{}' not found", name);
+    };
+
+    let skill_name: String = row.get("name");
+    let source: String = row.get("source");
+    let capabilities_json: Option<String> = row.get("capabilities");
+    let signature: Option<String> = row.get("signature");
+    let schema: Option<String> = row.get("schema");
+    let registry = if source == "marketplace" {
+        match build_registry_client(&config).await {
+            Ok(client) => match client.get_skill(&skill_name).await {
+                Ok(metadata) => Some(registry_skill_summary(metadata)),
+                Err(error) => {
+                    debug!(error = %error, skill = %skill_name, "Failed to load registry metadata for installed skill");
+                    None
+                }
+            },
+            Err(error) => {
+                debug!(error = %error, "Failed to build registry client for skill inspection");
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    Ok(InstalledSkillDetail {
+        skill: InstalledSkillSummary {
+            name: skill_name.clone(),
+            description: row.get("description"),
+            source: source.clone(),
+            version: row.get("version"),
+            verified: row.get::<i64, _>("verified") == 1,
+            enabled: row.get::<i64, _>("enabled") == 1,
+            created_at: row.get("created_at"),
+            capabilities: parse_capabilities_json(capabilities_json.as_deref()),
+            signature_present: signature.is_some(),
+            schema_present: schema
+                .as_ref()
+                .is_some_and(|value| !value.trim().is_empty()),
+            local_path: resolve_skill_local_path(&skill_name, &source, &registry_paths),
+        },
+        schema,
+        signature,
+        registry,
+    })
+}
+
+pub async fn search_data(
+    query: &str,
+    category: Option<&str>,
+    sort: &str,
+) -> Result<SkillCatalogResult> {
+    let (config, _) = load_skill_config_and_pool().await?;
+    let sort_by = match sort.to_lowercase().as_str() {
+        "downloads" => SortBy::Downloads,
+        "rating" => SortBy::Rating,
+        "recent" => SortBy::Recent,
+        _ => SortBy::Relevance,
+    };
+    let filters = SearchFilters {
+        category: category.map(|value| value.to_string()),
+        sort_by,
+        min_rating: None,
+        verified_only: false,
+    };
+
+    let registry = build_registry_client(&config).await?;
+    let skills = registry
+        .search(query, filters)
+        .await?
+        .into_iter()
+        .map(registry_skill_summary)
+        .collect();
+
+    Ok(SkillCatalogResult {
+        source: "clawhub".to_string(),
+        query: Some(query.to_string()),
+        category: category.map(|value| value.to_string()),
+        sort: Some(sort.to_string()),
+        limit: None,
+        skills,
+    })
+}
+
+pub async fn popular_data(limit: usize) -> Result<SkillCatalogResult> {
+    let (config, _) = load_skill_config_and_pool().await?;
+    let registry = build_registry_client(&config).await?;
+    let skills = registry
+        .get_popular(limit)
+        .await?
+        .into_iter()
+        .map(registry_skill_summary)
+        .collect();
+
+    Ok(SkillCatalogResult {
+        source: "clawhub".to_string(),
+        query: None,
+        category: None,
+        sort: Some("popular".to_string()),
+        limit: Some(limit),
+        skills,
+    })
+}
+
+pub async fn trending_data(limit: usize) -> Result<SkillCatalogResult> {
+    let (config, _) = load_skill_config_and_pool().await?;
+    let registry = build_registry_client(&config).await?;
+    let skills = registry
+        .get_trending(limit)
+        .await?
+        .into_iter()
+        .map(registry_skill_summary)
+        .collect();
+
+    Ok(SkillCatalogResult {
+        source: "clawhub".to_string(),
+        query: None,
+        category: None,
+        sort: Some("trending".to_string()),
+        limit: Some(limit),
+        skills,
+    })
+}
+
+pub async fn install_data(name: &str) -> Result<SkillMutationResult> {
+    let (config, pool) = load_skill_config_and_pool().await?;
+
+    let existing: Option<String> = sqlx::query_scalar("SELECT name FROM skills WHERE name = ?")
+        .bind(name)
+        .fetch_optional(&pool)
+        .await?;
+
+    if existing.is_some() {
+        return Ok(SkillMutationResult {
+            status: "noop".to_string(),
+            action: "install".to_string(),
+            skill_name: name.to_string(),
+            message: format!("Skill '{}' is already installed", name),
+            skill: Some(installed_skill_detail_data(name).await?),
+            verified: None,
+        });
+    }
+
+    let skills_dir = Path::new("skills");
+    if !skills_dir.exists() {
+        tokio::fs::create_dir_all(skills_dir).await?;
+    }
+
+    if let Some(skill_file) = resolve_workspace_skill_file(name) {
+        let content = tokio::fs::read_to_string(&skill_file).await?;
+        let metadata = parse_skill_metadata(&content)?;
+        let capabilities_json = serialize_capabilities(&metadata.capabilities)?;
+
+        upsert_skill_record(
+            &pool,
+            &metadata.name,
+            metadata.description.as_deref(),
+            "workspace",
+            metadata.version.as_deref(),
+            metadata.signature.as_deref(),
+            true,
+            Some(&capabilities_json),
+            metadata.schema.as_deref(),
+        )
+        .await?;
+
+        publish_plugin_event(
+            &pool,
+            "plugin.skill_installed",
+            serde_json::json!({
+                "name": metadata.name,
+                "source": "workspace",
+                "capabilities": metadata.capabilities,
+            }),
+        )
+        .await;
+
+        return Ok(SkillMutationResult {
+            status: "ok".to_string(),
+            action: "install".to_string(),
+            skill_name: metadata.name.clone(),
+            message: format!(
+                "Installed workspace skill '{}' from {}",
+                metadata.name,
+                skill_file.display()
+            ),
+            skill: Some(installed_skill_detail_data(&metadata.name).await?),
+            verified: Some(true),
+        });
+    }
+
+    let registry = build_registry_client(&config).await?;
+    let registry_metadata = registry
+        .get_skill(name)
+        .await
+        .with_context(|| format!("Failed to fetch skill metadata for '{}'", name))?;
+
+    enforce_external_skill_policy(
+        &config,
+        &registry_metadata.capabilities,
+        registry_metadata.signature.as_deref(),
+        name,
+    )?;
+
+    match registry.install(name, None).await? {
+        openrustclaw_skills::InstallResult::AlreadyInstalled => Ok(SkillMutationResult {
+            status: "noop".to_string(),
+            action: "install".to_string(),
+            skill_name: name.to_string(),
+            message: format!(
+                "Skill '{}' was already installed in the registry store",
+                name
+            ),
+            skill: if sqlx::query_scalar::<_, String>("SELECT name FROM skills WHERE name = ?")
+                .bind(name)
+                .fetch_optional(&pool)
+                .await?
+                .is_some()
+            {
+                Some(installed_skill_detail_data(name).await?)
+            } else {
+                None
+            },
+            verified: Some(false),
+        }),
+        openrustclaw_skills::InstallResult::Installed {
+            name,
+            version,
+            path: _,
+        } => {
+            let capabilities_json = serialize_capabilities(&registry_metadata.capabilities)?;
+            let version_string = version.to_string();
+            upsert_skill_record(
+                &pool,
+                &name,
+                Some(&registry_metadata.description),
+                "marketplace",
+                Some(version_string.as_str()),
+                registry_metadata.signature.as_deref(),
+                false,
+                Some(&capabilities_json),
+                None,
+            )
+            .await?;
+
+            publish_plugin_event(
+                &pool,
+                "plugin.skill_installed",
+                serde_json::json!({
+                    "name": name,
+                    "source": "marketplace",
+                    "version": version_string,
+                }),
+            )
+            .await;
+
+            Ok(SkillMutationResult {
+                status: "ok".to_string(),
+                action: "install".to_string(),
+                skill_name: name.clone(),
+                message: format!("Installed marketplace skill '{}' v{}", name, version),
+                skill: Some(installed_skill_detail_data(&name).await?),
+                verified: Some(false),
+            })
+        }
+    }
+}
+
+pub async fn update_data(name: &str) -> Result<SkillMutationResult> {
+    let (config, pool) = load_skill_config_and_pool().await?;
+
+    let existing: Option<String> = sqlx::query_scalar("SELECT name FROM skills WHERE name = ?")
+        .bind(name)
+        .fetch_optional(&pool)
+        .await?;
+
+    if existing.is_none() {
+        return Ok(SkillMutationResult {
+            status: "noop".to_string(),
+            action: "update".to_string(),
+            skill_name: name.to_string(),
+            message: format!("Skill '{}' is not installed", name),
+            skill: None,
+            verified: None,
+        });
+    }
+
+    let registry = build_registry_client(&config).await?;
+    match registry.update(name).await? {
+        openrustclaw_skills::UpdateResult::UpToDate => Ok(SkillMutationResult {
+            status: "noop".to_string(),
+            action: "update".to_string(),
+            skill_name: name.to_string(),
+            message: format!("Skill '{}' is already up to date", name),
+            skill: Some(installed_skill_detail_data(name).await?),
+            verified: None,
+        }),
+        openrustclaw_skills::UpdateResult::Updated { from, to } => {
+            let metadata = registry.get_skill(name).await?;
+            enforce_external_skill_policy(
+                &config,
+                &metadata.capabilities,
+                metadata.signature.as_deref(),
+                name,
+            )?;
+            let capabilities_json = serialize_capabilities(&metadata.capabilities)?;
+            let version_string = to.to_string();
+            upsert_skill_record(
+                &pool,
+                name,
+                Some(&metadata.description),
+                "marketplace",
+                Some(version_string.as_str()),
+                metadata.signature.as_deref(),
+                false,
+                Some(&capabilities_json),
+                None,
+            )
+            .await?;
+
+            publish_plugin_event(
+                &pool,
+                "plugin.skill_updated",
+                serde_json::json!({
+                    "name": name,
+                    "from": from.to_string(),
+                    "to": version_string,
+                }),
+            )
+            .await;
+
+            Ok(SkillMutationResult {
+                status: "ok".to_string(),
+                action: "update".to_string(),
+                skill_name: name.to_string(),
+                message: format!("Updated skill '{}' from v{} to v{}", name, from, to),
+                skill: Some(installed_skill_detail_data(name).await?),
+                verified: Some(false),
+            })
+        }
+    }
+}
+
+pub async fn uninstall_data(name: &str) -> Result<SkillMutationResult> {
+    let (config, pool) = load_skill_config_and_pool().await?;
+
+    let existing: Option<String> = sqlx::query_scalar("SELECT name FROM skills WHERE name = ?")
+        .bind(name)
+        .fetch_optional(&pool)
+        .await?;
+
+    if existing.is_none() {
+        return Ok(SkillMutationResult {
+            status: "noop".to_string(),
+            action: "uninstall".to_string(),
+            skill_name: name.to_string(),
+            message: format!("Skill '{}' is not installed", name),
+            skill: None,
+            verified: None,
+        });
+    }
+
+    if let Ok(registry) = build_registry_client(&config).await
+        && let Err(error) = registry.uninstall(name).await
+    {
+        debug!(error = %error, skill = %name, "Failed to uninstall skill through registry client");
+    }
+
+    sqlx::query("DELETE FROM skills WHERE name = ?")
+        .bind(name)
+        .execute(&pool)
+        .await?;
+
+    publish_plugin_event(
+        &pool,
+        "plugin.skill_uninstalled",
+        serde_json::json!({
+            "name": name,
+        }),
+    )
+    .await;
+
+    Ok(SkillMutationResult {
+        status: "ok".to_string(),
+        action: "uninstall".to_string(),
+        skill_name: name.to_string(),
+        message: format!("Uninstalled skill '{}'", name),
+        skill: None,
+        verified: None,
+    })
+}
+
+pub async fn verify_data(name: &str) -> Result<SkillMutationResult> {
+    let (config, pool) = load_skill_config_and_pool().await?;
+    let row = sqlx::query("SELECT id, signature, source, verified FROM skills WHERE name = ?")
+        .bind(name)
+        .fetch_optional(&pool)
+        .await?;
+
+    let Some(row) = row else {
+        anyhow::bail!("Skill '{}' not found", name);
+    };
+
+    let id: String = row.get("id");
+    let signature: Option<String> = row.get("signature");
+    let source: String = row.get("source");
+    let verified: i64 = row.get("verified");
+
+    if source == "workspace" || source == "bundled" {
+        persist_verified_state(&pool, &id, true).await?;
+        publish_plugin_event(
+            &pool,
+            "plugin.skill_verified",
+            serde_json::json!({
+                "name": name,
+                "source": source,
+                "verified": true,
+                "verification_mode": "exempt",
+            }),
+        )
+        .await;
+
+        return Ok(SkillMutationResult {
+            status: "ok".to_string(),
+            action: "verify".to_string(),
+            skill_name: name.to_string(),
+            message: format!(
+                "Skill '{}' is verification-exempt because it is {}",
+                name, source
+            ),
+            skill: Some(installed_skill_detail_data(name).await?),
+            verified: Some(true),
+        });
+    }
+
+    if verified == 1 {
+        return Ok(SkillMutationResult {
+            status: "noop".to_string(),
+            action: "verify".to_string(),
+            skill_name: name.to_string(),
+            message: format!("Skill '{}' is already verified", name),
+            skill: Some(installed_skill_detail_data(name).await?),
+            verified: Some(true),
+        });
+    }
+
+    let Some(skill_file) = resolve_workspace_skill_file(name) else {
+        anyhow::bail!(
+            "Skill '{}' is not a workspace skill and no local SKILL.md was found for manual verification",
+            name
+        );
+    };
+
+    let content = tokio::fs::read(&skill_file).await?;
+    let verifier = load_configured_skill_verifier(&config, true)?;
+
+    let Some(sig_hex) = signature else {
+        persist_verified_state(&pool, &id, false).await?;
+        return Ok(SkillMutationResult {
+            status: "failed".to_string(),
+            action: "verify".to_string(),
+            skill_name: name.to_string(),
+            message: format!("Skill '{}' has no signature", name),
+            skill: Some(installed_skill_detail_data(name).await?),
+            verified: Some(false),
+        });
+    };
+
+    let signature_bytes = hex::decode(&sig_hex).context("Invalid signature format in database")?;
+    let verified_result = match verifier.verify(&content, &signature_bytes) {
+        Ok(value) => value,
+        Err(error) => {
+            persist_verified_state(&pool, &id, false).await?;
+            publish_plugin_event(
+                &pool,
+                "plugin.skill_verified",
+                serde_json::json!({
+                    "name": name,
+                    "source": source,
+                    "verified": false,
+                    "verification_mode": "error",
+                    "error": error.to_string(),
+                }),
+            )
+            .await;
+            return Ok(SkillMutationResult {
+                status: "failed".to_string(),
+                action: "verify".to_string(),
+                skill_name: name.to_string(),
+                message: format!("Error verifying skill '{}': {}", name, error),
+                skill: Some(installed_skill_detail_data(name).await?),
+                verified: Some(false),
+            });
+        }
+    };
+
+    persist_verified_state(&pool, &id, verified_result).await?;
+    publish_plugin_event(
+        &pool,
+        "plugin.skill_verified",
+        serde_json::json!({
+            "name": name,
+            "source": source,
+            "verified": verified_result,
+            "verification_mode": "signature",
+        }),
+    )
+    .await;
+
+    Ok(SkillMutationResult {
+        status: if verified_result { "ok" } else { "failed" }.to_string(),
+        action: "verify".to_string(),
+        skill_name: name.to_string(),
+        message: if verified_result {
+            format!("Skill '{}' signature verified successfully", name)
+        } else {
+            format!("Skill '{}' signature verification failed", name)
+        },
+        skill: Some(installed_skill_detail_data(name).await?),
+        verified: Some(verified_result),
+    })
 }
 
 /// List installed skills from database.
@@ -1099,8 +1883,6 @@ mod hex {
         Ok(result)
     }
 }
-
-use tracing::debug;
 
 #[cfg(test)]
 mod tests {
