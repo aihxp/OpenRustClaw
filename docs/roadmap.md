@@ -705,7 +705,7 @@ Exit criteria:
 
 Goal: match OpenClaw's operator UX and tooling surface while keeping Rust-native interfaces.
 
-Status: complete for shipped CLI/MCP control-plane surfaces, shared typed control/config/diagnostics APIs, autonomy-tier and decision-lesson control surfaces, shared service-status and scheduler inspection APIs, shared session/memory/job inspection APIs, channel account CRUD parity, encrypted runtime secret-vault support, validated provider/model switching, runtime reload/cutover APIs with rollback, bounded routed/orchestrated multi-model execution surfaces with receipt capture, checkpoints, trace logs, parent/child delegation relationships, estimated token/duration resource summaries, request-scoped model/autonomy override lanes, reflection candidates, reflection-to-lesson promotion, and lesson-aware steering context, onboarding scaffolding, doctor validation, a bounded native browser operator slice, and an initial Web Control UI shell with config/vault editing plus autonomy/lesson and run-supervision/run-trace/run-resource inspection; deeper Web Control UI parity, richer browser/web tooling, deeper channel/service probes, and full orchestrated runtime execution remain open.
+Status: complete for shipped CLI/MCP control-plane surfaces, shared typed control/config/diagnostics APIs, autonomy-tier and decision-lesson control surfaces, shared service-status and scheduler inspection APIs, shared session/memory/job inspection APIs, channel account CRUD parity, encrypted runtime secret-vault support, validated provider/model switching, runtime reload/cutover APIs with rollback, bounded routed/orchestrated multi-model execution surfaces with receipt capture, checkpoints, trace logs, parent/child delegation relationships, estimated token/duration resource summaries, request-scoped model/autonomy override lanes, reflection candidates, reflection-to-lesson promotion, and lesson-aware steering context, onboarding scaffolding, doctor validation, a bounded native browser operator slice with read-page/crawl-site/navigate/extract/screenshot/pdf surfaces, and an initial Web Control UI shell with config/vault editing plus autonomy/lesson and run-supervision/run-trace/run-resource inspection; deeper Web Control UI parity, richer browser/web tooling, deeper channel/service probes, and full orchestrated runtime execution remain open.
 
 Additional later-surface work:
 
@@ -836,7 +836,9 @@ Completed:
   - keep the durable control registry unchanged while preserving overrides in the receipt,
   - expose the same override lane through `openrustclaw orchestrate resolve|run` and `/control/orchestration/resolve|run`.
 - [x] Add a bounded native browser operator surface backed by the Rust automation crate:
-  - `openrustclaw browser navigate|extract|screenshot|pdf`,
+  - `openrustclaw browser read-page|crawl-site|navigate|extract|screenshot|pdf`,
+  - `POST /control/browser/read-page`,
+  - `POST /control/browser/crawl-site`,
   - `POST /control/browser/navigate`,
   - `POST /control/browser/extract`,
   - `POST /control/browser/screenshot`,

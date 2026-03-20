@@ -1,3 +1,4 @@
+use std::collections::{HashSet, VecDeque};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -6,6 +7,8 @@ use openrustclaw_automation::browser::{
     LoadState, PdfOptions, ScreenshotFormat, ScreenshotOptions,
 };
 use openrustclaw_automation::{Browser, BrowserConfig};
+use regex::Regex;
+use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
@@ -77,6 +80,30 @@ pub struct BrowserPdfRequest {
     pub timeout_ms: Option<u64>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BrowserReadPageRequest {
+    pub url: String,
+    #[serde(default)]
+    pub max_chars: Option<usize>,
+    #[serde(default)]
+    pub path: Option<String>,
+    #[serde(default)]
+    pub timeout_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BrowserCrawlRequest {
+    pub url: String,
+    #[serde(default)]
+    pub max_pages: Option<usize>,
+    #[serde(default)]
+    pub max_chars_per_page: Option<usize>,
+    #[serde(default)]
+    pub path: Option<String>,
+    #[serde(default)]
+    pub timeout_ms: Option<u64>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct BrowserNavigateResult {
     pub backend: String,
@@ -113,6 +140,35 @@ pub struct BrowserPdfResult {
     pub bytes: usize,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct BrowserReadPageResult {
+    pub url: String,
+    pub final_url: String,
+    pub status: u16,
+    pub title: String,
+    pub content_type: Option<String>,
+    pub text: String,
+    pub link_count: usize,
+    pub artifact_path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BrowserCrawlPageResult {
+    pub url: String,
+    pub depth: usize,
+    pub title: String,
+    pub link_count: usize,
+    pub text_excerpt: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct BrowserCrawlResult {
+    pub root_url: String,
+    pub page_count: usize,
+    pub pages: Vec<BrowserCrawlPageResult>,
+    pub artifact_path: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BrowserArtifactSummary {
     pub kind: String,
@@ -140,6 +196,100 @@ pub async fn navigate(
     };
     browser.close().await?;
     Ok(result)
+}
+
+pub async fn read_page(
+    workspace_root: &Path,
+    request: BrowserReadPageRequest,
+) -> Result<BrowserReadPageResult> {
+    let fetched = fetch_html(&request.url, request.timeout_ms).await?;
+    let max_chars = request.max_chars.unwrap_or(4000);
+    let text = truncate_string(html_to_text(&fetched.body), max_chars);
+    let links = extract_links(&fetched.final_url, &fetched.body);
+    let artifact_path =
+        resolve_output_path(workspace_root, request.path.as_deref(), "read", "json")?;
+    let payload = serde_json::json!({
+        "url": fetched.requested_url,
+        "final_url": fetched.final_url,
+        "status": fetched.status,
+        "title": fetched.title,
+        "content_type": fetched.content_type,
+        "text": text,
+        "links": links,
+    });
+    fs::write(&artifact_path, serde_json::to_vec_pretty(&payload)?)
+        .with_context(|| format!("Failed to write '{}'", artifact_path.display()))?;
+    Ok(BrowserReadPageResult {
+        url: fetched.requested_url,
+        final_url: fetched.final_url,
+        status: fetched.status,
+        title: fetched.title,
+        content_type: fetched.content_type,
+        text,
+        link_count: links.len(),
+        artifact_path: artifact_path.display().to_string(),
+    })
+}
+
+pub async fn crawl_site(
+    workspace_root: &Path,
+    request: BrowserCrawlRequest,
+) -> Result<BrowserCrawlResult> {
+    let max_pages = request.max_pages.unwrap_or(5).max(1);
+    let max_chars_per_page = request.max_chars_per_page.unwrap_or(1200);
+    let root_url = normalize_url(&request.url);
+    let root_parsed = Url::parse(&root_url).context("invalid crawl root url")?;
+    let mut queue = VecDeque::from([(root_url.clone(), 0usize)]);
+    let mut seen = HashSet::from([root_url.clone()]);
+    let mut pages = Vec::new();
+
+    while let Some((url, depth)) = queue.pop_front() {
+        if pages.len() >= max_pages {
+            break;
+        }
+        let fetched = fetch_html(&url, request.timeout_ms).await?;
+        let text = truncate_string(html_to_text(&fetched.body), max_chars_per_page);
+        let links = extract_links(&fetched.final_url, &fetched.body);
+        pages.push(BrowserCrawlPageResult {
+            url: fetched.final_url.clone(),
+            depth,
+            title: fetched.title,
+            link_count: links.len(),
+            text_excerpt: text,
+        });
+        for link in links {
+            if pages.len() + queue.len() >= max_pages {
+                break;
+            }
+            let Ok(parsed) = Url::parse(&link) else {
+                continue;
+            };
+            if parsed.domain() != root_parsed.domain() {
+                continue;
+            }
+            let candidate = parsed.to_string();
+            if seen.insert(candidate.clone()) {
+                queue.push_back((candidate, depth + 1));
+            }
+        }
+    }
+
+    let artifact_path =
+        resolve_output_path(workspace_root, request.path.as_deref(), "crawl", "json")?;
+    let payload = serde_json::json!({
+        "root_url": root_url,
+        "page_count": pages.len(),
+        "pages": pages,
+    });
+    fs::write(&artifact_path, serde_json::to_vec_pretty(&payload)?)
+        .with_context(|| format!("Failed to write '{}'", artifact_path.display()))?;
+    let pages: Vec<BrowserCrawlPageResult> = serde_json::from_value(payload["pages"].clone())?;
+    Ok(BrowserCrawlResult {
+        root_url,
+        page_count: pages.len(),
+        pages,
+        artifact_path: artifact_path.display().to_string(),
+    })
 }
 
 pub async fn extract(
@@ -476,9 +626,103 @@ fn limit_value_array(value: Value, max_results: usize) -> Value {
     }
 }
 
+struct FetchedPage {
+    requested_url: String,
+    final_url: String,
+    status: u16,
+    title: String,
+    content_type: Option<String>,
+    body: String,
+}
+
+async fn fetch_html(url: &str, timeout_ms: Option<u64>) -> Result<FetchedPage> {
+    let normalized = normalize_url(url);
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_millis(
+            timeout_ms.unwrap_or(15_000),
+        ))
+        .user_agent("OpenRustClaw/Phase6Browser")
+        .build()?;
+    let response = client.get(&normalized).send().await?;
+    let final_url = response.url().to_string();
+    let status = response.status().as_u16();
+    let content_type = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .map(ToString::to_string);
+    let body = response.text().await?;
+    Ok(FetchedPage {
+        requested_url: normalized,
+        final_url,
+        status,
+        title: extract_title(&body),
+        content_type,
+        body,
+    })
+}
+
+fn extract_title(html: &str) -> String {
+    let re = Regex::new("(?is)<title[^>]*>(.*?)</title>").expect("valid title regex");
+    re.captures(html)
+        .and_then(|caps| caps.get(1))
+        .map(|m| html_decode_minimal(m.as_str()).trim().to_string())
+        .unwrap_or_default()
+}
+
+fn html_to_text(html: &str) -> String {
+    let scripts = Regex::new("(?is)<script[^>]*>.*?</script>|<style[^>]*>.*?</style>")
+        .expect("valid script/style regex");
+    let tags = Regex::new("(?is)<[^>]+>").expect("valid tag regex");
+    let whitespace = Regex::new(r"\s+").expect("valid whitespace regex");
+    let without_scripts = scripts.replace_all(html, " ");
+    let without_tags = tags.replace_all(&without_scripts, " ");
+    html_decode_minimal(&whitespace.replace_all(&without_tags, " "))
+        .trim()
+        .to_string()
+}
+
+fn extract_links(base_url: &str, html: &str) -> Vec<String> {
+    let Ok(base) = Url::parse(base_url) else {
+        return Vec::new();
+    };
+    let href_re = Regex::new(r#"(?is)href\s*=\s*["']([^"'#]+)["']"#).expect("valid href regex");
+    let mut links = Vec::new();
+    let mut seen = HashSet::new();
+    for capture in href_re.captures_iter(html) {
+        let Some(raw) = capture.get(1).map(|m| m.as_str().trim()) else {
+            continue;
+        };
+        if raw.is_empty() || raw.starts_with("javascript:") || raw.starts_with("mailto:") {
+            continue;
+        }
+        let Ok(joined) = base.join(raw) else {
+            continue;
+        };
+        let value = joined.to_string();
+        if seen.insert(value.clone()) {
+            links.push(value);
+        }
+    }
+    links
+}
+
+fn html_decode_minimal(input: &str) -> String {
+    input
+        .replace("&nbsp;", " ")
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{normalize_url, parse_load_state, resolve_output_path};
+    use super::{
+        extract_links, extract_title, html_to_text, normalize_url, parse_load_state,
+        resolve_output_path,
+    };
     use openrustclaw_automation::browser::LoadState;
     use tempfile::tempdir;
 
@@ -514,5 +758,26 @@ mod tests {
         assert_eq!(artifacts.len(), 1);
         assert_eq!(artifacts[0].kind, "screenshots");
         assert_eq!(artifacts[0].bytes, 5);
+    }
+
+    #[test]
+    fn html_helpers_extract_title_text_and_links() {
+        let html = r#"
+            <html>
+              <head><title>Example &amp; Test</title></head>
+              <body>
+                <h1>Hello</h1>
+                <p>World</p>
+                <a href="/docs">Docs</a>
+                <a href="https://example.com/about">About</a>
+              </body>
+            </html>
+        "#;
+        assert_eq!(extract_title(html), "Example & Test");
+        assert!(html_to_text(html).contains("Hello World"));
+        let links = extract_links("https://example.com/start", html);
+        assert_eq!(links.len(), 2);
+        assert!(links.contains(&"https://example.com/docs".to_string()));
+        assert!(links.contains(&"https://example.com/about".to_string()));
     }
 }

@@ -2470,6 +2470,14 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             post(orchestration_promote_reflection_candidate_handler),
         )
         .route("/control/browser/navigate", post(browser_navigate_handler))
+        .route(
+            "/control/browser/read-page",
+            post(browser_read_page_handler),
+        )
+        .route(
+            "/control/browser/crawl-site",
+            post(browser_crawl_site_handler),
+        )
         .route("/control/browser/extract", post(browser_extract_handler))
         .route("/control/browser/artifacts", get(browser_artifacts_handler))
         .route("/control/services/status", get(service_status_handler))
@@ -3597,6 +3605,34 @@ async fn browser_navigate_handler(
     Json(payload): Json<browser::BrowserNavigateRequest>,
 ) -> impl IntoResponse {
     match browser::navigate(&state.workspace_root, payload).await {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn browser_read_page_handler(
+    State(state): State<RuntimeControlState>,
+    Json(payload): Json<browser::BrowserReadPageRequest>,
+) -> impl IntoResponse {
+    match browser::read_page(&state.workspace_root, payload).await {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn browser_crawl_site_handler(
+    State(state): State<RuntimeControlState>,
+    Json(payload): Json<browser::BrowserCrawlRequest>,
+) -> impl IntoResponse {
+    match browser::crawl_site(&state.workspace_root, payload).await {
         Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,

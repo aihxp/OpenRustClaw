@@ -385,6 +385,8 @@
           <div class="form-grid">
             <input id="browser-url" type="url" placeholder="https://example.com" />
             <select id="browser-action">
+              <option value="read-page">Read page</option>
+              <option value="crawl-site">Crawl site</option>
               <option value="extract">Extract text</option>
               <option value="screenshot">Capture screenshot</option>
               <option value="pdf">Render PDF</option>
@@ -940,9 +942,14 @@
           return;
         }
         const endpoint = `/control/browser/${action}`;
-        const payload = action === "extract"
-          ? { url, what: "text", max_chars: 2000 }
-          : { url };
+        let payload = { url };
+        if (action === "extract") {
+          payload = { url, what: "text", max_chars: 2000 };
+        } else if (action === "read-page") {
+          payload = { url, max_chars: 3000 };
+        } else if (action === "crawl-site") {
+          payload = { url, max_pages: 5, max_chars_per_page: 1000 };
+        }
         const result = await fetchJson(endpoint, {
           method: "POST",
           body: JSON.stringify(payload),

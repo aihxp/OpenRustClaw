@@ -204,6 +204,28 @@ enum ModelsAction {
 
 #[derive(Subcommand)]
 enum BrowserAction {
+    /// Fetch a page over HTTP and save a normalized read artifact
+    ReadPage {
+        url: String,
+        #[arg(long)]
+        max_chars: Option<usize>,
+        #[arg(long)]
+        path: Option<String>,
+        #[arg(long)]
+        timeout_ms: Option<u64>,
+    },
+    /// Crawl a small same-domain site map and save a crawl artifact
+    CrawlSite {
+        url: String,
+        #[arg(long)]
+        max_pages: Option<usize>,
+        #[arg(long)]
+        max_chars_per_page: Option<usize>,
+        #[arg(long)]
+        path: Option<String>,
+        #[arg(long)]
+        timeout_ms: Option<u64>,
+    },
     /// Navigate to a page and return basic metadata
     Navigate {
         url: String,
@@ -1643,6 +1665,46 @@ async fn main() -> Result<()> {
         Commands::Browser { action } => {
             let workspace_root = std::env::current_dir()?;
             match action {
+                BrowserAction::ReadPage {
+                    url,
+                    max_chars,
+                    path,
+                    timeout_ms,
+                } => {
+                    let result = commands::browser::read_page(
+                        &workspace_root,
+                        commands::browser::BrowserReadPageRequest {
+                            url,
+                            max_chars,
+                            path,
+                            timeout_ms,
+                        },
+                    )
+                    .await?;
+                    println!("{}", serde_json::to_string_pretty(&result)?);
+                    Ok(())
+                }
+                BrowserAction::CrawlSite {
+                    url,
+                    max_pages,
+                    max_chars_per_page,
+                    path,
+                    timeout_ms,
+                } => {
+                    let result = commands::browser::crawl_site(
+                        &workspace_root,
+                        commands::browser::BrowserCrawlRequest {
+                            url,
+                            max_pages,
+                            max_chars_per_page,
+                            path,
+                            timeout_ms,
+                        },
+                    )
+                    .await?;
+                    println!("{}", serde_json::to_string_pretty(&result)?);
+                    Ok(())
+                }
                 BrowserAction::Navigate {
                     url,
                     wait_until,
