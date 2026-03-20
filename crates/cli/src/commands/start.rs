@@ -73,19 +73,18 @@ use super::channels::{
     ChannelBindingSpec, ChannelRegistry, ChannelSendPolicy, ensure_account_manifest,
     identity_from_message, load_registry, message_bot_mentioned, resolve_root,
 };
-use super::{browser, control, control_ui, doctor, inspect, orchestrate, runtime, services};
+use super::{browser, control, control_ui, doctor, inspect, logs, orchestrate, runtime, services};
 
 /// Run the start command - load config, optionally start the compatibility/experimental sidecar, and start the gateway.
 pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
-    // Initialize tracing
-    tracing_subscriber::fmt::init();
+    let workspace_root =
+        std::env::current_dir().context("Failed to determine current workspace root")?;
+    logs::init_runtime_logging(&workspace_root)?;
 
     info!("Starting OpenRustClaw...");
     let started_at = Utc::now();
 
     // Load configuration
-    let workspace_root =
-        std::env::current_dir().context("Failed to determine current workspace root")?;
     let mut config = runtime::load_effective_config(config_path, &workspace_root)?;
 
     info!(config_path = %config_path, "Configuration loaded");
@@ -2489,6 +2488,8 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             "/control/services/runtime-events",
             get(service_runtime_events_handler),
         )
+        .route("/control/logs/recent", get(control_logs_recent_handler))
+        .route("/control/logs/ws", get(control_logs_ws_handler))
         .route("/control/sessions", get(control_sessions_handler))
         .route("/control/sessions/{id}", get(control_session_handler))
         .route(
@@ -3767,6 +3768,90 @@ async fn service_runtime_events_handler(
             Json(serde_json::json!({"error": error.to_string()})),
         )
             .into_response(),
+    }
+}
+
+async fn control_logs_recent_handler(
+    State(state): State<RuntimeControlState>,
+    Query(query): Query<ListLimitQuery>,
+) -> impl IntoResponse {
+    match logs::recent_runtime_logs(&state.workspace_root, query.limit.unwrap_or(50)) {
+        Ok(entries) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "entries": entries })),
+        )
+            .into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn control_logs_ws_handler(
+    ws: WebSocketUpgrade,
+    State(state): State<RuntimeControlState>,
+    Query(query): Query<ListLimitQuery>,
+) -> impl IntoResponse {
+    ws.on_upgrade(move |socket| logs_ws_session(socket, state.workspace_root, query.limit))
+}
+
+async fn logs_ws_session(socket: WebSocket, workspace_root: PathBuf, limit: Option<usize>) {
+    let (mut sender, mut receiver) = socket.split();
+
+    let initial_entries =
+        logs::recent_runtime_logs(&workspace_root, limit.unwrap_or(50)).unwrap_or_default();
+    for entry in initial_entries {
+        let payload = serde_json::json!({ "type": "log", "entry": entry });
+        if sender
+            .send(WsMessage::Text(payload.to_string().into()))
+            .await
+            .is_err()
+        {
+            return;
+        }
+    }
+
+    let Some(mut subscription) = logs::subscribe_runtime_logs() else {
+        return;
+    };
+
+    loop {
+        tokio::select! {
+            entry = subscription.recv() => {
+                match entry {
+                    Ok(entry) => {
+                        let payload = serde_json::json!({ "type": "log", "entry": entry });
+                        if sender
+                            .send(WsMessage::Text(payload.to_string().into()))
+                            .await
+                            .is_err()
+                        {
+                            break;
+                        }
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
+                        let payload = serde_json::json!({ "type": "warning", "message": "log stream lagged; some entries were skipped" });
+                        if sender
+                            .send(WsMessage::Text(payload.to_string().into()))
+                            .await
+                            .is_err()
+                        {
+                            break;
+                        }
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                }
+            }
+            message = receiver.next() => {
+                match message {
+                    Some(Ok(WsMessage::Close(_))) | None => break,
+                    Some(Ok(_)) => {}
+                    Some(Err(_)) => break,
+                }
+            }
+        }
     }
 }
 

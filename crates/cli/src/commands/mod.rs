@@ -10,6 +10,7 @@ pub mod gmail;
 pub mod google_chat;
 pub mod imessage;
 pub mod inspect;
+pub mod logs;
 pub mod matrix;
 pub mod mcp2cli;
 pub mod meet;

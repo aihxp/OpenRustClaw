@@ -545,6 +545,17 @@
           <div class="surface"><pre id="diagnostics-report">Waiting for the first diagnostics frame…</pre></div>
         </article>
         <article class="panel span-12">
+          <h2>Runtime Logs</h2>
+          <div class="action-row" style="margin-bottom: 12px">
+            <button class="secondary" id="logs-refresh">Refresh Logs</button>
+            <div class="diagnostic-status">
+              <span class="dot" id="logs-dot"></span>
+              <span id="logs-state">Log stream connecting…</span>
+            </div>
+          </div>
+          <div class="surface"><pre id="runtime-logs">Loading…</pre></div>
+        </article>
+        <article class="panel span-12">
           <h2>Recent Runtime Events</h2>
           <div class="surface">
             <table class="table">
@@ -562,6 +573,7 @@
       const pretty = (value) => JSON.stringify(value, null, 2);
       let configEditorDirty = false;
       let currentOrchestrationReceipt = null;
+      let currentLogEntries = [];
       const setText = (id, value) => {
         document.getElementById(id).textContent = typeof value === "string" ? value : pretty(value);
       };
@@ -842,6 +854,30 @@
         renderTableRows("runtime-events", rows, "No runtime events recorded yet.");
       }
 
+      function formatLogEntry(entry) {
+        const when = entry.timestamp || "-";
+        const level = (entry.level || "INFO").padEnd(5, " ");
+        const target = entry.target || "openrustclaw";
+        const message = entry.message || "";
+        return `[${when}] ${level} ${target} ${message}`;
+      }
+
+      function renderLogs(entries) {
+        currentLogEntries = entries.slice(-200);
+        const lines = currentLogEntries.map(formatLogEntry);
+        setText("runtime-logs", lines.length ? lines.join("\n") : "No runtime logs captured yet.");
+      }
+
+      function appendLogEntry(entry) {
+        currentLogEntries = [...currentLogEntries, entry].slice(-200);
+        renderLogs(currentLogEntries);
+      }
+
+      async function loadLogs() {
+        const payload = await fetchJson("/control/logs/recent?limit=120");
+        renderLogs(payload.entries || []);
+      }
+
       async function refreshAll() {
         try {
           await Promise.all([
@@ -856,6 +892,7 @@
             loadJobs(),
             loadOrchestrationRuns(),
             loadBrowserArtifacts(),
+            loadLogs(),
             loadRuntimeEvents(),
           ]);
         } catch (error) {
@@ -989,6 +1026,42 @@
         });
       }
 
+      function connectLogs() {
+        const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+        const socket = new WebSocket(`${protocol}://${window.location.host}/control/logs/ws?limit=120`);
+        const dot = document.getElementById("logs-dot");
+        const label = document.getElementById("logs-state");
+
+        socket.addEventListener("open", () => {
+          dot.className = "dot live";
+          label.textContent = "Log stream live";
+        });
+
+        socket.addEventListener("message", (event) => {
+          try {
+            const payload = JSON.parse(event.data);
+            if (payload.type === "log" && payload.entry) {
+              appendLogEntry(payload.entry);
+            } else if (payload.type === "warning") {
+              label.textContent = payload.message || "Log stream warning";
+            }
+          } catch {
+            // Ignore malformed frames and keep the current stream alive.
+          }
+        });
+
+        socket.addEventListener("close", () => {
+          dot.className = "dot";
+          label.textContent = "Log stream disconnected";
+          setTimeout(connectLogs, 3000);
+        });
+
+        socket.addEventListener("error", () => {
+          dot.className = "dot error";
+          label.textContent = "Log stream error";
+        });
+      }
+
       document.getElementById("refresh-all").addEventListener("click", refreshAll);
       document.getElementById("config-editor").addEventListener("input", () => {
         configEditorDirty = true;
@@ -1056,6 +1129,13 @@
           setText("browser-result", { error: error.message });
         }
       });
+      document.getElementById("logs-refresh").addEventListener("click", async () => {
+        try {
+          await loadLogs();
+        } catch (error) {
+          setText("runtime-logs", { error: error.message });
+        }
+      });
       document.getElementById("lesson-create").addEventListener("click", async () => {
         try {
           await createLesson();
@@ -1079,6 +1159,7 @@
 
       refreshAll();
       connectDiagnostics();
+      connectLogs();
     </script>
   </body>
 </html>

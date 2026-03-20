@@ -705,7 +705,7 @@ Exit criteria:
 
 Goal: match OpenClaw's operator UX and tooling surface while keeping Rust-native interfaces.
 
-Status: complete for shipped CLI/MCP control-plane surfaces, shared typed control/config/diagnostics APIs, autonomy-tier and decision-lesson control surfaces, shared service-status and scheduler inspection APIs, shared session/memory/job inspection APIs, channel account CRUD parity, encrypted runtime secret-vault support, validated provider/model switching, runtime reload/cutover APIs with rollback, bounded routed/orchestrated multi-model execution surfaces with receipt capture, checkpoints, trace logs, parent/child delegation relationships, estimated token/duration resource summaries, request-scoped model/autonomy override lanes, reflection candidates, reflection-to-lesson promotion, and lesson-aware steering context, onboarding scaffolding, doctor validation, a bounded native browser operator slice with read-page/crawl-site/navigate/extract/screenshot/pdf surfaces, and an initial Web Control UI shell with config/vault editing plus autonomy/lesson and run-supervision/run-trace/run-resource inspection; deeper Web Control UI parity, richer browser/web tooling, deeper channel/service probes, and full orchestrated runtime execution remain open.
+Status: complete for shipped CLI/MCP control-plane surfaces, shared typed control/config/diagnostics APIs, autonomy-tier and decision-lesson control surfaces, shared service-status and scheduler inspection APIs, shared session/memory/job inspection APIs, channel account CRUD parity, encrypted runtime secret-vault support, validated provider/model switching, runtime reload/cutover APIs with rollback, bounded routed/orchestrated multi-model execution surfaces with receipt capture, checkpoints, trace logs, parent/child delegation relationships, estimated token/duration resource summaries, request-scoped model/autonomy override lanes, reflection candidates, reflection-to-lesson promotion, and lesson-aware steering context, onboarding scaffolding, doctor validation, a bounded native browser operator slice with read-page/crawl-site/navigate/extract/screenshot/pdf surfaces, and an initial Web Control UI shell with config/vault editing plus autonomy/lesson, run-supervision/run-trace/run-resource inspection, and recent/live runtime log visibility; deeper Web Control UI parity, richer browser/web tooling, deeper channel/service probes, and full orchestrated runtime execution remain open.
 
 Additional later-surface work:
 
@@ -856,6 +856,12 @@ Completed:
   - `GET /control/services/scheduler`,
   - `GET /control/services/runtime-events`,
   - service-status, scheduler-health, and recent-runtime-events panels in `/control/ui`.
+- [x] Add shipped runtime log visibility surfaces for operators:
+  - file-backed runtime log capture under `.claw/control/runtime.log`,
+  - `openrustclaw runtime services logs`,
+  - `GET /control/logs/recent`,
+  - `GET /control/logs/ws`,
+  - `/control/ui` recent/live runtime-log inspection.
 - [x] Add shipped session, memory, and scheduled-job inspection surfaces for shared HTTP/UI parity:
   - `GET /control/sessions`,
   - `GET /control/sessions/{id}`,
@@ -1089,9 +1095,9 @@ Remaining:
   - [x] scheduled jobs inspection
   - [x] channel account inspection
   - [x] service-status inspection
+  - [x] logs
   - live chat,
   - nodes,
-  - logs,
   - extensions/plugins,
   - [x] basic secret editing on top of the shared runtime vault API
   - richer vault workflows.
@@ -1147,7 +1153,8 @@ Remaining:
   - live channel connectivity and auth probes,
   - deeper trace-link surfacing,
   - richer secrets/service-state inspection,
-  - real log streaming and richer failure artifact drill-down.
+  - [x] real log streaming,
+  - richer failure artifact drill-down.
 - [x] Expand `doctor` into a high-signal repair and migration surface inspired by OpenClaw:
   - `openrustclaw doctor`,
   - `openrustclaw doctor --repair`,
@@ -1177,6 +1184,26 @@ Remaining:
   - steer/evaluator loop for delegated repo work,
   - clear isolation from Rust-owned core parity/runtime claims.
 - [ ] Decide whether remote MCP transport belongs in the parity surface or remains an OpenRustClaw-specific deferred feature.
+
+Recommended finish order from here:
+
+- [ ] Wave 1: finish the operator-trust surfaces that make the current runtime easier to run safely day to day:
+  - deeper Web Control UI parity,
+  - richer operator-grade diagnostics,
+  - onboarding and repair parity.
+- [ ] Wave 2: finish the trust-first orchestration runtime before broadening autonomy claims:
+  - full orchestrated multi-claw runtime,
+  - sub-agent supervision surfaces,
+  - decision-quality and reflection/lesson steering that improves choices without over-harnessing strong models into brittle micromanagement.
+- [ ] Wave 3: finish the broader web and extension surface after the operator/runtime control layer is strong enough to supervise it:
+  - richer Rust-native browser/web tooling,
+  - MCP/browser/tool-group parity,
+  - extension/plugin parity,
+  - broader hot-reload and provider/runtime resilience.
+- [ ] Wave 4: close the remaining operator experience gaps after the core runtime and browser/extension layers are solid:
+  - voice-note transcription and broader voice/media polish,
+  - mobile nodes and device-command parity,
+  - final parity audit, docs alignment, and explicit intentional-difference review.
 
 Exit criteria:
 

@@ -367,6 +367,11 @@ enum RuntimeServicesAction {
         #[arg(short, long, default_value_t = 20)]
         limit: usize,
     },
+    /// Show recent runtime logs captured by the running gateway process
+    Logs {
+        #[arg(short, long, default_value_t = 50)]
+        limit: usize,
+    },
 }
 
 #[derive(Subcommand)]
@@ -2413,6 +2418,11 @@ async fn main() -> Result<()> {
                         )
                         .await?;
                         println!("{}", serde_json::to_string_pretty(&events)?);
+                        Ok(())
+                    }
+                    RuntimeServicesAction::Logs { limit } => {
+                        let entries = commands::logs::read_recent_logs(&workspace_root, limit)?;
+                        println!("{}", serde_json::to_string_pretty(&entries)?);
                         Ok(())
                     }
                 }

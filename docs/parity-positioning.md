@@ -56,6 +56,23 @@ LangGraph may execute a bounded workflow run. It should not be the only durabili
 
 These are parity gaps and are tracked as open work in [parity-matrix.md](parity-matrix.md) and [roadmap.md](roadmap.md).
 
+## Recommended Finish Order
+
+The remaining parity work is not being treated as "add every autonomous feature as fast as possible." The preferred order is:
+
+- finish operator-trust surfaces first:
+  - Web Control UI,
+  - diagnostics,
+  - onboarding and repair;
+- then finish the trust-first orchestration runtime:
+  - full orchestrated multi-Claw execution,
+  - supervision,
+  - decision-quality loops that can learn from prior mistakes without over-steering strong models into brittle scripts;
+- then expand the browser/web and extension surface;
+- then close the remaining voice/media/mobile parity gaps and do a final parity audit.
+
+This order is intentional. OpenRustClaw should get more autonomous only when operators can still see what it is doing, understand why it made a decision, and stop or steer it safely.
+
 ## What Counts As "Parity"
 
 A feature only counts as parity-complete when:
