@@ -2645,6 +2645,14 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
         .route("/control/voice/providers", get(voice_providers_handler))
         .route("/control/voice/sessions", get(voice_sessions_handler))
         .route(
+            "/control/voice/sessions/health",
+            get(voice_session_health_handler),
+        )
+        .route(
+            "/control/voice/sessions/reap",
+            post(voice_reap_sessions_handler),
+        )
+        .route(
             "/control/voice/sessions/start",
             post(voice_start_session_handler),
         )
@@ -2662,6 +2670,7 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             post(voice_end_session_handler),
         )
         .route("/control/voice/voices", get(voice_voices_handler))
+        .route("/control/voice/prewarm", post(voice_prewarm_handler))
         .route("/control/voice/transcribe", post(voice_transcribe_handler))
         .route("/control/voice/synthesize", post(voice_synthesize_handler))
         .route("/control/mobile/nodes", get(mobile_nodes_handler))
@@ -4590,6 +4599,34 @@ async fn voice_sessions_handler(State(state): State<RuntimeControlState>) -> imp
     }
 }
 
+async fn voice_session_health_handler(
+    State(state): State<RuntimeControlState>,
+    Query(query): Query<voice_runtime::VoiceSessionHealthRequest>,
+) -> impl IntoResponse {
+    match voice_runtime::voice_session_health(&state.workspace_root, query).await {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn voice_reap_sessions_handler(
+    State(state): State<RuntimeControlState>,
+    Json(payload): Json<voice_runtime::VoiceSessionReapRequest>,
+) -> impl IntoResponse {
+    match voice_runtime::reap_voice_sessions(&state.workspace_root, payload).await {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
 async fn voice_start_session_handler(
     State(state): State<RuntimeControlState>,
     Json(payload): Json<voice_runtime::VoiceSessionStartRequest>,
@@ -4688,6 +4725,31 @@ async fn voice_voices_handler(State(state): State<RuntimeControlState>) -> impl 
     match runtime::load_effective_config(&state.config_path, &state.workspace_root) {
         Ok(config) => {
             match voice_runtime::list_voices_with_config(&config, &state.workspace_root) {
+                Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+                Err(error) => (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({"error": error.to_string()})),
+                )
+                    .into_response(),
+            }
+        }
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn voice_prewarm_handler(
+    State(state): State<RuntimeControlState>,
+    Json(payload): Json<voice_runtime::VoicePrewarmRequest>,
+) -> impl IntoResponse {
+    match runtime::load_effective_config(&state.config_path, &state.workspace_root) {
+        Ok(config) => {
+            match voice_runtime::prewarm_voice_runtime(&config, &state.workspace_root, payload)
+                .await
+            {
                 Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
                 Err(error) => (
                     StatusCode::BAD_REQUEST,

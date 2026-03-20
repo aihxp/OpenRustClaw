@@ -1516,6 +1516,39 @@ enum VoiceAction {
         #[arg(short, long, default_value = "config/default.toml")]
         config: String,
     },
+    /// Summarize bounded voice session health and stale-idle state
+    SessionHealth {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+        #[arg(long)]
+        stale_after_secs: Option<u64>,
+    },
+    /// Prewarm the shipped voice runtime through a bounded synthesis request
+    Prewarm {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+        #[arg(long)]
+        provider: Option<String>,
+        #[arg(long)]
+        model: Option<String>,
+        #[arg(long)]
+        voice: Option<String>,
+        #[arg(long)]
+        format: Option<String>,
+        #[arg(long)]
+        greeting: Option<String>,
+        #[arg(long)]
+        output_path: Option<String>,
+    },
+    /// Reap stale bounded voice sessions by idle timeout
+    ReapSessions {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+        #[arg(long)]
+        stale_after_secs: Option<u64>,
+        #[arg(long)]
+        reason: Option<String>,
+    },
     /// Start a bounded voice session receipt
     StartSession {
         #[arg(short, long, default_value = "config/default.toml")]
@@ -4257,6 +4290,35 @@ async fn main() -> Result<()> {
             VoiceAction::Status { config } => commands::voice::status(&config).await,
             VoiceAction::Providers { config } => commands::voice::providers(&config).await,
             VoiceAction::Sessions { config } => commands::voice::sessions(&config).await,
+            VoiceAction::SessionHealth {
+                config,
+                stale_after_secs,
+            } => commands::voice::session_health(&config, stale_after_secs).await,
+            VoiceAction::Prewarm {
+                config,
+                provider,
+                model,
+                voice,
+                format,
+                greeting,
+                output_path,
+            } => {
+                commands::voice::prewarm(
+                    &config,
+                    provider.as_deref(),
+                    model.as_deref(),
+                    voice.as_deref(),
+                    format.as_deref(),
+                    greeting.as_deref(),
+                    output_path.as_deref(),
+                )
+                .await
+            }
+            VoiceAction::ReapSessions {
+                config,
+                stale_after_secs,
+                reason,
+            } => commands::voice::reap_sessions(&config, stale_after_secs, reason.as_deref()).await,
             VoiceAction::StartSession {
                 config,
                 session_id,

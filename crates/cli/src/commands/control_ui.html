@@ -398,6 +398,7 @@
           <div class="surface"><pre id="voice-status">Loading…</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="voice-providers">No provider catalog loaded yet.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="voice-sessions">No voice sessions loaded yet.</pre></div>
+          <div class="surface" style="margin-top: 12px"><pre id="voice-session-health">No voice session health loaded yet.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="voice-session-detail">No voice session inspected yet.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="voice-voices">No voice catalog loaded yet.</pre></div>
         </article>
@@ -439,6 +440,7 @@
             <input id="voice-session-id" type="text" placeholder="optional voice session id" />
             <input id="voice-session-prompt" type="text" placeholder="optional assistant prompt or end reason" />
             <input id="voice-session-text" type="text" placeholder="session user/assistant text" />
+            <input id="voice-session-stale-secs" type="number" min="30" step="30" placeholder="stale after secs (default 900)" />
             <div class="action-row">
               <button id="voice-session-start">Start Session</button>
               <button class="secondary" id="voice-session-inspect">Inspect Session</button>
@@ -447,6 +449,11 @@
               <button id="voice-session-append">Append User</button>
               <button id="voice-session-respond">Respond + Synthesize</button>
               <button class="secondary" id="voice-session-end">End Session</button>
+            </div>
+            <div class="action-row">
+              <button class="secondary" id="voice-session-health-refresh">Session Health</button>
+              <button class="secondary" id="voice-session-prewarm">Prewarm Runtime</button>
+              <button class="secondary" id="voice-session-reap">Reap Stale</button>
             </div>
           </div>
         </article>
@@ -1061,6 +1068,13 @@
         setText("voice-sessions", payload);
       }
 
+      async function loadVoiceSessionHealth() {
+        const staleAfterSecs = document.getElementById("voice-session-stale-secs").value.trim();
+        const query = staleAfterSecs ? `?stale_after_secs=${encodeURIComponent(staleAfterSecs)}` : "";
+        const payload = await fetchJson(`/control/voice/sessions/health${query}`);
+        setText("voice-session-health", payload);
+      }
+
       async function loadVoiceVoices() {
         const payload = await fetchJson("/control/voice/voices");
         setText("voice-voices", payload);
@@ -1081,6 +1095,7 @@
         }
         setText("voice-session-detail", result);
         await loadVoiceSessions();
+        await loadVoiceSessionHealth();
       }
 
       async function inspectVoiceSession() {
@@ -1110,6 +1125,7 @@
         );
         setText("voice-session-detail", payload);
         await loadVoiceSessions();
+        await loadVoiceSessionHealth();
       }
 
       async function respondVoiceSession() {
@@ -1140,6 +1156,7 @@
           setText("voice-synthesis-result", payload.synthesis);
         }
         await loadVoiceSessions();
+        await loadVoiceSessionHealth();
       }
 
       async function endVoiceSession() {
@@ -1157,6 +1174,42 @@
           },
         );
         setText("voice-session-detail", payload);
+        await loadVoiceSessions();
+        await loadVoiceSessionHealth();
+      }
+
+      async function prewarmVoiceRuntime() {
+        const payload = await fetchJson("/control/voice/prewarm", {
+          method: "POST",
+          body: JSON.stringify({
+            provider: emptyToNull(document.getElementById("voice-speak-provider").value),
+            model: emptyToNull(document.getElementById("voice-speak-model").value),
+            voice: emptyToNull(document.getElementById("voice-speak-voice").value),
+            format: emptyToNull(document.getElementById("voice-speak-format").value),
+            greeting: emptyToNull(document.getElementById("voice-speak-text").value),
+            output_path: emptyToNull(document.getElementById("voice-speak-output-path").value),
+          }),
+        });
+        setText("voice-synthesis-result", payload);
+      }
+
+      async function reapVoiceSessions() {
+        const staleAfterSecs = emptyToNull(document.getElementById("voice-session-stale-secs").value);
+        const payload = await fetchJson("/control/voice/sessions/reap", {
+          method: "POST",
+          body: JSON.stringify({
+            stale_after_secs: staleAfterSecs ? Number(staleAfterSecs) : null,
+            reason: emptyToNull(document.getElementById("voice-session-prompt").value),
+          }),
+        });
+        setText("voice-session-health", payload.health || payload);
+        if ((payload.reaped_sessions || []).length > 0) {
+          const firstSession = payload.reaped_sessions[0];
+          if (firstSession && firstSession.id) {
+            document.getElementById("voice-session-id").value = firstSession.id;
+            setText("voice-session-detail", firstSession);
+          }
+        }
         await loadVoiceSessions();
       }
 
@@ -2105,6 +2158,7 @@
             loadVoiceStatus(),
             loadVoiceProviders(),
             loadVoiceSessions(),
+            loadVoiceSessionHealth(),
             loadVoiceVoices(),
             loadAutonomy(),
             loadInstalledSkills(),
@@ -2459,6 +2513,13 @@
           setText("voice-sessions", { error: error.message });
         }
       });
+      document.getElementById("voice-session-health-refresh").addEventListener("click", async () => {
+        try {
+          await loadVoiceSessionHealth();
+        } catch (error) {
+          setText("voice-session-health", { error: error.message });
+        }
+      });
       document.getElementById("voice-voices-refresh").addEventListener("click", async () => {
         try {
           await loadVoiceVoices();
@@ -2513,6 +2574,20 @@
           await endVoiceSession();
         } catch (error) {
           setText("voice-session-detail", { error: error.message });
+        }
+      });
+      document.getElementById("voice-session-prewarm").addEventListener("click", async () => {
+        try {
+          await prewarmVoiceRuntime();
+        } catch (error) {
+          setText("voice-synthesis-result", { error: error.message });
+        }
+      });
+      document.getElementById("voice-session-reap").addEventListener("click", async () => {
+        try {
+          await reapVoiceSessions();
+        } catch (error) {
+          setText("voice-session-health", { error: error.message });
         }
       });
       document.getElementById("media-inspect").addEventListener("click", async () => {

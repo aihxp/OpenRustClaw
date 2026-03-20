@@ -173,6 +173,30 @@ pub struct VoiceSessionList {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceSessionHealthRecord {
+    pub id: String,
+    pub status: String,
+    pub last_activity_at: String,
+    #[serde(default)]
+    pub closed_at: Option<String>,
+    pub turn_count: usize,
+    pub idle_secs: u64,
+    pub stale: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceSessionHealthSummary {
+    pub total_sessions: usize,
+    pub active_sessions: usize,
+    pub ended_sessions: usize,
+    pub stale_after_secs: u64,
+    pub stale_sessions: usize,
+    #[serde(default)]
+    pub oldest_active_idle_secs: Option<u64>,
+    pub sessions: Vec<VoiceSessionHealthRecord>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VoiceSessionStartRequest {
     #[serde(default)]
     pub session_id: Option<String>,
@@ -212,6 +236,44 @@ pub struct VoiceSessionEndRequest {
 pub struct VoiceSessionRespondResult {
     pub session: VoiceSessionRecord,
     pub synthesis: VoiceSynthesizeResult,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct VoiceSessionHealthRequest {
+    #[serde(default)]
+    pub stale_after_secs: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct VoiceSessionReapRequest {
+    #[serde(default)]
+    pub stale_after_secs: Option<u64>,
+    #[serde(default)]
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceSessionReapResult {
+    pub stale_after_secs: u64,
+    pub reason: String,
+    pub reaped_sessions: Vec<VoiceSessionRecord>,
+    pub health: VoiceSessionHealthSummary,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct VoicePrewarmRequest {
+    #[serde(default)]
+    pub provider: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub voice: Option<String>,
+    #[serde(default)]
+    pub format: Option<String>,
+    #[serde(default)]
+    pub greeting: Option<String>,
+    #[serde(default)]
+    pub output_path: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -1320,6 +1382,87 @@ fn voice_session_path(workspace_root: &Path, session_id: &str) -> PathBuf {
     voice_sessions_dir(workspace_root).join(format!("{session_id}.json"))
 }
 
+fn default_voice_stale_after_secs() -> u64 {
+    900
+}
+
+fn resolved_voice_stale_after_secs(value: Option<u64>) -> u64 {
+    value.unwrap_or_else(default_voice_stale_after_secs).max(30)
+}
+
+fn parse_rfc3339_utc(value: &str) -> Option<chrono::DateTime<Utc>> {
+    chrono::DateTime::parse_from_rfc3339(value)
+        .ok()
+        .map(|parsed| parsed.with_timezone(&Utc))
+}
+
+fn voice_session_idle_secs(session: &VoiceSessionRecord, now: chrono::DateTime<Utc>) -> u64 {
+    parse_rfc3339_utc(&session.last_activity_at)
+        .map(|last_activity| {
+            now.signed_duration_since(last_activity)
+                .num_seconds()
+                .max(0) as u64
+        })
+        .unwrap_or_default()
+}
+
+fn summarize_voice_sessions(
+    sessions: Vec<VoiceSessionRecord>,
+    stale_after_secs: u64,
+) -> VoiceSessionHealthSummary {
+    let now = Utc::now();
+    let mut rows = Vec::new();
+    let mut active_sessions = 0usize;
+    let mut ended_sessions = 0usize;
+    let mut stale_sessions = 0usize;
+    let mut oldest_active_idle_secs: Option<u64> = None;
+
+    for session in sessions {
+        let idle_secs = voice_session_idle_secs(&session, now);
+        let active = session.status == "active";
+        let stale = active && idle_secs >= stale_after_secs;
+        if active {
+            active_sessions += 1;
+            oldest_active_idle_secs = Some(
+                oldest_active_idle_secs
+                    .map(|current| current.max(idle_secs))
+                    .unwrap_or(idle_secs),
+            );
+        } else {
+            ended_sessions += 1;
+        }
+        if stale {
+            stale_sessions += 1;
+        }
+        rows.push(VoiceSessionHealthRecord {
+            id: session.id,
+            status: session.status,
+            last_activity_at: session.last_activity_at,
+            closed_at: session.closed_at,
+            turn_count: session.turns.len(),
+            idle_secs,
+            stale,
+        });
+    }
+
+    rows.sort_by(|left, right| {
+        right
+            .idle_secs
+            .cmp(&left.idle_secs)
+            .then_with(|| left.id.cmp(&right.id))
+    });
+
+    VoiceSessionHealthSummary {
+        total_sessions: rows.len(),
+        active_sessions,
+        ended_sessions,
+        stale_after_secs,
+        stale_sessions,
+        oldest_active_idle_secs,
+        sessions: rows,
+    }
+}
+
 pub async fn list_voice_sessions(workspace_root: &Path) -> Result<VoiceSessionList> {
     let dir = voice_sessions_dir(workspace_root);
     let mut sessions = Vec::new();
@@ -1473,6 +1616,87 @@ pub async fn end_voice_session(
     session.closed_at = Some(now);
     save_voice_session(workspace_root, &session).await?;
     Ok(session)
+}
+
+pub async fn voice_session_health(
+    workspace_root: &Path,
+    request: VoiceSessionHealthRequest,
+) -> Result<VoiceSessionHealthSummary> {
+    let stale_after_secs = resolved_voice_stale_after_secs(request.stale_after_secs);
+    let sessions = list_voice_sessions(workspace_root).await?.sessions;
+    Ok(summarize_voice_sessions(sessions, stale_after_secs))
+}
+
+pub async fn reap_voice_sessions(
+    workspace_root: &Path,
+    request: VoiceSessionReapRequest,
+) -> Result<VoiceSessionReapResult> {
+    let stale_after_secs = resolved_voice_stale_after_secs(request.stale_after_secs);
+    let reason = request
+        .reason
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| "stale_reaped".to_string());
+    let mut reaped_sessions = Vec::new();
+    let sessions = list_voice_sessions(workspace_root).await?.sessions;
+    let now = Utc::now().to_rfc3339();
+
+    for mut session in sessions {
+        if session.status != "active" {
+            continue;
+        }
+        let idle_secs = voice_session_idle_secs(&session, Utc::now());
+        if idle_secs < stale_after_secs {
+            continue;
+        }
+        session.status = "ended".to_string();
+        session.end_reason = Some(reason.clone());
+        session.last_activity_at = now.clone();
+        session.closed_at = Some(now.clone());
+        save_voice_session(workspace_root, &session).await?;
+        reaped_sessions.push(session);
+    }
+
+    let health = voice_session_health(
+        workspace_root,
+        VoiceSessionHealthRequest {
+            stale_after_secs: Some(stale_after_secs),
+        },
+    )
+    .await?;
+
+    Ok(VoiceSessionReapResult {
+        stale_after_secs,
+        reason,
+        reaped_sessions,
+        health,
+    })
+}
+
+pub async fn prewarm_voice_runtime(
+    config: &AppConfig,
+    workspace_root: &Path,
+    request: VoicePrewarmRequest,
+) -> Result<VoiceSynthesizeResult> {
+    let greeting = request
+        .greeting
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("OpenRustClaw voice runtime warmup.");
+
+    synthesize_with_config(
+        config,
+        workspace_root,
+        VoiceSynthesizeRequest {
+            text: greeting.to_string(),
+            provider: request.provider,
+            model: request.model,
+            voice: request.voice,
+            format: request.format,
+            output_path: request.output_path,
+        },
+    )
+    .await
 }
 
 async fn save_voice_session(workspace_root: &Path, session: &VoiceSessionRecord) -> Result<()> {
@@ -1960,6 +2184,129 @@ mod tests {
 
         let listed = list_voice_sessions(temp.path()).await.expect("list");
         assert_eq!(listed.sessions.len(), 1);
+
+        server_handle.abort();
+    }
+
+    #[tokio::test]
+    async fn voice_session_health_marks_stale_active_sessions() {
+        let temp = tempdir().expect("tempdir");
+        let session = VoiceSessionRecord {
+            id: "stale-session".to_string(),
+            status: "active".to_string(),
+            stt_provider: "openai".to_string(),
+            tts_provider: "openai".to_string(),
+            tts_voice: "alloy".to_string(),
+            assistant_prompt: None,
+            end_reason: None,
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+            last_activity_at: "2026-01-01T00:00:00Z".to_string(),
+            closed_at: None,
+            turns: vec![VoiceSessionTurn {
+                role: "user".to_string(),
+                text: "hello".to_string(),
+                created_at: "2026-01-01T00:00:00Z".to_string(),
+                synthesized_output_path: None,
+            }],
+        };
+        save_voice_session(temp.path(), &session)
+            .await
+            .expect("save session");
+
+        let health = voice_session_health(
+            temp.path(),
+            VoiceSessionHealthRequest {
+                stale_after_secs: Some(30),
+            },
+        )
+        .await
+        .expect("health");
+
+        assert_eq!(health.total_sessions, 1);
+        assert_eq!(health.active_sessions, 1);
+        assert_eq!(health.stale_sessions, 1);
+        assert!(health.sessions[0].stale);
+    }
+
+    #[tokio::test]
+    async fn reap_voice_sessions_ends_stale_active_sessions() {
+        let temp = tempdir().expect("tempdir");
+        let session = VoiceSessionRecord {
+            id: "reap-session".to_string(),
+            status: "active".to_string(),
+            stt_provider: "openai".to_string(),
+            tts_provider: "openai".to_string(),
+            tts_voice: "alloy".to_string(),
+            assistant_prompt: None,
+            end_reason: None,
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+            last_activity_at: "2026-01-01T00:00:00Z".to_string(),
+            closed_at: None,
+            turns: Vec::new(),
+        };
+        save_voice_session(temp.path(), &session)
+            .await
+            .expect("save session");
+
+        let result = reap_voice_sessions(
+            temp.path(),
+            VoiceSessionReapRequest {
+                stale_after_secs: Some(30),
+                reason: Some("idle_timeout".to_string()),
+            },
+        )
+        .await
+        .expect("reap");
+
+        assert_eq!(result.reaped_sessions.len(), 1);
+        assert_eq!(result.reaped_sessions[0].status, "ended");
+        assert_eq!(
+            result.reaped_sessions[0].end_reason.as_deref(),
+            Some("idle_timeout")
+        );
+
+        let stored = inspect_voice_session(temp.path(), "reap-session")
+            .await
+            .expect("inspect session");
+        assert_eq!(stored.status, "ended");
+    }
+
+    #[tokio::test]
+    async fn prewarm_voice_runtime_synthesizes_audio_artifact() {
+        let temp = tempdir().expect("tempdir");
+        let (addr, state, server_handle) = spawn_test_server().await;
+        let config = test_config(
+            &format!("http://{}", addr),
+            temp.path(),
+            "OPENRUSTCLAW_VOICE_TEST_KEY_SIX",
+        );
+
+        unsafe {
+            std::env::set_var("OPENRUSTCLAW_VOICE_TEST_KEY_SIX", "test-openai-key");
+        }
+        let result = prewarm_voice_runtime(
+            &config,
+            temp.path(),
+            VoicePrewarmRequest {
+                provider: None,
+                model: None,
+                voice: Some("nova".to_string()),
+                format: Some("mp3".to_string()),
+                greeting: Some("warm this runtime".to_string()),
+                output_path: None,
+            },
+        )
+        .await
+        .expect("prewarm");
+        unsafe {
+            std::env::remove_var("OPENRUSTCLAW_VOICE_TEST_KEY_SIX");
+        }
+
+        assert_eq!(result.voice, "nova");
+        assert!(result.output_path.contains(".claw/voice/synthesized/"));
+        let bodies = state.speech_bodies.lock().await;
+        assert_eq!(bodies.len(), 1);
+        assert!(bodies[0].contains("warm this runtime"));
 
         server_handle.abort();
     }

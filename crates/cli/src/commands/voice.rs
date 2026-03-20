@@ -2,7 +2,8 @@ use anyhow::Result;
 use openrustclaw_core::config::AppConfig;
 
 use super::voice_runtime::{
-    self, VoiceSessionAppendRequest, VoiceSessionEndRequest, VoiceSessionRespondRequest,
+    self, VoicePrewarmRequest, VoiceSessionAppendRequest, VoiceSessionEndRequest,
+    VoiceSessionHealthRequest, VoiceSessionReapRequest, VoiceSessionRespondRequest,
     VoiceSessionStartRequest, VoiceSynthesizeRequest, VoiceTranscribeRequest,
 };
 
@@ -97,6 +98,65 @@ pub async fn sessions(config_path: &str) -> Result<()> {
     let _config = load_config(config_path);
     let workspace_root = std::env::current_dir()?;
     let result = voice_runtime::list_voice_sessions(&workspace_root).await?;
+    println!("{}", serde_json::to_string_pretty(&result)?);
+    Ok(())
+}
+
+pub async fn session_health(config_path: &str, stale_after_secs: Option<u64>) -> Result<()> {
+    let _config = load_config(config_path);
+    let workspace_root = std::env::current_dir()?;
+    let result = voice_runtime::voice_session_health(
+        &workspace_root,
+        VoiceSessionHealthRequest { stale_after_secs },
+    )
+    .await?;
+    println!("{}", serde_json::to_string_pretty(&result)?);
+    Ok(())
+}
+
+pub async fn prewarm(
+    config_path: &str,
+    provider: Option<&str>,
+    model: Option<&str>,
+    voice: Option<&str>,
+    format: Option<&str>,
+    greeting: Option<&str>,
+    output_path: Option<&str>,
+) -> Result<()> {
+    let config = load_config(config_path);
+    let workspace_root = std::env::current_dir()?;
+    let result = voice_runtime::prewarm_voice_runtime(
+        &config,
+        &workspace_root,
+        VoicePrewarmRequest {
+            provider: provider.map(ToString::to_string),
+            model: model.map(ToString::to_string),
+            voice: voice.map(ToString::to_string),
+            format: format.map(ToString::to_string),
+            greeting: greeting.map(ToString::to_string),
+            output_path: output_path.map(ToString::to_string),
+        },
+    )
+    .await?;
+    println!("{}", serde_json::to_string_pretty(&result)?);
+    Ok(())
+}
+
+pub async fn reap_sessions(
+    config_path: &str,
+    stale_after_secs: Option<u64>,
+    reason: Option<&str>,
+) -> Result<()> {
+    let _config = load_config(config_path);
+    let workspace_root = std::env::current_dir()?;
+    let result = voice_runtime::reap_voice_sessions(
+        &workspace_root,
+        VoiceSessionReapRequest {
+            stale_after_secs,
+            reason: reason.map(ToString::to_string),
+        },
+    )
+    .await?;
     println!("{}", serde_json::to_string_pretty(&result)?);
     Ok(())
 }
