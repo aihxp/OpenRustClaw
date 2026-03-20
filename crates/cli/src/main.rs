@@ -1349,6 +1349,47 @@ enum MobileAction {
     Inspect { id: String },
     /// Show derived readiness for a configured mobile node
     Status { id: String },
+    /// Show bounded runtime state for a configured mobile node
+    Runtime { id: String },
+    /// Record a bounded mobile node heartbeat/runtime receipt
+    Heartbeat {
+        #[arg(long)]
+        id: String,
+        #[arg(long)]
+        app_state: Option<String>,
+        #[arg(long)]
+        network: Option<String>,
+        #[arg(long)]
+        reachable: Option<bool>,
+        #[arg(long)]
+        push_token_present: Option<bool>,
+        #[arg(long)]
+        battery_percent: Option<u8>,
+    },
+    /// Request a bounded wake ping for a mobile node
+    WakeNode {
+        #[arg(long)]
+        id: String,
+        #[arg(long)]
+        requested_by: Option<String>,
+        #[arg(long)]
+        reason: Option<String>,
+        #[arg(long)]
+        title: Option<String>,
+        #[arg(long)]
+        body: Option<String>,
+    },
+    /// Request bounded disconnected-node rehydration for a mobile node
+    RehydrateNode {
+        #[arg(long)]
+        id: String,
+        #[arg(long)]
+        requested_by: Option<String>,
+        #[arg(long)]
+        reason: Option<String>,
+        #[arg(long)]
+        pending_change_count: Option<usize>,
+    },
     /// Preview a mobile message envelope without sending it
     PreviewMessage {
         #[arg(long)]
@@ -2951,6 +2992,67 @@ async fn main() -> Result<()> {
                 }
                 MobileAction::Status { id } => {
                     commands::mobile::node_status(&workspace_root, &id).await
+                }
+                MobileAction::Runtime { id } => {
+                    commands::mobile::node_runtime(&workspace_root, &id).await
+                }
+                MobileAction::Heartbeat {
+                    id,
+                    app_state,
+                    network,
+                    reachable,
+                    push_token_present,
+                    battery_percent,
+                } => {
+                    commands::mobile::heartbeat_node(
+                        &workspace_root,
+                        &id,
+                        commands::mobile::MobileHeartbeatRequest {
+                            app_state,
+                            network,
+                            reachable,
+                            push_token_present,
+                            battery_percent,
+                            metadata: serde_json::Value::Null,
+                        },
+                    )
+                    .await
+                }
+                MobileAction::WakeNode {
+                    id,
+                    requested_by,
+                    reason,
+                    title,
+                    body,
+                } => {
+                    commands::mobile::wake_node(
+                        &workspace_root,
+                        &id,
+                        commands::mobile::MobileWakeRequest {
+                            requested_by,
+                            reason,
+                            title,
+                            body,
+                        },
+                    )
+                    .await
+                }
+                MobileAction::RehydrateNode {
+                    id,
+                    requested_by,
+                    reason,
+                    pending_change_count,
+                } => {
+                    commands::mobile::rehydrate_node(
+                        &workspace_root,
+                        &id,
+                        commands::mobile::MobileRehydrateRequest {
+                            requested_by,
+                            reason,
+                            pending_change_count,
+                        },
+                    )
+                    .await
                 }
                 MobileAction::PreviewMessage {
                     source_node_id,

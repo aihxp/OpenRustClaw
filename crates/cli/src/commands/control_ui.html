@@ -677,6 +677,20 @@
         </article>
         <article class="panel span-6">
           <h2>Mobile Node Detail</h2>
+          <div class="form-grid" style="margin-bottom: 12px">
+            <input id="mobile-runtime-app-state" type="text" placeholder="active | background | disconnected" />
+            <input id="mobile-runtime-network" type="text" placeholder="wifi | cellular | offline" />
+            <input id="mobile-runtime-battery" type="number" min="0" max="100" placeholder="battery %" />
+            <div class="action-row">
+              <button id="mobile-runtime-heartbeat">Heartbeat</button>
+              <button class="secondary" id="mobile-runtime-refresh">Refresh Runtime</button>
+            </div>
+            <input id="mobile-runtime-reason" type="text" placeholder="operator reason" />
+            <div class="action-row">
+              <button class="secondary" id="mobile-runtime-wake">Wake Node</button>
+              <button class="secondary" id="mobile-runtime-rehydrate">Rehydrate Node</button>
+            </div>
+          </div>
           <div class="surface"><pre id="mobile-node-detail">Select a mobile node to inspect.</pre></div>
         </article>
         <article class="panel span-6">
@@ -1051,6 +1065,15 @@
       function emptyToNull(value) {
         const trimmed = value.trim();
         return trimmed ? trimmed : null;
+      }
+
+      function numberOrNull(value) {
+        const trimmed = value.trim();
+        if (!trimmed) {
+          return null;
+        }
+        const parsed = Number(trimmed);
+        return Number.isFinite(parsed) ? parsed : null;
       }
 
       async function loadAutonomy() {
@@ -1471,13 +1494,67 @@
       }
 
       async function inspectMobileNode(id) {
-        const [manifest, status] = await Promise.all([
+        const [manifest, status, runtime] = await Promise.all([
           fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}`),
           fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}/status`),
+          fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}/runtime`),
         ]);
-        setText("mobile-node-detail", { manifest, status });
+        setText("mobile-node-detail", { manifest, status, runtime });
         document.getElementById("mobile-source-node").value = id;
         document.getElementById("mobile-command-node").value = id;
+        document.getElementById("mobile-runtime-app-state").value = runtime.app_state || "";
+        document.getElementById("mobile-runtime-network").value = runtime.network || "";
+        document.getElementById("mobile-runtime-battery").value = runtime.battery_percent ?? "";
+      }
+
+      async function refreshMobileRuntime() {
+        const id = document.getElementById("mobile-source-node").value.trim();
+        if (!id) {
+          throw new Error("Select a mobile node first.");
+        }
+        await inspectMobileNode(id);
+      }
+
+      async function heartbeatMobileNode() {
+        const id = document.getElementById("mobile-source-node").value.trim();
+        const result = await fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}/heartbeat`, {
+          method: "POST",
+          body: JSON.stringify({
+            app_state: emptyToNull(document.getElementById("mobile-runtime-app-state").value),
+            network: emptyToNull(document.getElementById("mobile-runtime-network").value),
+            reachable: true,
+            battery_percent: numberOrNull(document.getElementById("mobile-runtime-battery").value),
+          }),
+        });
+        setText("mobile-node-detail", result);
+        await inspectMobileNode(id);
+      }
+
+      async function wakeMobileNode() {
+        const id = document.getElementById("mobile-source-node").value.trim();
+        const result = await fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}/wake`, {
+          method: "POST",
+          body: JSON.stringify({
+            requested_by: "control_ui",
+            reason: emptyToNull(document.getElementById("mobile-runtime-reason").value),
+          }),
+        });
+        setText("mobile-node-detail", result);
+        await inspectMobileNode(id);
+      }
+
+      async function rehydrateMobileNode() {
+        const id = document.getElementById("mobile-source-node").value.trim();
+        const result = await fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}/rehydrate`, {
+          method: "POST",
+          body: JSON.stringify({
+            requested_by: "control_ui",
+            reason: emptyToNull(document.getElementById("mobile-runtime-reason").value),
+            pending_change_count: 1,
+          }),
+        });
+        setText("mobile-node-detail", result);
+        await inspectMobileNode(id);
       }
 
       async function previewMobileMessage() {
@@ -2237,6 +2314,34 @@
       document.getElementById("mobile-refresh").addEventListener("click", async () => {
         try {
           await loadMobileNodes();
+        } catch (error) {
+          setText("mobile-node-detail", { error: error.message });
+        }
+      });
+      document.getElementById("mobile-runtime-refresh").addEventListener("click", async () => {
+        try {
+          await refreshMobileRuntime();
+        } catch (error) {
+          setText("mobile-node-detail", { error: error.message });
+        }
+      });
+      document.getElementById("mobile-runtime-heartbeat").addEventListener("click", async () => {
+        try {
+          await heartbeatMobileNode();
+        } catch (error) {
+          setText("mobile-node-detail", { error: error.message });
+        }
+      });
+      document.getElementById("mobile-runtime-wake").addEventListener("click", async () => {
+        try {
+          await wakeMobileNode();
+        } catch (error) {
+          setText("mobile-node-detail", { error: error.message });
+        }
+      });
+      document.getElementById("mobile-runtime-rehydrate").addEventListener("click", async () => {
+        try {
+          await rehydrateMobileNode();
         } catch (error) {
           setText("mobile-node-detail", { error: error.message });
         }

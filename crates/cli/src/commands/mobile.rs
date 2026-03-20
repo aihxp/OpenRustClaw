@@ -147,6 +147,96 @@ pub struct MobileSyncPreviewRequest {
     pub pending_change_count: usize,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MobileNodeRuntimeState {
+    pub node_id: String,
+    pub runtime_status: String,
+    #[serde(default)]
+    pub app_state: String,
+    #[serde(default)]
+    pub network: String,
+    #[serde(default)]
+    pub reachable: bool,
+    #[serde(default)]
+    pub push_token_present: bool,
+    #[serde(default)]
+    pub battery_percent: Option<u8>,
+    #[serde(default)]
+    pub last_heartbeat_at: Option<String>,
+    #[serde(default)]
+    pub wake_state: String,
+    #[serde(default)]
+    pub wake_requested_at: Option<String>,
+    #[serde(default)]
+    pub wake_requested_by: Option<String>,
+    #[serde(default)]
+    pub wake_reason: Option<String>,
+    #[serde(default)]
+    pub last_wake_command_id: Option<String>,
+    #[serde(default)]
+    pub rehydrate_state: String,
+    #[serde(default)]
+    pub rehydrate_requested_at: Option<String>,
+    #[serde(default)]
+    pub rehydrate_requested_by: Option<String>,
+    #[serde(default)]
+    pub rehydrate_reason: Option<String>,
+    #[serde(default)]
+    pub rehydrate_pending_change_count: Option<usize>,
+    #[serde(default)]
+    pub last_rehydrate_command_id: Option<String>,
+    #[serde(default)]
+    pub metadata: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MobileHeartbeatRequest {
+    #[serde(default)]
+    pub app_state: Option<String>,
+    #[serde(default)]
+    pub network: Option<String>,
+    #[serde(default)]
+    pub reachable: Option<bool>,
+    #[serde(default)]
+    pub push_token_present: Option<bool>,
+    #[serde(default)]
+    pub battery_percent: Option<u8>,
+    #[serde(default)]
+    pub metadata: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MobileWakeRequest {
+    #[serde(default)]
+    pub requested_by: Option<String>,
+    #[serde(default)]
+    pub reason: Option<String>,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub body: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MobileRehydrateRequest {
+    #[serde(default)]
+    pub requested_by: Option<String>,
+    #[serde(default)]
+    pub reason: Option<String>,
+    #[serde(default)]
+    pub pending_change_count: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MobileNodeRuntimeActionResult {
+    pub node_id: String,
+    pub runtime: MobileNodeRuntimeState,
+    #[serde(default)]
+    pub command: Option<MobileCommandRecord>,
+    #[serde(default)]
+    pub preview: Value,
+}
+
 fn default_true() -> bool {
     true
 }
@@ -187,6 +277,26 @@ fn default_sync_battery_percent() -> u8 {
     50
 }
 
+fn default_runtime_status() -> String {
+    "registered".to_string()
+}
+
+fn default_app_state() -> String {
+    "unknown".to_string()
+}
+
+fn default_network_state() -> String {
+    "unknown".to_string()
+}
+
+fn default_wake_state() -> String {
+    "idle".to_string()
+}
+
+fn default_rehydrate_state() -> String {
+    "idle".to_string()
+}
+
 impl Default for MobileSyncSpec {
     fn default() -> Self {
         Self {
@@ -211,6 +321,33 @@ impl Default for MobileNotificationSpec {
             sound_name: config.sound_name,
             vibration: config.vibration,
             batch_interval_secs: config.batch_interval_secs,
+        }
+    }
+}
+
+impl MobileNodeRuntimeState {
+    fn new(node_id: &str) -> Self {
+        Self {
+            node_id: node_id.to_string(),
+            runtime_status: default_runtime_status(),
+            app_state: default_app_state(),
+            network: default_network_state(),
+            reachable: false,
+            push_token_present: false,
+            battery_percent: None,
+            last_heartbeat_at: None,
+            wake_state: default_wake_state(),
+            wake_requested_at: None,
+            wake_requested_by: None,
+            wake_reason: None,
+            last_wake_command_id: None,
+            rehydrate_state: default_rehydrate_state(),
+            rehydrate_requested_at: None,
+            rehydrate_requested_by: None,
+            rehydrate_reason: None,
+            rehydrate_pending_change_count: None,
+            last_rehydrate_command_id: None,
+            metadata: Value::Null,
         }
     }
 }
@@ -318,6 +455,51 @@ pub fn node_status_data(workspace_root: &Path, node_id: &str) -> Result<MobileNo
         sync: manifest.node.sync,
         notifications: manifest.node.notifications,
     })
+}
+
+pub fn node_runtime_data(workspace_root: &Path, node_id: &str) -> Result<MobileNodeRuntimeState> {
+    inspect_node_data(workspace_root, node_id)?;
+    load_runtime_state(workspace_root, node_id)
+}
+
+pub fn heartbeat_node_data(
+    workspace_root: &Path,
+    node_id: &str,
+    request: MobileHeartbeatRequest,
+) -> Result<MobileNodeRuntimeState> {
+    inspect_node_data(workspace_root, node_id)?;
+    let mut runtime = load_runtime_state(workspace_root, node_id)?;
+    let now = Utc::now().to_rfc3339();
+    if let Some(app_state) = request.app_state.filter(|value| !value.trim().is_empty()) {
+        runtime.app_state = app_state;
+    }
+    if let Some(network) = request.network.filter(|value| !value.trim().is_empty()) {
+        runtime.network = network;
+    }
+    if let Some(reachable) = request.reachable {
+        runtime.reachable = reachable;
+    }
+    if let Some(push_token_present) = request.push_token_present {
+        runtime.push_token_present = push_token_present;
+    }
+    if let Some(battery_percent) = request.battery_percent {
+        runtime.battery_percent = Some(battery_percent.min(100));
+    }
+    if !request.metadata.is_null() {
+        runtime.metadata = request.metadata;
+    }
+    runtime.last_heartbeat_at = Some(now);
+    if runtime.reachable {
+        if matches!(runtime.wake_state.as_str(), "requested" | "dispatched") {
+            runtime.wake_state = "acknowledged".to_string();
+        }
+        if matches!(runtime.rehydrate_state.as_str(), "requested") {
+            runtime.rehydrate_state = "ready".to_string();
+        }
+    }
+    refresh_runtime_status(&mut runtime);
+    save_runtime_state(workspace_root, &runtime)?;
+    Ok(runtime)
 }
 
 pub fn preview_notification_data(
@@ -490,6 +672,129 @@ pub async fn dispatch_command_data(
 
     write_command_record(workspace_root, &record)?;
     Ok(record)
+}
+
+pub async fn wake_node_data(
+    workspace_root: &Path,
+    node_id: &str,
+    request: MobileWakeRequest,
+) -> Result<MobileNodeRuntimeActionResult> {
+    let manifest = inspect_node_data(workspace_root, node_id)?;
+    let status = node_status_data(workspace_root, node_id)?;
+    let mut runtime = load_runtime_state(workspace_root, node_id)?;
+    let now = Utc::now().to_rfc3339();
+    runtime.wake_requested_at = Some(now);
+    runtime.wake_requested_by = request.requested_by.clone();
+    runtime.wake_reason = request.reason.clone();
+    runtime.wake_state = "requested".to_string();
+
+    let mut command = None;
+    if status.readiness == "ready_for_runtime"
+        && manifest
+            .node
+            .capabilities
+            .iter()
+            .any(|entry| entry == "notifications")
+    {
+        let record = dispatch_command_data(
+            workspace_root,
+            MobileCommandDispatchRequest {
+                node_id: node_id.to_string(),
+                command: DeviceCommandKind::PushNotification,
+                payload: json!({
+                    "title": request.title.unwrap_or_else(|| format!("Wake {}", manifest.node.device_name)),
+                    "body": request.body.unwrap_or_else(|| "Operator requested a bounded wake ping".to_string()),
+                    "type": "system",
+                    "data": {
+                        "node_id": node_id,
+                        "reason": request.reason.clone().unwrap_or_else(|| "operator_request".to_string()),
+                    }
+                }),
+                approved_by: request.requested_by.clone().or_else(|| Some("mobile_runtime".to_string())),
+                require_approval: Some(false),
+            },
+        )
+        .await?;
+        runtime.wake_state = "dispatched".to_string();
+        runtime.last_wake_command_id = Some(record.id.clone());
+        command = Some(record);
+    }
+
+    refresh_runtime_status(&mut runtime);
+    save_runtime_state(workspace_root, &runtime)?;
+    Ok(MobileNodeRuntimeActionResult {
+        node_id: node_id.to_string(),
+        runtime,
+        command,
+        preview: json!({
+            "requested": true,
+            "ready_for_runtime": status.readiness == "ready_for_runtime",
+            "notifications_capability": manifest.node.capabilities.iter().any(|entry| entry == "notifications"),
+        }),
+    })
+}
+
+pub async fn rehydrate_node_data(
+    workspace_root: &Path,
+    node_id: &str,
+    request: MobileRehydrateRequest,
+) -> Result<MobileNodeRuntimeActionResult> {
+    let manifest = inspect_node_data(workspace_root, node_id)?;
+    let status = node_status_data(workspace_root, node_id)?;
+    let mut runtime = load_runtime_state(workspace_root, node_id)?;
+    let pending_change_count = request.pending_change_count.unwrap_or(1);
+    let preview = preview_sync_data(
+        workspace_root,
+        MobileSyncPreviewRequest {
+            node_id: node_id.to_string(),
+            battery_percent: runtime
+                .battery_percent
+                .unwrap_or(default_sync_battery_percent()),
+            pending_change_count,
+        },
+    )?;
+    let now = Utc::now().to_rfc3339();
+    runtime.rehydrate_requested_at = Some(now);
+    runtime.rehydrate_requested_by = request.requested_by.clone();
+    runtime.rehydrate_reason = request.reason.clone();
+    runtime.rehydrate_pending_change_count = Some(pending_change_count);
+    runtime.rehydrate_state = "requested".to_string();
+
+    let mut command = None;
+    if status.readiness == "ready_for_runtime"
+        && manifest
+            .node
+            .capabilities
+            .iter()
+            .any(|entry| entry == "mobile")
+    {
+        let record = dispatch_command_data(
+            workspace_root,
+            MobileCommandDispatchRequest {
+                node_id: node_id.to_string(),
+                command: DeviceCommandKind::SyncNow,
+                payload: json!({ "pending_change_count": pending_change_count }),
+                approved_by: request
+                    .requested_by
+                    .clone()
+                    .or_else(|| Some("mobile_runtime".to_string())),
+                require_approval: Some(false),
+            },
+        )
+        .await?;
+        runtime.rehydrate_state = "synced".to_string();
+        runtime.last_rehydrate_command_id = Some(record.id.clone());
+        command = Some(record);
+    }
+
+    refresh_runtime_status(&mut runtime);
+    save_runtime_state(workspace_root, &runtime)?;
+    Ok(MobileNodeRuntimeActionResult {
+        node_id: node_id.to_string(),
+        runtime,
+        command,
+        preview,
+    })
 }
 
 pub async fn approve_command_data(
@@ -721,6 +1026,42 @@ pub async fn node_status(workspace_root: &Path, node_id: &str) -> Result<()> {
     Ok(())
 }
 
+pub async fn node_runtime(workspace_root: &Path, node_id: &str) -> Result<()> {
+    let runtime = node_runtime_data(workspace_root, node_id)?;
+    println!("{}", serde_json::to_string_pretty(&runtime)?);
+    Ok(())
+}
+
+pub async fn heartbeat_node(
+    workspace_root: &Path,
+    node_id: &str,
+    request: MobileHeartbeatRequest,
+) -> Result<()> {
+    let runtime = heartbeat_node_data(workspace_root, node_id, request)?;
+    println!("{}", serde_json::to_string_pretty(&runtime)?);
+    Ok(())
+}
+
+pub async fn wake_node(
+    workspace_root: &Path,
+    node_id: &str,
+    request: MobileWakeRequest,
+) -> Result<()> {
+    let result = wake_node_data(workspace_root, node_id, request).await?;
+    println!("{}", serde_json::to_string_pretty(&result)?);
+    Ok(())
+}
+
+pub async fn rehydrate_node(
+    workspace_root: &Path,
+    node_id: &str,
+    request: MobileRehydrateRequest,
+) -> Result<()> {
+    let result = rehydrate_node_data(workspace_root, node_id, request).await?;
+    println!("{}", serde_json::to_string_pretty(&result)?);
+    Ok(())
+}
+
 pub async fn preview_notification(request: MobileNotificationPreviewRequest) -> Result<()> {
     let preview = preview_notification_data(request)?;
     println!("{}", serde_json::to_string_pretty(&preview)?);
@@ -799,12 +1140,64 @@ fn commands_dir(workspace_root: &Path) -> PathBuf {
     mobile_root(workspace_root).join("commands")
 }
 
+fn runtime_dir(workspace_root: &Path) -> PathBuf {
+    mobile_root(workspace_root).join("runtime")
+}
+
 fn manifest_path(workspace_root: &Path, node_id: &str) -> PathBuf {
     nodes_dir(workspace_root).join(format!("{node_id}.json"))
 }
 
 fn command_path(workspace_root: &Path, command_id: &str) -> PathBuf {
     commands_dir(workspace_root).join(format!("{command_id}.json"))
+}
+
+fn runtime_path(workspace_root: &Path, node_id: &str) -> PathBuf {
+    runtime_dir(workspace_root).join(format!("{node_id}.json"))
+}
+
+fn load_runtime_state(workspace_root: &Path, node_id: &str) -> Result<MobileNodeRuntimeState> {
+    let path = runtime_path(workspace_root, node_id);
+    if !path.exists() {
+        return Ok(MobileNodeRuntimeState::new(node_id));
+    }
+    let bytes =
+        fs::read_to_string(&path).with_context(|| format!("failed to read {}", path.display()))?;
+    let mut runtime: MobileNodeRuntimeState = serde_json::from_str(&bytes)
+        .with_context(|| format!("failed to parse {}", path.display()))?;
+    refresh_runtime_status(&mut runtime);
+    Ok(runtime)
+}
+
+fn save_runtime_state(workspace_root: &Path, runtime: &MobileNodeRuntimeState) -> Result<()> {
+    fs::create_dir_all(runtime_dir(workspace_root))
+        .with_context(|| format!("failed to create {}", runtime_dir(workspace_root).display()))?;
+    let path = runtime_path(workspace_root, &runtime.node_id);
+    fs::write(
+        &path,
+        serde_json::to_vec_pretty(runtime).context("failed to serialize mobile runtime state")?,
+    )
+    .with_context(|| format!("failed to write {}", path.display()))
+}
+
+fn refresh_runtime_status(runtime: &mut MobileNodeRuntimeState) {
+    runtime.runtime_status = if !runtime.reachable && runtime.last_heartbeat_at.is_some() {
+        "disconnected".to_string()
+    } else if runtime.rehydrate_state == "requested" {
+        "rehydrate_requested".to_string()
+    } else if runtime.rehydrate_state == "synced" {
+        "rehydrated".to_string()
+    } else if matches!(runtime.wake_state.as_str(), "requested" | "dispatched") {
+        "wake_requested".to_string()
+    } else if runtime.reachable && runtime.app_state == "active" {
+        "active".to_string()
+    } else if runtime.reachable && runtime.app_state == "background" {
+        "background".to_string()
+    } else if runtime.reachable {
+        "reachable".to_string()
+    } else {
+        "registered".to_string()
+    };
 }
 
 fn parse_notification_priority(raw: Option<&str>) -> Result<NotificationPriority> {
@@ -1080,5 +1473,83 @@ mod tests {
         unsafe {
             std::env::remove_var("MOBILE_TOKEN_CAPS");
         }
+    }
+
+    #[test]
+    fn mobile_runtime_heartbeat_round_trip() {
+        let temp = tempdir().expect("tempdir");
+        pair_node_data(
+            temp.path(),
+            MobilePairRequest {
+                id: "iphone-runtime".to_string(),
+                gateway_url: "wss://example.com/gateway".to_string(),
+                auth_token_env: "MOBILE_RUNTIME_TOKEN".to_string(),
+                device_name: Some("Runtime iPhone".to_string()),
+                platform: Some("ios".to_string()),
+                capabilities: vec!["mobile".to_string(), "notifications".to_string()],
+                enabled: true,
+                sync: None,
+                notifications: None,
+                metadata: Value::Null,
+            },
+        )
+        .expect("pair node");
+
+        let runtime = heartbeat_node_data(
+            temp.path(),
+            "iphone-runtime",
+            MobileHeartbeatRequest {
+                app_state: Some("active".to_string()),
+                network: Some("wifi".to_string()),
+                reachable: Some(true),
+                push_token_present: Some(true),
+                battery_percent: Some(84),
+                metadata: json!({"build":"debug"}),
+            },
+        )
+        .expect("heartbeat");
+
+        assert_eq!(runtime.runtime_status, "active");
+        assert_eq!(runtime.battery_percent, Some(84));
+        assert!(runtime.last_heartbeat_at.is_some());
+    }
+
+    #[tokio::test]
+    async fn rehydrate_node_dispatches_sync_when_ready() {
+        let temp = tempdir().expect("tempdir");
+        unsafe {
+            std::env::set_var("MOBILE_REHYDRATE_TOKEN", "secret");
+        }
+        pair_node_data(
+            temp.path(),
+            MobilePairRequest {
+                id: "iphone-rehydrate".to_string(),
+                gateway_url: "wss://example.com/gateway".to_string(),
+                auth_token_env: "MOBILE_REHYDRATE_TOKEN".to_string(),
+                device_name: Some("Runtime iPhone".to_string()),
+                platform: Some("ios".to_string()),
+                capabilities: vec!["mobile".to_string()],
+                enabled: true,
+                sync: None,
+                notifications: None,
+                metadata: Value::Null,
+            },
+        )
+        .expect("pair node");
+
+        let result = rehydrate_node_data(
+            temp.path(),
+            "iphone-rehydrate",
+            MobileRehydrateRequest {
+                requested_by: Some("test".to_string()),
+                reason: Some("resume".to_string()),
+                pending_change_count: Some(2),
+            },
+        )
+        .await
+        .expect("rehydrate");
+
+        assert_eq!(result.runtime.rehydrate_state, "synced");
+        assert!(result.command.is_some());
     }
 }

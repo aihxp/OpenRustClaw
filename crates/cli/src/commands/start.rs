@@ -2653,6 +2653,22 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             "/control/mobile/nodes/{id}/status",
             get(mobile_node_status_handler),
         )
+        .route(
+            "/control/mobile/nodes/{id}/runtime",
+            get(mobile_node_runtime_handler),
+        )
+        .route(
+            "/control/mobile/nodes/{id}/heartbeat",
+            post(mobile_node_heartbeat_handler),
+        )
+        .route(
+            "/control/mobile/nodes/{id}/wake",
+            post(mobile_node_wake_handler),
+        )
+        .route(
+            "/control/mobile/nodes/{id}/rehydrate",
+            post(mobile_node_rehydrate_handler),
+        )
         .route("/control/mobile/commands", get(mobile_commands_handler))
         .route(
             "/control/mobile/commands/dispatch",
@@ -4647,6 +4663,65 @@ async fn mobile_node_status_handler(
 ) -> impl IntoResponse {
     match mobile::node_status_data(&state.workspace_root, &id) {
         Ok(status) => (StatusCode::OK, Json(serde_json::json!(status))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn mobile_node_runtime_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(id): AxumPath<String>,
+) -> impl IntoResponse {
+    match mobile::node_runtime_data(&state.workspace_root, &id) {
+        Ok(runtime) => (StatusCode::OK, Json(serde_json::json!(runtime))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn mobile_node_heartbeat_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(id): AxumPath<String>,
+    Json(payload): Json<mobile::MobileHeartbeatRequest>,
+) -> impl IntoResponse {
+    match mobile::heartbeat_node_data(&state.workspace_root, &id, payload) {
+        Ok(runtime) => (StatusCode::OK, Json(serde_json::json!(runtime))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn mobile_node_wake_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(id): AxumPath<String>,
+    Json(payload): Json<mobile::MobileWakeRequest>,
+) -> impl IntoResponse {
+    match mobile::wake_node_data(&state.workspace_root, &id, payload).await {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn mobile_node_rehydrate_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(id): AxumPath<String>,
+    Json(payload): Json<mobile::MobileRehydrateRequest>,
+) -> impl IntoResponse {
+    match mobile::rehydrate_node_data(&state.workspace_root, &id, payload).await {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": error.to_string()})),
