@@ -73,6 +73,7 @@ use super::channels::{
     ChannelBindingSpec, ChannelRegistry, ChannelSendPolicy, ensure_account_manifest,
     identity_from_message, load_registry, message_bot_mentioned, resolve_root,
 };
+use super::voice_runtime;
 use super::voice_runtime::InboundVoiceTranscriber;
 use super::{
     browser, control, control_ui, doctor, inspect, logs, orchestrate, runtime, services, skills,
@@ -2534,6 +2535,8 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
         .route("/control/runtime/status", get(runtime_status_handler))
         .route("/control/runtime/health", get(runtime_health_handler))
         .route("/control/runtime/beacon", get(runtime_beacon_handler))
+        .route("/control/voice/status", get(voice_status_handler))
+        .route("/control/voice/transcribe", post(voice_transcribe_handler))
         .route(
             "/control/runtime/reload-plan",
             get(runtime_reload_plan_handler),
@@ -3578,6 +3581,49 @@ struct RefreshQuery {
 async fn runtime_status_handler(State(state): State<RuntimeControlState>) -> impl IntoResponse {
     match runtime::runtime_status(&state.config_path, &state.workspace_root) {
         Ok(status) => (StatusCode::OK, Json(serde_json::json!(status))).into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn voice_status_handler(State(state): State<RuntimeControlState>) -> impl IntoResponse {
+    match runtime::load_effective_config(&state.config_path, &state.workspace_root) {
+        Ok(config) => (
+            StatusCode::OK,
+            Json(serde_json::json!(voice_runtime::voice_status(
+                &config,
+                &state.workspace_root,
+            ))),
+        )
+            .into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn voice_transcribe_handler(
+    State(state): State<RuntimeControlState>,
+    Json(payload): Json<voice_runtime::VoiceTranscribeRequest>,
+) -> impl IntoResponse {
+    match runtime::load_effective_config(&state.config_path, &state.workspace_root) {
+        Ok(config) => {
+            match voice_runtime::transcribe_with_config(&config, &state.workspace_root, payload)
+                .await
+            {
+                Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+                Err(error) => (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({"error": error.to_string()})),
+                )
+                    .into_response(),
+            }
+        }
         Err(error) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({"error": error.to_string()})),

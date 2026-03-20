@@ -388,6 +388,32 @@
           </div>
         </article>
         <article class="panel span-6">
+          <h2>Voice Runtime</h2>
+          <div class="action-row" style="margin-bottom: 12px">
+            <button class="secondary" id="voice-status-refresh">Refresh Voice Status</button>
+          </div>
+          <div class="surface"><pre id="voice-status">Loading…</pre></div>
+        </article>
+        <article class="panel span-6">
+          <h2>Voice Transcription</h2>
+          <div class="form-grid">
+            <input id="voice-path" type="text" placeholder="/path/to/audio.ogg" />
+            <input id="voice-url" type="url" placeholder="https://example.com/audio.ogg" />
+            <div class="action-row">
+              <input id="voice-provider" type="text" placeholder="optional provider override" />
+              <input id="voice-model" type="text" placeholder="optional model override" />
+            </div>
+            <div class="action-row">
+              <input id="voice-language" type="text" placeholder="optional language (en, fr, auto)" />
+            </div>
+            <textarea id="voice-prompt" rows="4" spellcheck="false" placeholder="optional transcription prompt"></textarea>
+            <div class="action-row">
+              <button id="voice-transcribe">Transcribe Audio</button>
+            </div>
+          </div>
+          <div class="surface" style="margin-top: 12px"><pre id="voice-result">No voice transcription executed yet.</pre></div>
+        </article>
+        <article class="panel span-6">
           <h2>Autonomy Policy</h2>
           <div class="surface"><pre id="autonomy-policy">Loading…</pre></div>
         </article>
@@ -804,6 +830,34 @@
         renderTableRows("channel-probes", rows, "No enabled channels to probe.");
       }
 
+      async function loadVoiceStatus() {
+        const payload = await fetchJson("/control/voice/status");
+        setText("voice-status", payload);
+      }
+
+      async function runVoiceTranscription() {
+        const path = document.getElementById("voice-path").value.trim();
+        const url = document.getElementById("voice-url").value.trim();
+        if (!path && !url) {
+          throw new Error("A local path or remote URL is required");
+        }
+        if (path && url) {
+          throw new Error("Provide either a path or a URL, not both");
+        }
+        const result = await fetchJson("/control/voice/transcribe", {
+          method: "POST",
+          body: JSON.stringify({
+            path: path || null,
+            url: url || null,
+            provider: emptyToNull(document.getElementById("voice-provider").value),
+            model: emptyToNull(document.getElementById("voice-model").value),
+            language: emptyToNull(document.getElementById("voice-language").value),
+            prompt: emptyToNull(document.getElementById("voice-prompt").value),
+          }),
+        });
+        setText("voice-result", result);
+      }
+
       function emptyToNull(value) {
         const trimmed = value.trim();
         return trimmed ? trimmed : null;
@@ -1218,6 +1272,7 @@
             loadVaultStatus(),
             loadSchedulerStatus(),
             loadChannelProbes(),
+            loadVoiceStatus(),
             loadAutonomy(),
             loadInstalledSkills(),
             loadChannels(),
@@ -1546,6 +1601,20 @@
           await loadChannelProbes(true);
         } catch (error) {
           renderTableRows("channel-probes", [], error.message);
+        }
+      });
+      document.getElementById("voice-status-refresh").addEventListener("click", async () => {
+        try {
+          await loadVoiceStatus();
+        } catch (error) {
+          setText("voice-status", { error: error.message });
+        }
+      });
+      document.getElementById("voice-transcribe").addEventListener("click", async () => {
+        try {
+          await runVoiceTranscription();
+        } catch (error) {
+          setText("voice-result", { error: error.message });
         }
       });
       document.getElementById("browser-run").addEventListener("click", async () => {

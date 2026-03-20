@@ -185,6 +185,11 @@ enum Commands {
         #[arg(long, default_value = "true")]
         barge_in: bool,
     },
+    /// Voice runtime inspection and transcription tools
+    Voice {
+        #[command(subcommand)]
+        action: VoiceAction,
+    },
     /// Manage webhooks for external integrations
     Webhooks {
         #[command(subcommand)]
@@ -1149,6 +1154,32 @@ enum WhatsAppAction {
         path: String,
         #[arg(long)]
         caption: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum VoiceAction {
+    /// Show current voice runtime configuration and readiness
+    Status {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+    },
+    /// Transcribe a local audio file or remote audio URL through the configured provider lane
+    Transcribe {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+        #[arg(long)]
+        path: Option<String>,
+        #[arg(long)]
+        url: Option<String>,
+        #[arg(long)]
+        provider: Option<String>,
+        #[arg(long)]
+        model: Option<String>,
+        #[arg(long)]
+        language: Option<String>,
+        #[arg(long)]
+        prompt: Option<String>,
     },
 }
 
@@ -3296,6 +3327,29 @@ async fn main() -> Result<()> {
             )
             .await
         }
+        Commands::Voice { action } => match action {
+            VoiceAction::Status { config } => commands::voice::status(&config).await,
+            VoiceAction::Transcribe {
+                config,
+                path,
+                url,
+                provider,
+                model,
+                language,
+                prompt,
+            } => {
+                commands::voice::transcribe(
+                    &config,
+                    path.as_deref(),
+                    url.as_deref(),
+                    provider.as_deref(),
+                    model.as_deref(),
+                    language.as_deref(),
+                    prompt.as_deref(),
+                )
+                .await
+            }
+        },
         Commands::Webhooks { action } => match action {
             WebhooksAction::List => commands::webhooks::list().await,
             WebhooksAction::Create { path } => commands::webhooks::create(&path).await,

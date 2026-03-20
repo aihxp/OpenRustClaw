@@ -5,7 +5,7 @@ use anyhow::{Context, Result, anyhow};
 use openrustclaw_core::config::{AppConfig, VoiceSttRuntimeConfig};
 use openrustclaw_core::types::IncomingMessage;
 use reqwest::multipart::{Form, Part};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use tokio::fs;
 use tracing::warn;
@@ -17,6 +17,53 @@ pub struct InboundVoiceTranscriber {
     stt: VoiceSttRuntimeConfig,
     api_key_env: String,
     cache_dir: PathBuf,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceStatus {
+    pub enabled: bool,
+    pub stt_provider: String,
+    pub stt_model: String,
+    pub stt_language: String,
+    pub transcribe_inbound_notes: bool,
+    pub download_dir: Option<String>,
+    pub timeout_secs: u64,
+    pub max_audio_bytes: usize,
+    pub api_base_url: Option<String>,
+    pub api_key_env: String,
+    pub api_key_present: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceTranscribeRequest {
+    #[serde(default)]
+    pub path: Option<String>,
+    #[serde(default)]
+    pub url: Option<String>,
+    #[serde(default)]
+    pub provider: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub language: Option<String>,
+    #[serde(default)]
+    pub prompt: Option<String>,
+    #[serde(default)]
+    pub max_audio_bytes: Option<usize>,
+    #[serde(default)]
+    pub timeout_secs: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceTranscribeResult {
+    pub text: String,
+    pub provider: String,
+    pub model: String,
+    pub language: Option<String>,
+    pub duration_secs: Option<f64>,
+    pub source: String,
+    pub local_path: Option<String>,
+    pub max_audio_bytes: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -308,6 +355,124 @@ impl InboundVoiceTranscriber {
             .with_context(|| format!("failed to write cached audio file {}", path.display()))?;
         Ok(path)
     }
+}
+
+pub fn voice_status(config: &AppConfig, workspace_root: &Path) -> VoiceStatus {
+    let download_dir = config.voice.stt.download_dir.as_deref().map(|value| {
+        resolve_runtime_path(workspace_root, value)
+            .to_string_lossy()
+            .to_string()
+    });
+    let api_key_env = config
+        .providers
+        .openai
+        .api_key_env
+        .clone()
+        .unwrap_or_else(|| "OPENAI_API_KEY".to_string());
+
+    VoiceStatus {
+        enabled: config.voice.enabled,
+        stt_provider: config.voice.stt.provider.clone(),
+        stt_model: config.voice.stt.model.clone(),
+        stt_language: config.voice.stt.language.clone(),
+        transcribe_inbound_notes: config.voice.stt.transcribe_inbound_notes,
+        download_dir,
+        timeout_secs: config.voice.stt.timeout_secs,
+        max_audio_bytes: config.voice.stt.max_audio_bytes,
+        api_base_url: config.voice.stt.api_base_url.clone(),
+        api_key_env: api_key_env.clone(),
+        api_key_present: std::env::var(&api_key_env).is_ok(),
+    }
+}
+
+pub async fn transcribe_with_config(
+    config: &AppConfig,
+    workspace_root: &Path,
+    request: VoiceTranscribeRequest,
+) -> Result<VoiceTranscribeResult> {
+    let source = match (
+        request
+            .path
+            .as_deref()
+            .filter(|value| !value.trim().is_empty()),
+        request
+            .url
+            .as_deref()
+            .filter(|value| !value.trim().is_empty()),
+    ) {
+        (Some(path), None) => AudioSource::Local(PathBuf::from(path)),
+        (None, Some(url)) => AudioSource::Remote(url.to_string()),
+        (Some(_), Some(_)) => {
+            return Err(anyhow!("provide either path or url, not both"));
+        }
+        (None, None) => {
+            return Err(anyhow!("a local path or remote url is required"));
+        }
+    };
+
+    let mut effective = config.clone();
+    if let Some(provider) = request.provider.as_deref() {
+        effective.voice.stt.provider = provider.to_string();
+    }
+    if let Some(model) = request.model.as_deref() {
+        effective.voice.stt.model = model.to_string();
+    }
+    if let Some(language) = request.language.as_deref() {
+        effective.voice.stt.language = language.to_string();
+    }
+    if let Some(prompt) = request.prompt {
+        effective.voice.stt.prompt = Some(prompt);
+    }
+    if let Some(max_audio_bytes) = request.max_audio_bytes {
+        effective.voice.stt.max_audio_bytes = max_audio_bytes;
+    }
+    if let Some(timeout_secs) = request.timeout_secs {
+        effective.voice.stt.timeout_secs = timeout_secs;
+    }
+    effective.voice.enabled = true;
+    effective.voice.stt.transcribe_inbound_notes = true;
+
+    let transcriber = InboundVoiceTranscriber::try_from_config(&effective, workspace_root)?
+        .ok_or_else(|| anyhow!("voice transcription is not enabled for the current config"))?;
+
+    let filename = match &source {
+        AudioSource::Local(path) => path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .map(ToString::to_string)
+            .unwrap_or_else(|| "audio-note.wav".to_string()),
+        AudioSource::Remote(url) => url
+            .rsplit('/')
+            .next()
+            .and_then(|value| (!value.trim().is_empty()).then_some(value))
+            .map(ToString::to_string)
+            .unwrap_or_else(|| "audio-note.wav".to_string()),
+    };
+    let candidate = AudioCandidate {
+        index: 0,
+        media_kind: "audio".to_string(),
+        source,
+        filename: filename.clone(),
+        mime: mime_from_filename(&filename),
+    };
+    let source_label = match &candidate.source {
+        AudioSource::Local(path) => path.to_string_lossy().to_string(),
+        AudioSource::Remote(url) => url.clone(),
+    };
+    let transcribed = transcriber.transcribe_candidate(&candidate).await?;
+
+    Ok(VoiceTranscribeResult {
+        text: transcribed.text,
+        provider: "openai".to_string(),
+        model: transcriber.stt.model.clone(),
+        language: transcribed.language,
+        duration_secs: transcribed.duration_secs,
+        source: source_label,
+        local_path: transcribed
+            .cached_local_path
+            .map(|path| path.to_string_lossy().to_string()),
+        max_audio_bytes: transcriber.stt.max_audio_bytes,
+    })
 }
 
 fn apply_transcription(

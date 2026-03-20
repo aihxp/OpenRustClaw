@@ -29,6 +29,7 @@ pub mod skills;
 pub mod start;
 #[cfg(feature = "voice")]
 pub mod talk;
+pub mod voice;
 pub mod voice_runtime;
 pub mod webhooks;
 pub mod whatsapp;

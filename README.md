@@ -320,7 +320,7 @@ openrustclaw talk --wake-word "Hey Assistant"
 ```
 
 Wake word detection (Porcupine), speech-to-text (Whisper), text-to-speech (OpenAI, ElevenLabs), continuous talk mode. Audio dependencies are feature-gated behind `audio`.
-Inbound voice-note transcription can also be enabled on the runtime path for supported channel attachments that already expose a local file path or a directly fetchable media URL.
+Inbound voice-note transcription can be enabled on the runtime path for supported channel attachments that already expose a local file path or a directly fetchable media URL, and operators now also have explicit `openrustclaw voice status|transcribe` plus `/control/voice/status|transcribe` surfaces for inspection and ad hoc transcription.
 
 ## Configuration
 

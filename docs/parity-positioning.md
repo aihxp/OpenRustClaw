@@ -73,7 +73,7 @@ The remaining parity work is not being treated as "add every autonomous feature 
 From here, the preferred remaining order is:
 
 - close the remaining Wave 4 operator-experience gaps:
-  - broader voice/media polish beyond the newly landed provider-backed inbound voice-note transcription lane,
+  - broader voice/media polish beyond the newly landed provider-backed inbound voice-note transcription lane and voice status/transcription control surfaces,
   - mobile nodes/device-command parity,
   - the final parity audit;
 - keep the later channel auto-restart and broader operations hardening work explicit instead of blurring it into the already-shipped Wave 3 runtime reload/resilience surfaces.
