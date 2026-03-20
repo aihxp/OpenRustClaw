@@ -317,8 +317,8 @@ Every operation is traced. Every decision is logged. Every metric is tracked.
 |---------|--------|----------------|
 | Wake Word Detection | Planned | Porcupine engine, custom models |
 | Talk Mode | Planned | Continuous conversation mode |
-| Speech-to-Text | Planned | OpenAI Whisper, local models |
-| Text-to-Speech | Planned | OpenAI, ElevenLabs, local |
+| Speech-to-Text | Partial | Provider-backed inbound transcription plus OpenAI-compatible operator/runtime STT lanes |
+| Text-to-Speech | Partial | Provider-backed synthesis plus OpenAI-compatible operator/runtime TTS lanes |
 
 ### 🖼️ Visual / Canvas
 
