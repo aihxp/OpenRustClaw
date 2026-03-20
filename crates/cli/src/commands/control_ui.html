@@ -631,6 +631,7 @@
               <input id="skill-voice-stale-secs" type="number" min="1" placeholder="stale after secs, e.g. 900" />
               <button class="secondary" id="skill-voice-health">Voice Call Health</button>
               <button class="secondary" id="skill-voice-reap">Reap Stale Calls</button>
+              <button class="secondary" id="skill-voice-reconnect">Reconnect Call</button>
               <button class="secondary" id="skill-voice-end">End Voice Call</button>
             </div>
           </div>
@@ -1607,6 +1608,27 @@
           method: "POST",
           body: JSON.stringify({
             reason: reason || null,
+          }),
+        });
+        setText("skill-detail", payload);
+      }
+
+      async function reconnectCurrentVoiceCall() {
+        const callId = document.getElementById("skill-voice-call-id").value.trim();
+        if (!callId) {
+          throw new Error("Enter a voice call id first");
+        }
+        const remote = document.getElementById("skill-voice-remote").value.trim();
+        const greetingText = document.getElementById("skill-voice-greeting").value.trim();
+        const defaultVoice = document.getElementById("skill-voice-default-voice").value.trim();
+        const staleAfterSecs = document.getElementById("skill-voice-stale-secs").value.trim();
+        const payload = await fetchJson(`/control/skills/voice-calls/${encodeURIComponent(callId)}/reconnect`, {
+          method: "POST",
+          body: JSON.stringify({
+            remote: remote || null,
+            greeting_text: greetingText || null,
+            voice: defaultVoice || null,
+            stale_after_secs: staleAfterSecs ? Number(staleAfterSecs) : null,
           }),
         });
         setText("skill-detail", payload);
@@ -2938,6 +2960,13 @@
       document.getElementById("skill-voice-reap").addEventListener("click", async () => {
         try {
           await reapVoiceCalls();
+        } catch (error) {
+          setText("skill-detail", { error: error.message });
+        }
+      });
+      document.getElementById("skill-voice-reconnect").addEventListener("click", async () => {
+        try {
+          await reconnectCurrentVoiceCall();
         } catch (error) {
           setText("skill-detail", { error: error.message });
         }

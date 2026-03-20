@@ -758,6 +758,20 @@ enum SkillsAction {
         #[arg(long)]
         metadata: Option<String>,
     },
+    /// Reconnect a bounded voice-call session and refresh its receipt
+    ReconnectVoiceCall {
+        call_id: String,
+        #[arg(long)]
+        remote: Option<String>,
+        #[arg(long)]
+        greeting_text: Option<String>,
+        #[arg(long)]
+        voice: Option<String>,
+        #[arg(long)]
+        metadata: Option<String>,
+        #[arg(long)]
+        stale_after_secs: Option<u64>,
+    },
     /// Prewarm greeting audio for a configured voice-call plugin
     PrewarmVoicePlugin {
         plugin_id: String,
@@ -2755,6 +2769,24 @@ async fn main() -> Result<()> {
             } => {
                 commands::skills::end_voice_call(&call_id, reason.as_deref(), metadata.as_deref())
                     .await
+            }
+            SkillsAction::ReconnectVoiceCall {
+                call_id,
+                remote,
+                greeting_text,
+                voice,
+                metadata,
+                stale_after_secs,
+            } => {
+                commands::skills::reconnect_voice_call(
+                    &call_id,
+                    remote.as_deref(),
+                    greeting_text.as_deref(),
+                    voice.as_deref(),
+                    metadata.as_deref(),
+                    stale_after_secs,
+                )
+                .await
             }
             SkillsAction::PrewarmVoicePlugin {
                 plugin_id,

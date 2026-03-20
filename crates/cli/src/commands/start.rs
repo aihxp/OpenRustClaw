@@ -2920,6 +2920,10 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             post(control_skill_end_voice_call_handler),
         )
         .route(
+            "/control/skills/voice-calls/{call_id}/reconnect",
+            post(control_skill_reconnect_voice_call_handler),
+        )
+        .route(
             "/control/skills/voice-calls/reap",
             post(control_skill_reap_voice_calls_handler),
         )
@@ -3673,6 +3677,20 @@ struct SkillEndVoiceCallPayload {
 }
 
 #[derive(serde::Deserialize, Default)]
+struct SkillReconnectVoiceCallPayload {
+    #[serde(default)]
+    remote: Option<String>,
+    #[serde(default)]
+    greeting_text: Option<String>,
+    #[serde(default)]
+    voice: Option<String>,
+    #[serde(default)]
+    metadata: Option<String>,
+    #[serde(default)]
+    stale_after_secs: Option<u64>,
+}
+
+#[derive(serde::Deserialize, Default)]
 struct SkillPrewarmVoicePluginPayload {
     #[serde(default)]
     greeting_text: Option<String>,
@@ -4100,6 +4118,31 @@ async fn control_skill_end_voice_call_handler(
         skills::SkillEndVoiceCallOptions {
             reason: payload.reason.as_deref(),
             metadata: payload.metadata.as_deref(),
+        },
+    )
+    .await
+    {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": error.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
+async fn control_skill_reconnect_voice_call_handler(
+    AxumPath(call_id): AxumPath<String>,
+    Json(payload): Json<SkillReconnectVoiceCallPayload>,
+) -> impl IntoResponse {
+    match skills::reconnect_voice_call_data(
+        &call_id,
+        skills::SkillReconnectVoiceCallOptions {
+            remote: payload.remote.as_deref(),
+            greeting_text: payload.greeting_text.as_deref(),
+            voice: payload.voice.as_deref(),
+            metadata: payload.metadata.as_deref(),
+            stale_after_secs: payload.stale_after_secs,
         },
     )
     .await

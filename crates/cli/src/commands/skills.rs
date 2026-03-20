@@ -594,9 +594,15 @@ pub struct SkillVoiceCallRecord {
     pub start_hook_output: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub end_hook_output: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reconnect_hook_output: Option<serde_json::Value>,
     pub started_at: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_seen_at: Option<String>,
+    #[serde(default)]
+    pub reconnect_count: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_reconnected_at: Option<String>,
     #[serde(default = "default_voice_call_stale_after_secs")]
     pub stale_after_secs: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -703,6 +709,21 @@ pub struct SkillEndVoiceCallOptions<'a> {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct SkillEndVoiceCallResult {
+    pub status: String,
+    pub call: SkillVoiceCallRecord,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SkillReconnectVoiceCallOptions<'a> {
+    pub remote: Option<&'a str>,
+    pub greeting_text: Option<&'a str>,
+    pub voice: Option<&'a str>,
+    pub metadata: Option<&'a str>,
+    pub stale_after_secs: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SkillReconnectVoiceCallResult {
     pub status: String,
     pub call: SkillVoiceCallRecord,
 }
@@ -2552,8 +2573,11 @@ pub async fn start_voice_call_data(
         metadata,
         start_hook_output,
         end_hook_output: None,
+        reconnect_hook_output: None,
         started_at: Utc::now().to_rfc3339(),
         last_seen_at: Some(Utc::now().to_rfc3339()),
+        reconnect_count: 0,
+        last_reconnected_at: None,
         stale_after_secs: options
             .stale_after_secs
             .unwrap_or_else(default_voice_call_stale_after_secs),
@@ -2579,6 +2603,126 @@ pub async fn start_voice_call_data(
     Ok(SkillStartVoiceCallResult {
         status: "ok".to_string(),
         call,
+    })
+}
+
+pub async fn reconnect_voice_call_data(
+    call_id: &str,
+    options: SkillReconnectVoiceCallOptions<'_>,
+) -> Result<SkillReconnectVoiceCallResult> {
+    let workspace_root = current_workspace_root()?;
+    let registry = load_voice_plugin_registry(&workspace_root)?;
+    let mut call_registry = load_voice_call_registry(&workspace_root)?;
+    let index = call_registry
+        .calls
+        .iter()
+        .position(|call| call.call_id == call_id)
+        .ok_or_else(|| anyhow::anyhow!("Voice call '{}' not found", call_id))?;
+    if call_registry.calls[index].ended_at.is_some() {
+        anyhow::bail!("Voice call '{}' is already ended", call_id);
+    }
+
+    let plugin_id = call_registry.calls[index].plugin_id.clone();
+    let binding = registry.bindings.get(&plugin_id).cloned().ok_or_else(|| {
+        anyhow::anyhow!(
+            "Voice plugin '{}' for call '{}' was not found",
+            plugin_id,
+            call_id
+        )
+    })?;
+    let artifact = compiled_skill_detail_or_compile(&binding.skill_name).await?;
+    let (config, pool) = load_skill_config_and_pool().await?;
+    let extra_metadata = parse_optional_json(options.metadata, "--metadata")?;
+    let reconnect_hook_output = execute_voice_call_hook(
+        &artifact,
+        binding.service.as_deref(),
+        binding.component.as_deref(),
+        serde_json::json!({
+            "action": "call_reconnect",
+            "call_id": call_id,
+            "plugin_id": &binding.plugin_id,
+            "skill_name": &binding.skill_name,
+            "remote": options.remote,
+            "metadata": &extra_metadata,
+        }),
+    )
+    .await?;
+
+    let call = &mut call_registry.calls[index];
+    if let Some(remote) = options
+        .remote
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        call.remote = Some(remote.to_string());
+    }
+
+    let greeting_text = options
+        .greeting_text
+        .map(ToString::to_string)
+        .or_else(|| call.greeting_text.clone())
+        .or_else(|| binding.greeting_text.clone());
+    if let Some(text) = greeting_text.as_deref() {
+        let greeting_audio = voice_runtime::synthesize_with_config(
+            &config,
+            &workspace_root,
+            voice_runtime::VoiceSynthesizeRequest {
+                text: text.to_string(),
+                provider: None,
+                model: None,
+                voice: options
+                    .voice
+                    .map(ToString::to_string)
+                    .or_else(|| binding.default_voice.clone()),
+                format: Some("mp3".to_string()),
+                output_path: None,
+            },
+        )
+        .await?;
+        call.greeting_text = Some(text.to_string());
+        call.greeting_audio_path = Some(greeting_audio.output_path);
+    }
+
+    if !extra_metadata.is_null() {
+        if call.metadata.is_object() && extra_metadata.is_object() {
+            let target = call.metadata.as_object_mut().expect("object checked");
+            for (key, value) in extra_metadata.as_object().expect("object checked") {
+                target.insert(key.clone(), value.clone());
+            }
+        } else {
+            call.metadata = extra_metadata;
+        }
+    }
+
+    call.status = "active".to_string();
+    call.health = "active".to_string();
+    call.reason = None;
+    call.last_seen_at = Some(Utc::now().to_rfc3339());
+    call.reconnect_count += 1;
+    call.last_reconnected_at = Some(Utc::now().to_rfc3339());
+    call.reconnect_hook_output = reconnect_hook_output;
+    if let Some(stale_after_secs) = options.stale_after_secs {
+        call.stale_after_secs = stale_after_secs.max(1);
+    }
+    let result_call = call.clone();
+    save_voice_call_registry(&workspace_root, &call_registry)?;
+
+    publish_plugin_event(
+        &pool,
+        "plugin.voice_call_reconnected",
+        serde_json::json!({
+            "call_id": call_id,
+            "plugin_id": &binding.plugin_id,
+            "skill_name": &binding.skill_name,
+            "remote": &result_call.remote,
+            "reconnect_count": result_call.reconnect_count,
+        }),
+    )
+    .await;
+
+    Ok(SkillReconnectVoiceCallResult {
+        status: "ok".to_string(),
+        call: result_call,
     })
 }
 
@@ -3759,6 +3903,30 @@ pub async fn end_voice_call(
 ) -> Result<()> {
     let result =
         end_voice_call_data(call_id, SkillEndVoiceCallOptions { reason, metadata }).await?;
+    println!("{}", serde_json::to_string_pretty(&result)?);
+    Ok(())
+}
+
+/// Reconnect a bounded voice-call session and refresh its receipt.
+pub async fn reconnect_voice_call(
+    call_id: &str,
+    remote: Option<&str>,
+    greeting_text: Option<&str>,
+    voice: Option<&str>,
+    metadata: Option<&str>,
+    stale_after_secs: Option<u64>,
+) -> Result<()> {
+    let result = reconnect_voice_call_data(
+        call_id,
+        SkillReconnectVoiceCallOptions {
+            remote,
+            greeting_text,
+            voice,
+            metadata,
+            stale_after_secs,
+        },
+    )
+    .await?;
     println!("{}", serde_json::to_string_pretty(&result)?);
     Ok(())
 }
