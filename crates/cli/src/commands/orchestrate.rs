@@ -39,6 +39,24 @@ fn default_reflection_kind() -> String {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct OrchestrationRequestOverrides {
+    #[serde(default)]
+    pub model_profile_id: Option<String>,
+    #[serde(default)]
+    pub worker_model_profile_id: Option<String>,
+    #[serde(default)]
+    pub autonomy_level: Option<String>,
+    #[serde(default)]
+    pub max_delegations: Option<usize>,
+    #[serde(default)]
+    pub max_iterations: Option<usize>,
+    #[serde(default)]
+    pub max_runtime_secs: Option<u64>,
+    #[serde(default)]
+    pub approval_policy: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct OrchestrationRequest {
     #[serde(default)]
     pub prompt: String,
@@ -50,6 +68,8 @@ pub struct OrchestrationRequest {
     pub claw_id: Option<String>,
     #[serde(default = "default_run_mode")]
     pub mode: String,
+    #[serde(default)]
+    pub overrides: OrchestrationRequestOverrides,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -89,6 +109,8 @@ pub struct RoutingDecision {
     pub steering_notes: Vec<String>,
     #[serde(default)]
     pub warnings: Vec<String>,
+    #[serde(default)]
+    pub request_overrides: OrchestrationRequestOverrides,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -594,7 +616,7 @@ fn resolve_routing(
     config: &AppConfig,
     request: &OrchestrationRequest,
 ) -> Result<RoutingDecision> {
-    let runtime = registry
+    let mut runtime = registry
         .runtime
         .clone()
         .unwrap_or(control::RuntimeModeSpec {
@@ -608,6 +630,8 @@ fn resolve_routing(
             autonomy: control::AutonomyPolicy::default(),
             metadata: serde_json::json!({}),
         });
+    apply_request_overrides(&mut runtime, &request.overrides);
+    validate_request_overrides(&runtime.autonomy)?;
 
     let mut warnings = Vec::new();
     let (claw_id, route_source) = if let Some(claw_id) = &request.claw_id {
@@ -702,8 +726,29 @@ fn resolve_routing(
         .claws
         .get(&claw_id)
         .with_context(|| format!("Unknown claw '{}'", claw_id))?;
-    let model = resolve_model_with_fallback(&claw.model_profile_id, registry, config)?;
+    let selected_model_profile_id = request
+        .overrides
+        .model_profile_id
+        .clone()
+        .unwrap_or_else(|| claw.model_profile_id.clone());
+    let model = resolve_model_with_fallback(&selected_model_profile_id, registry, config)?;
     warnings.extend(model.decision.warnings.clone());
+    if request.overrides.model_profile_id.is_some() {
+        warnings.push(format!(
+            "per-run model override requested '{}'",
+            selected_model_profile_id
+        ));
+    }
+    if request.overrides.worker_model_profile_id.is_some() {
+        warnings.push(format!(
+            "per-run worker model override requested '{}'",
+            request
+                .overrides
+                .worker_model_profile_id
+                .as_deref()
+                .unwrap_or_default()
+        ));
+    }
     let applied_lessons = matching_lessons(
         registry,
         request,
@@ -728,7 +773,7 @@ fn resolve_routing(
         selected_claw_id: claw.id.clone(),
         selected_claw_role: claw.role.clone(),
         selected_agent_profile_id: claw.agent_profile_id.clone(),
-        selected_model_profile_id: claw.model_profile_id.clone(),
+        selected_model_profile_id,
         selected_model: model.decision,
         available_workers,
         autonomy: runtime.autonomy,
@@ -737,7 +782,42 @@ fn resolve_routing(
         applied_lessons,
         steering_notes,
         warnings,
+        request_overrides: request.overrides.clone(),
     })
+}
+
+fn apply_request_overrides(
+    runtime: &mut control::RuntimeModeSpec,
+    overrides: &OrchestrationRequestOverrides,
+) {
+    if let Some(level) = overrides.autonomy_level.as_deref() {
+        runtime.autonomy.autonomy_level = level.to_string();
+        runtime.autonomy.yolo_mode = level == "yolo";
+    }
+    if let Some(max_delegations) = overrides.max_delegations {
+        runtime.autonomy.max_delegations = max_delegations.max(1);
+    }
+    if let Some(max_iterations) = overrides.max_iterations {
+        runtime.autonomy.max_iterations = max_iterations.max(1);
+    }
+    if let Some(max_runtime_secs) = overrides.max_runtime_secs {
+        runtime.autonomy.max_runtime_secs = max_runtime_secs.max(1);
+    }
+    if let Some(approval_policy) = overrides.approval_policy.as_deref() {
+        runtime.autonomy.approval_policy = approval_policy.to_string();
+    }
+}
+
+fn validate_request_overrides(autonomy: &control::AutonomyPolicy) -> Result<()> {
+    match autonomy.autonomy_level.as_str() {
+        "assisted" | "supervised" | "managed" | "autonomous" | "yolo" => {}
+        other => anyhow::bail!("invalid autonomy level '{}'", other),
+    }
+    match autonomy.approval_policy.as_str() {
+        "none" | "side_effects" | "always" => {}
+        other => anyhow::bail!("invalid approval policy '{}'", other),
+    }
+    Ok(())
 }
 
 fn first_enabled_claw_id(registry: &control::ControlRegistry) -> Option<String> {
@@ -1246,7 +1326,8 @@ async fn run_direct(
         .claws
         .get(&routing.selected_claw_id)
         .with_context(|| format!("Unknown claw '{}'", routing.selected_claw_id))?;
-    let executable = resolve_model_with_fallback(&claw.model_profile_id, registry, config)?;
+    let executable =
+        resolve_model_with_fallback(&routing.selected_model_profile_id, registry, config)?;
     let agent_profile = registry
         .agent_profiles
         .get(&claw.agent_profile_id)
@@ -1334,7 +1415,7 @@ async fn run_orchestrated(
         .get(&orchestrator.agent_profile_id)
         .with_context(|| format!("Unknown agent profile '{}'", orchestrator.agent_profile_id))?;
     let orchestrator_model =
-        resolve_model_with_fallback(&orchestrator.model_profile_id, registry, config)?;
+        resolve_model_with_fallback(&routing.selected_model_profile_id, registry, config)?;
     let worker_candidates = registry
         .claws
         .values()
@@ -1498,7 +1579,15 @@ async fn run_orchestrated(
             .agent_profiles
             .get(&worker.agent_profile_id)
             .with_context(|| format!("Unknown agent profile '{}'", worker.agent_profile_id))?;
-        let worker_model = resolve_model_with_fallback(&worker.model_profile_id, registry, config)?;
+        let worker_model = resolve_model_with_fallback(
+            request
+                .overrides
+                .worker_model_profile_id
+                .as_deref()
+                .unwrap_or(worker.model_profile_id.as_str()),
+            registry,
+            config,
+        )?;
 
         delegations.push(DelegationTask {
             id: Uuid::new_v4().to_string(),
@@ -1516,7 +1605,7 @@ async fn run_orchestrated(
             "delegated_task",
             Some(delegation_id.as_str()),
             Some(worker.id.as_str()),
-            Some(worker.model_profile_id.as_str()),
+            Some(worker_model.decision.requested_profile_id.as_str()),
             "worker_execution",
         ));
 
@@ -1963,6 +2052,7 @@ mod tests {
                 category: Some("code".to_string()),
                 claw_id: None,
                 mode: "auto".to_string(),
+                overrides: OrchestrationRequestOverrides::default(),
             },
         )
         .expect("resolve");
@@ -1983,10 +2073,52 @@ mod tests {
                 category: None,
                 claw_id: None,
                 mode: "auto".to_string(),
+                overrides: OrchestrationRequestOverrides::default(),
             },
         )
         .expect("resolve");
         assert_eq!(decision.selected_claw_id, "orchestrator");
+    }
+
+    #[test]
+    fn request_overrides_adjust_model_and_autonomy() {
+        let registry = sample_registry();
+        let config = AppConfig::default();
+        let decision = resolve_routing(
+            &registry,
+            &config,
+            &OrchestrationRequest {
+                prompt: "test".to_string(),
+                task_id: None,
+                category: None,
+                claw_id: Some("main".to_string()),
+                mode: "auto".to_string(),
+                overrides: OrchestrationRequestOverrides {
+                    model_profile_id: Some("local".to_string()),
+                    worker_model_profile_id: Some("local".to_string()),
+                    autonomy_level: Some("managed".to_string()),
+                    max_delegations: Some(2),
+                    max_iterations: Some(9),
+                    max_runtime_secs: Some(45),
+                    approval_policy: Some("side_effects".to_string()),
+                },
+            },
+        )
+        .expect("resolve");
+        assert_eq!(decision.selected_model_profile_id, "local");
+        assert_eq!(decision.selected_model.requested_profile_id, "local");
+        assert_eq!(decision.autonomy.autonomy_level, "managed");
+        assert_eq!(decision.autonomy.max_delegations, 2);
+        assert_eq!(decision.autonomy.max_iterations, 9);
+        assert_eq!(decision.autonomy.max_runtime_secs, 45);
+        assert_eq!(decision.autonomy.approval_policy, "side_effects");
+        assert_eq!(
+            decision
+                .request_overrides
+                .worker_model_profile_id
+                .as_deref(),
+            Some("local")
+        );
     }
 
     #[test]
@@ -2040,6 +2172,7 @@ mod tests {
                 applied_lessons: vec![],
                 steering_notes: vec![],
                 warnings: vec![],
+                request_overrides: OrchestrationRequestOverrides::default(),
             },
             delegations: vec![],
             worker_results: vec![],
@@ -2100,6 +2233,7 @@ mod tests {
                 applied_lessons: vec![],
                 steering_notes: vec![],
                 warnings: vec![],
+                request_overrides: OrchestrationRequestOverrides::default(),
             },
             delegations: vec![],
             worker_results: vec![],
@@ -2185,6 +2319,7 @@ mod tests {
                 applied_lessons: vec![],
                 steering_notes: vec![],
                 warnings: vec![],
+                request_overrides: OrchestrationRequestOverrides::default(),
             },
             delegations: vec![],
             worker_results: vec![],
@@ -2279,6 +2414,7 @@ mod tests {
             applied_lessons: vec![],
             steering_notes: vec![],
             warnings: vec![],
+            request_overrides: OrchestrationRequestOverrides::default(),
         };
         let worker_results = vec![WorkerResultEnvelope {
             claw_id: "worker-a".to_string(),
@@ -2331,6 +2467,7 @@ mod tests {
                 category: Some("code".to_string()),
                 claw_id: None,
                 mode: "auto".to_string(),
+                overrides: OrchestrationRequestOverrides::default(),
             },
             routing: RoutingDecision {
                 execution_mode: "orchestrated".to_string(),
@@ -2356,6 +2493,7 @@ mod tests {
                 applied_lessons: vec![],
                 steering_notes: vec![],
                 warnings: vec![],
+                request_overrides: OrchestrationRequestOverrides::default(),
             },
             delegations: vec![],
             worker_results: vec![],

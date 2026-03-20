@@ -3202,6 +3202,13 @@ struct OrchestrationRequestPayload {
     category: Option<String>,
     claw_id: Option<String>,
     mode: Option<String>,
+    model_profile_id: Option<String>,
+    worker_model_profile_id: Option<String>,
+    autonomy_level: Option<String>,
+    max_delegations: Option<usize>,
+    max_iterations: Option<usize>,
+    max_runtime_secs: Option<u64>,
+    approval_policy: Option<String>,
 }
 
 async fn runtime_status_handler(State(state): State<RuntimeControlState>) -> impl IntoResponse {
@@ -3369,6 +3376,15 @@ async fn orchestration_resolve_handler(
             category: payload.category,
             claw_id: payload.claw_id,
             mode: payload.mode.unwrap_or_else(|| "auto".to_string()),
+            overrides: orchestrate::OrchestrationRequestOverrides {
+                model_profile_id: payload.model_profile_id,
+                worker_model_profile_id: payload.worker_model_profile_id,
+                autonomy_level: payload.autonomy_level,
+                max_delegations: payload.max_delegations,
+                max_iterations: payload.max_iterations,
+                max_runtime_secs: payload.max_runtime_secs,
+                approval_policy: payload.approval_policy,
+            },
         },
         &state.workspace_root,
     ) {
@@ -3401,6 +3417,15 @@ async fn orchestration_run_handler(
             category: payload.category,
             claw_id: payload.claw_id,
             mode: payload.mode.unwrap_or_else(|| "auto".to_string()),
+            overrides: orchestrate::OrchestrationRequestOverrides {
+                model_profile_id: payload.model_profile_id,
+                worker_model_profile_id: payload.worker_model_profile_id,
+                autonomy_level: payload.autonomy_level,
+                max_delegations: payload.max_delegations,
+                max_iterations: payload.max_iterations,
+                max_runtime_secs: payload.max_runtime_secs,
+                approval_policy: payload.approval_policy,
+            },
         },
         &state.workspace_root,
     )

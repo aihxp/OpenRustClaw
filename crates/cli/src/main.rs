@@ -357,6 +357,20 @@ enum OrchestrateAction {
         category: Option<String>,
         #[arg(long)]
         claw: Option<String>,
+        #[arg(long)]
+        model_profile: Option<String>,
+        #[arg(long)]
+        worker_model_profile: Option<String>,
+        #[arg(long)]
+        autonomy_level: Option<String>,
+        #[arg(long)]
+        max_delegations: Option<usize>,
+        #[arg(long)]
+        max_iterations: Option<usize>,
+        #[arg(long)]
+        max_runtime_secs: Option<u64>,
+        #[arg(long)]
+        approval_policy: Option<String>,
         #[arg(long, default_value = "auto")]
         mode: String,
     },
@@ -415,6 +429,20 @@ enum OrchestrateAction {
         category: Option<String>,
         #[arg(long)]
         claw: Option<String>,
+        #[arg(long)]
+        model_profile: Option<String>,
+        #[arg(long)]
+        worker_model_profile: Option<String>,
+        #[arg(long)]
+        autonomy_level: Option<String>,
+        #[arg(long)]
+        max_delegations: Option<usize>,
+        #[arg(long)]
+        max_iterations: Option<usize>,
+        #[arg(long)]
+        max_runtime_secs: Option<u64>,
+        #[arg(long)]
+        approval_policy: Option<String>,
         #[arg(long, default_value = "auto")]
         mode: String,
         #[arg(long)]
@@ -2333,6 +2361,13 @@ async fn main() -> Result<()> {
                 task_id,
                 category,
                 claw,
+                model_profile,
+                worker_model_profile,
+                autonomy_level,
+                max_delegations,
+                max_iterations,
+                max_runtime_secs,
+                approval_policy,
                 mode,
             } => {
                 let workspace_root = std::env::current_dir()?;
@@ -2343,6 +2378,15 @@ async fn main() -> Result<()> {
                         category,
                         claw_id: claw,
                         mode,
+                        overrides: commands::orchestrate::OrchestrationRequestOverrides {
+                            model_profile_id: model_profile,
+                            worker_model_profile_id: worker_model_profile,
+                            autonomy_level,
+                            max_delegations,
+                            max_iterations,
+                            max_runtime_secs,
+                            approval_policy,
+                        },
                     },
                     &workspace_root,
                 )?;
@@ -2425,6 +2469,13 @@ async fn main() -> Result<()> {
                 task_id,
                 category,
                 claw,
+                model_profile,
+                worker_model_profile,
+                autonomy_level,
+                max_delegations,
+                max_iterations,
+                max_runtime_secs,
+                approval_policy,
                 mode,
                 json,
             } => {
@@ -2436,6 +2487,15 @@ async fn main() -> Result<()> {
                         category,
                         claw_id: claw,
                         mode,
+                        overrides: commands::orchestrate::OrchestrationRequestOverrides {
+                            model_profile_id: model_profile,
+                            worker_model_profile_id: worker_model_profile,
+                            autonomy_level,
+                            max_delegations,
+                            max_iterations,
+                            max_runtime_secs,
+                            approval_policy,
+                        },
                     },
                     &workspace_root,
                 )
