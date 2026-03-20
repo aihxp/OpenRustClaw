@@ -562,6 +562,26 @@
               <button class="secondary" id="skill-auth-bind">Bind Auth Plugin</button>
               <button class="secondary" id="skill-auth-authorize">Authorize Auth Plugin</button>
             </div>
+            <div class="action-row">
+              <input id="skill-voice-plugin" type="text" placeholder="voice plugin id, e.g. support-line" />
+              <input id="skill-voice-remote" type="text" placeholder="optional remote/target, e.g. +15551234" />
+            </div>
+            <div class="action-row">
+              <input id="skill-voice-greeting" type="text" placeholder="optional greeting text for bind/start" />
+              <input id="skill-voice-default-voice" type="text" placeholder="optional default TTS voice" />
+            </div>
+            <div class="action-row">
+              <button class="secondary" id="skill-voice-bind">Bind Voice Plugin</button>
+              <button class="secondary" id="skill-voice-start">Start Voice Call</button>
+              <button class="secondary" id="skill-voice-list">List Voice Calls</button>
+            </div>
+            <div class="action-row">
+              <input id="skill-voice-call-id" type="text" placeholder="voice call id to end" />
+              <input id="skill-voice-end-reason" type="text" placeholder="optional end reason" />
+            </div>
+            <div class="action-row">
+              <button class="secondary" id="skill-voice-end">End Voice Call</button>
+            </div>
           </div>
           <div class="surface"><pre id="skill-detail">Select an installed or discovered extension to inspect.</pre></div>
         </article>
@@ -1199,6 +1219,76 @@
         if (payload.authorization_url) {
           window.open(payload.authorization_url, "_blank", "noopener,noreferrer");
         }
+      }
+
+      async function bindCurrentSkillVoicePlugin() {
+        if (!currentSkillName) {
+          throw new Error("Select an installed extension first");
+        }
+        const pluginId = document.getElementById("skill-voice-plugin").value.trim();
+        if (!pluginId) {
+          throw new Error("Enter a voice plugin id first");
+        }
+        const service = document.getElementById("skill-background-service").value.trim();
+        const component = document.getElementById("skill-background-component").value.trim();
+        const greetingText = document.getElementById("skill-voice-greeting").value.trim();
+        const defaultVoice = document.getElementById("skill-voice-default-voice").value.trim();
+        const payload = await fetchJson("/control/skills/voice-plugins/bind", {
+          method: "POST",
+          body: JSON.stringify({
+            plugin_id: pluginId,
+            skill_name: currentSkillName,
+            service: service || null,
+            component: component || null,
+            greeting_text: greetingText || null,
+            default_voice: defaultVoice || null,
+          }),
+        });
+        setText("skill-detail", payload);
+        await inspectSkill(currentSkillName);
+      }
+
+      async function startCurrentVoiceCall() {
+        const pluginId = document.getElementById("skill-voice-plugin").value.trim();
+        if (!pluginId) {
+          throw new Error("Enter a voice plugin id first");
+        }
+        const remote = document.getElementById("skill-voice-remote").value.trim();
+        const greetingText = document.getElementById("skill-voice-greeting").value.trim();
+        const defaultVoice = document.getElementById("skill-voice-default-voice").value.trim();
+        const payload = await fetchJson("/control/skills/voice-calls/start", {
+          method: "POST",
+          body: JSON.stringify({
+            plugin_id: pluginId,
+            remote: remote || null,
+            greeting_text: greetingText || null,
+            voice: defaultVoice || null,
+          }),
+        });
+        setText("skill-detail", payload);
+        if (payload.call && payload.call.call_id) {
+          document.getElementById("skill-voice-call-id").value = payload.call.call_id;
+        }
+      }
+
+      async function loadVoiceCalls() {
+        const payload = await fetchJson("/control/skills/voice-calls");
+        setText("skill-detail", payload);
+      }
+
+      async function endCurrentVoiceCall() {
+        const callId = document.getElementById("skill-voice-call-id").value.trim();
+        if (!callId) {
+          throw new Error("Enter a voice call id first");
+        }
+        const reason = document.getElementById("skill-voice-end-reason").value.trim();
+        const payload = await fetchJson(`/control/skills/voice-calls/${encodeURIComponent(callId)}/end`, {
+          method: "POST",
+          body: JSON.stringify({
+            reason: reason || null,
+          }),
+        });
+        setText("skill-detail", payload);
       }
 
       async function loadSkillCatalog(mode = "popular") {
@@ -2219,6 +2309,34 @@
       document.getElementById("skill-auth-authorize").addEventListener("click", async () => {
         try {
           await authorizeCurrentSkillAuthPlugin();
+        } catch (error) {
+          setText("skill-detail", { error: error.message });
+        }
+      });
+      document.getElementById("skill-voice-bind").addEventListener("click", async () => {
+        try {
+          await bindCurrentSkillVoicePlugin();
+        } catch (error) {
+          setText("skill-detail", { error: error.message });
+        }
+      });
+      document.getElementById("skill-voice-start").addEventListener("click", async () => {
+        try {
+          await startCurrentVoiceCall();
+        } catch (error) {
+          setText("skill-detail", { error: error.message });
+        }
+      });
+      document.getElementById("skill-voice-list").addEventListener("click", async () => {
+        try {
+          await loadVoiceCalls();
+        } catch (error) {
+          setText("skill-detail", { error: error.message });
+        }
+      });
+      document.getElementById("skill-voice-end").addEventListener("click", async () => {
+        try {
+          await endCurrentVoiceCall();
         } catch (error) {
           setText("skill-detail", { error: error.message });
         }

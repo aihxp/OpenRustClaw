@@ -1266,7 +1266,7 @@ Remaining:
   - [x] agent tools through bounded compiled-skill MCP execution,
   - [x] background workflows through bounded compiled-skill scheduler execution,
   - [x] auth plugins through a file-backed compiled-skill auth registry, bounded OIDC authorize/code-exchange surfaces, callback handling, and encrypted runtime-vault token persistence,
-  - voice-call plugins,
+  - [x] voice-call plugins through a file-backed compiled-skill voice-plugin registry, bounded start/end call session receipts, optional greeting synthesis through the shipped voice runtime, and compiled start/end hooks over the same sandboxed execution lane,
   - [x] channel extensions through file-backed channel binding metadata and bounded compiled-skill background hooks.
 - [ ] Add media pipeline parity:
   - image receive/send,
@@ -1280,9 +1280,9 @@ Remaining:
   - wake/talk flows,
   - [x] provider-backed inbound attachment STT and transcript injection for supported runtime message flows,
   - [ ] broader STT parity,
-  - TTS,
-  - voice notes,
-  - call/phone plugin support if kept in scope,
+  - [x] bounded operator/runtime TTS artifact synthesis,
+  - [x] bounded voice-note transcription plus transcript injection for supported runtime message flows,
+  - [x] bounded call/phone plugin support through the compiled-skill voice-plugin lane,
   - call lifecycle health (stale-call reaping, reconnect, greeting/prewarm behavior) if call surfaces stay in scope.
 - [ ] Add node pairing/runtime parity:
   - iOS node pairing,

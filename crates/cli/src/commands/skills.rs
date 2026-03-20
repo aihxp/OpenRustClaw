@@ -26,7 +26,7 @@ use openrustclaw_skills::{
 use super::channels::{
     ChannelBindingSpec, load_registry, read_binding, resolve_root, upsert_binding,
 };
-use super::{control, runtime};
+use super::{control, runtime, voice_runtime};
 
 fn parse_hex_bytes(input: &str) -> Result<Vec<u8>> {
     let trimmed = input.trim();
@@ -551,6 +551,138 @@ pub struct SkillAuthExchangeResult {
     pub scope: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SkillVoicePluginBinding {
+    pub plugin_id: String,
+    pub skill_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub service: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub component: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub greeting_text: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_voice: Option<String>,
+    pub configured_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+struct SkillVoicePluginRegistry {
+    pub bindings: BTreeMap<String, SkillVoicePluginBinding>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SkillVoiceCallRecord {
+    pub call_id: String,
+    pub plugin_id: String,
+    pub skill_name: String,
+    pub status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub remote: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub greeting_text: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub greeting_audio_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    #[serde(default)]
+    pub metadata: serde_json::Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub start_hook_output: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub end_hook_output: Option<serde_json::Value>,
+    pub started_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ended_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+struct SkillVoiceCallRegistry {
+    pub calls: Vec<SkillVoiceCallRecord>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SkillVoicePluginSummary {
+    pub plugin_id: String,
+    pub skill_name: String,
+    pub blocked: bool,
+    pub declared_by_skill: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub service: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub component: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub greeting_text: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_voice: Option<String>,
+    pub active_calls: usize,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SkillVoicePluginsResult {
+    pub status: String,
+    pub count: usize,
+    pub voice_plugins: Vec<SkillVoicePluginSummary>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SkillVoiceCallsResult {
+    pub status: String,
+    pub count: usize,
+    pub calls: Vec<SkillVoiceCallRecord>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SkillBindVoicePluginOptions<'a> {
+    pub service: Option<&'a str>,
+    pub component: Option<&'a str>,
+    pub greeting_text: Option<&'a str>,
+    pub default_voice: Option<&'a str>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SkillBindVoicePluginResult {
+    pub status: String,
+    pub plugin_id: String,
+    pub skill_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub service: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub component: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub greeting_text: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_voice: Option<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SkillStartVoiceCallOptions<'a> {
+    pub remote: Option<&'a str>,
+    pub greeting_text: Option<&'a str>,
+    pub voice: Option<&'a str>,
+    pub metadata: Option<&'a str>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SkillStartVoiceCallResult {
+    pub status: String,
+    pub call: SkillVoiceCallRecord,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SkillEndVoiceCallOptions<'a> {
+    pub reason: Option<&'a str>,
+    pub metadata: Option<&'a str>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SkillEndVoiceCallResult {
+    pub status: String,
+    pub call: SkillVoiceCallRecord,
+}
+
 async fn load_skill_config_and_pool()
 -> Result<(openrustclaw_core::config::AppConfig, sqlx::SqlitePool)> {
     let config = openrustclaw_core::config::AppConfig::load().unwrap_or_default();
@@ -603,6 +735,14 @@ fn auth_plugin_registry_path(workspace_root: &Path) -> PathBuf {
 
 fn auth_plugin_sessions_path(workspace_root: &Path) -> PathBuf {
     control::control_root_for(workspace_root).join("skill-auth-plugin-sessions.json")
+}
+
+fn voice_plugin_registry_path(workspace_root: &Path) -> PathBuf {
+    control::control_root_for(workspace_root).join("skill-voice-plugins.json")
+}
+
+fn voice_call_registry_path(workspace_root: &Path) -> PathBuf {
+    control::control_root_for(workspace_root).join("skill-voice-calls.json")
 }
 
 fn load_auth_plugin_registry(workspace_root: &Path) -> Result<SkillAuthPluginRegistry> {
@@ -723,6 +863,50 @@ fn provider_from_pending_state(sessions: &SkillAuthPendingSessions, state: &str)
         .iter()
         .find(|session| session.state == state)
         .map(|session| session.provider_id.clone())
+}
+
+fn load_voice_plugin_registry(workspace_root: &Path) -> Result<SkillVoicePluginRegistry> {
+    let path = voice_plugin_registry_path(workspace_root);
+    if !path.exists() {
+        return Ok(SkillVoicePluginRegistry::default());
+    }
+    let bytes = fs::read(&path).with_context(|| format!("Failed to read {}", path.display()))?;
+    serde_json::from_slice(&bytes).with_context(|| format!("Failed to parse {}", path.display()))
+}
+
+fn save_voice_plugin_registry(
+    workspace_root: &Path,
+    registry: &SkillVoicePluginRegistry,
+) -> Result<()> {
+    let path = voice_plugin_registry_path(workspace_root);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("Failed to create {}", parent.display()))?;
+    }
+    fs::write(&path, serde_json::to_vec_pretty(registry)?)
+        .with_context(|| format!("Failed to write {}", path.display()))
+}
+
+fn load_voice_call_registry(workspace_root: &Path) -> Result<SkillVoiceCallRegistry> {
+    let path = voice_call_registry_path(workspace_root);
+    if !path.exists() {
+        return Ok(SkillVoiceCallRegistry::default());
+    }
+    let bytes = fs::read(&path).with_context(|| format!("Failed to read {}", path.display()))?;
+    serde_json::from_slice(&bytes).with_context(|| format!("Failed to parse {}", path.display()))
+}
+
+fn save_voice_call_registry(
+    workspace_root: &Path,
+    registry: &SkillVoiceCallRegistry,
+) -> Result<()> {
+    let path = voice_call_registry_path(workspace_root);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("Failed to create {}", parent.display()))?;
+    }
+    fs::write(&path, serde_json::to_vec_pretty(registry)?)
+        .with_context(|| format!("Failed to write {}", path.display()))
 }
 
 async fn build_registry_client(
@@ -1948,6 +2132,389 @@ pub async fn exchange_auth_plugin_callback_data(
     .await
 }
 
+fn voice_plugin_summary(
+    binding: &SkillVoicePluginBinding,
+    artifact: Option<&CompiledSkillArtifact>,
+    call_registry: &SkillVoiceCallRegistry,
+) -> SkillVoicePluginSummary {
+    let declared_by_skill = artifact.is_some_and(|artifact| {
+        artifact
+            .manifest
+            .declared_voice_call_plugins
+            .iter()
+            .any(|plugin| plugin == &binding.plugin_id)
+    });
+    let blocked = artifact.is_some_and(|artifact| {
+        matches!(
+            artifact.manifest.status,
+            openrustclaw_skills::CompiledSkillStatus::Blocked
+        )
+    });
+    let active_calls = call_registry
+        .calls
+        .iter()
+        .filter(|call| call.plugin_id == binding.plugin_id && call.ended_at.is_none())
+        .count();
+
+    SkillVoicePluginSummary {
+        plugin_id: binding.plugin_id.clone(),
+        skill_name: binding.skill_name.clone(),
+        blocked,
+        declared_by_skill,
+        service: binding.service.clone(),
+        component: binding.component.clone(),
+        greeting_text: binding.greeting_text.clone(),
+        default_voice: binding.default_voice.clone(),
+        active_calls,
+        updated_at: binding.updated_at.clone(),
+    }
+}
+
+pub async fn voice_plugins_data() -> Result<SkillVoicePluginsResult> {
+    let workspace_root = current_workspace_root()?;
+    let registry = load_voice_plugin_registry(&workspace_root)?;
+    let call_registry = load_voice_call_registry(&workspace_root)?;
+    let mut voice_plugins = Vec::new();
+
+    for binding in registry.bindings.values() {
+        let artifact = compiled_skill_detail_or_compile(&binding.skill_name)
+            .await
+            .ok();
+        voice_plugins.push(voice_plugin_summary(
+            binding,
+            artifact.as_ref(),
+            &call_registry,
+        ));
+    }
+
+    voice_plugins.sort_by(|left, right| left.plugin_id.cmp(&right.plugin_id));
+    Ok(SkillVoicePluginsResult {
+        status: "ok".to_string(),
+        count: voice_plugins.len(),
+        voice_plugins,
+    })
+}
+
+pub async fn voice_plugins_for_skill_data(skill_name: &str) -> Result<SkillVoicePluginsResult> {
+    let mut result = voice_plugins_data().await?;
+    result
+        .voice_plugins
+        .retain(|binding| binding.skill_name == skill_name);
+    result.count = result.voice_plugins.len();
+    Ok(result)
+}
+
+pub async fn bind_voice_plugin_data(
+    plugin_id: &str,
+    skill_name: &str,
+    options: SkillBindVoicePluginOptions<'_>,
+) -> Result<SkillBindVoicePluginResult> {
+    let workspace_root = current_workspace_root()?;
+    let artifact = compiled_skill_detail_or_compile(skill_name).await?;
+    if matches!(
+        artifact.manifest.status,
+        openrustclaw_skills::CompiledSkillStatus::Blocked
+    ) {
+        anyhow::bail!(
+            "Compiled skill '{}' is blocked and cannot be bound as a voice plugin",
+            artifact.manifest.name
+        );
+    }
+    if !artifact.manifest.declared_voice_call_plugins.is_empty()
+        && !artifact
+            .manifest
+            .declared_voice_call_plugins
+            .iter()
+            .any(|plugin| plugin == plugin_id)
+    {
+        anyhow::bail!(
+            "Compiled skill '{}' declares voice call plugins [{}], not '{}'",
+            artifact.manifest.name,
+            artifact.manifest.declared_voice_call_plugins.join(", "),
+            plugin_id
+        );
+    }
+
+    let (service, component) = if options.service.is_some() || options.component.is_some() {
+        let resolved = resolve_compiled_skill_background_service(
+            &artifact,
+            options.service,
+            options.component,
+        )
+        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+        (Some(resolved.name), resolved.component)
+    } else {
+        (None, None)
+    };
+
+    let now = Utc::now().to_rfc3339();
+    let mut registry = load_voice_plugin_registry(&workspace_root)?;
+    let configured_at = registry
+        .bindings
+        .get(plugin_id)
+        .map(|binding| binding.configured_at.clone())
+        .unwrap_or_else(|| now.clone());
+    let binding = SkillVoicePluginBinding {
+        plugin_id: plugin_id.to_string(),
+        skill_name: artifact.manifest.name.clone(),
+        service: service.clone(),
+        component: component.clone(),
+        greeting_text: options.greeting_text.map(ToString::to_string),
+        default_voice: options.default_voice.map(ToString::to_string),
+        configured_at,
+        updated_at: now,
+    };
+    registry
+        .bindings
+        .insert(plugin_id.to_string(), binding.clone());
+    save_voice_plugin_registry(&workspace_root, &registry)?;
+
+    let (_, pool) = load_skill_config_and_pool().await?;
+    publish_plugin_event(
+        &pool,
+        "plugin.voice_call_bound",
+        serde_json::json!({
+            "plugin_id": plugin_id,
+            "skill_name": binding.skill_name,
+            "service": binding.service,
+            "component": binding.component,
+        }),
+    )
+    .await;
+
+    Ok(SkillBindVoicePluginResult {
+        status: "ok".to_string(),
+        plugin_id: plugin_id.to_string(),
+        skill_name: binding.skill_name,
+        service: binding.service,
+        component: binding.component,
+        greeting_text: binding.greeting_text,
+        default_voice: binding.default_voice,
+    })
+}
+
+pub async fn voice_calls_data() -> Result<SkillVoiceCallsResult> {
+    let workspace_root = current_workspace_root()?;
+    let mut registry = load_voice_call_registry(&workspace_root)?;
+    registry
+        .calls
+        .sort_by(|left, right| right.started_at.cmp(&left.started_at));
+    Ok(SkillVoiceCallsResult {
+        status: "ok".to_string(),
+        count: registry.calls.len(),
+        calls: registry.calls,
+    })
+}
+
+async fn execute_voice_call_hook(
+    artifact: &CompiledSkillArtifact,
+    service: Option<&str>,
+    component: Option<&str>,
+    input: serde_json::Value,
+) -> Result<Option<serde_json::Value>> {
+    if service.is_none() && component.is_none() {
+        return Ok(None);
+    }
+    let resolved = resolve_compiled_skill_background_service(artifact, service, component)
+        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+    let component = resolved.component.ok_or_else(|| {
+        anyhow::anyhow!(
+            "Voice call hook '{}' for '{}' has no executable component mapping",
+            resolved.name,
+            artifact.manifest.name
+        )
+    })?;
+    let result = execute_compiled_skill_artifact(artifact, Some(&component), input)
+        .await
+        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+    Ok(Some(result.output))
+}
+
+fn parse_optional_json(raw: Option<&str>, field_name: &str) -> Result<serde_json::Value> {
+    match raw {
+        Some(value) if !value.trim().is_empty() => {
+            serde_json::from_str(value).with_context(|| format!("Invalid JSON for {}", field_name))
+        }
+        _ => Ok(serde_json::json!({})),
+    }
+}
+
+pub async fn start_voice_call_data(
+    plugin_id: &str,
+    options: SkillStartVoiceCallOptions<'_>,
+) -> Result<SkillStartVoiceCallResult> {
+    let workspace_root = current_workspace_root()?;
+    let registry = load_voice_plugin_registry(&workspace_root)?;
+    let binding = registry
+        .bindings
+        .get(plugin_id)
+        .cloned()
+        .ok_or_else(|| anyhow::anyhow!("Voice plugin '{}' not found", plugin_id))?;
+    let artifact = compiled_skill_detail_or_compile(&binding.skill_name).await?;
+    let (config, pool) = load_skill_config_and_pool().await?;
+    let call_id = uuid::Uuid::new_v4().to_string();
+    let metadata = parse_optional_json(options.metadata, "--metadata")?;
+    let greeting_text = options
+        .greeting_text
+        .map(ToString::to_string)
+        .or_else(|| binding.greeting_text.clone());
+    let greeting_audio_path = if let Some(text) = greeting_text.as_deref() {
+        Some(
+            voice_runtime::synthesize_with_config(
+                &config,
+                &workspace_root,
+                voice_runtime::VoiceSynthesizeRequest {
+                    text: text.to_string(),
+                    provider: None,
+                    model: None,
+                    voice: options
+                        .voice
+                        .map(ToString::to_string)
+                        .or_else(|| binding.default_voice.clone()),
+                    format: Some("mp3".to_string()),
+                    output_path: None,
+                },
+            )
+            .await?
+            .output_path,
+        )
+    } else {
+        None
+    };
+    let start_hook_output = execute_voice_call_hook(
+        &artifact,
+        binding.service.as_deref(),
+        binding.component.as_deref(),
+        serde_json::json!({
+            "action": "call_start",
+            "call_id": &call_id,
+            "plugin_id": plugin_id,
+            "skill_name": &binding.skill_name,
+            "remote": options.remote,
+            "metadata": &metadata,
+        }),
+    )
+    .await?;
+
+    let call = SkillVoiceCallRecord {
+        call_id: call_id.clone(),
+        plugin_id: plugin_id.to_string(),
+        skill_name: binding.skill_name.clone(),
+        status: "active".to_string(),
+        remote: options.remote.map(ToString::to_string),
+        greeting_text: greeting_text.clone(),
+        greeting_audio_path,
+        reason: None,
+        metadata,
+        start_hook_output,
+        end_hook_output: None,
+        started_at: Utc::now().to_rfc3339(),
+        ended_at: None,
+    };
+
+    let mut call_registry = load_voice_call_registry(&workspace_root)?;
+    call_registry.calls.push(call.clone());
+    save_voice_call_registry(&workspace_root, &call_registry)?;
+
+    publish_plugin_event(
+        &pool,
+        "plugin.voice_call_started",
+        serde_json::json!({
+            "call_id": &call_id,
+            "plugin_id": plugin_id,
+            "skill_name": &binding.skill_name,
+            "remote": options.remote,
+        }),
+    )
+    .await;
+
+    Ok(SkillStartVoiceCallResult {
+        status: "ok".to_string(),
+        call,
+    })
+}
+
+pub async fn end_voice_call_data(
+    call_id: &str,
+    options: SkillEndVoiceCallOptions<'_>,
+) -> Result<SkillEndVoiceCallResult> {
+    let workspace_root = current_workspace_root()?;
+    let registry = load_voice_plugin_registry(&workspace_root)?;
+    let mut call_registry = load_voice_call_registry(&workspace_root)?;
+    let index = call_registry
+        .calls
+        .iter()
+        .position(|call| call.call_id == call_id)
+        .ok_or_else(|| anyhow::anyhow!("Voice call '{}' not found", call_id))?;
+    if call_registry.calls[index].ended_at.is_some() {
+        anyhow::bail!("Voice call '{}' is already ended", call_id);
+    }
+
+    let binding = registry
+        .bindings
+        .get(&call_registry.calls[index].plugin_id)
+        .cloned()
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "Voice plugin '{}' for call '{}' was not found",
+                call_registry.calls[index].plugin_id,
+                call_id
+            )
+        })?;
+    let artifact = compiled_skill_detail_or_compile(&binding.skill_name).await?;
+    let (_, pool) = load_skill_config_and_pool().await?;
+    let extra_metadata = parse_optional_json(options.metadata, "--metadata")?;
+    let end_hook_output = execute_voice_call_hook(
+        &artifact,
+        binding.service.as_deref(),
+        binding.component.as_deref(),
+        serde_json::json!({
+            "action": "call_end",
+            "call_id": call_id,
+            "plugin_id": &binding.plugin_id,
+            "skill_name": &binding.skill_name,
+            "reason": options.reason,
+            "metadata": &extra_metadata,
+        }),
+    )
+    .await?;
+
+    let call = &mut call_registry.calls[index];
+    if !extra_metadata.is_null() {
+        if call.metadata.is_object() && extra_metadata.is_object() {
+            let target = call.metadata.as_object_mut().expect("object checked");
+            for (key, value) in extra_metadata.as_object().expect("object checked") {
+                target.insert(key.clone(), value.clone());
+            }
+        } else {
+            call.metadata = extra_metadata;
+        }
+    }
+    call.status = "ended".to_string();
+    call.reason = options.reason.map(ToString::to_string);
+    call.ended_at = Some(Utc::now().to_rfc3339());
+    call.end_hook_output = end_hook_output;
+    let result_call = call.clone();
+    save_voice_call_registry(&workspace_root, &call_registry)?;
+
+    publish_plugin_event(
+        &pool,
+        "plugin.voice_call_ended",
+        serde_json::json!({
+            "call_id": call_id,
+            "plugin_id": &binding.plugin_id,
+            "skill_name": &binding.skill_name,
+            "reason": options.reason,
+        }),
+    )
+    .await;
+
+    Ok(SkillEndVoiceCallResult {
+        status: "ok".to_string(),
+        call: result_call,
+    })
+}
+
 pub async fn compile_data(name: Option<&str>) -> Result<SkillCompileResult> {
     let root = ensure_compiled_root()?;
     let mut compiled = Vec::new();
@@ -2805,6 +3372,78 @@ pub async fn exchange_auth_plugin(
         },
     )
     .await?;
+    println!("{}", serde_json::to_string_pretty(&result)?);
+    Ok(())
+}
+
+/// List configured voice-call plugin bindings over compiled skills.
+pub async fn list_voice_plugins() -> Result<()> {
+    let result = voice_plugins_data().await?;
+    println!("{}", serde_json::to_string_pretty(&result)?);
+    Ok(())
+}
+
+/// Bind a compiled skill to a bounded voice-call plugin lane.
+pub async fn bind_voice_plugin(
+    plugin_id: &str,
+    skill_name: &str,
+    service: Option<&str>,
+    component: Option<&str>,
+    greeting_text: Option<&str>,
+    default_voice: Option<&str>,
+) -> Result<()> {
+    let result = bind_voice_plugin_data(
+        plugin_id,
+        skill_name,
+        SkillBindVoicePluginOptions {
+            service,
+            component,
+            greeting_text,
+            default_voice,
+        },
+    )
+    .await?;
+    println!("{}", serde_json::to_string_pretty(&result)?);
+    Ok(())
+}
+
+/// List persisted bounded voice-call session receipts.
+pub async fn list_voice_calls() -> Result<()> {
+    let result = voice_calls_data().await?;
+    println!("{}", serde_json::to_string_pretty(&result)?);
+    Ok(())
+}
+
+/// Start a bounded voice-call session for a configured plugin.
+pub async fn start_voice_call(
+    plugin_id: &str,
+    remote: Option<&str>,
+    greeting_text: Option<&str>,
+    voice: Option<&str>,
+    metadata: Option<&str>,
+) -> Result<()> {
+    let result = start_voice_call_data(
+        plugin_id,
+        SkillStartVoiceCallOptions {
+            remote,
+            greeting_text,
+            voice,
+            metadata,
+        },
+    )
+    .await?;
+    println!("{}", serde_json::to_string_pretty(&result)?);
+    Ok(())
+}
+
+/// End a bounded voice-call session and persist the receipt.
+pub async fn end_voice_call(
+    call_id: &str,
+    reason: Option<&str>,
+    metadata: Option<&str>,
+) -> Result<()> {
+    let result =
+        end_voice_call_data(call_id, SkillEndVoiceCallOptions { reason, metadata }).await?;
     println!("{}", serde_json::to_string_pretty(&result)?);
     Ok(())
 }

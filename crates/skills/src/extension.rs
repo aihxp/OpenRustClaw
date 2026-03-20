@@ -171,6 +171,19 @@ pub fn build_extension_manifest(
             });
         }
     }
+    if !artifact.manifest.declared_voice_call_plugins.is_empty() {
+        runtime_modes.push("voice_call_plugins".to_string());
+        for plugin in &artifact.manifest.declared_voice_call_plugins {
+            triggers.push(ExtensionTriggerBinding {
+                name: format!("openrustclaw.skills.voice-call.{}", plugin),
+                kind: "voice_call_plugin".to_string(),
+                status: declared_status,
+                command_preview: None,
+                args_hint: Some("bounded voice call session hooks".to_string()),
+                source_path: None,
+            });
+        }
+    }
 
     let mut component_candidates = artifact
         .manifest
@@ -229,6 +242,7 @@ pub fn build_extension_manifest(
     }
     if artifact.manifest.declared_background_services.is_empty()
         && artifact.manifest.declared_auth_providers.is_empty()
+        && artifact.manifest.declared_voice_call_plugins.is_empty()
         && artifact.manifest.declared_command_hooks.is_empty()
         && artifact.manifest.declared_tool_injections.is_empty()
         && artifact.manifest.declared_wasi_components.is_empty()
@@ -354,6 +368,7 @@ mod tests {
                 declared_wasi_components: vec!["analyzer".to_string()],
                 declared_background_services: vec!["sync-loop".to_string()],
                 declared_auth_providers: vec!["okta-prod".to_string()],
+                declared_voice_call_plugins: vec!["support-line".to_string()],
                 declared_command_hooks: vec!["post_install".to_string()],
                 declared_tool_injections: vec!["repo_audit".to_string()],
                 compiled_at: Utc::now(),
@@ -416,6 +431,12 @@ mod tests {
                 .runtime_modes
                 .iter()
                 .any(|mode| mode == "auth_plugins")
+        );
+        assert!(
+            manifest
+                .runtime_modes
+                .iter()
+                .any(|mode| mode == "voice_call_plugins")
         );
         assert!(
             manifest

@@ -2826,6 +2826,26 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             get(control_skill_auth_callback_handler),
         )
         .route(
+            "/control/skills/voice-plugins",
+            get(control_skill_voice_plugins_handler),
+        )
+        .route(
+            "/control/skills/voice-plugins/bind",
+            post(control_skill_bind_voice_plugin_handler),
+        )
+        .route(
+            "/control/skills/voice-calls",
+            get(control_skill_voice_calls_handler),
+        )
+        .route(
+            "/control/skills/voice-calls/start",
+            post(control_skill_start_voice_call_handler),
+        )
+        .route(
+            "/control/skills/voice-calls/{call_id}/end",
+            post(control_skill_end_voice_call_handler),
+        )
+        .route(
             "/control/skills/channel-extensions",
             get(control_skill_channel_extensions_handler),
         )
@@ -3482,6 +3502,20 @@ struct SkillBindAuthPluginPayload {
 }
 
 #[derive(serde::Deserialize)]
+struct SkillBindVoicePluginPayload {
+    plugin_id: String,
+    skill_name: String,
+    #[serde(default)]
+    service: Option<String>,
+    #[serde(default)]
+    component: Option<String>,
+    #[serde(default)]
+    greeting_text: Option<String>,
+    #[serde(default)]
+    default_voice: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
 struct SkillCompilePayload {
     #[serde(default)]
     name: Option<String>,
@@ -3538,6 +3572,27 @@ struct SkillAuthCallbackQuery {
 }
 
 #[derive(serde::Deserialize, Default)]
+struct SkillStartVoiceCallPayload {
+    plugin_id: String,
+    #[serde(default)]
+    remote: Option<String>,
+    #[serde(default)]
+    greeting_text: Option<String>,
+    #[serde(default)]
+    voice: Option<String>,
+    #[serde(default)]
+    metadata: Option<String>,
+}
+
+#[derive(serde::Deserialize, Default)]
+struct SkillEndVoiceCallPayload {
+    #[serde(default)]
+    reason: Option<String>,
+    #[serde(default)]
+    metadata: Option<String>,
+}
+
+#[derive(serde::Deserialize, Default)]
 struct SkillScheduleBackgroundPayload {
     #[serde(default)]
     service: Option<String>,
@@ -3579,6 +3634,7 @@ async fn control_skill_detail_handler(AxumPath(name): AxumPath<String>) -> impl 
             let extension_manifest = skills::extension_manifest_data(&name).await.ok();
             let background_services = skills::background_services_data(&name).await.ok();
             let auth_plugins = skills::auth_plugins_for_skill_data(&name).await.ok();
+            let voice_plugins = skills::voice_plugins_for_skill_data(&name).await.ok();
             (
                 StatusCode::OK,
                 Json(serde_json::json!({
@@ -3587,6 +3643,7 @@ async fn control_skill_detail_handler(AxumPath(name): AxumPath<String>) -> impl 
                     "extension_manifest": extension_manifest,
                     "background_services": background_services,
                     "auth_plugins": auth_plugins,
+                    "voice_plugins": voice_plugins,
                 })),
             )
                 .into_response()
@@ -3805,6 +3862,97 @@ async fn control_skill_auth_callback_handler(
         code,
         state,
         query.redirect_uri.as_deref(),
+    )
+    .await
+    {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": error.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
+async fn control_skill_voice_plugins_handler() -> impl IntoResponse {
+    match skills::voice_plugins_data().await {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": error.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
+async fn control_skill_bind_voice_plugin_handler(
+    Json(payload): Json<SkillBindVoicePluginPayload>,
+) -> impl IntoResponse {
+    match skills::bind_voice_plugin_data(
+        &payload.plugin_id,
+        &payload.skill_name,
+        skills::SkillBindVoicePluginOptions {
+            service: payload.service.as_deref(),
+            component: payload.component.as_deref(),
+            greeting_text: payload.greeting_text.as_deref(),
+            default_voice: payload.default_voice.as_deref(),
+        },
+    )
+    .await
+    {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": error.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
+async fn control_skill_voice_calls_handler() -> impl IntoResponse {
+    match skills::voice_calls_data().await {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": error.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
+async fn control_skill_start_voice_call_handler(
+    Json(payload): Json<SkillStartVoiceCallPayload>,
+) -> impl IntoResponse {
+    match skills::start_voice_call_data(
+        &payload.plugin_id,
+        skills::SkillStartVoiceCallOptions {
+            remote: payload.remote.as_deref(),
+            greeting_text: payload.greeting_text.as_deref(),
+            voice: payload.voice.as_deref(),
+            metadata: payload.metadata.as_deref(),
+        },
+    )
+    .await
+    {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": error.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
+async fn control_skill_end_voice_call_handler(
+    AxumPath(call_id): AxumPath<String>,
+    Json(payload): Json<SkillEndVoiceCallPayload>,
+) -> impl IntoResponse {
+    match skills::end_voice_call_data(
+        &call_id,
+        skills::SkillEndVoiceCallOptions {
+            reason: payload.reason.as_deref(),
+            metadata: payload.metadata.as_deref(),
+        },
     )
     .await
     {

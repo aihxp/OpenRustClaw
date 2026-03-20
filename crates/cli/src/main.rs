@@ -660,6 +660,8 @@ enum SkillsAction {
     ListChannelExtensions,
     /// List configured auth-plugin bindings over compiled skills
     ListAuthPlugins,
+    /// List configured voice-call plugin bindings over compiled skills
+    ListVoicePlugins,
     /// Bind a compiled skill background service to a file-backed channel binding
     BindChannelExtension {
         binding_id: String,
@@ -696,6 +698,19 @@ enum SkillsAction {
         #[arg(long)]
         component: Option<String>,
     },
+    /// Bind a compiled skill to a bounded voice-call plugin lane
+    BindVoicePlugin {
+        plugin_id: String,
+        skill_name: String,
+        #[arg(long)]
+        service: Option<String>,
+        #[arg(long)]
+        component: Option<String>,
+        #[arg(long)]
+        greeting_text: Option<String>,
+        #[arg(long)]
+        default_voice: Option<String>,
+    },
     /// Start an authorization-code flow for a configured auth plugin
     AuthAuthorize {
         provider_id: String,
@@ -711,6 +726,28 @@ enum SkillsAction {
         state: String,
         #[arg(long)]
         redirect_uri: Option<String>,
+    },
+    /// List persisted bounded voice-call session receipts
+    ListVoiceCalls,
+    /// Start a bounded voice-call session for a configured plugin
+    StartVoiceCall {
+        plugin_id: String,
+        #[arg(long)]
+        remote: Option<String>,
+        #[arg(long)]
+        greeting_text: Option<String>,
+        #[arg(long)]
+        voice: Option<String>,
+        #[arg(long)]
+        metadata: Option<String>,
+    },
+    /// End a bounded voice-call session
+    EndVoiceCall {
+        call_id: String,
+        #[arg(long)]
+        reason: Option<String>,
+        #[arg(long)]
+        metadata: Option<String>,
     },
     /// Execute a bounded `.wasm` or `.wat` component from a compiled skill
     Execute {
@@ -2377,6 +2414,7 @@ async fn main() -> Result<()> {
                 commands::skills::list_channel_extensions().await
             }
             SkillsAction::ListAuthPlugins => commands::skills::list_auth_plugins().await,
+            SkillsAction::ListVoicePlugins => commands::skills::list_voice_plugins().await,
             SkillsAction::BindChannelExtension {
                 binding_id,
                 skill_name,
@@ -2423,6 +2461,24 @@ async fn main() -> Result<()> {
                 )
                 .await
             }
+            SkillsAction::BindVoicePlugin {
+                plugin_id,
+                skill_name,
+                service,
+                component,
+                greeting_text,
+                default_voice,
+            } => {
+                commands::skills::bind_voice_plugin(
+                    &plugin_id,
+                    &skill_name,
+                    service.as_deref(),
+                    component.as_deref(),
+                    greeting_text.as_deref(),
+                    default_voice.as_deref(),
+                )
+                .await
+            }
             SkillsAction::AuthAuthorize {
                 provider_id,
                 redirect_uri,
@@ -2442,6 +2498,31 @@ async fn main() -> Result<()> {
                     redirect_uri.as_deref(),
                 )
                 .await
+            }
+            SkillsAction::ListVoiceCalls => commands::skills::list_voice_calls().await,
+            SkillsAction::StartVoiceCall {
+                plugin_id,
+                remote,
+                greeting_text,
+                voice,
+                metadata,
+            } => {
+                commands::skills::start_voice_call(
+                    &plugin_id,
+                    remote.as_deref(),
+                    greeting_text.as_deref(),
+                    voice.as_deref(),
+                    metadata.as_deref(),
+                )
+                .await
+            }
+            SkillsAction::EndVoiceCall {
+                call_id,
+                reason,
+                metadata,
+            } => {
+                commands::skills::end_voice_call(&call_id, reason.as_deref(), metadata.as_deref())
+                    .await
             }
             SkillsAction::Execute {
                 name,

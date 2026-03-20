@@ -62,7 +62,7 @@ Compiled skills can now also expose bounded background services through the same
 - MCP: dynamic `skill.<name>.schedule` tools when the compiled skill exposes a schedulable background service or executable component
 - Control UI: the extension detail panel can schedule the same bounded background workflow
 
-This background lane is still intentionally bounded: it routes compiled background services through the Rust durable scheduler and the same verification-aware execution path used by `skills execute`, rather than pretending voice-call plugins are already complete.
+This background lane is still intentionally bounded: it routes compiled background services through the Rust durable scheduler and the same verification-aware execution path used by `skills execute`, rather than pretending full live voice runtime parity is already complete.
 
 File-backed channel bindings can now opt into a bounded compiled-skill extension lane:
 
@@ -79,6 +79,14 @@ Compiled skills can now also own a bounded auth-provider lane over the same Rust
 - Control UI: the extension detail panel can bind an auth plugin and open the provider authorization flow for the selected compiled skill
 
 This auth lane is also intentionally bounded: it reuses the existing Rust OIDC primitives and encrypted runtime vault, stores provider bindings under `.claw/control/skill-auth-plugins.json`, and persists issued tokens back into the runtime vault instead of introducing a separate auth host or opaque plugin secret store.
+
+Compiled skills can now also own a bounded voice-call plugin lane over the same Rust-owned control plane:
+
+- CLI: `openrustclaw skills list-voice-plugins`, `openrustclaw skills bind-voice-plugin <plugin-id> <skill-name> ...`, `openrustclaw skills list-voice-calls`, `openrustclaw skills start-voice-call <plugin-id> ...`, and `openrustclaw skills end-voice-call <call-id> ...`
+- Control API: `GET /control/skills/voice-plugins`, `POST /control/skills/voice-plugins/bind`, `GET /control/skills/voice-calls`, `POST /control/skills/voice-calls/start`, and `POST /control/skills/voice-calls/{call_id}/end`
+- Control UI: the extension detail panel can bind a voice-call plugin, start a bounded call session, inspect active call receipts, and end the selected call
+
+This voice-call lane is intentionally bounded too: it stores bindings and call receipts under `.claw/control/`, can optionally synthesize a greeting artifact through the shipped voice runtime, and can trigger compiled skill service/component hooks on call start or end through the same sandboxed execution lane used by `skills execute`. It does not claim full telephony or long-lived call-runtime parity.
 
 The compile pipeline now also emits `.claw/skills/compiled/<skill>/extension_manifest.json`. That manifest is the durable Rust-native extension contract for this later Phase 7 work:
 

@@ -68,6 +68,7 @@ pub struct CompiledSkillManifest {
     pub declared_wasi_components: Vec<String>,
     pub declared_background_services: Vec<String>,
     pub declared_auth_providers: Vec<String>,
+    pub declared_voice_call_plugins: Vec<String>,
     pub declared_command_hooks: Vec<String>,
     pub declared_tool_injections: Vec<String>,
     pub compiled_at: DateTime<Utc>,
@@ -125,6 +126,7 @@ struct ParsedSkillDocument {
     declared_wasi_components: Vec<String>,
     declared_background_services: Vec<String>,
     declared_auth_providers: Vec<String>,
+    declared_voice_call_plugins: Vec<String>,
     declared_command_hooks: Vec<String>,
     declared_tool_injections: Vec<String>,
     body: String,
@@ -200,6 +202,7 @@ pub fn compile_skill_file(
         declared_wasi_components: parsed.declared_wasi_components.clone(),
         declared_background_services: parsed.declared_background_services.clone(),
         declared_auth_providers: parsed.declared_auth_providers.clone(),
+        declared_voice_call_plugins: parsed.declared_voice_call_plugins.clone(),
         declared_command_hooks: parsed.declared_command_hooks.clone(),
         declared_tool_injections: parsed.declared_tool_injections.clone(),
         compiled_at,
@@ -363,6 +366,8 @@ fn parse_skill_document(path: &Path, content: &str) -> ParsedSkillDocument {
     let declared_background_services =
         field_list(&fields, &["background-services", "background_services"]);
     let declared_auth_providers = field_list(&fields, &["auth-providers", "auth_providers"]);
+    let declared_voice_call_plugins =
+        field_list(&fields, &["voice-call-plugins", "voice_call_plugins"]);
     let declared_command_hooks = field_list(&fields, &["command-hooks", "command_hooks"]);
     let declared_tool_injections = field_list(&fields, &["tool-injections", "tool_injections"]);
     let name = field_string(&fields, &["name"]).unwrap_or_else(|| title.to_string());
@@ -378,6 +383,7 @@ fn parse_skill_document(path: &Path, content: &str) -> ParsedSkillDocument {
         declared_wasi_components,
         declared_background_services,
         declared_auth_providers,
+        declared_voice_call_plugins,
         declared_command_hooks,
         declared_tool_injections,
         body: body.trim().to_string(),
@@ -758,6 +764,8 @@ background-services:
   - repo-watch
 auth-providers:
   - okta-prod
+voice-call-plugins:
+  - support-line
 command-hooks:
   - post_install
 tool-injections:
@@ -835,6 +843,10 @@ openrustclaw skills invoke my-skill repo --fix
             vec!["repo-watch"]
         );
         assert_eq!(artifact.manifest.declared_auth_providers, vec!["okta-prod"]);
+        assert_eq!(
+            artifact.manifest.declared_voice_call_plugins,
+            vec!["support-line"]
+        );
         assert_eq!(
             artifact.manifest.declared_command_hooks,
             vec!["post_install"]
