@@ -705,7 +705,7 @@ Exit criteria:
 
 Goal: match OpenClaw's operator UX and tooling surface while keeping Rust-native interfaces.
 
-Status: complete for shipped CLI/MCP control-plane surfaces, shared typed control/config/diagnostics APIs, autonomy-tier and decision-lesson control surfaces, shared service-status, scheduler, channel-readiness, and runtime-log inspection APIs, shared session/memory/job inspection APIs, channel account CRUD parity, encrypted runtime secret-vault support, validated provider/model switching, runtime reload/cutover APIs with rollback, bounded routed/orchestrated multi-model execution surfaces with receipt capture, checkpoints, trace logs, parent/child delegation relationships, estimated token/duration resource summaries, request-scoped model/autonomy override lanes, reflection candidates, reflection-to-lesson promotion, and lesson-aware steering context, stronger onboarding flows with existing-state handling plus post-onboarding doctor handoff, doctor validation, a bounded native browser operator slice with read-page/crawl-site/navigate/extract/screenshot/pdf surfaces, and an initial Web Control UI shell with config/vault editing plus autonomy/lesson, run-supervision/run-trace/run-resource inspection, enabled-channel readiness, and recent/live runtime log visibility; deeper Web Control UI parity, richer browser/web tooling, deeper channel/service probes, and full orchestrated runtime execution remain open.
+Status: complete for shipped CLI/MCP control-plane surfaces, shared typed control/config/diagnostics APIs, autonomy-tier and decision-lesson control surfaces, shared service-status, scheduler, channel-readiness, and runtime-log inspection APIs, shared session/memory/job inspection APIs, channel account CRUD parity, encrypted runtime secret-vault support, validated provider/model switching, runtime reload/cutover APIs with rollback, full trust-first routed/orchestrated multi-model execution surfaces with receipt capture, checkpoints, trace logs, transcript persistence, parent/child delegation relationships, active supervision state, pause/resume/kill controls, estimated token/duration resource summaries, request-scoped model/autonomy override lanes, reflection candidates, reflection-to-lesson promotion, and lesson-aware steering context, stronger onboarding flows with existing-state handling plus post-onboarding doctor handoff, doctor validation, a bounded native browser operator slice with read-page/crawl-site/navigate/extract/screenshot/pdf surfaces, and an initial Web Control UI shell with config/vault editing plus autonomy/lesson, active-run supervision, run-supervision/run-trace/run-transcript/run-resource inspection, enabled-channel readiness, and recent/live runtime log visibility; deeper Web Control UI parity, richer browser/web tooling, and deeper channel/service probes remain open.
 
 Additional later-surface work:
 
@@ -835,6 +835,17 @@ Completed:
   - override autonomy level, delegation/iteration/runtime caps, and approval policy per run,
   - keep the durable control registry unchanged while preserving overrides in the receipt,
   - expose the same override lane through `openrustclaw orchestrate resolve|run` and `/control/orchestration/resolve|run`.
+- [x] Extend quarterback/orchestrator mode into a full trust-first orchestrated multi-claw runtime:
+  - `openrustclaw orchestrate submit|active|watch|pause|resume|kill`,
+  - `POST /control/orchestration/submit`,
+  - `GET /control/orchestration/active`,
+  - `GET /control/orchestration/active/{run_id}`,
+  - `GET /control/orchestration/active/{run_id}/events`,
+  - `POST /control/orchestration/active/{run_id}/pause|resume|kill`,
+  - active run state under `.claw/control/orchestration-active/`,
+  - named worker delegation with bounded follow-up turns,
+  - primary-Claw selective critic/quality-review passes,
+  - full parent/child transcript persistence via `openrustclaw orchestrate transcript` and `GET /control/orchestration/runs/{receipt_id}/transcript`.
 - [x] Add a bounded native browser operator surface backed by the Rust automation crate:
   - `openrustclaw browser read-page|crawl-site|navigate|extract|screenshot|pdf`,
   - `POST /control/browser/read-page`,
@@ -931,13 +942,13 @@ Remaining:
   - one or more worker models execute bounded subtasks,
   - structured worker completion envelopes,
   - explicit receipts showing which model decided versus which model executed.
-- [ ] Extend quarterback/orchestrator mode into a full orchestrated multi-claw runtime:
+- [x] Extend quarterback/orchestrator mode into a full orchestrated multi-claw runtime:
   - primary Claw can delegate to named worker Claws,
   - worker Claws return structured completion envelopes,
   - primary Claw can ask follow-up questions of worker Claws,
   - primary Claw decides when worker output is complete enough to expose to the user,
   - Rust persists the full parent/child Claw transcript and ownership chain.
-- [ ] Add sub-agent supervision surfaces:
+- [x] Add sub-agent supervision surfaces:
   - active agent list/watch,
   - logs,
   - kill/pause/resume,
@@ -1197,7 +1208,7 @@ Recommended finish order from here:
   - deeper Web Control UI parity,
   - richer operator-grade diagnostics,
   - onboarding and repair parity.
-- [ ] Wave 2: finish the trust-first orchestration runtime before broadening autonomy claims:
+- [x] Wave 2: finish the trust-first orchestration runtime before broadening autonomy claims:
   - full orchestrated multi-claw runtime,
   - sub-agent supervision surfaces,
   - decision-quality and reflection/lesson steering that improves choices without over-harnessing strong models into brittle micromanagement.

@@ -419,8 +419,55 @@ enum OrchestrateAction {
     },
     /// Inspect structured trace entries and parent/child relationships for one receipt
     Trace { receipt_id: String },
+    /// Inspect the full persisted parent/child orchestration transcript for one receipt
+    Transcript { receipt_id: String },
     /// Inspect estimated token and duration summaries for one receipt
     Resources { receipt_id: String },
+    /// Submit a background orchestrated run with active supervision state
+    Submit {
+        prompt: String,
+        #[arg(long)]
+        task_id: Option<String>,
+        #[arg(long)]
+        category: Option<String>,
+        #[arg(long)]
+        claw: Option<String>,
+        #[arg(long)]
+        model_profile: Option<String>,
+        #[arg(long)]
+        worker_model_profile: Option<String>,
+        #[arg(long)]
+        autonomy_level: Option<String>,
+        #[arg(long)]
+        max_delegations: Option<usize>,
+        #[arg(long)]
+        max_iterations: Option<usize>,
+        #[arg(long)]
+        max_runtime_secs: Option<u64>,
+        #[arg(long)]
+        approval_policy: Option<String>,
+        #[arg(long, default_value = "orchestrated")]
+        mode: String,
+    },
+    /// List active orchestration runs and their live supervision status
+    Active {
+        #[arg(long, default_value_t = true)]
+        active_only: bool,
+        #[arg(short, long, default_value_t = 20)]
+        limit: usize,
+    },
+    /// Inspect the latest active-run state and recent events
+    Watch {
+        run_id: String,
+        #[arg(short, long, default_value_t = 20)]
+        limit: usize,
+    },
+    /// Request a pause for an active orchestration run
+    Pause { run_id: String },
+    /// Resume a paused orchestration run
+    Resume { run_id: String },
+    /// Kill an active orchestration run
+    Kill { run_id: String },
     /// Promote one reflection candidate from a receipt into a decision lesson
     PromoteCandidate {
         receipt_id: String,
@@ -479,6 +526,11 @@ enum OrchestrateAction {
         mode: String,
         #[arg(long)]
         json: bool,
+    },
+    #[command(hide = true)]
+    WorkerRun {
+        #[arg(long)]
+        run_id: String,
     },
 }
 
@@ -2499,10 +2551,94 @@ async fn main() -> Result<()> {
                 println!("{}", serde_json::to_string_pretty(&payload)?);
                 Ok(())
             }
+            OrchestrateAction::Transcript { receipt_id } => {
+                let workspace_root = std::env::current_dir()?;
+                let payload =
+                    commands::orchestrate::read_run_transcript(&workspace_root, &receipt_id)?;
+                println!("{}", serde_json::to_string_pretty(&payload)?);
+                Ok(())
+            }
             OrchestrateAction::Resources { receipt_id } => {
                 let workspace_root = std::env::current_dir()?;
                 let payload =
                     commands::orchestrate::read_run_resources(&workspace_root, &receipt_id)?;
+                println!("{}", serde_json::to_string_pretty(&payload)?);
+                Ok(())
+            }
+            OrchestrateAction::Submit {
+                prompt,
+                task_id,
+                category,
+                claw,
+                model_profile,
+                worker_model_profile,
+                autonomy_level,
+                max_delegations,
+                max_iterations,
+                max_runtime_secs,
+                approval_policy,
+                mode,
+            } => {
+                let workspace_root = std::env::current_dir()?;
+                let result = commands::orchestrate::submit(
+                    commands::orchestrate::OrchestrationRequest {
+                        prompt,
+                        task_id,
+                        category,
+                        claw_id: claw,
+                        mode,
+                        overrides: commands::orchestrate::OrchestrationRequestOverrides {
+                            model_profile_id: model_profile,
+                            worker_model_profile_id: worker_model_profile,
+                            autonomy_level,
+                            max_delegations,
+                            max_iterations,
+                            max_runtime_secs,
+                            approval_policy,
+                        },
+                    },
+                    &workspace_root,
+                )
+                .await?;
+                println!("{}", serde_json::to_string_pretty(&result)?);
+                Ok(())
+            }
+            OrchestrateAction::Active { active_only, limit } => {
+                let workspace_root = std::env::current_dir()?;
+                let payload =
+                    commands::orchestrate::list_active_runs(&workspace_root, active_only, limit)?;
+                println!("{}", serde_json::to_string_pretty(&payload)?);
+                Ok(())
+            }
+            OrchestrateAction::Watch { run_id, limit } => {
+                let workspace_root = std::env::current_dir()?;
+                let state = commands::orchestrate::read_active_run(&workspace_root, &run_id)?;
+                let events =
+                    commands::orchestrate::read_active_run_events(&workspace_root, &run_id, limit)?;
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&serde_json::json!({
+                        "state": state,
+                        "events": events,
+                    }))?
+                );
+                Ok(())
+            }
+            OrchestrateAction::Pause { run_id } => {
+                let workspace_root = std::env::current_dir()?;
+                let payload = commands::orchestrate::pause_active_run(&workspace_root, &run_id)?;
+                println!("{}", serde_json::to_string_pretty(&payload)?);
+                Ok(())
+            }
+            OrchestrateAction::Resume { run_id } => {
+                let workspace_root = std::env::current_dir()?;
+                let payload = commands::orchestrate::resume_active_run(&workspace_root, &run_id)?;
+                println!("{}", serde_json::to_string_pretty(&payload)?);
+                Ok(())
+            }
+            OrchestrateAction::Kill { run_id } => {
+                let workspace_root = std::env::current_dir()?;
+                let payload = commands::orchestrate::kill_active_run(&workspace_root, &run_id)?;
                 println!("{}", serde_json::to_string_pretty(&payload)?);
                 Ok(())
             }
@@ -2597,6 +2733,12 @@ async fn main() -> Result<()> {
                         result.final_model
                     );
                 }
+                Ok(())
+            }
+            OrchestrateAction::WorkerRun { run_id } => {
+                let workspace_root = std::env::current_dir()?;
+                let payload = commands::orchestrate::worker_run(&run_id, &workspace_root).await?;
+                println!("{}", serde_json::to_string_pretty(&payload)?);
                 Ok(())
             }
         },

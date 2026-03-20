@@ -3,6 +3,7 @@
 use std::collections::{BTreeMap, HashSet, VecDeque};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Stdio;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -16,11 +17,21 @@ use openrustclaw_providers::{
     openrouter::RouteStrategy,
 };
 use serde::{Deserialize, Serialize};
+use tokio::time::{Duration, sleep};
 use uuid::Uuid;
 
 use super::{control, runtime};
 
 pub const DEFAULT_RUNS_DIR: &str = ".claw/control/orchestration-runs";
+pub const DEFAULT_ACTIVE_RUNS_DIR: &str = ".claw/control/orchestration-active";
+
+fn default_active_status() -> String {
+    "queued".to_string()
+}
+
+fn default_transcript_role() -> String {
+    "assistant".to_string()
+}
 
 fn default_run_mode() -> String {
     "auto".to_string()
@@ -239,6 +250,78 @@ pub struct OrchestrationRelationship {
     pub stage: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrchestrationTranscriptEntry {
+    pub transcript_id: String,
+    pub created_at: String,
+    pub stage: String,
+    pub actor_type: String,
+    pub actor_id: String,
+    #[serde(default = "default_transcript_role")]
+    pub role: String,
+    #[serde(default)]
+    pub parent_trace_id: Option<String>,
+    #[serde(default)]
+    pub delegation_id: Option<String>,
+    pub content: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ActiveRunEvent {
+    pub event_id: String,
+    pub created_at: String,
+    pub stage: String,
+    pub actor_type: String,
+    pub actor_id: String,
+    #[serde(default = "default_active_status")]
+    pub status: String,
+    pub note: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ActiveOrchestrationRun {
+    pub run_id: String,
+    pub created_at: String,
+    pub updated_at: String,
+    #[serde(default)]
+    pub started_at: Option<String>,
+    #[serde(default)]
+    pub finished_at: Option<String>,
+    #[serde(default = "default_active_status")]
+    pub status: String,
+    pub request: OrchestrationRequest,
+    #[serde(default)]
+    pub routing: Option<RoutingDecision>,
+    #[serde(default)]
+    pub current_stage: Option<String>,
+    #[serde(default)]
+    pub current_actor_type: Option<String>,
+    #[serde(default)]
+    pub current_actor_id: Option<String>,
+    #[serde(default)]
+    pub current_note: Option<String>,
+    #[serde(default)]
+    pub pause_requested: bool,
+    #[serde(default)]
+    pub kill_requested: bool,
+    #[serde(default)]
+    pub checkpoint_count: usize,
+    #[serde(default)]
+    pub trace_count: usize,
+    #[serde(default)]
+    pub worker_count: usize,
+    #[serde(default)]
+    pub relationship_count: usize,
+    #[serde(default)]
+    pub resource_totals: Option<OrchestrationResourceTotals>,
+    #[serde(default)]
+    pub receipt_id: Option<String>,
+    #[serde(default)]
+    pub receipt_path: Option<String>,
+    #[serde(default)]
+    pub last_error: Option<String>,
+}
+
 #[derive(Debug, Clone)]
 pub struct PromoteReflectionInput {
     pub lesson_id: Option<String>,
@@ -294,6 +377,8 @@ pub struct OrchestrationRunRecord {
     #[serde(default)]
     pub relationships: Vec<OrchestrationRelationship>,
     #[serde(default)]
+    pub transcript: Vec<OrchestrationTranscriptEntry>,
+    #[serde(default)]
     pub reflection_notes: Vec<String>,
     #[serde(default)]
     pub reflection_candidates: Vec<ReflectionCandidate>,
@@ -320,7 +405,7 @@ pub struct OrchestrationRunSummary {
     pub receipt_path: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct PlannerResponse {
     #[serde(default)]
     final_mode: Option<String>,
@@ -330,7 +415,7 @@ struct PlannerResponse {
     delegations: Vec<PlannerDelegation>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct PlannerDelegation {
     claw_id: String,
     instruction: String,
@@ -338,7 +423,15 @@ struct PlannerDelegation {
     reason: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
+struct PlanReviewResponse {
+    #[serde(default)]
+    action: Option<String>,
+    #[serde(default)]
+    note: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 struct WorkerEnvelopeResponse {
     #[serde(default = "default_status_completed")]
     status: String,
@@ -351,6 +444,16 @@ struct WorkerEnvelopeResponse {
     confidence: Option<f32>,
     #[serde(default)]
     next_step_recommendation: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct FollowUpReviewResponse {
+    #[serde(default)]
+    action: Option<String>,
+    #[serde(default)]
+    instruction: Option<String>,
+    #[serde(default)]
+    note: Option<String>,
 }
 
 struct ExecutableModel {
@@ -388,6 +491,200 @@ pub fn runs_root_for(workspace_root: impl AsRef<Path>) -> PathBuf {
     workspace_root.as_ref().join(DEFAULT_RUNS_DIR)
 }
 
+pub fn active_runs_root_for(workspace_root: impl AsRef<Path>) -> PathBuf {
+    workspace_root.as_ref().join(DEFAULT_ACTIVE_RUNS_DIR)
+}
+
+fn active_run_path(workspace_root: &Path, run_id: &str) -> PathBuf {
+    active_runs_root_for(workspace_root).join(format!("{run_id}.json"))
+}
+
+fn active_run_events_path(workspace_root: &Path, run_id: &str) -> PathBuf {
+    active_runs_root_for(workspace_root).join(format!("{run_id}.events.jsonl"))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ActiveRunMonitor {
+    workspace_root: PathBuf,
+    run_id: String,
+}
+
+impl ActiveRunMonitor {
+    fn new(workspace_root: &Path, run_id: &str) -> Self {
+        Self {
+            workspace_root: workspace_root.to_path_buf(),
+            run_id: run_id.to_string(),
+        }
+    }
+
+    fn read_snapshot(&self) -> Result<ActiveOrchestrationRun> {
+        read_active_run(&self.workspace_root, &self.run_id)
+    }
+
+    fn mutate_snapshot<F>(&self, mutate: F) -> Result<ActiveOrchestrationRun>
+    where
+        F: FnOnce(&mut ActiveOrchestrationRun),
+    {
+        let path = active_run_path(&self.workspace_root, &self.run_id);
+        let mut snapshot = self.read_snapshot()?;
+        mutate(&mut snapshot);
+        snapshot.updated_at = Utc::now().to_rfc3339();
+        fs::write(
+            &path,
+            serde_json::to_vec_pretty(&snapshot).context("Failed to encode active run snapshot")?,
+        )
+        .with_context(|| format!("Failed to write '{}'", path.display()))?;
+        Ok(snapshot)
+    }
+
+    fn append_event(
+        &self,
+        stage: &str,
+        actor_type: &str,
+        actor_id: &str,
+        status: &str,
+        note: impl Into<String>,
+    ) -> Result<()> {
+        let path = active_run_events_path(&self.workspace_root, &self.run_id);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("Failed to create '{}'", parent.display()))?;
+        }
+        let event = ActiveRunEvent {
+            event_id: Uuid::new_v4().to_string(),
+            created_at: Utc::now().to_rfc3339(),
+            stage: stage.to_string(),
+            actor_type: actor_type.to_string(),
+            actor_id: actor_id.to_string(),
+            status: status.to_string(),
+            note: note.into(),
+        };
+        let mut encoded =
+            serde_json::to_string(&event).context("Failed to encode active run event")?;
+        encoded.push('\n');
+        use std::io::Write;
+        let mut file = fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .with_context(|| format!("Failed to open '{}'", path.display()))?;
+        file.write_all(encoded.as_bytes())
+            .with_context(|| format!("Failed to append '{}'", path.display()))?;
+        Ok(())
+    }
+
+    fn update_stage(
+        &self,
+        status: &str,
+        stage: &str,
+        actor_type: &str,
+        actor_id: &str,
+        note: impl Into<String>,
+    ) -> Result<()> {
+        let note = note.into();
+        self.mutate_snapshot(|snapshot| {
+            snapshot.status = status.to_string();
+            snapshot.current_stage = Some(stage.to_string());
+            snapshot.current_actor_type = Some(actor_type.to_string());
+            snapshot.current_actor_id = Some(actor_id.to_string());
+            snapshot.current_note = Some(note.clone());
+            if snapshot.started_at.is_none() && status == "running" {
+                snapshot.started_at = Some(Utc::now().to_rfc3339());
+            }
+        })?;
+        self.append_event(stage, actor_type, actor_id, status, note)?;
+        Ok(())
+    }
+
+    fn update_from_record(&self, record: &OrchestrationRunRecord) -> Result<()> {
+        let receipt_id = Path::new(&record.receipt_path)
+            .file_name()
+            .map(|value| value.to_string_lossy().to_string());
+        self.mutate_snapshot(|snapshot| {
+            snapshot.checkpoint_count = record.checkpoints.len();
+            snapshot.trace_count = record.trace.len();
+            snapshot.worker_count = record.worker_results.len();
+            snapshot.relationship_count = record.relationships.len();
+            snapshot.resource_totals = Some(summarize_trace_resources(&record.trace));
+            snapshot.receipt_id = receipt_id.clone();
+            snapshot.receipt_path = Some(record.receipt_path.clone());
+        })?;
+        Ok(())
+    }
+
+    async fn checkpoint(
+        &self,
+        status: &str,
+        stage: &str,
+        actor_type: &str,
+        actor_id: &str,
+        note: &str,
+    ) -> Result<()> {
+        self.update_stage(status, stage, actor_type, actor_id, note)?;
+        self.wait_if_paused(stage, actor_type, actor_id).await
+    }
+
+    async fn wait_if_paused(&self, stage: &str, actor_type: &str, actor_id: &str) -> Result<()> {
+        loop {
+            let snapshot = self.read_snapshot()?;
+            if snapshot.kill_requested {
+                self.update_stage(
+                    "killed",
+                    stage,
+                    actor_type,
+                    actor_id,
+                    "kill requested by operator",
+                )?;
+                return Err(anyhow::anyhow!("orchestration run killed by operator"));
+            }
+            if snapshot.pause_requested {
+                if snapshot.status != "paused" {
+                    self.update_stage("paused", stage, actor_type, actor_id, "paused by operator")?;
+                }
+                sleep(Duration::from_millis(500)).await;
+                continue;
+            }
+            if snapshot.status == "paused" {
+                self.update_stage(
+                    "running",
+                    stage,
+                    actor_type,
+                    actor_id,
+                    "resumed by operator",
+                )?;
+            }
+            return Ok(());
+        }
+    }
+
+    fn finalize_success(&self, record: &OrchestrationRunRecord) -> Result<ActiveOrchestrationRun> {
+        self.update_from_record(record)?;
+        self.mutate_snapshot(|snapshot| {
+            snapshot.status = "completed".to_string();
+            snapshot.finished_at = Some(Utc::now().to_rfc3339());
+            snapshot.current_stage = Some("completed".to_string());
+            snapshot.current_actor_type = Some("orchestrator".to_string());
+            snapshot.current_actor_id = Some(record.final_claw_id.clone());
+            snapshot.current_note = Some("run completed".to_string());
+            snapshot.last_error = None;
+        })
+    }
+
+    fn finalize_failure(&self, error: &str) -> Result<ActiveOrchestrationRun> {
+        self.mutate_snapshot(|snapshot| {
+            snapshot.status = if snapshot.kill_requested {
+                "killed".to_string()
+            } else {
+                "failed".to_string()
+            };
+            snapshot.finished_at = Some(Utc::now().to_rfc3339());
+            snapshot.current_stage = Some("completed".to_string());
+            snapshot.current_note = Some(error.to_string());
+            snapshot.last_error = Some(error.to_string());
+        })
+    }
+}
+
 pub fn resolve(request: OrchestrationRequest, workspace_root: &Path) -> Result<RoutingDecision> {
     let config = runtime::load_effective_config("config/default.toml", workspace_root)?;
     let control_root = control::control_root_for(workspace_root);
@@ -400,12 +697,87 @@ pub async fn run(
     request: OrchestrationRequest,
     workspace_root: &Path,
 ) -> Result<OrchestrationRunRecord> {
+    run_internal(request, workspace_root, None).await
+}
+
+pub async fn submit(
+    request: OrchestrationRequest,
+    workspace_root: &Path,
+) -> Result<ActiveOrchestrationRun> {
+    let config = runtime::load_effective_config("config/default.toml", workspace_root)?;
+    let control_root = control::control_root_for(workspace_root);
+    let registry = control::load_registry(control_root)?;
+    control::validate_registry(&registry)?;
+    let routing = resolve_routing(&registry, &config, &request)?;
+    let run_id = Uuid::new_v4().to_string();
+    let snapshot = ActiveOrchestrationRun {
+        run_id: run_id.clone(),
+        created_at: Utc::now().to_rfc3339(),
+        updated_at: Utc::now().to_rfc3339(),
+        started_at: None,
+        finished_at: None,
+        status: "queued".to_string(),
+        request,
+        routing: Some(routing),
+        current_stage: Some("queued".to_string()),
+        current_actor_type: Some("orchestrator".to_string()),
+        current_actor_id: None,
+        current_note: Some("queued for background execution".to_string()),
+        pause_requested: false,
+        kill_requested: false,
+        checkpoint_count: 0,
+        trace_count: 0,
+        worker_count: 0,
+        relationship_count: 0,
+        resource_totals: None,
+        receipt_id: None,
+        receipt_path: None,
+        last_error: None,
+    };
+    write_active_run(workspace_root, &snapshot)?;
+
+    let current_exe = std::env::current_exe().context("Failed to resolve current executable")?;
+    std::process::Command::new(current_exe)
+        .arg("orchestrate")
+        .arg("worker-run")
+        .arg("--run-id")
+        .arg(&run_id)
+        .current_dir(workspace_root)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .context("Failed to spawn background orchestration worker")?;
+
+    Ok(snapshot)
+}
+
+async fn run_internal(
+    request: OrchestrationRequest,
+    workspace_root: &Path,
+    monitor: Option<&ActiveRunMonitor>,
+) -> Result<OrchestrationRunRecord> {
     let config = runtime::load_effective_config("config/default.toml", workspace_root)?;
     let control_root = control::control_root_for(workspace_root);
     let registry = control::load_registry(control_root)?;
     control::validate_registry(&registry)?;
     let routing = resolve_routing(&registry, &config, &request)?;
     let runtime_mode = request.mode.to_lowercase();
+
+    if let Some(monitor) = monitor {
+        monitor.mutate_snapshot(|snapshot| {
+            snapshot.routing = Some(routing.clone());
+        })?;
+        monitor
+            .checkpoint(
+                "running",
+                "routing",
+                "orchestrator",
+                routing.selected_claw_id.as_str(),
+                "resolved orchestration route",
+            )
+            .await?;
+    }
 
     let mut record = if runtime_mode == "orchestrated"
         || (runtime_mode == "auto" && routing.execution_mode == "orchestrated")
@@ -416,6 +788,7 @@ pub async fn run(
             &config,
             &routing,
             workspace_root,
+            monitor,
         )
         .await?
     } else {
@@ -425,6 +798,7 @@ pub async fn run(
             &config,
             &routing,
             workspace_root,
+            monitor,
         )
         .await?
     };
@@ -432,6 +806,29 @@ pub async fn run(
         .display()
         .to_string();
     Ok(record)
+}
+
+pub async fn worker_run(run_id: &str, workspace_root: &Path) -> Result<ActiveOrchestrationRun> {
+    let monitor = ActiveRunMonitor::new(workspace_root, run_id);
+    let snapshot = monitor.read_snapshot()?;
+    monitor.update_stage(
+        "running",
+        "routing",
+        "orchestrator",
+        snapshot
+            .routing
+            .as_ref()
+            .map(|routing| routing.selected_claw_id.as_str())
+            .unwrap_or("pending"),
+        "background orchestration worker started",
+    )?;
+    match run_internal(snapshot.request.clone(), workspace_root, Some(&monitor)).await {
+        Ok(record) => monitor.finalize_success(&record),
+        Err(error) => {
+            monitor.finalize_failure(&error.to_string())?;
+            Err(error)
+        }
+    }
 }
 
 pub fn list_runs(workspace_root: &Path, limit: usize) -> Result<Vec<OrchestrationRunSummary>> {
@@ -475,6 +872,128 @@ pub fn list_runs(workspace_root: &Path, limit: usize) -> Result<Vec<Orchestratio
     Ok(runs)
 }
 
+pub fn write_active_run(workspace_root: &Path, run: &ActiveOrchestrationRun) -> Result<PathBuf> {
+    let active_root = active_runs_root_for(workspace_root);
+    fs::create_dir_all(&active_root)
+        .with_context(|| format!("Failed to create '{}'", active_root.display()))?;
+    let path = active_run_path(workspace_root, &run.run_id);
+    fs::write(
+        &path,
+        serde_json::to_vec_pretty(run).context("Failed to encode active orchestration run")?,
+    )
+    .with_context(|| format!("Failed to write '{}'", path.display()))?;
+    Ok(path)
+}
+
+pub fn list_active_runs(
+    workspace_root: &Path,
+    active_only: bool,
+    limit: usize,
+) -> Result<Vec<ActiveOrchestrationRun>> {
+    let active_root = active_runs_root_for(workspace_root);
+    if !active_root.exists() {
+        return Ok(Vec::new());
+    }
+    let mut runs = Vec::new();
+    for entry in fs::read_dir(&active_root)
+        .with_context(|| format!("Failed to read '{}'", active_root.display()))?
+    {
+        let entry = entry?;
+        if !entry.file_type()?.is_file() {
+            continue;
+        }
+        let path = entry.path();
+        if path.extension().and_then(|ext| ext.to_str()) != Some("json") {
+            continue;
+        }
+        let run: ActiveOrchestrationRun = serde_json::from_slice(&fs::read(&path)?)
+            .with_context(|| format!("Failed to decode '{}'", path.display()))?;
+        if active_only && matches!(run.status.as_str(), "completed" | "failed" | "killed") {
+            continue;
+        }
+        runs.push(run);
+    }
+    runs.sort_by(|left, right| right.updated_at.cmp(&left.updated_at));
+    runs.truncate(limit);
+    Ok(runs)
+}
+
+pub fn read_active_run(workspace_root: &Path, run_id: &str) -> Result<ActiveOrchestrationRun> {
+    if run_id.contains('/') || run_id.contains('\\') {
+        anyhow::bail!("invalid active run id");
+    }
+    let path = active_run_path(workspace_root, run_id);
+    let bytes = fs::read(&path).with_context(|| format!("Failed to read '{}'", path.display()))?;
+    serde_json::from_slice(&bytes).with_context(|| format!("Failed to decode '{}'", path.display()))
+}
+
+pub fn read_active_run_events(
+    workspace_root: &Path,
+    run_id: &str,
+    limit: usize,
+) -> Result<Vec<ActiveRunEvent>> {
+    if run_id.contains('/') || run_id.contains('\\') {
+        anyhow::bail!("invalid active run id");
+    }
+    let path = active_run_events_path(workspace_root, run_id);
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let content = fs::read_to_string(&path)
+        .with_context(|| format!("Failed to read '{}'", path.display()))?;
+    let mut events = Vec::new();
+    for line in content.lines() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        events.push(
+            serde_json::from_str::<ActiveRunEvent>(line)
+                .with_context(|| format!("Failed to decode event line in '{}'", path.display()))?,
+        );
+    }
+    if events.len() > limit {
+        events = events.split_off(events.len() - limit);
+    }
+    Ok(events)
+}
+
+fn update_active_flags(
+    workspace_root: &Path,
+    run_id: &str,
+    pause_requested: Option<bool>,
+    kill_requested: Option<bool>,
+) -> Result<ActiveOrchestrationRun> {
+    let monitor = ActiveRunMonitor::new(workspace_root, run_id);
+    monitor.mutate_snapshot(|snapshot| {
+        if let Some(pause_requested) = pause_requested {
+            snapshot.pause_requested = pause_requested;
+            if pause_requested && snapshot.status == "running" {
+                snapshot.current_note = Some("pause requested by operator".to_string());
+            } else if !pause_requested && snapshot.status == "paused" {
+                snapshot.current_note = Some("resume requested by operator".to_string());
+            }
+        }
+        if let Some(kill_requested) = kill_requested {
+            snapshot.kill_requested = kill_requested;
+            if kill_requested {
+                snapshot.current_note = Some("kill requested by operator".to_string());
+            }
+        }
+    })
+}
+
+pub fn pause_active_run(workspace_root: &Path, run_id: &str) -> Result<ActiveOrchestrationRun> {
+    update_active_flags(workspace_root, run_id, Some(true), None)
+}
+
+pub fn resume_active_run(workspace_root: &Path, run_id: &str) -> Result<ActiveOrchestrationRun> {
+    update_active_flags(workspace_root, run_id, Some(false), None)
+}
+
+pub fn kill_active_run(workspace_root: &Path, run_id: &str) -> Result<ActiveOrchestrationRun> {
+    update_active_flags(workspace_root, run_id, None, Some(true))
+}
+
 pub fn read_run(workspace_root: &Path, receipt_id: &str) -> Result<OrchestrationRunRecord> {
     if receipt_id.contains('/') || receipt_id.contains('\\') {
         anyhow::bail!("invalid receipt id");
@@ -496,6 +1015,15 @@ pub fn read_run_trace(workspace_root: &Path, receipt_id: &str) -> Result<serde_j
     Ok(serde_json::json!({
         "run_id": run.run_id,
         "trace": run.trace,
+        "relationships": run.relationships,
+    }))
+}
+
+pub fn read_run_transcript(workspace_root: &Path, receipt_id: &str) -> Result<serde_json::Value> {
+    let run = read_run(workspace_root, receipt_id)?;
+    Ok(serde_json::json!({
+        "run_id": run.run_id,
+        "transcript": run.transcript,
         "relationships": run.relationships,
     }))
 }
@@ -1001,6 +1529,72 @@ fn make_relationship(
     }
 }
 
+fn make_transcript_entry(
+    stage: &str,
+    actor_type: &str,
+    actor_id: &str,
+    role: &str,
+    content: impl Into<String>,
+    parent_trace_id: Option<&str>,
+    delegation_id: Option<&str>,
+) -> OrchestrationTranscriptEntry {
+    OrchestrationTranscriptEntry {
+        transcript_id: Uuid::new_v4().to_string(),
+        created_at: Utc::now().to_rfc3339(),
+        stage: stage.to_string(),
+        actor_type: actor_type.to_string(),
+        actor_id: actor_id.to_string(),
+        role: role.to_string(),
+        parent_trace_id: parent_trace_id.map(ToString::to_string),
+        delegation_id: delegation_id.map(ToString::to_string),
+        content: content.into(),
+    }
+}
+
+fn should_follow_up(
+    routing: &RoutingDecision,
+    worker: &WorkerResultEnvelope,
+    follow_up_count: usize,
+) -> bool {
+    if !routing.autonomy.steering_enabled {
+        return false;
+    }
+    if follow_up_count.saturating_add(1) >= routing.autonomy.max_iterations {
+        return false;
+    }
+    if worker.status == "failed" || worker.status == "needs_input" {
+        return true;
+    }
+    if !worker.questions.is_empty() {
+        return true;
+    }
+    matches!(worker.confidence, Some(confidence) if confidence < 0.6)
+}
+
+fn should_run_selective_critic(
+    routing: &RoutingDecision,
+    worker_results: &[WorkerResultEnvelope],
+) -> bool {
+    if !routing.autonomy.critic_enabled {
+        return false;
+    }
+    worker_results.iter().any(|worker| {
+        worker.status != "completed"
+            || !worker.questions.is_empty()
+            || matches!(worker.confidence, Some(confidence) if confidence < 0.7)
+    })
+}
+
+fn ensure_runtime_budget(started_at: Instant, routing: &RoutingDecision) -> Result<()> {
+    if started_at.elapsed().as_secs() >= routing.autonomy.max_runtime_secs {
+        anyhow::bail!(
+            "orchestration runtime budget exceeded {}s",
+            routing.autonomy.max_runtime_secs
+        );
+    }
+    Ok(())
+}
+
 fn excerpt(input: &str, max_chars: usize) -> String {
     input.chars().take(max_chars).collect()
 }
@@ -1320,6 +1914,7 @@ async fn run_direct(
     config: &AppConfig,
     routing: &RoutingDecision,
     workspace_root: &Path,
+    monitor: Option<&ActiveRunMonitor>,
 ) -> Result<OrchestrationRunRecord> {
     let run_id = Uuid::new_v4().to_string();
     let claw = registry
@@ -1332,16 +1927,29 @@ async fn run_direct(
         .agent_profiles
         .get(&claw.agent_profile_id)
         .with_context(|| format!("Unknown agent profile '{}'", claw.agent_profile_id))?;
+    if let Some(monitor) = monitor {
+        monitor
+            .checkpoint(
+                "running",
+                "direct_response",
+                "claw",
+                claw.id.as_str(),
+                "starting direct response",
+            )
+            .await?;
+    }
+    let system_prompt = build_claw_system_prompt(
+        claw,
+        agent_profile,
+        routing,
+        workspace_root,
+        "direct_response",
+    );
+    let user_prompt = request.prompt.clone();
     let prompt = execute_completion(
         executable.provider.clone(),
-        build_claw_system_prompt(
-            claw,
-            agent_profile,
-            routing,
-            workspace_root,
-            "direct_response",
-        ),
-        request.prompt.clone(),
+        system_prompt.clone(),
+        user_prompt.clone(),
     )
     .await?;
     let checkpoints = vec![make_checkpoint(
@@ -1372,8 +1980,48 @@ async fn run_direct(
         Some(prompt.estimated_output_tokens),
         Some(prompt.duration_ms),
     )];
+    let transcript = vec![
+        make_transcript_entry(
+            "direct_response",
+            "claw",
+            claw.id.as_str(),
+            "system",
+            system_prompt,
+            None,
+            None,
+        ),
+        make_transcript_entry(
+            "direct_response",
+            "operator",
+            "request",
+            "user",
+            user_prompt,
+            None,
+            None,
+        ),
+        make_transcript_entry(
+            "direct_response",
+            "claw",
+            claw.id.as_str(),
+            "assistant",
+            prompt.response.message.content.clone(),
+            trace.first().map(|entry| entry.trace_id.as_str()),
+            None,
+        ),
+    ];
     let reflection_candidates = build_reflection_candidates(routing, &[]);
     let supervision = summarize_supervision(&checkpoints, &[], &reflection_candidates);
+    if let Some(monitor) = monitor {
+        monitor
+            .checkpoint(
+                "completed",
+                "direct_response",
+                "claw",
+                claw.id.as_str(),
+                "direct response completed",
+            )
+            .await?;
+    }
 
     Ok(OrchestrationRunRecord {
         run_id,
@@ -1386,6 +2034,7 @@ async fn run_direct(
         checkpoints,
         trace,
         relationships: Vec::new(),
+        transcript,
         reflection_notes: routing.steering_notes.clone(),
         reflection_candidates,
         supervision: Some(supervision),
@@ -1404,8 +2053,10 @@ async fn run_orchestrated(
     config: &AppConfig,
     routing: &RoutingDecision,
     workspace_root: &Path,
+    monitor: Option<&ActiveRunMonitor>,
 ) -> Result<OrchestrationRunRecord> {
     let run_id = Uuid::new_v4().to_string();
+    let started_at = Instant::now();
     let orchestrator = registry
         .claws
         .get(&routing.selected_claw_id)
@@ -1423,6 +2074,15 @@ async fn run_orchestrated(
         .collect::<Vec<_>>();
     let mut trace = Vec::new();
     let mut relationships = Vec::new();
+    let mut transcript = vec![make_transcript_entry(
+        "routing",
+        "operator",
+        "request",
+        "user",
+        request.prompt.clone(),
+        None,
+        None,
+    )];
     let mut checkpoints = vec![make_checkpoint(
         "routing",
         "completed",
@@ -1457,9 +2117,20 @@ async fn run_orchestrated(
         None,
         None,
     ));
+    if let Some(monitor) = monitor {
+        monitor
+            .checkpoint(
+                "running",
+                "routing",
+                "orchestrator",
+                orchestrator.id.as_str(),
+                "orchestrated run started",
+            )
+            .await?;
+    }
 
     if worker_candidates.is_empty() {
-        return run_direct(request, registry, config, routing, workspace_root).await;
+        return run_direct(request, registry, config, routing, workspace_root, monitor).await;
     }
 
     let available_workers = worker_candidates
@@ -1496,6 +2167,36 @@ async fn run_orchestrated(
         request.prompt,
         serde_json::to_string_pretty(&available_workers)?
     );
+    transcript.push(make_transcript_entry(
+        "planner",
+        "orchestrator",
+        orchestrator.id.as_str(),
+        "system",
+        planner_system.clone(),
+        trace.last().map(|entry| entry.trace_id.as_str()),
+        None,
+    ));
+    transcript.push(make_transcript_entry(
+        "planner",
+        "operator",
+        "request",
+        "user",
+        planner_user.clone(),
+        trace.last().map(|entry| entry.trace_id.as_str()),
+        None,
+    ));
+    if let Some(monitor) = monitor {
+        monitor
+            .checkpoint(
+                "running",
+                "planner",
+                "orchestrator",
+                orchestrator.id.as_str(),
+                "planner deciding worker delegation",
+            )
+            .await?;
+    }
+    ensure_runtime_budget(started_at, routing)?;
     let planner_response = execute_completion(
         orchestrator_model.provider.clone(),
         planner_system,
@@ -1521,6 +2222,15 @@ async fn run_orchestrated(
     );
     let planner_trace_id = planner_trace.trace_id.clone();
     trace.push(planner_trace);
+    transcript.push(make_transcript_entry(
+        "planner",
+        "orchestrator",
+        orchestrator.id.as_str(),
+        "assistant",
+        planner_response.response.message.content.clone(),
+        Some(planner_trace_id.as_str()),
+        None,
+    ));
     checkpoints.push(make_checkpoint(
         "planner",
         "completed",
@@ -1539,6 +2249,137 @@ async fn run_orchestrated(
             delegations: Vec::new(),
         });
 
+    let mut reflection_notes = routing.steering_notes.clone();
+    if routing.autonomy.critic_enabled && !plan.delegations.is_empty() {
+        let review_system = format!(
+            "{}\nReturn JSON only with this schema:\n{{\"action\":\"continue|answer_directly\",\"note\":\"brief reasoning\"}}\nDo not rewrite the whole plan unless it is clearly over-scoped or unsafe.",
+            build_claw_system_prompt(
+                orchestrator,
+                orchestrator_agent,
+                routing,
+                workspace_root,
+                "plan_review",
+            )
+        );
+        let review_user = format!(
+            "Original request:\n{}\n\nPlanner output:\n{}",
+            request.prompt,
+            serde_json::to_string_pretty(&plan)?
+        );
+        transcript.push(make_transcript_entry(
+            "plan_review",
+            "critic",
+            orchestrator.id.as_str(),
+            "system",
+            review_system.clone(),
+            Some(planner_trace_id.as_str()),
+            None,
+        ));
+        transcript.push(make_transcript_entry(
+            "plan_review",
+            "critic",
+            orchestrator.id.as_str(),
+            "user",
+            review_user.clone(),
+            Some(planner_trace_id.as_str()),
+            None,
+        ));
+        if let Some(monitor) = monitor {
+            monitor
+                .checkpoint(
+                    "running",
+                    "plan_review",
+                    "critic",
+                    orchestrator.id.as_str(),
+                    "critic reviewing delegation plan",
+                )
+                .await?;
+        }
+        ensure_runtime_budget(started_at, routing)?;
+        let review_response = execute_completion(
+            orchestrator_model.provider.clone(),
+            review_system,
+            review_user,
+        )
+        .await?;
+        let review =
+            parse_json_payload::<PlanReviewResponse>(&review_response.response.message.content)
+                .unwrap_or(PlanReviewResponse {
+                    action: Some("continue".to_string()),
+                    note: Some(review_response.response.message.content.clone()),
+                });
+        trace.push(make_trace_entry(
+            "plan_review",
+            "critic",
+            orchestrator.id.as_str(),
+            Some(planner_trace_id.as_str()),
+            "completed",
+            Some(orchestrator.id.as_str()),
+            Some(orchestrator_model.decision.selected_profile_id.as_str()),
+            Some(orchestrator_model.decision.provider.as_str()),
+            Some(orchestrator_model.decision.model.as_str()),
+            "critic reviewed delegation plan",
+            Some(excerpt(&request.prompt, 240)),
+            Some(excerpt(&review_response.response.message.content, 240)),
+            Some(review_response.estimated_input_tokens),
+            Some(review_response.estimated_output_tokens),
+            Some(review_response.duration_ms),
+        ));
+        checkpoints.push(make_checkpoint(
+            "plan_review",
+            "completed",
+            "critic reviewed delegation plan",
+            Some(orchestrator.id.as_str()),
+            Some(orchestrator_model.decision.selected_profile_id.as_str()),
+            Some(orchestrator_model.decision.provider.as_str()),
+            Some(orchestrator_model.decision.model.as_str()),
+            Some(excerpt(&request.prompt, 240)),
+            Some(excerpt(&review_response.response.message.content, 240)),
+        ));
+        transcript.push(make_transcript_entry(
+            "plan_review",
+            "critic",
+            orchestrator.id.as_str(),
+            "assistant",
+            review_response.response.message.content.clone(),
+            trace.last().map(|entry| entry.trace_id.as_str()),
+            None,
+        ));
+        if let Some(note) = review.note
+            && !note.trim().is_empty()
+        {
+            reflection_notes.push(format!("critic: {}", note.trim()));
+        }
+        if matches!(review.action.as_deref(), Some("answer_directly")) {
+            let reflection_candidates = build_reflection_candidates(routing, &[]);
+            let supervision = summarize_supervision(&checkpoints, &[], &reflection_candidates);
+            return Ok(OrchestrationRunRecord {
+                run_id,
+                created_at: Utc::now().to_rfc3339(),
+                mode: "orchestrated".to_string(),
+                request,
+                routing: routing.clone(),
+                delegations: Vec::new(),
+                worker_results: Vec::new(),
+                checkpoints,
+                trace,
+                relationships,
+                transcript,
+                reflection_notes,
+                reflection_candidates,
+                supervision: Some(supervision),
+                final_output: plan
+                    .direct_response
+                    .unwrap_or_else(|| "critic requested direct answer".to_string()),
+                final_claw_id: orchestrator.id.clone(),
+                final_model_profile_id: orchestrator_model.decision.selected_profile_id.clone(),
+                final_provider: orchestrator_model.decision.provider.clone(),
+                final_model: orchestrator_model.decision.model.clone(),
+                receipt_path: String::new(),
+            });
+        }
+    }
+
     if matches!(plan.final_mode.as_deref(), Some("answer_directly")) || plan.delegations.is_empty()
     {
         let reflection_candidates = build_reflection_candidates(routing, &[]);
@@ -1554,7 +2395,8 @@ async fn run_orchestrated(
             checkpoints,
             trace,
             relationships,
-            reflection_notes: routing.steering_notes.clone(),
+            transcript,
+            reflection_notes,
             reflection_candidates,
             supervision: Some(supervision),
             final_output: plan
@@ -1608,82 +2450,377 @@ async fn run_orchestrated(
             Some(worker_model.decision.requested_profile_id.as_str()),
             "worker_execution",
         ));
+        let mut follow_up_count = 0usize;
+        let mut instruction = item.instruction.clone();
+        let worker_result;
+        loop {
+            if let Some(monitor) = monitor {
+                monitor
+                    .checkpoint(
+                        "running",
+                        "worker_execution",
+                        "worker",
+                        worker.id.as_str(),
+                        format!("worker '{}' executing delegated task", worker.id).as_str(),
+                    )
+                    .await?;
+            }
+            ensure_runtime_budget(started_at, routing)?;
+            let worker_system = format!(
+                "{}\nReturn JSON only with this schema:\n{{\"status\":\"completed|needs_input|failed\",\"summary\":\"one paragraph\",\"full_output\":\"detailed output\",\"questions\":[\"...\"],\"confidence\":0.0,\"next_step_recommendation\":\"...\"}}",
+                build_claw_system_prompt(
+                    worker,
+                    worker_agent,
+                    routing,
+                    workspace_root,
+                    "worker_execution"
+                ),
+            );
+            let worker_user = format!(
+                "Original request:\n{}\n\nAssigned subtask:\n{}\n\nReason for assignment:\n{}\n\nFollow-up round: {}",
+                request.prompt, instruction, item.reason, follow_up_count
+            );
+            transcript.push(make_transcript_entry(
+                "worker_execution",
+                "worker",
+                worker.id.as_str(),
+                "system",
+                worker_system.clone(),
+                Some(planner_trace_id.as_str()),
+                Some(delegation_id.as_str()),
+            ));
+            transcript.push(make_transcript_entry(
+                "worker_execution",
+                "orchestrator",
+                orchestrator.id.as_str(),
+                "user",
+                worker_user.clone(),
+                Some(planner_trace_id.as_str()),
+                Some(delegation_id.as_str()),
+            ));
+            let worker_response =
+                execute_completion(worker_model.provider.clone(), worker_system, worker_user)
+                    .await?;
+            let parsed = parse_json_payload::<WorkerEnvelopeResponse>(
+                &worker_response.response.message.content,
+            )
+            .unwrap_or(WorkerEnvelopeResponse {
+                status: "completed".to_string(),
+                summary: worker_response
+                    .response
+                    .message
+                    .content
+                    .chars()
+                    .take(240)
+                    .collect(),
+                full_output: Some(worker_response.response.message.content.clone()),
+                questions: Vec::new(),
+                confidence: None,
+                next_step_recommendation: None,
+            });
+            checkpoints.push(make_checkpoint(
+                "worker_execution",
+                &parsed.status,
+                format!("worker '{}' completed delegated step", worker.id),
+                Some(worker.id.as_str()),
+                Some(worker_model.decision.selected_profile_id.as_str()),
+                Some(worker_model.decision.provider.as_str()),
+                Some(worker_model.decision.model.as_str()),
+                Some(excerpt(&instruction, 240)),
+                Some(excerpt(&worker_response.response.message.content, 240)),
+            ));
+            let worker_trace = make_trace_entry(
+                "worker_execution",
+                "worker",
+                worker.id.as_str(),
+                Some(planner_trace_id.as_str()),
+                &parsed.status,
+                Some(worker.id.as_str()),
+                Some(worker_model.decision.selected_profile_id.as_str()),
+                Some(worker_model.decision.provider.as_str()),
+                Some(worker_model.decision.model.as_str()),
+                format!("worker '{}' completed delegated step", worker.id),
+                Some(excerpt(&instruction, 240)),
+                Some(excerpt(&worker_response.response.message.content, 240)),
+                Some(worker_response.estimated_input_tokens),
+                Some(worker_response.estimated_output_tokens),
+                Some(worker_response.duration_ms),
+            );
+            let worker_trace_id = worker_trace.trace_id.clone();
+            trace.push(worker_trace);
+            transcript.push(make_transcript_entry(
+                "worker_execution",
+                "worker",
+                worker.id.as_str(),
+                "assistant",
+                worker_response.response.message.content.clone(),
+                Some(worker_trace_id.as_str()),
+                Some(delegation_id.as_str()),
+            ));
+            let current = WorkerResultEnvelope {
+                claw_id: worker.id.clone(),
+                agent_profile_id: worker.agent_profile_id.clone(),
+                model_profile_id: worker_model.decision.selected_profile_id.clone(),
+                provider: worker_model.decision.provider.clone(),
+                model: worker_model.decision.model.clone(),
+                status: parsed.status,
+                summary: parsed.summary,
+                full_output: parsed
+                    .full_output
+                    .unwrap_or_else(|| worker_response.response.message.content.clone()),
+                questions: parsed.questions,
+                confidence: parsed.confidence,
+                next_step_recommendation: parsed.next_step_recommendation,
+            };
+            if !should_follow_up(routing, &current, follow_up_count) {
+                worker_result = Some(current);
+                break;
+            }
 
-        let worker_system = format!(
-            "{}\nReturn JSON only with this schema:\n{{\"status\":\"completed|needs_input|failed\",\"summary\":\"one paragraph\",\"full_output\":\"detailed output\",\"questions\":[\"...\"],\"confidence\":0.0,\"next_step_recommendation\":\"...\"}}",
+            if let Some(monitor) = monitor {
+                monitor
+                    .checkpoint(
+                        "running",
+                        "follow_up_review",
+                        "orchestrator",
+                        orchestrator.id.as_str(),
+                        format!("reviewing follow-up need for worker '{}'", worker.id).as_str(),
+                    )
+                    .await?;
+            }
+            ensure_runtime_budget(started_at, routing)?;
+            let follow_up_system = format!(
+                "{}\nReturn JSON only with this schema:\n{{\"action\":\"follow_up|accept|escalate\",\"instruction\":\"optional new instruction\",\"note\":\"brief reasoning\"}}\nOnly request another worker round if it materially improves answer quality; do not over-steer high-confidence completed work.",
+                build_claw_system_prompt(
+                    orchestrator,
+                    orchestrator_agent,
+                    routing,
+                    workspace_root,
+                    "follow_up_review",
+                )
+            );
+            let follow_up_user = format!(
+                "Original request:\n{}\n\nWorker result:\n{}\n\nCurrent instruction:\n{}",
+                request.prompt,
+                serde_json::to_string_pretty(&current)?,
+                instruction
+            );
+            transcript.push(make_transcript_entry(
+                "follow_up_review",
+                "critic",
+                orchestrator.id.as_str(),
+                "system",
+                follow_up_system.clone(),
+                Some(worker_trace_id.as_str()),
+                Some(delegation_id.as_str()),
+            ));
+            transcript.push(make_transcript_entry(
+                "follow_up_review",
+                "critic",
+                orchestrator.id.as_str(),
+                "user",
+                follow_up_user.clone(),
+                Some(worker_trace_id.as_str()),
+                Some(delegation_id.as_str()),
+            ));
+            let follow_up_response = execute_completion(
+                orchestrator_model.provider.clone(),
+                follow_up_system,
+                follow_up_user,
+            )
+            .await?;
+            let follow_up = parse_json_payload::<FollowUpReviewResponse>(
+                &follow_up_response.response.message.content,
+            )
+            .unwrap_or(FollowUpReviewResponse {
+                action: Some("accept".to_string()),
+                instruction: None,
+                note: Some(follow_up_response.response.message.content.clone()),
+            });
+            trace.push(make_trace_entry(
+                "follow_up_review",
+                "critic",
+                orchestrator.id.as_str(),
+                Some(worker_trace_id.as_str()),
+                "completed",
+                Some(orchestrator.id.as_str()),
+                Some(orchestrator_model.decision.selected_profile_id.as_str()),
+                Some(orchestrator_model.decision.provider.as_str()),
+                Some(orchestrator_model.decision.model.as_str()),
+                format!("reviewed follow-up need for worker '{}'", worker.id),
+                Some(excerpt(&instruction, 240)),
+                Some(excerpt(&follow_up_response.response.message.content, 240)),
+                Some(follow_up_response.estimated_input_tokens),
+                Some(follow_up_response.estimated_output_tokens),
+                Some(follow_up_response.duration_ms),
+            ));
+            checkpoints.push(make_checkpoint(
+                "follow_up_review",
+                "completed",
+                format!("reviewed follow-up need for worker '{}'", worker.id),
+                Some(orchestrator.id.as_str()),
+                Some(orchestrator_model.decision.selected_profile_id.as_str()),
+                Some(orchestrator_model.decision.provider.as_str()),
+                Some(orchestrator_model.decision.model.as_str()),
+                Some(excerpt(&instruction, 240)),
+                Some(excerpt(&follow_up_response.response.message.content, 240)),
+            ));
+            transcript.push(make_transcript_entry(
+                "follow_up_review",
+                "critic",
+                orchestrator.id.as_str(),
+                "assistant",
+                follow_up_response.response.message.content.clone(),
+                trace.last().map(|entry| entry.trace_id.as_str()),
+                Some(delegation_id.as_str()),
+            ));
+            match follow_up.action.as_deref() {
+                Some("follow_up")
+                    if follow_up_count.saturating_add(1) < routing.autonomy.max_iterations =>
+                {
+                    follow_up_count += 1;
+                    instruction = follow_up
+                        .instruction
+                        .filter(|value| !value.trim().is_empty())
+                        .unwrap_or_else(|| {
+                            format!(
+                                "{}\n\nAddress the open questions and improve confidence before returning.",
+                                current.full_output
+                            )
+                        });
+                    if let Some(note) = follow_up.note
+                        && !note.trim().is_empty()
+                    {
+                        reflection_notes.push(format!(
+                            "follow-up {} for worker '{}': {}",
+                            follow_up_count,
+                            worker.id,
+                            note.trim()
+                        ));
+                    }
+                    continue;
+                }
+                Some("escalate") => {
+                    let mut escalated = current;
+                    escalated.status = "needs_input".to_string();
+                    if escalated.next_step_recommendation.is_none() {
+                        escalated.next_step_recommendation = follow_up.note.clone();
+                    }
+                    worker_result = Some(escalated);
+                    break;
+                }
+                _ => {
+                    worker_result = Some(current);
+                    break;
+                }
+            }
+        }
+
+        if let Some(result) = worker_result {
+            worker_results.push(result);
+        }
+    }
+
+    if should_run_selective_critic(routing, &worker_results) {
+        if let Some(monitor) = monitor {
+            monitor
+                .checkpoint(
+                    "running",
+                    "quality_review",
+                    "critic",
+                    orchestrator.id.as_str(),
+                    "selective critic reviewing worker results",
+                )
+                .await?;
+        }
+        ensure_runtime_budget(started_at, routing)?;
+        let critic_system = format!(
+            "{}\nReturn JSON only with this schema:\n{{\"action\":\"proceed|surface_blockers\",\"note\":\"brief reasoning\"}}\nReview the worker set only when confidence, failures, or open questions warrant it.",
             build_claw_system_prompt(
-                worker,
-                worker_agent,
+                orchestrator,
+                orchestrator_agent,
                 routing,
                 workspace_root,
-                "worker_execution"
-            ),
+                "quality_review",
+            )
         );
-        let worker_user = format!(
-            "Original request:\n{}\n\nAssigned subtask:\n{}\n\nReason for assignment:\n{}",
-            request.prompt, item.instruction, item.reason
+        let critic_user = format!(
+            "Original request:\n{}\n\nWorker results:\n{}",
+            request.prompt,
+            serde_json::to_string_pretty(&worker_results)?
         );
-        let worker_response =
-            execute_completion(worker_model.provider.clone(), worker_system, worker_user).await?;
-        let parsed =
-            parse_json_payload::<WorkerEnvelopeResponse>(&worker_response.response.message.content)
-                .unwrap_or(WorkerEnvelopeResponse {
-                    status: "completed".to_string(),
-                    summary: worker_response
-                        .response
-                        .message
-                        .content
-                        .chars()
-                        .take(240)
-                        .collect(),
-                    full_output: Some(worker_response.response.message.content.clone()),
-                    questions: Vec::new(),
-                    confidence: None,
-                    next_step_recommendation: None,
-                });
-        checkpoints.push(make_checkpoint(
-            "worker_execution",
-            &parsed.status,
-            format!("worker '{}' completed delegated step", worker.id),
-            Some(worker.id.as_str()),
-            Some(worker_model.decision.selected_profile_id.as_str()),
-            Some(worker_model.decision.provider.as_str()),
-            Some(worker_model.decision.model.as_str()),
-            Some(excerpt(&item.instruction, 240)),
-            Some(excerpt(&worker_response.response.message.content, 240)),
-        ));
-        trace.push(make_trace_entry(
-            "worker_execution",
-            "worker",
-            worker.id.as_str(),
+        transcript.push(make_transcript_entry(
+            "quality_review",
+            "critic",
+            orchestrator.id.as_str(),
+            "system",
+            critic_system.clone(),
             Some(planner_trace_id.as_str()),
-            &parsed.status,
-            Some(worker.id.as_str()),
-            Some(worker_model.decision.selected_profile_id.as_str()),
-            Some(worker_model.decision.provider.as_str()),
-            Some(worker_model.decision.model.as_str()),
-            format!("worker '{}' completed delegated step", worker.id),
-            Some(excerpt(&item.instruction, 240)),
-            Some(excerpt(&worker_response.response.message.content, 240)),
-            Some(worker_response.estimated_input_tokens),
-            Some(worker_response.estimated_output_tokens),
-            Some(worker_response.duration_ms),
+            None,
         ));
-        worker_results.push(WorkerResultEnvelope {
-            claw_id: worker.id.clone(),
-            agent_profile_id: worker.agent_profile_id.clone(),
-            model_profile_id: worker_model.decision.selected_profile_id.clone(),
-            provider: worker_model.decision.provider.clone(),
-            model: worker_model.decision.model.clone(),
-            status: parsed.status,
-            summary: parsed.summary,
-            full_output: parsed
-                .full_output
-                .unwrap_or_else(|| worker_response.response.message.content.clone()),
-            questions: parsed.questions,
-            confidence: parsed.confidence,
-            next_step_recommendation: parsed.next_step_recommendation,
-        });
+        transcript.push(make_transcript_entry(
+            "quality_review",
+            "critic",
+            orchestrator.id.as_str(),
+            "user",
+            critic_user.clone(),
+            Some(planner_trace_id.as_str()),
+            None,
+        ));
+        let critic_response = execute_completion(
+            orchestrator_model.provider.clone(),
+            critic_system,
+            critic_user,
+        )
+        .await?;
+        let critic_review =
+            parse_json_payload::<PlanReviewResponse>(&critic_response.response.message.content)
+                .unwrap_or(PlanReviewResponse {
+                    action: Some("proceed".to_string()),
+                    note: Some(critic_response.response.message.content.clone()),
+                });
+        trace.push(make_trace_entry(
+            "quality_review",
+            "critic",
+            orchestrator.id.as_str(),
+            Some(planner_trace_id.as_str()),
+            "completed",
+            Some(orchestrator.id.as_str()),
+            Some(orchestrator_model.decision.selected_profile_id.as_str()),
+            Some(orchestrator_model.decision.provider.as_str()),
+            Some(orchestrator_model.decision.model.as_str()),
+            "selective critic reviewed worker outputs",
+            Some(excerpt(&request.prompt, 240)),
+            Some(excerpt(&critic_response.response.message.content, 240)),
+            Some(critic_response.estimated_input_tokens),
+            Some(critic_response.estimated_output_tokens),
+            Some(critic_response.duration_ms),
+        ));
+        checkpoints.push(make_checkpoint(
+            "quality_review",
+            "completed",
+            "selective critic reviewed worker outputs",
+            Some(orchestrator.id.as_str()),
+            Some(orchestrator_model.decision.selected_profile_id.as_str()),
+            Some(orchestrator_model.decision.provider.as_str()),
+            Some(orchestrator_model.decision.model.as_str()),
+            Some(excerpt(&request.prompt, 240)),
+            Some(excerpt(&critic_response.response.message.content, 240)),
+        ));
+        transcript.push(make_transcript_entry(
+            "quality_review",
+            "critic",
+            orchestrator.id.as_str(),
+            "assistant",
+            critic_response.response.message.content.clone(),
+            trace.last().map(|entry| entry.trace_id.as_str()),
+            None,
+        ));
+        if let Some(note) = critic_review.note
+            && !note.trim().is_empty()
+        {
+            reflection_notes.push(format!("quality review: {}", note.trim()));
+        }
     }
 
     let synthesis_system = format!(
@@ -1701,6 +2838,36 @@ async fn run_orchestrated(
         request.prompt,
         serde_json::to_string_pretty(&worker_results)?
     );
+    transcript.push(make_transcript_entry(
+        "synthesis",
+        "orchestrator",
+        orchestrator.id.as_str(),
+        "system",
+        synthesis_system.clone(),
+        Some(planner_trace_id.as_str()),
+        None,
+    ));
+    transcript.push(make_transcript_entry(
+        "synthesis",
+        "orchestrator",
+        orchestrator.id.as_str(),
+        "user",
+        synthesis_user.clone(),
+        Some(planner_trace_id.as_str()),
+        None,
+    ));
+    if let Some(monitor) = monitor {
+        monitor
+            .checkpoint(
+                "running",
+                "synthesis",
+                "orchestrator",
+                orchestrator.id.as_str(),
+                "synthesizing final response",
+            )
+            .await?;
+    }
+    ensure_runtime_budget(started_at, routing)?;
     let synthesis_input_excerpt = excerpt(&synthesis_user, 240);
     let final_response = execute_completion(
         orchestrator_model.provider.clone(),
@@ -1725,6 +2892,15 @@ async fn run_orchestrated(
         Some(final_response.estimated_output_tokens),
         Some(final_response.duration_ms),
     ));
+    transcript.push(make_transcript_entry(
+        "synthesis",
+        "orchestrator",
+        orchestrator.id.as_str(),
+        "assistant",
+        final_response.response.message.content.clone(),
+        trace.last().map(|entry| entry.trace_id.as_str()),
+        None,
+    ));
     checkpoints.push(make_checkpoint(
         "synthesis",
         "completed",
@@ -1737,7 +2913,6 @@ async fn run_orchestrated(
         Some(excerpt(&final_response.response.message.content, 240)),
     ));
     let reflection_candidates = build_reflection_candidates(routing, &worker_results);
-    let mut reflection_notes = routing.steering_notes.clone();
     if !reflection_candidates.is_empty() {
         reflection_notes.push(format!(
             "{} reflection candidate(s) generated for operator review",
@@ -1745,6 +2920,17 @@ async fn run_orchestrated(
         ));
     }
     let supervision = summarize_supervision(&checkpoints, &worker_results, &reflection_candidates);
+    if let Some(monitor) = monitor {
+        monitor
+            .checkpoint(
+                "completed",
+                "synthesis",
+                "orchestrator",
+                orchestrator.id.as_str(),
+                "orchestrated run completed",
+            )
+            .await?;
+    }
 
     Ok(OrchestrationRunRecord {
         run_id,
@@ -1757,6 +2943,7 @@ async fn run_orchestrated(
         checkpoints,
         trace,
         relationships,
+        transcript,
         reflection_notes,
         reflection_candidates,
         supervision: Some(supervision),
@@ -2182,6 +3369,7 @@ mod tests {
             reflection_notes: vec![],
             reflection_candidates: vec![],
             supervision: None,
+            transcript: vec![],
             final_output: "ok".to_string(),
             final_claw_id: "claw-a".to_string(),
             final_model_profile_id: "primary".to_string(),
@@ -2270,6 +3458,7 @@ mod tests {
             reflection_notes: vec![],
             reflection_candidates: vec![],
             supervision: None,
+            transcript: vec![],
             final_output: "ok".to_string(),
             final_claw_id: "claw-a".to_string(),
             final_model_profile_id: "primary".to_string(),
@@ -2285,6 +3474,74 @@ mod tests {
         assert_eq!(payload["run_id"], "run-1");
         assert_eq!(payload["trace"][0]["trace_id"], "trace-1");
         assert_eq!(payload["relationships"][0]["child_id"], "worker-a");
+    }
+
+    #[test]
+    fn read_run_transcript_returns_entries() {
+        let root = tempfile::tempdir().unwrap();
+        let record = OrchestrationRunRecord {
+            run_id: "run-1".to_string(),
+            created_at: "2026-03-19T00:00:00Z".to_string(),
+            mode: "orchestrated".to_string(),
+            request: OrchestrationRequest::default(),
+            routing: RoutingDecision {
+                execution_mode: "orchestrated".to_string(),
+                route_source: "default_claw".to_string(),
+                task_id: None,
+                category: None,
+                selected_claw_id: "main".to_string(),
+                selected_claw_role: "orchestrator".to_string(),
+                selected_agent_profile_id: "default".to_string(),
+                selected_model_profile_id: "primary".to_string(),
+                selected_model: ResolvedModelDecision {
+                    requested_profile_id: "primary".to_string(),
+                    selected_profile_id: "primary".to_string(),
+                    provider: "openrouter".to_string(),
+                    model: "test".to_string(),
+                    fallback_path: vec![],
+                    warnings: vec![],
+                },
+                available_workers: vec!["worker-a".to_string()],
+                autonomy: control::AutonomyPolicy::default(),
+                allow_shared_context: false,
+                isolation_mode: "strict".to_string(),
+                applied_lessons: vec![],
+                steering_notes: vec![],
+                warnings: vec![],
+                request_overrides: OrchestrationRequestOverrides::default(),
+            },
+            delegations: vec![],
+            worker_results: vec![],
+            checkpoints: vec![],
+            trace: vec![],
+            relationships: vec![],
+            transcript: vec![OrchestrationTranscriptEntry {
+                transcript_id: "tx-1".to_string(),
+                created_at: "2026-03-19T00:00:01Z".to_string(),
+                stage: "planner".to_string(),
+                actor_type: "orchestrator".to_string(),
+                actor_id: "main".to_string(),
+                role: "assistant".to_string(),
+                parent_trace_id: None,
+                delegation_id: None,
+                content: "plan".to_string(),
+            }],
+            reflection_notes: vec![],
+            reflection_candidates: vec![],
+            supervision: None,
+            final_output: "ok".to_string(),
+            final_claw_id: "main".to_string(),
+            final_model_profile_id: "primary".to_string(),
+            final_provider: "openrouter".to_string(),
+            final_model: "test".to_string(),
+            receipt_path: "transcript.json".to_string(),
+        };
+        let path = runs_root_for(root.path()).join("transcript.json");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, serde_json::to_vec_pretty(&record).unwrap()).unwrap();
+
+        let payload = read_run_transcript(root.path(), "transcript.json").unwrap();
+        assert_eq!(payload["transcript"][0]["transcript_id"], "tx-1");
     }
 
     #[test]
@@ -2368,6 +3625,7 @@ mod tests {
             reflection_notes: vec![],
             reflection_candidates: vec![],
             supervision: None,
+            transcript: vec![],
             final_output: "ok".to_string(),
             final_claw_id: "main".to_string(),
             final_model_profile_id: "primary".to_string(),
@@ -2520,6 +3778,7 @@ mod tests {
                 reflection_candidate_count: 1,
                 escalation_recommended: true,
             }),
+            transcript: vec![],
             final_output: "ok".to_string(),
             final_claw_id: "main".to_string(),
             final_model_profile_id: "core-groq".to_string(),
@@ -2545,5 +3804,45 @@ mod tests {
         assert_eq!(lesson.signal, "worker failed");
         assert_eq!(lesson.recommendation, "route a safer model");
         assert_eq!(lesson.scope.category.as_deref(), Some("code"));
+    }
+
+    #[test]
+    fn active_run_state_updates_support_pause_resume_and_kill() {
+        let root = tempfile::tempdir().unwrap();
+        let snapshot = ActiveOrchestrationRun {
+            run_id: "run-1".to_string(),
+            created_at: "2026-03-19T00:00:00Z".to_string(),
+            updated_at: "2026-03-19T00:00:00Z".to_string(),
+            started_at: None,
+            finished_at: None,
+            status: "queued".to_string(),
+            request: OrchestrationRequest::default(),
+            routing: None,
+            current_stage: Some("queued".to_string()),
+            current_actor_type: Some("orchestrator".to_string()),
+            current_actor_id: Some("main".to_string()),
+            current_note: Some("queued".to_string()),
+            pause_requested: false,
+            kill_requested: false,
+            checkpoint_count: 0,
+            trace_count: 0,
+            worker_count: 0,
+            relationship_count: 0,
+            resource_totals: None,
+            receipt_id: None,
+            receipt_path: None,
+            last_error: None,
+        };
+        write_active_run(root.path(), &snapshot).unwrap();
+        let listed = list_active_runs(root.path(), true, 10).unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].run_id, "run-1");
+
+        let paused = pause_active_run(root.path(), "run-1").unwrap();
+        assert!(paused.pause_requested);
+        let resumed = resume_active_run(root.path(), "run-1").unwrap();
+        assert!(!resumed.pause_requested);
+        let killed = kill_active_run(root.path(), "run-1").unwrap();
+        assert!(killed.kill_requested);
     }
 }

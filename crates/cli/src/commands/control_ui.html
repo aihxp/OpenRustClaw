@@ -433,6 +433,22 @@
           </div>
         </article>
         <article class="panel span-6">
+          <h2>Active Orchestration</h2>
+          <div class="surface">
+            <table class="table">
+              <thead>
+                <tr><th>Status</th><th>Run</th><th>Stage</th><th>Action</th></tr>
+              </thead>
+              <tbody id="orchestration-active"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </article>
+        <article class="panel span-6">
+          <h2>Active Supervision</h2>
+          <div class="surface"><pre id="orchestration-active-detail">Select an active run to inspect.</pre></div>
+          <div class="surface"><pre id="orchestration-active-events">Select an active run to inspect recent events.</pre></div>
+        </article>
+        <article class="panel span-6">
           <h2>Orchestration Runs</h2>
           <div class="surface">
             <table class="table">
@@ -461,6 +477,10 @@
         <article class="panel span-12">
           <h2>Run Trace</h2>
           <div class="surface"><pre id="orchestration-trace">Select an orchestration receipt to inspect trace entries.</pre></div>
+        </article>
+        <article class="panel span-12">
+          <h2>Run Transcript</h2>
+          <div class="surface"><pre id="orchestration-transcript">Select an orchestration receipt to inspect transcript entries.</pre></div>
         </article>
         <article class="panel span-12">
           <h2>Run Resources</h2>
@@ -584,6 +604,7 @@
       const pretty = (value) => JSON.stringify(value, null, 2);
       let configEditorDirty = false;
       let currentOrchestrationReceipt = null;
+      let currentActiveOrchestrationRun = null;
       let currentLogEntries = [];
       const setText = (id, value) => {
         document.getElementById(id).textContent = typeof value === "string" ? value : pretty(value);
@@ -814,19 +835,44 @@
         } else {
           setText("orchestration-detail", "No orchestration receipt selected.");
           setText("orchestration-trace", "No orchestration receipt selected.");
+          setText("orchestration-transcript", "No orchestration receipt selected.");
           setText("orchestration-resources", "No orchestration receipt selected.");
+        }
+      }
+
+      async function loadActiveOrchestrationRuns() {
+        const payload = await fetchJson("/control/orchestration/active?active_only=true&limit=12");
+        const runs = payload.runs || [];
+        const rows = runs.map((run) => {
+          return `<tr>
+            <td>${run.status || "-"}</td>
+            <td><strong>${run.run_id || "-"}</strong><div class="muted">${run.current_actor_id || "-"}</div></td>
+            <td>${run.current_stage || "-"}<div class="muted">${run.current_note || "-"}</div></td>
+            <td>
+              <button class="secondary" onclick="inspectActiveOrchestrationRun('${run.run_id || ""}')">Watch</button>
+              <button class="secondary" onclick="controlActiveOrchestrationRun('${run.run_id || ""}', 'pause')">Pause</button>
+              <button class="secondary" onclick="controlActiveOrchestrationRun('${run.run_id || ""}', 'resume')">Resume</button>
+              <button class="danger" onclick="controlActiveOrchestrationRun('${run.run_id || ""}', 'kill')">Kill</button>
+            </td>
+          </tr>`;
+        });
+        renderTableRows("orchestration-active", rows, "No active orchestration runs.");
+        if (runs.length && !currentActiveOrchestrationRun) {
+          await inspectActiveOrchestrationRun(runs[0].run_id);
         }
       }
 
       async function inspectOrchestrationRun(receiptId) {
         currentOrchestrationReceipt = receiptId;
-        const [payload, tracePayload, resourcePayload] = await Promise.all([
+        const [payload, tracePayload, transcriptPayload, resourcePayload] = await Promise.all([
           fetchJson(`/control/orchestration/runs/${encodeURIComponent(receiptId)}/supervision`),
           fetchJson(`/control/orchestration/runs/${encodeURIComponent(receiptId)}/trace`),
+          fetchJson(`/control/orchestration/runs/${encodeURIComponent(receiptId)}/transcript`),
           fetchJson(`/control/orchestration/runs/${encodeURIComponent(receiptId)}/resources`),
         ]);
         setText("orchestration-detail", payload);
         setText("orchestration-trace", tracePayload);
+        setText("orchestration-transcript", transcriptPayload);
         setText("orchestration-resources", resourcePayload);
         const rows = (payload.reflection_candidates || []).map((candidate, index) => {
           return `<tr>
@@ -837,6 +883,25 @@
           </tr>`;
         });
         renderTableRows("reflection-candidates", rows, "No reflection candidates on this run.");
+      }
+
+      async function inspectActiveOrchestrationRun(runId) {
+        currentActiveOrchestrationRun = runId;
+        const [state, events] = await Promise.all([
+          fetchJson(`/control/orchestration/active/${encodeURIComponent(runId)}`),
+          fetchJson(`/control/orchestration/active/${encodeURIComponent(runId)}/events?limit=20`),
+        ]);
+        setText("orchestration-active-detail", state);
+        setText("orchestration-active-events", events);
+      }
+
+      async function controlActiveOrchestrationRun(runId, action) {
+        const result = await fetchJson(`/control/orchestration/active/${encodeURIComponent(runId)}/${action}`, {
+          method: "POST",
+        });
+        setText("orchestration-active-detail", result);
+        await loadActiveOrchestrationRuns();
+        await inspectActiveOrchestrationRun(runId);
       }
 
       async function promoteReflectionCandidate(index) {
@@ -915,6 +980,7 @@
             loadSessions(),
             loadMemory(),
             loadJobs(),
+            loadActiveOrchestrationRuns(),
             loadOrchestrationRuns(),
             loadBrowserArtifacts(),
             loadLogs(),
@@ -1178,11 +1244,19 @@
 
       window.inspectSession = inspectSession;
       window.inspectJob = inspectJob;
+      window.inspectActiveOrchestrationRun = inspectActiveOrchestrationRun;
+      window.controlActiveOrchestrationRun = controlActiveOrchestrationRun;
       window.inspectOrchestrationRun = inspectOrchestrationRun;
       window.promoteReflectionCandidate = promoteReflectionCandidate;
       window.deactivateLesson = deactivateLesson;
 
       refreshAll();
+      setInterval(() => {
+        loadActiveOrchestrationRuns().catch(() => {});
+        if (currentActiveOrchestrationRun) {
+          inspectActiveOrchestrationRun(currentActiveOrchestrationRun).catch(() => {});
+        }
+      }, 5000);
       connectDiagnostics();
       connectLogs();
     </script>

@@ -2441,6 +2441,34 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             post(orchestration_run_handler),
         )
         .route(
+            "/control/orchestration/submit",
+            post(orchestration_submit_handler),
+        )
+        .route(
+            "/control/orchestration/active",
+            get(orchestration_active_runs_handler),
+        )
+        .route(
+            "/control/orchestration/active/{run_id}",
+            get(orchestration_active_run_handler),
+        )
+        .route(
+            "/control/orchestration/active/{run_id}/events",
+            get(orchestration_active_run_events_handler),
+        )
+        .route(
+            "/control/orchestration/active/{run_id}/pause",
+            post(orchestration_active_run_pause_handler),
+        )
+        .route(
+            "/control/orchestration/active/{run_id}/resume",
+            post(orchestration_active_run_resume_handler),
+        )
+        .route(
+            "/control/orchestration/active/{run_id}/kill",
+            post(orchestration_active_run_kill_handler),
+        )
+        .route(
             "/control/orchestration/runs",
             get(orchestration_runs_handler),
         )
@@ -2459,6 +2487,10 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
         .route(
             "/control/orchestration/runs/{receipt_id}/trace",
             get(orchestration_run_trace_handler),
+        )
+        .route(
+            "/control/orchestration/runs/{receipt_id}/transcript",
+            get(orchestration_run_transcript_handler),
         )
         .route(
             "/control/orchestration/runs/{receipt_id}/resources",
@@ -3224,6 +3256,14 @@ struct OrchestrationRequestPayload {
     approval_policy: Option<String>,
 }
 
+#[derive(serde::Deserialize)]
+struct ActiveRunListQuery {
+    #[serde(default = "default_active_true")]
+    active_only: bool,
+    #[serde(default)]
+    limit: Option<usize>,
+}
+
 async fn runtime_status_handler(State(state): State<RuntimeControlState>) -> impl IntoResponse {
     match runtime::runtime_status(&state.config_path, &state.workspace_root) {
         Ok(status) => (StatusCode::OK, Json(serde_json::json!(status))).into_response(),
@@ -3453,6 +3493,146 @@ async fn orchestration_run_handler(
     }
 }
 
+async fn orchestration_submit_handler(
+    State(state): State<RuntimeControlState>,
+    Json(payload): Json<OrchestrationRequestPayload>,
+) -> impl IntoResponse {
+    let prompt = payload.prompt.unwrap_or_default();
+    if prompt.trim().is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "prompt is required"})),
+        )
+            .into_response();
+    }
+
+    match orchestrate::submit(
+        orchestrate::OrchestrationRequest {
+            prompt,
+            task_id: payload.task_id,
+            category: payload.category,
+            claw_id: payload.claw_id,
+            mode: payload.mode.unwrap_or_else(|| "orchestrated".to_string()),
+            overrides: orchestrate::OrchestrationRequestOverrides {
+                model_profile_id: payload.model_profile_id,
+                worker_model_profile_id: payload.worker_model_profile_id,
+                autonomy_level: payload.autonomy_level,
+                max_delegations: payload.max_delegations,
+                max_iterations: payload.max_iterations,
+                max_runtime_secs: payload.max_runtime_secs,
+                approval_policy: payload.approval_policy,
+            },
+        },
+        &state.workspace_root,
+    )
+    .await
+    {
+        Ok(run) => (StatusCode::OK, Json(serde_json::json!(run))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn orchestration_active_runs_handler(
+    State(state): State<RuntimeControlState>,
+    Query(query): Query<ActiveRunListQuery>,
+) -> impl IntoResponse {
+    match orchestrate::list_active_runs(
+        &state.workspace_root,
+        query.active_only,
+        query.limit.unwrap_or(20),
+    ) {
+        Ok(runs) => (StatusCode::OK, Json(serde_json::json!({ "runs": runs }))).into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn orchestration_active_run_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(run_id): AxumPath<String>,
+) -> impl IntoResponse {
+    match orchestrate::read_active_run(&state.workspace_root, &run_id) {
+        Ok(run) => (StatusCode::OK, Json(serde_json::json!(run))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn orchestration_active_run_events_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(run_id): AxumPath<String>,
+    Query(query): Query<ListLimitQuery>,
+) -> impl IntoResponse {
+    match orchestrate::read_active_run_events(
+        &state.workspace_root,
+        &run_id,
+        query.limit.unwrap_or(20),
+    ) {
+        Ok(events) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "events": events })),
+        )
+            .into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn orchestration_active_run_pause_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(run_id): AxumPath<String>,
+) -> impl IntoResponse {
+    match orchestrate::pause_active_run(&state.workspace_root, &run_id) {
+        Ok(run) => (StatusCode::OK, Json(serde_json::json!(run))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn orchestration_active_run_resume_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(run_id): AxumPath<String>,
+) -> impl IntoResponse {
+    match orchestrate::resume_active_run(&state.workspace_root, &run_id) {
+        Ok(run) => (StatusCode::OK, Json(serde_json::json!(run))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn orchestration_active_run_kill_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(run_id): AxumPath<String>,
+) -> impl IntoResponse {
+    match orchestrate::kill_active_run(&state.workspace_root, &run_id) {
+        Ok(run) => (StatusCode::OK, Json(serde_json::json!(run))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
 async fn orchestration_runs_handler(
     State(state): State<RuntimeControlState>,
     Query(query): Query<ListLimitQuery>,
@@ -3519,6 +3699,20 @@ async fn orchestration_run_trace_handler(
 ) -> impl IntoResponse {
     match orchestrate::read_run_trace(&state.workspace_root, &receipt_id) {
         Ok(trace) => (StatusCode::OK, Json(trace)).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn orchestration_run_transcript_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(receipt_id): AxumPath<String>,
+) -> impl IntoResponse {
+    match orchestrate::read_run_transcript(&state.workspace_root, &receipt_id) {
+        Ok(transcript) => (StatusCode::OK, Json(transcript)).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": error.to_string()})),
