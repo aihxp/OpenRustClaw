@@ -4,6 +4,7 @@ use std::time::Duration;
 use anyhow::{Context, Result, anyhow};
 use openrustclaw_core::config::{AppConfig, VoiceSttRuntimeConfig, VoiceTtsRuntimeConfig};
 use openrustclaw_core::types::IncomingMessage;
+use reqwest::Url;
 use reqwest::multipart::{Form, Part};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
@@ -172,6 +173,42 @@ struct OpenAiTranscriptionResponse {
     duration: Option<f64>,
 }
 
+#[derive(Debug, Deserialize)]
+struct DeepgramListenResponse {
+    #[serde(default)]
+    metadata: Option<DeepgramMetadata>,
+    #[serde(default)]
+    results: DeepgramResults,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct DeepgramMetadata {
+    #[serde(default)]
+    duration: Option<f64>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct DeepgramResults {
+    #[serde(default)]
+    channels: Vec<DeepgramChannel>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct DeepgramChannel {
+    #[serde(default)]
+    alternatives: Vec<DeepgramAlternative>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+struct DeepgramAlternative {
+    #[serde(default)]
+    transcript: String,
+    #[serde(default)]
+    language: Option<String>,
+    #[serde(default)]
+    detected_language: Option<String>,
+}
+
 #[derive(Debug)]
 struct TranscribedAudio {
     text: String,
@@ -196,6 +233,7 @@ fn default_voice_api_base_url(provider: &str) -> Option<&'static str> {
     match provider {
         "openai" => Some("https://api.openai.com/v1"),
         "openrouter" => Some("https://openrouter.ai/api/v1"),
+        "deepgram" => Some("https://api.deepgram.com/v1"),
         _ => None,
     }
 }
@@ -218,6 +256,7 @@ fn default_voice_api_key_env(config: &AppConfig, provider: &str) -> Option<Strin
                 .clone()
                 .unwrap_or_else(|| "OPENROUTER_API_KEY".to_string()),
         ),
+        "deepgram" => Some("DEEPGRAM_API_KEY".to_string()),
         _ => None,
     }
 }
@@ -260,6 +299,21 @@ fn resolve_voice_provider_for_stt(
                 provider
             )
         })?;
+
+    if provider == "deepgram" {
+        return Ok(ResolvedVoiceProvider {
+            provider,
+            api_key_env,
+            api_base_url: api_base_url.trim_end_matches('/').to_string(),
+            lane: "deepgram_listen".to_string(),
+            supports_inbound_notes: true,
+            supports_voice_catalog: false,
+            notes: vec![
+                "deepgram_rest".to_string(),
+                "endpoint must expose /listen".to_string(),
+            ],
+        });
+    }
 
     let mut notes = vec!["openai_compatible".to_string()];
     if provider != "openai" {
@@ -353,17 +407,20 @@ pub fn voice_provider_catalog(config: &AppConfig) -> VoiceProviderCatalog {
     let mut stt = Vec::new();
     let mut tts = Vec::new();
 
-    for provider in ["openai", "openrouter"] {
+    for provider in ["openai", "openrouter", "deepgram"] {
         if let Ok(profile) = resolve_voice_provider_for_stt(config, Some(provider)) {
             stt.push(provider_status_from_resolved(profile, "stt"));
         }
+    }
+
+    for provider in ["openai", "openrouter"] {
         if let Ok(profile) = resolve_voice_provider_for_tts(config, Some(provider)) {
             tts.push(provider_status_from_resolved(profile, "tts"));
         }
     }
 
     let configured_stt = normalize_voice_provider_name(&config.voice.stt.provider);
-    if !["openai", "openrouter"].contains(&configured_stt.as_str()) {
+    if !["openai", "openrouter", "deepgram"].contains(&configured_stt.as_str()) {
         if let Ok(profile) = resolve_voice_provider_for_stt(config, Some(&configured_stt)) {
             stt.push(provider_status_from_resolved(profile, "stt"));
         }
@@ -519,6 +576,12 @@ impl InboundVoiceTranscriber {
             ));
         }
 
+        if self.provider == "deepgram" {
+            return self
+                .transcribe_candidate_deepgram(candidate, &api_key, bytes, cached_local_path)
+                .await;
+        }
+
         let mut form = Form::new().text("model", self.stt.model.clone()).part(
             "file",
             match candidate.mime.as_deref() {
@@ -561,6 +624,64 @@ impl InboundVoiceTranscriber {
             text: parsed.text,
             language: parsed.language,
             duration_secs: parsed.duration,
+            cached_local_path,
+        })
+    }
+
+    async fn transcribe_candidate_deepgram(
+        &self,
+        candidate: &AudioCandidate,
+        api_key: &str,
+        bytes: Vec<u8>,
+        cached_local_path: Option<PathBuf>,
+    ) -> Result<TranscribedAudio> {
+        let mut url = Url::parse(&format!("{}/listen", self.api_base_url))
+            .context("failed to build Deepgram listen URL")?;
+        {
+            let mut pairs = url.query_pairs_mut();
+            pairs.append_pair("model", &self.stt.model);
+            if self.stt.language != "auto" {
+                pairs.append_pair("language", &self.stt.language);
+            }
+            pairs.append_pair("smart_format", "true");
+        }
+
+        let content_type = candidate
+            .mime
+            .as_deref()
+            .unwrap_or("application/octet-stream");
+
+        let response = self
+            .client
+            .post(url)
+            .header(reqwest::header::CONTENT_TYPE, content_type)
+            .header(reqwest::header::AUTHORIZATION, format!("Token {api_key}"))
+            .body(bytes)
+            .send()
+            .await
+            .context("failed to call Deepgram transcription endpoint")?;
+        let response = response
+            .error_for_status()
+            .context("Deepgram transcription endpoint returned an error")?;
+        let parsed: DeepgramListenResponse = response
+            .json()
+            .await
+            .context("failed to parse Deepgram transcription response")?;
+        let alternative = parsed
+            .results
+            .channels
+            .first()
+            .and_then(|channel| channel.alternatives.first())
+            .cloned()
+            .unwrap_or_default();
+
+        Ok(TranscribedAudio {
+            text: alternative.transcript,
+            language: alternative
+                .language
+                .or(alternative.detected_language)
+                .filter(|value| !value.trim().is_empty()),
+            duration_secs: parsed.metadata.and_then(|metadata| metadata.duration),
             cached_local_path,
         })
     }
@@ -1130,6 +1251,7 @@ mod tests {
     struct TestServerState {
         bodies: Arc<Mutex<Vec<String>>>,
         speech_bodies: Arc<Mutex<Vec<String>>>,
+        deepgram_bodies: Arc<Mutex<Vec<String>>>,
     }
 
     async fn handle_transcription(
@@ -1160,6 +1282,7 @@ mod tests {
         let app = Router::new()
             .route("/audio/transcriptions", post(handle_transcription))
             .route("/audio/speech", post(handle_speech))
+            .route("/listen", post(handle_deepgram))
             .with_state(state.clone());
         let handle = tokio::spawn(async move {
             axum::serve(listener, app).await.expect("serve");
@@ -1184,6 +1307,25 @@ mod tests {
             .await
             .push(String::from_utf8_lossy(body.as_ref()).to_string());
         b"fake-mp3-audio"
+    }
+
+    async fn handle_deepgram(
+        State(state): State<TestServerState>,
+        headers: HeaderMap,
+        body: Bytes,
+    ) -> &'static str {
+        assert_eq!(
+            headers
+                .get(reqwest::header::AUTHORIZATION)
+                .and_then(|value| value.to_str().ok()),
+            Some("Token test-deepgram-key")
+        );
+        state
+            .deepgram_bodies
+            .lock()
+            .await
+            .push(String::from_utf8_lossy(body.as_ref()).to_string());
+        r#"{"metadata":{"duration":2.5},"results":{"channels":[{"alternatives":[{"transcript":"hello from deepgram","detected_language":"en"}]}]}}"#
     }
 
     fn test_config(base_url: &str, workspace_root: &Path, api_key_env: &str) -> AppConfig {
@@ -1379,6 +1521,59 @@ mod tests {
         server_handle.abort();
     }
 
+    #[tokio::test]
+    async fn transcribe_supports_deepgram_stt_lane() {
+        let temp = tempdir().expect("tempdir");
+        let audio_path = temp.path().join("voice.wav");
+        fs::write(&audio_path, b"fake wav bytes")
+            .await
+            .expect("write local audio");
+
+        let (addr, state, server_handle) = spawn_test_server().await;
+        let mut config = test_config(
+            &format!("http://{}", addr),
+            temp.path(),
+            "OPENRUSTCLAW_VOICE_TEST_KEY_FOUR",
+        );
+        config.voice.stt.provider = "deepgram".to_string();
+        config.voice.stt.model = "nova-3".to_string();
+        config.voice.stt.api_base_url = Some(format!("http://{}", addr));
+        config.voice.stt.api_key_env = Some("OPENRUSTCLAW_VOICE_TEST_KEY_FOUR".to_string());
+
+        unsafe {
+            std::env::set_var("OPENRUSTCLAW_VOICE_TEST_KEY_FOUR", "test-deepgram-key");
+        }
+        let result = transcribe_with_config(
+            &config,
+            temp.path(),
+            VoiceTranscribeRequest {
+                path: Some(audio_path.to_string_lossy().to_string()),
+                url: None,
+                provider: Some("deepgram".to_string()),
+                model: None,
+                language: None,
+                prompt: None,
+                max_audio_bytes: None,
+                timeout_secs: None,
+            },
+        )
+        .await
+        .expect("deepgram transcribe");
+        unsafe {
+            std::env::remove_var("OPENRUSTCLAW_VOICE_TEST_KEY_FOUR");
+        }
+
+        assert_eq!(result.provider, "deepgram");
+        assert_eq!(result.model, "nova-3");
+        assert_eq!(result.text, "hello from deepgram");
+        assert_eq!(result.language.as_deref(), Some("en"));
+
+        let bodies = state.deepgram_bodies.lock().await;
+        assert_eq!(bodies.len(), 1);
+
+        server_handle.abort();
+    }
+
     #[test]
     fn list_voices_returns_known_openai_voice_catalog() {
         let temp = tempdir().expect("tempdir");
@@ -1394,6 +1589,8 @@ mod tests {
         let mut config = AppConfig::default();
         config.providers.openai.api_key_env = Some("OPENAI_TEST_KEY".to_string());
         config.providers.openrouter.api_key_env = Some("OPENROUTER_TEST_KEY".to_string());
+        config.voice.stt.provider = "deepgram".to_string();
+        config.voice.stt.api_key_env = Some("DEEPGRAM_TEST_KEY".to_string());
         let catalog = voice_provider_catalog(&config);
 
         assert!(catalog.stt.iter().any(|entry| entry.provider == "openai"));
@@ -1403,6 +1600,7 @@ mod tests {
                 .iter()
                 .any(|entry| entry.provider == "openrouter")
         );
+        assert!(catalog.stt.iter().any(|entry| entry.provider == "deepgram"));
         assert!(catalog.tts.iter().any(|entry| entry.provider == "openai"));
         assert!(
             catalog
