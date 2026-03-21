@@ -401,6 +401,7 @@
           <div class="surface" style="margin-top: 12px"><pre id="voice-session-health">No voice session health loaded yet.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="voice-session-detail">No voice session inspected yet.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="voice-session-transcript">No voice session transcript loaded yet.</pre></div>
+          <div class="surface" style="margin-top: 12px"><pre id="voice-session-artifacts">No voice session artifacts loaded yet.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="voice-voices">No voice catalog loaded yet.</pre></div>
         </article>
         <article class="panel span-6">
@@ -446,6 +447,7 @@
               <button id="voice-session-start">Start Session</button>
               <button class="secondary" id="voice-session-inspect">Inspect Session</button>
               <button class="secondary" id="voice-session-transcript-refresh">Transcript</button>
+              <button class="secondary" id="voice-session-artifacts-refresh">Artifacts</button>
             </div>
             <div class="action-row">
               <button id="voice-session-append">Append User</button>
@@ -1169,6 +1171,15 @@
         setText("voice-session-transcript", payload);
       }
 
+      async function loadVoiceSessionArtifacts() {
+        const sessionId = document.getElementById("voice-session-id").value.trim();
+        if (!sessionId) {
+          throw new Error("A voice session id is required");
+        }
+        const payload = await fetchJson(`/control/voice/sessions/${encodeURIComponent(sessionId)}/artifacts`);
+        setText("voice-session-artifacts", payload);
+      }
+
       async function startVoiceSession() {
         const result = await fetchJson("/control/voice/sessions/start", {
           method: "POST",
@@ -1184,6 +1195,7 @@
         }
         setText("voice-session-detail", result);
         setText("voice-session-transcript", "No voice session transcript loaded yet.");
+        setText("voice-session-artifacts", "No voice session artifacts loaded yet.");
         await loadVoiceSessions();
         await loadVoiceSessionHealth();
       }
@@ -1196,6 +1208,7 @@
         const payload = await fetchJson(`/control/voice/sessions/${encodeURIComponent(sessionId)}`);
         setText("voice-session-detail", payload);
         await loadVoiceSessionTranscript();
+        await loadVoiceSessionArtifacts();
       }
 
       async function appendVoiceSessionUser() {
@@ -1216,6 +1229,7 @@
         );
         setText("voice-session-detail", payload);
         await loadVoiceSessionTranscript();
+        await loadVoiceSessionArtifacts();
         await loadVoiceSessions();
         await loadVoiceSessionHealth();
       }
@@ -1248,6 +1262,7 @@
           setText("voice-synthesis-result", payload.synthesis);
         }
         await loadVoiceSessionTranscript();
+        await loadVoiceSessionArtifacts();
         await loadVoiceSessions();
         await loadVoiceSessionHealth();
       }
@@ -1268,6 +1283,7 @@
         );
         setText("voice-session-detail", payload);
         await loadVoiceSessionTranscript();
+        await loadVoiceSessionArtifacts();
         await loadVoiceSessions();
         await loadVoiceSessionHealth();
       }
@@ -1295,6 +1311,7 @@
           setText("voice-synthesis-result", payload.synthesis);
         }
         await loadVoiceSessionTranscript();
+        await loadVoiceSessionArtifacts();
         await loadVoiceSessions();
         await loadVoiceSessionHealth();
       }
@@ -1315,6 +1332,7 @@
         );
         setText("voice-session-detail", payload);
         await loadVoiceSessionTranscript();
+        await loadVoiceSessionArtifacts();
         await loadVoiceSessions();
         await loadVoiceSessionHealth();
       }
@@ -1335,6 +1353,7 @@
         );
         setText("voice-session-detail", payload);
         await loadVoiceSessionTranscript();
+        await loadVoiceSessionArtifacts();
         await loadVoiceSessions();
         await loadVoiceSessionHealth();
       }
@@ -1355,6 +1374,7 @@
         );
         setText("voice-session-detail", payload);
         await loadVoiceSessionTranscript();
+        await loadVoiceSessionArtifacts();
         await loadVoiceSessions();
         await loadVoiceSessionHealth();
       }
@@ -3005,6 +3025,13 @@
           await loadVoiceSessionTranscript();
         } catch (error) {
           setText("voice-session-transcript", { error: error.message });
+        }
+      });
+      document.getElementById("voice-session-artifacts-refresh").addEventListener("click", async () => {
+        try {
+          await loadVoiceSessionArtifacts();
+        } catch (error) {
+          setText("voice-session-artifacts", { error: error.message });
         }
       });
       document.getElementById("voice-session-append").addEventListener("click", async () => {

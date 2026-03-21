@@ -234,6 +234,27 @@ pub struct VoiceSessionTranscript {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceSessionArtifact {
+    pub index: usize,
+    pub role: String,
+    pub created_at: String,
+    pub path: String,
+    pub exists: bool,
+    #[serde(default)]
+    pub bytes: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceSessionArtifacts {
+    pub session_id: String,
+    pub status: String,
+    pub live_state: String,
+    pub artifact_count: usize,
+    pub total_bytes: u64,
+    pub artifacts: Vec<VoiceSessionArtifact>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VoiceSessionStartRequest {
     #[serde(default)]
     pub session_id: Option<String>,
@@ -1593,6 +1614,44 @@ pub async fn voice_session_transcript(
     })
 }
 
+pub async fn voice_session_artifacts(
+    workspace_root: &Path,
+    session_id: &str,
+) -> Result<VoiceSessionArtifacts> {
+    let session = inspect_voice_session(workspace_root, session_id).await?;
+    let mut artifacts = Vec::new();
+    let mut total_bytes = 0_u64;
+
+    for (index, turn) in session.turns.iter().enumerate() {
+        let Some(path) = turn.synthesized_output_path.as_ref() else {
+            continue;
+        };
+        let resolved_path = resolve_voice_artifact_path(workspace_root, path);
+        let metadata = fs::metadata(&resolved_path).await.ok();
+        let bytes = metadata.as_ref().map(|entry| entry.len());
+        if let Some(size) = bytes {
+            total_bytes += size;
+        }
+        artifacts.push(VoiceSessionArtifact {
+            index,
+            role: turn.role.clone(),
+            created_at: turn.created_at.clone(),
+            path: path.clone(),
+            exists: metadata.is_some(),
+            bytes,
+        });
+    }
+
+    Ok(VoiceSessionArtifacts {
+        session_id: session.id,
+        status: session.status,
+        live_state: session.live_state,
+        artifact_count: artifacts.len(),
+        total_bytes,
+        artifacts,
+    })
+}
+
 pub async fn start_voice_session(
     config: &AppConfig,
     workspace_root: &Path,
@@ -1924,6 +1983,15 @@ async fn save_voice_session(workspace_root: &Path, session: &VoiceSessionRecord)
     )
     .await
     .with_context(|| format!("failed to write {}", path.display()))
+}
+
+fn resolve_voice_artifact_path(workspace_root: &Path, path: &str) -> PathBuf {
+    let candidate = Path::new(path);
+    if candidate.is_absolute() {
+        candidate.to_path_buf()
+    } else {
+        workspace_root.join(candidate)
+    }
 }
 
 fn ensure_voice_session_active(session: &VoiceSessionRecord) -> Result<()> {
@@ -2700,6 +2768,63 @@ mod tests {
         assert_eq!(transcript.turns[1].index, 1);
         assert_eq!(transcript.turns[1].role, "assistant");
         assert!(transcript.turns[1].synthesized_output_path.is_some());
+
+        server_handle.abort();
+    }
+
+    #[tokio::test]
+    async fn voice_session_artifacts_exposes_synthesized_outputs() {
+        let temp = tempdir().expect("tempdir");
+        let (addr, _state, server_handle) = spawn_test_server().await;
+        let config = test_config(
+            &format!("http://{}", addr),
+            temp.path(),
+            "OPENRUSTCLAW_VOICE_TEST_KEY_ARTIFACTS",
+        );
+
+        start_voice_session(
+            &config,
+            temp.path(),
+            VoiceSessionStartRequest {
+                session_id: Some("voice-session-artifacts".to_string()),
+                assistant_prompt: None,
+                voice: Some("alloy".to_string()),
+            },
+        )
+        .await
+        .expect("start session");
+
+        unsafe {
+            std::env::set_var("OPENRUSTCLAW_VOICE_TEST_KEY_ARTIFACTS", "test-openai-key");
+        }
+        respond_voice_session(
+            &config,
+            temp.path(),
+            "voice-session-artifacts",
+            VoiceSessionRespondRequest {
+                text: "artifact response".to_string(),
+                provider: None,
+                model: None,
+                voice: None,
+                format: Some("mp3".to_string()),
+                output_path: None,
+            },
+        )
+        .await
+        .expect("respond");
+        unsafe {
+            std::env::remove_var("OPENRUSTCLAW_VOICE_TEST_KEY_ARTIFACTS");
+        }
+
+        let artifacts = voice_session_artifacts(temp.path(), "voice-session-artifacts")
+            .await
+            .expect("artifacts");
+        assert_eq!(artifacts.artifact_count, 1);
+        assert!(artifacts.total_bytes > 0);
+        assert_eq!(artifacts.artifacts[0].index, 0);
+        assert_eq!(artifacts.artifacts[0].role, "assistant");
+        assert!(artifacts.artifacts[0].exists);
+        assert!(artifacts.artifacts[0].bytes.unwrap_or_default() > 0);
 
         server_handle.abort();
     }
