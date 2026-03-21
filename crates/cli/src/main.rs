@@ -1644,7 +1644,7 @@ enum MediaAction {
         #[arg(long)]
         prompt: Option<String>,
     },
-    /// Describe a supported image artifact through a bounded provider-backed vision lane
+    /// Describe a supported local media artifact through a bounded provider-backed lane
     Describe {
         #[arg(short, long, default_value = "config/default.toml")]
         config: String,

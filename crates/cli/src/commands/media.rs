@@ -124,7 +124,8 @@ pub async fn extract_text(config_path: &str, request: MediaExtractTextRequest) -
 
 pub async fn describe(config_path: &str, request: MediaDescribeRequest) -> Result<()> {
     let config = load_config(config_path);
-    let result = describe_with_config(&config, request).await?;
+    let workspace_root = std::env::current_dir()?;
+    let result = describe_with_config(&config, &workspace_root, request).await?;
     println!("{}", serde_json::to_string_pretty(&result)?);
     Ok(())
 }
@@ -353,6 +354,7 @@ pub async fn extract_text_with_config(
 
 pub async fn describe_with_config(
     config: &AppConfig,
+    workspace_root: &Path,
     request: MediaDescribeRequest,
 ) -> Result<MediaDescribeResult> {
     let path = Path::new(&request.path);
@@ -363,11 +365,6 @@ pub async fn describe_with_config(
         .await
         .with_context(|| format!("failed to read {}", path.display()))?;
     let media_kind = detect_media_kind(path);
-    if media_kind != "image" {
-        return Err(anyhow!(
-            "bounded provider-backed describe currently supports image artifacts only"
-        ));
-    }
 
     let provider = resolve_vision_provider(config, request.provider.as_deref())?;
     let model = request
@@ -377,67 +374,66 @@ pub async fn describe_with_config(
         .filter(|value| !value.is_empty())
         .map(ToString::to_string)
         .unwrap_or_else(|| provider.default_model.clone());
-    let prompt = request
-        .prompt
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .unwrap_or("Describe this image in detail.")
-        .to_string();
-    let api_key = std::env::var(&provider.api_key_env)
-        .with_context(|| format!("{} environment variable not set", provider.api_key_env))?;
-    let mime = guess_mime(path);
-    let data_url = format!(
-        "data:{};base64,{}",
-        mime,
-        base64::engine::general_purpose::STANDARD.encode(bytes)
-    );
-    let body = json!({
-        "model": model,
-        "messages": [{
-            "role": "user",
-            "content": [
-                { "type": "text", "text": prompt },
-                { "type": "image_url", "image_url": { "url": data_url } }
-            ]
-        }],
-        "max_tokens": request.max_tokens.unwrap_or(600),
-    });
-
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(120))
-        .build()
-        .context("failed to build media describe HTTP client")?;
-    let mut request_builder = client
-        .post(format!("{}/v1/chat/completions", provider.api_base_url))
-        .header(reqwest::header::CONTENT_TYPE, "application/json")
-        .bearer_auth(api_key);
-    if provider.provider == "openrouter" {
-        request_builder = request_builder
-            .header("HTTP-Referer", "https://openrustclaw.dev")
-            .header("X-Title", "OpenRustClaw");
-    }
-
-    let response = request_builder
-        .json(&body)
-        .send()
-        .await
-        .context("failed to call provider-backed media describe lane")?;
-    let status = response.status();
-    let payload: serde_json::Value = response
-        .json()
-        .await
-        .context("failed to parse media describe response")?;
-    if !status.is_success() {
-        return Err(anyhow!(
-            "media describe provider '{}' returned {}: {}",
-            provider.provider,
-            status,
-            payload
-        ));
-    }
-    let description = extract_chat_completion_text(&payload)
-        .ok_or_else(|| anyhow!("provider-backed media describe response did not contain text"))?;
+    let prompt = cleaned_optional_text(request.prompt.as_deref());
+    let description = match media_kind.as_str() {
+        "image" => {
+            let image_prompt =
+                prompt.unwrap_or_else(|| "Describe this image in detail.".to_string());
+            let mime = guess_mime(path);
+            let data_url = format!(
+                "data:{};base64,{}",
+                mime,
+                base64::engine::general_purpose::STANDARD.encode(bytes)
+            );
+            let body = json!({
+                "model": model,
+                "messages": [{
+                    "role": "user",
+                    "content": [
+                        { "type": "text", "text": image_prompt },
+                        { "type": "image_url", "image_url": { "url": data_url } }
+                    ]
+                }],
+                "max_tokens": request.max_tokens.unwrap_or(600),
+            });
+            call_media_describe_provider(&provider, &body).await?
+        }
+        "document" | "audio" => {
+            let extracted = extract_text_with_config(
+                config,
+                workspace_root,
+                MediaExtractTextRequest {
+                    path: path.display().to_string(),
+                    provider: None,
+                    model: None,
+                    language: None,
+                    prompt: None,
+                    max_audio_bytes: None,
+                    timeout_secs: None,
+                },
+            )
+            .await?;
+            let text_prompt = build_text_media_describe_prompt(
+                media_kind.as_str(),
+                prompt.as_deref(),
+                &extracted.text,
+            );
+            let body = json!({
+                "model": model,
+                "messages": [{
+                    "role": "user",
+                    "content": text_prompt
+                }],
+                "max_tokens": request.max_tokens.unwrap_or(600),
+            });
+            call_media_describe_provider(&provider, &body).await?
+        }
+        _ => {
+            return Err(anyhow!(
+                "bounded provider-backed describe currently supports image, document, and audio artifacts only"
+            ));
+        }
+    };
 
     Ok(MediaDescribeResult {
         path: path.display().to_string(),
@@ -533,6 +529,20 @@ fn vision_provider_catalog(config: &AppConfig) -> Vec<MediaProviderStatus> {
             lane: lane.to_string(),
             kind: "image_description".to_string(),
             ready: api_key_present,
+            notes: notes.clone(),
+        });
+        extractors.push(MediaProviderStatus {
+            provider: provider.to_string(),
+            lane: format!("{lane}_document"),
+            kind: "document_description".to_string(),
+            ready: api_key_present,
+            notes: notes.clone(),
+        });
+        extractors.push(MediaProviderStatus {
+            provider: provider.to_string(),
+            lane: format!("{lane}_audio"),
+            kind: "audio_description".to_string(),
+            ready: api_key_present,
             notes,
         });
     }
@@ -614,6 +624,93 @@ fn extract_chat_completion_text(payload: &serde_json::Value) -> Option<String> {
         .collect::<Vec<_>>()
         .join("\n");
     (!text.is_empty()).then_some(text)
+}
+
+fn cleaned_optional_text(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+}
+
+fn build_text_media_describe_prompt(
+    media_kind: &str,
+    requested_prompt: Option<&str>,
+    extracted_text: &str,
+) -> String {
+    let default_prompt = match media_kind {
+        "audio" => {
+            "Summarize the audio artifact from this bounded transcript. Highlight the main points and any action items."
+        }
+        _ => {
+            "Summarize the document artifact from this bounded extracted text. Highlight the main points and any action items."
+        }
+    };
+    let source_label = if media_kind == "audio" {
+        "bounded transcript"
+    } else {
+        "bounded extracted text"
+    };
+    let excerpt = truncate_for_prompt(extracted_text, 16_000);
+    format!(
+        "{}\n\n{}:\n{}",
+        requested_prompt.unwrap_or(default_prompt),
+        source_label,
+        excerpt
+    )
+}
+
+fn truncate_for_prompt(text: &str, limit: usize) -> &str {
+    if text.len() <= limit {
+        return text;
+    }
+    let mut end = limit;
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    &text[..end]
+}
+
+async fn call_media_describe_provider(
+    provider: &VisionProviderProfile,
+    body: &serde_json::Value,
+) -> Result<String> {
+    let api_key = std::env::var(&provider.api_key_env)
+        .with_context(|| format!("{} environment variable not set", provider.api_key_env))?;
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(120))
+        .build()
+        .context("failed to build media describe HTTP client")?;
+    let mut request_builder = client
+        .post(format!("{}/v1/chat/completions", provider.api_base_url))
+        .header(reqwest::header::CONTENT_TYPE, "application/json")
+        .bearer_auth(api_key);
+    if provider.provider == "openrouter" {
+        request_builder = request_builder
+            .header("HTTP-Referer", "https://openrustclaw.dev")
+            .header("X-Title", "OpenRustClaw");
+    }
+
+    let response = request_builder
+        .json(body)
+        .send()
+        .await
+        .context("failed to call provider-backed media describe lane")?;
+    let status = response.status();
+    let payload: serde_json::Value = response
+        .json()
+        .await
+        .context("failed to parse media describe response")?;
+    if !status.is_success() {
+        return Err(anyhow!(
+            "media describe provider '{}' returned {}: {}",
+            provider.provider,
+            status,
+            payload
+        ));
+    }
+    extract_chat_completion_text(&payload)
+        .ok_or_else(|| anyhow!("provider-backed media describe response did not contain text"))
 }
 
 fn normalized_extension(path: &Path) -> Option<String> {
@@ -973,6 +1070,18 @@ mod tests {
                 .iter()
                 .any(|entry| entry.kind == "image_description" && entry.provider == "openrouter")
         );
+        assert!(
+            catalog
+                .extractors
+                .iter()
+                .any(|entry| entry.kind == "document_description" && entry.provider == "openai")
+        );
+        assert!(
+            catalog
+                .extractors
+                .iter()
+                .any(|entry| entry.kind == "audio_description" && entry.provider == "openrouter")
+        );
     }
 
     #[test]
@@ -988,5 +1097,17 @@ mod tests {
             extract_chat_completion_text(&payload).as_deref(),
             Some("A red square on a transparent background.")
         );
+    }
+
+    #[test]
+    fn build_text_media_describe_prompt_uses_kind_specific_defaults() {
+        let document_prompt = build_text_media_describe_prompt("document", None, "alpha\nbeta\n");
+        assert!(document_prompt.contains("Summarize the document artifact"));
+        assert!(document_prompt.contains("bounded extracted text"));
+        assert!(document_prompt.contains("alpha\nbeta"));
+
+        let audio_prompt = build_text_media_describe_prompt("audio", None, "hello world");
+        assert!(audio_prompt.contains("Summarize the audio artifact"));
+        assert!(audio_prompt.contains("bounded transcript"));
     }
 }

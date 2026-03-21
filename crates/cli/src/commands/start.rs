@@ -5581,14 +5581,17 @@ async fn media_describe_handler(
     Json(payload): Json<super::media::MediaDescribeRequest>,
 ) -> impl IntoResponse {
     match runtime::load_effective_config(&state.config_path, &state.workspace_root) {
-        Ok(config) => match super::media::describe_with_config(&config, payload).await {
-            Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
-            Err(error) => (
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({"error": error.to_string()})),
-            )
-                .into_response(),
-        },
+        Ok(config) => {
+            match super::media::describe_with_config(&config, &state.workspace_root, payload).await
+            {
+                Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+                Err(error) => (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({"error": error.to_string()})),
+                )
+                    .into_response(),
+            }
+        }
         Err(error) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({"error": error.to_string()})),

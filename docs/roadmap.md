@@ -1279,6 +1279,7 @@ Remaining:
   - [x] bounded media provider catalog/readiness plus local-audio text extraction over the shipped STT lanes,
   - [x] bounded local rich-document extraction for `docx` and `rtf`, plus optional local `pdf` extraction when `pdftotext` is available,
   - [x] bounded provider-backed image description over OpenAI-compatible vision lanes,
+  - [x] bounded provider-backed document and audio summary lanes over the same shipped OpenAI-compatible providers,
   - broader image/audio/document provider pluggability across all media lanes.
 - [ ] Add richer provider support for media parity where OpenClaw documents active integrations.
 - [ ] Add voice runtime parity:
