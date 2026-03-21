@@ -1,4 +1,6 @@
+use std::io::{Cursor, Read};
 use std::path::Path;
+use std::process::Command;
 
 use anyhow::{Context, Result, anyhow};
 use openrustclaw_automation::browser::{Screenshot, ScreenshotFormat};
@@ -107,6 +109,35 @@ pub fn media_provider_catalog(config: &AppConfig) -> MediaProviderCatalog {
         notes: vec!["txt md json yaml toml csv html xml log".to_string()],
     });
 
+    extractors.push(MediaProviderStatus {
+        provider: "local".to_string(),
+        lane: "docx_xml".to_string(),
+        kind: "document_text".to_string(),
+        ready: true,
+        notes: vec!["bounded_docx_text_extraction".to_string()],
+    });
+
+    extractors.push(MediaProviderStatus {
+        provider: "local".to_string(),
+        lane: "rtf_text".to_string(),
+        kind: "document_text".to_string(),
+        ready: true,
+        notes: vec!["bounded_rtf_text_extraction".to_string()],
+    });
+
+    let pdf_ready = pdf_text_extractor_available();
+    extractors.push(MediaProviderStatus {
+        provider: "local".to_string(),
+        lane: "pdf_text".to_string(),
+        kind: "document_text".to_string(),
+        ready: pdf_ready,
+        notes: if pdf_ready {
+            vec!["pdftotext_available".to_string()]
+        } else {
+            vec!["pdftotext_unavailable".to_string()]
+        },
+    });
+
     let ocr_ready = VisionCapabilities::new().ocr_enabled();
     extractors.push(MediaProviderStatus {
         provider: "local".to_string(),
@@ -155,8 +186,9 @@ pub async fn inspect_data(request: MediaInspectRequest) -> Result<MediaInspectRe
         image_width = Some(image.width());
         image_height = Some(image.height());
     }
-    let text_extractable =
-        is_text_document(path) || matches!(media_kind.as_str(), "image" | "audio");
+    let text_extractable = is_text_document(path)
+        || is_rich_text_document(path)
+        || matches!(media_kind.as_str(), "image" | "audio");
     let text_preview = if is_text_document(path) {
         Some(load_text_preview(&bytes))
     } else {
@@ -198,6 +230,39 @@ pub async fn extract_text_with_config(
             path: path.display().to_string(),
             media_kind: "document".to_string(),
             extractor: "plain_text".to_string(),
+            text,
+        });
+    }
+
+    if is_docx_document(path) {
+        let text = extract_docx_text(&bytes)
+            .with_context(|| format!("failed to extract docx text from '{}'", path.display()))?;
+        return Ok(MediaExtractTextResult {
+            path: path.display().to_string(),
+            media_kind: "document".to_string(),
+            extractor: "docx_xml".to_string(),
+            text,
+        });
+    }
+
+    if is_rtf_document(path) {
+        let text = extract_rtf_text(&bytes)
+            .with_context(|| format!("failed to extract rtf text from '{}'", path.display()))?;
+        return Ok(MediaExtractTextResult {
+            path: path.display().to_string(),
+            media_kind: "document".to_string(),
+            extractor: "rtf_text".to_string(),
+            text,
+        });
+    }
+
+    if is_pdf_document(path) {
+        let text = extract_pdf_text(path)
+            .with_context(|| format!("failed to extract pdf text from '{}'", path.display()))?;
+        return Ok(MediaExtractTextResult {
+            path: path.display().to_string(),
+            media_kind: "document".to_string(),
+            extractor: "pdf_text".to_string(),
             text,
         });
     }
@@ -306,6 +371,22 @@ fn is_text_document(path: &Path) -> bool {
     )
 }
 
+fn is_rich_text_document(path: &Path) -> bool {
+    is_docx_document(path) || is_rtf_document(path) || is_pdf_document(path)
+}
+
+fn is_docx_document(path: &Path) -> bool {
+    matches!(normalized_extension(path).as_deref(), Some("docx"))
+}
+
+fn is_rtf_document(path: &Path) -> bool {
+    matches!(normalized_extension(path).as_deref(), Some("rtf"))
+}
+
+fn is_pdf_document(path: &Path) -> bool {
+    matches!(normalized_extension(path).as_deref(), Some("pdf"))
+}
+
 fn load_text_preview(bytes: &[u8]) -> String {
     let text = String::from_utf8_lossy(bytes);
     let preview = text.chars().take(280).collect::<String>();
@@ -314,6 +395,139 @@ fn load_text_preview(bytes: &[u8]) -> String {
     } else {
         preview
     }
+}
+
+fn pdf_text_extractor_available() -> bool {
+    Command::new("pdftotext")
+        .arg("-v")
+        .output()
+        .map(|output| output.status.success() || !output.stderr.is_empty())
+        .unwrap_or(false)
+}
+
+fn extract_docx_text(bytes: &[u8]) -> Result<String> {
+    let cursor = Cursor::new(bytes);
+    let mut archive = zip::ZipArchive::new(cursor).context("failed to open docx zip archive")?;
+    let mut document = archive
+        .by_name("word/document.xml")
+        .context("docx missing word/document.xml")?;
+    let mut xml = String::new();
+    document
+        .read_to_string(&mut xml)
+        .context("failed to read docx document.xml")?;
+    Ok(clean_whitespace(&decode_xml_entities(
+        &strip_xml_tags_with_breaks(&xml),
+    )))
+}
+
+fn extract_rtf_text(bytes: &[u8]) -> Result<String> {
+    let raw = String::from_utf8(bytes.to_vec()).context("rtf bytes are not valid utf-8")?;
+    let mut output = String::new();
+    let mut chars = raw.chars().peekable();
+    while let Some(ch) = chars.next() {
+        match ch {
+            '{' | '}' => {}
+            '\\' => {
+                if let Some('\'') = chars.peek().copied() {
+                    chars.next();
+                    let hi = chars.next().unwrap_or('0');
+                    let lo = chars.next().unwrap_or('0');
+                    if let Ok(byte) = u8::from_str_radix(&format!("{hi}{lo}"), 16) {
+                        output.push(byte as char);
+                    }
+                    continue;
+                }
+                let mut control = String::new();
+                while let Some(next) = chars.peek().copied() {
+                    if next.is_ascii_alphabetic() {
+                        control.push(next);
+                        chars.next();
+                    } else {
+                        break;
+                    }
+                }
+                while let Some(next) = chars.peek().copied() {
+                    if next.is_ascii_digit() || next == '-' {
+                        chars.next();
+                    } else {
+                        break;
+                    }
+                }
+                if chars.peek() == Some(&' ') {
+                    chars.next();
+                }
+                match control.as_str() {
+                    "par" | "line" => output.push('\n'),
+                    "tab" => output.push('\t'),
+                    _ => {}
+                }
+            }
+            '\r' | '\n' => {}
+            other => output.push(other),
+        }
+    }
+    Ok(clean_whitespace(&output))
+}
+
+fn extract_pdf_text(path: &Path) -> Result<String> {
+    if !pdf_text_extractor_available() {
+        return Err(anyhow!(
+            "local pdf text extractor 'pdftotext' is unavailable"
+        ));
+    }
+    let output = Command::new("pdftotext")
+        .arg("-layout")
+        .arg(path)
+        .arg("-")
+        .output()
+        .with_context(|| format!("failed to execute pdftotext for '{}'", path.display()))?;
+    if !output.status.success() {
+        return Err(anyhow!(
+            "pdftotext failed for '{}': {}",
+            path.display(),
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+    Ok(clean_whitespace(&String::from_utf8_lossy(&output.stdout)))
+}
+
+fn strip_xml_tags_with_breaks(xml: &str) -> String {
+    let with_breaks = xml
+        .replace("</w:p>", "\n")
+        .replace("</w:tr>", "\n")
+        .replace("<w:tab/>", "\t");
+    let mut output = String::with_capacity(with_breaks.len());
+    let mut in_tag = false;
+    for ch in with_breaks.chars() {
+        match ch {
+            '<' => in_tag = true,
+            '>' => in_tag = false,
+            _ if !in_tag => output.push(ch),
+            _ => {}
+        }
+    }
+    output
+}
+
+fn decode_xml_entities(input: &str) -> String {
+    input
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&apos;", "'")
+        .replace("&#9;", "\t")
+        .replace("&#10;", "\n")
+        .replace("&#13;", "\n")
+}
+
+fn clean_whitespace(input: &str) -> String {
+    input
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 #[cfg(test)]
@@ -368,6 +582,72 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn extract_text_reads_rtf_documents() {
+        let temp = tempdir().expect("tempdir");
+        let path = temp.path().join("notes.rtf");
+        fs::write(&path, "{\\rtf1\\ansi hello\\par world}")
+            .await
+            .expect("write rtf");
+
+        let result = extract_text_with_config(
+            &AppConfig::default(),
+            temp.path(),
+            MediaExtractTextRequest {
+                path: path.display().to_string(),
+                provider: None,
+                model: None,
+                language: None,
+                prompt: None,
+                max_audio_bytes: None,
+                timeout_secs: None,
+            },
+        )
+        .await
+        .expect("extract rtf");
+
+        assert_eq!(result.extractor, "rtf_text");
+        assert_eq!(result.text, "hello\nworld");
+    }
+
+    #[tokio::test]
+    async fn extract_text_reads_docx_documents() {
+        let temp = tempdir().expect("tempdir");
+        let path = temp.path().join("notes.docx");
+        let cursor = Cursor::new(Vec::new());
+        let mut writer = zip::ZipWriter::new(cursor);
+        let options = zip::write::SimpleFileOptions::default();
+        writer
+            .start_file("word/document.xml", options)
+            .expect("start docx xml");
+        std::io::Write::write_all(
+            &mut writer,
+            br#"<?xml version="1.0" encoding="UTF-8"?><w:document><w:body><w:p><w:r><w:t>Hello</w:t></w:r></w:p><w:p><w:r><w:t>World</w:t></w:r></w:p></w:body></w:document>"#,
+        )
+        .expect("write docx xml");
+        let bytes = writer.finish().expect("finish zip").into_inner();
+        fs::write(&path, bytes).await.expect("write docx");
+
+        let result = extract_text_with_config(
+            &AppConfig::default(),
+            temp.path(),
+            MediaExtractTextRequest {
+                path: path.display().to_string(),
+                provider: None,
+                model: None,
+                language: None,
+                prompt: None,
+                max_audio_bytes: None,
+                timeout_secs: None,
+            },
+        )
+        .await
+        .expect("extract docx");
+
+        assert_eq!(result.extractor, "docx_xml");
+        assert_eq!(result.text, "Hello\nWorld");
+    }
+
+    #[tokio::test]
     async fn inspect_image_reports_dimensions() {
         let temp = tempdir().expect("tempdir");
         let path = temp.path().join("pixel.png");
@@ -410,6 +690,18 @@ mod tests {
                 .extractors
                 .iter()
                 .any(|entry| entry.kind == "audio_text" && entry.provider == "openai")
+        );
+        assert!(
+            catalog
+                .extractors
+                .iter()
+                .any(|entry| entry.lane == "docx_xml" && entry.kind == "document_text")
+        );
+        assert!(
+            catalog
+                .extractors
+                .iter()
+                .any(|entry| entry.lane == "rtf_text" && entry.kind == "document_text")
         );
     }
 }
