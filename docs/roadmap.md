@@ -1293,6 +1293,7 @@ Remaining:
   - [x] indexed transcript visibility for the same bounded persisted voice-session receipts,
   - [x] synthesized output artifact inspection for the same bounded persisted voice-session receipts,
   - [x] derived event timelines for the same bounded persisted voice-session receipts,
+  - [x] derived per-session plus aggregate metrics over the same bounded persisted voice-session receipts,
   - [x] bounded voice-session health summaries plus stale-session reaping and runtime prewarm controls over the shipped session lane,
   - [x] bounded voice-session reconnect/resume controls with optional reconnect greetings over the same persisted session lane,
   - [x] bounded voice-session pause/resume/interrupt controls over the same persisted session lane,

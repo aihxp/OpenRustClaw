@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow};
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use openrustclaw_core::config::{AppConfig, VoiceSttRuntimeConfig, VoiceTtsRuntimeConfig};
 use openrustclaw_core::types::IncomingMessage;
 use reqwest::Url;
@@ -271,6 +271,46 @@ pub struct VoiceSessionEvents {
     pub live_state: String,
     pub event_count: usize,
     pub events: Vec<VoiceSessionEvent>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceSessionMetrics {
+    pub session_id: String,
+    pub status: String,
+    pub live_state: String,
+    pub turn_count: usize,
+    pub user_turn_count: usize,
+    pub assistant_turn_count: usize,
+    pub transcript_chars: usize,
+    pub user_chars: usize,
+    pub assistant_chars: usize,
+    pub artifact_count: usize,
+    pub artifact_bytes: u64,
+    pub reconnect_count: usize,
+    pub pause_count: usize,
+    pub interrupted_count: usize,
+    pub idle_secs: u64,
+    #[serde(default)]
+    pub duration_secs: Option<u64>,
+    #[serde(default)]
+    pub avg_user_turn_chars: Option<f64>,
+    #[serde(default)]
+    pub avg_assistant_turn_chars: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceMetricsSummary {
+    pub total_sessions: usize,
+    pub active_sessions: usize,
+    pub ended_sessions: usize,
+    pub total_turns: usize,
+    pub total_artifacts: usize,
+    pub total_artifact_bytes: u64,
+    pub total_transcript_chars: usize,
+    pub avg_turns_per_session: f64,
+    #[serde(default)]
+    pub avg_session_duration_secs: Option<f64>,
+    pub sessions: Vec<VoiceSessionMetrics>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1760,6 +1800,60 @@ pub async fn voice_session_events(
     })
 }
 
+pub async fn voice_session_metrics(
+    workspace_root: &Path,
+    session_id: &str,
+) -> Result<VoiceSessionMetrics> {
+    let session = inspect_voice_session(workspace_root, session_id).await?;
+    build_voice_session_metrics(workspace_root, session).await
+}
+
+pub async fn voice_metrics(workspace_root: &Path) -> Result<VoiceMetricsSummary> {
+    let list = list_voice_sessions(workspace_root).await?;
+    let mut sessions = Vec::new();
+    for session in list.sessions {
+        sessions.push(build_voice_session_metrics(workspace_root, session).await?);
+    }
+
+    let total_sessions = sessions.len();
+    let active_sessions = sessions
+        .iter()
+        .filter(|entry| entry.status == "active")
+        .count();
+    let ended_sessions = sessions
+        .iter()
+        .filter(|entry| entry.status == "ended")
+        .count();
+    let total_turns = sessions.iter().map(|entry| entry.turn_count).sum();
+    let total_artifacts = sessions.iter().map(|entry| entry.artifact_count).sum();
+    let total_artifact_bytes = sessions.iter().map(|entry| entry.artifact_bytes).sum();
+    let total_transcript_chars = sessions.iter().map(|entry| entry.transcript_chars).sum();
+    let avg_turns_per_session = if total_sessions == 0 {
+        0.0
+    } else {
+        total_turns as f64 / total_sessions as f64
+    };
+    let durations = sessions
+        .iter()
+        .filter_map(|entry| entry.duration_secs.map(|value| value as f64))
+        .collect::<Vec<_>>();
+    let avg_session_duration_secs =
+        (!durations.is_empty()).then(|| durations.iter().sum::<f64>() / durations.len() as f64);
+
+    Ok(VoiceMetricsSummary {
+        total_sessions,
+        active_sessions,
+        ended_sessions,
+        total_turns,
+        total_artifacts,
+        total_artifact_bytes,
+        total_transcript_chars,
+        avg_turns_per_session,
+        avg_session_duration_secs,
+        sessions,
+    })
+}
+
 pub async fn start_voice_session(
     config: &AppConfig,
     workspace_root: &Path,
@@ -2109,6 +2203,100 @@ fn truncate_voice_event_summary(text: &str, limit: usize) -> String {
     }
     let summarized = trimmed.chars().take(limit).collect::<String>();
     format!("{summarized}...")
+}
+
+async fn build_voice_session_metrics(
+    workspace_root: &Path,
+    session: VoiceSessionRecord,
+) -> Result<VoiceSessionMetrics> {
+    let turn_count = session.turns.len();
+    let user_turn_count = session
+        .turns
+        .iter()
+        .filter(|turn| turn.role == "user")
+        .count();
+    let assistant_turn_count = session
+        .turns
+        .iter()
+        .filter(|turn| turn.role == "assistant")
+        .count();
+    let user_chars = session
+        .turns
+        .iter()
+        .filter(|turn| turn.role == "user")
+        .map(|turn| turn.text.chars().count())
+        .sum::<usize>();
+    let assistant_chars = session
+        .turns
+        .iter()
+        .filter(|turn| turn.role == "assistant")
+        .map(|turn| turn.text.chars().count())
+        .sum::<usize>();
+    let transcript_chars = user_chars + assistant_chars;
+
+    let mut artifact_count = 0_usize;
+    let mut artifact_bytes = 0_u64;
+    for turn in &session.turns {
+        let Some(path) = turn.synthesized_output_path.as_ref() else {
+            continue;
+        };
+        artifact_count += 1;
+        let resolved_path = resolve_voice_artifact_path(workspace_root, path);
+        if let Ok(metadata) = fs::metadata(&resolved_path).await {
+            artifact_bytes += metadata.len();
+        }
+    }
+
+    let avg_user_turn_chars =
+        (user_turn_count > 0).then(|| user_chars as f64 / user_turn_count as f64);
+    let avg_assistant_turn_chars =
+        (assistant_turn_count > 0).then(|| assistant_chars as f64 / assistant_turn_count as f64);
+    let idle_secs = seconds_since(&session.last_activity_at).unwrap_or(0);
+    let duration_secs = seconds_between(
+        &session.created_at,
+        session
+            .closed_at
+            .as_deref()
+            .unwrap_or(session.last_activity_at.as_str()),
+    );
+
+    Ok(VoiceSessionMetrics {
+        session_id: session.id,
+        status: session.status,
+        live_state: session.live_state,
+        turn_count,
+        user_turn_count,
+        assistant_turn_count,
+        transcript_chars,
+        user_chars,
+        assistant_chars,
+        artifact_count,
+        artifact_bytes,
+        reconnect_count: session.reconnect_count,
+        pause_count: session.pause_count,
+        interrupted_count: session.interrupted_count,
+        idle_secs,
+        duration_secs,
+        avg_user_turn_chars,
+        avg_assistant_turn_chars,
+    })
+}
+
+fn seconds_since(timestamp: &str) -> Option<u64> {
+    let parsed = DateTime::parse_from_rfc3339(timestamp).ok()?;
+    let delta = Utc::now().signed_duration_since(parsed.with_timezone(&Utc));
+    Some(delta.num_seconds().max(0) as u64)
+}
+
+fn seconds_between(start: &str, end: &str) -> Option<u64> {
+    let start = DateTime::parse_from_rfc3339(start).ok()?;
+    let end = DateTime::parse_from_rfc3339(end).ok()?;
+    Some(
+        end.with_timezone(&Utc)
+            .signed_duration_since(start.with_timezone(&Utc))
+            .num_seconds()
+            .max(0) as u64,
+    )
 }
 
 fn ensure_voice_session_active(session: &VoiceSessionRecord) -> Result<()> {
@@ -3046,6 +3234,80 @@ mod tests {
         assert!(kinds.contains(&"session_resumed"));
         assert!(kinds.contains(&"session_interrupted"));
         assert!(kinds.contains(&"session_ended"));
+
+        server_handle.abort();
+    }
+
+    #[tokio::test]
+    async fn voice_session_metrics_report_turn_and_artifact_totals() {
+        let temp = tempdir().expect("tempdir");
+        let (addr, _state, server_handle) = spawn_test_server().await;
+        let config = test_config(
+            &format!("http://{}", addr),
+            temp.path(),
+            "OPENRUSTCLAW_VOICE_TEST_KEY_METRICS",
+        );
+
+        start_voice_session(
+            &config,
+            temp.path(),
+            VoiceSessionStartRequest {
+                session_id: Some("voice-session-metrics".to_string()),
+                assistant_prompt: Some("be concise".to_string()),
+                voice: Some("alloy".to_string()),
+            },
+        )
+        .await
+        .expect("start session");
+
+        append_voice_session_user(
+            temp.path(),
+            "voice-session-metrics",
+            VoiceSessionAppendRequest {
+                text: "hello metrics".to_string(),
+            },
+        )
+        .await
+        .expect("append user");
+
+        unsafe {
+            std::env::set_var("OPENRUSTCLAW_VOICE_TEST_KEY_METRICS", "test-openai-key");
+        }
+        respond_voice_session(
+            &config,
+            temp.path(),
+            "voice-session-metrics",
+            VoiceSessionRespondRequest {
+                text: "hello back".to_string(),
+                provider: None,
+                model: None,
+                voice: None,
+                format: Some("mp3".to_string()),
+                output_path: None,
+            },
+        )
+        .await
+        .expect("respond");
+        unsafe {
+            std::env::remove_var("OPENRUSTCLAW_VOICE_TEST_KEY_METRICS");
+        }
+
+        let metrics = voice_session_metrics(temp.path(), "voice-session-metrics")
+            .await
+            .expect("session metrics");
+        assert_eq!(metrics.turn_count, 2);
+        assert_eq!(metrics.user_turn_count, 1);
+        assert_eq!(metrics.assistant_turn_count, 1);
+        assert_eq!(metrics.artifact_count, 1);
+        assert!(metrics.artifact_bytes > 0);
+        assert!(metrics.transcript_chars >= "hello metricshello back".chars().count());
+
+        let summary = voice_metrics(temp.path()).await.expect("voice metrics");
+        assert_eq!(summary.total_sessions, 1);
+        assert_eq!(summary.total_turns, 2);
+        assert_eq!(summary.total_artifacts, 1);
+        assert_eq!(summary.sessions.len(), 1);
+        assert_eq!(summary.sessions[0].session_id, "voice-session-metrics");
 
         server_handle.abort();
     }

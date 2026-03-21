@@ -392,14 +392,17 @@
           <div class="action-row" style="margin-bottom: 12px">
             <button class="secondary" id="voice-status-refresh">Refresh Voice Status</button>
             <button class="secondary" id="voice-providers-refresh">List Providers</button>
+            <button class="secondary" id="voice-metrics-refresh">Metrics</button>
             <button class="secondary" id="voice-sessions-refresh">List Sessions</button>
             <button class="secondary" id="voice-voices-refresh">List Voices</button>
           </div>
           <div class="surface"><pre id="voice-status">Loading…</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="voice-providers">No provider catalog loaded yet.</pre></div>
+          <div class="surface" style="margin-top: 12px"><pre id="voice-metrics">No voice metrics loaded yet.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="voice-sessions">No voice sessions loaded yet.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="voice-session-health">No voice session health loaded yet.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="voice-session-detail">No voice session inspected yet.</pre></div>
+          <div class="surface" style="margin-top: 12px"><pre id="voice-session-metrics">No voice session metrics loaded yet.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="voice-session-transcript">No voice session transcript loaded yet.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="voice-session-artifacts">No voice session artifacts loaded yet.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="voice-session-events">No voice session events loaded yet.</pre></div>
@@ -447,6 +450,7 @@
             <div class="action-row">
               <button id="voice-session-start">Start Session</button>
               <button class="secondary" id="voice-session-inspect">Inspect Session</button>
+              <button class="secondary" id="voice-session-metrics-refresh">Session Metrics</button>
               <button class="secondary" id="voice-session-transcript-refresh">Transcript</button>
               <button class="secondary" id="voice-session-artifacts-refresh">Artifacts</button>
               <button class="secondary" id="voice-session-events-refresh">Events</button>
@@ -1188,6 +1192,11 @@
         setText("voice-sessions", payload);
       }
 
+      async function loadVoiceMetrics() {
+        const payload = await fetchJson("/control/voice/metrics");
+        setText("voice-metrics", payload);
+      }
+
       async function loadVoiceSessionHealth() {
         const staleAfterSecs = document.getElementById("voice-session-stale-secs").value.trim();
         const query = staleAfterSecs ? `?stale_after_secs=${encodeURIComponent(staleAfterSecs)}` : "";
@@ -1207,6 +1216,15 @@
         }
         const payload = await fetchJson(`/control/voice/sessions/${encodeURIComponent(sessionId)}/transcript`);
         setText("voice-session-transcript", payload);
+      }
+
+      async function loadVoiceSessionMetrics() {
+        const sessionId = document.getElementById("voice-session-id").value.trim();
+        if (!sessionId) {
+          throw new Error("A voice session id is required");
+        }
+        const payload = await fetchJson(`/control/voice/sessions/${encodeURIComponent(sessionId)}/metrics`);
+        setText("voice-session-metrics", payload);
       }
 
       async function loadVoiceSessionArtifacts() {
@@ -1241,9 +1259,11 @@
           document.getElementById("voice-session-id").value = sessionId;
         }
         setText("voice-session-detail", result);
+        setText("voice-session-metrics", "No voice session metrics loaded yet.");
         setText("voice-session-transcript", "No voice session transcript loaded yet.");
         setText("voice-session-artifacts", "No voice session artifacts loaded yet.");
         setText("voice-session-events", "No voice session events loaded yet.");
+        await loadVoiceMetrics();
         await loadVoiceSessions();
         await loadVoiceSessionHealth();
       }
@@ -1255,6 +1275,7 @@
         }
         const payload = await fetchJson(`/control/voice/sessions/${encodeURIComponent(sessionId)}`);
         setText("voice-session-detail", payload);
+        await loadVoiceSessionMetrics();
         await loadVoiceSessionTranscript();
         await loadVoiceSessionArtifacts();
         await loadVoiceSessionEvents();
@@ -2800,6 +2821,7 @@
             loadChannelProbes(),
             loadVoiceStatus(),
             loadVoiceProviders(),
+            loadVoiceMetrics(),
             loadVoiceSessions(),
             loadVoiceSessionHealth(),
             loadVoiceVoices(),
@@ -3150,6 +3172,13 @@
           setText("voice-providers", { error: error.message });
         }
       });
+      document.getElementById("voice-metrics-refresh").addEventListener("click", async () => {
+        try {
+          await loadVoiceMetrics();
+        } catch (error) {
+          setText("voice-metrics", { error: error.message });
+        }
+      });
       document.getElementById("voice-sessions-refresh").addEventListener("click", async () => {
         try {
           await loadVoiceSessions();
@@ -3197,6 +3226,13 @@
           await inspectVoiceSession();
         } catch (error) {
           setText("voice-session-detail", { error: error.message });
+        }
+      });
+      document.getElementById("voice-session-metrics-refresh").addEventListener("click", async () => {
+        try {
+          await loadVoiceSessionMetrics();
+        } catch (error) {
+          setText("voice-session-metrics", { error: error.message });
         }
       });
       document.getElementById("voice-session-transcript-refresh").addEventListener("click", async () => {

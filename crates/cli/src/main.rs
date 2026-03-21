@@ -1796,6 +1796,17 @@ enum VoiceAction {
         config: String,
         id: String,
     },
+    /// Summarize derived metrics across bounded voice sessions
+    Metrics {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+    },
+    /// Inspect derived metrics for one bounded voice session receipt
+    SessionMetrics {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+        id: String,
+    },
     /// Inspect the indexed transcript for one bounded voice session receipt
     Transcript {
         #[arg(short, long, default_value = "config/default.toml")]
@@ -4919,6 +4930,10 @@ async fn main() -> Result<()> {
             }
             VoiceAction::SessionStatus { config, id } => {
                 commands::voice::session_status(&config, &id).await
+            }
+            VoiceAction::Metrics { config } => commands::voice::metrics(&config).await,
+            VoiceAction::SessionMetrics { config, id } => {
+                commands::voice::session_metrics(&config, &id).await
             }
             VoiceAction::Transcript { config, id } => {
                 commands::voice::transcript(&config, &id).await
