@@ -759,6 +759,7 @@
           <div class="surface" style="margin-top: 12px"><pre id="mobile-node-sync">No mobile sync state loaded yet.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="mobile-node-capabilities">No mobile capabilities loaded yet.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="mobile-notification-detail">No mobile notification selected.</pre></div>
+          <div class="surface" style="margin-top: 12px"><pre id="mobile-inbox-detail">No mobile inbox message selected.</pre></div>
         </article>
         <article class="panel span-6">
           <h2>Mobile Preview</h2>
@@ -768,6 +769,7 @@
             <textarea id="mobile-message-content" rows="3" spellcheck="false" placeholder="message content"></textarea>
             <div class="action-row">
               <button id="mobile-preview-message">Preview Message</button>
+              <button class="secondary" id="mobile-report-message">Report Inbox Message</button>
               <button class="secondary" id="mobile-preview-sync">Preview Sync</button>
             </div>
             <input id="mobile-notification-title" type="text" placeholder="notification title" />
@@ -801,6 +803,20 @@
                 <tr><th>Notification</th><th>Status</th><th>Action</th></tr>
               </thead>
               <tbody id="mobile-notifications"><tr><td colspan="3" class="muted">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </article>
+        <article class="panel span-6">
+          <h2>Mobile Inbox</h2>
+          <div class="action-row" style="margin-bottom: 12px">
+            <button class="secondary" id="mobile-inbox-refresh">Refresh Inbox</button>
+          </div>
+          <div class="surface">
+            <table class="table">
+              <thead>
+                <tr><th>Message</th><th>Status</th><th>Action</th></tr>
+              </thead>
+              <tbody id="mobile-inbox"><tr><td colspan="3" class="muted">Loading…</td></tr></tbody>
             </table>
           </div>
         </article>
@@ -1893,6 +1909,7 @@
         document.getElementById("mobile-sync-pending").value = sync.pending_change_count ?? "";
         document.getElementById("mobile-sync-result").value = sync.last_sync_result || "";
         await loadMobileNotifications(id);
+        await loadMobileInbox(id);
       }
 
       async function refreshMobileRuntime() {
@@ -2048,6 +2065,66 @@
         });
         setText("mobile-notification-detail", result);
         await loadMobileNotifications(document.getElementById("mobile-source-node").value.trim());
+        await inspectMobileNode(document.getElementById("mobile-source-node").value.trim());
+      }
+
+      async function loadMobileInbox(nodeId) {
+        const currentNodeId = nodeId || document.getElementById("mobile-source-node").value.trim();
+        const query = currentNodeId ? `?node_id=${encodeURIComponent(currentNodeId)}&limit=20` : "?limit=20";
+        const payload = await fetchJson(`/control/mobile/inbox${query}`);
+        const messages = payload.messages || [];
+        const rows = messages.map((entry) => {
+          const action = entry.status === "acknowledged"
+            ? `<button class="secondary" onclick="inspectMobileInboxMessage('${entry.id}')">Inspect</button>`
+            : `<button class="secondary" onclick="acknowledgeMobileInboxMessage('${entry.id}')">Acknowledge</button>`;
+          return `<tr>
+            <td><strong>${entry.source || "-"}</strong><div class="muted">${entry.target || "-"}</div></td>
+            <td>${entry.status || "-"}</td>
+            <td>${action}</td>
+          </tr>`;
+        });
+        renderTableRows("mobile-inbox", rows, "No mobile inbox messages recorded.");
+        if (messages.length) {
+          await inspectMobileInboxMessage(messages[0].id);
+        } else {
+          setText("mobile-inbox-detail", "No mobile inbox message selected.");
+        }
+      }
+
+      async function inspectMobileInboxMessage(id) {
+        const payload = await fetchJson(`/control/mobile/inbox/${encodeURIComponent(id)}`);
+        setText("mobile-inbox-detail", payload);
+      }
+
+      async function reportMobileInboxMessage() {
+        const nodeId = document.getElementById("mobile-source-node").value.trim();
+        const result = await fetchJson("/control/mobile/inbox", {
+          method: "POST",
+          body: JSON.stringify({
+            node_id: nodeId,
+            source: document.getElementById("mobile-target").value.trim() || "external",
+            target: nodeId || "main",
+            content: document.getElementById("mobile-message-content").value,
+            content_type: "text/plain",
+            metadata: {
+              reported_by: "control_ui",
+            },
+          }),
+        });
+        setText("mobile-inbox-detail", result);
+        await loadMobileInbox(nodeId);
+        await inspectMobileNode(nodeId);
+      }
+
+      async function acknowledgeMobileInboxMessage(id) {
+        const result = await fetchJson(`/control/mobile/inbox/${encodeURIComponent(id)}/ack`, {
+          method: "POST",
+          body: JSON.stringify({
+            acknowledged_by: "control_ui",
+          }),
+        });
+        setText("mobile-inbox-detail", result);
+        await loadMobileInbox(document.getElementById("mobile-source-node").value.trim());
         await inspectMobileNode(document.getElementById("mobile-source-node").value.trim());
       }
 
@@ -2969,6 +3046,13 @@
           setText("mobile-notification-detail", { error: error.message });
         }
       });
+      document.getElementById("mobile-inbox-refresh").addEventListener("click", async () => {
+        try {
+          await loadMobileInbox();
+        } catch (error) {
+          setText("mobile-inbox-detail", { error: error.message });
+        }
+      });
       document.getElementById("mobile-send-notification").addEventListener("click", async () => {
         try {
           await sendMobileNotification();
@@ -3009,6 +3093,13 @@
           await previewMobileMessage();
         } catch (error) {
           setText("mobile-preview-result", { error: error.message });
+        }
+      });
+      document.getElementById("mobile-report-message").addEventListener("click", async () => {
+        try {
+          await reportMobileInboxMessage();
+        } catch (error) {
+          setText("mobile-inbox-detail", { error: error.message });
         }
       });
       document.getElementById("mobile-preview-notification").addEventListener("click", async () => {

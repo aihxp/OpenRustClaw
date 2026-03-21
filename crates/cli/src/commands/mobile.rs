@@ -208,6 +208,12 @@ pub struct MobileNodeRuntimeState {
     #[serde(default)]
     pub delivered_notification_count: usize,
     #[serde(default)]
+    pub last_inbound_message_at: Option<String>,
+    #[serde(default)]
+    pub pending_inbound_message_count: usize,
+    #[serde(default)]
+    pub acknowledged_inbound_message_count: usize,
+    #[serde(default)]
     pub metadata: Value,
 }
 
@@ -391,6 +397,46 @@ pub struct MobileNotificationAckRequest {
     pub acknowledged_by: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MobileInboundMessageRecord {
+    pub id: String,
+    pub node_id: String,
+    pub source: String,
+    pub target: String,
+    pub status: String,
+    #[serde(default)]
+    pub content_type: Option<String>,
+    pub content_preview: String,
+    pub bytes: usize,
+    pub created_at: String,
+    #[serde(default)]
+    pub reported_at: Option<String>,
+    #[serde(default)]
+    pub acknowledged_at: Option<String>,
+    #[serde(default)]
+    pub acknowledged_by: Option<String>,
+    #[serde(default)]
+    pub metadata: Value,
+    pub preview: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MobileInboundMessageReportRequest {
+    pub node_id: String,
+    pub source: String,
+    pub target: String,
+    pub content: String,
+    #[serde(default)]
+    pub content_type: Option<String>,
+    #[serde(default)]
+    pub metadata: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MobileInboundMessageAckRequest {
+    pub acknowledged_by: String,
+}
+
 fn default_true() -> bool {
     true
 }
@@ -516,6 +562,9 @@ impl MobileNodeRuntimeState {
             last_notification_at: None,
             pending_notification_count: 0,
             delivered_notification_count: 0,
+            last_inbound_message_at: None,
+            pending_inbound_message_count: 0,
+            acknowledged_inbound_message_count: 0,
             metadata: Value::Null,
         }
     }
@@ -1136,6 +1185,139 @@ pub fn acknowledge_notification_data(
     Ok(record)
 }
 
+pub fn list_inbound_message_data(
+    workspace_root: &Path,
+    node_id: Option<&str>,
+    limit: Option<usize>,
+) -> Result<Vec<MobileInboundMessageRecord>> {
+    let mut entries = Vec::new();
+    let dir = inbox_dir(workspace_root);
+    if !dir.exists() {
+        return Ok(entries);
+    }
+
+    for entry in fs::read_dir(&dir).with_context(|| format!("failed to read {}", dir.display()))? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.extension().and_then(|value| value.to_str()) != Some("json") {
+            continue;
+        }
+        let bytes = fs::read_to_string(&path)
+            .with_context(|| format!("failed to read {}", path.display()))?;
+        let record: MobileInboundMessageRecord = serde_json::from_str(&bytes)
+            .with_context(|| format!("failed to parse {}", path.display()))?;
+        if let Some(node_id) = node_id
+            && record.node_id != node_id
+        {
+            continue;
+        }
+        entries.push(record);
+    }
+
+    entries.sort_by(|left, right| right.created_at.cmp(&left.created_at));
+    if let Some(limit) = limit {
+        entries.truncate(limit);
+    }
+    Ok(entries)
+}
+
+pub fn inspect_inbound_message_data(
+    workspace_root: &Path,
+    message_id: &str,
+) -> Result<MobileInboundMessageRecord> {
+    let path = inbox_message_path(workspace_root, message_id);
+    let bytes =
+        fs::read_to_string(&path).with_context(|| format!("failed to read {}", path.display()))?;
+    serde_json::from_str(&bytes).with_context(|| format!("failed to parse {}", path.display()))
+}
+
+pub fn report_inbound_message_data(
+    workspace_root: &Path,
+    request: MobileInboundMessageReportRequest,
+) -> Result<MobileInboundMessageRecord> {
+    if request.node_id.trim().is_empty() {
+        return Err(anyhow!("node_id is required"));
+    }
+    inspect_node_data(workspace_root, &request.node_id)?;
+    if request.source.trim().is_empty() {
+        return Err(anyhow!("source is required"));
+    }
+    if request.target.trim().is_empty() {
+        return Err(anyhow!("target is required"));
+    }
+    if request.content.trim().is_empty() {
+        return Err(anyhow!("content is required"));
+    }
+
+    let content_type = request
+        .content_type
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("text/plain")
+        .to_string();
+    let preview = preview_message_data(MobileMessagePreviewRequest {
+        source_node_id: request.source.clone(),
+        target: request.target.clone(),
+        content: request.content.clone(),
+        content_type: Some(content_type.clone()),
+    })?;
+    let now = Utc::now().to_rfc3339();
+    let mut runtime = load_runtime_state(workspace_root, &request.node_id)?;
+    let record = MobileInboundMessageRecord {
+        id: uuid::Uuid::new_v4().to_string(),
+        node_id: request.node_id,
+        source: request.source,
+        target: request.target,
+        status: "reported".to_string(),
+        content_type: Some(content_type),
+        content_preview: request.content,
+        bytes: preview
+            .get("bytes")
+            .and_then(Value::as_u64)
+            .unwrap_or_default() as usize,
+        created_at: now.clone(),
+        reported_at: Some(now.clone()),
+        acknowledged_at: None,
+        acknowledged_by: None,
+        metadata: request.metadata,
+        preview,
+    };
+
+    runtime.last_inbound_message_at = Some(now);
+    runtime.pending_inbound_message_count = runtime.pending_inbound_message_count.saturating_add(1);
+    refresh_runtime_status(&mut runtime);
+    save_runtime_state(workspace_root, &runtime)?;
+    write_inbound_message_record(workspace_root, &record)?;
+    Ok(record)
+}
+
+pub fn acknowledge_inbound_message_data(
+    workspace_root: &Path,
+    message_id: &str,
+    request: MobileInboundMessageAckRequest,
+) -> Result<MobileInboundMessageRecord> {
+    if request.acknowledged_by.trim().is_empty() {
+        return Err(anyhow!("acknowledged_by is required"));
+    }
+    let mut record = inspect_inbound_message_data(workspace_root, message_id)?;
+    if record.status == "acknowledged" {
+        return Ok(record);
+    }
+
+    let mut runtime = load_runtime_state(workspace_root, &record.node_id)?;
+    record.status = "acknowledged".to_string();
+    record.acknowledged_by = Some(request.acknowledged_by);
+    record.acknowledged_at = Some(Utc::now().to_rfc3339());
+    runtime.pending_inbound_message_count = runtime.pending_inbound_message_count.saturating_sub(1);
+    runtime.acknowledged_inbound_message_count =
+        runtime.acknowledged_inbound_message_count.saturating_add(1);
+    refresh_runtime_status(&mut runtime);
+    save_runtime_state(workspace_root, &runtime)?;
+    write_inbound_message_record(workspace_root, &record)?;
+    Ok(record)
+}
+
 pub fn list_command_data(
     workspace_root: &Path,
     node_id: Option<&str>,
@@ -1699,6 +1881,44 @@ pub async fn acknowledge_notification(
     Ok(())
 }
 
+pub async fn list_inbox(
+    workspace_root: &Path,
+    node_id: Option<&str>,
+    limit: Option<usize>,
+) -> Result<()> {
+    let messages = list_inbound_message_data(workspace_root, node_id, limit)?;
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&json!({ "messages": messages }))?
+    );
+    Ok(())
+}
+
+pub async fn inspect_inbox_message(workspace_root: &Path, message_id: &str) -> Result<()> {
+    let message = inspect_inbound_message_data(workspace_root, message_id)?;
+    println!("{}", serde_json::to_string_pretty(&message)?);
+    Ok(())
+}
+
+pub async fn report_inbox_message(
+    workspace_root: &Path,
+    request: MobileInboundMessageReportRequest,
+) -> Result<()> {
+    let message = report_inbound_message_data(workspace_root, request)?;
+    println!("{}", serde_json::to_string_pretty(&message)?);
+    Ok(())
+}
+
+pub async fn acknowledge_inbox_message(
+    workspace_root: &Path,
+    message_id: &str,
+    request: MobileInboundMessageAckRequest,
+) -> Result<()> {
+    let message = acknowledge_inbound_message_data(workspace_root, message_id, request)?;
+    println!("{}", serde_json::to_string_pretty(&message)?);
+    Ok(())
+}
+
 pub async fn preview_message(request: MobileMessagePreviewRequest) -> Result<()> {
     let preview = preview_message_data(request)?;
     println!("{}", serde_json::to_string_pretty(&preview)?);
@@ -1790,6 +2010,10 @@ fn notifications_dir(workspace_root: &Path) -> PathBuf {
     mobile_root(workspace_root).join("notifications")
 }
 
+fn inbox_dir(workspace_root: &Path) -> PathBuf {
+    mobile_root(workspace_root).join("inbox")
+}
+
 fn runtime_dir(workspace_root: &Path) -> PathBuf {
     mobile_root(workspace_root).join("runtime")
 }
@@ -1804,6 +2028,10 @@ fn command_path(workspace_root: &Path, command_id: &str) -> PathBuf {
 
 fn notification_path(workspace_root: &Path, notification_id: &str) -> PathBuf {
     notifications_dir(workspace_root).join(format!("{notification_id}.json"))
+}
+
+fn inbox_message_path(workspace_root: &Path, message_id: &str) -> PathBuf {
+    inbox_dir(workspace_root).join(format!("{message_id}.json"))
 }
 
 fn runtime_path(workspace_root: &Path, node_id: &str) -> PathBuf {
@@ -1849,6 +2077,21 @@ fn write_notification_record(
         &path,
         serde_json::to_vec_pretty(record)
             .context("failed to serialize mobile notification record")?,
+    )
+    .with_context(|| format!("failed to write {}", path.display()))
+}
+
+fn write_inbound_message_record(
+    workspace_root: &Path,
+    record: &MobileInboundMessageRecord,
+) -> Result<()> {
+    fs::create_dir_all(inbox_dir(workspace_root))
+        .with_context(|| format!("failed to create {}", inbox_dir(workspace_root).display()))?;
+    let path = inbox_message_path(workspace_root, &record.id);
+    fs::write(
+        &path,
+        serde_json::to_vec_pretty(record)
+            .context("failed to serialize mobile inbound message record")?,
     )
     .with_context(|| format!("failed to write {}", path.display()))
 }
@@ -2578,5 +2821,97 @@ mod tests {
         unsafe {
             std::env::remove_var("MOBILE_NOTIFY_ACK_TOKEN");
         }
+    }
+
+    #[test]
+    fn report_inbound_message_persists_runtime_receipt() {
+        let temp = tempdir().expect("tempdir");
+        pair_node_data(
+            temp.path(),
+            MobilePairRequest {
+                id: "iphone-inbox".to_string(),
+                gateway_url: "wss://example.com/gateway".to_string(),
+                auth_token_env: "MOBILE_INBOX_TOKEN".to_string(),
+                device_name: Some("Inbox iPhone".to_string()),
+                platform: Some("ios".to_string()),
+                capabilities: vec!["mobile".to_string(), "notifications".to_string()],
+                enabled: true,
+                sync: None,
+                notifications: None,
+                metadata: Value::Null,
+            },
+        )
+        .expect("pair node");
+
+        let record = report_inbound_message_data(
+            temp.path(),
+            MobileInboundMessageReportRequest {
+                node_id: "iphone-inbox".to_string(),
+                source: "+14165550123".to_string(),
+                target: "main".to_string(),
+                content: "Studio status changed".to_string(),
+                content_type: Some("text/plain".to_string()),
+                metadata: json!({ "transport": "sms" }),
+            },
+        )
+        .expect("report inbound message");
+
+        assert_eq!(record.status, "reported");
+        assert_eq!(record.source, "+14165550123");
+        assert_eq!(record.preview["target"], "main");
+
+        let runtime = node_runtime_data(temp.path(), "iphone-inbox").expect("runtime");
+        assert_eq!(runtime.pending_inbound_message_count, 1);
+        assert!(runtime.last_inbound_message_at.is_some());
+    }
+
+    #[test]
+    fn acknowledge_inbound_message_updates_runtime_counters() {
+        let temp = tempdir().expect("tempdir");
+        pair_node_data(
+            temp.path(),
+            MobilePairRequest {
+                id: "iphone-inbox-ack".to_string(),
+                gateway_url: "wss://example.com/gateway".to_string(),
+                auth_token_env: "MOBILE_INBOX_ACK_TOKEN".to_string(),
+                device_name: Some("Inbox Ack iPhone".to_string()),
+                platform: Some("ios".to_string()),
+                capabilities: vec!["mobile".to_string()],
+                enabled: true,
+                sync: None,
+                notifications: None,
+                metadata: Value::Null,
+            },
+        )
+        .expect("pair node");
+
+        let record = report_inbound_message_data(
+            temp.path(),
+            MobileInboundMessageReportRequest {
+                node_id: "iphone-inbox-ack".to_string(),
+                source: "ops-room".to_string(),
+                target: "main".to_string(),
+                content: "Ack me".to_string(),
+                content_type: None,
+                metadata: Value::Null,
+            },
+        )
+        .expect("report inbound message");
+
+        let acknowledged = acknowledge_inbound_message_data(
+            temp.path(),
+            &record.id,
+            MobileInboundMessageAckRequest {
+                acknowledged_by: "operator".to_string(),
+            },
+        )
+        .expect("acknowledge inbound message");
+
+        assert_eq!(acknowledged.status, "acknowledged");
+        assert_eq!(acknowledged.acknowledged_by.as_deref(), Some("operator"));
+
+        let runtime = node_runtime_data(temp.path(), "iphone-inbox-ack").expect("runtime");
+        assert_eq!(runtime.pending_inbound_message_count, 0);
+        assert_eq!(runtime.acknowledged_inbound_message_count, 1);
     }
 }

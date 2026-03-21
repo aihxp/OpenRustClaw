@@ -3,6 +3,7 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use openrustclaw_mobile::DeviceCommandKind;
+use serde_json::Value;
 
 mod commands;
 
@@ -1489,6 +1490,35 @@ enum MobileAction {
     },
     /// Acknowledge one bounded mobile notification receipt
     AcknowledgeNotification {
+        #[arg(long)]
+        id: String,
+        #[arg(long)]
+        acknowledged_by: String,
+    },
+    /// List persisted bounded mobile inbound message receipts
+    Inbox {
+        #[arg(long)]
+        node_id: Option<String>,
+        #[arg(long)]
+        limit: Option<usize>,
+    },
+    /// Inspect one bounded mobile inbound message receipt
+    MessageStatus { id: String },
+    /// Report one bounded mobile inbound message through the shipped runtime lane
+    ReportMessage {
+        #[arg(long)]
+        node_id: String,
+        #[arg(long)]
+        source: String,
+        #[arg(long)]
+        target: String,
+        #[arg(long)]
+        content: String,
+        #[arg(long)]
+        content_type: Option<String>,
+    },
+    /// Acknowledge one bounded mobile inbound message receipt
+    AcknowledgeMessage {
         #[arg(long)]
         id: String,
         #[arg(long)]
@@ -3452,6 +3482,43 @@ async fn main() -> Result<()> {
                         &workspace_root,
                         &id,
                         commands::mobile::MobileNotificationAckRequest { acknowledged_by },
+                    )
+                    .await
+                }
+                MobileAction::Inbox { node_id, limit } => {
+                    commands::mobile::list_inbox(&workspace_root, node_id.as_deref(), limit).await
+                }
+                MobileAction::MessageStatus { id } => {
+                    commands::mobile::inspect_inbox_message(&workspace_root, &id).await
+                }
+                MobileAction::ReportMessage {
+                    node_id,
+                    source,
+                    target,
+                    content,
+                    content_type,
+                } => {
+                    commands::mobile::report_inbox_message(
+                        &workspace_root,
+                        commands::mobile::MobileInboundMessageReportRequest {
+                            node_id,
+                            source,
+                            target,
+                            content,
+                            content_type,
+                            metadata: Value::Null,
+                        },
+                    )
+                    .await
+                }
+                MobileAction::AcknowledgeMessage {
+                    id,
+                    acknowledged_by,
+                } => {
+                    commands::mobile::acknowledge_inbox_message(
+                        &workspace_root,
+                        &id,
+                        commands::mobile::MobileInboundMessageAckRequest { acknowledged_by },
                     )
                     .await
                 }
