@@ -484,6 +484,42 @@ pub struct MobileNodeActivityResult {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct MobileCommandMetricsSummary {
+    pub total_commands: usize,
+    pub pending_approval_commands: usize,
+    pub approved_commands: usize,
+    pub executed_commands: usize,
+    pub rejected_commands: usize,
+    pub by_command_kind: HashMap<String, usize>,
+    #[serde(default)]
+    pub avg_execution_latency_secs: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MobileCommandMetricsResult {
+    pub status: String,
+    pub metrics: MobileCommandMetricsSummary,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MobileCommandEvent {
+    pub index: usize,
+    pub kind: String,
+    pub observed_at: String,
+    pub summary: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MobileCommandEventsResult {
+    pub command_id: String,
+    pub node_id: String,
+    pub command: DeviceCommandKind,
+    pub status: String,
+    pub event_count: usize,
+    pub events: Vec<MobileCommandEvent>,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct MobileNodeSummary {
     pub node_id: String,
     pub runtime_status: String,
@@ -502,6 +538,7 @@ pub struct MobileNodeSummary {
     pub notifications: usize,
     pub inbox_messages: usize,
     pub outbox_messages: usize,
+    pub commands: usize,
     pub capability_executions: usize,
     pub media_artifacts: usize,
 }
@@ -523,6 +560,7 @@ pub struct MobileMetricsSummary {
     pub acknowledged_inbound_messages: usize,
     pub pending_outbound_messages: usize,
     pub acknowledged_outbound_messages: usize,
+    pub commands: usize,
     pub sync_conflicts: usize,
     pub capability_executions: usize,
     pub media_artifacts: usize,
@@ -1438,6 +1476,7 @@ pub fn mobile_node_summary_data(
     let notifications = list_notification_data(workspace_root, Some(node_id), None)?.len();
     let inbox_messages = list_inbound_message_data(workspace_root, Some(node_id), None)?.len();
     let outbox_messages = list_outbound_message_data(workspace_root, Some(node_id), None)?.len();
+    let commands = list_command_data(workspace_root, Some(node_id), None)?.len();
     let capability_executions =
         list_capability_execution_data(workspace_root, Some(node_id), None, None)?.len();
     let media_artifacts =
@@ -1462,6 +1501,7 @@ pub fn mobile_node_summary_data(
             notifications,
             inbox_messages,
             outbox_messages,
+            commands,
             capability_executions,
             media_artifacts,
         },
@@ -1487,6 +1527,7 @@ pub fn mobile_metrics_data() -> Result<MobileMetricsResult> {
         acknowledged_inbound_messages: 0,
         pending_outbound_messages: 0,
         acknowledged_outbound_messages: 0,
+        commands: 0,
         sync_conflicts: 0,
         capability_executions: 0,
         media_artifacts: 0,
@@ -1527,6 +1568,7 @@ pub fn mobile_metrics_data() -> Result<MobileMetricsResult> {
 
     summary.active_app_sessions =
         list_app_session_data(&workspace_root, None, Some("active"), None)?.len();
+    summary.commands = list_command_data(&workspace_root, None, None)?.len();
     summary.sync_conflicts = list_sync_conflict_data(&workspace_root, None, None, None)?.len();
     summary.capability_executions =
         list_capability_execution_data(&workspace_root, None, None, None)?.len();
@@ -2565,6 +2607,146 @@ pub fn inspect_command_data(
     serde_json::from_str(&bytes).with_context(|| format!("failed to parse {}", path.display()))
 }
 
+fn command_timeline_events(command: &MobileCommandRecord) -> Vec<MobileCommandEvent> {
+    let mut events = Vec::new();
+    let mut index = 0usize;
+
+    events.push(MobileCommandEvent {
+        index,
+        kind: "command_dispatched".to_string(),
+        observed_at: command.created_at.to_rfc3339(),
+        summary: format!(
+            "{} dispatched for node {} (requires {})",
+            command.command, command.node_id, command.required_capability
+        ),
+    });
+    index += 1;
+
+    if command.approval_required {
+        if let Some(approved_at) = command.approved_at.as_ref() {
+            let kind = if command.status == "rejected" {
+                "command_rejected"
+            } else {
+                "command_approved"
+            };
+            events.push(MobileCommandEvent {
+                index,
+                kind: kind.to_string(),
+                observed_at: approved_at.to_rfc3339(),
+                summary: if command.status == "rejected" {
+                    format!(
+                        "{} rejected by {}",
+                        command.command,
+                        command.approved_by.as_deref().unwrap_or("operator")
+                    )
+                } else {
+                    format!(
+                        "{} approved by {}",
+                        command.command,
+                        command.approved_by.as_deref().unwrap_or("operator")
+                    )
+                },
+            });
+            index += 1;
+        }
+    } else if command.status == "rejected" {
+        events.push(MobileCommandEvent {
+            index,
+            kind: "command_rejected".to_string(),
+            observed_at: command.created_at.to_rfc3339(),
+            summary: format!("{} rejected for node {}", command.command, command.node_id),
+        });
+        index += 1;
+    }
+
+    if let Some(executed_at) = command.executed_at.as_ref() {
+        events.push(MobileCommandEvent {
+            index,
+            kind: "command_executed".to_string(),
+            observed_at: executed_at.to_rfc3339(),
+            summary: format!(
+                "{} executed for node {} with status {}",
+                command.command, command.node_id, command.status
+            ),
+        });
+    }
+
+    events
+}
+
+fn command_execution_latency_secs(command: &MobileCommandRecord) -> Option<u64> {
+    let executed_at = command.executed_at.as_ref()?;
+    let latency = executed_at
+        .signed_duration_since(command.created_at)
+        .num_seconds();
+    Some(latency.max(0) as u64)
+}
+
+pub fn command_events_data(
+    workspace_root: &Path,
+    command_id: &str,
+) -> Result<MobileCommandEventsResult> {
+    let command = inspect_command_data(workspace_root, command_id)?;
+    let events = command_timeline_events(&command);
+    Ok(MobileCommandEventsResult {
+        command_id: command.id,
+        node_id: command.node_id,
+        command: command.command,
+        status: command.status,
+        event_count: events.len(),
+        events,
+    })
+}
+
+pub fn command_metrics_data(
+    workspace_root: &Path,
+    node_id: Option<&str>,
+    limit: Option<usize>,
+) -> Result<MobileCommandMetricsResult> {
+    let commands = list_command_data(workspace_root, node_id, limit)?;
+    let mut by_command_kind: HashMap<String, usize> = HashMap::new();
+    let mut pending_approval_commands = 0usize;
+    let mut approved_commands = 0usize;
+    let mut executed_commands = 0usize;
+    let mut rejected_commands = 0usize;
+    let mut execution_latencies = Vec::new();
+
+    for command in &commands {
+        *by_command_kind
+            .entry(command.command.to_string())
+            .or_insert(0) += 1;
+        match command.status.as_str() {
+            "pending_approval" => pending_approval_commands += 1,
+            "approved" => approved_commands += 1,
+            "executed" => executed_commands += 1,
+            "rejected" => rejected_commands += 1,
+            _ => {}
+        }
+        if let Some(latency) = command_execution_latency_secs(command) {
+            execution_latencies.push(latency as f64);
+        }
+    }
+
+    let avg_execution_latency_secs = if execution_latencies.is_empty() {
+        None
+    } else {
+        Some(execution_latencies.iter().sum::<f64>() / execution_latencies.len() as f64)
+    };
+
+    Ok(MobileCommandMetricsResult {
+        status: "ok".to_string(),
+        metrics: MobileCommandMetricsSummary {
+            total_commands: commands.len(),
+            pending_approval_commands,
+            approved_commands,
+            executed_commands,
+            rejected_commands,
+            by_command_kind,
+            avg_execution_latency_secs,
+        },
+    })
+}
+
 pub async fn dispatch_command_data(
     workspace_root: &Path,
     request: MobileCommandDispatchRequest,
@@ -3384,6 +3566,22 @@ pub async fn reject_command(
 ) -> Result<()> {
     let command = reject_command_data(workspace_root, command_id, request)?;
     println!("{}", serde_json::to_string_pretty(&command)?);
+    Ok(())
+}
+
+pub async fn command_events(workspace_root: &Path, command_id: &str) -> Result<()> {
+    let events = command_events_data(workspace_root, command_id)?;
+    println!("{}", serde_json::to_string_pretty(&events)?);
+    Ok(())
+}
+
+pub async fn command_metrics(
+    workspace_root: &Path,
+    node_id: Option<&str>,
+    limit: Option<usize>,
+) -> Result<()> {
+    let metrics = command_metrics_data(workspace_root, node_id, limit)?;
+    println!("{}", serde_json::to_string_pretty(&metrics)?);
     Ok(())
 }
 
@@ -4306,6 +4504,117 @@ mod tests {
         assert!(error.to_string().contains("required capability"));
         unsafe {
             std::env::remove_var("MOBILE_TOKEN_CAPS");
+        }
+    }
+
+    #[test]
+    fn command_timeline_events_capture_receipt_transitions() {
+        let record = MobileCommandRecord {
+            id: "command-timeline-test".to_string(),
+            node_id: "iphone-command".to_string(),
+            command: DeviceCommandKind::PushNotification,
+            required_capability: "notifications".to_string(),
+            approval_required: true,
+            status: "executed".to_string(),
+            payload: Value::Null,
+            result: Value::Null,
+            created_at: DateTime::parse_from_rfc3339("2026-01-01T00:00:00Z")
+                .expect("created_at")
+                .with_timezone(&Utc),
+            approved_by: Some("operator".to_string()),
+            decided_reason: Some("approved".to_string()),
+            approved_at: Some(
+                DateTime::parse_from_rfc3339("2026-01-01T00:01:00Z")
+                    .expect("approved_at")
+                    .with_timezone(&Utc),
+            ),
+            executed_at: Some(
+                DateTime::parse_from_rfc3339("2026-01-01T00:02:00Z")
+                    .expect("executed_at")
+                    .with_timezone(&Utc),
+            ),
+        };
+
+        let events = command_timeline_events(&record);
+        assert_eq!(events.len(), 3);
+        assert_eq!(events[0].kind, "command_dispatched");
+        assert_eq!(events[1].kind, "command_approved");
+        assert_eq!(events[2].kind, "command_executed");
+    }
+
+    #[tokio::test]
+    async fn command_metrics_counts_receipts() {
+        let temp = tempdir().expect("tempdir");
+        unsafe {
+            std::env::set_var("MOBILE_COMMAND_TOKEN", "token");
+        }
+        pair_node_data(
+            temp.path(),
+            MobilePairRequest {
+                id: "iphone-commands".to_string(),
+                gateway_url: "wss://example.com/gateway".to_string(),
+                auth_token_env: "MOBILE_COMMAND_TOKEN".to_string(),
+                device_name: Some("Commands iPhone".to_string()),
+                platform: Some("ios".to_string()),
+                capabilities: vec!["mobile".to_string(), "notifications".to_string()],
+                enabled: true,
+                sync: None,
+                notifications: None,
+                metadata: Value::Null,
+            },
+        )
+        .expect("pair node");
+
+        dispatch_command_data(
+            temp.path(),
+            MobileCommandDispatchRequest {
+                node_id: "iphone-commands".to_string(),
+                command: DeviceCommandKind::PushNotification,
+                payload: json!({
+                    "title": "Pending",
+                    "body": "Awaiting approval"
+                }),
+                approved_by: None,
+                require_approval: Some(true),
+            },
+        )
+        .await
+        .expect("dispatch pending command");
+
+        dispatch_command_data(
+            temp.path(),
+            MobileCommandDispatchRequest {
+                node_id: "iphone-commands".to_string(),
+                command: DeviceCommandKind::SyncNow,
+                payload: json!({
+                    "pending_change_count": 2
+                }),
+                approved_by: Some("operator".to_string()),
+                require_approval: Some(false),
+            },
+        )
+        .await
+        .expect("dispatch executed command");
+
+        let metrics = command_metrics_data(temp.path(), Some("iphone-commands"), Some(10))
+            .expect("command metrics");
+        assert_eq!(metrics.metrics.total_commands, 2);
+        assert_eq!(metrics.metrics.pending_approval_commands, 1);
+        assert_eq!(metrics.metrics.executed_commands, 1);
+        assert_eq!(
+            metrics
+                .metrics
+                .by_command_kind
+                .get("push_notification")
+                .copied(),
+            Some(1)
+        );
+        assert_eq!(
+            metrics.metrics.by_command_kind.get("sync_now").copied(),
+            Some(1)
+        );
+        unsafe {
+            std::env::remove_var("MOBILE_COMMAND_TOKEN");
         }
     }
 

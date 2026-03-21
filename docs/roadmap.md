@@ -1331,6 +1331,7 @@ Remaining:
   - [x] bounded mobile outbound message receipts with acknowledgement over the same shipped node runtime lane,
   - [x] bounded pairing/unpair lifecycle receipts plus pairing-history inspection over the same shipped node control plane,
   - [x] bounded per-node activity timelines over runtime, notification, inbox, outbox, and command receipts,
+  - [x] bounded mobile command metrics plus command event timelines over the same shipped node control plane,
   - [x] bounded mobile metrics plus per-node summary surfaces over the same shipped node control plane,
   - [ ] richer paired-node/mobile app runtime capability parity where OpenClaw documents it.
 - [x] Add typed node protocols in Rust for the shipped node command/control lane rather than ad hoc compatibility layers.

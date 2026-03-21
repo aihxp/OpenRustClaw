@@ -16,6 +16,7 @@ The goal is not to imitate OpenClaw's internals. The goal is to deliver the same
 - A bounded media operator lane over Anthropic, Gemini, Ollama, and OpenAI-compatible describe/extract surfaces
 - A bounded voice-call lane with health, metrics, artifacts, events, reconnect, and stale-call handling over compiled-skill bindings
 - A bounded Talk Mode receipt lane with status, metrics, and event-timeline inspection over the feature-gated runner
+- A bounded mobile command lane with receipt metrics and event-timeline inspection over the shared typed Rust mobile command protocol
 - Skills install/update/verify lifecycle with real sandbox execution
 
 ## Where OpenRustClaw Is Intentionally Stronger

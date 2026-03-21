@@ -956,6 +956,7 @@
           <h2>Mobile Commands</h2>
           <div class="action-row" style="margin-bottom: 12px">
             <button class="secondary" id="mobile-commands-refresh">Refresh Commands</button>
+            <button class="secondary" id="mobile-command-metrics-refresh">Command Metrics</button>
           </div>
           <div class="form-grid">
             <input id="mobile-command-node" type="text" placeholder="node id" />
@@ -974,10 +975,12 @@
               <tbody id="mobile-commands"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
             </table>
           </div>
+          <div class="surface" style="margin-top: 12px"><pre id="mobile-command-metrics">No mobile command metrics loaded yet.</pre></div>
         </article>
         <article class="panel span-12">
           <h2>Mobile Command Detail</h2>
           <div class="surface"><pre id="mobile-command-detail">No mobile command selected.</pre></div>
+          <div class="surface" style="margin-top: 12px"><pre id="mobile-command-events-detail">No mobile command events loaded yet.</pre></div>
         </article>
         <article class="panel span-6">
           <h2>Active Orchestration</h2>
@@ -2739,16 +2742,25 @@
           </tr>`;
         });
         renderTableRows("mobile-commands", rows, "No mobile commands recorded.");
+        await loadMobileCommandMetrics();
         if (commands.length) {
           await inspectMobileCommand(commands[0].id);
         } else {
           setText("mobile-command-detail", "No mobile command selected.");
+          setText("mobile-command-events-detail", "No mobile command events loaded yet.");
         }
       }
 
       async function inspectMobileCommand(id) {
         const payload = await fetchJson(`/control/mobile/commands/${encodeURIComponent(id)}`);
         setText("mobile-command-detail", payload);
+        const events = await fetchJson(`/control/mobile/commands/${encodeURIComponent(id)}/events`);
+        setText("mobile-command-events-detail", events);
+      }
+
+      async function loadMobileCommandMetrics() {
+        const payload = await fetchJson("/control/mobile/commands/metrics");
+        setText("mobile-command-metrics", payload);
       }
 
       async function dispatchMobileCommand() {
@@ -3782,6 +3794,13 @@
           await loadMobileCommands();
         } catch (error) {
           setText("mobile-command-detail", { error: error.message });
+        }
+      });
+      document.getElementById("mobile-command-metrics-refresh").addEventListener("click", async () => {
+        try {
+          await loadMobileCommandMetrics();
+        } catch (error) {
+          setText("mobile-command-metrics", { error: error.message });
         }
       });
       document.getElementById("mobile-command-dispatch").addEventListener("click", async () => {

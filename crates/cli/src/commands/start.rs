@@ -2784,6 +2784,14 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
         )
         .route("/control/mobile/commands/{id}", get(mobile_command_handler))
         .route(
+            "/control/mobile/commands/{id}/events",
+            get(mobile_command_events_handler),
+        )
+        .route(
+            "/control/mobile/commands/metrics",
+            get(mobile_command_metrics_handler),
+        )
+        .route(
             "/control/mobile/commands/{id}/approve",
             post(mobile_command_approve_handler),
         )
@@ -4792,6 +4800,14 @@ struct MobileCommandsQuery {
 }
 
 #[derive(serde::Deserialize, Default)]
+struct MobileCommandMetricsQuery {
+    #[serde(default)]
+    node_id: Option<String>,
+    #[serde(default)]
+    limit: Option<usize>,
+}
+
+#[derive(serde::Deserialize, Default)]
 struct MobileLimitQuery {
     #[serde(default)]
     limit: Option<usize>,
@@ -5635,6 +5651,35 @@ async fn mobile_command_handler(
         Ok(command) => (StatusCode::OK, Json(serde_json::json!(command))).into_response(),
         Err(error) => (
             StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn mobile_command_events_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(id): AxumPath<String>,
+) -> impl IntoResponse {
+    match mobile::command_events_data(&state.workspace_root, &id) {
+        Ok(events) => (StatusCode::OK, Json(serde_json::json!(events))).into_response(),
+        Err(error) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn mobile_command_metrics_handler(
+    State(state): State<RuntimeControlState>,
+    Query(query): Query<MobileCommandMetricsQuery>,
+) -> impl IntoResponse {
+    match mobile::command_metrics_data(&state.workspace_root, query.node_id.as_deref(), query.limit)
+    {
+        Ok(metrics) => (StatusCode::OK, Json(serde_json::json!(metrics))).into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({"error": error.to_string()})),
         )
             .into_response(),

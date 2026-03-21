@@ -1714,6 +1714,15 @@ enum MobileAction {
     },
     /// Inspect one mobile command receipt
     CommandStatus { id: String },
+    /// Summarize persisted mobile command receipts
+    CommandMetrics {
+        #[arg(long)]
+        node_id: Option<String>,
+        #[arg(long)]
+        limit: Option<usize>,
+    },
+    /// Inspect one mobile command receipt event timeline
+    CommandEvents { id: String },
     /// Dispatch a capability-gated mobile command
     DispatchCommand {
         #[arg(long)]
@@ -3979,6 +3988,13 @@ async fn main() -> Result<()> {
                 }
                 MobileAction::CommandStatus { id } => {
                     commands::mobile::inspect_command(&workspace_root, &id).await
+                }
+                MobileAction::CommandMetrics { node_id, limit } => {
+                    commands::mobile::command_metrics(&workspace_root, node_id.as_deref(), limit)
+                        .await
+                }
+                MobileAction::CommandEvents { id } => {
+                    commands::mobile::command_events(&workspace_root, &id).await
                 }
                 MobileAction::DispatchCommand {
                     node_id,
