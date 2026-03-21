@@ -375,6 +375,40 @@ pub struct MobileNodeActivityResult {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MobilePairingRecord {
+    pub id: String,
+    pub node_id: String,
+    pub kind: String,
+    pub status: String,
+    pub created_at: String,
+    pub device_name: String,
+    pub platform: String,
+    pub gateway_url: String,
+    #[serde(default)]
+    pub requested_by: Option<String>,
+    #[serde(default)]
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MobileUnpairRequest {
+    #[serde(default)]
+    pub requested_by: Option<String>,
+    #[serde(default)]
+    pub reason: Option<String>,
+    #[serde(default = "default_true")]
+    pub remove_runtime_state: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MobileNodeUnpairResult {
+    pub node_id: String,
+    pub removed_manifest: bool,
+    pub removed_runtime_state: bool,
+    pub pairing: MobilePairingRecord,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MobileNotificationRecord {
     pub id: String,
     pub node_id: String,
@@ -684,6 +718,7 @@ pub fn pair_node_data(
 
     fs::create_dir_all(nodes_dir(workspace_root))
         .with_context(|| format!("failed to create {}", nodes_dir(workspace_root).display()))?;
+    let existed = manifest_path(workspace_root, &request.id).exists();
     let manifest = MobileNodeManifest {
         version: 1,
         node: MobileNodeSpec {
@@ -712,6 +747,25 @@ pub fn pair_node_data(
         serde_json::to_vec_pretty(&manifest).context("failed to serialize mobile node manifest")?,
     )
     .with_context(|| format!("failed to write {}", path.display()))?;
+    write_pairing_record(
+        workspace_root,
+        &MobilePairingRecord {
+            id: uuid::Uuid::new_v4().to_string(),
+            node_id: manifest.node.id.clone(),
+            kind: "paired".to_string(),
+            status: if existed {
+                "updated".to_string()
+            } else {
+                "active".to_string()
+            },
+            created_at: Utc::now().to_rfc3339(),
+            device_name: manifest.node.device_name.clone(),
+            platform: manifest.node.platform.clone(),
+            gateway_url: manifest.node.gateway_url.clone(),
+            requested_by: None,
+            reason: None,
+        },
+    )?;
 
     Ok(manifest)
 }
@@ -739,6 +793,98 @@ pub fn node_status_data(workspace_root: &Path, node_id: &str) -> Result<MobileNo
         readiness: readiness.to_string(),
         sync: manifest.node.sync,
         notifications: manifest.node.notifications,
+    })
+}
+
+pub fn list_pairing_data(
+    workspace_root: &Path,
+    node_id: Option<&str>,
+    limit: Option<usize>,
+) -> Result<Vec<MobilePairingRecord>> {
+    let mut entries = Vec::new();
+    let dir = pairings_dir(workspace_root);
+    if !dir.exists() {
+        return Ok(entries);
+    }
+
+    for entry in fs::read_dir(&dir).with_context(|| format!("failed to read {}", dir.display()))? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.extension().and_then(|value| value.to_str()) != Some("json") {
+            continue;
+        }
+        let bytes = fs::read_to_string(&path)
+            .with_context(|| format!("failed to read {}", path.display()))?;
+        let record: MobilePairingRecord = serde_json::from_str(&bytes)
+            .with_context(|| format!("failed to parse {}", path.display()))?;
+        if let Some(node_id) = node_id
+            && record.node_id != node_id
+        {
+            continue;
+        }
+        entries.push(record);
+    }
+
+    entries.sort_by(|left, right| right.created_at.cmp(&left.created_at));
+    if let Some(limit) = limit {
+        entries.truncate(limit);
+    }
+    Ok(entries)
+}
+
+pub fn unpair_node_data(
+    workspace_root: &Path,
+    node_id: &str,
+    request: MobileUnpairRequest,
+) -> Result<MobileNodeUnpairResult> {
+    let manifest = inspect_node_data(workspace_root, node_id)?;
+    let manifest_file = manifest_path(workspace_root, node_id);
+    let runtime_file = runtime_path(workspace_root, node_id);
+
+    let removed_manifest = if manifest_file.exists() {
+        fs::remove_file(&manifest_file)
+            .with_context(|| format!("failed to remove {}", manifest_file.display()))?;
+        true
+    } else {
+        false
+    };
+    let removed_runtime_state = if request.remove_runtime_state && runtime_file.exists() {
+        fs::remove_file(&runtime_file)
+            .with_context(|| format!("failed to remove {}", runtime_file.display()))?;
+        true
+    } else {
+        false
+    };
+
+    let pairing = MobilePairingRecord {
+        id: uuid::Uuid::new_v4().to_string(),
+        node_id: node_id.to_string(),
+        kind: "unpaired".to_string(),
+        status: "removed".to_string(),
+        created_at: Utc::now().to_rfc3339(),
+        device_name: manifest.node.device_name,
+        platform: manifest.node.platform,
+        gateway_url: manifest.node.gateway_url,
+        requested_by: request
+            .requested_by
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string),
+        reason: request
+            .reason
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string),
+    };
+    write_pairing_record(workspace_root, &pairing)?;
+
+    Ok(MobileNodeUnpairResult {
+        node_id: node_id.to_string(),
+        removed_manifest,
+        removed_runtime_state,
+        pairing,
     })
 }
 
@@ -794,6 +940,24 @@ pub fn node_activity_data(
     inspect_node_data(workspace_root, node_id)?;
     let runtime = load_runtime_state(workspace_root, node_id)?;
     let mut entries = runtime_activity_entries(&runtime);
+    entries.extend(
+        list_pairing_data(workspace_root, Some(node_id), None)?
+            .into_iter()
+            .map(|record| MobileNodeActivityEntry {
+                kind: format!("node_{}", record.kind),
+                id: record.id,
+                status: record.status,
+                created_at: record.created_at,
+                summary: format!(
+                    "{} | {} | {}",
+                    record.device_name,
+                    record.platform,
+                    record
+                        .reason
+                        .unwrap_or_else(|| "node lifecycle recorded".to_string())
+                ),
+            }),
+    );
 
     entries.extend(
         list_notification_data(workspace_root, Some(node_id), None)?
@@ -2062,6 +2226,29 @@ pub async fn pair_node(workspace_root: &Path, request: MobilePairRequest) -> Res
     Ok(())
 }
 
+pub async fn list_pairings(
+    workspace_root: &Path,
+    node_id: Option<&str>,
+    limit: Option<usize>,
+) -> Result<()> {
+    let pairings = list_pairing_data(workspace_root, node_id, limit)?;
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&json!({ "pairings": pairings }))?
+    );
+    Ok(())
+}
+
+pub async fn unpair_node(
+    workspace_root: &Path,
+    node_id: &str,
+    request: MobileUnpairRequest,
+) -> Result<()> {
+    let result = unpair_node_data(workspace_root, node_id, request)?;
+    println!("{}", serde_json::to_string_pretty(&result)?);
+    Ok(())
+}
+
 pub async fn inspect_node(workspace_root: &Path, node_id: &str) -> Result<()> {
     let manifest = inspect_node_data(workspace_root, node_id)?;
     println!("{}", serde_json::to_string_pretty(&manifest)?);
@@ -2355,6 +2542,10 @@ fn nodes_dir(workspace_root: &Path) -> PathBuf {
     mobile_root(workspace_root).join("nodes")
 }
 
+fn pairings_dir(workspace_root: &Path) -> PathBuf {
+    mobile_root(workspace_root).join("pairings")
+}
+
 fn commands_dir(workspace_root: &Path) -> PathBuf {
     mobile_root(workspace_root).join("commands")
 }
@@ -2381,6 +2572,10 @@ fn manifest_path(workspace_root: &Path, node_id: &str) -> PathBuf {
 
 fn command_path(workspace_root: &Path, command_id: &str) -> PathBuf {
     commands_dir(workspace_root).join(format!("{command_id}.json"))
+}
+
+fn pairing_path(workspace_root: &Path, pairing_id: &str) -> PathBuf {
+    pairings_dir(workspace_root).join(format!("{pairing_id}.json"))
 }
 
 fn notification_path(workspace_root: &Path, notification_id: &str) -> PathBuf {
@@ -2419,6 +2614,21 @@ fn save_runtime_state(workspace_root: &Path, runtime: &MobileNodeRuntimeState) -
     fs::write(
         &path,
         serde_json::to_vec_pretty(runtime).context("failed to serialize mobile runtime state")?,
+    )
+    .with_context(|| format!("failed to write {}", path.display()))
+}
+
+fn write_pairing_record(workspace_root: &Path, record: &MobilePairingRecord) -> Result<()> {
+    fs::create_dir_all(pairings_dir(workspace_root)).with_context(|| {
+        format!(
+            "failed to create {}",
+            pairings_dir(workspace_root).display()
+        )
+    })?;
+    let path = pairing_path(workspace_root, &record.id);
+    fs::write(
+        &path,
+        serde_json::to_vec_pretty(record).context("failed to serialize mobile pairing record")?,
     )
     .with_context(|| format!("failed to write {}", path.display()))
 }
@@ -2776,6 +2986,53 @@ mod tests {
         let listed = list_nodes_data(temp.path()).expect("list nodes");
         assert_eq!(listed.len(), 1);
         assert_eq!(listed[0].node.platform, "ios");
+    }
+
+    #[test]
+    fn pairing_history_and_unpair_round_trip() {
+        let temp = tempdir().expect("tempdir");
+        pair_node_data(
+            temp.path(),
+            MobilePairRequest {
+                id: "iphone-lifecycle".to_string(),
+                gateway_url: "wss://example.com/gateway".to_string(),
+                auth_token_env: "IPHONE_LIFECYCLE_TOKEN".to_string(),
+                device_name: Some("Lifecycle iPhone".to_string()),
+                platform: Some("ios".to_string()),
+                capabilities: vec!["mobile".to_string()],
+                enabled: true,
+                sync: None,
+                notifications: None,
+                metadata: Value::Null,
+            },
+        )
+        .expect("pair node");
+
+        let paired = list_pairing_data(temp.path(), Some("iphone-lifecycle"), Some(8))
+            .expect("list pairings");
+        assert_eq!(paired.len(), 1);
+        assert_eq!(paired[0].kind, "paired");
+
+        let result = unpair_node_data(
+            temp.path(),
+            "iphone-lifecycle",
+            MobileUnpairRequest {
+                requested_by: Some("operator".to_string()),
+                reason: Some("retired device".to_string()),
+                remove_runtime_state: true,
+            },
+        )
+        .expect("unpair");
+        assert!(result.removed_manifest);
+        assert_eq!(result.pairing.kind, "unpaired");
+        assert_eq!(result.pairing.requested_by.as_deref(), Some("operator"));
+
+        let pairings = list_pairing_data(temp.path(), Some("iphone-lifecycle"), Some(8))
+            .expect("list updated pairings");
+        assert_eq!(pairings.len(), 2);
+        assert_eq!(pairings[0].kind, "unpaired");
+        assert_eq!(pairings[1].kind, "paired");
+        assert!(!manifest_path(temp.path(), "iphone-lifecycle").exists());
     }
 
     #[test]
@@ -3191,6 +3448,7 @@ mod tests {
             .map(|entry| entry.kind.as_str())
             .collect::<Vec<_>>();
 
+        assert!(kinds.contains(&"node_paired"));
         assert!(kinds.contains(&"runtime_heartbeat"));
         assert!(kinds.contains(&"push_registration"));
         assert!(kinds.contains(&"sync_result"));

@@ -1365,6 +1365,24 @@ enum MobileAction {
         #[arg(long, default_value_t = true)]
         enabled: bool,
     },
+    /// List persisted bounded mobile pairing lifecycle receipts
+    Pairings {
+        #[arg(long)]
+        node_id: Option<String>,
+        #[arg(long)]
+        limit: Option<usize>,
+    },
+    /// Remove a bounded mobile node manifest and record an unpair lifecycle receipt
+    Unpair {
+        #[arg(long)]
+        id: String,
+        #[arg(long)]
+        requested_by: Option<String>,
+        #[arg(long)]
+        reason: Option<String>,
+        #[arg(long, default_value_t = false)]
+        keep_runtime_state: bool,
+    },
     /// Inspect a configured mobile node manifest
     Inspect { id: String },
     /// Show derived readiness for a configured mobile node
@@ -3351,6 +3369,27 @@ async fn main() -> Result<()> {
                             sync: None,
                             notifications: None,
                             metadata: serde_json::Value::Null,
+                        },
+                    )
+                    .await
+                }
+                MobileAction::Pairings { node_id, limit } => {
+                    commands::mobile::list_pairings(&workspace_root, node_id.as_deref(), limit)
+                        .await
+                }
+                MobileAction::Unpair {
+                    id,
+                    requested_by,
+                    reason,
+                    keep_runtime_state,
+                } => {
+                    commands::mobile::unpair_node(
+                        &workspace_root,
+                        &id,
+                        commands::mobile::MobileUnpairRequest {
+                            requested_by,
+                            reason,
+                            remove_runtime_state: !keep_runtime_state,
                         },
                     )
                     .await

@@ -2701,9 +2701,14 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
         .route("/control/voice/prewarm", post(voice_prewarm_handler))
         .route("/control/voice/transcribe", post(voice_transcribe_handler))
         .route("/control/voice/synthesize", post(voice_synthesize_handler))
+        .route("/control/mobile/pairings", get(mobile_pairings_handler))
         .route("/control/mobile/nodes", get(mobile_nodes_handler))
         .route("/control/mobile/nodes/pair", post(mobile_pair_handler))
         .route("/control/mobile/nodes/{id}", get(mobile_node_handler))
+        .route(
+            "/control/mobile/nodes/{id}/unpair",
+            post(mobile_node_unpair_handler),
+        )
         .route(
             "/control/mobile/nodes/{id}/status",
             get(mobile_node_status_handler),
@@ -5078,6 +5083,39 @@ async fn mobile_pair_handler(
 ) -> impl IntoResponse {
     match mobile::pair_node_data(&state.workspace_root, payload) {
         Ok(node) => (StatusCode::OK, Json(serde_json::json!(node))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn mobile_pairings_handler(
+    State(state): State<RuntimeControlState>,
+    Query(query): Query<MobileCommandsQuery>,
+) -> impl IntoResponse {
+    match mobile::list_pairing_data(&state.workspace_root, query.node_id.as_deref(), query.limit) {
+        Ok(pairings) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "pairings": pairings })),
+        )
+            .into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn mobile_node_unpair_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(id): AxumPath<String>,
+    Json(payload): Json<mobile::MobileUnpairRequest>,
+) -> impl IntoResponse {
+    match mobile::unpair_node_data(&state.workspace_root, &id, payload) {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": error.to_string()})),

@@ -751,6 +751,7 @@
               <button class="secondary" id="mobile-runtime-refresh">Refresh Runtime</button>
               <button class="secondary" id="mobile-capabilities-refresh">Refresh Capabilities</button>
               <button class="secondary" id="mobile-activity-refresh">Refresh Activity</button>
+              <button class="secondary" id="mobile-pairings-refresh">Refresh Pairings</button>
             </div>
             <div class="action-row">
               <button class="secondary" id="mobile-register-push">Register Push</button>
@@ -760,6 +761,7 @@
             <div class="action-row">
               <button class="secondary" id="mobile-runtime-wake">Wake Node</button>
               <button class="secondary" id="mobile-runtime-rehydrate">Rehydrate Node</button>
+              <button class="secondary" id="mobile-node-unpair">Unpair Node</button>
             </div>
           </div>
           <div class="surface"><pre id="mobile-node-detail">Select a mobile node to inspect.</pre></div>
@@ -767,6 +769,7 @@
           <div class="surface" style="margin-top: 12px"><pre id="mobile-node-sync">No mobile sync state loaded yet.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="mobile-node-capabilities">No mobile capabilities loaded yet.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="mobile-node-activity">No mobile activity loaded yet.</pre></div>
+          <div class="surface" style="margin-top: 12px"><pre id="mobile-node-pairings">No mobile pairing history loaded yet.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="mobile-notification-detail">No mobile notification selected.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="mobile-inbox-detail">No mobile inbox message selected.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="mobile-outbox-detail">No mobile outbound message selected.</pre></div>
@@ -1979,11 +1982,12 @@
           await inspectMobileNode(nodes[0].node.id);
         } else {
           setText("mobile-node-detail", "No mobile node selected.");
+          setText("mobile-node-pairings", "No mobile pairing history loaded yet.");
         }
       }
 
       async function inspectMobileNode(id) {
-        const [manifest, status, runtime, push, sync, capabilities, activity] = await Promise.all([
+        const [manifest, status, runtime, push, sync, capabilities, activity, pairings] = await Promise.all([
           fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}`),
           fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}/status`),
           fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}/runtime`),
@@ -1991,12 +1995,14 @@
           fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}/sync`),
           fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}/capabilities`),
           fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}/activity?limit=25`),
+          fetchJson(`/control/mobile/pairings?node_id=${encodeURIComponent(id)}&limit=20`),
         ]);
         setText("mobile-node-detail", { manifest, status, runtime });
         setText("mobile-node-push", push);
         setText("mobile-node-sync", sync);
         setText("mobile-node-capabilities", capabilities);
         setText("mobile-node-activity", activity);
+        setText("mobile-node-pairings", pairings);
         document.getElementById("mobile-source-node").value = id;
         document.getElementById("mobile-command-node").value = id;
         document.getElementById("mobile-runtime-app-state").value = runtime.app_state || "";
@@ -2018,6 +2024,13 @@
         }
         const activity = await fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}/activity?limit=25`);
         setText("mobile-node-activity", activity);
+      }
+
+      async function loadMobilePairings(idOverride = null) {
+        const id = (idOverride || document.getElementById("mobile-source-node").value).trim();
+        const suffix = id ? `?node_id=${encodeURIComponent(id)}&limit=20` : "?limit=20";
+        const pairings = await fetchJson(`/control/mobile/pairings${suffix}`);
+        setText("mobile-node-pairings", pairings);
       }
 
       async function refreshMobileRuntime() {
@@ -2096,6 +2109,28 @@
         });
         setText("mobile-node-detail", result);
         await inspectMobileNode(id);
+      }
+
+      async function unpairCurrentMobileNode() {
+        const id = document.getElementById("mobile-source-node").value.trim();
+        if (!id) {
+          throw new Error("Select a mobile node first.");
+        }
+        const result = await fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}/unpair`, {
+          method: "POST",
+          body: JSON.stringify({
+            requested_by: "control_ui",
+            reason: emptyToNull(document.getElementById("mobile-runtime-reason").value),
+            remove_runtime_state: true,
+          }),
+        });
+        setText("mobile-node-detail", result);
+        setText("mobile-node-push", "No mobile push state loaded yet.");
+        setText("mobile-node-sync", "No mobile sync state loaded yet.");
+        setText("mobile-node-capabilities", "No mobile capabilities loaded yet.");
+        setText("mobile-node-activity", "No mobile activity loaded yet.");
+        await loadMobilePairings(id);
+        await loadMobileNodes();
       }
 
       async function previewMobileMessage() {
@@ -3221,6 +3256,13 @@
           setText("mobile-node-activity", { error: error.message });
         }
       });
+      document.getElementById("mobile-pairings-refresh").addEventListener("click", async () => {
+        try {
+          await loadMobilePairings();
+        } catch (error) {
+          setText("mobile-node-pairings", { error: error.message });
+        }
+      });
       document.getElementById("mobile-runtime-heartbeat").addEventListener("click", async () => {
         try {
           await heartbeatMobileNode();
@@ -3280,6 +3322,13 @@
       document.getElementById("mobile-runtime-rehydrate").addEventListener("click", async () => {
         try {
           await rehydrateMobileNode();
+        } catch (error) {
+          setText("mobile-node-detail", { error: error.message });
+        }
+      });
+      document.getElementById("mobile-node-unpair").addEventListener("click", async () => {
+        try {
+          await unpairCurrentMobileNode();
         } catch (error) {
           setText("mobile-node-detail", { error: error.message });
         }
