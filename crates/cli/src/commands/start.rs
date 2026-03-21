@@ -2823,6 +2823,14 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             "/control/mobile/capabilities/executions/{id}",
             get(mobile_capability_execution_handler),
         )
+        .route(
+            "/control/mobile/media-artifacts",
+            get(mobile_media_artifacts_handler),
+        )
+        .route(
+            "/control/mobile/media-artifacts/{id}",
+            get(mobile_media_artifact_handler),
+        )
         .route("/control/media/providers", get(media_providers_handler))
         .route("/control/media/inspect", post(media_inspect_handler))
         .route(
@@ -5688,6 +5696,43 @@ async fn mobile_capability_execution_handler(
 ) -> impl IntoResponse {
     match mobile::inspect_capability_execution_data(&state.workspace_root, &id) {
         Ok(execution) => (StatusCode::OK, Json(serde_json::json!(execution))).into_response(),
+        Err(error) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn mobile_media_artifacts_handler(
+    State(state): State<RuntimeControlState>,
+    Query(query): Query<MobileCapabilityExecutionsQuery>,
+) -> impl IntoResponse {
+    match mobile::list_media_artifact_data(
+        &state.workspace_root,
+        query.node_id.as_deref(),
+        query.capability.as_deref(),
+        query.limit,
+    ) {
+        Ok(artifacts) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "artifacts": artifacts })),
+        )
+            .into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn mobile_media_artifact_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(id): AxumPath<String>,
+) -> impl IntoResponse {
+    match mobile::inspect_media_artifact_data(&state.workspace_root, &id) {
+        Ok(artifact) => (StatusCode::OK, Json(serde_json::json!(artifact))).into_response(),
         Err(error) => (
             StatusCode::NOT_FOUND,
             Json(serde_json::json!({"error": error.to_string()})),

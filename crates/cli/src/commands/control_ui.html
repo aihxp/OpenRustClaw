@@ -771,6 +771,7 @@
           <div class="surface" style="margin-top: 12px"><pre id="mobile-node-activity">No mobile activity loaded yet.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="mobile-node-pairings">No mobile pairing history loaded yet.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="mobile-capability-execution-detail">No mobile capability execution selected.</pre></div>
+          <div class="surface" style="margin-top: 12px"><pre id="mobile-media-artifact-detail">No mobile media artifact selected.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="mobile-notification-detail">No mobile notification selected.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="mobile-inbox-detail">No mobile inbox message selected.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="mobile-outbox-detail">No mobile outbound message selected.</pre></div>
@@ -819,6 +820,20 @@
                 <tr><th>Capability</th><th>Status</th><th>Action</th></tr>
               </thead>
               <tbody id="mobile-capability-executions"><tr><td colspan="3" class="muted">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </article>
+        <article class="panel span-6">
+          <h2>Mobile Media Artifacts</h2>
+          <div class="action-row" style="margin-bottom: 12px">
+            <button class="secondary" id="mobile-media-artifacts-refresh">Refresh Media Artifacts</button>
+          </div>
+          <div class="surface">
+            <table class="table">
+              <thead>
+                <tr><th>Artifact</th><th>Status</th><th>Action</th></tr>
+              </thead>
+              <tbody id="mobile-media-artifacts"><tr><td colspan="3" class="muted">Loading…</td></tr></tbody>
             </table>
           </div>
         </article>
@@ -2000,6 +2015,7 @@
           setText("mobile-node-detail", "No mobile node selected.");
           setText("mobile-node-pairings", "No mobile pairing history loaded yet.");
           setText("mobile-capability-execution-detail", "No mobile capability execution selected.");
+          setText("mobile-media-artifact-detail", "No mobile media artifact selected.");
         }
       }
 
@@ -2033,6 +2049,7 @@
         await loadMobileInbox(id);
         await loadMobileOutbox(id);
         await loadMobileCapabilityExecutions(id);
+        await loadMobileMediaArtifacts(id);
       }
 
       async function loadMobileActivity(idOverride = null) {
@@ -2148,6 +2165,7 @@
         setText("mobile-node-capabilities", "No mobile capabilities loaded yet.");
         setText("mobile-node-activity", "No mobile activity loaded yet.");
         setText("mobile-capability-execution-detail", "No mobile capability execution selected.");
+        setText("mobile-media-artifact-detail", "No mobile media artifact selected.");
         await loadMobilePairings(id);
         await loadMobileNodes();
       }
@@ -2401,6 +2419,7 @@
         setText("mobile-preview-result", result);
         setText("mobile-capability-execution-detail", result);
         await loadMobileCapabilityExecutions(nodeId);
+        await loadMobileMediaArtifacts(nodeId);
         await inspectMobileNode(nodeId);
       }
 
@@ -2429,6 +2448,33 @@
       async function inspectMobileCapabilityExecution(id) {
         const payload = await fetchJson(`/control/mobile/capabilities/executions/${encodeURIComponent(id)}`);
         setText("mobile-capability-execution-detail", payload);
+      }
+
+      async function loadMobileMediaArtifacts(nodeIdOverride = null) {
+        const currentNodeId = nodeIdOverride || document.getElementById("mobile-source-node").value.trim();
+        const query = currentNodeId
+          ? `?node_id=${encodeURIComponent(currentNodeId)}&limit=20`
+          : "?limit=20";
+        const payload = await fetchJson(`/control/mobile/media-artifacts${query}`);
+        const artifacts = payload.artifacts || [];
+        const rows = artifacts.map((entry) => {
+          return `<tr>
+            <td><strong>${entry.capability || "-"}</strong><div class="muted">${entry.media_kind || "-"}</div></td>
+            <td>${entry.status || "-"}</td>
+            <td><button class="secondary" onclick="inspectMobileMediaArtifact('${entry.id}')">Inspect</button></td>
+          </tr>`;
+        });
+        renderTableRows("mobile-media-artifacts", rows, "No mobile media artifacts recorded.");
+        if (artifacts.length) {
+          await inspectMobileMediaArtifact(artifacts[0].id);
+        } else {
+          setText("mobile-media-artifact-detail", "No mobile media artifact selected.");
+        }
+      }
+
+      async function inspectMobileMediaArtifact(id) {
+        const payload = await fetchJson(`/control/mobile/media-artifacts/${encodeURIComponent(id)}`);
+        setText("mobile-media-artifact-detail", payload);
       }
 
       async function loadMobileCommands() {
@@ -3466,6 +3512,13 @@
           await loadMobileCapabilityExecutions();
         } catch (error) {
           setText("mobile-capability-execution-detail", { error: error.message });
+        }
+      });
+      document.getElementById("mobile-media-artifacts-refresh").addEventListener("click", async () => {
+        try {
+          await loadMobileMediaArtifacts();
+        } catch (error) {
+          setText("mobile-media-artifact-detail", { error: error.message });
         }
       });
       document.getElementById("logs-refresh").addEventListener("click", async () => {

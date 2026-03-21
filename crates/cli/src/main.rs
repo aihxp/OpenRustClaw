@@ -1629,6 +1629,20 @@ enum MobileAction {
         #[arg(long)]
         id: String,
     },
+    /// List bounded mobile media-artifact receipts derived from executed capability lanes
+    MediaArtifacts {
+        #[arg(long)]
+        node_id: Option<String>,
+        #[arg(long)]
+        capability: Option<String>,
+        #[arg(long)]
+        limit: Option<usize>,
+    },
+    /// Inspect one bounded mobile media-artifact receipt
+    MediaArtifactStatus {
+        #[arg(long)]
+        id: String,
+    },
     /// List persisted mobile command receipts
     Commands {
         #[arg(long)]
@@ -3769,6 +3783,22 @@ async fn main() -> Result<()> {
                 }
                 MobileAction::CapabilityExecutionStatus { id } => {
                     commands::mobile::inspect_capability_execution(&workspace_root, &id).await
+                }
+                MobileAction::MediaArtifacts {
+                    node_id,
+                    capability,
+                    limit,
+                } => {
+                    commands::mobile::list_media_artifacts(
+                        &workspace_root,
+                        node_id.as_deref(),
+                        capability.as_deref(),
+                        limit,
+                    )
+                    .await
+                }
+                MobileAction::MediaArtifactStatus { id } => {
+                    commands::mobile::inspect_media_artifact(&workspace_root, &id).await
                 }
                 MobileAction::Commands { node_id, limit } => {
                     commands::mobile::list_commands(&workspace_root, node_id.as_deref(), limit)

@@ -385,6 +385,22 @@ pub struct MobileCapabilityExecutionRecord {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MobileMediaArtifactRecord {
+    pub id: String,
+    pub execution_id: String,
+    pub node_id: String,
+    pub capability: String,
+    pub media_kind: String,
+    pub mime: String,
+    pub status: String,
+    pub created_at: String,
+    #[serde(default)]
+    pub requested_by: Option<String>,
+    pub summary: String,
+    pub artifact: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MobileNodeActivityEntry {
     pub kind: String,
     pub id: String,
@@ -1014,6 +1030,62 @@ pub fn inspect_capability_execution_data(
     serde_json::from_str(&bytes).with_context(|| format!("failed to parse {}", path.display()))
 }
 
+pub fn list_media_artifact_data(
+    workspace_root: &Path,
+    node_id: Option<&str>,
+    capability: Option<&str>,
+    limit: Option<usize>,
+) -> Result<Vec<MobileMediaArtifactRecord>> {
+    let mut entries = Vec::new();
+    let dir = media_artifacts_dir(workspace_root);
+    if !dir.exists() {
+        return Ok(entries);
+    }
+
+    let normalized_capability = capability
+        .map(normalize_capability_name)
+        .filter(|value| !value.is_empty());
+
+    for entry in fs::read_dir(&dir).with_context(|| format!("failed to read {}", dir.display()))? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.extension().and_then(|value| value.to_str()) != Some("json") {
+            continue;
+        }
+        let bytes = fs::read_to_string(&path)
+            .with_context(|| format!("failed to read {}", path.display()))?;
+        let record: MobileMediaArtifactRecord = serde_json::from_str(&bytes)
+            .with_context(|| format!("failed to parse {}", path.display()))?;
+        if let Some(node_id) = node_id
+            && record.node_id != node_id
+        {
+            continue;
+        }
+        if let Some(capability) = normalized_capability.as_deref()
+            && record.capability != capability
+        {
+            continue;
+        }
+        entries.push(record);
+    }
+
+    entries.sort_by(|left, right| right.created_at.cmp(&left.created_at));
+    if let Some(limit) = limit {
+        entries.truncate(limit);
+    }
+    Ok(entries)
+}
+
+pub fn inspect_media_artifact_data(
+    workspace_root: &Path,
+    artifact_id: &str,
+) -> Result<MobileMediaArtifactRecord> {
+    let path = media_artifact_path(workspace_root, artifact_id);
+    let bytes =
+        fs::read_to_string(&path).with_context(|| format!("failed to read {}", path.display()))?;
+    serde_json::from_str(&bytes).with_context(|| format!("failed to parse {}", path.display()))
+}
+
 pub fn node_activity_data(
     workspace_root: &Path,
     node_id: &str,
@@ -1049,6 +1121,20 @@ pub fn node_activity_data(
                 status: record.status.clone(),
                 created_at: record.created_at,
                 summary: format!("{} | {}", record.capability, record.status),
+            }),
+    );
+    entries.extend(
+        list_media_artifact_data(workspace_root, Some(node_id), None, None)?
+            .into_iter()
+            .map(|record| MobileNodeActivityEntry {
+                kind: "media_artifact".to_string(),
+                id: record.id,
+                status: record.status.clone(),
+                created_at: record.created_at,
+                summary: format!(
+                    "{} | {} | {}",
+                    record.capability, record.media_kind, record.summary
+                ),
             }),
     );
 
@@ -1520,6 +1606,9 @@ pub fn execute_capability_data(
         result,
     };
     write_capability_execution_record(workspace_root, &record)?;
+    if let Some(artifact) = build_media_artifact_record(&record) {
+        write_media_artifact_record(workspace_root, &artifact)?;
+    }
     Ok(record)
 }
 
@@ -2687,6 +2776,26 @@ pub async fn inspect_capability_execution(workspace_root: &Path, execution_id: &
     Ok(())
 }
 
+pub async fn list_media_artifacts(
+    workspace_root: &Path,
+    node_id: Option<&str>,
+    capability: Option<&str>,
+    limit: Option<usize>,
+) -> Result<()> {
+    let artifacts = list_media_artifact_data(workspace_root, node_id, capability, limit)?;
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&json!({ "artifacts": artifacts }))?
+    );
+    Ok(())
+}
+
+pub async fn inspect_media_artifact(workspace_root: &Path, artifact_id: &str) -> Result<()> {
+    let artifact = inspect_media_artifact_data(workspace_root, artifact_id)?;
+    println!("{}", serde_json::to_string_pretty(&artifact)?);
+    Ok(())
+}
+
 pub async fn list_commands(
     workspace_root: &Path,
     node_id: Option<&str>,
@@ -2775,6 +2884,10 @@ fn capability_executions_dir(workspace_root: &Path) -> PathBuf {
     mobile_root(workspace_root).join("capability-executions")
 }
 
+fn media_artifacts_dir(workspace_root: &Path) -> PathBuf {
+    mobile_root(workspace_root).join("media-artifacts")
+}
+
 fn manifest_path(workspace_root: &Path, node_id: &str) -> PathBuf {
     nodes_dir(workspace_root).join(format!("{node_id}.json"))
 }
@@ -2809,6 +2922,10 @@ fn capability_preview_path(workspace_root: &Path, preview_id: &str) -> PathBuf {
 
 fn capability_execution_path(workspace_root: &Path, execution_id: &str) -> PathBuf {
     capability_executions_dir(workspace_root).join(format!("{execution_id}.json"))
+}
+
+fn media_artifact_path(workspace_root: &Path, artifact_id: &str) -> PathBuf {
+    media_artifacts_dir(workspace_root).join(format!("{artifact_id}.json"))
 }
 
 fn load_runtime_state(workspace_root: &Path, node_id: &str) -> Result<MobileNodeRuntimeState> {
@@ -2884,6 +3001,25 @@ fn write_capability_execution_record(
         &path,
         serde_json::to_vec_pretty(record)
             .context("failed to serialize mobile capability execution record")?,
+    )
+    .with_context(|| format!("failed to write {}", path.display()))
+}
+
+fn write_media_artifact_record(
+    workspace_root: &Path,
+    record: &MobileMediaArtifactRecord,
+) -> Result<()> {
+    fs::create_dir_all(media_artifacts_dir(workspace_root)).with_context(|| {
+        format!(
+            "failed to create {}",
+            media_artifacts_dir(workspace_root).display()
+        )
+    })?;
+    let path = media_artifact_path(workspace_root, &record.id);
+    fs::write(
+        &path,
+        serde_json::to_vec_pretty(record)
+            .context("failed to serialize mobile media artifact record")?,
     )
     .with_context(|| format!("failed to write {}", path.display()))
 }
@@ -3119,6 +3255,56 @@ fn is_preview_supported_capability(capability: &str) -> bool {
 
 fn normalize_capability_name(capability: &str) -> String {
     capability.trim().to_lowercase().replace('-', "_")
+}
+
+fn build_media_artifact_record(
+    record: &MobileCapabilityExecutionRecord,
+) -> Option<MobileMediaArtifactRecord> {
+    let (media_kind, mime, artifact_kind, summary) = match record.capability.as_str() {
+        "camera" => (
+            "image",
+            "image/jpeg",
+            "camera_capture_receipt",
+            "bounded camera capture receipt",
+        ),
+        "screen_recording" => (
+            "video",
+            "video/mp4",
+            "screen_recording_receipt",
+            "bounded screen recording receipt",
+        ),
+        "photos" => (
+            "image",
+            "image/jpeg",
+            "photo_picker_receipt",
+            "bounded photo selection receipt",
+        ),
+        "canvas" => (
+            "image",
+            "image/png",
+            "canvas_export_receipt",
+            "bounded canvas export receipt",
+        ),
+        _ => return None,
+    };
+
+    Some(MobileMediaArtifactRecord {
+        id: format!("artifact-{}", record.id),
+        execution_id: record.id.clone(),
+        node_id: record.node_id.clone(),
+        capability: record.capability.clone(),
+        media_kind: media_kind.to_string(),
+        mime: mime.to_string(),
+        status: "captured".to_string(),
+        created_at: record.created_at.clone(),
+        requested_by: record.requested_by.clone(),
+        summary: summary.to_string(),
+        artifact: json!({
+            "kind": artifact_kind,
+            "execution_id": record.id,
+            "result": record.result,
+        }),
+    })
 }
 
 fn has_capability(advertised: &[String], capability: &str) -> bool {
@@ -3695,6 +3881,7 @@ mod tests {
         assert!(kinds.contains(&"inbound_message"));
         assert!(kinds.contains(&"outbound_message"));
         assert!(kinds.contains(&"capability_execution"));
+        assert!(kinds.contains(&"media_artifact"));
         assert!(kinds.contains(&"command"));
         assert!(activity.entry_count >= 7);
         unsafe {
@@ -3879,6 +4066,21 @@ mod tests {
         .expect("list executions");
         assert_eq!(executions.len(), 1);
         assert_eq!(executions[0].id, record.id);
+
+        let artifacts = list_media_artifact_data(
+            temp.path(),
+            Some("iphone-execution"),
+            Some("camera"),
+            Some(10),
+        )
+        .expect("list artifacts");
+        assert_eq!(artifacts.len(), 1);
+        assert_eq!(artifacts[0].execution_id, record.id);
+        assert_eq!(artifacts[0].media_kind, "image");
+
+        let inspected_artifact =
+            inspect_media_artifact_data(temp.path(), &artifacts[0].id).expect("inspect artifact");
+        assert_eq!(inspected_artifact.id, artifacts[0].id);
     }
 
     #[tokio::test]
