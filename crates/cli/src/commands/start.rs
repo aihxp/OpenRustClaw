@@ -77,6 +77,8 @@ use super::channels::{
     ChannelBindingSpec, ChannelRegistry, ChannelSendPolicy, ensure_account_manifest,
     identity_from_message, load_registry, message_bot_mentioned, resolve_root,
 };
+#[cfg(feature = "voice")]
+use super::talk;
 use super::voice_runtime;
 use super::voice_runtime::InboundVoiceTranscriber;
 use super::{
@@ -2636,7 +2638,7 @@ fn control_plane_router(state: ControlPlaneApiState) -> Router {
 }
 
 fn runtime_control_router(state: RuntimeControlState) -> Router {
-    Router::new()
+    let router = Router::new()
         .route("/control/ui", get(control_ui_handler))
         .route("/control/runtime/status", get(runtime_status_handler))
         .route("/control/runtime/health", get(runtime_health_handler))
@@ -2705,7 +2707,15 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
         .route("/control/voice/voices", get(voice_voices_handler))
         .route("/control/voice/prewarm", post(voice_prewarm_handler))
         .route("/control/voice/transcribe", post(voice_transcribe_handler))
-        .route("/control/voice/synthesize", post(voice_synthesize_handler))
+        .route("/control/voice/synthesize", post(voice_synthesize_handler));
+
+    #[cfg(feature = "voice")]
+    let router = router
+        .route("/control/talk/status", get(talk_status_handler))
+        .route("/control/talk/sessions", get(talk_sessions_handler))
+        .route("/control/talk/sessions/{id}", get(talk_session_handler));
+
+    let router = router
         .route("/control/mobile/pairings", get(mobile_pairings_handler))
         .route("/control/mobile/nodes", get(mobile_nodes_handler))
         .route("/control/mobile/nodes/pair", post(mobile_pair_handler))
@@ -3153,7 +3163,9 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             post(browser_screenshot_handler),
         )
         .route("/control/browser/pdf", post(browser_pdf_handler))
-        .with_state(state)
+        .with_state(state);
+
+    router
 }
 
 async fn channel_registry_index_handler(
@@ -5168,6 +5180,53 @@ async fn voice_synthesize_handler(
         }
         Err(error) => (
             StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+#[cfg(feature = "voice")]
+async fn talk_status_handler(
+    State(state): State<RuntimeControlState>,
+    Query(query): Query<talk::TalkRuntimeListRequest>,
+) -> impl IntoResponse {
+    let limit = query.limit.unwrap_or(20);
+    match talk::runtime_status(&state.workspace_root, limit).await {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+#[cfg(feature = "voice")]
+async fn talk_sessions_handler(
+    State(state): State<RuntimeControlState>,
+    Query(query): Query<talk::TalkRuntimeListRequest>,
+) -> impl IntoResponse {
+    let limit = query.limit.unwrap_or(20);
+    match talk::list_talk_sessions(&state.workspace_root, limit).await {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+#[cfg(feature = "voice")]
+async fn talk_session_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(id): AxumPath<String>,
+) -> impl IntoResponse {
+    match talk::inspect_talk_session(&state.workspace_root, &id).await {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": error.to_string()})),
         )
             .into_response(),

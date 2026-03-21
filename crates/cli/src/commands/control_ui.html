@@ -409,6 +409,23 @@
           <div class="surface" style="margin-top: 12px"><pre id="voice-voices">No voice catalog loaded yet.</pre></div>
         </article>
         <article class="panel span-6">
+          <h2>Talk Runtime</h2>
+          <div class="action-row" style="margin-bottom: 12px">
+            <input id="talk-session-limit" type="number" min="1" step="1" placeholder="limit (default 20)" />
+            <button class="secondary" id="talk-status-refresh">Status</button>
+            <button class="secondary" id="talk-sessions-refresh">List Receipts</button>
+          </div>
+          <div class="form-grid">
+            <input id="talk-session-id" type="text" placeholder="optional talk session id" />
+            <div class="action-row">
+              <button class="secondary" id="talk-session-inspect">Inspect Receipt</button>
+            </div>
+          </div>
+          <div class="surface"><pre id="talk-runtime-status">Loading…</pre></div>
+          <div class="surface" style="margin-top: 12px"><pre id="talk-sessions">No talk receipts loaded yet.</pre></div>
+          <div class="surface" style="margin-top: 12px"><pre id="talk-session-detail">No talk receipt inspected yet.</pre></div>
+        </article>
+        <article class="panel span-6">
           <h2>Voice Media</h2>
           <div class="form-grid">
             <input id="voice-path" type="text" placeholder="/path/to/audio.ogg" />
@@ -1230,6 +1247,29 @@
       async function loadVoiceSessions() {
         const payload = await fetchJson("/control/voice/sessions");
         setText("voice-sessions", payload);
+      }
+
+      async function loadTalkStatus() {
+        const limit = document.getElementById("talk-session-limit").value.trim();
+        const query = limit ? `?limit=${encodeURIComponent(limit)}` : "";
+        const payload = await fetchJson(`/control/talk/status${query}`);
+        setText("talk-runtime-status", payload);
+      }
+
+      async function loadTalkSessions() {
+        const limit = document.getElementById("talk-session-limit").value.trim();
+        const query = limit ? `?limit=${encodeURIComponent(limit)}` : "";
+        const payload = await fetchJson(`/control/talk/sessions${query}`);
+        setText("talk-sessions", payload);
+      }
+
+      async function loadTalkSession() {
+        const sessionId = document.getElementById("talk-session-id").value.trim();
+        if (!sessionId) {
+          throw new Error("A talk session id is required");
+        }
+        const payload = await fetchJson(`/control/talk/sessions/${encodeURIComponent(sessionId)}`);
+        setText("talk-session-detail", payload);
       }
 
       async function loadVoiceMetrics() {
@@ -2950,6 +2990,8 @@
             loadVaultStatus(),
             loadSchedulerStatus(),
             loadChannelProbes(),
+            loadTalkStatus(),
+            loadTalkSessions(),
             loadVoiceStatus(),
             loadVoiceProviders(),
             loadVoiceMetrics(),
@@ -3329,6 +3371,27 @@
           await loadVoiceVoices();
         } catch (error) {
           setText("voice-voices", { error: error.message });
+        }
+      });
+      document.getElementById("talk-status-refresh").addEventListener("click", async () => {
+        try {
+          await loadTalkStatus();
+        } catch (error) {
+          setText("talk-runtime-status", { error: error.message });
+        }
+      });
+      document.getElementById("talk-sessions-refresh").addEventListener("click", async () => {
+        try {
+          await loadTalkSessions();
+        } catch (error) {
+          setText("talk-sessions", { error: error.message });
+        }
+      });
+      document.getElementById("talk-session-inspect").addEventListener("click", async () => {
+        try {
+          await loadTalkSession();
+        } catch (error) {
+          setText("talk-session-detail", { error: error.message });
         }
       });
       document.getElementById("voice-transcribe").addEventListener("click", async () => {

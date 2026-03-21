@@ -1284,7 +1284,7 @@ Remaining:
   - broader image/audio/document provider pluggability across all media lanes.
 - [ ] Add richer provider support for media parity where OpenClaw documents active integrations.
 - [ ] Add voice runtime parity:
-  - wake/talk flows,
+  - [x] bounded talk/wake receipts plus `talk-runtime status|sessions|inspect` operator surfaces over the feature-gated Talk Mode runner,
   - [x] provider-backed inbound attachment STT and transcript injection for supported runtime message flows,
   - [x] explicit provider catalog/readiness plus request-scoped provider overrides for the shipped OpenAI-compatible STT/TTS lane and bounded Deepgram STT routing,
   - [x] broader STT parity through a second shipped pre-recorded STT provider lane,

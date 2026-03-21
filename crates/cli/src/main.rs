@@ -197,6 +197,12 @@ enum Commands {
         #[arg(long, default_value = "true")]
         barge_in: bool,
     },
+    /// Inspect persisted talk/wake runtime receipts
+    #[cfg(feature = "voice")]
+    TalkRuntime {
+        #[command(subcommand)]
+        action: TalkRuntimeAction,
+    },
     /// Voice runtime inspection and transcription tools
     Voice {
         #[command(subcommand)]
@@ -1984,6 +1990,23 @@ enum VoiceAction {
         #[arg(long)]
         output_path: Option<String>,
     },
+}
+
+#[cfg(feature = "voice")]
+#[derive(Subcommand)]
+enum TalkRuntimeAction {
+    /// Show a bounded runtime summary for talk/wake receipts
+    Status {
+        #[arg(long, default_value_t = 20)]
+        limit: usize,
+    },
+    /// List persisted talk/wake receipts
+    Sessions {
+        #[arg(long, default_value_t = 20)]
+        limit: usize,
+    },
+    /// Inspect one persisted talk/wake receipt
+    Inspect { id: String },
 }
 
 #[derive(Subcommand)]
@@ -4995,6 +5018,21 @@ async fn main() -> Result<()> {
             )
             .await
         }
+        #[cfg(feature = "voice")]
+        Commands::TalkRuntime { action } => match action {
+            TalkRuntimeAction::Status { limit } => {
+                let workspace_root = std::env::current_dir()?;
+                commands::talk::status(&workspace_root, limit).await
+            }
+            TalkRuntimeAction::Sessions { limit } => {
+                let workspace_root = std::env::current_dir()?;
+                commands::talk::sessions(&workspace_root, limit).await
+            }
+            TalkRuntimeAction::Inspect { id } => {
+                let workspace_root = std::env::current_dir()?;
+                commands::talk::inspect(&workspace_root, &id).await
+            }
+        },
         Commands::Voice { action } => match action {
             VoiceAction::Status { config } => commands::voice::status(&config).await,
             VoiceAction::Providers { config } => commands::voice::providers(&config).await,

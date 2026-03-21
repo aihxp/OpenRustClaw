@@ -318,10 +318,12 @@ See [SECURITY.md](SECURITY.md) for the full security policy.
 
 ```bash
 openrustclaw talk --wake-word "Hey Assistant"
+openrustclaw talk-runtime status --limit 20
 ```
 
 Wake word detection (Porcupine), speech-to-text, text-to-speech, and continuous talk mode. Audio dependencies are feature-gated behind `audio`.
 Inbound voice-note transcription can be enabled on the runtime path for supported channel attachments that already expose a local file path or a directly fetchable media URL, and operators now also have explicit `openrustclaw voice status|providers|metrics|sessions|session-health|prewarm|reap-sessions|voices|transcribe|synthesize|start-session|session-status|session-metrics|transcript|artifacts|events|append-user|respond|reconnect-session|pause-session|resume-session|interrupt-session|end-session` plus matching `/control/voice/...` surfaces for readiness inspection, provider catalog/status across OpenAI-compatible STT/TTS plus Deepgram STT, bounded persisted voice-session receipts, indexed transcript visibility, synthesized output artifact inspection, derived event timelines, derived session and aggregate metrics, session health/reap/prewarm/reconnect plus pause/resume/interrupt controls, ad hoc transcription, TTS voice discovery, and synthesized audio artifacts. A bounded media operator lane also exists through `openrustclaw media providers|inspect|extract-text|describe` and `/control/media/providers|inspect|extract-text|describe` for media-provider readiness inspection, local image/document inspection, OCR-backed or provider-backed bounded image text extraction, provider-backed bounded image, document, and audio description or summary lanes over the shipped Anthropic, Ollama, and OpenAI-compatible providers, bounded local rich-document extraction for `docx` and `rtf`, optional local `pdf` extraction when `pdftotext` is present, and bounded local-audio text extraction over the shipped STT lanes where the runtime already has real local/provider primitives.
+The feature-gated Talk Mode runner now also leaves behind bounded talk/wake receipts that operators can inspect with `openrustclaw talk-runtime status|sessions|inspect`, backed by persisted session snapshots in `.claw/talk/sessions/`.
 
 ## Configuration
 
