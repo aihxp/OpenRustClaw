@@ -770,6 +770,7 @@
           <div class="surface" style="margin-top: 12px"><pre id="mobile-node-capabilities">No mobile capabilities loaded yet.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="mobile-node-activity">No mobile activity loaded yet.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="mobile-node-pairings">No mobile pairing history loaded yet.</pre></div>
+          <div class="surface" style="margin-top: 12px"><pre id="mobile-capability-execution-detail">No mobile capability execution selected.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="mobile-notification-detail">No mobile notification selected.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="mobile-inbox-detail">No mobile inbox message selected.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="mobile-outbox-detail">No mobile outbound message selected.</pre></div>
@@ -802,9 +803,24 @@
             </div>
             <div class="action-row">
               <button class="secondary" id="mobile-preview-capability">Preview Capability</button>
+              <button id="mobile-execute-capability">Execute Capability</button>
             </div>
           </div>
           <div class="surface" style="margin-top: 12px"><pre id="mobile-preview-result">No mobile preview executed yet.</pre></div>
+        </article>
+        <article class="panel span-6">
+          <h2>Mobile Capability Executions</h2>
+          <div class="action-row" style="margin-bottom: 12px">
+            <button class="secondary" id="mobile-capability-executions-refresh">Refresh Capability Executions</button>
+          </div>
+          <div class="surface">
+            <table class="table">
+              <thead>
+                <tr><th>Capability</th><th>Status</th><th>Action</th></tr>
+              </thead>
+              <tbody id="mobile-capability-executions"><tr><td colspan="3" class="muted">Loading…</td></tr></tbody>
+            </table>
+          </div>
         </article>
         <article class="panel span-6">
           <h2>Mobile Notifications</h2>
@@ -1983,6 +1999,7 @@
         } else {
           setText("mobile-node-detail", "No mobile node selected.");
           setText("mobile-node-pairings", "No mobile pairing history loaded yet.");
+          setText("mobile-capability-execution-detail", "No mobile capability execution selected.");
         }
       }
 
@@ -2015,6 +2032,7 @@
         await loadMobileNotifications(id);
         await loadMobileInbox(id);
         await loadMobileOutbox(id);
+        await loadMobileCapabilityExecutions(id);
       }
 
       async function loadMobileActivity(idOverride = null) {
@@ -2129,6 +2147,7 @@
         setText("mobile-node-sync", "No mobile sync state loaded yet.");
         setText("mobile-node-capabilities", "No mobile capabilities loaded yet.");
         setText("mobile-node-activity", "No mobile activity loaded yet.");
+        setText("mobile-capability-execution-detail", "No mobile capability execution selected.");
         await loadMobilePairings(id);
         await loadMobileNodes();
       }
@@ -2364,6 +2383,52 @@
           }),
         });
         setText("mobile-preview-result", result);
+      }
+
+      async function executeMobileCapability() {
+        const nodeId = document.getElementById("mobile-source-node").value.trim();
+        const result = await fetchJson("/control/mobile/capabilities/execute", {
+          method: "POST",
+          body: JSON.stringify({
+            node_id: nodeId,
+            capability: document.getElementById("mobile-capability-name").value.trim(),
+            target: emptyToNull(document.getElementById("mobile-capability-target").value),
+            query: emptyToNull(document.getElementById("mobile-capability-query").value),
+            note: emptyToNull(document.getElementById("mobile-capability-note").value),
+            requested_by: "control_ui",
+          }),
+        });
+        setText("mobile-preview-result", result);
+        setText("mobile-capability-execution-detail", result);
+        await loadMobileCapabilityExecutions(nodeId);
+        await inspectMobileNode(nodeId);
+      }
+
+      async function loadMobileCapabilityExecutions(nodeIdOverride = null) {
+        const currentNodeId = nodeIdOverride || document.getElementById("mobile-source-node").value.trim();
+        const query = currentNodeId
+          ? `?node_id=${encodeURIComponent(currentNodeId)}&limit=20`
+          : "?limit=20";
+        const payload = await fetchJson(`/control/mobile/capabilities/executions${query}`);
+        const executions = payload.executions || [];
+        const rows = executions.map((entry) => {
+          return `<tr>
+            <td><strong>${entry.capability || "-"}</strong><div class="muted">${entry.node_id || "-"}</div></td>
+            <td>${entry.status || "-"}</td>
+            <td><button class="secondary" onclick="inspectMobileCapabilityExecution('${entry.id}')">Inspect</button></td>
+          </tr>`;
+        });
+        renderTableRows("mobile-capability-executions", rows, "No mobile capability executions recorded.");
+        if (executions.length) {
+          await inspectMobileCapabilityExecution(executions[0].id);
+        } else {
+          setText("mobile-capability-execution-detail", "No mobile capability execution selected.");
+        }
+      }
+
+      async function inspectMobileCapabilityExecution(id) {
+        const payload = await fetchJson(`/control/mobile/capabilities/executions/${encodeURIComponent(id)}`);
+        setText("mobile-capability-execution-detail", payload);
       }
 
       async function loadMobileCommands() {
@@ -3387,6 +3452,20 @@
           await previewMobileCapability();
         } catch (error) {
           setText("mobile-preview-result", { error: error.message });
+        }
+      });
+      document.getElementById("mobile-execute-capability").addEventListener("click", async () => {
+        try {
+          await executeMobileCapability();
+        } catch (error) {
+          setText("mobile-capability-execution-detail", { error: error.message });
+        }
+      });
+      document.getElementById("mobile-capability-executions-refresh").addEventListener("click", async () => {
+        try {
+          await loadMobileCapabilityExecutions();
+        } catch (error) {
+          setText("mobile-capability-execution-detail", { error: error.message });
         }
       });
       document.getElementById("logs-refresh").addEventListener("click", async () => {

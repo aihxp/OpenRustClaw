@@ -1600,6 +1600,35 @@ enum MobileAction {
         #[arg(long)]
         note: Option<String>,
     },
+    /// Execute a bounded mobile capability lane and persist an execution receipt
+    ExecuteCapability {
+        #[arg(long)]
+        node_id: String,
+        #[arg(long)]
+        capability: String,
+        #[arg(long)]
+        target: Option<String>,
+        #[arg(long)]
+        query: Option<String>,
+        #[arg(long)]
+        note: Option<String>,
+        #[arg(long)]
+        requested_by: Option<String>,
+    },
+    /// List persisted bounded mobile capability execution receipts
+    CapabilityExecutions {
+        #[arg(long)]
+        node_id: Option<String>,
+        #[arg(long)]
+        capability: Option<String>,
+        #[arg(long)]
+        limit: Option<usize>,
+    },
+    /// Inspect one bounded mobile capability execution receipt
+    CapabilityExecutionStatus {
+        #[arg(long)]
+        id: String,
+    },
     /// List persisted mobile command receipts
     Commands {
         #[arg(long)]
@@ -3703,6 +3732,43 @@ async fn main() -> Result<()> {
                         },
                     )
                     .await
+                }
+                MobileAction::ExecuteCapability {
+                    node_id,
+                    capability,
+                    target,
+                    query,
+                    note,
+                    requested_by,
+                } => {
+                    commands::mobile::execute_capability(
+                        &workspace_root,
+                        commands::mobile::MobileCapabilityExecuteRequest {
+                            node_id,
+                            capability,
+                            target,
+                            query,
+                            note,
+                            requested_by,
+                        },
+                    )
+                    .await
+                }
+                MobileAction::CapabilityExecutions {
+                    node_id,
+                    capability,
+                    limit,
+                } => {
+                    commands::mobile::list_capability_executions(
+                        &workspace_root,
+                        node_id.as_deref(),
+                        capability.as_deref(),
+                        limit,
+                    )
+                    .await
+                }
+                MobileAction::CapabilityExecutionStatus { id } => {
+                    commands::mobile::inspect_capability_execution(&workspace_root, &id).await
                 }
                 MobileAction::Commands { node_id, limit } => {
                     commands::mobile::list_commands(&workspace_root, node_id.as_deref(), limit)

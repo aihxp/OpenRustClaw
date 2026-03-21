@@ -2811,6 +2811,18 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             "/control/mobile/capabilities/preview",
             post(mobile_capability_preview_handler),
         )
+        .route(
+            "/control/mobile/capabilities/execute",
+            post(mobile_capability_execute_handler),
+        )
+        .route(
+            "/control/mobile/capabilities/executions",
+            get(mobile_capability_executions_handler),
+        )
+        .route(
+            "/control/mobile/capabilities/executions/{id}",
+            get(mobile_capability_execution_handler),
+        )
         .route("/control/media/providers", get(media_providers_handler))
         .route("/control/media/inspect", post(media_inspect_handler))
         .route(
@@ -4674,6 +4686,16 @@ struct MobileLimitQuery {
     limit: Option<usize>,
 }
 
+#[derive(serde::Deserialize, Default)]
+struct MobileCapabilityExecutionsQuery {
+    #[serde(default)]
+    node_id: Option<String>,
+    #[serde(default)]
+    capability: Option<String>,
+    #[serde(default)]
+    limit: Option<usize>,
+}
+
 async fn runtime_status_handler(State(state): State<RuntimeControlState>) -> impl IntoResponse {
     match runtime::runtime_status(&state.config_path, &state.workspace_root) {
         Ok(status) => (StatusCode::OK, Json(serde_json::json!(status))).into_response(),
@@ -5617,6 +5639,57 @@ async fn mobile_capability_preview_handler(
         Ok(preview) => (StatusCode::OK, Json(serde_json::json!(preview))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn mobile_capability_execute_handler(
+    State(state): State<RuntimeControlState>,
+    Json(payload): Json<mobile::MobileCapabilityExecuteRequest>,
+) -> impl IntoResponse {
+    match mobile::execute_capability_data(&state.workspace_root, payload) {
+        Ok(execution) => (StatusCode::OK, Json(serde_json::json!(execution))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn mobile_capability_executions_handler(
+    State(state): State<RuntimeControlState>,
+    Query(query): Query<MobileCapabilityExecutionsQuery>,
+) -> impl IntoResponse {
+    match mobile::list_capability_execution_data(
+        &state.workspace_root,
+        query.node_id.as_deref(),
+        query.capability.as_deref(),
+        query.limit,
+    ) {
+        Ok(executions) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "executions": executions })),
+        )
+            .into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn mobile_capability_execution_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(id): AxumPath<String>,
+) -> impl IntoResponse {
+    match mobile::inspect_capability_execution_data(&state.workspace_root, &id) {
+        Ok(execution) => (StatusCode::OK, Json(serde_json::json!(execution))).into_response(),
+        Err(error) => (
+            StatusCode::NOT_FOUND,
             Json(serde_json::json!({"error": error.to_string()})),
         )
             .into_response(),

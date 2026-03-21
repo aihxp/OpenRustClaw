@@ -1314,6 +1314,7 @@ Remaining:
   - SMS where applicable,
   - [x] bounded runtime-state receipts plus push-wake / disconnected-node rehydration requests for the shipped node operator lane,
   - [x] bounded capability inventory plus preview/operator surfaces for camera, screen recording, location, contacts, calendar, photos, canvas, and SMS-style lanes on the shipped node control plane,
+  - [x] bounded capability execution receipts over the shipped node control plane for the same camera/screen/location/contacts/calendar/photos/canvas/SMS-style lanes,
   - [x] bounded push-registration and sync-state reporting surfaces for the shipped node operator lane,
   - [x] bounded mobile notification receipts with acknowledgement over the same shipped node runtime lane,
   - [x] bounded mobile inbound message receipts with acknowledgement over the same shipped node runtime lane,

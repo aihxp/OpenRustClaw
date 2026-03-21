@@ -359,6 +359,32 @@ pub struct MobileCapabilityPreviewRecord {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MobileCapabilityExecuteRequest {
+    pub node_id: String,
+    pub capability: String,
+    #[serde(default)]
+    pub target: Option<String>,
+    #[serde(default)]
+    pub query: Option<String>,
+    #[serde(default)]
+    pub note: Option<String>,
+    #[serde(default)]
+    pub requested_by: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MobileCapabilityExecutionRecord {
+    pub id: String,
+    pub node_id: String,
+    pub capability: String,
+    pub status: String,
+    pub created_at: String,
+    #[serde(default)]
+    pub requested_by: Option<String>,
+    pub result: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MobileNodeActivityEntry {
     pub kind: String,
     pub id: String,
@@ -932,6 +958,62 @@ pub fn node_capabilities_data(
     })
 }
 
+pub fn list_capability_execution_data(
+    workspace_root: &Path,
+    node_id: Option<&str>,
+    capability: Option<&str>,
+    limit: Option<usize>,
+) -> Result<Vec<MobileCapabilityExecutionRecord>> {
+    let mut entries = Vec::new();
+    let dir = capability_executions_dir(workspace_root);
+    if !dir.exists() {
+        return Ok(entries);
+    }
+
+    let normalized_capability = capability
+        .map(normalize_capability_name)
+        .filter(|value| !value.is_empty());
+
+    for entry in fs::read_dir(&dir).with_context(|| format!("failed to read {}", dir.display()))? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.extension().and_then(|value| value.to_str()) != Some("json") {
+            continue;
+        }
+        let bytes = fs::read_to_string(&path)
+            .with_context(|| format!("failed to read {}", path.display()))?;
+        let record: MobileCapabilityExecutionRecord = serde_json::from_str(&bytes)
+            .with_context(|| format!("failed to parse {}", path.display()))?;
+        if let Some(node_id) = node_id
+            && record.node_id != node_id
+        {
+            continue;
+        }
+        if let Some(capability) = normalized_capability.as_deref()
+            && record.capability != capability
+        {
+            continue;
+        }
+        entries.push(record);
+    }
+
+    entries.sort_by(|left, right| right.created_at.cmp(&left.created_at));
+    if let Some(limit) = limit {
+        entries.truncate(limit);
+    }
+    Ok(entries)
+}
+
+pub fn inspect_capability_execution_data(
+    workspace_root: &Path,
+    execution_id: &str,
+) -> Result<MobileCapabilityExecutionRecord> {
+    let path = capability_execution_path(workspace_root, execution_id);
+    let bytes =
+        fs::read_to_string(&path).with_context(|| format!("failed to read {}", path.display()))?;
+    serde_json::from_str(&bytes).with_context(|| format!("failed to parse {}", path.display()))
+}
+
 pub fn node_activity_data(
     workspace_root: &Path,
     node_id: &str,
@@ -956,6 +1038,17 @@ pub fn node_activity_data(
                         .reason
                         .unwrap_or_else(|| "node lifecycle recorded".to_string())
                 ),
+            }),
+    );
+    entries.extend(
+        list_capability_execution_data(workspace_root, Some(node_id), None, None)?
+            .into_iter()
+            .map(|record| MobileNodeActivityEntry {
+                kind: "capability_execution".to_string(),
+                id: record.id,
+                status: record.status.clone(),
+                created_at: record.created_at,
+                summary: format!("{} | {}", record.capability, record.status),
             }),
     );
 
@@ -1231,26 +1324,19 @@ pub fn preview_sync_data(
     }))
 }
 
-pub fn preview_capability_data(
+fn build_capability_preview_record(
     workspace_root: &Path,
-    request: MobileCapabilityPreviewRequest,
+    request: &MobileCapabilityPreviewRequest,
+    record_id: &str,
 ) -> Result<MobileCapabilityPreviewRecord> {
-    if request.node_id.trim().is_empty() {
-        return Err(anyhow!("node_id is required"));
-    }
+    let manifest = inspect_node_data(workspace_root, &request.node_id)?;
     let capability = normalize_capability_name(&request.capability);
     if capability.is_empty() {
         return Err(anyhow!("capability is required"));
     }
     if !is_preview_supported_capability(&capability) {
-        return Err(anyhow!(
-            "capability '{}' is not supported by the bounded preview lane",
-            capability
-        ));
+        return Err(anyhow!("unsupported mobile capability '{capability}'"));
     }
-
-    let manifest = inspect_node_data(workspace_root, &request.node_id)?;
-    let status = node_status_data(workspace_root, &request.node_id)?;
     if !has_capability(&manifest.node.capabilities, &capability) {
         return Err(anyhow!(
             "node '{}' does not advertise capability '{}'",
@@ -1259,95 +1345,181 @@ pub fn preview_capability_data(
         ));
     }
 
-    let preview_id = format!(
-        "{}-{}-{}",
-        manifest.node.id,
-        capability,
-        Utc::now().timestamp_millis()
-    );
-    let receipt_path = capability_preview_path(workspace_root, &preview_id);
+    let target = request
+        .target
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string);
+    let query = request
+        .query
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string);
+    let note = request
+        .note
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string);
+
     let preview = match capability.as_str() {
         "camera" => json!({
             "kind": "camera_capture_preview",
-            "output_path": receipt_path.to_string_lossy(),
-            "foreground_required": true,
-            "capture_mode": "single_photo",
-            "note": request.note,
+            "capture_mode": "photo",
+            "target": target.clone().unwrap_or_else(|| "camera_roll".to_string()),
+            "note": note.clone(),
         }),
         "screen_recording" => json!({
             "kind": "screen_recording_preview",
-            "output_path": receipt_path.to_string_lossy(),
-            "foreground_required": true,
-            "capture_mode": "video_clip",
-            "note": request.note,
+            "duration_secs": 15,
+            "target": target.clone().unwrap_or_else(|| "recent_clip".to_string()),
+            "note": note.clone(),
         }),
         "location" => json!({
             "kind": "location_preview",
-            "precision": "coarse",
-            "output_path": receipt_path.to_string_lossy(),
-            "query": request.query,
-            "note": request.note,
+            "granularity": "coarse",
+            "query": query.clone(),
+            "note": note.clone(),
         }),
         "contacts" => json!({
-            "kind": "contacts_preview",
-            "query": request.query,
-            "limit": 25,
-            "output_path": receipt_path.to_string_lossy(),
+            "kind": "contacts_query_preview",
+            "query": query.clone(),
+            "target": target.clone(),
+            "note": note.clone(),
         }),
         "calendar" => json!({
-            "kind": "calendar_preview",
-            "query": request.query,
-            "range": "next_7_days",
-            "output_path": receipt_path.to_string_lossy(),
+            "kind": "calendar_query_preview",
+            "query": query.clone(),
+            "target": target.clone(),
+            "note": note.clone(),
         }),
         "photos" => json!({
-            "kind": "photo_library_preview",
-            "query": request.query,
-            "selection_mode": "bounded_picker",
-            "output_path": receipt_path.to_string_lossy(),
+            "kind": "photos_picker_preview",
+            "query": query.clone(),
+            "target": target.clone(),
+            "note": note.clone(),
         }),
         "canvas" => json!({
             "kind": "canvas_preview",
-            "output_path": receipt_path.to_string_lossy(),
-            "surface": "sketch_overlay",
-            "note": request.note,
+            "target": target.clone().unwrap_or_else(|| "default_canvas".to_string()),
+            "note": note.clone(),
         }),
         "sms" => json!({
-            "kind": "sms_preview",
-            "target": request.target,
-            "draft_only": true,
-            "output_path": receipt_path.to_string_lossy(),
-            "note": request.note,
+            "kind": "sms_draft_preview",
+            "target": target.clone(),
+            "query": query.clone(),
+            "note": note.clone(),
         }),
         "notifications" => json!({
-            "kind": "notification_preview_bridge",
-            "target": request.target,
-            "output_path": receipt_path.to_string_lossy(),
-            "note": request.note,
+            "kind": "notification_dispatch_preview",
+            "target": target.clone(),
+            "query": query.clone(),
+            "note": note.clone(),
         }),
-        other => {
-            return Err(anyhow!(
-                "capability '{}' is not supported by the bounded preview lane",
-                other
-            ));
-        }
+        other => return Err(anyhow!("unsupported mobile capability '{other}'")),
     };
 
-    let record = MobileCapabilityPreviewRecord {
-        id: preview_id,
+    Ok(MobileCapabilityPreviewRecord {
+        id: record_id.to_string(),
         node_id: manifest.node.id.clone(),
         capability,
         created_at: Utc::now().to_rfc3339(),
         preview: json!({
             "node_id": manifest.node.id,
-            "platform": manifest.node.platform,
             "device_name": manifest.node.device_name,
-            "readiness": status.readiness,
-            "capabilities": manifest.node.capabilities,
+            "platform": manifest.node.platform,
+            "request": {
+                "target": target,
+                "query": query,
+                "note": note,
+            },
             "preview": preview,
         }),
-    };
+    })
+}
+
+pub fn preview_capability_data(
+    workspace_root: &Path,
+    request: MobileCapabilityPreviewRequest,
+) -> Result<MobileCapabilityPreviewRecord> {
+    let preview_id = format!(
+        "{}-{}-{}",
+        request.node_id,
+        normalize_capability_name(&request.capability),
+        Utc::now().timestamp_millis()
+    );
+    let record = build_capability_preview_record(workspace_root, &request, &preview_id)?;
     write_capability_preview_record(workspace_root, &record)?;
+    Ok(record)
+}
+
+pub fn execute_capability_data(
+    workspace_root: &Path,
+    request: MobileCapabilityExecuteRequest,
+) -> Result<MobileCapabilityExecutionRecord> {
+    let execution_id = format!(
+        "{}-{}-{}",
+        request.node_id,
+        normalize_capability_name(&request.capability),
+        Utc::now().timestamp_millis()
+    );
+    let preview = build_capability_preview_record(
+        workspace_root,
+        &MobileCapabilityPreviewRequest {
+            node_id: request.node_id.clone(),
+            capability: request.capability.clone(),
+            target: request.target.clone(),
+            query: request.query.clone(),
+            note: request.note.clone(),
+        },
+        &execution_id,
+    )?;
+    let mut result = preview.preview;
+    if let Some(execution) = result.get_mut("preview").and_then(Value::as_object_mut) {
+        if let Some(kind) = execution.get("kind").and_then(Value::as_str) {
+            execution.insert(
+                "kind".to_string(),
+                Value::String(kind.replace("_preview", "_execution")),
+            );
+        }
+        execution.insert(
+            "execution_mode".to_string(),
+            Value::String("bounded_runtime_receipt".to_string()),
+        );
+        execution.insert("status".to_string(), Value::String("executed".to_string()));
+        execution.insert(
+            "executed_at".to_string(),
+            Value::String(Utc::now().to_rfc3339()),
+        );
+        if let Some(requested_by) = request
+            .requested_by
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            execution.insert(
+                "requested_by".to_string(),
+                Value::String(requested_by.to_string()),
+            );
+        }
+    }
+    let record = MobileCapabilityExecutionRecord {
+        id: execution_id,
+        node_id: preview.node_id,
+        capability: preview.capability,
+        status: "executed".to_string(),
+        created_at: Utc::now().to_rfc3339(),
+        requested_by: request
+            .requested_by
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string),
+        result,
+    };
+    write_capability_execution_record(workspace_root, &record)?;
     Ok(record)
 }
 
@@ -2486,6 +2658,35 @@ pub async fn preview_capability(
     Ok(())
 }
 
+pub async fn execute_capability(
+    workspace_root: &Path,
+    request: MobileCapabilityExecuteRequest,
+) -> Result<()> {
+    let execution = execute_capability_data(workspace_root, request)?;
+    println!("{}", serde_json::to_string_pretty(&execution)?);
+    Ok(())
+}
+
+pub async fn list_capability_executions(
+    workspace_root: &Path,
+    node_id: Option<&str>,
+    capability: Option<&str>,
+    limit: Option<usize>,
+) -> Result<()> {
+    let executions = list_capability_execution_data(workspace_root, node_id, capability, limit)?;
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&json!({ "executions": executions }))?
+    );
+    Ok(())
+}
+
+pub async fn inspect_capability_execution(workspace_root: &Path, execution_id: &str) -> Result<()> {
+    let execution = inspect_capability_execution_data(workspace_root, execution_id)?;
+    println!("{}", serde_json::to_string_pretty(&execution)?);
+    Ok(())
+}
+
 pub async fn list_commands(
     workspace_root: &Path,
     node_id: Option<&str>,
@@ -2566,6 +2767,14 @@ fn runtime_dir(workspace_root: &Path) -> PathBuf {
     mobile_root(workspace_root).join("runtime")
 }
 
+fn capability_previews_dir(workspace_root: &Path) -> PathBuf {
+    mobile_root(workspace_root).join("capability-previews")
+}
+
+fn capability_executions_dir(workspace_root: &Path) -> PathBuf {
+    mobile_root(workspace_root).join("capability-executions")
+}
+
 fn manifest_path(workspace_root: &Path, node_id: &str) -> PathBuf {
     nodes_dir(workspace_root).join(format!("{node_id}.json"))
 }
@@ -2592,6 +2801,14 @@ fn outbox_message_path(workspace_root: &Path, message_id: &str) -> PathBuf {
 
 fn runtime_path(workspace_root: &Path, node_id: &str) -> PathBuf {
     runtime_dir(workspace_root).join(format!("{node_id}.json"))
+}
+
+fn capability_preview_path(workspace_root: &Path, preview_id: &str) -> PathBuf {
+    capability_previews_dir(workspace_root).join(format!("{preview_id}.json"))
+}
+
+fn capability_execution_path(workspace_root: &Path, execution_id: &str) -> PathBuf {
+    capability_executions_dir(workspace_root).join(format!("{execution_id}.json"))
 }
 
 fn load_runtime_state(workspace_root: &Path, node_id: &str) -> Result<MobileNodeRuntimeState> {
@@ -2629,6 +2846,44 @@ fn write_pairing_record(workspace_root: &Path, record: &MobilePairingRecord) -> 
     fs::write(
         &path,
         serde_json::to_vec_pretty(record).context("failed to serialize mobile pairing record")?,
+    )
+    .with_context(|| format!("failed to write {}", path.display()))
+}
+
+fn write_capability_preview_record(
+    workspace_root: &Path,
+    record: &MobileCapabilityPreviewRecord,
+) -> Result<()> {
+    fs::create_dir_all(capability_previews_dir(workspace_root)).with_context(|| {
+        format!(
+            "failed to create {}",
+            capability_previews_dir(workspace_root).display()
+        )
+    })?;
+    let path = capability_preview_path(workspace_root, &record.id);
+    fs::write(
+        &path,
+        serde_json::to_vec_pretty(record)
+            .context("failed to serialize mobile capability preview record")?,
+    )
+    .with_context(|| format!("failed to write {}", path.display()))
+}
+
+fn write_capability_execution_record(
+    workspace_root: &Path,
+    record: &MobileCapabilityExecutionRecord,
+) -> Result<()> {
+    fs::create_dir_all(capability_executions_dir(workspace_root)).with_context(|| {
+        format!(
+            "failed to create {}",
+            capability_executions_dir(workspace_root).display()
+        )
+    })?;
+    let path = capability_execution_path(workspace_root, &record.id);
+    fs::write(
+        &path,
+        serde_json::to_vec_pretty(record)
+            .context("failed to serialize mobile capability execution record")?,
     )
     .with_context(|| format!("failed to write {}", path.display()))
 }
@@ -2876,35 +3131,6 @@ fn has_capability(advertised: &[String], capability: &str) -> bool {
         .any(|alias| normalized.iter().any(|entry| entry == alias))
 }
 
-fn capability_previews_dir(workspace_root: &Path) -> PathBuf {
-    workspace_root
-        .join(DEFAULT_MOBILE_ROOT)
-        .join("capability-previews")
-}
-
-fn capability_preview_path(workspace_root: &Path, preview_id: &str) -> PathBuf {
-    capability_previews_dir(workspace_root).join(format!("{preview_id}.json"))
-}
-
-fn write_capability_preview_record(
-    workspace_root: &Path,
-    record: &MobileCapabilityPreviewRecord,
-) -> Result<()> {
-    fs::create_dir_all(capability_previews_dir(workspace_root)).with_context(|| {
-        format!(
-            "failed to create {}",
-            capability_previews_dir(workspace_root).display()
-        )
-    })?;
-    let path = capability_preview_path(workspace_root, &record.id);
-    fs::write(
-        &path,
-        serde_json::to_vec_pretty(record)
-            .context("failed to serialize mobile capability preview record")?,
-    )
-    .with_context(|| format!("failed to write {}", path.display()))
-}
-
 fn parse_notification_type(raw: Option<&str>) -> Result<NotificationType> {
     Ok(
         match raw
@@ -2999,7 +3225,7 @@ mod tests {
                 auth_token_env: "IPHONE_LIFECYCLE_TOKEN".to_string(),
                 device_name: Some("Lifecycle iPhone".to_string()),
                 platform: Some("ios".to_string()),
-                capabilities: vec!["mobile".to_string()],
+                capabilities: vec!["mobile".to_string(), "camera".to_string()],
                 enabled: true,
                 sync: None,
                 notifications: None,
@@ -3344,6 +3570,7 @@ mod tests {
                 platform: Some("ios".to_string()),
                 capabilities: vec![
                     "mobile".to_string(),
+                    "camera".to_string(),
                     "notifications".to_string(),
                     "sms".to_string(),
                 ],
@@ -3439,6 +3666,18 @@ mod tests {
         )
         .await
         .expect("dispatch command");
+        execute_capability_data(
+            temp.path(),
+            MobileCapabilityExecuteRequest {
+                node_id: "iphone-activity".to_string(),
+                capability: "camera".to_string(),
+                target: Some("activity-roll".to_string()),
+                query: None,
+                note: Some("capture for activity timeline".to_string()),
+                requested_by: Some("tester".to_string()),
+            },
+        )
+        .expect("execute capability");
 
         let activity =
             node_activity_data(temp.path(), "iphone-activity", Some(16)).expect("activity");
@@ -3455,6 +3694,7 @@ mod tests {
         assert!(kinds.contains(&"notification"));
         assert!(kinds.contains(&"inbound_message"));
         assert!(kinds.contains(&"outbound_message"));
+        assert!(kinds.contains(&"capability_execution"));
         assert!(kinds.contains(&"command"));
         assert!(activity.entry_count >= 7);
         unsafe {
@@ -3585,6 +3825,60 @@ mod tests {
         assert_eq!(record.capability, "camera");
         assert_eq!(record.preview["preview"]["kind"], "camera_capture_preview");
         assert!(capability_preview_path(temp.path(), &record.id).exists());
+    }
+
+    #[test]
+    fn execute_capability_persists_bounded_receipt() {
+        let temp = tempdir().expect("tempdir");
+        pair_node_data(
+            temp.path(),
+            MobilePairRequest {
+                id: "iphone-execution".to_string(),
+                gateway_url: "wss://example.com/gateway".to_string(),
+                auth_token_env: "MOBILE_EXECUTION_TOKEN".to_string(),
+                device_name: Some("Execution iPhone".to_string()),
+                platform: Some("ios".to_string()),
+                capabilities: vec!["mobile".to_string(), "camera".to_string()],
+                enabled: true,
+                sync: None,
+                notifications: None,
+                metadata: Value::Null,
+            },
+        )
+        .expect("pair node");
+
+        let record = execute_capability_data(
+            temp.path(),
+            MobileCapabilityExecuteRequest {
+                node_id: "iphone-execution".to_string(),
+                capability: "camera".to_string(),
+                target: Some("camera_roll".to_string()),
+                query: None,
+                note: Some("operator execution".to_string()),
+                requested_by: Some("tester".to_string()),
+            },
+        )
+        .expect("capability execution");
+
+        assert_eq!(record.node_id, "iphone-execution");
+        assert_eq!(record.capability, "camera");
+        assert_eq!(record.status, "executed");
+        assert_eq!(record.result["preview"]["kind"], "camera_capture_execution");
+        assert!(capability_execution_path(temp.path(), &record.id).exists());
+
+        let inspected =
+            inspect_capability_execution_data(temp.path(), &record.id).expect("inspect execution");
+        assert_eq!(inspected.id, record.id);
+
+        let executions = list_capability_execution_data(
+            temp.path(),
+            Some("iphone-execution"),
+            Some("camera"),
+            Some(10),
+        )
+        .expect("list executions");
+        assert_eq!(executions.len(), 1);
+        assert_eq!(executions[0].id, record.id);
     }
 
     #[tokio::test]
