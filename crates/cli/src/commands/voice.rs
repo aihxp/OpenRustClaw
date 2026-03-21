@@ -2,10 +2,10 @@ use anyhow::Result;
 use openrustclaw_core::config::AppConfig;
 
 use super::voice_runtime::{
-    self, VoicePrewarmRequest, VoiceSessionAppendRequest, VoiceSessionEndRequest,
-    VoiceSessionHealthRequest, VoiceSessionReapRequest, VoiceSessionReconnectRequest,
-    VoiceSessionRespondRequest, VoiceSessionStartRequest, VoiceSynthesizeRequest,
-    VoiceTranscribeRequest,
+    self, VoicePrewarmRequest, VoiceSessionAppendRequest, VoiceSessionControlRequest,
+    VoiceSessionEndRequest, VoiceSessionHealthRequest, VoiceSessionReapRequest,
+    VoiceSessionReconnectRequest, VoiceSessionRespondRequest, VoiceSessionStartRequest,
+    VoiceSynthesizeRequest, VoiceTranscribeRequest,
 };
 
 fn load_config(config_path: &str) -> AppConfig {
@@ -258,6 +258,63 @@ pub async fn reconnect_session(
             greeting: greeting.map(ToString::to_string),
             format: format.map(ToString::to_string),
             output_path: output_path.map(ToString::to_string),
+        },
+    )
+    .await?;
+    println!("{}", serde_json::to_string_pretty(&result)?);
+    Ok(())
+}
+
+pub async fn pause_session(
+    config_path: &str,
+    session_id: &str,
+    reason: Option<&str>,
+) -> Result<()> {
+    let _config = load_config(config_path);
+    let workspace_root = std::env::current_dir()?;
+    let result = voice_runtime::pause_voice_session(
+        &workspace_root,
+        session_id,
+        VoiceSessionControlRequest {
+            reason: reason.map(ToString::to_string),
+        },
+    )
+    .await?;
+    println!("{}", serde_json::to_string_pretty(&result)?);
+    Ok(())
+}
+
+pub async fn resume_session(
+    config_path: &str,
+    session_id: &str,
+    reason: Option<&str>,
+) -> Result<()> {
+    let _config = load_config(config_path);
+    let workspace_root = std::env::current_dir()?;
+    let result = voice_runtime::resume_voice_session(
+        &workspace_root,
+        session_id,
+        VoiceSessionControlRequest {
+            reason: reason.map(ToString::to_string),
+        },
+    )
+    .await?;
+    println!("{}", serde_json::to_string_pretty(&result)?);
+    Ok(())
+}
+
+pub async fn interrupt_session(
+    config_path: &str,
+    session_id: &str,
+    reason: Option<&str>,
+) -> Result<()> {
+    let _config = load_config(config_path);
+    let workspace_root = std::env::current_dir()?;
+    let result = voice_runtime::interrupt_voice_session(
+        &workspace_root,
+        session_id,
+        VoiceSessionControlRequest {
+            reason: reason.map(ToString::to_string),
         },
     )
     .await?;

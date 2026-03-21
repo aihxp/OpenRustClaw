@@ -152,6 +152,7 @@ pub struct VoiceSessionTurn {
 pub struct VoiceSessionRecord {
     pub id: String,
     pub status: String,
+    pub live_state: String,
     pub stt_provider: String,
     pub tts_provider: String,
     pub tts_voice: String,
@@ -167,6 +168,16 @@ pub struct VoiceSessionRecord {
     pub reconnect_count: usize,
     #[serde(default)]
     pub last_reconnected_at: Option<String>,
+    #[serde(default)]
+    pub pause_count: usize,
+    #[serde(default)]
+    pub interrupted_count: usize,
+    #[serde(default)]
+    pub last_paused_at: Option<String>,
+    #[serde(default)]
+    pub last_resumed_at: Option<String>,
+    #[serde(default)]
+    pub last_interrupted_at: Option<String>,
     #[serde(default)]
     pub turns: Vec<VoiceSessionTurn>,
 }
@@ -260,6 +271,12 @@ pub struct VoiceSessionReconnectResult {
     pub session: VoiceSessionRecord,
     #[serde(default)]
     pub synthesis: Option<VoiceSynthesizeResult>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct VoiceSessionControlRequest {
+    #[serde(default)]
+    pub reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -1546,6 +1563,7 @@ pub async fn start_voice_session(
     let session = VoiceSessionRecord {
         id: session_id,
         status: "active".to_string(),
+        live_state: "listening".to_string(),
         stt_provider,
         tts_provider,
         tts_voice,
@@ -1556,6 +1574,11 @@ pub async fn start_voice_session(
         closed_at: None,
         reconnect_count: 0,
         last_reconnected_at: None,
+        pause_count: 0,
+        interrupted_count: 0,
+        last_paused_at: None,
+        last_resumed_at: None,
+        last_interrupted_at: None,
         turns: Vec::new(),
     };
     save_voice_session(workspace_root, &session).await?;
@@ -1568,7 +1591,7 @@ pub async fn append_voice_session_user(
     request: VoiceSessionAppendRequest,
 ) -> Result<VoiceSessionRecord> {
     let mut session = inspect_voice_session(workspace_root, session_id).await?;
-    ensure_voice_session_active(&session)?;
+    ensure_voice_session_accepts_turns(&session)?;
     let text = request.text.trim();
     if text.is_empty() {
         return Err(anyhow!("text is required"));
@@ -1579,6 +1602,7 @@ pub async fn append_voice_session_user(
         created_at: Utc::now().to_rfc3339(),
         synthesized_output_path: None,
     });
+    session.live_state = "listening".to_string();
     session.last_activity_at = Utc::now().to_rfc3339();
     save_voice_session(workspace_root, &session).await?;
     Ok(session)
@@ -1591,7 +1615,7 @@ pub async fn respond_voice_session(
     request: VoiceSessionRespondRequest,
 ) -> Result<VoiceSessionRespondResult> {
     let mut session = inspect_voice_session(workspace_root, session_id).await?;
-    ensure_voice_session_active(&session)?;
+    ensure_voice_session_accepts_turns(&session)?;
     let text = request.text.trim();
     if text.is_empty() {
         return Err(anyhow!("text is required"));
@@ -1622,6 +1646,7 @@ pub async fn respond_voice_session(
         created_at: Utc::now().to_rfc3339(),
         synthesized_output_path: Some(synthesis.output_path.clone()),
     });
+    session.live_state = "speaking".to_string();
     session.last_activity_at = Utc::now().to_rfc3339();
     save_voice_session(workspace_root, &session).await?;
 
@@ -1636,6 +1661,7 @@ pub async fn end_voice_session(
     let mut session = inspect_voice_session(workspace_root, session_id).await?;
     ensure_voice_session_active(&session)?;
     session.status = "ended".to_string();
+    session.live_state = "ended".to_string();
     session.end_reason = request.reason;
     let now = Utc::now().to_rfc3339();
     session.last_activity_at = now.clone();
@@ -1651,7 +1677,7 @@ pub async fn reconnect_voice_session(
     request: VoiceSessionReconnectRequest,
 ) -> Result<VoiceSessionReconnectResult> {
     let mut session = inspect_voice_session(workspace_root, session_id).await?;
-    ensure_voice_session_active(&session)?;
+    ensure_voice_session_accepts_turns(&session)?;
 
     if let Some(assistant_prompt) = request
         .assistant_prompt
@@ -1667,6 +1693,7 @@ pub async fn reconnect_voice_session(
     session.reconnect_count += 1;
     session.last_reconnected_at = Some(now.clone());
     session.last_activity_at = now;
+    session.live_state = "listening".to_string();
 
     let synthesis =
         if let Some(greeting) = request.greeting.filter(|value| !value.trim().is_empty()) {
@@ -1696,6 +1723,63 @@ pub async fn reconnect_voice_session(
 
     save_voice_session(workspace_root, &session).await?;
     Ok(VoiceSessionReconnectResult { session, synthesis })
+}
+
+pub async fn pause_voice_session(
+    workspace_root: &Path,
+    session_id: &str,
+    _request: VoiceSessionControlRequest,
+) -> Result<VoiceSessionRecord> {
+    let mut session = inspect_voice_session(workspace_root, session_id).await?;
+    ensure_voice_session_active(&session)?;
+    if session.live_state == "paused" {
+        return Err(anyhow!("voice session '{}' is already paused", session.id));
+    }
+    let now = Utc::now().to_rfc3339();
+    session.live_state = "paused".to_string();
+    session.pause_count += 1;
+    session.last_paused_at = Some(now.clone());
+    session.last_activity_at = now;
+    save_voice_session(workspace_root, &session).await?;
+    Ok(session)
+}
+
+pub async fn resume_voice_session(
+    workspace_root: &Path,
+    session_id: &str,
+    _request: VoiceSessionControlRequest,
+) -> Result<VoiceSessionRecord> {
+    let mut session = inspect_voice_session(workspace_root, session_id).await?;
+    ensure_voice_session_active(&session)?;
+    if !matches!(session.live_state.as_str(), "paused" | "interrupted") {
+        return Err(anyhow!(
+            "voice session '{}' is not paused or interrupted ({})",
+            session.id,
+            session.live_state
+        ));
+    }
+    let now = Utc::now().to_rfc3339();
+    session.live_state = "listening".to_string();
+    session.last_resumed_at = Some(now.clone());
+    session.last_activity_at = now;
+    save_voice_session(workspace_root, &session).await?;
+    Ok(session)
+}
+
+pub async fn interrupt_voice_session(
+    workspace_root: &Path,
+    session_id: &str,
+    _request: VoiceSessionControlRequest,
+) -> Result<VoiceSessionRecord> {
+    let mut session = inspect_voice_session(workspace_root, session_id).await?;
+    ensure_voice_session_active(&session)?;
+    let now = Utc::now().to_rfc3339();
+    session.live_state = "interrupted".to_string();
+    session.interrupted_count += 1;
+    session.last_interrupted_at = Some(now.clone());
+    session.last_activity_at = now;
+    save_voice_session(workspace_root, &session).await?;
+    Ok(session)
 }
 
 pub async fn voice_session_health(
@@ -1800,6 +1884,14 @@ fn ensure_voice_session_active(session: &VoiceSessionRecord) -> Result<()> {
             session.id,
             session.status
         ));
+    }
+    Ok(())
+}
+
+fn ensure_voice_session_accepts_turns(session: &VoiceSessionRecord) -> Result<()> {
+    ensure_voice_session_active(session)?;
+    if session.live_state == "paused" {
+        return Err(anyhow!("voice session '{}' is paused", session.id));
     }
     Ok(())
 }
@@ -2274,6 +2366,7 @@ mod tests {
         let session = VoiceSessionRecord {
             id: "stale-session".to_string(),
             status: "active".to_string(),
+            live_state: "listening".to_string(),
             stt_provider: "openai".to_string(),
             tts_provider: "openai".to_string(),
             tts_voice: "alloy".to_string(),
@@ -2284,6 +2377,11 @@ mod tests {
             closed_at: None,
             reconnect_count: 0,
             last_reconnected_at: None,
+            pause_count: 0,
+            interrupted_count: 0,
+            last_paused_at: None,
+            last_resumed_at: None,
+            last_interrupted_at: None,
             turns: vec![VoiceSessionTurn {
                 role: "user".to_string(),
                 text: "hello".to_string(),
@@ -2316,6 +2414,7 @@ mod tests {
         let session = VoiceSessionRecord {
             id: "reap-session".to_string(),
             status: "active".to_string(),
+            live_state: "listening".to_string(),
             stt_provider: "openai".to_string(),
             tts_provider: "openai".to_string(),
             tts_voice: "alloy".to_string(),
@@ -2326,6 +2425,11 @@ mod tests {
             closed_at: None,
             reconnect_count: 0,
             last_reconnected_at: None,
+            pause_count: 0,
+            interrupted_count: 0,
+            last_paused_at: None,
+            last_resumed_at: None,
+            last_interrupted_at: None,
             turns: Vec::new(),
         };
         save_voice_session(temp.path(), &session)
@@ -2415,6 +2519,73 @@ mod tests {
         assert_eq!(stored.turns.len(), 1);
 
         server_handle.abort();
+    }
+
+    #[tokio::test]
+    async fn pause_resume_and_interrupt_voice_session_updates_live_state() {
+        let temp = tempdir().expect("tempdir");
+        let config = AppConfig::default();
+
+        start_voice_session(
+            &config,
+            temp.path(),
+            VoiceSessionStartRequest {
+                session_id: Some("voice-session-control".to_string()),
+                assistant_prompt: None,
+                voice: None,
+            },
+        )
+        .await
+        .expect("start session");
+
+        let paused = pause_voice_session(
+            temp.path(),
+            "voice-session-control",
+            VoiceSessionControlRequest::default(),
+        )
+        .await
+        .expect("pause session");
+        assert_eq!(paused.live_state, "paused");
+        assert_eq!(paused.pause_count, 1);
+
+        let append_error = append_voice_session_user(
+            temp.path(),
+            "voice-session-control",
+            VoiceSessionAppendRequest {
+                text: "blocked while paused".to_string(),
+            },
+        )
+        .await
+        .expect_err("paused session should reject turn append");
+        assert!(append_error.to_string().contains("paused"));
+
+        let resumed = resume_voice_session(
+            temp.path(),
+            "voice-session-control",
+            VoiceSessionControlRequest::default(),
+        )
+        .await
+        .expect("resume session");
+        assert_eq!(resumed.live_state, "listening");
+
+        let interrupted = interrupt_voice_session(
+            temp.path(),
+            "voice-session-control",
+            VoiceSessionControlRequest::default(),
+        )
+        .await
+        .expect("interrupt session");
+        assert_eq!(interrupted.live_state, "interrupted");
+        assert_eq!(interrupted.interrupted_count, 1);
+
+        let resumed_again = resume_voice_session(
+            temp.path(),
+            "voice-session-control",
+            VoiceSessionControlRequest::default(),
+        )
+        .await
+        .expect("resume interrupted session");
+        assert_eq!(resumed_again.live_state, "listening");
     }
 
     #[tokio::test]

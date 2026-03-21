@@ -1290,6 +1290,7 @@ Remaining:
   - [x] bounded persisted voice-session receipts plus start/respond/end operator surfaces over the shipped STT/TTS lanes,
   - [x] bounded voice-session health summaries plus stale-session reaping and runtime prewarm controls over the shipped session lane,
   - [x] bounded voice-session reconnect/resume controls with optional reconnect greetings over the same persisted session lane,
+  - [x] bounded voice-session pause/resume/interrupt controls over the same persisted session lane,
   - [x] bounded call/phone plugin support through the compiled-skill voice-plugin lane,
   - [x] bounded voice-call lifecycle health summaries plus stale-call reaping and greeting prewarm for the compiled-skill voice-plugin lane,
   - [x] bounded voice-call reconnect/resume surfaces over the compiled-skill voice-plugin lane,

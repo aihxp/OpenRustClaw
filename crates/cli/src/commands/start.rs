@@ -2670,6 +2670,18 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             post(voice_reconnect_session_handler),
         )
         .route(
+            "/control/voice/sessions/{id}/pause",
+            post(voice_pause_session_handler),
+        )
+        .route(
+            "/control/voice/sessions/{id}/resume",
+            post(voice_resume_session_handler),
+        )
+        .route(
+            "/control/voice/sessions/{id}/interrupt",
+            post(voice_interrupt_session_handler),
+        )
+        .route(
             "/control/voice/sessions/{id}/end",
             post(voice_end_session_handler),
         )
@@ -4799,6 +4811,51 @@ async fn voice_reconnect_session_handler(
         }
         Err(error) => (
             StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn voice_pause_session_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(id): AxumPath<String>,
+    Json(payload): Json<voice_runtime::VoiceSessionControlRequest>,
+) -> impl IntoResponse {
+    match voice_runtime::pause_voice_session(&state.workspace_root, &id, payload).await {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn voice_resume_session_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(id): AxumPath<String>,
+    Json(payload): Json<voice_runtime::VoiceSessionControlRequest>,
+) -> impl IntoResponse {
+    match voice_runtime::resume_voice_session(&state.workspace_root, &id, payload).await {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn voice_interrupt_session_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(id): AxumPath<String>,
+    Json(payload): Json<voice_runtime::VoiceSessionControlRequest>,
+) -> impl IntoResponse {
+    match voice_runtime::interrupt_voice_session(&state.workspace_root, &id, payload).await {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": error.to_string()})),
         )
             .into_response(),

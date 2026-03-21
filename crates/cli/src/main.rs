@@ -1696,6 +1696,30 @@ enum VoiceAction {
         #[arg(long)]
         output_path: Option<String>,
     },
+    /// Pause one bounded voice session receipt
+    PauseSession {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+        id: String,
+        #[arg(long)]
+        reason: Option<String>,
+    },
+    /// Resume one bounded voice session receipt
+    ResumeSession {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+        id: String,
+        #[arg(long)]
+        reason: Option<String>,
+    },
+    /// Interrupt one bounded voice session receipt
+    InterruptSession {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+        id: String,
+        #[arg(long)]
+        reason: Option<String>,
+    },
     /// End one bounded voice session receipt
     EndSession {
         #[arg(short, long, default_value = "config/default.toml")]
@@ -4609,6 +4633,15 @@ async fn main() -> Result<()> {
                     output_path.as_deref(),
                 )
                 .await
+            }
+            VoiceAction::PauseSession { config, id, reason } => {
+                commands::voice::pause_session(&config, &id, reason.as_deref()).await
+            }
+            VoiceAction::ResumeSession { config, id, reason } => {
+                commands::voice::resume_session(&config, &id, reason.as_deref()).await
+            }
+            VoiceAction::InterruptSession { config, id, reason } => {
+                commands::voice::interrupt_session(&config, &id, reason.as_deref()).await
             }
             VoiceAction::EndSession { config, id, reason } => {
                 commands::voice::end_session(&config, &id, reason.as_deref()).await
