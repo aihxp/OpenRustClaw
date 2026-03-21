@@ -214,6 +214,12 @@ pub struct MobileNodeRuntimeState {
     #[serde(default)]
     pub acknowledged_inbound_message_count: usize,
     #[serde(default)]
+    pub last_outbound_message_at: Option<String>,
+    #[serde(default)]
+    pub pending_outbound_message_count: usize,
+    #[serde(default)]
+    pub acknowledged_outbound_message_count: usize,
+    #[serde(default)]
     pub metadata: Value,
 }
 
@@ -437,6 +443,48 @@ pub struct MobileInboundMessageAckRequest {
     pub acknowledged_by: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MobileOutboundMessageRecord {
+    pub id: String,
+    pub node_id: String,
+    pub target: String,
+    pub status: String,
+    #[serde(default)]
+    pub content_type: Option<String>,
+    pub content_preview: String,
+    pub bytes: usize,
+    pub created_at: String,
+    #[serde(default)]
+    pub dispatched_at: Option<String>,
+    #[serde(default)]
+    pub acknowledged_at: Option<String>,
+    #[serde(default)]
+    pub acknowledged_by: Option<String>,
+    #[serde(default)]
+    pub command_id: Option<String>,
+    #[serde(default)]
+    pub metadata: Value,
+    pub preview: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MobileOutboundMessageSendRequest {
+    pub node_id: String,
+    pub target: String,
+    pub content: String,
+    #[serde(default)]
+    pub content_type: Option<String>,
+    #[serde(default)]
+    pub requested_by: Option<String>,
+    #[serde(default)]
+    pub metadata: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MobileOutboundMessageAckRequest {
+    pub acknowledged_by: String,
+}
+
 fn default_true() -> bool {
     true
 }
@@ -565,6 +613,9 @@ impl MobileNodeRuntimeState {
             last_inbound_message_at: None,
             pending_inbound_message_count: 0,
             acknowledged_inbound_message_count: 0,
+            last_outbound_message_at: None,
+            pending_outbound_message_count: 0,
+            acknowledged_outbound_message_count: 0,
             metadata: Value::Null,
         }
     }
@@ -1318,6 +1369,166 @@ pub fn acknowledge_inbound_message_data(
     Ok(record)
 }
 
+pub fn list_outbound_message_data(
+    workspace_root: &Path,
+    node_id: Option<&str>,
+    limit: Option<usize>,
+) -> Result<Vec<MobileOutboundMessageRecord>> {
+    let mut entries = Vec::new();
+    let dir = outbox_dir(workspace_root);
+    if !dir.exists() {
+        return Ok(entries);
+    }
+
+    for entry in fs::read_dir(&dir).with_context(|| format!("failed to read {}", dir.display()))? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.extension().and_then(|value| value.to_str()) != Some("json") {
+            continue;
+        }
+        let bytes = fs::read_to_string(&path)
+            .with_context(|| format!("failed to read {}", path.display()))?;
+        let record: MobileOutboundMessageRecord = serde_json::from_str(&bytes)
+            .with_context(|| format!("failed to parse {}", path.display()))?;
+        if let Some(node_id) = node_id
+            && record.node_id != node_id
+        {
+            continue;
+        }
+        entries.push(record);
+    }
+
+    entries.sort_by(|left, right| right.created_at.cmp(&left.created_at));
+    if let Some(limit) = limit {
+        entries.truncate(limit);
+    }
+    Ok(entries)
+}
+
+pub fn inspect_outbound_message_data(
+    workspace_root: &Path,
+    message_id: &str,
+) -> Result<MobileOutboundMessageRecord> {
+    let path = outbox_message_path(workspace_root, message_id);
+    let bytes =
+        fs::read_to_string(&path).with_context(|| format!("failed to read {}", path.display()))?;
+    serde_json::from_str(&bytes).with_context(|| format!("failed to parse {}", path.display()))
+}
+
+pub async fn send_outbound_message_data(
+    workspace_root: &Path,
+    request: MobileOutboundMessageSendRequest,
+) -> Result<MobileOutboundMessageRecord> {
+    if request.node_id.trim().is_empty() {
+        return Err(anyhow!("node_id is required"));
+    }
+    let manifest = inspect_node_data(workspace_root, &request.node_id)?;
+    let status = node_status_data(workspace_root, &request.node_id)?;
+    if request.target.trim().is_empty() {
+        return Err(anyhow!("target is required"));
+    }
+    if request.content.trim().is_empty() {
+        return Err(anyhow!("content is required"));
+    }
+
+    let content_type = request
+        .content_type
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("text/plain")
+        .to_string();
+    let preview = preview_message_data(MobileMessagePreviewRequest {
+        source_node_id: request.node_id.clone(),
+        target: request.target.clone(),
+        content: request.content.clone(),
+        content_type: Some(content_type.clone()),
+    })?;
+    let now = Utc::now();
+    let mut runtime = load_runtime_state(workspace_root, &request.node_id)?;
+    let mut record = MobileOutboundMessageRecord {
+        id: uuid::Uuid::new_v4().to_string(),
+        node_id: request.node_id.clone(),
+        target: request.target.clone(),
+        status: "queued".to_string(),
+        content_type: Some(content_type.clone()),
+        content_preview: request.content.clone(),
+        bytes: preview
+            .get("bytes")
+            .and_then(Value::as_u64)
+            .unwrap_or_default() as usize,
+        created_at: now.to_rfc3339(),
+        dispatched_at: None,
+        acknowledged_at: None,
+        acknowledged_by: None,
+        command_id: None,
+        metadata: request.metadata,
+        preview,
+    };
+
+    if status.readiness == "ready_for_runtime"
+        && has_capability(&manifest.node.capabilities, "mobile")
+    {
+        let command = dispatch_command_data(
+            workspace_root,
+            MobileCommandDispatchRequest {
+                node_id: request.node_id.clone(),
+                command: DeviceCommandKind::SendMessage,
+                payload: json!({
+                    "target": request.target,
+                    "content": request.content,
+                    "content_type": content_type,
+                }),
+                approved_by: request
+                    .requested_by
+                    .clone()
+                    .or_else(|| Some("mobile_runtime".to_string())),
+                require_approval: Some(false),
+            },
+        )
+        .await?;
+        record.status = "dispatched".to_string();
+        record.dispatched_at = Some(Utc::now().to_rfc3339());
+        record.command_id = Some(command.id);
+    }
+
+    runtime.last_outbound_message_at = Some(Utc::now().to_rfc3339());
+    runtime.pending_outbound_message_count =
+        runtime.pending_outbound_message_count.saturating_add(1);
+    refresh_runtime_status(&mut runtime);
+    save_runtime_state(workspace_root, &runtime)?;
+    write_outbound_message_record(workspace_root, &record)?;
+    Ok(record)
+}
+
+pub fn acknowledge_outbound_message_data(
+    workspace_root: &Path,
+    message_id: &str,
+    request: MobileOutboundMessageAckRequest,
+) -> Result<MobileOutboundMessageRecord> {
+    if request.acknowledged_by.trim().is_empty() {
+        return Err(anyhow!("acknowledged_by is required"));
+    }
+    let mut record = inspect_outbound_message_data(workspace_root, message_id)?;
+    if record.status == "acknowledged" {
+        return Ok(record);
+    }
+
+    let mut runtime = load_runtime_state(workspace_root, &record.node_id)?;
+    record.status = "acknowledged".to_string();
+    record.acknowledged_by = Some(request.acknowledged_by);
+    record.acknowledged_at = Some(Utc::now().to_rfc3339());
+    runtime.pending_outbound_message_count =
+        runtime.pending_outbound_message_count.saturating_sub(1);
+    runtime.acknowledged_outbound_message_count = runtime
+        .acknowledged_outbound_message_count
+        .saturating_add(1);
+    refresh_runtime_status(&mut runtime);
+    save_runtime_state(workspace_root, &runtime)?;
+    write_outbound_message_record(workspace_root, &record)?;
+    Ok(record)
+}
+
 pub fn list_command_data(
     workspace_root: &Path,
     node_id: Option<&str>,
@@ -1919,6 +2130,44 @@ pub async fn acknowledge_inbox_message(
     Ok(())
 }
 
+pub async fn list_outbox(
+    workspace_root: &Path,
+    node_id: Option<&str>,
+    limit: Option<usize>,
+) -> Result<()> {
+    let messages = list_outbound_message_data(workspace_root, node_id, limit)?;
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&json!({ "messages": messages }))?
+    );
+    Ok(())
+}
+
+pub async fn inspect_outbox_message(workspace_root: &Path, message_id: &str) -> Result<()> {
+    let message = inspect_outbound_message_data(workspace_root, message_id)?;
+    println!("{}", serde_json::to_string_pretty(&message)?);
+    Ok(())
+}
+
+pub async fn send_outbox_message(
+    workspace_root: &Path,
+    request: MobileOutboundMessageSendRequest,
+) -> Result<()> {
+    let message = send_outbound_message_data(workspace_root, request).await?;
+    println!("{}", serde_json::to_string_pretty(&message)?);
+    Ok(())
+}
+
+pub async fn acknowledge_outbox_message(
+    workspace_root: &Path,
+    message_id: &str,
+    request: MobileOutboundMessageAckRequest,
+) -> Result<()> {
+    let message = acknowledge_outbound_message_data(workspace_root, message_id, request)?;
+    println!("{}", serde_json::to_string_pretty(&message)?);
+    Ok(())
+}
+
 pub async fn preview_message(request: MobileMessagePreviewRequest) -> Result<()> {
     let preview = preview_message_data(request)?;
     println!("{}", serde_json::to_string_pretty(&preview)?);
@@ -2014,6 +2263,10 @@ fn inbox_dir(workspace_root: &Path) -> PathBuf {
     mobile_root(workspace_root).join("inbox")
 }
 
+fn outbox_dir(workspace_root: &Path) -> PathBuf {
+    mobile_root(workspace_root).join("outbox")
+}
+
 fn runtime_dir(workspace_root: &Path) -> PathBuf {
     mobile_root(workspace_root).join("runtime")
 }
@@ -2032,6 +2285,10 @@ fn notification_path(workspace_root: &Path, notification_id: &str) -> PathBuf {
 
 fn inbox_message_path(workspace_root: &Path, message_id: &str) -> PathBuf {
     inbox_dir(workspace_root).join(format!("{message_id}.json"))
+}
+
+fn outbox_message_path(workspace_root: &Path, message_id: &str) -> PathBuf {
+    outbox_dir(workspace_root).join(format!("{message_id}.json"))
 }
 
 fn runtime_path(workspace_root: &Path, node_id: &str) -> PathBuf {
@@ -2092,6 +2349,21 @@ fn write_inbound_message_record(
         &path,
         serde_json::to_vec_pretty(record)
             .context("failed to serialize mobile inbound message record")?,
+    )
+    .with_context(|| format!("failed to write {}", path.display()))
+}
+
+fn write_outbound_message_record(
+    workspace_root: &Path,
+    record: &MobileOutboundMessageRecord,
+) -> Result<()> {
+    fs::create_dir_all(outbox_dir(workspace_root))
+        .with_context(|| format!("failed to create {}", outbox_dir(workspace_root).display()))?;
+    let path = outbox_message_path(workspace_root, &record.id);
+    fs::write(
+        &path,
+        serde_json::to_vec_pretty(record)
+            .context("failed to serialize mobile outbound message record")?,
     )
     .with_context(|| format!("failed to write {}", path.display()))
 }
@@ -2913,5 +3185,128 @@ mod tests {
         let runtime = node_runtime_data(temp.path(), "iphone-inbox-ack").expect("runtime");
         assert_eq!(runtime.pending_inbound_message_count, 0);
         assert_eq!(runtime.acknowledged_inbound_message_count, 1);
+    }
+
+    #[tokio::test]
+    async fn send_outbound_message_persists_runtime_receipt() {
+        let temp = tempdir().expect("tempdir");
+        unsafe {
+            std::env::set_var("MOBILE_OUTBOX_TOKEN", "secret");
+        }
+        pair_node_data(
+            temp.path(),
+            MobilePairRequest {
+                id: "iphone-outbox".to_string(),
+                gateway_url: "wss://example.com/gateway".to_string(),
+                auth_token_env: "MOBILE_OUTBOX_TOKEN".to_string(),
+                device_name: Some("Outbox iPhone".to_string()),
+                platform: Some("ios".to_string()),
+                capabilities: vec!["mobile".to_string()],
+                enabled: true,
+                sync: None,
+                notifications: None,
+                metadata: Value::Null,
+            },
+        )
+        .expect("pair node");
+
+        let record = send_outbound_message_data(
+            temp.path(),
+            MobileOutboundMessageSendRequest {
+                node_id: "iphone-outbox".to_string(),
+                target: "ops-room".to_string(),
+                content: "Outbound hello".to_string(),
+                content_type: Some("text/plain".to_string()),
+                requested_by: Some("test".to_string()),
+                metadata: json!({ "transport": "chat" }),
+            },
+        )
+        .await
+        .expect("send outbound message");
+
+        assert!(matches!(record.status.as_str(), "queued" | "dispatched"));
+        if record.status == "dispatched" {
+            assert!(record.command_id.is_some());
+        }
+
+        let runtime = node_runtime_data(temp.path(), "iphone-outbox").expect("runtime");
+        assert_eq!(runtime.pending_outbound_message_count, 1);
+        assert!(runtime.last_outbound_message_at.is_some());
+        unsafe {
+            std::env::remove_var("MOBILE_OUTBOX_TOKEN");
+        }
+    }
+
+    #[test]
+    fn acknowledge_outbound_message_updates_runtime_counters() {
+        let temp = tempdir().expect("tempdir");
+        pair_node_data(
+            temp.path(),
+            MobilePairRequest {
+                id: "iphone-outbox-ack".to_string(),
+                gateway_url: "wss://example.com/gateway".to_string(),
+                auth_token_env: "MOBILE_OUTBOX_ACK_TOKEN".to_string(),
+                device_name: Some("Outbox Ack iPhone".to_string()),
+                platform: Some("ios".to_string()),
+                capabilities: vec!["mobile".to_string()],
+                enabled: true,
+                sync: None,
+                notifications: None,
+                metadata: Value::Null,
+            },
+        )
+        .expect("pair node");
+
+        let record = report_inbound_message_data(
+            temp.path(),
+            MobileInboundMessageReportRequest {
+                node_id: "iphone-outbox-ack".to_string(),
+                source: "ops-room".to_string(),
+                target: "main".to_string(),
+                content: "seed".to_string(),
+                content_type: None,
+                metadata: Value::Null,
+            },
+        )
+        .expect("seed runtime");
+        assert_eq!(record.status, "reported");
+
+        let outbound = MobileOutboundMessageRecord {
+            id: "outbound-ack".to_string(),
+            node_id: "iphone-outbox-ack".to_string(),
+            target: "ops-room".to_string(),
+            status: "dispatched".to_string(),
+            content_type: Some("text/plain".to_string()),
+            content_preview: "Ack me".to_string(),
+            bytes: 6,
+            created_at: Utc::now().to_rfc3339(),
+            dispatched_at: Some(Utc::now().to_rfc3339()),
+            acknowledged_at: None,
+            acknowledged_by: None,
+            command_id: None,
+            metadata: Value::Null,
+            preview: json!({ "target": "ops-room" }),
+        };
+        write_outbound_message_record(temp.path(), &outbound).expect("write outbound");
+
+        let mut runtime = node_runtime_data(temp.path(), "iphone-outbox-ack").expect("runtime");
+        runtime.pending_outbound_message_count = 1;
+        save_runtime_state(temp.path(), &runtime).expect("save runtime");
+
+        let acknowledged = acknowledge_outbound_message_data(
+            temp.path(),
+            "outbound-ack",
+            MobileOutboundMessageAckRequest {
+                acknowledged_by: "operator".to_string(),
+            },
+        )
+        .expect("acknowledge outbound message");
+
+        assert_eq!(acknowledged.status, "acknowledged");
+        assert_eq!(acknowledged.acknowledged_by.as_deref(), Some("operator"));
+
+        let runtime = node_runtime_data(temp.path(), "iphone-outbox-ack").expect("runtime");
+        assert_eq!(runtime.pending_outbound_message_count, 0);
+        assert_eq!(runtime.acknowledged_outbound_message_count, 1);
     }
 }

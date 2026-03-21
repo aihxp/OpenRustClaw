@@ -1524,6 +1524,35 @@ enum MobileAction {
         #[arg(long)]
         acknowledged_by: String,
     },
+    /// List persisted bounded mobile outbound message receipts
+    Outbox {
+        #[arg(long)]
+        node_id: Option<String>,
+        #[arg(long)]
+        limit: Option<usize>,
+    },
+    /// Inspect one bounded mobile outbound message receipt
+    OutboundMessageStatus { id: String },
+    /// Send one bounded mobile outbound message through the shipped runtime lane
+    SendMessage {
+        #[arg(long)]
+        node_id: String,
+        #[arg(long)]
+        target: String,
+        #[arg(long)]
+        content: String,
+        #[arg(long)]
+        content_type: Option<String>,
+        #[arg(long)]
+        requested_by: Option<String>,
+    },
+    /// Acknowledge one bounded mobile outbound message receipt
+    AcknowledgeOutboundMessage {
+        #[arg(long)]
+        id: String,
+        #[arg(long)]
+        acknowledged_by: String,
+    },
     /// Preview whether a node would sync under the given conditions
     PreviewSync {
         #[arg(long)]
@@ -3519,6 +3548,43 @@ async fn main() -> Result<()> {
                         &workspace_root,
                         &id,
                         commands::mobile::MobileInboundMessageAckRequest { acknowledged_by },
+                    )
+                    .await
+                }
+                MobileAction::Outbox { node_id, limit } => {
+                    commands::mobile::list_outbox(&workspace_root, node_id.as_deref(), limit).await
+                }
+                MobileAction::OutboundMessageStatus { id } => {
+                    commands::mobile::inspect_outbox_message(&workspace_root, &id).await
+                }
+                MobileAction::SendMessage {
+                    node_id,
+                    target,
+                    content,
+                    content_type,
+                    requested_by,
+                } => {
+                    commands::mobile::send_outbox_message(
+                        &workspace_root,
+                        commands::mobile::MobileOutboundMessageSendRequest {
+                            node_id,
+                            target,
+                            content,
+                            content_type,
+                            requested_by,
+                            metadata: Value::Null,
+                        },
+                    )
+                    .await
+                }
+                MobileAction::AcknowledgeOutboundMessage {
+                    id,
+                    acknowledged_by,
+                } => {
+                    commands::mobile::acknowledge_outbox_message(
+                        &workspace_root,
+                        &id,
+                        commands::mobile::MobileOutboundMessageAckRequest { acknowledged_by },
                     )
                     .await
                 }

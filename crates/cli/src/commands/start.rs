@@ -2763,6 +2763,18 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             post(mobile_inbox_ack_handler),
         )
         .route(
+            "/control/mobile/outbox",
+            get(mobile_outbox_handler).post(mobile_outbox_send_handler),
+        )
+        .route(
+            "/control/mobile/outbox/{id}",
+            get(mobile_outbox_message_handler),
+        )
+        .route(
+            "/control/mobile/outbox/{id}/ack",
+            post(mobile_outbox_ack_handler),
+        )
+        .route(
             "/control/mobile/messages/preview",
             post(mobile_message_preview_handler),
         )
@@ -5365,6 +5377,71 @@ async fn mobile_inbox_ack_handler(
     Json(payload): Json<mobile::MobileInboundMessageAckRequest>,
 ) -> impl IntoResponse {
     match mobile::acknowledge_inbound_message_data(&state.workspace_root, &id, payload) {
+        Ok(message) => (StatusCode::OK, Json(serde_json::json!(message))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn mobile_outbox_handler(
+    State(state): State<RuntimeControlState>,
+    Query(query): Query<MobileCommandsQuery>,
+) -> impl IntoResponse {
+    match mobile::list_outbound_message_data(
+        &state.workspace_root,
+        query.node_id.as_deref(),
+        query.limit,
+    ) {
+        Ok(messages) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "messages": messages })),
+        )
+            .into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn mobile_outbox_message_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(id): AxumPath<String>,
+) -> impl IntoResponse {
+    match mobile::inspect_outbound_message_data(&state.workspace_root, &id) {
+        Ok(message) => (StatusCode::OK, Json(serde_json::json!(message))).into_response(),
+        Err(error) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn mobile_outbox_send_handler(
+    State(state): State<RuntimeControlState>,
+    Json(payload): Json<mobile::MobileOutboundMessageSendRequest>,
+) -> impl IntoResponse {
+    match mobile::send_outbound_message_data(&state.workspace_root, payload).await {
+        Ok(message) => (StatusCode::OK, Json(serde_json::json!(message))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn mobile_outbox_ack_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(id): AxumPath<String>,
+    Json(payload): Json<mobile::MobileOutboundMessageAckRequest>,
+) -> impl IntoResponse {
+    match mobile::acknowledge_outbound_message_data(&state.workspace_root, &id, payload) {
         Ok(message) => (StatusCode::OK, Json(serde_json::json!(message))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,

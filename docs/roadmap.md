@@ -1312,6 +1312,7 @@ Remaining:
   - [x] bounded push-registration and sync-state reporting surfaces for the shipped node operator lane,
   - [x] bounded mobile notification receipts with acknowledgement over the same shipped node runtime lane,
   - [x] bounded mobile inbound message receipts with acknowledgement over the same shipped node runtime lane,
+  - [x] bounded mobile outbound message receipts with acknowledgement over the same shipped node runtime lane,
   - richer paired-node/mobile app runtime capability parity where OpenClaw documents it.
 - [x] Add typed node protocols in Rust for the shipped node command/control lane rather than ad hoc compatibility layers.
 - [x] Add secure device capability gating and operator approval for node commands.
