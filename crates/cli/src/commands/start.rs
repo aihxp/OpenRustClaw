@@ -2796,6 +2796,7 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             "/control/media/extract-text",
             post(media_extract_text_handler),
         )
+        .route("/control/media/describe", post(media_describe_handler))
         .route(
             "/control/runtime/reload-plan",
             get(runtime_reload_plan_handler),
@@ -5549,6 +5550,27 @@ async fn media_extract_text_handler(
                     .into_response(),
             }
         }
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn media_describe_handler(
+    State(state): State<RuntimeControlState>,
+    Json(payload): Json<super::media::MediaDescribeRequest>,
+) -> impl IntoResponse {
+    match runtime::load_effective_config(&state.config_path, &state.workspace_root) {
+        Ok(config) => match super::media::describe_with_config(&config, payload).await {
+            Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+            Err(error) => (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": error.to_string()})),
+            )
+                .into_response(),
+        },
         Err(error) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({"error": error.to_string()})),

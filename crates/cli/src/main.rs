@@ -1644,6 +1644,21 @@ enum MediaAction {
         #[arg(long)]
         prompt: Option<String>,
     },
+    /// Describe a supported image artifact through a bounded provider-backed vision lane
+    Describe {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+        #[arg(long)]
+        path: String,
+        #[arg(long)]
+        provider: Option<String>,
+        #[arg(long)]
+        model: Option<String>,
+        #[arg(long)]
+        prompt: Option<String>,
+        #[arg(long)]
+        max_tokens: Option<u32>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -3710,6 +3725,26 @@ async fn main() -> Result<()> {
                         prompt,
                         max_audio_bytes: None,
                         timeout_secs: None,
+                    },
+                )
+                .await
+            }
+            MediaAction::Describe {
+                config,
+                path,
+                provider,
+                model,
+                prompt,
+                max_tokens,
+            } => {
+                commands::media::describe(
+                    &config,
+                    commands::media::MediaDescribeRequest {
+                        path,
+                        provider,
+                        model,
+                        prompt,
+                        max_tokens,
                     },
                 )
                 .await

@@ -3,10 +3,12 @@ use std::path::Path;
 use std::process::Command;
 
 use anyhow::{Context, Result, anyhow};
+use base64::Engine;
 use openrustclaw_automation::browser::{Screenshot, ScreenshotFormat};
 use openrustclaw_automation::vision::VisionCapabilities;
 use openrustclaw_core::config::AppConfig;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use tokio::fs;
 
 use super::voice_runtime;
@@ -71,6 +73,28 @@ pub struct MediaExtractTextResult {
     pub text: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MediaDescribeRequest {
+    pub path: String,
+    #[serde(default)]
+    pub provider: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub prompt: Option<String>,
+    #[serde(default)]
+    pub max_tokens: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MediaDescribeResult {
+    pub path: String,
+    pub media_kind: String,
+    pub provider: String,
+    pub model: String,
+    pub description: String,
+}
+
 fn load_config(config_path: &str) -> AppConfig {
     AppConfig::load_from(config_path)
         .or_else(|_| AppConfig::load())
@@ -94,6 +118,13 @@ pub async fn extract_text(config_path: &str, request: MediaExtractTextRequest) -
     let config = load_config(config_path);
     let workspace_root = std::env::current_dir()?;
     let result = extract_text_with_config(&config, &workspace_root, request).await?;
+    println!("{}", serde_json::to_string_pretty(&result)?);
+    Ok(())
+}
+
+pub async fn describe(config_path: &str, request: MediaDescribeRequest) -> Result<()> {
+    let config = load_config(config_path);
+    let result = describe_with_config(&config, request).await?;
     println!("{}", serde_json::to_string_pretty(&result)?);
     Ok(())
 }
@@ -164,6 +195,8 @@ pub fn media_provider_catalog(config: &AppConfig) -> MediaProviderCatalog {
             notes,
         });
     }
+
+    extractors.extend(vision_provider_catalog(config));
 
     MediaProviderCatalog { extractors }
 }
@@ -318,6 +351,103 @@ pub async fn extract_text_with_config(
     ))
 }
 
+pub async fn describe_with_config(
+    config: &AppConfig,
+    request: MediaDescribeRequest,
+) -> Result<MediaDescribeResult> {
+    let path = Path::new(&request.path);
+    if !path.exists() {
+        return Err(anyhow!("path '{}' does not exist", path.display()));
+    }
+    let bytes = fs::read(path)
+        .await
+        .with_context(|| format!("failed to read {}", path.display()))?;
+    let media_kind = detect_media_kind(path);
+    if media_kind != "image" {
+        return Err(anyhow!(
+            "bounded provider-backed describe currently supports image artifacts only"
+        ));
+    }
+
+    let provider = resolve_vision_provider(config, request.provider.as_deref())?;
+    let model = request
+        .model
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .unwrap_or_else(|| provider.default_model.clone());
+    let prompt = request
+        .prompt
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("Describe this image in detail.")
+        .to_string();
+    let api_key = std::env::var(&provider.api_key_env)
+        .with_context(|| format!("{} environment variable not set", provider.api_key_env))?;
+    let mime = guess_mime(path);
+    let data_url = format!(
+        "data:{};base64,{}",
+        mime,
+        base64::engine::general_purpose::STANDARD.encode(bytes)
+    );
+    let body = json!({
+        "model": model,
+        "messages": [{
+            "role": "user",
+            "content": [
+                { "type": "text", "text": prompt },
+                { "type": "image_url", "image_url": { "url": data_url } }
+            ]
+        }],
+        "max_tokens": request.max_tokens.unwrap_or(600),
+    });
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(120))
+        .build()
+        .context("failed to build media describe HTTP client")?;
+    let mut request_builder = client
+        .post(format!("{}/v1/chat/completions", provider.api_base_url))
+        .header(reqwest::header::CONTENT_TYPE, "application/json")
+        .bearer_auth(api_key);
+    if provider.provider == "openrouter" {
+        request_builder = request_builder
+            .header("HTTP-Referer", "https://openrustclaw.dev")
+            .header("X-Title", "OpenRustClaw");
+    }
+
+    let response = request_builder
+        .json(&body)
+        .send()
+        .await
+        .context("failed to call provider-backed media describe lane")?;
+    let status = response.status();
+    let payload: serde_json::Value = response
+        .json()
+        .await
+        .context("failed to parse media describe response")?;
+    if !status.is_success() {
+        return Err(anyhow!(
+            "media describe provider '{}' returned {}: {}",
+            provider.provider,
+            status,
+            payload
+        ));
+    }
+    let description = extract_chat_completion_text(&payload)
+        .ok_or_else(|| anyhow!("provider-backed media describe response did not contain text"))?;
+
+    Ok(MediaDescribeResult {
+        path: path.display().to_string(),
+        media_kind,
+        provider: provider.provider,
+        model,
+        description,
+    })
+}
+
 fn detect_media_kind(path: &Path) -> String {
     match normalized_extension(path).as_deref() {
         Some("png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp") => "image".to_string(),
@@ -356,6 +486,134 @@ fn guess_mime(path: &Path) -> String {
         _ => "application/octet-stream",
     }
     .to_string()
+}
+
+#[derive(Debug, Clone)]
+struct VisionProviderProfile {
+    provider: String,
+    default_model: String,
+    api_base_url: String,
+    api_key_env: String,
+}
+
+fn vision_provider_catalog(config: &AppConfig) -> Vec<MediaProviderStatus> {
+    let mut extractors = Vec::new();
+    for (provider, lane, model, api_key_env, api_base_url, note) in [
+        (
+            "openai",
+            "openai_compatible_vision",
+            config.providers.openai.model.clone(),
+            config.providers.openai.api_key_env.clone(),
+            "https://api.openai.com".to_string(),
+            "chat_completions_image_understanding".to_string(),
+        ),
+        (
+            "openrouter",
+            "openrouter_vision",
+            config.providers.openrouter.model.clone(),
+            config.providers.openrouter.api_key_env.clone(),
+            "https://openrouter.ai/api".to_string(),
+            "openai_compatible_image_understanding".to_string(),
+        ),
+    ] {
+        let api_key_present = api_key_env
+            .as_deref()
+            .and_then(|env| std::env::var(env).ok())
+            .is_some();
+        let mut notes = vec![
+            note,
+            format!("default_model:{model}"),
+            format!("base_url:{api_base_url}"),
+        ];
+        if !api_key_present {
+            notes.push("api_key_unavailable".to_string());
+        }
+        extractors.push(MediaProviderStatus {
+            provider: provider.to_string(),
+            lane: lane.to_string(),
+            kind: "image_description".to_string(),
+            ready: api_key_present,
+            notes,
+        });
+    }
+    extractors
+}
+
+fn resolve_vision_provider(
+    config: &AppConfig,
+    requested: Option<&str>,
+) -> Result<VisionProviderProfile> {
+    let provider = requested
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .unwrap_or_else(|| match config.providers.default_provider.as_str() {
+            "openai" | "openrouter" => config.providers.default_provider.clone(),
+            _ if config
+                .providers
+                .openai
+                .api_key_env
+                .as_deref()
+                .and_then(|env| std::env::var(env).ok())
+                .is_some() =>
+            {
+                "openai".to_string()
+            }
+            _ => "openrouter".to_string(),
+        });
+    match provider.as_str() {
+        "openai" => Ok(VisionProviderProfile {
+            provider,
+            default_model: config.providers.openai.model.clone(),
+            api_base_url: "https://api.openai.com".to_string(),
+            api_key_env: config
+                .providers
+                .openai
+                .api_key_env
+                .clone()
+                .ok_or_else(|| anyhow!("providers.openai.api_key_env is not configured"))?,
+        }),
+        "openrouter" => Ok(VisionProviderProfile {
+            provider,
+            default_model: config.providers.openrouter.model.clone(),
+            api_base_url: "https://openrouter.ai/api".to_string(),
+            api_key_env: config
+                .providers
+                .openrouter
+                .api_key_env
+                .clone()
+                .ok_or_else(|| anyhow!("providers.openrouter.api_key_env is not configured"))?,
+        }),
+        other => Err(anyhow!(
+            "unsupported bounded media vision provider '{}'; supported providers: openai, openrouter",
+            other
+        )),
+    }
+}
+
+fn extract_chat_completion_text(payload: &serde_json::Value) -> Option<String> {
+    let content = payload
+        .get("choices")?
+        .as_array()?
+        .first()?
+        .get("message")?
+        .get("content")?;
+    if let Some(text) = content.as_str() {
+        let text = text.trim();
+        return (!text.is_empty()).then_some(text.to_string());
+    }
+    let parts = content.as_array()?;
+    let text = parts
+        .iter()
+        .filter_map(|part| {
+            part.get("text")
+                .and_then(serde_json::Value::as_str)
+                .map(str::trim)
+        })
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n");
+    (!text.is_empty()).then_some(text)
 }
 
 fn normalized_extension(path: &Path) -> Option<String> {
@@ -702,6 +960,33 @@ mod tests {
                 .extractors
                 .iter()
                 .any(|entry| entry.lane == "rtf_text" && entry.kind == "document_text")
+        );
+        assert!(
+            catalog
+                .extractors
+                .iter()
+                .any(|entry| entry.kind == "image_description" && entry.provider == "openai")
+        );
+        assert!(
+            catalog
+                .extractors
+                .iter()
+                .any(|entry| entry.kind == "image_description" && entry.provider == "openrouter")
+        );
+    }
+
+    #[test]
+    fn extract_chat_completion_text_reads_string_content() {
+        let payload = json!({
+            "choices": [{
+                "message": {
+                    "content": "A red square on a transparent background."
+                }
+            }]
+        });
+        assert_eq!(
+            extract_chat_completion_text(&payload).as_deref(),
+            Some("A red square on a transparent background.")
         );
     }
 }
