@@ -379,23 +379,14 @@ pub async fn describe_with_config(
         "image" => {
             let image_prompt =
                 prompt.unwrap_or_else(|| "Describe this image in detail.".to_string());
-            let mime = guess_mime(path);
-            let data_url = format!(
-                "data:{};base64,{}",
-                mime,
-                base64::engine::general_purpose::STANDARD.encode(bytes)
+            let body = build_image_describe_request(
+                &provider,
+                &model,
+                request.max_tokens.unwrap_or(600),
+                &image_prompt,
+                &bytes,
+                &guess_mime(path),
             );
-            let body = json!({
-                "model": model,
-                "messages": [{
-                    "role": "user",
-                    "content": [
-                        { "type": "text", "text": image_prompt },
-                        { "type": "image_url", "image_url": { "url": data_url } }
-                    ]
-                }],
-                "max_tokens": request.max_tokens.unwrap_or(600),
-            });
             call_media_describe_provider(&provider, &body).await?
         }
         "document" | "audio" => {
@@ -418,14 +409,12 @@ pub async fn describe_with_config(
                 prompt.as_deref(),
                 &extracted.text,
             );
-            let body = json!({
-                "model": model,
-                "messages": [{
-                    "role": "user",
-                    "content": text_prompt
-                }],
-                "max_tokens": request.max_tokens.unwrap_or(600),
-            });
+            let body = build_text_describe_request(
+                &provider,
+                &model,
+                request.max_tokens.unwrap_or(600),
+                &text_prompt,
+            );
             call_media_describe_provider(&provider, &body).await?
         }
         _ => {
@@ -490,11 +479,27 @@ struct VisionProviderProfile {
     default_model: String,
     api_base_url: String,
     api_key_env: String,
+    api_version: Option<String>,
+    request_format: VisionRequestFormat,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum VisionRequestFormat {
+    OpenAiCompatible,
+    Anthropic,
 }
 
 fn vision_provider_catalog(config: &AppConfig) -> Vec<MediaProviderStatus> {
     let mut extractors = Vec::new();
     for (provider, lane, model, api_key_env, api_base_url, note) in [
+        (
+            "anthropic",
+            "anthropic_vision",
+            config.providers.anthropic.model.clone(),
+            config.providers.anthropic.api_key_env.clone(),
+            "https://api.anthropic.com".to_string(),
+            "messages_api_image_understanding".to_string(),
+        ),
         (
             "openai",
             "openai_compatible_vision",
@@ -558,7 +563,7 @@ fn resolve_vision_provider(
         .filter(|value| !value.is_empty())
         .map(ToString::to_string)
         .unwrap_or_else(|| match config.providers.default_provider.as_str() {
-            "openai" | "openrouter" => config.providers.default_provider.clone(),
+            "anthropic" | "openai" | "openrouter" => config.providers.default_provider.clone(),
             _ if config
                 .providers
                 .openai
@@ -569,9 +574,32 @@ fn resolve_vision_provider(
             {
                 "openai".to_string()
             }
+            _ if config
+                .providers
+                .anthropic
+                .api_key_env
+                .as_deref()
+                .and_then(|env| std::env::var(env).ok())
+                .is_some() =>
+            {
+                "anthropic".to_string()
+            }
             _ => "openrouter".to_string(),
         });
     match provider.as_str() {
+        "anthropic" => Ok(VisionProviderProfile {
+            provider,
+            default_model: config.providers.anthropic.model.clone(),
+            api_base_url: "https://api.anthropic.com".to_string(),
+            api_key_env: config
+                .providers
+                .anthropic
+                .api_key_env
+                .clone()
+                .ok_or_else(|| anyhow!("providers.anthropic.api_key_env is not configured"))?,
+            api_version: Some(config.providers.anthropic.api_version.clone()),
+            request_format: VisionRequestFormat::Anthropic,
+        }),
         "openai" => Ok(VisionProviderProfile {
             provider,
             default_model: config.providers.openai.model.clone(),
@@ -582,6 +610,8 @@ fn resolve_vision_provider(
                 .api_key_env
                 .clone()
                 .ok_or_else(|| anyhow!("providers.openai.api_key_env is not configured"))?,
+            api_version: None,
+            request_format: VisionRequestFormat::OpenAiCompatible,
         }),
         "openrouter" => Ok(VisionProviderProfile {
             provider,
@@ -593,9 +623,11 @@ fn resolve_vision_provider(
                 .api_key_env
                 .clone()
                 .ok_or_else(|| anyhow!("providers.openrouter.api_key_env is not configured"))?,
+            api_version: None,
+            request_format: VisionRequestFormat::OpenAiCompatible,
         }),
         other => Err(anyhow!(
-            "unsupported bounded media vision provider '{}'; supported providers: openai, openrouter",
+            "unsupported bounded media vision provider '{}'; supported providers: anthropic, openai, openrouter",
             other
         )),
     }
@@ -660,6 +692,82 @@ fn build_text_media_describe_prompt(
     )
 }
 
+fn build_image_describe_request(
+    provider: &VisionProviderProfile,
+    model: &str,
+    max_tokens: u32,
+    prompt: &str,
+    bytes: &[u8],
+    mime: &str,
+) -> serde_json::Value {
+    match provider.request_format {
+        VisionRequestFormat::Anthropic => json!({
+            "model": model,
+            "max_tokens": max_tokens,
+            "messages": [{
+                "role": "user",
+                "content": [
+                    { "type": "text", "text": prompt },
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": mime,
+                            "data": base64::engine::general_purpose::STANDARD.encode(bytes)
+                        }
+                    }
+                ]
+            }]
+        }),
+        VisionRequestFormat::OpenAiCompatible => {
+            let data_url = format!(
+                "data:{};base64,{}",
+                mime,
+                base64::engine::general_purpose::STANDARD.encode(bytes)
+            );
+            json!({
+                "model": model,
+                "messages": [{
+                    "role": "user",
+                    "content": [
+                        { "type": "text", "text": prompt },
+                        { "type": "image_url", "image_url": { "url": data_url } }
+                    ]
+                }],
+                "max_tokens": max_tokens,
+            })
+        }
+    }
+}
+
+fn build_text_describe_request(
+    provider: &VisionProviderProfile,
+    model: &str,
+    max_tokens: u32,
+    prompt: &str,
+) -> serde_json::Value {
+    match provider.request_format {
+        VisionRequestFormat::Anthropic => json!({
+            "model": model,
+            "max_tokens": max_tokens,
+            "messages": [{
+                "role": "user",
+                "content": [
+                    { "type": "text", "text": prompt }
+                ]
+            }]
+        }),
+        VisionRequestFormat::OpenAiCompatible => json!({
+            "model": model,
+            "messages": [{
+                "role": "user",
+                "content": prompt
+            }],
+            "max_tokens": max_tokens,
+        }),
+    }
+}
+
 fn truncate_for_prompt(text: &str, limit: usize) -> &str {
     if text.len() <= limit {
         return text;
@@ -681,10 +789,20 @@ async fn call_media_describe_provider(
         .timeout(std::time::Duration::from_secs(120))
         .build()
         .context("failed to build media describe HTTP client")?;
-    let mut request_builder = client
-        .post(format!("{}/v1/chat/completions", provider.api_base_url))
-        .header(reqwest::header::CONTENT_TYPE, "application/json")
-        .bearer_auth(api_key);
+    let mut request_builder = match provider.request_format {
+        VisionRequestFormat::Anthropic => client
+            .post(format!("{}/v1/messages", provider.api_base_url))
+            .header(reqwest::header::CONTENT_TYPE, "application/json")
+            .header("x-api-key", api_key)
+            .header(
+                "anthropic-version",
+                provider.api_version.as_deref().unwrap_or("2023-06-01"),
+            ),
+        VisionRequestFormat::OpenAiCompatible => client
+            .post(format!("{}/v1/chat/completions", provider.api_base_url))
+            .header(reqwest::header::CONTENT_TYPE, "application/json")
+            .bearer_auth(api_key),
+    };
     if provider.provider == "openrouter" {
         request_builder = request_builder
             .header("HTTP-Referer", "https://openrustclaw.dev")
@@ -709,8 +827,28 @@ async fn call_media_describe_provider(
             payload
         ));
     }
-    extract_chat_completion_text(&payload)
-        .ok_or_else(|| anyhow!("provider-backed media describe response did not contain text"))
+    match provider.request_format {
+        VisionRequestFormat::Anthropic => extract_anthropic_text(&payload)
+            .ok_or_else(|| anyhow!("provider-backed media describe response did not contain text")),
+        VisionRequestFormat::OpenAiCompatible => extract_chat_completion_text(&payload)
+            .ok_or_else(|| anyhow!("provider-backed media describe response did not contain text")),
+    }
+}
+
+fn extract_anthropic_text(payload: &serde_json::Value) -> Option<String> {
+    let content = payload.get("content")?.as_array()?;
+    let text = content
+        .iter()
+        .filter_map(|part| {
+            (part.get("type").and_then(serde_json::Value::as_str) == Some("text"))
+                .then(|| part.get("text").and_then(serde_json::Value::as_str))
+                .flatten()
+                .map(str::trim)
+        })
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n");
+    (!text.is_empty()).then_some(text)
 }
 
 fn normalized_extension(path: &Path) -> Option<String> {
@@ -1024,6 +1162,7 @@ mod tests {
     #[test]
     fn provider_catalog_includes_audio_stt_and_local_extractors() {
         let mut config = AppConfig::default();
+        config.providers.anthropic.api_key_env = Some("ANTHROPIC_TEST_KEY".to_string());
         config.providers.openai.api_key_env = Some("OPENAI_TEST_KEY".to_string());
         config.providers.openrouter.api_key_env = Some("OPENROUTER_TEST_KEY".to_string());
         let catalog = media_provider_catalog(&config);
@@ -1057,6 +1196,12 @@ mod tests {
                 .extractors
                 .iter()
                 .any(|entry| entry.lane == "rtf_text" && entry.kind == "document_text")
+        );
+        assert!(
+            catalog
+                .extractors
+                .iter()
+                .any(|entry| entry.kind == "image_description" && entry.provider == "anthropic")
         );
         assert!(
             catalog
@@ -1096,6 +1241,21 @@ mod tests {
         assert_eq!(
             extract_chat_completion_text(&payload).as_deref(),
             Some("A red square on a transparent background.")
+        );
+    }
+
+    #[test]
+    fn extract_anthropic_text_reads_content_array() {
+        let payload = json!({
+            "content": [
+                { "type": "text", "text": "First line." },
+                { "type": "tool_use", "id": "toolu_123", "name": "ignored" },
+                { "type": "text", "text": "Second line." }
+            ]
+        });
+        assert_eq!(
+            extract_anthropic_text(&payload).as_deref(),
+            Some("First line.\nSecond line.")
         );
     }
 
