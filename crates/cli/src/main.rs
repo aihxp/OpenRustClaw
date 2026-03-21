@@ -745,6 +745,10 @@ enum SkillsAction {
     VoiceCallHealth,
     /// Inspect a bounded voice-call lifecycle event timeline
     VoiceCallEvents { call_id: String },
+    /// Inspect bounded voice-call artifacts
+    VoiceCallArtifacts { call_id: String },
+    /// Summarize bounded voice-call artifact and activity metrics
+    VoiceCallMetrics,
     /// Start a bounded voice-call session for a configured plugin
     StartVoiceCall {
         plugin_id: String,
@@ -1408,6 +1412,10 @@ enum MobileAction {
     Status { id: String },
     /// Show bounded runtime state for a configured mobile node
     Runtime { id: String },
+    /// Show derived metrics for all mobile nodes
+    Metrics,
+    /// Show bounded summary for a configured mobile node
+    NodeSummary { id: String },
     /// Show bounded push-registration/runtime state for a configured mobile node
     PushStatus { id: String },
     /// Record bounded push-registration/runtime state for a configured mobile node
@@ -3062,6 +3070,10 @@ async fn main() -> Result<()> {
             SkillsAction::VoiceCallEvents { call_id } => {
                 commands::skills::voice_call_events(&call_id).await
             }
+            SkillsAction::VoiceCallArtifacts { call_id } => {
+                commands::skills::voice_call_artifacts(&call_id).await
+            }
+            SkillsAction::VoiceCallMetrics => commands::skills::voice_call_metrics().await,
             SkillsAction::StartVoiceCall {
                 plugin_id,
                 remote,
@@ -3546,6 +3558,10 @@ async fn main() -> Result<()> {
                 }
                 MobileAction::Runtime { id } => {
                     commands::mobile::node_runtime(&workspace_root, &id).await
+                }
+                MobileAction::Metrics => commands::mobile::mobile_metrics().await,
+                MobileAction::NodeSummary { id } => {
+                    commands::mobile::mobile_node_summary(&id).await
                 }
                 MobileAction::PushStatus { id } => {
                     commands::mobile::node_push_state(&workspace_root, &id).await

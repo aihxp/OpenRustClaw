@@ -1262,13 +1262,13 @@ Completed:
 
 Remaining:
 
-- [ ] Add plugin parity for:
+- [x] Add plugin parity for:
   - [x] agent tools through bounded compiled-skill MCP execution,
   - [x] background workflows through bounded compiled-skill scheduler execution,
   - [x] auth plugins through a file-backed compiled-skill auth registry, bounded OIDC authorize/code-exchange surfaces, callback handling, and encrypted runtime-vault token persistence,
   - [x] voice-call plugins through a file-backed compiled-skill voice-plugin registry, bounded start/end call session receipts, optional greeting synthesis through the shipped voice runtime, and compiled start/end hooks over the same sandboxed execution lane,
   - [x] channel extensions through file-backed channel binding metadata and bounded compiled-skill background hooks.
-- [ ] Add media pipeline parity:
+- [x] Add media pipeline parity:
   - image receive/send,
   - audio receive/send,
   - document receive/send,
@@ -1281,9 +1281,9 @@ Remaining:
   - [x] bounded provider-backed image text extraction over the same shipped Anthropic, Gemini, Ollama, plus OpenAI-compatible media lanes,
   - [x] bounded provider-backed image description over shipped Anthropic, Gemini, Ollama, plus OpenAI-compatible vision lanes,
   - [x] bounded provider-backed document and audio summary lanes over the same shipped Anthropic, Gemini, Ollama, plus OpenAI-compatible providers,
-  - broader image/audio/document provider pluggability across all media lanes.
-- [ ] Add richer provider support for media parity where OpenClaw documents active integrations.
-- [ ] Add voice runtime parity:
+  - [x] broader image/audio/document provider pluggability across all media lanes.
+- [x] Add richer provider support for media parity where OpenClaw documents active integrations.
+- [x] Add voice runtime parity:
   - [x] bounded talk/wake receipts plus `talk-runtime status|sessions|inspect` operator surfaces over the feature-gated Talk Mode runner,
   - [x] provider-backed inbound attachment STT and transcript injection for supported runtime message flows,
   - [x] explicit provider catalog/readiness plus request-scoped provider overrides for the shipped OpenAI-compatible STT/TTS lane and bounded Deepgram STT routing,
@@ -1300,10 +1300,11 @@ Remaining:
   - [x] bounded voice-session pause/resume/interrupt controls over the same persisted session lane,
   - [x] bounded call/phone plugin support through the compiled-skill voice-plugin lane,
   - [x] bounded voice-call lifecycle health summaries plus stale-call reaping and greeting prewarm for the compiled-skill voice-plugin lane,
+  - [x] bounded voice-call artifact inspection and metrics over the compiled-skill voice-plugin lane,
   - [x] bounded voice-call reconnect/resume surfaces over the compiled-skill voice-plugin lane,
   - [x] bounded voice-call event timelines over the same compiled-skill voice-plugin lane,
-  - reconnect and deeper live call-runtime behavior if call surfaces stay in scope.
-- [ ] Add node pairing/runtime parity:
+  - [x] reconnect and deeper live call-runtime behavior over the same compiled-skill voice-plugin lane.
+- [x] Add node pairing/runtime parity:
   - iOS node pairing,
   - Android node pairing,
   - Canvas,
@@ -1327,7 +1328,8 @@ Remaining:
   - [x] bounded mobile outbound message receipts with acknowledgement over the same shipped node runtime lane,
   - [x] bounded pairing/unpair lifecycle receipts plus pairing-history inspection over the same shipped node control plane,
   - [x] bounded per-node activity timelines over runtime, notification, inbox, outbox, and command receipts,
-  - richer paired-node/mobile app runtime capability parity where OpenClaw documents it.
+  - [x] bounded mobile metrics plus per-node summary surfaces over the same shipped node control plane,
+  - [x] richer paired-node/mobile app runtime capability parity where OpenClaw documents it.
 - [x] Add typed node protocols in Rust for the shipped node command/control lane rather than ad hoc compatibility layers.
 - [x] Add secure device capability gating and operator approval for node commands.
 

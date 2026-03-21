@@ -483,6 +483,63 @@ pub struct MobileNodeActivityResult {
     pub entries: Vec<MobileNodeActivityEntry>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct MobileNodeSummary {
+    pub node_id: String,
+    pub runtime_status: String,
+    pub app_state: String,
+    pub network: String,
+    pub reachable: bool,
+    pub push_token_present: bool,
+    pub notifications_authorized: bool,
+    pub wake_state: String,
+    pub rehydrate_state: String,
+    pub sync_state: String,
+    pub battery_percent: Option<u8>,
+    pub pairings: usize,
+    pub app_sessions: usize,
+    pub sync_conflicts: usize,
+    pub notifications: usize,
+    pub inbox_messages: usize,
+    pub outbox_messages: usize,
+    pub capability_executions: usize,
+    pub media_artifacts: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MobileMetricsSummary {
+    pub total_nodes: usize,
+    pub paired_records: usize,
+    pub unpaired_records: usize,
+    pub reachable_nodes: usize,
+    pub push_token_present_nodes: usize,
+    pub notifications_authorized_nodes: usize,
+    pub waking_nodes: usize,
+    pub rehydrate_pending_nodes: usize,
+    pub active_app_sessions: usize,
+    pub pending_notifications: usize,
+    pub delivered_notifications: usize,
+    pub pending_inbound_messages: usize,
+    pub acknowledged_inbound_messages: usize,
+    pub pending_outbound_messages: usize,
+    pub acknowledged_outbound_messages: usize,
+    pub sync_conflicts: usize,
+    pub capability_executions: usize,
+    pub media_artifacts: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MobileMetricsResult {
+    pub status: String,
+    pub metrics: MobileMetricsSummary,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MobileNodeSummaryResult {
+    pub status: String,
+    pub summary: MobileNodeSummary,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MobilePairingRecord {
     pub id: String,
@@ -1366,6 +1423,118 @@ pub fn node_activity_data(
         node_id: node_id.to_string(),
         entry_count: entries.len(),
         entries,
+    })
+}
+
+pub fn mobile_node_summary_data(
+    workspace_root: &Path,
+    node_id: &str,
+) -> Result<MobileNodeSummaryResult> {
+    inspect_node_data(workspace_root, node_id)?;
+    let runtime = load_runtime_state(workspace_root, node_id)?;
+    let pairings = list_pairing_data(workspace_root, Some(node_id), None)?.len();
+    let app_sessions = list_app_session_data(workspace_root, Some(node_id), None, None)?.len();
+    let sync_conflicts = list_sync_conflict_data(workspace_root, Some(node_id), None, None)?.len();
+    let notifications = list_notification_data(workspace_root, Some(node_id), None)?.len();
+    let inbox_messages = list_inbound_message_data(workspace_root, Some(node_id), None)?.len();
+    let outbox_messages = list_outbound_message_data(workspace_root, Some(node_id), None)?.len();
+    let capability_executions =
+        list_capability_execution_data(workspace_root, Some(node_id), None, None)?.len();
+    let media_artifacts =
+        list_media_artifact_data(workspace_root, Some(node_id), None, None)?.len();
+    Ok(MobileNodeSummaryResult {
+        status: "ok".to_string(),
+        summary: MobileNodeSummary {
+            node_id: node_id.to_string(),
+            runtime_status: runtime.runtime_status,
+            app_state: runtime.app_state,
+            network: runtime.network,
+            reachable: runtime.reachable,
+            push_token_present: runtime.push_token_present,
+            notifications_authorized: runtime.notifications_authorized,
+            wake_state: runtime.wake_state,
+            rehydrate_state: runtime.rehydrate_state,
+            sync_state: runtime.sync_state,
+            battery_percent: runtime.battery_percent,
+            pairings,
+            app_sessions,
+            sync_conflicts,
+            notifications,
+            inbox_messages,
+            outbox_messages,
+            capability_executions,
+            media_artifacts,
+        },
+    })
+}
+
+pub fn mobile_metrics_data() -> Result<MobileMetricsResult> {
+    let workspace_root = std::env::current_dir().context("failed to resolve workspace root")?;
+    let nodes = list_nodes_data(&workspace_root)?;
+    let mut summary = MobileMetricsSummary {
+        total_nodes: nodes.len(),
+        paired_records: 0,
+        unpaired_records: 0,
+        reachable_nodes: 0,
+        push_token_present_nodes: 0,
+        notifications_authorized_nodes: 0,
+        waking_nodes: 0,
+        rehydrate_pending_nodes: 0,
+        active_app_sessions: 0,
+        pending_notifications: 0,
+        delivered_notifications: 0,
+        pending_inbound_messages: 0,
+        acknowledged_inbound_messages: 0,
+        pending_outbound_messages: 0,
+        acknowledged_outbound_messages: 0,
+        sync_conflicts: 0,
+        capability_executions: 0,
+        media_artifacts: 0,
+    };
+
+    for manifest in &nodes {
+        let runtime = load_runtime_state(&workspace_root, &manifest.node.id)?;
+        if runtime.reachable {
+            summary.reachable_nodes += 1;
+        }
+        if runtime.push_token_present {
+            summary.push_token_present_nodes += 1;
+        }
+        if runtime.notifications_authorized {
+            summary.notifications_authorized_nodes += 1;
+        }
+        if runtime.wake_state == "requested" {
+            summary.waking_nodes += 1;
+        }
+        if runtime.rehydrate_state == "requested" {
+            summary.rehydrate_pending_nodes += 1;
+        }
+        summary.pending_notifications += runtime.pending_notification_count;
+        summary.delivered_notifications += runtime.delivered_notification_count;
+        summary.pending_inbound_messages += runtime.pending_inbound_message_count;
+        summary.acknowledged_inbound_messages += runtime.acknowledged_inbound_message_count;
+        summary.pending_outbound_messages += runtime.pending_outbound_message_count;
+        summary.acknowledged_outbound_messages += runtime.acknowledged_outbound_message_count;
+    }
+
+    for pairing in list_pairing_data(&workspace_root, None, None)? {
+        match pairing.kind.as_str() {
+            "paired" => summary.paired_records += 1,
+            "unpaired" => summary.unpaired_records += 1,
+            _ => {}
+        }
+    }
+
+    summary.active_app_sessions =
+        list_app_session_data(&workspace_root, None, Some("active"), None)?.len();
+    summary.sync_conflicts = list_sync_conflict_data(&workspace_root, None, None, None)?.len();
+    summary.capability_executions =
+        list_capability_execution_data(&workspace_root, None, None, None)?.len();
+    summary.media_artifacts = list_media_artifact_data(&workspace_root, None, None, None)?.len();
+
+    Ok(MobileMetricsResult {
+        status: "ok".to_string(),
+        metrics: summary,
     })
 }
 
@@ -3096,6 +3265,19 @@ pub async fn node_activity(
 ) -> Result<()> {
     let activity = node_activity_data(workspace_root, node_id, limit)?;
     println!("{}", serde_json::to_string_pretty(&activity)?);
+    Ok(())
+}
+
+pub async fn mobile_metrics() -> Result<()> {
+    let metrics = mobile_metrics_data()?;
+    println!("{}", serde_json::to_string_pretty(&metrics)?);
+    Ok(())
+}
+
+pub async fn mobile_node_summary(node_id: &str) -> Result<()> {
+    let workspace_root = std::env::current_dir().context("failed to resolve workspace root")?;
+    let summary = mobile_node_summary_data(&workspace_root, node_id)?;
+    println!("{}", serde_json::to_string_pretty(&summary)?);
     Ok(())
 }
 

@@ -686,6 +686,43 @@ pub struct SkillVoiceCallEventsResult {
     pub events: Vec<SkillVoiceCallEvent>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct SkillVoiceCallArtifact {
+    pub kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output: Option<serde_json::Value>,
+    pub observed_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SkillVoiceCallArtifactsResult {
+    pub status: String,
+    pub call: SkillVoiceCallRecord,
+    pub artifacts: Vec<SkillVoiceCallArtifact>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SkillVoiceCallMetricsSummary {
+    pub total: usize,
+    pub active: usize,
+    pub stale: usize,
+    pub ended: usize,
+    pub reaped: usize,
+    pub reconnects: usize,
+    pub with_greeting_audio: usize,
+    pub with_start_hook_output: usize,
+    pub with_end_hook_output: usize,
+    pub with_reconnect_hook_output: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SkillVoiceCallMetricsResult {
+    pub status: String,
+    pub metrics: SkillVoiceCallMetricsSummary,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct SkillBindVoicePluginOptions<'a> {
     pub service: Option<&'a str>,
@@ -2440,6 +2477,29 @@ pub async fn voice_call_events_data(call_id: &str) -> Result<SkillVoiceCallEvent
     })
 }
 
+pub async fn voice_call_artifacts_data(call_id: &str) -> Result<SkillVoiceCallArtifactsResult> {
+    let result = voice_calls_data().await?;
+    let call = result
+        .calls
+        .into_iter()
+        .find(|call| call.call_id == call_id)
+        .ok_or_else(|| anyhow::anyhow!("Voice call '{}' not found", call_id))?;
+    let artifacts = voice_call_artifacts_for_record(&call);
+    Ok(SkillVoiceCallArtifactsResult {
+        status: "ok".to_string(),
+        call,
+        artifacts,
+    })
+}
+
+pub async fn voice_call_metrics_data() -> Result<SkillVoiceCallMetricsResult> {
+    let result = voice_calls_data().await?;
+    Ok(SkillVoiceCallMetricsResult {
+        status: "ok".to_string(),
+        metrics: voice_call_metrics_summary(&result.calls),
+    })
+}
+
 async fn execute_voice_call_hook(
     artifact: &CompiledSkillArtifact,
     service: Option<&str>,
@@ -2539,6 +2599,90 @@ fn voice_call_health_summary(calls: &[SkillVoiceCallRecord]) -> SkillVoiceCallHe
         reaped,
         oldest_active_call_id: oldest_active.map(|(_, id)| id),
     }
+}
+
+fn voice_call_metrics_summary(calls: &[SkillVoiceCallRecord]) -> SkillVoiceCallMetricsSummary {
+    let mut summary = SkillVoiceCallMetricsSummary {
+        total: calls.len(),
+        active: 0,
+        stale: 0,
+        ended: 0,
+        reaped: 0,
+        reconnects: 0,
+        with_greeting_audio: 0,
+        with_start_hook_output: 0,
+        with_end_hook_output: 0,
+        with_reconnect_hook_output: 0,
+    };
+
+    for call in calls {
+        summary.reconnects += call.reconnect_count;
+        if call.greeting_audio_path.is_some() {
+            summary.with_greeting_audio += 1;
+        }
+        if call.start_hook_output.is_some() {
+            summary.with_start_hook_output += 1;
+        }
+        if call.end_hook_output.is_some() {
+            summary.with_end_hook_output += 1;
+        }
+        if call.reconnect_hook_output.is_some() {
+            summary.with_reconnect_hook_output += 1;
+        }
+        match call.health.as_str() {
+            "active" => summary.active += 1,
+            "stale" => summary.stale += 1,
+            "reaped" => summary.reaped += 1,
+            _ => summary.ended += 1,
+        }
+    }
+
+    summary
+}
+
+fn voice_call_artifacts_for_record(call: &SkillVoiceCallRecord) -> Vec<SkillVoiceCallArtifact> {
+    let mut artifacts = Vec::new();
+    if let Some(path) = call.greeting_audio_path.clone() {
+        artifacts.push(SkillVoiceCallArtifact {
+            kind: "greeting_audio".to_string(),
+            path: Some(path),
+            output: None,
+            observed_at: call.started_at.clone(),
+        });
+    }
+    if let Some(output) = call.start_hook_output.clone() {
+        artifacts.push(SkillVoiceCallArtifact {
+            kind: "start_hook_output".to_string(),
+            path: None,
+            output: Some(output),
+            observed_at: call.started_at.clone(),
+        });
+    }
+    if let Some(output) = call.reconnect_hook_output.clone() {
+        artifacts.push(SkillVoiceCallArtifact {
+            kind: "reconnect_hook_output".to_string(),
+            path: None,
+            output: Some(output),
+            observed_at: call.last_reconnected_at.clone().unwrap_or_else(|| {
+                call.last_seen_at
+                    .clone()
+                    .unwrap_or_else(|| call.started_at.clone())
+            }),
+        });
+    }
+    if let Some(output) = call.end_hook_output.clone() {
+        artifacts.push(SkillVoiceCallArtifact {
+            kind: "end_hook_output".to_string(),
+            path: None,
+            output: Some(output),
+            observed_at: call.ended_at.clone().unwrap_or_else(|| {
+                call.last_seen_at
+                    .clone()
+                    .unwrap_or_else(|| call.started_at.clone())
+            }),
+        });
+    }
+    artifacts
 }
 
 fn voice_call_events_for_record(call: &SkillVoiceCallRecord) -> Vec<SkillVoiceCallEvent> {
@@ -4009,6 +4153,20 @@ pub async fn voice_call_health() -> Result<()> {
 /// Inspect a bounded voice-call lifecycle event timeline.
 pub async fn voice_call_events(call_id: &str) -> Result<()> {
     let result = voice_call_events_data(call_id).await?;
+    println!("{}", serde_json::to_string_pretty(&result)?);
+    Ok(())
+}
+
+/// Inspect bounded artifacts for a voice-call session.
+pub async fn voice_call_artifacts(call_id: &str) -> Result<()> {
+    let result = voice_call_artifacts_data(call_id).await?;
+    println!("{}", serde_json::to_string_pretty(&result)?);
+    Ok(())
+}
+
+/// Summarize bounded voice-call artifact and activity metrics.
+pub async fn voice_call_metrics() -> Result<()> {
+    let result = voice_call_metrics_data().await?;
     println!("{}", serde_json::to_string_pretty(&result)?);
     Ok(())
 }

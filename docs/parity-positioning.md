@@ -14,6 +14,7 @@ The goal is not to imitate OpenClaw's internals. The goal is to deliver the same
 - Channel-scoped routing, pairing approval, session routing, and channel registry workflows
 - Media/file-reference send and receive flows for the declared shipped channel set
 - A bounded media operator lane over Anthropic, Gemini, Ollama, and OpenAI-compatible describe/extract surfaces
+- A bounded voice-call lane with health, metrics, artifacts, events, reconnect, and stale-call handling over compiled-skill bindings
 - Skills install/update/verify lifecycle with real sandbox execution
 
 ## Where OpenRustClaw Is Intentionally Stronger

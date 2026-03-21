@@ -2757,6 +2757,10 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             get(mobile_node_runtime_handler),
         )
         .route(
+            "/control/mobile/metrics",
+            get(control_mobile_metrics_handler),
+        )
+        .route(
             "/control/mobile/nodes/{id}/heartbeat",
             post(mobile_node_heartbeat_handler),
         )
@@ -3049,8 +3053,16 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             get(control_skill_voice_call_health_handler),
         )
         .route(
+            "/control/skills/voice-calls/metrics",
+            get(control_skill_voice_call_metrics_handler),
+        )
+        .route(
             "/control/skills/voice-calls/{call_id}/events",
             get(control_skill_voice_call_events_handler),
+        )
+        .route(
+            "/control/skills/voice-calls/{call_id}/artifacts",
+            get(control_skill_voice_call_artifacts_handler),
         )
         .route(
             "/control/skills/voice-calls/start",
@@ -4188,10 +4200,34 @@ async fn control_skill_voice_call_health_handler() -> impl IntoResponse {
     }
 }
 
+async fn control_skill_voice_call_metrics_handler() -> impl IntoResponse {
+    match skills::voice_call_metrics_data().await {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": error.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
 async fn control_skill_voice_call_events_handler(
     AxumPath(call_id): AxumPath<String>,
 ) -> impl IntoResponse {
     match skills::voice_call_events_data(&call_id).await {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": error.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
+async fn control_skill_voice_call_artifacts_handler(
+    AxumPath(call_id): AxumPath<String>,
+) -> impl IntoResponse {
+    match skills::voice_call_artifacts_data(&call_id).await {
         Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
@@ -5366,6 +5402,17 @@ async fn mobile_node_runtime_handler(
 ) -> impl IntoResponse {
     match mobile::node_runtime_data(&state.workspace_root, &id) {
         Ok(runtime) => (StatusCode::OK, Json(serde_json::json!(runtime))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn control_mobile_metrics_handler() -> impl IntoResponse {
+    match mobile::mobile_metrics_data() {
+        Ok(metrics) => (StatusCode::OK, Json(serde_json::json!(metrics))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": error.to_string()})),
