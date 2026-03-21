@@ -1747,6 +1747,12 @@ enum VoiceAction {
         config: String,
         id: String,
     },
+    /// Inspect the derived event timeline for one bounded voice session receipt
+    Events {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+        id: String,
+    },
     /// Append a user turn to one bounded voice session receipt
     AppendUser {
         #[arg(short, long, default_value = "config/default.toml")]
@@ -4783,6 +4789,7 @@ async fn main() -> Result<()> {
                 commands::voice::transcript(&config, &id).await
             }
             VoiceAction::Artifacts { config, id } => commands::voice::artifacts(&config, &id).await,
+            VoiceAction::Events { config, id } => commands::voice::events(&config, &id).await,
             VoiceAction::AppendUser { config, id, text } => {
                 commands::voice::append_user(&config, &id, &text).await
             }

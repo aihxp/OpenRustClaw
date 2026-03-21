@@ -255,6 +255,25 @@ pub struct VoiceSessionArtifacts {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceSessionEvent {
+    pub index: usize,
+    pub kind: String,
+    pub created_at: String,
+    pub summary: String,
+    #[serde(default)]
+    pub synthesized_output_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceSessionEvents {
+    pub session_id: String,
+    pub status: String,
+    pub live_state: String,
+    pub event_count: usize,
+    pub events: Vec<VoiceSessionEvent>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VoiceSessionStartRequest {
     #[serde(default)]
     pub session_id: Option<String>,
@@ -1652,6 +1671,95 @@ pub async fn voice_session_artifacts(
     })
 }
 
+pub async fn voice_session_events(
+    workspace_root: &Path,
+    session_id: &str,
+) -> Result<VoiceSessionEvents> {
+    let session = inspect_voice_session(workspace_root, session_id).await?;
+    let mut events = Vec::new();
+
+    events.push(VoiceSessionEvent {
+        index: 0,
+        kind: "session_started".to_string(),
+        created_at: session.created_at.clone(),
+        summary: format!(
+            "session started with stt={} tts={} voice={}",
+            session.stt_provider, session.tts_provider, session.tts_voice
+        ),
+        synthesized_output_path: None,
+    });
+
+    events.extend(session.turns.iter().map(|turn| VoiceSessionEvent {
+        index: 0,
+        kind: format!("{}_turn", turn.role),
+        created_at: turn.created_at.clone(),
+        summary: truncate_voice_event_summary(&turn.text, 96),
+        synthesized_output_path: turn.synthesized_output_path.clone(),
+    }));
+
+    if let Some(created_at) = session.last_reconnected_at.as_ref() {
+        events.push(VoiceSessionEvent {
+            index: 0,
+            kind: "session_reconnected".to_string(),
+            created_at: created_at.clone(),
+            summary: format!("reconnect_count={}", session.reconnect_count),
+            synthesized_output_path: None,
+        });
+    }
+    if let Some(created_at) = session.last_paused_at.as_ref() {
+        events.push(VoiceSessionEvent {
+            index: 0,
+            kind: "session_paused".to_string(),
+            created_at: created_at.clone(),
+            summary: format!("pause_count={}", session.pause_count),
+            synthesized_output_path: None,
+        });
+    }
+    if let Some(created_at) = session.last_resumed_at.as_ref() {
+        events.push(VoiceSessionEvent {
+            index: 0,
+            kind: "session_resumed".to_string(),
+            created_at: created_at.clone(),
+            summary: "session resumed".to_string(),
+            synthesized_output_path: None,
+        });
+    }
+    if let Some(created_at) = session.last_interrupted_at.as_ref() {
+        events.push(VoiceSessionEvent {
+            index: 0,
+            kind: "session_interrupted".to_string(),
+            created_at: created_at.clone(),
+            summary: format!("interrupted_count={}", session.interrupted_count),
+            synthesized_output_path: None,
+        });
+    }
+    if let Some(created_at) = session.closed_at.as_ref() {
+        events.push(VoiceSessionEvent {
+            index: 0,
+            kind: "session_ended".to_string(),
+            created_at: created_at.clone(),
+            summary: session
+                .end_reason
+                .clone()
+                .unwrap_or_else(|| "session ended".to_string()),
+            synthesized_output_path: None,
+        });
+    }
+
+    events.sort_by(|left, right| left.created_at.cmp(&right.created_at));
+    for (index, event) in events.iter_mut().enumerate() {
+        event.index = index;
+    }
+
+    Ok(VoiceSessionEvents {
+        session_id: session.id,
+        status: session.status,
+        live_state: session.live_state,
+        event_count: events.len(),
+        events,
+    })
+}
+
 pub async fn start_voice_session(
     config: &AppConfig,
     workspace_root: &Path,
@@ -1992,6 +2100,15 @@ fn resolve_voice_artifact_path(workspace_root: &Path, path: &str) -> PathBuf {
     } else {
         workspace_root.join(candidate)
     }
+}
+
+fn truncate_voice_event_summary(text: &str, limit: usize) -> String {
+    let trimmed = text.trim();
+    if trimmed.chars().count() <= limit {
+        return trimmed.to_string();
+    }
+    let summarized = trimmed.chars().take(limit).collect::<String>();
+    format!("{summarized}...")
 }
 
 fn ensure_voice_session_active(session: &VoiceSessionRecord) -> Result<()> {
@@ -2825,6 +2942,110 @@ mod tests {
         assert_eq!(artifacts.artifacts[0].role, "assistant");
         assert!(artifacts.artifacts[0].exists);
         assert!(artifacts.artifacts[0].bytes.unwrap_or_default() > 0);
+
+        server_handle.abort();
+    }
+
+    #[tokio::test]
+    async fn voice_session_events_include_turns_and_state_changes() {
+        let temp = tempdir().expect("tempdir");
+        let (addr, _state, server_handle) = spawn_test_server().await;
+        let config = test_config(
+            &format!("http://{}", addr),
+            temp.path(),
+            "OPENRUSTCLAW_VOICE_TEST_KEY_EVENTS",
+        );
+
+        start_voice_session(
+            &config,
+            temp.path(),
+            VoiceSessionStartRequest {
+                session_id: Some("voice-session-events".to_string()),
+                assistant_prompt: None,
+                voice: Some("alloy".to_string()),
+            },
+        )
+        .await
+        .expect("start session");
+
+        append_voice_session_user(
+            temp.path(),
+            "voice-session-events",
+            VoiceSessionAppendRequest {
+                text: "hello events".to_string(),
+            },
+        )
+        .await
+        .expect("append user");
+
+        unsafe {
+            std::env::set_var("OPENRUSTCLAW_VOICE_TEST_KEY_EVENTS", "test-openai-key");
+        }
+        respond_voice_session(
+            &config,
+            temp.path(),
+            "voice-session-events",
+            VoiceSessionRespondRequest {
+                text: "hello back".to_string(),
+                provider: None,
+                model: None,
+                voice: None,
+                format: Some("mp3".to_string()),
+                output_path: None,
+            },
+        )
+        .await
+        .expect("respond");
+        unsafe {
+            std::env::remove_var("OPENRUSTCLAW_VOICE_TEST_KEY_EVENTS");
+        }
+
+        pause_voice_session(
+            temp.path(),
+            "voice-session-events",
+            VoiceSessionControlRequest { reason: None },
+        )
+        .await
+        .expect("pause");
+        resume_voice_session(
+            temp.path(),
+            "voice-session-events",
+            VoiceSessionControlRequest { reason: None },
+        )
+        .await
+        .expect("resume");
+        interrupt_voice_session(
+            temp.path(),
+            "voice-session-events",
+            VoiceSessionControlRequest { reason: None },
+        )
+        .await
+        .expect("interrupt");
+        end_voice_session(
+            temp.path(),
+            "voice-session-events",
+            VoiceSessionEndRequest {
+                reason: Some("done".to_string()),
+            },
+        )
+        .await
+        .expect("end");
+
+        let events = voice_session_events(temp.path(), "voice-session-events")
+            .await
+            .expect("events");
+        let kinds = events
+            .events
+            .iter()
+            .map(|event| event.kind.as_str())
+            .collect::<Vec<_>>();
+        assert!(kinds.contains(&"session_started"));
+        assert!(kinds.contains(&"user_turn"));
+        assert!(kinds.contains(&"assistant_turn"));
+        assert!(kinds.contains(&"session_paused"));
+        assert!(kinds.contains(&"session_resumed"));
+        assert!(kinds.contains(&"session_interrupted"));
+        assert!(kinds.contains(&"session_ended"));
 
         server_handle.abort();
     }
