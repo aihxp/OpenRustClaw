@@ -302,18 +302,50 @@ pub async fn extract_text_with_config(
     }
 
     if media_kind == "image" {
-        let image = image::load_from_memory(&bytes)
-            .with_context(|| format!("failed to decode image '{}'", path.display()))?;
-        let screenshot = Screenshot {
-            data: bytes,
-            width: image.width(),
-            height: image.height(),
-            format: ScreenshotFormat::Png,
+        let text = if let Some(provider_name) = request
+            .provider
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            let provider = resolve_vision_provider(config, Some(provider_name))?;
+            let model = request
+                .model
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToString::to_string)
+                .unwrap_or_else(|| provider.default_model.clone());
+            let prompt = build_image_extract_text_prompt(request.prompt.as_deref());
+            let body = build_image_describe_request(
+                &provider,
+                &model,
+                800,
+                &prompt,
+                &bytes,
+                &guess_mime(path),
+            );
+            let text = call_media_describe_provider(&provider, &body).await?;
+            return Ok(MediaExtractTextResult {
+                path: path.display().to_string(),
+                media_kind,
+                extractor: format!("image_text:{}", provider.provider),
+                text,
+            });
+        } else {
+            let image = image::load_from_memory(&bytes)
+                .with_context(|| format!("failed to decode image '{}'", path.display()))?;
+            let screenshot = Screenshot {
+                data: bytes,
+                width: image.width(),
+                height: image.height(),
+                format: ScreenshotFormat::Png,
+            };
+            VisionCapabilities::new()
+                .extract_text(&screenshot)
+                .await
+                .map_err(|error| anyhow!(error.to_string()))?
         };
-        let text = VisionCapabilities::new()
-            .extract_text(&screenshot)
-            .await
-            .map_err(|error| anyhow!(error.to_string()))?;
         return Ok(MediaExtractTextResult {
             path: path.display().to_string(),
             media_kind,
@@ -553,6 +585,13 @@ fn vision_provider_catalog(config: &AppConfig) -> Vec<MediaProviderStatus> {
         });
         extractors.push(MediaProviderStatus {
             provider: provider.to_string(),
+            lane: format!("{lane}_image_text"),
+            kind: "image_text".to_string(),
+            ready,
+            notes: notes.clone(),
+        });
+        extractors.push(MediaProviderStatus {
+            provider: provider.to_string(),
             lane: format!("{lane}_document"),
             kind: "document_description".to_string(),
             ready,
@@ -701,6 +740,16 @@ fn cleaned_optional_text(value: Option<&str>) -> Option<String> {
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(ToString::to_string)
+}
+
+fn build_image_extract_text_prompt(requested_prompt: Option<&str>) -> String {
+    requested_prompt
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .unwrap_or_else(|| {
+            "Extract the visible text from this image. Preserve reading order, line breaks, and short labels where possible. Return only the extracted text.".to_string()
+        })
 }
 
 fn build_text_media_describe_prompt(
@@ -1278,6 +1327,18 @@ mod tests {
             catalog
                 .extractors
                 .iter()
+                .any(|entry| entry.kind == "image_text" && entry.provider == "anthropic")
+        );
+        assert!(
+            catalog
+                .extractors
+                .iter()
+                .any(|entry| entry.kind == "image_text" && entry.provider == "openai")
+        );
+        assert!(
+            catalog
+                .extractors
+                .iter()
                 .any(|entry| entry.kind == "audio_text" && entry.provider == "openai")
         );
         assert!(
@@ -1384,5 +1445,12 @@ mod tests {
         let audio_prompt = build_text_media_describe_prompt("audio", None, "hello world");
         assert!(audio_prompt.contains("Summarize the audio artifact"));
         assert!(audio_prompt.contains("bounded transcript"));
+    }
+
+    #[test]
+    fn build_image_extract_text_prompt_has_text_only_default() {
+        let prompt = build_image_extract_text_prompt(None);
+        assert!(prompt.contains("Extract the visible text from this image"));
+        assert!(prompt.contains("Return only the extracted text"));
     }
 }
