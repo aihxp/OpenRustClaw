@@ -1440,15 +1440,28 @@ pub fn node_activity_data(
     entries.extend(
         list_command_data(workspace_root, Some(node_id), None)?
             .into_iter()
-            .map(|record| MobileNodeActivityEntry {
-                kind: "command".to_string(),
-                id: record.id,
-                status: record.status,
-                created_at: record.created_at.to_rfc3339(),
-                summary: format!(
-                    "{:?} requires {}",
-                    record.command, record.required_capability
-                ),
+            .flat_map(|record| {
+                let receipt = MobileNodeActivityEntry {
+                    kind: "command".to_string(),
+                    id: record.id.clone(),
+                    status: record.status.clone(),
+                    created_at: record.created_at.to_rfc3339(),
+                    summary: format!(
+                        "{:?} requires {}",
+                        record.command, record.required_capability
+                    ),
+                };
+                let mut entries = vec![receipt];
+                entries.extend(command_timeline_events(&record).into_iter().map(|event| {
+                    MobileNodeActivityEntry {
+                        kind: "command_event".to_string(),
+                        id: format!("{}:{}", record.id, event.index),
+                        status: record.status.clone(),
+                        created_at: event.observed_at,
+                        summary: format!("{:?} | {}", record.command, event.summary),
+                    }
+                }));
+                entries
             }),
     );
 
@@ -4992,7 +5005,7 @@ mod tests {
         .expect("execute capability");
 
         let activity =
-            node_activity_data(temp.path(), "iphone-activity", Some(16)).expect("activity");
+            node_activity_data(temp.path(), "iphone-activity", Some(32)).expect("activity");
         let kinds = activity
             .entries
             .iter()
@@ -5011,6 +5024,7 @@ mod tests {
         assert!(kinds.contains(&"capability_execution"));
         assert!(kinds.contains(&"media_artifact"));
         assert!(kinds.contains(&"command"));
+        assert!(kinds.contains(&"command_event"));
         assert!(activity.entry_count >= 7);
         unsafe {
             std::env::remove_var("MOBILE_ACTIVITY_TOKEN");
