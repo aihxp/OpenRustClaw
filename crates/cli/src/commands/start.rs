@@ -2712,8 +2712,13 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
     #[cfg(feature = "voice")]
     let router = router
         .route("/control/talk/status", get(talk_status_handler))
+        .route("/control/talk/metrics", get(talk_metrics_handler))
         .route("/control/talk/sessions", get(talk_sessions_handler))
-        .route("/control/talk/sessions/{id}", get(talk_session_handler));
+        .route("/control/talk/sessions/{id}", get(talk_session_handler))
+        .route(
+            "/control/talk/sessions/{id}/events",
+            get(talk_session_events_handler),
+        );
 
     let router = router
         .route("/control/mobile/pairings", get(mobile_pairings_handler))
@@ -5256,6 +5261,18 @@ async fn talk_status_handler(
 }
 
 #[cfg(feature = "voice")]
+async fn talk_metrics_handler(State(state): State<RuntimeControlState>) -> impl IntoResponse {
+    match talk::runtime_metrics_data(&state.workspace_root).await {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+#[cfg(feature = "voice")]
 async fn talk_sessions_handler(
     State(state): State<RuntimeControlState>,
     Query(query): Query<talk::TalkRuntimeListRequest>,
@@ -5277,6 +5294,21 @@ async fn talk_session_handler(
     AxumPath(id): AxumPath<String>,
 ) -> impl IntoResponse {
     match talk::inspect_talk_session(&state.workspace_root, &id).await {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+#[cfg(feature = "voice")]
+async fn talk_session_events_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(id): AxumPath<String>,
+) -> impl IntoResponse {
+    match talk::talk_session_events_data(&state.workspace_root, &id).await {
         Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,

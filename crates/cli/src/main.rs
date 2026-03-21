@@ -2010,6 +2010,8 @@ enum TalkRuntimeAction {
         #[arg(long, default_value_t = 20)]
         limit: usize,
     },
+    /// Show aggregate talk runtime metrics
+    Metrics,
     /// List persisted talk/wake receipts
     Sessions {
         #[arg(long, default_value_t = 20)]
@@ -2017,6 +2019,8 @@ enum TalkRuntimeAction {
     },
     /// Inspect one persisted talk/wake receipt
     Inspect { id: String },
+    /// Inspect one persisted talk/wake event timeline
+    Events { id: String },
 }
 
 #[derive(Subcommand)]
@@ -5045,6 +5049,10 @@ async fn main() -> Result<()> {
                 let workspace_root = std::env::current_dir()?;
                 commands::talk::status(&workspace_root, limit).await
             }
+            TalkRuntimeAction::Metrics => {
+                let workspace_root = std::env::current_dir()?;
+                commands::talk::metrics(&workspace_root).await
+            }
             TalkRuntimeAction::Sessions { limit } => {
                 let workspace_root = std::env::current_dir()?;
                 commands::talk::sessions(&workspace_root, limit).await
@@ -5052,6 +5060,10 @@ async fn main() -> Result<()> {
             TalkRuntimeAction::Inspect { id } => {
                 let workspace_root = std::env::current_dir()?;
                 commands::talk::inspect(&workspace_root, &id).await
+            }
+            TalkRuntimeAction::Events { id } => {
+                let workspace_root = std::env::current_dir()?;
+                commands::talk::events(&workspace_root, &id).await
             }
         },
         Commands::Voice { action } => match action {

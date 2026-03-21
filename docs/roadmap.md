@@ -1268,7 +1268,7 @@ Remaining:
   - [x] auth plugins through a file-backed compiled-skill auth registry, bounded OIDC authorize/code-exchange surfaces, callback handling, and encrypted runtime-vault token persistence,
   - [x] voice-call plugins through a file-backed compiled-skill voice-plugin registry, bounded start/end call session receipts, optional greeting synthesis through the shipped voice runtime, and compiled start/end hooks over the same sandboxed execution lane,
   - [x] channel extensions through file-backed channel binding metadata and bounded compiled-skill background hooks.
-- [x] Add media pipeline parity:
+- [ ] Add media pipeline parity:
   - image receive/send,
   - audio receive/send,
   - document receive/send,
@@ -1282,9 +1282,11 @@ Remaining:
   - [x] bounded provider-backed image description over shipped Anthropic, Gemini, Ollama, plus OpenAI-compatible vision lanes,
   - [x] bounded provider-backed document and audio summary lanes over the same shipped Anthropic, Gemini, Ollama, plus OpenAI-compatible providers,
   - [x] broader image/audio/document provider pluggability across all media lanes.
+  - [ ] broader cross-provider media parity across all file classes remains open.
 - [x] Add richer provider support for media parity where OpenClaw documents active integrations.
-- [x] Add voice runtime parity:
+- [ ] Add voice runtime parity:
   - [x] bounded talk/wake receipts plus `talk-runtime status|sessions|inspect` operator surfaces over the feature-gated Talk Mode runner,
+  - [x] bounded talk-runtime metrics plus event-timeline inspection over the same feature-gated Talk Mode runner,
   - [x] provider-backed inbound attachment STT and transcript injection for supported runtime message flows,
   - [x] explicit provider catalog/readiness plus request-scoped provider overrides for the shipped OpenAI-compatible STT/TTS lane and bounded Deepgram STT routing,
   - [x] broader STT parity through a second shipped pre-recorded STT provider lane,
@@ -1304,7 +1306,8 @@ Remaining:
   - [x] bounded voice-call reconnect/resume surfaces over the compiled-skill voice-plugin lane,
   - [x] bounded voice-call event timelines over the same compiled-skill voice-plugin lane,
   - [x] reconnect and deeper live call-runtime behavior over the same compiled-skill voice-plugin lane.
-- [x] Add node pairing/runtime parity:
+  - [ ] full live voice/talk-mode capture/playback parity over the feature-gated Talk Mode runner remains open.
+- [ ] Add node pairing/runtime parity:
   - iOS node pairing,
   - Android node pairing,
   - Canvas,
@@ -1329,7 +1332,7 @@ Remaining:
   - [x] bounded pairing/unpair lifecycle receipts plus pairing-history inspection over the same shipped node control plane,
   - [x] bounded per-node activity timelines over runtime, notification, inbox, outbox, and command receipts,
   - [x] bounded mobile metrics plus per-node summary surfaces over the same shipped node control plane,
-  - [x] richer paired-node/mobile app runtime capability parity where OpenClaw documents it.
+  - [ ] richer paired-node/mobile app runtime capability parity where OpenClaw documents it.
 - [x] Add typed node protocols in Rust for the shipped node command/control lane rather than ad hoc compatibility layers.
 - [x] Add secure device capability gating and operator approval for node commands.
 

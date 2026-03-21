@@ -1,7 +1,7 @@
 //! Talk Mode command - continuous voice conversation.
 
 use anyhow::{Context, Result};
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use openrustclaw_voice::{
     SimpleWakeDetector, SpeechToText, SttConfig, TalkConfig, TalkModeBuilder, TalkState,
     TextToSpeech, TtsConfig, WakeWordConfig,
@@ -97,6 +97,50 @@ pub struct TalkRuntimeListRequest {
     pub limit: Option<usize>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TalkSessionEvent {
+    pub index: usize,
+    pub kind: String,
+    pub observed_at: String,
+    pub summary: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TalkSessionEvents {
+    pub session_id: String,
+    pub status: String,
+    pub turn_count: usize,
+    pub event_count: usize,
+    pub events: Vec<TalkSessionEvent>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TalkSessionMetrics {
+    pub session_id: String,
+    pub status: String,
+    pub turn_count: usize,
+    pub snapshot_count: usize,
+    pub event_count: usize,
+    #[serde(default)]
+    pub final_state: Option<String>,
+    #[serde(default)]
+    pub closed_at: Option<String>,
+    #[serde(default)]
+    pub duration_secs: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TalkRuntimeMetrics {
+    pub total_sessions: usize,
+    pub active_sessions: usize,
+    pub ended_sessions: usize,
+    pub error_sessions: usize,
+    pub total_turns: usize,
+    pub total_events: usize,
+    pub avg_turns_per_session: f64,
+    pub sessions: Vec<TalkSessionMetrics>,
+}
+
 /// Run the Talk Mode voice conversation.
 pub async fn run(
     provider: &str,
@@ -137,6 +181,20 @@ pub async fn sessions(workspace_root: &Path, limit: usize) -> Result<()> {
 /// Inspect one talk receipt.
 pub async fn inspect(workspace_root: &Path, session_id: &str) -> Result<()> {
     let payload = inspect_talk_session(workspace_root, session_id).await?;
+    println!("{}", serde_json::to_string_pretty(&payload)?);
+    Ok(())
+}
+
+/// Inspect the derived event timeline for one talk receipt.
+pub async fn events(workspace_root: &Path, session_id: &str) -> Result<()> {
+    let payload = talk_session_events_data(workspace_root, session_id).await?;
+    println!("{}", serde_json::to_string_pretty(&payload)?);
+    Ok(())
+}
+
+/// Inspect aggregate talk runtime metrics.
+pub async fn metrics(workspace_root: &Path) -> Result<()> {
+    let payload = runtime_metrics_data(workspace_root).await?;
     println!("{}", serde_json::to_string_pretty(&payload)?);
     Ok(())
 }
@@ -371,6 +429,45 @@ pub async fn runtime_status(workspace_root: &Path, limit: usize) -> Result<TalkR
     })
 }
 
+/// Aggregate talk runtime metrics and per-session summaries.
+pub async fn runtime_metrics_data(workspace_root: &Path) -> Result<TalkRuntimeMetrics> {
+    let sessions = load_talk_sessions(workspace_root).await?;
+    let total_sessions = sessions.len();
+    let active_sessions = sessions
+        .iter()
+        .filter(|entry| entry.status == "active")
+        .count();
+    let ended_sessions = sessions
+        .iter()
+        .filter(|entry| entry.status == "ended")
+        .count();
+    let error_sessions = sessions
+        .iter()
+        .filter(|entry| entry.status == "error")
+        .count();
+    let total_turns = sessions.iter().map(|entry| entry.turn_count).sum::<usize>();
+    let total_events = sessions
+        .iter()
+        .map(|entry| entry.timeline_events().len())
+        .sum::<usize>();
+    let avg_turns_per_session = if total_sessions == 0 {
+        0.0
+    } else {
+        total_turns as f64 / total_sessions as f64
+    };
+
+    Ok(TalkRuntimeMetrics {
+        total_sessions,
+        active_sessions,
+        ended_sessions,
+        error_sessions,
+        total_turns,
+        total_events,
+        avg_turns_per_session,
+        sessions: sessions.into_iter().map(|entry| entry.metrics()).collect(),
+    })
+}
+
 /// List recent talk receipts.
 pub async fn list_talk_sessions(workspace_root: &Path, limit: usize) -> Result<TalkSessionList> {
     let sessions = load_talk_sessions(workspace_root).await?;
@@ -395,6 +492,21 @@ pub async fn inspect_talk_session(
     serde_json::from_slice(&bytes).with_context(|| format!("failed to parse {}", path.display()))
 }
 
+pub async fn talk_session_events_data(
+    workspace_root: &Path,
+    session_id: &str,
+) -> Result<TalkSessionEvents> {
+    let session = inspect_talk_session(workspace_root, session_id).await?;
+    let events = session.timeline_events();
+    Ok(TalkSessionEvents {
+        session_id: session.id,
+        status: session.status,
+        turn_count: session.turn_count,
+        event_count: events.len(),
+        events,
+    })
+}
+
 impl TalkSessionReceipt {
     fn summary(&self) -> TalkSessionSummary {
         TalkSessionSummary {
@@ -410,6 +522,90 @@ impl TalkSessionReceipt {
             closed_at: self.closed_at.clone(),
         }
     }
+
+    fn metrics(&self) -> TalkSessionMetrics {
+        let duration_secs = self
+            .closed_at
+            .as_ref()
+            .and_then(|closed_at| duration_secs_between(&self.created_at, closed_at));
+        TalkSessionMetrics {
+            session_id: self.id.clone(),
+            status: self.status.clone(),
+            turn_count: self.turn_count,
+            snapshot_count: self.snapshots.len(),
+            event_count: self.timeline_events().len(),
+            final_state: self.final_state.clone(),
+            closed_at: self.closed_at.clone(),
+            duration_secs,
+        }
+    }
+
+    fn timeline_events(&self) -> Vec<TalkSessionEvent> {
+        let mut events = Vec::new();
+        let mut index = 0usize;
+
+        events.push(TalkSessionEvent {
+            index,
+            kind: "session_started".to_string(),
+            observed_at: self.created_at.clone(),
+            summary: format!(
+                "Talk session {} started with wake word {}",
+                self.id, self.wake_word
+            ),
+        });
+        index += 1;
+
+        for window in self.snapshots.windows(2) {
+            let from = &window[0];
+            let to = &window[1];
+            if from.state != to.state {
+                events.push(TalkSessionEvent {
+                    index,
+                    kind: "state_changed".to_string(),
+                    observed_at: to.observed_at.clone(),
+                    summary: format!(
+                        "State changed from {} to {} at turn {}",
+                        from.state, to.state, to.turn_count
+                    ),
+                });
+                index += 1;
+            }
+        }
+
+        for turn in &self.turns {
+            events.push(TalkSessionEvent {
+                index,
+                kind: "turn_recorded".to_string(),
+                observed_at: turn.captured_at.clone(),
+                summary: format!(
+                    "Turn {} recorded for user text {:?} and assistant response {:?}",
+                    turn.index, turn.user_text, turn.agent_response
+                ),
+            });
+            index += 1;
+        }
+
+        if let Some(closed_at) = self.closed_at.as_ref() {
+            events.push(TalkSessionEvent {
+                index,
+                kind: "session_ended".to_string(),
+                observed_at: closed_at.clone(),
+                summary: format!(
+                    "Talk session ended in {} with {} turns",
+                    self.final_state.as_deref().unwrap_or(self.status.as_str()),
+                    self.turn_count
+                ),
+            });
+        }
+
+        events
+    }
+}
+
+fn duration_secs_between(start: &str, end: &str) -> Option<u64> {
+    let start = DateTime::parse_from_rfc3339(start).ok()?;
+    let end = DateTime::parse_from_rfc3339(end).ok()?;
+    Some(end.signed_duration_since(start).num_seconds().max(0) as u64)
 }
 
 async fn load_talk_sessions(workspace_root: &Path) -> Result<Vec<TalkSessionReceipt>> {
@@ -547,5 +743,18 @@ mod tests {
         assert_eq!(status.total_sessions, 1);
         assert_eq!(status.ended_sessions, 1);
         assert!(status.latest_session.is_some());
+
+        let metrics = runtime_metrics_data(temp.path()).await.expect("metrics");
+        assert_eq!(metrics.total_sessions, 1);
+        assert_eq!(metrics.total_turns, 1);
+        assert_eq!(metrics.total_events, 3);
+
+        let events = talk_session_events_data(temp.path(), "talk-session-test")
+            .await
+            .expect("events");
+        assert_eq!(events.event_count, 3);
+        assert_eq!(events.events[0].kind, "session_started");
+        assert_eq!(events.events[1].kind, "turn_recorded");
+        assert_eq!(events.events[2].kind, "session_ended");
     }
 }
