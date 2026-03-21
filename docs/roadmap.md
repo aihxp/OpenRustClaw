@@ -1315,6 +1315,7 @@ Remaining:
   - photos,
   - SMS where applicable,
   - [x] bounded runtime-state receipts plus push-wake / disconnected-node rehydration requests for the shipped node operator lane,
+  - [x] bounded app-session lifecycle receipts derived from the same shipped heartbeat/runtime lane,
   - [x] bounded capability inventory plus preview/operator surfaces for camera, screen recording, location, contacts, calendar, photos, canvas, and SMS-style lanes on the shipped node control plane,
   - [x] bounded capability execution receipts over the shipped node control plane for the same camera/screen/location/contacts/calendar/photos/canvas/SMS-style lanes,
   - [x] bounded media-artifact receipts derived from the shipped camera/screen/photos/canvas capability execution lanes,

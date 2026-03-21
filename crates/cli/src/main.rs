@@ -1385,6 +1385,17 @@ enum MobileAction {
     },
     /// Inspect a configured mobile node manifest
     Inspect { id: String },
+    /// List bounded mobile app-session receipts
+    AppSessions {
+        #[arg(long)]
+        node_id: Option<String>,
+        #[arg(long)]
+        status: Option<String>,
+        #[arg(long)]
+        limit: Option<usize>,
+    },
+    /// Inspect one bounded mobile app-session receipt
+    AppSessionStatus { id: String },
     /// Show derived readiness for a configured mobile node
     Status { id: String },
     /// Show bounded runtime state for a configured mobile node
@@ -3485,6 +3496,22 @@ async fn main() -> Result<()> {
                 }
                 MobileAction::Inspect { id } => {
                     commands::mobile::inspect_node(&workspace_root, &id).await
+                }
+                MobileAction::AppSessions {
+                    node_id,
+                    status,
+                    limit,
+                } => {
+                    commands::mobile::list_app_sessions(
+                        &workspace_root,
+                        node_id.as_deref(),
+                        status.as_deref(),
+                        limit,
+                    )
+                    .await
+                }
+                MobileAction::AppSessionStatus { id } => {
+                    commands::mobile::inspect_app_session(&workspace_root, &id).await
                 }
                 MobileAction::Status { id } => {
                     commands::mobile::node_status(&workspace_root, &id).await

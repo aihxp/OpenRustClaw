@@ -2719,6 +2719,10 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             get(mobile_node_status_handler),
         )
         .route(
+            "/control/mobile/nodes/{id}/app-sessions",
+            get(mobile_node_app_sessions_handler),
+        )
+        .route(
             "/control/mobile/nodes/{id}/push",
             get(mobile_node_push_handler).post(mobile_node_register_push_handler),
         )
@@ -2815,6 +2819,14 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
         .route(
             "/control/mobile/sync-conflicts/{id}/resolve",
             post(mobile_sync_conflict_resolve_handler),
+        )
+        .route(
+            "/control/mobile/app-sessions",
+            get(mobile_app_sessions_handler),
+        )
+        .route(
+            "/control/mobile/app-sessions/{id}",
+            get(mobile_app_session_handler),
         )
         .route(
             "/control/mobile/messages/preview",
@@ -4726,6 +4738,16 @@ struct MobileSyncConflictsQuery {
 }
 
 #[derive(serde::Deserialize, Default)]
+struct MobileAppSessionsQuery {
+    #[serde(default)]
+    node_id: Option<String>,
+    #[serde(default)]
+    status: Option<String>,
+    #[serde(default)]
+    limit: Option<usize>,
+}
+
+#[derive(serde::Deserialize, Default)]
 struct MobileCapabilityExecutionsQuery {
     #[serde(default)]
     node_id: Option<String>,
@@ -5238,6 +5260,30 @@ async fn mobile_node_status_handler(
     }
 }
 
+async fn mobile_node_app_sessions_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(id): AxumPath<String>,
+    Query(query): Query<MobileAppSessionsQuery>,
+) -> impl IntoResponse {
+    match mobile::list_app_session_data(
+        &state.workspace_root,
+        Some(&id),
+        query.status.as_deref(),
+        query.limit,
+    ) {
+        Ok(sessions) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "sessions": sessions })),
+        )
+            .into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
 async fn mobile_node_runtime_handler(
     State(state): State<RuntimeControlState>,
     AxumPath(id): AxumPath<String>,
@@ -5737,6 +5783,43 @@ async fn mobile_sync_conflict_resolve_handler(
 ) -> impl IntoResponse {
     match mobile::resolve_sync_conflict_data(&state.workspace_root, &id, payload) {
         Ok(conflict) => (StatusCode::OK, Json(serde_json::json!(conflict))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn mobile_app_sessions_handler(
+    State(state): State<RuntimeControlState>,
+    Query(query): Query<MobileAppSessionsQuery>,
+) -> impl IntoResponse {
+    match mobile::list_app_session_data(
+        &state.workspace_root,
+        query.node_id.as_deref(),
+        query.status.as_deref(),
+        query.limit,
+    ) {
+        Ok(sessions) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "sessions": sessions })),
+        )
+            .into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn mobile_app_session_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(id): AxumPath<String>,
+) -> impl IntoResponse {
+    match mobile::inspect_app_session_data(&state.workspace_root, &id) {
+        Ok(session) => (StatusCode::OK, Json(serde_json::json!(session))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": error.to_string()})),

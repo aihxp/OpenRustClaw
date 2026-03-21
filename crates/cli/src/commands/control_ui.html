@@ -763,6 +763,7 @@
               <button class="secondary" id="mobile-runtime-refresh">Refresh Runtime</button>
               <button class="secondary" id="mobile-capabilities-refresh">Refresh Capabilities</button>
               <button class="secondary" id="mobile-activity-refresh">Refresh Activity</button>
+              <button class="secondary" id="mobile-app-sessions-refresh">Refresh App Sessions</button>
               <button class="secondary" id="mobile-pairings-refresh">Refresh Pairings</button>
             </div>
             <div class="action-row">
@@ -782,6 +783,7 @@
           <div class="surface" style="margin-top: 12px"><pre id="mobile-node-sync">No mobile sync state loaded yet.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="mobile-node-capabilities">No mobile capabilities loaded yet.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="mobile-node-activity">No mobile activity loaded yet.</pre></div>
+          <div class="surface" style="margin-top: 12px"><pre id="mobile-app-session-detail">No mobile app session selected.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="mobile-node-pairings">No mobile pairing history loaded yet.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="mobile-sync-conflict-detail">No mobile sync conflict selected.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="mobile-capability-execution-detail">No mobile capability execution selected.</pre></div>
@@ -822,6 +824,20 @@
             </div>
           </div>
           <div class="surface" style="margin-top: 12px"><pre id="mobile-preview-result">No mobile preview executed yet.</pre></div>
+        </article>
+        <article class="panel span-6">
+          <h2>Mobile App Sessions</h2>
+          <div class="action-row" style="margin-bottom: 12px">
+            <button class="secondary" id="mobile-app-sessions-refresh-2">Refresh App Sessions</button>
+          </div>
+          <div class="surface">
+            <table class="table">
+              <thead>
+                <tr><th>Status</th><th>Last Seen</th><th>Action</th></tr>
+              </thead>
+              <tbody id="mobile-app-sessions"><tr><td colspan="3" class="muted">Loading…</td></tr></tbody>
+            </table>
+          </div>
         </article>
         <article class="panel span-6">
           <h2>Mobile Sync Conflicts</h2>
@@ -2058,6 +2074,7 @@
           await inspectMobileNode(nodes[0].node.id);
         } else {
           setText("mobile-node-detail", "No mobile node selected.");
+          setText("mobile-app-session-detail", "No mobile app session selected.");
           setText("mobile-node-pairings", "No mobile pairing history loaded yet.");
           setText("mobile-capability-execution-detail", "No mobile capability execution selected.");
           setText("mobile-media-artifact-detail", "No mobile media artifact selected.");
@@ -2065,7 +2082,7 @@
       }
 
       async function inspectMobileNode(id) {
-        const [manifest, status, runtime, push, sync, capabilities, activity, pairings, conflicts] = await Promise.all([
+        const [manifest, status, runtime, push, sync, capabilities, activity, pairings, conflicts, appSessions] = await Promise.all([
           fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}`),
           fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}/status`),
           fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}/runtime`),
@@ -2075,6 +2092,7 @@
           fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}/activity?limit=25`),
           fetchJson(`/control/mobile/pairings?node_id=${encodeURIComponent(id)}&limit=20`),
           fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}/sync-conflicts?limit=20`),
+          fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}/app-sessions?limit=20`),
         ]);
         setText("mobile-node-detail", { manifest, status, runtime });
         setText("mobile-node-push", push);
@@ -2083,6 +2101,7 @@
         setText("mobile-node-activity", activity);
         setText("mobile-node-pairings", pairings);
         setText("mobile-sync-conflict-detail", conflicts);
+        setText("mobile-app-session-detail", appSessions);
         document.getElementById("mobile-source-node").value = id;
         document.getElementById("mobile-command-node").value = id;
         document.getElementById("mobile-runtime-app-state").value = runtime.app_state || "";
@@ -2092,6 +2111,7 @@
         document.getElementById("mobile-sync-state").value = sync.sync_state || "";
         document.getElementById("mobile-sync-pending").value = sync.pending_change_count ?? "";
         document.getElementById("mobile-sync-result").value = sync.last_sync_result || "";
+        await loadMobileAppSessions(id);
         await loadMobileSyncConflicts(id);
         await loadMobileNotifications(id);
         await loadMobileInbox(id);
@@ -2107,6 +2127,29 @@
         }
         const activity = await fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}/activity?limit=25`);
         setText("mobile-node-activity", activity);
+      }
+
+      async function loadMobileAppSessions(nodeId = null) {
+        const currentNodeId = (nodeId || document.getElementById("mobile-source-node").value).trim();
+        const query = currentNodeId ? `?node_id=${encodeURIComponent(currentNodeId)}&limit=20` : "?limit=20";
+        const payload = await fetchJson(`/control/mobile/app-sessions${query}`);
+        const sessions = payload.sessions || [];
+        const rows = sessions.map((entry) => `<tr>
+            <td><strong>${entry.status || "-"}</strong><div class="muted">${entry.node_id || "-"}</div></td>
+            <td>${entry.last_seen_at || entry.started_at || "-"}</td>
+            <td><button class="secondary" onclick="inspectMobileAppSession('${entry.id}')">Inspect</button></td>
+          </tr>`);
+        renderTableRows("mobile-app-sessions", rows, "No mobile app sessions recorded.");
+        if (sessions.length) {
+          await inspectMobileAppSession(sessions[0].id);
+        } else {
+          setText("mobile-app-session-detail", "No mobile app session selected.");
+        }
+      }
+
+      async function inspectMobileAppSession(id) {
+        const payload = await fetchJson(`/control/mobile/app-sessions/${encodeURIComponent(id)}`);
+        setText("mobile-app-session-detail", payload);
       }
 
       async function loadMobilePairings(idOverride = null) {
@@ -2212,6 +2255,7 @@
         setText("mobile-node-sync", "No mobile sync state loaded yet.");
         setText("mobile-node-capabilities", "No mobile capabilities loaded yet.");
         setText("mobile-node-activity", "No mobile activity loaded yet.");
+        setText("mobile-app-session-detail", "No mobile app session selected.");
         setText("mobile-sync-conflict-detail", "No mobile sync conflict selected.");
         setText("mobile-capability-execution-detail", "No mobile capability execution selected.");
         setText("mobile-media-artifact-detail", "No mobile media artifact selected.");
@@ -3488,6 +3532,20 @@
           await loadMobileActivity();
         } catch (error) {
           setText("mobile-node-activity", { error: error.message });
+        }
+      });
+      document.getElementById("mobile-app-sessions-refresh").addEventListener("click", async () => {
+        try {
+          await loadMobileAppSessions();
+        } catch (error) {
+          setText("mobile-app-session-detail", { error: error.message });
+        }
+      });
+      document.getElementById("mobile-app-sessions-refresh-2").addEventListener("click", async () => {
+        try {
+          await loadMobileAppSessions();
+        } catch (error) {
+          setText("mobile-app-session-detail", { error: error.message });
         }
       });
       document.getElementById("mobile-pairings-refresh").addEventListener("click", async () => {

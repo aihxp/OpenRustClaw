@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, anyhow};
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use openrustclaw_mobile::node::MobileMessage;
 use openrustclaw_mobile::notifications::{
     Notification, NotificationConfig, NotificationPriority, NotificationType,
@@ -269,6 +269,27 @@ pub struct MobileNodeRuntimeActionResult {
     pub command: Option<MobileCommandRecord>,
     #[serde(default)]
     pub preview: Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MobileAppSessionRecord {
+    pub id: String,
+    pub node_id: String,
+    pub status: String,
+    pub started_at: String,
+    pub last_seen_at: String,
+    #[serde(default)]
+    pub ended_at: Option<String>,
+    #[serde(default)]
+    pub duration_secs: Option<u64>,
+    #[serde(default)]
+    pub network: Option<String>,
+    #[serde(default)]
+    pub battery_percent: Option<u8>,
+    #[serde(default)]
+    pub entry_reason: Option<String>,
+    #[serde(default)]
+    pub exit_reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -920,6 +941,63 @@ pub fn list_pairing_data(
     Ok(entries)
 }
 
+pub fn list_app_session_data(
+    workspace_root: &Path,
+    node_id: Option<&str>,
+    status: Option<&str>,
+    limit: Option<usize>,
+) -> Result<Vec<MobileAppSessionRecord>> {
+    let mut entries = Vec::new();
+    let dir = app_sessions_dir(workspace_root);
+    if !dir.exists() {
+        return Ok(entries);
+    }
+
+    let normalized_status = status
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string);
+
+    for entry in fs::read_dir(&dir).with_context(|| format!("failed to read {}", dir.display()))? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.extension().and_then(|value| value.to_str()) != Some("json") {
+            continue;
+        }
+        let bytes = fs::read_to_string(&path)
+            .with_context(|| format!("failed to read {}", path.display()))?;
+        let record: MobileAppSessionRecord = serde_json::from_str(&bytes)
+            .with_context(|| format!("failed to parse {}", path.display()))?;
+        if let Some(node_id) = node_id
+            && record.node_id != node_id
+        {
+            continue;
+        }
+        if let Some(status) = normalized_status.as_deref()
+            && record.status != status
+        {
+            continue;
+        }
+        entries.push(record);
+    }
+
+    entries.sort_by(|left, right| right.last_seen_at.cmp(&left.last_seen_at));
+    if let Some(limit) = limit {
+        entries.truncate(limit);
+    }
+    Ok(entries)
+}
+
+pub fn inspect_app_session_data(
+    workspace_root: &Path,
+    session_id: &str,
+) -> Result<MobileAppSessionRecord> {
+    let path = app_session_path(workspace_root, session_id);
+    let bytes =
+        fs::read_to_string(&path).with_context(|| format!("failed to read {}", path.display()))?;
+    serde_json::from_str(&bytes).with_context(|| format!("failed to parse {}", path.display()))
+}
+
 pub fn unpair_node_data(
     workspace_root: &Path,
     node_id: &str,
@@ -1159,6 +1237,25 @@ pub fn node_activity_data(
             }),
     );
     entries.extend(
+        list_app_session_data(workspace_root, Some(node_id), None, None)?
+            .into_iter()
+            .map(|record| MobileNodeActivityEntry {
+                kind: "app_session".to_string(),
+                id: record.id,
+                status: record.status.clone(),
+                created_at: record.started_at,
+                summary: format!(
+                    "{} | network={} | battery={}",
+                    record.status,
+                    record.network.as_deref().unwrap_or("-"),
+                    record
+                        .battery_percent
+                        .map(|value| format!("{value}%"))
+                        .unwrap_or_else(|| "-".to_string())
+                ),
+            }),
+    );
+    entries.extend(
         list_capability_execution_data(workspace_root, Some(node_id), None, None)?
             .into_iter()
             .map(|record| MobileNodeActivityEntry {
@@ -1299,6 +1396,7 @@ pub fn heartbeat_node_data(
         runtime.metadata = request.metadata;
     }
     runtime.last_heartbeat_at = Some(now);
+    record_app_session_heartbeat(workspace_root, &runtime, "heartbeat")?;
     if runtime.reachable {
         if matches!(runtime.wake_state.as_str(), "requested" | "dispatched") {
             runtime.wake_state = "acknowledged".to_string();
@@ -2704,6 +2802,26 @@ pub async fn list_pairings(
     Ok(())
 }
 
+pub async fn list_app_sessions(
+    workspace_root: &Path,
+    node_id: Option<&str>,
+    status: Option<&str>,
+    limit: Option<usize>,
+) -> Result<()> {
+    let sessions = list_app_session_data(workspace_root, node_id, status, limit)?;
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&json!({ "sessions": sessions }))?
+    );
+    Ok(())
+}
+
+pub async fn inspect_app_session(workspace_root: &Path, session_id: &str) -> Result<()> {
+    let session = inspect_app_session_data(workspace_root, session_id)?;
+    println!("{}", serde_json::to_string_pretty(&session)?);
+    Ok(())
+}
+
 pub async fn unpair_node(
     workspace_root: &Path,
     node_id: &str,
@@ -3099,6 +3217,10 @@ fn pairings_dir(workspace_root: &Path) -> PathBuf {
     mobile_root(workspace_root).join("pairings")
 }
 
+fn app_sessions_dir(workspace_root: &Path) -> PathBuf {
+    mobile_root(workspace_root).join("app-sessions")
+}
+
 fn commands_dir(workspace_root: &Path) -> PathBuf {
     mobile_root(workspace_root).join("commands")
 }
@@ -3145,6 +3267,10 @@ fn command_path(workspace_root: &Path, command_id: &str) -> PathBuf {
 
 fn pairing_path(workspace_root: &Path, pairing_id: &str) -> PathBuf {
     pairings_dir(workspace_root).join(format!("{pairing_id}.json"))
+}
+
+fn app_session_path(workspace_root: &Path, session_id: &str) -> PathBuf {
+    app_sessions_dir(workspace_root).join(format!("{session_id}.json"))
 }
 
 fn notification_path(workspace_root: &Path, notification_id: &str) -> PathBuf {
@@ -3214,6 +3340,22 @@ fn write_pairing_record(workspace_root: &Path, record: &MobilePairingRecord) -> 
     fs::write(
         &path,
         serde_json::to_vec_pretty(record).context("failed to serialize mobile pairing record")?,
+    )
+    .with_context(|| format!("failed to write {}", path.display()))
+}
+
+fn write_app_session_record(workspace_root: &Path, record: &MobileAppSessionRecord) -> Result<()> {
+    fs::create_dir_all(app_sessions_dir(workspace_root)).with_context(|| {
+        format!(
+            "failed to create {}",
+            app_sessions_dir(workspace_root).display()
+        )
+    })?;
+    let path = app_session_path(workspace_root, &record.id);
+    fs::write(
+        &path,
+        serde_json::to_vec_pretty(record)
+            .context("failed to serialize mobile app session record")?,
     )
     .with_context(|| format!("failed to write {}", path.display()))
 }
@@ -3502,6 +3644,94 @@ fn capability_aliases(capability: &str) -> &'static [&'static str] {
         "notifications" => &["notifications"],
         _ => &[],
     }
+}
+
+fn derive_app_session_status(runtime: &MobileNodeRuntimeState) -> String {
+    if !runtime.reachable && runtime.last_heartbeat_at.is_some() {
+        "disconnected".to_string()
+    } else if runtime.reachable && runtime.app_state == "active" {
+        "active".to_string()
+    } else if runtime.reachable && runtime.app_state == "background" {
+        "background".to_string()
+    } else if runtime.reachable {
+        "reachable".to_string()
+    } else {
+        "registered".to_string()
+    }
+}
+
+fn duration_secs_between(start: &str, end: &str) -> Option<u64> {
+    let start = DateTime::parse_from_rfc3339(start).ok()?;
+    let end = DateTime::parse_from_rfc3339(end).ok()?;
+    let duration = end.signed_duration_since(start);
+    (duration.num_seconds() >= 0).then_some(duration.num_seconds() as u64)
+}
+
+fn record_app_session_heartbeat(
+    workspace_root: &Path,
+    runtime: &MobileNodeRuntimeState,
+    entry_reason: &str,
+) -> Result<()> {
+    let status = derive_app_session_status(runtime);
+    let now = runtime
+        .last_heartbeat_at
+        .clone()
+        .unwrap_or_else(|| Utc::now().to_rfc3339());
+    let open_session = list_app_session_data(workspace_root, Some(&runtime.node_id), None, None)?
+        .into_iter()
+        .find(|record| record.ended_at.is_none());
+
+    match open_session {
+        Some(mut record) if record.status == status => {
+            record.last_seen_at = now.clone();
+            record.network = Some(runtime.network.clone());
+            record.battery_percent = runtime.battery_percent;
+            write_app_session_record(workspace_root, &record)?;
+        }
+        Some(mut record) => {
+            record.ended_at = Some(now.clone());
+            record.duration_secs = duration_secs_between(&record.started_at, &now);
+            record.exit_reason = Some("heartbeat_transition".to_string());
+            write_app_session_record(workspace_root, &record)?;
+
+            write_app_session_record(
+                workspace_root,
+                &MobileAppSessionRecord {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    node_id: runtime.node_id.clone(),
+                    status,
+                    started_at: now.clone(),
+                    last_seen_at: now,
+                    ended_at: None,
+                    duration_secs: None,
+                    network: Some(runtime.network.clone()),
+                    battery_percent: runtime.battery_percent,
+                    entry_reason: Some(entry_reason.to_string()),
+                    exit_reason: None,
+                },
+            )?;
+        }
+        None => {
+            write_app_session_record(
+                workspace_root,
+                &MobileAppSessionRecord {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    node_id: runtime.node_id.clone(),
+                    status,
+                    started_at: now.clone(),
+                    last_seen_at: now,
+                    ended_at: None,
+                    duration_secs: None,
+                    network: Some(runtime.network.clone()),
+                    battery_percent: runtime.battery_percent,
+                    entry_reason: Some(entry_reason.to_string()),
+                    exit_reason: None,
+                },
+            )?;
+        }
+    }
+
+    Ok(())
 }
 
 fn capability_notes(capability: &str) -> Vec<String> {
@@ -4013,6 +4243,63 @@ mod tests {
     }
 
     #[test]
+    fn heartbeat_creates_and_rotates_app_sessions() {
+        let temp = tempdir().expect("tempdir");
+        pair_node_data(
+            temp.path(),
+            MobilePairRequest {
+                id: "iphone-app-session".to_string(),
+                gateway_url: "wss://example.com/gateway".to_string(),
+                auth_token_env: "MOBILE_APP_SESSION_TOKEN".to_string(),
+                device_name: Some("Session iPhone".to_string()),
+                platform: Some("ios".to_string()),
+                capabilities: vec!["mobile".to_string()],
+                enabled: true,
+                sync: None,
+                notifications: None,
+                metadata: Value::Null,
+            },
+        )
+        .expect("pair node");
+
+        heartbeat_node_data(
+            temp.path(),
+            "iphone-app-session",
+            MobileHeartbeatRequest {
+                app_state: Some("active".to_string()),
+                network: Some("wifi".to_string()),
+                reachable: Some(true),
+                push_token_present: Some(true),
+                battery_percent: Some(90),
+                metadata: Value::Null,
+            },
+        )
+        .expect("active heartbeat");
+        heartbeat_node_data(
+            temp.path(),
+            "iphone-app-session",
+            MobileHeartbeatRequest {
+                app_state: Some("background".to_string()),
+                network: Some("wifi".to_string()),
+                reachable: Some(true),
+                push_token_present: Some(true),
+                battery_percent: Some(88),
+                metadata: Value::Null,
+            },
+        )
+        .expect("background heartbeat");
+
+        let sessions =
+            list_app_session_data(temp.path(), Some("iphone-app-session"), None, Some(8))
+                .expect("sessions");
+        assert_eq!(sessions.len(), 2);
+        assert_eq!(sessions[0].status, "background");
+        assert!(sessions[0].ended_at.is_none());
+        assert_eq!(sessions[1].status, "active");
+        assert!(sessions[1].ended_at.is_some());
+    }
+
+    #[test]
     fn sync_conflicts_can_be_reported_and_resolved() {
         let temp = tempdir().expect("tempdir");
         pair_node_data(
@@ -4222,6 +4509,7 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert!(kinds.contains(&"node_paired"));
+        assert!(kinds.contains(&"app_session"));
         assert!(kinds.contains(&"runtime_heartbeat"));
         assert!(kinds.contains(&"push_registration"));
         assert!(kinds.contains(&"sync_result"));
