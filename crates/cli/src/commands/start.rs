@@ -2717,6 +2717,10 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             get(mobile_node_capabilities_handler),
         )
         .route(
+            "/control/mobile/nodes/{id}/activity",
+            get(mobile_node_activity_handler),
+        )
+        .route(
             "/control/mobile/nodes/{id}/runtime",
             get(mobile_node_runtime_handler),
         )
@@ -4655,6 +4659,12 @@ struct MobileCommandsQuery {
     limit: Option<usize>,
 }
 
+#[derive(serde::Deserialize, Default)]
+struct MobileLimitQuery {
+    #[serde(default)]
+    limit: Option<usize>,
+}
+
 async fn runtime_status_handler(State(state): State<RuntimeControlState>) -> impl IntoResponse {
     match runtime::runtime_status(&state.config_path, &state.workspace_root) {
         Ok(status) => (StatusCode::OK, Json(serde_json::json!(status))).into_response(),
@@ -5164,6 +5174,21 @@ async fn mobile_node_capabilities_handler(
 ) -> impl IntoResponse {
     match mobile::node_capabilities_data(&state.workspace_root, &id) {
         Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn mobile_node_activity_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(id): AxumPath<String>,
+    Query(query): Query<MobileLimitQuery>,
+) -> impl IntoResponse {
+    match mobile::node_activity_data(&state.workspace_root, &id, query.limit) {
+        Ok(activity) => (StatusCode::OK, Json(serde_json::json!(activity))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": error.to_string()})),

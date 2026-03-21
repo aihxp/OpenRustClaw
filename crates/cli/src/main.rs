@@ -1399,6 +1399,13 @@ enum MobileAction {
     },
     /// Show bounded capability inventory for a configured mobile node
     Capabilities { id: String },
+    /// Show bounded aggregated runtime activity for a configured mobile node
+    Activity {
+        #[arg(long)]
+        id: String,
+        #[arg(long)]
+        limit: Option<usize>,
+    },
     /// Record a bounded mobile node heartbeat/runtime receipt
     Heartbeat {
         #[arg(long)]
@@ -3393,6 +3400,9 @@ async fn main() -> Result<()> {
                 }
                 MobileAction::Capabilities { id } => {
                     commands::mobile::node_capabilities(&workspace_root, &id).await
+                }
+                MobileAction::Activity { id, limit } => {
+                    commands::mobile::node_activity(&workspace_root, &id, limit).await
                 }
                 MobileAction::Heartbeat {
                     id,

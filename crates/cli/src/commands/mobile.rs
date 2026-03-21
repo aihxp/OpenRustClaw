@@ -359,6 +359,22 @@ pub struct MobileCapabilityPreviewRecord {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MobileNodeActivityEntry {
+    pub kind: String,
+    pub id: String,
+    pub status: String,
+    pub created_at: String,
+    pub summary: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MobileNodeActivityResult {
+    pub node_id: String,
+    pub entry_count: usize,
+    pub entries: Vec<MobileNodeActivityEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MobileNotificationRecord {
     pub id: String,
     pub node_id: String,
@@ -767,6 +783,84 @@ pub fn node_capabilities_data(
         platform: manifest.node.platform,
         readiness: status.readiness,
         capabilities,
+    })
+}
+
+pub fn node_activity_data(
+    workspace_root: &Path,
+    node_id: &str,
+    limit: Option<usize>,
+) -> Result<MobileNodeActivityResult> {
+    inspect_node_data(workspace_root, node_id)?;
+    let runtime = load_runtime_state(workspace_root, node_id)?;
+    let mut entries = runtime_activity_entries(&runtime);
+
+    entries.extend(
+        list_notification_data(workspace_root, Some(node_id), None)?
+            .into_iter()
+            .map(|record| MobileNodeActivityEntry {
+                kind: "notification".to_string(),
+                id: record.id,
+                status: record.status,
+                created_at: record.created_at,
+                summary: format!("{} | {}", record.title, summarize_body(&record.body, 72)),
+            }),
+    );
+    entries.extend(
+        list_inbound_message_data(workspace_root, Some(node_id), None)?
+            .into_iter()
+            .map(|record| MobileNodeActivityEntry {
+                kind: "inbound_message".to_string(),
+                id: record.id,
+                status: record.status,
+                created_at: record.created_at,
+                summary: format!(
+                    "{} -> {} | {}",
+                    record.source,
+                    record.target,
+                    summarize_body(&record.content_preview, 72)
+                ),
+            }),
+    );
+    entries.extend(
+        list_outbound_message_data(workspace_root, Some(node_id), None)?
+            .into_iter()
+            .map(|record| MobileNodeActivityEntry {
+                kind: "outbound_message".to_string(),
+                id: record.id,
+                status: record.status,
+                created_at: record.created_at,
+                summary: format!(
+                    "to {} | {}",
+                    record.target,
+                    summarize_body(&record.content_preview, 72)
+                ),
+            }),
+    );
+    entries.extend(
+        list_command_data(workspace_root, Some(node_id), None)?
+            .into_iter()
+            .map(|record| MobileNodeActivityEntry {
+                kind: "command".to_string(),
+                id: record.id,
+                status: record.status,
+                created_at: record.created_at.to_rfc3339(),
+                summary: format!(
+                    "{:?} requires {}",
+                    record.command, record.required_capability
+                ),
+            }),
+    );
+
+    entries.sort_by(|left, right| right.created_at.cmp(&left.created_at));
+    if let Some(limit) = limit {
+        entries.truncate(limit);
+    }
+
+    Ok(MobileNodeActivityResult {
+        node_id: node_id.to_string(),
+        entry_count: entries.len(),
+        entries,
     })
 }
 
@@ -2186,6 +2280,16 @@ pub async fn node_capabilities(workspace_root: &Path, node_id: &str) -> Result<(
     Ok(())
 }
 
+pub async fn node_activity(
+    workspace_root: &Path,
+    node_id: &str,
+    limit: Option<usize>,
+) -> Result<()> {
+    let activity = node_activity_data(workspace_root, node_id, limit)?;
+    println!("{}", serde_json::to_string_pretty(&activity)?);
+    Ok(())
+}
+
 pub async fn preview_capability(
     workspace_root: &Path,
     request: MobileCapabilityPreviewRequest,
@@ -2386,6 +2490,120 @@ fn refresh_runtime_status(runtime: &mut MobileNodeRuntimeState) {
     } else {
         "registered".to_string()
     };
+}
+
+fn runtime_activity_entries(runtime: &MobileNodeRuntimeState) -> Vec<MobileNodeActivityEntry> {
+    let mut entries = Vec::new();
+    if let Some(created_at) = runtime.last_heartbeat_at.as_ref() {
+        entries.push(MobileNodeActivityEntry {
+            kind: "runtime_heartbeat".to_string(),
+            id: runtime.node_id.clone(),
+            status: runtime.runtime_status.clone(),
+            created_at: created_at.clone(),
+            summary: format!(
+                "app={} network={} reachable={} battery={}",
+                runtime.app_state,
+                runtime.network,
+                runtime.reachable,
+                runtime
+                    .battery_percent
+                    .map(|value| format!("{value}%"))
+                    .unwrap_or_else(|| "-".to_string())
+            ),
+        });
+    }
+    if let Some(created_at) = runtime.push_token_updated_at.as_ref() {
+        entries.push(MobileNodeActivityEntry {
+            kind: "push_registration".to_string(),
+            id: runtime.node_id.clone(),
+            status: if runtime.push_token_present {
+                "registered".to_string()
+            } else {
+                "missing_token".to_string()
+            },
+            created_at: created_at.clone(),
+            summary: format!(
+                "provider={} notifications_authorized={}",
+                runtime.push_provider.as_deref().unwrap_or("-"),
+                runtime.notifications_authorized
+            ),
+        });
+    }
+    if let Some(created_at) = runtime.wake_requested_at.as_ref() {
+        entries.push(MobileNodeActivityEntry {
+            kind: "wake_request".to_string(),
+            id: runtime
+                .last_wake_command_id
+                .clone()
+                .unwrap_or_else(|| runtime.node_id.clone()),
+            status: runtime.wake_state.clone(),
+            created_at: created_at.clone(),
+            summary: runtime
+                .wake_reason
+                .clone()
+                .unwrap_or_else(|| "wake request recorded".to_string()),
+        });
+    }
+    if let Some(created_at) = runtime.rehydrate_requested_at.as_ref() {
+        entries.push(MobileNodeActivityEntry {
+            kind: "rehydrate_request".to_string(),
+            id: runtime
+                .last_rehydrate_command_id
+                .clone()
+                .unwrap_or_else(|| runtime.node_id.clone()),
+            status: runtime.rehydrate_state.clone(),
+            created_at: created_at.clone(),
+            summary: format!(
+                "{} pending_changes={}",
+                runtime
+                    .rehydrate_reason
+                    .clone()
+                    .unwrap_or_else(|| "rehydrate request recorded".to_string()),
+                runtime
+                    .rehydrate_pending_change_count
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string())
+            ),
+        });
+    }
+    if let Some(created_at) = runtime.last_sync_requested_at.as_ref() {
+        entries.push(MobileNodeActivityEntry {
+            kind: "sync_request".to_string(),
+            id: runtime.node_id.clone(),
+            status: runtime.sync_state.clone(),
+            created_at: created_at.clone(),
+            summary: format!(
+                "pending_changes={} result={}",
+                runtime
+                    .pending_change_count
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                runtime.last_sync_result.as_deref().unwrap_or("-")
+            ),
+        });
+    }
+    if let Some(created_at) = runtime.last_sync_at.as_ref() {
+        entries.push(MobileNodeActivityEntry {
+            kind: "sync_result".to_string(),
+            id: runtime.node_id.clone(),
+            status: runtime.sync_state.clone(),
+            created_at: created_at.clone(),
+            summary: runtime
+                .last_sync_result
+                .clone()
+                .unwrap_or_else(|| "sync completed".to_string()),
+        });
+    }
+    entries
+}
+
+fn summarize_body(value: &str, limit: usize) -> String {
+    let trimmed = value.trim();
+    if trimmed.chars().count() <= limit {
+        return trimmed.to_string();
+    }
+    let summarized = trimmed.chars().take(limit).collect::<String>();
+    format!("{summarized}...")
 }
 
 fn parse_notification_priority(raw: Option<&str>) -> Result<NotificationPriority> {
@@ -2851,6 +3069,139 @@ mod tests {
         assert_eq!(sync.pending_change_count, Some(0));
         assert_eq!(sync.last_sync_result.as_deref(), Some("ok"));
         assert!(sync.last_sync_at.is_some());
+    }
+
+    #[tokio::test]
+    async fn mobile_activity_aggregates_runtime_and_receipts() {
+        let temp = tempdir().expect("tempdir");
+        unsafe {
+            std::env::set_var("MOBILE_ACTIVITY_TOKEN", "secret");
+        }
+        pair_node_data(
+            temp.path(),
+            MobilePairRequest {
+                id: "iphone-activity".to_string(),
+                gateway_url: "wss://example.com/gateway".to_string(),
+                auth_token_env: "MOBILE_ACTIVITY_TOKEN".to_string(),
+                device_name: Some("Activity iPhone".to_string()),
+                platform: Some("ios".to_string()),
+                capabilities: vec![
+                    "mobile".to_string(),
+                    "notifications".to_string(),
+                    "sms".to_string(),
+                ],
+                enabled: true,
+                sync: None,
+                notifications: None,
+                metadata: Value::Null,
+            },
+        )
+        .expect("pair node");
+
+        heartbeat_node_data(
+            temp.path(),
+            "iphone-activity",
+            MobileHeartbeatRequest {
+                app_state: Some("active".to_string()),
+                network: Some("wifi".to_string()),
+                reachable: Some(true),
+                push_token_present: Some(true),
+                battery_percent: Some(91),
+                metadata: Value::Null,
+            },
+        )
+        .expect("heartbeat");
+        register_push_data(
+            temp.path(),
+            "iphone-activity",
+            MobilePushRegistrationRequest {
+                push_provider: Some("apns".to_string()),
+                push_token_present: Some(true),
+                notifications_authorized: Some(true),
+            },
+        )
+        .expect("push registration");
+        report_sync_data(
+            temp.path(),
+            "iphone-activity",
+            MobileSyncReportRequest {
+                sync_state: Some("synced".to_string()),
+                pending_change_count: Some(0),
+                last_sync_result: Some("ok".to_string()),
+            },
+        )
+        .expect("sync report");
+        report_inbound_message_data(
+            temp.path(),
+            MobileInboundMessageReportRequest {
+                node_id: "iphone-activity".to_string(),
+                source: "ops-room".to_string(),
+                target: "assistant".to_string(),
+                content: "ping from mobile".to_string(),
+                content_type: None,
+                metadata: Value::Null,
+            },
+        )
+        .expect("report inbound");
+        send_outbound_message_data(
+            temp.path(),
+            MobileOutboundMessageSendRequest {
+                node_id: "iphone-activity".to_string(),
+                target: "ops-room".to_string(),
+                content: "pong to mobile".to_string(),
+                content_type: None,
+                requested_by: Some("tester".to_string()),
+                metadata: Value::Null,
+            },
+        )
+        .await
+        .expect("send outbound");
+        send_notification_data(
+            temp.path(),
+            MobileNotificationSendRequest {
+                node_id: "iphone-activity".to_string(),
+                title: "Heads up".to_string(),
+                body: "Activity notification".to_string(),
+                priority: Some("normal".to_string()),
+                notification_type: Some("message".to_string()),
+                data: HashMap::new(),
+                requested_by: Some("tester".to_string()),
+            },
+        )
+        .await
+        .expect("send notification");
+        dispatch_command_data(
+            temp.path(),
+            MobileCommandDispatchRequest {
+                node_id: "iphone-activity".to_string(),
+                command: DeviceCommandKind::SendMessage,
+                payload: json!({"target":"ops-room","content":"command path"}),
+                approved_by: Some("tester".to_string()),
+                require_approval: Some(false),
+            },
+        )
+        .await
+        .expect("dispatch command");
+
+        let activity =
+            node_activity_data(temp.path(), "iphone-activity", Some(16)).expect("activity");
+        let kinds = activity
+            .entries
+            .iter()
+            .map(|entry| entry.kind.as_str())
+            .collect::<Vec<_>>();
+
+        assert!(kinds.contains(&"runtime_heartbeat"));
+        assert!(kinds.contains(&"push_registration"));
+        assert!(kinds.contains(&"sync_result"));
+        assert!(kinds.contains(&"notification"));
+        assert!(kinds.contains(&"inbound_message"));
+        assert!(kinds.contains(&"outbound_message"));
+        assert!(kinds.contains(&"command"));
+        assert!(activity.entry_count >= 7);
+        unsafe {
+            std::env::remove_var("MOBILE_ACTIVITY_TOKEN");
+        }
     }
 
     #[tokio::test]

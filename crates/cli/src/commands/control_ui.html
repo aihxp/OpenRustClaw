@@ -748,6 +748,7 @@
               <button id="mobile-runtime-heartbeat">Heartbeat</button>
               <button class="secondary" id="mobile-runtime-refresh">Refresh Runtime</button>
               <button class="secondary" id="mobile-capabilities-refresh">Refresh Capabilities</button>
+              <button class="secondary" id="mobile-activity-refresh">Refresh Activity</button>
             </div>
             <div class="action-row">
               <button class="secondary" id="mobile-register-push">Register Push</button>
@@ -763,6 +764,7 @@
           <div class="surface" style="margin-top: 12px"><pre id="mobile-node-push">No mobile push state loaded yet.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="mobile-node-sync">No mobile sync state loaded yet.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="mobile-node-capabilities">No mobile capabilities loaded yet.</pre></div>
+          <div class="surface" style="margin-top: 12px"><pre id="mobile-node-activity">No mobile activity loaded yet.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="mobile-notification-detail">No mobile notification selected.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="mobile-inbox-detail">No mobile inbox message selected.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="mobile-outbox-detail">No mobile outbound message selected.</pre></div>
@@ -1961,18 +1963,20 @@
       }
 
       async function inspectMobileNode(id) {
-        const [manifest, status, runtime, push, sync, capabilities] = await Promise.all([
+        const [manifest, status, runtime, push, sync, capabilities, activity] = await Promise.all([
           fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}`),
           fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}/status`),
           fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}/runtime`),
           fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}/push`),
           fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}/sync`),
           fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}/capabilities`),
+          fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}/activity?limit=25`),
         ]);
         setText("mobile-node-detail", { manifest, status, runtime });
         setText("mobile-node-push", push);
         setText("mobile-node-sync", sync);
         setText("mobile-node-capabilities", capabilities);
+        setText("mobile-node-activity", activity);
         document.getElementById("mobile-source-node").value = id;
         document.getElementById("mobile-command-node").value = id;
         document.getElementById("mobile-runtime-app-state").value = runtime.app_state || "";
@@ -1985,6 +1989,15 @@
         await loadMobileNotifications(id);
         await loadMobileInbox(id);
         await loadMobileOutbox(id);
+      }
+
+      async function loadMobileActivity(idOverride = null) {
+        const id = (idOverride || document.getElementById("mobile-source-node").value).trim();
+        if (!id) {
+          throw new Error("Select a mobile node first.");
+        }
+        const activity = await fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}/activity?limit=25`);
+        setText("mobile-node-activity", activity);
       }
 
       async function refreshMobileRuntime() {
@@ -3172,6 +3185,13 @@
           await refreshMobileCapabilities();
         } catch (error) {
           setText("mobile-node-capabilities", { error: error.message });
+        }
+      });
+      document.getElementById("mobile-activity-refresh").addEventListener("click", async () => {
+        try {
+          await loadMobileActivity();
+        } catch (error) {
+          setText("mobile-node-activity", { error: error.message });
         }
       });
       document.getElementById("mobile-runtime-heartbeat").addEventListener("click", async () => {
