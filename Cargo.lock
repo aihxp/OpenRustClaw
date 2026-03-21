@@ -5790,6 +5790,7 @@ dependencies = [
  "dirs",
  "ed25519-dalek",
  "futures",
+ "google-gemini",
  "hex",
  "image 0.25.10",
  "indicatif",

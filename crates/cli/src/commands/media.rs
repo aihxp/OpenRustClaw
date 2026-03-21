@@ -4,6 +4,9 @@ use std::process::Command;
 
 use anyhow::{Context, Result, anyhow};
 use base64::Engine;
+use google_gemini::{
+    Content, GeminiClient, GeminiModel, GenerateContentRequest, GenerationConfig, Part,
+};
 use openrustclaw_automation::browser::{Screenshot, ScreenshotFormat};
 use openrustclaw_automation::vision::VisionCapabilities;
 use openrustclaw_core::config::AppConfig;
@@ -317,15 +320,23 @@ pub async fn extract_text_with_config(
                 .map(ToString::to_string)
                 .unwrap_or_else(|| provider.default_model.clone());
             let prompt = build_image_extract_text_prompt(request.prompt.as_deref());
-            let body = build_image_describe_request(
-                &provider,
-                &model,
-                800,
-                &prompt,
-                &bytes,
-                &guess_mime(path),
-            );
-            let text = call_media_describe_provider(&provider, &body).await?;
+            let text = match provider.request_format {
+                VisionRequestFormat::Gemini => {
+                    call_gemini_image_text(&provider, &model, &prompt, &bytes, &guess_mime(path))
+                        .await?
+                }
+                _ => {
+                    let body = build_image_describe_request(
+                        &provider,
+                        &model,
+                        800,
+                        &prompt,
+                        &bytes,
+                        &guess_mime(path),
+                    );
+                    call_media_describe_provider(&provider, &body).await?
+                }
+            };
             return Ok(MediaExtractTextResult {
                 path: path.display().to_string(),
                 media_kind,
@@ -411,15 +422,30 @@ pub async fn describe_with_config(
         "image" => {
             let image_prompt =
                 prompt.unwrap_or_else(|| "Describe this image in detail.".to_string());
-            let body = build_image_describe_request(
-                &provider,
-                &model,
-                request.max_tokens.unwrap_or(600),
-                &image_prompt,
-                &bytes,
-                &guess_mime(path),
-            );
-            call_media_describe_provider(&provider, &body).await?
+            match provider.request_format {
+                VisionRequestFormat::Gemini => {
+                    call_gemini_image_description(
+                        &provider,
+                        &model,
+                        request.max_tokens.unwrap_or(600),
+                        &image_prompt,
+                        &bytes,
+                        &guess_mime(path),
+                    )
+                    .await?
+                }
+                _ => {
+                    let body = build_image_describe_request(
+                        &provider,
+                        &model,
+                        request.max_tokens.unwrap_or(600),
+                        &image_prompt,
+                        &bytes,
+                        &guess_mime(path),
+                    );
+                    call_media_describe_provider(&provider, &body).await?
+                }
+            }
         }
         "document" | "audio" => {
             let extracted = extract_text_with_config(
@@ -441,13 +467,26 @@ pub async fn describe_with_config(
                 prompt.as_deref(),
                 &extracted.text,
             );
-            let body = build_text_describe_request(
-                &provider,
-                &model,
-                request.max_tokens.unwrap_or(600),
-                &text_prompt,
-            );
-            call_media_describe_provider(&provider, &body).await?
+            match provider.request_format {
+                VisionRequestFormat::Gemini => {
+                    call_gemini_text_description(
+                        &provider,
+                        &model,
+                        request.max_tokens.unwrap_or(600),
+                        &text_prompt,
+                    )
+                    .await?
+                }
+                _ => {
+                    let body = build_text_describe_request(
+                        &provider,
+                        &model,
+                        request.max_tokens.unwrap_or(600),
+                        &text_prompt,
+                    );
+                    call_media_describe_provider(&provider, &body).await?
+                }
+            }
         }
         _ => {
             return Err(anyhow!(
@@ -520,6 +559,7 @@ enum VisionRequestFormat {
     OpenAiCompatible,
     Anthropic,
     Ollama,
+    Gemini,
 }
 
 fn vision_provider_catalog(config: &AppConfig) -> Vec<MediaProviderStatus> {
@@ -605,6 +645,60 @@ fn vision_provider_catalog(config: &AppConfig) -> Vec<MediaProviderStatus> {
             notes,
         });
     }
+
+    let gemini_ready = config
+        .providers
+        .gemini
+        .api_key_env
+        .as_deref()
+        .and_then(|env| std::env::var(env).ok())
+        .is_some()
+        && !config.providers.gemini.model.trim().is_empty();
+    let mut gemini_notes = vec![
+        "native_gemini_sdk".to_string(),
+        format!("default_model:{}", config.providers.gemini.model),
+        format!(
+            "base_url:{}",
+            config
+                .providers
+                .gemini
+                .base_url
+                .as_deref()
+                .unwrap_or("https://generativelanguage.googleapis.com/v1beta")
+        ),
+    ];
+    if !gemini_ready {
+        gemini_notes.push("api_key_unavailable".to_string());
+    }
+    extractors.push(MediaProviderStatus {
+        provider: "gemini".to_string(),
+        lane: "gemini_vision".to_string(),
+        kind: "image_description".to_string(),
+        ready: gemini_ready,
+        notes: gemini_notes.clone(),
+    });
+    extractors.push(MediaProviderStatus {
+        provider: "gemini".to_string(),
+        lane: "gemini_vision_image_text".to_string(),
+        kind: "image_text".to_string(),
+        ready: gemini_ready,
+        notes: gemini_notes.clone(),
+    });
+    extractors.push(MediaProviderStatus {
+        provider: "gemini".to_string(),
+        lane: "gemini_vision_document".to_string(),
+        kind: "document_description".to_string(),
+        ready: gemini_ready,
+        notes: gemini_notes.clone(),
+    });
+    extractors.push(MediaProviderStatus {
+        provider: "gemini".to_string(),
+        lane: "gemini_vision_audio".to_string(),
+        kind: "audio_description".to_string(),
+        ready: gemini_ready,
+        notes: gemini_notes,
+    });
+
     extractors
 }
 
@@ -639,6 +733,16 @@ fn resolve_vision_provider(
                 .is_some() =>
             {
                 "anthropic".to_string()
+            }
+            _ if config
+                .providers
+                .gemini
+                .api_key_env
+                .as_deref()
+                .and_then(|env| std::env::var(env).ok())
+                .is_some() =>
+            {
+                "gemini".to_string()
             }
             _ if !config.providers.ollama.base_url.trim().is_empty()
                 && !config.providers.ollama.model.trim().is_empty() =>
@@ -703,8 +807,29 @@ fn resolve_vision_provider(
                 request_format: VisionRequestFormat::OpenAiCompatible,
             })
         }
+        "gemini" => Ok(VisionProviderProfile {
+            provider,
+            default_model: config.providers.gemini.model.clone(),
+            api_base_url: config
+                .providers
+                .gemini
+                .base_url
+                .clone()
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or_else(|| "https://generativelanguage.googleapis.com/v1beta".to_string()),
+            api_key_env: Some(
+                config
+                    .providers
+                    .gemini
+                    .api_key_env
+                    .clone()
+                    .ok_or_else(|| anyhow!("providers.gemini.api_key_env is not configured"))?,
+            ),
+            api_version: None,
+            request_format: VisionRequestFormat::Gemini,
+        }),
         other => Err(anyhow!(
-            "unsupported bounded media vision provider '{}'; supported providers: anthropic, ollama, openai, openrouter",
+            "unsupported bounded media vision provider '{}'; supported providers: anthropic, gemini, ollama, openai, openrouter",
             other
         )),
     }
@@ -732,6 +857,27 @@ fn extract_chat_completion_text(payload: &serde_json::Value) -> Option<String> {
         .filter(|part| !part.is_empty())
         .collect::<Vec<_>>()
         .join("\n");
+    (!text.is_empty()).then_some(text)
+}
+
+fn extract_gemini_text(payload: &serde_json::Value) -> Option<String> {
+    let candidates = payload.get("candidates")?.as_array()?;
+    let mut text = String::new();
+    for candidate in candidates {
+        let content = candidate.get("content")?;
+        let parts = content.get("parts")?.as_array()?;
+        for part in parts {
+            if let Some(value) = part.get("text").and_then(serde_json::Value::as_str) {
+                let trimmed = value.trim();
+                if !trimmed.is_empty() {
+                    if !text.is_empty() {
+                        text.push('\n');
+                    }
+                    text.push_str(trimmed);
+                }
+            }
+        }
+    }
     (!text.is_empty()).then_some(text)
 }
 
@@ -835,6 +981,9 @@ fn build_image_describe_request(
                 "max_tokens": max_tokens,
             })
         }
+        VisionRequestFormat::Gemini => unreachable!(
+            "Gemini image describe request bodies are handled through the native google-gemini SDK"
+        ),
     }
 }
 
@@ -871,7 +1020,135 @@ fn build_text_describe_request(
             }],
             "max_tokens": max_tokens,
         }),
+        VisionRequestFormat::Gemini => unreachable!(
+            "Gemini text describe request bodies are handled through the native google-gemini SDK"
+        ),
     }
+}
+
+fn build_gemini_client(provider: &VisionProviderProfile, model: &str) -> Result<GeminiClient> {
+    let api_key_env = provider
+        .api_key_env
+        .as_deref()
+        .ok_or_else(|| anyhow!("providers.gemini.api_key_env is not configured"))?;
+    let api_key = std::env::var(api_key_env)
+        .with_context(|| format!("{api_key_env} environment variable not set"))?;
+    let mut client = GeminiClient::new(api_key).with_model(GeminiModel::Custom(model.to_string()));
+    if !provider.api_base_url.trim().is_empty() {
+        client = client.with_base_url(provider.api_base_url.clone());
+    }
+    Ok(client)
+}
+
+async fn call_gemini_image_description(
+    provider: &VisionProviderProfile,
+    model: &str,
+    max_tokens: u32,
+    prompt: &str,
+    bytes: &[u8],
+    mime: &str,
+) -> Result<String> {
+    call_gemini_request(
+        provider,
+        model,
+        GenerateContentRequest {
+            contents: vec![Content::user(prompt).with_image(mime, bytes.to_vec())],
+            system_instruction: None,
+            generation_config: Some(GenerationConfig {
+                max_output_tokens: Some(max_tokens as i32),
+                ..GenerationConfig::default()
+            }),
+            tools: None,
+            tool_config: None,
+            safety_settings: None,
+        },
+    )
+    .await
+}
+
+async fn call_gemini_image_text(
+    provider: &VisionProviderProfile,
+    model: &str,
+    prompt: &str,
+    bytes: &[u8],
+    mime: &str,
+) -> Result<String> {
+    call_gemini_request(
+        provider,
+        model,
+        GenerateContentRequest {
+            contents: vec![Content::user(prompt).with_image(mime, bytes.to_vec())],
+            system_instruction: None,
+            generation_config: Some(GenerationConfig {
+                max_output_tokens: Some(800),
+                ..GenerationConfig::default()
+            }),
+            tools: None,
+            tool_config: None,
+            safety_settings: None,
+        },
+    )
+    .await
+}
+
+async fn call_gemini_text_description(
+    provider: &VisionProviderProfile,
+    model: &str,
+    max_tokens: u32,
+    prompt: &str,
+) -> Result<String> {
+    call_gemini_request(
+        provider,
+        model,
+        GenerateContentRequest {
+            contents: vec![Content::user(prompt)],
+            system_instruction: None,
+            generation_config: Some(GenerationConfig {
+                max_output_tokens: Some(max_tokens as i32),
+                ..GenerationConfig::default()
+            }),
+            tools: None,
+            tool_config: None,
+            safety_settings: None,
+        },
+    )
+    .await
+}
+
+async fn call_gemini_request(
+    provider: &VisionProviderProfile,
+    model: &str,
+    request: GenerateContentRequest,
+) -> Result<String> {
+    let client = build_gemini_client(provider, model)?;
+    let response = client
+        .generate_content(request)
+        .await
+        .context("failed to call Gemini media lane")?;
+    extract_gemini_response_text(&response).ok_or_else(|| {
+        anyhow!(
+            "Gemini media response for '{}' did not contain text",
+            provider.provider
+        )
+    })
+}
+
+fn extract_gemini_response_text(
+    payload: &google_gemini::GenerateContentResponse,
+) -> Option<String> {
+    let content = payload.candidates.first()?.content.clone();
+    let text = content
+        .parts
+        .into_iter()
+        .filter_map(|part| match part {
+            Part::Text { text } => Some(text),
+            _ => None,
+        })
+        .map(|text| text.trim().to_string())
+        .filter(|text| !text.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n");
+    (!text.is_empty()).then_some(text)
 }
 
 fn truncate_for_prompt(text: &str, limit: usize) -> &str {
@@ -934,6 +1211,9 @@ async fn call_media_describe_provider(
                         )
                     })?,
                 ),
+            VisionRequestFormat::Gemini => unreachable!(
+                "Gemini media describe is handled through the native google-gemini SDK"
+            ),
         };
     if provider.provider == "openrouter" {
         request_builder = request_builder
@@ -965,6 +1245,8 @@ async fn call_media_describe_provider(
         VisionRequestFormat::Anthropic => extract_anthropic_text(&payload)
             .ok_or_else(|| anyhow!("provider-backed media describe response did not contain text")),
         VisionRequestFormat::OpenAiCompatible => extract_chat_completion_text(&payload)
+            .ok_or_else(|| anyhow!("provider-backed media describe response did not contain text")),
+        VisionRequestFormat::Gemini => extract_gemini_text(&payload)
             .ok_or_else(|| anyhow!("provider-backed media describe response did not contain text")),
     }
 }

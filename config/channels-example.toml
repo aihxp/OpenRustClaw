@@ -336,6 +336,12 @@ voice = "alloy"  # alloy, echo, fable, onyx, nova, shimmer
 # api_base_url = "https://api.openai.com/v1"  # Optional override for OpenAI-compatible TTS endpoints
 # api_key_env = "OPENAI_API_KEY"  # Optional override for the TTS provider API key env
 
+# Gemini provider
+[providers.gemini]
+model = "gemini-1.5-pro"
+# api_key_env = "GEMINI_API_KEY"
+# base_url = "https://generativelanguage.googleapis.com/v1beta"
+
 # Talk Mode (continuous conversation)
 [voice.talk_mode]
 enabled = true

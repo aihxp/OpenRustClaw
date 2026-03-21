@@ -101,6 +101,8 @@ pub struct ProvidersConfig {
     pub openai: OpenAiConfig,
     pub openrouter: OpenRouterConfig,
     pub ollama: OllamaConfig,
+    #[serde(default)]
+    pub gemini: GeminiConfig,
 }
 
 /// Anthropic provider configuration.
@@ -138,6 +140,26 @@ pub struct OpenRouterConfig {
 pub struct OllamaConfig {
     pub base_url: String,
     pub model: String,
+}
+
+/// Gemini provider configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GeminiConfig {
+    pub model: String,
+    #[serde(default)]
+    pub api_key_env: Option<String>,
+    #[serde(default)]
+    pub base_url: Option<String>,
+}
+
+impl Default for GeminiConfig {
+    fn default() -> Self {
+        Self {
+            model: "gemini-1.5-pro".to_string(),
+            api_key_env: Some("GEMINI_API_KEY".to_string()),
+            base_url: None,
+        }
+    }
 }
 
 /// Memory system configuration.
@@ -1003,6 +1025,7 @@ impl Default for AppConfig {
                     base_url: "http://localhost:11434".to_string(),
                     model: "llama3.1".to_string(),
                 },
+                gemini: GeminiConfig::default(),
             },
             memory: MemoryConfig {
                 core_memory_max_tokens: 500,

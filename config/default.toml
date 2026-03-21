@@ -31,6 +31,11 @@ route_strategy = "quality"  # price, throughput, quality, web_search
 base_url = "http://localhost:11434"
 model = "llama3.1"
 
+[providers.gemini]
+model = "gemini-1.5-pro"
+api_key_env = "GEMINI_API_KEY"
+# base_url = "https://generativelanguage.googleapis.com/v1beta"
+
 [memory]
 core_memory_max_tokens = 500
 core_memory_max_entries = 20
