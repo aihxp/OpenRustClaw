@@ -1319,6 +1319,7 @@ Remaining:
   - [x] bounded capability execution receipts over the shipped node control plane for the same camera/screen/location/contacts/calendar/photos/canvas/SMS-style lanes,
   - [x] bounded media-artifact receipts derived from the shipped camera/screen/photos/canvas capability execution lanes,
   - [x] bounded push-registration and sync-state reporting surfaces for the shipped node operator lane,
+  - [x] bounded sync-conflict receipts plus operator resolution surfaces over the same shipped node runtime lane,
   - [x] bounded mobile notification receipts with acknowledgement over the same shipped node runtime lane,
   - [x] bounded mobile inbound message receipts with acknowledgement over the same shipped node runtime lane,
   - [x] bounded mobile outbound message receipts with acknowledgement over the same shipped node runtime lane,

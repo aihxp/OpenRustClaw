@@ -2727,6 +2727,10 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             get(mobile_node_sync_handler).post(mobile_node_report_sync_handler),
         )
         .route(
+            "/control/mobile/nodes/{id}/sync-conflicts",
+            get(mobile_node_sync_conflicts_handler),
+        )
+        .route(
             "/control/mobile/nodes/{id}/capabilities",
             get(mobile_node_capabilities_handler),
         )
@@ -2799,6 +2803,18 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
         .route(
             "/control/mobile/outbox/{id}/ack",
             post(mobile_outbox_ack_handler),
+        )
+        .route(
+            "/control/mobile/sync-conflicts",
+            get(mobile_sync_conflicts_handler).post(mobile_sync_conflict_report_handler),
+        )
+        .route(
+            "/control/mobile/sync-conflicts/{id}",
+            get(mobile_sync_conflict_handler),
+        )
+        .route(
+            "/control/mobile/sync-conflicts/{id}/resolve",
+            post(mobile_sync_conflict_resolve_handler),
         )
         .route(
             "/control/mobile/messages/preview",
@@ -4700,6 +4716,16 @@ struct MobileLimitQuery {
 }
 
 #[derive(serde::Deserialize, Default)]
+struct MobileSyncConflictsQuery {
+    #[serde(default)]
+    node_id: Option<String>,
+    #[serde(default)]
+    status: Option<String>,
+    #[serde(default)]
+    limit: Option<usize>,
+}
+
+#[derive(serde::Deserialize, Default)]
 struct MobileCapabilityExecutionsQuery {
     #[serde(default)]
     node_id: Option<String>,
@@ -5284,6 +5310,30 @@ async fn mobile_node_report_sync_handler(
     }
 }
 
+async fn mobile_node_sync_conflicts_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(id): AxumPath<String>,
+    Query(query): Query<MobileSyncConflictsQuery>,
+) -> impl IntoResponse {
+    match mobile::list_sync_conflict_data(
+        &state.workspace_root,
+        Some(&id),
+        query.status.as_deref(),
+        query.limit,
+    ) {
+        Ok(conflicts) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "conflicts": conflicts })),
+        )
+            .into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
 async fn mobile_node_capabilities_handler(
     State(state): State<RuntimeControlState>,
     AxumPath(id): AxumPath<String>,
@@ -5621,6 +5671,72 @@ async fn mobile_outbox_ack_handler(
 ) -> impl IntoResponse {
     match mobile::acknowledge_outbound_message_data(&state.workspace_root, &id, payload) {
         Ok(message) => (StatusCode::OK, Json(serde_json::json!(message))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn mobile_sync_conflicts_handler(
+    State(state): State<RuntimeControlState>,
+    Query(query): Query<MobileSyncConflictsQuery>,
+) -> impl IntoResponse {
+    match mobile::list_sync_conflict_data(
+        &state.workspace_root,
+        query.node_id.as_deref(),
+        query.status.as_deref(),
+        query.limit,
+    ) {
+        Ok(conflicts) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "conflicts": conflicts })),
+        )
+            .into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn mobile_sync_conflict_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(id): AxumPath<String>,
+) -> impl IntoResponse {
+    match mobile::inspect_sync_conflict_data(&state.workspace_root, &id) {
+        Ok(conflict) => (StatusCode::OK, Json(serde_json::json!(conflict))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn mobile_sync_conflict_report_handler(
+    State(state): State<RuntimeControlState>,
+    Json(payload): Json<mobile::MobileSyncConflictReportRequest>,
+) -> impl IntoResponse {
+    match mobile::report_sync_conflict_data(&state.workspace_root, payload) {
+        Ok(conflict) => (StatusCode::OK, Json(serde_json::json!(conflict))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn mobile_sync_conflict_resolve_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(id): AxumPath<String>,
+    Json(payload): Json<mobile::MobileSyncConflictResolveRequest>,
+) -> impl IntoResponse {
+    match mobile::resolve_sync_conflict_data(&state.workspace_root, &id, payload) {
+        Ok(conflict) => (StatusCode::OK, Json(serde_json::json!(conflict))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": error.to_string()})),

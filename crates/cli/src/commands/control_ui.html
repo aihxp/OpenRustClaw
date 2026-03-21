@@ -751,6 +751,14 @@
               <input id="mobile-sync-result" type="text" placeholder="optional sync result" />
             </div>
             <div class="action-row">
+              <input id="mobile-sync-conflict-key" type="text" placeholder="conflict item key" />
+              <input id="mobile-sync-conflict-type" type="text" placeholder="conflict type" />
+            </div>
+            <div class="action-row">
+              <input id="mobile-sync-conflict-summary" type="text" placeholder="optional conflict summary" />
+              <input id="mobile-sync-conflict-resolution" type="text" placeholder="resolution / hint" />
+            </div>
+            <div class="action-row">
               <button id="mobile-runtime-heartbeat">Heartbeat</button>
               <button class="secondary" id="mobile-runtime-refresh">Refresh Runtime</button>
               <button class="secondary" id="mobile-capabilities-refresh">Refresh Capabilities</button>
@@ -760,6 +768,7 @@
             <div class="action-row">
               <button class="secondary" id="mobile-register-push">Register Push</button>
               <button class="secondary" id="mobile-report-sync">Report Sync</button>
+              <button class="secondary" id="mobile-report-sync-conflict">Report Sync Conflict</button>
             </div>
             <input id="mobile-runtime-reason" type="text" placeholder="operator reason" />
             <div class="action-row">
@@ -774,6 +783,7 @@
           <div class="surface" style="margin-top: 12px"><pre id="mobile-node-capabilities">No mobile capabilities loaded yet.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="mobile-node-activity">No mobile activity loaded yet.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="mobile-node-pairings">No mobile pairing history loaded yet.</pre></div>
+          <div class="surface" style="margin-top: 12px"><pre id="mobile-sync-conflict-detail">No mobile sync conflict selected.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="mobile-capability-execution-detail">No mobile capability execution selected.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="mobile-media-artifact-detail">No mobile media artifact selected.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="mobile-notification-detail">No mobile notification selected.</pre></div>
@@ -812,6 +822,20 @@
             </div>
           </div>
           <div class="surface" style="margin-top: 12px"><pre id="mobile-preview-result">No mobile preview executed yet.</pre></div>
+        </article>
+        <article class="panel span-6">
+          <h2>Mobile Sync Conflicts</h2>
+          <div class="action-row" style="margin-bottom: 12px">
+            <button class="secondary" id="mobile-sync-conflicts-refresh">Refresh Sync Conflicts</button>
+          </div>
+          <div class="surface">
+            <table class="table">
+              <thead>
+                <tr><th>Conflict</th><th>Status</th><th>Action</th></tr>
+              </thead>
+              <tbody id="mobile-sync-conflicts"><tr><td colspan="3" class="muted">Loading…</td></tr></tbody>
+            </table>
+          </div>
         </article>
         <article class="panel span-6">
           <h2>Mobile Capability Executions</h2>
@@ -2041,7 +2065,7 @@
       }
 
       async function inspectMobileNode(id) {
-        const [manifest, status, runtime, push, sync, capabilities, activity, pairings] = await Promise.all([
+        const [manifest, status, runtime, push, sync, capabilities, activity, pairings, conflicts] = await Promise.all([
           fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}`),
           fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}/status`),
           fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}/runtime`),
@@ -2050,6 +2074,7 @@
           fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}/capabilities`),
           fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}/activity?limit=25`),
           fetchJson(`/control/mobile/pairings?node_id=${encodeURIComponent(id)}&limit=20`),
+          fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}/sync-conflicts?limit=20`),
         ]);
         setText("mobile-node-detail", { manifest, status, runtime });
         setText("mobile-node-push", push);
@@ -2057,6 +2082,7 @@
         setText("mobile-node-capabilities", capabilities);
         setText("mobile-node-activity", activity);
         setText("mobile-node-pairings", pairings);
+        setText("mobile-sync-conflict-detail", conflicts);
         document.getElementById("mobile-source-node").value = id;
         document.getElementById("mobile-command-node").value = id;
         document.getElementById("mobile-runtime-app-state").value = runtime.app_state || "";
@@ -2066,6 +2092,7 @@
         document.getElementById("mobile-sync-state").value = sync.sync_state || "";
         document.getElementById("mobile-sync-pending").value = sync.pending_change_count ?? "";
         document.getElementById("mobile-sync-result").value = sync.last_sync_result || "";
+        await loadMobileSyncConflicts(id);
         await loadMobileNotifications(id);
         await loadMobileInbox(id);
         await loadMobileOutbox(id);
@@ -2185,10 +2212,70 @@
         setText("mobile-node-sync", "No mobile sync state loaded yet.");
         setText("mobile-node-capabilities", "No mobile capabilities loaded yet.");
         setText("mobile-node-activity", "No mobile activity loaded yet.");
+        setText("mobile-sync-conflict-detail", "No mobile sync conflict selected.");
         setText("mobile-capability-execution-detail", "No mobile capability execution selected.");
         setText("mobile-media-artifact-detail", "No mobile media artifact selected.");
         await loadMobilePairings(id);
         await loadMobileNodes();
+      }
+
+      async function loadMobileSyncConflicts(nodeId) {
+        const currentNodeId = nodeId || document.getElementById("mobile-source-node").value.trim();
+        const query = currentNodeId ? `?node_id=${encodeURIComponent(currentNodeId)}&limit=20` : "?limit=20";
+        const payload = await fetchJson(`/control/mobile/sync-conflicts${query}`);
+        const conflicts = payload.conflicts || [];
+        const rows = conflicts.map((entry) => {
+          const action = entry.status === "resolved"
+            ? `<button class="secondary" onclick="inspectMobileSyncConflict('${entry.id}')">Inspect</button>`
+            : `<button class="secondary" onclick="resolveMobileSyncConflict('${entry.id}')">Resolve</button>`;
+          return `<tr>
+            <td><strong>${entry.conflict_type || "-"}</strong><div class="muted">${entry.item_key || "-"}</div></td>
+            <td>${entry.status || "-"}</td>
+            <td>${action}</td>
+          </tr>`;
+        });
+        renderTableRows("mobile-sync-conflicts", rows, "No mobile sync conflicts recorded.");
+        if (conflicts.length) {
+          await inspectMobileSyncConflict(conflicts[0].id);
+        } else {
+          setText("mobile-sync-conflict-detail", "No mobile sync conflict selected.");
+        }
+      }
+
+      async function inspectMobileSyncConflict(id) {
+        const payload = await fetchJson(`/control/mobile/sync-conflicts/${encodeURIComponent(id)}`);
+        setText("mobile-sync-conflict-detail", payload);
+      }
+
+      async function reportMobileSyncConflict() {
+        const nodeId = document.getElementById("mobile-source-node").value.trim();
+        const result = await fetchJson("/control/mobile/sync-conflicts", {
+          method: "POST",
+          body: JSON.stringify({
+            node_id: nodeId,
+            item_key: document.getElementById("mobile-sync-conflict-key").value.trim(),
+            conflict_type: document.getElementById("mobile-sync-conflict-type").value.trim(),
+            summary: emptyToNull(document.getElementById("mobile-sync-conflict-summary").value),
+            resolution_hint: emptyToNull(document.getElementById("mobile-sync-conflict-resolution").value),
+          }),
+        });
+        setText("mobile-sync-conflict-detail", result);
+        await loadMobileSyncConflicts(nodeId);
+        await inspectMobileNode(nodeId);
+      }
+
+      async function resolveMobileSyncConflict(id) {
+        const result = await fetchJson(`/control/mobile/sync-conflicts/${encodeURIComponent(id)}/resolve`, {
+          method: "POST",
+          body: JSON.stringify({
+            resolved_by: "control_ui",
+            resolution: emptyToNull(document.getElementById("mobile-sync-conflict-resolution").value),
+          }),
+        });
+        setText("mobile-sync-conflict-detail", result);
+        const nodeId = document.getElementById("mobile-source-node").value.trim();
+        await loadMobileSyncConflicts(nodeId);
+        await inspectMobileNode(nodeId);
       }
 
       async function previewMobileMessage() {
@@ -3429,6 +3516,20 @@
           await reportMobileSync();
         } catch (error) {
           setText("mobile-node-sync", { error: error.message });
+        }
+      });
+      document.getElementById("mobile-report-sync-conflict").addEventListener("click", async () => {
+        try {
+          await reportMobileSyncConflict();
+        } catch (error) {
+          setText("mobile-sync-conflict-detail", { error: error.message });
+        }
+      });
+      document.getElementById("mobile-sync-conflicts-refresh").addEventListener("click", async () => {
+        try {
+          await loadMobileSyncConflicts();
+        } catch (error) {
+          setText("mobile-sync-conflict-detail", { error: error.message });
         }
       });
       document.getElementById("mobile-notifications-refresh").addEventListener("click", async () => {

@@ -1415,6 +1415,41 @@ enum MobileAction {
         #[arg(long)]
         last_sync_result: Option<String>,
     },
+    /// List bounded sync-conflict receipts for a mobile node
+    SyncConflicts {
+        #[arg(long)]
+        node_id: Option<String>,
+        #[arg(long)]
+        status: Option<String>,
+        #[arg(long)]
+        limit: Option<usize>,
+    },
+    /// Inspect one bounded mobile sync-conflict receipt
+    SyncConflictStatus { id: String },
+    /// Record a bounded mobile sync-conflict receipt
+    ReportSyncConflict {
+        #[arg(long)]
+        node_id: String,
+        #[arg(long)]
+        item_key: String,
+        #[arg(long)]
+        conflict_type: String,
+        #[arg(long)]
+        summary: Option<String>,
+        #[arg(long)]
+        details: Option<String>,
+        #[arg(long)]
+        resolution_hint: Option<String>,
+    },
+    /// Resolve a bounded mobile sync-conflict receipt
+    ResolveSyncConflict {
+        #[arg(long)]
+        id: String,
+        #[arg(long)]
+        resolved_by: String,
+        #[arg(long)]
+        resolution: Option<String>,
+    },
     /// Show bounded capability inventory for a configured mobile node
     Capabilities { id: String },
     /// Show bounded aggregated runtime activity for a configured mobile node
@@ -3493,6 +3528,58 @@ async fn main() -> Result<()> {
                             sync_state,
                             pending_change_count,
                             last_sync_result,
+                        },
+                    )
+                    .await
+                }
+                MobileAction::SyncConflicts {
+                    node_id,
+                    status,
+                    limit,
+                } => {
+                    commands::mobile::list_sync_conflicts(
+                        &workspace_root,
+                        node_id.as_deref(),
+                        status.as_deref(),
+                        limit,
+                    )
+                    .await
+                }
+                MobileAction::SyncConflictStatus { id } => {
+                    commands::mobile::inspect_sync_conflict(&workspace_root, &id).await
+                }
+                MobileAction::ReportSyncConflict {
+                    node_id,
+                    item_key,
+                    conflict_type,
+                    summary,
+                    details,
+                    resolution_hint,
+                } => {
+                    commands::mobile::report_sync_conflict(
+                        &workspace_root,
+                        commands::mobile::MobileSyncConflictReportRequest {
+                            node_id,
+                            item_key,
+                            conflict_type,
+                            summary,
+                            details,
+                            resolution_hint,
+                        },
+                    )
+                    .await
+                }
+                MobileAction::ResolveSyncConflict {
+                    id,
+                    resolved_by,
+                    resolution,
+                } => {
+                    commands::mobile::resolve_sync_conflict(
+                        &workspace_root,
+                        &id,
+                        commands::mobile::MobileSyncConflictResolveRequest {
+                            resolved_by,
+                            resolution,
                         },
                     )
                     .await

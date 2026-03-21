@@ -300,6 +300,10 @@ pub struct MobileNodeSyncState {
     #[serde(default)]
     pub pending_change_count: Option<usize>,
     #[serde(default)]
+    pub pending_conflict_count: usize,
+    #[serde(default)]
+    pub resolved_conflict_count: usize,
+    #[serde(default)]
     pub last_sync_requested_at: Option<String>,
     #[serde(default)]
     pub last_sync_at: Option<String>,
@@ -316,6 +320,48 @@ pub struct MobileSyncReportRequest {
     pub pending_change_count: Option<usize>,
     #[serde(default)]
     pub last_sync_result: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MobileSyncConflictRecord {
+    pub id: String,
+    pub node_id: String,
+    pub item_key: String,
+    pub conflict_type: String,
+    pub status: String,
+    pub created_at: String,
+    #[serde(default)]
+    pub summary: Option<String>,
+    #[serde(default)]
+    pub details: Option<String>,
+    #[serde(default)]
+    pub resolution_hint: Option<String>,
+    #[serde(default)]
+    pub resolved_at: Option<String>,
+    #[serde(default)]
+    pub resolved_by: Option<String>,
+    #[serde(default)]
+    pub resolution: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MobileSyncConflictReportRequest {
+    pub node_id: String,
+    pub item_key: String,
+    pub conflict_type: String,
+    #[serde(default)]
+    pub summary: Option<String>,
+    #[serde(default)]
+    pub details: Option<String>,
+    #[serde(default)]
+    pub resolution_hint: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MobileSyncConflictResolveRequest {
+    pub resolved_by: String,
+    #[serde(default)]
+    pub resolution: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1137,6 +1183,25 @@ pub fn node_activity_data(
                 ),
             }),
     );
+    entries.extend(
+        list_sync_conflict_data(workspace_root, Some(node_id), None, None)?
+            .into_iter()
+            .map(|record| MobileNodeActivityEntry {
+                kind: "sync_conflict".to_string(),
+                id: record.id,
+                status: record.status.clone(),
+                created_at: record.created_at,
+                summary: format!(
+                    "{} | {} | {}",
+                    record.conflict_type,
+                    record.item_key,
+                    record
+                        .summary
+                        .clone()
+                        .unwrap_or_else(|| "sync conflict recorded".to_string())
+                ),
+            }),
+    );
 
     entries.extend(
         list_notification_data(workspace_root, Some(node_id), None)?
@@ -1291,15 +1356,154 @@ pub fn register_push_data(
 pub fn node_sync_state_data(workspace_root: &Path, node_id: &str) -> Result<MobileNodeSyncState> {
     inspect_node_data(workspace_root, node_id)?;
     let runtime = load_runtime_state(workspace_root, node_id)?;
+    let conflicts = list_sync_conflict_data(workspace_root, Some(node_id), None, None)?;
     Ok(MobileNodeSyncState {
         node_id: node_id.to_string(),
         sync_state: runtime.sync_state,
         pending_change_count: runtime.pending_change_count,
+        pending_conflict_count: conflicts
+            .iter()
+            .filter(|record| record.status == "pending")
+            .count(),
+        resolved_conflict_count: conflicts
+            .iter()
+            .filter(|record| record.status == "resolved")
+            .count(),
         last_sync_requested_at: runtime.last_sync_requested_at,
         last_sync_at: runtime.last_sync_at,
         last_sync_result: runtime.last_sync_result,
         runtime_status: runtime.runtime_status,
     })
+}
+
+pub fn list_sync_conflict_data(
+    workspace_root: &Path,
+    node_id: Option<&str>,
+    status: Option<&str>,
+    limit: Option<usize>,
+) -> Result<Vec<MobileSyncConflictRecord>> {
+    let mut entries = Vec::new();
+    let dir = sync_conflicts_dir(workspace_root);
+    if !dir.exists() {
+        return Ok(entries);
+    }
+
+    let normalized_status = status
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string);
+
+    for entry in fs::read_dir(&dir).with_context(|| format!("failed to read {}", dir.display()))? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.extension().and_then(|value| value.to_str()) != Some("json") {
+            continue;
+        }
+        let bytes = fs::read_to_string(&path)
+            .with_context(|| format!("failed to read {}", path.display()))?;
+        let record: MobileSyncConflictRecord = serde_json::from_str(&bytes)
+            .with_context(|| format!("failed to parse {}", path.display()))?;
+        if let Some(node_id) = node_id
+            && record.node_id != node_id
+        {
+            continue;
+        }
+        if let Some(status) = normalized_status.as_deref()
+            && record.status != status
+        {
+            continue;
+        }
+        entries.push(record);
+    }
+
+    entries.sort_by(|left, right| right.created_at.cmp(&left.created_at));
+    if let Some(limit) = limit {
+        entries.truncate(limit);
+    }
+    Ok(entries)
+}
+
+pub fn inspect_sync_conflict_data(
+    workspace_root: &Path,
+    conflict_id: &str,
+) -> Result<MobileSyncConflictRecord> {
+    let path = sync_conflict_path(workspace_root, conflict_id);
+    let bytes =
+        fs::read_to_string(&path).with_context(|| format!("failed to read {}", path.display()))?;
+    serde_json::from_str(&bytes).with_context(|| format!("failed to parse {}", path.display()))
+}
+
+pub fn report_sync_conflict_data(
+    workspace_root: &Path,
+    request: MobileSyncConflictReportRequest,
+) -> Result<MobileSyncConflictRecord> {
+    if request.node_id.trim().is_empty() {
+        return Err(anyhow!("node_id is required"));
+    }
+    inspect_node_data(workspace_root, &request.node_id)?;
+    if request.item_key.trim().is_empty() {
+        return Err(anyhow!("item_key is required"));
+    }
+    if request.conflict_type.trim().is_empty() {
+        return Err(anyhow!("conflict_type is required"));
+    }
+
+    let record = MobileSyncConflictRecord {
+        id: uuid::Uuid::new_v4().to_string(),
+        node_id: request.node_id,
+        item_key: request.item_key.trim().to_string(),
+        conflict_type: request.conflict_type.trim().to_string(),
+        status: "pending".to_string(),
+        created_at: Utc::now().to_rfc3339(),
+        summary: request
+            .summary
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string),
+        details: request
+            .details
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string),
+        resolution_hint: request
+            .resolution_hint
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string),
+        resolved_at: None,
+        resolved_by: None,
+        resolution: None,
+    };
+    write_sync_conflict_record(workspace_root, &record)?;
+    Ok(record)
+}
+
+pub fn resolve_sync_conflict_data(
+    workspace_root: &Path,
+    conflict_id: &str,
+    request: MobileSyncConflictResolveRequest,
+) -> Result<MobileSyncConflictRecord> {
+    if request.resolved_by.trim().is_empty() {
+        return Err(anyhow!("resolved_by is required"));
+    }
+    let mut record = inspect_sync_conflict_data(workspace_root, conflict_id)?;
+    if record.status == "resolved" {
+        return Ok(record);
+    }
+    record.status = "resolved".to_string();
+    record.resolved_at = Some(Utc::now().to_rfc3339());
+    record.resolved_by = Some(request.resolved_by);
+    record.resolution = request
+        .resolution
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string);
+    write_sync_conflict_record(workspace_root, &record)?;
+    Ok(record)
 }
 
 pub fn report_sync_data(
@@ -2560,6 +2764,45 @@ pub async fn report_sync(
     Ok(())
 }
 
+pub async fn list_sync_conflicts(
+    workspace_root: &Path,
+    node_id: Option<&str>,
+    status: Option<&str>,
+    limit: Option<usize>,
+) -> Result<()> {
+    let conflicts = list_sync_conflict_data(workspace_root, node_id, status, limit)?;
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&json!({ "conflicts": conflicts }))?
+    );
+    Ok(())
+}
+
+pub async fn inspect_sync_conflict(workspace_root: &Path, conflict_id: &str) -> Result<()> {
+    let conflict = inspect_sync_conflict_data(workspace_root, conflict_id)?;
+    println!("{}", serde_json::to_string_pretty(&conflict)?);
+    Ok(())
+}
+
+pub async fn report_sync_conflict(
+    workspace_root: &Path,
+    request: MobileSyncConflictReportRequest,
+) -> Result<()> {
+    let conflict = report_sync_conflict_data(workspace_root, request)?;
+    println!("{}", serde_json::to_string_pretty(&conflict)?);
+    Ok(())
+}
+
+pub async fn resolve_sync_conflict(
+    workspace_root: &Path,
+    conflict_id: &str,
+    request: MobileSyncConflictResolveRequest,
+) -> Result<()> {
+    let conflict = resolve_sync_conflict_data(workspace_root, conflict_id, request)?;
+    println!("{}", serde_json::to_string_pretty(&conflict)?);
+    Ok(())
+}
+
 pub async fn heartbeat_node(
     workspace_root: &Path,
     node_id: &str,
@@ -2876,6 +3119,10 @@ fn runtime_dir(workspace_root: &Path) -> PathBuf {
     mobile_root(workspace_root).join("runtime")
 }
 
+fn sync_conflicts_dir(workspace_root: &Path) -> PathBuf {
+    mobile_root(workspace_root).join("sync-conflicts")
+}
+
 fn capability_previews_dir(workspace_root: &Path) -> PathBuf {
     mobile_root(workspace_root).join("capability-previews")
 }
@@ -2914,6 +3161,10 @@ fn outbox_message_path(workspace_root: &Path, message_id: &str) -> PathBuf {
 
 fn runtime_path(workspace_root: &Path, node_id: &str) -> PathBuf {
     runtime_dir(workspace_root).join(format!("{node_id}.json"))
+}
+
+fn sync_conflict_path(workspace_root: &Path, conflict_id: &str) -> PathBuf {
+    sync_conflicts_dir(workspace_root).join(format!("{conflict_id}.json"))
 }
 
 fn capability_preview_path(workspace_root: &Path, preview_id: &str) -> PathBuf {
@@ -2963,6 +3214,25 @@ fn write_pairing_record(workspace_root: &Path, record: &MobilePairingRecord) -> 
     fs::write(
         &path,
         serde_json::to_vec_pretty(record).context("failed to serialize mobile pairing record")?,
+    )
+    .with_context(|| format!("failed to write {}", path.display()))
+}
+
+fn write_sync_conflict_record(
+    workspace_root: &Path,
+    record: &MobileSyncConflictRecord,
+) -> Result<()> {
+    fs::create_dir_all(sync_conflicts_dir(workspace_root)).with_context(|| {
+        format!(
+            "failed to create {}",
+            sync_conflicts_dir(workspace_root).display()
+        )
+    })?;
+    let path = sync_conflict_path(workspace_root, &record.id);
+    fs::write(
+        &path,
+        serde_json::to_vec_pretty(record)
+            .context("failed to serialize mobile sync conflict record")?,
     )
     .with_context(|| format!("failed to write {}", path.display()))
 }
@@ -3738,6 +4008,72 @@ mod tests {
         assert_eq!(sync.pending_change_count, Some(0));
         assert_eq!(sync.last_sync_result.as_deref(), Some("ok"));
         assert!(sync.last_sync_at.is_some());
+        assert_eq!(sync.pending_conflict_count, 0);
+        assert_eq!(sync.resolved_conflict_count, 0);
+    }
+
+    #[test]
+    fn sync_conflicts_can_be_reported_and_resolved() {
+        let temp = tempdir().expect("tempdir");
+        pair_node_data(
+            temp.path(),
+            MobilePairRequest {
+                id: "iphone-conflicts".to_string(),
+                gateway_url: "wss://example.com/gateway".to_string(),
+                auth_token_env: "MOBILE_CONFLICT_TOKEN".to_string(),
+                device_name: Some("Conflict iPhone".to_string()),
+                platform: Some("ios".to_string()),
+                capabilities: vec!["mobile".to_string()],
+                enabled: true,
+                sync: None,
+                notifications: None,
+                metadata: Value::Null,
+            },
+        )
+        .expect("pair node");
+
+        let conflict = report_sync_conflict_data(
+            temp.path(),
+            MobileSyncConflictReportRequest {
+                node_id: "iphone-conflicts".to_string(),
+                item_key: "calendar:event:42".to_string(),
+                conflict_type: "calendar_conflict".to_string(),
+                summary: Some("calendar event changed on both ends".to_string()),
+                details: Some("server and device both edited the same event".to_string()),
+                resolution_hint: Some("prefer_server".to_string()),
+            },
+        )
+        .expect("report conflict");
+
+        let pending = list_sync_conflict_data(
+            temp.path(),
+            Some("iphone-conflicts"),
+            Some("pending"),
+            Some(8),
+        )
+        .expect("list conflicts");
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].id, conflict.id);
+
+        let sync = node_sync_state_data(temp.path(), "iphone-conflicts").expect("sync");
+        assert_eq!(sync.pending_conflict_count, 1);
+        assert_eq!(sync.resolved_conflict_count, 0);
+
+        let resolved = resolve_sync_conflict_data(
+            temp.path(),
+            &conflict.id,
+            MobileSyncConflictResolveRequest {
+                resolved_by: "operator".to_string(),
+                resolution: Some("prefer_server".to_string()),
+            },
+        )
+        .expect("resolve conflict");
+        assert_eq!(resolved.status, "resolved");
+        assert_eq!(resolved.resolved_by.as_deref(), Some("operator"));
+
+        let sync = node_sync_state_data(temp.path(), "iphone-conflicts").expect("sync");
+        assert_eq!(sync.pending_conflict_count, 0);
+        assert_eq!(sync.resolved_conflict_count, 1);
     }
 
     #[tokio::test]
@@ -3801,6 +4137,18 @@ mod tests {
             },
         )
         .expect("sync report");
+        report_sync_conflict_data(
+            temp.path(),
+            MobileSyncConflictReportRequest {
+                node_id: "iphone-activity".to_string(),
+                item_key: "contacts:alice".to_string(),
+                conflict_type: "contacts_conflict".to_string(),
+                summary: Some("contact changed on device and server".to_string()),
+                details: None,
+                resolution_hint: Some("manual_review".to_string()),
+            },
+        )
+        .expect("sync conflict");
         report_inbound_message_data(
             temp.path(),
             MobileInboundMessageReportRequest {
@@ -3877,6 +4225,7 @@ mod tests {
         assert!(kinds.contains(&"runtime_heartbeat"));
         assert!(kinds.contains(&"push_registration"));
         assert!(kinds.contains(&"sync_result"));
+        assert!(kinds.contains(&"sync_conflict"));
         assert!(kinds.contains(&"notification"));
         assert!(kinds.contains(&"inbound_message"));
         assert!(kinds.contains(&"outbound_message"));
