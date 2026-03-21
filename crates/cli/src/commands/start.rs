@@ -3049,6 +3049,10 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             get(control_skill_voice_call_health_handler),
         )
         .route(
+            "/control/skills/voice-calls/{call_id}/events",
+            get(control_skill_voice_call_events_handler),
+        )
+        .route(
             "/control/skills/voice-calls/start",
             post(control_skill_start_voice_call_handler),
         )
@@ -4175,6 +4179,19 @@ async fn control_skill_voice_calls_handler() -> impl IntoResponse {
 
 async fn control_skill_voice_call_health_handler() -> impl IntoResponse {
     match skills::voice_call_health_data().await {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": error.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
+async fn control_skill_voice_call_events_handler(
+    AxumPath(call_id): AxumPath<String>,
+) -> impl IntoResponse {
+    match skills::voice_call_events_data(&call_id).await {
         Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,

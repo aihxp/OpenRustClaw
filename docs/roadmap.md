@@ -1301,6 +1301,7 @@ Remaining:
   - [x] bounded call/phone plugin support through the compiled-skill voice-plugin lane,
   - [x] bounded voice-call lifecycle health summaries plus stale-call reaping and greeting prewarm for the compiled-skill voice-plugin lane,
   - [x] bounded voice-call reconnect/resume surfaces over the compiled-skill voice-plugin lane,
+  - [x] bounded voice-call event timelines over the same compiled-skill voice-plugin lane,
   - reconnect and deeper live call-runtime behavior if call surfaces stay in scope.
 - [ ] Add node pairing/runtime parity:
   - iOS node pairing,

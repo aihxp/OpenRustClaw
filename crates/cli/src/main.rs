@@ -743,6 +743,8 @@ enum SkillsAction {
     ListVoiceCalls,
     /// Summarize bounded voice-call lifecycle health
     VoiceCallHealth,
+    /// Inspect a bounded voice-call lifecycle event timeline
+    VoiceCallEvents { call_id: String },
     /// Start a bounded voice-call session for a configured plugin
     StartVoiceCall {
         plugin_id: String,
@@ -3057,6 +3059,9 @@ async fn main() -> Result<()> {
             }
             SkillsAction::ListVoiceCalls => commands::skills::list_voice_calls().await,
             SkillsAction::VoiceCallHealth => commands::skills::voice_call_health().await,
+            SkillsAction::VoiceCallEvents { call_id } => {
+                commands::skills::voice_call_events(&call_id).await
+            }
             SkillsAction::StartVoiceCall {
                 plugin_id,
                 remote,
