@@ -192,6 +192,14 @@ pub async fn session_status(config_path: &str, session_id: &str) -> Result<()> {
     Ok(())
 }
 
+pub async fn transcript(config_path: &str, session_id: &str) -> Result<()> {
+    let _config = load_config(config_path);
+    let workspace_root = std::env::current_dir()?;
+    let result = voice_runtime::voice_session_transcript(&workspace_root, session_id).await?;
+    println!("{}", serde_json::to_string_pretty(&result)?);
+    Ok(())
+}
+
 pub async fn append_user(config_path: &str, session_id: &str, text: &str) -> Result<()> {
     let _config = load_config(config_path);
     let workspace_root = std::env::current_dir()?;

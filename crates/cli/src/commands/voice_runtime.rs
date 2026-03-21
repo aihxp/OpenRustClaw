@@ -212,6 +212,28 @@ pub struct VoiceSessionHealthSummary {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceSessionTranscriptTurn {
+    pub index: usize,
+    pub role: String,
+    pub text: String,
+    pub created_at: String,
+    #[serde(default)]
+    pub synthesized_output_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceSessionTranscript {
+    pub session_id: String,
+    pub status: String,
+    pub live_state: String,
+    pub turn_count: usize,
+    pub last_activity_at: String,
+    #[serde(default)]
+    pub closed_at: Option<String>,
+    pub turns: Vec<VoiceSessionTranscriptTurn>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VoiceSessionStartRequest {
     #[serde(default)]
     pub session_id: Option<String>,
@@ -1544,6 +1566,33 @@ pub async fn inspect_voice_session(
     serde_json::from_str(&bytes).with_context(|| format!("failed to parse {}", path.display()))
 }
 
+pub async fn voice_session_transcript(
+    workspace_root: &Path,
+    session_id: &str,
+) -> Result<VoiceSessionTranscript> {
+    let session = inspect_voice_session(workspace_root, session_id).await?;
+    Ok(VoiceSessionTranscript {
+        session_id: session.id,
+        status: session.status,
+        live_state: session.live_state,
+        turn_count: session.turns.len(),
+        last_activity_at: session.last_activity_at,
+        closed_at: session.closed_at,
+        turns: session
+            .turns
+            .into_iter()
+            .enumerate()
+            .map(|(index, turn)| VoiceSessionTranscriptTurn {
+                index,
+                role: turn.role,
+                text: turn.text,
+                created_at: turn.created_at,
+                synthesized_output_path: turn.synthesized_output_path,
+            })
+            .collect(),
+    })
+}
+
 pub async fn start_voice_session(
     config: &AppConfig,
     workspace_root: &Path,
@@ -2586,6 +2635,73 @@ mod tests {
         .await
         .expect("resume interrupted session");
         assert_eq!(resumed_again.live_state, "listening");
+    }
+
+    #[tokio::test]
+    async fn voice_session_transcript_exposes_indexed_turns() {
+        let temp = tempdir().expect("tempdir");
+        let (addr, _state, server_handle) = spawn_test_server().await;
+        let config = test_config(
+            &format!("http://{}", addr),
+            temp.path(),
+            "OPENRUSTCLAW_VOICE_TEST_KEY_TRANSCRIPT",
+        );
+
+        start_voice_session(
+            &config,
+            temp.path(),
+            VoiceSessionStartRequest {
+                session_id: Some("voice-session-transcript".to_string()),
+                assistant_prompt: None,
+                voice: Some("alloy".to_string()),
+            },
+        )
+        .await
+        .expect("start session");
+
+        append_voice_session_user(
+            temp.path(),
+            "voice-session-transcript",
+            VoiceSessionAppendRequest {
+                text: "hello transcript".to_string(),
+            },
+        )
+        .await
+        .expect("append user");
+
+        unsafe {
+            std::env::set_var("OPENRUSTCLAW_VOICE_TEST_KEY_TRANSCRIPT", "test-openai-key");
+        }
+        respond_voice_session(
+            &config,
+            temp.path(),
+            "voice-session-transcript",
+            VoiceSessionRespondRequest {
+                text: "hello back".to_string(),
+                provider: None,
+                model: None,
+                voice: None,
+                format: Some("mp3".to_string()),
+                output_path: None,
+            },
+        )
+        .await
+        .expect("respond");
+        unsafe {
+            std::env::remove_var("OPENRUSTCLAW_VOICE_TEST_KEY_TRANSCRIPT");
+        }
+
+        let transcript = voice_session_transcript(temp.path(), "voice-session-transcript")
+            .await
+            .expect("transcript");
+        assert_eq!(transcript.turn_count, 2);
+        assert_eq!(transcript.turns[0].index, 0);
+        assert_eq!(transcript.turns[0].role, "user");
+        assert_eq!(transcript.turns[1].index, 1);
+        assert_eq!(transcript.turns[1].role, "assistant");
+        assert!(transcript.turns[1].synthesized_output_path.is_some());
+
+        server_handle.abort();
     }
 
     #[tokio::test]

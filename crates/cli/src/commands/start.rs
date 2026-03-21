@@ -2662,6 +2662,10 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             post(voice_append_user_handler),
         )
         .route(
+            "/control/voice/sessions/{id}/transcript",
+            get(voice_session_transcript_handler),
+        )
+        .route(
             "/control/voice/sessions/{id}/respond",
             post(voice_respond_handler),
         )
@@ -4776,6 +4780,20 @@ async fn voice_append_user_handler(
     Json(payload): Json<voice_runtime::VoiceSessionAppendRequest>,
 ) -> impl IntoResponse {
     match voice_runtime::append_voice_session_user(&state.workspace_root, &id, payload).await {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn voice_session_transcript_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(id): AxumPath<String>,
+) -> impl IntoResponse {
+    match voice_runtime::voice_session_transcript(&state.workspace_root, &id).await {
         Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,

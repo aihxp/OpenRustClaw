@@ -1728,6 +1728,12 @@ enum VoiceAction {
         config: String,
         id: String,
     },
+    /// Inspect the indexed transcript for one bounded voice session receipt
+    Transcript {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+        id: String,
+    },
     /// Append a user turn to one bounded voice session receipt
     AppendUser {
         #[arg(short, long, default_value = "config/default.toml")]
@@ -4756,6 +4762,9 @@ async fn main() -> Result<()> {
             }
             VoiceAction::SessionStatus { config, id } => {
                 commands::voice::session_status(&config, &id).await
+            }
+            VoiceAction::Transcript { config, id } => {
+                commands::voice::transcript(&config, &id).await
             }
             VoiceAction::AppendUser { config, id, text } => {
                 commands::voice::append_user(&config, &id, &text).await

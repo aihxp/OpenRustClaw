@@ -400,6 +400,7 @@
           <div class="surface" style="margin-top: 12px"><pre id="voice-sessions">No voice sessions loaded yet.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="voice-session-health">No voice session health loaded yet.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="voice-session-detail">No voice session inspected yet.</pre></div>
+          <div class="surface" style="margin-top: 12px"><pre id="voice-session-transcript">No voice session transcript loaded yet.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="voice-voices">No voice catalog loaded yet.</pre></div>
         </article>
         <article class="panel span-6">
@@ -444,6 +445,7 @@
             <div class="action-row">
               <button id="voice-session-start">Start Session</button>
               <button class="secondary" id="voice-session-inspect">Inspect Session</button>
+              <button class="secondary" id="voice-session-transcript-refresh">Transcript</button>
             </div>
             <div class="action-row">
               <button id="voice-session-append">Append User</button>
@@ -1158,6 +1160,15 @@
         setText("voice-voices", payload);
       }
 
+      async function loadVoiceSessionTranscript() {
+        const sessionId = document.getElementById("voice-session-id").value.trim();
+        if (!sessionId) {
+          throw new Error("A voice session id is required");
+        }
+        const payload = await fetchJson(`/control/voice/sessions/${encodeURIComponent(sessionId)}/transcript`);
+        setText("voice-session-transcript", payload);
+      }
+
       async function startVoiceSession() {
         const result = await fetchJson("/control/voice/sessions/start", {
           method: "POST",
@@ -1172,6 +1183,7 @@
           document.getElementById("voice-session-id").value = sessionId;
         }
         setText("voice-session-detail", result);
+        setText("voice-session-transcript", "No voice session transcript loaded yet.");
         await loadVoiceSessions();
         await loadVoiceSessionHealth();
       }
@@ -1183,6 +1195,7 @@
         }
         const payload = await fetchJson(`/control/voice/sessions/${encodeURIComponent(sessionId)}`);
         setText("voice-session-detail", payload);
+        await loadVoiceSessionTranscript();
       }
 
       async function appendVoiceSessionUser() {
@@ -1202,6 +1215,7 @@
           },
         );
         setText("voice-session-detail", payload);
+        await loadVoiceSessionTranscript();
         await loadVoiceSessions();
         await loadVoiceSessionHealth();
       }
@@ -1233,6 +1247,7 @@
         if (payload.synthesis) {
           setText("voice-synthesis-result", payload.synthesis);
         }
+        await loadVoiceSessionTranscript();
         await loadVoiceSessions();
         await loadVoiceSessionHealth();
       }
@@ -1252,6 +1267,7 @@
           },
         );
         setText("voice-session-detail", payload);
+        await loadVoiceSessionTranscript();
         await loadVoiceSessions();
         await loadVoiceSessionHealth();
       }
@@ -1278,6 +1294,7 @@
         if (payload.synthesis) {
           setText("voice-synthesis-result", payload.synthesis);
         }
+        await loadVoiceSessionTranscript();
         await loadVoiceSessions();
         await loadVoiceSessionHealth();
       }
@@ -1297,6 +1314,7 @@
           },
         );
         setText("voice-session-detail", payload);
+        await loadVoiceSessionTranscript();
         await loadVoiceSessions();
         await loadVoiceSessionHealth();
       }
@@ -1316,6 +1334,7 @@
           },
         );
         setText("voice-session-detail", payload);
+        await loadVoiceSessionTranscript();
         await loadVoiceSessions();
         await loadVoiceSessionHealth();
       }
@@ -1335,6 +1354,7 @@
           },
         );
         setText("voice-session-detail", payload);
+        await loadVoiceSessionTranscript();
         await loadVoiceSessions();
         await loadVoiceSessionHealth();
       }
@@ -2978,6 +2998,13 @@
           await inspectVoiceSession();
         } catch (error) {
           setText("voice-session-detail", { error: error.message });
+        }
+      });
+      document.getElementById("voice-session-transcript-refresh").addEventListener("click", async () => {
+        try {
+          await loadVoiceSessionTranscript();
+        } catch (error) {
+          setText("voice-session-transcript", { error: error.message });
         }
       });
       document.getElementById("voice-session-append").addEventListener("click", async () => {
