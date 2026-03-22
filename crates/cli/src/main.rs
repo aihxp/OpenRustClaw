@@ -1408,6 +1408,15 @@ enum MobileAction {
     },
     /// Inspect one bounded mobile app-session receipt
     AppSessionStatus { id: String },
+    /// Show derived metrics for bounded mobile app-session receipts
+    AppSessionMetrics {
+        #[arg(long)]
+        node_id: Option<String>,
+        #[arg(long)]
+        status: Option<String>,
+    },
+    /// Inspect the derived event timeline for one bounded mobile app-session receipt
+    AppSessionEvents { id: String },
     /// Show derived readiness for a configured mobile node
     Status { id: String },
     /// Show bounded runtime state for a configured mobile node
@@ -3565,6 +3574,17 @@ async fn main() -> Result<()> {
                 }
                 MobileAction::AppSessionStatus { id } => {
                     commands::mobile::inspect_app_session(&workspace_root, &id).await
+                }
+                MobileAction::AppSessionMetrics { node_id, status } => {
+                    commands::mobile::app_session_metrics(
+                        &workspace_root,
+                        node_id.as_deref(),
+                        status.as_deref(),
+                    )
+                    .await
+                }
+                MobileAction::AppSessionEvents { id } => {
+                    commands::mobile::app_session_events(&workspace_root, &id).await
                 }
                 MobileAction::Status { id } => {
                     commands::mobile::node_status(&workspace_root, &id).await

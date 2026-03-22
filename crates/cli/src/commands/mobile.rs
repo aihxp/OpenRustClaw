@@ -292,6 +292,44 @@ pub struct MobileAppSessionRecord {
     pub exit_reason: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct MobileAppSessionEvent {
+    pub kind: String,
+    pub observed_at: String,
+    pub session_id: String,
+    pub node_id: String,
+    pub status: String,
+    pub details: Value,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MobileAppSessionEventsResult {
+    pub status: String,
+    pub session: MobileAppSessionRecord,
+    pub event_count: usize,
+    pub events: Vec<MobileAppSessionEvent>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MobileAppSessionMetricsSummary {
+    pub total_sessions: usize,
+    pub active_sessions: usize,
+    pub ended_sessions: usize,
+    pub by_status: HashMap<String, usize>,
+    #[serde(default)]
+    pub avg_duration_secs: Option<f64>,
+    #[serde(default)]
+    pub newest_session_at: Option<String>,
+    #[serde(default)]
+    pub oldest_session_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MobileAppSessionMetricsResult {
+    pub status: String,
+    pub metrics: MobileAppSessionMetricsSummary,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MobileNodePushState {
     pub node_id: String,
@@ -1091,6 +1129,85 @@ pub fn inspect_app_session_data(
     let bytes =
         fs::read_to_string(&path).with_context(|| format!("failed to read {}", path.display()))?;
     serde_json::from_str(&bytes).with_context(|| format!("failed to parse {}", path.display()))
+}
+
+pub fn app_session_metrics_data(
+    workspace_root: &Path,
+    node_id: Option<&str>,
+    status: Option<&str>,
+) -> Result<MobileAppSessionMetricsResult> {
+    let sessions = list_app_session_data(workspace_root, node_id, status, None)?;
+    let summary = app_session_metrics_summary(&sessions);
+
+    Ok(MobileAppSessionMetricsResult {
+        status: "ok".to_string(),
+        metrics: summary,
+    })
+}
+
+pub fn app_session_events_data(
+    workspace_root: &Path,
+    session_id: &str,
+) -> Result<MobileAppSessionEventsResult> {
+    let session = inspect_app_session_data(workspace_root, session_id)?;
+    let events = app_session_events_for_record(&session);
+    Ok(MobileAppSessionEventsResult {
+        status: "ok".to_string(),
+        session,
+        event_count: events.len(),
+        events,
+    })
+}
+
+fn app_session_metrics_summary(
+    sessions: &[MobileAppSessionRecord],
+) -> MobileAppSessionMetricsSummary {
+    let mut by_status: HashMap<String, usize> = HashMap::new();
+    let mut active_sessions = 0usize;
+    let mut ended_sessions = 0usize;
+    let mut duration_sum_secs = 0u64;
+    let mut duration_count = 0u64;
+    let mut newest_session_at: Option<String> = None;
+    let mut oldest_session_at: Option<String> = None;
+
+    for session in sessions {
+        *by_status.entry(session.status.clone()).or_insert(0) += 1;
+        if session.status == "active" {
+            active_sessions += 1;
+        }
+        if session.ended_at.is_some() {
+            ended_sessions += 1;
+        }
+        if let Some(duration) = session.duration_secs {
+            duration_sum_secs += duration;
+            duration_count += 1;
+        }
+        if newest_session_at
+            .as_deref()
+            .map(|current| current < session.last_seen_at.as_str())
+            .unwrap_or(true)
+        {
+            newest_session_at = Some(session.last_seen_at.clone());
+        }
+        if oldest_session_at
+            .as_deref()
+            .map(|current| current > session.started_at.as_str())
+            .unwrap_or(true)
+        {
+            oldest_session_at = Some(session.started_at.clone());
+        }
+    }
+
+    MobileAppSessionMetricsSummary {
+        total_sessions: sessions.len(),
+        active_sessions,
+        ended_sessions,
+        by_status,
+        avg_duration_secs: (duration_count > 0)
+            .then_some(duration_sum_secs as f64 / duration_count as f64),
+        newest_session_at,
+        oldest_session_at,
+    }
 }
 
 pub fn unpair_node_data(
@@ -3186,6 +3303,22 @@ pub async fn inspect_app_session(workspace_root: &Path, session_id: &str) -> Res
     Ok(())
 }
 
+pub async fn app_session_metrics(
+    workspace_root: &Path,
+    node_id: Option<&str>,
+    status: Option<&str>,
+) -> Result<()> {
+    let result = app_session_metrics_data(workspace_root, node_id, status)?;
+    println!("{}", serde_json::to_string_pretty(&result)?);
+    Ok(())
+}
+
+pub async fn app_session_events(workspace_root: &Path, session_id: &str) -> Result<()> {
+    let result = app_session_events_data(workspace_root, session_id)?;
+    println!("{}", serde_json::to_string_pretty(&result)?);
+    Ok(())
+}
+
 pub async fn unpair_node(
     workspace_root: &Path,
     node_id: &str,
@@ -4053,6 +4186,58 @@ fn derive_app_session_status(runtime: &MobileNodeRuntimeState) -> String {
     }
 }
 
+fn app_session_events_for_record(session: &MobileAppSessionRecord) -> Vec<MobileAppSessionEvent> {
+    let mut events = vec![MobileAppSessionEvent {
+        kind: "started".to_string(),
+        observed_at: session.started_at.clone(),
+        session_id: session.id.clone(),
+        node_id: session.node_id.clone(),
+        status: session.status.clone(),
+        details: serde_json::json!({
+            "entry_reason": session.entry_reason,
+            "network": session.network,
+            "battery_percent": session.battery_percent,
+        }),
+    }];
+
+    if session.last_seen_at != session.started_at {
+        events.push(MobileAppSessionEvent {
+            kind: "heartbeat".to_string(),
+            observed_at: session.last_seen_at.clone(),
+            session_id: session.id.clone(),
+            node_id: session.node_id.clone(),
+            status: session.status.clone(),
+            details: serde_json::json!({
+                "last_seen_at": session.last_seen_at,
+                "network": session.network,
+                "battery_percent": session.battery_percent,
+            }),
+        });
+    }
+
+    if let Some(ended_at) = session.ended_at.clone() {
+        events.push(MobileAppSessionEvent {
+            kind: "ended".to_string(),
+            observed_at: ended_at,
+            session_id: session.id.clone(),
+            node_id: session.node_id.clone(),
+            status: session.status.clone(),
+            details: serde_json::json!({
+                "duration_secs": session.duration_secs,
+                "exit_reason": session.exit_reason,
+            }),
+        });
+    }
+
+    events.sort_by(|left, right| {
+        left.observed_at
+            .cmp(&right.observed_at)
+            .then_with(|| left.kind.cmp(&right.kind))
+    });
+
+    events
+}
+
 fn duration_secs_between(start: &str, end: &str) -> Option<u64> {
     let start = DateTime::parse_from_rfc3339(start).ok()?;
     let end = DateTime::parse_from_rfc3339(end).ok()?;
@@ -4801,6 +4986,57 @@ mod tests {
         assert!(sessions[0].ended_at.is_none());
         assert_eq!(sessions[1].status, "active");
         assert!(sessions[1].ended_at.is_some());
+    }
+
+    #[test]
+    fn app_session_metrics_and_events_are_derived() {
+        let temp = tempdir().expect("tempdir");
+        pair_node_data(
+            temp.path(),
+            MobilePairRequest {
+                id: "iphone-app-metrics".to_string(),
+                gateway_url: "wss://example.com/gateway".to_string(),
+                auth_token_env: "MOBILE_APP_METRICS_TOKEN".to_string(),
+                device_name: Some("Metrics iPhone".to_string()),
+                platform: Some("ios".to_string()),
+                capabilities: vec!["mobile".to_string()],
+                enabled: true,
+                sync: None,
+                notifications: None,
+                metadata: Value::Null,
+            },
+        )
+        .expect("pair node");
+
+        heartbeat_node_data(
+            temp.path(),
+            "iphone-app-metrics",
+            MobileHeartbeatRequest {
+                app_state: Some("active".to_string()),
+                network: Some("wifi".to_string()),
+                reachable: Some(true),
+                push_token_present: Some(true),
+                battery_percent: Some(92),
+                metadata: Value::Null,
+            },
+        )
+        .expect("active heartbeat");
+
+        let metrics = app_session_metrics_data(temp.path(), Some("iphone-app-metrics"), None)
+            .expect("metrics");
+        assert_eq!(metrics.metrics.total_sessions, 1);
+        assert_eq!(metrics.metrics.active_sessions, 1);
+        assert_eq!(metrics.metrics.ended_sessions, 0);
+        assert_eq!(metrics.metrics.by_status.get("active"), Some(&1));
+        assert!(metrics.metrics.avg_duration_secs.is_none());
+
+        let sessions =
+            list_app_session_data(temp.path(), Some("iphone-app-metrics"), None, Some(8))
+                .expect("sessions");
+        let session = sessions.first().expect("session");
+        let events = app_session_events_for_record(session);
+        assert_eq!(events[0].kind, "started");
+        assert_eq!(events.len(), 1);
     }
 
     #[test]

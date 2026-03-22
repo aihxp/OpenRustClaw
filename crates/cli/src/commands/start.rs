@@ -2852,8 +2852,16 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             get(mobile_app_sessions_handler),
         )
         .route(
+            "/control/mobile/app-sessions/metrics",
+            get(mobile_app_session_metrics_handler),
+        )
+        .route(
             "/control/mobile/app-sessions/{id}",
             get(mobile_app_session_handler),
+        )
+        .route(
+            "/control/mobile/app-sessions/{id}/events",
+            get(mobile_app_session_events_handler),
         )
         .route(
             "/control/mobile/messages/preview",
@@ -6014,12 +6022,44 @@ async fn mobile_app_sessions_handler(
     }
 }
 
+async fn mobile_app_session_metrics_handler(
+    State(state): State<RuntimeControlState>,
+    Query(query): Query<MobileAppSessionsQuery>,
+) -> impl IntoResponse {
+    match mobile::app_session_metrics_data(
+        &state.workspace_root,
+        query.node_id.as_deref(),
+        query.status.as_deref(),
+    ) {
+        Ok(metrics) => (StatusCode::OK, Json(serde_json::json!(metrics))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
 async fn mobile_app_session_handler(
     State(state): State<RuntimeControlState>,
     AxumPath(id): AxumPath<String>,
 ) -> impl IntoResponse {
     match mobile::inspect_app_session_data(&state.workspace_root, &id) {
         Ok(session) => (StatusCode::OK, Json(serde_json::json!(session))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn mobile_app_session_events_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(id): AxumPath<String>,
+) -> impl IntoResponse {
+    match mobile::app_session_events_data(&state.workspace_root, &id) {
+        Ok(events) => (StatusCode::OK, Json(serde_json::json!(events))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": error.to_string()})),

@@ -791,6 +791,7 @@
               <button class="secondary" id="mobile-metrics-refresh">Mobile Metrics</button>
               <button class="secondary" id="mobile-capabilities-refresh">Refresh Capabilities</button>
               <button class="secondary" id="mobile-activity-refresh">Refresh Activity</button>
+              <button class="secondary" id="mobile-app-session-metrics-refresh">App Session Metrics</button>
               <button class="secondary" id="mobile-app-sessions-refresh">Refresh App Sessions</button>
               <button class="secondary" id="mobile-pairings-refresh">Refresh Pairings</button>
             </div>
@@ -812,6 +813,7 @@
           <div class="surface" style="margin-top: 12px"><pre id="mobile-node-sync">No mobile sync state loaded yet.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="mobile-node-capabilities">No mobile capabilities loaded yet.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="mobile-node-activity">No mobile activity loaded yet.</pre></div>
+          <div class="surface" style="margin-top: 12px"><pre id="mobile-app-session-metrics">No mobile app-session metrics loaded yet.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="mobile-app-session-detail">No mobile app session selected.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="mobile-node-pairings">No mobile pairing history loaded yet.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="mobile-sync-conflict-detail">No mobile sync conflict selected.</pre></div>
@@ -857,6 +859,7 @@
         <article class="panel span-6">
           <h2>Mobile App Sessions</h2>
           <div class="action-row" style="margin-bottom: 12px">
+            <button class="secondary" id="mobile-app-session-events-refresh">Session Events</button>
             <button class="secondary" id="mobile-app-sessions-refresh-2">Refresh App Sessions</button>
           </div>
           <div class="surface">
@@ -1156,6 +1159,7 @@
       let currentOrchestrationReceipt = null;
       let currentActiveOrchestrationRun = null;
       let currentSkillName = null;
+      let currentMobileAppSessionId = null;
       let currentLogEntries = [];
       const setText = (id, value) => {
         document.getElementById(id).textContent = typeof value === "string" ? value : pretty(value);
@@ -2226,6 +2230,13 @@
         setText("mobile-node-activity", activity);
       }
 
+      async function loadMobileAppSessionMetrics(nodeId = null) {
+        const currentNodeId = (nodeId || document.getElementById("mobile-source-node").value).trim();
+        const query = currentNodeId ? `?node_id=${encodeURIComponent(currentNodeId)}&limit=20` : "?limit=20";
+        const payload = await fetchJson(`/control/mobile/app-sessions/metrics${query}`);
+        setText("mobile-app-session-metrics", payload);
+      }
+
       async function loadMobileAppSessions(nodeId = null) {
         const currentNodeId = (nodeId || document.getElementById("mobile-source-node").value).trim();
         const query = currentNodeId ? `?node_id=${encodeURIComponent(currentNodeId)}&limit=20` : "?limit=20";
@@ -2234,7 +2245,10 @@
         const rows = sessions.map((entry) => `<tr>
             <td><strong>${entry.status || "-"}</strong><div class="muted">${entry.node_id || "-"}</div></td>
             <td>${entry.last_seen_at || entry.started_at || "-"}</td>
-            <td><button class="secondary" onclick="inspectMobileAppSession('${entry.id}')">Inspect</button></td>
+            <td>
+              <button class="secondary" onclick="inspectMobileAppSession('${entry.id}')">Inspect</button>
+              <button class="secondary" onclick="inspectMobileAppSessionEvents('${entry.id}')">Events</button>
+            </td>
           </tr>`);
         renderTableRows("mobile-app-sessions", rows, "No mobile app sessions recorded.");
         if (sessions.length) {
@@ -2245,7 +2259,14 @@
       }
 
       async function inspectMobileAppSession(id) {
+        currentMobileAppSessionId = id;
         const payload = await fetchJson(`/control/mobile/app-sessions/${encodeURIComponent(id)}`);
+        setText("mobile-app-session-detail", payload);
+      }
+
+      async function inspectMobileAppSessionEvents(id) {
+        currentMobileAppSessionId = id;
+        const payload = await fetchJson(`/control/mobile/app-sessions/${encodeURIComponent(id)}/events`);
         setText("mobile-app-session-detail", payload);
       }
 
@@ -3684,6 +3705,13 @@
           setText("mobile-node-activity", { error: error.message });
         }
       });
+      document.getElementById("mobile-app-session-metrics-refresh").addEventListener("click", async () => {
+        try {
+          await loadMobileAppSessionMetrics();
+        } catch (error) {
+          setText("mobile-app-session-metrics", { error: error.message });
+        }
+      });
       document.getElementById("mobile-app-sessions-refresh").addEventListener("click", async () => {
         try {
           await loadMobileAppSessions();
@@ -3694,6 +3722,16 @@
       document.getElementById("mobile-app-sessions-refresh-2").addEventListener("click", async () => {
         try {
           await loadMobileAppSessions();
+        } catch (error) {
+          setText("mobile-app-session-detail", { error: error.message });
+        }
+      });
+      document.getElementById("mobile-app-session-events-refresh").addEventListener("click", async () => {
+        try {
+          if (!currentMobileAppSessionId) {
+            throw new Error("Select a mobile app session first.");
+          }
+          await inspectMobileAppSessionEvents(currentMobileAppSessionId);
         } catch (error) {
           setText("mobile-app-session-detail", { error: error.message });
         }
