@@ -421,12 +421,14 @@
             <div class="action-row">
               <button class="secondary" id="talk-session-inspect">Inspect Receipt</button>
               <button class="secondary" id="talk-session-events">Event Timeline</button>
+              <button class="secondary" id="talk-session-metrics">Session Metrics</button>
             </div>
           </div>
           <div class="surface"><pre id="talk-runtime-status">Loading…</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="talk-runtime-metrics">No talk metrics loaded yet.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="talk-sessions">No talk receipts loaded yet.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="talk-session-detail">No talk receipt inspected yet.</pre></div>
+          <div class="surface" style="margin-top: 12px"><pre id="talk-session-metrics-detail">No talk session metrics loaded yet.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="talk-session-events-detail">No talk event timeline loaded yet.</pre></div>
         </article>
         <article class="panel span-6">
@@ -1285,6 +1287,17 @@
         const query = limit ? `?limit=${encodeURIComponent(limit)}` : "";
         const payload = await fetchJson(`/control/talk/sessions${query}`);
         setText("talk-sessions", payload);
+        const sessions = payload.sessions || [];
+        if (sessions.length) {
+          document.getElementById("talk-session-id").value = sessions[0].id;
+          await loadTalkSession();
+          await loadTalkSessionMetrics();
+          await loadTalkSessionEvents();
+        } else {
+          setText("talk-session-detail", "No talk receipt inspected yet.");
+          setText("talk-session-metrics-detail", "No talk session metrics loaded yet.");
+          setText("talk-session-events-detail", "No talk event timeline loaded yet.");
+        }
       }
 
       async function loadTalkSession() {
@@ -1294,6 +1307,15 @@
         }
         const payload = await fetchJson(`/control/talk/sessions/${encodeURIComponent(sessionId)}`);
         setText("talk-session-detail", payload);
+      }
+
+      async function loadTalkSessionMetrics() {
+        const sessionId = document.getElementById("talk-session-id").value.trim();
+        if (!sessionId) {
+          throw new Error("A talk session id is required");
+        }
+        const payload = await fetchJson(`/control/talk/sessions/${encodeURIComponent(sessionId)}/metrics`);
+        setText("talk-session-metrics-detail", payload);
       }
 
       async function loadTalkSessionEvents() {
@@ -3486,6 +3508,13 @@
           await loadTalkSession();
         } catch (error) {
           setText("talk-session-detail", { error: error.message });
+        }
+      });
+      document.getElementById("talk-session-metrics").addEventListener("click", async () => {
+        try {
+          await loadTalkSessionMetrics();
+        } catch (error) {
+          setText("talk-session-metrics-detail", { error: error.message });
         }
       });
       document.getElementById("talk-session-events").addEventListener("click", async () => {

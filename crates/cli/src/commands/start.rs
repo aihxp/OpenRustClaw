@@ -2719,6 +2719,11 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             "/control/talk/sessions/{id}/events",
             get(talk_session_events_handler),
         );
+    #[cfg(feature = "voice")]
+    let router = router.route(
+        "/control/talk/sessions/{id}/metrics",
+        get(talk_session_metrics_handler),
+    );
 
     let router = router
         .route("/control/mobile/pairings", get(mobile_pairings_handler))
@@ -5333,6 +5338,21 @@ async fn talk_session_events_handler(
     AxumPath(id): AxumPath<String>,
 ) -> impl IntoResponse {
     match talk::talk_session_events_data(&state.workspace_root, &id).await {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+#[cfg(feature = "voice")]
+async fn talk_session_metrics_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(id): AxumPath<String>,
+) -> impl IntoResponse {
+    match talk::talk_session_metrics_data(&state.workspace_root, &id).await {
         Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,

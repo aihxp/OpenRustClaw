@@ -2039,6 +2039,8 @@ enum TalkRuntimeAction {
     Inspect { id: String },
     /// Inspect one persisted talk/wake event timeline
     Events { id: String },
+    /// Inspect derived metrics for one persisted talk/wake receipt
+    SessionMetrics { id: String },
 }
 
 #[derive(Subcommand)]
@@ -5100,6 +5102,10 @@ async fn main() -> Result<()> {
             TalkRuntimeAction::Events { id } => {
                 let workspace_root = std::env::current_dir()?;
                 commands::talk::events(&workspace_root, &id).await
+            }
+            TalkRuntimeAction::SessionMetrics { id } => {
+                let workspace_root = std::env::current_dir()?;
+                commands::talk::session_metrics(&workspace_root, &id).await
             }
         },
         Commands::Voice { action } => match action {

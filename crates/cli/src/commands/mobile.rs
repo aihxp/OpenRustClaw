@@ -572,6 +572,8 @@ pub struct MobileNodeSummary {
     pub battery_percent: Option<u8>,
     pub pairings: usize,
     pub app_sessions: usize,
+    pub active_app_sessions: usize,
+    pub ended_app_sessions: usize,
     pub sync_conflicts: usize,
     pub notifications: usize,
     pub inbox_messages: usize,
@@ -591,7 +593,9 @@ pub struct MobileMetricsSummary {
     pub notifications_authorized_nodes: usize,
     pub waking_nodes: usize,
     pub rehydrate_pending_nodes: usize,
+    pub total_app_sessions: usize,
     pub active_app_sessions: usize,
+    pub ended_app_sessions: usize,
     pub pending_notifications: usize,
     pub delivered_notifications: usize,
     pub pending_inbound_messages: usize,
@@ -1602,6 +1606,10 @@ pub fn mobile_node_summary_data(
     let runtime = load_runtime_state(workspace_root, node_id)?;
     let pairings = list_pairing_data(workspace_root, Some(node_id), None)?.len();
     let app_sessions = list_app_session_data(workspace_root, Some(node_id), None, None)?.len();
+    let active_app_sessions =
+        list_app_session_data(workspace_root, Some(node_id), Some("active"), None)?.len();
+    let ended_app_sessions =
+        list_app_session_data(workspace_root, Some(node_id), Some("ended"), None)?.len();
     let sync_conflicts = list_sync_conflict_data(workspace_root, Some(node_id), None, None)?.len();
     let notifications = list_notification_data(workspace_root, Some(node_id), None)?.len();
     let inbox_messages = list_inbound_message_data(workspace_root, Some(node_id), None)?.len();
@@ -1627,6 +1635,8 @@ pub fn mobile_node_summary_data(
             battery_percent: runtime.battery_percent,
             pairings,
             app_sessions,
+            active_app_sessions,
+            ended_app_sessions,
             sync_conflicts,
             notifications,
             inbox_messages,
@@ -1650,7 +1660,9 @@ pub fn mobile_metrics_data() -> Result<MobileMetricsResult> {
         notifications_authorized_nodes: 0,
         waking_nodes: 0,
         rehydrate_pending_nodes: 0,
+        total_app_sessions: 0,
         active_app_sessions: 0,
+        ended_app_sessions: 0,
         pending_notifications: 0,
         delivered_notifications: 0,
         pending_inbound_messages: 0,
@@ -1696,8 +1708,11 @@ pub fn mobile_metrics_data() -> Result<MobileMetricsResult> {
         }
     }
 
+    summary.total_app_sessions = list_app_session_data(&workspace_root, None, None, None)?.len();
     summary.active_app_sessions =
         list_app_session_data(&workspace_root, None, Some("active"), None)?.len();
+    summary.ended_app_sessions =
+        list_app_session_data(&workspace_root, None, Some("ended"), None)?.len();
     summary.commands = list_command_data(&workspace_root, None, None)?.len();
     summary.sync_conflicts = list_sync_conflict_data(&workspace_root, None, None, None)?.len();
     summary.capability_executions =

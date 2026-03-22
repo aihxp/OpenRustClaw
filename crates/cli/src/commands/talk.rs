@@ -192,6 +192,13 @@ pub async fn events(workspace_root: &Path, session_id: &str) -> Result<()> {
     Ok(())
 }
 
+/// Inspect derived metrics for one talk receipt.
+pub async fn session_metrics(workspace_root: &Path, session_id: &str) -> Result<()> {
+    let payload = talk_session_metrics_data(workspace_root, session_id).await?;
+    println!("{}", serde_json::to_string_pretty(&payload)?);
+    Ok(())
+}
+
 /// Inspect aggregate talk runtime metrics.
 pub async fn metrics(workspace_root: &Path) -> Result<()> {
     let payload = runtime_metrics_data(workspace_root).await?;
@@ -505,6 +512,14 @@ pub async fn talk_session_events_data(
         event_count: events.len(),
         events,
     })
+}
+
+pub async fn talk_session_metrics_data(
+    workspace_root: &Path,
+    session_id: &str,
+) -> Result<TalkSessionMetrics> {
+    let session = inspect_talk_session(workspace_root, session_id).await?;
+    Ok(session.metrics())
 }
 
 impl TalkSessionReceipt {
