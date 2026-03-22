@@ -48,7 +48,20 @@ pub struct MediaProviderStatus {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MediaProviderCatalog {
+    pub summary: MediaProviderCatalogSummary,
     pub extractors: Vec<MediaProviderStatus>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MediaProviderCatalogSummary {
+    pub total_extractors: usize,
+    pub ready_extractors: usize,
+    pub ready_document_text_extractors: usize,
+    pub ready_image_text_extractors: usize,
+    pub ready_image_description_extractors: usize,
+    pub ready_document_description_extractors: usize,
+    pub ready_audio_text_extractors: usize,
+    pub ready_audio_description_extractors: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -202,7 +215,39 @@ pub fn media_provider_catalog(config: &AppConfig) -> MediaProviderCatalog {
 
     extractors.extend(vision_provider_catalog(config));
 
-    MediaProviderCatalog { extractors }
+    let summary = MediaProviderCatalogSummary {
+        total_extractors: extractors.len(),
+        ready_extractors: extractors.iter().filter(|entry| entry.ready).count(),
+        ready_document_text_extractors: extractors
+            .iter()
+            .filter(|entry| entry.ready && entry.kind == "document_text")
+            .count(),
+        ready_image_text_extractors: extractors
+            .iter()
+            .filter(|entry| entry.ready && entry.kind == "image_text")
+            .count(),
+        ready_image_description_extractors: extractors
+            .iter()
+            .filter(|entry| entry.ready && entry.kind == "image_description")
+            .count(),
+        ready_document_description_extractors: extractors
+            .iter()
+            .filter(|entry| entry.ready && entry.kind == "document_description")
+            .count(),
+        ready_audio_text_extractors: extractors
+            .iter()
+            .filter(|entry| entry.ready && entry.kind == "audio_text")
+            .count(),
+        ready_audio_description_extractors: extractors
+            .iter()
+            .filter(|entry| entry.ready && entry.kind == "audio_description")
+            .count(),
+    };
+
+    MediaProviderCatalog {
+        summary,
+        extractors,
+    }
 }
 
 pub async fn inspect_data(request: MediaInspectRequest) -> Result<MediaInspectResult> {
@@ -1593,6 +1638,12 @@ mod tests {
         config.providers.openrouter.api_key_env = Some("OPENROUTER_TEST_KEY".to_string());
         let catalog = media_provider_catalog(&config);
 
+        assert!(catalog.summary.total_extractors > 0);
+        assert!(catalog.summary.ready_extractors > 0);
+        assert!(catalog.summary.ready_document_text_extractors > 0);
+        assert!(catalog.summary.ready_image_text_extractors > 0);
+        assert!(catalog.summary.ready_image_description_extractors > 0);
+        assert!(catalog.summary.ready_document_description_extractors > 0);
         assert!(
             catalog
                 .extractors

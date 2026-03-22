@@ -374,7 +374,7 @@ Completed:
 - [x] A durable Rust-owned event bus and queued event-triggered workflow dispatch path now exist.
 - [x] Operator controls exist for pause, resume, replay, attempt inspection, dead-letter inspection, and MCP-based scheduler introspection.
 - [x] Rust-native workflow checkpoints exist for timed and event-triggered work.
-- [x] Control/runtime management talk-runtime status|metrics|sessions|inspect|events|session-metrics now cover scheduler and plugin operator actions.
+- [x] Control/runtime management now cover scheduler and plugin operator actions.
 
 - [x] Expand the internal event bus coverage across the current shipped parity-critical sources:
   - message.received,
@@ -385,10 +385,10 @@ Completed:
   - reminder.delivered,
   - reminder.delivery_failed.
 - [x] Extend the event bus to broader current operator/runtime-management sources:
-  - plugin talk-runtime status|metrics|sessions|inspect|events|session-metrics,
-  - Control UI/runtime management talk-runtime status|metrics|sessions|inspect|events|session-metrics,
+  - plugin events,
+  - Control UI/runtime-management events,
   - scheduler operator actions.
-- [ ] Handle `node.paired` and other distributed/mobile lifecycle talk-runtime status|metrics|sessions|inspect|events|session-metrics in the later node/distributed phases, not in Phase 3.
+- [ ] Handle `node.paired` and other distributed/mobile lifecycle events in the later node/distributed phases, not in Phase 3.
 - [x] Support event-triggered workflows in Rust, not just time-triggered jobs.
 - [x] Add reminder delivery policy controls across channels:
   - fallback channel order,
@@ -684,11 +684,11 @@ Channel completion remaining:
 - [x] Gmail inbound automation parity for mail-triggered workflows.
   - current shipped path covers Gmail watch setup and stop, Pub/Sub or direct-notification webhook ingress, history fetch, message hydration, structured attachment/file-reference metadata, normalized recipient/label counts plus recipient domains, message/thread/history/subject/body/received-at presence flags, recipient/domain/label/header presence flags, file-reference counts, attachment total-size metadata, address/domain length and attachment-name/MIME count metadata, unread and received-at metadata, parsed header/thread metadata, history/body-length metadata, subject/body/file-reference presence metrics, mail-triggered local agent/session routing, direct sends, threaded direct sends, replies including local-file attachments, metadata-driven label/archive/delete/forward actions, forwarded local-file attachments, and first-class CLI operator flows for `status|connect|process-notification|send|reply|label|archive|delete|forward`.
 - [x] Matrix parity.
-  - current shipped path covers auth, send, reply/thread relations with explicit presence flags, format/formatted-body presence metadata, media-presence metadata, polling ingress, inbound reaction, redaction, and membership talk-runtime status|metrics|sessions|inspect|events|session-metrics with richer lifecycle metadata plus target/reason/avatar/display-name presence flags, reaction/redaction/membership/media length metadata, room/event/sender/reply/content-URI derived lengths, room actions, helper-driven plus normal-send local file uploads, inbound media downloads into the Matrix data directory with structured file-reference metadata plus media MIME/size fields and download/content-uri/filename/size/file-reference presence flags, and first-class CLI operator flows for join/leave/list-rooms/send-formatted/react/send-file/typing/redact.
+  - current shipped path covers auth, send, reply/thread relations with explicit presence flags, format/formatted-body presence metadata, media-presence metadata, polling ingress, inbound reaction, redaction, and membership  with richer lifecycle metadata plus target/reason/avatar/display-name presence flags, reaction/redaction/membership/media length metadata, room/event/sender/reply/content-URI derived lengths, room actions, helper-driven plus normal-send local file uploads, inbound media downloads into the Matrix data directory with structured file-reference metadata plus media MIME/size fields and download/content-uri/filename/size/file-reference presence flags, and first-class CLI operator flows for join/leave/list-rooms/send-formatted/react/send-file/typing/redact.
 - [x] Microsoft Teams parity.
   - current shipped path covers Bot Framework webhook ingress, JWT verification, connector-`/v3` outbound operations, reply aliases, native local-file uploads via Connector attachments, metadata-driven typing/update/delete actions, conversation/reaction/update/delete lifecycle routing with normalized member/reaction id/count metadata and presence flags, normalized team/channel/tenant IDs, richer message body/reply/update/delete flags, mention presence/count metadata, richer attachment metadata plus structured file references, attachment name/type/url presence flags, attachment URL counts, file-reference counts, local download paths, adaptive-card file links, and local agent/session routing.
 - [x] Signal parity if kept in scope.
-  - current shipped path covers `signal-cli` daemon-backed direct/group send-receive, allowlist filtering, first-class CLI operator flows for registration/verify/link/list-groups, normalized routing metadata, source/recipient/group presence flags, text-length and attachment-size/file-reference metrics, source-number/group-name/quote-author length fields, outbound local-attachment sends, structured inbound attachment/file-reference metadata with daemon-provided local attachment path enrichment where available, attachment-only inbound routing, normalized attachment ids/names/mime types plus caption counts and attachment-id/name/MIME/caption presence flags, flat quote plus reply-target metadata with quote presence/text-length flags, sync-message lifecycle visibility, normalized group-member and mention metadata with presence flags, receipt lifecycle talk-runtime status|metrics|sessions|inspect|events|session-metrics, and local agent/session routing.
+  - current shipped path covers `signal-cli` daemon-backed direct/group send-receive, allowlist filtering, first-class CLI operator flows for registration/verify/link/list-groups, normalized routing metadata, source/recipient/group presence flags, text-length and attachment-size/file-reference metrics, source-number/group-name/quote-author length fields, outbound local-attachment sends, structured inbound attachment/file-reference metadata with daemon-provided local attachment path enrichment where available, attachment-only inbound routing, normalized attachment ids/names/mime types plus caption counts and attachment-id/name/MIME/caption presence flags, flat quote plus reply-target metadata with quote presence/text-length flags, sync-message lifecycle visibility, normalized group-member and mention metadata with presence flags, receipt lifecycle , and local agent/session routing.
 - [x] Defer optional Feishu/Lark parity out of the Phase 5 completion gate unless the product scope is expanded to include it:
   - docs/tables actions,
   - rich-text embedded media extraction.
@@ -840,7 +840,7 @@ Completed:
   - `POST /control/orchestration/submit`,
   - `GET /control/orchestration/active`,
   - `GET /control/orchestration/active/{run_id}`,
-  - `GET /control/orchestration/active/{run_id}/talk-runtime status|metrics|sessions|inspect|events|session-metrics`,
+  - `GET /control/orchestration/active/{run_id}/`,
   - `POST /control/orchestration/active/{run_id}/pause|resume|kill`,
   - active run state under `.claw/control/orchestration-active/`,
   - named worker delegation with bounded follow-up turns,
@@ -862,11 +862,11 @@ Completed:
   - orchestration receipt inspection via `/control/orchestration/runs...`,
   - browser artifact inspection and bounded browser action forms via `/control/browser/...`.
 - [x] Add shipped service diagnostics and scheduler inspection surfaces:
-  - `openrustclaw runtime services status|scheduler|talk-runtime status|metrics|sessions|inspect|events|session-metrics`,
+  - `openrustclaw runtime services status|scheduler|events|channels`,
   - `GET /control/services/status`,
   - `GET /control/services/scheduler`,
-  - `GET /control/services/runtime-talk-runtime status|metrics|sessions|inspect|events|session-metrics`,
-  - service-status, scheduler-health, and recent-runtime-talk-runtime status|metrics|sessions|inspect|events|session-metrics panels in `/control/ui`.
+  - `GET /control/services/runtime-events`,
+  - service-status, scheduler-health, and recent-runtime-events panels in `/control/ui`.
 - [x] Add shipped enabled-channel readiness probes on top of the service baseline:
   - `openrustclaw runtime services channels`,
   - `GET /control/services/channels`,
@@ -1090,7 +1090,7 @@ Remaining:
     - form-submit confirmation policies,
     - download path sandboxing,
     - CSRF/session-isolation rules,
-    - audit talk-runtime status|metrics|sessions|inspect|events|session-metrics for every sensitive browser action.
+    - audit  for every sensitive browser action.
   - [ ] Add observability and replay for browser runs:
     - screenshots,
     - DOM/action traces,
@@ -1186,7 +1186,7 @@ Remaining:
   - sandbox/dependency diagnostics with actionable remediation.
 - [ ] Add optional external-agent interoperability surfaces:
   - a typed local API that can wrap CureClaw/Cursor-style CLI agents as subprocess-backed event streams,
-  - NDJSON or `stream-json` translation into OpenRustClaw agent/run talk-runtime status|metrics|sessions|inspect|events|session-metrics,
+  - NDJSON or `stream-json` translation into OpenRustClaw agent/run ,
   - session continuity mapping,
   - approval/trace integration,
   - strict marking as optional compatibility rather than parity-critical runtime.
@@ -1285,7 +1285,7 @@ Remaining:
   - [ ] broader cross-provider media parity across all file classes remains open.
 - [x] Add richer provider support for media parity where OpenClaw documents active integrations.
 - [ ] Add voice runtime parity:
-  - [x] bounded talk/wake receipts plus `talk-runtime status|metrics|sessions|inspect|events|session-metrics` operator surfaces over the feature-gated Talk Mode runner,
+  - [x] bounded talk/wake receipts plus `` operator surfaces over the feature-gated Talk Mode runner,
   - [x] bounded talk-runtime metrics plus event-timeline inspection over the same feature-gated Talk Mode runner,
   - [x] provider-backed inbound attachment STT and transcript injection for supported runtime message flows,
   - [x] explicit provider catalog/readiness plus request-scoped provider overrides for the shipped OpenAI-compatible STT/TTS lane and bounded Deepgram STT routing,
@@ -1331,7 +1331,7 @@ Remaining:
   - [x] bounded mobile inbound message receipts with acknowledgement over the same shipped node runtime lane,
   - [x] bounded mobile outbound message receipts with acknowledgement over the same shipped node runtime lane,
   - [x] bounded pairing/unpair lifecycle receipts plus pairing-history inspection over the same shipped node control plane,
-  - [x] bounded per-node activity timelines over runtime, notification, inbox, outbox, and command receipts/talk-runtime status|metrics|sessions|inspect|events|session-metrics,
+  - [x] bounded per-node activity timelines over runtime, notification, inbox, outbox, and command receipts/,
   - [x] bounded mobile command metrics plus command event timelines over the same shipped node control plane,
   - [x] bounded mobile metrics plus per-node summary surfaces over the same shipped node control plane,
   - [ ] richer paired-node/mobile app runtime capability parity where OpenClaw documents it.
@@ -1421,7 +1421,7 @@ Remaining:
   - operator docs,
   - troubleshooting,
   - test coverage.
-- [ ] Remove or demote any remaining runtime dependency that prtalk-runtime status|metrics|sessions|inspect|events|session-metrics "all Rust in production" from being true.
+- [ ] Remove or demote any remaining runtime dependency that pr "all Rust in production" from being true.
 
 Exit criteria:
 
