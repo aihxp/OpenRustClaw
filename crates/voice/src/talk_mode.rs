@@ -15,7 +15,7 @@
 //! ```
 
 use crate::error::{VoiceError, VoiceResult};
-use crate::stt::{SpeechToText, Transcription};
+use crate::stt::SpeechToText;
 use crate::tts::TextToSpeech;
 use crate::wake::{WakeDetector, WakeWordConfig};
 use std::collections::VecDeque;
@@ -165,7 +165,7 @@ pub struct TalkMode {
     /// Wake word detector
     wake: Arc<dyn WakeDetector>,
     /// Speech-to-text engine
-    _stt: Arc<SpeechToText>,
+    stt: Arc<SpeechToText>,
     /// Text-to-speech engine
     tts: Arc<TextToSpeech>,
     /// Configuration
@@ -189,7 +189,7 @@ pub struct TalkMode {
     /// Audio input channel
     audio_tx: mpsc::Sender<Vec<f32>>,
     /// Audio input receiver
-    _audio_rx: Arc<Mutex<mpsc::Receiver<Vec<f32>>>>,
+    audio_rx: Arc<Mutex<mpsc::Receiver<Vec<f32>>>>,
 }
 
 impl TalkMode {
@@ -205,7 +205,7 @@ impl TalkMode {
 
         Self {
             wake,
-            _stt: stt,
+            stt,
             tts,
             config,
             state: Arc::new(RwLock::new(TalkState::Idle)),
@@ -217,7 +217,7 @@ impl TalkMode {
             session_start: Arc::new(RwLock::new(None)),
             last_activity: Arc::new(RwLock::new(Instant::now())),
             audio_tx,
-            _audio_rx: Arc::new(Mutex::new(audio_rx)),
+            audio_rx: Arc::new(Mutex::new(audio_rx)),
         }
     }
 
@@ -343,12 +343,13 @@ impl TalkMode {
         tokio::select! {
             result = self.wake.listen() => {
                 match result {
-                    Ok(_) => {
+                    Ok(detection) => {
                         info!("Wake word detected");
                         self.emit_event(TalkEvent::WakeWordDetected {
-                            word: self.config.wake_word_config.wake_word.clone(),
+                            word: detection.detected_wake_word.clone(),
                             confidence: 1.0,
                         }).await;
+                        let _ = self.audio_tx.send(detection.audio_buffer).await;
                         self.transition_to(TalkState::Listening).await;
                         Ok(())
                     }
@@ -366,28 +367,30 @@ impl TalkMode {
         debug!("Entering listening state");
         self.emit_event(TalkEvent::SpeechStarted).await;
 
-        // For now, we simulate the listening process
-        // In a real implementation, this would record audio until silence
-
-        tokio::time::sleep(Duration::from_secs(2)).await;
+        let audio_buffer = {
+            let mut audio_rx = self.audio_rx.lock().await;
+            match tokio::time::timeout(Duration::from_secs(5), audio_rx.recv()).await {
+                Ok(Some(buffer)) => buffer,
+                Ok(None) => {
+                    return Err(VoiceError::Interrupted);
+                }
+                Err(_) => {
+                    return Err(VoiceError::Timeout(
+                        "Timed out waiting for captured audio buffer".to_string(),
+                    ));
+                }
+            }
+        };
 
         self.emit_event(TalkEvent::SpeechEnded {
-            duration: Duration::from_secs(2),
+            duration: Duration::from_secs_f32(audio_buffer.len() as f32 / 16_000.0),
         })
         .await;
 
         // Transition to processing
         self.transition_to(TalkState::Processing).await;
 
-        // Simulate transcription
-        let transcription = Transcription {
-            text: "Hello, this is a test message".to_string(),
-            confidence: 0.95,
-            segments: vec![],
-            language: "en".to_string(),
-            duration_secs: 2.0,
-            processing_time_ms: 100,
-        };
+        let transcription = self.stt.transcribe(&audio_buffer)?;
 
         info!("Transcribed: {}", transcription.text);
         self.emit_event(TalkEvent::Transcription {

@@ -15,9 +15,10 @@ The goal is not to imitate OpenClaw's internals. The goal is to deliver the same
 - Media/file-reference send and receive flows for the declared shipped channel set
 - A bounded media operator lane over Anthropic, Gemini, Ollama, and OpenAI-compatible describe/extract surfaces
 - A bounded voice-call lane with health, metrics, artifacts, events, reconnect, and stale-call handling over compiled-skill bindings
-- A bounded Talk Mode receipt lane with status, metrics, and event-timeline inspection over the feature-gated runner
+- A bounded Talk Mode lane with status, metrics, event-timeline inspection, live microphone capture, and speaker playback over the feature-gated runner
 - A bounded mobile command lane with receipt metrics and event-timeline inspection over the shared typed Rust mobile command protocol
 - A bounded mobile app-session lane with metrics and event-timeline inspection over the same heartbeat/runtime receipts
+- A bounded mobile runtime lane with pairing, capability inventory, execution receipts, push/sync/notification/inbox/outbox, activity, and media-artifact receipts over the shared typed Rust mobile node model
 - Skills install/update/verify lifecycle with real sandbox execution
 
 ## Where OpenRustClaw Is Intentionally Stronger
@@ -55,8 +56,6 @@ LangGraph may execute a bounded workflow run. It should not be the only durabili
 ## Where We Still Trail OpenClaw
 
 - Full Web Control UI parity
-- Full mobile nodes/runtime capability flows beyond the newly shipped bounded command lane
-- Full live voice/runtime parity beyond the shipped note-transcription/operator lane, bounded talk/wake receipt lane, bounded talk metrics/event timelines, and bounded compiled-skill voice-plugin/event lane
 - Broader extension/plugin-channel parity beyond the shipped Rust-native Mattermost channel and the new bounded compiled-skill channel-extension lane
 - Full executable plugin parity beyond the newly shipped bounded Rust/WASM extension lane and bounded scheduler-backed background-service lane
 - Optional deferred channel scope such as Feishu/Lark if the product scope expands to include it

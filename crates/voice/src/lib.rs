@@ -22,6 +22,8 @@ pub use talk_mode::{
 pub use tts::{ElevenLabsVoiceSettings, TextToSpeech, TtsBackend, TtsConfig, VoiceInfo};
 pub use types::{AudioFrame, AudioStream};
 pub use vad::{AdaptiveVad, VadConfig, VadState, VoiceActivityDetector};
+#[cfg(feature = "audio")]
+pub use wake::start_live_audio_capture;
 pub use wake::{
     SimpleWakeDetector, WakeDetectionResult, WakeDetector, WakeDetectorFactory, WakeWordConfig,
 };

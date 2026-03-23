@@ -316,7 +316,7 @@ Every operation is traced. Every decision is logged. Every metric is tracked.
 | Feature | Status | Implementation |
 |---------|--------|----------------|
 | Wake Word Detection | Planned | Porcupine engine, custom models |
-| Talk Mode | Planned | Continuous conversation mode |
+| Talk Mode | Partial | Feature-gated continuous conversation mode with live microphone capture and speaker playback |
 | Speech-to-Text | Partial | Provider-backed inbound transcription plus OpenAI-compatible operator/runtime STT lanes |
 | Text-to-Speech | Partial | Provider-backed synthesis plus OpenAI-compatible operator/runtime TTS lanes |
 

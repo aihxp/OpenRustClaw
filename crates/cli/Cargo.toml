@@ -71,5 +71,5 @@ tempfile.workspace = true
 
 [features]
 default = ["voice", "cursor"]
-voice = ["dep:openrustclaw-voice"]
+voice = ["dep:openrustclaw-voice", "openrustclaw-voice/audio"]
 cursor = ["dep:openrustclaw-cursor"]

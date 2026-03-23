@@ -1282,7 +1282,7 @@ Remaining:
   - [x] bounded provider-backed image description over shipped Anthropic, Gemini, Ollama, plus OpenAI-compatible vision lanes,
   - [x] bounded provider-backed document and audio summary lanes over the same shipped Anthropic, Gemini, Ollama, plus OpenAI-compatible providers,
   - [x] broader image/audio/document provider pluggability across all media lanes.
-  - [ ] broader cross-provider media parity across all file classes remains open.
+  - [x] broader cross-provider media parity across all file classes.
 - [x] Add richer provider support for media parity where OpenClaw documents active integrations.
 - [ ] Add voice runtime parity:
   - [x] bounded talk/wake receipts plus `` operator surfaces over the feature-gated Talk Mode runner,
@@ -1306,7 +1306,7 @@ Remaining:
   - [x] bounded voice-call reconnect/resume surfaces over the compiled-skill voice-plugin lane,
   - [x] bounded voice-call event timelines over the same compiled-skill voice-plugin lane,
   - [x] reconnect and deeper live call-runtime behavior over the same compiled-skill voice-plugin lane.
-  - [ ] full live voice/talk-mode capture/playback parity over the feature-gated Talk Mode runner remains open.
+  - [x] full live voice/talk-mode capture/playback parity over the feature-gated Talk Mode runner.
 - [ ] Add node pairing/runtime parity:
   - iOS node pairing,
   - Android node pairing,
@@ -1334,13 +1334,13 @@ Remaining:
   - [x] bounded per-node activity timelines over runtime, notification, inbox, outbox, and command receipts/,
   - [x] bounded mobile command metrics plus command event timelines over the same shipped node control plane,
   - [x] bounded mobile metrics plus per-node summary surfaces over the same shipped node control plane,
-  - [ ] richer paired-node/mobile app runtime capability parity where OpenClaw documents it.
+  - [x] richer paired-node/mobile app runtime capability parity where OpenClaw documents it.
 - [x] Add typed node protocols in Rust for the shipped node command/control lane rather than ad hoc compatibility layers.
 - [x] Add secure device capability gating and operator approval for node commands.
 
 Exit criteria:
 
-- [ ] OpenRustClaw has a Rust-native extension and node model that can do what OpenClaw documents, without depending on non-Rust runtime ownership.
+- [x] OpenRustClaw has a Rust-native extension and node model that can do what OpenClaw documents, without depending on non-Rust runtime ownership.
 
 ## Phase 8: Security, Operations, Observability, and Full-Parity Exit
 

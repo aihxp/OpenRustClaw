@@ -3,10 +3,16 @@
 use crate::error::{VoiceError, VoiceResult};
 use crate::vad::{VadConfig, VoiceActivityDetector};
 use async_trait::async_trait;
+#[cfg(feature = "audio")]
+use cpal::SampleFormat;
+#[cfg(feature = "audio")]
+use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tokio::sync::{Mutex, Notify, mpsc};
+#[cfg(feature = "audio")]
+use tracing::warn;
 
 /// Configuration for wake word detection.
 #[derive(Debug, Clone)]
@@ -270,6 +276,133 @@ impl WakeDetectorFactory {
     pub fn create_simple(config: WakeWordConfig) -> Arc<dyn WakeDetector> {
         Arc::new(SimpleWakeDetector::new(config))
     }
+}
+
+#[cfg(feature = "audio")]
+/// Start a live microphone capture stream and feed samples into a wake detector.
+pub fn start_live_audio_capture(detector: &SimpleWakeDetector) -> VoiceResult<cpal::Stream> {
+    let host = cpal::default_host();
+    let device = host
+        .default_input_device()
+        .ok_or_else(|| VoiceError::AudioCapture("No default input device available".to_string()))?;
+    let supported = device.default_input_config().map_err(|error| {
+        VoiceError::AudioCapture(format!("Failed to query default input config: {error}"))
+    })?;
+    let sample_format = supported.sample_format();
+    let config: cpal::StreamConfig = supported.into();
+    let channels = usize::from(config.channels).max(1);
+    let sender = detector.audio_sender();
+
+    let stream = match sample_format {
+        SampleFormat::F32 => build_live_input_stream_f32(&device, &config, channels, sender)?,
+        SampleFormat::I16 => build_live_input_stream_i16(&device, &config, channels, sender)?,
+        SampleFormat::U16 => build_live_input_stream_u16(&device, &config, channels, sender)?,
+        other => {
+            return Err(VoiceError::AudioCapture(format!(
+                "Unsupported input sample format: {other:?}"
+            )));
+        }
+    };
+
+    stream.play().map_err(|error| {
+        VoiceError::AudioCapture(format!("Failed to start input stream: {error}"))
+    })?;
+    Ok(stream)
+}
+
+#[cfg(feature = "audio")]
+fn build_live_input_stream_f32(
+    device: &cpal::Device,
+    config: &cpal::StreamConfig,
+    channels: usize,
+    sender: mpsc::Sender<Vec<f32>>,
+) -> VoiceResult<cpal::Stream> {
+    let stream = device
+        .build_input_stream(
+            config,
+            move |data: &[f32], _| {
+                let mut samples = Vec::with_capacity(data.len().saturating_div(channels).max(1));
+                for frame in data.chunks(channels) {
+                    let mixed = frame.iter().copied().sum::<f32>() / channels as f32;
+                    samples.push(mixed.clamp(-1.0, 1.0));
+                }
+                let _ = sender.try_send(samples);
+            },
+            move |error| {
+                warn!("Live audio input stream error: {}", error);
+            },
+            None,
+        )
+        .map_err(|error| {
+            VoiceError::AudioCapture(format!("Failed to build input stream: {error}"))
+        })?;
+    Ok(stream)
+}
+
+#[cfg(feature = "audio")]
+fn build_live_input_stream_i16(
+    device: &cpal::Device,
+    config: &cpal::StreamConfig,
+    channels: usize,
+    sender: mpsc::Sender<Vec<f32>>,
+) -> VoiceResult<cpal::Stream> {
+    let stream = device
+        .build_input_stream(
+            config,
+            move |data: &[i16], _| {
+                let mut samples = Vec::with_capacity(data.len().saturating_div(channels).max(1));
+                for frame in data.chunks(channels) {
+                    let mixed = frame
+                        .iter()
+                        .map(|sample| *sample as f32 / i16::MAX as f32)
+                        .sum::<f32>()
+                        / channels as f32;
+                    samples.push(mixed.clamp(-1.0, 1.0));
+                }
+                let _ = sender.try_send(samples);
+            },
+            move |error| {
+                warn!("Live audio input stream error: {}", error);
+            },
+            None,
+        )
+        .map_err(|error| {
+            VoiceError::AudioCapture(format!("Failed to build input stream: {error}"))
+        })?;
+    Ok(stream)
+}
+
+#[cfg(feature = "audio")]
+fn build_live_input_stream_u16(
+    device: &cpal::Device,
+    config: &cpal::StreamConfig,
+    channels: usize,
+    sender: mpsc::Sender<Vec<f32>>,
+) -> VoiceResult<cpal::Stream> {
+    let stream = device
+        .build_input_stream(
+            config,
+            move |data: &[u16], _| {
+                let mut samples = Vec::with_capacity(data.len().saturating_div(channels).max(1));
+                for frame in data.chunks(channels) {
+                    let mixed = frame
+                        .iter()
+                        .map(|sample| (*sample as f32 / u16::MAX as f32) * 2.0 - 1.0)
+                        .sum::<f32>()
+                        / channels as f32;
+                    samples.push(mixed.clamp(-1.0, 1.0));
+                }
+                let _ = sender.try_send(samples);
+            },
+            move |error| {
+                warn!("Live audio input stream error: {}", error);
+            },
+            None,
+        )
+        .map_err(|error| {
+            VoiceError::AudioCapture(format!("Failed to build input stream: {error}"))
+        })?;
+    Ok(stream)
 }
 
 #[cfg(test)]

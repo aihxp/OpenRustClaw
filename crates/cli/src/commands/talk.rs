@@ -2,6 +2,7 @@
 
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
+use openrustclaw_voice::start_live_audio_capture;
 use openrustclaw_voice::{
     SimpleWakeDetector, SpeechToText, SttConfig, TalkConfig, TalkModeBuilder, TalkState,
     TextToSpeech, TtsConfig, WakeWordConfig,
@@ -250,6 +251,9 @@ async fn run_with_workspace_root(
             .await
             .map_err(|e| anyhow::anyhow!("Failed to create TTS: {}", e))?,
     );
+
+    let _audio_capture = start_live_audio_capture(&wake)
+        .map_err(|error| anyhow::anyhow!("Failed to start live audio capture: {}", error))?;
 
     let config = TalkConfig::with_wake_word(wake_word)
         .with_silence_timeout(Duration::from_secs(silence_timeout_secs))
