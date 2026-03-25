@@ -139,6 +139,8 @@ control_plane_fallback_chain = ["ollama", "anthropic"]
 
 Use this when you want runtime edits, onboarding, upgrade planning, and health guidance to evaluate a cheaper or more available provider separately from the main task model. The current runtime status and health surfaces report this lane separately and precompute failover recommendations when the preferred control-plane provider is degraded.
 
+The shipped onboarding and `openrustclaw runtime switch-provider` flows now also persist this lane automatically when it is missing or still mirrors the primary task lane. They prefer a distinct low-cost/local control-plane provider where one is available, with `ollama` first, then other configured non-primary providers. `openrustclaw runtime status|upgrade-plan|self-update-plan|rollback-plan` now expose the resolved control-plane action provider/model that operator actions will use.
+
 ### Runtime Health Scans
 
 `openrustclaw runtime health --refresh` and `/control/runtime/health|scan` now persist more than a basic healthy/unhealthy bit. The current runtime-health report records:

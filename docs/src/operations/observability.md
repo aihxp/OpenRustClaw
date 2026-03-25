@@ -8,6 +8,7 @@ OpenRustClaw provides production-ready observability through:
 
 - **Prometheus Metrics** - Dimensional metrics for all components
 - **Structured Logging** - JSON/pretty formatted logs with request tracing
+- **OpenTelemetry Export** - OTLP span export for CLI and runtime processes
 - **Health Checks** - Multi-level health endpoints for load balancers
 - **Grafana Dashboards** - Pre-built visualizations for all metrics
 
@@ -36,10 +37,15 @@ fn main() {
 # For JSON logs (production)
 export RUST_ENV=production
 export RUST_LOG=info,openrustclaw=debug
+export OPENRUSTCLAW_OTLP_ENDPOINT=http://127.0.0.1:4317
 
 # For pretty logs (development)
 export RUST_ENV=development
 export RUST_LOG=debug
+
+# Optional service identity overrides for OTLP traces
+export OPENRUSTCLAW_OTEL_SERVICE_NAME=openrustclaw
+export OPENRUSTCLAW_OTEL_SERVICE_VERSION=0.1.0
 ```
 
 ### 3. Start OpenRustClaw
@@ -51,8 +57,12 @@ openrustclaw start
 The shipped runtime now exposes Prometheus metrics directly at:
 
 ```bash
-curl http://localhost:8080/metrics
+curl http://127.0.0.1:18789/metrics
 ```
+
+The shipped CLI/runtime path now also initializes tracing automatically. If either
+`OPENRUSTCLAW_OTLP_ENDPOINT` or the standard `OTEL_EXPORTER_OTLP_ENDPOINT` is set,
+OpenRustClaw attaches an OTLP exporter in both development and production tracing modes.
 
 ### 4. Start Prometheus and Grafana
 
@@ -126,6 +136,23 @@ The shipped control plane now records real operator-tool metrics for several Pha
 | `openrustclaw_memory_maintenance_duration_seconds` | Histogram | Maintenance latency | `operation` |
 
 The shipped Rust-owned maintenance path now emits these metrics from real archive-summary persistence, archive-source deletion, and old-memory fetches used by the maintenance flow.
+
+## OpenTelemetry Export
+
+OpenRustClaw now supports OTLP trace export directly from the shipped CLI/runtime path.
+
+```bash
+export OPENRUSTCLAW_OTLP_ENDPOINT=http://127.0.0.1:4317
+openrustclaw start
+```
+
+Supported environment variables:
+
+- `OPENRUSTCLAW_OTLP_ENDPOINT` or `OTEL_EXPORTER_OTLP_ENDPOINT` for the collector endpoint
+- `OPENRUSTCLAW_OTEL_SERVICE_NAME` to override the emitted service name
+- `OPENRUSTCLAW_OTEL_SERVICE_VERSION` to override the emitted service version
+
+If no OTLP endpoint is configured, tracing still initializes locally with the existing pretty/JSON subscribers and no external exporter.
 
 ### Cache Metrics
 

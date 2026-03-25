@@ -18,6 +18,12 @@
 //! init_tracing(Env::Development);
 //! ```
 
+use opentelemetry::{KeyValue, global, trace::TracerProvider as _};
+use opentelemetry_otlp::WithExportConfig;
+use opentelemetry_sdk::{
+    Resource, runtime,
+    trace::{RandomIdGenerator, Sampler, Tracer, TracerProvider},
+};
 use std::collections::HashMap;
 use tracing::{Level, Span, span};
 use tracing_subscriber::{EnvFilter, Registry, fmt, layer::SubscriberExt, util::SubscriberInitExt};
@@ -31,6 +37,13 @@ pub enum Env {
     Development,
     /// Test environment - minimal formatting.
     Test,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OtlpTraceConfig {
+    pub endpoint: String,
+    pub service_name: String,
+    pub service_version: String,
 }
 
 impl Env {
@@ -93,11 +106,20 @@ pub fn init_tracing_json() {
         .with_line_number(true)
         .flatten_event(true);
 
-    Registry::default()
-        .with(env_filter)
-        .with(RequestIdLayer)
-        .with(json_layer)
-        .init();
+    if let Some(tracer) = build_otlp_tracer() {
+        let _ = Registry::default()
+            .with(env_filter)
+            .with(RequestIdLayer)
+            .with(json_layer)
+            .with(tracing_opentelemetry::layer().with_tracer(tracer))
+            .try_init();
+    } else {
+        let _ = Registry::default()
+            .with(env_filter)
+            .with(RequestIdLayer)
+            .with(json_layer)
+            .try_init();
+    }
 }
 
 /// Initialize tracing with human-readable pretty output for development.
@@ -121,11 +143,20 @@ pub fn init_tracing_pretty() {
         .with_line_number(true)
         .with_level(true);
 
-    Registry::default()
-        .with(env_filter)
-        .with(RequestIdLayer)
-        .with(pretty_layer)
-        .init();
+    if let Some(tracer) = build_otlp_tracer() {
+        let _ = Registry::default()
+            .with(env_filter)
+            .with(RequestIdLayer)
+            .with(pretty_layer)
+            .with(tracing_opentelemetry::layer().with_tracer(tracer))
+            .try_init();
+    } else {
+        let _ = Registry::default()
+            .with(env_filter)
+            .with(RequestIdLayer)
+            .with(pretty_layer)
+            .try_init();
+    }
 }
 
 /// Initialize minimal tracing for tests.
@@ -138,10 +169,70 @@ pub fn init_tracing_test() {
         .with_target(false)
         .with_level(true);
 
-    Registry::default()
+    let _ = Registry::default()
         .with(env_filter)
         .with(compact_layer)
-        .init();
+        .try_init();
+}
+
+pub fn otlp_trace_config_from_env() -> Option<OtlpTraceConfig> {
+    otlp_trace_config_from_values(
+        std::env::var("OPENRUSTCLAW_OTLP_ENDPOINT")
+            .ok()
+            .or_else(|| std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").ok()),
+        std::env::var("OPENRUSTCLAW_OTEL_SERVICE_NAME").ok(),
+        std::env::var("OPENRUSTCLAW_OTEL_SERVICE_VERSION").ok(),
+    )
+}
+
+fn otlp_trace_config_from_values(
+    endpoint: Option<String>,
+    service_name: Option<String>,
+    service_version: Option<String>,
+) -> Option<OtlpTraceConfig> {
+    let endpoint = endpoint
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())?;
+    let service_name = service_name
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "openrustclaw".to_string());
+    let service_version = service_version
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string());
+    Some(OtlpTraceConfig {
+        endpoint,
+        service_name,
+        service_version,
+    })
+}
+
+fn build_otlp_tracer() -> Option<Tracer> {
+    let settings = otlp_trace_config_from_env()?;
+    let exporter = opentelemetry_otlp::SpanExporter::builder()
+        .with_tonic()
+        .with_endpoint(settings.endpoint.clone())
+        .build()
+        .ok()?;
+
+    let provider = TracerProvider::builder()
+        .with_sampler(Sampler::ParentBased(Box::new(Sampler::TraceIdRatioBased(
+            1.0,
+        ))))
+        .with_id_generator(RandomIdGenerator::default())
+        .with_resource(Resource::new(vec![
+            KeyValue::new("service.name", settings.service_name.clone()),
+            KeyValue::new("service.version", settings.service_version),
+        ]))
+        .with_batch_exporter(exporter, runtime::Tokio)
+        .build();
+
+    let tracer: Tracer = provider.tracer(settings.service_name);
+    global::set_tracer_provider(provider);
+    global::set_text_map_propagator(opentelemetry_sdk::propagation::TraceContextPropagator::new());
+
+    Some(tracer)
 }
 
 /// A layer that adds request IDs to spans.
@@ -421,39 +512,43 @@ pub fn inject_trace_context_into_headers(ctx: &TraceContext, headers: &mut http:
     }
 }
 
-/// Initialize OpenTelemetry tracing with Jaeger or OTLP exporter.
-///
-/// This is a placeholder for OpenTelemetry initialization.
-/// In a real implementation, you would configure the OTLP exporter
-/// or Jaeger agent endpoint.
-#[cfg(false)] // Disabled until opentelemetry feature is properly configured
 pub fn init_opentelemetry(service_name: &str, service_version: &str) {
-    use opentelemetry::trace::TracerProvider;
-    use opentelemetry_sdk::trace::TracerProvider as SdkTracerProvider;
+    let endpoint = std::env::var("OPENRUSTCLAW_OTLP_ENDPOINT")
+        .ok()
+        .or_else(|| std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").ok());
+    let Some(settings) = otlp_trace_config_from_values(
+        endpoint,
+        Some(service_name.to_string()),
+        Some(service_version.to_string()),
+    ) else {
+        return;
+    };
 
-    let provider = SdkTracerProvider::builder()
-        .with_simple_exporter(
-            opentelemetry_otlp::new_pipeline()
-                .tracing()
-                .with_exporter(
-                    opentelemetry_otlp::new_exporter()
-                        .tonic()
-                        .with_endpoint("http://localhost:4317"),
-                )
-                .install_batch(opentelemetry_sdk::runtime::Tokio)
-                .expect("Failed to create OTLP exporter"),
-        )
-        .with_resource(opentelemetry_sdk::Resource::new(vec![
-            opentelemetry::KeyValue::new("service.name", service_name.to_string()),
-            opentelemetry::KeyValue::new("service.version", service_version.to_string()),
+    let exporter = match opentelemetry_otlp::SpanExporter::builder()
+        .with_tonic()
+        .with_endpoint(settings.endpoint.clone())
+        .build()
+    {
+        Ok(exporter) => exporter,
+        Err(_) => return,
+    };
+
+    let provider = TracerProvider::builder()
+        .with_sampler(Sampler::ParentBased(Box::new(Sampler::TraceIdRatioBased(
+            1.0,
+        ))))
+        .with_id_generator(RandomIdGenerator::default())
+        .with_resource(Resource::new(vec![
+            KeyValue::new("service.name", settings.service_name),
+            KeyValue::new("service.version", settings.service_version),
         ]))
+        .with_batch_exporter(exporter, runtime::Tokio)
         .build();
-
-    opentelemetry::global::set_tracer_provider(provider);
+    global::set_tracer_provider(provider);
+    global::set_text_map_propagator(opentelemetry_sdk::propagation::TraceContextPropagator::new());
 }
 
 /// Shutdown OpenTelemetry providers.
-#[cfg(false)] // Disabled until opentelemetry feature is properly configured
 pub fn shutdown_opentelemetry() {
     opentelemetry::global::shutdown_tracer_provider();
 }
@@ -493,6 +588,19 @@ mod tests {
         // Note: This test might fail if environment variables are set
         // In practice, you'd use a more robust testing approach
         let _env = Env::detect();
+    }
+
+    #[test]
+    fn test_otlp_trace_config_uses_standard_envs() {
+        let config = otlp_trace_config_from_values(
+            Some("http://127.0.0.1:4317".to_string()),
+            Some("orc-tests".to_string()),
+            Some("9.9.9".to_string()),
+        )
+        .expect("otlp config");
+        assert_eq!(config.endpoint, "http://127.0.0.1:4317");
+        assert_eq!(config.service_name, "orc-tests");
+        assert_eq!(config.service_version, "9.9.9");
     }
 
     #[test]

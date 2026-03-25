@@ -3,6 +3,7 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use openrustclaw_mobile::DeviceCommandKind;
+use openrustclaw_observability::{Env, init_tracing};
 use serde_json::Value;
 
 mod commands;
@@ -2795,6 +2796,7 @@ enum WebhooksAction {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    init_tracing(Env::detect());
     let cli = Cli::parse();
 
     match cli.command {

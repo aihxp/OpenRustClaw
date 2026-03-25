@@ -502,6 +502,15 @@ async fn run_model_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
         2 => ("openrouter", "OpenRouter API key"),
         3 => {
             println!("Make sure Ollama is running locally (http://localhost:11434)");
+            let workspace_root = std::env::current_dir()?;
+            runtime::switch_provider(
+                "config/default.toml",
+                &workspace_root,
+                "ollama",
+                None,
+                None,
+                None,
+            )?;
             wizard.state.model_configured = true;
             println!("✓ Model configured (Ollama - local)");
             return Ok(true);
@@ -515,8 +524,20 @@ async fn run_model_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
 
     if !api_key.is_empty() {
         save_provider_config(provider_name, &api_key).await?;
+        let workspace_root = std::env::current_dir()?;
+        runtime::switch_provider(
+            "config/default.toml",
+            &workspace_root,
+            provider_name,
+            None,
+            None,
+            None,
+        )?;
         wizard.state.model_configured = true;
         println!("✓ Model configured ({provider_name})");
+        println!(
+            "  Control-plane actions will prefer the dedicated fallback lane in config/default.toml"
+        );
         println!();
         models::scan().await?;
     } else {

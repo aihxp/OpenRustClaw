@@ -66,6 +66,8 @@ pub struct RuntimeStatus {
     pub control_plane_provider: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub control_plane_fallback_chain: Vec<String>,
+    pub control_plane_action_provider: String,
+    pub control_plane_action_model: String,
     pub anthropic_model: String,
     pub openai_model: String,
     pub openrouter_model: String,
@@ -102,6 +104,8 @@ pub struct RuntimeUpgradePlan {
     pub reload_plan: RuntimeReloadPlan,
     pub service_install_status: RuntimeServiceInstallStatus,
     pub lock_status: RuntimeLockStatus,
+    pub control_plane_action_provider: String,
+    pub control_plane_action_model: String,
     pub backup_command: String,
     pub log_rotation_command: String,
     pub migrate_config_command: String,
@@ -125,6 +129,8 @@ pub struct RuntimeSelfUpdatePlan {
     pub recommended_rollback_path: String,
     pub service_install_status: RuntimeServiceInstallStatus,
     pub lock_status: RuntimeLockStatus,
+    pub control_plane_action_provider: String,
+    pub control_plane_action_model: String,
     pub backup_command: String,
     pub ready: bool,
     pub blockers: Vec<String>,
@@ -143,6 +149,8 @@ pub struct RuntimeRollbackPlan {
     pub rollback_artifact_size_bytes: Option<u64>,
     pub service_install_status: RuntimeServiceInstallStatus,
     pub lock_status: RuntimeLockStatus,
+    pub control_plane_action_provider: String,
+    pub control_plane_action_model: String,
     pub backup_command: String,
     pub ready: bool,
     pub blockers: Vec<String>,
@@ -585,6 +593,8 @@ pub async fn runtime_upgrade_plan(
     workspace_root: &Path,
 ) -> Result<RuntimeUpgradePlan> {
     let runtime_status = runtime_status(config_path, workspace_root)?;
+    let control_plane_action_provider = runtime_status.control_plane_action_provider.clone();
+    let control_plane_action_model = runtime_status.control_plane_action_model.clone();
     let runtime_health = runtime_health_status(config_path, workspace_root, false).await?;
     let reload_plan = runtime_reload_plan(config_path, workspace_root)?;
     let service_install_status = runtime_service_install_status(config_path, workspace_root)?;
@@ -640,6 +650,8 @@ pub async fn runtime_upgrade_plan(
         reload_plan,
         service_install_status,
         lock_status,
+        control_plane_action_provider,
+        control_plane_action_model,
         backup_command: "openrustclaw runtime backup".to_string(),
         log_rotation_command:
             "openrustclaw runtime services rotate-logs --keep 7 --max-bytes 10485760".to_string(),
@@ -745,6 +757,8 @@ pub async fn runtime_self_update_plan(
         recommended_rollback_path: rollback_path.display().to_string(),
         service_install_status,
         lock_status,
+        control_plane_action_provider: upgrade_plan.control_plane_action_provider,
+        control_plane_action_model: upgrade_plan.control_plane_action_model,
         backup_command: "openrustclaw runtime backup".to_string(),
         ready: blockers.is_empty(),
         blockers,
@@ -757,6 +771,7 @@ pub async fn runtime_rollback_plan(
     workspace_root: &Path,
     artifact_path: &str,
 ) -> Result<RuntimeRollbackPlan> {
+    let runtime_status = runtime_status(config_path, workspace_root)?;
     let resolved_config_path = resolve_runtime_config_path(workspace_root, config_path);
     let current_exe = std::env::current_exe().context("Failed to resolve current executable")?;
     let artifact = resolve_runtime_artifact_path(workspace_root, artifact_path);
@@ -832,6 +847,8 @@ pub async fn runtime_rollback_plan(
         rollback_artifact_size_bytes,
         service_install_status,
         lock_status,
+        control_plane_action_provider: runtime_status.control_plane_action_provider,
+        control_plane_action_model: runtime_status.control_plane_action_model,
         backup_command: "openrustclaw runtime backup".to_string(),
         ready: blockers.is_empty(),
         blockers,
@@ -922,6 +939,10 @@ pub fn runtime_status(config_path: &str, workspace_root: &Path) -> Result<Runtim
         false
     };
 
+    let control_plane_action_provider = effective_control_plane_action_provider(&config);
+    let control_plane_action_model =
+        provider_model_for(&config, &control_plane_action_provider).to_string();
+
     Ok(RuntimeStatus {
         config_path: config_path.to_string(),
         network_mode: config.gateway.network_mode.clone(),
@@ -933,6 +954,8 @@ pub fn runtime_status(config_path: &str, workspace_root: &Path) -> Result<Runtim
         fallback_chain: config.providers.fallback_chain.clone(),
         control_plane_provider: config.providers.control_plane_provider.clone(),
         control_plane_fallback_chain: config.providers.control_plane_fallback_chain.clone(),
+        control_plane_action_provider,
+        control_plane_action_model,
         anthropic_model: config.providers.anthropic.model.clone(),
         openai_model: config.providers.openai.model.clone(),
         openrouter_model: config.providers.openrouter.model.clone(),
@@ -2079,6 +2102,7 @@ pub fn switch_provider(
     if let Some(fallback_chain) = fallback_chain {
         config.providers.fallback_chain = fallback_chain;
     }
+    ensure_control_plane_defaults(&mut config);
     validate_runtime_provider(&config, provider)?;
     write_config_with_backup(config_path, &config)?;
     Ok(config)
@@ -2098,6 +2122,95 @@ pub fn switch_model(
         None,
         None,
     )
+}
+
+fn effective_control_plane_action_provider(config: &AppConfig) -> String {
+    if let Some(provider) = config
+        .providers
+        .control_plane_provider
+        .as_deref()
+        .filter(|provider| !provider.trim().is_empty())
+    {
+        return provider.to_string();
+    }
+    config.providers.default_provider.clone()
+}
+
+fn provider_model_for<'a>(config: &'a AppConfig, provider: &str) -> &'a str {
+    match provider {
+        "anthropic" => &config.providers.anthropic.model,
+        "openai" => &config.providers.openai.model,
+        "openrouter" => &config.providers.openrouter.model,
+        "ollama" => &config.providers.ollama.model,
+        "gemini" => &config.providers.gemini.model,
+        _ => &config.providers.anthropic.model,
+    }
+}
+
+fn provider_supports_control_plane(config: &AppConfig, provider: &str) -> bool {
+    match provider {
+        "ollama" => true,
+        "anthropic" => config.providers.anthropic.api_key_env.is_some(),
+        "openai" => config.providers.openai.api_key_env.is_some(),
+        "openrouter" => config.providers.openrouter.api_key_env.is_some(),
+        "gemini" => config.providers.gemini.api_key_env.is_some(),
+        _ => false,
+    }
+}
+
+fn preferred_control_plane_candidates(config: &AppConfig) -> Vec<String> {
+    let mut ordered = Vec::new();
+    let default = config.providers.default_provider.as_str();
+
+    for candidate in ["ollama", "openrouter", "anthropic", "openai", "gemini"] {
+        if candidate == default {
+            continue;
+        }
+        if provider_supports_control_plane(config, candidate)
+            && !ordered.iter().any(|entry| entry == candidate)
+        {
+            ordered.push(candidate.to_string());
+        }
+    }
+
+    if ordered.is_empty() {
+        ordered.push(config.providers.default_provider.clone());
+    }
+
+    ordered
+}
+
+fn ensure_control_plane_defaults(config: &mut AppConfig) {
+    let preferred = preferred_control_plane_candidates(config);
+    let default = config.providers.default_provider.clone();
+    let current = config.providers.control_plane_provider.clone();
+
+    let should_replace = current
+        .as_deref()
+        .map(|provider| provider == default || !provider_supports_control_plane(config, provider))
+        .unwrap_or(true);
+
+    if should_replace {
+        config.providers.control_plane_provider = preferred.first().cloned();
+    }
+
+    let primary = config.providers.control_plane_provider.clone();
+    let mut next_chain = Vec::new();
+    for candidate in preferred.into_iter().chain(
+        config
+            .providers
+            .control_plane_fallback_chain
+            .clone()
+            .into_iter(),
+    ) {
+        if Some(candidate.as_str()) == primary.as_deref() || candidate == default {
+            continue;
+        }
+        if !next_chain.iter().any(|existing| existing == &candidate) {
+            next_chain.push(candidate);
+        }
+    }
+    config.providers.control_plane_fallback_chain = next_chain;
 }
 
 pub fn write_config_with_backup(config_path: &str, config: &AppConfig) -> Result<()> {

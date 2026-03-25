@@ -1364,11 +1364,11 @@ Remaining:
   - [x] media processing,
   - [x] plugin execution,
   - [x] node commands.
-- [ ] Add OpenTelemetry/Prometheus coverage for parity-critical runtime metrics:
+- [x] Add OpenTelemetry/Prometheus coverage for parity-critical runtime metrics:
   - [x] gateway/control-plane HTTP routes now expose a scrapeable Prometheus surface at `/metrics`,
   - [x] the shared observability helper API now records real Prometheus-compatible dimensional metrics for the shipped runtime categories,
   - [x] gateway security checks now export bearer/internal-token auth attempts, origin allow/deny decisions, and webhook rate-limit hits,
-  - broader parity-critical runtime coverage and OpenTelemetry export still remain.
+  - [x] the shipped CLI/runtime path now initializes tracing automatically and exports spans to OTLP when `OPENRUSTCLAW_OTLP_ENDPOINT` or `OTEL_EXPORTER_OTLP_ENDPOINT` is configured, with optional service-name/version overrides.
 - [x] Add full auth and access-control parity where OpenClaw documents it:
   - [x] an opt-in bearer-token gate now exists for `/control/...` and `/control/ui` through `security.control_api_token_env`, with Control UI token forwarding for its HTTP and WebSocket calls,
   - [x] tokens,
@@ -1389,9 +1389,9 @@ Remaining:
   - [x] `openrustclaw runtime services install-status|install` now adapts to user-level systemd on Linux or launchd agents on macOS through the same host user-service surface, and onboarding reuses that host-manager detection when offering daemon install,
   - [x] `gateway.network_mode = loopback|lan|remote` now makes loopback/LAN/remote deployment explicit and startup validates host/origin/auth mismatches before the runtime binds,
   - [x] trusted-proxy auth mode now exists for reverse proxies through `security.trusted_proxy_token_env` plus `X-OpenRustClaw-Trusted-Proxy-Token`/`X-Forwarded-Origin` on the gateway WebSocket and `/control/...` lanes.
-- [ ] Add control-plane model resilience so operator actions still work when the primary paid model is unavailable:
+- [x] Add control-plane model resilience so operator actions still work when the primary paid model is unavailable:
   - [x] operator-visible degraded-mode warnings now surface when the configured primary provider is unhealthy but a healthy fallback lane exists,
-  - separate low-cost or local fallback model for onboarding, updates, config edits, and model-switch operations,
+  - [x] onboarding plus provider-switch/runtime-plan flows now persist and expose a separate low-cost or local fallback model lane for onboarding, updates, config edits, and model-switch operations,
   - [x] explicit distinction between primary task model and control-plane/safety model,
   - [x] startup-time fallback validation now runs during `openrustclaw start`,
   - [x] operator warnings now emit when the runtime is booting in degraded control-plane mode.
