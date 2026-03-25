@@ -11,7 +11,6 @@
 //! Uses signal-cli (https://github.com/AsamK/signal-cli) via JSON-RPC
 //! or direct libsignal-client bindings when available.
 
-use std::collections::HashMap;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -47,7 +46,6 @@ pub struct SignalChannel {
     >,
     is_connected: RwLock<bool>,
     cli_process: Mutex<Option<Child>>,
-    message_cache: Arc<RwLock<HashMap<Uuid, String>>>, // Maps session_id to Signal message timestamp
 }
 
 /// Signal envelope types received from signal-cli daemon.
@@ -177,7 +175,6 @@ impl SignalChannel {
             rate_limiter,
             is_connected: RwLock::new(false),
             cli_process: Mutex::new(None),
-            message_cache: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -489,22 +486,6 @@ impl SignalChannel {
         Ok(metadata)
     }
 
-    /// Check if a phone number or UUID is in the allowlist.
-    fn is_allowed(&self, identifier: &str) -> bool {
-        if self.config.allowlist.is_empty() {
-            return true;
-        }
-        self.config.allowlist.contains(&identifier.to_string())
-    }
-
-    /// Check if a group is in the allowed groups list.
-    fn is_group_allowed(&self, group_id: &str) -> bool {
-        if self.config.allowed_groups.is_empty() {
-            return true;
-        }
-        self.config.allowed_groups.contains(&group_id.to_string())
-    }
-
     /// Start signal-cli daemon in JSON-RPC mode.
     async fn start_cli_daemon(&self) -> Result<()> {
         let cli_path = self
@@ -604,10 +585,10 @@ impl SignalChannel {
                 // Check allowlist
                 let user_id = source_number.clone().unwrap_or_else(|| source.clone());
                 if require_allowlist && !allowlist.is_empty() {
-                    let is_allowed = allowlist.contains(&user_id)
+                    let is_allowed = allowlist_contains(allowlist, &user_id)
                         || source_uuid
                             .as_ref()
-                            .map(|u| allowlist.contains(u))
+                            .map(|u| allowlist_contains(allowlist, u))
                             .unwrap_or(false);
                     if !is_allowed {
                         debug!(user = %user_id, "User not in allowlist, ignoring message");
@@ -618,7 +599,7 @@ impl SignalChannel {
                 // Check group allowlist
                 if let Some(ref group) = group_info {
                     if require_allowlist && !allowed_groups.is_empty() {
-                        if !allowed_groups.contains(&group.group_id) {
+                        if !allowlist_contains(allowed_groups, &group.group_id) {
                             debug!(group_id = %group.group_id, "Group not in allowlist, ignoring message");
                             return Ok(());
                         }
@@ -1032,6 +1013,13 @@ impl Channel for SignalChannel {
     }
 }
 
+fn allowlist_contains(entries: &[String], identifier: &str) -> bool {
+    if entries.is_empty() {
+        return true;
+    }
+    entries.iter().any(|entry| entry == identifier)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1064,32 +1052,28 @@ mod tests {
     fn test_is_allowed_empty_allowlist() {
         let mut config = create_test_config();
         config.allowlist = vec![];
-        let channel = SignalChannel::new(config);
-        assert!(channel.is_allowed("+1234567890"));
+        assert!(allowlist_contains(&config.allowlist, "+1234567890"));
     }
 
     #[test]
     fn test_is_allowed_with_allowlist() {
         let config = create_test_config();
-        let channel = SignalChannel::new(config);
-        assert!(channel.is_allowed("+9876543210"));
-        assert!(!channel.is_allowed("+1111111111"));
+        assert!(allowlist_contains(&config.allowlist, "+9876543210"));
+        assert!(!allowlist_contains(&config.allowlist, "+1111111111"));
     }
 
     #[test]
     fn test_is_group_allowed_empty() {
         let config = create_test_config();
-        let channel = SignalChannel::new(config);
-        assert!(channel.is_group_allowed("group1"));
+        assert!(allowlist_contains(&config.allowed_groups, "group1"));
     }
 
     #[test]
     fn test_is_group_allowed_with_list() {
         let mut config = create_test_config();
         config.allowed_groups = vec!["group1".to_string(), "group2".to_string()];
-        let channel = SignalChannel::new(config);
-        assert!(channel.is_group_allowed("group1"));
-        assert!(!channel.is_group_allowed("group3"));
+        assert!(allowlist_contains(&config.allowed_groups, "group1"));
+        assert!(!allowlist_contains(&config.allowed_groups, "group3"));
     }
 
     #[test]
