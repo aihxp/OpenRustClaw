@@ -368,10 +368,14 @@ For ongoing workspace-owned runtime operations, the shipped CLI now also support
 ```bash
 openrustclaw runtime services lock-status
 openrustclaw runtime services rotate-logs --keep 7 --max-bytes 10485760
+openrustclaw runtime migrate-config --config config/default.toml
+openrustclaw runtime upgrade-plan --config config/default.toml
 ```
 
 - `lock-status` inspects `.claw/control/runtime-lock.json` and reports whether the stored PID is still live or stale.
 - `rotate-logs` performs copy-truncate rotation on `.claw/control/runtime.log` and keeps archives under `.claw/control/runtime-log-archives/`.
+- `migrate-config` detects legacy config keys, infers missing deployment fields, and can rewrite the canonical config with a timestamped backup when run with `--apply`.
+- `upgrade-plan` summarizes the current runtime health, reload guidance, service install state, and runtime-lock status before a restart or binary/config upgrade.
 
 ---
 

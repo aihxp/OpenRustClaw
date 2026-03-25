@@ -402,6 +402,18 @@ enum RuntimeAction {
         #[arg(short, long, default_value = "config/default.toml")]
         config: String,
     },
+    /// Detect and optionally rewrite legacy config keys into the canonical runtime shape
+    MigrateConfig {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+        #[arg(long)]
+        apply: bool,
+    },
+    /// Build an operator upgrade plan from the current runtime, lock, and service state
+    UpgradePlan {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+    },
     /// Switch the default provider and optionally model/account key reference
     SwitchProvider {
         #[arg(short, long, default_value = "config/default.toml")]
@@ -4350,6 +4362,19 @@ async fn main() -> Result<()> {
             RuntimeAction::ReloadPlan { config } => {
                 let workspace_root = std::env::current_dir()?;
                 let plan = commands::runtime::runtime_reload_plan(&config, &workspace_root)?;
+                println!("{}", serde_json::to_string_pretty(&plan)?);
+                Ok(())
+            }
+            RuntimeAction::MigrateConfig { config, apply } => {
+                let workspace_root = std::env::current_dir()?;
+                let report = commands::runtime::migrate_config(&config, &workspace_root, apply)?;
+                println!("{}", serde_json::to_string_pretty(&report)?);
+                Ok(())
+            }
+            RuntimeAction::UpgradePlan { config } => {
+                let workspace_root = std::env::current_dir()?;
+                let plan =
+                    commands::runtime::runtime_upgrade_plan(&config, &workspace_root).await?;
                 println!("{}", serde_json::to_string_pretty(&plan)?);
                 Ok(())
             }

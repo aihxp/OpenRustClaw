@@ -191,7 +191,7 @@ Channel routing/operator controls:
   - `GET /control/runtime/vault`
   - `PUT /control/runtime/vault/{key}`
   - `DELETE /control/runtime/vault/{key}`
-- `openrustclaw runtime status|reload|switch-provider|switch-model|backup|restore`
+- `openrustclaw runtime status|reload|switch-provider|switch-model|backup|restore|migrate-config|upgrade-plan`
 - `openrustclaw runtime services status|scheduler|events|channels|install-status|install|lock-status`
 - `openrustclaw runtime services logs|rotate-logs`
 - `openrustclaw runtime vault status|list|set|delete`
@@ -201,6 +201,8 @@ Channel routing/operator controls:
 - runtime secret sources now load from workspace `.env` and an encrypted `.claw/control/runtime-vault.json` when `OPENRUSTCLAW_VAULT_PASSPHRASE` is set
 - provider/model cutovers are validated before config writes, runtime API cutovers roll back on failed reload, config writes create timestamped backup files, and `openrustclaw runtime backup|restore` now creates full workspace-state snapshots under `.claw/runtime-backups/` with an automatic pre-restore safety snapshot
 - `openrustclaw runtime status` now also reports the configured gateway deployment mode, bind host/port, allowed origins, and whether trusted-proxy auth is enabled
+- `openrustclaw runtime migrate-config` now detects legacy config keys, infers missing modern deployment fields such as `gateway.network_mode`, and can rewrite the canonical config shape with a timestamped backup
+- `openrustclaw runtime upgrade-plan` now composes runtime health, reload guidance, service install state, and runtime-lock state into a single operator upgrade playbook
 - startup now performs an explicit runtime fallback-health validation pass and warns when the system is booting in degraded control-plane mode with a healthy fallback provider available
 - standalone runtime ops now also support `openrustclaw runtime services install-status|install` for user-level systemd installation outside onboarding, using the same unit-generation path with an explicit config file target
 - standalone runtime ops now also support `openrustclaw runtime services rotate-logs` with archive retention under `.claw/control/runtime-log-archives/` plus `openrustclaw runtime services lock-status` for stale-PID/runtime-lock inspection on `.claw/control/runtime-lock.json`

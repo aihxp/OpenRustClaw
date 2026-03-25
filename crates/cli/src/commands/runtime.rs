@@ -69,6 +69,41 @@ pub struct RuntimeStatus {
     pub vault_unlocked: bool,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct RuntimeConfigMigrationIssue {
+    pub legacy_key: String,
+    pub canonical_key: String,
+    pub action: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RuntimeConfigMigrationReport {
+    pub config_path: String,
+    pub applied: bool,
+    pub changed: bool,
+    pub legacy_issues: Vec<RuntimeConfigMigrationIssue>,
+    pub inferred_defaults: Vec<String>,
+    pub backup_created: bool,
+    pub next_steps: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RuntimeUpgradePlan {
+    pub generated_at: String,
+    pub config_path: String,
+    pub runtime_status: RuntimeStatus,
+    pub runtime_health: RuntimeHealthReport,
+    pub reload_plan: RuntimeReloadPlan,
+    pub service_install_status: RuntimeServiceInstallStatus,
+    pub lock_status: RuntimeLockStatus,
+    pub backup_command: String,
+    pub log_rotation_command: String,
+    pub migrate_config_command: String,
+    pub ready_for_upgrade: bool,
+    pub blockers: Vec<String>,
+    pub steps: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuntimeHealthProviderEntry {
     pub provider: String,
@@ -305,6 +340,161 @@ pub fn install_runtime_user_service(
         .with_context(|| format!("Failed to write '{}'", service_path.display()))?;
 
     runtime_service_install_status(config_path, workspace_root)
+}
+
+pub fn migrate_config(
+    config_path: &str,
+    workspace_root: &Path,
+    apply: bool,
+) -> Result<RuntimeConfigMigrationReport> {
+    let resolved_config_path = resolve_runtime_config_path(workspace_root, config_path);
+    let raw = fs::read_to_string(&resolved_config_path)
+        .with_context(|| format!("Failed to read '{}'", resolved_config_path.display()))?;
+    let mut value = raw
+        .parse::<toml::Value>()
+        .context("Failed to parse runtime config TOML")?;
+    let mut legacy_issues = Vec::new();
+    let mut inferred_defaults = Vec::new();
+
+    migrate_legacy_string_key(
+        &mut value,
+        &["providers", "primary"],
+        &["providers", "default_provider"],
+        &mut legacy_issues,
+    );
+    migrate_legacy_string_key(
+        &mut value,
+        &["providers", "default"],
+        &["providers", "default_provider"],
+        &mut legacy_issues,
+    );
+    migrate_legacy_array_key(
+        &mut value,
+        &["providers", "fallbacks"],
+        &["providers", "fallback_chain"],
+        &mut legacy_issues,
+    );
+    migrate_legacy_string_key(
+        &mut value,
+        &["security", "require_authentication"],
+        &["security", "require_auth"],
+        &mut legacy_issues,
+    );
+    migrate_legacy_string_key(
+        &mut value,
+        &["gateway", "allowed_origin"],
+        &["gateway", "allowed_origins"],
+        &mut legacy_issues,
+    );
+    migrate_legacy_array_key(
+        &mut value,
+        &["gateway", "origin_whitelist"],
+        &["gateway", "allowed_origins"],
+        &mut legacy_issues,
+    );
+    migrate_legacy_bind_key(&mut value, &mut legacy_issues);
+    infer_gateway_network_mode(&mut value, &mut inferred_defaults)?;
+
+    let canonical = toml::from_str::<AppConfig>(&toml::to_string(&value)?)
+        .context("Canonicalized config failed validation")?;
+    let changed = !legacy_issues.is_empty() || !inferred_defaults.is_empty();
+    if apply && changed {
+        write_config_with_backup(config_path, &canonical)?;
+    }
+
+    let mut next_steps = Vec::new();
+    if changed && !apply {
+        next_steps.push(format!(
+            "Run `openrustclaw runtime migrate-config --config {} --apply` to rewrite the canonical config with a timestamped backup.",
+            config_path
+        ));
+    }
+    next_steps.push(format!(
+        "Run `openrustclaw runtime upgrade-plan --config {}` before the next production restart.",
+        config_path
+    ));
+
+    Ok(RuntimeConfigMigrationReport {
+        config_path: resolved_config_path.display().to_string(),
+        applied: apply && changed,
+        changed,
+        legacy_issues,
+        inferred_defaults,
+        backup_created: apply && changed && resolved_config_path.exists(),
+        next_steps,
+    })
+}
+
+pub async fn runtime_upgrade_plan(
+    config_path: &str,
+    workspace_root: &Path,
+) -> Result<RuntimeUpgradePlan> {
+    let runtime_status = runtime_status(config_path, workspace_root)?;
+    let runtime_health = runtime_health_status(config_path, workspace_root, false).await?;
+    let reload_plan = runtime_reload_plan(config_path, workspace_root)?;
+    let service_install_status = runtime_service_install_status(config_path, workspace_root)?;
+    let lock_status = runtime_lock_status(workspace_root)?;
+
+    let mut blockers = Vec::new();
+    if lock_status.active {
+        blockers.push("runtime lock is currently active; schedule the upgrade around the running process or stop it first".to_string());
+    }
+    if !runtime_health.startup_fallback_valid
+        && !runtime_health
+            .providers
+            .iter()
+            .any(|entry| entry.provider == runtime_health.default_provider && entry.healthy)
+    {
+        blockers.push(
+            "no healthy default or fallback control-plane provider is currently available"
+                .to_string(),
+        );
+    }
+    if !service_install_status.supported {
+        blockers.push("user-level systemd integration is unavailable on this host".to_string());
+    }
+
+    let mut steps = vec![
+        "Take a workspace snapshot with `openrustclaw runtime backup` before changing config or binaries.".to_string(),
+        "Rotate and archive the runtime log with `openrustclaw runtime services rotate-logs --keep 7 --max-bytes 10485760` before restart windows.".to_string(),
+        format!(
+            "Run `openrustclaw runtime migrate-config --config {}{}` to normalize any remaining legacy config keys.",
+            config_path,
+            if blockers.is_empty() { "" } else { "" }
+        ),
+    ];
+    if reload_plan.restart_required {
+        steps.push("The current reload plan reports restart-required changes; prefer a controlled restart rather than live rebind.".to_string());
+    } else {
+        steps.push("The current reload plan is live-safe; apply non-disruptive config changes before the maintenance restart if needed.".to_string());
+    }
+    if service_install_status.installed {
+        steps.push(
+            "Use the installed user service to restart cleanly after the upgrade.".to_string(),
+        );
+    } else {
+        steps.push("Consider `openrustclaw runtime services install --config ...` if this workspace should restart under user-level systemd.".to_string());
+    }
+
+    Ok(RuntimeUpgradePlan {
+        generated_at: Utc::now().to_rfc3339(),
+        config_path: config_path.to_string(),
+        runtime_status,
+        runtime_health,
+        reload_plan,
+        service_install_status,
+        lock_status,
+        backup_command: "openrustclaw runtime backup".to_string(),
+        log_rotation_command:
+            "openrustclaw runtime services rotate-logs --keep 7 --max-bytes 10485760".to_string(),
+        migrate_config_command: format!(
+            "openrustclaw runtime migrate-config --config {} --apply",
+            config_path
+        ),
+        ready_for_upgrade: blockers.is_empty(),
+        blockers,
+        steps,
+    })
 }
 
 pub fn runtime_lock_status(workspace_root: &Path) -> Result<RuntimeLockStatus> {
@@ -1531,6 +1721,139 @@ fn copy_path_recursive(source: &Path, dest: &Path) -> Result<()> {
     Ok(())
 }
 
+fn toml_section_mut<'a>(
+    value: &'a mut toml::Value,
+    section: &str,
+) -> Option<&'a mut toml::value::Table> {
+    value.get_mut(section)?.as_table_mut()
+}
+
+fn migrate_legacy_string_key(
+    value: &mut toml::Value,
+    legacy_path: &[&str],
+    canonical_path: &[&str],
+    issues: &mut Vec<RuntimeConfigMigrationIssue>,
+) {
+    migrate_legacy_key(value, legacy_path, canonical_path, issues, |v| {
+        matches!(v, toml::Value::String(_) | toml::Value::Boolean(_))
+    });
+}
+
+fn migrate_legacy_array_key(
+    value: &mut toml::Value,
+    legacy_path: &[&str],
+    canonical_path: &[&str],
+    issues: &mut Vec<RuntimeConfigMigrationIssue>,
+) {
+    migrate_legacy_key(value, legacy_path, canonical_path, issues, |v| {
+        matches!(v, toml::Value::Array(_) | toml::Value::String(_))
+    });
+}
+
+fn migrate_legacy_key(
+    value: &mut toml::Value,
+    legacy_path: &[&str],
+    canonical_path: &[&str],
+    issues: &mut Vec<RuntimeConfigMigrationIssue>,
+    predicate: impl Fn(&toml::Value) -> bool,
+) {
+    if legacy_path.len() != 2 || canonical_path.len() != 2 {
+        return;
+    }
+    let Some(section) = toml_section_mut(value, legacy_path[0]) else {
+        return;
+    };
+    let Some(legacy_value) = section.get(legacy_path[1]).cloned() else {
+        return;
+    };
+    if !predicate(&legacy_value) {
+        return;
+    }
+    let canonical_present = section.contains_key(canonical_path[1]);
+    if !canonical_present {
+        let rewritten = match legacy_value {
+            toml::Value::String(value) if canonical_path[1] == "allowed_origins" => {
+                toml::Value::Array(vec![toml::Value::String(value)])
+            }
+            toml::Value::String(value) if canonical_path[1] == "fallback_chain" => {
+                toml::Value::Array(vec![toml::Value::String(value)])
+            }
+            other => other,
+        };
+        section.insert(canonical_path[1].to_string(), rewritten);
+    }
+    issues.push(RuntimeConfigMigrationIssue {
+        legacy_key: legacy_path.join("."),
+        canonical_key: canonical_path.join("."),
+        action: if canonical_present {
+            "legacy key detected; canonical key already present".to_string()
+        } else {
+            "canonical key populated from legacy value".to_string()
+        },
+    });
+}
+
+fn migrate_legacy_bind_key(value: &mut toml::Value, issues: &mut Vec<RuntimeConfigMigrationIssue>) {
+    let Some(section) = toml_section_mut(value, "gateway") else {
+        return;
+    };
+    let Some(bind_value) = section
+        .get("bind")
+        .and_then(|value| value.as_str())
+        .map(str::to_string)
+    else {
+        return;
+    };
+
+    if let Some((host, port)) = bind_value.rsplit_once(':') {
+        if !section.contains_key("host") {
+            section.insert("host".to_string(), toml::Value::String(host.to_string()));
+        }
+        if !section.contains_key("port")
+            && let Ok(port) = port.parse::<i64>()
+        {
+            section.insert("port".to_string(), toml::Value::Integer(port));
+        }
+        issues.push(RuntimeConfigMigrationIssue {
+            legacy_key: "gateway.bind".to_string(),
+            canonical_key: "gateway.host + gateway.port".to_string(),
+            action: "canonical bind fields populated from legacy gateway.bind".to_string(),
+        });
+    }
+}
+
+fn infer_gateway_network_mode(
+    value: &mut toml::Value,
+    inferred_defaults: &mut Vec<String>,
+) -> Result<()> {
+    let Some(section) = toml_section_mut(value, "gateway") else {
+        return Ok(());
+    };
+    if section.contains_key("network_mode") {
+        return Ok(());
+    }
+
+    let host = section
+        .get("host")
+        .and_then(|value| value.as_str())
+        .unwrap_or("127.0.0.1")
+        .to_string();
+    let inferred = match host.as_str() {
+        "127.0.0.1" | "localhost" => "loopback",
+        "0.0.0.0" => "lan",
+        _ => "remote",
+    };
+    section.insert(
+        "network_mode".to_string(),
+        toml::Value::String(inferred.to_string()),
+    );
+    inferred_defaults.push(format!(
+        "gateway.network_mode inferred as `{}` from gateway.host = `{}`",
+        inferred, host
+    ));
+    Ok(())
+}
+
 fn remove_path_if_exists(path: &Path) -> Result<()> {
     if !path.exists() {
         return Ok(());
@@ -1710,6 +2033,134 @@ mod tests {
             assert!(lock_path.exists());
         }
         assert!(!lock_path.exists());
+        Ok(())
+    }
+
+    #[test]
+    fn migrate_config_detects_and_applies_legacy_keys() -> Result<()> {
+        let temp = tempdir()?;
+        let workspace_root = temp.path();
+        fs::create_dir_all(workspace_root.join("config"))?;
+        let config_path = workspace_root.join("config/default.toml");
+        let mut value = toml::to_string_pretty(&AppConfig::default())?.parse::<toml::Value>()?;
+        let gateway = value
+            .get_mut("gateway")
+            .and_then(toml::Value::as_table_mut)
+            .unwrap();
+        gateway.remove("host");
+        gateway.remove("port");
+        gateway.remove("allowed_origins");
+        gateway.remove("network_mode");
+        gateway.insert(
+            "bind".to_string(),
+            toml::Value::String("0.0.0.0:19999".to_string()),
+        );
+        gateway.insert(
+            "origin_whitelist".to_string(),
+            toml::Value::Array(vec![toml::Value::String(
+                "https://console.example.com".to_string(),
+            )]),
+        );
+
+        let providers = value
+            .get_mut("providers")
+            .and_then(toml::Value::as_table_mut)
+            .unwrap();
+        providers.remove("default_provider");
+        providers.remove("fallback_chain");
+        providers.insert(
+            "primary".to_string(),
+            toml::Value::String("anthropic".to_string()),
+        );
+        providers.insert(
+            "fallbacks".to_string(),
+            toml::Value::Array(vec![toml::Value::String("openai".to_string())]),
+        );
+
+        let security = value
+            .get_mut("security")
+            .and_then(toml::Value::as_table_mut)
+            .unwrap();
+        security.remove("require_auth");
+        security.insert(
+            "require_authentication".to_string(),
+            toml::Value::Boolean(true),
+        );
+
+        fs::write(&config_path, toml::to_string_pretty(&value)?)?;
+
+        let dry_run = migrate_config(config_path.to_str().unwrap(), workspace_root, false)?;
+        assert!(dry_run.changed);
+        assert!(!dry_run.applied);
+        assert!(
+            dry_run
+                .legacy_issues
+                .iter()
+                .any(|issue| issue.legacy_key == "providers.primary")
+        );
+
+        let applied = migrate_config(config_path.to_str().unwrap(), workspace_root, true)?;
+        assert!(applied.applied);
+        let rendered = fs::read_to_string(&config_path)?;
+        assert!(rendered.contains("default_provider = \"anthropic\""));
+        assert!(rendered.contains("fallback_chain = [\"openai\"]"));
+        assert!(rendered.contains("network_mode = \"lan\""));
+        assert!(rendered.contains("allowed_origins = [\"https://console.example.com\"]"));
+        assert!(rendered.contains("require_auth = true"));
+        Ok(())
+    }
+
+    #[test]
+    fn runtime_upgrade_plan_uses_cached_health() -> Result<()> {
+        let temp = tempdir()?;
+        let workspace_root = temp.path();
+        fs::create_dir_all(workspace_root.join("config"))?;
+        let config_path = workspace_root.join("config/default.toml");
+        fs::write(&config_path, toml::to_string_pretty(&AppConfig::default())?)?;
+        fs::create_dir_all(workspace_root.join(".claw/control"))?;
+        fs::write(
+            runtime_health_path_for(workspace_root),
+            serde_json::to_vec_pretty(&RuntimeHealthReport {
+                generated_at: Utc::now().to_rfc3339(),
+                config_path: "config/default.toml".to_string(),
+                default_provider: "anthropic".to_string(),
+                fallback_chain: vec!["openai".to_string()],
+                recommended_control_plane_provider: Some("anthropic".to_string()),
+                startup_fallback_valid: true,
+                degraded_control_plane_mode: false,
+                providers: vec![RuntimeHealthProviderEntry {
+                    provider: "anthropic".to_string(),
+                    role: "primary".to_string(),
+                    model: "claude-sonnet-4-20250514".to_string(),
+                    configured: true,
+                    healthy: true,
+                    issue: None,
+                }],
+                artifacts: RuntimeArtifactHealth {
+                    artifact_count: 0,
+                    persona_artifact_count: 0,
+                    registry_path: workspace_root
+                        .join(".claw/artifacts/registry.json")
+                        .display()
+                        .to_string(),
+                    model_family: "anthropic".to_string(),
+                    included_for_default_model: 0,
+                },
+            })?,
+        )?;
+
+        let runtime = tokio::runtime::Runtime::new()?;
+        let plan = runtime.block_on(runtime_upgrade_plan(
+            config_path.to_str().unwrap(),
+            workspace_root,
+        ))?;
+        assert_eq!(plan.config_path, config_path.to_str().unwrap());
+        assert_eq!(plan.backup_command, "openrustclaw runtime backup");
+        assert!(
+            plan.steps
+                .iter()
+                .any(|step| step.contains("runtime migrate-config"))
+        );
         Ok(())
     }
 }
