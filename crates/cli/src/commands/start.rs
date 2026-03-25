@@ -76,8 +76,10 @@ use sqlx::Row;
 use uuid::Uuid;
 
 use super::channels::{
-    ChannelBindingSpec, ChannelRegistry, ChannelSendPolicy, ensure_account_manifest,
-    identity_from_message, load_registry, message_bot_mentioned, resolve_root,
+    ChannelBindingSpec, ChannelRegistry, ChannelRouteStatus, ChannelSendPolicy,
+    channel_route_key_with_binding as registry_channel_route_key_with_binding,
+    channel_scope_from_metadata as registry_channel_scope_from_metadata, load_registry,
+    message_bot_mentioned, preview_route, resolve_root,
 };
 #[cfg(feature = "voice")]
 use super::talk;
@@ -1626,24 +1628,19 @@ impl ChannelAgent {
         &self,
         incoming: &openrustclaw_core::types::IncomingMessage,
     ) -> Result<Option<ChannelRouteDecision>> {
-        let identity = identity_from_message(incoming);
-        let registry_root = { self.channel_registry.read().await.root.clone() };
-        let account = ensure_account_manifest(
-            &registry_root,
-            &identity,
-            self.session_routing.pairing_approval_required,
-        )?;
-        {
+        let preview = {
             let mut registry = self.channel_registry.write().await;
-            registry
-                .accounts
-                .insert(account.id.clone(), account.clone());
-        }
+            preview_route(&mut registry, incoming, &self.session_routing)?
+        };
 
-        if account.blocked || !account.enabled {
+        if matches!(
+            preview.status,
+            ChannelRouteStatus::Blocked | ChannelRouteStatus::Disabled
+        ) {
             return Ok(None);
         }
-        if !account.approved {
+        if preview.status == ChannelRouteStatus::PendingApproval {
+            let identity = super::channels::identity_from_message(incoming);
             let _ = self
                 .event_bus
                 .publish_named(
@@ -1652,7 +1649,7 @@ impl ChannelAgent {
                     None,
                     &serde_json::json!({
                         "platform": incoming.platform.to_string(),
-                        "account_id": account.id,
+                        "account_id": preview.account_id,
                         "user_id": incoming.user_id,
                         "workspace_id": identity.workspace_id,
                     }),
@@ -1662,74 +1659,32 @@ impl ChannelAgent {
             return Ok(None);
         }
 
-        let registry = self.channel_registry.read().await;
-        let channel_scopes = channel_scope_candidates(
-            &incoming.metadata,
-            self.session_routing.thread_overrides_channel,
-        );
-        let binding = resolve_channel_binding(
-            &registry,
-            incoming.platform,
-            identity.workspace_id.as_deref(),
-            Some(account.id.as_str()),
-            &channel_scopes,
-        );
-
-        let direct_strategy = account
-            .direct_strategy
-            .clone()
-            .or_else(|| binding.and_then(|value| value.direct_strategy.clone()))
-            .unwrap_or_else(|| self.session_routing.direct_strategy.clone());
-        let group_strategy = account
-            .group_strategy
-            .clone()
-            .or_else(|| binding.and_then(|value| value.group_strategy.clone()))
-            .unwrap_or_else(|| self.session_routing.group_strategy.clone());
-        let activation_mode = account
-            .activation_mode
-            .clone()
-            .or_else(|| binding.and_then(|value| value.activation_mode.clone()))
-            .unwrap_or_else(|| self.session_routing.default_group_activation.clone());
-        let send_policy = account
-            .send_policy
-            .clone()
-            .or_else(|| binding.and_then(|value| value.send_policy.clone()))
-            .unwrap_or_else(|| default_send_policy(&self.session_routing));
-        let workspace_id = account
-            .workspace_target
-            .clone()
-            .or_else(|| binding.and_then(|value| value.workspace_target.clone()))
-            .or_else(|| identity.workspace_id.clone());
-        let agent_id = account
-            .agent_id
-            .clone()
-            .or_else(|| binding.and_then(|value| value.agent_id.clone()));
+        let identity = super::channels::identity_from_message(incoming);
         let session_type = if identity.is_group {
             SessionType::Group
         } else {
             SessionType::Dm
         };
 
-        let route_key = channel_route_key_with_binding(
-            incoming,
-            &direct_strategy,
-            &group_strategy,
-            self.session_routing.thread_overrides_channel,
-            workspace_id.as_deref(),
-            agent_id.as_deref(),
-            Some(account.id.as_str()),
-        );
-
         Ok(Some(ChannelRouteDecision {
-            route_key,
+            route_key: preview.route_key,
             session_type,
-            workspace_id,
-            agent_id,
-            activation_mode,
-            send_policy,
-            account_id: account.id,
-            binding_id: binding.map(|value| value.id.clone()),
-            channel_extension: parse_channel_extension_binding(binding),
+            workspace_id: preview.workspace_id,
+            agent_id: preview.agent_id,
+            activation_mode: preview.activation_mode,
+            send_policy: preview.send_policy,
+            account_id: preview.account_id,
+            binding_id: preview.binding_id.clone(),
+            channel_extension: {
+                let registry = self.channel_registry.read().await;
+                let binding = preview.binding_id.as_deref().and_then(|binding_id| {
+                    registry
+                        .bindings
+                        .iter()
+                        .find(|value| value.id == binding_id)
+                });
+                parse_channel_extension_binding(binding)
+            },
         }))
     }
 
@@ -2023,105 +1978,15 @@ fn channel_route_key_with_binding(
     agent_id: Option<&str>,
     account_id: Option<&str>,
 ) -> String {
-    let mut prefix = vec![message.platform.to_string()];
-    if let Some(workspace_id) = workspace_id {
-        prefix.push(format!("workspace={workspace_id}"));
-    }
-    if let Some(agent_id) = agent_id {
-        prefix.push(format!("agent={agent_id}"));
-    }
-    if let Some(account_id) = account_id {
-        prefix.push(format!("account={account_id}"));
-    }
-
-    if let Some(scope) = channel_scope_from_metadata(&message.metadata, thread_overrides_channel) {
-        if group_strategy == "shared_channel" {
-            prefix.push(scope);
-            prefix.push("shared".to_string());
-            return prefix.join(":");
-        }
-        prefix.push(scope);
-        prefix.push(message.user_id.clone());
-        return prefix.join(":");
-    }
-
-    match direct_strategy {
-        "shared_main" => {
-            prefix.push("main".to_string());
-            prefix.join(":")
-        }
-        _ => {
-            prefix.push("direct".to_string());
-            prefix.push(message.user_id.clone());
-            prefix.join(":")
-        }
-    }
-}
-
-fn resolve_channel_binding<'a>(
-    registry: &'a ChannelRegistry,
-    platform: Platform,
-    workspace_id: Option<&str>,
-    account_id: Option<&str>,
-    channel_scopes: &[String],
-) -> Option<&'a ChannelBindingSpec> {
-    registry
-        .bindings
-        .iter()
-        .filter(|binding| binding.enabled && binding.platform == platform.to_string())
-        .filter(|binding| {
-            binding
-                .workspace_match
-                .as_deref()
-                .map(|value| workspace_id == Some(value))
-                .unwrap_or(true)
-        })
-        .filter(|binding| {
-            binding
-                .account_match
-                .as_deref()
-                .map(|value| account_id == Some(value))
-                .unwrap_or(true)
-        })
-        .filter(|binding| {
-            binding
-                .channel_match
-                .as_deref()
-                .map(|value| channel_scopes.iter().any(|scope| scope == value))
-                .unwrap_or(true)
-        })
-        .max_by_key(|binding| {
-            let specificity = usize::from(binding.workspace_match.is_some())
-                + usize::from(binding.account_match.is_some())
-                + usize::from(binding.channel_match.is_some());
-            (specificity, -(binding.priority as isize))
-        })
-}
-
-fn channel_scope_candidates(
-    metadata: &serde_json::Value,
-    thread_overrides_channel: bool,
-) -> Vec<String> {
-    let mut candidates = Vec::new();
-    if let Some(primary) = channel_scope_from_metadata(metadata, thread_overrides_channel) {
-        candidates.push(primary);
-    }
-    if let Some(parent) = parent_channel_scope_from_metadata(metadata)
-        && !candidates.iter().any(|existing| existing == &parent)
-    {
-        candidates.push(parent);
-    }
-    candidates
-}
-
-fn default_send_policy(policy: &SessionRoutingConfig) -> ChannelSendPolicy {
-    ChannelSendPolicy {
-        mode: policy.default_send_mode.clone(),
-        max_chunk_chars: policy.default_chunk_chars,
-        chunk_delay_ms: policy.default_chunk_delay_ms,
-        coalesce_below_chars: Some(320),
-        preview_chars: 280,
-    }
+    registry_channel_route_key_with_binding(
+        message,
+        direct_strategy,
+        group_strategy,
+        thread_overrides_channel,
+        workspace_id,
+        agent_id,
+        account_id,
+    )
 }
 
 fn parse_channel_extension_binding(
@@ -2289,67 +2154,7 @@ fn channel_scope_from_metadata(
     metadata: &serde_json::Value,
     thread_overrides_channel: bool,
 ) -> Option<String> {
-    let primary_keys: &[&str] = if thread_overrides_channel {
-        &[
-            "slack_thread_ts",
-            "slack_channel",
-            "telegram_chat_id",
-            "discord_thread_id",
-            "discord_channel_id",
-            "google_chat_thread",
-            "google_chat_space",
-            "teams_conversation_id",
-            "matrix_room_id",
-            "whatsapp_chat_id",
-            "line_room_id",
-            "meta_thread_id",
-        ]
-    } else {
-        &[
-            "slack_channel",
-            "telegram_chat_id",
-            "discord_channel_id",
-            "google_chat_space",
-            "teams_conversation_id",
-            "matrix_room_id",
-            "whatsapp_chat_id",
-            "line_room_id",
-            "meta_thread_id",
-        ]
-    };
-
-    for key in primary_keys {
-        if let Some(value) = metadata.get(*key) {
-            if let Some(text) = value.as_str() {
-                return Some(format!("{}={}", key, text));
-            }
-            if let Some(number) = value.as_i64() {
-                return Some(format!("{}={}", key, number));
-            }
-            if let Some(number) = value.as_u64() {
-                return Some(format!("{}={}", key, number));
-            }
-        }
-    }
-
-    None
-}
-
-fn parent_channel_scope_from_metadata(metadata: &serde_json::Value) -> Option<String> {
-    for key in ["discord_parent_channel_id", "slack_channel"] {
-        if let Some(value) = metadata.get(key) {
-            if let Some(text) = value.as_str() {
-                return Some(format!("{}={}", key, text));
-            }
-            if let Some(number) = value.as_i64() {
-                return Some(format!("{}={}", key, number));
-            }
-            if let Some(number) = value.as_u64() {
-                return Some(format!("{}={}", key, number));
-            }
-        }
-    }
-    None
+    registry_channel_scope_from_metadata(metadata, thread_overrides_channel)
 }
 
 fn trim_history(history: &mut Vec<Message>, max_history_messages: usize) -> usize {

@@ -1418,9 +1418,9 @@ Remaining:
   - resource-budget regression checks for idle RAM, startup latency, and binary size.
 - [ ] Build a parity test suite that validates behavior against documented OpenClaw scenarios.
 - [ ] Build fixture-based integration suites for:
-  - channel routing,
+  - [x] channel routing,
   - [x] pairing,
-  - group mention rules,
+  - [x] group mention rules,
   - [x] media workflows,
   - [x] session tools,
   - [x] node commands.

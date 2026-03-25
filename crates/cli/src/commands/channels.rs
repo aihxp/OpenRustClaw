@@ -5,6 +5,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
+use openrustclaw_core::config::SessionRoutingConfig;
 use openrustclaw_core::types::{IncomingMessage, Platform};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -159,6 +160,28 @@ pub struct ChannelIdentity {
     pub channel_scope: Option<String>,
     pub is_group: bool,
     pub bot_mentioned: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ChannelRouteStatus {
+    Allowed,
+    PendingApproval,
+    Blocked,
+    Disabled,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChannelRoutePreview {
+    pub status: ChannelRouteStatus,
+    pub route_key: String,
+    pub workspace_id: Option<String>,
+    pub agent_id: Option<String>,
+    pub activation_mode: String,
+    pub send_policy: ChannelSendPolicy,
+    pub account_id: String,
+    pub binding_id: Option<String>,
+    pub should_respond: bool,
 }
 
 pub fn channels_root_for(root: impl AsRef<Path>) -> PathBuf {
@@ -712,6 +735,269 @@ pub fn message_bot_mentioned(message: &IncomingMessage) -> bool {
         }
     }
     false
+}
+
+pub fn channel_scope_from_metadata(
+    metadata: &serde_json::Value,
+    thread_overrides_channel: bool,
+) -> Option<String> {
+    let primary_keys: &[&str] = if thread_overrides_channel {
+        &[
+            "slack_thread_ts",
+            "slack_channel",
+            "telegram_chat_id",
+            "discord_thread_id",
+            "discord_channel_id",
+            "google_chat_thread",
+            "google_chat_space",
+            "teams_conversation_id",
+            "matrix_room_id",
+            "whatsapp_chat_id",
+            "line_room_id",
+            "meta_thread_id",
+        ]
+    } else {
+        &[
+            "slack_channel",
+            "telegram_chat_id",
+            "discord_channel_id",
+            "google_chat_space",
+            "teams_conversation_id",
+            "matrix_room_id",
+            "whatsapp_chat_id",
+            "line_room_id",
+            "meta_thread_id",
+        ]
+    };
+
+    for key in primary_keys {
+        if let Some(value) = metadata.get(*key) {
+            if let Some(text) = value.as_str() {
+                return Some(format!("{}={}", key, text));
+            }
+            if let Some(number) = value.as_i64() {
+                return Some(format!("{}={}", key, number));
+            }
+            if let Some(number) = value.as_u64() {
+                return Some(format!("{}={}", key, number));
+            }
+        }
+    }
+
+    None
+}
+
+pub fn parent_channel_scope_from_metadata(metadata: &serde_json::Value) -> Option<String> {
+    for key in ["discord_parent_channel_id", "slack_channel"] {
+        if let Some(value) = metadata.get(key) {
+            if let Some(text) = value.as_str() {
+                return Some(format!("{}={}", key, text));
+            }
+            if let Some(number) = value.as_i64() {
+                return Some(format!("{}={}", key, number));
+            }
+            if let Some(number) = value.as_u64() {
+                return Some(format!("{}={}", key, number));
+            }
+        }
+    }
+    None
+}
+
+pub fn channel_scope_candidates(
+    metadata: &serde_json::Value,
+    thread_overrides_channel: bool,
+) -> Vec<String> {
+    let mut candidates = Vec::new();
+    if let Some(primary) = channel_scope_from_metadata(metadata, thread_overrides_channel) {
+        candidates.push(primary);
+    }
+    if let Some(parent) = parent_channel_scope_from_metadata(metadata)
+        && !candidates.iter().any(|existing| existing == &parent)
+    {
+        candidates.push(parent);
+    }
+    candidates
+}
+
+pub fn channel_route_key_with_binding(
+    message: &IncomingMessage,
+    direct_strategy: &str,
+    group_strategy: &str,
+    thread_overrides_channel: bool,
+    workspace_id: Option<&str>,
+    agent_id: Option<&str>,
+    account_id: Option<&str>,
+) -> String {
+    let mut prefix = vec![message.platform.to_string()];
+    if let Some(workspace_id) = workspace_id {
+        prefix.push(format!("workspace={workspace_id}"));
+    }
+    if let Some(agent_id) = agent_id {
+        prefix.push(format!("agent={agent_id}"));
+    }
+    if let Some(account_id) = account_id {
+        prefix.push(format!("account={account_id}"));
+    }
+
+    if let Some(scope) = channel_scope_from_metadata(&message.metadata, thread_overrides_channel) {
+        if group_strategy == "shared_channel" {
+            prefix.push(scope);
+            prefix.push("shared".to_string());
+            return prefix.join(":");
+        }
+        prefix.push(scope);
+        prefix.push(message.user_id.clone());
+        return prefix.join(":");
+    }
+
+    match direct_strategy {
+        "shared_main" => {
+            prefix.push("main".to_string());
+            prefix.join(":")
+        }
+        _ => {
+            prefix.push("direct".to_string());
+            prefix.push(message.user_id.clone());
+            prefix.join(":")
+        }
+    }
+}
+
+pub fn resolve_channel_binding<'a>(
+    registry: &'a ChannelRegistry,
+    platform: Platform,
+    workspace_id: Option<&str>,
+    account_id: Option<&str>,
+    channel_scopes: &[String],
+) -> Option<&'a ChannelBindingSpec> {
+    registry
+        .bindings
+        .iter()
+        .filter(|binding| binding.enabled && binding.platform == platform.to_string())
+        .filter(|binding| {
+            binding
+                .workspace_match
+                .as_deref()
+                .map(|value| workspace_id == Some(value))
+                .unwrap_or(true)
+        })
+        .filter(|binding| {
+            binding
+                .account_match
+                .as_deref()
+                .map(|value| account_id == Some(value))
+                .unwrap_or(true)
+        })
+        .filter(|binding| {
+            binding
+                .channel_match
+                .as_deref()
+                .map(|value| channel_scopes.iter().any(|scope| scope == value))
+                .unwrap_or(true)
+        })
+        .max_by_key(|binding| {
+            let specificity = usize::from(binding.workspace_match.is_some())
+                + usize::from(binding.account_match.is_some())
+                + usize::from(binding.channel_match.is_some());
+            (specificity, -(binding.priority as isize))
+        })
+}
+
+pub fn default_send_policy(policy: &SessionRoutingConfig) -> ChannelSendPolicy {
+    ChannelSendPolicy {
+        mode: policy.default_send_mode.clone(),
+        max_chunk_chars: policy.default_chunk_chars,
+        chunk_delay_ms: policy.default_chunk_delay_ms,
+        coalesce_below_chars: Some(320),
+        preview_chars: 280,
+    }
+}
+
+pub fn preview_route(
+    registry: &mut ChannelRegistry,
+    incoming: &IncomingMessage,
+    policy: &SessionRoutingConfig,
+) -> Result<ChannelRoutePreview> {
+    let identity = identity_from_message(incoming);
+    let account =
+        ensure_account_manifest(&registry.root, &identity, policy.pairing_approval_required)?;
+    registry
+        .accounts
+        .insert(account.id.clone(), account.clone());
+
+    let channel_scopes =
+        channel_scope_candidates(&incoming.metadata, policy.thread_overrides_channel);
+    let binding = resolve_channel_binding(
+        registry,
+        incoming.platform,
+        identity.workspace_id.as_deref(),
+        Some(account.id.as_str()),
+        &channel_scopes,
+    );
+
+    let direct_strategy = account
+        .direct_strategy
+        .clone()
+        .or_else(|| binding.and_then(|value| value.direct_strategy.clone()))
+        .unwrap_or_else(|| policy.direct_strategy.clone());
+    let group_strategy = account
+        .group_strategy
+        .clone()
+        .or_else(|| binding.and_then(|value| value.group_strategy.clone()))
+        .unwrap_or_else(|| policy.group_strategy.clone());
+    let activation_mode = account
+        .activation_mode
+        .clone()
+        .or_else(|| binding.and_then(|value| value.activation_mode.clone()))
+        .unwrap_or_else(|| policy.default_group_activation.clone());
+    let send_policy = account
+        .send_policy
+        .clone()
+        .or_else(|| binding.and_then(|value| value.send_policy.clone()))
+        .unwrap_or_else(|| default_send_policy(policy));
+    let workspace_id = account
+        .workspace_target
+        .clone()
+        .or_else(|| binding.and_then(|value| value.workspace_target.clone()))
+        .or_else(|| identity.workspace_id.clone());
+    let agent_id = account
+        .agent_id
+        .clone()
+        .or_else(|| binding.and_then(|value| value.agent_id.clone()));
+    let route_key = channel_route_key_with_binding(
+        incoming,
+        &direct_strategy,
+        &group_strategy,
+        policy.thread_overrides_channel,
+        workspace_id.as_deref(),
+        agent_id.as_deref(),
+        Some(account.id.as_str()),
+    );
+
+    let status = if account.blocked {
+        ChannelRouteStatus::Blocked
+    } else if !account.enabled {
+        ChannelRouteStatus::Disabled
+    } else if !account.approved {
+        ChannelRouteStatus::PendingApproval
+    } else {
+        ChannelRouteStatus::Allowed
+    };
+    let should_respond =
+        !identity.is_group || activation_mode != "mention" || identity.bot_mentioned;
+
+    Ok(ChannelRoutePreview {
+        status,
+        route_key,
+        workspace_id,
+        agent_id,
+        activation_mode,
+        send_policy,
+        account_id: account.id,
+        binding_id: binding.map(|value| value.id.clone()),
+        should_respond,
+    })
 }
 
 fn detect_yaml_paths(root: &Path) -> Vec<PathBuf> {

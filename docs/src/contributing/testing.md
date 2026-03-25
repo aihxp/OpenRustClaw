@@ -18,6 +18,7 @@ OpenRustClaw/
 │   │   ├── Cargo.toml
 │   │   └── src/
 │   │       ├── agent_runtime_test.rs
+│   │       ├── channel_fixture_test.rs
 │   │       ├── fixture_suite_test.rs
 │   │       ├── gateway_test.rs
 │   │       ├── mcp_test.rs
@@ -62,6 +63,7 @@ Notable coverage already in the crate:
 - MCP and provider-chain behavior
 - memory and scheduler workflows
 - security flows
+- channel routing and group-mention activation rules
 - fixture-driven shipped-surface checks
 
 The `fixture_suite_test` module is the fast local fixture lane for:
@@ -70,6 +72,12 @@ The `fixture_suite_test` module is the fast local fixture lane for:
 - mobile pairing and unpair flows
 - mobile command approval and rejection flows
 - durable session persistence and status transitions
+
+The `channel_fixture_test` module covers the shipped routing registry behavior for:
+
+- account-scoped and binding-scoped channel routing precedence
+- thread-vs-channel scope selection
+- mention-only group activation
 
 These tests should avoid real external services and use tempdirs, in-memory state, or local SQLite
 fixtures whenever possible.
@@ -80,6 +88,9 @@ cargo test -p openrustclaw-integration-tests --quiet
 
 # Just the fixture suite
 cargo test -p openrustclaw-integration-tests fixture_suite_test --quiet
+
+# Just the channel routing fixture suite
+cargo test -p openrustclaw-integration-tests channel_fixture_test --quiet
 ```
 
 ## E2E Tests
