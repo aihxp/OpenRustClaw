@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use tokio::fs;
 
 use super::models;
-use super::{channels, control, doctor};
+use super::{channels, control, doctor, runtime};
 
 /// Onboarding wizard state
 #[derive(Default)]
@@ -740,39 +740,11 @@ async fn save_provider_config(provider: &str, api_key: &str) -> Result<()> {
 }
 
 async fn install_daemon() -> Result<()> {
-    // Get current executable path
-    let current_exe = std::env::current_exe()?;
-    let exe_path = current_exe.display();
-
-    let service_content = format!(
-        r#"[Unit]
-Description=OpenRustClaw Gateway
-After=network.target
-
-[Service]
-Type=simple
-ExecStart={exe_path} start
-Restart=on-failure
-RestartSec=5
-WorkingDirectory={}
-
-[Install]
-WantedBy=default.target
-"#,
-        std::env::current_dir()?.display()
-    );
-
-    // Get config directory for user systemd service
-    let config_dir =
-        dirs::config_dir().ok_or_else(|| anyhow::anyhow!("Could not find config directory"))?;
-    let service_dir = config_dir.join("systemd/user");
-    let service_path = service_dir.join("openrustclaw.service");
-
-    // Create directory if it doesn't exist
-    fs::create_dir_all(&service_dir).await?;
-    fs::write(&service_path, service_content).await?;
-
-    println!("  Service file written to {}", service_path.display());
+    let workspace_root = std::env::current_dir()?;
+    let status = runtime::install_runtime_user_service("config/default.toml", &workspace_root)?;
+    if let Some(service_path) = status.service_path {
+        println!("  Service file written to {}", service_path);
+    }
     println!("  Run 'systemctl --user daemon-reload' to reload systemd");
 
     Ok(())

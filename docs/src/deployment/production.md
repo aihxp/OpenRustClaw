@@ -353,6 +353,16 @@ sudo systemctl start openrustclaw
 sudo systemctl status openrustclaw
 ```
 
+For a user-level systemd install in a workspace-owned operator flow, the shipped CLI now also supports:
+
+```bash
+openrustclaw runtime services install-status
+openrustclaw runtime services install
+systemctl --user daemon-reload
+systemctl --user enable openrustclaw.service
+systemctl --user start openrustclaw.service
+```
+
 ---
 
 ## Configuration

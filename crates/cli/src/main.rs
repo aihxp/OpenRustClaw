@@ -499,6 +499,16 @@ enum RuntimeServicesAction {
         #[arg(long)]
         refresh: bool,
     },
+    /// Inspect standalone runtime service installation state
+    InstallStatus {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+    },
+    /// Install a user-level systemd service for `openrustclaw start`
+    Install {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -4479,6 +4489,22 @@ async fn main() -> Result<()> {
                         )
                         .await?;
                         println!("{}", serde_json::to_string_pretty(&beacon)?);
+                        Ok(())
+                    }
+                    RuntimeServicesAction::InstallStatus { config } => {
+                        let status = commands::runtime::runtime_service_install_status(
+                            &config,
+                            &workspace_root,
+                        )?;
+                        println!("{}", serde_json::to_string_pretty(&status)?);
+                        Ok(())
+                    }
+                    RuntimeServicesAction::Install { config } => {
+                        let status = commands::runtime::install_runtime_user_service(
+                            &config,
+                            &workspace_root,
+                        )?;
+                        println!("{}", serde_json::to_string_pretty(&status)?);
                         Ok(())
                     }
                 }

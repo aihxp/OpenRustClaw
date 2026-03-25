@@ -1378,7 +1378,7 @@ Remaining:
   - per-agent restrictions,
   - operator roles for Control UI if introduced.
 - [ ] Add production ops parity:
-  - service installation,
+  - [x] standalone `openrustclaw runtime services install-status|install` now covers user-level systemd service installation outside onboarding through the shared unit-generation path,
   - [x] explicit `openrustclaw runtime backup` workspace-state snapshots now land under `.claw/runtime-backups/`,
   - [x] explicit `openrustclaw runtime restore <backup-path>` restores those snapshots and creates an automatic pre-restore safety snapshot first,
   - log rotation,

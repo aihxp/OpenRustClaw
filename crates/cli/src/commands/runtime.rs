@@ -27,6 +27,7 @@ pub const DEFAULT_RUNTIME_HEALTH_PATH: &str = ".claw/control/runtime-health.json
 pub const DEFAULT_RUNTIME_RELOAD_STATE_PATH: &str = ".claw/control/runtime-reload-state.json";
 pub const DEFAULT_RUNTIME_BEACON_PATH: &str = ".claw/control/runtime-beacon.json";
 pub const DEFAULT_RUNTIME_BACKUP_ROOT: &str = ".claw/runtime-backups";
+pub const DEFAULT_SYSTEMD_SERVICE_NAME: &str = "openrustclaw.service";
 const DEFAULT_PASSPHRASE_ENV: &str = "OPENRUSTCLAW_VAULT_PASSPHRASE";
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -167,6 +168,24 @@ pub struct RuntimeRestoreSummary {
     pub entries: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct RuntimeServiceInstallStatus {
+    pub service_manager: String,
+    pub supported: bool,
+    pub installed: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub service_path: Option<String>,
+    pub executable_path: String,
+    pub workspace_root: String,
+    pub config_path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub daemon_reload_command: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enable_command: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub start_command: Option<String>,
+}
+
 static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
 fn env_lock() -> &'static Mutex<()> {
@@ -193,6 +212,58 @@ pub fn runtime_beacon_path_for(workspace_root: impl AsRef<Path>) -> PathBuf {
 
 pub fn runtime_backup_root_for(workspace_root: impl AsRef<Path>) -> PathBuf {
     workspace_root.as_ref().join(DEFAULT_RUNTIME_BACKUP_ROOT)
+}
+
+pub fn runtime_service_install_status(
+    config_path: &str,
+    workspace_root: &Path,
+) -> Result<RuntimeServiceInstallStatus> {
+    let current_exe = std::env::current_exe().context("Failed to resolve current executable")?;
+    let service_path = user_systemd_service_path();
+    let supported = systemd_user_service_supported();
+    let installed = service_path
+        .as_ref()
+        .map(|path| path.exists())
+        .unwrap_or(false);
+    let resolved_config_path = resolve_runtime_config_path(workspace_root, config_path);
+
+    Ok(RuntimeServiceInstallStatus {
+        service_manager: "systemd-user".to_string(),
+        supported,
+        installed,
+        service_path: service_path.as_ref().map(|path| path.display().to_string()),
+        executable_path: current_exe.display().to_string(),
+        workspace_root: workspace_root.display().to_string(),
+        config_path: resolved_config_path.display().to_string(),
+        daemon_reload_command: supported.then(|| "systemctl --user daemon-reload".to_string()),
+        enable_command: supported
+            .then(|| format!("systemctl --user enable {}", DEFAULT_SYSTEMD_SERVICE_NAME)),
+        start_command: supported
+            .then(|| format!("systemctl --user start {}", DEFAULT_SYSTEMD_SERVICE_NAME)),
+    })
+}
+
+pub fn install_runtime_user_service(
+    config_path: &str,
+    workspace_root: &Path,
+) -> Result<RuntimeServiceInstallStatus> {
+    if !systemd_user_service_supported() {
+        anyhow::bail!("User-level systemd services are not available on this host");
+    }
+
+    let service_path = user_systemd_service_path()
+        .ok_or_else(|| anyhow::anyhow!("Could not determine the user systemd service directory"))?;
+    if let Some(parent) = service_path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("Failed to create '{}'", parent.display()))?;
+    }
+
+    let current_exe = std::env::current_exe().context("Failed to resolve current executable")?;
+    let unit = render_user_systemd_service_unit(&current_exe, workspace_root, config_path);
+    fs::write(&service_path, unit.as_bytes())
+        .with_context(|| format!("Failed to write '{}'", service_path.display()))?;
+
+    runtime_service_install_status(config_path, workspace_root)
 }
 
 pub fn load_effective_config(config_path: &str, workspace_root: &Path) -> Result<AppConfig> {
@@ -1141,6 +1212,50 @@ fn load_dotenv_entries(path: PathBuf) -> Result<Vec<(String, String)>> {
     Ok(entries)
 }
 
+fn systemd_user_service_supported() -> bool {
+    Path::new("/run/systemd/system").exists() || Path::new("/sbin/systemctl").exists()
+}
+
+fn user_systemd_service_path() -> Option<PathBuf> {
+    dirs::config_dir().map(|dir| dir.join("systemd/user").join(DEFAULT_SYSTEMD_SERVICE_NAME))
+}
+
+fn resolve_runtime_config_path(workspace_root: &Path, config_path: &str) -> PathBuf {
+    let config_path = PathBuf::from(config_path);
+    if config_path.is_absolute() {
+        config_path
+    } else {
+        workspace_root.join(config_path)
+    }
+}
+
+fn render_user_systemd_service_unit(
+    current_exe: &Path,
+    workspace_root: &Path,
+    config_path: &str,
+) -> String {
+    let resolved_config_path = resolve_runtime_config_path(workspace_root, config_path);
+    format!(
+        r#"[Unit]
+Description=OpenRustClaw Gateway
+After=network.target
+
+[Service]
+Type=simple
+ExecStart="{exe_path}" start --config "{config_path}"
+Restart=on-failure
+RestartSec=5
+WorkingDirectory={working_directory}
+
+[Install]
+WantedBy=default.target
+"#,
+        exe_path = current_exe.display(),
+        config_path = resolved_config_path.display(),
+        working_directory = workspace_root.display(),
+    )
+}
+
 fn backup_runtime_state_inner(
     workspace_root: &Path,
     output_path: Option<PathBuf>,
@@ -1337,6 +1452,29 @@ mod tests {
                 .join(".claw/runtime-backups/existing/skip.txt")
                 .exists()
         );
+        Ok(())
+    }
+
+    #[test]
+    fn render_systemd_unit_uses_explicit_config_path() -> Result<()> {
+        let temp = tempdir()?;
+        let workspace_root = temp.path();
+        let unit = render_user_systemd_service_unit(
+            Path::new("/tmp/openrustclaw"),
+            workspace_root,
+            "config/default.toml",
+        );
+
+        assert!(unit.contains("ExecStart=\"/tmp/openrustclaw\" start --config"));
+        assert!(
+            unit.contains(
+                &workspace_root
+                    .join("config/default.toml")
+                    .display()
+                    .to_string()
+            )
+        );
+        assert!(unit.contains(&format!("WorkingDirectory={}", workspace_root.display())));
         Ok(())
     }
 }
