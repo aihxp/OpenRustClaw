@@ -1361,9 +1361,9 @@ Remaining:
   - every outbound send,
   - every workflow/job run,
   - memory maintenance,
-  - media processing,
-  - plugin execution,
-  - node commands.
+  - [x] media processing,
+  - [x] plugin execution,
+  - [x] node commands.
 - [ ] Add OpenTelemetry/Prometheus coverage for parity-critical runtime metrics:
   - [x] gateway/control-plane HTTP routes now expose a scrapeable Prometheus surface at `/metrics`,
   - [x] the shared observability helper API now records real Prometheus-compatible dimensional metrics for the shipped runtime categories,

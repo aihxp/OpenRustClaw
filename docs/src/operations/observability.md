@@ -101,6 +101,14 @@ docker run -p 3000:3000 \
 | `openrustclaw_agent_tool_calls` | Histogram | Tool calls per session | `agent` |
 | `openrustclaw_agent_sessions_total` | Counter | Session starts/ends | `agent`, `event` |
 
+The shipped control plane now records real operator-tool metrics for several Phase 8 parity lanes, including:
+
+- `media.inspect`, `media.extract_text`, `media.describe`
+- `skills.invoke`, `skills.execute`
+- `skills.voice_plugin.prewarm`, `skills.voice_call.start|end|reconnect`
+- `mobile.command.dispatch|approve|reject`
+- `mobile.capability.execute`
+
 ### Memory Metrics
 
 | Metric | Type | Description | Labels |

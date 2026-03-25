@@ -2792,6 +2792,21 @@ async fn control_auth_middleware(
         .into_response()
 }
 
+fn record_operator_tool_result<T, E>(
+    tool_name: &str,
+    started_at: std::time::Instant,
+    result: &std::result::Result<T, E>,
+) where
+    E: std::fmt::Display,
+{
+    let status = if result.is_ok() { "success" } else { "failure" };
+    openrustclaw_observability::metrics::record_tool_execution(tool_name, status);
+    openrustclaw_observability::metrics::record_tool_duration(
+        tool_name,
+        started_at.elapsed().as_secs_f64(),
+    );
+}
+
 fn discord_ingress_router(
     handler: DiscordInteractionsHandler,
     langsmith: Option<LangSmithClient>,
@@ -4503,15 +4518,17 @@ async fn control_skill_prewarm_voice_plugin_handler(
     AxumPath(plugin_id): AxumPath<String>,
     Json(payload): Json<SkillPrewarmVoicePluginPayload>,
 ) -> impl IntoResponse {
-    match skills::prewarm_voice_plugin_data(
+    let started_at = std::time::Instant::now();
+    let result = skills::prewarm_voice_plugin_data(
         &plugin_id,
         skills::SkillPrewarmVoicePluginOptions {
             greeting_text: payload.greeting_text.as_deref(),
             voice: payload.voice.as_deref(),
         },
     )
-    .await
-    {
+    .await;
+    record_operator_tool_result("skills.voice_plugin.prewarm", started_at, &result);
+    match result {
         Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
@@ -4524,7 +4541,8 @@ async fn control_skill_prewarm_voice_plugin_handler(
 async fn control_skill_start_voice_call_handler(
     Json(payload): Json<SkillStartVoiceCallPayload>,
 ) -> impl IntoResponse {
-    match skills::start_voice_call_data(
+    let started_at = std::time::Instant::now();
+    let result = skills::start_voice_call_data(
         &payload.plugin_id,
         skills::SkillStartVoiceCallOptions {
             remote: payload.remote.as_deref(),
@@ -4534,8 +4552,9 @@ async fn control_skill_start_voice_call_handler(
             stale_after_secs: payload.stale_after_secs,
         },
     )
-    .await
-    {
+    .await;
+    record_operator_tool_result("skills.voice_call.start", started_at, &result);
+    match result {
         Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
@@ -4567,15 +4586,17 @@ async fn control_skill_end_voice_call_handler(
     AxumPath(call_id): AxumPath<String>,
     Json(payload): Json<SkillEndVoiceCallPayload>,
 ) -> impl IntoResponse {
-    match skills::end_voice_call_data(
+    let started_at = std::time::Instant::now();
+    let result = skills::end_voice_call_data(
         &call_id,
         skills::SkillEndVoiceCallOptions {
             reason: payload.reason.as_deref(),
             metadata: payload.metadata.as_deref(),
         },
     )
-    .await
-    {
+    .await;
+    record_operator_tool_result("skills.voice_call.end", started_at, &result);
+    match result {
         Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
@@ -4589,7 +4610,8 @@ async fn control_skill_reconnect_voice_call_handler(
     AxumPath(call_id): AxumPath<String>,
     Json(payload): Json<SkillReconnectVoiceCallPayload>,
 ) -> impl IntoResponse {
-    match skills::reconnect_voice_call_data(
+    let started_at = std::time::Instant::now();
+    let result = skills::reconnect_voice_call_data(
         &call_id,
         skills::SkillReconnectVoiceCallOptions {
             remote: payload.remote.as_deref(),
@@ -4599,8 +4621,9 @@ async fn control_skill_reconnect_voice_call_handler(
             stale_after_secs: payload.stale_after_secs,
         },
     )
-    .await
-    {
+    .await;
+    record_operator_tool_result("skills.voice_call.reconnect", started_at, &result);
+    match result {
         Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
@@ -4661,7 +4684,8 @@ async fn control_skill_invoke_handler(
     AxumPath(name): AxumPath<String>,
     Json(payload): Json<SkillInvokePayload>,
 ) -> impl IntoResponse {
-    match skills::invoke_data(
+    let started_at = std::time::Instant::now();
+    let result = skills::invoke_data(
         &name,
         skills::SkillInvokeOptions {
             args: payload.args.as_deref(),
@@ -4670,8 +4694,9 @@ async fn control_skill_invoke_handler(
             detail: payload.detail,
         },
     )
-    .await
-    {
+    .await;
+    record_operator_tool_result("skills.invoke", started_at, &result);
+    match result {
         Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
@@ -4685,15 +4710,17 @@ async fn control_skill_execute_handler(
     AxumPath(name): AxumPath<String>,
     Json(payload): Json<SkillExecutePayload>,
 ) -> impl IntoResponse {
-    match skills::execute_data(
+    let started_at = std::time::Instant::now();
+    let result = skills::execute_data(
         &name,
         skills::SkillExecuteOptions {
             component: payload.component.as_deref(),
             input: payload.input.as_deref(),
         },
     )
-    .await
-    {
+    .await;
+    record_operator_tool_result("skills.execute", started_at, &result);
+    match result {
         Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
@@ -5954,7 +5981,10 @@ async fn mobile_command_dispatch_handler(
     State(state): State<RuntimeControlState>,
     Json(payload): Json<mobile::MobileCommandDispatchRequest>,
 ) -> impl IntoResponse {
-    match mobile::dispatch_command_data(&state.workspace_root, payload).await {
+    let started_at = std::time::Instant::now();
+    let result = mobile::dispatch_command_data(&state.workspace_root, payload).await;
+    record_operator_tool_result("mobile.command.dispatch", started_at, &result);
+    match result {
         Ok(command) => (StatusCode::OK, Json(serde_json::json!(command))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
@@ -5969,7 +5999,10 @@ async fn mobile_command_approve_handler(
     AxumPath(id): AxumPath<String>,
     Json(payload): Json<mobile::MobileCommandDecisionRequest>,
 ) -> impl IntoResponse {
-    match mobile::approve_command_data(&state.workspace_root, &id, payload).await {
+    let started_at = std::time::Instant::now();
+    let result = mobile::approve_command_data(&state.workspace_root, &id, payload).await;
+    record_operator_tool_result("mobile.command.approve", started_at, &result);
+    match result {
         Ok(command) => (StatusCode::OK, Json(serde_json::json!(command))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
@@ -5984,7 +6017,10 @@ async fn mobile_command_reject_handler(
     AxumPath(id): AxumPath<String>,
     Json(payload): Json<mobile::MobileCommandDecisionRequest>,
 ) -> impl IntoResponse {
-    match mobile::reject_command_data(&state.workspace_root, &id, payload) {
+    let started_at = std::time::Instant::now();
+    let result = mobile::reject_command_data(&state.workspace_root, &id, payload);
+    record_operator_tool_result("mobile.command.reject", started_at, &result);
+    match result {
         Ok(command) => (StatusCode::OK, Json(serde_json::json!(command))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
@@ -6382,7 +6418,10 @@ async fn mobile_capability_execute_handler(
     State(state): State<RuntimeControlState>,
     Json(payload): Json<mobile::MobileCapabilityExecuteRequest>,
 ) -> impl IntoResponse {
-    match mobile::execute_capability_data(&state.workspace_root, payload) {
+    let started_at = std::time::Instant::now();
+    let result = mobile::execute_capability_data(&state.workspace_root, payload);
+    record_operator_tool_result("mobile.capability.execute", started_at, &result);
+    match result {
         Ok(execution) => (StatusCode::OK, Json(serde_json::json!(execution))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
@@ -6469,7 +6508,10 @@ async fn mobile_media_artifact_handler(
 async fn media_inspect_handler(
     Json(payload): Json<super::media::MediaInspectRequest>,
 ) -> impl IntoResponse {
-    match super::media::inspect_data(payload).await {
+    let started_at = std::time::Instant::now();
+    let result = super::media::inspect_data(payload).await;
+    record_operator_tool_result("media.inspect", started_at, &result);
+    match result {
         Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
@@ -6497,11 +6539,14 @@ async fn media_extract_text_handler(
     State(state): State<RuntimeControlState>,
     Json(payload): Json<super::media::MediaExtractTextRequest>,
 ) -> impl IntoResponse {
+    let started_at = std::time::Instant::now();
     match runtime::load_effective_config(&state.config_path, &state.workspace_root) {
         Ok(config) => {
-            match super::media::extract_text_with_config(&config, &state.workspace_root, payload)
-                .await
-            {
+            let result =
+                super::media::extract_text_with_config(&config, &state.workspace_root, payload)
+                    .await;
+            record_operator_tool_result("media.extract_text", started_at, &result);
+            match result {
                 Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
                 Err(error) => (
                     StatusCode::BAD_REQUEST,
@@ -6510,11 +6555,21 @@ async fn media_extract_text_handler(
                     .into_response(),
             }
         }
-        Err(error) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({"error": error.to_string()})),
-        )
-            .into_response(),
+        Err(error) => {
+            openrustclaw_observability::metrics::record_tool_execution(
+                "media.extract_text",
+                "failure",
+            );
+            openrustclaw_observability::metrics::record_tool_duration(
+                "media.extract_text",
+                started_at.elapsed().as_secs_f64(),
+            );
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": error.to_string()})),
+            )
+                .into_response()
+        }
     }
 }
 
@@ -6522,10 +6577,13 @@ async fn media_describe_handler(
     State(state): State<RuntimeControlState>,
     Json(payload): Json<super::media::MediaDescribeRequest>,
 ) -> impl IntoResponse {
+    let started_at = std::time::Instant::now();
     match runtime::load_effective_config(&state.config_path, &state.workspace_root) {
         Ok(config) => {
-            match super::media::describe_with_config(&config, &state.workspace_root, payload).await
-            {
+            let result =
+                super::media::describe_with_config(&config, &state.workspace_root, payload).await;
+            record_operator_tool_result("media.describe", started_at, &result);
+            match result {
                 Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
                 Err(error) => (
                     StatusCode::BAD_REQUEST,
@@ -6534,11 +6592,18 @@ async fn media_describe_handler(
                     .into_response(),
             }
         }
-        Err(error) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({"error": error.to_string()})),
-        )
-            .into_response(),
+        Err(error) => {
+            openrustclaw_observability::metrics::record_tool_execution("media.describe", "failure");
+            openrustclaw_observability::metrics::record_tool_duration(
+                "media.describe",
+                started_at.elapsed().as_secs_f64(),
+            );
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": error.to_string()})),
+            )
+                .into_response()
+        }
     }
 }
 
