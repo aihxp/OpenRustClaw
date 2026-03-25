@@ -1371,9 +1371,9 @@ Remaining:
   - broader parity-critical runtime coverage and OpenTelemetry export still remain.
 - [ ] Add full auth and access-control parity where OpenClaw documents it:
   - [x] an opt-in bearer-token gate now exists for `/control/...` and `/control/ui` through `security.control_api_token_env`, with Control UI token forwarding for its HTTP and WebSocket calls,
-  - tokens,
-  - allowlists,
-  - origin checks,
+  - [x] tokens,
+  - [x] allowlists,
+  - [x] origin checks,
   - pairing approval,
   - per-agent restrictions,
   - operator roles for Control UI if introduced.

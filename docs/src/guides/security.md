@@ -213,6 +213,24 @@ When enabled, a trusted reverse proxy can inject:
 
 The gateway WebSocket lane and the typed `/control/...` operator surface will trust that proxy-injected identity only when the shared secret matches. Direct bearer and direct `Origin` validation remain the default path when this mode is not configured.
 
+### Control UI Origin Allowlist
+
+When `security.origin_validation = true`, authenticated browser requests to `/control/...` and `/control/ui` also reuse the configured gateway origin allowlist:
+
+```toml
+[security]
+origin_validation = true
+
+[gateway]
+allowed_origins = ["https://console.example.com"]
+```
+
+Behavior:
+
+- CLI and other non-browser requests without an `Origin` header continue to work through bearer or trusted-proxy auth
+- browser requests with an `Origin` header must match `gateway.allowed_origins`
+- trusted-proxy requests must forward an allowlisted origin through `X-Forwarded-Origin`
+
 ---
 
 ## 🛡️ Prompt Injection Defense

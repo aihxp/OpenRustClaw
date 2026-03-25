@@ -255,6 +255,8 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
     let control_auth_state = ControlAuthState {
         bearer_token: control_api_token,
         trusted_proxy_token,
+        origin_validation: config.security.origin_validation,
+        origin_validator: Arc::new(OriginValidator::new(config.gateway.allowed_origins.clone())),
     };
 
     info!(addr = %addr, "Starting gateway server");
@@ -2684,6 +2686,8 @@ struct RuntimeControlState {
 struct ControlAuthState {
     bearer_token: Option<Arc<String>>,
     trusted_proxy_token: Option<Arc<String>>,
+    origin_validation: bool,
+    origin_validator: Arc<OriginValidator>,
 }
 
 fn protect_control_router(router: Router, state: ControlAuthState) -> Router {
@@ -2760,6 +2764,23 @@ fn control_request_proxy_token(req: &Request) -> Option<String> {
         .map(|value| value.to_string())
 }
 
+fn control_request_origin(req: &Request, trusted_proxy: bool) -> Option<String> {
+    req.headers()
+        .get(axum::http::header::ORIGIN)
+        .and_then(|value| value.to_str().ok())
+        .map(|value| value.to_string())
+        .or_else(|| {
+            trusted_proxy.then(|| {
+                req.headers()
+                    .get(axum::http::header::HeaderName::from_static(
+                        "x-forwarded-origin",
+                    ))
+                    .and_then(|value| value.to_str().ok())
+                    .map(|value| value.to_string())
+            })?
+        })
+}
+
 fn control_request_authorization_method(
     state: &ControlAuthState,
     req: &Request,
@@ -2788,12 +2809,48 @@ fn control_request_authorization_method(
     None
 }
 
+fn validate_control_request_origin(
+    state: &ControlAuthState,
+    req: &Request,
+    auth_method: &str,
+) -> Result<()> {
+    if !state.origin_validation || !state.origin_validator.has_origins() {
+        return Ok(());
+    }
+
+    let trusted_proxy = auth_method == "trusted_proxy";
+    let Some(origin) = control_request_origin(req, trusted_proxy) else {
+        if trusted_proxy {
+            openrustclaw_observability::metrics::record_origin_check("denied");
+            anyhow::bail!("missing trusted proxy forwarded origin");
+        }
+        return Ok(());
+    };
+
+    if let Err(error) = state.origin_validator.validate(&origin) {
+        openrustclaw_observability::metrics::record_origin_check("denied");
+        return Err(anyhow::anyhow!(error.to_string()));
+    }
+
+    openrustclaw_observability::metrics::record_origin_check("allowed");
+    Ok(())
+}
+
 async fn control_auth_middleware(
     State(state): State<ControlAuthState>,
     req: Request,
     next: Next,
 ) -> Response {
     if let Some(method) = control_request_authorization_method(&state, &req) {
+        if let Err(error) = validate_control_request_origin(&state, &req, method) {
+            return (
+                StatusCode::FORBIDDEN,
+                Json(serde_json::json!({
+                    "error": error.to_string()
+                })),
+            )
+                .into_response();
+        }
         if method != "open" {
             openrustclaw_observability::metrics::record_auth_attempt(method, "success");
         }
@@ -11550,11 +11607,73 @@ mod tests {
             &ControlAuthState {
                 bearer_token: None,
                 trusted_proxy_token: Some(Arc::new("proxy-secret".to_string())),
+                origin_validation: false,
+                origin_validator: Arc::new(OriginValidator::new(Vec::new())),
             },
             &request,
         );
 
         assert_eq!(method, Some("trusted_proxy"));
+    }
+
+    #[test]
+    fn control_origin_validation_allows_configured_origin() {
+        let request = Request::builder()
+            .uri("/control/runtime")
+            .header("origin", "https://console.example.com")
+            .body(axum::body::Body::empty())
+            .unwrap();
+
+        let state = ControlAuthState {
+            bearer_token: None,
+            trusted_proxy_token: None,
+            origin_validation: true,
+            origin_validator: Arc::new(OriginValidator::new(vec![
+                "https://console.example.com".to_string(),
+            ])),
+        };
+
+        assert!(validate_control_request_origin(&state, &request, "open").is_ok());
+    }
+
+    #[test]
+    fn control_origin_validation_rejects_unknown_origin() {
+        let request = Request::builder()
+            .uri("/control/runtime")
+            .header("origin", "https://evil.example.com")
+            .body(axum::body::Body::empty())
+            .unwrap();
+
+        let state = ControlAuthState {
+            bearer_token: None,
+            trusted_proxy_token: None,
+            origin_validation: true,
+            origin_validator: Arc::new(OriginValidator::new(vec![
+                "https://console.example.com".to_string(),
+            ])),
+        };
+
+        assert!(validate_control_request_origin(&state, &request, "open").is_err());
+    }
+
+    #[test]
+    fn control_origin_validation_requires_forwarded_origin_for_trusted_proxy() {
+        let request = Request::builder()
+            .uri("/control/runtime")
+            .header("x-openrustclaw-trusted-proxy-token", "proxy-secret")
+            .body(axum::body::Body::empty())
+            .unwrap();
+
+        let state = ControlAuthState {
+            bearer_token: None,
+            trusted_proxy_token: Some(Arc::new("proxy-secret".to_string())),
+            origin_validation: true,
+            origin_validator: Arc::new(OriginValidator::new(vec![
+                "https://console.example.com".to_string(),
+            ])),
+        };
+
+        assert!(validate_control_request_origin(&state, &request, "trusted_proxy").is_err());
     }
 
     #[test]
