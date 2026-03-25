@@ -19,8 +19,8 @@ use openrustclaw_db::{RagChunkInput, SqliteCoreMemoryStore, SqliteMemoryStore, S
 use openrustclaw_observability::LangSmithClient;
 use openrustclaw_observability::langsmith::{RunType, TraceRun};
 use openrustclaw_observability::metrics::{
-    SimpleTimer, decrement_active_connections, increment_active_connections,
-    record_websocket_message,
+    SimpleTimer, decrement_active_connections, increment_active_connections, record_auth_attempt,
+    record_origin_check, record_websocket_message,
 };
 use openrustclaw_security::OriginValidator;
 use serde_json::json;
@@ -1086,17 +1086,26 @@ fn validate_ws_request(state: &GatewayState, headers: &HeaderMap) -> CoreResult<
         .get(axum::http::header::ORIGIN)
         .and_then(|value| value.to_str().ok())
         .ok_or_else(|| {
+            record_origin_check("denied");
             Error::Security(SecurityError::InvalidOrigin {
                 origin: "<missing>".to_string(),
             })
         })?;
-    state.origin_validator.validate(origin)?;
+    if let Err(error) = state.origin_validator.validate(origin) {
+        record_origin_check("denied");
+        return Err(error);
+    }
+    record_origin_check("allowed");
 
     if state.require_auth {
         let auth_header = headers
             .get(axum::http::header::AUTHORIZATION)
             .and_then(|value| value.to_str().ok());
-        extract_token(auth_header)?;
+        if let Err(error) = extract_token(auth_header) {
+            record_auth_attempt("bearer", "failure");
+            return Err(error);
+        }
+        record_auth_attempt("bearer", "success");
     }
 
     Ok(())
@@ -1107,6 +1116,7 @@ fn validate_internal_api(
     headers: &HeaderMap,
 ) -> std::result::Result<(), Response> {
     let Some(expected_token) = &state.internal_api_token else {
+        record_auth_attempt("internal_token", "disabled");
         return Err((StatusCode::SERVICE_UNAVAILABLE, "internal api disabled").into_response());
     };
 
@@ -1117,8 +1127,10 @@ fn validate_internal_api(
         .unwrap_or("");
 
     if provided == expected_token.as_str() {
+        record_auth_attempt("internal_token", "success");
         Ok(())
     } else {
+        record_auth_attempt("internal_token", "failure");
         Err((StatusCode::UNAUTHORIZED, "invalid internal api token").into_response())
     }
 }

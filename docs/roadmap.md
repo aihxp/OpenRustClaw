@@ -1356,6 +1356,7 @@ Remaining:
 
 - [ ] Extend observability to all operator-significant paths:
   - [x] `openrustclaw start` now mounts a real Prometheus `/metrics` endpoint and the shared observability helpers now emit real counters, histograms, and gauges for the shipped HTTP/provider/agent/memory/cache/database/scheduler/security metrics instead of no-op placeholders,
+  - [x] gateway websocket auth/origin validation and webhook rate-limit decisions now emit real security counters on the shipped Prometheus surface,
   - every channel ingress,
   - every outbound send,
   - every workflow/job run,
@@ -1366,6 +1367,7 @@ Remaining:
 - [ ] Add OpenTelemetry/Prometheus coverage for parity-critical runtime metrics:
   - [x] gateway/control-plane HTTP routes now expose a scrapeable Prometheus surface at `/metrics`,
   - [x] the shared observability helper API now records real Prometheus-compatible dimensional metrics for the shipped runtime categories,
+  - [x] gateway security checks now export bearer/internal-token auth attempts, origin allow/deny decisions, and webhook rate-limit hits,
   - broader parity-critical runtime coverage and OpenTelemetry export still remain.
 - [ ] Add full auth and access-control parity where OpenClaw documents it:
   - tokens,

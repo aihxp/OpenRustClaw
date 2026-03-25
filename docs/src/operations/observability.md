@@ -145,6 +145,13 @@ docker run -p 3000:3000 \
 | `openrustclaw_auth_attempts_total` | Counter | Auth attempts | `method`, `status` |
 | `openrustclaw_origin_checks_total` | Counter | Origin validations | `status` |
 
+The shipped gateway now emits these security metrics from real runtime decisions:
+
+- WebSocket bearer-auth success/failure
+- Internal API token success/failure/disabled checks
+- WebSocket origin allow/deny decisions
+- Webhook rate-limit hits
+
 ## Using Metrics in Code
 
 ### Recording Metrics

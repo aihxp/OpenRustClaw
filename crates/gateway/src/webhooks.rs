@@ -40,6 +40,7 @@ use tracing::{debug, error, info, warn};
 
 use openrustclaw_agent::routing::{AgentId, AgentRouter};
 use openrustclaw_core::types::Message;
+use openrustclaw_observability::metrics::record_rate_limit_hit;
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -390,6 +391,7 @@ impl WebhookManager {
 
             if !tracker.check() {
                 warn!(path = %path, "Webhook rate limit exceeded");
+                record_rate_limit_hit(path, None);
                 return Err(WebhookError::RateLimited);
             }
         }
