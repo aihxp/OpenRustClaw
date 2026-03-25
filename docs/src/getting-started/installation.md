@@ -13,7 +13,6 @@ Before installing OpenRustClaw, ensure you have the following dependencies insta
 | Dependency | Version | Purpose |
 |------------|---------|---------|
 | **Rust** | 1.85+ | Core framework (stable channel) |
-| **Python** | 3.11+ | LangGraph sidecar |
 | **protoc** | 3.20+ | Protocol Buffers compiler |
 | **SQLite** | 3.35+ | Database (usually pre-installed) |
 
@@ -21,6 +20,7 @@ Before installing OpenRustClaw, ensure you have the following dependencies insta
 
 | Dependency | Purpose |
 |------------|---------|
+| **Python** | Optional compatibility sidecar and sidecar-focused development |
 | **mdbook** | Build documentation |
 | **cargo-watch** | Auto-rebuild during development |
 | **just** | Task runner (alternative to make) |
@@ -67,7 +67,9 @@ rustup component add rustfmt clippy
 
 ---
 
-## 🐍 Installing Python
+## 🐍 Optional Python Compatibility Sidecar
+
+Python is no longer required for the default production or local runtime path. Install it only if you need the bounded compatibility sidecar or are working on the sidecar itself.
 
 ### Linux (Ubuntu/Debian)
 
@@ -100,10 +102,10 @@ winget install Python.Python.3.11
 python --version
 ```
 
-### Setting up Python Virtual Environment
+### Setting up the Optional Sidecar Virtual Environment
 
 ```bash
-# Create a virtual environment for the sidecar
+# Create a virtual environment for the optional sidecar
 cd sidecar
 python3 -m venv .venv
 
@@ -278,6 +280,18 @@ LANGSMITH_PROJECT=openrustclaw
 LANGSMITH_ENDPOINT=https://api.smith.langchain.com
 ```
 
+## Optional Compatibility Sidecar Setup
+
+If you need the legacy compatibility sidecar for migration or workflow experiments, set it up after the Rust workspace is already working:
+
+```bash
+cd sidecar
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+python src/server.py --help
+```
+
 Get your LangSmith API key at [smith.langchain.com](https://smith.langchain.com).
 
 ---
@@ -370,6 +384,8 @@ export RUSTFLAGS="-C link-arg=-fuse-ld=mold"
 
 #### "Failed to connect to sidecar"
 
+This only applies if you intentionally enabled the optional compatibility sidecar.
+
 ```bash
 # Start the sidecar manually first
 cd sidecar
@@ -419,6 +435,8 @@ pip install -e ".[dev]"
 ```
 
 #### "gRPC connection refused"
+
+This only applies if you are using the optional compatibility sidecar lane.
 
 ```bash
 # Check if sidecar port is available

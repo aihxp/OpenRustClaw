@@ -1,8 +1,6 @@
 # OpenRustClaw Production Docker Compose
 # Full stack deployment with SQLite persistence
 
-version: "3.8"
-
 services:
   openrustclaw:
     build:
@@ -28,11 +26,6 @@ services:
       - DATABASE_URL=sqlite:///app/data/openrustclaw.db
       - DATABASE_WAL_MODE=true
       
-      # Sidecar
-      - SIDECAR_GRPC_PORT=${SIDECAR_GRPC_PORT:-50051}
-      - SIDECAR_PYTHON_PATH=/opt/venv/bin/python
-      - SIDECAR_AUTO_START=true
-      
       # LLM Provider API Keys (required)
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
@@ -55,8 +48,6 @@ services:
     ports:
       # Gateway WebSocket/HTTP port
       - "${GATEWAY_PORT:-18789}:18789"
-      # gRPC sidecar port (internal only by default)
-      - "127.0.0.1:${SIDECAR_GRPC_PORT:-50051}:50051"
       # Prometheus metrics port (optional)
       - "127.0.0.1:9090:9090"
     

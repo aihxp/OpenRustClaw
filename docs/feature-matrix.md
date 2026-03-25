@@ -18,7 +18,7 @@ Status values:
 | Area | Status | Notes |
 | --- | --- | --- |
 | Gateway health and WebSocket entry | real | Core runtime path exists and is tested |
-| Python sidecar process management | real | Source-tree execution and readiness checks exist |
+| Python sidecar process management | real | Source-tree execution and readiness checks exist for the optional compatibility lane; the default production Docker and Compose path is Rust-only |
 | Rust to sidecar workflow dispatch | real | Workflow dispatch now preserves typed configurable metadata through the bridge contract |
 | Workflow execution tier model | real | Execution tiers are explicit and operator-visible: `rust_native` for production-critical paths, `compat_sidecar` for bounded legacy migration only when `sidecar.role=compatibility`, and `experimental_langgraph` for prototyping only; LangGraph is no longer part of the production-critical runtime path |
 | Durable scheduler schema | real | SQLite schema and retry/dead-letter tables exist |

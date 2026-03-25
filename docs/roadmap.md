@@ -1429,7 +1429,10 @@ Remaining:
   - operator docs,
   - troubleshooting,
   - test coverage.
-- [ ] Remove or demote any remaining runtime dependency that pr "all Rust in production" from being true.
+- [x] Remove or demote any remaining runtime dependency that pr "all Rust in production" from being true.
+  - [x] the shipped production Docker image is now Rust-only,
+  - [x] the default `docker-compose.yml` deployment path is now Rust-only,
+  - [x] install/quickstart/development/deployment docs now treat the Python sidecar as optional compatibility tooling instead of a required production dependency.
 
 Exit criteria:
 

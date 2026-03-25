@@ -16,6 +16,7 @@ Current execution planning lives in:
 The roadmap target is explicit: achieve practical OpenClaw feature parity with a Rust-first runtime, while keeping OpenRustClaw-native improvements where they are stronger.
 The execution model is also explicit: Rust-native for production-critical paths, sidecar compatibility for bounded migration, and LangGraph as the experimentation/authoring lane rather than the sole durability boundary.
 `openrustclaw start` now defaults to the Rust runtime path without requiring Python; the sidecar is only used when a compatibility workflow is explicitly needed and configured.
+The shipped production Docker image and `docker-compose.yml` path are now Rust-only by default; the sidecar remains a separate optional compatibility lane rather than part of the production container contract.
 LangGraph is therefore retained as an authoring/prototyping format and an optional compatibility bridge, but removed from the production-critical runtime path.
 The shipped Rust runtime now owns durable scheduling, event-triggered workflows, session lifecycle hooks, hook execution policies, and reminder delivery with quiet-hours/retry-aware channel fallback policies.
 The shipped runtime now also includes a file-backed task registry layer so operators can manage visible `.claw/tasks/`-style task manifests, priorities, sync/export, and task inspection workflows without making OS cron or loose files the durable source of truth.

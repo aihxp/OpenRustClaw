@@ -11,7 +11,6 @@ This guide covers setting up your development environment for contributing to Op
 | Tool | Version | Purpose |
 |------|---------|---------|
 | Rust | 1.85+ | Core framework |
-| Python | 3.11+ | LangGraph sidecar |
 | protoc | 3.20+ | Protocol buffers |
 | Node.js | 18+ | MCP servers (optional) |
 
@@ -24,6 +23,7 @@ This guide covers setting up your development environment for contributing to Op
 | `cargo-nextest` | Better test runner |
 | `mold` | Faster linker (Linux) |
 | `sccache` | Compiler cache |
+| Python 3.11+ | Optional compatibility-sidecar development |
 
 ---
 
@@ -54,7 +54,7 @@ cargo install sccache
 export RUSTC_WRAPPER=sccache
 ```
 
-### 3. Set Up Python Sidecar
+### 3. Optional: Set Up the Compatibility Sidecar
 
 ```bash
 cd sidecar
@@ -236,19 +236,22 @@ cargo test --workspace
 ### Typical Development Session
 
 ```bash
-# Terminal 1: Start sidecar
+# Terminal 1: Start the Rust runtime with watch
+cargo watch -x 'run --bin openrustclaw -- start'
+
+# Terminal 2: Run tests on changes
+cargo watch -x 'test --workspace'
+
+# Terminal 3: Make changes and test
+cargo run --bin openrustclaw -- chat --provider anthropic
+```
+
+If you are touching the bounded compatibility sidecar, run it in a separate terminal only for that work:
+
+```bash
 cd sidecar
 source .venv/bin/activate
 python src/server.py
-
-# Terminal 2: Start gateway with watch
-cargo watch -x 'run --bin openrustclaw -- start'
-
-# Terminal 3: Run tests on changes
-cargo watch -x 'test --workspace'
-
-# Terminal 4: Make changes and test
-cargo run --bin openrustclaw -- chat --provider anthropic
 ```
 
 ### Debugging
@@ -519,7 +522,7 @@ cargo test my_test -- --nocapture
 # Run with backtrace
 RUST_BACKTRACE=1 cargo test my_test
 
-# Check if sidecar is running
+# Check if the optional sidecar is running
 lsof -i :50051
 ```
 

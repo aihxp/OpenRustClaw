@@ -44,48 +44,9 @@ ENV CARGO_PROFILE_RELEASE_STRIP=true
 RUN cargo build --release --bin openrustclaw
 
 # =============================================================================
-# Stage 4: Python Sidecar Builder - Install Python dependencies
+# Stage 4: Runtime - Minimal production image
 # =============================================================================
-FROM python:3.11-slim AS python-builder
-
-WORKDIR /app
-
-# Install build dependencies for Python packages
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy Python sidecar requirements
-COPY sidecar/pyproject.toml ./
-COPY sidecar/src ./src
-
-# Create virtual environment and install dependencies
-RUN python -m venv /opt/venv && \
-    /opt/venv/bin/pip install --no-cache-dir --upgrade pip && \
-    /opt/venv/bin/pip install --no-cache-dir \
-        langgraph>=0.4 \
-        langchain>=0.3 \
-        langsmith>=0.3 \
-        grpcio>=1.60 \
-        grpcio-tools>=1.60 \
-        protobuf>=5.0 \
-        openai>=1.0 \
-        anthropic>=0.40 \
-        langchain-openai>=0.3 \
-        langchain-anthropic>=0.3 \
-        pydantic>=2.0 \
-        typing-extensions>=4.0 \
-        python-dateutil>=2.8 \
-        pytz>=2024.1 \
-        numpy>=1.24
-
-# Copy Python source code
-COPY sidecar/src /app/sidecar/src
-
-# =============================================================================
-# Stage 5: Runtime - Minimal production image
-# =============================================================================
-FROM python:3.11-slim AS runtime
+FROM debian:bookworm-slim AS runtime
 
 # Security: Create non-root user
 RUN groupadd --gid 1000 appuser && \
@@ -97,15 +58,14 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
+    libgcc-s1 \
+    libsqlite3-0 \
+    libssl3 \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
 # Copy Rust binary from builder
 COPY --from=builder /app/target/release/openrustclaw /usr/local/bin/openrustclaw
-
-# Copy Python virtual environment from python-builder
-COPY --from=python-builder /opt/venv /opt/venv
-COPY --from=python-builder /app/sidecar/src /app/sidecar/src
 
 # Copy configuration files
 COPY config/default.toml /app/config/default.toml
@@ -116,24 +76,19 @@ RUN mkdir -p /app/data /app/logs /app/skills && \
     chown -R appuser:appuser /app
 
 # Set environment variables
-ENV PATH="/opt/venv/bin:$PATH" \
-    PYTHONPATH="/app/sidecar/src:$PYTHONPATH" \
-    RUST_LOG=info \
+ENV RUST_LOG=info \
     APP_ENV=production \
     GATEWAY_HOST=0.0.0.0 \
     GATEWAY_PORT=18789 \
     DATABASE_URL=sqlite:///app/data/openrustclaw.db \
-    DATABASE_WAL_MODE=true \
-    SIDECAR_GRPC_PORT=50051 \
-    SIDECAR_PYTHON_PATH=/opt/venv/bin/python \
-    SIDECAR_AUTO_START=false
+    DATABASE_WAL_MODE=true
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:${GATEWAY_PORT}/health || exit 1
 
 # Expose ports
-EXPOSE 18789 50051 9090
+EXPOSE 18789 9090
 
 # Switch to non-root user
 USER appuser
@@ -144,13 +99,12 @@ VOLUME ["/app/data"]
 # Graceful shutdown handler
 STOPSIGNAL SIGTERM
 
-# Default command - start both Rust gateway and Python sidecar
-# Uses a process manager approach
+# Default command - start the Rust runtime
 CMD ["openrustclaw", "start"]
 
 # Labels for image metadata
 LABEL org.opencontainers.image.title="OpenRustClaw" \
-      org.opencontainers.image.description="Hybrid Rust + Python AI agent framework" \
+      org.opencontainers.image.description="Rust-native AI agent platform" \
       org.opencontainers.image.version="0.1.0" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.source="https://github.com/openrustclaw/openrustclaw"

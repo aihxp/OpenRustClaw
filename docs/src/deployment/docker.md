@@ -7,8 +7,8 @@ This guide covers deploying OpenRustClaw using Docker and Docker Compose.
 OpenRustClaw uses a multi-stage Docker build to create optimized production images:
 
 - **Rust Application**: Compiled with LTO optimizations for minimal size
-- **Python Sidecar**: gRPC server for LangGraph workflows
-- **Final Image**: Based on `python:3.11-slim`, size target < 200MB
+- **Final Image**: Based on `debian:bookworm-slim` with the Rust binary and runtime libraries only
+- **Python Sidecar**: Optional compatibility lane that is not part of the default production image
 - **Multi-platform**: Supports `linux/amd64` and `linux/arm64`
 
 ## Quick Start
@@ -103,6 +103,8 @@ EOF
 docker-compose -f docker-compose.yml --env-file .env.production up -d
 ```
 
+The production Compose path now runs the Rust runtime only. If you need the optional compatibility sidecar, run it as a separate bounded migration service instead of relying on the default production container.
+
 ### With Reverse Proxy (Nginx)
 
 ```bash
@@ -146,7 +148,7 @@ docker-compose -f docker-compose.dev.yml up -d
 # View Rust logs
 docker-compose -f docker-compose.dev.yml logs -f openrustclaw-rust
 
-# View Python sidecar logs
+# View optional Python sidecar logs
 docker-compose -f docker-compose.dev.yml logs -f openrustclaw-sidecar
 ```
 
@@ -155,7 +157,7 @@ docker-compose -f docker-compose.dev.yml logs -f openrustclaw-sidecar
 | Profile | Service | Port | Description |
 |---------|---------|------|-------------|
 | default | openrustclaw-rust | 18789 | Rust gateway with hot reload |
-| default | openrustclaw-sidecar | 50051 | Python sidecar with file watching |
+| default | openrustclaw-sidecar | 50051 | Optional compatibility sidecar with file watching |
 | db-ui | sqlite-web | 8080 | Web-based SQLite browser |
 | monitoring | prometheus | 9091 | Metrics collection |
 | monitoring | grafana | 3000 | Dashboards |
@@ -313,12 +315,15 @@ volumes:
 ```
 
 **Issue**: Cannot connect to sidecar
-```bash
-# Verify sidecar is listening
-docker-compose exec openrustclaw netstat -tlnp | grep 50051
 
-# Check gRPC connectivity
-docker-compose exec openrustclaw grpc_health_probe -addr=localhost:50051
+This only applies if you intentionally run a separate compatibility sidecar alongside the production runtime.
+
+```bash
+# Verify the sidecar host/port you configured is actually listening
+netstat -tlnp | grep 50051
+
+# Then verify your runtime-side sidecar settings
+rg -n "sidecar" config/default.toml .env
 ```
 
 ### Performance Issues

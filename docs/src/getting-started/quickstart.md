@@ -35,31 +35,12 @@ openrustclaw doctor
 
 ## 🚀 Step 1: Start the Server
 
-OpenRustClaw consists of two main components:
+OpenRustClaw now starts as a Rust-owned runtime by default. The Python sidecar is optional and only used for bounded compatibility workflows.
 
-1. **Rust Gateway** — WebSocket server and core runtime
-2. **Python Sidecar** — LangGraph workflows and orchestration
-
-### Terminal 1: Start the Python Sidecar
+### Terminal 1: Start the Runtime
 
 ```bash
-cd sidecar
-source .venv/bin/activate
-python src/server.py
-```
-
-You should see:
-
-```
-[INFO] Starting OpenRustClaw sidecar on port 50051
-[INFO] Connected to LangSmith (project: openrustclaw)
-[INFO] gRPC server ready
-```
-
-### Terminal 2: Start the Gateway
-
-```bash
-# In a new terminal, from the project root
+# From the project root
 cargo run --bin openrustclaw -- start
 
 # Or if installed globally
@@ -71,18 +52,18 @@ You should see:
 ```
 [INFO] OpenRustClaw gateway starting...
 [INFO] Database: sqlite://data/openrustclaw.db (WAL mode)
-[INFO] Connected to sidecar at localhost:50051
 [INFO] Gateway listening on 127.0.0.1:18789
 [INFO] Ready for connections
 ```
 
-### Verify Both Are Running
+### Verify the Runtime
 
 ```bash
-# Check processes
-lsof -i :18789  # Gateway
-lsof -i :50051  # Sidecar
+# Check the gateway port
+lsof -i :18789
 ```
+
+If you explicitly need the compatibility sidecar for a migration-only workflow, start it separately and point the runtime at it through the sidecar configuration. That is no longer part of the default quickstart path.
 
 ---
 
@@ -233,7 +214,7 @@ Based on my search:
 
 ### Archive (Long-term)
 
-Archive contains consolidated summaries. This is managed automatically by the LangGraph sidecar.
+Archive contains consolidated summaries. In the shipped runtime, this is managed by the Rust-owned runtime path; the optional sidecar is only used for bounded compatibility workflows.
 
 ---
 
@@ -337,8 +318,8 @@ Each trace shows:
 When you're done:
 
 1. **Exit the chat**: Type `exit` or press `Ctrl+C`
-2. **Stop the gateway**: Press `Ctrl+C` in the gateway terminal
-3. **Stop the sidecar**: Press `Ctrl+C` in the sidecar terminal
+2. **Stop the runtime**: Press `Ctrl+C` in the runtime terminal
+3. **Stop the compatibility sidecar**: Press `Ctrl+C` there only if you explicitly started it
 
 ---
 
@@ -346,7 +327,7 @@ When you're done:
 
 Congratulations! You've:
 
-- ✅ Started the OpenRustClaw gateway and sidecar
+- ✅ Started the OpenRustClaw runtime
 - ✅ Had an interactive chat with context awareness
 - ✅ Made tool calls (memory_store, memory_search)
 - ✅ Used the 3-tier memory system
@@ -394,6 +375,6 @@ openrustclaw doctor --verbose
 If you run into issues:
 
 1. Run `openrustclaw doctor` to diagnose
-2. Check logs in the gateway/sidecar terminals
+2. Check logs in the runtime terminal and, if you explicitly enabled it, the compatibility sidecar terminal
 3. See [Troubleshooting](./installation.md#troubleshooting)
 4. File an issue on GitHub
