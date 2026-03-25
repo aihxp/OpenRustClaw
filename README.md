@@ -189,7 +189,7 @@ Channel routing/operator controls:
   - `GET /control/runtime/vault`
   - `PUT /control/runtime/vault/{key}`
   - `DELETE /control/runtime/vault/{key}`
-- `openrustclaw runtime status|reload|switch-provider|switch-model`
+- `openrustclaw runtime status|reload|switch-provider|switch-model|backup|restore`
 - `openrustclaw runtime services status|scheduler|events|channels`
 - `openrustclaw runtime services logs`
 - `openrustclaw runtime vault status|list|set|delete`
@@ -197,7 +197,7 @@ Channel routing/operator controls:
 - `openrustclaw orchestrate list|inspect|trace|transcript|resources|promote-candidate`
 - `openrustclaw orchestrate active|watch|pause|resume|kill`
 - runtime secret sources now load from workspace `.env` and an encrypted `.claw/control/runtime-vault.json` when `OPENRUSTCLAW_VAULT_PASSPHRASE` is set
-- provider/model cutovers are validated before config writes, runtime API cutovers roll back on failed reload, and config writes create timestamped backup files
+- provider/model cutovers are validated before config writes, runtime API cutovers roll back on failed reload, config writes create timestamped backup files, and `openrustclaw runtime backup|restore` now creates full workspace-state snapshots under `.claw/runtime-backups/` with an automatic pre-restore safety snapshot
 - bounded orchestration surfaces now exist at:
   - `POST /control/orchestration/resolve`
   - `POST /control/orchestration/run`

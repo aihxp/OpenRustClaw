@@ -1379,8 +1379,8 @@ Remaining:
   - operator roles for Control UI if introduced.
 - [ ] Add production ops parity:
   - service installation,
-  - backups,
-  - restore,
+  - [x] explicit `openrustclaw runtime backup` workspace-state snapshots now land under `.claw/runtime-backups/`,
+  - [x] explicit `openrustclaw runtime restore <backup-path>` restores those snapshots and creates an automatic pre-restore safety snapshot first,
   - log rotation,
   - config migration,
   - upgrade playbooks,

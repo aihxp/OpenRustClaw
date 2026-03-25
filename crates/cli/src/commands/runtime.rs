@@ -26,6 +26,7 @@ pub const DEFAULT_VAULT_PATH: &str = ".claw/control/runtime-vault.json";
 pub const DEFAULT_RUNTIME_HEALTH_PATH: &str = ".claw/control/runtime-health.json";
 pub const DEFAULT_RUNTIME_RELOAD_STATE_PATH: &str = ".claw/control/runtime-reload-state.json";
 pub const DEFAULT_RUNTIME_BEACON_PATH: &str = ".claw/control/runtime-beacon.json";
+pub const DEFAULT_RUNTIME_BACKUP_ROOT: &str = ".claw/runtime-backups";
 const DEFAULT_PASSPHRASE_ENV: &str = "OPENRUSTCLAW_VAULT_PASSPHRASE";
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -144,6 +145,28 @@ pub struct RuntimeBeacon {
     pub recommended_control_plane_provider: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct RuntimeBackupManifest {
+    version: u32,
+    created_at: String,
+    entries: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RuntimeBackupSummary {
+    pub created_at: String,
+    pub backup_path: String,
+    pub entries: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RuntimeRestoreSummary {
+    pub restored_at: String,
+    pub backup_path: String,
+    pub pre_restore_backup_path: String,
+    pub entries: Vec<String>,
+}
+
 static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
 fn env_lock() -> &'static Mutex<()> {
@@ -166,6 +189,10 @@ pub fn runtime_reload_state_path_for(workspace_root: impl AsRef<Path>) -> PathBu
 
 pub fn runtime_beacon_path_for(workspace_root: impl AsRef<Path>) -> PathBuf {
     workspace_root.as_ref().join(DEFAULT_RUNTIME_BEACON_PATH)
+}
+
+pub fn runtime_backup_root_for(workspace_root: impl AsRef<Path>) -> PathBuf {
+    workspace_root.as_ref().join(DEFAULT_RUNTIME_BACKUP_ROOT)
 }
 
 pub fn load_effective_config(config_path: &str, workspace_root: &Path) -> Result<AppConfig> {
@@ -873,6 +900,46 @@ pub fn write_config_with_backup(config_path: &str, config: &AppConfig) -> Result
     Ok(())
 }
 
+pub fn backup_runtime_state(
+    workspace_root: &Path,
+    output_path: Option<&str>,
+) -> Result<RuntimeBackupSummary> {
+    backup_runtime_state_inner(workspace_root, output_path.map(PathBuf::from), None)
+}
+
+pub fn restore_runtime_state(
+    workspace_root: &Path,
+    backup_path: &str,
+) -> Result<RuntimeRestoreSummary> {
+    let backup_root = PathBuf::from(backup_path);
+    let manifest = load_runtime_backup_manifest(&backup_root)?;
+    let pre_restore_backup = backup_runtime_state_inner(workspace_root, None, Some("pre-restore"))?;
+    let workspace_backup_root = backup_root.join("workspace");
+    let mut restored_entries = Vec::new();
+
+    for entry in &manifest.entries {
+        let source = workspace_backup_root.join(entry);
+        if !source.exists() {
+            anyhow::bail!(
+                "Backup '{}' is missing expected entry '{}'",
+                backup_root.display(),
+                source.display()
+            );
+        }
+        let target = workspace_root.join(entry);
+        remove_path_if_exists(&target)?;
+        copy_path_recursive(&source, &target)?;
+        restored_entries.push(entry.clone());
+    }
+
+    Ok(RuntimeRestoreSummary {
+        restored_at: Utc::now().to_rfc3339(),
+        backup_path: backup_root.display().to_string(),
+        pre_restore_backup_path: pre_restore_backup.backup_path,
+        entries: restored_entries,
+    })
+}
+
 pub fn validate_runtime_provider(config: &AppConfig, provider: &str) -> Result<()> {
     let _provider = create_provider_from_config(provider, config)?;
     Ok(())
@@ -1072,4 +1139,204 @@ fn load_dotenv_entries(path: PathBuf) -> Result<Vec<(String, String)>> {
         entries.push((key.trim().to_string(), value));
     }
     Ok(entries)
+}
+
+fn backup_runtime_state_inner(
+    workspace_root: &Path,
+    output_path: Option<PathBuf>,
+    reason: Option<&str>,
+) -> Result<RuntimeBackupSummary> {
+    let created_at = Utc::now();
+    let backup_root = match output_path {
+        Some(path) => path,
+        None => {
+            let mut name = created_at.format("%Y%m%d%H%M%S").to_string();
+            if let Some(reason) = reason {
+                name.push('-');
+                name.push_str(reason);
+            }
+            runtime_backup_root_for(workspace_root).join(name)
+        }
+    };
+
+    if backup_root.exists() {
+        anyhow::bail!(
+            "Backup destination '{}' already exists",
+            backup_root.display()
+        );
+    }
+
+    let entries = collect_runtime_backup_entries(workspace_root)?;
+    let workspace_backup_root = backup_root.join("workspace");
+    fs::create_dir_all(&workspace_backup_root)
+        .with_context(|| format!("Failed to create '{}'", workspace_backup_root.display()))?;
+
+    for entry in &entries {
+        let source = workspace_root.join(entry);
+        let dest = workspace_backup_root.join(entry);
+        copy_path_recursive(&source, &dest)?;
+    }
+
+    let manifest = RuntimeBackupManifest {
+        version: 1,
+        created_at: created_at.to_rfc3339(),
+        entries: entries.clone(),
+    };
+    fs::write(
+        backup_root.join("manifest.json"),
+        serde_json::to_vec_pretty(&manifest).context("Failed to render runtime backup manifest")?,
+    )
+    .with_context(|| {
+        format!(
+            "Failed to write '{}'",
+            backup_root.join("manifest.json").display()
+        )
+    })?;
+
+    Ok(RuntimeBackupSummary {
+        created_at: manifest.created_at,
+        backup_path: backup_root.display().to_string(),
+        entries,
+    })
+}
+
+fn load_runtime_backup_manifest(backup_root: &Path) -> Result<RuntimeBackupManifest> {
+    let manifest_path = backup_root.join("manifest.json");
+    let raw = fs::read_to_string(&manifest_path)
+        .with_context(|| format!("Failed to read '{}'", manifest_path.display()))?;
+    serde_json::from_str(&raw).context("Failed to parse runtime backup manifest")
+}
+
+fn collect_runtime_backup_entries(workspace_root: &Path) -> Result<Vec<String>> {
+    let mut entries = Vec::new();
+
+    for entry in [".env", "config"] {
+        if workspace_root.join(entry).exists() {
+            entries.push(entry.to_string());
+        }
+    }
+
+    let claw_root = workspace_root.join(".claw");
+    if claw_root.exists() {
+        let mut claw_entries = Vec::new();
+        for entry in fs::read_dir(&claw_root)
+            .with_context(|| format!("Failed to read '{}'", claw_root.display()))?
+        {
+            let entry = entry?;
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if matches!(name.as_ref(), "runtime-backups" | "onboard-backups") {
+                continue;
+            }
+            claw_entries.push(format!(".claw/{name}"));
+        }
+        claw_entries.sort();
+        entries.extend(claw_entries);
+    }
+
+    Ok(entries)
+}
+
+fn copy_path_recursive(source: &Path, dest: &Path) -> Result<()> {
+    if source.is_dir() {
+        fs::create_dir_all(dest)
+            .with_context(|| format!("Failed to create '{}'", dest.display()))?;
+        for entry in fs::read_dir(source)
+            .with_context(|| format!("Failed to read '{}'", source.display()))?
+        {
+            let entry = entry?;
+            let entry_path = entry.path();
+            let entry_dest = dest.join(entry.file_name());
+            copy_path_recursive(&entry_path, &entry_dest)?;
+        }
+    } else {
+        if let Some(parent) = dest.parent() {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("Failed to create '{}'", parent.display()))?;
+        }
+        fs::copy(source, dest).with_context(|| {
+            format!(
+                "Failed to copy '{}' -> '{}'",
+                source.display(),
+                dest.display()
+            )
+        })?;
+    }
+    Ok(())
+}
+
+fn remove_path_if_exists(path: &Path) -> Result<()> {
+    if !path.exists() {
+        return Ok(());
+    }
+    if path.is_dir() {
+        fs::remove_dir_all(path)
+            .with_context(|| format!("Failed to remove directory '{}'", path.display()))?;
+    } else {
+        fs::remove_file(path)
+            .with_context(|| format!("Failed to remove file '{}'", path.display()))?;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn runtime_backup_and_restore_round_trip_workspace_state() -> Result<()> {
+        let temp = tempdir()?;
+        let workspace_root = temp.path();
+
+        fs::write(workspace_root.join(".env"), "OPENRUSTCLAW_TEST=1\n")?;
+        fs::create_dir_all(workspace_root.join("config"))?;
+        fs::write(
+            workspace_root.join("config/default.toml"),
+            "model = \"test\"\n",
+        )?;
+        fs::create_dir_all(workspace_root.join(".claw/control"))?;
+        fs::write(
+            workspace_root.join(".claw/control/runtime.json"),
+            "{\"ok\":true}\n",
+        )?;
+        fs::create_dir_all(workspace_root.join(".claw/runtime-backups/existing"))?;
+        fs::write(
+            workspace_root.join(".claw/runtime-backups/existing/skip.txt"),
+            "skip me\n",
+        )?;
+
+        let backup = backup_runtime_state(workspace_root, None)?;
+        let backup_root = PathBuf::from(&backup.backup_path);
+        assert!(backup_root.exists());
+        assert!(backup.entries.iter().any(|entry| entry == ".env"));
+        assert!(backup.entries.iter().any(|entry| entry == "config"));
+        assert!(backup.entries.iter().any(|entry| entry == ".claw/control"));
+        assert!(!backup_root.join("workspace/.claw/runtime-backups").exists());
+
+        fs::write(workspace_root.join(".env"), "OPENRUSTCLAW_TEST=mutated\n")?;
+        fs::remove_dir_all(workspace_root.join(".claw/control"))?;
+        fs::create_dir_all(workspace_root.join(".claw/control"))?;
+        fs::write(
+            workspace_root.join(".claw/control/runtime.json"),
+            "{\"ok\":false}\n",
+        )?;
+
+        let restored = restore_runtime_state(workspace_root, &backup.backup_path)?;
+        assert!(PathBuf::from(&restored.pre_restore_backup_path).exists());
+        assert_eq!(
+            fs::read_to_string(workspace_root.join(".env"))?,
+            "OPENRUSTCLAW_TEST=1\n"
+        );
+        assert_eq!(
+            fs::read_to_string(workspace_root.join(".claw/control/runtime.json"))?,
+            "{\"ok\":true}\n"
+        );
+        assert!(
+            workspace_root
+                .join(".claw/runtime-backups/existing/skip.txt")
+                .exists()
+        );
+        Ok(())
+    }
 }

@@ -424,6 +424,13 @@ enum RuntimeAction {
         #[arg(long)]
         model: String,
     },
+    /// Create a workspace runtime backup under `.claw/runtime-backups/` or an explicit path
+    Backup {
+        #[arg(long)]
+        path: Option<String>,
+    },
+    /// Restore workspace runtime state from a prior runtime backup
+    Restore { path: String },
     /// Manage the encrypted runtime secret vault
     Vault {
         #[command(subcommand)]
@@ -4367,6 +4374,19 @@ async fn main() -> Result<()> {
                         "model": model,
                     }))?
                 );
+                Ok(())
+            }
+            RuntimeAction::Backup { path } => {
+                let workspace_root = std::env::current_dir()?;
+                let summary =
+                    commands::runtime::backup_runtime_state(&workspace_root, path.as_deref())?;
+                println!("{}", serde_json::to_string_pretty(&summary)?);
+                Ok(())
+            }
+            RuntimeAction::Restore { path } => {
+                let workspace_root = std::env::current_dir()?;
+                let summary = commands::runtime::restore_runtime_state(&workspace_root, &path)?;
+                println!("{}", serde_json::to_string_pretty(&summary)?);
                 Ok(())
             }
             RuntimeAction::Vault { action } => {
