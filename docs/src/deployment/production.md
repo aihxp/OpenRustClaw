@@ -353,14 +353,15 @@ sudo systemctl start openrustclaw
 sudo systemctl status openrustclaw
 ```
 
-For a user-level systemd install in a workspace-owned operator flow, the shipped CLI now also supports:
+For a workspace-owned user-service install in the shipped operator flow, the CLI now also supports:
 
 ```bash
 openrustclaw runtime services install-status
 openrustclaw runtime services install
-systemctl --user daemon-reload
+systemctl --user daemon-reload   # Linux
 systemctl --user enable openrustclaw.service
 systemctl --user start openrustclaw.service
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/dev.openrustclaw.openrustclaw.plist   # macOS
 ```
 
 For ongoing workspace-owned runtime operations, the shipped CLI now also supports:
@@ -370,12 +371,18 @@ openrustclaw runtime services lock-status
 openrustclaw runtime services rotate-logs --keep 7 --max-bytes 10485760
 openrustclaw runtime migrate-config --config config/default.toml
 openrustclaw runtime upgrade-plan --config config/default.toml
+openrustclaw runtime self-update-plan --config config/default.toml --artifact ./target/release/openrustclaw
+openrustclaw runtime rollback-plan --config config/default.toml --artifact ./.claw/runtime-releases/rollback-YYYYMMDDHHMMSS/openrustclaw
 ```
 
+- `install-status` reports the detected host user service manager, whether the service is installed, the rendered unit/agent path, and the suggested reload/start commands.
+- `install` writes the standalone runtime service definition so the workspace can be managed outside the onboarding wizard, using user-level systemd on Linux and launchd agents on macOS.
 - `lock-status` inspects `.claw/control/runtime-lock.json` and reports whether the stored PID is still live or stale.
 - `rotate-logs` performs copy-truncate rotation on `.claw/control/runtime.log` and keeps archives under `.claw/control/runtime-log-archives/`.
 - `migrate-config` detects legacy config keys, infers missing deployment fields, and can rewrite the canonical config with a timestamped backup when run with `--apply`.
 - `upgrade-plan` summarizes the current runtime health, reload guidance, service install state, and runtime-lock status before a restart or binary/config upgrade.
+- `self-update-plan` validates a candidate binary artifact, recommends where to snapshot the current executable for rollback, and composes the managed-service restart guidance before an operator swaps the binary.
+- `rollback-plan` validates a prior binary artifact and composes the corresponding restore/restart playbook before an operator reverts a bad rollout.
 
 ---
 

@@ -421,6 +421,20 @@ enum RuntimeAction {
         #[arg(short, long, default_value = "config/default.toml")]
         config: String,
     },
+    /// Build a bounded self-update playbook for a candidate binary artifact
+    SelfUpdatePlan {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+        #[arg(long)]
+        artifact: String,
+    },
+    /// Build a bounded rollback playbook for a prior binary artifact
+    RollbackPlan {
+        #[arg(short, long, default_value = "config/default.toml")]
+        config: String,
+        #[arg(long)]
+        artifact: String,
+    },
     /// Switch the default provider and optionally model/account key reference
     SwitchProvider {
         #[arg(short, long, default_value = "config/default.toml")]
@@ -518,12 +532,12 @@ enum RuntimeServicesAction {
         #[arg(long)]
         refresh: bool,
     },
-    /// Inspect standalone runtime service installation state
+    /// Inspect standalone runtime service installation state for the host user service manager
     InstallStatus {
         #[arg(short, long, default_value = "config/default.toml")]
         config: String,
     },
-    /// Install a user-level systemd service for `openrustclaw start`
+    /// Install a host user service for `openrustclaw start`
     Install {
         #[arg(short, long, default_value = "config/default.toml")]
         config: String,
@@ -4437,6 +4451,25 @@ async fn main() -> Result<()> {
                         "model": model,
                     }))?
                 );
+                Ok(())
+            }
+            RuntimeAction::SelfUpdatePlan { config, artifact } => {
+                let workspace_root = std::env::current_dir()?;
+                let plan = commands::runtime::runtime_self_update_plan(
+                    &config,
+                    &workspace_root,
+                    &artifact,
+                )
+                .await?;
+                println!("{}", serde_json::to_string_pretty(&plan)?);
+                Ok(())
+            }
+            RuntimeAction::RollbackPlan { config, artifact } => {
+                let workspace_root = std::env::current_dir()?;
+                let plan =
+                    commands::runtime::runtime_rollback_plan(&config, &workspace_root, &artifact)
+                        .await?;
+                println!("{}", serde_json::to_string_pretty(&plan)?);
                 Ok(())
             }
             RuntimeAction::Backup { path } => {

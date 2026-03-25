@@ -3065,6 +3065,18 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             get(runtime_reload_plan_handler),
         )
         .route(
+            "/control/runtime/upgrade-plan",
+            get(runtime_upgrade_plan_handler),
+        )
+        .route(
+            "/control/runtime/self-update-plan",
+            get(runtime_self_update_plan_handler),
+        )
+        .route(
+            "/control/runtime/rollback-plan",
+            get(runtime_rollback_plan_handler),
+        )
+        .route(
             "/control/runtime/health/scan",
             post(runtime_health_scan_handler),
         )
@@ -4973,6 +4985,11 @@ struct RefreshQuery {
     refresh: bool,
 }
 
+#[derive(serde::Deserialize)]
+struct RuntimeArtifactQuery {
+    artifact: String,
+}
+
 #[derive(serde::Deserialize, Default)]
 struct MobileCommandsQuery {
     #[serde(default)]
@@ -6554,6 +6571,55 @@ async fn runtime_reload_plan_handler(
         Ok(plan) => (StatusCode::OK, Json(serde_json::json!(plan))).into_response(),
         Err(error) => (
             StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn runtime_upgrade_plan_handler(
+    State(state): State<RuntimeControlState>,
+) -> impl IntoResponse {
+    match runtime::runtime_upgrade_plan(&state.config_path, &state.workspace_root).await {
+        Ok(plan) => (StatusCode::OK, Json(serde_json::json!(plan))).into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn runtime_self_update_plan_handler(
+    State(state): State<RuntimeControlState>,
+    Query(query): Query<RuntimeArtifactQuery>,
+) -> impl IntoResponse {
+    match runtime::runtime_self_update_plan(
+        &state.config_path,
+        &state.workspace_root,
+        &query.artifact,
+    )
+    .await
+    {
+        Ok(plan) => (StatusCode::OK, Json(serde_json::json!(plan))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn runtime_rollback_plan_handler(
+    State(state): State<RuntimeControlState>,
+    Query(query): Query<RuntimeArtifactQuery>,
+) -> impl IntoResponse {
+    match runtime::runtime_rollback_plan(&state.config_path, &state.workspace_root, &query.artifact)
+        .await
+    {
+        Ok(plan) => (StatusCode::OK, Json(serde_json::json!(plan))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": error.to_string()})),
         )
             .into_response(),

@@ -27,8 +27,10 @@ pub const DEFAULT_RUNTIME_HEALTH_PATH: &str = ".claw/control/runtime-health.json
 pub const DEFAULT_RUNTIME_RELOAD_STATE_PATH: &str = ".claw/control/runtime-reload-state.json";
 pub const DEFAULT_RUNTIME_BEACON_PATH: &str = ".claw/control/runtime-beacon.json";
 pub const DEFAULT_RUNTIME_BACKUP_ROOT: &str = ".claw/runtime-backups";
+pub const DEFAULT_RUNTIME_RELEASE_ROOT: &str = ".claw/runtime-releases";
 pub const DEFAULT_RUNTIME_LOCK_PATH: &str = ".claw/control/runtime-lock.json";
 pub const DEFAULT_SYSTEMD_SERVICE_NAME: &str = "openrustclaw.service";
+pub const DEFAULT_LAUNCHD_LABEL: &str = "dev.openrustclaw.openrustclaw";
 const DEFAULT_PASSPHRASE_ENV: &str = "OPENRUSTCLAW_VAULT_PASSPHRASE";
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -104,6 +106,45 @@ pub struct RuntimeUpgradePlan {
     pub log_rotation_command: String,
     pub migrate_config_command: String,
     pub ready_for_upgrade: bool,
+    pub blockers: Vec<String>,
+    pub steps: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RuntimeSelfUpdatePlan {
+    pub generated_at: String,
+    pub config_path: String,
+    pub current_executable: String,
+    pub artifact_path: String,
+    pub artifact_exists: bool,
+    pub artifact_executable: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_executable_size_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub artifact_size_bytes: Option<u64>,
+    pub recommended_rollback_path: String,
+    pub service_install_status: RuntimeServiceInstallStatus,
+    pub lock_status: RuntimeLockStatus,
+    pub backup_command: String,
+    pub ready: bool,
+    pub blockers: Vec<String>,
+    pub steps: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RuntimeRollbackPlan {
+    pub generated_at: String,
+    pub config_path: String,
+    pub current_executable: String,
+    pub rollback_artifact_path: String,
+    pub rollback_artifact_exists: bool,
+    pub rollback_artifact_executable: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rollback_artifact_size_bytes: Option<u64>,
+    pub service_install_status: RuntimeServiceInstallStatus,
+    pub lock_status: RuntimeLockStatus,
+    pub backup_command: String,
+    pub ready: bool,
     pub blockers: Vec<String>,
     pub steps: Vec<String>,
 }
@@ -241,6 +282,7 @@ pub struct RuntimeRestoreSummary {
 #[derive(Debug, Clone, Serialize)]
 pub struct RuntimeServiceInstallStatus {
     pub service_manager: String,
+    pub service_label: String,
     pub supported: bool,
     pub installed: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -254,6 +296,10 @@ pub struct RuntimeServiceInstallStatus {
     pub enable_command: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub start_command: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stop_command: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub restart_command: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -315,6 +361,10 @@ pub fn runtime_backup_root_for(workspace_root: impl AsRef<Path>) -> PathBuf {
     workspace_root.as_ref().join(DEFAULT_RUNTIME_BACKUP_ROOT)
 }
 
+pub fn runtime_release_root_for(workspace_root: impl AsRef<Path>) -> PathBuf {
+    workspace_root.as_ref().join(DEFAULT_RUNTIME_RELEASE_ROOT)
+}
+
 pub fn runtime_lock_path_for(workspace_root: impl AsRef<Path>) -> PathBuf {
     workspace_root.as_ref().join(DEFAULT_RUNTIME_LOCK_PATH)
 }
@@ -324,27 +374,109 @@ pub fn runtime_service_install_status(
     workspace_root: &Path,
 ) -> Result<RuntimeServiceInstallStatus> {
     let current_exe = std::env::current_exe().context("Failed to resolve current executable")?;
-    let service_path = user_systemd_service_path();
-    let supported = systemd_user_service_supported();
-    let installed = service_path
-        .as_ref()
-        .map(|path| path.exists())
-        .unwrap_or(false);
     let resolved_config_path = resolve_runtime_config_path(workspace_root, config_path);
-
-    Ok(RuntimeServiceInstallStatus {
-        service_manager: "systemd-user".to_string(),
-        supported,
-        installed,
-        service_path: service_path.as_ref().map(|path| path.display().to_string()),
-        executable_path: current_exe.display().to_string(),
-        workspace_root: workspace_root.display().to_string(),
-        config_path: resolved_config_path.display().to_string(),
-        daemon_reload_command: supported.then(|| "systemctl --user daemon-reload".to_string()),
-        enable_command: supported
-            .then(|| format!("systemctl --user enable {}", DEFAULT_SYSTEMD_SERVICE_NAME)),
-        start_command: supported
-            .then(|| format!("systemctl --user start {}", DEFAULT_SYSTEMD_SERVICE_NAME)),
+    Ok(match preferred_service_manager() {
+        RuntimeServiceManager::SystemdUser => {
+            let service_path = user_systemd_service_path();
+            let supported = systemd_user_service_supported();
+            let installed = service_path
+                .as_ref()
+                .map(|path| path.exists())
+                .unwrap_or(false);
+            RuntimeServiceInstallStatus {
+                service_manager: "systemd-user".to_string(),
+                service_label: DEFAULT_SYSTEMD_SERVICE_NAME.to_string(),
+                supported,
+                installed,
+                service_path: service_path.as_ref().map(|path| path.display().to_string()),
+                executable_path: current_exe.display().to_string(),
+                workspace_root: workspace_root.display().to_string(),
+                config_path: resolved_config_path.display().to_string(),
+                daemon_reload_command: supported
+                    .then(|| "systemctl --user daemon-reload".to_string()),
+                enable_command: supported
+                    .then(|| format!("systemctl --user enable {}", DEFAULT_SYSTEMD_SERVICE_NAME)),
+                start_command: supported
+                    .then(|| format!("systemctl --user start {}", DEFAULT_SYSTEMD_SERVICE_NAME)),
+                stop_command: supported
+                    .then(|| format!("systemctl --user stop {}", DEFAULT_SYSTEMD_SERVICE_NAME)),
+                restart_command: supported
+                    .then(|| format!("systemctl --user restart {}", DEFAULT_SYSTEMD_SERVICE_NAME)),
+            }
+        }
+        RuntimeServiceManager::LaunchdUser => {
+            let service_path = user_launchd_service_path();
+            let supported = launchd_user_service_supported();
+            let installed = service_path
+                .as_ref()
+                .map(|path| path.exists())
+                .unwrap_or(false);
+            let domain_target = launchd_domain_target();
+            let service_path_string = service_path.as_ref().map(|path| path.display().to_string());
+            RuntimeServiceInstallStatus {
+                service_manager: "launchd-user".to_string(),
+                service_label: DEFAULT_LAUNCHD_LABEL.to_string(),
+                supported,
+                installed,
+                service_path: service_path_string.clone(),
+                executable_path: current_exe.display().to_string(),
+                workspace_root: workspace_root.display().to_string(),
+                config_path: resolved_config_path.display().to_string(),
+                daemon_reload_command: supported.then(|| {
+                    format!(
+                        "launchctl bootout {domain}/{label} >/dev/null 2>&1 || true",
+                        domain = domain_target,
+                        label = DEFAULT_LAUNCHD_LABEL
+                    )
+                }),
+                enable_command: supported.then(|| {
+                    format!(
+                        "launchctl enable {domain}/{label}",
+                        domain = domain_target,
+                        label = DEFAULT_LAUNCHD_LABEL
+                    )
+                }),
+                start_command: supported.then(|| {
+                    let path = service_path_string
+                        .clone()
+                        .unwrap_or_else(|| "~/Library/LaunchAgents".to_string());
+                    format!(
+                        "launchctl bootstrap {domain} \"{path}\"",
+                        domain = domain_target,
+                        path = path
+                    )
+                }),
+                stop_command: supported.then(|| {
+                    format!(
+                        "launchctl bootout {domain}/{label}",
+                        domain = domain_target,
+                        label = DEFAULT_LAUNCHD_LABEL
+                    )
+                }),
+                restart_command: supported.then(|| {
+                    format!(
+                        "launchctl kickstart -k {domain}/{label}",
+                        domain = domain_target,
+                        label = DEFAULT_LAUNCHD_LABEL
+                    )
+                }),
+            }
+        }
+        RuntimeServiceManager::Unsupported => RuntimeServiceInstallStatus {
+            service_manager: "unsupported".to_string(),
+            service_label: DEFAULT_SYSTEMD_SERVICE_NAME.to_string(),
+            supported: false,
+            installed: false,
+            service_path: None,
+            executable_path: current_exe.display().to_string(),
+            workspace_root: workspace_root.display().to_string(),
+            config_path: resolved_config_path.display().to_string(),
+            daemon_reload_command: None,
+            enable_command: None,
+            start_command: None,
+            stop_command: None,
+            restart_command: None,
+        },
     })
 }
 
@@ -352,23 +484,17 @@ pub fn install_runtime_user_service(
     config_path: &str,
     workspace_root: &Path,
 ) -> Result<RuntimeServiceInstallStatus> {
-    if !systemd_user_service_supported() {
-        anyhow::bail!("User-level systemd services are not available on this host");
+    match preferred_service_manager() {
+        RuntimeServiceManager::SystemdUser => {
+            install_runtime_systemd_service(config_path, workspace_root)
+        }
+        RuntimeServiceManager::LaunchdUser => {
+            install_runtime_launchd_service(config_path, workspace_root)
+        }
+        RuntimeServiceManager::Unsupported => {
+            anyhow::bail!("No supported user service manager was detected on this host")
+        }
     }
-
-    let service_path = user_systemd_service_path()
-        .ok_or_else(|| anyhow::anyhow!("Could not determine the user systemd service directory"))?;
-    if let Some(parent) = service_path.parent() {
-        fs::create_dir_all(parent)
-            .with_context(|| format!("Failed to create '{}'", parent.display()))?;
-    }
-
-    let current_exe = std::env::current_exe().context("Failed to resolve current executable")?;
-    let unit = render_user_systemd_service_unit(&current_exe, workspace_root, config_path);
-    fs::write(&service_path, unit.as_bytes())
-        .with_context(|| format!("Failed to write '{}'", service_path.display()))?;
-
-    runtime_service_install_status(config_path, workspace_root)
 }
 
 pub fn migrate_config(
@@ -480,7 +606,8 @@ pub async fn runtime_upgrade_plan(
         );
     }
     if !service_install_status.supported {
-        blockers.push("user-level systemd integration is unavailable on this host".to_string());
+        blockers
+            .push("no supported host user service manager is available on this host".to_string());
     }
 
     let mut steps = vec![
@@ -502,7 +629,7 @@ pub async fn runtime_upgrade_plan(
             "Use the installed user service to restart cleanly after the upgrade.".to_string(),
         );
     } else {
-        steps.push("Consider `openrustclaw runtime services install --config ...` if this workspace should restart under user-level systemd.".to_string());
+        steps.push("Consider `openrustclaw runtime services install --config ...` if this workspace should restart under a managed user service.".to_string());
     }
 
     Ok(RuntimeUpgradePlan {
@@ -521,6 +648,192 @@ pub async fn runtime_upgrade_plan(
             config_path
         ),
         ready_for_upgrade: blockers.is_empty(),
+        blockers,
+        steps,
+    })
+}
+
+pub async fn runtime_self_update_plan(
+    config_path: &str,
+    workspace_root: &Path,
+    artifact_path: &str,
+) -> Result<RuntimeSelfUpdatePlan> {
+    let resolved_config_path = resolve_runtime_config_path(workspace_root, config_path);
+    let current_exe = std::env::current_exe().context("Failed to resolve current executable")?;
+    let artifact = resolve_runtime_artifact_path(workspace_root, artifact_path);
+    let artifact_exists = artifact.exists();
+    let artifact_executable = if artifact_exists {
+        path_is_executable(&artifact)?
+    } else {
+        false
+    };
+    let current_executable_size_bytes = file_size_bytes(&current_exe);
+    let artifact_size_bytes = file_size_bytes(&artifact);
+    let rollback_path = recommended_runtime_rollback_path(workspace_root, &current_exe);
+    let service_install_status = runtime_service_install_status(config_path, workspace_root)?;
+    let lock_status = runtime_lock_status(workspace_root)?;
+    let upgrade_plan = runtime_upgrade_plan(config_path, workspace_root).await?;
+
+    let mut blockers = Vec::new();
+    if lock_status.active {
+        blockers.push(
+            "runtime lock is active; stop or drain the running process before replacing the binary"
+                .to_string(),
+        );
+    }
+    if !artifact_exists {
+        blockers.push(format!(
+            "candidate artifact '{}' does not exist",
+            artifact.display()
+        ));
+    } else if !artifact.is_file() {
+        blockers.push(format!(
+            "candidate artifact '{}' is not a regular file",
+            artifact.display()
+        ));
+    } else if !artifact_executable {
+        blockers.push(format!(
+            "candidate artifact '{}' is not marked executable",
+            artifact.display()
+        ));
+    }
+    if artifact == current_exe {
+        blockers
+            .push("candidate artifact resolves to the currently running executable".to_string());
+    }
+    blockers.extend(upgrade_plan.blockers.iter().cloned());
+
+    let mut steps = vec![
+        "Take a workspace snapshot with `openrustclaw runtime backup` before replacing the binary."
+            .to_string(),
+        format!(
+            "Copy the current executable to '{}' as the rollback reference.",
+            rollback_path.display()
+        ),
+        format!(
+            "Validate the candidate artifact at '{}' and then replace the installed binary at '{}'.",
+            artifact.display(),
+            current_exe.display()
+        ),
+    ];
+    if let Some(restart_command) = service_install_status.restart_command.as_ref() {
+        steps.push(format!(
+            "Restart the managed runtime with `{}` after the binary swap.",
+            restart_command
+        ));
+    } else {
+        steps.push(
+            "Restart the runtime manually after the binary swap because no managed host service is installed."
+                .to_string(),
+        );
+    }
+    steps.push(format!(
+        "If the new binary is unhealthy, roll back with `openrustclaw runtime rollback-plan --config {} --artifact {}`.",
+        config_path,
+        rollback_path.display()
+    ));
+
+    Ok(RuntimeSelfUpdatePlan {
+        generated_at: Utc::now().to_rfc3339(),
+        config_path: resolved_config_path.display().to_string(),
+        current_executable: current_exe.display().to_string(),
+        artifact_path: artifact.display().to_string(),
+        artifact_exists,
+        artifact_executable,
+        current_executable_size_bytes,
+        artifact_size_bytes,
+        recommended_rollback_path: rollback_path.display().to_string(),
+        service_install_status,
+        lock_status,
+        backup_command: "openrustclaw runtime backup".to_string(),
+        ready: blockers.is_empty(),
+        blockers,
+        steps,
+    })
+}
+
+pub async fn runtime_rollback_plan(
+    config_path: &str,
+    workspace_root: &Path,
+    artifact_path: &str,
+) -> Result<RuntimeRollbackPlan> {
+    let resolved_config_path = resolve_runtime_config_path(workspace_root, config_path);
+    let current_exe = std::env::current_exe().context("Failed to resolve current executable")?;
+    let artifact = resolve_runtime_artifact_path(workspace_root, artifact_path);
+    let rollback_artifact_exists = artifact.exists();
+    let rollback_artifact_executable = if rollback_artifact_exists {
+        path_is_executable(&artifact)?
+    } else {
+        false
+    };
+    let rollback_artifact_size_bytes = file_size_bytes(&artifact);
+    let service_install_status = runtime_service_install_status(config_path, workspace_root)?;
+    let lock_status = runtime_lock_status(workspace_root)?;
+
+    let mut blockers = Vec::new();
+    if lock_status.active {
+        blockers.push(
+            "runtime lock is active; stop or drain the running process before rolling the binary back"
+                .to_string(),
+        );
+    }
+    if !rollback_artifact_exists {
+        blockers.push(format!(
+            "rollback artifact '{}' does not exist",
+            artifact.display()
+        ));
+    } else if !artifact.is_file() {
+        blockers.push(format!(
+            "rollback artifact '{}' is not a regular file",
+            artifact.display()
+        ));
+    } else if !rollback_artifact_executable {
+        blockers.push(format!(
+            "rollback artifact '{}' is not marked executable",
+            artifact.display()
+        ));
+    }
+    if artifact == current_exe {
+        blockers.push("rollback artifact resolves to the currently running executable".to_string());
+    }
+
+    let mut steps = vec![
+        "Take a fresh workspace snapshot with `openrustclaw runtime backup` before restoring the prior binary."
+            .to_string(),
+        format!(
+            "Replace the installed binary at '{}' with the rollback artifact at '{}'.",
+            current_exe.display(),
+            artifact.display()
+        ),
+    ];
+    if let Some(restart_command) = service_install_status.restart_command.as_ref() {
+        steps.push(format!(
+            "Restart the managed runtime with `{}` after restoring the binary.",
+            restart_command
+        ));
+    } else {
+        steps.push(
+            "Restart the runtime manually after restoring the binary because no managed host service is installed."
+                .to_string(),
+        );
+    }
+    steps.push(format!(
+        "Re-run `openrustclaw runtime upgrade-plan --config {}` and `openrustclaw runtime health` after rollback verification.",
+        config_path
+    ));
+
+    Ok(RuntimeRollbackPlan {
+        generated_at: Utc::now().to_rfc3339(),
+        config_path: resolved_config_path.display().to_string(),
+        current_executable: current_exe.display().to_string(),
+        rollback_artifact_path: artifact.display().to_string(),
+        rollback_artifact_exists,
+        rollback_artifact_executable,
+        rollback_artifact_size_bytes,
+        service_install_status,
+        lock_status,
+        backup_command: "openrustclaw runtime backup".to_string(),
+        ready: blockers.is_empty(),
         blockers,
         steps,
     })
@@ -1542,9 +1855,10 @@ fn extract_provider_model_ids(provider: &str, body: &serde_json::Value) -> Vec<S
     let data = body["data"].as_array().cloned().unwrap_or_default();
     data.into_iter()
         .filter_map(|entry| match provider {
-            "anthropic" | "openai" | "openrouter" => {
-                entry.get("id").and_then(|value| value.as_str()).map(str::to_string)
-            }
+            "anthropic" | "openai" | "openrouter" => entry
+                .get("id")
+                .and_then(|value| value.as_str())
+                .map(str::to_string),
             _ => None,
         })
         .collect()
@@ -1583,7 +1897,9 @@ fn classify_provider_error(message: &str) -> &'static str {
     let lower = message.to_ascii_lowercase();
     if lower.contains("environment variable not set") {
         "not_configured"
-    } else if lower.contains("auth") || lower.contains("unauthorized") || lower.contains("forbidden")
+    } else if lower.contains("auth")
+        || lower.contains("unauthorized")
+        || lower.contains("forbidden")
     {
         "auth"
     } else if lower.contains("billing") || lower.contains("quota") || lower.contains("credit") {
@@ -2053,8 +2369,20 @@ fn systemd_user_service_supported() -> bool {
     Path::new("/run/systemd/system").exists() || Path::new("/sbin/systemctl").exists()
 }
 
+fn launchd_user_service_supported() -> bool {
+    cfg!(target_os = "macos") && dirs::home_dir().is_some()
+}
+
 fn user_systemd_service_path() -> Option<PathBuf> {
     dirs::config_dir().map(|dir| dir.join("systemd/user").join(DEFAULT_SYSTEMD_SERVICE_NAME))
+}
+
+fn user_launchd_service_path() -> Option<PathBuf> {
+    dirs::home_dir().map(|dir| {
+        dir.join("Library")
+            .join("LaunchAgents")
+            .join(format!("{DEFAULT_LAUNCHD_LABEL}.plist"))
+    })
 }
 
 fn resolve_runtime_config_path(workspace_root: &Path, config_path: &str) -> PathBuf {
@@ -2064,6 +2392,66 @@ fn resolve_runtime_config_path(workspace_root: &Path, config_path: &str) -> Path
     } else {
         workspace_root.join(config_path)
     }
+}
+
+fn resolve_runtime_artifact_path(workspace_root: &Path, artifact_path: &str) -> PathBuf {
+    let artifact = PathBuf::from(artifact_path);
+    if artifact.is_absolute() {
+        artifact
+    } else {
+        workspace_root.join(artifact)
+    }
+}
+
+fn install_runtime_systemd_service(
+    config_path: &str,
+    workspace_root: &Path,
+) -> Result<RuntimeServiceInstallStatus> {
+    if !systemd_user_service_supported() {
+        anyhow::bail!("User-level systemd services are not available on this host");
+    }
+
+    let service_path = user_systemd_service_path()
+        .ok_or_else(|| anyhow::anyhow!("Could not determine the user systemd service directory"))?;
+    if let Some(parent) = service_path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("Failed to create '{}'", parent.display()))?;
+    }
+
+    let current_exe = std::env::current_exe().context("Failed to resolve current executable")?;
+    let unit = render_user_systemd_service_unit(&current_exe, workspace_root, config_path);
+    fs::write(&service_path, unit.as_bytes())
+        .with_context(|| format!("Failed to write '{}'", service_path.display()))?;
+
+    runtime_service_install_status(config_path, workspace_root)
+}
+
+fn install_runtime_launchd_service(
+    config_path: &str,
+    workspace_root: &Path,
+) -> Result<RuntimeServiceInstallStatus> {
+    if !launchd_user_service_supported() {
+        anyhow::bail!("User-level launchd agents are not available on this host");
+    }
+
+    let service_path = user_launchd_service_path()
+        .ok_or_else(|| anyhow::anyhow!("Could not determine the user launchd agent directory"))?;
+    if let Some(parent) = service_path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("Failed to create '{}'", parent.display()))?;
+    }
+    let log_path = super::logs::runtime_log_path_for(workspace_root);
+    if let Some(parent) = log_path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("Failed to create '{}'", parent.display()))?;
+    }
+
+    let current_exe = std::env::current_exe().context("Failed to resolve current executable")?;
+    let plist = render_user_launchd_service_plist(&current_exe, workspace_root, config_path);
+    fs::write(&service_path, plist.as_bytes())
+        .with_context(|| format!("Failed to write '{}'", service_path.display()))?;
+
+    runtime_service_install_status(config_path, workspace_root)
 }
 
 fn render_user_systemd_service_unit(
@@ -2091,6 +2479,104 @@ WantedBy=default.target
         config_path = resolved_config_path.display(),
         working_directory = workspace_root.display(),
     )
+}
+
+fn render_user_launchd_service_plist(
+    current_exe: &Path,
+    workspace_root: &Path,
+    config_path: &str,
+) -> String {
+    let resolved_config_path = resolve_runtime_config_path(workspace_root, config_path);
+    let log_path = super::logs::runtime_log_path_for(workspace_root);
+    format!(
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>{label}</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>{exe_path}</string>
+    <string>start</string>
+    <string>--config</string>
+    <string>{config_path}</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>{working_directory}</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>{log_path}</string>
+  <key>StandardErrorPath</key>
+  <string>{log_path}</string>
+</dict>
+</plist>
+"#,
+        label = DEFAULT_LAUNCHD_LABEL,
+        exe_path = current_exe.display(),
+        config_path = resolved_config_path.display(),
+        working_directory = workspace_root.display(),
+        log_path = log_path.display(),
+    )
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RuntimeServiceManager {
+    Unsupported,
+    SystemdUser,
+    LaunchdUser,
+}
+
+fn preferred_service_manager() -> RuntimeServiceManager {
+    if cfg!(target_os = "macos") {
+        if launchd_user_service_supported() {
+            RuntimeServiceManager::LaunchdUser
+        } else {
+            RuntimeServiceManager::Unsupported
+        }
+    } else if systemd_user_service_supported() {
+        RuntimeServiceManager::SystemdUser
+    } else {
+        RuntimeServiceManager::Unsupported
+    }
+}
+
+fn launchd_domain_target() -> String {
+    "gui/$(id -u)".to_string()
+}
+
+fn file_size_bytes(path: &Path) -> Option<u64> {
+    fs::metadata(path).ok().map(|metadata| metadata.len())
+}
+
+fn path_is_executable(path: &Path) -> Result<bool> {
+    let metadata = fs::metadata(path)
+        .with_context(|| format!("Failed to stat runtime artifact '{}'", path.display()))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        Ok(metadata.permissions().mode() & 0o111 != 0)
+    }
+    #[cfg(not(unix))]
+    {
+        Ok(metadata.is_file())
+    }
+}
+
+fn recommended_runtime_rollback_path(workspace_root: &Path, current_exe: &Path) -> PathBuf {
+    let file_name = current_exe
+        .file_name()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("openrustclaw"));
+    runtime_release_root_for(workspace_root)
+        .join(format!("rollback-{}", Utc::now().format("%Y%m%d%H%M%S")))
+        .join(file_name)
 }
 
 fn backup_runtime_state_inner(
@@ -2381,6 +2867,7 @@ impl Drop for RuntimeLockGuard {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::commands::logs;
     use tempfile::tempdir;
 
     #[test]
@@ -2459,6 +2946,37 @@ mod tests {
             )
         );
         assert!(unit.contains(&format!("WorkingDirectory={}", workspace_root.display())));
+        Ok(())
+    }
+
+    #[test]
+    fn render_launchd_plist_uses_explicit_config_path() -> Result<()> {
+        let temp = tempdir()?;
+        let workspace_root = temp.path();
+        let plist = render_user_launchd_service_plist(
+            Path::new("/tmp/openrustclaw"),
+            workspace_root,
+            "config/default.toml",
+        );
+
+        assert!(plist.contains("<string>/tmp/openrustclaw</string>"));
+        assert!(plist.contains("<string>start</string>"));
+        assert!(plist.contains("<string>--config</string>"));
+        assert!(
+            plist.contains(
+                &workspace_root
+                    .join("config/default.toml")
+                    .display()
+                    .to_string()
+            )
+        );
+        assert!(
+            plist.contains(
+                &logs::runtime_log_path_for(workspace_root)
+                    .display()
+                    .to_string()
+            )
+        );
         Ok(())
     }
 
@@ -2672,6 +3190,48 @@ mod tests {
                 .iter()
                 .any(|step| step.contains("runtime migrate-config"))
         );
+        Ok(())
+    }
+
+    #[test]
+    fn runtime_update_and_rollback_plans_report_artifact_metadata() -> Result<()> {
+        let temp = tempdir()?;
+        let workspace_root = temp.path();
+        fs::create_dir_all(workspace_root.join("config"))?;
+        let config_path = workspace_root.join("config/default.toml");
+        fs::write(&config_path, toml::to_string_pretty(&AppConfig::default())?)?;
+
+        let artifact_path = workspace_root.join("openrustclaw-next");
+        fs::write(&artifact_path, "#!/bin/sh\nexit 0\n")?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut permissions = fs::metadata(&artifact_path)?.permissions();
+            permissions.set_mode(0o755);
+            fs::set_permissions(&artifact_path, permissions)?;
+        }
+
+        let runtime = tokio::runtime::Runtime::new()?;
+        let update_plan = runtime.block_on(runtime_self_update_plan(
+            config_path.to_str().unwrap(),
+            workspace_root,
+            artifact_path.to_str().unwrap(),
+        ))?;
+        assert!(update_plan.artifact_exists);
+        assert!(update_plan.artifact_executable);
+        assert!(
+            update_plan
+                .recommended_rollback_path
+                .contains(".claw/runtime-releases")
+        );
+
+        let rollback_plan = runtime.block_on(runtime_rollback_plan(
+            config_path.to_str().unwrap(),
+            workspace_root,
+            artifact_path.to_str().unwrap(),
+        ))?;
+        assert!(rollback_plan.rollback_artifact_exists);
+        assert!(rollback_plan.rollback_artifact_executable);
         Ok(())
     }
 }

@@ -186,13 +186,17 @@ Channel routing/operator controls:
   - `GET /control/jobs/{id}`
 - shared runtime reconfiguration surfaces now exist at:
   - `GET /control/runtime/status`
+  - `GET /control/runtime/reload-plan`
+  - `GET /control/runtime/upgrade-plan`
+  - `GET /control/runtime/self-update-plan?artifact=...`
+  - `GET /control/runtime/rollback-plan?artifact=...`
   - `POST /control/runtime/reload`
   - `POST /control/runtime/switch-provider`
   - `POST /control/runtime/switch-model`
   - `GET /control/runtime/vault`
   - `PUT /control/runtime/vault/{key}`
   - `DELETE /control/runtime/vault/{key}`
-- `openrustclaw runtime status|reload|switch-provider|switch-model|backup|restore|migrate-config|upgrade-plan`
+- `openrustclaw runtime status|reload|switch-provider|switch-model|backup|restore|migrate-config|upgrade-plan|self-update-plan|rollback-plan`
 - `openrustclaw runtime services status|scheduler|events|channels|install-status|install|lock-status`
 - `openrustclaw runtime services logs|rotate-logs`
 - `openrustclaw runtime vault status|list|set|delete`
@@ -204,10 +208,11 @@ Channel routing/operator controls:
 - `openrustclaw runtime status` now also reports the configured gateway deployment mode, bind host/port, allowed origins, trusted-proxy auth state, and the declared control-plane provider plus fallback chain
 - `openrustclaw runtime migrate-config` now detects legacy config keys, infers missing modern deployment fields such as `gateway.network_mode`, and can rewrite the canonical config shape with a timestamped backup
 - `openrustclaw runtime upgrade-plan` now composes runtime health, reload guidance, service install state, runtime-lock state, and control-plane failover recommendations into a single operator upgrade playbook
+- `openrustclaw runtime self-update-plan --artifact <path>` and `openrustclaw runtime rollback-plan --artifact <path>` now build bounded binary-swap and rollback playbooks with runtime-lock checks, managed-service restart commands, and recommended rollback-reference paths
 - startup now performs an explicit runtime fallback-health validation pass and warns when the system is booting in degraded control-plane mode with a healthy fallback provider available
 - `openrustclaw runtime health` plus `/control/runtime/health|scan` now persist provider-role-aware recommendations and operator warnings so model swaps do not fail blind when the preferred control-plane lane is degraded, and the health report now distinguishes missing configured models, auth/billing regressions, exposed rate-limit-header drift, and generic provider outages
 - the shipped `agent-browser` compatibility lane now honors `[external_backends]` policy with an explicit allowlist, local-wrapper permit switch, isolated env pass-through, and `openrustclaw browser backend-policy|backend-audit` inspection over the same audit file used by `/control/browser/backend-policy|backend-audit`
-- standalone runtime ops now also support `openrustclaw runtime services install-status|install` for user-level systemd installation outside onboarding, using the same unit-generation path with an explicit config file target
+- standalone runtime ops now also support `openrustclaw runtime services install-status|install` for host user-service installation outside onboarding, adapting to user-level systemd on Linux and launchd agents on macOS through the same explicit config-file target
 - standalone runtime ops now also support `openrustclaw runtime services rotate-logs` with archive retention under `.claw/control/runtime-log-archives/` plus `openrustclaw runtime services lock-status` for stale-PID/runtime-lock inspection on `.claw/control/runtime-lock.json`
 - bounded orchestration surfaces now exist at:
   - `POST /control/orchestration/resolve`

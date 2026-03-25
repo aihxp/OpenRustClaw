@@ -1378,15 +1378,15 @@ Remaining:
   - per-agent restrictions,
   - operator roles for Control UI if introduced.
 - [ ] Add production ops parity:
-  - [x] standalone `openrustclaw runtime services install-status|install` now covers user-level systemd service installation outside onboarding through the shared unit-generation path,
+  - [x] standalone `openrustclaw runtime services install-status|install` now covers host user-service installation outside onboarding through the shared unit-generation path,
   - [x] explicit `openrustclaw runtime backup` workspace-state snapshots now land under `.claw/runtime-backups/`,
   - [x] explicit `openrustclaw runtime restore <backup-path>` restores those snapshots and creates an automatic pre-restore safety snapshot first,
   - [x] `openrustclaw runtime services rotate-logs` now performs copy-truncate runtime log rotation with archive retention under `.claw/control/runtime-log-archives/`,
   - [x] `openrustclaw runtime migrate-config` now detects legacy keys such as `gateway.bind`, `gateway.origin_whitelist`, `providers.primary`, `providers.fallbacks`, and `security.require_authentication`, infers missing `gateway.network_mode`, and can rewrite the canonical config shape with a timestamped backup,
   - [x] `openrustclaw runtime upgrade-plan` now composes runtime health, reload guidance, service install state, and runtime-lock state into a single operator upgrade playbook,
-  - self-update and rollback,
+  - [x] bounded `openrustclaw runtime self-update-plan --artifact <path>` and `openrustclaw runtime rollback-plan --artifact <path>` now validate candidate binary artifacts, recommend rollback-reference locations, and compose managed-service restart guidance around the runtime lock before an operator swaps or restores a production binary,
   - [x] `openrustclaw start` now maintains a PID-aware `.claw/control/runtime-lock.json` guard and `openrustclaw runtime services lock-status` reports active versus stale runtime-lock state,
-  - launchd/systemd integration,
+  - [x] `openrustclaw runtime services install-status|install` now adapts to user-level systemd on Linux or launchd agents on macOS through the same host user-service surface, and onboarding reuses that host-manager detection when offering daemon install,
   - [x] `gateway.network_mode = loopback|lan|remote` now makes loopback/LAN/remote deployment explicit and startup validates host/origin/auth mismatches before the runtime binds,
   - [x] trusted-proxy auth mode now exists for reverse proxies through `security.trusted_proxy_token_env` plus `X-OpenRustClaw-Trusted-Proxy-Token`/`X-Forwarded-Origin` on the gateway WebSocket and `/control/...` lanes.
 - [ ] Add control-plane model resilience so operator actions still work when the primary paid model is unavailable:

@@ -638,24 +638,34 @@ async fn run_skill_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
 // ============================================================================
 
 async fn run_daemon_install(wizard: &mut OnboardingWizard) -> Result<bool> {
-    // Check if systemd is available
-    if !Path::new("/run/systemd/system").exists() && !Path::new("/sbin/systemctl").exists() {
-        println!("Systemd not detected, skipping system service setup.");
+    let workspace_root = std::env::current_dir()?;
+    let status = runtime::runtime_service_install_status("config/default.toml", &workspace_root)?;
+    if !status.supported {
+        println!("No supported user service manager detected, skipping service setup.");
         return Ok(true);
     }
 
     let install = Confirm::with_theme(&wizard.theme)
-        .with_prompt("Install OpenRustClaw as a user systemd service?")
+        .with_prompt(format!(
+            "Install OpenRustClaw as a {} service?",
+            status.service_manager
+        ))
         .default(true)
         .interact()?;
 
     if install {
         install_daemon().await?;
         wizard.state.daemon_installed = true;
-        println!("✓ System service installed");
-        println!("  Start: systemctl --user start openrustclaw");
-        println!("  Stop:  systemctl --user stop openrustclaw");
-        println!("  Enable: systemctl --user enable openrustclaw");
+        println!("✓ User service installed");
+        if let Some(start_command) = status.start_command.as_deref() {
+            println!("  Start: {start_command}");
+        }
+        if let Some(stop_command) = status.stop_command.as_deref() {
+            println!("  Stop:  {stop_command}");
+        }
+        if let Some(enable_command) = status.enable_command.as_deref() {
+            println!("  Enable: {enable_command}");
+        }
     }
 
     Ok(true)
@@ -745,7 +755,9 @@ async fn install_daemon() -> Result<()> {
     if let Some(service_path) = status.service_path {
         println!("  Service file written to {}", service_path);
     }
-    println!("  Run 'systemctl --user daemon-reload' to reload systemd");
+    if let Some(reload_command) = status.daemon_reload_command {
+        println!("  Reload: {}", reload_command);
+    }
 
     Ok(())
 }
@@ -753,9 +765,10 @@ async fn install_daemon() -> Result<()> {
 pub fn workspace_status(workspace_root: &Path) -> OnboardingWorkspaceStatus {
     let control_root = control::control_root_for(workspace_root);
     let channels_root = channels::channels_root_for(workspace_root);
-    let service_present = dirs::config_dir()
-        .map(|dir| dir.join("systemd/user/openrustclaw.service").exists())
-        .unwrap_or(false);
+    let service_present =
+        runtime::runtime_service_install_status("config/default.toml", workspace_root)
+            .map(|status| status.installed)
+            .unwrap_or(false);
 
     OnboardingWorkspaceStatus {
         workspace_root: workspace_root.display().to_string(),
