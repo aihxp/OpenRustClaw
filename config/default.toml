@@ -147,6 +147,12 @@ enabled = true
 timeout_secs = 30
 
 [channels]
+[channels.runtime]
+health_monitor_enabled = true
+probe_interval_secs = 300
+auto_restart_on_failure = false
+failure_threshold = 3
+
 # Telegram Bot Configuration
 [channels.telegram]
 enabled = false

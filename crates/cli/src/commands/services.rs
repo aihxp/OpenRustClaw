@@ -12,6 +12,7 @@ use sqlx::Row;
 use super::{channels::ChannelRegistry, runtime};
 
 pub const DEFAULT_CHANNEL_PROBES_PATH: &str = ".claw/control/channel-probes.json";
+pub const DEFAULT_CHANNEL_HEALTH_MONITOR_PATH: &str = ".claw/control/channel-health-monitor.json";
 
 #[derive(Debug, Clone, Serialize)]
 pub struct SessionCounts {
@@ -117,6 +118,26 @@ pub struct ChannelProbeEntry {
 pub struct ChannelProbeReport {
     pub generated_at: String,
     pub entries: Vec<ChannelProbeEntry>,
+    pub monitor: ChannelHealthMonitorStatus,
+}
+
+#[derive(Debug, Clone, Serialize, serde::Deserialize)]
+pub struct ChannelHealthMonitorStatus {
+    pub generated_at: String,
+    pub health_monitor_enabled: bool,
+    pub auto_restart_on_failure: bool,
+    pub auto_restart_ready: bool,
+    pub consecutive_failure_threshold: usize,
+    pub current_consecutive_failures: usize,
+    pub degraded: bool,
+    pub failing_platforms: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_failure_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_healthy_at: Option<String>,
+    pub restart_requested: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub restart_reason: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -345,12 +366,17 @@ pub async fn channel_probes_status(
         return Ok(report);
     }
     let config = runtime::load_effective_config(config_path, workspace_root)?;
-    let report = channel_probes_with_config(&config).await?;
+    let report = channel_probes_with_config(config_path, workspace_root, &config).await?;
     save_channel_probes(workspace_root, &report)?;
+    save_channel_health_monitor_status(workspace_root, &report.monitor)?;
     Ok(report)
 }
 
-pub async fn channel_probes_with_config(config: &AppConfig) -> Result<ChannelProbeReport> {
+pub async fn channel_probes_with_config(
+    config_path: &str,
+    workspace_root: &Path,
+    config: &AppConfig,
+) -> Result<ChannelProbeReport> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(4))
         .build()?;
@@ -393,9 +419,13 @@ pub async fn channel_probes_with_config(config: &AppConfig) -> Result<ChannelPro
         entries.push(probe_imessage(&config.channels.imessage));
     }
 
+    let monitor =
+        build_channel_health_monitor_status(config_path, workspace_root, config, &entries)?;
+
     Ok(ChannelProbeReport {
         generated_at: Utc::now().to_rfc3339(),
         entries,
+        monitor,
     })
 }
 
@@ -754,6 +784,12 @@ pub fn channel_probe_path_for(workspace_root: impl AsRef<Path>) -> PathBuf {
     workspace_root.as_ref().join(DEFAULT_CHANNEL_PROBES_PATH)
 }
 
+pub fn channel_health_monitor_path_for(workspace_root: impl AsRef<Path>) -> PathBuf {
+    workspace_root
+        .as_ref()
+        .join(DEFAULT_CHANNEL_HEALTH_MONITOR_PATH)
+}
+
 pub fn load_cached_channel_probes(workspace_root: &Path) -> Result<Option<ChannelProbeReport>> {
     let path = channel_probe_path_for(workspace_root);
     if !path.exists() {
@@ -772,6 +808,104 @@ pub fn save_channel_probes(workspace_root: &Path, report: &ChannelProbeReport) -
     let rendered = serde_json::to_string_pretty(report)?;
     fs::write(path, rendered.as_bytes())?;
     Ok(())
+}
+
+pub fn load_channel_health_monitor_status(
+    workspace_root: &Path,
+) -> Result<Option<ChannelHealthMonitorStatus>> {
+    let path = channel_health_monitor_path_for(workspace_root);
+    if !path.exists() {
+        return Ok(None);
+    }
+    let raw = fs::read_to_string(&path)?;
+    let report = serde_json::from_str(&raw)?;
+    Ok(Some(report))
+}
+
+pub fn save_channel_health_monitor_status(
+    workspace_root: &Path,
+    monitor: &ChannelHealthMonitorStatus,
+) -> Result<()> {
+    let path = channel_health_monitor_path_for(workspace_root);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let rendered = serde_json::to_string_pretty(monitor)?;
+    fs::write(path, rendered.as_bytes())?;
+    Ok(())
+}
+
+fn build_channel_health_monitor_status(
+    config_path: &str,
+    workspace_root: &Path,
+    config: &AppConfig,
+    entries: &[ChannelProbeEntry],
+) -> Result<ChannelHealthMonitorStatus> {
+    let previous = load_channel_health_monitor_status(workspace_root)?;
+    let service_install_status =
+        runtime::runtime_service_install_status(config_path, workspace_root)?;
+    Ok(compose_channel_health_monitor_status(
+        config,
+        service_install_status.supported && service_install_status.installed,
+        previous.as_ref(),
+        entries,
+    ))
+}
+
+fn compose_channel_health_monitor_status(
+    config: &AppConfig,
+    auto_restart_ready: bool,
+    previous: Option<&ChannelHealthMonitorStatus>,
+    entries: &[ChannelProbeEntry],
+) -> ChannelHealthMonitorStatus {
+    let now = Utc::now().to_rfc3339();
+    let failing_platforms = entries
+        .iter()
+        .filter(|entry| entry.enabled && entry.status == ChannelProbeStatus::Failed)
+        .map(|entry| entry.platform.clone())
+        .collect::<Vec<_>>();
+    let degraded = !failing_platforms.is_empty();
+    let current_consecutive_failures = if degraded {
+        previous
+            .map(|status| status.current_consecutive_failures + 1)
+            .unwrap_or(1)
+    } else {
+        0
+    };
+    let restart_requested = config.channels.runtime.health_monitor_enabled
+        && config.channels.runtime.auto_restart_on_failure
+        && auto_restart_ready
+        && current_consecutive_failures >= config.channels.runtime.failure_threshold;
+    let restart_reason = restart_requested.then(|| {
+        format!(
+            "Channel health monitor requested a managed restart after {} consecutive failing scans: {}",
+            current_consecutive_failures,
+            failing_platforms.join(", ")
+        )
+    });
+
+    ChannelHealthMonitorStatus {
+        generated_at: now.clone(),
+        health_monitor_enabled: config.channels.runtime.health_monitor_enabled,
+        auto_restart_on_failure: config.channels.runtime.auto_restart_on_failure,
+        auto_restart_ready,
+        consecutive_failure_threshold: config.channels.runtime.failure_threshold,
+        current_consecutive_failures,
+        degraded,
+        failing_platforms,
+        last_failure_at: if degraded {
+            Some(now.clone())
+        } else {
+            previous.and_then(|status| status.last_failure_at.clone())
+        },
+        last_healthy_at: if degraded {
+            previous.and_then(|status| status.last_healthy_at.clone())
+        } else {
+            Some(now)
+        },
+        restart_requested,
+        restart_reason,
+    }
 }
 
 fn ready_entry(platform: &str, probe_kind: &str, detail: impl Into<String>) -> ChannelProbeEntry {
@@ -847,7 +981,11 @@ fn enabled_channels(config: &AppConfig) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::enabled_channels;
+    use super::{
+        ChannelHealthMonitorStatus, ChannelProbeEntry, ChannelProbeStatus,
+        compose_channel_health_monitor_status, enabled_channels,
+    };
+    use chrono::Utc;
     use openrustclaw_core::config::AppConfig;
 
     #[test]
@@ -860,5 +998,74 @@ mod tests {
         assert!(channels.contains(&"telegram".to_string()));
         assert!(channels.contains(&"matrix".to_string()));
         assert!(!channels.contains(&"discord".to_string()));
+    }
+
+    #[test]
+    fn channel_health_monitor_requests_restart_after_threshold() {
+        let mut config = AppConfig::default();
+        config.channels.runtime.auto_restart_on_failure = true;
+        config.channels.runtime.failure_threshold = 2;
+
+        let previous = ChannelHealthMonitorStatus {
+            generated_at: Utc::now().to_rfc3339(),
+            health_monitor_enabled: true,
+            auto_restart_on_failure: true,
+            auto_restart_ready: true,
+            consecutive_failure_threshold: 2,
+            current_consecutive_failures: 1,
+            degraded: true,
+            failing_platforms: vec!["slack".to_string()],
+            last_failure_at: Some(Utc::now().to_rfc3339()),
+            last_healthy_at: None,
+            restart_requested: false,
+            restart_reason: None,
+        };
+        let entries = vec![ChannelProbeEntry {
+            platform: "slack".to_string(),
+            enabled: true,
+            status: ChannelProbeStatus::Failed,
+            probe_kind: "remote_auth".to_string(),
+            detail: "token rejected".to_string(),
+        }];
+
+        let monitor =
+            compose_channel_health_monitor_status(&config, true, Some(&previous), &entries);
+        assert!(monitor.restart_requested);
+        assert_eq!(monitor.current_consecutive_failures, 2);
+    }
+
+    #[test]
+    fn channel_health_monitor_resets_after_healthy_scan() {
+        let mut config = AppConfig::default();
+        config.channels.runtime.auto_restart_on_failure = true;
+
+        let previous = ChannelHealthMonitorStatus {
+            generated_at: Utc::now().to_rfc3339(),
+            health_monitor_enabled: true,
+            auto_restart_on_failure: true,
+            auto_restart_ready: true,
+            consecutive_failure_threshold: 3,
+            current_consecutive_failures: 2,
+            degraded: true,
+            failing_platforms: vec!["telegram".to_string()],
+            last_failure_at: Some(Utc::now().to_rfc3339()),
+            last_healthy_at: None,
+            restart_requested: false,
+            restart_reason: None,
+        };
+        let entries = vec![ChannelProbeEntry {
+            platform: "telegram".to_string(),
+            enabled: true,
+            status: ChannelProbeStatus::Ready,
+            probe_kind: "remote_auth".to_string(),
+            detail: "ok".to_string(),
+        }];
+
+        let monitor =
+            compose_channel_health_monitor_status(&config, true, Some(&previous), &entries);
+        assert!(!monitor.degraded);
+        assert_eq!(monitor.current_consecutive_failures, 0);
+        assert!(!monitor.restart_requested);
+        assert!(monitor.last_healthy_at.is_some());
     }
 }

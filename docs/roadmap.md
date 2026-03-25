@@ -1408,8 +1408,8 @@ Remaining:
   - [x] audit trail for local CLI wrapper execution,
   - [x] operator policy for when external agent execution is permitted.
   - Cloud-agent call governance remains reserved until a shipped cloud-agent backend exists.
-- [ ] Add channel/service runtime resilience features:
-  - channel health monitor with configurable auto-restart,
+- [x] Add channel/service runtime resilience features:
+  - [x] persisted channel-health monitor state now rides on the shipped readiness scans, and `channels.runtime.health_monitor_enabled|probe_interval_secs|auto_restart_on_failure|failure_threshold` can trigger a managed user-service restart after repeated failing channel scans,
   - [x] presence and liveness beacons for operator surfaces,
   - [x] readiness probes that reflect real channel connectivity.
 - [ ] Add binary-first Rust operations strengths as first-class release goals:

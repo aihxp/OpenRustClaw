@@ -378,6 +378,7 @@
           <div class="action-row" style="margin-bottom: 12px">
             <button class="secondary" id="channel-probes-refresh">Refresh Readiness</button>
           </div>
+          <div class="surface" style="margin-bottom: 12px"><pre id="channel-probe-monitor">Loading…</pre></div>
           <div class="surface">
             <table class="table">
               <thead>
@@ -1273,6 +1274,7 @@
 
       async function loadChannelProbes(refresh = false) {
         const payload = await fetchJson(`/control/services/channels${refresh ? "?refresh=true" : ""}`);
+        setText("channel-probe-monitor", payload.monitor || {});
         const rows = (payload.entries || []).map((entry) => {
           return `<tr>
             <td><strong>${entry.platform || "-"}</strong></td>

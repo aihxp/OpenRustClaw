@@ -493,9 +493,43 @@ fn default_talk_timeout_secs() -> u64 {
     30
 }
 
+/// Channel runtime resilience configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChannelRuntimeConfig {
+    #[serde(default = "default_true")]
+    pub health_monitor_enabled: bool,
+    #[serde(default = "default_channel_probe_interval_secs")]
+    pub probe_interval_secs: u64,
+    #[serde(default)]
+    pub auto_restart_on_failure: bool,
+    #[serde(default = "default_channel_failure_threshold")]
+    pub failure_threshold: usize,
+}
+
+impl Default for ChannelRuntimeConfig {
+    fn default() -> Self {
+        Self {
+            health_monitor_enabled: true,
+            probe_interval_secs: default_channel_probe_interval_secs(),
+            auto_restart_on_failure: false,
+            failure_threshold: default_channel_failure_threshold(),
+        }
+    }
+}
+
+fn default_channel_probe_interval_secs() -> u64 {
+    300
+}
+
+fn default_channel_failure_threshold() -> usize {
+    3
+}
+
 /// Channel integrations configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChannelsConfig {
+    #[serde(default)]
+    pub runtime: ChannelRuntimeConfig,
     pub telegram: TelegramConfig,
     pub discord: DiscordConfig,
     pub slack: SlackConfig,
@@ -1153,6 +1187,7 @@ impl Default for AppConfig {
             },
             voice: VoiceConfig::default(),
             channels: ChannelsConfig {
+                runtime: ChannelRuntimeConfig::default(),
                 telegram: TelegramConfig {
                     enabled: false,
                     token: String::new(),

@@ -40,6 +40,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::signal;
+use tokio::sync::watch;
 use tokio::time::{Duration, interval};
 use tracing::{error, info, warn};
 
@@ -595,6 +596,7 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
     )
     .await;
     let _ = services::channel_probes_status(config_path, &workspace_root, true).await;
+    let (channel_restart_tx, channel_restart_rx) = watch::channel::<Option<String>>(None);
 
     let runtime_health_config_path = config_path.to_string();
     let runtime_health_root = workspace_root.clone();
@@ -661,52 +663,99 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
         }
     }));
 
-    let probe_config_path = config_path.to_string();
-    let probe_root = workspace_root.clone();
-    let probe_events = event_bus.clone();
-    channel_tasks.push(tokio::spawn(async move {
-        let mut ticker = interval(Duration::from_secs(300));
-        loop {
-            ticker.tick().await;
-            match services::channel_probes_status(&probe_config_path, &probe_root, true).await {
-                Ok(report) => {
-                    let _ = probe_events
-                        .publish_named(
-                            "runtime.channel_probes_scanned",
-                            "runtime_control",
-                            None,
-                            &serde_json::json!(report),
-                            None,
-                        )
-                        .await;
-                }
-                Err(error) => {
-                    warn!(error = %error, "Failed to refresh channel readiness probes");
+    if config.channels.runtime.health_monitor_enabled {
+        let probe_config_path = config_path.to_string();
+        let probe_root = workspace_root.clone();
+        let probe_events = event_bus.clone();
+        let probe_restart_tx = channel_restart_tx.clone();
+        let probe_interval_secs = config.channels.runtime.probe_interval_secs.max(15);
+        channel_tasks.push(tokio::spawn(async move {
+            let mut ticker = interval(Duration::from_secs(probe_interval_secs));
+            loop {
+                ticker.tick().await;
+                match services::channel_probes_status(&probe_config_path, &probe_root, true).await {
+                    Ok(report) => {
+                        let _ = probe_events
+                            .publish_named(
+                                "runtime.channel_probes_scanned",
+                                "runtime_control",
+                                None,
+                                &serde_json::json!(report),
+                                None,
+                            )
+                            .await;
+                        if report.monitor.restart_requested
+                            && let Some(reason) = report.monitor.restart_reason.clone()
+                        {
+                            let _ = probe_events
+                                .publish_named(
+                                    "runtime.channel_restart_requested",
+                                    "runtime_control",
+                                    None,
+                                    &serde_json::json!({
+                                        "reason": reason,
+                                        "monitor": report.monitor,
+                                    }),
+                                    None,
+                                )
+                                .await;
+                            let _ = probe_restart_tx.send_replace(Some(reason));
+                        }
+                    }
+                    Err(error) => {
+                        warn!(error = %error, "Failed to refresh channel readiness probes");
+                    }
                 }
             }
-        }
-    }));
+        }));
+    }
+
+    #[derive(Debug)]
+    enum ShutdownReason {
+        Signal,
+        ChannelRestart(String),
+    }
 
     // Create shutdown signal handler
-    let shutdown = async {
+    let mut shutdown_restart_rx = channel_restart_rx.clone();
+    let shutdown = async move {
         let mut sigterm = match signal::unix::signal(signal::unix::SignalKind::terminate()) {
             Ok(sig) => sig,
             Err(e) => {
                 error!(error = %e, "Failed to create SIGTERM handler");
-                return;
+                return ShutdownReason::Signal;
             }
         };
         let mut sigint = match signal::unix::signal(signal::unix::SignalKind::interrupt()) {
             Ok(sig) => sig,
             Err(e) => {
                 error!(error = %e, "Failed to create SIGINT handler");
-                return;
+                return ShutdownReason::Signal;
             }
         };
 
         tokio::select! {
-            _ = sigterm.recv() => info!("Received SIGTERM, shutting down..."),
-            _ = sigint.recv() => info!("Received SIGINT, shutting down..."),
+            _ = sigterm.recv() => {
+                info!("Received SIGTERM, shutting down...");
+                ShutdownReason::Signal
+            },
+            _ = sigint.recv() => {
+                info!("Received SIGINT, shutting down...");
+                ShutdownReason::Signal
+            },
+            result = shutdown_restart_rx.changed() => {
+                match result {
+                    Ok(()) => {
+                        let reason = shutdown_restart_rx
+                            .borrow()
+                            .clone()
+                            .unwrap_or_else(|| "Channel health monitor requested restart".to_string());
+                        warn!(reason = %reason, "Channel health monitor triggered managed restart");
+                        ShutdownReason::ChannelRestart(reason)
+                    }
+                    Err(_) => ShutdownReason::Signal,
+                }
+            },
         }
     };
 
@@ -731,14 +780,16 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
     }
 
     // Run server with graceful shutdown
-    tokio::select! {
+    let shutdown_reason = tokio::select! {
         result = axum::serve(listener, app) => {
             result.context("Server error")?;
+            None
         }
-        _ = shutdown => {
+        reason = shutdown => {
             info!("Shutdown signal received, stopping server...");
+            Some(reason)
         }
-    }
+    };
 
     // Cleanup channel tasks
     info!("Stopping channel tasks...");
@@ -756,6 +807,9 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
     }
 
     info!("OpenRustClaw shutdown complete");
+    if let Some(ShutdownReason::ChannelRestart(reason)) = shutdown_reason {
+        anyhow::bail!(reason);
+    }
     Ok(())
 }
 

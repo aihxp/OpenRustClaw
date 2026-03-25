@@ -385,6 +385,7 @@ openrustclaw runtime rollback-plan --config config/default.toml --artifact ./.cl
 - `rollback-plan` validates a prior binary artifact and composes the corresponding restore/restart playbook before an operator reverts a bad rollout.
 - `scripts/build-release-artifacts.sh --target <triple>` packages a versioned tarball plus `.sha256` for the chosen Rust target, and the release workflow now builds those artifacts for Linux/macOS x86_64 and ARM64.
 - `scripts/check-runtime-budgets.sh` enforces bounded release-binary size, CLI startup latency, and idle gateway RSS regressions before release promotion.
+- `[channels.runtime]` now controls the shipped channel-health monitor. With `health_monitor_enabled = true`, persisted readiness scans include monitor state; with `auto_restart_on_failure = true` and a supported installed user service, repeated failing scans can trigger a managed restart after `failure_threshold` consecutive failures.
 
 ---
 
