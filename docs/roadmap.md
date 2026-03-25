@@ -1413,9 +1413,9 @@ Remaining:
   - [x] presence and liveness beacons for operator surfaces,
   - [x] readiness probes that reflect real channel connectivity.
 - [ ] Add binary-first Rust operations strengths as first-class release goals:
-  - precompiled binaries for major targets,
-  - cross-compile support for x86_64/ARM64 and constrained devices where feasible,
-  - resource-budget regression checks for idle RAM, startup latency, and binary size.
+  - [x] `.github/workflows/release-binaries.yml` plus `scripts/build-release-artifacts.sh` now package precompiled `openrustclaw` release tarballs and `.sha256` files for the declared Linux/macOS x86_64 and ARM64 targets,
+  - [x] the same release-artifact lane now covers cross-target packaging for x86_64 and ARM64 through the declared workflow matrix and target-aware packaging script,
+  - [x] `scripts/check-runtime-budgets.sh` plus the main CI workflow now enforce bounded release-binary size, CLI startup latency, and idle gateway RSS regression checks.
 - [ ] Build a parity test suite that validates behavior against documented OpenClaw scenarios.
 - [ ] Build fixture-based integration suites for:
   - [x] channel routing,

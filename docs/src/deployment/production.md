@@ -383,6 +383,8 @@ openrustclaw runtime rollback-plan --config config/default.toml --artifact ./.cl
 - `upgrade-plan` summarizes the current runtime health, reload guidance, service install state, and runtime-lock status before a restart or binary/config upgrade.
 - `self-update-plan` validates a candidate binary artifact, recommends where to snapshot the current executable for rollback, and composes the managed-service restart guidance before an operator swaps the binary.
 - `rollback-plan` validates a prior binary artifact and composes the corresponding restore/restart playbook before an operator reverts a bad rollout.
+- `scripts/build-release-artifacts.sh --target <triple>` packages a versioned tarball plus `.sha256` for the chosen Rust target, and the release workflow now builds those artifacts for Linux/macOS x86_64 and ARM64.
+- `scripts/check-runtime-budgets.sh` enforces bounded release-binary size, CLI startup latency, and idle gateway RSS regressions before release promotion.
 
 ---
 

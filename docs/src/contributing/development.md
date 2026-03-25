@@ -114,6 +114,12 @@ cargo build --workspace
 
 # Release build (optimized)
 cargo build --workspace --release
+
+# Package a versioned release tarball for a target triple
+scripts/build-release-artifacts.sh --target x86_64-unknown-linux-gnu
+
+# Run the shipped runtime resource-budget regression check
+scripts/check-runtime-budgets.sh
 ```
 
 ### Building Specific Crates
@@ -280,6 +286,8 @@ samply record ./target/release/openrustclaw start
 cargo build --features dhat-heap
 ./target/debug/openrustclaw start
 ```
+
+The shipped CI now also runs `scripts/check-runtime-budgets.sh` to guard release-binary size, CLI startup latency, and idle gateway RSS on Linux, and `.github/workflows/release-binaries.yml` publishes packaged tarballs for the declared Linux/macOS x86_64 and ARM64 release targets.
 
 ---
 

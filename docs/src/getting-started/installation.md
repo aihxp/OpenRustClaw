@@ -177,9 +177,14 @@ cargo build --workspace
 
 # Or build in release mode (slower compile, faster runtime)
 cargo build --workspace --release
+
+# Package a versioned release artifact for the current host target
+scripts/build-release-artifacts.sh
 ```
 
 The first build will take several minutes as it downloads and compiles dependencies. Subsequent builds will be much faster.
+
+Tag builds and manual runs of `.github/workflows/release-binaries.yml` now also package `openrustclaw` tarballs plus `.sha256` files for the declared Linux/macOS x86_64 and ARM64 release targets.
 
 ### 3. Verify the Build
 

@@ -214,6 +214,8 @@ Channel routing/operator controls:
 - the shipped `agent-browser` compatibility lane now honors `[external_backends]` policy with an explicit allowlist, local-wrapper permit switch, isolated env pass-through, and `openrustclaw browser backend-policy|backend-audit` inspection over the same audit file used by `/control/browser/backend-policy|backend-audit`
 - standalone runtime ops now also support `openrustclaw runtime services install-status|install` for host user-service installation outside onboarding, adapting to user-level systemd on Linux and launchd agents on macOS through the same explicit config-file target
 - standalone runtime ops now also support `openrustclaw runtime services rotate-logs` with archive retention under `.claw/control/runtime-log-archives/` plus `openrustclaw runtime services lock-status` for stale-PID/runtime-lock inspection on `.claw/control/runtime-lock.json`
+- `scripts/build-release-artifacts.sh` now packages versioned `openrustclaw` release tarballs plus `.sha256` files for a requested target triple, and `.github/workflows/release-binaries.yml` now builds/uploads those artifacts for Linux and macOS x86_64/ARM64 targets on tags or manual runs
+- `scripts/check-runtime-budgets.sh` now enforces bounded release-binary size, CLI startup latency, and idle gateway RSS budgets, and the main CI workflow runs that regression check on `ubuntu-latest`
 - bounded orchestration surfaces now exist at:
   - `POST /control/orchestration/resolve`
   - `POST /control/orchestration/run`
