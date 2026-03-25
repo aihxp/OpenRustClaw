@@ -1393,8 +1393,8 @@ Remaining:
   - [x] operator-visible degraded-mode warnings now surface when the configured primary provider is unhealthy but a healthy fallback lane exists,
   - separate low-cost or local fallback model for onboarding, updates, config edits, and model-switch operations,
   - explicit distinction between primary task model and control-plane/safety model,
-  - startup-time fallback validation,
-  - operator warnings when the system is running in degraded control-plane mode.
+  - [x] startup-time fallback validation now runs during `openrustclaw start`,
+  - [x] operator warnings now emit when the runtime is booting in degraded control-plane mode.
 - [ ] Add recurring provider/model health scans after onboarding:
   - [x] basic persisted runtime-health scans now refresh from the running gateway and are visible through CLI, API, and Control UI,
   - detect removed or disabled models,

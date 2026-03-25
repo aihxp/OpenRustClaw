@@ -567,6 +567,20 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
     app = app.layer(metrics_middleware());
 
     runtime::mark_runtime_applied(config_path, &workspace_root)?;
+    match runtime::scan_runtime_health(config_path, &workspace_root).await {
+        Ok(report) => {
+            if report.degraded_control_plane_mode {
+                warn!(
+                    default_provider = %report.default_provider,
+                    recommended_provider = ?report.recommended_control_plane_provider,
+                    "Runtime is starting in degraded control-plane mode; a fallback provider is healthy but the default provider is not"
+                );
+            }
+        }
+        Err(error) => {
+            warn!(error = %error, "Failed to validate runtime fallback health during startup");
+        }
+    }
     let _ = runtime::refresh_runtime_beacon(
         config_path,
         &workspace_root,
