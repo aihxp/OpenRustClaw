@@ -363,6 +363,16 @@ systemctl --user enable openrustclaw.service
 systemctl --user start openrustclaw.service
 ```
 
+For ongoing workspace-owned runtime operations, the shipped CLI now also supports:
+
+```bash
+openrustclaw runtime services lock-status
+openrustclaw runtime services rotate-logs --keep 7 --max-bytes 10485760
+```
+
+- `lock-status` inspects `.claw/control/runtime-lock.json` and reports whether the stored PID is still live or stale.
+- `rotate-logs` performs copy-truncate rotation on `.claw/control/runtime.log` and keeps archives under `.claw/control/runtime-log-archives/`.
+
 ---
 
 ## Configuration

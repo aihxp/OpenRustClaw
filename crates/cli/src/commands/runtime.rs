@@ -27,6 +27,7 @@ pub const DEFAULT_RUNTIME_HEALTH_PATH: &str = ".claw/control/runtime-health.json
 pub const DEFAULT_RUNTIME_RELOAD_STATE_PATH: &str = ".claw/control/runtime-reload-state.json";
 pub const DEFAULT_RUNTIME_BEACON_PATH: &str = ".claw/control/runtime-beacon.json";
 pub const DEFAULT_RUNTIME_BACKUP_ROOT: &str = ".claw/runtime-backups";
+pub const DEFAULT_RUNTIME_LOCK_PATH: &str = ".claw/control/runtime-lock.json";
 pub const DEFAULT_SYSTEMD_SERVICE_NAME: &str = "openrustclaw.service";
 const DEFAULT_PASSPHRASE_ENV: &str = "OPENRUSTCLAW_VAULT_PASSPHRASE";
 
@@ -191,6 +192,37 @@ pub struct RuntimeServiceInstallStatus {
     pub start_command: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct RuntimeLockRecord {
+    acquired_at: String,
+    process_id: u32,
+    gateway_addr: String,
+    config_path: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RuntimeLockStatus {
+    pub path: String,
+    pub present: bool,
+    pub active: bool,
+    pub stale: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub process_id: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub owner_alive: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub acquired_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gateway_addr: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub config_path: Option<String>,
+}
+
+pub struct RuntimeLockGuard {
+    path: PathBuf,
+    process_id: u32,
+}
+
 static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
 fn env_lock() -> &'static Mutex<()> {
@@ -217,6 +249,10 @@ pub fn runtime_beacon_path_for(workspace_root: impl AsRef<Path>) -> PathBuf {
 
 pub fn runtime_backup_root_for(workspace_root: impl AsRef<Path>) -> PathBuf {
     workspace_root.as_ref().join(DEFAULT_RUNTIME_BACKUP_ROOT)
+}
+
+pub fn runtime_lock_path_for(workspace_root: impl AsRef<Path>) -> PathBuf {
+    workspace_root.as_ref().join(DEFAULT_RUNTIME_LOCK_PATH)
 }
 
 pub fn runtime_service_install_status(
@@ -269,6 +305,73 @@ pub fn install_runtime_user_service(
         .with_context(|| format!("Failed to write '{}'", service_path.display()))?;
 
     runtime_service_install_status(config_path, workspace_root)
+}
+
+pub fn runtime_lock_status(workspace_root: &Path) -> Result<RuntimeLockStatus> {
+    let path = runtime_lock_path_for(workspace_root);
+    let Some(record) = load_runtime_lock(workspace_root)? else {
+        return Ok(RuntimeLockStatus {
+            path: path.display().to_string(),
+            present: false,
+            active: false,
+            stale: false,
+            process_id: None,
+            owner_alive: None,
+            acquired_at: None,
+            gateway_addr: None,
+            config_path: None,
+        });
+    };
+
+    let owner_alive = process_is_alive(record.process_id);
+    Ok(RuntimeLockStatus {
+        path: path.display().to_string(),
+        present: true,
+        active: owner_alive,
+        stale: !owner_alive,
+        process_id: Some(record.process_id),
+        owner_alive: Some(owner_alive),
+        acquired_at: Some(record.acquired_at),
+        gateway_addr: Some(record.gateway_addr),
+        config_path: Some(record.config_path),
+    })
+}
+
+pub fn acquire_runtime_lock(
+    config_path: &str,
+    workspace_root: &Path,
+    gateway_addr: &str,
+) -> Result<RuntimeLockGuard> {
+    let path = runtime_lock_path_for(workspace_root);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("Failed to create '{}'", parent.display()))?;
+    }
+
+    if let Some(existing) = load_runtime_lock(workspace_root)? {
+        let alive = process_is_alive(existing.process_id);
+        if alive && existing.process_id != std::process::id() {
+            anyhow::bail!(
+                "Runtime lock is already held by pid {} at {}; remove '{}' only if that process is gone",
+                existing.process_id,
+                existing.gateway_addr,
+                path.display()
+            );
+        }
+    }
+
+    let record = RuntimeLockRecord {
+        acquired_at: Utc::now().to_rfc3339(),
+        process_id: std::process::id(),
+        gateway_addr: gateway_addr.to_string(),
+        config_path: config_path.to_string(),
+    };
+    save_runtime_lock(workspace_root, &record)?;
+
+    Ok(RuntimeLockGuard {
+        path,
+        process_id: record.process_id,
+    })
 }
 
 pub fn load_effective_config(config_path: &str, workspace_root: &Path) -> Result<AppConfig> {
@@ -356,6 +459,19 @@ pub fn load_cached_runtime_beacon(workspace_root: &Path) -> Result<Option<Runtim
     let beacon: RuntimeBeacon =
         serde_json::from_str(&raw).context("Failed to parse runtime beacon")?;
     Ok(Some(beacon))
+}
+
+fn load_runtime_lock(workspace_root: &Path) -> Result<Option<RuntimeLockRecord>> {
+    let path = runtime_lock_path_for(workspace_root);
+    if !path.exists() {
+        return Ok(None);
+    }
+
+    let raw = fs::read_to_string(&path)
+        .with_context(|| format!("Failed to read '{}'", path.display()))?;
+    let record: RuntimeLockRecord =
+        serde_json::from_str(&raw).context("Failed to parse runtime lock")?;
+    Ok(Some(record))
 }
 
 pub async fn scan_runtime_health(
@@ -618,6 +734,31 @@ fn save_runtime_beacon(workspace_root: &Path, beacon: &RuntimeBeacon) -> Result<
     fs::write(&path, rendered.as_bytes())
         .with_context(|| format!("Failed to write '{}'", path.display()))?;
     Ok(())
+}
+
+fn save_runtime_lock(workspace_root: &Path, record: &RuntimeLockRecord) -> Result<()> {
+    let path = runtime_lock_path_for(workspace_root);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("Failed to create '{}'", parent.display()))?;
+    }
+    let rendered =
+        serde_json::to_string_pretty(record).context("Failed to serialize runtime lock")?;
+    fs::write(&path, rendered.as_bytes())
+        .with_context(|| format!("Failed to write '{}'", path.display()))?;
+    Ok(())
+}
+
+fn process_is_alive(pid: u32) -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        Path::new("/proc").join(pid.to_string()).exists()
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        pid == std::process::id()
+    }
 }
 
 fn capture_runtime_snapshot(
@@ -1404,6 +1545,20 @@ fn remove_path_if_exists(path: &Path) -> Result<()> {
     Ok(())
 }
 
+impl Drop for RuntimeLockGuard {
+    fn drop(&mut self) {
+        let Ok(raw) = fs::read_to_string(&self.path) else {
+            return;
+        };
+        let Ok(record) = serde_json::from_str::<RuntimeLockRecord>(&raw) else {
+            return;
+        };
+        if record.process_id == self.process_id {
+            let _ = fs::remove_file(&self.path);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1509,6 +1664,52 @@ mod tests {
         assert_eq!(status.gateway_port, 19999);
         assert_eq!(status.allowed_origins, vec!["https://console.example.com"]);
         assert!(status.trusted_proxy_enabled);
+        Ok(())
+    }
+
+    #[test]
+    fn runtime_lock_status_reports_active_and_stale_records() -> Result<()> {
+        let temp = tempdir()?;
+        let workspace_root = temp.path();
+        let active_record = RuntimeLockRecord {
+            acquired_at: Utc::now().to_rfc3339(),
+            process_id: std::process::id(),
+            gateway_addr: "127.0.0.1:8080".to_string(),
+            config_path: "config/default.toml".to_string(),
+        };
+        save_runtime_lock(workspace_root, &active_record)?;
+
+        let active = runtime_lock_status(workspace_root)?;
+        assert!(active.present);
+        assert!(active.active);
+        assert!(!active.stale);
+
+        let stale_record = RuntimeLockRecord {
+            acquired_at: Utc::now().to_rfc3339(),
+            process_id: 999_999,
+            gateway_addr: "127.0.0.1:8080".to_string(),
+            config_path: "config/default.toml".to_string(),
+        };
+        save_runtime_lock(workspace_root, &stale_record)?;
+
+        let stale = runtime_lock_status(workspace_root)?;
+        assert!(stale.present);
+        assert!(!stale.active);
+        assert!(stale.stale);
+        Ok(())
+    }
+
+    #[test]
+    fn runtime_lock_guard_cleans_up_owned_lock() -> Result<()> {
+        let temp = tempdir()?;
+        let workspace_root = temp.path();
+        let lock_path = runtime_lock_path_for(workspace_root);
+        {
+            let _guard =
+                acquire_runtime_lock("config/default.toml", workspace_root, "127.0.0.1:1")?;
+            assert!(lock_path.exists());
+        }
+        assert!(!lock_path.exists());
         Ok(())
     }
 }

@@ -509,6 +509,17 @@ enum RuntimeServicesAction {
         #[arg(short, long, default_value = "config/default.toml")]
         config: String,
     },
+    /// Rotate the workspace runtime log with archive retention
+    RotateLogs {
+        #[arg(long, default_value_t = 5)]
+        keep: usize,
+        #[arg(long)]
+        max_bytes: Option<u64>,
+        #[arg(long)]
+        force: bool,
+    },
+    /// Inspect the persisted runtime lock and stale-PID state
+    LockStatus,
 }
 
 #[derive(Subcommand)]
@@ -4504,6 +4515,25 @@ async fn main() -> Result<()> {
                             &config,
                             &workspace_root,
                         )?;
+                        println!("{}", serde_json::to_string_pretty(&status)?);
+                        Ok(())
+                    }
+                    RuntimeServicesAction::RotateLogs {
+                        keep,
+                        max_bytes,
+                        force,
+                    } => {
+                        let summary = commands::logs::rotate_runtime_logs(
+                            &workspace_root,
+                            keep,
+                            max_bytes,
+                            force,
+                        )?;
+                        println!("{}", serde_json::to_string_pretty(&summary)?);
+                        Ok(())
+                    }
+                    RuntimeServicesAction::LockStatus => {
+                        let status = commands::runtime::runtime_lock_status(&workspace_root)?;
                         println!("{}", serde_json::to_string_pretty(&status)?);
                         Ok(())
                     }

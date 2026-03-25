@@ -258,6 +258,7 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
         origin_validation: config.security.origin_validation,
         origin_validator: Arc::new(OriginValidator::new(config.gateway.allowed_origins.clone())),
     };
+    let _runtime_lock = runtime::acquire_runtime_lock(config_path, &workspace_root, &addr)?;
 
     info!(addr = %addr, "Starting gateway server");
 

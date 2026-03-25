@@ -192,8 +192,8 @@ Channel routing/operator controls:
   - `PUT /control/runtime/vault/{key}`
   - `DELETE /control/runtime/vault/{key}`
 - `openrustclaw runtime status|reload|switch-provider|switch-model|backup|restore`
-- `openrustclaw runtime services status|scheduler|events|channels|install-status|install`
-- `openrustclaw runtime services logs`
+- `openrustclaw runtime services status|scheduler|events|channels|install-status|install|lock-status`
+- `openrustclaw runtime services logs|rotate-logs`
 - `openrustclaw runtime vault status|list|set|delete`
 - `openrustclaw orchestrate resolve|run|submit`
 - `openrustclaw orchestrate list|inspect|trace|transcript|resources|promote-candidate`
@@ -203,6 +203,7 @@ Channel routing/operator controls:
 - `openrustclaw runtime status` now also reports the configured gateway deployment mode, bind host/port, allowed origins, and whether trusted-proxy auth is enabled
 - startup now performs an explicit runtime fallback-health validation pass and warns when the system is booting in degraded control-plane mode with a healthy fallback provider available
 - standalone runtime ops now also support `openrustclaw runtime services install-status|install` for user-level systemd installation outside onboarding, using the same unit-generation path with an explicit config file target
+- standalone runtime ops now also support `openrustclaw runtime services rotate-logs` with archive retention under `.claw/control/runtime-log-archives/` plus `openrustclaw runtime services lock-status` for stale-PID/runtime-lock inspection on `.claw/control/runtime-lock.json`
 - bounded orchestration surfaces now exist at:
   - `POST /control/orchestration/resolve`
   - `POST /control/orchestration/run`

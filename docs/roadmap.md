@@ -1381,11 +1381,11 @@ Remaining:
   - [x] standalone `openrustclaw runtime services install-status|install` now covers user-level systemd service installation outside onboarding through the shared unit-generation path,
   - [x] explicit `openrustclaw runtime backup` workspace-state snapshots now land under `.claw/runtime-backups/`,
   - [x] explicit `openrustclaw runtime restore <backup-path>` restores those snapshots and creates an automatic pre-restore safety snapshot first,
-  - log rotation,
+  - [x] `openrustclaw runtime services rotate-logs` now performs copy-truncate runtime log rotation with archive retention under `.claw/control/runtime-log-archives/`,
   - config migration,
   - upgrade playbooks,
   - self-update and rollback,
-  - PID/gateway lock semantics,
+  - [x] `openrustclaw start` now maintains a PID-aware `.claw/control/runtime-lock.json` guard and `openrustclaw runtime services lock-status` reports active versus stale runtime-lock state,
   - launchd/systemd integration,
   - [x] `gateway.network_mode = loopback|lan|remote` now makes loopback/LAN/remote deployment explicit and startup validates host/origin/auth mismatches before the runtime binds,
   - [x] trusted-proxy auth mode now exists for reverse proxies through `security.trusted_proxy_token_env` plus `X-OpenRustClaw-Trusted-Proxy-Token`/`X-Forwarded-Origin` on the gateway WebSocket and `/control/...` lanes.
