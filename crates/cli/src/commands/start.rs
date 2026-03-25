@@ -51,6 +51,7 @@ use openrustclaw_db::{
     SqliteCoreMemoryStore, SqliteMemoryStore, SqliteRagStore, SqliteSessionStore, init_pool,
     run_migrations,
 };
+use openrustclaw_gateway::metrics_endpoint::{install_metrics, metrics_middleware, metrics_routes};
 use openrustclaw_gateway::server::{GatewayServer, GatewayState};
 use openrustclaw_gateway::sessions::SessionManager;
 use openrustclaw_langbridge::sidecar::SidecarManager;
@@ -236,6 +237,7 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
 
     // Create and start gateway server
     let gateway = GatewayServer::new(config.gateway.host.clone(), config.gateway.port);
+    let metrics_handle = install_metrics();
 
     let mut app = gateway.router(gateway_state);
     let addr = gateway.addr();
@@ -516,6 +518,7 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
         app = app.merge(imessage_ingress_router(handler));
         info!("iMessage BlueBubbles ingress enabled at /webhooks/imessage/bluebubbles");
     }
+    app = app.merge(metrics_routes(metrics_handle));
     app = app.merge(channel_registry_router(channel_registry.clone()));
     app = app.merge(control_plane_router(ControlPlaneApiState {
         control_root,
@@ -537,6 +540,7 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
         started_at,
         sidecar_running: sidecar.is_some(),
     }));
+    app = app.layer(metrics_middleware());
 
     runtime::mark_runtime_applied(config_path, &workspace_root)?;
     let _ = runtime::refresh_runtime_beacon(
@@ -670,6 +674,7 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
 
     info!("OpenRustClaw is ready!");
     info!("Gateway: http://{}", addr);
+    info!("Prometheus metrics: http://{}/metrics", addr);
     info!("WebSocket: ws://{}/ws", addr);
     if sidecar.is_some() {
         info!(role = ?config.sidecar.role, "Sidecar gRPC: {}", sidecar_addr);

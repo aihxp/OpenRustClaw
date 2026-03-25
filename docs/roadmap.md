@@ -1355,6 +1355,7 @@ Completed:
 Remaining:
 
 - [ ] Extend observability to all operator-significant paths:
+  - [x] `openrustclaw start` now mounts a real Prometheus `/metrics` endpoint and the shared observability helpers now emit real counters, histograms, and gauges for the shipped HTTP/provider/agent/memory/cache/database/scheduler/security metrics instead of no-op placeholders,
   - every channel ingress,
   - every outbound send,
   - every workflow/job run,
@@ -1362,7 +1363,10 @@ Remaining:
   - media processing,
   - plugin execution,
   - node commands.
-- [ ] Add OpenTelemetry/Prometheus coverage for parity-critical runtime metrics.
+- [ ] Add OpenTelemetry/Prometheus coverage for parity-critical runtime metrics:
+  - [x] gateway/control-plane HTTP routes now expose a scrapeable Prometheus surface at `/metrics`,
+  - [x] the shared observability helper API now records real Prometheus-compatible dimensional metrics for the shipped runtime categories,
+  - broader parity-critical runtime coverage and OpenTelemetry export still remain.
 - [ ] Add full auth and access-control parity where OpenClaw documents it:
   - tokens,
   - allowlists,

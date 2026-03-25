@@ -42,7 +42,19 @@ export RUST_ENV=development
 export RUST_LOG=debug
 ```
 
-### 3. Start Prometheus and Grafana
+### 3. Start OpenRustClaw
+
+```bash
+openrustclaw start
+```
+
+The shipped runtime now exposes Prometheus metrics directly at:
+
+```bash
+curl http://localhost:8080/metrics
+```
+
+### 4. Start Prometheus and Grafana
 
 ```bash
 # Start Prometheus

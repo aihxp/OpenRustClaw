@@ -125,9 +125,11 @@ impl MetricsCollector {
 
     /// Decrement active connections.
     pub fn decrement_active_connections(&self) {
-        self.inner
-            .active_connections
-            .fetch_sub(1, Ordering::Relaxed);
+        let _ = self.inner.active_connections.fetch_update(
+            Ordering::Relaxed,
+            Ordering::Relaxed,
+            |count| count.checked_sub(1),
+        );
     }
 }
 
@@ -211,9 +213,13 @@ pub fn record_request(method: &str, endpoint: &str, status: &str) {
         .inner
         .total_requests
         .fetch_add(1, Ordering::Relaxed);
-    // When using metrics crate with prometheus exporter:
-    // metrics::counter!("openrustclaw_requests_total", "method" => method, "endpoint" => endpoint, "status" => status).increment(1);
-    let _ = (method, endpoint, status);
+    metrics::counter!(
+        "openrustclaw_requests_total",
+        "method" => method.to_string(),
+        "endpoint" => endpoint.to_string(),
+        "status" => status.to_string()
+    )
+    .increment(1);
 }
 
 /// Record request duration.
@@ -223,8 +229,12 @@ pub fn record_request(method: &str, endpoint: &str, status: &str) {
 /// * `endpoint` - Request path
 /// * `duration_secs` - Duration in seconds
 pub fn record_request_duration(method: &str, endpoint: &str, duration_secs: f64) {
-    // Placeholder for metrics crate integration
-    let _ = (method, endpoint, duration_secs);
+    metrics::histogram!(
+        "openrustclaw_request_duration_seconds",
+        "method" => method.to_string(),
+        "endpoint" => endpoint.to_string()
+    )
+    .record(duration_secs);
 }
 
 /// Record WebSocket message.
@@ -233,23 +243,38 @@ pub fn record_request_duration(method: &str, endpoint: &str, duration_secs: f64)
 /// * `direction` - "in" or "out"
 /// * `msg_type" - "text", "binary", "ping", "pong", "close"
 pub fn record_websocket_message(direction: &str, msg_type: &str) {
-    let _ = (direction, msg_type);
-    // metrics::counter!("openrustclaw_websocket_messages_total", "direction" => direction, "type" => msg_type).increment(1);
+    metrics::counter!(
+        "openrustclaw_websocket_messages_total",
+        "direction" => direction.to_string(),
+        "type" => msg_type.to_string()
+    )
+    .increment(1);
 }
 
 /// Update active WebSocket connections gauge.
 pub fn set_active_connections(count: usize) {
     global_collector().set_active_connections(count);
+    metrics::gauge!("openrustclaw_active_connections").set(count as f64);
 }
 
 /// Increment active connections.
 pub fn increment_active_connections() {
     global_collector().increment_active_connections();
+    let count = global_collector()
+        .inner
+        .active_connections
+        .load(Ordering::Relaxed);
+    metrics::gauge!("openrustclaw_active_connections").set(count as f64);
 }
 
 /// Decrement active connections.
 pub fn decrement_active_connections() {
     global_collector().decrement_active_connections();
+    let count = global_collector()
+        .inner
+        .active_connections
+        .load(Ordering::Relaxed);
+    metrics::gauge!("openrustclaw_active_connections").set(count as f64);
 }
 
 /// Record rate limit hit.
@@ -258,7 +283,12 @@ pub fn decrement_active_connections() {
 /// * `endpoint` - The endpoint that was rate limited
 /// * `client_id" - Optional client identifier
 pub fn record_rate_limit_hit(endpoint: &str, client_id: Option<&str>) {
-    let _ = (endpoint, client_id);
+    metrics::counter!(
+        "openrustclaw_rate_limits_total",
+        "endpoint" => endpoint.to_string(),
+        "client" => client_id.unwrap_or("unknown").to_string()
+    )
+    .increment(1);
 }
 
 // ──────────────────────────────────────────────
@@ -272,7 +302,13 @@ pub fn record_rate_limit_hit(endpoint: &str, client_id: Option<&str>) {
 /// * `model" - Model identifier
 /// * `status" - "success" or "error"
 pub fn record_provider_request(provider: &str, model: &str, status: &str) {
-    let _ = (provider, model, status);
+    metrics::counter!(
+        "openrustclaw_provider_requests_total",
+        "provider" => provider.to_string(),
+        "model" => model.to_string(),
+        "status" => status.to_string()
+    )
+    .increment(1);
 }
 
 /// Record LLM provider request duration.
@@ -282,7 +318,12 @@ pub fn record_provider_request(provider: &str, model: &str, status: &str) {
 /// * `model" - Model identifier
 /// * `duration_secs" - Duration in seconds
 pub fn record_provider_duration(provider: &str, model: &str, duration_secs: f64) {
-    let _ = (provider, model, duration_secs);
+    metrics::histogram!(
+        "openrustclaw_provider_duration_seconds",
+        "provider" => provider.to_string(),
+        "model" => model.to_string()
+    )
+    .record(duration_secs);
 }
 
 /// Record token usage.
@@ -301,7 +342,20 @@ pub fn record_token_usage(provider: &str, model: &str, prompt_tokens: u64, compl
         .inner
         .total_completion_tokens
         .fetch_add(completion_tokens, Ordering::Relaxed);
-    let _ = (provider, model);
+    metrics::counter!(
+        "openrustclaw_tokens_total",
+        "provider" => provider.to_string(),
+        "model" => model.to_string(),
+        "type" => "prompt"
+    )
+    .increment(prompt_tokens);
+    metrics::counter!(
+        "openrustclaw_tokens_total",
+        "provider" => provider.to_string(),
+        "model" => model.to_string(),
+        "type" => "completion"
+    )
+    .increment(completion_tokens);
 }
 
 /// Record estimated cost in USD (micro-cents for precision).
@@ -316,7 +370,12 @@ pub fn record_cost(provider: &str, model: &str, cost_usd: f64) {
         .inner
         .total_cost_micro_usd
         .fetch_add(micro, Ordering::Relaxed);
-    let _ = (provider, model);
+    metrics::histogram!(
+        "openrustclaw_request_cost_usd",
+        "provider" => provider.to_string(),
+        "model" => model.to_string()
+    )
+    .record(cost_usd);
 }
 
 /// Record provider error.
@@ -326,7 +385,12 @@ pub fn record_cost(provider: &str, model: &str, cost_usd: f64) {
 /// * `error_type" - Type of error (e.g., "rate_limited", "auth_failed", "timeout")
 pub fn record_provider_error(provider: &str, error_type: &str) {
     global_collector().record_error();
-    let _ = (provider, error_type);
+    metrics::counter!(
+        "openrustclaw_provider_errors_total",
+        "provider" => provider.to_string(),
+        "error_type" => error_type.to_string()
+    )
+    .increment(1);
 }
 
 /// Record streaming chunk.
@@ -335,7 +399,12 @@ pub fn record_provider_error(provider: &str, error_type: &str) {
 /// * `provider` - Provider name
 /// * `chunk_type" - Type of chunk ("content", "tool_call")
 pub fn record_streaming_chunk(provider: &str, chunk_type: &str) {
-    let _ = (provider, chunk_type);
+    metrics::counter!(
+        "openrustclaw_streaming_chunks_total",
+        "provider" => provider.to_string(),
+        "type" => chunk_type.to_string()
+    )
+    .increment(1);
 }
 
 // ──────────────────────────────────────────────
@@ -348,7 +417,12 @@ pub fn record_streaming_chunk(provider: &str, chunk_type: &str) {
 /// * `tool_name` - Name of the tool
 /// * `status" - "success" or "error"
 pub fn record_tool_execution(tool_name: &str, status: &str) {
-    let _ = (tool_name, status);
+    metrics::counter!(
+        "openrustclaw_tool_executions_total",
+        "tool" => tool_name.to_string(),
+        "status" => status.to_string()
+    )
+    .increment(1);
 }
 
 /// Record tool execution duration.
@@ -357,7 +431,11 @@ pub fn record_tool_execution(tool_name: &str, status: &str) {
 /// * `tool_name` - Name of the tool
 /// * `duration_secs" - Duration in seconds
 pub fn record_tool_duration(tool_name: &str, duration_secs: f64) {
-    let _ = (tool_name, duration_secs);
+    metrics::histogram!(
+        "openrustclaw_tool_duration_seconds",
+        "tool" => tool_name.to_string()
+    )
+    .record(duration_secs);
 }
 
 /// Record agent processing iteration.
@@ -366,7 +444,12 @@ pub fn record_tool_duration(tool_name: &str, duration_secs: f64) {
 /// * `agent_name` - Name of the agent
 /// * `finish_reason` - Why the agent stopped ("stop", "tool_use", "max_tokens")
 pub fn record_agent_iteration(agent_name: &str, finish_reason: &str) {
-    let _ = (agent_name, finish_reason);
+    metrics::counter!(
+        "openrustclaw_agent_iterations_total",
+        "agent" => agent_name.to_string(),
+        "finish_reason" => finish_reason.to_string()
+    )
+    .increment(1);
 }
 
 /// Record number of tool calls in an agent session.
@@ -375,17 +458,31 @@ pub fn record_agent_iteration(agent_name: &str, finish_reason: &str) {
 /// * `agent_name` - Name of the agent
 /// * `tool_calls" - Number of tool calls made
 pub fn record_agent_tool_calls(agent_name: &str, tool_calls: u64) {
-    let _ = (agent_name, tool_calls);
+    metrics::histogram!(
+        "openrustclaw_agent_tool_calls",
+        "agent" => agent_name.to_string()
+    )
+    .record(tool_calls as f64);
 }
 
 /// Record agent session start.
 pub fn record_agent_session_start(agent_name: &str) {
-    let _ = agent_name;
+    metrics::counter!(
+        "openrustclaw_agent_sessions_total",
+        "agent" => agent_name.to_string(),
+        "event" => "start"
+    )
+    .increment(1);
 }
 
 /// Record agent session end.
 pub fn record_agent_session_end(agent_name: &str) {
-    let _ = agent_name;
+    metrics::counter!(
+        "openrustclaw_agent_sessions_total",
+        "agent" => agent_name.to_string(),
+        "event" => "end"
+    )
+    .increment(1);
 }
 
 // ──────────────────────────────────────────────
@@ -399,7 +496,13 @@ pub fn record_agent_session_end(agent_name: &str) {
 /// * `memory_type` - Type of memory ("episodic", "semantic", "procedural")
 /// * `status" - "success" or "error"
 pub fn record_memory_operation(operation: &str, memory_type: &str, status: &str) {
-    let _ = (operation, memory_type, status);
+    metrics::counter!(
+        "openrustclaw_memory_operations_total",
+        "operation" => operation.to_string(),
+        "memory_type" => memory_type.to_string(),
+        "status" => status.to_string()
+    )
+    .increment(1);
 }
 
 /// Record memory operation duration.
@@ -408,7 +511,11 @@ pub fn record_memory_operation(operation: &str, memory_type: &str, status: &str)
 /// * `operation` - Operation type
 /// * `duration_secs" - Duration in seconds
 pub fn record_memory_duration(operation: &str, duration_secs: f64) {
-    let _ = (operation, duration_secs);
+    metrics::histogram!(
+        "openrustclaw_memory_duration_seconds",
+        "operation" => operation.to_string()
+    )
+    .record(duration_secs);
 }
 
 /// Record memory search results.
@@ -417,17 +524,21 @@ pub fn record_memory_duration(operation: &str, duration_secs: f64) {
 /// * `query_type` - Type of query
 /// * `result_count" - Number of results returned
 pub fn record_memory_search_results(query_type: &str, result_count: usize) {
-    let _ = (query_type, result_count);
+    metrics::histogram!(
+        "openrustclaw_memory_search_results",
+        "query_type" => query_type.to_string()
+    )
+    .record(result_count as f64);
 }
 
 /// Record core memory size (in entries).
 pub fn set_core_memory_entries(count: usize) {
-    let _ = count;
+    metrics::gauge!("openrustclaw_core_memory_entries").set(count as f64);
 }
 
 /// Record recall memory size (in entries).
 pub fn set_recall_memory_entries(count: usize) {
-    let _ = count;
+    metrics::gauge!("openrustclaw_recall_memory_entries").set(count as f64);
 }
 
 // ──────────────────────────────────────────────
@@ -440,7 +551,12 @@ pub fn set_recall_memory_entries(count: usize) {
 /// * `cache_name` - Name of the cache
 /// * `operation` - "hit" or "miss"
 pub fn record_cache_operation(cache_name: &str, operation: &str) {
-    let _ = (cache_name, operation);
+    metrics::counter!(
+        "openrustclaw_cache_operations_total",
+        "cache" => cache_name.to_string(),
+        "operation" => operation.to_string()
+    )
+    .increment(1);
 }
 
 /// Set cache size.
@@ -449,7 +565,11 @@ pub fn record_cache_operation(cache_name: &str, operation: &str) {
 /// * `cache_name` - Name of the cache
 /// * `size" - Number of entries in cache
 pub fn set_cache_size(cache_name: &str, size: usize) {
-    let _ = (cache_name, size);
+    metrics::gauge!(
+        "openrustclaw_cache_size",
+        "cache" => cache_name.to_string()
+    )
+    .set(size as f64);
 }
 
 /// Record cache eviction.
@@ -458,7 +578,12 @@ pub fn set_cache_size(cache_name: &str, size: usize) {
 /// * `cache_name` - Name of the cache
 /// * `reason` - Reason for eviction ("ttl", "capacity")
 pub fn record_cache_eviction(cache_name: &str, reason: &str) {
-    let _ = (cache_name, reason);
+    metrics::counter!(
+        "openrustclaw_cache_evictions_total",
+        "cache" => cache_name.to_string(),
+        "reason" => reason.to_string()
+    )
+    .increment(1);
 }
 
 // ──────────────────────────────────────────────
@@ -472,7 +597,13 @@ pub fn record_cache_eviction(cache_name: &str, reason: &str) {
 /// * `table` - Table name
 /// * `status" - "success" or "error"
 pub fn record_db_query(query_type: &str, table: &str, status: &str) {
-    let _ = (query_type, table, status);
+    metrics::counter!(
+        "openrustclaw_db_queries_total",
+        "query_type" => query_type.to_string(),
+        "table" => table.to_string(),
+        "status" => status.to_string()
+    )
+    .increment(1);
 }
 
 /// Record database query duration.
@@ -482,7 +613,12 @@ pub fn record_db_query(query_type: &str, table: &str, status: &str) {
 /// * `table` - Table name
 /// * `duration_secs" - Duration in seconds
 pub fn record_db_query_duration(query_type: &str, table: &str, duration_secs: f64) {
-    let _ = (query_type, table, duration_secs);
+    metrics::histogram!(
+        "openrustclaw_db_query_duration_seconds",
+        "query_type" => query_type.to_string(),
+        "table" => table.to_string()
+    )
+    .record(duration_secs);
 }
 
 /// Record database connection pool stats.
@@ -491,7 +627,16 @@ pub fn record_db_query_duration(query_type: &str, table: &str, duration_secs: f6
 /// * `active" - Number of active connections
 /// * `idle" - Number of idle connections
 pub fn set_db_pool_stats(active: usize, idle: usize) {
-    let _ = (active, idle);
+    metrics::gauge!(
+        "openrustclaw_db_pool_connections",
+        "state" => "active"
+    )
+    .set(active as f64);
+    metrics::gauge!(
+        "openrustclaw_db_pool_connections",
+        "state" => "idle"
+    )
+    .set(idle as f64);
 }
 
 /// Record database transaction.
@@ -499,7 +644,11 @@ pub fn set_db_pool_stats(active: usize, idle: usize) {
 /// # Arguments
 /// * `operation` - "begin", "commit", "rollback"
 pub fn record_db_transaction(operation: &str) {
-    let _ = operation;
+    metrics::counter!(
+        "openrustclaw_db_transactions_total",
+        "operation" => operation.to_string()
+    )
+    .increment(1);
 }
 
 // ──────────────────────────────────────────────
@@ -512,7 +661,12 @@ pub fn record_db_transaction(operation: &str) {
 /// * `job_name` - Name of the job
 /// * `status" - "success", "failure", "timeout"
 pub fn record_job_execution(job_name: &str, status: &str) {
-    let _ = (job_name, status);
+    metrics::counter!(
+        "openrustclaw_job_executions_total",
+        "job" => job_name.to_string(),
+        "status" => status.to_string()
+    )
+    .increment(1);
 }
 
 /// Record job execution duration.
@@ -521,12 +675,16 @@ pub fn record_job_execution(job_name: &str, status: &str) {
 /// * `job_name` - Name of the job
 /// * `duration_secs" - Duration in seconds
 pub fn record_job_duration(job_name: &str, duration_secs: f64) {
-    let _ = (job_name, duration_secs);
+    metrics::histogram!(
+        "openrustclaw_job_duration_seconds",
+        "job" => job_name.to_string()
+    )
+    .record(duration_secs);
 }
 
 /// Set number of scheduled jobs.
 pub fn set_scheduled_jobs_count(count: usize) {
-    let _ = count;
+    metrics::gauge!("openrustclaw_scheduled_jobs").set(count as f64);
 }
 
 /// Set number of jobs by state.
@@ -535,7 +693,11 @@ pub fn set_scheduled_jobs_count(count: usize) {
 /// * `state` - Job state ("active", "paused", "failed", "dead_letter")
 /// * `count" - Number of jobs in this state
 pub fn set_jobs_by_state(state: &str, count: usize) {
-    let _ = (state, count);
+    metrics::gauge!(
+        "openrustclaw_jobs_by_state",
+        "state" => state.to_string()
+    )
+    .set(count as f64);
 }
 
 /// Record job retry.
@@ -544,7 +706,12 @@ pub fn set_jobs_by_state(state: &str, count: usize) {
 /// * `job_name` - Name of the job
 /// * `retry_count" - Current retry attempt number
 pub fn record_job_retry(job_name: &str, retry_count: u32) {
-    let _ = (job_name, retry_count);
+    metrics::counter!(
+        "openrustclaw_job_retries_total",
+        "job" => job_name.to_string(),
+        "retry_count" => retry_count.to_string()
+    )
+    .increment(1);
 }
 
 // ──────────────────────────────────────────────
@@ -557,7 +724,12 @@ pub fn record_job_retry(job_name: &str, retry_count: u32) {
 /// * `method` - Auth method ("token", "jwt")
 /// * `status" - "success" or "failure"
 pub fn record_auth_attempt(method: &str, status: &str) {
-    let _ = (method, status);
+    metrics::counter!(
+        "openrustclaw_auth_attempts_total",
+        "method" => method.to_string(),
+        "status" => status.to_string()
+    )
+    .increment(1);
 }
 
 /// Record origin validation.
@@ -565,7 +737,11 @@ pub fn record_auth_attempt(method: &str, status: &str) {
 /// # Arguments
 /// * `status` - "allowed" or "denied"
 pub fn record_origin_check(status: &str) {
-    let _ = status;
+    metrics::counter!(
+        "openrustclaw_origin_checks_total",
+        "status" => status.to_string()
+    )
+    .increment(1);
 }
 
 #[cfg(test)]

@@ -25,9 +25,11 @@ use axum::{
 };
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 use metrics_util::MetricKindMask;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 use tracing::{debug, error, instrument};
+
+static PROMETHEUS_HANDLE: OnceLock<Arc<PrometheusHandle>> = OnceLock::new();
 
 /// State for the metrics endpoint.
 #[derive(Clone)]
@@ -64,29 +66,32 @@ impl std::fmt::Debug for MetricsState {
 /// }
 /// ```
 pub fn install_metrics() -> Arc<PrometheusHandle> {
-    let builder = PrometheusBuilder::new()
-        .set_buckets_for_metric(
-            metrics_exporter_prometheus::Matcher::Suffix("_duration_seconds".to_string()),
-            &[
-                0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0,
-            ],
-        )
-        .expect("Failed to set duration buckets")
-        .set_buckets_for_metric(
-            metrics_exporter_prometheus::Matcher::Suffix("_bytes".to_string()),
-            &[
-                64.0, 256.0, 1024.0, 4096.0, 16384.0, 65536.0, 262144.0, 1048576.0,
-            ],
-        )
-        .expect("Failed to set bytes buckets");
+    PROMETHEUS_HANDLE
+        .get_or_init(|| {
+            let builder = PrometheusBuilder::new()
+                .set_buckets_for_metric(
+                    metrics_exporter_prometheus::Matcher::Suffix("_duration_seconds".to_string()),
+                    &[
+                        0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0,
+                    ],
+                )
+                .expect("Failed to set duration buckets")
+                .set_buckets_for_metric(
+                    metrics_exporter_prometheus::Matcher::Suffix("_bytes".to_string()),
+                    &[
+                        64.0, 256.0, 1024.0, 4096.0, 16384.0, 65536.0, 262144.0, 1048576.0,
+                    ],
+                )
+                .expect("Failed to set bytes buckets");
 
-    let recorder = builder.build_recorder();
-    let handle = Arc::new(recorder.handle());
+            let recorder = builder.build_recorder();
+            let handle = Arc::new(recorder.handle());
 
-    // Install the recorder as the global metrics recorder
-    metrics::set_global_recorder(recorder).expect("Failed to set global metrics recorder");
+            metrics::set_global_recorder(recorder).expect("Failed to set global metrics recorder");
 
-    handle
+            handle
+        })
+        .clone()
 }
 
 /// Install the Prometheus metrics exporter with custom configuration.
@@ -95,25 +100,29 @@ pub fn install_metrics() -> Arc<PrometheusHandle> {
 ///
 /// * `idle_timeout` - How long to keep idle metrics before removing them
 pub fn install_metrics_with_config(idle_timeout: Option<Duration>) -> Arc<PrometheusHandle> {
-    let mut builder = PrometheusBuilder::new()
-        .set_buckets_for_metric(
-            metrics_exporter_prometheus::Matcher::Suffix("_duration_seconds".to_string()),
-            &[
-                0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0,
-            ],
-        )
-        .expect("Failed to set duration buckets");
+    PROMETHEUS_HANDLE
+        .get_or_init(|| {
+            let mut builder = PrometheusBuilder::new()
+                .set_buckets_for_metric(
+                    metrics_exporter_prometheus::Matcher::Suffix("_duration_seconds".to_string()),
+                    &[
+                        0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0,
+                    ],
+                )
+                .expect("Failed to set duration buckets");
 
-    if let Some(timeout) = idle_timeout {
-        builder = builder.idle_timeout(MetricKindMask::ALL, Some(timeout));
-    }
+            if let Some(timeout) = idle_timeout {
+                builder = builder.idle_timeout(MetricKindMask::ALL, Some(timeout));
+            }
 
-    let recorder = builder.build_recorder();
-    let handle = Arc::new(recorder.handle());
+            let recorder = builder.build_recorder();
+            let handle = Arc::new(recorder.handle());
 
-    metrics::set_global_recorder(recorder).expect("Failed to set global metrics recorder");
+            metrics::set_global_recorder(recorder).expect("Failed to set global metrics recorder");
 
-    handle
+            handle
+        })
+        .clone()
 }
 
 /// Create a router with the metrics endpoint.
