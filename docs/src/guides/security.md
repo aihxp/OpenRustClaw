@@ -192,6 +192,13 @@ Use the token in either:
 - `Authorization: Bearer <token>` for normal HTTP requests
 - `?token=<token>` for `/control/ui` and the browser WebSocket helper flows it opens
 
+### Channel Pairing And Agent Restrictions
+
+The shipped channel registry also enforces two operator-facing policy controls:
+
+- when `session_routing.pairing_approval_required = true`, newly discovered channel accounts enter the registry as pending approval instead of being routed immediately
+- channel account and binding `agent_id` restrictions must reference a known control-claw id, so stale or mistyped per-agent routes are rejected before they land on disk
+
 ### Trusted Proxy Mode
 
 Reverse-proxy deployments can also use an opt-in shared secret instead of forwarding the direct bearer path unchanged:

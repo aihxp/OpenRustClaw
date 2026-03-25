@@ -79,6 +79,11 @@ The `channel_fixture_test` module covers the shipped routing registry behavior f
 - thread-vs-channel scope selection
 - mention-only group activation
 
+The channel command unit tests in `crates/cli/src/commands/channels.rs` additionally cover:
+
+- pairing-approval enforcement for newly discovered accounts when `session_routing.pairing_approval_required = true`
+- control-claw `agent_id` validation on channel account and binding writes
+
 These tests should avoid real external services and use tempdirs, in-memory state, or local SQLite
 fixtures whenever possible.
 

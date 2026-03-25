@@ -141,7 +141,7 @@ Channel routing/operator controls:
 - `openrustclaw imessage ping|server|chats|contacts|send|send-file|tapback` exposes the shipped iMessage / BlueBubbles operator flows directly in the CLI
 - `openrustclaw signal register|verify|link|list-groups` exposes the shipped Signal setup and operator flows directly in the CLI
 - `GET/POST/PUT/DELETE /control/channels...` exposes the same shipped channel registry over typed HTTP so the future Control UI can reuse the runtime state model
-- shipped channel routing now applies workspace/account/channel binding precedence, pairing approval gates, group mention activation, and shared reply chunking/coalescing/pacing policy
+- shipped channel routing now applies workspace/account/channel binding precedence, pairing approval gates, validated per-claw `agent_id` restrictions against the control registry, group mention activation, and shared reply chunking/coalescing/pacing policy
 - shipped channel routing now normalizes workspace/scope/group/mention metadata across Teams, Google Chat, Matrix, and Signal as well, so the same binding and isolation rules apply across the newer shipped channels too
 - `openrustclaw matrix join|leave|rooms|send-formatted|react|send-file|typing|redact` exposes the shipped Matrix operator flows directly in the CLI
 

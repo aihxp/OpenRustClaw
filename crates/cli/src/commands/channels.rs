@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
 use openrustclaw_core::config::SessionRoutingConfig;
 use openrustclaw_core::types::{IncomingMessage, Platform};
 use serde::{Deserialize, Serialize};
@@ -451,6 +451,7 @@ fn mutate_account(
 }
 
 fn write_account_manifest(root: &Path, account: ChannelAccountSpec) -> Result<()> {
+    validate_agent_restriction(root, account.agent_id.as_deref())?;
     fs::create_dir_all(accounts_dir(root))
         .with_context(|| format!("Failed to create '{}'", accounts_dir(root).display()))?;
     let manifest = ChannelAccountManifest {
@@ -467,6 +468,7 @@ fn write_account_manifest(root: &Path, account: ChannelAccountSpec) -> Result<()
 }
 
 fn write_binding_manifest(root: &Path, binding: ChannelBindingSpec) -> Result<()> {
+    validate_agent_restriction(root, binding.agent_id.as_deref())?;
     fs::create_dir_all(bindings_dir(root))
         .with_context(|| format!("Failed to create '{}'", bindings_dir(root).display()))?;
     let manifest = ChannelBindingManifest {
@@ -479,6 +481,34 @@ fn write_binding_manifest(root: &Path, binding: ChannelBindingSpec) -> Result<()
         serde_yaml::to_string(&manifest).context("Failed to render binding manifest")?,
     )
     .with_context(|| format!("Failed to write '{}'", path.display()))?;
+    Ok(())
+}
+
+fn validate_agent_restriction(root: &Path, agent_id: Option<&str>) -> Result<()> {
+    let Some(agent_id) = agent_id.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(());
+    };
+    let workspace_root = root.parent().and_then(Path::parent).ok_or_else(|| {
+        anyhow!(
+            "channel registry root '{}' is not under a workspace",
+            root.display()
+        )
+    })?;
+    let control_root = super::control::control_root_for(workspace_root);
+    if !control_root.exists() {
+        anyhow::bail!(
+            "agent_id '{}' requires an initialized control registry at '{}'",
+            agent_id,
+            control_root.display()
+        );
+    }
+    let registry = super::control::load_registry(control_root)?;
+    if !registry.claws.contains_key(agent_id) {
+        anyhow::bail!(
+            "agent_id '{}' does not match a known control claw",
+            agent_id
+        );
+    }
     Ok(())
 }
 
@@ -1060,6 +1090,8 @@ fn slugify(input: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::commands::control;
+    use openrustclaw_core::config::AppConfig;
     use tempfile::tempdir;
 
     #[test]
@@ -1180,10 +1212,14 @@ mod tests {
     #[test]
     fn account_and_binding_crud_round_trip() {
         let temp = tempdir().expect("tempdir");
+        let workspace_root = temp.path();
         let root = temp.path().join(".claw/channels");
         let root_str = root.to_string_lossy().to_string();
+        let control_root = workspace_root.join(".claw/control");
+        let control_root_str = control_root.to_string_lossy().to_string();
 
         init(Some(&root_str)).expect("init registry");
+        control::init(Some(&control_root_str)).expect("init control");
         create_account(
             Some(&root_str),
             "acct-1",
@@ -1193,7 +1229,7 @@ mod tests {
             Some("T123"),
             Some("C123"),
             Some("workspace-a"),
-            Some("agent-a"),
+            Some("main"),
             true,
             false,
             true,
@@ -1208,7 +1244,7 @@ mod tests {
             Some("acct-1"),
             Some("C123"),
             Some("workspace-a"),
-            Some("agent-a"),
+            Some("main"),
             Some("mention"),
         )
         .expect("create binding");
@@ -1225,5 +1261,67 @@ mod tests {
 
         assert!(read_binding(root.clone(), "binding-1").is_err());
         assert!(read_account(root, "acct-1").is_err());
+    }
+
+    #[test]
+    fn create_account_rejects_unknown_agent_restriction() {
+        let temp = tempdir().expect("tempdir");
+        let workspace_root = temp.path();
+        let root = workspace_root.join(".claw/channels");
+        let root_str = root.to_string_lossy().to_string();
+        let control_root = workspace_root.join(".claw/control");
+        let control_root_str = control_root.to_string_lossy().to_string();
+
+        init(Some(&root_str)).expect("init registry");
+        control::init(Some(&control_root_str)).expect("init control");
+        let error = create_account(
+            Some(&root_str),
+            "acct-invalid",
+            "slack",
+            "U123",
+            None,
+            Some("T123"),
+            None,
+            None,
+            Some("missing-claw"),
+            true,
+            false,
+            true,
+            Some("mention"),
+        )
+        .expect_err("unknown claw should fail");
+        assert!(
+            error
+                .to_string()
+                .contains("does not match a known control claw")
+        );
+    }
+
+    #[test]
+    fn preview_route_marks_new_pairings_pending_when_approval_required() {
+        let temp = tempdir().expect("tempdir");
+        let root = temp.path().join(".claw/channels");
+        let mut registry = ChannelRegistry {
+            root: root.clone(),
+            accounts: HashMap::new(),
+            bindings: Vec::new(),
+        };
+        let mut policy = AppConfig::default().session_routing;
+        policy.pairing_approval_required = true;
+        let incoming = IncomingMessage {
+            session_id: uuid::Uuid::new_v4(),
+            user_id: "U111".to_string(),
+            content: "hello".to_string(),
+            platform: Platform::Slack,
+            metadata: serde_json::json!({
+                "slack_team_id": "T111"
+            }),
+        };
+
+        let preview = preview_route(&mut registry, &incoming, &policy).expect("preview route");
+        assert_eq!(preview.status, ChannelRouteStatus::PendingApproval);
+
+        let account = read_account(root, "slack:T111:U111").expect("read pending account");
+        assert!(!account.approved);
     }
 }
