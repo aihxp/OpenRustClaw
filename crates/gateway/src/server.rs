@@ -20,7 +20,8 @@ use openrustclaw_observability::LangSmithClient;
 use openrustclaw_observability::langsmith::{RunType, TraceRun};
 use openrustclaw_observability::metrics::{
     SimpleTimer, decrement_active_connections, increment_active_connections, record_auth_attempt,
-    record_origin_check, record_websocket_message,
+    record_memory_maintenance, record_memory_maintenance_duration, record_origin_check,
+    record_websocket_message,
 };
 use openrustclaw_security::OriginValidator;
 use serde_json::json;
@@ -600,6 +601,7 @@ async fn internal_memory_archive_store_handler(
     headers: HeaderMap,
     Json(payload): Json<InternalMemoryArchiveStoreRequest>,
 ) -> Response {
+    let timer = SimpleTimer::new();
     if let Err(response) = validate_internal_api(&state, &headers) {
         return response;
     }
@@ -639,6 +641,8 @@ async fn internal_memory_archive_store_handler(
         .await
     {
         Ok(id) => {
+            record_memory_maintenance("archive_store", "success", 1);
+            record_memory_maintenance_duration("archive_store", timer.elapsed_secs());
             let body = json!({"stored": true, "id": id});
             complete_gateway_trace(
                 state.langsmith.as_ref(),
@@ -650,6 +654,8 @@ async fn internal_memory_archive_store_handler(
             Json(body).into_response()
         }
         Err(error) => {
+            record_memory_maintenance("archive_store", "error", 0);
+            record_memory_maintenance_duration("archive_store", timer.elapsed_secs());
             let error_message = format!("memory archive store failed: {}", error);
             complete_gateway_trace(
                 state.langsmith.as_ref(),
@@ -668,6 +674,7 @@ async fn internal_memory_archive_delete_handler(
     headers: HeaderMap,
     Json(payload): Json<InternalMemoryArchiveDeleteRequest>,
 ) -> Response {
+    let timer = SimpleTimer::new();
     if let Err(response) = validate_internal_api(&state, &headers) {
         return response;
     }
@@ -693,6 +700,12 @@ async fn internal_memory_archive_delete_handler(
 
     match memory_store.delete_many(&payload.memory_ids).await {
         Ok(deleted) => {
+            record_memory_maintenance(
+                "archive_delete",
+                "success",
+                usize::try_from(deleted).unwrap_or(usize::MAX),
+            );
+            record_memory_maintenance_duration("archive_delete", timer.elapsed_secs());
             let body = json!({"deleted": deleted, "memory_ids": payload.memory_ids});
             complete_gateway_trace(
                 state.langsmith.as_ref(),
@@ -704,6 +717,8 @@ async fn internal_memory_archive_delete_handler(
             Json(body).into_response()
         }
         Err(error) => {
+            record_memory_maintenance("archive_delete", "error", 0);
+            record_memory_maintenance_duration("archive_delete", timer.elapsed_secs());
             let error_message = format!("memory archive delete failed: {}", error);
             complete_gateway_trace(
                 state.langsmith.as_ref(),
@@ -722,6 +737,7 @@ async fn internal_memory_maintenance_old_handler(
     headers: HeaderMap,
     Json(payload): Json<InternalMemoryMaintenanceOldRequest>,
 ) -> Response {
+    let timer = SimpleTimer::new();
     if let Err(response) = validate_internal_api(&state, &headers) {
         return response;
     }
@@ -761,6 +777,8 @@ async fn internal_memory_maintenance_old_handler(
         .await
     {
         Ok(entries) => {
+            record_memory_maintenance("fetch_old", "success", entries.len());
+            record_memory_maintenance_duration("fetch_old", timer.elapsed_secs());
             let body = json!({
                 "memories": entries.into_iter().map(|entry| json!({
                     "id": entry.id,
@@ -781,6 +799,8 @@ async fn internal_memory_maintenance_old_handler(
             Json(body).into_response()
         }
         Err(error) => {
+            record_memory_maintenance("fetch_old", "error", 0);
+            record_memory_maintenance_duration("fetch_old", timer.elapsed_secs());
             let error_message = format!("memory maintenance fetch failed: {}", error);
             complete_gateway_trace(
                 state.langsmith.as_ref(),

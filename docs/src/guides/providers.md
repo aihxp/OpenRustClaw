@@ -88,7 +88,7 @@ Create or edit `config/providers.toml`:
 ```toml
 [providers]
 # Primary provider used by default
-primary = "anthropic"
+default_provider = "anthropic"
 
 # Fallback chain (tried in order if primary fails)
 fallback_chain = ["openai", "openrouter", "ollama"]
@@ -130,7 +130,7 @@ OpenRustClaw can declare the operator/control-plane lane separately from the mai
 
 ```toml
 [providers]
-primary = "anthropic"
+default_provider = "anthropic"
 fallback_chain = ["openai", "openrouter", "ollama"]
 
 control_plane_provider = "openrouter"
@@ -138,6 +138,17 @@ control_plane_fallback_chain = ["ollama", "anthropic"]
 ```
 
 Use this when you want runtime edits, onboarding, upgrade planning, and health guidance to evaluate a cheaper or more available provider separately from the main task model. The current runtime status and health surfaces report this lane separately and precompute failover recommendations when the preferred control-plane provider is degraded.
+
+### Runtime Health Scans
+
+`openrustclaw runtime health --refresh` and `/control/runtime/health|scan` now persist more than a basic healthy/unhealthy bit. The current runtime-health report records:
+
+- whether the configured model still appears in the provider catalog
+- whether the latest provider probe looks like auth/access failure, billing/quota failure, rate limiting, or a generic provider outage
+- rate-limit header snapshots where providers expose them
+- operator warnings when a previously healthy lane regresses or a configured model disappears
+
+That lets operators catch removed models, broken credentials, and changed provider limit posture before the next runtime cutover or model switch.
 
 ### Per-Request Configuration
 

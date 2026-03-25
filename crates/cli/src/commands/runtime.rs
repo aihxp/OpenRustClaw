@@ -116,9 +116,15 @@ pub struct RuntimeHealthProviderEntry {
     pub configured: bool,
     pub healthy: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub issue_kind: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub recommendation: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub issue: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_available: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit_snapshot: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -150,6 +156,15 @@ pub struct RuntimeHealthReport {
     pub operator_warnings: Vec<String>,
     pub providers: Vec<RuntimeHealthProviderEntry>,
     pub artifacts: RuntimeArtifactHealth,
+}
+
+#[derive(Debug, Clone)]
+struct ProviderHealthProbe {
+    healthy: bool,
+    issue_kind: Option<String>,
+    issue: Option<String>,
+    model_available: Option<bool>,
+    limit_snapshot: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -685,6 +700,7 @@ pub async fn scan_runtime_health(
     workspace_root: &Path,
 ) -> Result<RuntimeHealthReport> {
     let config = load_effective_config(config_path, workspace_root)?;
+    let previous_report = load_cached_runtime_health(workspace_root)?;
 
     let ordered = health_scan_provider_order(&config);
 
@@ -737,6 +753,7 @@ pub async fn scan_runtime_health(
         &control_plane_chain,
         &entries,
         recommended_control_plane_provider.as_deref(),
+        previous_report.as_ref(),
     );
 
     let artifacts = summarize_runtime_artifacts(workspace_root, &config)?;
@@ -1097,19 +1114,22 @@ async fn scan_provider_health(provider: &str, config: &AppConfig) -> RuntimeHeal
     };
 
     let result = match provider {
-        "ollama" => validate_ollama_provider(config).await,
-        _ => validate_runtime_provider(config, provider),
+        "ollama" => probe_ollama_provider(config).await,
+        _ => probe_remote_provider_health(provider, config, &model).await,
     };
 
     match result {
-        Ok(()) => RuntimeHealthProviderEntry {
+        Ok(probe) => RuntimeHealthProviderEntry {
             provider: provider.to_string(),
             role,
             model,
             configured: true,
-            healthy: true,
+            healthy: probe.healthy,
+            issue_kind: probe.issue_kind,
             recommendation: provider_recommendation(provider, config),
-            issue: None,
+            issue: probe.issue,
+            model_available: probe.model_available,
+            limit_snapshot: probe.limit_snapshot,
         },
         Err(error) => RuntimeHealthProviderEntry {
             provider: provider.to_string(),
@@ -1117,8 +1137,11 @@ async fn scan_provider_health(provider: &str, config: &AppConfig) -> RuntimeHeal
             model,
             configured: !error.to_string().contains("environment variable not set"),
             healthy: false,
+            issue_kind: Some(classify_provider_error(&error.to_string()).to_string()),
             recommendation: provider_recommendation(provider, config),
             issue: Some(error.to_string()),
+            model_available: None,
+            limit_snapshot: None,
         },
     }
 }
@@ -1242,6 +1265,7 @@ fn build_runtime_operator_warnings(
     control_plane_chain: &[String],
     entries: &[RuntimeHealthProviderEntry],
     recommended_control_plane_provider: Option<&str>,
+    previous_report: Option<&RuntimeHealthReport>,
 ) -> Vec<String> {
     let mut warnings = Vec::new();
     let control_plane_primary = config
@@ -1273,20 +1297,304 @@ fn build_runtime_operator_warnings(
                 .to_string(),
         );
     }
+    for entry in entries {
+        match entry.issue_kind.as_deref() {
+            Some("model_unavailable") => warnings.push(format!(
+                "Configured model `{}` is no longer listed by provider `{}`; update that lane before the next runtime cutover.",
+                entry.model, entry.provider
+            )),
+            Some("auth") => warnings.push(format!(
+                "Provider `{}` reported an authentication or access error during the latest health scan.",
+                entry.provider
+            )),
+            Some("billing") => warnings.push(format!(
+                "Provider `{}` reported a billing or quota error during the latest health scan.",
+                entry.provider
+            )),
+            Some("rate_limited") => warnings.push(format!(
+                "Provider `{}` is currently rate-limited; expect degraded failover behavior until the limit window resets.",
+                entry.provider
+            )),
+            _ => {}
+        }
+    }
+    if let Some(previous_report) = previous_report {
+        for entry in entries {
+            let previous = previous_report
+                .providers
+                .iter()
+                .find(|candidate| candidate.provider == entry.provider);
+            if let Some(previous) = previous {
+                if previous.model_available == Some(true) && entry.model_available == Some(false) {
+                    warnings.push(format!(
+                        "Provider `{}` previously listed configured model `{}` but the latest scan does not; treat this as a removed or disabled model regression.",
+                        entry.provider, entry.model
+                    ));
+                }
+                if previous.issue_kind.is_none()
+                    && matches!(entry.issue_kind.as_deref(), Some("auth") | Some("billing"))
+                {
+                    warnings.push(format!(
+                        "Provider `{}` regressed from healthy to `{}` since the last persisted runtime-health scan.",
+                        entry.provider,
+                        entry.issue_kind.clone().unwrap_or_default()
+                    ));
+                }
+                if let (Some(old_limits), Some(new_limits)) = (
+                    previous.limit_snapshot.as_deref(),
+                    entry.limit_snapshot.as_deref(),
+                ) && old_limits != new_limits
+                {
+                    warnings.push(format!(
+                        "Provider `{}` exposed different rate-limit headers since the last scan: `{}` -> `{}`.",
+                        entry.provider, old_limits, new_limits
+                    ));
+                }
+            }
+        }
+    }
     warnings
 }
 
-async fn validate_ollama_provider(config: &AppConfig) -> Result<()> {
+async fn probe_ollama_provider(config: &AppConfig) -> Result<ProviderHealthProbe> {
     let base_url = config.providers.ollama.base_url.trim_end_matches('/');
-    reqwest::Client::new()
+    let response = reqwest::Client::new()
         .get(format!("{base_url}/api/tags"))
         .timeout(Duration::from_secs(2))
         .send()
         .await
-        .context("Failed to reach Ollama")?
+        .context("Failed to reach Ollama")?;
+    let limit_snapshot = summarize_limit_headers(response.headers());
+    let response = response
         .error_for_status()
         .context("Ollama health probe returned an error status")?;
-    Ok(())
+    let body: serde_json::Value = response
+        .json()
+        .await
+        .context("Failed to parse Ollama model catalog")?;
+    let available = body["models"]
+        .as_array()
+        .map(|models| {
+            models.iter().any(|model| {
+                model["name"]
+                    .as_str()
+                    .map(|name| name == config.providers.ollama.model)
+                    .unwrap_or(false)
+            })
+        })
+        .unwrap_or(false);
+    Ok(ProviderHealthProbe {
+        healthy: available,
+        issue_kind: (!available).then(|| "model_unavailable".to_string()),
+        issue: (!available).then(|| {
+            format!(
+                "Configured model '{}' is not listed by the local Ollama catalog",
+                config.providers.ollama.model
+            )
+        }),
+        model_available: Some(available),
+        limit_snapshot,
+    })
+}
+
+async fn probe_remote_provider_health(
+    provider: &str,
+    config: &AppConfig,
+    model: &str,
+) -> Result<ProviderHealthProbe> {
+    let (url, api_key, extra_headers) = match provider {
+        "anthropic" => (
+            "https://api.anthropic.com/v1/models".to_string(),
+            std::env::var(
+                config
+                    .providers
+                    .anthropic
+                    .api_key_env
+                    .as_deref()
+                    .unwrap_or("ANTHROPIC_API_KEY"),
+            )
+            .with_context(|| {
+                format!(
+                    "{} environment variable not set",
+                    config
+                        .providers
+                        .anthropic
+                        .api_key_env
+                        .as_deref()
+                        .unwrap_or("ANTHROPIC_API_KEY")
+                )
+            })?,
+            vec![(
+                "anthropic-version".to_string(),
+                config.providers.anthropic.api_version.clone(),
+            )],
+        ),
+        "openai" => (
+            "https://api.openai.com/v1/models".to_string(),
+            std::env::var(
+                config
+                    .providers
+                    .openai
+                    .api_key_env
+                    .as_deref()
+                    .unwrap_or("OPENAI_API_KEY"),
+            )
+            .with_context(|| {
+                format!(
+                    "{} environment variable not set",
+                    config
+                        .providers
+                        .openai
+                        .api_key_env
+                        .as_deref()
+                        .unwrap_or("OPENAI_API_KEY")
+                )
+            })?,
+            Vec::new(),
+        ),
+        "openrouter" => (
+            "https://openrouter.ai/api/v1/models".to_string(),
+            std::env::var(
+                config
+                    .providers
+                    .openrouter
+                    .api_key_env
+                    .as_deref()
+                    .unwrap_or("OPENROUTER_API_KEY"),
+            )
+            .with_context(|| {
+                format!(
+                    "{} environment variable not set",
+                    config
+                        .providers
+                        .openrouter
+                        .api_key_env
+                        .as_deref()
+                        .unwrap_or("OPENROUTER_API_KEY")
+                )
+            })?,
+            Vec::new(),
+        ),
+        _ => {
+            validate_runtime_provider(config, provider)?;
+            return Ok(ProviderHealthProbe {
+                healthy: true,
+                issue_kind: None,
+                issue: None,
+                model_available: None,
+                limit_snapshot: None,
+            });
+        }
+    };
+
+    let client = reqwest::Client::new();
+    let mut request = client
+        .get(url)
+        .timeout(Duration::from_secs(5))
+        .bearer_auth(api_key);
+    for (name, value) in extra_headers {
+        request = request.header(name, value);
+    }
+
+    let response = request
+        .send()
+        .await
+        .with_context(|| format!("Failed to reach provider `{provider}`"))?;
+    let status = response.status();
+    let limit_snapshot = summarize_limit_headers(response.headers());
+    if !status.is_success() {
+        let body = response.text().await.unwrap_or_default();
+        let issue_kind = classify_provider_status(status);
+        return Ok(ProviderHealthProbe {
+            healthy: false,
+            issue_kind: Some(issue_kind.to_string()),
+            issue: Some(format!(
+                "Provider `{provider}` health probe returned {}: {}",
+                status,
+                body.trim()
+            )),
+            model_available: None,
+            limit_snapshot,
+        });
+    }
+
+    let body: serde_json::Value = response
+        .json()
+        .await
+        .with_context(|| format!("Failed to parse provider `{provider}` model catalog"))?;
+    let available_models = extract_provider_model_ids(provider, &body);
+    let model_available = available_models.iter().any(|candidate| candidate == model);
+    Ok(ProviderHealthProbe {
+        healthy: model_available,
+        issue_kind: (!model_available).then(|| "model_unavailable".to_string()),
+        issue: (!model_available).then(|| {
+            format!(
+                "Configured model '{}' is not listed by provider `{}`",
+                model, provider
+            )
+        }),
+        model_available: Some(model_available),
+        limit_snapshot,
+    })
+}
+
+fn extract_provider_model_ids(provider: &str, body: &serde_json::Value) -> Vec<String> {
+    let data = body["data"].as_array().cloned().unwrap_or_default();
+    data.into_iter()
+        .filter_map(|entry| match provider {
+            "anthropic" | "openai" | "openrouter" => {
+                entry.get("id").and_then(|value| value.as_str()).map(str::to_string)
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+fn summarize_limit_headers(headers: &reqwest::header::HeaderMap) -> Option<String> {
+    let mut values = headers
+        .iter()
+        .filter_map(|(name, value)| {
+            let key = name.as_str().to_ascii_lowercase();
+            if !(key.contains("ratelimit") || key.contains("rate-limit") || key.contains("quota")) {
+                return None;
+            }
+            value
+                .to_str()
+                .ok()
+                .map(|parsed| format!("{}={}", key, parsed))
+        })
+        .collect::<Vec<_>>();
+    values.sort();
+    (!values.is_empty()).then(|| values.join(", "))
+}
+
+fn classify_provider_status(status: reqwest::StatusCode) -> &'static str {
+    match status.as_u16() {
+        401 | 403 => "auth",
+        402 => "billing",
+        404 => "model_unavailable",
+        429 => "rate_limited",
+        _ if status.is_server_error() => "provider_unavailable",
+        _ => "probe_failed",
+    }
+}
+
+fn classify_provider_error(message: &str) -> &'static str {
+    let lower = message.to_ascii_lowercase();
+    if lower.contains("environment variable not set") {
+        "not_configured"
+    } else if lower.contains("auth") || lower.contains("unauthorized") || lower.contains("forbidden")
+    {
+        "auth"
+    } else if lower.contains("billing") || lower.contains("quota") || lower.contains("credit") {
+        "billing"
+    } else if lower.contains("rate") && lower.contains("limit") {
+        "rate_limited"
+    } else if lower.contains("not listed") || lower.contains("unknown model") {
+        "model_unavailable"
+    } else {
+        "probe_failed"
+    }
 }
 
 fn summarize_runtime_artifacts(
@@ -2333,8 +2641,11 @@ mod tests {
                     model: "claude-sonnet-4-20250514".to_string(),
                     configured: true,
                     healthy: true,
+                    issue_kind: None,
                     recommendation: Some("configured task/runtime primary".to_string()),
                     issue: None,
+                    model_available: Some(true),
+                    limit_snapshot: None,
                 }],
                 artifacts: RuntimeArtifactHealth {
                     artifact_count: 0,

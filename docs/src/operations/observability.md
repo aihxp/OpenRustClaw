@@ -121,6 +121,11 @@ The shipped control plane now records real operator-tool metrics for several Pha
 | `openrustclaw_memory_search_results` | Histogram | Results per search | `query_type` |
 | `openrustclaw_core_memory_entries` | Gauge | Core memory size | - |
 | `openrustclaw_recall_memory_entries` | Gauge | Recall memory size | - |
+| `openrustclaw_memory_maintenance_total` | Counter | Memory maintenance actions | `operation`, `status` |
+| `openrustclaw_memory_maintenance_affected_entries` | Histogram | Entries touched by maintenance | `operation`, `status` |
+| `openrustclaw_memory_maintenance_duration_seconds` | Histogram | Maintenance latency | `operation` |
+
+The shipped Rust-owned maintenance path now emits these metrics from real archive-summary persistence, archive-source deletion, and old-memory fetches used by the maintenance flow.
 
 ### Cache Metrics
 

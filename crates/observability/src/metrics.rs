@@ -541,6 +541,31 @@ pub fn set_recall_memory_entries(count: usize) {
     metrics::gauge!("openrustclaw_recall_memory_entries").set(count as f64);
 }
 
+/// Record memory maintenance activity.
+pub fn record_memory_maintenance(operation: &str, status: &str, affected_count: usize) {
+    metrics::counter!(
+        "openrustclaw_memory_maintenance_total",
+        "operation" => operation.to_string(),
+        "status" => status.to_string()
+    )
+    .increment(1);
+    metrics::histogram!(
+        "openrustclaw_memory_maintenance_affected_entries",
+        "operation" => operation.to_string(),
+        "status" => status.to_string()
+    )
+    .record(affected_count as f64);
+}
+
+/// Record memory maintenance duration.
+pub fn record_memory_maintenance_duration(operation: &str, duration_secs: f64) {
+    metrics::histogram!(
+        "openrustclaw_memory_maintenance_duration_seconds",
+        "operation" => operation.to_string()
+    )
+    .record(duration_secs);
+}
+
 // ──────────────────────────────────────────────
 // Cache Metrics
 // ──────────────────────────────────────────────

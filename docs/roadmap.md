@@ -1354,13 +1354,13 @@ Completed:
 
 Remaining:
 
-- [ ] Extend observability to all operator-significant paths:
+- [x] Extend observability to all operator-significant paths:
   - [x] `openrustclaw start` now mounts a real Prometheus `/metrics` endpoint and the shared observability helpers now emit real counters, histograms, and gauges for the shipped HTTP/provider/agent/memory/cache/database/scheduler/security metrics instead of no-op placeholders,
   - [x] gateway websocket auth/origin validation and webhook rate-limit decisions now emit real security counters on the shipped Prometheus surface,
   - [x] every channel ingress,
   - [x] every outbound send,
   - [x] every workflow/job run,
-  - memory maintenance,
+  - [x] memory maintenance,
   - [x] media processing,
   - [x] plugin execution,
   - [x] node commands.
@@ -1395,11 +1395,11 @@ Remaining:
   - [x] explicit distinction between primary task model and control-plane/safety model,
   - [x] startup-time fallback validation now runs during `openrustclaw start`,
   - [x] operator warnings now emit when the runtime is booting in degraded control-plane mode.
-- [ ] Add recurring provider/model health scans after onboarding:
+- [x] Add recurring provider/model health scans after onboarding:
   - [x] basic persisted runtime-health scans now refresh from the running gateway and are visible through CLI, API, and Control UI,
-  - detect removed or disabled models,
-  - detect auth or billing regressions,
-  - detect changed limits where providers expose them,
+  - [x] detect removed or disabled models,
+  - [x] detect auth or billing regressions,
+  - [x] detect changed limits where providers expose them,
   - [x] precompute failover recommendations before the next model swap,
   - [x] surface operator warnings instead of letting model changes fail blind at runtime.
 - [ ] Add explicit governance for optional external execution backends:
