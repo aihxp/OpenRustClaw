@@ -5,8 +5,8 @@
 # Planning
 - [Roadmap](./planning/roadmap.md)
 - [Feature Matrix](./planning/feature-matrix.md)
-- [Parity Matrix](./planning/parity-matrix.md)
-- [Parity Positioning](./planning/parity-positioning.md)
+- [Surface Matrix](./planning/surface-matrix.md)
+- [Product Positioning](./planning/product-positioning.md)
 - [Docs Audit](./planning/docs-audit.md)
 
 # Getting Started

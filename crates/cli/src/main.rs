@@ -2221,7 +2221,7 @@ enum MemoryAction {
         #[arg(short, long)]
         user_id: Option<String>,
     },
-    /// Import legacy OpenClaw MEMORY.md
+    /// Import legacy MEMORY.md
     Import {
         #[arg(short, long)]
         file: String,

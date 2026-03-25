@@ -35,7 +35,7 @@ The crate now provides:
 - capability metadata and verification plumbing
 - compile-time scan reports and blocked-status handling
 - a real WASM executor with timeout and memory limits
-- explicit extension manifests for future Rust-native plugin/runtime parity
+- explicit extension manifests for future Rust-native plugin/runtime growth
 
 ## License
 

@@ -45,7 +45,7 @@ The current operator surfaces for skills/extensions are shared across CLI, typed
 - MCP: `list_compiled_skills`, `inspect_compiled_skill`, plus dynamic `skill.<name>.summary|details|reference...|execute|schedule` tools from the compiled skill cache
 - Control UI: `/control/ui` extension discovery and installed-extension management panels
 
-`openrustclaw skills invoke <name>` is intentionally bounded today. It reuses the compiled artifact cache to return the generated CLI/help bundle, optional detail payloads, and safe reference reads under the skill root. It does not claim arbitrary script execution or full plugin-runtime parity yet.
+`openrustclaw skills invoke <name>` is intentionally bounded today. It reuses the compiled artifact cache to return the generated CLI/help bundle, optional detail payloads, and safe reference reads under the skill root. It does not claim arbitrary script execution or a fully unbounded plugin runtime.
 
 For compiled `.wasm` and `.wat` artifacts, there is now a real bounded execution lane:
 
@@ -62,7 +62,7 @@ Compiled skills can now also expose bounded background services through the same
 - MCP: dynamic `skill.<name>.schedule` tools when the compiled skill exposes a schedulable background service or executable component
 - Control UI: the extension detail panel can schedule the same bounded background workflow
 
-This background lane is still intentionally bounded: it routes compiled background services through the Rust durable scheduler and the same verification-aware execution path used by `skills execute`, rather than pretending full live voice runtime parity is already complete.
+This background lane is still intentionally bounded: it routes compiled background services through the Rust durable scheduler and the same verification-aware execution path used by `skills execute`, rather than pretending the live voice runtime is a general-purpose background-process substrate.
 
 File-backed channel bindings can now opt into a bounded compiled-skill extension lane:
 
@@ -86,7 +86,7 @@ Compiled skills can now also own a bounded voice-call plugin lane over the same 
 - Control API: `GET /control/skills/voice-plugins`, `POST /control/skills/voice-plugins/bind`, `GET /control/skills/voice-calls`, `GET /control/skills/voice-calls/health`, `POST /control/skills/voice-calls/start`, `POST /control/skills/voice-plugins/{plugin_id}/prewarm`, `POST /control/skills/voice-calls/reap`, and `POST /control/skills/voice-calls/{call_id}/end`
 - Control UI: the extension detail panel can bind a voice-call plugin, start a bounded call session, inspect active call receipts and health summaries, prewarm a greeting artifact, reap stale calls, and end the selected call
 
-This voice-call lane is intentionally bounded too: it stores bindings and call receipts under `.claw/control/`, can optionally synthesize a greeting artifact through the shipped voice runtime, can publish bounded health summaries over active/stale/ended/reaped sessions, can reap stale calls through the same Rust-owned control path, and can trigger compiled skill service/component hooks on call start or end through the same sandboxed execution lane used by `skills execute`. It does not claim full telephony or long-lived call-runtime parity.
+This voice-call lane is intentionally bounded too: it stores bindings and call receipts under `.claw/control/`, can optionally synthesize a greeting artifact through the shipped voice runtime, can publish bounded health summaries over active/stale/ended/reaped sessions, can reap stale calls through the same Rust-owned control path, and can trigger compiled skill service/component hooks on call start or end through the same sandboxed execution lane used by `skills execute`. It does not claim full telephony or a long-lived unrestricted call runtime.
 
 The compile pipeline now also emits `.claw/skills/compiled/<skill>/extension_manifest.json`. That manifest is the durable Rust-native extension contract for this later Phase 7 work:
 
@@ -387,7 +387,7 @@ The current path is intentionally narrow:
 - JSON input is copied into memory and JSON output is read back out
 - capability declarations and verification/trust policy are enforced before execution
 
-This gives OpenRustClaw a real Rust-native extension execution path without claiming the rest of plugin parity is finished.
+This gives OpenRustClaw a real Rust-native extension execution path without claiming the rest of the extension surface is unbounded.
 
 ### WASM Skill Example (Rust)
 

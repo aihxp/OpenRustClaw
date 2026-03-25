@@ -1,4 +1,4 @@
-//! Documented parity scenarios exercised through shipped command/data APIs.
+//! Documented scenarios exercised through shipped command/data APIs.
 
 use std::fs;
 
@@ -87,7 +87,7 @@ fn documented_channel_routing_and_pairing_scenario() {
             direct_strategy: None,
             group_strategy: Some("shared_channel".to_string()),
             send_policy: None,
-            metadata: json!({ "scenario": "documented_parity" }),
+            metadata: json!({ "scenario": "documented_surface" }),
         },
     )
     .unwrap();
@@ -140,7 +140,7 @@ async fn documented_mobile_operator_scenario() {
             enabled: true,
             sync: None,
             notifications: None,
-            metadata: json!({ "scenario": "documented_parity" }),
+            metadata: json!({ "scenario": "documented_surface" }),
         },
     )
     .unwrap();

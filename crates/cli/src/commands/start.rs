@@ -816,7 +816,7 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
 fn gate_nonshipping_channels(config: &mut openrustclaw_core::config::ChannelsConfig) {
     if config.gmail_pubsub.enabled {
         warn!(
-            "Gmail Pub/Sub is on a partial shipped path; deeper operator parity is still incomplete"
+            "Gmail Pub/Sub is on a partial shipped path; deeper operator polish is still incomplete"
         );
     }
     if config.line.enabled {

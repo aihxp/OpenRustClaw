@@ -1,6 +1,6 @@
 # OpenRustClaw
 
-**A Rust-first AI agent platform** that is actively pursuing OpenClaw feature parity while reducing non-Rust runtime ownership over time.
+**A Rust-first AI agent platform** built for a coherent operator surface while reducing non-Rust runtime ownership over time.
 
 ---
 
@@ -10,12 +10,12 @@ OpenRustClaw is a production-grade AI agent framework built from the ground up w
 
 Built for production deployments where these qualities matter most, OpenRustClaw uses Rust as the primary runtime and treats any non-Rust orchestration layer as transitional unless it clearly improves the shipped product contract.
 
-Current parity/planning references:
+Current planning references:
 
 - [Roadmap](./planning/roadmap.md)
 - [Feature Matrix](./planning/feature-matrix.md)
-- [Parity Matrix](./planning/parity-matrix.md)
-- [Parity Positioning](./planning/parity-positioning.md)
+- [Surface Matrix](./planning/surface-matrix.md)
+- [Product Positioning](./planning/product-positioning.md)
 
 ---
 
@@ -294,11 +294,11 @@ Every operation is traced. Every decision is logged. Every metric is tracked.
 | Slack | Partial | Config/model scaffolding present; Web API runtime client not implemented |
 | WhatsApp | Available | Via Baileys bridge, QR/pairing auth |
 | Microsoft Teams | Available | Bot Framework integration |
-| Google Chat | Partial | Webhook ingress, token/service-account auth, file-reference cards, and local routing are implemented; richer operator/media parity remains open |
+| Google Chat | Partial | Webhook ingress, token/service-account auth, file-reference cards, and local routing are implemented; richer operator/media workflows remain open |
 | Google Meet | Partial | Native Rust operator integration covers spaces, conference records, transcripts, and Workspace Events/Pub/Sub payload decoding; add-on UI/runtime embedding remains open |
-| Gmail Pub/Sub | Partial | Watch setup, Pub/Sub webhook ingress, message hydration, replies, and mail-triggered workflows are implemented; richer operator parity remains open |
+| Gmail Pub/Sub | Partial | Watch setup, Pub/Sub webhook ingress, message hydration, replies, and mail-triggered workflows are implemented; richer operator workflows remain open |
 | Signal | Planned | signal-cli bridge |
-| Matrix | Partial | Auth, `/sync` polling ingress, sends, reactions, room actions, and file upload are implemented; deeper parity remains open |
+| Matrix | Partial | Auth, `/sync` polling ingress, sends, reactions, room actions, and file upload are implemented; deeper runtime coverage remains open |
 | iMessage | Partial | Channel module present; private API mode incomplete |
 | LINE | Available | Messaging API channel module |
 | Viber | Available | Bot API channel module |

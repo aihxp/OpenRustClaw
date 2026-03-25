@@ -146,7 +146,7 @@ pub async fn export(output: &str, user_id: Option<&str>) -> Result<()> {
     Ok(())
 }
 
-/// Import memories from OpenClaw MEMORY.md format.
+/// Import memories from a legacy MEMORY.md format.
 pub async fn import(file: &str, user_id: &str) -> Result<()> {
     println!("Importing memories from: {}", file);
     println!("Target user: {}", user_id);

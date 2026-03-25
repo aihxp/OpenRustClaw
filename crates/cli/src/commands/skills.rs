@@ -1545,7 +1545,7 @@ fn invoke_compiled_skill(
         ))
     } else if artifact.help_index.scripts.is_empty() {
         Some(format!(
-            "Skill '{}' is currently exposed through compiled help/reference surfaces. Executable plugin runtime parity is still a later Phase 7 track.",
+            "Skill '{}' is currently exposed through compiled help/reference surfaces. Executable plugin runtime expansion is still a later track.",
             artifact.manifest.name
         ))
     } else {

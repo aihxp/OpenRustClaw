@@ -169,24 +169,24 @@ First stable release of OpenRustClaw, a hybrid Rust + Python AI agent framework.
 
 ### Shipped Surface Contract
 
-- Changes in this section should use the `contract:shipped-surface` or `contract:parity-inventory` release-note labels.
-- Do not describe parity as complete unless the shipped-surface CI and parity inventory are green.
+- Changes in this section should use the `contract:shipped-surface` or `contract:surface-inventory` release-note labels.
+- Do not describe the shipped surface as complete unless the shipped-surface CI and surface inventory are green.
 
-### Parity - Core
+### Surface - Core
 
-- Use release-note label: `parity:core`
+- Use release-note label: `surface:core`
 
-### Parity - Plugin
+### Surface - Plugin
 
-- Use release-note label: `parity:plugin`
+- Use release-note label: `surface:plugin`
 
 ### Intentional Divergences
 
-- Use release-note label: `parity:intentional-divergence`
+- Use release-note label: `surface:intentional-divergence`
 
 ### Out of Scope / Deferred
 
-- Use release-note label: `parity:out-of-scope`
+- Use release-note label: `surface:out-of-scope`
 
 ### Planned for v1.1.0
 

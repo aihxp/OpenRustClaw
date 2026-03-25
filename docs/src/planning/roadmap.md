@@ -6,7 +6,7 @@ This book page exists so the mdBook navigation can expose the same planning surf
 
 ## Current intent
 
-- Reach practical OpenClaw feature parity.
+- Ship a coherent OpenRustClaw operator surface.
 - Keep OpenRustClaw's stronger Rust-native choices where they are better.
 - Remove Python from the production-critical runtime path over time.
 - Use a three-tier execution model:
@@ -17,13 +17,13 @@ This book page exists so the mdBook navigation can expose the same planning surf
 
 ## Phase summary
 
-1. Product contract and parity inventory
+1. Product contract and surface inventory
 2. Rust runtime contract and sidecar retirement
 3. Durable scheduler and eventing
 4. Memory, sessions, context, and RAG
-5. Channels and routing parity
+5. Channels and routing
 6. Tools, MCP, CLI, and Control surfaces
 7. Skills, plugins, media, voice, and nodes
-8. Security, operations, observability, and full-parity exit
+8. Security, operations, observability, and release exit
 
 For the detailed checklist and current status, use the repo-root roadmap file.

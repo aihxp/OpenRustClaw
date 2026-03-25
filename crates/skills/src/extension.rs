@@ -231,12 +231,12 @@ pub fn build_extension_manifest(
         );
     } else if artifact.manifest.scripts.is_empty() {
         notes.push(
-            "This extension currently ships metadata, references, and bounded invoke surfaces without executable script parity."
+            "This extension currently ships metadata, references, and bounded invoke surfaces without arbitrary executable script support."
                 .to_string(),
         );
     } else {
         notes.push(
-            "Executable plugin parity remains a later Phase 7 track; the current runtime exposes bounded invoke and MCP retrieval surfaces."
+            "Executable plugin expansion remains a later track; the current runtime exposes bounded invoke and MCP retrieval surfaces."
                 .to_string(),
         );
     }
