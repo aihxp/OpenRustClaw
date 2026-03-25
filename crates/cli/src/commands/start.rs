@@ -1046,8 +1046,11 @@ fn spawn_channel_task(
         let mut route_sessions = HashMap::new();
         info!(platform = ?platform, "Starting channel receive loop");
         loop {
+            let receive_started_at = std::time::Instant::now();
             match channel.receive().await {
                 Ok(message) => {
+                    let ingress_tool_name = format!("channels.{}.ingress", platform);
+                    record_operator_tool_status(&ingress_tool_name, receive_started_at, "success");
                     info!(
                         platform = ?platform,
                         user_id = %message.user_id,
@@ -1064,7 +1067,15 @@ fn spawn_channel_task(
                         {
                             Ok(Some(reply)) => {
                                 for outbound in expand_outgoing_message(reply) {
-                                    if let Err(e) = channel.send(outbound.clone()).await {
+                                    let send_started_at = std::time::Instant::now();
+                                    let send_result = channel.send(outbound.clone()).await;
+                                    let send_tool_name = format!("channels.{}.send", platform);
+                                    record_operator_tool_result(
+                                        &send_tool_name,
+                                        send_started_at,
+                                        &send_result,
+                                    );
+                                    if let Err(e) = send_result {
                                         error!(
                                             platform = ?platform,
                                             error = %e,
@@ -1098,6 +1109,9 @@ fn spawn_channel_task(
                     }
                 }
                 Err(e) => {
+                    let ingress_tool_name = format!("channels.{}.ingress", platform);
+                    let failed = Err::<(), _>(&e);
+                    record_operator_tool_result(&ingress_tool_name, receive_started_at, &failed);
                     error!(platform = ?platform, error = %e, "Channel receive failed");
                     break;
                 }
@@ -1190,9 +1204,13 @@ impl ReminderSender for ChannelDeliveryRouter {
             ));
         };
 
-        channel.send(message).await.map_err(|error| {
+        let started_at = std::time::Instant::now();
+        let send_result = channel.send(message).await.map_err(|error| {
             openrustclaw_core::error::SchedulerError::WorkflowFailed(error.to_string())
-        })
+        });
+        let tool_name = format!("channels.{}.send", platform);
+        record_operator_tool_result(&tool_name, started_at, &send_result);
+        send_result
     }
 
     fn available_platforms(&self) -> Vec<Platform> {
@@ -2474,6 +2492,7 @@ async fn slack_events_handler(
     headers: HeaderMap,
     body: Bytes,
 ) -> impl IntoResponse {
+    let started_at = std::time::Instant::now();
     let timestamp = headers
         .get("x-slack-request-timestamp")
         .and_then(|value| value.to_str().ok());
@@ -2497,6 +2516,7 @@ async fn slack_events_handler(
         .await
     {
         Ok(Some(response)) => {
+            record_operator_tool_status("channels.slack.ingress", started_at, "success");
             complete_ingress_trace(
                 state.langsmith.as_ref(),
                 trace.as_mut(),
@@ -2510,6 +2530,7 @@ async fn slack_events_handler(
             (StatusCode::OK, axum::Json(response)).into_response()
         }
         Ok(None) => {
+            record_operator_tool_status("channels.slack.ingress", started_at, "success");
             complete_ingress_trace(
                 state.langsmith.as_ref(),
                 trace.as_mut(),
@@ -2523,6 +2544,7 @@ async fn slack_events_handler(
             StatusCode::OK.into_response()
         }
         Err(CoreError::Channel(CoreChannelError::AuthFailed { message, .. })) => {
+            record_operator_tool_status("channels.slack.ingress", started_at, "failure");
             warn!(error = %message, "Rejected Slack webhook due to failed auth");
             complete_ingress_trace(
                 state.langsmith.as_ref(),
@@ -2537,6 +2559,7 @@ async fn slack_events_handler(
             (StatusCode::UNAUTHORIZED, message).into_response()
         }
         Err(CoreError::Channel(CoreChannelError::PermissionDenied { message, .. })) => {
+            record_operator_tool_status("channels.slack.ingress", started_at, "failure");
             warn!(error = %message, "Rejected Slack webhook due to permission check");
             complete_ingress_trace(
                 state.langsmith.as_ref(),
@@ -2551,6 +2574,7 @@ async fn slack_events_handler(
             (StatusCode::FORBIDDEN, message).into_response()
         }
         Err(error) => {
+            record_operator_tool_status("channels.slack.ingress", started_at, "failure");
             warn!(error = %error, "Failed to process Slack webhook");
             complete_ingress_trace(
                 state.langsmith.as_ref(),
@@ -2571,6 +2595,7 @@ async fn telegram_events_handler(
     State(state): State<TelegramIngressState>,
     body: Bytes,
 ) -> impl IntoResponse {
+    let started_at = std::time::Instant::now();
     let mut trace = ingress_trace(
         state.langsmith.as_ref(),
         "telegram_ingress",
@@ -2582,6 +2607,7 @@ async fn telegram_events_handler(
 
     match state.handler.handle_event(&body).await {
         Ok(()) => {
+            record_operator_tool_status("channels.telegram.ingress", started_at, "success");
             complete_ingress_trace(
                 state.langsmith.as_ref(),
                 trace.as_mut(),
@@ -2595,6 +2621,7 @@ async fn telegram_events_handler(
             StatusCode::OK.into_response()
         }
         Err(error) => {
+            record_operator_tool_status("channels.telegram.ingress", started_at, "failure");
             let message = error.to_string();
             warn!(error = %message, "Failed to handle Telegram webhook");
             complete_ingress_trace(
@@ -2800,6 +2827,14 @@ fn record_operator_tool_result<T, E>(
     E: std::fmt::Display,
 {
     let status = if result.is_ok() { "success" } else { "failure" };
+    openrustclaw_observability::metrics::record_tool_execution(tool_name, status);
+    openrustclaw_observability::metrics::record_tool_duration(
+        tool_name,
+        started_at.elapsed().as_secs_f64(),
+    );
+}
+
+fn record_operator_tool_status(tool_name: &str, started_at: std::time::Instant, status: &str) {
     openrustclaw_observability::metrics::record_tool_execution(tool_name, status);
     openrustclaw_observability::metrics::record_tool_duration(
         tool_name,
@@ -7788,6 +7823,7 @@ async fn imessage_bluebubbles_handler(
     headers: HeaderMap,
     Json(payload): Json<BlueBubblesMessage>,
 ) -> impl IntoResponse {
+    let started_at = std::time::Instant::now();
     let candidate = params
         .get("password")
         .or_else(|| params.get("guid"))
@@ -7801,12 +7837,19 @@ async fn imessage_bluebubbles_handler(
         .or_else(|| headers.get("x-guid").and_then(|value| value.to_str().ok()));
 
     if !state.handler.verify_password(candidate) {
+        record_operator_tool_status("channels.imessage.ingress", started_at, "failure");
         return (StatusCode::UNAUTHORIZED, "invalid BlueBubbles password").into_response();
     }
 
     match state.handler.handle_event(payload).await {
-        Ok(()) => StatusCode::OK.into_response(),
-        Err(error) => (StatusCode::BAD_REQUEST, error.to_string()).into_response(),
+        Ok(()) => {
+            record_operator_tool_status("channels.imessage.ingress", started_at, "success");
+            StatusCode::OK.into_response()
+        }
+        Err(error) => {
+            record_operator_tool_status("channels.imessage.ingress", started_at, "failure");
+            (StatusCode::BAD_REQUEST, error.to_string()).into_response()
+        }
     }
 }
 
@@ -7833,6 +7876,7 @@ async fn teams_events_handler(
     headers: HeaderMap,
     Json(payload): Json<serde_json::Value>,
 ) -> impl IntoResponse {
+    let started_at = std::time::Instant::now();
     let auth_header = headers
         .get("authorization")
         .and_then(|value| value.to_str().ok())
@@ -7842,17 +7886,25 @@ async fn teams_events_handler(
         match state.handler.verify_token(token).await {
             Ok(true) => {}
             Ok(false) => {
+                record_operator_tool_status("channels.teams.ingress", started_at, "failure");
                 return (StatusCode::UNAUTHORIZED, "Invalid Teams auth token").into_response();
             }
             Err(error) => {
+                record_operator_tool_status("channels.teams.ingress", started_at, "failure");
                 return (StatusCode::UNAUTHORIZED, error.to_string()).into_response();
             }
         }
     }
 
     match state.handler.handle_request(payload).await {
-        Ok(response) => (StatusCode::OK, Json(response)).into_response(),
-        Err(error) => (StatusCode::BAD_REQUEST, error.to_string()).into_response(),
+        Ok(response) => {
+            record_operator_tool_status("channels.teams.ingress", started_at, "success");
+            (StatusCode::OK, Json(response)).into_response()
+        }
+        Err(error) => {
+            record_operator_tool_status("channels.teams.ingress", started_at, "failure");
+            (StatusCode::BAD_REQUEST, error.to_string()).into_response()
+        }
     }
 }
 
@@ -7869,13 +7921,20 @@ async fn mattermost_events_handler(
     headers: HeaderMap,
     body: Bytes,
 ) -> impl IntoResponse {
+    let started_at = std::time::Instant::now();
     let content_type = headers
         .get(axum::http::header::CONTENT_TYPE)
         .and_then(|value| value.to_str().ok());
 
     match state.handler.handle_request(content_type, &body).await {
-        Ok(response) => (StatusCode::OK, Json(response)).into_response(),
-        Err(error) => (StatusCode::BAD_REQUEST, error.to_string()).into_response(),
+        Ok(response) => {
+            record_operator_tool_status("channels.mattermost.ingress", started_at, "success");
+            (StatusCode::OK, Json(response)).into_response()
+        }
+        Err(error) => {
+            record_operator_tool_status("channels.mattermost.ingress", started_at, "failure");
+            (StatusCode::BAD_REQUEST, error.to_string()).into_response()
+        }
     }
 }
 
@@ -7899,10 +7958,20 @@ async fn google_chat_events_handler(
     State(state): State<GoogleChatIngressState>,
     body: Bytes,
 ) -> impl IntoResponse {
+    let started_at = std::time::Instant::now();
     match state.handler.handle_event(&body).await {
-        Ok(Some(response)) => (StatusCode::OK, Json(response)).into_response(),
-        Ok(None) => StatusCode::OK.into_response(),
-        Err(error) => (StatusCode::BAD_REQUEST, error.to_string()).into_response(),
+        Ok(Some(response)) => {
+            record_operator_tool_status("channels.google_chat.ingress", started_at, "success");
+            (StatusCode::OK, Json(response)).into_response()
+        }
+        Ok(None) => {
+            record_operator_tool_status("channels.google_chat.ingress", started_at, "success");
+            StatusCode::OK.into_response()
+        }
+        Err(error) => {
+            record_operator_tool_status("channels.google_chat.ingress", started_at, "failure");
+            (StatusCode::BAD_REQUEST, error.to_string()).into_response()
+        }
     }
 }
 
@@ -7940,6 +8009,7 @@ async fn google_meet_events_handler(
     State(state): State<GoogleMeetIngressState>,
     body: Bytes,
 ) -> impl IntoResponse {
+    let started_at = std::time::Instant::now();
     match state.handler.decode_push(&body).await {
         Ok(event) => {
             let payload = serde_json::json!({
@@ -7964,6 +8034,7 @@ async fn google_meet_events_handler(
                 )
                 .await
             {
+                record_operator_tool_status("channels.google_meet.ingress", started_at, "failure");
                 return (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()).into_response();
             }
 
@@ -7986,13 +8057,22 @@ async fn google_meet_events_handler(
                     )
                     .await
                 {
+                    record_operator_tool_status(
+                        "channels.google_meet.ingress",
+                        started_at,
+                        "failure",
+                    );
                     return (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()).into_response();
                 }
             }
 
+            record_operator_tool_status("channels.google_meet.ingress", started_at, "success");
             (StatusCode::OK, Json(payload)).into_response()
         }
-        Err(error) => (StatusCode::BAD_REQUEST, error.to_string()).into_response(),
+        Err(error) => {
+            record_operator_tool_status("channels.google_meet.ingress", started_at, "failure");
+            (StatusCode::BAD_REQUEST, error.to_string()).into_response()
+        }
     }
 }
 
@@ -8013,9 +8093,16 @@ async fn gmail_pubsub_handler(
     State(state): State<GmailIngressState>,
     body: Bytes,
 ) -> impl IntoResponse {
+    let started_at = std::time::Instant::now();
     match state.handler.handle_push(&body).await {
-        Ok(()) => StatusCode::OK.into_response(),
-        Err(error) => (StatusCode::BAD_REQUEST, error.to_string()).into_response(),
+        Ok(()) => {
+            record_operator_tool_status("channels.gmail_pubsub.ingress", started_at, "success");
+            StatusCode::OK.into_response()
+        }
+        Err(error) => {
+            record_operator_tool_status("channels.gmail_pubsub.ingress", started_at, "failure");
+            (StatusCode::BAD_REQUEST, error.to_string()).into_response()
+        }
     }
 }
 
@@ -8024,6 +8111,7 @@ async fn discord_interactions_handler(
     headers: HeaderMap,
     body: Bytes,
 ) -> impl IntoResponse {
+    let started_at = std::time::Instant::now();
     let signature = headers
         .get("x-signature-ed25519")
         .and_then(|value| value.to_str().ok());
@@ -8047,6 +8135,7 @@ async fn discord_interactions_handler(
         .await
     {
         Ok(response) => {
+            record_operator_tool_status("channels.discord.ingress", started_at, "success");
             complete_ingress_trace(
                 state.langsmith.as_ref(),
                 trace.as_mut(),
@@ -8061,6 +8150,7 @@ async fn discord_interactions_handler(
             (StatusCode::OK, axum::Json(response)).into_response()
         }
         Err(CoreError::Channel(CoreChannelError::AuthFailed { message, .. })) => {
+            record_operator_tool_status("channels.discord.ingress", started_at, "failure");
             warn!(error = %message, "Rejected Discord interaction due to failed auth");
             complete_ingress_trace(
                 state.langsmith.as_ref(),
@@ -8075,6 +8165,7 @@ async fn discord_interactions_handler(
             (StatusCode::UNAUTHORIZED, message).into_response()
         }
         Err(CoreError::Channel(CoreChannelError::PermissionDenied { message, .. })) => {
+            record_operator_tool_status("channels.discord.ingress", started_at, "failure");
             warn!(error = %message, "Rejected Discord interaction due to permission check");
             complete_ingress_trace(
                 state.langsmith.as_ref(),
@@ -8089,6 +8180,7 @@ async fn discord_interactions_handler(
             (StatusCode::FORBIDDEN, message).into_response()
         }
         Err(error) => {
+            record_operator_tool_status("channels.discord.ingress", started_at, "failure");
             warn!(error = %error, "Failed to process Discord interaction");
             complete_ingress_trace(
                 state.langsmith.as_ref(),

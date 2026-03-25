@@ -108,6 +108,9 @@ The shipped control plane now records real operator-tool metrics for several Pha
 - `skills.voice_plugin.prewarm`, `skills.voice_call.start|end|reconnect`
 - `mobile.command.dispatch|approve|reject`
 - `mobile.capability.execute`
+- `channels.<platform>.ingress`
+- `channels.<platform>.send`
+- scheduler workflow/job runs via the existing `openrustclaw_job_executions_total` and `openrustclaw_job_duration_seconds` metrics
 
 ### Memory Metrics
 

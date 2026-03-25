@@ -1357,9 +1357,9 @@ Remaining:
 - [ ] Extend observability to all operator-significant paths:
   - [x] `openrustclaw start` now mounts a real Prometheus `/metrics` endpoint and the shared observability helpers now emit real counters, histograms, and gauges for the shipped HTTP/provider/agent/memory/cache/database/scheduler/security metrics instead of no-op placeholders,
   - [x] gateway websocket auth/origin validation and webhook rate-limit decisions now emit real security counters on the shipped Prometheus surface,
-  - every channel ingress,
-  - every outbound send,
-  - every workflow/job run,
+  - [x] every channel ingress,
+  - [x] every outbound send,
+  - [x] every workflow/job run,
   - memory maintenance,
   - [x] media processing,
   - [x] plugin execution,

@@ -4,7 +4,7 @@
 //! dispatches through the Rust-native workflow runtime, and optionally falls
 //! back to the sidecar for bounded compatibility-only workflows.
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use chrono::Utc;
 use openrustclaw_db::SqlitePool;
@@ -258,6 +258,7 @@ impl SchedulerWorker {
         dispatcher: &mut D,
         persisted: PersistedJob,
     ) -> Result<JobRun> {
+        let started_at = Instant::now();
         let workflow_input = persisted.workflow_input();
         let workflow_metadata = persisted.workflow_metadata();
         let workflow_configurable = persisted.workflow_configurable();
@@ -290,6 +291,14 @@ impl SchedulerWorker {
         match dispatcher.dispatch(invocation).await {
             Ok(dispatch) => {
                 if dispatch.status == "deferred" {
+                    openrustclaw_observability::metrics::record_job_execution(
+                        &job.workflow_id,
+                        "deferred",
+                    );
+                    openrustclaw_observability::metrics::record_job_duration(
+                        &job.workflow_id,
+                        started_at.elapsed().as_secs_f64(),
+                    );
                     let next_run_at = extract_next_attempt_at(&dispatch.output)
                         .unwrap_or_else(|| Utc::now() + chrono::Duration::minutes(15));
                     job.state = JobState::Active;
@@ -342,6 +351,14 @@ impl SchedulerWorker {
                 } else {
                     RunStatus::Failure
                 };
+                openrustclaw_observability::metrics::record_job_execution(
+                    &job.workflow_id,
+                    if success { "success" } else { "failure" },
+                );
+                openrustclaw_observability::metrics::record_job_duration(
+                    &job.workflow_id,
+                    started_at.elapsed().as_secs_f64(),
+                );
                 complete_job_run(
                     pool,
                     &run.id,
@@ -370,6 +387,14 @@ impl SchedulerWorker {
             }
             Err(e) => {
                 let error_message = e.to_string();
+                openrustclaw_observability::metrics::record_job_execution(
+                    &job.workflow_id,
+                    "failure",
+                );
+                openrustclaw_observability::metrics::record_job_duration(
+                    &job.workflow_id,
+                    started_at.elapsed().as_secs_f64(),
+                );
                 if let (Some(client), Some(trace)) = (&self.langsmith, scheduler_trace.as_mut()) {
                     trace.error = Some(error_message.clone());
                     trace.end_time = Some(Utc::now());
@@ -414,6 +439,7 @@ impl SchedulerWorker {
         dispatcher: &mut D,
         persisted: PersistedEventDispatch,
     ) -> Result<JobRun> {
+        let started_at = Instant::now();
         let mut job = persisted.job.clone();
         let original_metadata = persisted.metadata.clone();
         let workflow_input = merge_event_payload_into_job_input(&original_metadata, &persisted);
@@ -447,6 +473,14 @@ impl SchedulerWorker {
         match dispatch_result {
             Ok(dispatch) => {
                 if dispatch.status == "deferred" {
+                    openrustclaw_observability::metrics::record_job_execution(
+                        &job.workflow_id,
+                        "deferred",
+                    );
+                    openrustclaw_observability::metrics::record_job_duration(
+                        &job.workflow_id,
+                        started_at.elapsed().as_secs_f64(),
+                    );
                     let next_attempt_at = extract_next_attempt_at(&dispatch.output)
                         .unwrap_or_else(|| Utc::now() + chrono::Duration::minutes(15));
                     finalize_event_dispatch(
@@ -500,6 +534,14 @@ impl SchedulerWorker {
                 }
 
                 if success {
+                    openrustclaw_observability::metrics::record_job_execution(
+                        &job.workflow_id,
+                        "success",
+                    );
+                    openrustclaw_observability::metrics::record_job_duration(
+                        &job.workflow_id,
+                        started_at.elapsed().as_secs_f64(),
+                    );
                     job.consecutive_failures = 0;
                     job.run_count += 1;
                     job.last_run_at = Some(Utc::now());
@@ -524,6 +566,14 @@ impl SchedulerWorker {
                     .await?;
                     run.status = RunStatus::Success;
                 } else {
+                    openrustclaw_observability::metrics::record_job_execution(
+                        &job.workflow_id,
+                        "failure",
+                    );
+                    openrustclaw_observability::metrics::record_job_duration(
+                        &job.workflow_id,
+                        started_at.elapsed().as_secs_f64(),
+                    );
                     let attempts = persisted.attempts + 1;
                     let error_message = dispatch
                         .error
@@ -605,6 +655,14 @@ impl SchedulerWorker {
                 Ok(run)
             }
             Err(error) => {
+                openrustclaw_observability::metrics::record_job_execution(
+                    &job.workflow_id,
+                    "failure",
+                );
+                openrustclaw_observability::metrics::record_job_duration(
+                    &job.workflow_id,
+                    started_at.elapsed().as_secs_f64(),
+                );
                 let attempts = persisted.attempts + 1;
                 let error_message = error.to_string();
                 let persisted_trace_id = effective_trace_id(scheduler_trace.as_ref(), None);
