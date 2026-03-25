@@ -192,6 +192,27 @@ Use the token in either:
 - `Authorization: Bearer <token>` for normal HTTP requests
 - `?token=<token>` for `/control/ui` and the browser WebSocket helper flows it opens
 
+### Trusted Proxy Mode
+
+Reverse-proxy deployments can also use an opt-in shared secret instead of forwarding the direct bearer path unchanged:
+
+```toml
+[security]
+trusted_proxy_token_env = "OPENRUSTCLAW_TRUSTED_PROXY_TOKEN"
+```
+
+```bash
+export OPENRUSTCLAW_TRUSTED_PROXY_TOKEN="replace-me"
+openrustclaw start
+```
+
+When enabled, a trusted reverse proxy can inject:
+
+- `X-OpenRustClaw-Trusted-Proxy-Token: <token>`
+- `X-Forwarded-Origin: https://app.example.com`
+
+The gateway WebSocket lane and the typed `/control/...` operator surface will trust that proxy-injected identity only when the shared secret matches. Direct bearer and direct `Origin` validation remain the default path when this mode is not configured.
+
 ---
 
 ## 🛡️ Prompt Injection Defense

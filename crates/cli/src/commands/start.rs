@@ -100,10 +100,14 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
     // Load configuration
     let mut config = runtime::load_effective_config(config_path, &workspace_root)?;
     let control_api_token = load_control_api_token(&config)?;
+    let trusted_proxy_token = load_trusted_proxy_token(&config)?;
 
     info!(config_path = %config_path, "Configuration loaded");
     if let Some(env_name) = config.security.control_api_token_env.as_deref() {
         info!(env = %env_name, "Control API bearer auth enabled");
+    }
+    if let Some(env_name) = config.security.trusted_proxy_token_env.as_deref() {
+        info!(env = %env_name, "Trusted proxy auth enabled");
     }
 
     // Parse and enable channels from CLI argument
@@ -234,6 +238,7 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
         origin_validator,
         require_auth: config.security.require_auth,
         internal_api_token: Some(Arc::new(internal_api_token)),
+        trusted_proxy_token: trusted_proxy_token.clone(),
         memory_store: Some(memory_store.clone()),
         core_memory_store: Some(core_memory_store.clone()),
         rag_store: Some(rag_store),
@@ -248,6 +253,7 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
     let addr = gateway.addr();
     let control_auth_state = ControlAuthState {
         bearer_token: control_api_token,
+        trusted_proxy_token,
     };
 
     info!(addr = %addr, "Starting gateway server");
@@ -2581,6 +2587,7 @@ struct RuntimeControlState {
 #[derive(Clone)]
 struct ControlAuthState {
     bearer_token: Option<Arc<String>>,
+    trusted_proxy_token: Option<Arc<String>>,
 }
 
 fn protect_control_router(router: Router, state: ControlAuthState) -> Router {
@@ -2612,6 +2619,28 @@ fn load_control_api_token(config: &AppConfig) -> Result<Option<Arc<String>>> {
     Ok(Some(Arc::new(token.to_string())))
 }
 
+fn load_trusted_proxy_token(config: &AppConfig) -> Result<Option<Arc<String>>> {
+    let Some(env_name) = config.security.trusted_proxy_token_env.as_deref() else {
+        return Ok(None);
+    };
+
+    let value = std::env::var(env_name).with_context(|| {
+        format!(
+            "security.trusted_proxy_token_env is set to '{}' but that environment variable is missing",
+            env_name
+        )
+    })?;
+    let token = value.trim();
+    if token.is_empty() {
+        anyhow::bail!(
+            "security.trusted_proxy_token_env resolved from '{}' but the token value is empty",
+            env_name
+        );
+    }
+
+    Ok(Some(Arc::new(token.to_string())))
+}
+
 fn control_request_token(req: &Request) -> Option<String> {
     let bearer = req
         .headers()
@@ -2628,29 +2657,70 @@ fn control_request_token(req: &Request) -> Option<String> {
         .and_then(|query| query.0.get("token").cloned())
 }
 
+fn control_request_proxy_token(req: &Request) -> Option<String> {
+    req.headers()
+        .get("x-openrustclaw-trusted-proxy-token")
+        .and_then(|value| value.to_str().ok())
+        .map(|value| value.to_string())
+}
+
+fn control_request_authorization_method(
+    state: &ControlAuthState,
+    req: &Request,
+) -> Option<&'static str> {
+    let bearer_expected = state.bearer_token.as_deref();
+    let proxy_expected = state.trusted_proxy_token.as_deref();
+
+    if bearer_expected.is_none() && proxy_expected.is_none() {
+        return Some("open");
+    }
+
+    let provided = control_request_token(req).unwrap_or_default();
+    if let Some(expected_token) = bearer_expected
+        && provided == *expected_token
+    {
+        return Some("control_token");
+    }
+
+    let proxy_provided = control_request_proxy_token(req).unwrap_or_default();
+    if let Some(expected_token) = proxy_expected
+        && proxy_provided == *expected_token
+    {
+        return Some("trusted_proxy");
+    }
+
+    None
+}
+
 async fn control_auth_middleware(
     State(state): State<ControlAuthState>,
     req: Request,
     next: Next,
 ) -> Response {
-    let Some(expected_token) = state.bearer_token.as_deref() else {
+    if let Some(method) = control_request_authorization_method(&state, &req) {
+        if method != "open" {
+            openrustclaw_observability::metrics::record_auth_attempt(method, "success");
+        }
         return next.run(req).await;
-    };
-
-    let provided = control_request_token(&req).unwrap_or_default();
-    if provided == *expected_token {
-        openrustclaw_observability::metrics::record_auth_attempt("control_token", "success");
-        next.run(req).await
-    } else {
-        openrustclaw_observability::metrics::record_auth_attempt("control_token", "failure");
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(serde_json::json!({
-                "error": "missing or invalid control api token"
-            })),
-        )
-            .into_response()
     }
+
+    let bearer_expected = state.bearer_token.as_deref();
+    let proxy_expected = state.trusted_proxy_token.as_deref();
+    let proxy_provided = control_request_proxy_token(&req).unwrap_or_default();
+    if bearer_expected.is_some() {
+        openrustclaw_observability::metrics::record_auth_attempt("control_token", "failure");
+    }
+    if proxy_expected.is_some() && !proxy_provided.is_empty() {
+        openrustclaw_observability::metrics::record_auth_attempt("trusted_proxy", "failure");
+    }
+
+    (
+        StatusCode::UNAUTHORIZED,
+        Json(serde_json::json!({
+            "error": "missing or invalid control api token"
+        })),
+    )
+        .into_response()
 }
 
 fn discord_ingress_router(
@@ -11220,6 +11290,25 @@ mod tests {
         assert!(!config.viber.enabled);
         assert!(!config.wechat.enabled);
         assert!(!config.meta.enabled);
+    }
+
+    #[test]
+    fn control_auth_accepts_trusted_proxy_token() {
+        let request = Request::builder()
+            .uri("/protected")
+            .header("x-openrustclaw-trusted-proxy-token", "proxy-secret")
+            .body(axum::body::Body::empty())
+            .unwrap();
+
+        let method = control_request_authorization_method(
+            &ControlAuthState {
+                bearer_token: None,
+                trusted_proxy_token: Some(Arc::new("proxy-secret".to_string())),
+            },
+            &request,
+        );
+
+        assert_eq!(method, Some("trusted_proxy"));
     }
 
     #[test]

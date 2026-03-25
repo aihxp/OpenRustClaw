@@ -1388,7 +1388,7 @@ Remaining:
   - PID/gateway lock semantics,
   - launchd/systemd integration,
   - network modes for loopback/LAN/remote deployment,
-  - trusted-proxy auth mode for reverse proxies.
+  - [x] trusted-proxy auth mode now exists for reverse proxies through `security.trusted_proxy_token_env` plus `X-OpenRustClaw-Trusted-Proxy-Token`/`X-Forwarded-Origin` on the gateway WebSocket and `/control/...` lanes.
 - [ ] Add control-plane model resilience so operator actions still work when the primary paid model is unavailable:
   - [x] operator-visible degraded-mode warnings now surface when the configured primary provider is unhealthy but a healthy fallback lane exists,
   - separate low-cost or local fallback model for onboarding, updates, config edits, and model-switch operations,

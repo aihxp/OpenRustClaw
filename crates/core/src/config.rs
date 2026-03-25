@@ -210,6 +210,8 @@ pub struct SecurityConfig {
     pub origin_validation: bool,
     #[serde(default)]
     pub control_api_token_env: Option<String>,
+    #[serde(default)]
+    pub trusted_proxy_token_env: Option<String>,
     pub prompt_injection_defense: bool,
     pub skill_signature_required: bool,
     pub skill_verifying_key: Option<String>,
@@ -1067,6 +1069,7 @@ impl Default for AppConfig {
                 require_auth: true,
                 origin_validation: true,
                 control_api_token_env: None,
+                trusted_proxy_token_env: None,
                 prompt_injection_defense: true,
                 skill_signature_required: false,
                 skill_verifying_key: None,

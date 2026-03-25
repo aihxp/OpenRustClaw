@@ -168,6 +168,7 @@ Channel routing/operator controls:
   - `GET /control/logs/recent`
   - `GET /control/logs/ws`
 - the control plane can now be protected with an opt-in bearer token by setting `security.control_api_token_env` and exporting the matching environment variable before `openrustclaw start`; `/control/ui?token=...` forwards that token to its API and WebSocket calls
+- reverse-proxy deployments can now use an opt-in trusted proxy secret via `security.trusted_proxy_token_env`; when the configured proxy injects `X-OpenRustClaw-Trusted-Proxy-Token` plus `X-Forwarded-Origin`, the gateway WebSocket lane and `/control/...` operator surfaces can trust that proxy without weakening the default direct bearer/origin path
 - shared service diagnostics surfaces now exist at:
   - `GET /control/services/status`
   - `GET /control/services/scheduler`

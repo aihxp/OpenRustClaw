@@ -37,6 +37,7 @@ pub struct GatewayState {
     pub origin_validator: Arc<OriginValidator>,
     pub require_auth: bool,
     pub internal_api_token: Option<Arc<String>>,
+    pub trusted_proxy_token: Option<Arc<String>>,
     pub memory_store: Option<Arc<SqliteMemoryStore>>,
     pub core_memory_store: Option<Arc<SqliteCoreMemoryStore>>,
     pub rag_store: Option<Arc<SqliteRagStore>>,
@@ -1082,9 +1083,17 @@ async fn complete_gateway_trace(
 }
 
 fn validate_ws_request(state: &GatewayState, headers: &HeaderMap) -> CoreResult<()> {
+    let trusted_proxy = trusted_proxy_authorized(state, headers);
     let origin = headers
         .get(axum::http::header::ORIGIN)
         .and_then(|value| value.to_str().ok())
+        .or_else(|| {
+            trusted_proxy.then(|| {
+                headers
+                    .get(HeaderName::from_static("x-forwarded-origin"))
+                    .and_then(|value| value.to_str().ok())
+            })?
+        })
         .ok_or_else(|| {
             record_origin_check("denied");
             Error::Security(SecurityError::InvalidOrigin {
@@ -1102,6 +1111,10 @@ fn validate_ws_request(state: &GatewayState, headers: &HeaderMap) -> CoreResult<
             .get(axum::http::header::AUTHORIZATION)
             .and_then(|value| value.to_str().ok());
         if let Err(error) = extract_token(auth_header) {
+            if trusted_proxy {
+                record_auth_attempt("trusted_proxy", "success");
+                return Ok(());
+            }
             record_auth_attempt("bearer", "failure");
             return Err(error);
         }
@@ -1109,6 +1122,29 @@ fn validate_ws_request(state: &GatewayState, headers: &HeaderMap) -> CoreResult<
     }
 
     Ok(())
+}
+
+fn trusted_proxy_authorized(state: &GatewayState, headers: &HeaderMap) -> bool {
+    let Some(expected_token) = state.trusted_proxy_token.as_deref() else {
+        return false;
+    };
+
+    let header_name = HeaderName::from_static("x-openrustclaw-trusted-proxy-token");
+    let provided = headers
+        .get(header_name)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("");
+
+    if provided.is_empty() {
+        return false;
+    }
+
+    if provided == expected_token.as_str() {
+        true
+    } else {
+        record_auth_attempt("trusted_proxy", "failure");
+        false
+    }
 }
 
 fn validate_internal_api(
@@ -1235,6 +1271,7 @@ mod tests {
             ])),
             require_auth: true,
             internal_api_token: None,
+            trusted_proxy_token: None,
             memory_store: None,
             core_memory_store: None,
             rag_store: None,
@@ -1272,6 +1309,40 @@ mod tests {
         assert!(validate_ws_request(&test_state(), &headers).is_ok());
     }
 
+    #[test]
+    fn validate_ws_request_accepts_trusted_proxy_headers() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            HeaderName::from_static("x-forwarded-origin"),
+            "http://localhost:3000".parse().unwrap(),
+        );
+        headers.insert(
+            HeaderName::from_static("x-openrustclaw-trusted-proxy-token"),
+            "proxy-secret".parse().unwrap(),
+        );
+
+        let mut state = test_state();
+        state.trusted_proxy_token = Some(Arc::new("proxy-secret".to_string()));
+        assert!(validate_ws_request(&state, &headers).is_ok());
+    }
+
+    #[test]
+    fn validate_ws_request_rejects_invalid_trusted_proxy_token() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            HeaderName::from_static("x-forwarded-origin"),
+            "http://localhost:3000".parse().unwrap(),
+        );
+        headers.insert(
+            HeaderName::from_static("x-openrustclaw-trusted-proxy-token"),
+            "wrong-secret".parse().unwrap(),
+        );
+
+        let mut state = test_state();
+        state.trusted_proxy_token = Some(Arc::new("proxy-secret".to_string()));
+        assert!(validate_ws_request(&state, &headers).is_err());
+    }
+
     #[tokio::test]
     async fn internal_memory_api_store_search_and_render() {
         let db_path = std::env::temp_dir().join(format!("gateway-memory-{}.db", Uuid::new_v4()));
@@ -1303,6 +1374,7 @@ mod tests {
             ])),
             require_auth: false,
             internal_api_token: Some(Arc::new("test-token".to_string())),
+            trusted_proxy_token: None,
             memory_store: Some(memory_store),
             core_memory_store: Some(core_memory_store),
             rag_store: Some(Arc::new(SqliteRagStore::new(pool.clone()))),
@@ -1449,6 +1521,7 @@ mod tests {
             ])),
             require_auth: false,
             internal_api_token: Some(Arc::new("test-token".to_string())),
+            trusted_proxy_token: None,
             memory_store: Some(memory_store),
             core_memory_store: Some(core_memory_store),
             rag_store: Some(Arc::new(SqliteRagStore::new(pool.clone()))),
@@ -1540,6 +1613,7 @@ mod tests {
             ])),
             require_auth: false,
             internal_api_token: Some(Arc::new("test-token".to_string())),
+            trusted_proxy_token: None,
             memory_store: Some(Arc::new(SqliteMemoryStore::new(pool.clone()))),
             core_memory_store: Some(Arc::new(SqliteCoreMemoryStore::new(pool.clone()))),
             rag_store: Some(Arc::new(SqliteRagStore::new(pool.clone()))),

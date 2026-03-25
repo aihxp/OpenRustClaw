@@ -74,6 +74,7 @@ max_retry_delay_secs = 300
 require_auth = true
 origin_validation = true
 # control_api_token_env = "OPENRUSTCLAW_CONTROL_API_TOKEN" # Optional bearer token gate for /control/... and /control/ui
+# trusted_proxy_token_env = "OPENRUSTCLAW_TRUSTED_PROXY_TOKEN" # Optional shared secret for reverse proxies that inject X-Forwarded-Origin and X-OpenRustClaw-Trusted-Proxy-Token
 prompt_injection_defense = true
 skill_signature_required = false  # marketplace only; workspace skills exempt
 # skill_verifying_key = "..."     # Optional 32-byte Ed25519 public key as lowercase hex
