@@ -93,6 +93,12 @@ primary = "anthropic"
 # Fallback chain (tried in order if primary fails)
 fallback_chain = ["openai", "openrouter", "ollama"]
 
+# Preferred provider used for operator/control-plane guidance
+control_plane_provider = "openrouter"
+
+# Control-plane failover order
+control_plane_fallback_chain = ["ollama", "anthropic"]
+
 [providers.anthropic]
 api_key = "${ANTHROPIC_API_KEY}"
 model = "claude-sonnet-4-20250514"
@@ -117,6 +123,21 @@ site_name = "Your App"
 base_url = "${OLLAMA_BASE_URL}"
 model = "llama3.1"
 ```
+
+### Control-Plane Provider Lane
+
+OpenRustClaw can declare the operator/control-plane lane separately from the main task lane:
+
+```toml
+[providers]
+primary = "anthropic"
+fallback_chain = ["openai", "openrouter", "ollama"]
+
+control_plane_provider = "openrouter"
+control_plane_fallback_chain = ["ollama", "anthropic"]
+```
+
+Use this when you want runtime edits, onboarding, upgrade planning, and health guidance to evaluate a cheaper or more available provider separately from the main task model. The current runtime status and health surfaces report this lane separately and precompute failover recommendations when the preferred control-plane provider is degraded.
 
 ### Per-Request Configuration
 
@@ -419,6 +440,8 @@ Always have at least 2 providers configured for fallback:
 [providers]
 primary = "anthropic"
 fallback_chain = ["openai", "ollama"]
+control_plane_provider = "ollama"
+control_plane_fallback_chain = ["openrouter"]
 ```
 
 ### 2. Use Appropriate Models

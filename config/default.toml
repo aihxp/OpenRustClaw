@@ -12,6 +12,8 @@ max_connections = 10
 [providers]
 default_provider = "anthropic"
 fallback_chain = ["anthropic", "openai", "openrouter"]
+control_plane_provider = "openrouter"
+control_plane_fallback_chain = ["ollama", "anthropic"]
 
 [providers.anthropic]
 model = "claude-sonnet-4-20250514"

@@ -1392,7 +1392,7 @@ Remaining:
 - [ ] Add control-plane model resilience so operator actions still work when the primary paid model is unavailable:
   - [x] operator-visible degraded-mode warnings now surface when the configured primary provider is unhealthy but a healthy fallback lane exists,
   - separate low-cost or local fallback model for onboarding, updates, config edits, and model-switch operations,
-  - explicit distinction between primary task model and control-plane/safety model,
+  - [x] explicit distinction between primary task model and control-plane/safety model,
   - [x] startup-time fallback validation now runs during `openrustclaw start`,
   - [x] operator warnings now emit when the runtime is booting in degraded control-plane mode.
 - [ ] Add recurring provider/model health scans after onboarding:
@@ -1400,8 +1400,8 @@ Remaining:
   - detect removed or disabled models,
   - detect auth or billing regressions,
   - detect changed limits where providers expose them,
-  - precompute failover recommendations before the next model swap,
-  - surface operator warnings instead of letting model changes fail blind at runtime.
+  - [x] precompute failover recommendations before the next model swap,
+  - [x] surface operator warnings instead of letting model changes fail blind at runtime.
 - [ ] Add explicit governance for optional external execution backends:
   - allowed backend registry,
   - credential and token isolation,

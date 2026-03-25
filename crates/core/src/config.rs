@@ -103,6 +103,10 @@ pub struct DatabaseConfig {
 pub struct ProvidersConfig {
     pub default_provider: String,
     pub fallback_chain: Vec<String>,
+    #[serde(default)]
+    pub control_plane_provider: Option<String>,
+    #[serde(default)]
+    pub control_plane_fallback_chain: Vec<String>,
     pub anthropic: AnthropicConfig,
     pub openai: OpenAiConfig,
     pub openrouter: OpenRouterConfig,
@@ -1014,6 +1018,8 @@ impl Default for AppConfig {
                     "openai".to_string(),
                     "openrouter".to_string(),
                 ],
+                control_plane_provider: Some("openrouter".to_string()),
+                control_plane_fallback_chain: vec!["ollama".to_string(), "anthropic".to_string()],
                 anthropic: AnthropicConfig {
                     model: "claude-sonnet-4-20250514".to_string(),
                     api_key_env: None,

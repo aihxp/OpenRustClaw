@@ -60,6 +60,10 @@ pub struct RuntimeStatus {
     pub trusted_proxy_enabled: bool,
     pub default_provider: String,
     pub fallback_chain: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub control_plane_provider: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub control_plane_fallback_chain: Vec<String>,
     pub anthropic_model: String,
     pub openai_model: String,
     pub openrouter_model: String,
@@ -112,6 +116,8 @@ pub struct RuntimeHealthProviderEntry {
     pub configured: bool,
     pub healthy: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub recommendation: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub issue: Option<String>,
 }
 
@@ -131,9 +137,17 @@ pub struct RuntimeHealthReport {
     pub default_provider: String,
     pub fallback_chain: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub control_plane_provider: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub control_plane_fallback_chain: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub recommended_control_plane_provider: Option<String>,
     pub startup_fallback_valid: bool,
     pub degraded_control_plane_mode: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub failover_recommendations: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub operator_warnings: Vec<String>,
     pub providers: Vec<RuntimeHealthProviderEntry>,
     pub artifacts: RuntimeArtifactHealth,
 }
@@ -589,6 +603,8 @@ pub fn runtime_status(config_path: &str, workspace_root: &Path) -> Result<Runtim
         trusted_proxy_enabled: config.security.trusted_proxy_token_env.is_some(),
         default_provider: config.providers.default_provider.clone(),
         fallback_chain: config.providers.fallback_chain.clone(),
+        control_plane_provider: config.providers.control_plane_provider.clone(),
+        control_plane_fallback_chain: config.providers.control_plane_fallback_chain.clone(),
         anthropic_model: config.providers.anthropic.model.clone(),
         openai_model: config.providers.openai.model.clone(),
         openrouter_model: config.providers.openrouter.model.clone(),
@@ -670,34 +686,58 @@ pub async fn scan_runtime_health(
 ) -> Result<RuntimeHealthReport> {
     let config = load_effective_config(config_path, workspace_root)?;
 
-    let mut ordered = Vec::new();
-    let mut seen = BTreeSet::new();
-    for provider in std::iter::once(config.providers.default_provider.clone())
-        .chain(config.providers.fallback_chain.clone().into_iter())
-    {
-        if seen.insert(provider.clone()) {
-            ordered.push(provider);
-        }
-    }
+    let ordered = health_scan_provider_order(&config);
 
     let mut entries = Vec::new();
     for provider in &ordered {
         entries.push(scan_provider_health(provider, &config).await);
     }
 
-    let startup_fallback_valid = entries
-        .iter()
-        .any(|entry| entry.provider != config.providers.default_provider && entry.healthy);
+    let control_plane_chain = control_plane_provider_order(&config);
+    let control_plane_provider = config
+        .providers
+        .control_plane_provider
+        .clone()
+        .or_else(|| Some(config.providers.default_provider.clone()));
+    let startup_fallback_valid = entries.iter().any(|entry| {
+        control_plane_chain
+            .iter()
+            .skip(1)
+            .any(|provider| provider == &entry.provider)
+            && entry.healthy
+    });
     let default_healthy = entries
         .iter()
-        .find(|entry| entry.provider == config.providers.default_provider)
+        .find(|entry| Some(entry.provider.clone()) == control_plane_provider)
         .map(|entry| entry.healthy)
         .unwrap_or(false);
     let recommended_control_plane_provider = entries
         .iter()
-        .find(|entry| entry.provider != config.providers.default_provider && entry.healthy)
+        .find(|entry| {
+            control_plane_chain
+                .iter()
+                .any(|provider| provider == &entry.provider)
+                && entry.healthy
+        })
         .map(|entry| entry.provider.clone())
-        .or_else(|| default_healthy.then(|| config.providers.default_provider.clone()));
+        .or_else(|| {
+            default_healthy
+                .then(|| control_plane_provider.clone())
+                .flatten()
+        });
+
+    let failover_recommendations = build_failover_recommendations(
+        &config,
+        &control_plane_chain,
+        &entries,
+        recommended_control_plane_provider.as_deref(),
+    );
+    let operator_warnings = build_runtime_operator_warnings(
+        &config,
+        &control_plane_chain,
+        &entries,
+        recommended_control_plane_provider.as_deref(),
+    );
 
     let artifacts = summarize_runtime_artifacts(workspace_root, &config)?;
     let report = RuntimeHealthReport {
@@ -705,9 +745,13 @@ pub async fn scan_runtime_health(
         config_path: config_path.to_string(),
         default_provider: config.providers.default_provider.clone(),
         fallback_chain: config.providers.fallback_chain.clone(),
+        control_plane_provider,
+        control_plane_fallback_chain: config.providers.control_plane_fallback_chain.clone(),
         recommended_control_plane_provider,
         startup_fallback_valid,
         degraded_control_plane_mode: !default_healthy && startup_fallback_valid,
+        failover_recommendations,
+        operator_warnings,
         providers: entries,
         artifacts,
     };
@@ -1042,18 +1086,7 @@ fn fingerprint_json<T: Serialize>(value: &T) -> Result<String> {
 }
 
 async fn scan_provider_health(provider: &str, config: &AppConfig) -> RuntimeHealthProviderEntry {
-    let role = if provider == config.providers.default_provider {
-        "primary".to_string()
-    } else {
-        let index = config
-            .providers
-            .fallback_chain
-            .iter()
-            .position(|value| value == provider)
-            .map(|value| value + 1)
-            .unwrap_or(0);
-        format!("fallback_{index}")
-    };
+    let role = provider_runtime_role(provider, config);
 
     let model = match provider {
         "anthropic" => config.providers.anthropic.model.clone(),
@@ -1075,6 +1108,7 @@ async fn scan_provider_health(provider: &str, config: &AppConfig) -> RuntimeHeal
             model,
             configured: true,
             healthy: true,
+            recommendation: provider_recommendation(provider, config),
             issue: None,
         },
         Err(error) => RuntimeHealthProviderEntry {
@@ -1083,9 +1117,163 @@ async fn scan_provider_health(provider: &str, config: &AppConfig) -> RuntimeHeal
             model,
             configured: !error.to_string().contains("environment variable not set"),
             healthy: false,
+            recommendation: provider_recommendation(provider, config),
             issue: Some(error.to_string()),
         },
     }
+}
+
+fn provider_runtime_role(provider: &str, config: &AppConfig) -> String {
+    if provider == config.providers.default_provider {
+        return "primary".to_string();
+    }
+    if config.providers.control_plane_provider.as_deref() == Some(provider) {
+        return "control_plane_primary".to_string();
+    }
+    if let Some(index) = config
+        .providers
+        .control_plane_fallback_chain
+        .iter()
+        .position(|value| value == provider)
+    {
+        return format!("control_plane_fallback_{}", index + 1);
+    }
+    let index = config
+        .providers
+        .fallback_chain
+        .iter()
+        .position(|value| value == provider)
+        .map(|value| value + 1)
+        .unwrap_or(0);
+    format!("fallback_{index}")
+}
+
+fn provider_recommendation(provider: &str, config: &AppConfig) -> Option<String> {
+    if config.providers.control_plane_provider.as_deref() == Some(provider) {
+        return Some("configured control-plane primary".to_string());
+    }
+    if config
+        .providers
+        .control_plane_fallback_chain
+        .iter()
+        .any(|value| value == provider)
+    {
+        return Some("configured control-plane fallback".to_string());
+    }
+    if provider == config.providers.default_provider {
+        return Some("configured task/runtime primary".to_string());
+    }
+    None
+}
+
+fn health_scan_provider_order(config: &AppConfig) -> Vec<String> {
+    let mut ordered = Vec::new();
+    let mut seen = BTreeSet::new();
+    for provider in std::iter::once(config.providers.default_provider.clone())
+        .chain(config.providers.fallback_chain.clone().into_iter())
+        .chain(control_plane_provider_order(config).into_iter())
+    {
+        if seen.insert(provider.clone()) {
+            ordered.push(provider);
+        }
+    }
+    ordered
+}
+
+fn control_plane_provider_order(config: &AppConfig) -> Vec<String> {
+    let primary = config
+        .providers
+        .control_plane_provider
+        .clone()
+        .unwrap_or_else(|| config.providers.default_provider.clone());
+    std::iter::once(primary)
+        .chain(config.providers.control_plane_fallback_chain.clone())
+        .collect()
+}
+
+fn build_failover_recommendations(
+    config: &AppConfig,
+    control_plane_chain: &[String],
+    entries: &[RuntimeHealthProviderEntry],
+    recommended_control_plane_provider: Option<&str>,
+) -> Vec<String> {
+    let mut recommendations = Vec::new();
+    if let Some(provider) = recommended_control_plane_provider {
+        recommendations.push(format!(
+            "Use `{}` as the current control-plane provider for onboarding, config edits, and model-switch operations.",
+            provider
+        ));
+    }
+    if control_plane_chain.len() < 2 {
+        recommendations.push(
+            "Configure `providers.control_plane_fallback_chain` so control-plane actions still work when the control-plane primary is unavailable."
+                .to_string(),
+        );
+    }
+    if !config
+        .providers
+        .control_plane_fallback_chain
+        .iter()
+        .any(|provider| provider == "ollama")
+    {
+        recommendations.push(
+            "Consider adding `ollama` to `providers.control_plane_fallback_chain` for a local/offline control-plane fallback."
+                .to_string(),
+        );
+    }
+    if !entries.iter().any(|entry| {
+        config
+            .providers
+            .control_plane_fallback_chain
+            .iter()
+            .any(|provider| provider == &entry.provider)
+            && entry.healthy
+    }) {
+        recommendations.push(
+            "No healthy control-plane fallback is currently available; configure or repair at least one fallback provider before the next model swap."
+                .to_string(),
+        );
+    }
+    recommendations
+}
+
+fn build_runtime_operator_warnings(
+    config: &AppConfig,
+    control_plane_chain: &[String],
+    entries: &[RuntimeHealthProviderEntry],
+    recommended_control_plane_provider: Option<&str>,
+) -> Vec<String> {
+    let mut warnings = Vec::new();
+    let control_plane_primary = config
+        .providers
+        .control_plane_provider
+        .clone()
+        .unwrap_or_else(|| config.providers.default_provider.clone());
+    let primary_health = entries
+        .iter()
+        .find(|entry| entry.provider == control_plane_primary)
+        .map(|entry| entry.healthy)
+        .unwrap_or(false);
+
+    if !primary_health {
+        warnings.push(format!(
+            "Configured control-plane provider `{}` is not currently healthy.",
+            control_plane_primary
+        ));
+    }
+    if recommended_control_plane_provider.is_none() {
+        warnings.push(
+            "No healthy provider is currently available for the control-plane lane; onboarding and model-switch operations may fail until one recovers."
+                .to_string(),
+        );
+    }
+    if control_plane_chain.iter().collect::<BTreeSet<_>>().len() != control_plane_chain.len() {
+        warnings.push(
+            "Control-plane provider order contains duplicates; simplify `providers.control_plane_fallback_chain` to keep failover intent clear."
+                .to_string(),
+        );
+    }
+    warnings
 }
 
 async fn validate_ollama_provider(config: &AppConfig) -> Result<()> {
@@ -1987,6 +2175,11 @@ mod tests {
         assert_eq!(status.gateway_port, 19999);
         assert_eq!(status.allowed_origins, vec!["https://console.example.com"]);
         assert!(status.trusted_proxy_enabled);
+        assert_eq!(status.control_plane_provider.as_deref(), Some("openrouter"));
+        assert_eq!(
+            status.control_plane_fallback_chain,
+            vec!["ollama".to_string(), "anthropic".to_string()]
+        );
         Ok(())
     }
 
@@ -2125,15 +2318,22 @@ mod tests {
                 config_path: "config/default.toml".to_string(),
                 default_provider: "anthropic".to_string(),
                 fallback_chain: vec!["openai".to_string()],
+                control_plane_provider: Some("openrouter".to_string()),
+                control_plane_fallback_chain: vec!["ollama".to_string()],
                 recommended_control_plane_provider: Some("anthropic".to_string()),
                 startup_fallback_valid: true,
                 degraded_control_plane_mode: false,
+                failover_recommendations: vec![
+                    "Use `anthropic` as the current control-plane provider.".to_string(),
+                ],
+                operator_warnings: Vec::new(),
                 providers: vec![RuntimeHealthProviderEntry {
                     provider: "anthropic".to_string(),
                     role: "primary".to_string(),
                     model: "claude-sonnet-4-20250514".to_string(),
                     configured: true,
                     healthy: true,
+                    recommendation: Some("configured task/runtime primary".to_string()),
                     issue: None,
                 }],
                 artifacts: RuntimeArtifactHealth {
