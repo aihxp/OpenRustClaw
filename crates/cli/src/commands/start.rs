@@ -101,6 +101,7 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
     let mut config = runtime::load_effective_config(config_path, &workspace_root)?;
     let control_api_token = load_control_api_token(&config)?;
     let trusted_proxy_token = load_trusted_proxy_token(&config)?;
+    validate_gateway_network_mode(&config)?;
 
     info!(config_path = %config_path, "Configuration loaded");
     if let Some(env_name) = config.security.control_api_token_env.as_deref() {
@@ -966,6 +967,60 @@ fn internal_api_addr(host: &str, port: u16) -> String {
         other => other,
     };
     format!("http://{}:{}", loopback_host, port)
+}
+
+fn validate_gateway_network_mode(config: &AppConfig) -> Result<()> {
+    let mode = config.gateway.network_mode.trim().to_lowercase();
+    let host = config.gateway.host.trim().to_lowercase();
+    let is_loopback = matches!(host.as_str(), "127.0.0.1" | "::1" | "localhost");
+    let is_wildcard = matches!(host.as_str(), "0.0.0.0" | "::");
+
+    match mode.as_str() {
+        "loopback" => {
+            if !is_loopback {
+                anyhow::bail!(
+                    "gateway.network_mode=loopback requires a loopback bind host, got '{}'",
+                    config.gateway.host
+                );
+            }
+        }
+        "lan" | "remote" => {
+            if is_loopback {
+                anyhow::bail!(
+                    "gateway.network_mode={} requires a non-loopback bind host, got '{}'",
+                    mode,
+                    config.gateway.host
+                );
+            }
+            if mode == "remote" && config.gateway.allowed_origins.is_empty() {
+                anyhow::bail!("gateway.network_mode=remote requires at least one allowed origin");
+            }
+            if mode == "remote"
+                && !config.security.require_auth
+                && config.security.control_api_token_env.is_none()
+                && config.security.trusted_proxy_token_env.is_none()
+            {
+                anyhow::bail!(
+                    "gateway.network_mode=remote requires direct auth or an explicit control/proxy token gate"
+                );
+            }
+        }
+        other => {
+            anyhow::bail!(
+                "Unknown gateway.network_mode '{}'. Expected loopback, lan, or remote",
+                other
+            );
+        }
+    }
+
+    if is_wildcard && mode == "loopback" {
+        anyhow::bail!(
+            "gateway.network_mode=loopback cannot be used with wildcard bind host '{}'",
+            config.gateway.host
+        );
+    }
+
+    Ok(())
 }
 
 fn spawn_channel_task(
@@ -11290,6 +11345,26 @@ mod tests {
         assert!(!config.viber.enabled);
         assert!(!config.wechat.enabled);
         assert!(!config.meta.enabled);
+    }
+
+    #[test]
+    fn validate_gateway_network_mode_rejects_loopback_mismatch() {
+        let mut config = AppConfig::default();
+        config.gateway.network_mode = "loopback".to_string();
+        config.gateway.host = "0.0.0.0".to_string();
+
+        assert!(validate_gateway_network_mode(&config).is_err());
+    }
+
+    #[test]
+    fn validate_gateway_network_mode_accepts_remote_with_auth() {
+        let mut config = AppConfig::default();
+        config.gateway.network_mode = "remote".to_string();
+        config.gateway.host = "0.0.0.0".to_string();
+        config.gateway.allowed_origins = vec!["https://console.example.com".to_string()];
+        config.security.require_auth = true;
+
+        assert!(validate_gateway_network_mode(&config).is_ok());
     }
 
     #[test]

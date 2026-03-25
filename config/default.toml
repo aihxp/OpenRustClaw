@@ -1,4 +1,5 @@
 [gateway]
+network_mode = "loopback" # loopback, lan, remote
 host = "127.0.0.1"
 port = 18789
 allowed_origins = ["http://localhost:3000", "http://127.0.0.1:3000"]

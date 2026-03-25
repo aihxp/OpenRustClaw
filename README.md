@@ -169,6 +169,7 @@ Channel routing/operator controls:
   - `GET /control/logs/ws`
 - the control plane can now be protected with an opt-in bearer token by setting `security.control_api_token_env` and exporting the matching environment variable before `openrustclaw start`; `/control/ui?token=...` forwards that token to its API and WebSocket calls
 - reverse-proxy deployments can now use an opt-in trusted proxy secret via `security.trusted_proxy_token_env`; when the configured proxy injects `X-OpenRustClaw-Trusted-Proxy-Token` plus `X-Forwarded-Origin`, the gateway WebSocket lane and `/control/...` operator surfaces can trust that proxy without weakening the default direct bearer/origin path
+- gateway deployment mode is now explicit through `gateway.network_mode = "loopback" | "lan" | "remote"`, and startup now validates that the chosen bind host, allowed origins, and auth posture match that mode instead of silently accepting contradictory deployment settings
 - shared service diagnostics surfaces now exist at:
   - `GET /control/services/status`
   - `GET /control/services/scheduler`
@@ -199,6 +200,7 @@ Channel routing/operator controls:
 - `openrustclaw orchestrate active|watch|pause|resume|kill`
 - runtime secret sources now load from workspace `.env` and an encrypted `.claw/control/runtime-vault.json` when `OPENRUSTCLAW_VAULT_PASSPHRASE` is set
 - provider/model cutovers are validated before config writes, runtime API cutovers roll back on failed reload, config writes create timestamped backup files, and `openrustclaw runtime backup|restore` now creates full workspace-state snapshots under `.claw/runtime-backups/` with an automatic pre-restore safety snapshot
+- `openrustclaw runtime status` now also reports the configured gateway deployment mode, bind host/port, allowed origins, and whether trusted-proxy auth is enabled
 - standalone runtime ops now also support `openrustclaw runtime services install-status|install` for user-level systemd installation outside onboarding, using the same unit-generation path with an explicit config file target
 - bounded orchestration surfaces now exist at:
   - `POST /control/orchestration/resolve`

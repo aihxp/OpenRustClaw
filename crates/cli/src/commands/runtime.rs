@@ -52,6 +52,11 @@ struct EncryptedVaultFile {
 #[derive(Debug, Clone, Serialize)]
 pub struct RuntimeStatus {
     pub config_path: String,
+    pub network_mode: String,
+    pub gateway_host: String,
+    pub gateway_port: u16,
+    pub allowed_origins: Vec<String>,
+    pub trusted_proxy_enabled: bool,
     pub default_provider: String,
     pub fallback_chain: Vec<String>,
     pub anthropic_model: String,
@@ -284,6 +289,11 @@ pub fn runtime_status(config_path: &str, workspace_root: &Path) -> Result<Runtim
 
     Ok(RuntimeStatus {
         config_path: config_path.to_string(),
+        network_mode: config.gateway.network_mode.clone(),
+        gateway_host: config.gateway.host.clone(),
+        gateway_port: config.gateway.port,
+        allowed_origins: config.gateway.allowed_origins.clone(),
+        trusted_proxy_enabled: config.security.trusted_proxy_token_env.is_some(),
         default_provider: config.providers.default_provider.clone(),
         fallback_chain: config.providers.fallback_chain.clone(),
         anthropic_model: config.providers.anthropic.model.clone(),
@@ -1475,6 +1485,30 @@ mod tests {
             )
         );
         assert!(unit.contains(&format!("WorkingDirectory={}", workspace_root.display())));
+        Ok(())
+    }
+
+    #[test]
+    fn runtime_status_includes_gateway_network_metadata() -> Result<()> {
+        let temp = tempdir()?;
+        let workspace_root = temp.path();
+        fs::create_dir_all(workspace_root.join("config"))?;
+        let config_path = workspace_root.join("config/runtime.toml");
+        let mut config = AppConfig::default();
+        config.gateway.network_mode = "lan".to_string();
+        config.gateway.host = "0.0.0.0".to_string();
+        config.gateway.port = 19999;
+        config.gateway.allowed_origins = vec!["https://console.example.com".to_string()];
+        config.security.trusted_proxy_token_env =
+            Some("OPENRUSTCLAW_TRUSTED_PROXY_TOKEN".to_string());
+        fs::write(&config_path, toml::to_string_pretty(&config)?)?;
+
+        let status = runtime_status(config_path.to_str().unwrap(), workspace_root)?;
+        assert_eq!(status.network_mode, "lan");
+        assert_eq!(status.gateway_host, "0.0.0.0");
+        assert_eq!(status.gateway_port, 19999);
+        assert_eq!(status.allowed_origins, vec!["https://console.example.com"]);
+        assert!(status.trusted_proxy_enabled);
         Ok(())
     }
 }

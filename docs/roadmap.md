@@ -1387,7 +1387,7 @@ Remaining:
   - self-update and rollback,
   - PID/gateway lock semantics,
   - launchd/systemd integration,
-  - network modes for loopback/LAN/remote deployment,
+  - [x] `gateway.network_mode = loopback|lan|remote` now makes loopback/LAN/remote deployment explicit and startup validates host/origin/auth mismatches before the runtime binds,
   - [x] trusted-proxy auth mode now exists for reverse proxies through `security.trusted_proxy_token_env` plus `X-OpenRustClaw-Trusted-Proxy-Token`/`X-Forwarded-Origin` on the gateway WebSocket and `/control/...` lanes.
 - [ ] Add control-plane model resilience so operator actions still work when the primary paid model is unavailable:
   - [x] operator-visible degraded-mode warnings now surface when the configured primary provider is unhealthy but a healthy fallback lane exists,

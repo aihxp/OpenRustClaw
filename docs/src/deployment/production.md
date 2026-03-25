@@ -375,6 +375,20 @@ systemctl --user start openrustclaw.service
 | `DATABASE_URL` | SQLite or PostgreSQL connection string | `sqlite://./openrustclaw.db` |
 | `GATEWAY_HOST` | Gateway bind address | `127.0.0.1` |
 | `GATEWAY_PORT` | Gateway port | `8080` |
+
+OpenRustClaw now also supports an explicit deployment mode in config:
+
+```toml
+[gateway]
+network_mode = "remote" # loopback, lan, remote
+host = "0.0.0.0"
+port = 8080
+allowed_origins = ["https://app.example.com"]
+```
+
+- `loopback` expects a loopback bind host such as `127.0.0.1`
+- `lan` expects a non-loopback bind host for trusted local-network exposure
+- `remote` expects a non-loopback bind host plus explicit allowed origins and auth posture
 | `GATEWAY_WORKERS` | Number of worker threads | `num_cpus` |
 | `JWT_SECRET` | Secret for JWT signing | **Required** |
 | `JWT_EXPIRY_HOURS` | JWT token expiry | `24` |

@@ -604,3 +604,13 @@ EOF
 # Run with production config
 openrustclaw start --config config/production.toml
 ```
+
+For the shipped config format, the gateway deployment contract is now explicit:
+
+```toml
+[gateway]
+network_mode = "remote" # loopback, lan, remote
+host = "0.0.0.0"
+port = 8080
+allowed_origins = ["https://myapp.com"]
+```

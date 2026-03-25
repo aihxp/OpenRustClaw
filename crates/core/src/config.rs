@@ -79,9 +79,15 @@ fn default_true() -> bool {
 /// Gateway (WebSocket server) configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GatewayConfig {
+    #[serde(default = "default_gateway_network_mode")]
+    pub network_mode: String,
     pub host: String,
     pub port: u16,
     pub allowed_origins: Vec<String>,
+}
+
+fn default_gateway_network_mode() -> String {
+    "loopback".to_string()
 }
 
 /// Database configuration.
@@ -988,6 +994,7 @@ impl Default for AppConfig {
     fn default() -> Self {
         Self {
             gateway: GatewayConfig {
+                network_mode: default_gateway_network_mode(),
                 host: "127.0.0.1".to_string(),
                 port: 18789,
                 allowed_origins: vec![
