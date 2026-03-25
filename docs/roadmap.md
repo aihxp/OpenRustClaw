@@ -1419,11 +1419,11 @@ Remaining:
 - [ ] Build a parity test suite that validates behavior against documented OpenClaw scenarios.
 - [ ] Build fixture-based integration suites for:
   - channel routing,
-  - pairing,
+  - [x] pairing,
   - group mention rules,
-  - media workflows,
-  - session tools,
-  - node commands.
+  - [x] media workflows,
+  - [x] session tools,
+  - [x] node commands.
 - [ ] Run a final docs audit so every supported feature has:
   - user docs,
   - operator docs,

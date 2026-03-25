@@ -5,6 +5,8 @@ pub mod common;
 #[cfg(test)]
 mod agent_runtime_test;
 #[cfg(test)]
+mod fixture_suite_test;
+#[cfg(test)]
 mod gateway_test;
 #[cfg(test)]
 mod mcp_test;

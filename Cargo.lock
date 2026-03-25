@@ -6040,6 +6040,7 @@ dependencies = [
  "futures",
  "jsonwebtoken",
  "openrustclaw-agent",
+ "openrustclaw-cli",
  "openrustclaw-core",
  "openrustclaw-db",
  "openrustclaw-gateway",

@@ -1,23 +1,7 @@
-//! OpenRustClaw E2E Testing Framework - Common Utilities
+//! Shared utilities for the OpenRustClaw E2E crate.
 //!
-//! This crate provides shared utilities for E2E tests.
-//! The actual tests are in the `tests/` directory.
-//!
-//! ## Running Tests
-//!
-//! ```bash
-//! # Smoke tests (fast)
-//! cargo test --test e2e_tests smoke
-//!
-//! # Horizontal tests (user journeys)
-//! cargo test --test e2e_tests horizontal
-//!
-//! # Vertical tests (layer-specific)
-//! cargo test --test e2e_tests vertical
-//!
-//! # Regression tests (full suite)
-//! cargo test --test e2e_tests regression
-//! ```
+//! The concrete workflow tests live beside this module under `src/test_*.rs`.
+//! Run the crate with `cargo test -p openrustclaw-e2e-tests --quiet`.
 
 pub mod common;
 
