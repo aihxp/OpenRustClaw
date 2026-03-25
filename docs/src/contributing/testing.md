@@ -64,6 +64,7 @@ Notable coverage already in the crate:
 - memory and scheduler workflows
 - security flows
 - channel routing and group-mention activation rules
+- documented parity scenarios for shipped operator workflows
 - fixture-driven shipped-surface checks
 
 The `fixture_suite_test` module is the fast local fixture lane for:
@@ -78,6 +79,12 @@ The `channel_fixture_test` module covers the shipped routing registry behavior f
 - account-scoped and binding-scoped channel routing precedence
 - thread-vs-channel scope selection
 - mention-only group activation
+
+The `parity_scenario_test` module is the higher-level documented-scenario lane for:
+
+- channel pairing approval plus group/thread routing
+- mobile pairing plus approval-gated command execution
+- media extraction plus durable session archive flows
 
 The channel command unit tests in `crates/cli/src/commands/channels.rs` additionally cover:
 
@@ -96,6 +103,9 @@ cargo test -p openrustclaw-integration-tests fixture_suite_test --quiet
 
 # Just the channel routing fixture suite
 cargo test -p openrustclaw-integration-tests channel_fixture_test --quiet
+
+# Just the documented parity scenarios
+cargo test -p openrustclaw-integration-tests parity_scenario_test --quiet
 ```
 
 ## E2E Tests

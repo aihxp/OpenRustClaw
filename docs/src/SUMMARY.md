@@ -7,6 +7,7 @@
 - [Feature Matrix](./planning/feature-matrix.md)
 - [Parity Matrix](./planning/parity-matrix.md)
 - [Parity Positioning](./planning/parity-positioning.md)
+- [Docs Audit](./planning/docs-audit.md)
 
 # Getting Started
 - [Installation](./getting-started/installation.md)

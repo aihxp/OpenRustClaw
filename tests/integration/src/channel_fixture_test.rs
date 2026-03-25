@@ -3,6 +3,7 @@
 use openrustclaw_cli::commands::channels::{
     ChannelBindingSpec, ChannelRouteStatus, init, load_registry, preview_route, upsert_binding,
 };
+use openrustclaw_cli::commands::control;
 use openrustclaw_core::config::AppConfig;
 use openrustclaw_core::types::{IncomingMessage, Platform};
 use serde_json::json;
@@ -52,6 +53,8 @@ fn channel_routing_fixture_prefers_more_specific_binding() {
     init_test_tracing();
 
     let temp = tempdir().unwrap();
+    let control_root = temp.path().join(".claw/control");
+    control::init(Some(&control_root.to_string_lossy())).unwrap();
     let registry_root = temp.path().join(".claw/channels");
     let root_str = registry_root.to_string_lossy().to_string();
     init(Some(&root_str)).unwrap();
@@ -65,7 +68,7 @@ fn channel_routing_fixture_prefers_more_specific_binding() {
         Some("T123"),
         Some("C123"),
         Some("workspace-account"),
-        Some("agent-account"),
+        Some("main"),
         true,
         false,
         true,
@@ -84,7 +87,7 @@ fn channel_routing_fixture_prefers_more_specific_binding() {
             account_match: None,
             channel_match: None,
             workspace_target: Some("workspace-generic".to_string()),
-            agent_id: Some("agent-generic".to_string()),
+            agent_id: Some("orchestrator".to_string()),
             activation_mode: Some("mention".to_string()),
             direct_strategy: None,
             group_strategy: Some("shared_channel".to_string()),
@@ -104,7 +107,7 @@ fn channel_routing_fixture_prefers_more_specific_binding() {
             account_match: Some("slack:T123:U123".to_string()),
             channel_match: Some("slack_thread_ts=171234.000100".to_string()),
             workspace_target: Some("workspace-thread".to_string()),
-            agent_id: Some("agent-thread".to_string()),
+            agent_id: Some("orchestrator".to_string()),
             activation_mode: Some("always".to_string()),
             direct_strategy: None,
             group_strategy: Some("shared_channel".to_string()),
@@ -135,7 +138,7 @@ fn channel_routing_fixture_prefers_more_specific_binding() {
     assert_eq!(preview.status, ChannelRouteStatus::Allowed);
     assert_eq!(preview.binding_id.as_deref(), Some("thread-binding"));
     assert_eq!(preview.workspace_id.as_deref(), Some("workspace-account"));
-    assert_eq!(preview.agent_id.as_deref(), Some("agent-account"));
+    assert_eq!(preview.agent_id.as_deref(), Some("main"));
     assert_eq!(preview.activation_mode, "mention");
     assert!(preview.route_key.contains("account=slack:T123:U123"));
     assert!(preview.route_key.contains("slack_thread_ts=171234.000100"));
@@ -146,6 +149,8 @@ fn group_mention_fixture_honors_activation_mode() {
     init_test_tracing();
 
     let temp = tempdir().unwrap();
+    let control_root = temp.path().join(".claw/control");
+    control::init(Some(&control_root.to_string_lossy())).unwrap();
     let registry_root = temp.path().join(".claw/channels");
     let root_str = registry_root.to_string_lossy().to_string();
     init(Some(&root_str)).unwrap();
@@ -159,7 +164,7 @@ fn group_mention_fixture_honors_activation_mode() {
         Some("spaces/AAA"),
         Some("spaces/AAA"),
         Some("workspace-chat"),
-        Some("agent-chat"),
+        Some("main"),
         true,
         false,
         true,

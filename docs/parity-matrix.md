@@ -2,7 +2,7 @@
 
 This is the source-backed parity inventory for the current OpenRustClaw program.
 
-It maps documented OpenClaw user-facing features to the current OpenRustClaw state, the owning code, representative tests, local docs, and the severity of the remaining gap.
+It maps documented OpenClaw user-facing features to the current OpenRustClaw state, the owning code, representative tests, local docs, and the severity of the remaining gap. The final docs/test audit artifact for shipped feature families lives in [docs-audit.md](docs-audit.md).
 
 Reviewed against official OpenClaw sources on 2026-03-18:
 

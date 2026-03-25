@@ -1377,7 +1377,7 @@ Remaining:
   - [x] pairing approval,
   - [x] per-agent restrictions,
   - [x] operator roles for Control UI remain intentionally absent, so no additional role matrix is required for the shipped surface.
-- [ ] Add production ops parity:
+- [x] Add production ops parity:
   - [x] standalone `openrustclaw runtime services install-status|install` now covers host user-service installation outside onboarding through the shared unit-generation path,
   - [x] explicit `openrustclaw runtime backup` workspace-state snapshots now land under `.claw/runtime-backups/`,
   - [x] explicit `openrustclaw runtime restore <backup-path>` restores those snapshots and creates an automatic pre-restore safety snapshot first,
@@ -1402,7 +1402,7 @@ Remaining:
   - [x] detect changed limits where providers expose them,
   - [x] precompute failover recommendations before the next model swap,
   - [x] surface operator warnings instead of letting model changes fail blind at runtime.
-- [ ] Add explicit governance for optional external execution backends:
+- [x] Add explicit governance for optional external execution backends:
   - [x] allowed backend registry,
   - [x] credential and token isolation for the shipped local CLI wrapper lane,
   - [x] audit trail for local CLI wrapper execution,
@@ -1412,23 +1412,25 @@ Remaining:
   - [x] persisted channel-health monitor state now rides on the shipped readiness scans, and `channels.runtime.health_monitor_enabled|probe_interval_secs|auto_restart_on_failure|failure_threshold` can trigger a managed user-service restart after repeated failing channel scans,
   - [x] presence and liveness beacons for operator surfaces,
   - [x] readiness probes that reflect real channel connectivity.
-- [ ] Add binary-first Rust operations strengths as first-class release goals:
+- [x] Add binary-first Rust operations strengths as first-class release goals:
   - [x] `.github/workflows/release-binaries.yml` plus `scripts/build-release-artifacts.sh` now package precompiled `openrustclaw` release tarballs and `.sha256` files for the declared Linux/macOS x86_64 and ARM64 targets,
   - [x] the same release-artifact lane now covers cross-target packaging for x86_64 and ARM64 through the declared workflow matrix and target-aware packaging script,
   - [x] `scripts/check-runtime-budgets.sh` plus the main CI workflow now enforce bounded release-binary size, CLI startup latency, and idle gateway RSS regression checks.
-- [ ] Build a parity test suite that validates behavior against documented OpenClaw scenarios.
-- [ ] Build fixture-based integration suites for:
+- [x] Build a parity test suite that validates behavior against documented OpenClaw scenarios.
+  - [x] `tests/integration/src/parity_scenario_test.rs` now exercises documented shipped scenarios for channel pairing/routing, mobile approval-gated node commands, and media-plus-session workflows through the same public command/data APIs operators use.
+- [x] Build fixture-based integration suites for:
   - [x] channel routing,
   - [x] pairing,
   - [x] group mention rules,
   - [x] media workflows,
   - [x] session tools,
   - [x] node commands.
-- [ ] Run a final docs audit so every supported feature has:
-  - user docs,
-  - operator docs,
-  - troubleshooting,
-  - test coverage.
+- [x] Run a final docs audit so every supported feature has:
+  - [x] user docs,
+  - [x] operator docs,
+  - [x] troubleshooting,
+  - [x] test coverage.
+  - [x] `docs/docs-audit.md` now records the shipped feature families and their user/operator/troubleshooting/test coverage.
 - [x] Remove or demote any remaining runtime dependency that pr "all Rust in production" from being true.
   - [x] the shipped production Docker image is now Rust-only,
   - [x] the default `docker-compose.yml` deployment path is now Rust-only,
@@ -1437,7 +1439,7 @@ Remaining:
 Exit criteria:
 
 - [ ] The parity matrix is green for the declared target surface.
-- [ ] Production runtime is Rust-owned end to end.
+- [x] Production runtime is Rust-owned end to end.
 - [ ] Remaining gaps are only intentional divergences, not missing parity.
 
 ## Recommended Execution Order
@@ -1458,13 +1460,13 @@ The phases stay in order, but implementation should happen in these vertical sli
 
 Do not claim "OpenClaw parity" until all of the following are true:
 
-- [ ] Control UI exists with practical operator parity.
-- [ ] WhatsApp, Telegram, Discord, Slack, and iMessage parity targets are complete.
-- [ ] Session tooling parity is complete.
+- [x] Control UI exists with practical operator parity.
+- [x] WhatsApp, Telegram, Discord, Slack, and iMessage parity targets are complete.
+- [x] Session tooling parity is complete.
 - [x] Media send/receive and voice-note transcription parity is complete.
-- [ ] Multi-agent routing and pairing flows match documented behavior.
+- [x] Multi-agent routing and pairing flows match documented behavior.
 - [ ] Plugin and node capability surface is implemented or intentionally excluded with clear product rationale.
-- [ ] Python is not required for the shipped runtime path.
+- [x] Python is not required for the shipped runtime path.
 
 ## Intentional Divergences We Should Preserve
 
