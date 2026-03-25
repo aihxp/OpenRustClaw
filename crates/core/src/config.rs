@@ -12,6 +12,8 @@ pub struct AppConfig {
     pub gateway: GatewayConfig,
     pub database: DatabaseConfig,
     pub providers: ProvidersConfig,
+    #[serde(default)]
+    pub external_backends: ExternalBackendsConfig,
     pub memory: MemoryConfig,
     pub session_routing: SessionRoutingConfig,
     pub scheduler: SchedulerConfig,
@@ -170,6 +172,48 @@ impl Default for GeminiConfig {
             base_url: None,
         }
     }
+}
+
+/// Governance policy for optional external execution backends.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ExternalBackendsConfig {
+    #[serde(default = "default_allowed_external_backends")]
+    pub allowed_backends: Vec<String>,
+    #[serde(default = "default_true")]
+    pub allow_local_cli_wrappers: bool,
+    #[serde(default)]
+    pub allow_cloud_agent_execution: bool,
+    #[serde(default = "default_external_backend_audit_log_path")]
+    pub audit_log_path: String,
+    #[serde(default = "default_external_backend_env_allowlist")]
+    pub command_env_allowlist: Vec<String>,
+}
+
+fn default_allowed_external_backends() -> Vec<String> {
+    vec!["agent_browser_cli".to_string()]
+}
+
+fn default_external_backend_audit_log_path() -> String {
+    ".claw/control/external-backends-audit.jsonl".to_string()
+}
+
+fn default_external_backend_env_allowlist() -> Vec<String> {
+    vec![
+        "PATH".to_string(),
+        "HOME".to_string(),
+        "USER".to_string(),
+        "USERNAME".to_string(),
+        "TMPDIR".to_string(),
+        "TMP".to_string(),
+        "TEMP".to_string(),
+        "LANG".to_string(),
+        "LC_ALL".to_string(),
+        "SSL_CERT_FILE".to_string(),
+        "SSL_CERT_DIR".to_string(),
+        "XDG_RUNTIME_DIR".to_string(),
+        "XDG_CACHE_HOME".to_string(),
+        "XDG_CONFIG_HOME".to_string(),
+    ]
 }
 
 /// Memory system configuration.
@@ -1043,6 +1087,13 @@ impl Default for AppConfig {
                     model: "llama3.1".to_string(),
                 },
                 gemini: GeminiConfig::default(),
+            },
+            external_backends: ExternalBackendsConfig {
+                allowed_backends: default_allowed_external_backends(),
+                allow_local_cli_wrappers: true,
+                allow_cloud_agent_execution: false,
+                audit_log_path: default_external_backend_audit_log_path(),
+                command_env_allowlist: default_external_backend_env_allowlist(),
             },
             memory: MemoryConfig {
                 core_memory_max_tokens: 500,

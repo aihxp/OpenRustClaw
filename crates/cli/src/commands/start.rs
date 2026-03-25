@@ -3369,6 +3369,14 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
         )
         .route("/control/browser/extract", post(browser_extract_handler))
         .route("/control/browser/artifacts", get(browser_artifacts_handler))
+        .route(
+            "/control/browser/backend-policy",
+            get(browser_backend_policy_handler),
+        )
+        .route(
+            "/control/browser/backend-audit",
+            get(browser_backend_audit_handler),
+        )
         .route("/control/skills", get(control_skills_handler))
         .route(
             "/control/skills/compile",
@@ -7436,6 +7444,37 @@ async fn browser_artifacts_handler(
         Ok(artifacts) => (
             StatusCode::OK,
             Json(serde_json::json!({ "artifacts": artifacts })),
+        )
+            .into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn browser_backend_policy_handler(
+    State(state): State<RuntimeControlState>,
+) -> impl IntoResponse {
+    match browser::backend_policy(&state.workspace_root) {
+        Ok(policy) => (StatusCode::OK, Json(serde_json::json!(policy))).into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn browser_backend_audit_handler(
+    State(state): State<RuntimeControlState>,
+    Query(query): Query<ListLimitQuery>,
+) -> impl IntoResponse {
+    match browser::list_backend_audit(&state.workspace_root, query.limit.unwrap_or(50)) {
+        Ok(entries) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "entries": entries })),
         )
             .into_response(),
         Err(error) => (

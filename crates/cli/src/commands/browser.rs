@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, HashSet, VecDeque};
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
@@ -7,6 +8,7 @@ use openrustclaw_automation::browser::{
     Cookie, LoadState, PdfOptions, ScreenshotFormat, ScreenshotOptions,
 };
 use openrustclaw_automation::{Browser, BrowserConfig, Page};
+use openrustclaw_core::config::AppConfig;
 use regex::Regex;
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
@@ -17,7 +19,6 @@ use uuid::Uuid;
 use walkdir::WalkDir;
 
 pub const DEFAULT_BROWSER_ROOT: &str = ".claw/browser";
-
 fn default_extract_kind() -> String {
     "text".to_string()
 }
@@ -43,6 +44,29 @@ impl BrowserBackendKind {
             Self::AgentBrowserCli => "agent_browser_cli",
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ExternalBackendPolicy {
+    pub allowed_backends: Vec<String>,
+    pub allow_local_cli_wrappers: bool,
+    pub allow_cloud_agent_execution: bool,
+    pub audit_log_path: String,
+    pub command_env_allowlist: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExternalBackendAuditEntry {
+    pub timestamp: String,
+    pub backend: String,
+    pub transport: String,
+    pub action: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
+    pub allowed: bool,
+    pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -367,7 +391,12 @@ pub async fn navigate(
     workspace_root: &Path,
     request: BrowserNavigateRequest,
 ) -> Result<BrowserNavigateResult> {
-    let backend = parse_browser_backend(Some(request.backend.as_str()))?;
+    let backend = resolve_browser_backend(
+        workspace_root,
+        Some(request.backend.as_str()),
+        "navigate",
+        request.session_id.as_deref(),
+    )?;
     let session = load_session_for_request(workspace_root, request.session_id.as_deref())?;
     match backend {
         BrowserBackendKind::NativeCdp => {
@@ -521,7 +550,12 @@ pub async fn extract(
     workspace_root: &Path,
     request: BrowserExtractRequest,
 ) -> Result<BrowserExtractResult> {
-    let backend = parse_browser_backend(Some(request.backend.as_str()))?;
+    let backend = resolve_browser_backend(
+        workspace_root,
+        Some(request.backend.as_str()),
+        "extract",
+        request.session_id.as_deref(),
+    )?;
     let session = load_session_for_request(workspace_root, request.session_id.as_deref())?;
     match backend {
         BrowserBackendKind::NativeCdp => {
@@ -604,7 +638,12 @@ pub async fn screenshot(
     workspace_root: &Path,
     request: BrowserScreenshotRequest,
 ) -> Result<BrowserScreenshotResult> {
-    let backend = parse_browser_backend(Some(request.backend.as_str()))?;
+    let backend = resolve_browser_backend(
+        workspace_root,
+        Some(request.backend.as_str()),
+        "screenshot",
+        request.session_id.as_deref(),
+    )?;
     let session = load_session_for_request(workspace_root, request.session_id.as_deref())?;
     match backend {
         BrowserBackendKind::NativeCdp => {
@@ -728,7 +767,12 @@ pub async fn screenshot(
 }
 
 pub async fn pdf(workspace_root: &Path, request: BrowserPdfRequest) -> Result<BrowserPdfResult> {
-    let backend = parse_browser_backend(Some(request.backend.as_str()))?;
+    let backend = resolve_browser_backend(
+        workspace_root,
+        Some(request.backend.as_str()),
+        "pdf",
+        request.session_id.as_deref(),
+    )?;
     let session = load_session_for_request(workspace_root, request.session_id.as_deref())?;
     match backend {
         BrowserBackendKind::NativeCdp => {
@@ -859,7 +903,12 @@ pub fn open_session(
     workspace_root: &Path,
     request: BrowserOpenSessionRequest,
 ) -> Result<BrowserSessionSummary> {
-    let backend = parse_browser_backend(Some(request.backend.as_deref().unwrap_or("native_cdp")))?;
+    let backend = resolve_browser_backend(
+        workspace_root,
+        Some(request.backend.as_deref().unwrap_or("native_cdp")),
+        "open_session",
+        request.session_id.as_deref(),
+    )?;
     let session_id = request
         .session_id
         .unwrap_or_else(|| Uuid::new_v4().to_string());
@@ -907,7 +956,12 @@ pub async fn inspect(
     workspace_root: &Path,
     request: BrowserInspectRequest,
 ) -> Result<BrowserInspectResult> {
-    let backend = parse_browser_backend(Some(request.backend.as_str()))?;
+    let backend = resolve_browser_backend(
+        workspace_root,
+        Some(request.backend.as_str()),
+        "inspect",
+        request.session_id.as_deref(),
+    )?;
     let session = load_session_for_request(workspace_root, request.session_id.as_deref())?;
     let result = match backend {
         BrowserBackendKind::NativeCdp => {
@@ -927,7 +981,12 @@ pub async fn run_sequence(
     if request.steps.is_empty() {
         bail!("browser action sequence requires at least one step");
     }
-    let backend = parse_browser_backend(Some(request.backend.as_str()))?;
+    let backend = resolve_browser_backend(
+        workspace_root,
+        Some(request.backend.as_str()),
+        "run_sequence",
+        request.session_id.as_deref(),
+    )?;
     let session = load_session_for_request(workspace_root, request.session_id.as_deref())?;
     match backend {
         BrowserBackendKind::NativeCdp => {
@@ -939,12 +998,197 @@ pub async fn run_sequence(
     }
 }
 
+pub fn backend_policy(workspace_root: &Path) -> Result<ExternalBackendPolicy> {
+    Ok(policy_from_config(
+        &load_runtime_config_for(workspace_root),
+        workspace_root,
+    ))
+}
+
+pub fn list_backend_audit(
+    workspace_root: &Path,
+    limit: usize,
+) -> Result<Vec<ExternalBackendAuditEntry>> {
+    let policy = backend_policy(workspace_root)?;
+    let path = external_backend_audit_path(workspace_root, &policy);
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+
+    let raw = fs::read_to_string(&path)
+        .with_context(|| format!("Failed to read '{}'", path.display()))?;
+    let mut entries = Vec::new();
+    for (index, line) in raw.lines().enumerate() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let entry: ExternalBackendAuditEntry =
+            serde_json::from_str(trimmed).with_context(|| {
+                format!(
+                    "Failed to parse audit entry {} in '{}'",
+                    index + 1,
+                    path.display()
+                )
+            })?;
+        entries.push(entry);
+    }
+    entries.sort_by(|left, right| right.timestamp.cmp(&left.timestamp));
+    entries.truncate(limit);
+    Ok(entries)
+}
+
+fn normalize_backend_name(raw: &str) -> String {
+    raw.trim().to_ascii_lowercase().replace('-', "_")
+}
+
+fn load_runtime_config_for(workspace_root: &Path) -> AppConfig {
+    let explicit = workspace_root.join("config/default.toml");
+    if explicit.exists() {
+        AppConfig::load_from(&explicit.display().to_string())
+            .or_else(|_| AppConfig::load())
+            .unwrap_or_default()
+    } else {
+        AppConfig::load().unwrap_or_default()
+    }
+}
+
+fn policy_from_config(config: &AppConfig, workspace_root: &Path) -> ExternalBackendPolicy {
+    let mut allowed_backends: Vec<String> = config
+        .external_backends
+        .allowed_backends
+        .iter()
+        .map(|value| normalize_backend_name(value))
+        .collect();
+    allowed_backends.sort();
+    allowed_backends.dedup();
+    let audit_path =
+        absolute_workspace_path(workspace_root, &config.external_backends.audit_log_path);
+    ExternalBackendPolicy {
+        allowed_backends,
+        allow_local_cli_wrappers: config.external_backends.allow_local_cli_wrappers,
+        allow_cloud_agent_execution: config.external_backends.allow_cloud_agent_execution,
+        audit_log_path: workspace_relative_path(workspace_root, &audit_path),
+        command_env_allowlist: config.external_backends.command_env_allowlist.clone(),
+    }
+}
+
+fn external_backend_audit_path(workspace_root: &Path, policy: &ExternalBackendPolicy) -> PathBuf {
+    absolute_workspace_path(workspace_root, &policy.audit_log_path)
+}
+
+fn append_external_backend_audit_entry(
+    workspace_root: &Path,
+    policy: &ExternalBackendPolicy,
+    entry: &ExternalBackendAuditEntry,
+) -> Result<()> {
+    let path = external_backend_audit_path(workspace_root, policy);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("Failed to create '{}'", parent.display()))?;
+    }
+    let mut file = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .with_context(|| format!("Failed to open '{}'", path.display()))?;
+    writeln!(file, "{}", serde_json::to_string(entry)?)
+        .with_context(|| format!("Failed to append '{}'", path.display()))?;
+    Ok(())
+}
+
+fn record_external_backend_audit(
+    workspace_root: &Path,
+    policy: &ExternalBackendPolicy,
+    backend: BrowserBackendKind,
+    action: &str,
+    session_id: Option<&str>,
+    allowed: bool,
+    success: bool,
+    detail: Option<String>,
+) -> Result<()> {
+    append_external_backend_audit_entry(
+        workspace_root,
+        policy,
+        &ExternalBackendAuditEntry {
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            backend: backend.as_str().to_string(),
+            transport: match backend {
+                BrowserBackendKind::NativeCdp => "native".to_string(),
+                BrowserBackendKind::AgentBrowserCli => "local_cli_wrapper".to_string(),
+            },
+            action: action.to_string(),
+            session_id: session_id.map(ToString::to_string),
+            allowed,
+            success,
+            detail,
+        },
+    )
+}
+
+fn ensure_backend_execution_allowed_with_policy(
+    workspace_root: &Path,
+    policy: &ExternalBackendPolicy,
+    backend: BrowserBackendKind,
+    action: &str,
+    session_id: Option<&str>,
+) -> Result<()> {
+    if backend != BrowserBackendKind::AgentBrowserCli {
+        return Ok(());
+    }
+    if !policy.allow_local_cli_wrappers {
+        record_external_backend_audit(
+            workspace_root,
+            policy,
+            backend,
+            action,
+            session_id,
+            false,
+            false,
+            Some("local CLI wrapper execution is disabled by policy".to_string()),
+        )?;
+        bail!("agent-browser backend is disabled by external backend policy");
+    }
+    if !policy
+        .allowed_backends
+        .iter()
+        .any(|value| value == backend.as_str())
+    {
+        record_external_backend_audit(
+            workspace_root,
+            policy,
+            backend,
+            action,
+            session_id,
+            false,
+            false,
+            Some("backend is not in the external backend allowlist".to_string()),
+        )?;
+        bail!("agent-browser backend is not in the external backend allowlist");
+    }
+    Ok(())
+}
+
+fn resolve_browser_backend(
+    workspace_root: &Path,
+    raw: Option<&str>,
+    action: &str,
+    session_id: Option<&str>,
+) -> Result<BrowserBackendKind> {
+    let backend = parse_browser_backend(raw)?;
+    let policy = backend_policy(workspace_root)?;
+    ensure_backend_execution_allowed_with_policy(
+        workspace_root,
+        &policy,
+        backend,
+        action,
+        session_id,
+    )?;
+    Ok(backend)
+}
+
 fn parse_browser_backend(raw: Option<&str>) -> Result<BrowserBackendKind> {
-    let normalized = raw
-        .unwrap_or("native_cdp")
-        .trim()
-        .to_ascii_lowercase()
-        .replace('-', "_");
+    let normalized = normalize_backend_name(raw.unwrap_or("native_cdp"));
     match normalized.as_str() {
         "native" | "native_cdp" | "native_browser" | "rust" => Ok(BrowserBackendKind::NativeCdp),
         "agent_browser" | "agent_browser_cli" | "agentbrowser" => {
@@ -2041,13 +2285,31 @@ fn agent_browser_binary() -> String {
     std::env::var("AGENT_BROWSER_BIN").unwrap_or_else(|_| "agent-browser".to_string())
 }
 
+fn configure_isolated_command_env(command: &mut Command, policy: &ExternalBackendPolicy) {
+    command.env_clear();
+    for key in &policy.command_env_allowlist {
+        if let Ok(value) = std::env::var(key) {
+            command.env(key, value);
+        }
+    }
+}
+
 async fn run_agent_browser_command(
     workspace_root: &Path,
     session: Option<&BrowserSessionRecord>,
     timeout_ms: Option<u64>,
     args: &[String],
 ) -> Result<Value> {
+    let policy = backend_policy(workspace_root)?;
+    ensure_backend_execution_allowed_with_policy(
+        workspace_root,
+        &policy,
+        BrowserBackendKind::AgentBrowserCli,
+        args.first().map(String::as_str).unwrap_or("agent_browser"),
+        session.map(|value| value.id.as_str()),
+    )?;
     let mut command = Command::new(agent_browser_binary());
+    configure_isolated_command_env(&mut command, &policy);
     command.arg("--json");
     command.arg("--download-path").arg(
         browser_root_for(workspace_root)
@@ -2095,8 +2357,28 @@ async fn run_agent_browser_command(
             .filter(|value| !value.is_empty())
             .or_else(|| (!stderr.is_empty()).then_some(stderr.clone()))
             .unwrap_or_else(|| "agent-browser command failed".to_string());
+        record_external_backend_audit(
+            workspace_root,
+            &policy,
+            BrowserBackendKind::AgentBrowserCli,
+            args.first().map(String::as_str).unwrap_or("agent_browser"),
+            session.map(|value| value.id.as_str()),
+            true,
+            false,
+            Some(message.clone()),
+        )?;
         bail!("{message}");
     }
+    record_external_backend_audit(
+        workspace_root,
+        &policy,
+        BrowserBackendKind::AgentBrowserCli,
+        args.first().map(String::as_str).unwrap_or("agent_browser"),
+        session.map(|value| value.id.as_str()),
+        true,
+        true,
+        None,
+    )?;
     Ok(parsed)
 }
 
@@ -2427,10 +2709,13 @@ fn html_decode_minimal(input: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        extract_links, extract_title, html_to_text, normalize_url, parse_load_state,
+        BrowserBackendKind, ExternalBackendAuditEntry, append_external_backend_audit_entry,
+        backend_policy, ensure_backend_execution_allowed_with_policy, extract_links, extract_title,
+        html_to_text, list_backend_audit, normalize_url, parse_load_state, policy_from_config,
         resolve_output_path,
     };
     use openrustclaw_automation::browser::LoadState;
+    use openrustclaw_core::config::AppConfig;
     use tempfile::tempdir;
 
     #[test]
@@ -2486,5 +2771,85 @@ mod tests {
         assert_eq!(links.len(), 2);
         assert!(links.contains(&"https://example.com/docs".to_string()));
         assert!(links.contains(&"https://example.com/about".to_string()));
+    }
+
+    #[test]
+    fn backend_policy_defaults_include_agent_browser_cli() {
+        let root = tempdir().unwrap();
+        let policy = policy_from_config(&AppConfig::default(), root.path());
+        assert!(
+            policy
+                .allowed_backends
+                .contains(&"agent_browser_cli".to_string())
+        );
+        assert!(policy.allow_local_cli_wrappers);
+    }
+
+    #[test]
+    fn denied_external_backend_execution_writes_audit_entry() {
+        let root = tempdir().unwrap();
+        let mut config = AppConfig::default();
+        config.external_backends.allowed_backends = Vec::new();
+        config.external_backends.allow_local_cli_wrappers = false;
+        let policy = policy_from_config(&config, root.path());
+        let error = ensure_backend_execution_allowed_with_policy(
+            root.path(),
+            &policy,
+            BrowserBackendKind::AgentBrowserCli,
+            "inspect",
+            Some("session-1"),
+        )
+        .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("agent-browser backend is disabled by external backend policy")
+        );
+        let audit = list_backend_audit(root.path(), 10).unwrap();
+        assert_eq!(audit.len(), 1);
+        assert_eq!(audit[0].backend, "agent_browser_cli");
+        assert!(!audit[0].allowed);
+        assert!(!audit[0].success);
+        assert_eq!(audit[0].action, "inspect");
+    }
+
+    #[test]
+    fn backend_audit_entries_are_returned_newest_first() {
+        let root = tempdir().unwrap();
+        let policy = backend_policy(root.path()).unwrap();
+        append_external_backend_audit_entry(
+            root.path(),
+            &policy,
+            &ExternalBackendAuditEntry {
+                timestamp: "2026-03-24T00:00:00Z".to_string(),
+                backend: "agent_browser_cli".to_string(),
+                transport: "local_cli_wrapper".to_string(),
+                action: "inspect".to_string(),
+                session_id: None,
+                allowed: true,
+                success: true,
+                detail: None,
+            },
+        )
+        .unwrap();
+        append_external_backend_audit_entry(
+            root.path(),
+            &policy,
+            &ExternalBackendAuditEntry {
+                timestamp: "2026-03-25T00:00:00Z".to_string(),
+                backend: "agent_browser_cli".to_string(),
+                transport: "local_cli_wrapper".to_string(),
+                action: "pdf".to_string(),
+                session_id: None,
+                allowed: true,
+                success: false,
+                detail: Some("boom".to_string()),
+            },
+        )
+        .unwrap();
+        let audit = list_backend_audit(root.path(), 10).unwrap();
+        assert_eq!(audit.len(), 2);
+        assert_eq!(audit[0].action, "pdf");
+        assert_eq!(audit[1].action, "inspect");
     }
 }

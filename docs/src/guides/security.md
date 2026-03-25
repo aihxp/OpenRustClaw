@@ -231,6 +231,33 @@ Behavior:
 - browser requests with an `Origin` header must match `gateway.allowed_origins`
 - trusted-proxy requests must forward an allowlisted origin through `X-Forwarded-Origin`
 
+### External Backend Governance
+
+The optional `agent-browser` compatibility backend now runs under an explicit operator policy:
+
+```toml
+[external_backends]
+allowed_backends = ["agent_browser_cli"]
+allow_local_cli_wrappers = true
+allow_cloud_agent_execution = false
+audit_log_path = ".claw/control/external-backends-audit.jsonl"
+command_env_allowlist = ["PATH", "HOME", "TMPDIR", "LANG", "SSL_CERT_FILE"]
+```
+
+Behavior:
+
+- `agent_browser_cli` must be present in `allowed_backends`
+- `allow_local_cli_wrappers = true` is required before the local wrapper can execute
+- the wrapper process inherits only the env vars named in `command_env_allowlist`
+- every allowed or denied local-wrapper invocation writes an audit receipt
+
+Operator surfaces:
+
+- `openrustclaw browser backend-policy`
+- `openrustclaw browser backend-audit --limit 50`
+- `GET /control/browser/backend-policy`
+- `GET /control/browser/backend-audit?limit=50`
+
 ---
 
 ## 🛡️ Prompt Injection Defense

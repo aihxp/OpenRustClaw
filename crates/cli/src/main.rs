@@ -282,6 +282,13 @@ enum BrowserAction {
         #[arg(long, default_value_t = 20)]
         limit: usize,
     },
+    /// Inspect the effective external-backend governance policy
+    BackendPolicy,
+    /// Inspect recent external-backend audit receipts
+    BackendAudit {
+        #[arg(long, default_value_t = 20)]
+        limit: usize,
+    },
     /// Fetch a page over HTTP and save a normalized read artifact
     ReadPage {
         url: String,
@@ -2868,6 +2875,16 @@ async fn main() -> Result<()> {
                 }
                 BrowserAction::Artifacts { limit } => {
                     let result = commands::browser::list_artifacts(&workspace_root, limit)?;
+                    println!("{}", serde_json::to_string_pretty(&result)?);
+                    Ok(())
+                }
+                BrowserAction::BackendPolicy => {
+                    let result = commands::browser::backend_policy(&workspace_root)?;
+                    println!("{}", serde_json::to_string_pretty(&result)?);
+                    Ok(())
+                }
+                BrowserAction::BackendAudit { limit } => {
+                    let result = commands::browser::list_backend_audit(&workspace_root, limit)?;
                     println!("{}", serde_json::to_string_pretty(&result)?);
                     Ok(())
                 }

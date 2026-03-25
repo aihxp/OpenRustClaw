@@ -39,6 +39,28 @@ model = "gemini-1.5-pro"
 api_key_env = "GEMINI_API_KEY"
 # base_url = "https://generativelanguage.googleapis.com/v1beta"
 
+[external_backends]
+allowed_backends = ["agent_browser_cli"]
+allow_local_cli_wrappers = true
+allow_cloud_agent_execution = false
+audit_log_path = ".claw/control/external-backends-audit.jsonl"
+command_env_allowlist = [
+  "PATH",
+  "HOME",
+  "USER",
+  "USERNAME",
+  "TMPDIR",
+  "TMP",
+  "TEMP",
+  "LANG",
+  "LC_ALL",
+  "SSL_CERT_FILE",
+  "SSL_CERT_DIR",
+  "XDG_RUNTIME_DIR",
+  "XDG_CACHE_HOME",
+  "XDG_CONFIG_HOME",
+]
+
 [memory]
 core_memory_max_tokens = 500
 core_memory_max_entries = 20

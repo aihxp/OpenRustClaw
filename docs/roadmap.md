@@ -1403,10 +1403,11 @@ Remaining:
   - [x] precompute failover recommendations before the next model swap,
   - [x] surface operator warnings instead of letting model changes fail blind at runtime.
 - [ ] Add explicit governance for optional external execution backends:
-  - allowed backend registry,
-  - credential and token isolation,
-  - audit trail for local CLI wrappers and cloud-agent calls,
-  - operator policy for when external agent execution is permitted.
+  - [x] allowed backend registry,
+  - [x] credential and token isolation for the shipped local CLI wrapper lane,
+  - [x] audit trail for local CLI wrapper execution,
+  - [x] operator policy for when external agent execution is permitted.
+  - Cloud-agent call governance remains reserved until a shipped cloud-agent backend exists.
 - [ ] Add channel/service runtime resilience features:
   - channel health monitor with configurable auto-restart,
   - [x] presence and liveness beacons for operator surfaces,
