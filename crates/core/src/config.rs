@@ -208,6 +208,8 @@ pub struct SchedulerConfig {
 pub struct SecurityConfig {
     pub require_auth: bool,
     pub origin_validation: bool,
+    #[serde(default)]
+    pub control_api_token_env: Option<String>,
     pub prompt_injection_defense: bool,
     pub skill_signature_required: bool,
     pub skill_verifying_key: Option<String>,
@@ -1064,6 +1066,7 @@ impl Default for AppConfig {
             security: SecurityConfig {
                 require_auth: true,
                 origin_validation: true,
+                control_api_token_env: None,
                 prompt_injection_defense: true,
                 skill_signature_required: false,
                 skill_verifying_key: None,

@@ -1370,6 +1370,7 @@ Remaining:
   - [x] gateway security checks now export bearer/internal-token auth attempts, origin allow/deny decisions, and webhook rate-limit hits,
   - broader parity-critical runtime coverage and OpenTelemetry export still remain.
 - [ ] Add full auth and access-control parity where OpenClaw documents it:
+  - [x] an opt-in bearer-token gate now exists for `/control/...` and `/control/ui` through `security.control_api_token_env`, with Control UI token forwarding for its HTTP and WebSocket calls,
   - tokens,
   - allowlists,
   - origin checks,

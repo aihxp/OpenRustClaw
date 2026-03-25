@@ -1157,6 +1157,15 @@
 
     <script>
       const pretty = (value) => JSON.stringify(value, null, 2);
+      const controlUiQuery = new URLSearchParams(window.location.search);
+      const controlApiToken = (() => {
+        const queryToken = controlUiQuery.get("token");
+        if (queryToken) {
+          window.localStorage.setItem("openrustclawControlToken", queryToken);
+          return queryToken;
+        }
+        return window.localStorage.getItem("openrustclawControlToken") || "";
+      })();
       let configEditorDirty = false;
       let currentOrchestrationReceipt = null;
       let currentActiveOrchestrationRun = null;
@@ -1167,9 +1176,29 @@
         document.getElementById(id).textContent = typeof value === "string" ? value : pretty(value);
       };
 
+      function controlHeaders(extraHeaders = {}) {
+        const headers = { ...extraHeaders };
+        if (!headers["content-type"]) {
+          headers["content-type"] = "application/json";
+        }
+        if (controlApiToken) {
+          headers.authorization = `Bearer ${controlApiToken}`;
+        }
+        return headers;
+      }
+
+      function controlWebSocketUrl(path) {
+        const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+        const url = new URL(`${protocol}://${window.location.host}${path}`);
+        if (controlApiToken) {
+          url.searchParams.set("token", controlApiToken);
+        }
+        return url.toString();
+      }
+
       async function fetchJson(url, options = {}) {
         const response = await fetch(url, {
-          headers: { "content-type": "application/json" },
+          headers: controlHeaders(options.headers || {}),
           ...options,
         });
         const data = await response.json();
@@ -3279,8 +3308,7 @@
       }
 
       function connectDiagnostics() {
-        const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-        const socket = new WebSocket(`${protocol}://${window.location.host}/control/diagnostics/ws?deep=true&interval_secs=5`);
+        const socket = new WebSocket(controlWebSocketUrl("/control/diagnostics/ws?deep=true&interval_secs=5"));
         const dot = document.getElementById("diagnostic-dot");
         const label = document.getElementById("diagnostic-state");
 
@@ -3310,8 +3338,7 @@
       }
 
       function connectLogs() {
-        const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-        const socket = new WebSocket(`${protocol}://${window.location.host}/control/logs/ws?limit=120`);
+        const socket = new WebSocket(controlWebSocketUrl("/control/logs/ws?limit=120"));
         const dot = document.getElementById("logs-dot");
         const label = document.getElementById("logs-state");
 

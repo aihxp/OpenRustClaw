@@ -167,6 +167,7 @@ Channel routing/operator controls:
   - `GET /control/diagnostics/ws`
   - `GET /control/logs/recent`
   - `GET /control/logs/ws`
+- the control plane can now be protected with an opt-in bearer token by setting `security.control_api_token_env` and exporting the matching environment variable before `openrustclaw start`; `/control/ui?token=...` forwards that token to its API and WebSocket calls
 - shared service diagnostics surfaces now exist at:
   - `GET /control/services/status`
   - `GET /control/services/scheduler`

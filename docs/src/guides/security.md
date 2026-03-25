@@ -173,6 +173,25 @@ impl SessionToken {
 }
 ```
 
+### Control API Bearer Token
+
+The typed `/control/...` operator surface can also be protected with a separate bearer token:
+
+```toml
+[security]
+control_api_token_env = "OPENRUSTCLAW_CONTROL_API_TOKEN"
+```
+
+```bash
+export OPENRUSTCLAW_CONTROL_API_TOKEN="replace-me"
+openrustclaw start
+```
+
+Use the token in either:
+
+- `Authorization: Bearer <token>` for normal HTTP requests
+- `?token=<token>` for `/control/ui` and the browser WebSocket helper flows it opens
+
 ---
 
 ## 🛡️ Prompt Injection Defense

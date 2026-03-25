@@ -6,11 +6,12 @@ use axum::{
     Json, Router,
     body::Bytes,
     extract::{
-        Path as AxumPath, Query, State,
+        Path as AxumPath, Query, Request, State,
         ws::{Message as WsMessage, WebSocket, WebSocketUpgrade},
     },
     http::{HeaderMap, StatusCode},
-    response::{Html, IntoResponse},
+    middleware::{self, Next},
+    response::{Html, IntoResponse, Response},
     routing::{get, post, put},
 };
 use chrono::{DateTime, Utc};
@@ -98,8 +99,12 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
 
     // Load configuration
     let mut config = runtime::load_effective_config(config_path, &workspace_root)?;
+    let control_api_token = load_control_api_token(&config)?;
 
     info!(config_path = %config_path, "Configuration loaded");
+    if let Some(env_name) = config.security.control_api_token_env.as_deref() {
+        info!(env = %env_name, "Control API bearer auth enabled");
+    }
 
     // Parse and enable channels from CLI argument
     if let Some(channels_str) = channels {
@@ -241,6 +246,9 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
 
     let mut app = gateway.router(gateway_state);
     let addr = gateway.addr();
+    let control_auth_state = ControlAuthState {
+        bearer_token: control_api_token,
+    };
 
     info!(addr = %addr, "Starting gateway server");
 
@@ -519,27 +527,36 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
         info!("iMessage BlueBubbles ingress enabled at /webhooks/imessage/bluebubbles");
     }
     app = app.merge(metrics_routes(metrics_handle));
-    app = app.merge(channel_registry_router(channel_registry.clone()));
-    app = app.merge(control_plane_router(ControlPlaneApiState {
-        control_root,
-        workspace_root: workspace_root.clone(),
-        config_path: config_path.to_string(),
-    }));
-    app = app.merge(runtime_control_router(RuntimeControlState {
-        config_path: config_path.to_string(),
-        workspace_root: workspace_root.clone(),
-        pool: pool.clone(),
-        memory_store: memory_store.clone(),
-        core_memory_store: core_memory_store.clone(),
-        session_manager: session_manager.clone(),
-        channel_registry: channel_registry.clone(),
-        langsmith: channel_langsmith_client(&config),
-        event_bus: event_bus.clone(),
-        channel_agent: channel_agent.clone(),
-        gateway_addr: addr.clone(),
-        started_at,
-        sidecar_running: sidecar.is_some(),
-    }));
+    app = app.merge(protect_control_router(
+        channel_registry_router(channel_registry.clone()),
+        control_auth_state.clone(),
+    ));
+    app = app.merge(protect_control_router(
+        control_plane_router(ControlPlaneApiState {
+            control_root,
+            workspace_root: workspace_root.clone(),
+            config_path: config_path.to_string(),
+        }),
+        control_auth_state.clone(),
+    ));
+    app = app.merge(protect_control_router(
+        runtime_control_router(RuntimeControlState {
+            config_path: config_path.to_string(),
+            workspace_root: workspace_root.clone(),
+            pool: pool.clone(),
+            memory_store: memory_store.clone(),
+            core_memory_store: core_memory_store.clone(),
+            session_manager: session_manager.clone(),
+            channel_registry: channel_registry.clone(),
+            langsmith: channel_langsmith_client(&config),
+            event_bus: event_bus.clone(),
+            channel_agent: channel_agent.clone(),
+            gateway_addr: addr.clone(),
+            started_at,
+            sidecar_running: sidecar.is_some(),
+        }),
+        control_auth_state,
+    ));
     app = app.layer(metrics_middleware());
 
     runtime::mark_runtime_applied(config_path, &workspace_root)?;
@@ -2559,6 +2576,81 @@ struct RuntimeControlState {
     gateway_addr: String,
     started_at: DateTime<Utc>,
     sidecar_running: bool,
+}
+
+#[derive(Clone)]
+struct ControlAuthState {
+    bearer_token: Option<Arc<String>>,
+}
+
+fn protect_control_router(router: Router, state: ControlAuthState) -> Router {
+    router.layer(middleware::from_fn_with_state(
+        state,
+        control_auth_middleware,
+    ))
+}
+
+fn load_control_api_token(config: &AppConfig) -> Result<Option<Arc<String>>> {
+    let Some(env_name) = config.security.control_api_token_env.as_deref() else {
+        return Ok(None);
+    };
+
+    let value = std::env::var(env_name).with_context(|| {
+        format!(
+            "security.control_api_token_env is set to '{}' but that environment variable is missing",
+            env_name
+        )
+    })?;
+    let token = value.trim();
+    if token.is_empty() {
+        anyhow::bail!(
+            "security.control_api_token_env resolved from '{}' but the token value is empty",
+            env_name
+        );
+    }
+
+    Ok(Some(Arc::new(token.to_string())))
+}
+
+fn control_request_token(req: &Request) -> Option<String> {
+    let bearer = req
+        .headers()
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .map(|value| value.to_string());
+    if bearer.is_some() {
+        return bearer;
+    }
+
+    Query::<HashMap<String, String>>::try_from_uri(req.uri())
+        .ok()
+        .and_then(|query| query.0.get("token").cloned())
+}
+
+async fn control_auth_middleware(
+    State(state): State<ControlAuthState>,
+    req: Request,
+    next: Next,
+) -> Response {
+    let Some(expected_token) = state.bearer_token.as_deref() else {
+        return next.run(req).await;
+    };
+
+    let provided = control_request_token(&req).unwrap_or_default();
+    if provided == *expected_token {
+        openrustclaw_observability::metrics::record_auth_attempt("control_token", "success");
+        next.run(req).await
+    } else {
+        openrustclaw_observability::metrics::record_auth_attempt("control_token", "failure");
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({
+                "error": "missing or invalid control api token"
+            })),
+        )
+            .into_response()
+    }
 }
 
 fn discord_ingress_router(
