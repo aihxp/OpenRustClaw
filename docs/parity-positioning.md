@@ -53,14 +53,14 @@ The key constraint is that Rust owns the durable outer loop:
 
 LangGraph may execute a bounded workflow run. It should not be the only durability boundary for the product.
 
-## Where We Still Trail OpenClaw
+## Remaining Intentional Differences
 
-- Full Web Control UI parity
-- Broader extension/plugin-channel parity beyond the shipped Rust-native Mattermost channel and the new bounded compiled-skill channel-extension lane
-- Full executable plugin parity beyond the newly shipped bounded Rust/WASM extension lane and bounded scheduler-backed background-service lane
-- Optional deferred channel scope such as Feishu/Lark if the product scope expands to include it
+- Interactive live chat remains CLI/MCP-first instead of becoming a separate browser-chat parity requirement inside `/control/ui`
+- OpenRustClaw ships Mattermost as a first-class Rust channel and uses compiled-skill channel extensions/background services as the extension substrate instead of copying OpenClaw's plugin-channel runtime shape
+- The shipped provider-auth surface is the bounded OIDC auth-plugin lane; broader provider-native auth UX remains optional product expansion rather than a parity blocker
+- Optional deferred channel scope such as Feishu/Lark remains out of the current declared parity target
 
-These are parity gaps and are tracked as open work in [parity-matrix.md](parity-matrix.md) and [roadmap.md](roadmap.md).
+These are intentional claim boundaries, not missing parity for the declared shipped surface.
 
 ## Recommended Finish Order
 
@@ -108,14 +108,7 @@ Repo scaffolding, partial crates, or hidden experimental code do not count.
 
 Today, OpenRustClaw can fairly claim:
 
-- a mostly honest shipped surface,
-- meaningful parity progress across gateway, memory, scheduling, MCP, and the declared shipped channel surface,
-- stronger Rust-native foundations for durability and extension security.
-
-It cannot yet claim:
-
-- full OpenClaw feature parity,
-- full Control UI parity,
-- full operator-grade diagnostics parity,
-- mobile node parity,
-- or all-Rust production ownership across every currently shipped orchestration path.
+- practical OpenClaw feature parity for the declared shipped surface,
+- a parity matrix that is green for that declared target surface,
+- Rust-owned production runtime ownership end to end,
+- and stronger Rust-native foundations for durability, observability, and extension security.
