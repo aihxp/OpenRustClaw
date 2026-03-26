@@ -19,6 +19,7 @@ use openrustclaw_core::types::{
 };
 use openrustclaw_db::core_memory_store::SqliteCoreMemoryStore;
 use openrustclaw_db::memory_store::SqliteMemoryStore;
+use openrustclaw_gateway::metrics_endpoint::{install_metrics, metrics_middleware, metrics_routes};
 use openrustclaw_gateway::server::{GatewayServer, GatewayState};
 use openrustclaw_gateway::sessions::SessionManager;
 use openrustclaw_memory::context::ContextManager;
@@ -148,6 +149,7 @@ impl TestEnvironment {
             ])),
             require_auth,
             internal_api_token: None,
+            trusted_proxy_token: None,
             memory_store: Some(Arc::new(self.memory_store.clone())),
             core_memory_store: Some(Arc::new(self.core_memory_store.clone())),
             rag_store: None,
@@ -165,7 +167,11 @@ impl TestEnvironment {
 
         let gateway = GatewayServer::new("127.0.0.1".to_string(), port);
         let state = self.create_gateway_state(require_auth);
-        let app = gateway.router(state);
+        let metrics_handle = install_metrics();
+        let app = gateway
+            .router(state)
+            .merge(metrics_routes(metrics_handle))
+            .layer(metrics_middleware());
 
         let handle = tokio::spawn(async move {
             axum::serve(

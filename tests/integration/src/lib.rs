@@ -33,6 +33,8 @@ mod runtime_operator_ops_test;
 #[cfg(test)]
 mod scheduler_test;
 #[cfg(test)]
+mod security_posture_test;
+#[cfg(test)]
 mod security_test;
 #[cfg(test)]
 mod tool_execution_history_test;

@@ -242,6 +242,7 @@ async fn test_gateway_header_validation() {
         ])),
         require_auth: true,
         internal_api_token: None,
+        trusted_proxy_token: None,
         memory_store: None,
         core_memory_store: None,
         rag_store: None,

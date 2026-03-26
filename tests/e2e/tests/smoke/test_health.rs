@@ -21,6 +21,32 @@ async fn smoke_gateway_health() {
     assert_eq!(health["status"], "healthy");
 }
 
+/// CRITICAL: Gateway metrics endpoint
+#[tokio::test]
+async fn smoke_gateway_metrics_endpoint() {
+    let env = TestEnvironment::new().await;
+    let (addr, _server) = env.start_gateway(false).await;
+
+    let client = TestHttpClient::new(format!("http://{}", addr));
+    client
+        .get("/health")
+        .await
+        .expect("Health check failed")
+        .assert_success();
+    let response = client
+        .get("/metrics")
+        .await
+        .expect("Metrics endpoint failed");
+
+    response.assert_success();
+
+    let body = response.text().await.expect("Failed to read metrics body");
+    assert!(
+        body.contains("openrustclaw") || body.contains("# HELP"),
+        "Expected Prometheus-style metrics output"
+    );
+}
+
 /// CRITICAL: Database connectivity
 #[tokio::test]
 async fn smoke_database_connectivity() {
