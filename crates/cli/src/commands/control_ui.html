@@ -1150,6 +1150,18 @@
           </div>
         </article>
 
+        <article class="panel span-12">
+          <h2>Recent Tool Executions</h2>
+          <div class="surface">
+            <table class="table">
+              <thead>
+                <tr><th>When</th><th>Source</th><th>Status</th><th>Tool</th><th>Detail</th></tr>
+              </thead>
+              <tbody id="tool-executions-table"><tr><td colspan="5" class="muted">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </article>
+
         <article class="panel span-6">
           <h2>Scheduled Jobs</h2>
           <div class="surface">
@@ -3092,6 +3104,21 @@
         renderTableRows("memory-archive", archiveRows, "No archive summaries yet.");
       }
 
+      async function loadToolExecutions() {
+        const payload = await fetchJson("/control/tool-executions?limit=12");
+        const rows = (payload.entries || []).map((entry) => {
+          const detail = entry.error || entry.artifact_path || entry.status_detail || "-";
+          return `<tr>
+            <td>${entry.created_at || "-"}</td>
+            <td>${entry.source || "-"}</td>
+            <td><strong>${entry.status || "-"}</strong><div class="muted">${entry.status_detail || "-"}</div></td>
+            <td>${entry.tool_name || "-"}</td>
+            <td>${escapeHtml(String(detail).slice(0, 160))}</td>
+          </tr>`;
+        });
+        renderTableRows("tool-executions-table", rows, "No recent tool executions.");
+      }
+
       async function loadJobs() {
         const payload = await fetchJson("/control/jobs?limit=12");
         const jobs = payload.jobs || [];
@@ -3305,6 +3332,7 @@
             loadMobileCommands(),
             loadSessions(),
             loadMemory(),
+            loadToolExecutions(),
             loadJobs(),
             loadActiveOrchestrationRuns(),
             loadOrchestrationRuns(),

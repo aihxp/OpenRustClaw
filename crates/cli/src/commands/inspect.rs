@@ -1,11 +1,15 @@
 use anyhow::Result;
+use chrono::Utc;
 use openrustclaw_core::types::{MemoryEntry, Message};
 use openrustclaw_db::models::MemoryArchiveRow;
 use openrustclaw_db::{
     PersistedSession, SessionStatus, SqliteMemoryStore, SqlitePool, SqliteSessionStore,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sqlx::Row;
+use std::fs::{self, OpenOptions};
+use std::io::{BufRead, BufReader, Write};
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct AssistantContinuitySummary {
@@ -101,6 +105,27 @@ pub struct JobDetailReport {
     pub job: Option<JobSummary>,
     pub recent_runs: Vec<JobRunSummary>,
     pub dead_letters: Vec<DeadLetterSummary>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolExecutionRecord {
+    pub id: String,
+    pub tool_name: String,
+    pub source: String,
+    pub status: String,
+    pub status_detail: String,
+    pub duration_ms: u64,
+    pub created_at: String,
+    pub error: Option<String>,
+    pub artifact_path: Option<String>,
+    pub args: Option<serde_json::Value>,
+    pub result_preview: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ToolExecutionHistoryReport {
+    pub limit: usize,
+    pub entries: Vec<ToolExecutionRecord>,
 }
 
 pub async fn list_sessions(
@@ -257,6 +282,96 @@ pub async fn memory_timeline(
         namespace: namespace_value,
         entries,
     })
+}
+
+pub fn tool_execution_log_path(workspace_root: &Path) -> PathBuf {
+    workspace_root
+        .join(".claw")
+        .join("control")
+        .join("tool-executions.jsonl")
+}
+
+pub fn append_tool_execution_record(
+    workspace_root: &Path,
+    record: &ToolExecutionRecord,
+) -> Result<()> {
+    let path = tool_execution_log_path(workspace_root);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let mut file = OpenOptions::new().create(true).append(true).open(&path)?;
+    serde_json::to_writer(&mut file, record)?;
+    file.write_all(b"\n")?;
+    Ok(())
+}
+
+pub fn tool_execution_history(
+    workspace_root: &Path,
+    limit: usize,
+    source: Option<&str>,
+    status: Option<&str>,
+) -> Result<ToolExecutionHistoryReport> {
+    let path = tool_execution_log_path(workspace_root);
+    if !path.exists() {
+        return Ok(ToolExecutionHistoryReport {
+            limit: limit.max(1),
+            entries: Vec::new(),
+        });
+    }
+
+    let file = OpenOptions::new().read(true).open(&path)?;
+    let reader = BufReader::new(file);
+    let mut entries = Vec::new();
+    for line in reader.lines() {
+        let line = line?;
+        if line.trim().is_empty() {
+            continue;
+        }
+        let Ok(record) = serde_json::from_str::<ToolExecutionRecord>(&line) else {
+            continue;
+        };
+        if source.is_some_and(|value| record.source != value) {
+            continue;
+        }
+        if status.is_some_and(|value| record.status != value) {
+            continue;
+        }
+        entries.push(record);
+    }
+
+    entries.sort_by(|left, right| right.created_at.cmp(&left.created_at));
+    entries.truncate(limit.max(1));
+
+    Ok(ToolExecutionHistoryReport {
+        limit: limit.max(1),
+        entries,
+    })
+}
+
+pub fn new_tool_execution_record(
+    tool_name: impl Into<String>,
+    source: impl Into<String>,
+    status: impl Into<String>,
+    status_detail: impl Into<String>,
+    duration_ms: u64,
+    error: Option<String>,
+    artifact_path: Option<String>,
+    args: Option<serde_json::Value>,
+    result_preview: Option<serde_json::Value>,
+) -> ToolExecutionRecord {
+    ToolExecutionRecord {
+        id: uuid::Uuid::new_v4().to_string(),
+        tool_name: tool_name.into(),
+        source: source.into(),
+        status: status.into(),
+        status_detail: status_detail.into(),
+        duration_ms,
+        created_at: Utc::now().to_rfc3339(),
+        error,
+        artifact_path,
+        args,
+        result_preview,
+    }
 }
 
 pub async fn memory_namespaces(store: &SqliteMemoryStore) -> Result<Vec<String>> {

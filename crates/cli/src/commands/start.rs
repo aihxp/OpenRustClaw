@@ -37,7 +37,7 @@ use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::signal;
 use tokio::sync::watch;
@@ -76,6 +76,8 @@ use openrustclaw_skills::{
 use sqlx::Row;
 use uuid::Uuid;
 
+static OPERATOR_EXECUTION_ROOT: OnceLock<PathBuf> = OnceLock::new();
+
 use super::channels::{
     ChannelBindingSpec, ChannelRegistry, ChannelRouteStatus, ChannelSendPolicy,
     channel_route_key_with_binding as registry_channel_route_key_with_binding,
@@ -96,6 +98,7 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
     let workspace_root =
         std::env::current_dir().context("Failed to determine current workspace root")?;
     logs::init_runtime_logging(&workspace_root)?;
+    let _ = OPERATOR_EXECUTION_ROOT.set(workspace_root.clone());
 
     info!("Starting OpenRustClaw...");
     let started_at = Utc::now();
@@ -2769,10 +2772,21 @@ fn record_operator_tool_result<T, E>(
     E: std::fmt::Display,
 {
     let status = if result.is_ok() { "success" } else { "failure" };
+    let error = result.as_ref().err().map(|value| value.to_string());
     openrustclaw_observability::metrics::record_tool_execution(tool_name, status);
     openrustclaw_observability::metrics::record_tool_duration(
         tool_name,
         started_at.elapsed().as_secs_f64(),
+    );
+    persist_operator_execution_record(
+        tool_name,
+        "runtime_tool",
+        status,
+        started_at,
+        error.as_deref(),
+        None,
+        None,
+        None,
     );
 }
 
@@ -2782,6 +2796,74 @@ fn record_operator_tool_status(tool_name: &str, started_at: std::time::Instant, 
         tool_name,
         started_at.elapsed().as_secs_f64(),
     );
+    persist_operator_execution_record(
+        tool_name,
+        "runtime_tool",
+        status,
+        started_at,
+        None,
+        None,
+        None,
+        None,
+    );
+}
+
+fn persist_operator_execution_record(
+    tool_name: &str,
+    source: &str,
+    status: &str,
+    started_at: std::time::Instant,
+    error: Option<&str>,
+    artifact_path: Option<String>,
+    args: Option<serde_json::Value>,
+    result_preview: Option<serde_json::Value>,
+) {
+    let Some(workspace_root) = OPERATOR_EXECUTION_ROOT.get() else {
+        return;
+    };
+    let record = inspect::new_tool_execution_record(
+        tool_name,
+        source,
+        status,
+        classify_execution_status(status, error),
+        started_at.elapsed().as_millis() as u64,
+        error.map(ToString::to_string),
+        artifact_path,
+        args,
+        result_preview,
+    );
+    if let Err(error) = inspect::append_tool_execution_record(workspace_root, &record) {
+        warn!(
+            tool = %tool_name,
+            source = %source,
+            error = %error,
+            "Failed to persist tool execution record"
+        );
+    }
+}
+
+fn classify_execution_status(status: &str, error: Option<&str>) -> String {
+    if status != "failure" {
+        return status.to_string();
+    }
+
+    let lower = error.unwrap_or("").to_ascii_lowercase();
+    if lower.contains("timed out") || lower.contains("timeout") {
+        "timeout".to_string()
+    } else if lower.contains("invalid") || lower.contains("parse") || lower.contains("missing") {
+        "validation_error".to_string()
+    } else if lower.contains("not found") {
+        "not_found".to_string()
+    } else if lower.contains("forbidden")
+        || lower.contains("denied")
+        || lower.contains("refused")
+        || lower.contains("not allowed")
+        || lower.contains("blocked")
+    {
+        "refused".to_string()
+    } else {
+        "failure".to_string()
+    }
 }
 
 fn discord_ingress_router(
@@ -3156,6 +3238,10 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             get(runtime_rollback_plan_handler),
         )
         .route("/control/tools", get(tool_status_handler))
+        .route(
+            "/control/tool-executions",
+            get(tool_execution_history_handler),
+        )
         .route("/control/tools/add", post(tool_add_handler))
         .route("/control/tools/setup", post(tool_setup_handler))
         .route("/control/tools/sync", post(tool_sync_handler))
@@ -5080,6 +5166,16 @@ struct ToolStatusQuery {
     name: Option<String>,
 }
 
+#[derive(serde::Deserialize, Default)]
+struct ToolExecutionQuery {
+    #[serde(default)]
+    source: Option<String>,
+    #[serde(default)]
+    status: Option<String>,
+    #[serde(default)]
+    limit: Option<usize>,
+}
+
 #[derive(serde::Deserialize)]
 struct ToolAddRequest {
     name: String,
@@ -6747,6 +6843,25 @@ async fn tool_status_handler(
     Query(query): Query<ToolStatusQuery>,
 ) -> impl IntoResponse {
     match tools::status_data(&state.workspace_root, query.name.as_deref()) {
+        Ok(report) => (StatusCode::OK, Json(serde_json::json!(report))).into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn tool_execution_history_handler(
+    State(state): State<RuntimeControlState>,
+    Query(query): Query<ToolExecutionQuery>,
+) -> impl IntoResponse {
+    match inspect::tool_execution_history(
+        &state.workspace_root,
+        query.limit.unwrap_or(20),
+        query.source.as_deref(),
+        query.status.as_deref(),
+    ) {
         Ok(report) => (StatusCode::OK, Json(serde_json::json!(report))).into_response(),
         Err(error) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -11206,6 +11321,7 @@ where
         + 'static,
 {
     move |args| {
+        let started_at = std::time::Instant::now();
         let trace_client = langsmith.clone();
         let trace_args = args.clone();
         let mut trace = trace_client.as_ref().map(|client| {
@@ -11219,6 +11335,18 @@ where
             )
         });
         let result = handler(args);
+        let error = result.as_ref().err().map(|value| value.to_string());
+        let result_preview = result.as_ref().ok().cloned();
+        persist_operator_execution_record(
+            tool_name,
+            "mcp_tool",
+            if result.is_ok() { "success" } else { "failure" },
+            started_at,
+            error.as_deref(),
+            None,
+            Some(trace_args.clone()),
+            result_preview,
+        );
 
         if let (Some(client), Some(mut run)) = (trace_client, trace.take()) {
             run.outputs = result

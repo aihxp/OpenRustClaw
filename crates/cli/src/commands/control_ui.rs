@@ -22,4 +22,10 @@ mod tests {
         assert!(CONTROL_UI_HTML.contains("Content / Policy"));
         assert!(CONTROL_UI_HTML.contains("function memoryPolicySummary"));
     }
+
+    #[test]
+    fn dashboard_includes_tool_execution_history_panel() {
+        assert!(CONTROL_UI_HTML.contains("Recent Tool Executions"));
+        assert!(CONTROL_UI_HTML.contains("function loadToolExecutions"));
+    }
 }

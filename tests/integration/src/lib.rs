@@ -28,3 +28,5 @@ mod provider_chain_test;
 mod scheduler_test;
 #[cfg(test)]
 mod security_test;
+#[cfg(test)]
+mod tool_execution_history_test;
