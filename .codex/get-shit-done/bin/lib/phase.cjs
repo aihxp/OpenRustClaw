@@ -697,10 +697,12 @@ function cmdPhaseComplete(cwd, phaseNum, raw) {
       const cells = fullRow.split('|').slice(1, -1);
       if (cells.length === 5) {
         // 5-col: Phase | Milestone | Plans | Status | Completed
+        cells[2] = ` ${summaryCount}/${planCount} `;
         cells[3] = ' Complete    ';
         cells[4] = ` ${today} `;
       } else if (cells.length === 4) {
         // 4-col: Phase | Plans | Status | Completed
+        cells[1] = ` ${summaryCount}/${planCount} `;
         cells[2] = ' Complete    ';
         cells[3] = ` ${today} `;
       }
@@ -709,7 +711,7 @@ function cmdPhaseComplete(cwd, phaseNum, raw) {
 
     // Update plan count in phase section
     const planCountPattern = new RegExp(
-      `(#{2,4}\\s*Phase\\s+${phaseEscaped}[\\s\\S]*?\\*\\*Plans:\\*\\*\\s*)[^\\n]+`,
+      `(#{2,4}\\s*Phase\\s+${phaseEscaped}[\\s\\S]*?\\*\\*Plans(?:\\*\\*:|:\\*\\*)\\s*)[^\\n]+`,
       'i'
     );
     roadmapContent = replaceInCurrentMilestone(
@@ -730,7 +732,7 @@ function cmdPhaseComplete(cwd, phaseNum, raw) {
       );
 
       const sectionText = phaseSectionMatch ? phaseSectionMatch[1] : '';
-      const reqMatch = sectionText.match(/\*\*Requirements:\*\*\s*([^\n]+)/i);
+      const reqMatch = sectionText.match(/\*\*Requirements(?:\*\*:|:\*\*)\s*([^\n]+)/i);
 
       if (reqMatch) {
         const reqIds = reqMatch[1].replace(/[\[\]]/g, '').split(/[,\s]+/).map(r => r.trim()).filter(Boolean);
