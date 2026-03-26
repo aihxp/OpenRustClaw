@@ -59,6 +59,7 @@ From each VERIFICATION.md, extract:
 - **Requirements coverage:** which requirements satisfied/blocked
 
 If a phase is missing VERIFICATION.md, flag it as "unverified phase" — this is a blocker.
+This missing evidence must be written explicitly into the audit report so later archive review can see the accepted debt without reconstructing the live phase directory state.
 
 ## 3. Spawn Integration Checker
 
@@ -197,6 +198,8 @@ tech_debt:  # Non-critical, deferred
 ```
 
 Plus full markdown report with tables for requirements, phases, integration, tech debt.
+
+When the milestone is later archived, this audit result is paired with `.planning/milestones/v{version}-VERIFICATIONS.md`, which preserves the per-phase verification snapshot and accepted verification debt ledger.
 
 **Status values:**
 - `passed` — all requirements met, no critical gaps, minimal tech debt

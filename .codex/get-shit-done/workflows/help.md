@@ -392,6 +392,7 @@ Usage: `$gsd-audit-uat`
 Audit milestone completion against original intent.
 
 - Reads all phase VERIFICATION.md files
+- Treats missing verification evidence as a first-class audit result
 - Checks requirements coverage
 - Spawns integration checker for cross-phase wiring
 - Creates MILESTONE-AUDIT.md with gaps and tech debt
@@ -437,6 +438,7 @@ Archive accumulated phase directories from completed milestones.
 - Identifies phases from completed milestones still in `.planning/phases/`
 - Shows dry-run summary before moving anything
 - Moves phase dirs to `.planning/milestones/v{X.Y}-phases/`
+- Milestone-level verification review stays available via `.planning/milestones/v{X.Y}-VERIFICATIONS.md`
 - Use after multiple milestones to reduce `.planning/phases/` clutter
 
 Usage: `$gsd-cleanup`

@@ -1,6 +1,6 @@
 <purpose>
 
-Archive accumulated phase directories from completed milestones into `.planning/milestones/v{X.Y}-phases/`. Identifies which phases belong to each completed milestone, shows a dry-run summary, and moves directories on confirmation.
+Archive accumulated phase directories from completed milestones into `.planning/milestones/v{X.Y}-phases/`. Identifies which phases belong to each completed milestone, shows a dry-run summary, and moves directories on confirmation. Cleanup preserves raw execution history; milestone-level verification review should rely on `.planning/milestones/v{X.Y}-VERIFICATIONS.md`, not on live phase directories remaining in place.
 
 </purpose>
 

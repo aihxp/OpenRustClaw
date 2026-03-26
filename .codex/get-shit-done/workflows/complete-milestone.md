@@ -377,6 +377,7 @@ The CLI handles:
 - Creating `.planning/milestones/` directory
 - Archiving ROADMAP.md to `milestones/v[X.Y]-ROADMAP.md`
 - Archiving REQUIREMENTS.md to `milestones/v[X.Y]-REQUIREMENTS.md` with archive header
+- Archiving milestone verification evidence to `milestones/v[X.Y]-VERIFICATIONS.md`
 - Moving audit file to milestones if it exists
 - Creating/appending MILESTONES.md entry with accomplishments from SUMMARY.md files
 - Updating STATE.md (status, last activity)
@@ -384,6 +385,7 @@ The CLI handles:
 Extract from result: `version`, `date`, `phases`, `plans`, `tasks`, `accomplishments`, `archived`.
 
 Verify: `✅ Milestone archived to .planning/milestones/`
+Verify: `✅ Verification archive written to milestones/v[X.Y]-VERIFICATIONS.md`
 
 **Phase archival (optional):** After archival completes, ask the user:
 
@@ -398,6 +400,7 @@ mv .planning/phases/{phase-dir} .planning/milestones/v[X.Y]-phases/
 Verify: `✅ Phase directories archived to .planning/milestones/v[X.Y]-phases/`
 
 If "Skip": Phase directories remain in `.planning/phases/` as raw execution history. Use `$gsd-cleanup` later to archive retroactively.
+Milestone-level verification review still works because `milestones/v[X.Y]-VERIFICATIONS.md` preserves the per-phase verification snapshot even before phase-directory cleanup.
 
 After archival, the AI still handles:
 - Reorganizing ROADMAP.md with milestone grouping (requires judgment)
