@@ -18,7 +18,7 @@ This milestone turns the existing OpenRustClaw surface area into a believable pr
 - [x] **Phase 4: Tool, MCP, and Coding Workflow Hardening** - Make tool execution and coding actions dependable for daily use. (completed 2026-03-26)
 - [x] **Phase 5: Email and Voice Communications** - Ship production-credible email and phone or voice lanes. (completed 2026-03-26)
 - [x] **Phase 6: Deployment, Runtime, and Operator Ops** - Make the runtime shippable, diagnosable, and recoverable. (completed 2026-03-26)
-- [ ] **Phase 7: Security, Observability, and Release Exit** - Close MVP trust gaps and verify release readiness.
+- [x] **Phase 7: Security, Observability, and Release Exit** - Close MVP trust gaps and verify release readiness. (completed 2026-03-26)
 
 ### Phase Details
 
@@ -120,12 +120,12 @@ Plans:
   1. Production auth, secret handling, origin validation, and sandbox boundaries are secure by default.
   2. The MVP has end-to-end verification coverage across onboarding, assistant, memory, tools, coding, communications, and ops.
   3. Release readiness is captured in an operator-facing checklist with clear exit criteria.
-**Plans**: 1/3 plans complete
+**Plans**: 3/3 plans complete
 
 Plans:
 - [x] 07-01: Add a unified security posture summary
-- [ ] 07-02: Write the MVP release-exit checklist
-- [ ] 07-03: Lock the release exit with verification
+- [x] 07-02: Write the MVP release-exit checklist
+- [x] 07-03: Lock the release exit with verification
 
 ## Progress
 
@@ -137,4 +137,4 @@ Plans:
 | 4. Tool, MCP, and Coding Workflow Hardening | 3/3 | Complete | 2026-03-26 |
 | 5. Email and Voice Communications | 3/3 | Complete | 2026-03-26 |
 | 6. Deployment, Runtime, and Operator Ops | 3/3 | Complete | 2026-03-26 |
-| 7. Security, Observability, and Release Exit | 1/3 | In progress | - |
+| 7. Security, Observability, and Release Exit | 3/3 | Complete | 2026-03-26 |
