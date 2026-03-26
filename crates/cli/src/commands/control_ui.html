@@ -437,6 +437,10 @@
           <div class="surface"><pre id="control-runtime">Loading…</pre></div>
         </article>
         <article class="panel span-6">
+          <h2>Security Posture</h2>
+          <div class="surface"><pre id="security-posture">Loading…</pre></div>
+        </article>
+        <article class="panel span-6">
           <h2>Scheduler Health</h2>
           <div class="surface"><pre id="scheduler-status">Loading…</pre></div>
         </article>
@@ -1458,6 +1462,11 @@
       async function loadRuntimeReloadPlan() {
         const payload = await fetchJson("/control/runtime/reload-plan");
         setText("runtime-reload-plan", payload);
+      }
+
+      async function loadSecurityPosture() {
+        const payload = await fetchJson("/control/security/posture");
+        setText("security-posture", payload);
       }
 
       async function scanRuntimeHealth() {
@@ -3424,6 +3433,7 @@
             loadRuntimeOperatorOps(),
             loadRuntimeBeacon(),
             loadRuntimeReloadPlan(),
+            loadSecurityPosture(),
             loadVaultStatus(),
             loadSchedulerStatus(),
             loadChannelProbes(),

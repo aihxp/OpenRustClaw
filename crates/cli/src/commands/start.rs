@@ -92,7 +92,7 @@ use super::voice_runtime;
 use super::voice_runtime::InboundVoiceTranscriber;
 use super::{
     assistant, browser, control, control_ui, doctor, inspect, logs, mobile, orchestrate, runtime,
-    services, skills, tools,
+    security, services, skills, tools,
 };
 
 /// Run the start command - load config, optionally start the compatibility/experimental sidecar, and start the gateway.
@@ -2957,6 +2957,7 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             "/control/runtime/operator-ops",
             get(runtime_operator_ops_handler),
         )
+        .route("/control/security/posture", get(security_posture_handler))
         .route("/control/runtime/health", get(runtime_health_handler))
         .route("/control/runtime/beacon", get(runtime_beacon_handler))
         .route("/control/voice/status", get(voice_status_handler))
@@ -6812,6 +6813,17 @@ async fn runtime_operator_ops_handler(
     )
     .await
     {
+        Ok(summary) => (StatusCode::OK, Json(serde_json::json!(summary))).into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn security_posture_handler(State(state): State<RuntimeControlState>) -> impl IntoResponse {
+    match security::posture_summary(&state.config_path, &state.workspace_root) {
         Ok(summary) => (StatusCode::OK, Json(serde_json::json!(summary))).into_response(),
         Err(error) => (
             StatusCode::INTERNAL_SERVER_ERROR,

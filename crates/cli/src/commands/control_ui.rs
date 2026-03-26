@@ -52,4 +52,10 @@ mod tests {
         assert!(CONTROL_UI_HTML.contains("runtime-operator-ops"));
         assert!(CONTROL_UI_HTML.contains("function loadRuntimeOperatorOps"));
     }
+
+    #[test]
+    fn dashboard_includes_security_posture_panel() {
+        assert!(CONTROL_UI_HTML.contains("security-posture"));
+        assert!(CONTROL_UI_HTML.contains("function loadSecurityPosture"));
+    }
 }

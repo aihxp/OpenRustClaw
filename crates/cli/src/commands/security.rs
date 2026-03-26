@@ -1,11 +1,217 @@
 //! Security operations commands.
 
 use anyhow::Result;
+use chrono::Utc;
+use serde::Serialize;
 use std::io::Write;
+use std::path::Path;
 
 use openrustclaw_security::SkillVerifier;
 use openrustclaw_security::audit::{AuditEvent, AuditSeverity};
 use sqlx::Row;
+
+use super::runtime;
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SecurityPostureCheck {
+    pub area: String,
+    pub status: String,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SecurityPostureSummary {
+    pub generated_at: String,
+    pub require_auth: bool,
+    pub origin_validation: bool,
+    pub allowed_origins: Vec<String>,
+    pub control_api_token_configured: bool,
+    pub trusted_proxy_token_configured: bool,
+    pub skill_signature_required: bool,
+    pub skill_verifying_key_configured: bool,
+    pub vault_present: bool,
+    pub secure_by_default: bool,
+    pub issues_found: usize,
+    pub warnings_found: usize,
+    pub checks: Vec<SecurityPostureCheck>,
+    pub recommended_actions: Vec<String>,
+}
+
+pub fn posture_summary(config_path: &str, workspace_root: &Path) -> Result<SecurityPostureSummary> {
+    let config = runtime::load_effective_config(config_path, workspace_root)?;
+    let vault_present = runtime::vault_path_for(workspace_root).exists();
+    let control_api_token_configured = config.security.control_api_token_env.is_some();
+    let trusted_proxy_token_configured = config.security.trusted_proxy_token_env.is_some();
+    let skill_verifying_key_configured = config
+        .security
+        .skill_verifying_key
+        .as_deref()
+        .map(|value| !value.trim().is_empty())
+        .unwrap_or(false);
+
+    let mut issues_found = 0;
+    let mut warnings_found = 0;
+    let mut checks = Vec::new();
+
+    if config.security.require_auth {
+        checks.push(SecurityPostureCheck {
+            area: "gateway_auth".to_string(),
+            status: "pass".to_string(),
+            detail: "Gateway authentication is required.".to_string(),
+        });
+    } else {
+        warnings_found += 1;
+        checks.push(SecurityPostureCheck {
+            area: "gateway_auth".to_string(),
+            status: "warn".to_string(),
+            detail: "Gateway authentication is disabled.".to_string(),
+        });
+    }
+
+    if config.security.origin_validation && !config.gateway.allowed_origins.is_empty() {
+        checks.push(SecurityPostureCheck {
+            area: "origin_validation".to_string(),
+            status: "pass".to_string(),
+            detail: format!(
+                "Origin validation is enabled for {} allowed origin(s).",
+                config.gateway.allowed_origins.len()
+            ),
+        });
+    } else {
+        issues_found += 1;
+        checks.push(SecurityPostureCheck {
+            area: "origin_validation".to_string(),
+            status: "fail".to_string(),
+            detail: "Origin validation is disabled or has no explicit allowed origins.".to_string(),
+        });
+    }
+
+    if control_api_token_configured || trusted_proxy_token_configured {
+        checks.push(SecurityPostureCheck {
+            area: "control_plane_access".to_string(),
+            status: "pass".to_string(),
+            detail: format!(
+                "Control-plane protection configured via {}{}.",
+                if control_api_token_configured {
+                    "control API bearer token"
+                } else {
+                    "trusted proxy token"
+                },
+                if control_api_token_configured && trusted_proxy_token_configured {
+                    " and trusted proxy token"
+                } else {
+                    ""
+                }
+            ),
+        });
+    } else {
+        warnings_found += 1;
+        checks.push(SecurityPostureCheck {
+            area: "control_plane_access".to_string(),
+            status: "warn".to_string(),
+            detail: "Control-plane bearer-token and trusted-proxy gates are both unset."
+                .to_string(),
+        });
+    }
+
+    if config.security.skill_signature_required && !skill_verifying_key_configured {
+        issues_found += 1;
+        checks.push(SecurityPostureCheck {
+            area: "skill_verification".to_string(),
+            status: "fail".to_string(),
+            detail: "Skill signature verification is required but no verifying key is configured."
+                .to_string(),
+        });
+    } else if skill_verifying_key_configured {
+        checks.push(SecurityPostureCheck {
+            area: "skill_verification".to_string(),
+            status: "pass".to_string(),
+            detail: "Skill verifying key is configured.".to_string(),
+        });
+    } else {
+        warnings_found += 1;
+        checks.push(SecurityPostureCheck {
+            area: "skill_verification".to_string(),
+            status: "warn".to_string(),
+            detail:
+                "Skill verifying key is not configured; external skill verification remains weaker than the final release target."
+                    .to_string(),
+        });
+    }
+
+    if vault_present {
+        checks.push(SecurityPostureCheck {
+            area: "runtime_vault".to_string(),
+            status: "pass".to_string(),
+            detail: "Runtime vault artifact is present.".to_string(),
+        });
+    } else {
+        warnings_found += 1;
+        checks.push(SecurityPostureCheck {
+            area: "runtime_vault".to_string(),
+            status: "warn".to_string(),
+            detail: "Runtime vault artifact is absent; secrets may still be env-only.".to_string(),
+        });
+    }
+
+    warnings_found += 1;
+    checks.push(SecurityPostureCheck {
+        area: "sandbox_boundary".to_string(),
+        status: "warn".to_string(),
+        detail:
+            "Bounded execution lanes are present, but the final release gate should still treat sandbox verification as an explicit operator review item."
+                .to_string(),
+    });
+
+    let mut recommended_actions = Vec::new();
+    if !config.security.require_auth {
+        recommended_actions
+            .push("Set `[security].require_auth = true` before release promotion.".to_string());
+    }
+    if !config.security.origin_validation || config.gateway.allowed_origins.is_empty() {
+        recommended_actions.push(
+            "Enable origin validation with explicit `gateway.allowed_origins` before release."
+                .to_string(),
+        );
+    }
+    if !control_api_token_configured && !trusted_proxy_token_configured {
+        recommended_actions.push(
+            "Configure `security.control_api_token_env` or `security.trusted_proxy_token_env` for the control plane.".to_string(),
+        );
+    }
+    if !skill_verifying_key_configured {
+        recommended_actions.push(
+            "Generate and configure a skill verifying key with `openrustclaw security generate-keys`."
+                .to_string(),
+        );
+    }
+    if !vault_present {
+        recommended_actions.push(
+            "Initialize and populate the runtime vault before final release candidate testing."
+                .to_string(),
+        );
+    }
+    recommended_actions.push(
+        "Run `openrustclaw security audit` and review `/control/security/posture` before release sign-off.".to_string(),
+    );
+
+    Ok(SecurityPostureSummary {
+        generated_at: Utc::now().to_rfc3339(),
+        require_auth: config.security.require_auth,
+        origin_validation: config.security.origin_validation,
+        allowed_origins: config.gateway.allowed_origins.clone(),
+        control_api_token_configured,
+        trusted_proxy_token_configured,
+        skill_signature_required: config.security.skill_signature_required,
+        skill_verifying_key_configured,
+        vault_present,
+        secure_by_default: issues_found == 0 && warnings_found == 0,
+        issues_found,
+        warnings_found,
+        checks,
+        recommended_actions,
+    })
+}
 
 /// Run security audit checks.
 pub async fn audit() -> Result<()> {
@@ -239,6 +445,9 @@ mod hex {
 #[cfg(test)]
 mod tests {
     use super::hex;
+    use super::posture_summary;
+    use anyhow::Result;
+    use tempfile::tempdir;
 
     #[test]
     fn test_hex_encode_empty() {
@@ -277,5 +486,37 @@ mod tests {
                 .chars()
                 .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
         );
+    }
+
+    #[test]
+    fn posture_summary_reports_release_critical_fields() -> Result<()> {
+        let temp = tempdir()?;
+        let workspace_root = temp.path();
+        std::fs::create_dir_all(workspace_root.join("config"))?;
+        std::fs::copy(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../config/default.toml"),
+            workspace_root.join("config/default.toml"),
+        )?;
+        std::fs::create_dir_all(workspace_root.join(".claw/control"))?;
+        std::fs::write(
+            workspace_root.join(".claw/control/runtime-vault.json"),
+            "{}",
+        )?;
+
+        let summary = posture_summary(
+            workspace_root.join("config/default.toml").to_str().unwrap(),
+            workspace_root,
+        )?;
+        assert!(summary.require_auth);
+        assert!(summary.origin_validation);
+        assert!(!summary.allowed_origins.is_empty());
+        assert!(summary.vault_present);
+        assert!(
+            summary
+                .recommended_actions
+                .iter()
+                .any(|entry| entry.contains("security generate-keys"))
+        );
+        Ok(())
     }
 }
