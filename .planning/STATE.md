@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Lifecycle Integrity and Enterprise Foundations
-current_phase: 10
-current_phase_name: Enterprise Policy and Audit Foundations
-current_plan: Milestone audit
-status: Ready for milestone audit
-stopped_at: Phase 10 completed with verification; v1.1 is ready for audit and archive.
-last_updated: "2026-03-26T20:25:00.000Z"
-last_activity: 2026-03-26 -- Phase 10 enterprise foundations completed
+current_phase: 0
+current_phase_name: Milestone Complete
+current_plan: 0
+status: milestone_complete
+stopped_at: v1.1 archived and phase directories cleaned up; next step is planning the next milestone.
+last_updated: "2026-03-26T20:40:00.000Z"
+last_activity: 2026-03-26 -- v1.1 milestone archived and phase directories cleaned up
 progress:
   total_phases: 3
   completed_phases: 3
@@ -24,20 +24,20 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-26)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** v1.1 milestone audit and archive
+**Current focus:** Planning the next milestone
 
 ## Current Position
 
-Current Phase: 10
-Current Phase Name: Enterprise Policy and Audit Foundations
-Total Phases: 3
-Current Plan: Milestone audit
-Total Plans in Phase: 3
-Status: Ready for milestone audit
-Last activity: 2026-03-26 - Phase 10 enterprise foundations completed
+Current Phase: 0
+Current Phase Name: Milestone Complete
+Total Phases: 0
+Current Plan: 0
+Total Plans in Phase: 0
+Status: Milestone complete
+Last activity: 2026-03-26 - v1.1 milestone archived and phase directories cleaned up
 
-Phase: 3 of 3 (Enterprise Policy and Audit Foundations)
-Plan: 3 of 3 in current phase
+Phase: 0 of 0 (Milestone Complete)
+Plan: 0 of 0 in current phase
 Progress: [##########] 100%
 
 ## Performance Metrics
@@ -80,6 +80,7 @@ Recent decisions affecting current work:
 - Phase 9 now archives milestone verification evidence to `.planning/milestones/vX.Y-VERIFICATIONS.md` and aligns lifecycle docs around that archive contract.
 - Phase 10 planning now defines the enterprise baseline as explicit approval boundaries plus durable audit evidence over mobile, browser, and runtime control surfaces.
 - Phase 10 execution now exposes `/control/enterprise/foundations` and a matching Control UI panel for the shipped enterprise baseline.
+- The next milestone should choose one focused expansion lane instead of reopening enterprise, autonomy, and parity work all at once.
 
 ### Pending Todos
 
@@ -91,6 +92,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-26 20:25
-Stopped at: Phase 10 completed; v1.1 is ready for milestone audit and archive.
+Last session: 2026-03-26 20:40
+Stopped at: v1.1 archived and phase directories cleaned up; next step is planning the next milestone.
 Resume file: None

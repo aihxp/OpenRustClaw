@@ -1,5 +1,25 @@
 # Project Milestones: OpenRustClaw
 
+## v1.1 Lifecycle Integrity and Enterprise Foundations (Shipped: 2026-03-26)
+
+**Phases completed:** 3 phases, 9 plans, 23 tasks
+**Verification archive:** `.planning/milestones/v1.1-VERIFICATIONS.md`
+**Verification debt:** none
+
+**Key accomplishments:**
+
+- Hardened the core lifecycle contract so milestone bootstrap and phase completion now respect real verification state instead of optimistic filesystem assumptions.
+- Made verification readiness debt visible across the milestone so operators can see missing or stale verification before they attempt lifecycle operations.
+- Closed the manual gap by making direct verification scaffolds schema-compatible and documenting the hard verification gate where phase execution hands off to completion.
+- Made milestone completion preserve verification evidence as a first-class archive artifact instead of leaving it implicit in live phase directories.
+- Aligned audit, archive, and cleanup guidance around the same milestone verification archive artifact the CLI now generates.
+- Updated the live project brief to reflect the real v1.1 lifecycle state and closed the phase with archive-focused verification evidence.
+- Built the typed enterprise foundations summary so approval-sensitive actions now have one operator-facing runtime surface instead of scattered raw evidence.
+- Exposed the enterprise baseline in Control UI so operators can answer approval-and-audit questions from the shipped dashboard instead of jumping between raw endpoints.
+- Aligned the operator docs and verification record with the shipped enterprise baseline so the next milestone can build on a truthful contract.
+
+---
+
 ## v1.0 Rust OpenClaw MVP (Shipped: 2026-03-26)
 
 **Delivered:** A trustworthy Rust-first OpenClaw-style MVP across onboarding, assistant continuity, memory policy, tools/coding evidence, communications, runtime ops, security posture, and release exit.
@@ -31,6 +51,7 @@
 - Locked the MVP release exit behind an automated verification bundle that exercises security posture, metrics exposure, origin protection, and runtime budgets.
 
 **Known gap:**
+
 - The archived v1.0 audit records missing per-phase `VERIFICATION.md` artifacts as lifecycle debt even though the release gate passed.
 
 ---

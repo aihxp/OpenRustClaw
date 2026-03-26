@@ -2,7 +2,7 @@
 
 ## What This Is
 
-OpenRustClaw is a Rust-first OpenClaw-style assistant platform with a shipped v1.0 MVP. It now has a coherent production-ready baseline across onboarding, assistant continuity, memory policy, tool and coding evidence, communications, runtime operations, security posture, and release exit.
+OpenRustClaw is a Rust-first OpenClaw-style assistant platform with a shipped v1.0 MVP and a completed v1.1 lifecycle and enterprise-foundations follow-up. It now has a coherent production-ready baseline across onboarding, assistant continuity, memory policy, tool and coding evidence, communications, runtime operations, security posture, release exit, milestone verification integrity, and a narrow enterprise approval/audit foundation.
 
 The product target remains broader than the MVP: a general-purpose assistant platform that can eventually support coding, communications, business operations, and deeper autonomous workflows. The difference after v1.0 is that the repo now has a believable trust baseline instead of a wide but loosely connected surface.
 
@@ -12,20 +12,10 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 ## Current State
 
-- **Shipped milestone:** v1.0 Rust OpenClaw MVP on 2026-03-26
-- **Archive:** `.planning/milestones/v1.0-ROADMAP.md`, `.planning/milestones/v1.0-REQUIREMENTS.md`, `.planning/milestones/v1.0-MILESTONE-AUDIT.md`
-- **Planning state:** v1.1 Lifecycle Integrity and Enterprise Foundations is active
-- **Known audit debt:** v1.0 shipped with a passing release gate, but the archived milestone audit records missing per-phase `VERIFICATION.md` artifacts
-
-## Current Milestone: v1.1 Lifecycle Integrity and Enterprise Foundations
-
-**Goal:** Eliminate the lifecycle evidence gap that v1.0 exposed and start a narrow enterprise-readiness lane around explicit policy and audit foundations.
-
-**Target features:**
-- Automatic, non-optional `VERIFICATION.md` generation for completed phases
-- Lifecycle gates that refuse false-complete phase progression when verification evidence is missing or stale
-- Milestone archives that preserve verification evidence and accepted debt without relying on live phase directories
-- A small enterprise foundation around explicit approval or policy contracts plus durable audit evidence for sensitive assistant actions
+- **Shipped milestones:** v1.0 Rust OpenClaw MVP and v1.1 Lifecycle Integrity and Enterprise Foundations on 2026-03-26
+- **Archive:** `.planning/milestones/v1.0-*`, `.planning/milestones/v1.1-*`
+- **Planning state:** No active milestone is currently open
+- **Known audit debt:** v1.0 archive still records missing phase `VERIFICATION.md` artifacts; v1.1 closes that workflow gap going forward
 
 ## Requirements
 
@@ -38,12 +28,14 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 - ✓ Email and voice communications have operator-visible evidence and trust surfaces — v1.0
 - ✓ Runtime deployment, recovery, and operator ops are documented and inspectable — v1.0
 - ✓ Security posture and MVP release exit are exposed through shipped docs, control surfaces, and an automated release gate — v1.0
+- ✓ Completed phases now require preserved `VERIFICATION.md` artifacts and milestone archives preserve that evidence truthfully — v1.1
+- ✓ Approval-sensitive assistant actions now expose an enterprise foundations baseline with explicit policy and durable audit evidence — v1.1
 
 ### Active
 
-- [x] Make phase execution and lifecycle flows preserve `VERIFICATION.md` artifacts automatically
-- [x] Block false-complete audit, archive, and cleanup states when verification evidence is missing or stale
-- [x] Start a narrow enterprise foundation around approval or policy boundaries and durable audit evidence for sensitive assistant actions
+- [ ] Define the next post-v1.1 milestone with `$gsd-new-milestone`
+- [ ] Choose whether the next lane is enterprise expansion, broader supervised autonomy, or deeper OpenClaw parity
+- [ ] Preserve the v1.1 verification/archive contract while opening the next milestone
 
 ### Out of Scope
 
@@ -79,15 +71,9 @@ The next milestone should build on that baseline rather than reopen MVP-sprawl. 
 
 ## Next Milestone Goals
 
-- Close the lifecycle evidence debt exposed by the v1.0 archive
-- Carry one disciplined enterprise-readiness slice without reopening full enterprise scope
-- Keep broader autonomy and deeper OpenClaw parity deferred until the verification foundation is stronger
-
-## Current Milestone Progress
-
-- Phase 8 complete: per-phase verification artifacts are now required and current before phase completion.
-- Phase 9 complete: milestone completion now archives verification evidence and accepted debt to `.planning/milestones/vX.Y-VERIFICATIONS.md`.
-- Phase 10 complete: enterprise foundations now expose explicit approval policy plus durable audit evidence through runtime and Control UI surfaces.
+- Decide the next milestone boundary with `$gsd-new-milestone`
+- Keep the verification/archive contract from v1.1 as a non-negotiable baseline
+- Choose one focused expansion lane instead of reopening all deferred ambitions at once
 
 ## Evolution
 
@@ -107,4 +93,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-26 after Phase 10 enterprise foundations completion*
+*Last updated: 2026-03-26 after v1.1 milestone completion*
