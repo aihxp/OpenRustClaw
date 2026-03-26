@@ -29,6 +29,8 @@ mod onboarding_test;
 #[cfg(test)]
 mod provider_chain_test;
 #[cfg(test)]
+mod runtime_operator_ops_test;
+#[cfg(test)]
 mod scheduler_test;
 #[cfg(test)]
 mod security_test;
