@@ -28,4 +28,10 @@ mod tests {
         assert!(CONTROL_UI_HTML.contains("Recent Tool Executions"));
         assert!(CONTROL_UI_HTML.contains("function loadToolExecutions"));
     }
+
+    #[test]
+    fn dashboard_includes_coding_artifact_history_panel() {
+        assert!(CONTROL_UI_HTML.contains("Recent Coding Artifacts"));
+        assert!(CONTROL_UI_HTML.contains("function loadCodingArtifacts"));
+    }
 }

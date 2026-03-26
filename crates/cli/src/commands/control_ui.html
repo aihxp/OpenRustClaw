@@ -1162,6 +1162,19 @@
           </div>
         </article>
 
+        <article class="panel span-12">
+          <h2>Recent Coding Artifacts</h2>
+          <div class="surface">
+            <div id="coding-artifact-root" class="muted" style="margin-bottom: 10px">Loading…</div>
+            <table class="table">
+              <thead>
+                <tr><th>When</th><th>Tool</th><th>Target</th><th>Status</th><th>Evidence</th></tr>
+              </thead>
+              <tbody id="coding-artifacts-table"><tr><td colspan="5" class="muted">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </article>
+
         <article class="panel span-6">
           <h2>Scheduled Jobs</h2>
           <div class="surface">
@@ -3119,6 +3132,28 @@
         renderTableRows("tool-executions-table", rows, "No recent tool executions.");
       }
 
+      async function loadCodingArtifacts() {
+        try {
+          const payload = await fetchJson("/control/coding-artifacts?limit=12");
+          const artifactRoot = payload.artifact_root ? `Artifact root: ${payload.artifact_root}` : "Artifact root unavailable.";
+          document.getElementById("coding-artifact-root").textContent = artifactRoot;
+          const rows = (payload.entries || []).map((entry) => {
+            const evidence = entry.diff_preview || entry.artifact_path || entry.error || "-";
+            return `<tr>
+              <td>${entry.created_at || "-"}</td>
+              <td>${entry.tool_name || "-"}</td>
+              <td>${escapeHtml(entry.target_path || "-")}</td>
+              <td><strong>${entry.success ? "success" : "failure"}</strong></td>
+              <td><strong>${escapeHtml(String(entry.artifact_path || "-").slice(0, 140))}</strong><div class="muted">${escapeHtml(String(evidence).slice(0, 220))}</div></td>
+            </tr>`;
+          });
+          renderTableRows("coding-artifacts-table", rows, "No recent coding artifacts.");
+        } catch (error) {
+          document.getElementById("coding-artifact-root").textContent = "Cursor coding artifacts unavailable in this runtime.";
+          renderTableRows("coding-artifacts-table", [], "No recent coding artifacts.");
+        }
+      }
+
       async function loadJobs() {
         const payload = await fetchJson("/control/jobs?limit=12");
         const jobs = payload.jobs || [];
@@ -3333,6 +3368,7 @@
             loadSessions(),
             loadMemory(),
             loadToolExecutions(),
+            loadCodingArtifacts(),
             loadJobs(),
             loadActiveOrchestrationRuns(),
             loadOrchestrationRuns(),

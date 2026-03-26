@@ -49,6 +49,8 @@ use openrustclaw_core::config::{AppConfig, SessionRoutingConfig, SlackMode};
 use openrustclaw_core::traits::{
     CoreMemoryStore as CoreMemoryStoreTrait, MemoryStore as MemoryStoreTrait,
 };
+#[cfg(feature = "cursor")]
+use openrustclaw_cursor::tools as cursor_tools;
 use openrustclaw_db::{
     SqliteCoreMemoryStore, SqliteMemoryStore, SqliteRagStore, SqliteSessionStore, init_pool,
     run_migrations,
@@ -3242,6 +3244,10 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             "/control/tool-executions",
             get(tool_execution_history_handler),
         )
+        .route(
+            "/control/coding-artifacts",
+            get(coding_artifact_history_handler),
+        )
         .route("/control/tools/add", post(tool_add_handler))
         .route("/control/tools/setup", post(tool_setup_handler))
         .route("/control/tools/sync", post(tool_sync_handler))
@@ -5176,6 +5182,12 @@ struct ToolExecutionQuery {
     limit: Option<usize>,
 }
 
+#[derive(serde::Deserialize, Default)]
+struct CodingArtifactQuery {
+    #[serde(default)]
+    limit: Option<usize>,
+}
+
 #[derive(serde::Deserialize)]
 struct ToolAddRequest {
     name: String,
@@ -6869,6 +6881,46 @@ async fn tool_execution_history_handler(
         )
             .into_response(),
     }
+}
+
+#[cfg(feature = "cursor")]
+async fn coding_artifact_history_handler(
+    State(state): State<RuntimeControlState>,
+    Query(query): Query<CodingArtifactQuery>,
+) -> impl IntoResponse {
+    let limit = query.limit.unwrap_or(20).max(1);
+    match cursor_tools::load_execution_artifacts(&state.workspace_root, limit) {
+        Ok(entries) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "limit": limit,
+                "artifact_root": cursor_tools::execution_artifact_root(&state.workspace_root),
+                "entries": entries,
+            })),
+        )
+            .into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+#[cfg(not(feature = "cursor"))]
+async fn coding_artifact_history_handler(
+    State(_state): State<RuntimeControlState>,
+    Query(query): Query<CodingArtifactQuery>,
+) -> impl IntoResponse {
+    (
+        StatusCode::NOT_IMPLEMENTED,
+        Json(serde_json::json!({
+            "error": "Cursor support is disabled in this build.",
+            "limit": query.limit.unwrap_or(20).max(1),
+            "entries": [],
+        })),
+    )
+        .into_response()
 }
 
 async fn tool_detail_handler(

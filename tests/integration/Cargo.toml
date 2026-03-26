@@ -17,6 +17,7 @@ openrustclaw-gateway = { path = "../../crates/gateway" }
 openrustclaw-scheduler = { path = "../../crates/scheduler" }
 openrustclaw-security = { path = "../../crates/security" }
 openrustclaw-cli = { path = "../../crates/cli" }
+openrustclaw-cursor = { path = "../../crates/cursor" }
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }

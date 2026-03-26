@@ -6042,6 +6042,7 @@ dependencies = [
  "openrustclaw-agent",
  "openrustclaw-cli",
  "openrustclaw-core",
+ "openrustclaw-cursor",
  "openrustclaw-db",
  "openrustclaw-gateway",
  "openrustclaw-mcp",
