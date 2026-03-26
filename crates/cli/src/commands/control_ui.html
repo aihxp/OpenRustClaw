@@ -463,6 +463,14 @@
           <div class="surface"><pre id="voice-status">Loading…</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="voice-providers">No provider catalog loaded yet.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="voice-metrics">No voice metrics loaded yet.</pre></div>
+          <div class="surface" style="margin-top: 12px">
+            <table class="table">
+              <thead>
+                <tr><th>Session</th><th>Outcome</th><th>Activity</th><th>Detail</th></tr>
+              </thead>
+              <tbody id="voice-outcomes-table"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
+            </table>
+          </div>
           <div class="surface" style="margin-top: 12px"><pre id="voice-sessions">No voice sessions loaded yet.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="voice-session-health">No voice session health loaded yet.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="voice-session-detail">No voice session inspected yet.</pre></div>
@@ -1487,6 +1495,28 @@
       async function loadVoiceSessions() {
         const payload = await fetchJson("/control/voice/sessions");
         setText("voice-sessions", payload);
+        await loadVoiceOutcomes();
+      }
+
+      async function loadVoiceOutcomes() {
+        const staleAfterSecs = document.getElementById("voice-session-stale-secs").value.trim();
+        const query = new URLSearchParams({ limit: "12" });
+        if (staleAfterSecs) {
+          query.set("stale_after_secs", staleAfterSecs);
+        }
+        const payload = await fetchJson(`/control/voice/outcomes?${query.toString()}`);
+        const rows = (payload.outcomes || []).map((entry) => {
+          const sessionCell = `<strong>${entry.session_id || "-"}</strong><div class="muted">${entry.status || "-"} / ${entry.live_state || "-"}</div>`;
+          const outcomeCell = `<strong>${entry.outcome_label || "-"}</strong><div class="muted">${entry.attention_needed ? "attention needed" : "stable"}</div>`;
+          const activityCell = `${entry.turn_count ?? 0} turns<div class="muted">${entry.artifact_count ?? 0} artifacts, idle ${entry.idle_secs ?? 0}s</div>`;
+          return `<tr>
+            <td>${sessionCell}</td>
+            <td>${outcomeCell}</td>
+            <td>${activityCell}</td>
+            <td>${escapeHtml(entry.detail || "-")}</td>
+          </tr>`;
+        });
+        renderTableRows("voice-outcomes-table", rows, "No voice outcomes recorded.");
       }
 
       async function loadTalkStatus() {
@@ -1556,6 +1586,7 @@
         const query = staleAfterSecs ? `?stale_after_secs=${encodeURIComponent(staleAfterSecs)}` : "";
         const payload = await fetchJson(`/control/voice/sessions/health${query}`);
         setText("voice-session-health", payload);
+        await loadVoiceOutcomes();
       }
 
       async function loadVoiceVoices() {

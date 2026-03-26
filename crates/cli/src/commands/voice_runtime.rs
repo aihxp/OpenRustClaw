@@ -314,6 +314,35 @@ pub struct VoiceMetricsSummary {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceOutcomeRecord {
+    pub session_id: String,
+    pub status: String,
+    pub live_state: String,
+    pub outcome_label: String,
+    pub detail: String,
+    pub attention_needed: bool,
+    pub stale: bool,
+    pub idle_secs: u64,
+    pub turn_count: usize,
+    pub artifact_count: usize,
+    #[serde(default)]
+    pub end_reason: Option<String>,
+    pub last_activity_at: String,
+    #[serde(default)]
+    pub closed_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VoiceOutcomesSummary {
+    pub stale_after_secs: u64,
+    pub total_sessions: usize,
+    pub attention_needed: usize,
+    pub active_sessions: usize,
+    pub ended_sessions: usize,
+    pub outcomes: Vec<VoiceOutcomeRecord>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VoiceSessionStartRequest {
     #[serde(default)]
     pub session_id: Option<String>,
@@ -1854,6 +1883,50 @@ pub async fn voice_metrics(workspace_root: &Path) -> Result<VoiceMetricsSummary>
     })
 }
 
+pub async fn voice_session_outcomes(
+    workspace_root: &Path,
+    stale_after_secs: Option<u64>,
+    limit: Option<usize>,
+) -> Result<VoiceOutcomesSummary> {
+    let stale_after_secs = resolved_voice_stale_after_secs(stale_after_secs);
+    let list = list_voice_sessions(workspace_root).await?;
+    let mut outcomes = Vec::new();
+    let mut attention_needed = 0usize;
+    let mut active_sessions = 0usize;
+    let mut ended_sessions = 0usize;
+    let total_sessions = list.sessions.len();
+
+    for session in list.sessions {
+        let outcome = summarize_voice_outcome(workspace_root, &session, stale_after_secs).await?;
+        if outcome.attention_needed {
+            attention_needed += 1;
+        }
+        if session.status == "active" {
+            active_sessions += 1;
+        } else if session.status == "ended" {
+            ended_sessions += 1;
+        }
+        outcomes.push(outcome);
+    }
+
+    outcomes.sort_by(|left, right| {
+        right
+            .last_activity_at
+            .cmp(&left.last_activity_at)
+            .then_with(|| left.session_id.cmp(&right.session_id))
+    });
+    outcomes.truncate(limit.unwrap_or(20).max(1));
+
+    Ok(VoiceOutcomesSummary {
+        stale_after_secs,
+        total_sessions,
+        attention_needed,
+        active_sessions,
+        ended_sessions,
+        outcomes,
+    })
+}
+
 pub async fn start_voice_session(
     config: &AppConfig,
     workspace_root: &Path,
@@ -2279,6 +2352,105 @@ async fn build_voice_session_metrics(
         duration_secs,
         avg_user_turn_chars,
         avg_assistant_turn_chars,
+    })
+}
+
+async fn summarize_voice_outcome(
+    workspace_root: &Path,
+    session: &VoiceSessionRecord,
+    stale_after_secs: u64,
+) -> Result<VoiceOutcomeRecord> {
+    let idle_secs = seconds_since(&session.last_activity_at).unwrap_or(0);
+    let stale = session.status == "active" && idle_secs >= stale_after_secs;
+    let artifact_count = session
+        .turns
+        .iter()
+        .filter(|turn| turn.synthesized_output_path.is_some())
+        .count();
+    let has_missing_artifact = {
+        let mut missing = false;
+        for turn in &session.turns {
+            let Some(path) = turn.synthesized_output_path.as_ref() else {
+                continue;
+            };
+            let resolved_path = resolve_voice_artifact_path(workspace_root, path);
+            if fs::metadata(&resolved_path).await.is_err() {
+                missing = true;
+                break;
+            }
+        }
+        missing
+    };
+
+    let (outcome_label, detail, attention_needed) = if stale {
+        (
+            "stale".to_string(),
+            format!("idle for {idle_secs}s; intervention recommended"),
+            true,
+        )
+    } else if session.status == "ended" {
+        (
+            "ended".to_string(),
+            session
+                .end_reason
+                .clone()
+                .unwrap_or_else(|| "session ended".to_string()),
+            false,
+        )
+    } else if session.live_state == "paused" {
+        (
+            "paused".to_string(),
+            "session paused and awaiting resume".to_string(),
+            true,
+        )
+    } else if session.live_state == "interrupted" {
+        (
+            "interrupted".to_string(),
+            "session interrupted and awaiting resume".to_string(),
+            true,
+        )
+    } else if has_missing_artifact {
+        (
+            "artifact_gap".to_string(),
+            "session references missing synthesized output artifacts".to_string(),
+            true,
+        )
+    } else if session.status == "active" {
+        (
+            "active".to_string(),
+            format!(
+                "{} turns, {} audio artifacts, idle {}s",
+                session.turns.len(),
+                artifact_count,
+                idle_secs
+            ),
+            false,
+        )
+    } else {
+        (
+            session.status.clone(),
+            format!(
+                "status={} live_state={}",
+                session.status, session.live_state
+            ),
+            true,
+        )
+    };
+
+    Ok(VoiceOutcomeRecord {
+        session_id: session.id.clone(),
+        status: session.status.clone(),
+        live_state: session.live_state.clone(),
+        outcome_label,
+        detail,
+        attention_needed,
+        stale,
+        idle_secs,
+        turn_count: session.turns.len(),
+        artifact_count,
+        end_reason: session.end_reason.clone(),
+        last_activity_at: session.last_activity_at.clone(),
+        closed_at: session.closed_at.clone(),
     })
 }
 

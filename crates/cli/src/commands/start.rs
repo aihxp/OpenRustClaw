@@ -2958,6 +2958,7 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
         .route("/control/voice/status", get(voice_status_handler))
         .route("/control/voice/providers", get(voice_providers_handler))
         .route("/control/voice/metrics", get(voice_metrics_handler))
+        .route("/control/voice/outcomes", get(voice_outcomes_handler))
         .route("/control/voice/sessions", get(voice_sessions_handler))
         .route(
             "/control/voice/sessions/health",
@@ -5190,6 +5191,14 @@ struct CodingArtifactQuery {
     limit: Option<usize>,
 }
 
+#[derive(serde::Deserialize, Default)]
+struct VoiceOutcomeQuery {
+    #[serde(default)]
+    stale_after_secs: Option<u64>,
+    #[serde(default)]
+    limit: Option<usize>,
+}
+
 #[derive(serde::Deserialize)]
 struct ToolAddRequest {
     name: String,
@@ -5316,6 +5325,26 @@ async fn voice_providers_handler(State(state): State<RuntimeControlState>) -> im
 
 async fn voice_metrics_handler(State(state): State<RuntimeControlState>) -> impl IntoResponse {
     match voice_runtime::voice_metrics(&state.workspace_root).await {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn voice_outcomes_handler(
+    State(state): State<RuntimeControlState>,
+    Query(query): Query<VoiceOutcomeQuery>,
+) -> impl IntoResponse {
+    match voice_runtime::voice_session_outcomes(
+        &state.workspace_root,
+        query.stale_after_secs,
+        query.limit,
+    )
+    .await
+    {
         Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,

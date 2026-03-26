@@ -40,4 +40,10 @@ mod tests {
         assert!(CONTROL_UI_HTML.contains("Recent Email Activity"));
         assert!(CONTROL_UI_HTML.contains("function loadEmailActivity"));
     }
+
+    #[test]
+    fn dashboard_includes_voice_outcomes_panel() {
+        assert!(CONTROL_UI_HTML.contains("voice-outcomes-table"));
+        assert!(CONTROL_UI_HTML.contains("function loadVoiceOutcomes"));
+    }
 }

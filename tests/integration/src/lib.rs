@@ -32,3 +32,5 @@ mod scheduler_test;
 mod security_test;
 #[cfg(test)]
 mod tool_execution_history_test;
+#[cfg(test)]
+mod voice_outcomes_test;
