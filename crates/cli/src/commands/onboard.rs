@@ -6,11 +6,12 @@ use console::style;
 use dialoguer::{Confirm, Input, MultiSelect, Password, Select, theme::ColorfulTheme};
 use indicatif::{ProgressBar, ProgressStyle};
 use serde::Serialize;
+use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use tokio::fs;
 
-use super::models;
 use super::{channels, control, doctor, runtime};
+use super::{chat, models};
 
 /// Onboarding wizard state
 #[derive(Default)]
@@ -18,6 +19,7 @@ pub struct OnboardingState {
     pub gateway_configured: bool,
     pub channels_configured: Vec<String>,
     pub model_configured: bool,
+    pub preferred_provider: Option<String>,
     pub execution_mode: Option<String>,
     pub daemon_installed: bool,
     pub skills_installed: Vec<String>,
@@ -130,8 +132,9 @@ impl OnboardingWizard {
             match selection {
                 1 => {
                     self.print_workspace_status(&workspace_status);
-                    self.run_post_onboarding_health_check().await?;
+                    let healthy = self.run_post_onboarding_health_check().await?;
                     self.print_completion();
+                    self.maybe_launch_assistant(healthy).await?;
                     return Ok(());
                 }
                 2 => {
@@ -197,8 +200,9 @@ impl OnboardingWizard {
             }
         }
 
-        self.run_post_onboarding_health_check().await?;
+        let healthy = self.run_post_onboarding_health_check().await?;
         self.print_completion();
+        self.maybe_launch_assistant(healthy).await?;
         Ok(())
     }
 
@@ -317,7 +321,7 @@ Let's get started!
         );
     }
 
-    async fn run_post_onboarding_health_check(&self) -> Result<()> {
+    async fn run_post_onboarding_health_check(&self) -> Result<bool> {
         println!(
             "\n{}",
             style("Running post-onboarding health check...").cyan()
@@ -332,6 +336,45 @@ Let's get started!
         } else {
             println!("  ⚠ Review `openrustclaw doctor --deep` before first start.");
         }
+        Ok(report.healthy)
+    }
+
+    fn assistant_provider(&self) -> Option<String> {
+        if let Some(provider) = self.state.preferred_provider.clone() {
+            return Some(provider);
+        }
+
+        let workspace_root = std::env::current_dir().ok()?;
+        let config = runtime::load_effective_config("config/default.toml", &workspace_root).ok()?;
+        let provider = config.providers.default_provider.trim();
+        if provider.is_empty() {
+            None
+        } else {
+            Some(provider.to_string())
+        }
+    }
+
+    async fn maybe_launch_assistant(&self, healthy: bool) -> Result<()> {
+        if !healthy || !std::io::stdin().is_terminal() {
+            return Ok(());
+        }
+
+        let Some(provider) = self.assistant_provider() else {
+            return Ok(());
+        };
+
+        let launch = Confirm::with_theme(&self.theme)
+            .with_prompt(format!(
+                "Launch the persisted assistant session now with `{provider}`?"
+            ))
+            .default(true)
+            .interact()?;
+
+        if launch {
+            println!();
+            chat::run(&provider, None).await?;
+        }
+
         Ok(())
     }
 }
@@ -512,6 +555,7 @@ async fn run_model_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
                 None,
             )?;
             wizard.state.model_configured = true;
+            wizard.state.preferred_provider = Some("ollama".to_string());
             println!("✓ Model configured (Ollama - local)");
             return Ok(true);
         }
@@ -534,6 +578,7 @@ async fn run_model_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
             None,
         )?;
         wizard.state.model_configured = true;
+        wizard.state.preferred_provider = Some(provider_name.to_string());
         println!("✓ Model configured ({provider_name})");
         println!(
             "  Control-plane actions will prefer the dedicated fallback lane in config/default.toml"
@@ -874,6 +919,7 @@ mod tests {
         assert!(!state.gateway_configured);
         assert!(state.channels_configured.is_empty());
         assert!(!state.model_configured);
+        assert!(state.preferred_provider.is_none());
         assert!(!state.daemon_installed);
         assert!(state.skills_installed.is_empty());
         assert!(state.profile.is_none());
@@ -885,6 +931,7 @@ mod tests {
         assert!(!wizard.state.gateway_configured);
         assert!(wizard.state.channels_configured.is_empty());
         assert!(!wizard.state.model_configured);
+        assert!(wizard.state.preferred_provider.is_none());
         assert!(!wizard.state.daemon_installed);
         assert!(wizard.state.skills_installed.is_empty());
         assert!(wizard.state.profile.is_none());
@@ -953,10 +1000,20 @@ mod tests {
         let mut state = OnboardingState::default();
         state.gateway_configured = true;
         state.model_configured = true;
+        state.preferred_provider = Some("ollama".to_string());
         state.daemon_installed = true;
         assert!(state.gateway_configured);
         assert!(state.model_configured);
+        assert_eq!(state.preferred_provider.as_deref(), Some("ollama"));
         assert!(state.daemon_installed);
+    }
+
+    #[test]
+    fn test_assistant_provider_prefers_onboarding_state() {
+        let mut wizard = OnboardingWizard::new();
+        wizard.state.preferred_provider = Some("openrouter".to_string());
+
+        assert_eq!(wizard.assistant_provider().as_deref(), Some("openrouter"));
     }
 
     #[test]

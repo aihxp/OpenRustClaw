@@ -39,7 +39,8 @@ git clone https://github.com/aihxp/OpenRustClaw.git
 cd OpenRustClaw
 cargo build --release
 
-# Interactive setup -- configures providers, channels, and security
+# Interactive setup -- configures providers, channels, and security,
+# then offers to launch the persisted assistant immediately
 ./target/release/openrustclaw onboard
 
 # Scaffold and inspect the control plane
@@ -253,7 +254,7 @@ Channel routing/operator controls:
 - reflection candidates can now be promoted into scoped decision lessons through CLI, API, or `/control/ui`, so decision learning stays explicit and operator-auditable
 - routed/orchestrated runs now persist receipts under `.claw/control/orchestration-runs/` and active supervision state under `.claw/control/orchestration-active/` so operators can inspect which Claw planned, which Claws executed, which model-profile fallback path was used, which checkpoints were hit, which trace edges connected the run, what the live worker state is, and which autonomy/reflection context shaped the run
 - the shipped `/control/ui` dashboard now reuses the same typed runtime/config/diagnostics/services/session/memory/job/channel/orchestration/browser APIs for an initial browser-based operator shell, including live diagnostics, live runtime logs, enabled-channel readiness inspection with persisted monitor state and managed-restart warnings, service/scheduler/runtime-event inspection, session/memory/job inspection, config validate/apply, vault key set/delete, autonomy-policy/decision-lesson inspection, active orchestration watch/pause/resume/kill controls, orchestration run supervision/trace/transcript/resource detail, and bounded browser actions
-- onboarding now detects existing workspace state, offers keep/modify/reset-with-backup choices, supports QuickStart vs Advanced paths, and finishes with a `doctor`-backed health handoff instead of stopping at raw config writes
+- onboarding now detects existing workspace state, offers keep/modify/reset-with-backup choices, supports QuickStart vs Advanced paths, finishes with a `doctor`-backed health handoff, and offers to launch the persisted assistant immediately when the workspace is ready
 - the browser operator lane now includes read-first HTTP fetch and bounded same-domain crawl actions, so operators can gather page/site context without invoking a full browser session for every task
 - `openrustclaw doctor --repair --deep --non-interactive` now validates and, where safe, scaffolds the shipped control-plane registry while exposing the same typed diagnostic model used by `/control/diagnostics`
 - the runtime syncs `.claw/control/CLAW_RUNTIME.md` so Claw itself can see whether it is running solo or alongside other Claws and what delegation/isolation policies exist

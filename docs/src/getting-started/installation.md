@@ -331,6 +331,8 @@ openrustclaw models list --provider anthropic
 openrustclaw assistant --provider anthropic
 ```
 
+If you prefer guided setup, run `openrustclaw onboard`; when the workspace passes the post-setup health check, it now offers to launch the persisted assistant session directly.
+
 ### 3. Test Memory System
 
 ```bash
