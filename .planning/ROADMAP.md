@@ -1,140 +1,27 @@
 # Roadmap: OpenRustClaw
 
-## Roadmap v1.0: Rust OpenClaw MVP
+## Milestones
 
-### Overview
+- ✅ **v1.0 Rust OpenClaw MVP** — shipped 2026-03-26. Archive: `.planning/milestones/v1.0-ROADMAP.md`
+- 📋 **Next milestone** — not planned yet. Start with `$gsd-new-milestone`.
 
-This milestone turns the existing OpenRustClaw surface area into a believable production-ready MVP. The order is deliberate: first remove onboarding friction, then stabilize the assistant session, then lock down memory behavior, then harden tools and coding flows, then carry communications into a shippable state, then make runtime operations dependable, and finally close the milestone with security and release exit criteria.
+## Phase History
 
-### Phases
+<details>
+<summary>✅ v1.0 Rust OpenClaw MVP — SHIPPED 2026-03-26</summary>
 
-**Phase Numbering:**
-- Integer phases are planned milestone work.
-- Decimal phases are reserved for urgent insertions if roadmap assumptions break.
+- [x] **Phase 1: Onboarding and First-Run Trust** — completed 2026-03-26
+- [x] **Phase 2: Core Assistant and Session Continuity** — completed 2026-03-26
+- [x] **Phase 3: Memory Durability and Write Policy** — completed 2026-03-26
+- [x] **Phase 4: Tool, MCP, and Coding Workflow Hardening** — completed 2026-03-26
+- [x] **Phase 5: Email and Voice Communications** — completed 2026-03-26
+- [x] **Phase 6: Deployment, Runtime, and Operator Ops** — completed 2026-03-26
+- [x] **Phase 7: Security, Observability, and Release Exit** — completed 2026-03-26
 
-- [x] **Phase 1: Onboarding and First-Run Trust** - Make install, configuration, and first assistant launch production-ready. (completed 2026-03-26)
-- [x] **Phase 2: Core Assistant and Session Continuity** - Stabilize the primary chat and persisted session experience. (completed 2026-03-26)
-- [x] **Phase 3: Memory Durability and Write Policy** - Make memory trustworthy, durable, and inspectable. (completed 2026-03-26)
-- [x] **Phase 4: Tool, MCP, and Coding Workflow Hardening** - Make tool execution and coding actions dependable for daily use. (completed 2026-03-26)
-- [x] **Phase 5: Email and Voice Communications** - Ship production-credible email and phone or voice lanes. (completed 2026-03-26)
-- [x] **Phase 6: Deployment, Runtime, and Operator Ops** - Make the runtime shippable, diagnosable, and recoverable. (completed 2026-03-26)
-- [x] **Phase 7: Security, Observability, and Release Exit** - Close MVP trust gaps and verify release readiness. (completed 2026-03-26)
+</details>
 
-### Phase Details
+## Current Status
 
-### Phase 1: Onboarding and First-Run Trust
-**Goal**: A new operator can install OpenRustClaw, validate prerequisites, and reach a working first assistant session without rough edges.
-**Depends on**: Nothing (first phase)
-**Requirements**: [ONBD-01, ONBD-02, ONBD-03]
-**Success Criteria** (what must be TRUE):
-  1. Operator can follow the documented install and setup path without manual source edits.
-  2. First-run validation catches missing env, provider, or channel prerequisites before runtime failure.
-  3. A clean install reaches a working assistant session with clear operator feedback.
-**Plans**: 3/3 plans complete
-
-Plans:
-- [x] 01-01: Harden doctor-backed first-start readiness gating for onboarding
-- [x] 01-02: Add workflow-level onboarding regression coverage
-- [x] 01-03: Align installation and top-level first-run documentation
-
-### Phase 2: Core Assistant and Session Continuity
-**Goal**: The primary assistant conversation loop is reliable across restarts, reconnects, and normal operator use.
-**Depends on**: Phase 1
-**Requirements**: [ASST-01, ASST-02]
-**Success Criteria** (what must be TRUE):
-  1. User can start a primary assistant chat surface and exchange stable multi-turn conversations.
-  2. Session state restores coherently after restart or reconnect.
-  3. Primary assistant UX exposes continuity clearly enough that operators trust what was resumed.
-**Plans**: 3/3 plans complete
-
-Plans:
-- [x] 02-01: Add assistant continuity summaries to operator inspection
-- [x] 02-02: Surface continuity clearly in Control UI
-- [x] 02-03: Lock continuity behavior with docs and cross-surface verification
-
-### Phase 3: Memory Durability and Write Policy
-**Goal**: Memory becomes durable, policy-governed, and observable enough for production assistant use.
-**Depends on**: Phase 2
-**Requirements**: [MEM-01, MEM-02]
-**Success Criteria** (what must be TRUE):
-  1. Memory survives restart and reload in the supported production paths.
-  2. Memory writes only occur under an explicit policy boundary instead of implicit opportunism.
-  3. Operators can inspect what was stored, why it was stored, and what was recalled.
-**Plans**: 3/3 plans complete
-
-Plans:
-- [x] 03-01: Enforce explicit assistant memory-write policy
-- [x] 03-02: Make memory-write decisions inspectable to operators
-- [x] 03-03: Align docs and verification with the stricter memory contract
-
-### Phase 4: Tool, MCP, and Coding Workflow Hardening
-**Goal**: Tool execution and coding workflows become dependable, bounded, and auditable for real operator work.
-**Depends on**: Phase 3
-**Requirements**: [TOOL-01, TOOL-02, CODE-01, CODE-02]
-**Success Criteria** (what must be TRUE):
-  1. Configured tools and MCP capabilities execute with clear permission and failure behavior.
-  2. Coding workflows can inspect, edit, run, and verify code without leaving the workspace in a confusing state.
-  3. Operators can review artifacts for tool and coding actions after execution.
-**Plans**: 3/3 plans complete
-
-Plans:
-- [x] 04-01: Add a durable execution ledger for tool and MCP runs
-- [x] 04-02: Make coding workflows bounded and auditable
-- [x] 04-03: Expose and document the tool and coding audit path
-
-### Phase 5: Email and Voice Communications
-**Goal**: Email and phone or voice assistant flows are reliable enough to be part of the MVP boundary.
-**Depends on**: Phase 4
-**Requirements**: [COMM-01, COMM-02]
-**Success Criteria** (what must be TRUE):
-  1. Email workflows can receive, send, and persist actionable assistant outcomes.
-  2. Phone or voice flows can answer or participate in interactions and persist the result.
-  3. Operators can diagnose failed communications from runtime artifacts.
-**Plans**: 3/3 plans complete
-
-Plans:
-- [x] 05-01: Add durable operator evidence for email workflows
-- [x] 05-02: Harden the voice communication trust path
-- [x] 05-03: Align communications docs and verification
-
-### Phase 6: Deployment, Runtime, and Operator Ops
-**Goal**: Operators can deploy, run, observe, and recover OpenRustClaw through a production-ready operational path.
-**Depends on**: Phase 5
-**Requirements**: [OPS-01, OPS-02]
-**Success Criteria** (what must be TRUE):
-  1. Documented deployment and upgrade paths work for the supported runtime targets.
-  2. Operators can start, stop, and recover the assistant runtime without ad hoc tribal knowledge.
-  3. Health, logs, and diagnostics cover the main assistant subsystems.
-**Plans**: 3/3 plans complete
-
-Plans:
-- [x] 06-01: Add a unified operator-ops runtime summary
-- [x] 06-02: Align deployment and recovery docs with the shipped runtime
-- [x] 06-03: Lock runtime operator ops with cross-surface verification
-
-### Phase 7: Security, Observability, and Release Exit
-**Goal**: MVP ships behind secure defaults, measurable runtime behavior, and an explicit release gate.
-**Depends on**: Phase 6
-**Requirements**: [SEC-01, REL-01]
-**Success Criteria** (what must be TRUE):
-  1. Production auth, secret handling, origin validation, and sandbox boundaries are secure by default.
-  2. The MVP has end-to-end verification coverage across onboarding, assistant, memory, tools, coding, communications, and ops.
-  3. Release readiness is captured in an operator-facing checklist with clear exit criteria.
-**Plans**: 3/3 plans complete
-
-Plans:
-- [x] 07-01: Add a unified security posture summary
-- [x] 07-02: Write the MVP release-exit checklist
-- [x] 07-03: Lock the release exit with verification
-
-## Progress
-
-| Phase | Plans Complete | Status | Completed |
-|-------|----------------|--------|-----------|
-| 1. Onboarding and First-Run Trust | 3/3 | Complete   | 2026-03-26 |
-| 2. Core Assistant and Session Continuity | 3/3 | Complete | 2026-03-26 |
-| 3. Memory Durability and Write Policy | 3/3 | Complete | 2026-03-26 |
-| 4. Tool, MCP, and Coding Workflow Hardening | 3/3 | Complete | 2026-03-26 |
-| 5. Email and Voice Communications | 3/3 | Complete | 2026-03-26 |
-| 6. Deployment, Runtime, and Operator Ops | 3/3 | Complete | 2026-03-26 |
-| 7. Security, Observability, and Release Exit | 3/3 | Complete | 2026-03-26 |
+- No active milestone is open.
+- Use `$gsd-new-milestone` to define the next requirements and roadmap.
+- Archived v1.0 planning artifacts live under `.planning/milestones/`.
