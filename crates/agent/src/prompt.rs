@@ -58,8 +58,9 @@ pub fn build_system_prompt(
         prompt.push_str("preferences, or past conversations. Don't guess, search.\n");
     }
     if tool_names.contains("memory_store") {
-        prompt.push_str("You have a memory_store tool. Use it to remember important information ");
-        prompt.push_str("for future conversations.\n");
+        prompt.push_str("You have a memory_store tool. Use it only when the user explicitly asks you to remember something or when a fact is obviously durable and worth future recall. ");
+        prompt.push_str("Do not store temporary conversation details or speculative inferences. ");
+        prompt.push_str("When you use it, provide the policy basis and a short reason.\n");
     }
     if tool_names.contains("core_memory_update") {
         prompt
@@ -92,5 +93,24 @@ mod tests {
         assert!(prompt.contains("memory_search"));
         assert!(!prompt.contains("memory_store tool"));
         assert!(!prompt.contains("core_memory_update tool"));
+    }
+
+    #[test]
+    fn prompt_describes_strict_memory_store_boundary() {
+        let prompt = build_system_prompt(
+            "Assistant",
+            &[],
+            &[ToolDefinition {
+                name: "memory_store".to_string(),
+                description: "store".to_string(),
+                parameters: json!({}),
+                strict: false,
+            }],
+            None,
+        );
+
+        assert!(prompt.contains("explicitly asks"));
+        assert!(prompt.contains("temporary conversation details"));
+        assert!(prompt.contains("policy basis"));
     }
 }

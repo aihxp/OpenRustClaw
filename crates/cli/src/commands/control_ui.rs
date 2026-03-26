@@ -16,4 +16,10 @@ mod tests {
         assert!(CONTROL_UI_HTML.contains("Assistant Continuity"));
         assert!(CONTROL_UI_HTML.contains("function renderSessionContinuity"));
     }
+
+    #[test]
+    fn dashboard_includes_memory_policy_timeline_rendering() {
+        assert!(CONTROL_UI_HTML.contains("Content / Policy"));
+        assert!(CONTROL_UI_HTML.contains("function memoryPolicySummary"));
+    }
 }

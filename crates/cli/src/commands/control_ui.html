@@ -1132,7 +1132,7 @@
           <div class="surface">
             <table class="table">
               <thead>
-                <tr><th>When</th><th>Type</th><th>Namespace</th><th>Content</th></tr>
+                <tr><th>When</th><th>Type</th><th>Namespace</th><th>Content / Policy</th></tr>
               </thead>
               <tbody id="memory-timeline"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
             </table>
@@ -1255,6 +1255,15 @@
           .split("-")
           .map((part) => part ? `${part[0].toUpperCase()}${part.slice(1)}` : part)
           .join(" ");
+      }
+
+      function memoryPolicySummary(entry) {
+        const policy = entry?.metadata?.assistant_write_policy;
+        if (!policy || !policy.basis) {
+          return "";
+        }
+        const reason = policy.declared_reason || policy.decision_reason || "";
+        return reason ? `basis=${policy.basis}; reason=${reason}` : `basis=${policy.basis}`;
       }
 
       function renderSessionContinuity(report) {
@@ -3061,11 +3070,13 @@
         ]);
         setText("memory-namespaces", namespaces);
         const timelineRows = (timeline.entries || []).map((entry) => {
+          const policy = memoryPolicySummary(entry);
+          const content = (entry.content || "").slice(0, 120);
           return `<tr>
             <td>${entry.created_at || "-"}</td>
             <td>${entry.memory_type || "-"}</td>
             <td>${entry.namespace || "-"}</td>
-            <td>${(entry.content || "").slice(0, 120)}</td>
+            <td><strong>${escapeHtml(content)}</strong>${policy ? `<div class="muted">${escapeHtml(policy)}</div>` : ""}</td>
           </tr>`;
         });
         renderTableRows("memory-timeline", timelineRows, "No recent memory entries.");

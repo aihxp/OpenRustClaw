@@ -90,6 +90,7 @@ The `--provider` flag specifies which LLM to use. Options:
 - `ollama` — Local models
 
 The default assistant lane keeps tool access narrow on purpose. On first run it only exposes the built-in memory tools needed for continuity: `memory_search` and `memory_store`.
+`memory_store` is intentionally strict: it should only be used when you explicitly ask the assistant to remember something or when the fact is clearly durable enough to justify future recall.
 
 ### Your First Conversation
 
@@ -136,7 +137,7 @@ You: Please remember that my name is Alice and I work as a software engineer.
 
 Assistant: I'll store that information in my memory.
 
-[tool: memory_store] {"content": "User's name is Alice. User works as a software engineer.", "memory_type": "semantic"}
+[tool: memory_store] {"content": "User's name is Alice. User works as a software engineer.", "basis": "explicit_user_request", "reason": "The user explicitly asked me to remember it.", "memory_type": "semantic"}
 
 ✓ Stored successfully (id: a1b2c3d4...)
 
@@ -146,8 +147,10 @@ Got it! I've stored that information. Nice to meet you, Alice!
 Notice what happened:
 1. The agent decided to use the `memory_store` tool
 2. It extracted the key information
-3. The tool executed and returned a success response
-4. The agent confirmed the action
+3. The tool declared why the write is allowed under the assistant memory policy
+4. The tool executed and returned a success response
+5. The stored memory now carries write-policy metadata for later inspection
+6. The agent confirmed the action
 
 ### Search Your Memory
 
@@ -183,6 +186,8 @@ openrustclaw session show <session-id>
 openrustclaw memory stats
 openrustclaw memory timeline --limit 10
 ```
+
+`openrustclaw memory timeline` now shows assistant-created write policy summaries inline, for example `basis=explicit_user_request; reason=The user explicitly asked me to remember it.`
 
 If you start `openrustclaw assistant` again, it will resume the same active CLI session for this workspace and user instead of starting from an empty in-memory transcript. `openrustclaw session show` now makes that continuity explicit by surfacing the assistant surface, persistence model, route binding, and restored history count before the raw metadata dump. The older `openrustclaw chat` command now reuses the same persisted assistant path.
 
@@ -238,8 +243,6 @@ What would you like to know or plan for your trip?
 
 You: I want to visit Tokyo and Kyoto
 
-Assistant: [tool: memory_store] {"content": "User is planning a trip to Japan. Destinations: Tokyo and Kyoto.", "memory_type": "episodic"}
-
 Great choices! Tokyo and Kyoto offer very different experiences:
 - Tokyo: Modern, bustling, cutting-edge technology and fashion
 - Kyoto: Traditional, temples, gardens, geisha districts
@@ -247,8 +250,6 @@ Great choices! Tokyo and Kyoto offer very different experiences:
 How long will you be staying?
 
 You: About 2 weeks
-
-Assistant: [tool: memory_store] {"content": "User's Japan trip duration: 2 weeks", "memory_type": "episodic"}
 
 Perfect! Two weeks gives you plenty of time to explore both cities thoroughly.
 You might also consider day trips to:
@@ -266,9 +267,15 @@ Assistant: Let me search our conversation history...
 Earlier in our conversation, you told me:
 - Your name is Alice
 - You work as a software engineer
-- You're planning a 2-week trip to Japan
-- You want to visit Tokyo and Kyoto
 - You prefer programming in Rust
+```
+
+The assistant should not silently persist temporary travel details just because they appeared in chat. If you do want those plans remembered across sessions, ask explicitly:
+
+```
+You: Please remember that I am planning a 2-week trip to Japan with stops in Tokyo and Kyoto.
+
+Assistant: [tool: memory_store] {"content": "User is planning a 2-week trip to Japan with stops in Tokyo and Kyoto.", "basis": "explicit_user_request", "reason": "The user explicitly asked me to remember the travel plan.", "memory_type": "episodic"}
 ```
 
 ---

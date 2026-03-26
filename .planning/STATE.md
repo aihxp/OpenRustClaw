@@ -5,15 +5,15 @@ milestone_name: Rust OpenClaw MVP
 current_phase: 3
 current_phase_name: Memory Durability and Write Policy
 current_plan: 0
-status: planning
-stopped_at: Phase 2 completed; Phase 3 is ready for discussion and planning.
-last_updated: "2026-03-26T13:14:20Z"
-last_activity: 2026-03-26 -- Phase 2 completed; assistant continuity is now explicit across CLI, Control UI, and docs
+status: ready_to_discuss
+stopped_at: Phase 3 completed; Phase 4 is ready for discussion and planning.
+last_updated: "2026-03-26T21:00:00Z"
+last_activity: 2026-03-26 -- Phase 3 completed; assistant memory writes are policy-gated and operator-visible across CLI, Control UI, and docs
 progress:
   total_phases: 7
-  completed_phases: 2
-  total_plans: 6
-  completed_plans: 6
+  completed_phases: 3
+  total_plans: 9
+  completed_plans: 9
   percent: 100
 ---
 
@@ -24,19 +24,19 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-26)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** Phase 3 - Memory Durability and Write Policy
+**Current focus:** Phase 4 - Tool, MCP, and Coding Workflow Hardening
 
 ## Current Position
 
-Current Phase: 3
-Current Phase Name: Memory Durability and Write Policy
+Current Phase: 4
+Current Phase Name: Tool, MCP, and Coding Workflow Hardening
 Total Phases: 7
 Current Plan: 0
 Total Plans in Phase: 0
-Status: Ready to plan
-Last activity: 2026-03-26 - Phase 2 completed; assistant continuity is now explicit across CLI, Control UI, and docs
+Status: Ready to discuss
+Last activity: 2026-03-26 - Phase 3 completed; assistant memory writes are policy-gated and operator-visible across CLI, Control UI, and docs
 
-Phase: 3 of 7 (Memory Durability and Write Policy)
+Phase: 4 of 7 (Tool, MCP, and Coding Workflow Hardening)
 Plan: 0 of 0 in current phase
 Progress: [██████████] 100%
 
@@ -75,6 +75,8 @@ Recent decisions affecting current work:
 - Phase 2: Assistant continuity should be exposed as a typed operator summary, not inferred from raw metadata blobs.
 - Phase 2: Control UI should foreground assistant continuity before raw JSON so browser-based operators trust resumed state quickly.
 - Phase 2: Quickstart and README continuity docs should point to both CLI and Control UI inspection surfaces.
+- Phase 3: The default assistant memory lane only writes on explicit remember requests or obviously durable user or project facts.
+- Phase 3: Assistant-created memories must persist machine-readable write-policy metadata so operators can inspect why they were stored.
 
 ### Pending Todos
 
@@ -86,6 +88,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-26 17:15
-Stopped at: Phase 2 completed; Phase 3 is ready for discussion and planning.
+Last session: 2026-03-26 21:00
+Stopped at: Phase 3 completed; Phase 4 is ready for discussion and planning.
 Resume file: None

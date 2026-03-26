@@ -35,7 +35,10 @@ async fn inspect_session_reports_resumed_assistant_continuity() -> TestResult {
 
     assert!(continuity.assistant_managed);
     assert_eq!(continuity.assistant_surface.as_deref(), Some("cli"));
-    assert_eq!(continuity.assistant_session_model.as_deref(), Some("persisted"));
+    assert_eq!(
+        continuity.assistant_session_model.as_deref(),
+        Some("persisted")
+    );
     assert_eq!(continuity.route_key.as_deref(), Some(route_key));
     assert!(continuity.route_bound);
     assert!(continuity.likely_resumed);

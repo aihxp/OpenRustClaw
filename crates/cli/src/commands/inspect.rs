@@ -113,7 +113,8 @@ pub async fn list_sessions(
     let sessions = store.list_sessions(parsed, limit.max(1)).await?;
     let mut entries = Vec::with_capacity(sessions.len());
     for session in sessions {
-        let history_messages = count_history_messages(pool, &session.session.id.to_string()).await?;
+        let history_messages =
+            count_history_messages(pool, &session.session.id.to_string()).await?;
         entries.push(SessionListEntry {
             continuity: assistant_continuity_summary(&session, history_messages),
             session,

@@ -65,10 +65,7 @@ pub async fn show(id: &str, history_limit: usize) -> Result<()> {
         );
         println!(
             "  surface: {}",
-            continuity
-                .assistant_surface
-                .as_deref()
-                .unwrap_or("<none>")
+            continuity.assistant_surface.as_deref().unwrap_or("<none>")
         );
         println!(
             "  model: {}",
@@ -83,7 +80,11 @@ pub async fn show(id: &str, history_limit: usize) -> Result<()> {
         );
         println!(
             "  likely resumed: {}",
-            if continuity.likely_resumed { "yes" } else { "no" }
+            if continuity.likely_resumed {
+                "yes"
+            } else {
+                "no"
+            }
         );
         println!("  history messages: {}", continuity.history_messages);
         println!("  summary: {}", continuity.detail);

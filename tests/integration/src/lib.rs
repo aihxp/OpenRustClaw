@@ -17,6 +17,8 @@ mod gateway_test;
 #[cfg(test)]
 mod mcp_test;
 #[cfg(test)]
+mod memory_policy_test;
+#[cfg(test)]
 mod memory_workflow_test;
 #[cfg(test)]
 mod onboarding_test;

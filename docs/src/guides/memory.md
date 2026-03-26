@@ -206,26 +206,32 @@ let query = MemoryQuery {
 
 ## 📝 Storing Memories
 
-### Automatic Storage
+### Assistant Write Policy
 
-The agent automatically stores memories from conversations:
+The default assistant lane does not opportunistically store arbitrary conversation scraps.
+`memory_store` is only supposed to persist information when one of these is true:
 
-```rust
-// This happens automatically in the agent loop
-if should_store_memory(&message) {
-    let entry = MemoryEntry {
-        memory_type: MemoryType::Episodic,
-        content: extract_key_information(&message),
-        importance: score_importance(&message),
-        confidence: score_confidence(&message),
-        source: Some("conversation".into()),
-        source_type: Some(SourceType::Conversation),
-        ..Default::default()
-    };
-    
-    memory_store.store(entry).await?;
+- The user explicitly asked the assistant to remember it.
+- The content is an obviously durable user or project fact worth future recall.
+
+The default lane should not persist:
+
+- Temporary plans or one-off status updates
+- Convenience summaries of the current conversation
+- Speculative agent inferences about the user
+
+When `memory_store` is used, the tool call now carries an explicit policy basis and short reason:
+
+```json
+{
+  "content": "User prefers concise Rust answers for this repository.",
+  "basis": "durable_user_fact",
+  "reason": "Stable user preference for this project workspace.",
+  "memory_type": "semantic"
 }
 ```
+
+Allowed writes persist structured metadata under `assistant_write_policy` so operators can inspect why a memory was stored later from CLI or Control UI.
 
 ### Manual Storage
 
@@ -339,6 +345,17 @@ Automatically score memory importance:
 | Personal information | +0.4 |
 | Temporary/event-based | -0.2 |
 | Vague/uncertain | -0.3 |
+
+### Inspecting Why a Memory Was Stored
+
+Operator inspection now surfaces assistant write-policy metadata directly:
+
+```bash
+openrustclaw memory timeline --limit 10
+openrustclaw memory search "preferred language"
+```
+
+Assistant-created recall entries include `basis=...` and `reason=...` in CLI output, and `/control/ui` shows the same policy summary in the memory timeline.
 
 ### Time-to-Live (TTL)
 

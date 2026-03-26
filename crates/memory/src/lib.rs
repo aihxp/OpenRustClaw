@@ -18,5 +18,5 @@ pub mod search;
 pub use artifacts::{ResolvedArtifactBundle, WorkspaceArtifact, WorkspaceArtifactRegistry};
 pub use context::ContextManager;
 pub use core_memory::CoreMemoryManager;
-pub use policies::MemoryPolicies;
+pub use policies::{AssistantMemoryWriteBasis, AssistantMemoryWriteDecision, MemoryPolicies};
 pub use recall::RecallMemory;

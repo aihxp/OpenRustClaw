@@ -5,6 +5,22 @@
 use openrustclaw_core::types::MemorySource;
 use sha2::{Digest, Sha256};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AssistantMemoryWriteBasis {
+    ExplicitUserRequest,
+    DurableUserFact,
+    EphemeralContext,
+    AgentInference,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct AssistantMemoryWriteDecision {
+    pub allowed: bool,
+    pub basis: AssistantMemoryWriteBasis,
+    pub reason: String,
+}
+
 /// Configuration for memory write policies.
 #[derive(Debug, Clone)]
 pub struct MemoryPolicies {
@@ -77,6 +93,123 @@ impl MemoryPolicies {
     /// Check whether a candidate embedding is a duplicate of an existing one.
     pub fn is_duplicate(&self, candidate: &[f32], existing: &[f32]) -> bool {
         Self::cosine_similarity(candidate, existing) >= self.dedupe_cosine_threshold
+    }
+
+    /// Evaluate whether a built-in assistant memory write should be allowed.
+    pub fn evaluate_assistant_write(
+        &self,
+        content: &str,
+        basis: AssistantMemoryWriteBasis,
+        reason: &str,
+    ) -> AssistantMemoryWriteDecision {
+        let trimmed_content = content.trim();
+        let trimmed_reason = reason.trim();
+
+        if trimmed_content.len() < 4 {
+            return AssistantMemoryWriteDecision {
+                allowed: false,
+                basis,
+                reason: "Memory writes require concrete content, not an empty or trivial note."
+                    .to_string(),
+            };
+        }
+
+        if trimmed_reason.is_empty() {
+            return AssistantMemoryWriteDecision {
+                allowed: false,
+                basis,
+                reason: "Memory writes require a short policy reason explaining why the fact should persist."
+                    .to_string(),
+            };
+        }
+
+        match basis {
+            AssistantMemoryWriteBasis::ExplicitUserRequest => AssistantMemoryWriteDecision {
+                allowed: true,
+                basis,
+                reason: "Allowed because the user explicitly asked for durable memory storage."
+                    .to_string(),
+            },
+            AssistantMemoryWriteBasis::DurableUserFact => {
+                if self.looks_obviously_durable_fact(trimmed_content) {
+                    AssistantMemoryWriteDecision {
+                        allowed: true,
+                        basis,
+                        reason: "Allowed because the content looks like a stable user or project fact worth future recall."
+                            .to_string(),
+                    }
+                } else {
+                    AssistantMemoryWriteDecision {
+                        allowed: false,
+                        basis,
+                        reason: "Blocked because durable-fact writes must describe a stable user or project fact, not a temporary conversational detail."
+                            .to_string(),
+                    }
+                }
+            }
+            AssistantMemoryWriteBasis::EphemeralContext => AssistantMemoryWriteDecision {
+                allowed: false,
+                basis,
+                reason:
+                    "Blocked because temporary conversation context should not be persisted as durable memory."
+                        .to_string(),
+            },
+            AssistantMemoryWriteBasis::AgentInference => AssistantMemoryWriteDecision {
+                allowed: false,
+                basis,
+                reason:
+                    "Blocked because the default assistant memory path does not store speculative inferences without explicit user direction."
+                        .to_string(),
+            },
+        }
+    }
+
+    fn looks_obviously_durable_fact(&self, content: &str) -> bool {
+        let lower = content.to_ascii_lowercase();
+        let blocked_temporal_markers = [
+            "today",
+            "tomorrow",
+            "yesterday",
+            "right now",
+            "currently",
+            "this morning",
+            "this afternoon",
+            "tonight",
+            "later today",
+            "next week",
+            "next month",
+            "in this conversation",
+            "just said",
+            "for now",
+        ];
+        if blocked_temporal_markers
+            .iter()
+            .any(|marker| lower.contains(marker))
+        {
+            return false;
+        }
+
+        let stable_markers = [
+            "user",
+            "project",
+            "workspace",
+            "prefers",
+            "preference",
+            "name",
+            "timezone",
+            "role",
+            "works as",
+            "company",
+            "language",
+            "stack",
+            "repo",
+            "repository",
+            "goal",
+            "uses ",
+            "using ",
+        ];
+
+        stable_markers.iter().any(|marker| lower.contains(marker))
     }
 }
 
@@ -411,6 +544,57 @@ mod tests {
         assert_eq!(p.ttl_semantic_days, None);
         assert_eq!(p.consolidation_threshold, 1000);
         assert!((p.decay_half_life_days - 30.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn explicit_user_request_is_allowed() {
+        let policies = MemoryPolicies::default();
+        let decision = policies.evaluate_assistant_write(
+            "Remember that my name is Alice.",
+            AssistantMemoryWriteBasis::ExplicitUserRequest,
+            "The user asked me to remember it.",
+        );
+        assert!(decision.allowed);
+    }
+
+    #[test]
+    fn durable_user_fact_requires_stable_content() {
+        let policies = MemoryPolicies::default();
+        let allowed = policies.evaluate_assistant_write(
+            "User prefers Rust for backend work.",
+            AssistantMemoryWriteBasis::DurableUserFact,
+            "Stable user preference.",
+        );
+        assert!(allowed.allowed);
+
+        let blocked = policies.evaluate_assistant_write(
+            "User is planning a trip next month.",
+            AssistantMemoryWriteBasis::DurableUserFact,
+            "Might matter later.",
+        );
+        assert!(!blocked.allowed);
+    }
+
+    #[test]
+    fn agent_inference_basis_is_blocked() {
+        let policies = MemoryPolicies::default();
+        let decision = policies.evaluate_assistant_write(
+            "User might be impatient.",
+            AssistantMemoryWriteBasis::AgentInference,
+            "Inferred from tone.",
+        );
+        assert!(!decision.allowed);
+    }
+
+    #[test]
+    fn empty_reason_is_blocked() {
+        let policies = MemoryPolicies::default();
+        let decision = policies.evaluate_assistant_write(
+            "User prefers concise answers.",
+            AssistantMemoryWriteBasis::ExplicitUserRequest,
+            "",
+        );
+        assert!(!decision.allowed);
     }
 
     // ── Property-based tests ──

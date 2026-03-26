@@ -6,7 +6,8 @@ use async_trait::async_trait;
 use chrono::Utc;
 use openrustclaw_core::error::Result;
 use openrustclaw_core::traits::{CoreMemoryStore, MemoryStore, Tool, ToolContext};
-use openrustclaw_core::types::{CoreEntry, MemoryEntry, MemoryQuery, MemoryType, ToolOutput};
+use openrustclaw_core::types::{CoreEntry, MemoryQuery, MemorySource, MemoryType, ToolOutput};
+use openrustclaw_memory::{AssistantMemoryWriteBasis, MemoryPolicies, RecallMemory};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
@@ -153,7 +154,7 @@ impl Tool for MemoryStoreTool {
     }
 
     fn description(&self) -> &str {
-        "Remember an important fact, preference, or piece of information for future reference."
+        "Remember something only when the user explicitly asked you to remember it or when the content is an obviously durable user or project fact worth future recall."
     }
 
     fn schema(&self) -> Value {
@@ -164,13 +165,28 @@ impl Tool for MemoryStoreTool {
                     "type": "string",
                     "description": "The information to remember"
                 },
+                "basis": {
+                    "type": "string",
+                    "enum": ["explicit_user_request", "durable_user_fact", "ephemeral_context", "agent_inference"],
+                    "description": "Why this write is allowed under the assistant memory policy"
+                },
+                "reason": {
+                    "type": "string",
+                    "description": "A short explanation of why the memory should persist"
+                },
+                "memory_type": {
+                    "type": "string",
+                    "enum": ["semantic", "episodic", "procedural"],
+                    "description": "The recall memory type to store (default: semantic)",
+                    "default": "semantic"
+                },
                 "importance": {
                     "type": "number",
                     "description": "Importance score from 0.0 to 1.0 (default: 0.7)",
                     "default": 0.7
                 }
             },
-            "required": ["content"]
+            "required": ["content", "basis", "reason"]
         })
     }
 
@@ -192,11 +208,34 @@ impl Tool for MemoryStoreTool {
                 )
             })?;
 
+        let basis = parse_write_basis(&input, self.name())?;
+        let reason = input
+            .get("reason")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| {
+                openrustclaw_core::error::Error::Tool(
+                    openrustclaw_core::error::ToolError::InputValidation {
+                        tool: self.name().to_string(),
+                        message: "Missing or invalid 'reason' parameter".to_string(),
+                    },
+                )
+            })?;
+        let memory_type = parse_memory_type(&input, self.name())?;
         let importance = input
             .get("importance")
             .and_then(|v| v.as_f64())
             .map(|v| v.clamp(0.0, 1.0) as f32)
             .unwrap_or(0.7);
+        let policies = MemoryPolicies::default();
+        let decision = policies.evaluate_assistant_write(content, basis, reason);
+
+        if !decision.allowed {
+            return Ok(ToolOutput {
+                tool_call_id: String::new(),
+                content: format!("Memory not stored: {}", decision.reason),
+                is_error: false,
+            });
+        }
 
         // Check for duplicates
         let content_hash = Self::compute_content_hash(content);
@@ -218,34 +257,39 @@ impl Tool for MemoryStoreTool {
             }
         }
 
-        let entry = MemoryEntry {
-            id: uuid::Uuid::new_v4(),
-            memory_type: MemoryType::Semantic,
-            content: content.to_string(),
-            content_hash,
-            source: Some("agent_tool".to_string()),
-            source_type: Some(openrustclaw_core::types::SourceType::Conversation),
-            session_id: uuid::Uuid::parse_str(&ctx.session_id).ok(),
-            user_id: Some(ctx.user_id.clone()),
-            namespace: ctx.user_id.clone(),
-            importance,
-            confidence: 1.0,
-            access_count: 0,
-            last_accessed: None,
-            created_at: Utc::now(),
-            expires_at: None,
-            metadata: serde_json::json!({
-                "tool": "memory_store",
-                "source": "agent_execution"
-            }),
+        let recall = RecallMemory::new(policies);
+        let source = match basis {
+            AssistantMemoryWriteBasis::ExplicitUserRequest
+            | AssistantMemoryWriteBasis::DurableUserFact => MemorySource::ExplicitUserStatement,
+            AssistantMemoryWriteBasis::EphemeralContext => MemorySource::ConversationSummary,
+            AssistantMemoryWriteBasis::AgentInference => MemorySource::AgentInference,
         };
+        let mut entry = recall.prepare_entry(
+            content,
+            memory_type,
+            source,
+            Some(&ctx.user_id),
+            uuid::Uuid::parse_str(&ctx.session_id).ok(),
+            Some(&ctx.user_id),
+        );
+        entry.importance = importance.max(entry.importance).clamp(0.0, 1.0);
+        entry.metadata = serde_json::json!({
+            "tool": "memory_store",
+            "source": "agent_execution",
+            "assistant_write_policy": {
+                "basis": basis,
+                "declared_reason": reason,
+                "decision_reason": decision.reason,
+                "version": "v1"
+            }
+        });
 
         match self.memory_store.store(entry).await {
             Ok(()) => {
                 info!("Memory stored successfully");
                 Ok(ToolOutput {
                     tool_call_id: String::new(),
-                    content: "Memory stored successfully.".to_string(),
+                    content: format!("Memory stored successfully under {:?} policy.", basis),
                     is_error: false,
                 })
             }
@@ -258,6 +302,40 @@ impl Tool for MemoryStoreTool {
                 })
             }
         }
+    }
+}
+
+fn parse_write_basis(input: &Value, tool_name: &str) -> Result<AssistantMemoryWriteBasis> {
+    let raw = input.get("basis").cloned().ok_or_else(|| {
+        openrustclaw_core::error::Error::Tool(
+            openrustclaw_core::error::ToolError::InputValidation {
+                tool: tool_name.to_string(),
+                message: "Missing 'basis' parameter".to_string(),
+            },
+        )
+    })?;
+    serde_json::from_value(raw).map_err(|_| {
+        openrustclaw_core::error::Error::Tool(
+            openrustclaw_core::error::ToolError::InputValidation {
+                tool: tool_name.to_string(),
+                message: "Invalid 'basis' parameter".to_string(),
+            },
+        )
+    })
+}
+
+fn parse_memory_type(input: &Value, tool_name: &str) -> Result<MemoryType> {
+    match input.get("memory_type").and_then(|value| value.as_str()) {
+        None => Ok(MemoryType::Semantic),
+        Some("semantic") => Ok(MemoryType::Semantic),
+        Some("episodic") => Ok(MemoryType::Episodic),
+        Some("procedural") => Ok(MemoryType::Procedural),
+        Some(_) => Err(openrustclaw_core::error::Error::Tool(
+            openrustclaw_core::error::ToolError::InputValidation {
+                tool: tool_name.to_string(),
+                message: "Invalid 'memory_type' parameter".to_string(),
+            },
+        )),
     }
 }
 

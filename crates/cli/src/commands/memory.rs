@@ -377,12 +377,16 @@ pub async fn get(id: &str) -> Result<()> {
 pub async fn timeline(namespace: Option<&str>, limit: usize) -> Result<()> {
     let (store, _core_store, _pool) = open_stores().await?;
     for entry in store.list_recent(namespace, limit).await? {
+        let policy = assistant_write_policy_summary(&entry)
+            .map(|summary| format!("  [{}]", summary))
+            .unwrap_or_default();
         println!(
-            "{}  {}  {}  {}",
+            "{}  {}  {}  {}{}",
             entry.created_at.to_rfc3339(),
             memory_type_label(entry.memory_type),
             entry.id,
-            entry.content.replace('\n', " ")
+            entry.content.replace('\n', " "),
+            policy
         );
     }
     Ok(())
@@ -419,12 +423,16 @@ pub async fn search(
     };
 
     for result in store.search(&query).await? {
+        let policy = assistant_write_policy_summary(&result.entry)
+            .map(|summary| format!("  [{}]", summary))
+            .unwrap_or_default();
         println!(
-            "{:.3}  {}  {}  {}",
+            "{:.3}  {}  {}  {}{}",
             result.score,
             memory_type_label(result.entry.memory_type),
             result.entry.id,
-            result.entry.content.replace('\n', " ")
+            result.entry.content.replace('\n', " "),
+            policy
         );
     }
     Ok(())
@@ -759,6 +767,20 @@ fn memory_type_label(value: MemoryType) -> &'static str {
     }
 }
 
+fn assistant_write_policy_summary(entry: &MemoryEntry) -> Option<String> {
+    let policy = entry.metadata.get("assistant_write_policy")?;
+    let basis = policy.get("basis")?.as_str()?;
+    let reason = policy
+        .get("declared_reason")
+        .and_then(|value| value.as_str())
+        .unwrap_or("");
+    if reason.is_empty() {
+        Some(format!("basis={basis}"))
+    } else {
+        Some(format!("basis={basis}; reason={reason}"))
+    }
+}
+
 fn parse_memory_type(value: &str) -> Result<MemoryType> {
     match value.to_lowercase().as_str() {
         "episodic" => Ok(MemoryType::Episodic),
@@ -856,6 +878,38 @@ mod tests {
         assert_eq!(
             parse_source_type("tool-schema").unwrap(),
             SourceType::ToolSchema
+        );
+    }
+
+    #[test]
+    fn test_assistant_write_policy_summary_formats_basis_and_reason() {
+        let entry = MemoryEntry {
+            id: uuid::Uuid::new_v4(),
+            memory_type: MemoryType::Semantic,
+            content: "User prefers Rust".to_string(),
+            content_hash: "hash".to_string(),
+            source: Some("agent_tool".to_string()),
+            source_type: Some(SourceType::Conversation),
+            session_id: None,
+            user_id: Some("user_123".to_string()),
+            namespace: "user_123".to_string(),
+            importance: 1.0,
+            confidence: 1.0,
+            access_count: 0,
+            last_accessed: None,
+            created_at: Utc::now(),
+            expires_at: None,
+            metadata: serde_json::json!({
+                "assistant_write_policy": {
+                    "basis": "explicit_user_request",
+                    "declared_reason": "The user asked me to remember it."
+                }
+            }),
+        };
+
+        assert_eq!(
+            assistant_write_policy_summary(&entry).as_deref(),
+            Some("basis=explicit_user_request; reason=The user asked me to remember it.")
         );
     }
 }
