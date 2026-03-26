@@ -360,13 +360,15 @@ Let's get started!
     }
 
     async fn maybe_launch_assistant(&self, healthy: bool) -> Result<()> {
-        if !healthy || !std::io::stdin().is_terminal() {
+        let provider = self.assistant_provider();
+        if !should_offer_assistant_launch(
+            healthy,
+            std::io::stdin().is_terminal(),
+            provider.as_deref(),
+        ) {
             return Ok(());
         }
-
-        let Some(provider) = self.assistant_provider() else {
-            return Ok(());
-        };
+        let provider = provider.expect("launch gate requires a resolved provider");
 
         let launch = Confirm::with_theme(&self.theme)
             .with_prompt(format!(
@@ -382,6 +384,14 @@ Let's get started!
 
         Ok(())
     }
+}
+
+pub fn should_offer_assistant_launch(
+    healthy: bool,
+    stdin_is_terminal: bool,
+    provider: Option<&str>,
+) -> bool {
+    healthy && stdin_is_terminal && provider.is_some()
 }
 
 // ============================================================================
@@ -1028,5 +1038,25 @@ mod tests {
         assert!(!status.env_present);
         assert!(!status.control_registry_present);
         assert!(!status.channels_registry_present);
+    }
+
+    #[test]
+    fn test_should_offer_assistant_launch_requires_health_terminal_and_provider() {
+        assert!(should_offer_assistant_launch(
+            true,
+            true,
+            Some("openrouter")
+        ));
+        assert!(!should_offer_assistant_launch(
+            false,
+            true,
+            Some("openrouter")
+        ));
+        assert!(!should_offer_assistant_launch(
+            true,
+            false,
+            Some("openrouter")
+        ));
+        assert!(!should_offer_assistant_launch(true, true, None));
     }
 }
