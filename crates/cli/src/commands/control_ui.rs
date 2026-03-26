@@ -58,4 +58,10 @@ mod tests {
         assert!(CONTROL_UI_HTML.contains("security-posture"));
         assert!(CONTROL_UI_HTML.contains("function loadSecurityPosture"));
     }
+
+    #[test]
+    fn dashboard_includes_enterprise_foundations_panel() {
+        assert!(CONTROL_UI_HTML.contains("enterprise-foundations"));
+        assert!(CONTROL_UI_HTML.contains("function loadEnterpriseFoundations"));
+    }
 }

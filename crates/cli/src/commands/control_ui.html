@@ -440,6 +440,18 @@
           <h2>Security Posture</h2>
           <div class="surface"><pre id="security-posture">Loading…</pre></div>
         </article>
+        <article class="panel span-12">
+          <h2>Enterprise Foundations</h2>
+          <div class="surface"><div id="enterprise-foundations" class="summary-card empty">Loading…</div></div>
+          <div class="surface" style="margin-top: 12px">
+            <table class="table">
+              <thead>
+                <tr><th>When</th><th>Source</th><th>Status</th><th>Detail</th></tr>
+              </thead>
+              <tbody id="enterprise-audit-table"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </article>
         <article class="panel span-6">
           <h2>Scheduler Health</h2>
           <div class="surface"><pre id="scheduler-status">Loading…</pre></div>
@@ -1381,6 +1393,68 @@
         `;
       }
 
+      function renderEnterpriseFoundations(report) {
+        const target = document.getElementById("enterprise-foundations");
+        if (!report || report.error) {
+          target.className = "summary-card empty";
+          target.textContent = report?.error || "No enterprise foundations summary available.";
+          renderTableRows("enterprise-audit-table", [], "No recent enterprise audit evidence.");
+          return;
+        }
+
+        const policy = report.policy || {};
+        const metrics = report.mobile_metrics || {};
+        const allowedBackends = Array.isArray(policy.allowed_browser_backends) && policy.allowed_browser_backends.length
+          ? policy.allowed_browser_backends.join(", ")
+          : "none";
+        const mobileState = `${metrics.pending_approval_commands ?? 0} pending / ${metrics.executed_commands ?? 0} executed / ${metrics.rejected_commands ?? 0} rejected`;
+
+        target.className = "summary-card";
+        target.innerHTML = `
+          <div>
+            <div class="summary-kicker">Enterprise Baseline</div>
+            <div class="summary-title">Approval-sensitive actions stay under explicit policy</div>
+            <div class="summary-copy">${escapeHtml(report.detail || "No enterprise baseline summary available.")}</div>
+          </div>
+          <div class="summary-grid">
+            <div class="summary-stat">
+              <label>Runtime Approval</label>
+              <strong>${escapeHtml(policy.approval_policy || "-")}</strong>
+              <span class="muted">${escapeHtml(policy.approval_scope_detail || "-")}</span>
+            </div>
+            <div class="summary-stat">
+              <label>Autonomy Level</label>
+              <strong>${escapeHtml(policy.autonomy_level || "-")}</strong>
+              <span class="muted">${policy.operator_review_required_for_side_effects ? "Side effects require review" : "Review bypass is explicit"}</span>
+            </div>
+            <div class="summary-stat">
+              <label>Mobile Review</label>
+              <strong>${escapeHtml(mobileState)}</strong>
+              <span class="muted">${escapeHtml(policy.mobile_command_detail || "-")}</span>
+            </div>
+            <div class="summary-stat">
+              <label>Browser Policy</label>
+              <strong>${escapeHtml(allowedBackends)}</strong>
+              <span class="muted">${escapeHtml(policy.browser_backend_detail || "-")}</span>
+            </div>
+            <div class="summary-stat">
+              <label>Audit Log</label>
+              <span class="mono">${escapeHtml(policy.browser_audit_log_path || "-")}</span>
+            </div>
+          </div>
+        `;
+
+        const rows = (report.recent_events || []).map((entry) => {
+          return `<tr>
+            <td>${entry.observed_at || "-"}</td>
+            <td>${escapeHtml(entry.source || "-")}</td>
+            <td><strong>${entry.status || "-"}</strong><div class="muted">${escapeHtml(entry.kind || "-")}</div></td>
+            <td><strong>${escapeHtml(entry.summary || "-")}</strong><div class="muted">${escapeHtml(String(entry.detail || "-").slice(0, 220))}</div></td>
+          </tr>`;
+        });
+        renderTableRows("enterprise-audit-table", rows, "No recent enterprise audit evidence.");
+      }
+
       function controlHeaders(extraHeaders = {}) {
         const headers = { ...extraHeaders };
         if (!headers["content-type"]) {
@@ -1467,6 +1541,11 @@
       async function loadSecurityPosture() {
         const payload = await fetchJson("/control/security/posture");
         setText("security-posture", payload);
+      }
+
+      async function loadEnterpriseFoundations() {
+        const payload = await fetchJson("/control/enterprise/foundations");
+        renderEnterpriseFoundations(payload);
       }
 
       async function scanRuntimeHealth() {
@@ -3434,6 +3513,7 @@
             loadRuntimeBeacon(),
             loadRuntimeReloadPlan(),
             loadSecurityPosture(),
+            loadEnterpriseFoundations(),
             loadVaultStatus(),
             loadSchedulerStatus(),
             loadChannelProbes(),
