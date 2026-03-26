@@ -30,11 +30,11 @@ This milestone turns the existing OpenRustClaw surface area into a believable pr
   1. Operator can follow the documented install and setup path without manual source edits.
   2. First-run validation catches missing env, provider, or channel prerequisites before runtime failure.
   3. A clean install reaches a working assistant session with clear operator feedback.
-**Plans**: 1/3 plans executed
+**Plans**: 2/3 plans executed
 
 Plans:
 - [x] 01-01: Harden doctor-backed first-start readiness gating for onboarding
-- [ ] 01-02: Add workflow-level onboarding regression coverage
+- [x] 01-02: Add workflow-level onboarding regression coverage
 - [ ] 01-03: Align installation and top-level first-run documentation
 
 ### Phase 2: Core Assistant and Session Continuity
@@ -119,7 +119,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Onboarding and First-Run Trust | 1/3 | In Progress|  |
+| 1. Onboarding and First-Run Trust | 2/3 | In Progress|  |
 | 2. Core Assistant and Session Continuity | 0/TBD | Not started | - |
 | 3. Memory Durability and Write Policy | 0/TBD | Not started | - |
 | 4. Tool, MCP, and Coding Workflow Hardening | 0/TBD | Not started | - |
