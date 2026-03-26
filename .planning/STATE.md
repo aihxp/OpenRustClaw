@@ -1,20 +1,20 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.1
-milestone_name: Lifecycle Integrity and Enterprise Foundations
-current_phase: 0
-current_phase_name: Milestone Complete
-current_plan: 0
-status: milestone_complete
-stopped_at: v1.1 archived and phase directories cleaned up; next step is planning the next milestone.
-last_updated: "2026-03-26T20:40:00.000Z"
-last_activity: 2026-03-26 -- v1.1 milestone archived and phase directories cleaned up
+milestone: v1.2
+milestone_name: Deeper OpenClaw Surface Parity
+current_phase: 11
+current_phase_name: Browser Automation Depth
+current_plan: Not started
+status: Ready to discuss
+stopped_at: Milestone v1.2 initialized; Phase 11 is ready for discuss and planning.
+last_updated: "2026-03-26T21:00:00.000Z"
+last_activity: 2026-03-26 -- Milestone v1.2 started
 progress:
-  total_phases: 3
-  completed_phases: 3
-  total_plans: 9
-  completed_plans: 9
-  percent: 100
+  total_phases: 5
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -24,21 +24,21 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-26)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** Planning the next milestone
+**Current focus:** Phase 11 - Browser Automation Depth
 
 ## Current Position
 
-Current Phase: 0
-Current Phase Name: Milestone Complete
-Total Phases: 0
-Current Plan: 0
+Current Phase: 11
+Current Phase Name: Browser Automation Depth
+Total Phases: 5
+Current Plan: Not started
 Total Plans in Phase: 0
-Status: Milestone complete
-Last activity: 2026-03-26 - v1.1 milestone archived and phase directories cleaned up
+Status: Ready to discuss
+Last activity: 2026-03-26 - Milestone v1.2 started
 
-Phase: 0 of 0 (Milestone Complete)
+Phase: 1 of 5 (Browser Automation Depth)
 Plan: 0 of 0 in current phase
-Progress: [##########] 100%
+Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
@@ -80,7 +80,7 @@ Recent decisions affecting current work:
 - Phase 9 now archives milestone verification evidence to `.planning/milestones/vX.Y-VERIFICATIONS.md` and aligns lifecycle docs around that archive contract.
 - Phase 10 planning now defines the enterprise baseline as explicit approval boundaries plus durable audit evidence over mobile, browser, and runtime control surfaces.
 - Phase 10 execution now exposes `/control/enterprise/foundations` and a matching Control UI panel for the shipped enterprise baseline.
-- The next milestone should choose one focused expansion lane instead of reopening enterprise, autonomy, and parity work all at once.
+- v1.2 focuses the next expansion lane on deeper OpenClaw surface parity across browser, supervision, mobile, Control UI, and voice or call handling.
 
 ### Pending Todos
 
@@ -92,6 +92,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-26 20:40
-Stopped at: v1.1 archived and phase directories cleaned up; next step is planning the next milestone.
+Last session: 2026-03-26 21:00
+Stopped at: Milestone v1.2 initialized; Phase 11 is ready for discuss and planning.
 Resume file: None
