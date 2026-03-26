@@ -7,8 +7,8 @@
 
 ### Browser Parity
 
-- [ ] **BROW-01**: Operator can run deeper multi-step browser workflows with durable artifacts and inspection surfaces that feel closer to OpenClaw’s browser lane.
-- [ ] **BROW-02**: Browser automation depth remains policy-bounded and auditable instead of bypassing the existing external-backend trust contract.
+- [x] **BROW-01**: Operator can run deeper multi-step browser workflows with durable artifacts and inspection surfaces that feel closer to OpenClaw’s browser lane.
+- [x] **BROW-02**: Browser automation depth remains policy-bounded and auditable instead of bypassing the existing external-backend trust contract.
 
 ### Supervision Parity
 
@@ -55,8 +55,8 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| BROW-01 | Phase 11 | Pending |
-| BROW-02 | Phase 11 | Pending |
+| BROW-01 | Phase 11 | Complete |
+| BROW-02 | Phase 11 | Complete |
 | SUPR-01 | Phase 12 | Pending |
 | SUPR-02 | Phase 12 | Pending |
 | MOBL-01 | Phase 13 | Pending |

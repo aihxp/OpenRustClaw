@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Deeper OpenClaw Surface Parity
-current_phase: 11
-current_phase_name: Browser Automation Depth
+current_phase: 12
+current_phase_name: Multi-Agent Supervision Parity
 current_plan: Not started
 status: Ready to discuss
-stopped_at: Milestone v1.2 initialized; Phase 11 is ready for discuss and planning.
-last_updated: "2026-03-26T21:00:00.000Z"
-last_activity: 2026-03-26 -- Milestone v1.2 started
+stopped_at: Phase 11 completed; Phase 12 is ready for discuss and planning.
+last_updated: "2026-03-26T23:09:23.475Z"
+last_activity: 2026-03-26 -- Phase 11 completed
 progress:
   total_phases: 5
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  completed_phases: 1
+  total_plans: 3
+  completed_plans: 3
+  percent: 20
 ---
 
 # Project State
@@ -24,21 +24,21 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-26)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** Phase 11 - Browser Automation Depth
+**Current focus:** Phase 12 - Multi-Agent Supervision Parity
 
 ## Current Position
 
-Current Phase: 11
-Current Phase Name: Browser Automation Depth
+Current Phase: 12
+Current Phase Name: Multi-Agent Supervision Parity
 Total Phases: 5
 Current Plan: Not started
 Total Plans in Phase: 0
 Status: Ready to discuss
-Last activity: 2026-03-26 - Milestone v1.2 started
+Last activity: 2026-03-26 - Phase 11 completed
 
-Phase: 1 of 5 (Browser Automation Depth)
+Phase: 2 of 5 (Multi-Agent Supervision Parity)
 Plan: 0 of 0 in current phase
-Progress: [░░░░░░░░░░] 0%
+Progress: [██░░░░░░░░] 20%
 
 ## Performance Metrics
 
@@ -81,6 +81,7 @@ Recent decisions affecting current work:
 - Phase 10 planning now defines the enterprise baseline as explicit approval boundaries plus durable audit evidence over mobile, browser, and runtime control surfaces.
 - Phase 10 execution now exposes `/control/enterprise/foundations` and a matching Control UI panel for the shipped enterprise baseline.
 - v1.2 focuses the next expansion lane on deeper OpenClaw surface parity across browser, supervision, mobile, Control UI, and voice or call handling.
+- Phase 11 now adds a durable browser workflow history ledger plus shipped runtime and Control UI inspection for recent richer browser runs.
 
 ### Pending Todos
 
@@ -92,6 +93,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-26 21:00
-Stopped at: Milestone v1.2 initialized; Phase 11 is ready for discuss and planning.
+Last session: 2026-03-26 23:09
+Stopped at: Phase 11 completed; Phase 12 is ready for discuss and planning.
 Resume file: None
