@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, HashSet, VecDeque};
 use std::fs;
-use std::io::Write;
+use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
@@ -367,6 +367,29 @@ pub struct BrowserRunSequenceResult {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BrowserWorkflowRecord {
+    pub id: String,
+    pub action: String,
+    pub backend: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
+    pub status: String,
+    pub final_url: String,
+    pub title: String,
+    pub step_count: usize,
+    pub artifact_path: String,
+    pub created_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub result_preview: Option<Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BrowserWorkflowHistoryReport {
+    pub limit: usize,
+    pub entries: Vec<BrowserWorkflowRecord>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct BrowserSessionRecord {
     pub id: String,
     #[serde(default)]
@@ -473,7 +496,7 @@ pub async fn read_page(
     });
     fs::write(&artifact_path, serde_json::to_vec_pretty(&payload)?)
         .with_context(|| format!("Failed to write '{}'", artifact_path.display()))?;
-    Ok(BrowserReadPageResult {
+    let result = BrowserReadPageResult {
         url: fetched.requested_url,
         final_url: fetched.final_url,
         status: fetched.status,
@@ -482,7 +505,26 @@ pub async fn read_page(
         text,
         link_count: links.len(),
         artifact_path: artifact_path.display().to_string(),
-    })
+    };
+    append_browser_workflow_record(
+        workspace_root,
+        &new_browser_workflow_record(
+            "read_page",
+            "http_fetch",
+            None,
+            "success",
+            result.final_url.clone(),
+            result.title.clone(),
+            1,
+            result.artifact_path.clone(),
+            Some(serde_json::json!({
+                "status": result.status,
+                "content_type": result.content_type.clone(),
+                "link_count": result.link_count,
+            })),
+        ),
+    )?;
+    Ok(result)
 }
 
 pub async fn crawl_site(
@@ -538,12 +580,34 @@ pub async fn crawl_site(
     fs::write(&artifact_path, serde_json::to_vec_pretty(&payload)?)
         .with_context(|| format!("Failed to write '{}'", artifact_path.display()))?;
     let pages: Vec<BrowserCrawlPageResult> = serde_json::from_value(payload["pages"].clone())?;
-    Ok(BrowserCrawlResult {
+    let result = BrowserCrawlResult {
         root_url,
         page_count: pages.len(),
         pages,
         artifact_path: artifact_path.display().to_string(),
-    })
+    };
+    append_browser_workflow_record(
+        workspace_root,
+        &new_browser_workflow_record(
+            "crawl_site",
+            "http_fetch",
+            None,
+            "success",
+            result.root_url.clone(),
+            result
+                .pages
+                .first()
+                .map(|page| page.title.clone())
+                .unwrap_or_default(),
+            result.page_count.max(1),
+            result.artifact_path.clone(),
+            Some(serde_json::json!({
+                "page_count": result.page_count,
+                "deepest_depth": result.pages.iter().map(|page| page.depth).max().unwrap_or(0),
+            })),
+        ),
+    )?;
+    Ok(result)
 }
 
 pub async fn extract(
@@ -695,8 +759,7 @@ pub async fn screenshot(
                     .await?;
             }
             browser.close().await?;
-
-            Ok(BrowserScreenshotResult {
+            let result = BrowserScreenshotResult {
                 backend: backend.as_str().to_string(),
                 url,
                 title,
@@ -707,7 +770,26 @@ pub async fn screenshot(
                     ScreenshotFormat::Png => "png".to_string(),
                     ScreenshotFormat::Jpeg => "jpeg".to_string(),
                 },
-            })
+            };
+            append_browser_workflow_record(
+                workspace_root,
+                &new_browser_workflow_record(
+                    "screenshot",
+                    result.backend.clone(),
+                    request.session_id.clone(),
+                    "success",
+                    result.url.clone(),
+                    result.title.clone(),
+                    1,
+                    result.path.clone(),
+                    Some(serde_json::json!({
+                        "width": result.width,
+                        "height": result.height,
+                        "format": result.format.clone(),
+                    })),
+                ),
+            )?;
+            Ok(result)
         }
         BrowserBackendKind::AgentBrowserCli => {
             let normalized = normalize_url(&request.url);
@@ -743,7 +825,7 @@ pub async fn screenshot(
             }
             run_agent_browser_command(workspace_root, session.as_ref(), request.timeout_ms, &args)
                 .await?;
-            Ok(BrowserScreenshotResult {
+            let result = BrowserScreenshotResult {
                 backend: backend.as_str().to_string(),
                 url: normalized,
                 title: agent_browser_get(
@@ -761,7 +843,26 @@ pub async fn screenshot(
                 width: 0,
                 height: 0,
                 format: request.format.unwrap_or_else(|| "png".to_string()),
-            })
+            };
+            append_browser_workflow_record(
+                workspace_root,
+                &new_browser_workflow_record(
+                    "screenshot",
+                    result.backend.clone(),
+                    request.session_id.clone(),
+                    "success",
+                    result.url.clone(),
+                    result.title.clone(),
+                    1,
+                    result.path.clone(),
+                    Some(serde_json::json!({
+                        "width": result.width,
+                        "height": result.height,
+                        "format": result.format.clone(),
+                    })),
+                ),
+            )?;
+            Ok(result)
         }
     }
 }
@@ -805,14 +906,30 @@ pub async fn pdf(workspace_root: &Path, request: BrowserPdfRequest) -> Result<Br
                     .await?;
             }
             browser.close().await?;
-
-            Ok(BrowserPdfResult {
+            let result = BrowserPdfResult {
                 backend: backend.as_str().to_string(),
                 url,
                 title,
                 path: path.display().to_string(),
                 bytes: pdf.len(),
-            })
+            };
+            append_browser_workflow_record(
+                workspace_root,
+                &new_browser_workflow_record(
+                    "pdf",
+                    result.backend.clone(),
+                    request.session_id.clone(),
+                    "success",
+                    result.url.clone(),
+                    result.title.clone(),
+                    1,
+                    result.path.clone(),
+                    Some(serde_json::json!({
+                        "bytes": result.bytes,
+                    })),
+                ),
+            )?;
+            Ok(result)
         }
         BrowserBackendKind::AgentBrowserCli => {
             let normalized = normalize_url(&request.url);
@@ -834,7 +951,7 @@ pub async fn pdf(workspace_root: &Path, request: BrowserPdfRequest) -> Result<Br
             let bytes = fs::metadata(&path)
                 .with_context(|| format!("Failed to read '{}'", path.display()))?
                 .len() as usize;
-            Ok(BrowserPdfResult {
+            let result = BrowserPdfResult {
                 backend: backend.as_str().to_string(),
                 url: normalized,
                 title: agent_browser_get(
@@ -850,7 +967,24 @@ pub async fn pdf(workspace_root: &Path, request: BrowserPdfRequest) -> Result<Br
                 .to_string(),
                 path: path.display().to_string(),
                 bytes,
-            })
+            };
+            append_browser_workflow_record(
+                workspace_root,
+                &new_browser_workflow_record(
+                    "pdf",
+                    result.backend.clone(),
+                    request.session_id.clone(),
+                    "success",
+                    result.url.clone(),
+                    result.title.clone(),
+                    1,
+                    result.path.clone(),
+                    Some(serde_json::json!({
+                        "bytes": result.bytes,
+                    })),
+                ),
+            )?;
+            Ok(result)
         }
     }
 }
@@ -971,6 +1105,22 @@ pub async fn inspect(
             inspect_agent_browser(workspace_root, &request, session.as_ref()).await?
         }
     };
+    append_browser_workflow_record(
+        workspace_root,
+        &new_browser_workflow_record(
+            "inspect",
+            result.backend.clone(),
+            result.session_id.clone(),
+            "success",
+            result.url.clone(),
+            result.title.clone(),
+            1,
+            result.artifact_path.clone(),
+            Some(serde_json::json!({
+                "kind": result.kind.clone(),
+            })),
+        ),
+    )?;
     Ok(result)
 }
 
@@ -988,14 +1138,32 @@ pub async fn run_sequence(
         request.session_id.as_deref(),
     )?;
     let session = load_session_for_request(workspace_root, request.session_id.as_deref())?;
-    match backend {
+    let result = match backend {
         BrowserBackendKind::NativeCdp => {
             run_native_sequence(workspace_root, &request, session.as_ref()).await
         }
         BrowserBackendKind::AgentBrowserCli => {
             run_agent_browser_sequence(workspace_root, &request, session.as_ref()).await
         }
-    }
+    }?;
+    append_browser_workflow_record(
+        workspace_root,
+        &new_browser_workflow_record(
+            "run_sequence",
+            result.backend.clone(),
+            result.session_id.clone(),
+            "success",
+            result.final_url.clone(),
+            result.title.clone(),
+            result.steps.len(),
+            result.artifact_path.clone(),
+            Some(serde_json::json!({
+                "step_count": result.steps.len(),
+                "last_action": result.steps.last().map(|step| step.action.clone()),
+            })),
+        ),
+    )?;
+    Ok(result)
 }
 
 pub fn backend_policy(workspace_root: &Path) -> Result<ExternalBackendPolicy> {
@@ -1038,8 +1206,99 @@ pub fn list_backend_audit(
     Ok(entries)
 }
 
+pub fn list_workflow_history(
+    workspace_root: &Path,
+    limit: usize,
+    action: Option<&str>,
+    backend: Option<&str>,
+) -> Result<BrowserWorkflowHistoryReport> {
+    let path = workflow_history_log_path(workspace_root);
+    if !path.exists() {
+        return Ok(BrowserWorkflowHistoryReport {
+            limit: limit.max(1),
+            entries: Vec::new(),
+        });
+    }
+
+    let file = fs::OpenOptions::new().read(true).open(&path)?;
+    let reader = BufReader::new(file);
+    let mut entries = Vec::new();
+    for line in reader.lines() {
+        let line = line?;
+        if line.trim().is_empty() {
+            continue;
+        }
+        let Ok(record) = serde_json::from_str::<BrowserWorkflowRecord>(&line) else {
+            continue;
+        };
+        if action.is_some_and(|value| record.action != value) {
+            continue;
+        }
+        if backend.is_some_and(|value| record.backend != value) {
+            continue;
+        }
+        entries.push(record);
+    }
+
+    entries.sort_by(|left, right| right.created_at.cmp(&left.created_at));
+    entries.truncate(limit.max(1));
+    Ok(BrowserWorkflowHistoryReport {
+        limit: limit.max(1),
+        entries,
+    })
+}
+
 fn normalize_backend_name(raw: &str) -> String {
     raw.trim().to_ascii_lowercase().replace('-', "_")
+}
+
+fn workflow_history_log_path(workspace_root: &Path) -> PathBuf {
+    browser_root_for(workspace_root).join("workflow-history.jsonl")
+}
+
+fn append_browser_workflow_record(
+    workspace_root: &Path,
+    record: &BrowserWorkflowRecord,
+) -> Result<()> {
+    let path = workflow_history_log_path(workspace_root);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("Failed to create '{}'", parent.display()))?;
+    }
+    let mut file = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .with_context(|| format!("Failed to open '{}'", path.display()))?;
+    serde_json::to_writer(&mut file, record)?;
+    file.write_all(b"\n")?;
+    Ok(())
+}
+
+fn new_browser_workflow_record(
+    action: impl Into<String>,
+    backend: impl Into<String>,
+    session_id: Option<String>,
+    status: impl Into<String>,
+    final_url: impl Into<String>,
+    title: impl Into<String>,
+    step_count: usize,
+    artifact_path: impl Into<String>,
+    result_preview: Option<Value>,
+) -> BrowserWorkflowRecord {
+    BrowserWorkflowRecord {
+        id: Uuid::new_v4().to_string(),
+        action: action.into(),
+        backend: backend.into(),
+        session_id,
+        status: status.into(),
+        final_url: final_url.into(),
+        title: title.into(),
+        step_count: step_count.max(1),
+        artifact_path: artifact_path.into(),
+        created_at: chrono::Utc::now().to_rfc3339(),
+        result_preview,
+    }
 }
 
 fn load_runtime_config_for(workspace_root: &Path) -> AppConfig {
@@ -2709,10 +2968,11 @@ fn html_decode_minimal(input: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        BrowserBackendKind, ExternalBackendAuditEntry, append_external_backend_audit_entry,
-        backend_policy, ensure_backend_execution_allowed_with_policy, extract_links, extract_title,
-        html_to_text, list_backend_audit, normalize_url, parse_load_state, policy_from_config,
-        resolve_output_path,
+        BrowserBackendKind, BrowserWorkflowRecord, ExternalBackendAuditEntry,
+        append_browser_workflow_record, append_external_backend_audit_entry, backend_policy,
+        ensure_backend_execution_allowed_with_policy, extract_links, extract_title, html_to_text,
+        list_backend_audit, list_workflow_history, new_browser_workflow_record, normalize_url,
+        parse_load_state, policy_from_config, resolve_output_path,
     };
     use openrustclaw_automation::browser::LoadState;
     use openrustclaw_core::config::AppConfig;
@@ -2851,5 +3111,46 @@ mod tests {
         assert_eq!(audit.len(), 2);
         assert_eq!(audit[0].action, "pdf");
         assert_eq!(audit[1].action, "inspect");
+    }
+
+    #[test]
+    fn browser_workflow_history_returns_newest_matching_entries() {
+        let root = tempdir().unwrap();
+        let older = BrowserWorkflowRecord {
+            created_at: "2026-03-25T00:00:00Z".to_string(),
+            ..new_browser_workflow_record(
+                "read_page",
+                "http_fetch",
+                None,
+                "success",
+                "https://example.com/docs",
+                "Docs",
+                1,
+                ".claw/browser/read/one.json",
+                Some(serde_json::json!({"status": 200})),
+            )
+        };
+        let newer = BrowserWorkflowRecord {
+            created_at: "2026-03-26T00:00:00Z".to_string(),
+            ..new_browser_workflow_record(
+                "run_sequence",
+                "native_cdp",
+                Some("session-1".to_string()),
+                "success",
+                "https://example.com/dashboard",
+                "Dashboard",
+                4,
+                ".claw/browser/sequences/two.json",
+                Some(serde_json::json!({"step_count": 4})),
+            )
+        };
+        append_browser_workflow_record(root.path(), &older).unwrap();
+        append_browser_workflow_record(root.path(), &newer).unwrap();
+
+        let history = list_workflow_history(root.path(), 10, Some("run_sequence"), None).unwrap();
+        assert_eq!(history.entries.len(), 1);
+        assert_eq!(history.entries[0].action, "run_sequence");
+        assert_eq!(history.entries[0].backend, "native_cdp");
+        assert_eq!(history.entries[0].step_count, 4);
     }
 }

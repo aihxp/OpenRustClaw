@@ -7,6 +7,8 @@ mod agent_runtime_test;
 #[cfg(test)]
 mod assistant_continuity_test;
 #[cfg(test)]
+mod browser_workflow_history_test;
+#[cfg(test)]
 mod channel_fixture_test;
 #[cfg(test)]
 mod coding_artifact_audit_test;
