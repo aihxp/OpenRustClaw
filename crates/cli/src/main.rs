@@ -28,8 +28,17 @@ enum Commands {
         #[arg(short = 'C', long, value_name = "CHANNELS")]
         channels: Option<String>,
     },
-    /// Interactive chat with the agent
+    /// Compatible interactive chat alias for the persisted assistant session
     Chat {
+        /// Provider to use (anthropic, openai, openrouter, ollama)
+        #[arg(short, long, default_value = "anthropic")]
+        provider: String,
+        /// Model to use
+        #[arg(short, long)]
+        model: Option<String>,
+    },
+    /// Primary assistant entrypoint with persisted CLI session continuity
+    Assistant {
         /// Provider to use (anthropic, openai, openrouter, ollama)
         #[arg(short, long, default_value = "anthropic")]
         provider: String,
@@ -2844,6 +2853,9 @@ async fn main() -> Result<()> {
             commands::start::run(&config, channels.as_deref()).await
         }
         Commands::Chat { provider, model } => {
+            commands::chat::run(&provider, model.as_deref()).await
+        }
+        Commands::Assistant { provider, model } => {
             commands::chat::run(&provider, model.as_deref()).await
         }
         Commands::Browser { action } => {
@@ -5676,6 +5688,38 @@ mod tests {
                 assert_eq!(model.as_deref(), Some("llama3.2"));
             }
             _ => panic!("Expected Chat command"),
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_assistant_defaults() {
+        let cli = Cli::try_parse_from(["openrustclaw", "assistant"]).unwrap();
+        match cli.command {
+            Commands::Assistant { provider, model } => {
+                assert_eq!(provider, "anthropic");
+                assert!(model.is_none());
+            }
+            _ => panic!("Expected Assistant command"),
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_assistant_with_provider_and_model() {
+        let cli = Cli::try_parse_from([
+            "openrustclaw",
+            "assistant",
+            "--provider",
+            "openrouter",
+            "--model",
+            "anthropic/claude-sonnet-4",
+        ])
+        .unwrap();
+        match cli.command {
+            Commands::Assistant { provider, model } => {
+                assert_eq!(provider, "openrouter");
+                assert_eq!(model.as_deref(), Some("anthropic/claude-sonnet-4"));
+            }
+            _ => panic!("Expected Assistant command"),
         }
     }
 

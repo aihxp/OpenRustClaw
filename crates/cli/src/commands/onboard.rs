@@ -276,7 +276,7 @@ Let's get started!
         );
         println!("\nNext steps:");
         println!("  openrustclaw start    # Start the gateway");
-        println!("  openrustclaw chat     # Start chatting");
+        println!("  openrustclaw assistant # Start the persisted assistant session");
         println!("  openrustclaw doctor   # Verify everything works");
         println!("  Open http://127.0.0.1:18789/control/ui after startup for the dashboard");
     }

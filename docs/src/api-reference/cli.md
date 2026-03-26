@@ -10,7 +10,7 @@ This reference documents the OpenRustClaw command-line interface.
 
 The CLI provides commands for:
 - Running the gateway server and sidecar
-- Interactive chat with agents
+- Interactive assistant chat
 - Managing models, skills, and memory
 - Scheduling jobs
 - Security operations
@@ -57,7 +57,7 @@ openrustclaw start --config config/production.toml
 
 ### `chat`
 
-Interactive chat with the agent.
+Interactive chat with the agent. This now reuses the same persisted assistant-session path as `openrustclaw assistant`.
 
 ```bash
 openrustclaw chat [OPTIONS]
@@ -88,8 +88,34 @@ openrustclaw chat --provider openrouter --model anthropic/claude-sonnet-4
 /quit, /q      - Exit the chat
 /memory, /m    - Show current conversation context
 /tools, /t     - List available tools
+/session, /s   - Show the persisted session details
 /help, /h      - Show help
 ```
+
+---
+
+### `assistant`
+
+Primary assistant entrypoint with persisted CLI session continuity.
+
+```bash
+openrustclaw assistant [OPTIONS]
+
+Options:
+  -p, --provider <PROVIDER>  Provider [default: anthropic]
+                             Options: anthropic, openai, openrouter, ollama
+  -m, --model <MODEL>        Model to use
+```
+
+**Examples**:
+```bash
+openrustclaw assistant
+openrustclaw assistant --provider openai --model gpt-4o
+openrustclaw assistant --provider ollama --model llama3.1
+openrustclaw assistant --provider openrouter --model anthropic/claude-sonnet-4
+```
+
+The `assistant` command resumes the active CLI assistant session for the current user and workspace when one already exists. The `chat` command remains available and now uses the same persisted path.
 
 ---
 
@@ -647,8 +673,8 @@ export ANTHROPIC_API_KEY="sk-ant-..."
 # 2. Run diagnostics
 openrustclaw doctor
 
-# 3. Start interactive chat
-openrustclaw chat
+# 3. Start the assistant
+openrustclaw assistant
 
 # 4. Start server
 openrustclaw start
@@ -662,7 +688,7 @@ ollama serve &
 ollama pull llama3.1
 
 # Test with local model
-openrustclaw chat --provider ollama --model llama3.1
+openrustclaw assistant --provider ollama --model llama3.1
 
 # Set up Cursor IDE
 openrustclaw cursor setup

@@ -294,7 +294,7 @@ openrustclaw schedule sync
 openrustclaw start --config ./agent.toml
 
 # In another terminal
-openrustclaw chat --agent code-reviewer
+openrustclaw assistant --provider anthropic
 ```
 
 ### Option B: Programmatic

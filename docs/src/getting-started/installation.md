@@ -327,8 +327,8 @@ This checks:
 # List available models
 openrustclaw models list --provider anthropic
 
-# Test a simple completion
-openrustclaw chat --provider anthropic --once "Hello, are you working?"
+# Start the assistant and ask a simple question
+openrustclaw assistant --provider anthropic
 ```
 
 ### 3. Test Memory System
@@ -337,11 +337,11 @@ openrustclaw chat --provider anthropic --once "Hello, are you working?"
 # Check memory stats
 openrustclaw memory stats
 
-# Store a test memory
-openrustclaw chat --once "Remember that my favorite color is blue"
+# Store a test memory in the assistant session
+openrustclaw assistant
 
-# Search for it
-openrustclaw memory search "favorite color"
+# Then inspect recent memory activity
+openrustclaw memory timeline --limit 10
 ```
 
 ---

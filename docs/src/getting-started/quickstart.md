@@ -75,10 +75,10 @@ Now let's have a conversation with your assistant.
 
 ```bash
 # In a new terminal
-cargo run --bin openrustclaw -- chat --provider anthropic
+cargo run --bin openrustclaw -- assistant --provider anthropic
 
 # Or
-openrustclaw chat --provider anthropic
+openrustclaw assistant --provider anthropic
 ```
 
 The `--provider` flag specifies which LLM to use. Options:
@@ -180,7 +180,7 @@ openrustclaw memory stats
 openrustclaw memory timeline --limit 10
 ```
 
-If you start `openrustclaw chat` again, it will resume the same active CLI session for this workspace and user instead of starting from an empty in-memory transcript.
+If you start `openrustclaw assistant` again, it will resume the same active CLI session for this workspace and user instead of starting from an empty in-memory transcript. The older `openrustclaw chat` command now reuses the same persisted assistant path.
 
 ---
 
@@ -274,7 +274,7 @@ Earlier in our conversation, you told me:
 ```bash
 # Exit the current chat (Ctrl+C or type 'exit')
 # Then restart with a different provider
-openrustclaw chat --provider openai --model gpt-4o
+openrustclaw assistant --provider openai --model gpt-4o
 ```
 
 ### Use OpenRouter for Model Selection
@@ -284,7 +284,7 @@ openrustclaw chat --provider openai --model gpt-4o
 openrustclaw models list --provider openrouter
 
 # Use a specific model
-openrustclaw chat --provider openrouter --model anthropic/claude-3.5-sonnet
+openrustclaw assistant --provider openrouter --model anthropic/claude-3.5-sonnet
 ```
 
 ### Try Local Models with Ollama
@@ -294,7 +294,7 @@ openrustclaw chat --provider openrouter --model anthropic/claude-3.5-sonnet
 ollama run llama3.1
 
 # Connect OpenRustClaw
-openrustclaw chat --provider ollama --model llama3.1
+openrustclaw assistant --provider ollama --model llama3.1
 ```
 
 ---
@@ -350,18 +350,18 @@ Ready to go deeper?
 
 ## 💡 Tips
 
-### Use `--once` for Single Queries
+### Start the Assistant Quickly
 
 ```bash
-# Quick one-off questions without interactive mode
-openrustclaw chat --provider anthropic --once "What is the capital of France?"
+# Launch the persisted assistant session
+openrustclaw assistant --provider anthropic
 ```
 
 ### Enable Debug Logging
 
 ```bash
 # See detailed logs
-RUST_LOG=debug cargo run --bin openrustclaw -- chat
+RUST_LOG=debug cargo run --bin openrustclaw -- assistant
 ```
 
 ### Run Diagnostics Anytime

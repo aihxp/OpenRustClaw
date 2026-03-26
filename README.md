@@ -46,6 +46,9 @@ cargo build --release
 openrustclaw control init
 openrustclaw control describe --json
 
+# Start the persisted assistant session
+openrustclaw assistant
+
 # Start the agent with your configured channels
 openrustclaw start --channels=telegram,discord,slack
 ```
