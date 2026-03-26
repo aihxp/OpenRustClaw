@@ -8,9 +8,31 @@ use serde::Serialize;
 use sqlx::Row;
 
 #[derive(Debug, Clone, Serialize)]
+pub struct AssistantContinuitySummary {
+    pub assistant_managed: bool,
+    pub assistant_identity: Option<String>,
+    pub assistant_surface: Option<String>,
+    pub assistant_session_model: Option<String>,
+    pub route_key: Option<String>,
+    pub workspace_root: Option<String>,
+    pub route_bound: bool,
+    pub history_messages: usize,
+    pub likely_resumed: bool,
+    pub status_label: String,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SessionListEntry {
+    pub session: PersistedSession,
+    pub continuity: AssistantContinuitySummary,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct SessionDetailReport {
     pub session: Option<PersistedSession>,
     pub history: Vec<Message>,
+    pub continuity: Option<AssistantContinuitySummary>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -85,10 +107,19 @@ pub async fn list_sessions(
     pool: &SqlitePool,
     status: Option<&str>,
     limit: usize,
-) -> Result<Vec<PersistedSession>> {
+) -> Result<Vec<SessionListEntry>> {
     let store = SqliteSessionStore::new(pool.clone());
     let parsed = status.and_then(parse_session_status);
-    Ok(store.list_sessions(parsed, limit.max(1)).await?)
+    let sessions = store.list_sessions(parsed, limit.max(1)).await?;
+    let mut entries = Vec::with_capacity(sessions.len());
+    for session in sessions {
+        let history_messages = count_history_messages(pool, &session.session.id.to_string()).await?;
+        entries.push(SessionListEntry {
+            continuity: assistant_continuity_summary(&session, history_messages),
+            session,
+        });
+    }
+    Ok(entries)
 }
 
 pub async fn inspect_session(
@@ -103,7 +134,115 @@ pub async fn inspect_session(
     } else {
         Vec::new()
     };
-    Ok(SessionDetailReport { session, history })
+    let continuity = match session.as_ref() {
+        Some(session) => Some(assistant_continuity_summary(
+            session,
+            count_history_messages(pool, id).await?,
+        )),
+        None => None,
+    };
+    Ok(SessionDetailReport {
+        session,
+        history,
+        continuity,
+    })
+}
+
+pub fn assistant_continuity_summary(
+    session: &PersistedSession,
+    history_messages: usize,
+) -> AssistantContinuitySummary {
+    let assistant_identity = metadata_string(&session.session.metadata, "assistant_identity");
+    let assistant_surface = metadata_string(&session.session.metadata, "assistant_surface");
+    let assistant_session_model =
+        metadata_string(&session.session.metadata, "assistant_session_model");
+    let route_key = session
+        .route_key
+        .clone()
+        .or_else(|| metadata_string(&session.session.metadata, "route_key"));
+    let workspace_root = metadata_string(&session.session.metadata, "workspace_root");
+    let route_bound = route_key.is_some();
+    let assistant_managed = assistant_identity.is_some()
+        || assistant_surface.is_some()
+        || assistant_session_model.is_some();
+    let likely_resumed = assistant_managed && route_bound && history_messages > 0;
+    let status_label = if !assistant_managed {
+        "generic"
+    } else if likely_resumed {
+        "resumed"
+    } else if route_bound {
+        "route-bound"
+    } else if assistant_session_model.as_deref() == Some("persisted") {
+        "persisted"
+    } else {
+        "assistant"
+    }
+    .to_string();
+    let detail = continuity_detail(
+        assistant_managed,
+        assistant_surface.as_deref(),
+        route_bound,
+        history_messages,
+    );
+
+    AssistantContinuitySummary {
+        assistant_managed,
+        assistant_identity,
+        assistant_surface,
+        assistant_session_model,
+        route_key,
+        workspace_root,
+        route_bound,
+        history_messages,
+        likely_resumed,
+        status_label,
+        detail,
+    }
+}
+
+async fn count_history_messages(pool: &SqlitePool, session_id: &str) -> Result<usize> {
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM conversations WHERE session_id = ?")
+        .bind(session_id)
+        .fetch_one(pool)
+        .await?;
+    Ok(count.max(0) as usize)
+}
+
+fn metadata_string(metadata: &serde_json::Value, key: &str) -> Option<String> {
+    metadata
+        .get(key)
+        .and_then(|value| value.as_str())
+        .map(ToString::to_string)
+}
+
+fn continuity_detail(
+    assistant_managed: bool,
+    assistant_surface: Option<&str>,
+    route_bound: bool,
+    history_messages: usize,
+) -> String {
+    let history_label = if history_messages == 1 {
+        "1 persisted message".to_string()
+    } else {
+        format!("{history_messages} persisted messages")
+    };
+
+    if !assistant_managed {
+        return format!("Generic session with {history_label}.");
+    }
+
+    let surface = assistant_surface.unwrap_or("assistant");
+    if route_bound && history_messages > 0 {
+        return format!(
+            "Primary {surface} assistant session matched by route key with {history_label} restored."
+        );
+    }
+    if route_bound {
+        return format!(
+            "Primary {surface} assistant session is route-bound and ready to accumulate persisted history."
+        );
+    }
+    format!("Primary {surface} assistant session with {history_label}.")
 }
 
 pub async fn memory_timeline(

@@ -5,6 +5,8 @@ pub mod common;
 #[cfg(test)]
 mod agent_runtime_test;
 #[cfg(test)]
+mod assistant_continuity_test;
+#[cfg(test)]
 mod channel_fixture_test;
 #[cfg(test)]
 mod documented_scenario_test;

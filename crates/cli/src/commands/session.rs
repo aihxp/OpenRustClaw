@@ -34,11 +34,13 @@ pub async fn list(status: Option<&str>, limit: usize) -> Result<()> {
 }
 
 pub async fn show(id: &str, history_limit: usize) -> Result<()> {
-    let (store, _) = open_store().await?;
+    let (store, config) = open_store().await?;
     let session = store
         .get_session(id)
         .await?
         .with_context(|| format!("Session '{}' not found", id))?;
+    let pool = open_pool(&config).await?;
+    let report = super::inspect::inspect_session(&pool, id, history_limit).await?;
     println!(
         "{}\nstatus: {}\nuser: {}\nchannel: {}\ntype: {}\nroute: {}\ncreated: {}\nupdated: {}",
         session.session.id,
@@ -50,12 +52,48 @@ pub async fn show(id: &str, history_limit: usize) -> Result<()> {
         session.session.created_at,
         session.session.updated_at,
     );
+    if let Some(continuity) = report.continuity {
+        println!("\ncontinuity:");
+        println!(
+            "  status: {}{}",
+            continuity.status_label,
+            if continuity.assistant_managed {
+                " (assistant-managed)"
+            } else {
+                ""
+            }
+        );
+        println!(
+            "  surface: {}",
+            continuity
+                .assistant_surface
+                .as_deref()
+                .unwrap_or("<none>")
+        );
+        println!(
+            "  model: {}",
+            continuity
+                .assistant_session_model
+                .as_deref()
+                .unwrap_or("<none>")
+        );
+        println!(
+            "  route-bound: {}",
+            if continuity.route_bound { "yes" } else { "no" }
+        );
+        println!(
+            "  likely resumed: {}",
+            if continuity.likely_resumed { "yes" } else { "no" }
+        );
+        println!("  history messages: {}", continuity.history_messages);
+        println!("  summary: {}", continuity.detail);
+    }
     println!(
         "metadata: {}",
         serde_json::to_string_pretty(&session.session.metadata)?
     );
     println!("\nhistory:");
-    for message in store.list_history(id, history_limit).await? {
+    for message in report.history {
         println!(
             "- [{}] {}: {}",
             message.created_at.to_rfc3339(),
