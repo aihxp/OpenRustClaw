@@ -7,8 +7,8 @@
 
 ### Lifecycle Integrity
 
-- [ ] **LIFE-01**: Operator can rely on every completed phase producing a structured `VERIFICATION.md` artifact with phase goal, requirement coverage, evidence, and final status.
-- [ ] **LIFE-02**: Operator cannot advance phase-complete, milestone-audit, or milestone-archive flows when required verification artifacts are missing or stale.
+- [x] **LIFE-01**: Operator can rely on every completed phase producing a structured `VERIFICATION.md` artifact with phase goal, requirement coverage, evidence, and final status.
+- [x] **LIFE-02**: Operator cannot advance phase-complete, milestone-audit, or milestone-archive flows when required verification artifacts are missing or stale.
 - [ ] **LIFE-03**: Operator can review archived milestone verification evidence and any accepted verification debt from shipped planning artifacts without reconstructing history manually.
 
 ### Enterprise Foundations
@@ -47,8 +47,8 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| LIFE-01 | Phase 8 | Pending |
-| LIFE-02 | Phase 8 | Pending |
+| LIFE-01 | Phase 8 | Complete |
+| LIFE-02 | Phase 8 | Complete |
 | LIFE-03 | Phase 9 | Pending |
 | ENTF-01 | Phase 10 | Pending |
 | ENTF-02 | Phase 10 | Pending |

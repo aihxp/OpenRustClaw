@@ -17,7 +17,7 @@ This milestone fixes the lifecycle evidence debt exposed by v1.0 before the proj
 - Integer phases continue across milestones to preserve one linear execution history.
 - Decimal phases are reserved for urgent insertions if roadmap assumptions break.
 
-- [ ] **Phase 8: Verification Artifact Contract** - Make phase execution produce durable verification artifacts by default and block false completion when they are missing.
+- [x] **Phase 8: Verification Artifact Contract** - Make phase execution produce durable verification artifacts by default and block false completion when they are missing. (completed 2026-03-26)
 - [ ] **Phase 9: Milestone Lifecycle Integrity** - Make audit, archive, and cleanup consume and preserve verification evidence honestly.
 - [ ] **Phase 10: Enterprise Policy and Audit Foundations** - Start enterprise readiness with explicit approval boundaries and durable audit evidence for sensitive assistant actions.
 
@@ -31,10 +31,12 @@ This milestone fixes the lifecycle evidence debt exposed by v1.0 before the proj
   1. Completed phases always emit a structured `VERIFICATION.md` with goal, requirements coverage, evidence, and result.
   2. Phase execution, progress updates, and autonomous flow do not mark phases complete when required verification artifacts are missing or stale.
   3. Operators can see verification readiness gaps before milestone lifecycle steps begin.
-**Plans**: TBD
+**Plans**: 3/3 plans complete
 
 Plans:
-- [ ] TBD (run `$gsd-plan-phase 8` to break down)
+- [x] **08-01** - Harden the core verification lifecycle contract
+- [x] **08-02** - Surface verification readiness debt before lifecycle steps
+- [x] **08-03** - Align verification scaffolds, workflow guidance, and phase evidence
 
 ### Phase 9: Milestone Lifecycle Integrity
 **Goal**: Milestone audit, completion, and cleanup must preserve and surface verification evidence instead of relying on reconstruction after the fact.
@@ -66,6 +68,6 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 8. Verification Artifact Contract | 0/TBD | Not started | - |
+| 8. Verification Artifact Contract | 3/3 | Complete    | 2026-03-26 |
 | 9. Milestone Lifecycle Integrity | 0/TBD | Not started | - |
 | 10. Enterprise Policy and Audit Foundations | 0/TBD | Not started | - |
