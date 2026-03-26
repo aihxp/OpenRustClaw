@@ -12,7 +12,7 @@ This milestone turns the existing OpenRustClaw surface area into a believable pr
 - Integer phases are planned milestone work.
 - Decimal phases are reserved for urgent insertions if roadmap assumptions break.
 
-- [ ] **Phase 1: Onboarding and First-Run Trust** - Make install, configuration, and first assistant launch production-ready.
+- [x] **Phase 1: Onboarding and First-Run Trust** - Make install, configuration, and first assistant launch production-ready. (completed 2026-03-26)
 - [ ] **Phase 2: Core Assistant and Session Continuity** - Stabilize the primary chat and persisted session experience.
 - [ ] **Phase 3: Memory Durability and Write Policy** - Make memory trustworthy, durable, and inspectable.
 - [ ] **Phase 4: Tool, MCP, and Coding Workflow Hardening** - Make tool execution and coding actions dependable for daily use.
@@ -30,12 +30,12 @@ This milestone turns the existing OpenRustClaw surface area into a believable pr
   1. Operator can follow the documented install and setup path without manual source edits.
   2. First-run validation catches missing env, provider, or channel prerequisites before runtime failure.
   3. A clean install reaches a working assistant session with clear operator feedback.
-**Plans**: 2/3 plans executed
+**Plans**: 3/3 plans complete
 
 Plans:
 - [x] 01-01: Harden doctor-backed first-start readiness gating for onboarding
 - [x] 01-02: Add workflow-level onboarding regression coverage
-- [ ] 01-03: Align installation and top-level first-run documentation
+- [x] 01-03: Align installation and top-level first-run documentation
 
 ### Phase 2: Core Assistant and Session Continuity
 **Goal**: The primary assistant conversation loop is reliable across restarts, reconnects, and normal operator use.
@@ -119,7 +119,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Onboarding and First-Run Trust | 2/3 | In Progress|  |
+| 1. Onboarding and First-Run Trust | 3/3 | Complete   | 2026-03-26 |
 | 2. Core Assistant and Session Continuity | 0/TBD | Not started | - |
 | 3. Memory Durability and Write Policy | 0/TBD | Not started | - |
 | 4. Tool, MCP, and Coding Workflow Hardening | 0/TBD | Not started | - |
