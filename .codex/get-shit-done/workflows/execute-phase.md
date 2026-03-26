@@ -714,6 +714,9 @@ The CLI handles:
 - Updating REQUIREMENTS.md traceability
 - Scanning for verification debt (returns `warnings` array)
 
+Before any roadmap or state mutation, `phase complete` MUST confirm that the phase has a current `VERIFICATION.md`.
+The command now fails fast when verification is missing, still pending, reports `gaps_found`, or is stale relative to newer summary/UAT evidence.
+
 Extract from result: `next_phase`, `next_phase_name`, `is_last_phase`, `warnings`, `has_warnings`.
 
 **If has_warnings is true:**

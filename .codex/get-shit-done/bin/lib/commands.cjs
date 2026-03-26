@@ -763,7 +763,7 @@ function cmdScaffold(cwd, type, options, raw) {
     }
     case 'verification': {
       filePath = path.join(phaseDir, `${padded}-VERIFICATION.md`);
-      content = `---\nphase: "${padded}"\nname: "${name || phaseInfo?.phase_name || 'Unnamed'}"\ncreated: ${today}\nstatus: pending\n---\n\n# Phase ${phase}: ${name || phaseInfo?.phase_name || 'Unnamed'} — Verification\n\n## Goal-Backward Verification\n\n**Phase Goal:** [From ROADMAP.md]\n\n## Checks\n\n| # | Requirement | Status | Evidence |\n|---|------------|--------|----------|\n\n## Result\n\n_Pending verification_\n`;
+      content = `---\nphase: "${padded}"\nverified: ${new Date().toISOString()}\nstatus: pending\nscore: "0/0 must-haves verified"\n---\n\n# Phase ${phase}: ${name || phaseInfo?.phase_name || 'Unnamed'} — Verification\n\n## Observable Truths\n\n| # | Truth | Status | Evidence |\n|---|-------|--------|----------|\n| 1 | [Truth] | pending | |\n\n## Required Artifacts\n\n| Artifact | Expected | Status | Details |\n|----------|----------|--------|---------|\n| [path] | [what] | pending | |\n\n## Key Link Verification\n\n| From | To | Via | Status | Details |\n|------|----|-----|--------|---------|\n| [source] | [target] | [connection] | pending | |\n\n## Requirements Coverage\n\n| Requirement | Status | Blocking Issue |\n|-------------|--------|----------------|\n| [req] | pending | |\n\n## Result\n\n[Pending verification]\n`;
       break;
     }
     case 'phase-dir': {
