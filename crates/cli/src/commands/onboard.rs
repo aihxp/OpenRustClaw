@@ -327,16 +327,21 @@ Let's get started!
             style("Running post-onboarding health check...").cyan()
         );
         let report = doctor::collect_report(false, true, None).await?;
+        let readiness = doctor::first_start_readiness(&report);
         println!(
             "  Health check: {} passed, {} warnings, {} failed",
             report.passed, report.warnings, report.failed
         );
-        if report.failed == 0 {
+        if readiness.ready {
             println!("  ✓ The workspace is ready for first start.");
         } else {
+            println!("  ⚠ First start is blocked until these items are fixed:");
+            for item in &readiness.blocking_items {
+                println!("    - {}", item);
+            }
             println!("  ⚠ Review `openrustclaw doctor --deep` before first start.");
         }
-        Ok(report.healthy)
+        Ok(readiness.ready)
     }
 
     fn assistant_provider(&self) -> Option<String> {

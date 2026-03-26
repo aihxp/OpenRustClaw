@@ -36,6 +36,51 @@ pub struct DiagnosticReport {
     pub healthy: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FirstStartReadiness {
+    pub ready: bool,
+    pub blocking_items: Vec<String>,
+}
+
+fn blocking_reason(check: &DiagnosticCheck) -> String {
+    if let Some(message) = &check.message {
+        format!("{}: {}", check.label, message)
+    } else {
+        check.label.clone()
+    }
+}
+
+pub fn first_start_readiness(report: &DiagnosticReport) -> FirstStartReadiness {
+    let mut blocking_items = Vec::new();
+
+    for check in &report.checks {
+        let should_block = match check.id.as_str() {
+            _ if check.status == DiagnosticStatus::Failed => true,
+            "api_keys" | "control_registry" | "onboarding_state" => {
+                check.status != DiagnosticStatus::Ok
+            }
+            "channel_readiness" => {
+                if check.status == DiagnosticStatus::Ok {
+                    false
+                } else {
+                    let message = check.message.as_deref().unwrap_or_default();
+                    !message.contains("No shipped channels are enabled")
+                }
+            }
+            _ => false,
+        };
+
+        if should_block {
+            blocking_items.push(blocking_reason(check));
+        }
+    }
+
+    FirstStartReadiness {
+        ready: blocking_items.is_empty(),
+        blocking_items,
+    }
+}
+
 /// Run diagnostics.
 pub async fn run(repair: bool, deep: bool, non_interactive: bool) -> Result<()> {
     let report = collect_report(repair, deep, None).await?;
@@ -554,6 +599,32 @@ async fn check_ollama() -> bool {
 mod tests {
     use super::*;
 
+    fn sample_report(checks: Vec<DiagnosticCheck>) -> DiagnosticReport {
+        let passed = checks
+            .iter()
+            .filter(|check| check.status == DiagnosticStatus::Ok)
+            .count();
+        let warnings = checks
+            .iter()
+            .filter(|check| check.status == DiagnosticStatus::Warning)
+            .count();
+        let failed = checks
+            .iter()
+            .filter(|check| check.status == DiagnosticStatus::Failed)
+            .count();
+
+        DiagnosticReport {
+            generated_at: Utc::now(),
+            config_path: "config/default.toml".to_string(),
+            deep: true,
+            checks,
+            passed,
+            warnings,
+            failed,
+            healthy: failed == 0,
+        }
+    }
+
     #[test]
     fn test_check_api_keys_no_keys_set() {
         let result = check_api_keys_with(|_| None);
@@ -587,5 +658,60 @@ mod tests {
         // The function itself checks Path::new("config/default.toml").exists()
         let _result = check_config(None);
         // Just verify it doesn't panic
+    }
+
+    #[test]
+    fn test_first_start_readiness_blocks_missing_api_keys_warning() {
+        let readiness = first_start_readiness(&sample_report(vec![DiagnosticCheck {
+            id: "api_keys".to_string(),
+            label: "provider API keys".to_string(),
+            status: DiagnosticStatus::Warning,
+            message: Some("No LLM provider API keys configured".to_string()),
+        }]));
+
+        assert!(!readiness.ready);
+        assert_eq!(readiness.blocking_items.len(), 1);
+        assert!(readiness.blocking_items[0].contains("provider API keys"));
+    }
+
+    #[test]
+    fn test_first_start_readiness_allows_no_channels_enabled_warning() {
+        let readiness = first_start_readiness(&sample_report(vec![DiagnosticCheck {
+            id: "channel_readiness".to_string(),
+            label: "enabled channel readiness probes".to_string(),
+            status: DiagnosticStatus::Warning,
+            message: Some("No shipped channels are enabled in the effective config.".to_string()),
+        }]));
+
+        assert!(readiness.ready);
+        assert!(readiness.blocking_items.is_empty());
+    }
+
+    #[test]
+    fn test_first_start_readiness_blocks_channel_failures() {
+        let readiness = first_start_readiness(&sample_report(vec![DiagnosticCheck {
+            id: "channel_readiness".to_string(),
+            label: "enabled channel readiness probes".to_string(),
+            status: DiagnosticStatus::Warning,
+            message: Some("Channel readiness failures: slack: missing token".to_string()),
+        }]));
+
+        assert!(!readiness.ready);
+        assert_eq!(readiness.blocking_items.len(), 1);
+        assert!(readiness.blocking_items[0].contains("channel readiness probes"));
+    }
+
+    #[test]
+    fn test_first_start_readiness_blocks_missing_onboarding_state() {
+        let readiness = first_start_readiness(&sample_report(vec![DiagnosticCheck {
+            id: "onboarding_state".to_string(),
+            label: "onboarding-managed workspace state".to_string(),
+            status: DiagnosticStatus::Warning,
+            message: Some("No onboarding-managed workspace state detected yet.".to_string()),
+        }]));
+
+        assert!(!readiness.ready);
+        assert_eq!(readiness.blocking_items.len(), 1);
+        assert!(readiness.blocking_items[0].contains("onboarding-managed workspace state"));
     }
 }
