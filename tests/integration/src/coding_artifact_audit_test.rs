@@ -81,7 +81,7 @@ async fn coding_artifacts_and_tool_ledger_share_auditable_evidence() -> TestResu
     );
     append_tool_execution_record(repo, &ledger_record)?;
 
-    let report = tool_execution_history(repo, 5, Some("cursor_tool"), Some("success"))?;
+    let report = tool_execution_history(repo, 5, Some("cursor_tool"), Some("success"), None)?;
     assert_eq!(report.entries.len(), 1);
     assert_eq!(report.entries[0].tool_name, "edit_file");
     assert_eq!(

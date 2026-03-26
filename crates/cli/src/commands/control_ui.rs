@@ -34,4 +34,10 @@ mod tests {
         assert!(CONTROL_UI_HTML.contains("Recent Coding Artifacts"));
         assert!(CONTROL_UI_HTML.contains("function loadCodingArtifacts"));
     }
+
+    #[test]
+    fn dashboard_includes_email_activity_panel() {
+        assert!(CONTROL_UI_HTML.contains("Recent Email Activity"));
+        assert!(CONTROL_UI_HTML.contains("function loadEmailActivity"));
+    }
 }

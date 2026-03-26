@@ -310,6 +310,7 @@ pub fn tool_execution_history(
     limit: usize,
     source: Option<&str>,
     status: Option<&str>,
+    tool_name: Option<&str>,
 ) -> Result<ToolExecutionHistoryReport> {
     let path = tool_execution_log_path(workspace_root);
     if !path.exists() {
@@ -334,6 +335,9 @@ pub fn tool_execution_history(
             continue;
         }
         if status.is_some_and(|value| record.status != value) {
+            continue;
+        }
+        if tool_name.is_some_and(|value| record.tool_name != value) {
             continue;
         }
         entries.push(record);

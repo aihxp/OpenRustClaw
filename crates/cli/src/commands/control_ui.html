@@ -1163,6 +1163,18 @@
         </article>
 
         <article class="panel span-12">
+          <h2>Recent Email Activity</h2>
+          <div class="surface">
+            <table class="table">
+              <thead>
+                <tr><th>When</th><th>Status</th><th>Mailbox</th><th>Processed</th><th>Detail</th></tr>
+              </thead>
+              <tbody id="email-activity-table"><tr><td colspan="5" class="muted">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="panel span-12">
           <h2>Recent Coding Artifacts</h2>
           <div class="surface">
             <div id="coding-artifact-root" class="muted" style="margin-bottom: 10px">Loading…</div>
@@ -3132,6 +3144,29 @@
         renderTableRows("tool-executions-table", rows, "No recent tool executions.");
       }
 
+      async function loadEmailActivity() {
+        const payload = await fetchJson("/control/tool-executions?tool_name=channels.gmail_pubsub.ingress&limit=12");
+        const rows = (payload.entries || []).map((entry) => {
+          const report = entry.result_preview || {};
+          const mailbox = report.email_address || "-";
+          const processedCount = report.processed_count ?? 0;
+          const skippedCount = report.skipped_count ?? 0;
+          const firstEntry = Array.isArray(report.entries) && report.entries.length ? report.entries[0] : null;
+          const detail = firstEntry
+            ? `${firstEntry.from || "-"} -> ${(firstEntry.subject || "").slice(0, 96)}`
+            : entry.error || entry.status_detail || "-";
+          const processedLabel = `${processedCount} processed${skippedCount ? `, ${skippedCount} skipped` : ""}`;
+          return `<tr>
+            <td>${entry.created_at || "-"}</td>
+            <td><strong>${entry.status || "-"}</strong><div class="muted">${entry.status_detail || "-"}</div></td>
+            <td>${escapeHtml(String(mailbox))}</td>
+            <td>${escapeHtml(processedLabel)}</td>
+            <td>${escapeHtml(detail)}</td>
+          </tr>`;
+        });
+        renderTableRows("email-activity-table", rows, "No recent Gmail activity.");
+      }
+
       async function loadCodingArtifacts() {
         try {
           const payload = await fetchJson("/control/coding-artifacts?limit=12");
@@ -3368,6 +3403,7 @@
             loadSessions(),
             loadMemory(),
             loadToolExecutions(),
+            loadEmailActivity(),
             loadCodingArtifacts(),
             loadJobs(),
             loadActiveOrchestrationRuns(),

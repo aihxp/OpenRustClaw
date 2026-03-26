@@ -537,7 +537,7 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
         info!(path = %webhook_path, "Google Meet ingress enabled");
     }
     if let Some(handler) = gmail_ingress_handler {
-        app = app.merge(gmail_ingress_router(handler));
+        app = app.merge(gmail_ingress_router(handler, workspace_root.clone()));
         info!("Gmail Pub/Sub ingress enabled at /webhooks/gmail/pubsub");
     }
     if let Some(handler) = imessage_ingress_handler {
@@ -5179,6 +5179,8 @@ struct ToolExecutionQuery {
     #[serde(default)]
     status: Option<String>,
     #[serde(default)]
+    tool_name: Option<String>,
+    #[serde(default)]
     limit: Option<usize>,
 }
 
@@ -6873,6 +6875,7 @@ async fn tool_execution_history_handler(
         query.limit.unwrap_or(20),
         query.source.as_deref(),
         query.status.as_deref(),
+        query.tool_name.as_deref(),
     ) {
         Ok(report) => (StatusCode::OK, Json(serde_json::json!(report))).into_response(),
         Err(error) => (
@@ -8414,13 +8417,15 @@ async fn google_meet_events_handler(
 #[derive(Clone)]
 struct GmailIngressState {
     handler: Arc<GmailWebhookHandler>,
+    workspace_root: PathBuf,
 }
 
-fn gmail_ingress_router(handler: GmailWebhookHandler) -> Router {
+fn gmail_ingress_router(handler: GmailWebhookHandler, workspace_root: PathBuf) -> Router {
     Router::new()
         .route("/webhooks/gmail/pubsub", post(gmail_pubsub_handler))
         .with_state(GmailIngressState {
             handler: Arc::new(handler),
+            workspace_root,
         })
 }
 
@@ -8430,13 +8435,54 @@ async fn gmail_pubsub_handler(
 ) -> impl IntoResponse {
     let started_at = std::time::Instant::now();
     match state.handler.handle_push(&body).await {
-        Ok(()) => {
-            record_operator_tool_status("channels.gmail_pubsub.ingress", started_at, "success");
+        Ok(report) => {
+            openrustclaw_observability::metrics::record_tool_execution(
+                "channels.gmail_pubsub.ingress",
+                "success",
+            );
+            openrustclaw_observability::metrics::record_tool_duration(
+                "channels.gmail_pubsub.ingress",
+                started_at.elapsed().as_secs_f64(),
+            );
+            persist_operator_execution_record(
+                "channels.gmail_pubsub.ingress",
+                "runtime_tool",
+                "success",
+                started_at,
+                None,
+                None,
+                Some(serde_json::json!({
+                    "body_bytes": body.len(),
+                    "workspace_root": state.workspace_root.display().to_string(),
+                })),
+                Some(serde_json::json!(report)),
+            );
             StatusCode::OK.into_response()
         }
         Err(error) => {
-            record_operator_tool_status("channels.gmail_pubsub.ingress", started_at, "failure");
-            (StatusCode::BAD_REQUEST, error.to_string()).into_response()
+            let error_text = error.to_string();
+            openrustclaw_observability::metrics::record_tool_execution(
+                "channels.gmail_pubsub.ingress",
+                "failure",
+            );
+            openrustclaw_observability::metrics::record_tool_duration(
+                "channels.gmail_pubsub.ingress",
+                started_at.elapsed().as_secs_f64(),
+            );
+            persist_operator_execution_record(
+                "channels.gmail_pubsub.ingress",
+                "runtime_tool",
+                "failure",
+                started_at,
+                Some(error_text.as_str()),
+                None,
+                Some(serde_json::json!({
+                    "body_bytes": body.len(),
+                    "workspace_root": state.workspace_root.display().to_string(),
+                })),
+                None,
+            );
+            (StatusCode::BAD_REQUEST, error_text).into_response()
         }
     }
 }

@@ -58,6 +58,26 @@ pub struct GmailNotification {
     pub history_id: u64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GmailProcessedMessageReport {
+    pub message_id: String,
+    pub thread_id: String,
+    pub from: String,
+    pub subject: String,
+    pub received_at: String,
+    pub attachment_count: usize,
+    pub unread: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GmailNotificationReport {
+    pub email_address: String,
+    pub history_id: u64,
+    pub processed_count: usize,
+    pub skipped_count: usize,
+    pub entries: Vec<GmailProcessedMessageReport>,
+}
+
 #[derive(Debug, Clone)]
 pub struct EmailMessage {
     pub id: String,
@@ -254,7 +274,10 @@ impl GmailPubSub {
         }
     }
 
-    pub async fn process_notification(&self, notification: GmailNotification) -> Result<()> {
+    pub async fn process_notification(
+        &self,
+        notification: GmailNotification,
+    ) -> Result<GmailNotificationReport> {
         self.runtime.process_notification(notification).await
     }
 
@@ -917,13 +940,23 @@ impl GmailRuntime {
         ))
     }
 
-    async fn process_notification(&self, notification: GmailNotification) -> Result<()> {
+    async fn process_notification(
+        &self,
+        notification: GmailNotification,
+    ) -> Result<GmailNotificationReport> {
         info!(
             email = %notification.email_address,
             history_id = notification.history_id,
             "Processing Gmail notification"
         );
 
+        let mut report = GmailNotificationReport {
+            email_address: notification.email_address.clone(),
+            history_id: notification.history_id,
+            processed_count: 0,
+            skipped_count: 0,
+            entries: Vec::new(),
+        };
         let token = self.require_access_token().await?;
         let new_messages = self
             .get_new_messages(notification.history_id, &token)
@@ -932,8 +965,18 @@ impl GmailRuntime {
         for metadata in new_messages {
             if let Some(email) = self.get_message(&metadata.id, &token).await? {
                 if !self.should_process(&email) {
+                    report.skipped_count += 1;
                     continue;
                 }
+                report.entries.push(GmailProcessedMessageReport {
+                    message_id: email.id.clone(),
+                    thread_id: email.thread_id.clone(),
+                    from: email.from.clone(),
+                    subject: email.subject.clone(),
+                    received_at: email.received_at.to_rfc3339(),
+                    attachment_count: email.attachments.len(),
+                    unread: email.is_unread,
+                });
                 let incoming = IncomingMessage {
                     session_id: Uuid::new_v4(),
                     user_id: email.from.clone(),
@@ -1236,7 +1279,8 @@ impl GmailRuntime {
             }
         }
 
-        Ok(())
+        report.processed_count = report.entries.len();
+        Ok(report)
     }
 
     async fn take_action(&self, email_id: &str, action: EmailAction) -> Result<()> {
@@ -1725,7 +1769,7 @@ pub struct GmailWebhookHandler {
 }
 
 impl GmailWebhookHandler {
-    pub async fn handle_push(&self, body: &[u8]) -> Result<()> {
+    pub async fn handle_push(&self, body: &[u8]) -> Result<GmailNotificationReport> {
         if let Ok(notification) = serde_json::from_slice::<GmailNotification>(body) {
             return self.runtime.process_notification(notification).await;
         }
@@ -1875,7 +1919,7 @@ mod tests {
             })
             .to_string(),
         );
-        handler
+        let report = handler
             .handle_push(
                 serde_json::json!({
                     "message": {
@@ -1887,6 +1931,12 @@ mod tests {
             )
             .await
             .unwrap();
+        assert_eq!(report.email_address, "user@example.com");
+        assert_eq!(report.history_id, 100);
+        assert_eq!(report.processed_count, 1);
+        assert_eq!(report.skipped_count, 0);
+        assert_eq!(report.entries[0].message_id, "msg-1");
+        assert_eq!(report.entries[0].subject, "Quarterly Q1");
 
         let incoming = gmail.receive().await.unwrap();
         assert_eq!(incoming.user_id, "sender@example.com");
@@ -2248,11 +2298,14 @@ mod tests {
         let mut gmail = GmailPubSub::new(config);
         gmail.connect().await.unwrap();
 
-        gmail
+        let report = gmail
             .webhook_handler()
             .handle_push(br#"{"emailAddress":"user@example.com","historyId":100}"#)
             .await
             .unwrap();
+        assert_eq!(report.processed_count, 1);
+        assert_eq!(report.entries[0].message_id, "msg-1");
+        assert_eq!(report.entries[0].subject, "Direct notification");
 
         let incoming = gmail.receive().await.unwrap();
         assert_eq!(incoming.metadata["gmail_message_id"], "msg-1");
