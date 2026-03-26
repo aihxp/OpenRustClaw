@@ -28,7 +28,7 @@ Quick check:
 
 ```bash
 openrustclaw doctor
-# Should show all checks passing
+# Should show no blocking first-start issues for your chosen path
 ```
 
 If you want guided setup instead, run `openrustclaw onboard`. The wizard only offers to launch the persisted assistant session after the post-setup health gate confirms provider and workspace readiness.

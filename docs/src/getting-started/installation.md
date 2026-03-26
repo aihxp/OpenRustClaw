@@ -314,14 +314,27 @@ openrustclaw doctor
 ```
 
 This checks:
-- ✅ Rust toolchain
-- ✅ Python installation
-- ✅ Protocol buffers
 - ✅ Database connectivity
-- ✅ API key validity
-- ✅ Sidecar connectivity
+- ✅ Database migrations
+- ✅ Provider API key presence
+- ✅ Runtime configuration files
+- ✅ Data and skills directories
+- ✅ Control and channel workspace state
+- ✅ Enabled-channel readiness probes
+- ✅ Optional sidecar availability
 
-### 2. Test Provider Connectivity
+### 2. Choose Your First-Run Path
+
+For the cleanest first run, prefer the guided path:
+
+```bash
+openrustclaw onboard
+openrustclaw doctor
+```
+
+The onboarding wizard only offers to launch the persisted assistant session after the post-setup health gate confirms provider and workspace readiness.
+
+If you already configured the workspace manually, continue with a direct assistant launch:
 
 ```bash
 # List available models
@@ -330,8 +343,6 @@ openrustclaw models list --provider anthropic
 # Start the assistant and ask a simple question
 openrustclaw assistant --provider anthropic
 ```
-
-If you prefer guided setup, run `openrustclaw onboard`; the wizard only offers to launch the persisted assistant session after the post-setup health gate confirms provider and workspace readiness.
 
 ### 3. Test Memory System
 

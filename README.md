@@ -44,6 +44,9 @@ cargo build --release
 # confirms provider and workspace readiness
 ./target/release/openrustclaw onboard
 
+# Verify first-start readiness for your workspace
+openrustclaw doctor
+
 # Scaffold and inspect the control plane
 openrustclaw control init
 openrustclaw control describe --json
