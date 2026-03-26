@@ -1,5 +1,6 @@
 //! Integration tests for the Cursor ACP crate.
 
+use openrustclaw_cursor::tools::{execution_artifact_root, load_execution_artifacts};
 use openrustclaw_cursor::{
     ClientConnection, CursorClient, CursorConfig, CursorServer, CursorServerConfig,
     ServerTransport, ToolContext, ToolRegistry, check_cursor_setup, generate_cursor_settings,
@@ -299,6 +300,85 @@ async fn test_tool_execution_run_command() {
     assert!(result["success"].as_bool().unwrap());
     assert!(result["stdout"].as_str().unwrap().contains("test-output"));
     assert_eq!(result["exit_code"], 0);
+    let artifact_path = result["_artifact"]["path"].as_str().unwrap();
+    assert!(std::path::Path::new(artifact_path).exists());
+
+    let artifacts = load_execution_artifacts(&path, 5).unwrap();
+    assert_eq!(artifacts[0].tool_name, "run_command");
+    assert!(artifacts[0].success);
+}
+
+#[tokio::test]
+async fn test_edit_file_emits_coding_artifact() {
+    let temp_dir = TempDir::new().unwrap();
+    let path = temp_dir.path().to_path_buf();
+
+    tokio::process::Command::new("git")
+        .args(["init"])
+        .current_dir(&path)
+        .output()
+        .await
+        .unwrap();
+    tokio::process::Command::new("git")
+        .args(["config", "user.email", "test@example.com"])
+        .current_dir(&path)
+        .output()
+        .await
+        .unwrap();
+    tokio::process::Command::new("git")
+        .args(["config", "user.name", "Test User"])
+        .current_dir(&path)
+        .output()
+        .await
+        .unwrap();
+
+    tokio::fs::write(path.join("test.txt"), "Hello, World!")
+        .await
+        .unwrap();
+    tokio::process::Command::new("git")
+        .args(["add", "test.txt"])
+        .current_dir(&path)
+        .output()
+        .await
+        .unwrap();
+    tokio::process::Command::new("git")
+        .args(["commit", "-m", "initial"])
+        .current_dir(&path)
+        .output()
+        .await
+        .unwrap();
+
+    let ctx = ToolContext::new(path.clone(), CursorConfig::default());
+    let registry = ToolRegistry::new(ctx);
+    let result = registry
+        .execute(
+            "edit_file",
+            serde_json::json!({
+                "path": "test.txt",
+                "old_text": "World",
+                "new_text": "Rust"
+            }),
+        )
+        .await
+        .unwrap();
+
+    assert!(result["_artifact"]["path"].as_str().is_some());
+    assert!(execution_artifact_root(&path).exists());
+
+    let artifacts = load_execution_artifacts(&path, 5).unwrap();
+    let expected_path = path.join("test.txt").to_string_lossy().to_string();
+    assert_eq!(artifacts[0].tool_name, "edit_file");
+    assert_eq!(
+        artifacts[0].target_path.as_deref(),
+        Some(expected_path.as_str())
+    );
+    assert!(
+        artifacts[0]
+            .diff_preview
+            .as_deref()
+            .unwrap_or("")
+            .contains("+Hello, Rust!")
+    );
 }
 
 #[tokio::test]

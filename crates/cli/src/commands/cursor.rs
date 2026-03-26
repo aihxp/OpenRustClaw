@@ -1,6 +1,7 @@
 //! Cursor IDE ACP integration commands.
 
 use anyhow::{Context, Result};
+use openrustclaw_cursor::tools::execution_artifact_root;
 
 /// Set up Cursor IDE integration.
 pub async fn setup() -> Result<()> {
@@ -116,6 +117,9 @@ pub async fn setup() -> Result<()> {
     println!("  - .cursor/rules/openrustclaw-memory.mdc - Memory management rules");
     println!("  - .cursor/rules/openrustclaw-skills.mdc - Skill development rules");
     println!("  - .cursor/rules/acp-integration.mdc - ACP protocol rules");
+    println!(
+        "  - .claw/control/cursor-tool-runs/ - Coding action audit artifacts created at runtime"
+    );
 
     Ok(())
 }
@@ -187,6 +191,10 @@ pub async fn status() -> Result<()> {
         println!("  openrustclaw cursor setup");
     } else {
         println!("Cursor IDE integration is ready!");
+        println!(
+            "Coding audit artifacts: {}",
+            execution_artifact_root(&project_root).display()
+        );
         println!();
         println!("To start the ACP server:");
         println!("  openrustclaw cursor start");
