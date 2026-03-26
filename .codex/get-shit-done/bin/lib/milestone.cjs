@@ -7,6 +7,7 @@ const path = require('path');
 const { escapeRegex, getMilestonePhaseFilter, extractOneLinerFromBody, normalizeMd, planningPaths, output, error } = require('./core.cjs');
 const { extractFrontmatter } = require('./frontmatter.cjs');
 const { writeStateMd, stateReplaceFieldWithFallback } = require('./state.cjs');
+const { collectMilestoneVerificationState, renderMilestoneVerificationArchive } = require('./verification-artifacts.cjs');
 
 function cmdRequirementsMarkComplete(cwd, reqIdsRaw, raw) {
   if (!reqIdsRaw || reqIdsRaw.length === 0) {
@@ -98,6 +99,9 @@ function cmdMilestoneComplete(cwd, version, options, raw) {
   const phasesDir = planningPaths(cwd).phases;
   const today = new Date().toISOString().split('T')[0];
   const milestoneName = options.name || version;
+  const verificationSnapshot = collectMilestoneVerificationState(cwd, {
+    milestone: { version, name: milestoneName },
+  });
 
   // Ensure archive directory exists
   fs.mkdirSync(archiveDir, { recursive: true });
@@ -163,6 +167,14 @@ function cmdMilestoneComplete(cwd, version, options, raw) {
     fs.writeFileSync(path.join(archiveDir, `${version}-REQUIREMENTS.md`), archiveHeader + reqContent, 'utf-8');
   }
 
+  // Archive milestone verification evidence
+  const verificationArchivePath = path.join(archiveDir, `${version}-VERIFICATIONS.md`);
+  fs.writeFileSync(
+    verificationArchivePath,
+    normalizeMd(renderMilestoneVerificationArchive(verificationSnapshot, { archivePhases: !!options.archivePhases })),
+    'utf-8'
+  );
+
   // Archive audit file if exists
   const auditFile = path.join(cwd, '.planning', `${version}-MILESTONE-AUDIT.md`);
   if (fs.existsSync(auditFile)) {
@@ -171,7 +183,7 @@ function cmdMilestoneComplete(cwd, version, options, raw) {
 
   // Create/append MILESTONES.md entry
   const accomplishmentsList = accomplishments.map(a => `- ${a}`).join('\n');
-  const milestoneEntry = `## ${version} ${milestoneName} (Shipped: ${today})\n\n**Phases completed:** ${phaseCount} phases, ${totalPlans} plans, ${totalTasks} tasks\n\n**Key accomplishments:**\n${accomplishmentsList || '- (none recorded)'}\n\n---\n\n`;
+  const milestoneEntry = `## ${version} ${milestoneName} (Shipped: ${today})\n\n**Phases completed:** ${phaseCount} phases, ${totalPlans} plans, ${totalTasks} tasks\n**Verification archive:** \`.planning/milestones/${version}-VERIFICATIONS.md\`\n**Verification debt:** ${verificationSnapshot.summary.debt_items > 0 ? `${verificationSnapshot.summary.debt_items} item(s)` : 'none'}\n\n**Key accomplishments:**\n${accomplishmentsList || '- (none recorded)'}\n\n---\n\n`;
 
   if (fs.existsSync(milestonesPath)) {
     const existing = fs.readFileSync(milestonesPath, 'utf-8');
@@ -236,6 +248,7 @@ function cmdMilestoneComplete(cwd, version, options, raw) {
     archived: {
       roadmap: fs.existsSync(path.join(archiveDir, `${version}-ROADMAP.md`)),
       requirements: fs.existsSync(path.join(archiveDir, `${version}-REQUIREMENTS.md`)),
+      verifications: fs.existsSync(verificationArchivePath),
       audit: fs.existsSync(path.join(archiveDir, `${version}-MILESTONE-AUDIT.md`)),
       phases: phasesArchived,
     },
