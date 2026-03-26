@@ -231,7 +231,7 @@ Usage: `$gsd-complete-milestone 1.0.0`
 **`$gsd-progress`**
 Check project status and intelligently route to next action.
 
-- Shows visual progress bar and completion percentage
+- Shows visual progress bar with completion and remaining percentages
 - Summarizes recent work from SUMMARY files
 - Displays current position and what's next
 - Lists key decisions and open issues

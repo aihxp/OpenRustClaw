@@ -506,7 +506,6 @@ async function cmdWebsearch(query, options, raw) {
 
 function cmdProgressRender(cwd, format, raw) {
   const phasesDir = planningPaths(cwd).phases;
-  const roadmapPath = planningPaths(cwd).roadmap;
   const milestone = getMilestoneInfo(cwd);
 
   const phases = [];
@@ -539,6 +538,10 @@ function cmdProgressRender(cwd, format, raw) {
   } catch { /* intentionally empty */ }
 
   const percent = totalPlans > 0 ? Math.min(100, Math.round((totalSummaries / totalPlans) * 100)) : 0;
+  const remainingPlans = Math.max(totalPlans - totalSummaries, 0);
+  const remainingPercent = totalPlans > 0
+    ? Math.max(100 - percent, 0)
+    : phases.length > 0 ? 100 : 0;
 
   if (format === 'table') {
     // Render markdown table
@@ -546,7 +549,7 @@ function cmdProgressRender(cwd, format, raw) {
     const filled = Math.round((percent / 100) * barWidth);
     const bar = '\u2588'.repeat(filled) + '\u2591'.repeat(barWidth - filled);
     let out = `# ${milestone.version} ${milestone.name}\n\n`;
-    out += `**Progress:** [${bar}] ${totalSummaries}/${totalPlans} plans (${percent}%)\n\n`;
+    out += `**Progress:** [${bar}] ${totalSummaries}/${totalPlans} plans (${percent}% complete, ${remainingPercent}% left)\n\n`;
     out += `| Phase | Name | Plans | Status |\n`;
     out += `|-------|------|-------|--------|\n`;
     for (const p of phases) {
@@ -557,8 +560,15 @@ function cmdProgressRender(cwd, format, raw) {
     const barWidth = 20;
     const filled = Math.round((percent / 100) * barWidth);
     const bar = '\u2588'.repeat(filled) + '\u2591'.repeat(barWidth - filled);
-    const text = `[${bar}] ${totalSummaries}/${totalPlans} plans (${percent}%)`;
-    output({ bar: text, percent, completed: totalSummaries, total: totalPlans }, raw, text);
+    const text = `[${bar}] ${totalSummaries}/${totalPlans} plans (${percent}% complete, ${remainingPercent}% left)`;
+    output({
+      bar: text,
+      percent,
+      remaining_percent: remainingPercent,
+      completed: totalSummaries,
+      remaining_plans: remainingPlans,
+      total: totalPlans,
+    }, raw, text);
   } else {
     // JSON format
     output({
@@ -568,6 +578,8 @@ function cmdProgressRender(cwd, format, raw) {
       total_plans: totalPlans,
       total_summaries: totalSummaries,
       percent,
+      remaining_percent: remainingPercent,
+      remaining_plans: remainingPlans,
     }, raw);
   }
 }

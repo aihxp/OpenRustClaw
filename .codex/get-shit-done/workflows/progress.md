@@ -133,6 +133,10 @@ CONTEXT: [✓ if has_context | - if not]
 [Next phase/plan objective from roadmap analyze]
 ```
 
+`{PROGRESS_BAR}` includes both completion and remaining percentage, for example:
+
+`[████████░░░░░░░░░░░░] 4/10 plans (40% complete, 60% left)`
+
 </step>
 
 <step name="route">
