@@ -51,6 +51,7 @@ impl SessionManager {
         if let Some(route_key) = route_key {
             session.metadata["route_key"] = serde_json::Value::String(route_key.to_string());
         }
+        apply_assistant_session_metadata(&mut session, platform);
         self.persist_new_session(session, route_key).await
     }
 
@@ -71,6 +72,7 @@ impl SessionManager {
         if let Some(metadata) = metadata {
             session.metadata = merge_json(session.metadata, metadata);
         }
+        apply_assistant_session_metadata(&mut session, platform);
         self.persist_new_session(session, route_key).await
     }
 
@@ -143,6 +145,7 @@ impl SessionManager {
                 if let Some(metadata) = metadata.clone() {
                     session.metadata = merge_json(session.metadata, metadata);
                 }
+                apply_assistant_session_metadata(&mut session, platform);
                 store
                     .create_or_update(&session, Some(route_key), SessionStatus::Active)
                     .await
@@ -269,6 +272,25 @@ impl SessionManager {
     /// Get active session count.
     pub async fn count(&self) -> usize {
         self.sessions.read().await.len()
+    }
+}
+
+fn apply_assistant_session_metadata(session: &mut Session, platform: Platform) {
+    let Some(surface) = assistant_surface_for_platform(platform) else {
+        return;
+    };
+    session.metadata["assistant_identity"] = serde_json::Value::String("primary".to_string());
+    session.metadata["assistant_surface"] = serde_json::Value::String(surface.to_string());
+    session.metadata["assistant_session_model"] =
+        serde_json::Value::String("persisted".to_string());
+}
+
+fn assistant_surface_for_platform(platform: Platform) -> Option<&'static str> {
+    match platform {
+        Platform::Cli => Some("cli"),
+        Platform::Api => Some("api"),
+        Platform::WebChat => Some("webchat"),
+        _ => None,
     }
 }
 

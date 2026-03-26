@@ -276,6 +276,12 @@ pub struct MobileAppSessionRecord {
     pub id: String,
     pub node_id: String,
     pub status: String,
+    #[serde(default = "default_assistant_identity")]
+    pub assistant_identity: String,
+    #[serde(default = "default_mobile_assistant_surface")]
+    pub assistant_surface: String,
+    #[serde(default = "default_assistant_session_model")]
+    pub assistant_session_model: String,
     pub started_at: String,
     pub last_seen_at: String,
     #[serde(default)]
@@ -815,6 +821,18 @@ fn default_sync_min_battery_percent() -> u8 {
 
 fn default_batch_interval_secs() -> u64 {
     5
+}
+
+fn default_assistant_identity() -> String {
+    "primary".to_string()
+}
+
+fn default_mobile_assistant_surface() -> String {
+    "mobile".to_string()
+}
+
+fn default_assistant_session_model() -> String {
+    "persisted".to_string()
 }
 
 fn default_sync_battery_percent() -> u8 {
@@ -4293,6 +4311,9 @@ fn record_app_session_heartbeat(
                     id: uuid::Uuid::new_v4().to_string(),
                     node_id: runtime.node_id.clone(),
                     status,
+                    assistant_identity: default_assistant_identity(),
+                    assistant_surface: default_mobile_assistant_surface(),
+                    assistant_session_model: default_assistant_session_model(),
                     started_at: now.clone(),
                     last_seen_at: now,
                     ended_at: None,
@@ -4311,6 +4332,9 @@ fn record_app_session_heartbeat(
                     id: uuid::Uuid::new_v4().to_string(),
                     node_id: runtime.node_id.clone(),
                     status,
+                    assistant_identity: default_assistant_identity(),
+                    assistant_surface: default_mobile_assistant_surface(),
+                    assistant_session_model: default_assistant_session_model(),
                     started_at: now.clone(),
                     last_seen_at: now,
                     ended_at: None,
@@ -4998,6 +5022,9 @@ mod tests {
                 .expect("sessions");
         assert_eq!(sessions.len(), 2);
         assert_eq!(sessions[0].status, "background");
+        assert_eq!(sessions[0].assistant_identity, "primary");
+        assert_eq!(sessions[0].assistant_surface, "mobile");
+        assert_eq!(sessions[0].assistant_session_model, "persisted");
         assert!(sessions[0].ended_at.is_none());
         assert_eq!(sessions[1].status, "active");
         assert!(sessions[1].ended_at.is_some());
@@ -5049,6 +5076,9 @@ mod tests {
             list_app_session_data(temp.path(), Some("iphone-app-metrics"), None, Some(8))
                 .expect("sessions");
         let session = sessions.first().expect("session");
+        assert_eq!(session.assistant_identity, "primary");
+        assert_eq!(session.assistant_surface, "mobile");
+        assert_eq!(session.assistant_session_model, "persisted");
         let events = app_session_events_for_record(session);
         assert_eq!(events[0].kind, "started");
         assert_eq!(events.len(), 1);

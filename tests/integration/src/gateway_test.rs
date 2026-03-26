@@ -92,6 +92,8 @@ async fn session_manager_create_session() {
 
     assert_eq!(manager.count().await, 1);
     assert_eq!(session.user_id, "user_123");
+    assert_eq!(session.metadata["assistant_identity"], "primary");
+    assert_eq!(session.metadata["assistant_surface"], "webchat");
 }
 
 #[tokio::test]
@@ -176,6 +178,8 @@ async fn session_manager_multiple_sessions() {
 
     assert_eq!(retrieved1.user_id, "user_1");
     assert_eq!(retrieved2.user_id, "user_2");
+    assert_eq!(retrieved1.metadata["assistant_surface"], "webchat");
+    assert_eq!(retrieved2.metadata["assistant_surface"], "cli");
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
