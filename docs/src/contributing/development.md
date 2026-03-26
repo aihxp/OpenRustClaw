@@ -249,7 +249,7 @@ cargo watch -x 'run --bin openrustclaw -- start'
 cargo watch -x 'test --workspace'
 
 # Terminal 3: Make changes and test
-cargo run --bin openrustclaw -- chat --provider anthropic
+cargo run --bin openrustclaw -- assistant --provider anthropic
 ```
 
 If you are touching the bounded compatibility sidecar, run it in a separate terminal only for that work:

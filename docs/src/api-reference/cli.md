@@ -249,6 +249,7 @@ Actions:
   export --output <PATH> [--user-id <ID>]  Export memory to markdown
   import --file <PATH> --user-id <ID>      Import memory from markdown file
   stats                                    Show memory statistics
+  search <QUERY> [OPTIONS]                 Search recall memory entries
 ```
 
 **Examples**:
@@ -261,6 +262,9 @@ openrustclaw memory import --file MEMORY.md --user-id user_42
 
 # Show statistics
 openrustclaw memory stats
+
+# Search memories
+openrustclaw memory search "Japan trip" --type episodic --limit 5
 ```
 
 ---

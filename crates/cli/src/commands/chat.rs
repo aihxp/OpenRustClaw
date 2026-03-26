@@ -5,15 +5,13 @@ use openrustclaw_core::traits::CoreMemoryStore;
 use std::io::{self, Write};
 use std::sync::Arc;
 
-use openrustclaw_agent::runtime::AgentRuntime;
 use openrustclaw_agent::tools::ToolRegistry;
 use openrustclaw_core::types::{Message, Platform, Session};
 use openrustclaw_db::{
     SessionStatus, SqliteCoreMemoryStore, SqliteMemoryStore, SqliteSessionStore,
 };
-use serde_json::json;
-use sha2::{Digest, Sha256};
 
+use super::assistant;
 use super::{runtime, session};
 
 const CHAT_HISTORY_WINDOW: usize = 128;
@@ -51,13 +49,12 @@ pub async fn run(provider: &str, model: Option<&str>) -> Result<()> {
     let provider = session::build_provider(&config).context("Failed to initialize provider")?;
 
     // Create agent runtime
-    let runtime = AgentRuntime::with_memory_stores(
+    let runtime = assistant::build_runtime(
         provider,
-        "OpenRustClaw Assistant".to_string(),
         memory_store,
         core_memory_store.clone(),
-    )
-    .with_workspace_path(workspace_root.clone());
+        workspace_root.clone(),
+    );
     let tool_registry = runtime.tool_registry().clone();
 
     let mut chat_state =
@@ -310,7 +307,7 @@ async fn load_or_create_chat_session(
     user_id: &str,
     workspace_root: &std::path::Path,
 ) -> Result<ChatSessionState> {
-    let route_key = build_chat_route_key(user_id, workspace_root);
+    let route_key = assistant::cli_route_key(user_id, workspace_root);
     if let Some(existing) = store.find_active_by_route_key(&route_key).await? {
         let messages = store
             .list_history(&existing.session.id.to_string(), CHAT_HISTORY_WINDOW)
@@ -324,11 +321,14 @@ async fn load_or_create_chat_session(
     }
 
     let mut session = Session::new_dm(user_id, Platform::Cli);
-    session.metadata = json!({
-        "assistant_mode": "chat",
-        "route_key": route_key,
-        "workspace_root": workspace_root.display().to_string(),
-    });
+    session.metadata = assistant::session_metadata(
+        "cli",
+        Some(&route_key),
+        Some(workspace_root),
+        serde_json::json!({
+            "assistant_mode": "chat",
+        }),
+    );
     store
         .create_or_update(&session, Some(&route_key), SessionStatus::Active)
         .await?;
@@ -338,15 +338,6 @@ async fn load_or_create_chat_session(
         messages: Vec::new(),
         resumed_existing: false,
     })
-}
-
-fn build_chat_route_key(user_id: &str, workspace_root: &std::path::Path) -> String {
-    let digest = Sha256::digest(workspace_root.display().to_string().as_bytes());
-    format!(
-        "cli:assistant:{}:{}",
-        user_id,
-        hex::encode(&digest)[..12].to_string()
-    )
 }
 
 fn trim_messages(messages: &mut Vec<Message>) {
@@ -375,7 +366,9 @@ mod tests {
         assert!(state.messages.is_empty());
         assert!(state.route_key.starts_with("cli:assistant:alice:"));
         let loaded = store.get_session(&state.session_id).await?;
-        assert!(loaded.is_some());
+        let loaded = loaded.expect("persisted session");
+        assert_eq!(loaded.session.metadata["assistant_identity"], "primary");
+        assert_eq!(loaded.session.metadata["assistant_surface"], "cli");
         Ok(())
     }
 

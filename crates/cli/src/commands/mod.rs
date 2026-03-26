@@ -1,3 +1,4 @@
+pub mod assistant;
 pub mod browser;
 pub mod channels;
 pub mod chat;

@@ -3,7 +3,7 @@
 use anyhow::{Context, Result};
 use chrono::Utc;
 use openrustclaw_core::traits::{CoreMemoryStore, MemoryStore};
-use openrustclaw_core::types::{CoreEntry, MemoryEntry, MemoryType, SourceType};
+use openrustclaw_core::types::{CoreEntry, MemoryEntry, MemoryQuery, MemoryType, SourceType};
 use openrustclaw_db::{SqliteCoreMemoryStore, SqliteMemoryStore};
 use openrustclaw_memory::WorkspaceArtifactRegistry;
 use sqlx::Row;
@@ -388,6 +388,48 @@ pub async fn timeline(namespace: Option<&str>, limit: usize) -> Result<()> {
     Ok(())
 }
 
+/// Search recall memory entries.
+pub async fn search(
+    query: &str,
+    namespace: Option<&str>,
+    limit: usize,
+    min_confidence: Option<f32>,
+    memory_type: Option<&str>,
+    source_type: Option<&str>,
+) -> Result<()> {
+    let (store, _core_store, _pool) = open_stores().await?;
+    let memory_types = memory_type
+        .map(parse_memory_type)
+        .transpose()?
+        .into_iter()
+        .collect();
+    let source_types = source_type
+        .map(parse_source_type)
+        .transpose()?
+        .into_iter()
+        .collect();
+    let query = MemoryQuery {
+        text: query.to_string(),
+        memory_types,
+        source_types,
+        namespace: namespace.map(|value| value.to_string()),
+        limit,
+        min_confidence: min_confidence.unwrap_or(0.0),
+        recency_weight: 0.2,
+    };
+
+    for result in store.search(&query).await? {
+        println!(
+            "{:.3}  {}  {}  {}",
+            result.score,
+            memory_type_label(result.entry.memory_type),
+            result.entry.id,
+            result.entry.content.replace('\n', " ")
+        );
+    }
+    Ok(())
+}
+
 /// List known memory namespaces.
 pub async fn namespaces() -> Result<()> {
     let (store, _core_store, _pool) = open_stores().await?;
@@ -717,6 +759,33 @@ fn memory_type_label(value: MemoryType) -> &'static str {
     }
 }
 
+fn parse_memory_type(value: &str) -> Result<MemoryType> {
+    match value.to_lowercase().as_str() {
+        "episodic" => Ok(MemoryType::Episodic),
+        "semantic" => Ok(MemoryType::Semantic),
+        "procedural" => Ok(MemoryType::Procedural),
+        _ => anyhow::bail!(
+            "Unknown memory type '{}'. Available: episodic, semantic, procedural",
+            value
+        ),
+    }
+}
+
+fn parse_source_type(value: &str) -> Result<SourceType> {
+    match value.to_lowercase().as_str() {
+        "document" => Ok(SourceType::Document),
+        "code" => Ok(SourceType::Code),
+        "config" => Ok(SourceType::Config),
+        "conversation" => Ok(SourceType::Conversation),
+        "runbook" => Ok(SourceType::Runbook),
+        "tool_schema" | "tool-schema" => Ok(SourceType::ToolSchema),
+        _ => anyhow::bail!(
+            "Unknown source type '{}'. Available: document, code, config, conversation, runbook, tool_schema",
+            value
+        ),
+    }
+}
+
 /// Simple SHA-256 hash
 fn sha256_hex(input: &str) -> String {
     use std::collections::hash_map::DefaultHasher;
@@ -765,5 +834,28 @@ mod tests {
         let hash = sha256_hex("");
         assert!(!hash.is_empty());
         assert!(hash.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn test_parse_memory_type_accepts_known_values() {
+        assert_eq!(parse_memory_type("episodic").unwrap(), MemoryType::Episodic);
+        assert_eq!(parse_memory_type("semantic").unwrap(), MemoryType::Semantic);
+        assert_eq!(
+            parse_memory_type("procedural").unwrap(),
+            MemoryType::Procedural
+        );
+    }
+
+    #[test]
+    fn test_parse_source_type_accepts_known_values() {
+        assert_eq!(parse_source_type("code").unwrap(), SourceType::Code);
+        assert_eq!(
+            parse_source_type("conversation").unwrap(),
+            SourceType::Conversation
+        );
+        assert_eq!(
+            parse_source_type("tool-schema").unwrap(),
+            SourceType::ToolSchema
+        );
     }
 }

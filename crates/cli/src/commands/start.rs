@@ -87,8 +87,8 @@ use super::talk;
 use super::voice_runtime;
 use super::voice_runtime::InboundVoiceTranscriber;
 use super::{
-    browser, control, control_ui, doctor, inspect, logs, mobile, orchestrate, runtime, services,
-    skills, tools,
+    assistant, browser, control, control_ui, doctor, inspect, logs, mobile, orchestrate, runtime,
+    services, skills, tools,
 };
 
 /// Run the start command - load config, optionally start the compatibility/experimental sidecar, and start the gateway.
@@ -778,6 +778,7 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
     for platform in enabled_platforms {
         info!(platform = ?platform, "Channel enabled");
     }
+    log_assistant_handoff(&session_store, &workspace_root).await;
 
     // Run server with graceful shutdown
     let shutdown_reason = tokio::select! {
@@ -811,6 +812,24 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
         anyhow::bail!(reason);
     }
     Ok(())
+}
+
+async fn log_assistant_handoff(session_store: &SqliteSessionStore, workspace_root: &Path) {
+    let user_id = std::env::var("USER").unwrap_or_else(|_| "cli_user".to_string());
+    let route_key = assistant::cli_route_key(&user_id, workspace_root);
+    let active_cli_session = session_store
+        .find_active_by_route_key(&route_key)
+        .await
+        .ok()
+        .flatten()
+        .is_some();
+    let handoff = assistant::startup_handoff_json(active_cli_session);
+    info!(
+        active_cli_session = active_cli_session,
+        command = %handoff["command"].as_str().unwrap_or("openrustclaw assistant"),
+        "{}",
+        handoff["message"].as_str().unwrap_or("Assistant handoff available.")
+    );
 }
 
 fn gate_nonshipping_channels(config: &mut openrustclaw_core::config::ChannelsConfig) {
@@ -1198,6 +1217,7 @@ struct ChannelAgent {
     langsmith: Option<LangSmithClient>,
     event_bus: DurableEventBus,
     voice_transcriber: Option<Arc<InboundVoiceTranscriber>>,
+    workspace_root: PathBuf,
 }
 
 struct ChannelConversationState {
@@ -1355,12 +1375,17 @@ impl ChannelAgent {
                     incoming.platform,
                     Some(&route_key),
                     decision.workspace_id.as_deref(),
-                    Some(serde_json::json!({
-                        "route_key": route_key,
-                        "channel_account_id": decision.account_id,
-                        "binding_id": decision.binding_id,
-                        "agent_id": decision.agent_id,
-                    })),
+                    Some(assistant::session_metadata(
+                        "channel",
+                        Some(&route_key),
+                        Some(&self.workspace_root),
+                        serde_json::json!({
+                            "channel_account_id": decision.account_id,
+                            "binding_id": decision.binding_id,
+                            "agent_id": decision.agent_id,
+                            "assistant_scope": decision.session_type.to_string(),
+                        }),
+                    )),
                 )
                 .await?;
             let restored_history = self
@@ -1862,13 +1887,12 @@ fn build_channel_agent(
 ) -> Result<ChannelAgent> {
     let workspace_root = std::env::current_dir()?;
     let provider = build_channel_provider(config)?;
-    let runtime = AgentRuntime::with_memory_stores(
+    let runtime = assistant::build_runtime(
         provider,
-        "OpenRustClaw".to_string(),
         memory_store,
         core_memory_store.clone(),
-    )
-    .with_workspace_path(workspace_root.clone());
+        workspace_root.clone(),
+    );
     let voice_transcriber =
         InboundVoiceTranscriber::try_from_config(config, &workspace_root)?.map(Arc::new);
 
@@ -1882,6 +1906,7 @@ fn build_channel_agent(
         langsmith,
         event_bus,
         voice_transcriber,
+        workspace_root,
     })
 }
 
@@ -11626,12 +11651,13 @@ mod tests {
                 max_history_messages: 24,
                 session_routing: AppConfig::default().session_routing,
                 channel_registry: Arc::new(tokio::sync::RwLock::new(ChannelRegistry {
-                    root: registry_root,
+                    root: registry_root.clone(),
                     ..ChannelRegistry::default()
                 })),
                 langsmith: None,
                 event_bus: DurableEventBus::new(pool.clone(), 16),
                 voice_transcriber: None,
+                workspace_root: registry_root.clone(),
             },
             pool,
         )
@@ -11915,6 +11941,44 @@ mod tests {
         assert!(names.contains(&"session.post_turn".to_string()));
         assert!(names.contains(&"session.end".to_string()));
         assert!(names.contains(&"session.closed".to_string()));
+    }
+
+    #[tokio::test]
+    async fn channel_sessions_are_tagged_as_primary_assistant_surface() {
+        let (agent, _pool) = test_channel_agent().await;
+        let mut route_sessions = HashMap::new();
+
+        let reply = agent
+            .handle_incoming_message(
+                &mut route_sessions,
+                IncomingMessage {
+                    session_id: Uuid::new_v4(),
+                    user_id: "user-1".to_string(),
+                    content: "hello".to_string(),
+                    platform: openrustclaw_core::types::Platform::Telegram,
+                    metadata: serde_json::json!({
+                        "telegram_chat_id": "chat-123"
+                    }),
+                },
+            )
+            .await
+            .unwrap()
+            .unwrap();
+
+        let session = agent
+            .session_manager
+            .get_session(&reply.session_id.to_string())
+            .await
+            .unwrap();
+        assert_eq!(session.metadata["assistant_identity"], "primary");
+        assert_eq!(session.metadata["assistant_surface"], "channel");
+        assert_eq!(session.metadata["assistant_session_model"], "persisted");
+    }
+
+    #[test]
+    fn startup_handoff_message_changes_for_existing_cli_session() {
+        assert!(assistant::startup_handoff_message(true).contains("resume"));
+        assert!(assistant::startup_handoff_message(false).contains("start"));
     }
 
     #[test]

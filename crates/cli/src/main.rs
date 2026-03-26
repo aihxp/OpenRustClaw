@@ -2279,6 +2279,20 @@ enum MemoryAction {
     },
     /// Show memory statistics
     Stats,
+    /// Search recall memory entries
+    Search {
+        query: String,
+        #[arg(long)]
+        namespace: Option<String>,
+        #[arg(long, default_value_t = 10)]
+        limit: usize,
+        #[arg(long)]
+        min_confidence: Option<f32>,
+        #[arg(long = "type", value_name = "TYPE")]
+        memory_type: Option<String>,
+        #[arg(long, value_name = "SOURCE_TYPE")]
+        source_type: Option<String>,
+    },
     /// Get one memory entry by id
     Get {
         #[arg(long)]
@@ -5067,6 +5081,24 @@ async fn main() -> Result<()> {
                 commands::memory::import(&file, &user_id).await
             }
             MemoryAction::Stats => commands::memory::stats().await,
+            MemoryAction::Search {
+                query,
+                namespace,
+                limit,
+                min_confidence,
+                memory_type,
+                source_type,
+            } => {
+                commands::memory::search(
+                    &query,
+                    namespace.as_deref(),
+                    limit,
+                    min_confidence,
+                    memory_type.as_deref(),
+                    source_type.as_deref(),
+                )
+                .await
+            }
             MemoryAction::Get { id } => commands::memory::get(&id).await,
             MemoryAction::Timeline { namespace, limit } => {
                 commands::memory::timeline(namespace.as_deref(), limit).await
@@ -5772,12 +5804,51 @@ mod tests {
     #[test]
     fn test_cli_parse_memory_stats() {
         let cli = Cli::try_parse_from(["openrustclaw", "memory", "stats"]).unwrap();
-        matches!(
+        assert!(matches!(
             cli.command,
             Commands::Memory {
                 action: MemoryAction::Stats
             }
-        );
+        ));
+    }
+
+    #[test]
+    fn test_cli_parse_memory_search() {
+        let cli = Cli::try_parse_from([
+            "openrustclaw",
+            "memory",
+            "search",
+            "Japan trip",
+            "--namespace",
+            "workspace/acme",
+            "--limit",
+            "5",
+            "--type",
+            "episodic",
+            "--source-type",
+            "conversation",
+        ])
+        .unwrap();
+        match cli.command {
+            Commands::Memory {
+                action:
+                    MemoryAction::Search {
+                        query,
+                        namespace,
+                        limit,
+                        memory_type,
+                        source_type,
+                        ..
+                    },
+            } => {
+                assert_eq!(query, "Japan trip");
+                assert_eq!(namespace.as_deref(), Some("workspace/acme"));
+                assert_eq!(limit, 5);
+                assert_eq!(memory_type.as_deref(), Some("episodic"));
+                assert_eq!(source_type.as_deref(), Some("conversation"));
+            }
+            _ => panic!("Expected Memory Search command"),
+        }
     }
 
     #[test]

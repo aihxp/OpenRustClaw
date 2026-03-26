@@ -135,7 +135,18 @@ impl SessionManager {
                 .await
                 .map_err(|error| Error::Gateway(GatewayError::WebSocket(error.to_string())))?
             {
-                let session = restored.session;
+                let mut session = restored.session;
+                if let Some(workspace_id) = workspace_id {
+                    session.workspace_id = Some(workspace_id.to_string());
+                }
+                session.metadata["route_key"] = serde_json::Value::String(route_key.to_string());
+                if let Some(metadata) = metadata.clone() {
+                    session.metadata = merge_json(session.metadata, metadata);
+                }
+                store
+                    .create_or_update(&session, Some(route_key), SessionStatus::Active)
+                    .await
+                    .map_err(|error| Error::Gateway(GatewayError::WebSocket(error.to_string())))?;
                 self.sessions
                     .write()
                     .await

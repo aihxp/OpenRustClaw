@@ -1,7 +1,6 @@
 //! Session operator commands.
 
 use anyhow::{Context, Result};
-use openrustclaw_agent::runtime::AgentRuntime;
 use openrustclaw_core::config::AppConfig;
 use openrustclaw_core::traits::{CoreMemoryStore, LlmProvider};
 use openrustclaw_core::types::{Platform, Session, SessionType};
@@ -14,6 +13,7 @@ use serde_json::json;
 use std::collections::HashSet;
 use std::sync::Arc;
 
+use super::assistant;
 use super::runtime;
 
 pub async fn list(status: Option<&str>, limit: usize) -> Result<()> {
@@ -119,13 +119,12 @@ pub async fn send(id: &str, content: &str) -> Result<()> {
     let memory_store = Arc::new(SqliteMemoryStore::new(open_pool(&config).await?));
     let core_memory_store = Arc::new(SqliteCoreMemoryStore::new(open_pool(&config).await?));
     let workspace_root = std::env::current_dir()?;
-    let runtime = AgentRuntime::with_memory_stores(
+    let runtime = assistant::build_runtime(
         provider,
-        "OpenRustClaw".to_string(),
         memory_store,
         core_memory_store.clone(),
-    )
-    .with_workspace_path(workspace_root);
+        workspace_root,
+    );
 
     let user_message = openrustclaw_core::types::Message::user(content);
     store.append_message(id, &user_message).await?;
