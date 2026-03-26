@@ -64,6 +64,8 @@ openrustclaw start --channels=telegram,discord,slack
 
 When the runtime is up, `/control/ui` reuses the same typed session inspection surface, including assistant continuity summaries that show surface, persistence model, route binding, and restored history count instead of leaving operators to decode raw metadata by hand.
 
+For the runtime operator loop, use the same shipped control and CLI surfaces you will rely on in production: check `openrustclaw runtime services install-status`, `openrustclaw runtime health`, and `openrustclaw runtime upgrade-plan` before restart windows, then review `/control/runtime/operator-ops` or the `Operator Ops Summary` panel in `/control/ui` for the current managed-service, runtime-lock, reload, and recovery state. Take a workspace snapshot with `openrustclaw runtime backup` before binary or config changes, and use `openrustclaw runtime rollback-plan --artifact <path>` if a rollout needs to be reverted.
+
 ## Architecture
 
 ```

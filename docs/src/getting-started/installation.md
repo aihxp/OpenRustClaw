@@ -357,6 +357,26 @@ openrustclaw assistant
 openrustclaw memory timeline --limit 10
 ```
 
+### 4. Verify the Runtime Ops Path
+
+Before treating the workspace as production-ready, validate the bounded runtime install and recovery flow:
+
+```bash
+# Inspect how this host would manage the runtime
+openrustclaw runtime services install-status
+
+# Verify current runtime health and fallback posture
+openrustclaw runtime health
+
+# Take the same workspace snapshot you will use before config or binary changes
+openrustclaw runtime backup
+
+# Review the restart and recovery playbook for the current config
+openrustclaw runtime upgrade-plan --config config/default.toml
+```
+
+After `openrustclaw start`, open `/control/ui` and review `Operator Ops Summary`. That panel is backed by `/control/runtime/operator-ops` and pulls together runtime health, beacon, managed-service state, runtime-lock state, reload guidance, and the next recommended recovery actions.
+
 ---
 
 ## 🔧 Troubleshooting

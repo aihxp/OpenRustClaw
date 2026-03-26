@@ -375,6 +375,15 @@ openrustclaw runtime self-update-plan --config config/default.toml --artifact ./
 openrustclaw runtime rollback-plan --config config/default.toml --artifact ./.claw/runtime-releases/rollback-YYYYMMDDHHMMSS/openrustclaw
 ```
 
+The canonical operator loop for the shipped Rust runtime is:
+
+1. Verify the managed runtime path with `openrustclaw runtime services install-status` and install it with `openrustclaw runtime services install` if unattended restarts are required.
+2. Review `openrustclaw runtime health`, `openrustclaw runtime reload-plan`, and `GET /control/runtime/operator-ops` before restart windows.
+3. Take a workspace snapshot with `openrustclaw runtime backup` and rotate logs with `openrustclaw runtime services rotate-logs --keep 7 --max-bytes 10485760`.
+4. Normalize config drift with `openrustclaw runtime migrate-config --config config/default.toml --apply` before production upgrades.
+5. Use `openrustclaw runtime upgrade-plan`, `openrustclaw runtime self-update-plan --artifact ...`, and `openrustclaw runtime rollback-plan --artifact ...` as the bounded maintenance and recovery path.
+6. After the runtime is back up, confirm the same state from `/control/ui` through `Operator Ops Summary`, runtime health, runtime beacon, recent runtime events, and logs.
+
 - `install-status` reports the detected host user service manager, whether the service is installed, the rendered unit/agent path, and the suggested reload/start commands.
 - `install` writes the standalone runtime service definition so the workspace can be managed outside the onboarding wizard, using user-level systemd on Linux and launchd agents on macOS.
 - `lock-status` inspects `.claw/control/runtime-lock.json` and reports whether the stored PID is still live or stale.
@@ -383,6 +392,7 @@ openrustclaw runtime rollback-plan --config config/default.toml --artifact ./.cl
 - `upgrade-plan` summarizes the current runtime health, reload guidance, service install state, and runtime-lock status before a restart or binary/config upgrade.
 - `self-update-plan` validates a candidate binary artifact, recommends where to snapshot the current executable for rollback, and composes the managed-service restart guidance before an operator swaps the binary.
 - `rollback-plan` validates a prior binary artifact and composes the corresponding restore/restart playbook before an operator reverts a bad rollout.
+- `/control/runtime/operator-ops` and the matching `Operator Ops Summary` panel in `/control/ui` expose the same deploy-run-recover summary in browser form so operators can confirm service install state, lock state, reload posture, backups, and recovery guidance without reconstructing it manually.
 - `scripts/build-release-artifacts.sh --target <triple>` packages a versioned tarball plus `.sha256` for the chosen Rust target, and the release workflow now builds those artifacts for Linux/macOS x86_64 and ARM64.
 - `scripts/check-runtime-budgets.sh` enforces bounded release-binary size, CLI startup latency, and idle gateway RSS regressions before release promotion.
 - `[channels.runtime]` now controls the shipped channel-health monitor. With `health_monitor_enabled = true`, persisted readiness scans include monitor state; with `auto_restart_on_failure = true` and a supported installed user service, repeated failing scans can trigger a managed restart after `failure_threshold` consecutive failures.
