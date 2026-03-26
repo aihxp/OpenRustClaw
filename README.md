@@ -66,6 +66,8 @@ When the runtime is up, `/control/ui` reuses the same typed session inspection s
 
 For the runtime operator loop, use the same shipped control and CLI surfaces you will rely on in production: check `openrustclaw runtime services install-status`, `openrustclaw runtime health`, and `openrustclaw runtime upgrade-plan` before restart windows, then review `/control/runtime/operator-ops` or the `Operator Ops Summary` panel in `/control/ui` for the current managed-service, runtime-lock, reload, and recovery state. Take a workspace snapshot with `openrustclaw runtime backup` before binary or config changes, and use `openrustclaw runtime rollback-plan --artifact <path>` if a rollout needs to be reverted.
 
+For the current enterprise baseline, review `/control/enterprise/foundations` or the `Enterprise Foundations` panel in `/control/ui`. That surface explains the active runtime approval policy, the browser backend allowlist and audit log, current mobile approval-state counts, and recent durable audit evidence for approval-sensitive actions without implying that full enterprise governance is already shipped.
+
 For the final MVP release loop, review `/control/security/posture` or the `Security Posture` panel in `/control/ui`, confirm the observability checks in [docs/src/operations/observability.md](docs/src/operations/observability.md), and walk the operator checklist in [docs/src/deployment/release-checklist.md](docs/src/deployment/release-checklist.md) before cutting a release candidate.
 
 ## Architecture

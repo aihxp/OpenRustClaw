@@ -13,9 +13,9 @@
 
 ### Enterprise Foundations
 
-- [ ] **ENTF-01**: Operator can inspect a durable audit trail for enterprise-sensitive assistant actions from shipped control or runtime surfaces.
-- [ ] **ENTF-02**: Enterprise-sensitive assistant actions execute under an explicit approval or policy contract instead of implicit best-effort behavior.
-- [ ] **ENTF-03**: Operator-facing docs and inspection surfaces explain the enterprise approval and audit baseline clearly enough for the next enterprise milestone to build on it.
+- [x] **ENTF-01**: Operator can inspect a durable audit trail for enterprise-sensitive assistant actions from shipped control or runtime surfaces.
+- [x] **ENTF-02**: Enterprise-sensitive assistant actions execute under an explicit approval or policy contract instead of implicit best-effort behavior.
+- [x] **ENTF-03**: Operator-facing docs and inspection surfaces explain the enterprise approval and audit baseline clearly enough for the next enterprise milestone to build on it.
 
 ## v1.2+ Requirements
 
@@ -50,9 +50,9 @@
 | LIFE-01 | Phase 8 | Complete |
 | LIFE-02 | Phase 8 | Complete |
 | LIFE-03 | Phase 9 | Complete |
-| ENTF-01 | Phase 10 | Pending |
-| ENTF-02 | Phase 10 | Pending |
-| ENTF-03 | Phase 10 | Pending |
+| ENTF-01 | Phase 10 | Complete |
+| ENTF-02 | Phase 10 | Complete |
+| ENTF-03 | Phase 10 | Complete |
 
 **Coverage:**
 - v1.1 requirements: 6 total
@@ -61,4 +61,4 @@
 
 ---
 *Requirements defined: 2026-03-26*
-*Last updated: 2026-03-26 after v1.1 initial definition*
+*Last updated: 2026-03-26 after Phase 10 enterprise foundations completion*

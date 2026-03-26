@@ -19,7 +19,7 @@ This milestone fixes the lifecycle evidence debt exposed by v1.0 before the proj
 
 - [x] **Phase 8: Verification Artifact Contract** - Make phase execution produce durable verification artifacts by default and block false completion when they are missing. (completed 2026-03-26)
 - [x] **Phase 9: Milestone Lifecycle Integrity** - Make audit, archive, and cleanup consume and preserve verification evidence honestly. (completed 2026-03-26)
-- [ ] **Phase 10: Enterprise Policy and Audit Foundations** - Start enterprise readiness with explicit approval boundaries and durable audit evidence for sensitive assistant actions.
+- [x] **Phase 10: Enterprise Policy and Audit Foundations** - Start enterprise readiness with explicit approval boundaries and durable audit evidence for sensitive assistant actions. (completed 2026-03-26)
 
 ### Phase Details
 
@@ -61,12 +61,12 @@ Plans:
   1. Sensitive assistant actions execute under an explicit approval or policy boundary rather than implicit operator trust.
   2. Operators can inspect a durable audit trail for those sensitive actions from shipped surfaces.
   3. Docs and operator-facing inspection surfaces explain the enterprise baseline clearly enough to support the next milestone.
-**Plans**: 0/3 plans complete
+**Plans**: 3/3 plans complete
 
 Plans:
-- [ ] **10-01** - Aggregate the enterprise approval and audit baseline
-- [ ] **10-02** - Surface the enterprise baseline in Control UI
-- [ ] **10-03** - Document and verify the enterprise baseline
+- [x] **10-01** - Aggregate the enterprise approval and audit baseline
+- [x] **10-02** - Surface the enterprise baseline in Control UI
+- [x] **10-03** - Document and verify the enterprise baseline
 
 ## Progress
 
@@ -74,4 +74,4 @@ Plans:
 |-------|----------------|--------|-----------|
 | 8. Verification Artifact Contract | 3/3 | Complete    | 2026-03-26 |
 | 9. Milestone Lifecycle Integrity | 3/3 | Complete    | 2026-03-26 |
-| 10. Enterprise Policy and Audit Foundations | 0/3 | Planned | - |
+| 10. Enterprise Policy and Audit Foundations | 3/3 | Complete    | 2026-03-26 |

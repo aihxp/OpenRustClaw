@@ -4,6 +4,8 @@ This guide covers deploying OpenRustClaw in production environments with high av
 
 For final MVP sign-off, pair this guide with [Release Checklist](./release-checklist.md) so the deploy-run-recover path and the release gate stay aligned.
 
+For the current enterprise-readiness baseline, also review `/control/enterprise/foundations` in the running control plane. That summary is intentionally narrow: it shows the explicit runtime approval policy, the browser external-backend allowlist and audit log, mobile command approval-state metrics, and recent durable audit evidence for approval-sensitive actions. It is a foundation for future enterprise work, not a claim that RBAC, SSO, or compliance packaging are already complete.
+
 ## Table of Contents
 
 - [Prerequisites](#prerequisites)

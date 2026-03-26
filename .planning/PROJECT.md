@@ -42,8 +42,8 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 ### Active
 
 - [x] Make phase execution and lifecycle flows preserve `VERIFICATION.md` artifacts automatically
-- [ ] Block false-complete audit, archive, and cleanup states when verification evidence is missing or stale
-- [ ] Start a narrow enterprise foundation around approval or policy boundaries and durable audit evidence for sensitive assistant actions
+- [x] Block false-complete audit, archive, and cleanup states when verification evidence is missing or stale
+- [x] Start a narrow enterprise foundation around approval or policy boundaries and durable audit evidence for sensitive assistant actions
 
 ### Out of Scope
 
@@ -75,6 +75,7 @@ The next milestone should build on that baseline rather than reopen MVP-sprawl. 
 | Defer enterprise-ready concerns until after MVP stabilization | Enterprise packaging on top of an unstable MVP would have created the wrong priorities | ✓ Good |
 | Accept v1.0 milestone audit gaps around missing phase verification artifacts while preserving the gap explicitly in the archive | The shipped MVP passed its release gate, but lifecycle evidence was incomplete and needed to be recorded honestly | ⚠ Revisit |
 | Archive milestone verification evidence explicitly during milestone completion | Later review should not depend on live phase directories or manual reconstruction | ✓ Good |
+| Define the first enterprise slice around explicit approval boundaries plus durable audit evidence | The repo needed a truthful foundation before larger governance work like RBAC or compliance packaging | ✓ Good |
 
 ## Next Milestone Goals
 
@@ -86,7 +87,7 @@ The next milestone should build on that baseline rather than reopen MVP-sprawl. 
 
 - Phase 8 complete: per-phase verification artifacts are now required and current before phase completion.
 - Phase 9 complete: milestone completion now archives verification evidence and accepted debt to `.planning/milestones/vX.Y-VERIFICATIONS.md`.
-- Phase 10 next: enterprise policy and audit foundations.
+- Phase 10 complete: enterprise foundations now expose explicit approval policy plus durable audit evidence through runtime and Control UI surfaces.
 
 ## Evolution
 
@@ -106,4 +107,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-26 after Phase 9 milestone lifecycle integrity*
+*Last updated: 2026-03-26 after Phase 10 enterprise foundations completion*
