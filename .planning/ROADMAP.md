@@ -15,7 +15,7 @@ This milestone turns the existing OpenRustClaw surface area into a believable pr
 - [x] **Phase 1: Onboarding and First-Run Trust** - Make install, configuration, and first assistant launch production-ready. (completed 2026-03-26)
 - [x] **Phase 2: Core Assistant and Session Continuity** - Stabilize the primary chat and persisted session experience. (completed 2026-03-26)
 - [x] **Phase 3: Memory Durability and Write Policy** - Make memory trustworthy, durable, and inspectable. (completed 2026-03-26)
-- [ ] **Phase 4: Tool, MCP, and Coding Workflow Hardening** - Make tool execution and coding actions dependable for daily use.
+- [x] **Phase 4: Tool, MCP, and Coding Workflow Hardening** - Make tool execution and coding actions dependable for daily use. (completed 2026-03-26)
 - [ ] **Phase 5: Email and Voice Communications** - Ship production-credible email and phone or voice lanes.
 - [ ] **Phase 6: Deployment, Runtime, and Operator Ops** - Make the runtime shippable, diagnosable, and recoverable.
 - [ ] **Phase 7: Security, Observability, and Release Exit** - Close MVP trust gaps and verify release readiness.
@@ -75,12 +75,12 @@ Plans:
   1. Configured tools and MCP capabilities execute with clear permission and failure behavior.
   2. Coding workflows can inspect, edit, run, and verify code without leaving the workspace in a confusing state.
   3. Operators can review artifacts for tool and coding actions after execution.
-**Plans**: 2/3 plans complete
+**Plans**: 3/3 plans complete
 
 Plans:
 - [x] 04-01: Add a durable execution ledger for tool and MCP runs
 - [x] 04-02: Make coding workflows bounded and auditable
-- [ ] 04-03: Expose and document the tool and coding audit path
+- [x] 04-03: Expose and document the tool and coding audit path
 
 ### Phase 5: Email and Voice Communications
 **Goal**: Email and phone or voice assistant flows are reliable enough to be part of the MVP boundary.
@@ -128,7 +128,7 @@ Plans:
 | 1. Onboarding and First-Run Trust | 3/3 | Complete   | 2026-03-26 |
 | 2. Core Assistant and Session Continuity | 3/3 | Complete | 2026-03-26 |
 | 3. Memory Durability and Write Policy | 3/3 | Complete | 2026-03-26 |
-| 4. Tool, MCP, and Coding Workflow Hardening | 2/3 | In progress | - |
+| 4. Tool, MCP, and Coding Workflow Hardening | 3/3 | Complete | 2026-03-26 |
 | 5. Email and Voice Communications | 0/TBD | Not started | - |
 | 6. Deployment, Runtime, and Operator Ops | 0/TBD | Not started | - |
 | 7. Security, Observability, and Release Exit | 0/TBD | Not started | - |
