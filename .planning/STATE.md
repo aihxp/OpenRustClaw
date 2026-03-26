@@ -5,16 +5,16 @@ milestone_name: Rust OpenClaw MVP
 current_phase: 3
 current_phase_name: Memory Durability and Write Policy
 current_plan: 0
-status: ready_to_discuss
-stopped_at: Phase 3 completed; Phase 4 is ready for discussion and planning.
-last_updated: "2026-03-26T21:00:00Z"
-last_activity: 2026-03-26 -- Phase 3 completed; assistant memory writes are policy-gated and operator-visible across CLI, Control UI, and docs
+status: planned
+stopped_at: Phase 4 context and plans created; ready to execute Plan 04-01.
+last_updated: "2026-03-26T21:20:00Z"
+last_activity: 2026-03-26 -- Phase 4 planned around bounded tool execution, coding artifacts, and operator-visible audit trails
 progress:
   total_phases: 7
   completed_phases: 3
-  total_plans: 9
+  total_plans: 12
   completed_plans: 9
-  percent: 100
+  percent: 75
 ---
 
 # Project State
@@ -34,11 +34,11 @@ Total Phases: 7
 Current Plan: 0
 Total Plans in Phase: 0
 Status: Ready to discuss
-Last activity: 2026-03-26 - Phase 3 completed; assistant memory writes are policy-gated and operator-visible across CLI, Control UI, and docs
+Last activity: 2026-03-26 - Phase 4 planned around bounded tool execution, coding artifacts, and operator-visible audit trails
 
 Phase: 4 of 7 (Tool, MCP, and Coding Workflow Hardening)
-Plan: 0 of 0 in current phase
-Progress: [██████████] 100%
+Plan: 0 of 3 in current phase
+Progress: [███████░░░] 75%
 
 ## Performance Metrics
 
@@ -77,6 +77,8 @@ Recent decisions affecting current work:
 - Phase 2: Quickstart and README continuity docs should point to both CLI and Control UI inspection surfaces.
 - Phase 3: The default assistant memory lane only writes on explicit remember requests or obviously durable user or project facts.
 - Phase 3: Assistant-created memories must persist machine-readable write-policy metadata so operators can inspect why they were stored.
+- Phase 4: Tool, MCP, and coding trust should converge on one operator-visible contract around execution bounds, failure classification, and durable artifacts.
+- Phase 4: The MVP coding lane is workspace-bounded inspect, edit, run, and verify behavior, not unconstrained machine-wide autonomy.
 
 ### Pending Todos
 
@@ -89,5 +91,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-26 21:00
-Stopped at: Phase 3 completed; Phase 4 is ready for discussion and planning.
+Stopped at: Phase 4 context and plans created; ready to execute Plan 04-01.
 Resume file: None

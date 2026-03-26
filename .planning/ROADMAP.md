@@ -75,10 +75,12 @@ Plans:
   1. Configured tools and MCP capabilities execute with clear permission and failure behavior.
   2. Coding workflows can inspect, edit, run, and verify code without leaving the workspace in a confusing state.
   3. Operators can review artifacts for tool and coding actions after execution.
-**Plans**: TBD
+**Plans**: 0/3 plans complete
 
 Plans:
-- [ ] TBD (run $gsd-plan-phase 4 to break down)
+- [ ] 04-01: Add a durable execution ledger for tool and MCP runs
+- [ ] 04-02: Make coding workflows bounded and auditable
+- [ ] 04-03: Expose and document the tool and coding audit path
 
 ### Phase 5: Email and Voice Communications
 **Goal**: Email and phone or voice assistant flows are reliable enough to be part of the MVP boundary.
@@ -126,7 +128,7 @@ Plans:
 | 1. Onboarding and First-Run Trust | 3/3 | Complete   | 2026-03-26 |
 | 2. Core Assistant and Session Continuity | 3/3 | Complete | 2026-03-26 |
 | 3. Memory Durability and Write Policy | 3/3 | Complete | 2026-03-26 |
-| 4. Tool, MCP, and Coding Workflow Hardening | 0/TBD | Not started | - |
+| 4. Tool, MCP, and Coding Workflow Hardening | 0/3 | Planned | - |
 | 5. Email and Voice Communications | 0/TBD | Not started | - |
 | 6. Deployment, Runtime, and Operator Ops | 0/TBD | Not started | - |
 | 7. Security, Observability, and Release Exit | 0/TBD | Not started | - |
