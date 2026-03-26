@@ -9,10 +9,10 @@ Get up and running with OpenRustClaw in just 5 minutes. This guide walks you thr
 By the end of this guide, you will have:
 
 - ✅ Started the OpenRustClaw gateway server
-- ✅ Had an interactive chat with the agent
-- ✅ Made your first tool call (memory search)
-- ✅ Viewed stored memories
-- ✅ Understood the basic workflow
+- ✅ Had an interactive chat with the assistant
+- ✅ Used the built-in memory tools
+- ✅ Verified persisted session continuity
+- ✅ Understood the default assistant workflow
 
 ---
 
@@ -69,7 +69,7 @@ If you explicitly need the compatibility sidecar for a migration-only workflow, 
 
 ## 💬 Step 2: Interactive Chat
 
-Now let's have a conversation with your agent!
+Now let's have a conversation with your assistant.
 
 ### Start the CLI Chat
 
@@ -110,14 +110,13 @@ You:
 ```
 You: What can you do?
 
-Assistant: I can help you with a variety of tasks using my available tools:
+Assistant: In the default CLI chat path, I can already help with:
 
-1. **Memory**: I can store and retrieve information you share with me
-2. **Search**: I can search through my memory to find relevant information
-3. **Scheduling**: I can set reminders and schedule tasks
-4. **Tools**: I can use various skills and integrations
+1. **Memory recall**: I can search what you've told me before
+2. **Memory storage**: I can save useful facts for later sessions
+3. **Workspace context**: I can use the workspace instructions OpenRustClaw loads for this repo
 
-What would you like to try?
+This chat also resumes the same persisted CLI session automatically, so context carries across runs.
 ```
 
 ---
@@ -167,18 +166,21 @@ Is there anything else you'd like me to remember?
 
 ### Verify with CLI
 
-You can also view memories directly:
+You can inspect the persisted assistant state directly:
 
 ```bash
-# List all memories
-openrustclaw memory list
+# See the active CLI session
+openrustclaw session list
 
-# Search memories
-openrustclaw memory search "software engineer"
+# Inspect one session and its history
+openrustclaw session show <session-id>
 
-# Show statistics
+# Inspect memory health and recent entries
 openrustclaw memory stats
+openrustclaw memory timeline --limit 10
 ```
+
+If you start `openrustclaw chat` again, it will resume the same active CLI session for this workspace and user instead of starting from an empty in-memory transcript.
 
 ---
 

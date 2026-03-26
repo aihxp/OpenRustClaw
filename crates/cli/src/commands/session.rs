@@ -145,7 +145,7 @@ pub async fn send(id: &str, content: &str) -> Result<()> {
     Ok(())
 }
 
-async fn open_store() -> Result<(SqliteSessionStore, AppConfig)> {
+pub(super) async fn open_store() -> Result<(SqliteSessionStore, AppConfig)> {
     let workspace_root = std::env::current_dir()?;
     let config =
         runtime::load_effective_config("config/default.toml", &workspace_root).unwrap_or_default();
@@ -153,7 +153,7 @@ async fn open_store() -> Result<(SqliteSessionStore, AppConfig)> {
     Ok((SqliteSessionStore::new(pool), config))
 }
 
-async fn open_pool(config: &AppConfig) -> Result<sqlx::SqlitePool> {
+pub(super) async fn open_pool(config: &AppConfig) -> Result<sqlx::SqlitePool> {
     let pool = init_pool(&config.database.url, 4)
         .await
         .context("Failed to connect to database")?;
@@ -163,7 +163,7 @@ async fn open_pool(config: &AppConfig) -> Result<sqlx::SqlitePool> {
     Ok(pool)
 }
 
-fn build_provider(config: &AppConfig) -> Result<Arc<dyn LlmProvider>> {
+pub(super) fn build_provider(config: &AppConfig) -> Result<Arc<dyn LlmProvider>> {
     let mut provider_names = Vec::new();
     provider_names.push(config.providers.default_provider.clone());
     provider_names.extend(config.providers.fallback_chain.clone());

@@ -1,19 +1,27 @@
 //! Interactive chat REPL command.
 
 use anyhow::{Context, Result};
+use openrustclaw_core::traits::CoreMemoryStore;
 use std::io::{self, Write};
 use std::sync::Arc;
 
 use openrustclaw_agent::runtime::AgentRuntime;
 use openrustclaw_agent::tools::ToolRegistry;
 use openrustclaw_core::types::{Message, Platform, Session};
+use openrustclaw_db::{
+    SessionStatus, SqliteCoreMemoryStore, SqliteMemoryStore, SqliteSessionStore,
+};
+use serde_json::json;
+use sha2::{Digest, Sha256};
 
-use super::runtime;
+use super::{runtime, session};
+
+const CHAT_HISTORY_WINDOW: usize = 128;
 
 /// Run the interactive chat REPL.
 pub async fn run(provider: &str, model: Option<&str>) -> Result<()> {
     println!("╔══════════════════════════════════════════════════════════╗");
-    println!("║           OpenRustClaw Interactive Chat                  ║");
+    println!("║        OpenRustClaw Assistant Chat (Persisted)           ║");
     println!("╚══════════════════════════════════════════════════════════╝");
     println!();
     println!("Provider: {}", provider);
@@ -25,32 +33,47 @@ pub async fn run(provider: &str, model: Option<&str>) -> Result<()> {
     println!("  /quit, /q     - Exit the chat");
     println!("  /memory, /m   - Show current memory/context");
     println!("  /tools, /t    - List available tools");
+    println!("  /session, /s  - Show the persisted session details");
     println!("  /help, /h     - Show this help");
     println!();
 
-    // Initialize provider based on CLI args
-    let provider = create_provider(provider, model)
+    let workspace_root = std::env::current_dir()?;
+    let user_id = std::env::var("USER").unwrap_or_else(|_| "cli_user".to_string());
+    let config = load_chat_config(provider, model)
         .await
-        .context("Failed to initialize provider")?;
+        .context("Failed to load chat configuration")?;
+    let pool = session::open_pool(&config).await?;
+    let session_store = SqliteSessionStore::new(pool.clone());
+    let memory_store = Arc::new(SqliteMemoryStore::new(pool.clone()));
+    let core_memory_store = Arc::new(SqliteCoreMemoryStore::new(pool));
 
-    // Create tool registry
-    let tool_registry = Arc::new(ToolRegistry::new());
+    // Initialize provider chain based on CLI args and effective config
+    let provider = session::build_provider(&config).context("Failed to initialize provider")?;
 
     // Create agent runtime
-    let runtime = AgentRuntime::new(provider, tool_registry.clone(), "OpenRustClaw".to_string());
+    let runtime = AgentRuntime::with_memory_stores(
+        provider,
+        "OpenRustClaw Assistant".to_string(),
+        memory_store,
+        core_memory_store.clone(),
+    )
+    .with_workspace_path(workspace_root.clone());
+    let tool_registry = runtime.tool_registry().clone();
 
-    // Create a session
-    let user_id = std::env::var("USER").unwrap_or_else(|_| "cli_user".to_string());
-    let session = Session::new_dm(&user_id, Platform::Cli);
-    let session_id = session.id.to_string();
+    let mut chat_state =
+        load_or_create_chat_session(&session_store, &user_id, &workspace_root).await?;
 
-    println!("Session started: {}", session_id);
+    if chat_state.resumed_existing {
+        println!(
+            "Resumed session: {} ({} message(s) loaded)",
+            chat_state.session_id,
+            chat_state.messages.len()
+        );
+    } else {
+        println!("Started new session: {}", chat_state.session_id);
+    }
     println!("Type your message and press Enter (or /quit to exit)");
     println!();
-
-    // Conversation history
-    let mut messages: Vec<Message> = vec![];
-    let core_memory = vec![];
 
     // REPL loop
     loop {
@@ -68,7 +91,7 @@ pub async fn run(provider: &str, model: Option<&str>) -> Result<()> {
         }
 
         // Handle special commands
-        match handle_command(input, &tool_registry, &messages).await? {
+        match handle_command(input, &tool_registry, &chat_state).await? {
             CommandResult::Continue => continue,
             CommandResult::Quit => {
                 println!("Goodbye!");
@@ -77,15 +100,26 @@ pub async fn run(provider: &str, model: Option<&str>) -> Result<()> {
             CommandResult::Proceed => {}
         }
 
-        // Add user message to history
-        messages.push(Message::user(input));
+        // Add user message to persisted and in-memory history
+        let user_message = Message::user(input);
+        session_store
+            .append_message(&chat_state.session_id, &user_message)
+            .await?;
+        chat_state.messages.push(user_message);
+        trim_messages(&mut chat_state.messages);
 
         // Send to agent runtime and stream response
         print!("\x1b[1;34mAgent:\x1b[0m ");
         io::stdout().flush()?;
 
+        let core_memory = core_memory_store.get_all(&user_id).await?;
         match runtime
-            .process(&messages, &core_memory, &session_id, &user_id)
+            .process(
+                &chat_state.messages,
+                &core_memory,
+                &chat_state.session_id,
+                &user_id,
+            )
             .await
         {
             Ok(response) => {
@@ -95,15 +129,11 @@ pub async fn run(provider: &str, model: Option<&str>) -> Result<()> {
                     println!("\x1b[90m[Used {} tool(s)]\x1b[0m", response.tool_calls_made);
                 }
 
-                // Add assistant response to history
-                messages.push(response.message);
-
-                // Keep conversation size manageable
-                if messages.len() > 20 {
-                    // Keep system context (first message if system) and last 10 exchanges
-                    let drain_count = messages.len() - 20;
-                    messages.drain(0..drain_count);
-                }
+                session_store
+                    .append_message(&chat_state.session_id, &response.message)
+                    .await?;
+                chat_state.messages.push(response.message);
+                trim_messages(&mut chat_state.messages);
             }
             Err(e) => {
                 eprintln!("\x1b[1;31mError: {}\x1b[0m", e);
@@ -126,11 +156,18 @@ enum CommandResult {
     Proceed,
 }
 
+struct ChatSessionState {
+    session_id: String,
+    route_key: String,
+    messages: Vec<Message>,
+    resumed_existing: bool,
+}
+
 /// Handle special commands starting with /.
 async fn handle_command(
     input: &str,
     tool_registry: &ToolRegistry,
-    messages: &[Message],
+    chat_state: &ChatSessionState,
 ) -> Result<CommandResult> {
     match input {
         "/quit" | "/q" | "exit" => Ok(CommandResult::Quit),
@@ -139,11 +176,15 @@ async fn handle_command(
             Ok(CommandResult::Continue)
         }
         "/memory" | "/m" => {
-            show_memory(messages);
+            show_memory(&chat_state.messages);
             Ok(CommandResult::Continue)
         }
         "/tools" | "/t" => {
             show_tools(tool_registry).await;
+            Ok(CommandResult::Continue)
+        }
+        "/session" | "/s" => {
+            show_session(chat_state);
             Ok(CommandResult::Continue)
         }
         _ if input.starts_with('/') => {
@@ -162,6 +203,7 @@ fn print_help() {
     println!("  /quit, /q     - Exit the chat");
     println!("  /memory, /m   - Show current conversation context");
     println!("  /tools, /t    - List available tools");
+    println!("  /session, /s  - Show the persisted session id and route key");
     println!("  /help, /h     - Show this help");
     println!();
 }
@@ -208,14 +250,32 @@ async fn show_tools(tool_registry: &ToolRegistry) {
     println!();
 }
 
+fn show_session(chat_state: &ChatSessionState) {
+    println!();
+    println!("═══ Current Session ═══");
+    println!("  id: {}", chat_state.session_id);
+    println!("  route: {}", chat_state.route_key);
+    println!(
+        "  mode: {}",
+        if chat_state.resumed_existing {
+            "resumed"
+        } else {
+            "new"
+        }
+    );
+    println!("  loaded messages: {}", chat_state.messages.len());
+    println!();
+}
+
 /// Create an LLM provider based on the provider name.
-async fn create_provider(
+async fn load_chat_config(
     provider_name: &str,
     model: Option<&str>,
-) -> Result<Arc<dyn openrustclaw_core::traits::LlmProvider>> {
-    let workspace_root = std::env::current_dir()?;
+) -> Result<openrustclaw_core::config::AppConfig> {
     let mut config =
-        runtime::load_effective_config("config/default.toml", &workspace_root).unwrap_or_default();
+        runtime::load_effective_config("config/default.toml", &std::env::current_dir()?)
+            .unwrap_or_default();
+    config.providers.default_provider = provider_name.to_string();
     match provider_name.to_lowercase().as_str() {
         "anthropic" => {
             if let Some(model) = model {
@@ -242,5 +302,104 @@ async fn create_provider(
             provider_name
         ),
     }
-    runtime::create_provider_from_config(provider_name, &config)
+    Ok(config)
+}
+
+async fn load_or_create_chat_session(
+    store: &SqliteSessionStore,
+    user_id: &str,
+    workspace_root: &std::path::Path,
+) -> Result<ChatSessionState> {
+    let route_key = build_chat_route_key(user_id, workspace_root);
+    if let Some(existing) = store.find_active_by_route_key(&route_key).await? {
+        let messages = store
+            .list_history(&existing.session.id.to_string(), CHAT_HISTORY_WINDOW)
+            .await?;
+        return Ok(ChatSessionState {
+            session_id: existing.session.id.to_string(),
+            route_key,
+            messages,
+            resumed_existing: true,
+        });
+    }
+
+    let mut session = Session::new_dm(user_id, Platform::Cli);
+    session.metadata = json!({
+        "assistant_mode": "chat",
+        "route_key": route_key,
+        "workspace_root": workspace_root.display().to_string(),
+    });
+    store
+        .create_or_update(&session, Some(&route_key), SessionStatus::Active)
+        .await?;
+    Ok(ChatSessionState {
+        session_id: session.id.to_string(),
+        route_key,
+        messages: Vec::new(),
+        resumed_existing: false,
+    })
+}
+
+fn build_chat_route_key(user_id: &str, workspace_root: &std::path::Path) -> String {
+    let digest = Sha256::digest(workspace_root.display().to_string().as_bytes());
+    format!(
+        "cli:assistant:{}:{}",
+        user_id,
+        hex::encode(&digest)[..12].to_string()
+    )
+}
+
+fn trim_messages(messages: &mut Vec<Message>) {
+    if messages.len() > CHAT_HISTORY_WINDOW {
+        let drain_count = messages.len() - CHAT_HISTORY_WINDOW;
+        messages.drain(0..drain_count);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use openrustclaw_db::run_migrations;
+    use tempfile::tempdir;
+
+    #[tokio::test]
+    async fn chat_session_creates_new_persisted_cli_session() -> Result<()> {
+        let pool = sqlx::SqlitePool::connect("sqlite::memory:").await?;
+        run_migrations(&pool).await?;
+        let store = SqliteSessionStore::new(pool);
+        let workspace = tempdir()?;
+
+        let state = load_or_create_chat_session(&store, "alice", workspace.path()).await?;
+
+        assert!(!state.resumed_existing);
+        assert!(state.messages.is_empty());
+        assert!(state.route_key.starts_with("cli:assistant:alice:"));
+        let loaded = store.get_session(&state.session_id).await?;
+        assert!(loaded.is_some());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn chat_session_resumes_existing_history_for_same_workspace_user() -> Result<()> {
+        let pool = sqlx::SqlitePool::connect("sqlite::memory:").await?;
+        run_migrations(&pool).await?;
+        let store = SqliteSessionStore::new(pool);
+        let workspace = tempdir()?;
+
+        let first = load_or_create_chat_session(&store, "alice", workspace.path()).await?;
+        store
+            .append_message(
+                &first.session_id,
+                &Message::user("hello from the first run"),
+            )
+            .await?;
+
+        let resumed = load_or_create_chat_session(&store, "alice", workspace.path()).await?;
+
+        assert!(resumed.resumed_existing);
+        assert_eq!(resumed.session_id, first.session_id);
+        assert_eq!(resumed.messages.len(), 1);
+        assert_eq!(resumed.messages[0].content, "hello from the first run");
+        Ok(())
+    }
 }
