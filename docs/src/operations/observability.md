@@ -78,6 +78,18 @@ docker run -p 3000:3000 \
   grafana/grafana
 ```
 
+## Release Readiness Checks
+
+Before promoting an MVP release candidate, verify the shipped runtime signals from the same surfaces operators will use in production:
+
+1. `curl http://127.0.0.1:18789/health`, `curl http://127.0.0.1:18789/health/ready`, and `curl http://127.0.0.1:18789/metrics` all respond successfully on the target runtime.
+2. `/control/ui` shows healthy `Runtime Health`, `Operator Ops Summary`, `Security Posture`, recent runtime events, and recent runtime logs without unexplained warnings.
+3. `/control/runtime/operator-ops` and `/control/security/posture` are reviewed alongside the runtime upgrade and rollback plans before release promotion.
+4. If OTLP export is part of the target deployment, traces are visible from a real runtime session after setting `OPENRUSTCLAW_OTLP_ENDPOINT` or `OTEL_EXPORTER_OTLP_ENDPOINT`.
+5. Runtime budget checks pass through `scripts/check-runtime-budgets.sh` before the release artifact is accepted.
+
+Treat these checks as release gates, not optional monitoring nice-to-haves.
+
 ## Metrics Reference
 
 ### Gateway Metrics

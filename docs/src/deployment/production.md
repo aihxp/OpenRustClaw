@@ -2,6 +2,8 @@
 
 This guide covers deploying OpenRustClaw in production environments with high availability, security, and observability.
 
+For final MVP sign-off, pair this guide with [Release Checklist](./release-checklist.md) so the deploy-run-recover path and the release gate stay aligned.
+
 ## Table of Contents
 
 - [Prerequisites](#prerequisites)

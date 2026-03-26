@@ -46,6 +46,10 @@
 # Operations
 - [Observability & Monitoring](./operations/observability.md)
 
+# Deployment
+- [Production Deployment](./deployment/production.md)
+- [Release Checklist](./deployment/release-checklist.md)
+
 # Contributing
 - [Development Setup](./contributing/development.md)
 - [Testing](./contributing/testing.md)
