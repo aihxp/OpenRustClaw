@@ -13,7 +13,7 @@ This milestone turns the existing OpenRustClaw surface area into a believable pr
 - Decimal phases are reserved for urgent insertions if roadmap assumptions break.
 
 - [x] **Phase 1: Onboarding and First-Run Trust** - Make install, configuration, and first assistant launch production-ready. (completed 2026-03-26)
-- [ ] **Phase 2: Core Assistant and Session Continuity** - Stabilize the primary chat and persisted session experience.
+- [x] **Phase 2: Core Assistant and Session Continuity** - Stabilize the primary chat and persisted session experience. (completed 2026-03-26)
 - [ ] **Phase 3: Memory Durability and Write Policy** - Make memory trustworthy, durable, and inspectable.
 - [ ] **Phase 4: Tool, MCP, and Coding Workflow Hardening** - Make tool execution and coding actions dependable for daily use.
 - [ ] **Phase 5: Email and Voice Communications** - Ship production-credible email and phone or voice lanes.
@@ -45,12 +45,12 @@ Plans:
   1. User can start a primary assistant chat surface and exchange stable multi-turn conversations.
   2. Session state restores coherently after restart or reconnect.
   3. Primary assistant UX exposes continuity clearly enough that operators trust what was resumed.
-**Plans**: 1/3 plans executed
+**Plans**: 3/3 plans complete
 
 Plans:
 - [x] 02-01: Add assistant continuity summaries to operator inspection
-- [ ] 02-02: Surface continuity clearly in Control UI
-- [ ] 02-03: Lock continuity behavior with docs and cross-surface verification
+- [x] 02-02: Surface continuity clearly in Control UI
+- [x] 02-03: Lock continuity behavior with docs and cross-surface verification
 
 ### Phase 3: Memory Durability and Write Policy
 **Goal**: Memory becomes durable, policy-governed, and observable enough for production assistant use.
@@ -122,7 +122,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Onboarding and First-Run Trust | 3/3 | Complete   | 2026-03-26 |
-| 2. Core Assistant and Session Continuity | 1/3 | In Progress | - |
+| 2. Core Assistant and Session Continuity | 3/3 | Complete | 2026-03-26 |
 | 3. Memory Durability and Write Policy | 0/TBD | Not started | - |
 | 4. Tool, MCP, and Coding Workflow Hardening | 0/TBD | Not started | - |
 | 5. Email and Voice Communications | 0/TBD | Not started | - |
