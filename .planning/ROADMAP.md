@@ -90,11 +90,11 @@ Plans:
   1. Email workflows can receive, send, and persist actionable assistant outcomes.
   2. Phone or voice flows can answer or participate in interactions and persist the result.
   3. Operators can diagnose failed communications from runtime artifacts.
-**Plans**: 1/3 plans complete
+**Plans**: 2/3 plans complete
 
 Plans:
 - [x] 05-01: Add durable operator evidence for email workflows
-- [ ] 05-02: Harden the voice communication trust path
+- [x] 05-02: Harden the voice communication trust path
 - [ ] 05-03: Align communications docs and verification
 
 ### Phase 6: Deployment, Runtime, and Operator Ops
@@ -131,6 +131,6 @@ Plans:
 | 2. Core Assistant and Session Continuity | 3/3 | Complete | 2026-03-26 |
 | 3. Memory Durability and Write Policy | 3/3 | Complete | 2026-03-26 |
 | 4. Tool, MCP, and Coding Workflow Hardening | 3/3 | Complete | 2026-03-26 |
-| 5. Email and Voice Communications | 1/3 | In progress | - |
+| 5. Email and Voice Communications | 2/3 | In progress | - |
 | 6. Deployment, Runtime, and Operator Ops | 0/TBD | Not started | - |
 | 7. Security, Observability, and Release Exit | 0/TBD | Not started | - |
