@@ -119,10 +119,122 @@ impl ToolRegistry {
     pub fn get(&self, name: &str) -> Option<Arc<dyn Tool>> {
         self.tools.get(name).cloned()
     }
+
+    /// Create a new registry containing only the named tools that exist.
+    pub fn filtered(&self, allowed_names: &[&str]) -> Self {
+        let mut registry = Self::new();
+        for name in allowed_names {
+            if let Some(tool) = self.tools.get(*name) {
+                registry.tools.insert((*name).to_string(), tool.clone());
+            }
+        }
+        registry
+    }
 }
 
 impl Default for ToolRegistry {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tool_factory::ToolFactory;
+    use async_trait::async_trait;
+    use openrustclaw_core::traits::{CoreMemoryStore, MemoryStore};
+    use openrustclaw_core::types::{CoreEntry, MemoryEntry, MemoryQuery, ScoredMemory};
+    use std::sync::Mutex;
+
+    struct MockMemoryStore;
+
+    #[async_trait]
+    impl MemoryStore for MockMemoryStore {
+        async fn store(&self, _entry: MemoryEntry) -> Result<()> {
+            Ok(())
+        }
+
+        async fn search(&self, _query: &MemoryQuery) -> Result<Vec<ScoredMemory>> {
+            Ok(vec![])
+        }
+
+        async fn get(&self, _id: &str) -> Result<Option<MemoryEntry>> {
+            Ok(None)
+        }
+
+        async fn delete(&self, _id: &str) -> Result<()> {
+            Ok(())
+        }
+
+        async fn dedupe_check(&self, _content_hash: &str) -> Result<Option<String>> {
+            Ok(None)
+        }
+
+        async fn expire_stale(&self) -> Result<u64> {
+            Ok(0)
+        }
+    }
+
+    struct MockCoreMemoryStore {
+        entries: Mutex<Vec<(String, CoreEntry)>>,
+    }
+
+    impl MockCoreMemoryStore {
+        fn new() -> Self {
+            Self {
+                entries: Mutex::new(Vec::new()),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl CoreMemoryStore for MockCoreMemoryStore {
+        async fn get_all(&self, _user_id: &str) -> Result<Vec<CoreEntry>> {
+            Ok(self
+                .entries
+                .lock()
+                .unwrap()
+                .iter()
+                .map(|(_, e)| e.clone())
+                .collect())
+        }
+
+        async fn set(&self, user_id: &str, entry: CoreEntry) -> Result<()> {
+            let mut entries = self.entries.lock().unwrap();
+            entries.retain(|(uid, e)| uid != user_id || e.key != entry.key);
+            entries.push((user_id.to_string(), entry));
+            Ok(())
+        }
+
+        async fn remove(&self, user_id: &str, key: &str) -> Result<()> {
+            let mut entries = self.entries.lock().unwrap();
+            entries.retain(|(uid, e)| uid != user_id || e.key != key);
+            Ok(())
+        }
+
+        async fn render(&self, _user_id: &str) -> Result<String> {
+            Ok(String::new())
+        }
+
+        async fn total_tokens(&self, _user_id: &str) -> Result<usize> {
+            Ok(0)
+        }
+    }
+
+    #[test]
+    fn filtered_registry_keeps_only_requested_tools() {
+        let memory_store: Arc<dyn MemoryStore> = Arc::new(MockMemoryStore);
+        let core_memory_store: Arc<dyn CoreMemoryStore> = Arc::new(MockCoreMemoryStore::new());
+        let factory = ToolFactory::new(memory_store, core_memory_store);
+        let mut registry = ToolRegistry::new();
+        factory.register_all(&mut registry);
+
+        let filtered = registry.filtered(&["memory_search", "memory_store"]);
+
+        assert_eq!(filtered.len(), 2);
+        assert!(filtered.contains("memory_search"));
+        assert!(filtered.contains("memory_store"));
+        assert!(!filtered.contains("core_memory_update"));
     }
 }

@@ -51,11 +51,46 @@ pub fn build_system_prompt(
         prompt.push('\n');
     }
 
-    // Memory search instruction
-    prompt.push_str("You have a memory_search tool. Use it when you need to recall facts, ");
-    prompt.push_str("preferences, or past conversations. Don't guess — search.\n");
-    prompt.push_str("You have a memory_store tool. Use it to remember important information ");
-    prompt.push_str("for future conversations.\n");
+    let tool_names: std::collections::HashSet<&str> =
+        tools.iter().map(|tool| tool.name.as_str()).collect();
+    if tool_names.contains("memory_search") {
+        prompt.push_str("You have a memory_search tool. Use it when you need to recall facts, ");
+        prompt.push_str("preferences, or past conversations. Don't guess, search.\n");
+    }
+    if tool_names.contains("memory_store") {
+        prompt.push_str("You have a memory_store tool. Use it to remember important information ");
+        prompt.push_str("for future conversations.\n");
+    }
+    if tool_names.contains("core_memory_update") {
+        prompt
+            .push_str("You have a core_memory_update tool. Use it sparingly to maintain durable ");
+        prompt.push_str("profile-style memory when the user clearly wants it updated.\n");
+    }
 
     prompt
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn prompt_only_mentions_tools_that_exist() {
+        let prompt = build_system_prompt(
+            "Assistant",
+            &[],
+            &[ToolDefinition {
+                name: "memory_search".to_string(),
+                description: "search".to_string(),
+                parameters: json!({}),
+                strict: false,
+            }],
+            None,
+        );
+
+        assert!(prompt.contains("memory_search"));
+        assert!(!prompt.contains("memory_store tool"));
+        assert!(!prompt.contains("core_memory_update tool"));
+    }
 }

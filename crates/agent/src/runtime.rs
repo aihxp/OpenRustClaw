@@ -89,6 +89,12 @@ impl AgentRuntime {
         self
     }
 
+    /// Restrict the runtime to a named allowlist of registered tools.
+    pub fn with_allowed_tools(mut self, allowed_tools: &[&str]) -> Self {
+        self.tool_registry = Arc::new(self.tool_registry.filtered(allowed_tools));
+        self
+    }
+
     /// Set the maximum number of tool iterations allowed per request.
     ///
     /// Default is 10. Set to 0 to disable tool use entirely.

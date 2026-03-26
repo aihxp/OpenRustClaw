@@ -117,6 +117,8 @@ openrustclaw assistant --provider openrouter --model anthropic/claude-sonnet-4
 
 The `assistant` command resumes the active CLI assistant session for the current user and workspace when one already exists. The `chat` command remains available and now uses the same persisted path.
 
+By default, the assistant exposes a small safe memory tool set: `memory_search` and `memory_store`. Lower-level memory mutation tools stay out of the first-run assistant lane unless you move into more operator-oriented surfaces.
+
 ---
 
 ### `models`

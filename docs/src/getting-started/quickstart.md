@@ -89,6 +89,8 @@ The `--provider` flag specifies which LLM to use. Options:
 - `openrouter` — 400+ models via OpenRouter
 - `ollama` — Local models
 
+The default assistant lane keeps tool access narrow on purpose. On first run it only exposes the built-in memory tools needed for continuity: `memory_search` and `memory_store`.
+
 ### Your First Conversation
 
 ```

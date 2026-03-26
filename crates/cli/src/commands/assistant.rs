@@ -11,6 +11,7 @@ use std::sync::Arc;
 pub const ASSISTANT_NAME: &str = "OpenRustClaw Assistant";
 pub const ASSISTANT_IDENTITY: &str = "primary";
 pub const DEFAULT_ASSISTANT_MAX_TOOL_ITERATIONS: usize = 4;
+pub const DEFAULT_ASSISTANT_TOOL_ALLOWLIST: &[&str] = &["memory_search", "memory_store"];
 
 pub fn build_runtime(
     provider: Arc<dyn LlmProvider>,
@@ -24,6 +25,7 @@ pub fn build_runtime(
         memory_store,
         core_memory_store,
     )
+    .with_allowed_tools(DEFAULT_ASSISTANT_TOOL_ALLOWLIST)
     .with_workspace_path(workspace_path)
     .with_max_tool_iterations(DEFAULT_ASSISTANT_MAX_TOOL_ITERATIONS)
 }
@@ -168,5 +170,13 @@ mod tests {
     fn startup_handoff_message_changes_when_session_exists() {
         assert!(startup_handoff_message(true).contains("resume"));
         assert!(startup_handoff_message(false).contains("start"));
+    }
+
+    #[test]
+    fn assistant_allowlist_matches_curated_defaults() {
+        assert_eq!(
+            DEFAULT_ASSISTANT_TOOL_ALLOWLIST,
+            &["memory_search", "memory_store"]
+        );
     }
 }
