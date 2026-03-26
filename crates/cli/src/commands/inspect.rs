@@ -11,6 +11,8 @@ use std::fs::{self, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 
+use super::{browser, control, mobile};
+
 #[derive(Debug, Clone, Serialize)]
 pub struct AssistantContinuitySummary {
     pub assistant_managed: bool,
@@ -126,6 +128,40 @@ pub struct ToolExecutionRecord {
 pub struct ToolExecutionHistoryReport {
     pub limit: usize,
     pub entries: Vec<ToolExecutionRecord>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct EnterprisePolicyBoundary {
+    pub autonomy_level: String,
+    pub approval_policy: String,
+    pub approval_scope_detail: String,
+    pub operator_review_required_for_side_effects: bool,
+    pub mobile_command_detail: String,
+    pub browser_backend_detail: String,
+    pub allowed_browser_backends: Vec<String>,
+    pub allow_local_cli_wrappers: bool,
+    pub allow_cloud_agent_execution: bool,
+    pub browser_audit_log_path: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct EnterpriseAuditEntry {
+    pub observed_at: String,
+    pub source: String,
+    pub kind: String,
+    pub status: String,
+    pub summary: String,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct EnterpriseFoundationsReport {
+    pub status: String,
+    pub detail: String,
+    pub explicit_boundary: bool,
+    pub policy: EnterprisePolicyBoundary,
+    pub mobile_metrics: mobile::MobileCommandMetricsSummary,
+    pub recent_events: Vec<EnterpriseAuditEntry>,
 }
 
 pub async fn list_sessions(
@@ -271,6 +307,39 @@ fn continuity_detail(
     format!("Primary {surface} assistant session with {history_label}.")
 }
 
+fn approval_scope_detail(approval_policy: &str) -> String {
+    match approval_policy {
+        "always" => {
+            "Autonomous runtime actions require explicit approval before execution.".to_string()
+        }
+        "none" => {
+            "Autonomous runtime actions can execute without an approval stop. The policy is explicit, but it is intentionally permissive.".to_string()
+        }
+        _ => {
+            "Autonomous runtime actions may continue until a side effect is requested, then operator approval is required.".to_string()
+        }
+    }
+}
+
+fn browser_backend_policy_detail(policy: &browser::ExternalBackendPolicy) -> String {
+    let backends = if policy.allowed_backends.is_empty() {
+        "no external backends".to_string()
+    } else {
+        policy.allowed_backends.join(", ")
+    };
+    let local = if policy.allow_local_cli_wrappers {
+        "local wrappers allowed"
+    } else {
+        "local wrappers blocked"
+    };
+    let cloud = if policy.allow_cloud_agent_execution {
+        "cloud execution allowed"
+    } else {
+        "cloud execution blocked"
+    };
+    format!("Allowed backends: {backends}; {local}; {cloud}.")
+}
+
 pub async fn memory_timeline(
     store: &SqliteMemoryStore,
     namespace: Option<&str>,
@@ -376,6 +445,224 @@ pub fn new_tool_execution_record(
         args,
         result_preview,
     }
+}
+
+fn collect_mobile_command_audit_entries(
+    workspace_root: &Path,
+) -> Result<Vec<EnterpriseAuditEntry>> {
+    let commands = mobile::list_command_data(workspace_root, None, Some(24))?;
+    Ok(commands
+        .into_iter()
+        .map(|command| {
+            let observed_at = command
+                .executed_at
+                .as_ref()
+                .or(command.approved_at.as_ref())
+                .map(|value| value.to_rfc3339())
+                .unwrap_or_else(|| command.created_at.to_rfc3339());
+            let summary = match command.status.as_str() {
+                "pending_approval" => format!(
+                    "{} for node {} is waiting for operator approval.",
+                    command.command, command.node_id
+                ),
+                "rejected" => format!(
+                    "{} for node {} was rejected by {}.",
+                    command.command,
+                    command.node_id,
+                    command.approved_by.as_deref().unwrap_or("operator")
+                ),
+                "approved" => format!(
+                    "{} for node {} was approved by {}.",
+                    command.command,
+                    command.node_id,
+                    command.approved_by.as_deref().unwrap_or("operator")
+                ),
+                "executed" if command.approval_required => format!(
+                    "{} for node {} executed after approval by {}.",
+                    command.command,
+                    command.node_id,
+                    command.approved_by.as_deref().unwrap_or("operator")
+                ),
+                "executed" => format!(
+                    "{} for node {} executed under the current mobile command policy.",
+                    command.command, command.node_id
+                ),
+                other => format!(
+                    "{} for node {} is recorded with status {}.",
+                    command.command, command.node_id, other
+                ),
+            };
+            let detail = format!(
+                "approval_required={} required_capability={} decided_reason={}",
+                command.approval_required,
+                command.required_capability,
+                command.decided_reason.as_deref().unwrap_or("-")
+            );
+            EnterpriseAuditEntry {
+                observed_at,
+                source: "mobile_command".to_string(),
+                kind: command.command.to_string(),
+                status: command.status,
+                summary,
+                detail,
+            }
+        })
+        .collect())
+}
+
+fn collect_browser_backend_audit_entries(
+    workspace_root: &Path,
+    limit: usize,
+) -> Result<Vec<EnterpriseAuditEntry>> {
+    Ok(browser::list_backend_audit(workspace_root, limit.max(1))?
+        .into_iter()
+        .map(|entry| {
+            let status = if !entry.allowed {
+                "blocked".to_string()
+            } else if entry.success {
+                "success".to_string()
+            } else {
+                "failed".to_string()
+            };
+            let summary = if !entry.allowed {
+                format!(
+                    "{} via {} was blocked by browser backend policy.",
+                    entry.action, entry.backend
+                )
+            } else if entry.success {
+                format!(
+                    "{} via {} succeeded under the current browser backend policy.",
+                    entry.action, entry.backend
+                )
+            } else {
+                format!(
+                    "{} via {} was allowed but failed.",
+                    entry.action, entry.backend
+                )
+            };
+            let detail = entry
+                .detail
+                .clone()
+                .or_else(|| {
+                    entry
+                        .session_id
+                        .clone()
+                        .map(|value| format!("session={value}"))
+                })
+                .unwrap_or_else(|| "No extra detail recorded.".to_string());
+            EnterpriseAuditEntry {
+                observed_at: entry.timestamp,
+                source: "browser_backend".to_string(),
+                kind: entry.action,
+                status,
+                summary,
+                detail,
+            }
+        })
+        .collect())
+}
+
+fn collect_sensitive_tool_audit_entries(
+    workspace_root: &Path,
+    limit: usize,
+) -> Result<Vec<EnterpriseAuditEntry>> {
+    const SENSITIVE_TOOLS: &[&str] = &[
+        "mobile.command.dispatch",
+        "mobile.command.approve",
+        "mobile.command.reject",
+        "mobile.capability.execute",
+    ];
+
+    Ok(
+        tool_execution_history(workspace_root, limit.max(1) * 3, None, None, None)?
+            .entries
+            .into_iter()
+            .filter(|entry| SENSITIVE_TOOLS.contains(&entry.tool_name.as_str()))
+            .take(limit.max(1))
+            .map(|entry| {
+                let detail = entry
+                    .error
+                    .clone()
+                    .or_else(|| entry.artifact_path.clone())
+                    .unwrap_or_else(|| entry.status_detail.clone());
+                EnterpriseAuditEntry {
+                    observed_at: entry.created_at,
+                    source: entry.source,
+                    kind: entry.tool_name.clone(),
+                    status: entry.status.clone(),
+                    summary: format!("{} recorded as {}.", entry.tool_name, entry.status_detail),
+                    detail,
+                }
+            })
+            .collect(),
+    )
+}
+
+pub fn enterprise_foundations_summary(
+    workspace_root: &Path,
+    limit: usize,
+) -> Result<EnterpriseFoundationsReport> {
+    let default_autonomy = control::AutonomyPolicy::default();
+    let control_description = control::describe_registry(workspace_root.to_path_buf()).ok();
+    let autonomy_level = control_description
+        .as_ref()
+        .and_then(|value| value.get("autonomy"))
+        .and_then(|value| value.get("autonomy_level"))
+        .and_then(|value| value.as_str())
+        .unwrap_or(&default_autonomy.autonomy_level)
+        .to_string();
+    let approval_policy = control_description
+        .as_ref()
+        .and_then(|value| value.get("autonomy"))
+        .and_then(|value| value.get("approval_policy"))
+        .and_then(|value| value.as_str())
+        .unwrap_or(&default_autonomy.approval_policy)
+        .to_string();
+
+    let browser_policy = browser::backend_policy(workspace_root)?;
+    let mobile_metrics = mobile::command_metrics_data(workspace_root, None, None)?.metrics;
+    let mut recent_events = collect_mobile_command_audit_entries(workspace_root)?;
+    recent_events.extend(collect_browser_backend_audit_entries(
+        workspace_root,
+        limit,
+    )?);
+    recent_events.extend(collect_sensitive_tool_audit_entries(workspace_root, limit)?);
+    recent_events.sort_by(|left, right| right.observed_at.cmp(&left.observed_at));
+    recent_events.truncate(limit.max(1));
+
+    let policy = EnterprisePolicyBoundary {
+        autonomy_level: autonomy_level.clone(),
+        approval_policy: approval_policy.clone(),
+        approval_scope_detail: approval_scope_detail(&approval_policy),
+        operator_review_required_for_side_effects: approval_policy != "none",
+        mobile_command_detail: if mobile_metrics.pending_approval_commands > 0 {
+            format!(
+                "Mobile command execution preserves an explicit operator gate: {} command(s) are currently waiting in pending approval.",
+                mobile_metrics.pending_approval_commands
+            )
+        } else {
+            "Mobile command execution preserves an explicit operator gate through pending-approval, approve, and reject states.".to_string()
+        },
+        browser_backend_detail: browser_backend_policy_detail(&browser_policy),
+        allowed_browser_backends: browser_policy.allowed_backends.clone(),
+        allow_local_cli_wrappers: browser_policy.allow_local_cli_wrappers,
+        allow_cloud_agent_execution: browser_policy.allow_cloud_agent_execution,
+        browser_audit_log_path: browser_policy.audit_log_path.clone(),
+    };
+
+    let detail = format!(
+        "Runtime autonomy is `{}` with approval policy `{}`. Mobile command side effects stay reviewable through explicit approval states, and external browser backends are governed by an allowlisted policy with durable audit logging.",
+        autonomy_level, approval_policy
+    );
+
+    Ok(EnterpriseFoundationsReport {
+        status: "ok".to_string(),
+        detail,
+        explicit_boundary: true,
+        policy,
+        mobile_metrics,
+        recent_events,
+    })
 }
 
 pub async fn memory_namespaces(store: &SqliteMemoryStore) -> Result<Vec<String>> {
@@ -579,4 +866,117 @@ fn parse_optional_json_value(value: Option<String>) -> serde_json::Value {
     value
         .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
         .unwrap_or_else(|| serde_json::json!({}))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        enterprise_foundations_summary, new_tool_execution_record, tool_execution_log_path,
+    };
+    use anyhow::Result;
+    use chrono::{DateTime, Utc};
+    use openrustclaw_mobile::protocol::{DeviceCommandKind, MobileCommandRecord};
+    use std::fs;
+    use tempfile::tempdir;
+
+    use crate::commands::browser::{ExternalBackendAuditEntry, backend_policy};
+
+    #[test]
+    fn enterprise_foundations_summary_reports_policy_and_recent_audit_evidence() -> Result<()> {
+        let root = tempdir().expect("tempdir");
+
+        let commands_dir = root.path().join(".claw/mobile/commands");
+        fs::create_dir_all(&commands_dir)?;
+        let command = MobileCommandRecord {
+            id: "cmd-1".to_string(),
+            node_id: "ios-1".to_string(),
+            command: DeviceCommandKind::SendMessage,
+            required_capability: "mobile".to_string(),
+            approval_required: true,
+            status: "executed".to_string(),
+            payload: serde_json::json!({"target": "+15551234567"}),
+            result: serde_json::json!({"ok": true}),
+            created_at: parse_time("2026-03-26T18:00:00Z"),
+            approved_by: Some("operator-1".to_string()),
+            decided_reason: Some("approved from control ui".to_string()),
+            approved_at: Some(parse_time("2026-03-26T18:01:00Z")),
+            executed_at: Some(parse_time("2026-03-26T18:02:00Z")),
+        };
+        fs::write(
+            commands_dir.join("cmd-1.json"),
+            serde_json::to_vec_pretty(&command)?,
+        )?;
+
+        let policy = backend_policy(root.path())?;
+        let audit_path = root.path().join(&policy.audit_log_path);
+        if let Some(parent) = audit_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let browser_audit = ExternalBackendAuditEntry {
+            timestamp: "2026-03-26T18:03:00Z".to_string(),
+            backend: "agent_browser_cli".to_string(),
+            transport: "cli".to_string(),
+            action: "inspect".to_string(),
+            session_id: Some("browser-1".to_string()),
+            allowed: true,
+            success: true,
+            detail: Some("captured checkout page".to_string()),
+        };
+        fs::write(
+            &audit_path,
+            format!("{}\n", serde_json::to_string(&browser_audit)?),
+        )?;
+
+        let tool_log = tool_execution_log_path(root.path());
+        if let Some(parent) = tool_log.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let mut tool_record = new_tool_execution_record(
+            "mobile.command.approve",
+            "runtime_tool",
+            "success",
+            "success",
+            25,
+            None,
+            None,
+            None,
+            None,
+        );
+        tool_record.created_at = "2026-03-26T18:04:00Z".to_string();
+        fs::write(
+            &tool_log,
+            format!("{}\n", serde_json::to_string(&tool_record)?),
+        )?;
+
+        let report = enterprise_foundations_summary(root.path(), 12)?;
+        assert!(report.explicit_boundary);
+        assert_eq!(report.policy.approval_policy, "side_effects");
+        assert!(
+            report
+                .policy
+                .approval_scope_detail
+                .contains("side effect is requested")
+        );
+        assert_eq!(report.mobile_metrics.executed_commands, 1);
+        assert!(report.recent_events.iter().any(|entry| {
+            entry.source == "mobile_command"
+                && entry
+                    .summary
+                    .contains("executed after approval by operator-1")
+        }));
+        assert!(report.recent_events.iter().any(|entry| {
+            entry.source == "browser_backend" && entry.detail.contains("captured checkout page")
+        }));
+        assert!(report.recent_events.iter().any(|entry| {
+            entry.kind == "mobile.command.approve" && entry.source == "runtime_tool"
+        }));
+
+        Ok(())
+    }
+
+    fn parse_time(value: &str) -> DateTime<Utc> {
+        chrono::DateTime::parse_from_rfc3339(value)
+            .expect("valid rfc3339")
+            .with_timezone(&Utc)
+    }
 }

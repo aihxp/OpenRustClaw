@@ -2957,6 +2957,10 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             "/control/runtime/operator-ops",
             get(runtime_operator_ops_handler),
         )
+        .route(
+            "/control/enterprise/foundations",
+            get(enterprise_foundations_handler),
+        )
         .route("/control/security/posture", get(security_posture_handler))
         .route("/control/runtime/health", get(runtime_health_handler))
         .route("/control/runtime/beacon", get(runtime_beacon_handler))
@@ -6824,6 +6828,19 @@ async fn runtime_operator_ops_handler(
 
 async fn security_posture_handler(State(state): State<RuntimeControlState>) -> impl IntoResponse {
     match security::posture_summary(&state.config_path, &state.workspace_root) {
+        Ok(summary) => (StatusCode::OK, Json(serde_json::json!(summary))).into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn enterprise_foundations_handler(
+    State(state): State<RuntimeControlState>,
+) -> impl IntoResponse {
+    match inspect::enterprise_foundations_summary(&state.workspace_root, 12) {
         Ok(summary) => (StatusCode::OK, Json(serde_json::json!(summary))).into_response(),
         Err(error) => (
             StatusCode::INTERNAL_SERVER_ERROR,
