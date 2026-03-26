@@ -10,6 +10,7 @@ const path = require('path');
 const { output, error, getMilestonePhaseFilter, planningDir, toPosixPath } = require('./core.cjs');
 const { extractFrontmatter } = require('./frontmatter.cjs');
 const { requireSafePath, sanitizeForDisplay } = require('./security.cjs');
+const { buildVerificationDebtItems, inspectVerificationArtifacts } = require('./verification-artifacts.cjs');
 
 function cmdAuditUat(cwd, raw) {
   const phasesDir = path.join(planningDir(cwd), 'phases');
@@ -68,6 +69,23 @@ function cmdAuditUat(cwd, raw) {
           });
         }
       }
+    }
+
+    const verificationInspection = inspectVerificationArtifacts(phaseDir);
+    const blockingItems = buildVerificationDebtItems(verificationInspection)
+      .filter(item => item.category !== 'human_uat');
+    if (blockingItems.length > 0) {
+      results.push({
+        phase: phaseNum,
+        phase_dir: dir,
+        file: verificationInspection.verification_file || 'VERIFICATION.md',
+        file_path: verificationInspection.verification_path
+          ? toPosixPath(path.relative(cwd, verificationInspection.verification_path))
+          : toPosixPath(path.relative(cwd, phaseDir)),
+        type: 'verification',
+        status: verificationInspection.status,
+        items: blockingItems,
+      });
     }
   }
 
