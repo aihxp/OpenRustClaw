@@ -1,14 +1,14 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: Rust OpenClaw MVP
+milestone: v1.1
+milestone_name: Lifecycle Integrity and Enterprise Foundations
 current_phase: 0
-current_phase_name: Milestone Complete
+current_phase_name: Requirements Definition
 current_plan: 0
-status: milestone_complete
-stopped_at: v1.0 archived and phase directories cleaned up; next step is planning the next milestone.
+status: defining_requirements
+stopped_at: Milestone v1.1 initialized; requirements and roadmap are being defined.
 last_updated: "2026-03-26T16:37:23Z"
-last_activity: 2026-03-26 -- v1.0 milestone archived and phase directories cleaned up
+last_activity: 2026-03-26 -- Milestone v1.1 started with lifecycle verification hardening and enterprise foundations scope
 progress:
   total_phases: 7
   completed_phases: 7
@@ -24,21 +24,21 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-26)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** Planning the next milestone
+**Current focus:** Defining milestone v1.1 requirements and roadmap
 
 ## Current Position
 
 Current Phase: 0
-Current Phase Name: Milestone Complete
+Current Phase Name: Requirements Definition
 Total Phases: 0
 Current Plan: 0
 Total Plans in Phase: 0
-Status: Milestone complete
-Last activity: 2026-03-26 - v1.0 milestone archived and phase directories cleaned up
+Status: Defining requirements
+Last activity: 2026-03-26 - Milestone v1.1 started with lifecycle verification hardening and enterprise foundations scope
 
-Phase: 0 of 0 (Milestone Complete)
+Phase: 0 of 0 (Requirements Definition)
 Plan: 0 of 0 in current phase
-Progress: [██████████] 100%
+Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
@@ -74,7 +74,7 @@ Recent decisions affecting current work:
 
 - v1.0 established the Rust-first MVP trust baseline across onboarding, assistant continuity, memory policy, tools/coding evidence, communications, runtime ops, security posture, and release exit.
 - The missing v1.0 phase `VERIFICATION.md` artifacts were preserved as known audit debt instead of hidden during archive.
-- The next milestone should choose one focused expansion lane instead of reopening the full AGI ambition at once.
+- v1.1 will prioritize lifecycle verification integrity first and keep enterprise work to a narrow foundational slice.
 
 ### Pending Todos
 
@@ -87,5 +87,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-26 16:37
-Stopped at: v1.0 archived and phase directories cleaned up; next step is planning the next milestone.
+Stopped at: Milestone v1.1 initialized; requirements and roadmap are being defined.
 Resume file: None

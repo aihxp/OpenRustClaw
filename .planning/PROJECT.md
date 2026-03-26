@@ -17,6 +17,15 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 - **Planning state:** No active milestone is currently open
 - **Known audit debt:** v1.0 shipped with a passing release gate, but the archived milestone audit records missing per-phase `VERIFICATION.md` artifacts
 
+## Current Milestone: v1.1 Lifecycle Integrity and Enterprise Foundations
+
+**Goal:** Eliminate the lifecycle evidence gap that v1.0 exposed and start a narrow enterprise-readiness lane around explicit policy and audit foundations.
+
+**Target features:**
+- Automatic, non-optional `VERIFICATION.md` generation for completed phases
+- Lifecycle gates that refuse false-complete audit, archive, or cleanup paths when verification evidence is missing or stale
+- A small enterprise foundation around explicit approval or policy contracts plus durable audit evidence for sensitive assistant actions
+
 ## Requirements
 
 ### Validated
@@ -31,9 +40,9 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 ### Active
 
-- [ ] Add a stronger milestone lifecycle contract so future phases always preserve `VERIFICATION.md` evidence automatically
-- [ ] Define the next post-MVP milestone around enterprise readiness, broader autonomy controls, or deeper surface parity
-- [ ] Decide which v2 lane matters first: enterprise governance, longer-running supervised automation, or broader OpenClaw parity
+- [ ] Make phase execution and lifecycle flows preserve `VERIFICATION.md` artifacts automatically
+- [ ] Block false-complete audit, archive, and cleanup states when verification evidence is missing or stale
+- [ ] Start a narrow enterprise foundation around approval or policy boundaries and durable audit evidence for sensitive assistant actions
 
 ### Out of Scope
 
@@ -67,9 +76,26 @@ The next milestone should build on that baseline rather than reopen MVP-sprawl. 
 
 ## Next Milestone Goals
 
-- Decide the post-v1.0 milestone boundary with `$gsd-new-milestone`
-- Preserve verification artifacts automatically during future phase execution
-- Choose one concrete expansion lane instead of reopening all deferred ambitions at once
+- Close the lifecycle evidence debt exposed by the v1.0 archive
+- Carry one disciplined enterprise-readiness slice without reopening full enterprise scope
+- Keep broader autonomy and deeper OpenClaw parity deferred until the verification foundation is stronger
+
+## Evolution
+
+This document evolves at phase transitions and milestone boundaries.
+
+**After each phase transition** (via `$gsd-transition`):
+1. Requirements invalidated? → Move to Out of Scope with reason
+2. Requirements validated? → Move to Validated with phase reference
+3. New requirements emerged? → Add to Active
+4. Decisions to log? → Add to Key Decisions
+5. "What This Is" still accurate? → Update if drifted
+
+**After each milestone** (via `$gsd-complete-milestone`):
+1. Full review of all sections
+2. Core Value check — still the right priority?
+3. Audit Out of Scope — reasons still valid?
+4. Update Context with current state
 
 ---
-*Last updated: 2026-03-26 after v1.0 milestone completion*
+*Last updated: 2026-03-26 after starting v1.1 milestone planning*
