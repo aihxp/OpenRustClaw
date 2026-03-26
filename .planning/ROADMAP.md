@@ -18,7 +18,7 @@ This milestone fixes the lifecycle evidence debt exposed by v1.0 before the proj
 - Decimal phases are reserved for urgent insertions if roadmap assumptions break.
 
 - [x] **Phase 8: Verification Artifact Contract** - Make phase execution produce durable verification artifacts by default and block false completion when they are missing. (completed 2026-03-26)
-- [ ] **Phase 9: Milestone Lifecycle Integrity** - Make audit, archive, and cleanup consume and preserve verification evidence honestly.
+- [x] **Phase 9: Milestone Lifecycle Integrity** - Make audit, archive, and cleanup consume and preserve verification evidence honestly. (completed 2026-03-26)
 - [ ] **Phase 10: Enterprise Policy and Audit Foundations** - Start enterprise readiness with explicit approval boundaries and durable audit evidence for sensitive assistant actions.
 
 ### Phase Details
@@ -46,10 +46,12 @@ Plans:
   1. Milestone audit consumes the expected verification artifacts and reports missing evidence as a first-class result.
   2. Milestone archive outputs preserve verification evidence and known verification debt in the shipped planning record.
   3. Cleanup and archive flows do not silently discard verification artifacts needed for later review.
-**Plans**: TBD
+**Plans**: 3/3 plans complete
 
 Plans:
-- [ ] TBD (run `$gsd-plan-phase 9` to break down)
+- [x] **09-01** - Archive milestone verification evidence durably
+- [x] **09-02** - Align audit and archive workflow guidance
+- [x] **09-03** - Align cleanup semantics and close the phase with evidence
 
 ### Phase 10: Enterprise Policy and Audit Foundations
 **Goal**: Establish a narrow enterprise baseline for approval-sensitive actions and durable audit evidence without attempting full enterprise scope.
@@ -69,5 +71,5 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 8. Verification Artifact Contract | 3/3 | Complete    | 2026-03-26 |
-| 9. Milestone Lifecycle Integrity | 0/TBD | Not started | - |
+| 9. Milestone Lifecycle Integrity | 3/3 | Complete    | 2026-03-26 |
 | 10. Enterprise Policy and Audit Foundations | 0/TBD | Not started | - |
