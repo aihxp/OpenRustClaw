@@ -384,6 +384,94 @@ openrustclaw mcp2-cli run --mcp-stdio 'npx -y @modelcontextprotocol/server-files
 echo '{"path":"/etc/hosts"}' | openrustclaw mcp2-cli run --mcp-stdio 'npx -y @modelcontextprotocol/server-filesystem /' read_file --stdin
 ```
 
+---
+
+### `tools`
+
+Workspace-owned local CLI profiling and host-artifact generation.
+
+#### `tools setup`
+
+Probe the common local CLI set and initialize the workspace tool registry.
+
+```bash
+openrustclaw tools setup [OPTIONS]
+
+Options:
+      --tool <TOOL_NAME>...   Explicit tool names to probe instead of the default set
+      --host <HOST>...        Target startup bundle hosts
+                              Options: claude-code, cursor, codex, gemini-cli, github-copilot
+```
+
+**Examples**:
+```bash
+openrustclaw tools setup
+openrustclaw tools setup --tool git --tool cargo --host codex --host cursor
+```
+
+#### `tools add`
+
+Probe one local CLI and persist its normalized tool profile.
+
+```bash
+openrustclaw tools add <NAME> [OPTIONS]
+
+Options:
+      --path <PATH>           Explicit executable path
+      --host <HOST>...        Target startup bundle hosts
+```
+
+**Examples**:
+```bash
+openrustclaw tools add gh
+openrustclaw tools add docker --path /usr/local/bin/docker --host claude-code
+```
+
+#### `tools status`
+
+List persisted tool profiles and local drift state.
+
+```bash
+openrustclaw tools status [OPTIONS]
+
+Options:
+      --name <NAME>           Filter to one persisted tool profile
+```
+
+#### `tools show`
+
+Inspect one persisted tool profile in detail.
+
+```bash
+openrustclaw tools show <NAME>
+```
+
+#### `tools sync`
+
+Re-probe persisted tool profiles and optionally rewrite generated host artifacts.
+
+```bash
+openrustclaw tools sync [OPTIONS]
+
+Options:
+      --name <NAME>           Filter to one persisted tool profile
+      --host <HOST>...        Override the generated host bundle set
+      --apply                 Persist the refreshed profile and rewrite artifacts
+```
+
+Generated files:
+
+- Registry: `.claw/control/tool-profiles.json`
+- Host bundles: `.claw/control/tool-hosts/<host>/`
+
+Matching control-plane APIs:
+
+- `GET /control/tools`
+- `GET /control/tools/{name}`
+- `POST /control/tools/add`
+- `POST /control/tools/setup`
+- `POST /control/tools/sync`
+
 #### `mcp2-cli analyze`
 
 Analyze token cost savings.

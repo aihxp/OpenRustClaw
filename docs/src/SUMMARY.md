@@ -29,6 +29,7 @@
 - [Creating Skills](./guides/skills.md)
 - [Connecting MCP Servers](./guides/mcp-servers.md)
 - [mcp2cli - Token-Efficient Discovery](./guides/mcp2cli.md)
+- [Local Tool Profiles](./guides/tools.md)
 - [Security](./guides/security.md)
 - [Cursor Integration](./guides/cursor-integration.md)
 

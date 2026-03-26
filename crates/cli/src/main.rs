@@ -112,6 +112,11 @@ enum Commands {
         #[command(subcommand)]
         action: RuntimeAction,
     },
+    /// Discover local CLIs, persist tool profiles, and generate host startup artifacts
+    Tools {
+        #[command(subcommand)]
+        action: ToolsAction,
+    },
     /// Execute bounded routed or orchestrated multi-model runs
     Orchestrate {
         #[command(subcommand)]
@@ -554,6 +559,41 @@ enum RuntimeServicesAction {
     },
     /// Inspect the persisted runtime lock and stale-PID state
     LockStatus,
+}
+
+#[derive(Subcommand)]
+enum ToolsAction {
+    /// Probe the common local CLI set and initialize the workspace tool registry
+    Setup {
+        #[arg(long = "tool")]
+        tool_names: Vec<String>,
+        #[arg(long = "host")]
+        hosts: Vec<commands::tools::AiHost>,
+    },
+    /// Probe one local CLI and persist its tool profile
+    Add {
+        name: String,
+        #[arg(long)]
+        path: Option<String>,
+        #[arg(long = "host")]
+        hosts: Vec<commands::tools::AiHost>,
+    },
+    /// List persisted tool profiles and local drift state
+    Status {
+        #[arg(long)]
+        name: Option<String>,
+    },
+    /// Show one persisted tool profile
+    Show { name: String },
+    /// Re-probe persisted tool profiles and optionally rewrite generated artifacts
+    Sync {
+        #[arg(long)]
+        name: Option<String>,
+        #[arg(long = "host")]
+        hosts: Vec<commands::tools::AiHost>,
+        #[arg(long)]
+        apply: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -4617,6 +4657,45 @@ async fn main() -> Result<()> {
                 }
             }
         },
+        Commands::Tools { action } => {
+            let workspace_root = std::env::current_dir()?;
+            match action {
+                ToolsAction::Setup { tool_names, hosts } => {
+                    let report =
+                        commands::tools::setup_tools(&workspace_root, &tool_names, &hosts).await?;
+                    println!("{}", serde_json::to_string_pretty(&report)?);
+                    Ok(())
+                }
+                ToolsAction::Add { name, path, hosts } => {
+                    let report =
+                        commands::tools::add_tool(&workspace_root, &name, path.as_deref(), &hosts)
+                            .await?;
+                    println!("{}", serde_json::to_string_pretty(&report)?);
+                    Ok(())
+                }
+                ToolsAction::Status { name } => {
+                    let report = commands::tools::status_data(&workspace_root, name.as_deref())?;
+                    println!("{}", serde_json::to_string_pretty(&report)?);
+                    Ok(())
+                }
+                ToolsAction::Show { name } => {
+                    let report = commands::tools::detail_data(&workspace_root, &name)?;
+                    println!("{}", serde_json::to_string_pretty(&report)?);
+                    Ok(())
+                }
+                ToolsAction::Sync { name, hosts, apply } => {
+                    let report = commands::tools::sync_tools(
+                        &workspace_root,
+                        name.as_deref(),
+                        &hosts,
+                        apply,
+                    )
+                    .await?;
+                    println!("{}", serde_json::to_string_pretty(&report)?);
+                    Ok(())
+                }
+            }
+        }
         Commands::Orchestrate { action } => match action {
             OrchestrateAction::Resolve {
                 task_id,

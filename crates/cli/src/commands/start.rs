@@ -88,7 +88,7 @@ use super::voice_runtime;
 use super::voice_runtime::InboundVoiceTranscriber;
 use super::{
     browser, control, control_ui, doctor, inspect, logs, mobile, orchestrate, runtime, services,
-    skills,
+    skills, tools,
 };
 
 /// Run the start command - load config, optionally start the compatibility/experimental sidecar, and start the gateway.
@@ -3130,6 +3130,11 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             "/control/runtime/rollback-plan",
             get(runtime_rollback_plan_handler),
         )
+        .route("/control/tools", get(tool_status_handler))
+        .route("/control/tools/add", post(tool_add_handler))
+        .route("/control/tools/setup", post(tool_setup_handler))
+        .route("/control/tools/sync", post(tool_sync_handler))
+        .route("/control/tools/{name}", get(tool_detail_handler))
         .route(
             "/control/runtime/health/scan",
             post(runtime_health_scan_handler),
@@ -5045,6 +5050,38 @@ struct RuntimeArtifactQuery {
 }
 
 #[derive(serde::Deserialize, Default)]
+struct ToolStatusQuery {
+    #[serde(default)]
+    name: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
+struct ToolAddRequest {
+    name: String,
+    path: Option<String>,
+    #[serde(default)]
+    hosts: Vec<tools::AiHost>,
+}
+
+#[derive(serde::Deserialize, Default)]
+struct ToolSetupRequest {
+    #[serde(default)]
+    tool_names: Vec<String>,
+    #[serde(default)]
+    hosts: Vec<tools::AiHost>,
+}
+
+#[derive(serde::Deserialize, Default)]
+struct ToolSyncRequest {
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    hosts: Vec<tools::AiHost>,
+    #[serde(default)]
+    apply: bool,
+}
+
+#[derive(serde::Deserialize, Default)]
 struct MobileCommandsQuery {
     #[serde(default)]
     node_id: Option<String>,
@@ -6672,6 +6709,90 @@ async fn runtime_rollback_plan_handler(
         .await
     {
         Ok(plan) => (StatusCode::OK, Json(serde_json::json!(plan))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn tool_status_handler(
+    State(state): State<RuntimeControlState>,
+    Query(query): Query<ToolStatusQuery>,
+) -> impl IntoResponse {
+    match tools::status_data(&state.workspace_root, query.name.as_deref()) {
+        Ok(report) => (StatusCode::OK, Json(serde_json::json!(report))).into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn tool_detail_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(name): AxumPath<String>,
+) -> impl IntoResponse {
+    match tools::detail_data(&state.workspace_root, &name) {
+        Ok(report) => (StatusCode::OK, Json(serde_json::json!(report))).into_response(),
+        Err(error) => (
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn tool_add_handler(
+    State(state): State<RuntimeControlState>,
+    Json(payload): Json<ToolAddRequest>,
+) -> impl IntoResponse {
+    match tools::add_tool(
+        &state.workspace_root,
+        &payload.name,
+        payload.path.as_deref(),
+        &payload.hosts,
+    )
+    .await
+    {
+        Ok(report) => (StatusCode::OK, Json(serde_json::json!(report))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn tool_setup_handler(
+    State(state): State<RuntimeControlState>,
+    Json(payload): Json<ToolSetupRequest>,
+) -> impl IntoResponse {
+    match tools::setup_tools(&state.workspace_root, &payload.tool_names, &payload.hosts).await {
+        Ok(report) => (StatusCode::OK, Json(serde_json::json!(report))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn tool_sync_handler(
+    State(state): State<RuntimeControlState>,
+    Json(payload): Json<ToolSyncRequest>,
+) -> impl IntoResponse {
+    match tools::sync_tools(
+        &state.workspace_root,
+        payload.name.as_deref(),
+        &payload.hosts,
+        payload.apply,
+    )
+    .await
+    {
+        Ok(report) => (StatusCode::OK, Json(serde_json::json!(report))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": error.to_string()})),
