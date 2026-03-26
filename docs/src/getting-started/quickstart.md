@@ -206,6 +206,15 @@ ls .claw/control/cursor-tool-runs
 
 `/control/ui` renders both `Recent Tool Executions` and `Recent Coding Artifacts`, so operators can confirm what ran, whether it succeeded, and where the retained evidence lives before opening raw files. Tool executions point back to `.claw/control/tool-executions.jsonl`; coding artifacts point at per-run JSON records under `.claw/control/cursor-tool-runs/` and include a diff preview for mutating file tools when the workspace is in git.
 
+The same trust-first inspection loop now covers communications:
+
+```bash
+# Check whether Gmail / voice lanes look configured
+openrustclaw runtime services channels
+```
+
+When the runtime is up, `/control/ui` shows `Channel Readiness`, `Recent Email Activity`, and `Recent Voice Outcomes`. Use those summaries first, then drill into the deeper surfaces only when needed: Gmail ingress receipts are retained as `channels.gmail_pubsub.ingress` entries in `.claw/control/tool-executions.jsonl`, and voice outcomes are derived from the persisted session receipts under `.claw/voice/sessions/`.
+
 ---
 
 ## 📊 Step 4: Understanding Context

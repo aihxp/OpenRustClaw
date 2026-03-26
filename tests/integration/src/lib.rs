@@ -11,6 +11,8 @@ mod channel_fixture_test;
 #[cfg(test)]
 mod coding_artifact_audit_test;
 #[cfg(test)]
+mod communications_audit_test;
+#[cfg(test)]
 mod documented_scenario_test;
 #[cfg(test)]
 mod fixture_suite_test;
