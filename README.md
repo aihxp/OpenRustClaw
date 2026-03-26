@@ -54,9 +54,15 @@ openrustclaw control describe --json
 # Start the persisted assistant session
 openrustclaw assistant
 
+# Inspect persisted continuity from the CLI
+openrustclaw session list
+openrustclaw session show <session-id>
+
 # Start the agent with your configured channels
 openrustclaw start --channels=telegram,discord,slack
 ```
+
+When the runtime is up, `/control/ui` reuses the same typed session inspection surface, including assistant continuity summaries that show surface, persistence model, route binding, and restored history count instead of leaving operators to decode raw metadata by hand.
 
 ## Architecture
 
@@ -193,6 +199,7 @@ Channel routing/operator controls:
   - `GET /control/memory/archive`
   - `GET /control/jobs`
   - `GET /control/jobs/{id}`
+- `/control/sessions` and `/control/sessions/{id}` now surface assistant continuity summaries so CLI and Control UI can both explain whether a persisted assistant session was likely resumed, which surface owns it, and how much history was restored
 - shared runtime reconfiguration surfaces now exist at:
   - `GET /control/runtime/status`
   - `GET /control/runtime/reload-plan`

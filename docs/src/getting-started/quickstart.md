@@ -184,7 +184,9 @@ openrustclaw memory stats
 openrustclaw memory timeline --limit 10
 ```
 
-If you start `openrustclaw assistant` again, it will resume the same active CLI session for this workspace and user instead of starting from an empty in-memory transcript. The older `openrustclaw chat` command now reuses the same persisted assistant path.
+If you start `openrustclaw assistant` again, it will resume the same active CLI session for this workspace and user instead of starting from an empty in-memory transcript. `openrustclaw session show` now makes that continuity explicit by surfacing the assistant surface, persistence model, route binding, and restored history count before the raw metadata dump. The older `openrustclaw chat` command now reuses the same persisted assistant path.
+
+If `openrustclaw start` is running, you can inspect the same continuity contract in Control UI at `/control/ui`: the Sessions table calls out assistant-managed surfaces directly, and Session Detail summarizes whether the session looks resumed before showing the raw JSON report.
 
 ---
 
