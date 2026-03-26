@@ -2953,6 +2953,10 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
     let router = Router::new()
         .route("/control/ui", get(control_ui_handler))
         .route("/control/runtime/status", get(runtime_status_handler))
+        .route(
+            "/control/runtime/operator-ops",
+            get(runtime_operator_ops_handler),
+        )
         .route("/control/runtime/health", get(runtime_health_handler))
         .route("/control/runtime/beacon", get(runtime_beacon_handler))
         .route("/control/voice/status", get(voice_status_handler))
@@ -6788,6 +6792,27 @@ async fn media_describe_handler(
 async fn runtime_health_handler(State(state): State<RuntimeControlState>) -> impl IntoResponse {
     match runtime::runtime_health_status(&state.config_path, &state.workspace_root, false).await {
         Ok(report) => (StatusCode::OK, Json(serde_json::json!(report))).into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn runtime_operator_ops_handler(
+    State(state): State<RuntimeControlState>,
+) -> impl IntoResponse {
+    match runtime::runtime_operator_ops_summary(
+        &state.config_path,
+        &state.workspace_root,
+        &state.gateway_addr,
+        Some(state.started_at),
+        state.sidecar_running,
+    )
+    .await
+    {
+        Ok(summary) => (StatusCode::OK, Json(serde_json::json!(summary))).into_response(),
         Err(error) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({"error": error.to_string()})),

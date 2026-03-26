@@ -336,6 +336,21 @@ pub struct RuntimeLockStatus {
     pub config_path: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct RuntimeOperatorOpsSummary {
+    pub generated_at: String,
+    pub config_path: String,
+    pub ready_for_managed_restart: bool,
+    pub backup_root: String,
+    pub release_root: String,
+    pub service_install_status: RuntimeServiceInstallStatus,
+    pub lock_status: RuntimeLockStatus,
+    pub runtime_health: RuntimeHealthReport,
+    pub beacon: RuntimeBeacon,
+    pub reload_plan: RuntimeReloadPlan,
+    pub recommended_actions: Vec<String>,
+}
+
 pub struct RuntimeLockGuard {
     path: PathBuf,
     process_id: u32,
@@ -1250,6 +1265,131 @@ pub async fn runtime_beacon_status(
         sidecar_running,
     )
     .await
+}
+
+pub async fn runtime_operator_ops_summary(
+    config_path: &str,
+    workspace_root: &Path,
+    gateway_addr: &str,
+    started_at: Option<chrono::DateTime<Utc>>,
+    sidecar_running: bool,
+) -> Result<RuntimeOperatorOpsSummary> {
+    let resolved_config_path = resolve_runtime_config_path(workspace_root, config_path);
+    let runtime_health = runtime_health_status(config_path, workspace_root, false).await?;
+    let beacon = runtime_beacon_status(
+        config_path,
+        workspace_root,
+        false,
+        gateway_addr,
+        started_at,
+        sidecar_running,
+    )
+    .await?;
+    let reload_plan = runtime_reload_plan(config_path, workspace_root)?;
+    let service_install_status = runtime_service_install_status(config_path, workspace_root)?;
+    let lock_status = runtime_lock_status(workspace_root)?;
+    let backup_root = runtime_backup_root_for(workspace_root);
+    let release_root = runtime_release_root_for(workspace_root);
+
+    let mut recommended_actions = Vec::new();
+    if service_install_status.installed {
+        if let Some(restart_command) = service_install_status.restart_command.as_ref() {
+            recommended_actions.push(format!(
+                "Managed restart is available with `{}`.",
+                restart_command
+            ));
+        }
+    } else if service_install_status.supported {
+        recommended_actions.push(format!(
+            "Install the workspace runtime service with `openrustclaw runtime services install --config {}` before relying on unattended restarts.",
+            config_path
+        ));
+    } else {
+        recommended_actions.push(
+            "No supported host user service manager was detected; document a manual restart path for this runtime target.".to_string(),
+        );
+    }
+
+    if lock_status.active {
+        recommended_actions.push(format!(
+            "Runtime lock is active{}; stop or drain the running process before upgrade or rollback.",
+            lock_status
+                .process_id
+                .map(|pid| format!(" for PID {}", pid))
+                .unwrap_or_default()
+        ));
+    } else if lock_status.stale {
+        recommended_actions.push(
+            "Runtime lock is stale; confirm the old process is gone and refresh the runtime through the managed restart path.".to_string(),
+        );
+    } else {
+        recommended_actions.push(
+            "Runtime lock is clear; maintenance operations can proceed without an active owner record."
+                .to_string(),
+        );
+    }
+
+    if reload_plan.restart_required {
+        recommended_actions.push(format!(
+            "Current config delta requires restart: {}.",
+            reload_plan.restart_required_reasons.join(" | ")
+        ));
+    } else if reload_plan.live_reload_ready {
+        recommended_actions.push(format!(
+            "Current config delta is live-reload safe via `openrustclaw runtime reload --config {}` or the Control UI reload action.",
+            config_path
+        ));
+    } else {
+        recommended_actions.push(
+            "Runtime config matches the last applied snapshot; no reload work is pending."
+                .to_string(),
+        );
+    }
+
+    if runtime_health.degraded_control_plane_mode {
+        recommended_actions.push(format!(
+            "Control plane is degraded; promote healthy provider `{}` before risky runtime changes.",
+            runtime_health
+                .recommended_control_plane_provider
+                .as_deref()
+                .unwrap_or(runtime_health.default_provider.as_str())
+        ));
+    } else if !runtime_health.startup_fallback_valid {
+        recommended_actions.push(
+            "No healthy fallback control-plane provider is currently available; avoid risky restarts until provider health is restored."
+                .to_string(),
+        );
+    }
+
+    if !runtime_health.operator_warnings.is_empty() {
+        recommended_actions.push(format!(
+            "Review runtime warnings: {}",
+            runtime_health.operator_warnings.join(" | ")
+        ));
+    }
+
+    recommended_actions.push(format!(
+        "Take a workspace snapshot with `openrustclaw runtime backup` before config or binary changes. Backups are stored under `{}`.",
+        backup_root.display()
+    ));
+    recommended_actions.push(format!(
+        "Use `openrustclaw runtime upgrade-plan --config {}` for planned maintenance and `openrustclaw runtime rollback-plan --config {} --artifact <path>` for recovery.",
+        config_path, config_path
+    ));
+
+    Ok(RuntimeOperatorOpsSummary {
+        generated_at: Utc::now().to_rfc3339(),
+        config_path: resolved_config_path.display().to_string(),
+        ready_for_managed_restart: service_install_status.installed && !lock_status.active,
+        backup_root: backup_root.display().to_string(),
+        release_root: release_root.display().to_string(),
+        service_install_status,
+        lock_status,
+        runtime_health,
+        beacon,
+        reload_plan,
+        recommended_actions,
+    })
 }
 
 pub async fn refresh_runtime_beacon(
@@ -3345,6 +3485,78 @@ mod tests {
         ))?;
         assert!(rollback_plan.rollback_artifact_exists);
         assert!(rollback_plan.rollback_artifact_executable);
+        Ok(())
+    }
+
+    #[test]
+    fn runtime_operator_ops_summary_reports_recovery_guidance() -> Result<()> {
+        let temp = tempdir()?;
+        let workspace_root = temp.path();
+        fs::create_dir_all(workspace_root.join("config"))?;
+        let config_path = workspace_root.join("config/default.toml");
+        fs::write(&config_path, toml::to_string_pretty(&AppConfig::default())?)?;
+        fs::create_dir_all(workspace_root.join(".claw/control"))?;
+        fs::write(
+            runtime_health_path_for(workspace_root),
+            serde_json::to_vec_pretty(&RuntimeHealthReport {
+                generated_at: Utc::now().to_rfc3339(),
+                config_path: "config/default.toml".to_string(),
+                default_provider: "anthropic".to_string(),
+                fallback_chain: vec!["openai".to_string()],
+                control_plane_provider: Some("anthropic".to_string()),
+                control_plane_fallback_chain: vec!["openai".to_string()],
+                recommended_control_plane_provider: Some("anthropic".to_string()),
+                startup_fallback_valid: true,
+                degraded_control_plane_mode: false,
+                failover_recommendations: Vec::new(),
+                operator_warnings: Vec::new(),
+                providers: vec![RuntimeHealthProviderEntry {
+                    provider: "anthropic".to_string(),
+                    role: "primary".to_string(),
+                    model: "claude-sonnet-4-20250514".to_string(),
+                    configured: true,
+                    healthy: true,
+                    issue_kind: None,
+                    recommendation: Some("configured task/runtime primary".to_string()),
+                    issue: None,
+                    model_available: Some(true),
+                    limit_snapshot: None,
+                }],
+                artifacts: RuntimeArtifactHealth {
+                    artifact_count: 0,
+                    persona_artifact_count: 0,
+                    registry_path: workspace_root
+                        .join(".claw/artifacts/registry.json")
+                        .display()
+                        .to_string(),
+                    model_family: "anthropic".to_string(),
+                    included_for_default_model: 0,
+                },
+            })?,
+        )?;
+
+        let runtime = tokio::runtime::Runtime::new()?;
+        let summary = runtime.block_on(runtime_operator_ops_summary(
+            config_path.to_str().unwrap(),
+            workspace_root,
+            "127.0.0.1:18789",
+            None,
+            false,
+        ))?;
+        assert!(summary.backup_root.contains(".claw/runtime-backups"));
+        assert!(summary.release_root.contains(".claw/runtime-releases"));
+        assert!(
+            summary
+                .recommended_actions
+                .iter()
+                .any(|entry| entry.contains("openrustclaw runtime backup"))
+        );
+        assert!(
+            summary
+                .recommended_actions
+                .iter()
+                .any(|entry| entry.contains("openrustclaw runtime upgrade-plan"))
+        );
         Ok(())
     }
 }

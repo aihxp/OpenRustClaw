@@ -414,6 +414,10 @@
           <div class="surface"><pre id="runtime-health">Loading…</pre></div>
         </article>
         <article class="panel span-6">
+          <h2>Operator Ops Summary</h2>
+          <div class="surface"><pre id="runtime-operator-ops">Loading…</pre></div>
+        </article>
+        <article class="panel span-6">
           <h2>Runtime Beacon</h2>
           <div class="action-row" style="margin-bottom: 12px">
             <button class="secondary" id="runtime-beacon-refresh">Refresh Beacon</button>
@@ -1439,6 +1443,11 @@
       async function loadRuntimeHealth() {
         const payload = await fetchJson("/control/runtime/health");
         setText("runtime-health", payload);
+      }
+
+      async function loadRuntimeOperatorOps() {
+        const payload = await fetchJson("/control/runtime/operator-ops");
+        setText("runtime-operator-ops", payload);
       }
 
       async function loadRuntimeBeacon(refresh = false) {
@@ -3412,6 +3421,7 @@
             loadServiceStatus(),
             loadRuntime(),
             loadRuntimeHealth(),
+            loadRuntimeOperatorOps(),
             loadRuntimeBeacon(),
             loadRuntimeReloadPlan(),
             loadVaultStatus(),

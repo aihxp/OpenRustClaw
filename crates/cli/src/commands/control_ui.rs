@@ -46,4 +46,10 @@ mod tests {
         assert!(CONTROL_UI_HTML.contains("voice-outcomes-table"));
         assert!(CONTROL_UI_HTML.contains("function loadVoiceOutcomes"));
     }
+
+    #[test]
+    fn dashboard_includes_runtime_operator_ops_panel() {
+        assert!(CONTROL_UI_HTML.contains("runtime-operator-ops"));
+        assert!(CONTROL_UI_HTML.contains("function loadRuntimeOperatorOps"));
+    }
 }
