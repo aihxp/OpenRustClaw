@@ -120,10 +120,12 @@ Plans:
   1. Production auth, secret handling, origin validation, and sandbox boundaries are secure by default.
   2. The MVP has end-to-end verification coverage across onboarding, assistant, memory, tools, coding, communications, and ops.
   3. Release readiness is captured in an operator-facing checklist with clear exit criteria.
-**Plans**: TBD
+**Plans**: 1/3 plans complete
 
 Plans:
-- [ ] TBD (run $gsd-plan-phase 7 to break down)
+- [x] 07-01: Add a unified security posture summary
+- [ ] 07-02: Write the MVP release-exit checklist
+- [ ] 07-03: Lock the release exit with verification
 
 ## Progress
 
@@ -135,4 +137,4 @@ Plans:
 | 4. Tool, MCP, and Coding Workflow Hardening | 3/3 | Complete | 2026-03-26 |
 | 5. Email and Voice Communications | 3/3 | Complete | 2026-03-26 |
 | 6. Deployment, Runtime, and Operator Ops | 3/3 | Complete | 2026-03-26 |
-| 7. Security, Observability, and Release Exit | 0/TBD | Not started | - |
+| 7. Security, Observability, and Release Exit | 1/3 | In progress | - |

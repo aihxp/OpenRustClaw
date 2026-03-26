@@ -4,16 +4,16 @@ milestone: v1.0
 milestone_name: Rust OpenClaw MVP
 current_phase: 7
 current_phase_name: Security, Observability, and Release Exit
-current_plan: 0
-status: ready_to_discuss
-stopped_at: Phase 6 completed; Phase 7 is ready for discussion and planning.
-last_updated: "2026-03-26T18:20:00Z"
-last_activity: 2026-03-26 -- Phase 6 completed with a unified runtime operator summary, aligned deploy-run-recover docs, and integration verification
+current_plan: 2
+status: ready_to_execute
+stopped_at: Phase 7 plan 01 completed; release checklist and final release-gate verification remain.
+last_updated: "2026-03-26T21:05:00Z"
+last_activity: 2026-03-26 -- Phase 7 started with a typed security posture summary in the control plane and Control UI
 progress:
   total_phases: 7
   completed_phases: 6
-  total_plans: 18
-  completed_plans: 18
+  total_plans: 21
+  completed_plans: 19
   percent: 100
 ---
 
@@ -31,22 +31,22 @@ See: .planning/PROJECT.md (updated 2026-03-26)
 Current Phase: 7
 Current Phase Name: Security, Observability, and Release Exit
 Total Phases: 7
-Current Plan: 0
-Total Plans in Phase: 0
-Status: Ready to discuss
-Last activity: 2026-03-26 - Phase 6 completed with a unified runtime operator summary, aligned deploy-run-recover docs, and integration verification
+Current Plan: 2
+Total Plans in Phase: 3
+Status: Ready to execute
+Last activity: 2026-03-26 - Phase 7 started with a typed security posture summary in the control plane and Control UI
 
 Phase: 7 of 7 (Security, Observability, and Release Exit)
-Plan: 0 of 0 in current phase
+Plan: 2 of 3 in current phase
 Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 18
-- Average duration: 36 min
-- Total execution time: 10.7 hours
+- Total plans completed: 19
+- Average duration: 35 min
+- Total execution time: 11.0 hours
 
 **By Phase:**
 
@@ -58,10 +58,11 @@ Progress: [██████████] 100%
 | 4 | 3 | 110 min | 37 min |
 | 5 | 3 | 90 min | 30 min |
 | 6 | 3 | 55 min | 18 min |
+| 7 | 1 | 20 min | 20 min |
 
 **Recent Trend:**
 
-- Last 5 plans: 35 min, 20 min, 20 min, 15 min, 20 min
+- Last 5 plans: 20 min, 20 min, 15 min, 20 min, 20 min
 - Trend: Improving
 
 ## Accumulated Context
@@ -88,6 +89,7 @@ Recent decisions affecting current work:
 - Phase 5: The operator communications loop should start with readiness and summarized recent outcomes before deep endpoint or artifact inspection.
 - Phase 6: Runtime operations should converge on one summary that combines service-install state, runtime-lock state, reload posture, and recovery guidance.
 - Phase 6: The canonical runtime runbook is install-status -> health -> backup -> upgrade or rollback -> browser confirmation, not scattered command discovery.
+- Phase 7: MVP release posture should expose security defaults and warnings through the shipped control plane instead of a CLI-only audit.
 
 ### Pending Todos
 
@@ -99,6 +101,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-26 18:20
-Stopped at: Phase 6 completed; Phase 7 is ready for discussion and planning.
+Last session: 2026-03-26 21:05
+Stopped at: Phase 7 plan 01 completed; release checklist and final release-gate verification remain.
 Resume file: None
