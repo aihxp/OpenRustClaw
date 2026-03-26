@@ -2,6 +2,7 @@
 
 use openrustclaw_agent::runtime::AgentRuntime;
 use openrustclaw_core::traits::{CoreMemoryStore, LlmProvider, MemoryStore};
+use openrustclaw_core::types::Platform;
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
@@ -77,6 +78,18 @@ pub fn session_metadata(
     Value::Object(metadata)
 }
 
+pub fn session_metadata_for_platform(
+    platform: Platform,
+    route_key: Option<&str>,
+    workspace_root: Option<&Path>,
+    extra: Value,
+) -> Value {
+    let Some(surface) = assistant_surface_for_platform(platform) else {
+        return extra;
+    };
+    session_metadata(surface, route_key, workspace_root, extra)
+}
+
 pub fn startup_handoff_message(active_cli_session: bool) -> String {
     if active_cli_session {
         "Assistant handoff: run `openrustclaw assistant` to resume your persisted CLI session."
@@ -93,6 +106,15 @@ pub fn startup_handoff_json(active_cli_session: bool) -> Value {
         "command": "openrustclaw assistant",
         "message": startup_handoff_message(active_cli_session),
     })
+}
+
+fn assistant_surface_for_platform(platform: Platform) -> Option<&'static str> {
+    match platform {
+        Platform::Cli => Some("cli"),
+        Platform::Api => Some("api"),
+        Platform::WebChat => Some("webchat"),
+        _ => None,
+    }
 }
 
 #[cfg(test)]
@@ -119,6 +141,27 @@ mod tests {
         assert_eq!(metadata["assistant_session_model"], "persisted");
         assert_eq!(metadata["route_key"], "cli:assistant:alice:123");
         assert_eq!(metadata["workspace_id"], "project-a");
+    }
+
+    #[test]
+    fn session_metadata_for_platform_only_tags_assistant_surfaces() {
+        let webchat = session_metadata_for_platform(
+            Platform::WebChat,
+            Some("webchat:user-1"),
+            Some(Path::new("/tmp/project-a")),
+            json!({"spawned_by": "mcp"}),
+        );
+        assert_eq!(webchat["assistant_surface"], "webchat");
+        assert_eq!(webchat["spawned_by"], "mcp");
+
+        let telegram = session_metadata_for_platform(
+            Platform::Telegram,
+            Some("telegram:chat-1"),
+            Some(Path::new("/tmp/project-a")),
+            json!({"spawned_by": "mcp"}),
+        );
+        assert_eq!(telegram["spawned_by"], "mcp");
+        assert!(telegram.get("assistant_surface").is_none());
     }
 
     #[test]

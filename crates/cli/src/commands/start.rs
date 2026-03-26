@@ -9505,22 +9505,30 @@ fn build_mcp_server(
     );
 
     let session_store_for_spawn = session_store.clone();
+    let workspace_root_for_spawn = workspace_root.clone();
     server.register_handler(
         "spawn_session",
         traced_mcp_handler(langsmith.clone(), "spawn_session", move |args| {
             let request: McpSpawnSessionArgs = parse_tool_args(args)?;
             let session_store = session_store_for_spawn.clone();
+            let workspace_root = workspace_root_for_spawn.clone();
             block_on_tool(async move {
+                let platform = parse_mcp_platform(request.platform.as_deref().unwrap_or("webchat"));
                 let mut session = openrustclaw_core::types::Session::new(
                     parse_mcp_session_type(request.session_type.as_deref().unwrap_or("dm")),
                     request.user_id,
-                    parse_mcp_platform(request.platform.as_deref().unwrap_or("webchat")),
+                    platform,
                 );
                 session.workspace_id = request.workspace_id;
-                session.metadata = serde_json::json!({
-                    "spawned_by": "mcp",
-                    "route_key": request.route_key,
-                });
+                session.metadata = assistant::session_metadata_for_platform(
+                    platform,
+                    request.route_key.as_deref(),
+                    Some(&workspace_root),
+                    serde_json::json!({
+                        "spawned_by": "mcp",
+                        "route_key": request.route_key,
+                    }),
+                );
                 session_store
                     .create_or_update(
                         &session,

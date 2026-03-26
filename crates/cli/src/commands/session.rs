@@ -74,16 +74,19 @@ pub async fn spawn(
     workspace_id: Option<&str>,
 ) -> Result<()> {
     let (store, _) = open_store().await?;
-    let mut session = Session::new(
-        parse_session_type(session_type),
-        user_id,
-        parse_platform(platform),
-    );
+    let workspace_root = std::env::current_dir()?;
+    let platform = parse_platform(platform);
+    let mut session = Session::new(parse_session_type(session_type), user_id, platform);
     session.workspace_id = workspace_id.map(|value| value.to_string());
-    session.metadata = json!({
-        "spawned_by": "operator",
-        "route_key": route_key,
-    });
+    session.metadata = assistant::session_metadata_for_platform(
+        platform,
+        route_key,
+        Some(&workspace_root),
+        json!({
+            "spawned_by": "operator",
+            "route_key": route_key,
+        }),
+    );
     store
         .create_or_update(&session, route_key, SessionStatus::Active)
         .await?;
