@@ -45,10 +45,12 @@ Plans:
   1. User can start a primary assistant chat surface and exchange stable multi-turn conversations.
   2. Session state restores coherently after restart or reconnect.
   3. Primary assistant UX exposes continuity clearly enough that operators trust what was resumed.
-**Plans**: TBD
+**Plans**: 1/3 plans executed
 
 Plans:
-- [ ] TBD (run $gsd-plan-phase 2 to break down)
+- [x] 02-01: Add assistant continuity summaries to operator inspection
+- [ ] 02-02: Surface continuity clearly in Control UI
+- [ ] 02-03: Lock continuity behavior with docs and cross-surface verification
 
 ### Phase 3: Memory Durability and Write Policy
 **Goal**: Memory becomes durable, policy-governed, and observable enough for production assistant use.
@@ -120,7 +122,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Onboarding and First-Run Trust | 3/3 | Complete   | 2026-03-26 |
-| 2. Core Assistant and Session Continuity | 0/TBD | Not started | - |
+| 2. Core Assistant and Session Continuity | 1/3 | In Progress | - |
 | 3. Memory Durability and Write Policy | 0/TBD | Not started | - |
 | 4. Tool, MCP, and Coding Workflow Hardening | 0/TBD | Not started | - |
 | 5. Email and Voice Communications | 0/TBD | Not started | - |
