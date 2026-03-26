@@ -42,6 +42,12 @@ mod tests {
     }
 
     #[test]
+    fn dashboard_includes_browser_workflow_history_panel() {
+        assert!(CONTROL_UI_HTML.contains("Recent Browser Workflows"));
+        assert!(CONTROL_UI_HTML.contains("function loadBrowserWorkflowHistory"));
+    }
+
+    #[test]
     fn dashboard_includes_voice_outcomes_panel() {
         assert!(CONTROL_UI_HTML.contains("voice-outcomes-table"));
         assert!(CONTROL_UI_HTML.contains("function loadVoiceOutcomes"));

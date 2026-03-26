@@ -3380,6 +3380,10 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             "/control/browser/backend-audit",
             get(browser_backend_audit_handler),
         )
+        .route(
+            "/control/browser/workflow-history",
+            get(browser_workflow_history_handler),
+        )
         .route("/control/skills", get(control_skills_handler))
         .route(
             "/control/skills/compile",
@@ -5190,6 +5194,16 @@ struct ToolExecutionQuery {
     status: Option<String>,
     #[serde(default)]
     tool_name: Option<String>,
+    #[serde(default)]
+    limit: Option<usize>,
+}
+
+#[derive(serde::Deserialize, Default)]
+struct BrowserWorkflowQuery {
+    #[serde(default)]
+    action: Option<String>,
+    #[serde(default)]
+    backend: Option<String>,
     #[serde(default)]
     limit: Option<usize>,
 }
@@ -7801,6 +7815,25 @@ async fn browser_backend_audit_handler(
             Json(serde_json::json!({ "entries": entries })),
         )
             .into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn browser_workflow_history_handler(
+    State(state): State<RuntimeControlState>,
+    Query(query): Query<BrowserWorkflowQuery>,
+) -> impl IntoResponse {
+    match browser::list_workflow_history(
+        &state.workspace_root,
+        query.limit.unwrap_or(20),
+        query.action.as_deref(),
+        query.backend.as_deref(),
+    ) {
+        Ok(report) => (StatusCode::OK, Json(serde_json::json!(report))).into_response(),
         Err(error) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({"error": error.to_string()})),

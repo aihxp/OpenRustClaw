@@ -805,6 +805,7 @@
               <button class="secondary" id="browser-open-session">Open Session</button>
               <button class="secondary" id="browser-sessions-refresh">Refresh Sessions</button>
               <button class="secondary" id="browser-artifacts-refresh">Refresh Artifacts</button>
+              <button class="secondary" id="browser-history-refresh">Refresh History</button>
             </div>
           </div>
           <div class="surface" style="margin-top: 12px"><pre id="browser-result">No browser action executed yet.</pre></div>
@@ -828,6 +829,17 @@
                 <tr><th>Session</th><th>Backend</th><th>Updated</th><th>State</th></tr>
               </thead>
               <tbody id="browser-sessions"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </article>
+        <article class="panel span-12">
+          <h2>Recent Browser Workflows</h2>
+          <div class="surface">
+            <table class="table">
+              <thead>
+                <tr><th>When</th><th>Workflow</th><th>Destination</th><th>Status</th><th>Artifact</th></tr>
+              </thead>
+              <tbody id="browser-workflow-history"><tr><td colspan="5" class="muted">Loading…</td></tr></tbody>
             </table>
           </div>
         </article>
@@ -3466,6 +3478,33 @@
         renderTableRows("browser-sessions", rows, "No browser sessions yet.");
       }
 
+      async function loadBrowserWorkflowHistory() {
+        const payload = await fetchJson("/control/browser/workflow-history?limit=12");
+        const rows = (payload.entries || []).map((entry) => {
+          const preview = entry.result_preview || {};
+          const statusDetail = [];
+          statusDetail.push(`<strong>${entry.status || "-"}</strong>`);
+          statusDetail.push(`<div class="muted">${escapeHtml(String(entry.step_count || 0))} step(s)</div>`);
+          if (preview.kind) {
+            statusDetail.push(`<div class="muted">inspect: ${escapeHtml(preview.kind)}</div>`);
+          } else if (preview.page_count) {
+            statusDetail.push(`<div class="muted">${escapeHtml(String(preview.page_count))} page(s)</div>`);
+          } else if (preview.status) {
+            statusDetail.push(`<div class="muted">HTTP ${escapeHtml(String(preview.status))}</div>`);
+          } else if (preview.bytes) {
+            statusDetail.push(`<div class="muted">${escapeHtml(String(preview.bytes))} bytes</div>`);
+          }
+          return `<tr>
+            <td>${entry.created_at || "-"}</td>
+            <td><strong>${entry.action || "-"}</strong><div class="muted">${entry.backend || "-"}${entry.session_id ? ` / ${entry.session_id}` : ""}</div></td>
+            <td><strong>${entry.title || "-"}</strong><div class="muted">${entry.final_url || "-"}</div></td>
+            <td>${statusDetail.join("")}</td>
+            <td>${entry.artifact_path || "-"}</td>
+          </tr>`;
+        });
+        renderTableRows("browser-workflow-history", rows, "No recent browser workflows.");
+      }
+
       async function loadRuntimeEvents() {
         const payload = await fetchJson("/control/services/runtime-events?limit=20");
         const rows = (payload.events || []).map((event) => {
@@ -3541,6 +3580,7 @@
             loadOrchestrationRuns(),
             loadBrowserArtifacts(),
             loadBrowserSessions(),
+            loadBrowserWorkflowHistory(),
             loadLogs(),
             loadRuntimeEvents(),
             loadSkillCatalog("popular"),
@@ -3652,7 +3692,7 @@
             }),
           });
           setText("browser-result", result);
-          await Promise.all([loadBrowserArtifacts(), loadBrowserSessions()]);
+          await Promise.all([loadBrowserArtifacts(), loadBrowserSessions(), loadBrowserWorkflowHistory()]);
           return;
         }
         const endpoint = `/control/browser/${action}`;
@@ -3679,7 +3719,7 @@
           body: JSON.stringify(payload),
         });
         setText("browser-result", result);
-        await Promise.all([loadBrowserArtifacts(), loadBrowserSessions()]);
+        await Promise.all([loadBrowserArtifacts(), loadBrowserSessions(), loadBrowserWorkflowHistory()]);
       }
 
       async function openBrowserSession() {
@@ -4114,6 +4154,13 @@
       document.getElementById("browser-artifacts-refresh").addEventListener("click", async () => {
         try {
           await loadBrowserArtifacts();
+        } catch (error) {
+          setText("browser-result", { error: error.message });
+        }
+      });
+      document.getElementById("browser-history-refresh").addEventListener("click", async () => {
+        try {
+          await loadBrowserWorkflowHistory();
         } catch (error) {
           setText("browser-result", { error: error.message });
         }
