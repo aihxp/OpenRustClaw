@@ -61,10 +61,12 @@ Plans:
   1. Sensitive assistant actions execute under an explicit approval or policy boundary rather than implicit operator trust.
   2. Operators can inspect a durable audit trail for those sensitive actions from shipped surfaces.
   3. Docs and operator-facing inspection surfaces explain the enterprise baseline clearly enough to support the next milestone.
-**Plans**: TBD
+**Plans**: 0/3 plans complete
 
 Plans:
-- [ ] TBD (run `$gsd-plan-phase 10` to break down)
+- [ ] **10-01** - Aggregate the enterprise approval and audit baseline
+- [ ] **10-02** - Surface the enterprise baseline in Control UI
+- [ ] **10-03** - Document and verify the enterprise baseline
 
 ## Progress
 
@@ -72,4 +74,4 @@ Plans:
 |-------|----------------|--------|-----------|
 | 8. Verification Artifact Contract | 3/3 | Complete    | 2026-03-26 |
 | 9. Milestone Lifecycle Integrity | 3/3 | Complete    | 2026-03-26 |
-| 10. Enterprise Policy and Audit Foundations | 0/TBD | Not started | - |
+| 10. Enterprise Policy and Audit Foundations | 0/3 | Planned | - |
