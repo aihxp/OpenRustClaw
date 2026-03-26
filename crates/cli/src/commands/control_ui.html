@@ -229,6 +229,69 @@
         color: var(--muted);
       }
 
+      .summary-card {
+        padding: 16px;
+        display: grid;
+        gap: 14px;
+      }
+
+      .summary-card.empty {
+        color: var(--muted);
+      }
+
+      .summary-kicker {
+        color: var(--accent-2);
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        font-size: 11px;
+        margin-bottom: 8px;
+      }
+
+      .summary-title {
+        font-size: 22px;
+        font-weight: 700;
+        line-height: 1.05;
+      }
+
+      .summary-copy {
+        color: var(--muted);
+        line-height: 1.5;
+        margin-top: 8px;
+      }
+
+      .summary-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .summary-stat {
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 12px;
+        background: rgba(255, 255, 255, 0.03);
+      }
+
+      .summary-stat label {
+        display: block;
+        color: var(--muted);
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin-bottom: 6px;
+      }
+
+      .summary-stat strong,
+      .summary-stat span {
+        display: block;
+      }
+
+      .summary-stat .mono {
+        font-family: "IBM Plex Mono", "SFMono-Regular", monospace;
+        font-size: 12px;
+        word-break: break-all;
+      }
+
       .stack {
         display: grid;
         gap: 12px;
@@ -1048,7 +1111,7 @@
           <div class="surface">
             <table class="table">
               <thead>
-                <tr><th>Status</th><th>User</th><th>Channel</th><th>Inspect</th></tr>
+                <tr><th>Status</th><th>User</th><th>Surface</th><th>Inspect</th></tr>
               </thead>
               <tbody id="sessions-table"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
             </table>
@@ -1056,7 +1119,8 @@
         </article>
         <article class="panel span-6">
           <h2>Session Detail</h2>
-          <div class="surface"><pre id="session-detail">Select a session to inspect.</pre></div>
+          <div class="surface"><div id="session-continuity" class="summary-card empty">Select a session to inspect.</div></div>
+          <div class="surface" style="margin-top: 12px"><pre id="session-detail">Select a session to inspect.</pre></div>
         </article>
 
         <article class="panel span-4">
@@ -1176,6 +1240,84 @@
       const setText = (id, value) => {
         document.getElementById(id).textContent = typeof value === "string" ? value : pretty(value);
       };
+
+      function escapeHtml(value) {
+        return String(value ?? "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#39;");
+      }
+
+      function humanizeStatusLabel(value) {
+        return String(value || "unknown")
+          .split("-")
+          .map((part) => part ? `${part[0].toUpperCase()}${part.slice(1)}` : part)
+          .join(" ");
+      }
+
+      function renderSessionContinuity(report) {
+        const target = document.getElementById("session-continuity");
+        if (!report || !report.session) {
+          target.className = "summary-card empty";
+          target.textContent = "Select a session to inspect.";
+          return;
+        }
+
+        const persisted = report.session || {};
+        const session = persisted.session || {};
+        const continuity = report.continuity || {};
+        const title = continuity.assistant_managed
+          ? `${humanizeStatusLabel(continuity.status_label || "assistant")} ${continuity.assistant_surface || session.channel || "assistant"} session`
+          : "Generic session";
+        const detail = continuity.detail || "No assistant continuity summary available.";
+        const routeKey = continuity.route_key || persisted.route_key || "-";
+        const workspaceRoot = continuity.workspace_root || session.workspace_id || "-";
+        const assistantLabel = continuity.assistant_managed
+          ? `${continuity.assistant_surface || "-"} / ${continuity.assistant_session_model || "-"}`
+          : "Not assistant-managed";
+        const resumed = continuity.likely_resumed ? "Likely resumed" : "Fresh or unproven";
+        const historyCount = continuity.history_messages ?? 0;
+
+        target.className = "summary-card";
+        target.innerHTML = `
+          <div>
+            <div class="summary-kicker">Assistant Continuity</div>
+            <div class="summary-title">${escapeHtml(title)}</div>
+            <div class="summary-copy">${escapeHtml(detail)}</div>
+          </div>
+          <div class="summary-grid">
+            <div class="summary-stat">
+              <label>Status</label>
+              <strong>${escapeHtml(humanizeStatusLabel(continuity.status_label || persisted.status || "unknown"))}</strong>
+              <span class="muted">${escapeHtml(resumed)}</span>
+            </div>
+            <div class="summary-stat">
+              <label>Assistant Surface</label>
+              <strong>${escapeHtml(assistantLabel)}</strong>
+              <span class="muted">${escapeHtml(session.user_id || "-")}</span>
+            </div>
+            <div class="summary-stat">
+              <label>History</label>
+              <strong>${escapeHtml(historyCount)} message(s)</strong>
+              <span class="muted">${continuity.route_bound ? "Route-bound continuity" : "No route binding"}</span>
+            </div>
+            <div class="summary-stat">
+              <label>Session ID</label>
+              <span class="mono">${escapeHtml(session.id || "-")}</span>
+            </div>
+            <div class="summary-stat">
+              <label>Route Key</label>
+              <span class="mono">${escapeHtml(routeKey)}</span>
+            </div>
+            <div class="summary-stat">
+              <label>Workspace</label>
+              <span class="mono">${escapeHtml(workspaceRoot)}</span>
+            </div>
+          </div>
+        `;
+      }
 
       function controlHeaders(extraHeaders = {}) {
         const headers = { ...extraHeaders };
@@ -2885,23 +3027,29 @@
         const sessions = payload.sessions || [];
         const rows = sessions.map((session) => {
           const s = session.session || {};
+          const continuity = session.continuity || {};
+          const sessionId = JSON.stringify(s.id || "");
+          const surface = continuity.assistant_surface || s.channel || "-";
+          const surfaceDetail = continuity.detail || `${s.channel || "session"} surface`;
           return `<tr>
             <td>${session.status || "-"}</td>
             <td><strong>${s.user_id || "-"}</strong><div class="muted">${s.id || "-"}</div></td>
-            <td>${s.channel || "-"}</td>
-            <td><button class="secondary" onclick="inspectSession('${s.id}')">Inspect</button></td>
+            <td><strong>${escapeHtml(surface)}</strong><div class="muted">${escapeHtml(surfaceDetail)}</div></td>
+            <td><button class="secondary" onclick='inspectSession(${sessionId})'>Inspect</button></td>
           </tr>`;
         });
         renderTableRows("sessions-table", rows, "No sessions recorded yet.");
         if (sessions.length) {
           await inspectSession(sessions[0].session.id);
         } else {
+          renderSessionContinuity(null);
           setText("session-detail", "No session selected.");
         }
       }
 
       async function inspectSession(id) {
         const payload = await fetchJson(`/control/sessions/${encodeURIComponent(id)}?history_limit=25`);
+        renderSessionContinuity(payload);
         setText("session-detail", payload);
       }
 
