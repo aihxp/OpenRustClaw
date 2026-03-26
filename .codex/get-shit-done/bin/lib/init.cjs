@@ -5,7 +5,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
-const { loadConfig, resolveModelInternal, findPhaseInternal, getRoadmapPhaseInternal, pathExistsInternal, generateSlugInternal, getMilestoneInfo, getMilestonePhaseFilter, stripShippedMilestones, extractCurrentMilestone, normalizePhaseName, planningPaths, planningDir, planningRoot, toPosixPath, output, error, checkAgentsInstalled } = require('./core.cjs');
+const { loadConfig, resolveModelInternal, findPhaseInternal, getRoadmapPhaseInternal, pathExistsInternal, generateSlugInternal, getMilestoneInfo, getMilestonePhaseFilter, stripShippedMilestones, extractCurrentMilestone, normalizePhaseName, planningPaths, planningDir, planningRoot, toPosixPath, output, error, checkAgentsInstalled, escapeRegex } = require('./core.cjs');
 
 function getLatestCompletedMilestone(cwd) {
   const milestonesPath = path.join(planningRoot(cwd), 'MILESTONES.md');
@@ -703,34 +703,73 @@ function cmdInitTodos(cwd, area, raw) {
 function cmdInitMilestoneOp(cwd, raw) {
   const config = loadConfig(cwd);
   const milestone = getMilestoneInfo(cwd);
+  const roadmapPath = path.join(planningDir(cwd), 'ROADMAP.md');
 
   // Count phases
   let phaseCount = 0;
   let completedPhases = 0;
   const phasesDir = path.join(planningDir(cwd), 'phases');
+  const isDirInMilestone = getMilestonePhaseFilter(cwd);
+  const milestonePhaseNums = [];
+
+  if (fs.existsSync(roadmapPath)) {
+    try {
+      const roadmapContent = extractCurrentMilestone(fs.readFileSync(roadmapPath, 'utf-8'), cwd);
+      const phasePattern = /#{2,4}\s*Phase\s+([\w][\w.-]*)\s*:/gi;
+      let match;
+      while ((match = phasePattern.exec(roadmapContent)) !== null) {
+        milestonePhaseNums.push(match[1]);
+      }
+      phaseCount = milestonePhaseNums.length;
+
+      for (const phaseNum of milestonePhaseNums) {
+        const checkboxPattern = new RegExp(`-\\s*\\[x\\]\\s*.*Phase\\s+${escapeRegex(phaseNum)}[:\\s]`, 'i');
+        if (checkboxPattern.test(roadmapContent)) {
+          completedPhases++;
+        }
+      }
+    } catch { /* intentionally empty */ }
+  }
+
   try {
     const entries = fs.readdirSync(phasesDir, { withFileTypes: true });
-    const dirs = entries.filter(e => e.isDirectory()).map(e => e.name);
-    phaseCount = dirs.length;
+    const dirs = entries.filter(e => e.isDirectory()).map(e => e.name).filter(isDirInMilestone);
 
-    // Count phases with summaries (completed)
-    for (const dir of dirs) {
-      try {
-        const phaseFiles = fs.readdirSync(path.join(phasesDir, dir));
-        const hasSummary = phaseFiles.some(f => f.endsWith('-SUMMARY.md') || f === 'SUMMARY.md');
-        if (hasSummary) completedPhases++;
-      } catch { /* intentionally empty */ }
+    if (phaseCount === 0) {
+      phaseCount = dirs.length;
+    }
+
+    if (completedPhases === 0 && phaseCount > 0) {
+      for (const dir of dirs) {
+        try {
+          const phaseFiles = fs.readdirSync(path.join(phasesDir, dir));
+          const hasSummary = phaseFiles.some(f => f.endsWith('-SUMMARY.md') || f === 'SUMMARY.md');
+          if (hasSummary) completedPhases++;
+        } catch { /* intentionally empty */ }
+      }
     }
   } catch { /* intentionally empty */ }
 
   // Check archive
-  const archiveDir = path.join(planningRoot(cwd), 'archive');
+  const archiveDir = path.join(planningDir(cwd), 'milestones');
   let archivedMilestones = [];
   try {
-    archivedMilestones = fs.readdirSync(archiveDir, { withFileTypes: true })
-      .filter(e => e.isDirectory())
-      .map(e => e.name);
+    const versions = new Set();
+    for (const entry of fs.readdirSync(archiveDir, { withFileTypes: true })) {
+      const match = entry.name.match(/^(v[\d.]+)/);
+      if (match) versions.add(match[1]);
+    }
+    archivedMilestones = [...versions].sort();
   } catch { /* intentionally empty */ }
+
+  if (archivedMilestones.length === 0) {
+    const legacyArchiveDir = path.join(planningRoot(cwd), 'archive');
+    try {
+      archivedMilestones = fs.readdirSync(legacyArchiveDir, { withFileTypes: true })
+        .filter(e => e.isDirectory())
+        .map(e => e.name);
+    } catch { /* intentionally empty */ }
+  }
 
   const result = {
     // Config
@@ -754,7 +793,7 @@ function cmdInitMilestoneOp(cwd, raw) {
     project_exists: pathExistsInternal(cwd, '.planning/PROJECT.md'),
     roadmap_exists: fs.existsSync(path.join(planningDir(cwd), 'ROADMAP.md')),
     state_exists: fs.existsSync(path.join(planningDir(cwd), 'STATE.md')),
-    archive_exists: fs.existsSync(path.join(planningRoot(cwd), 'archive')),
+    archive_exists: fs.existsSync(path.join(planningDir(cwd), 'milestones')) || fs.existsSync(path.join(planningRoot(cwd), 'archive')),
     phases_dir_exists: fs.existsSync(path.join(planningDir(cwd), 'phases')),
   };
 

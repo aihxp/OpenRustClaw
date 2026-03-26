@@ -7,6 +7,7 @@ const path = require('path');
 const { escapeRegex, loadConfig, normalizePhaseName, comparePhaseNum, findPhaseInternal, getArchivedPhaseDirs, generateSlugInternal, getMilestonePhaseFilter, stripShippedMilestones, extractCurrentMilestone, replaceInCurrentMilestone, toPosixPath, planningDir, output, error, readSubdirectories } = require('./core.cjs');
 const { extractFrontmatter } = require('./frontmatter.cjs');
 const { writeStateMd, stateExtractField, stateReplaceField, stateReplaceFieldWithFallback } = require('./state.cjs');
+const { inspectVerificationArtifacts } = require('./verification-artifacts.cjs');
 
 function cmdPhasesList(cwd, options, raw) {
   const phasesDir = path.join(planningDir(cwd), 'phases');
@@ -646,11 +647,17 @@ function cmdPhaseComplete(cwd, phaseNum, raw) {
   const planCount = phaseInfo.plans.length;
   const summaryCount = phaseInfo.summaries.length;
   let requirementsUpdated = false;
+  const phaseFullDir = path.join(cwd, phaseInfo.directory);
+  const verificationInspection = inspectVerificationArtifacts(phaseFullDir);
+
+  if (verificationInspection.blocking_reasons.length > 0) {
+    const details = verificationInspection.blocking_reasons.map(reason => reason.message).join(' ');
+    error(`Phase ${phaseNum} cannot complete: ${details}`);
+  }
 
   // Check for unresolved verification debt (non-blocking warnings)
-  const warnings = [];
+  const warnings = [...verificationInspection.warnings];
   try {
-    const phaseFullDir = path.join(cwd, phaseInfo.directory);
     const phaseFiles = fs.readdirSync(phaseFullDir);
 
     for (const file of phaseFiles.filter(f => f.includes('-UAT') && f.endsWith('.md'))) {
@@ -663,8 +670,9 @@ function cmdPhaseComplete(cwd, phaseNum, raw) {
 
     for (const file of phaseFiles.filter(f => f.includes('-VERIFICATION') && f.endsWith('.md'))) {
       const content = fs.readFileSync(path.join(phaseFullDir, file), 'utf-8');
-      if (/status: human_needed/.test(content)) warnings.push(`${file}: needs human verification`);
-      if (/status: gaps_found/.test(content)) warnings.push(`${file}: has unresolved gaps`);
+      if (/status: human_needed/.test(content) && !warnings.includes(`${file}: needs human verification`)) {
+        warnings.push(`${file}: needs human verification`);
+      }
     }
   } catch {}
 
