@@ -1,20 +1,20 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.8
-milestone_name: Clean Codebase
+milestone: null
+milestone_name: null
 current_phase: null
 current_phase_name: null
 current_plan: null
-status: All phases complete
-stopped_at: Cleanup phases complete; run milestone audit and archive.
-last_updated: "2026-03-27T21:45:54.000Z"
-last_activity: 2026-03-27 -- completed Phase 40 cleanup guardrails
+status: No active milestone
+stopped_at: v1.8 archived; start the next milestone with $gsd-new-milestone.
+last_updated: "2026-03-27T22:20:00.000Z"
+last_activity: 2026-03-27 -- v1.8 archived
 progress:
-  total_phases: 4
-  completed_phases: 4
-  total_plans: 8
-  completed_plans: 8
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -24,21 +24,21 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-27)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** Milestone audit and archive
+**Current focus:** No active milestone
 
 ## Current Position
 
 Current Phase: -
 Current Phase Name: -
-Total Phases: 4
+Total Phases: 0
 Current Plan: -
 Total Plans in Phase: 0
-Status: All phases complete
-Last activity: 2026-03-27 -- completed Phase 40 cleanup guardrails
+Status: No active milestone
+Last activity: 2026-03-27 -- v1.8 archived
 
-Phase: 4 of 4
+Phase: 0 of 0
 Plan: 0 of 0
-Progress: [██████████] 100%
+Progress: [----------] 0%
 
 ## Performance Metrics
 
@@ -46,7 +46,7 @@ Progress: [██████████] 100%
 
 - Total plans completed: 50
 - Average duration: historical average retained across shipped milestones
-- Total execution time: multiple shipped milestones completed across v1.0-v1.7
+- Total execution time: multiple shipped milestones completed across v1.0-v1.8
 
 ## Accumulated Context
 
@@ -64,11 +64,9 @@ Recent decisions affecting current work:
 - v1.5 made OpenRustClaw legible as one self-hosted open-source product with explicit `solo`, `team`, `company`, and `enterprise` deployment paths, mode-aware onboarding, and reviewable upgrade or downgrade transitions.
 - v1.6 made onboarding and setup truthful end-to-end with durable setup state, validated bootstrap outcomes, explicit repair, and one shared setup handoff surface.
 - v1.7 treated documentation drift as product debt and converged the README, repo-root docs, and docs-site sources into one canonical self-hosted product story.
-- v1.8 now focuses on cleanup inventory, repo hygiene, structural decomposition, and cleanup-safe verification.
-- Phase 37 established the cleanup contract and prioritized CI drift plus `start.rs` middleware extraction as the first bounded cleanup slices.
-- Phase 38 aligned the shipped-surface CI contract to the current canonical docs and made sidecar local Python state explicit non-canonical repo noise.
-- Phase 39 extracted the control-auth and enterprise-access middleware cluster into `crates/cli/src/commands/start/auth.rs` and moved its focused tests with it.
-- Phase 40 added a repo-hygiene verification script, wired it into CI, and preserved the rerun bundle plus deferred cleanup debt in the cleanup contract.
+- v1.8 converted codebase cleanup into an explicit contract with a maintained inventory, CI-safe repo-hygiene checks, and a bounded `start/auth.rs` extraction.
+- Phase 40 added a repo-hygiene verification script, wired it into CI, and preserved a rerun bundle for future cleanup follow-up work.
+- v1.8 is archived; the next milestone has not been defined yet.
 
 ### Pending Todos
 
@@ -80,6 +78,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-27 21:45
-Stopped at: Cleanup phases complete; run milestone audit and archive.
+Last session: 2026-03-27 22:20
+Stopped at: v1.8 archived; start the next milestone with $gsd-new-milestone.
 Resume file: None

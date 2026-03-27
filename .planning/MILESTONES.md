@@ -1,5 +1,20 @@
 # Project Milestones: OpenRustClaw
 
+## v1.8 Clean Codebase (Shipped: 2026-03-27)
+
+**Phases completed:** 4 phases, 8 plans, 0 tasks
+**Verification archive:** `.planning/milestones/v1.8-VERIFICATIONS.md`
+**Verification debt:** none
+
+**Key accomplishments:**
+
+- Created a canonical cleanup inventory and no-touch boundary contract for brownfield refactors.
+- Aligned CI to the current canonical planning docs and made sidecar local Python state explicit non-canonical repo surface.
+- Extracted the control-auth and enterprise-access middleware slice from `start.rs` into `crates/cli/src/commands/start/auth.rs` with focused tests.
+- Added a rerunnable repo-hygiene guardrail script and wired it into CI alongside the cleanup verification bundle.
+
+---
+
 ## v1.7 Documentation Convergence and OpenClaw-Inspired Docs Rewrite (Shipped: 2026-03-27)
 
 **Phases completed:** 5 phases, 10 plans, 0 tasks

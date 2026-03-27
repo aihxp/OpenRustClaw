@@ -2,9 +2,9 @@
 
 ## What This Is
 
-OpenRustClaw is a self-hosted open-source Rust-first OpenClaw-style assistant platform with shipped v1.0 through v1.7 milestones. It now has a coherent production-ready baseline across onboarding, assistant continuity, memory policy, tool and coding evidence, communications, runtime operations, security posture, release exit, milestone verification integrity, materially deeper operator parity across browser, orchestration, mobile, Control UI, and voice or call handling surfaces, an enterprise-first foundation for scoped operator identity, policy, audit export, supervised autonomy, governance, and an operator-gated full-autonomy lane, an explicit self-hosted product-mode contract across `solo`, `team`, `company`, and `enterprise` deployments, a truthful setup lifecycle from first install through repair and handoff, and a canonical documentation contract that keeps the repo entrypoint, guided docs, and planning docs aligned.
+OpenRustClaw is a self-hosted open-source Rust-first OpenClaw-style assistant platform with shipped v1.0 through v1.8 milestones. It now has a coherent production-ready baseline across onboarding, assistant continuity, memory policy, tool and coding evidence, communications, runtime operations, security posture, release exit, milestone verification integrity, materially deeper operator parity across browser, orchestration, mobile, Control UI, and voice or call handling surfaces, an enterprise-first foundation for scoped operator identity, policy, audit export, supervised autonomy, governance, and an operator-gated full-autonomy lane, an explicit self-hosted product-mode contract across `solo`, `team`, `company`, and `enterprise` deployments, a truthful setup lifecycle from first install through repair and handoff, a canonical documentation contract that keeps the repo entrypoint, guided docs, and planning docs aligned, and a cleaner codebase baseline with explicit cleanup inventory, repo-hygiene guardrails, and an extracted control-auth boundary.
 
-The product target remains broader than the MVP: a general-purpose assistant platform that can eventually support coding, communications, business operations, and deeper autonomous workflows. After v1.7, the repo also has one clearer documentation story instead of several drifting versions of the product.
+The product target remains broader than the MVP: a general-purpose assistant platform that can eventually support coding, communications, business operations, and deeper autonomous workflows. After v1.7, the repo also has one clearer documentation story instead of several drifting versions of the product. After v1.8, the repo also has a more explicit cleanup contract for keeping that surface maintainable.
 
 ## Core Value
 
@@ -12,26 +12,16 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 ## Current State
 
-- **Shipped milestones:** v1.0 Rust OpenClaw MVP and v1.1 Lifecycle Integrity and Enterprise Foundations on 2026-03-26, plus v1.2 Deeper OpenClaw Surface Parity, v1.3 Enterprise Expansion and Supervised Autonomy Foundations, v1.4 Enterprise Governance and Operator-Gated Full Autonomy, v1.5 Self-Hosted Product Modes and Lifecycle Packaging, and v1.7 Documentation Convergence and OpenClaw-Inspired Docs Rewrite on 2026-03-27, and v1.6 Proper Onboarding and Setup on 2026-03-28
-- **Archive:** `.planning/milestones/v1.0-*`, `.planning/milestones/v1.1-*`, `.planning/milestones/v1.2-*`, `.planning/milestones/v1.3-*`, `.planning/milestones/v1.4-*`, `.planning/milestones/v1.5-*`, `.planning/milestones/v1.6-*`, `.planning/milestones/v1.7-*`
-- **Planning state:** v1.8 is open and ready for Phase 37 planning
+- **Shipped milestones:** v1.0 Rust OpenClaw MVP, v1.1 Lifecycle Integrity and Enterprise Foundations, v1.2 Deeper OpenClaw Surface Parity, v1.3 Enterprise Expansion and Supervised Autonomy Foundations, v1.4 Enterprise Governance and Operator-Gated Full Autonomy, v1.5 Self-Hosted Product Modes and Lifecycle Packaging, v1.6 Proper Onboarding and Setup, v1.7 Documentation Convergence and OpenClaw-Inspired Docs Rewrite, and v1.8 Clean Codebase
+- **Archive:** `.planning/milestones/v1.0-*` through `.planning/milestones/v1.8-*`
+- **Planning state:** no active milestone is open
 - **Known audit debt:** v1.0 archive still records missing phase `VERIFICATION.md` artifacts; v1.1 closed that workflow gap going forward
 
-## Most Recent Milestone: v1.7 Documentation Convergence and OpenClaw-Inspired Docs Rewrite
+## Most Recent Milestone: v1.8 Clean Codebase
 
-**Result:** Shipped 2026-03-27. OpenRustClaw now has a canonical documentation ownership contract, rewritten repo and mdBook entry surfaces, aligned getting-started and operator guides, and an explicit docs maintenance and audit loop.
+**Result:** Shipped 2026-03-27. OpenRustClaw now has an explicit cleanup inventory, repo-hygiene and drift guardrails, one extracted `start/auth.rs` boundary for the control-auth cluster, and a verification bundle that keeps cleanup work from quietly regressing.
 
-**Archive:** `.planning/milestones/v1.7-ROADMAP.md`, `.planning/milestones/v1.7-REQUIREMENTS.md`, `.planning/milestones/v1.7-MILESTONE-AUDIT.md`, `.planning/milestones/v1.7-VERIFICATIONS.md`
-
-## Current Milestone: v1.8 Clean Codebase
-
-**Goal:** Reduce brownfield structural debt so future feature work lands in a smaller, clearer, and safer codebase.
-
-**Target features:**
-- explicit cleanup inventory for oversized, deprecated, generated, or drifting surfaces
-- removal of stale repo paths and contract mismatches across docs, CI, and workspace artifacts
-- bounded decomposition of priority oversized command and control surfaces without breaking shipped behavior
-- targeted cleanup verification and a maintained follow-up debt record
+**Archive:** `.planning/milestones/v1.8-ROADMAP.md`, `.planning/milestones/v1.8-REQUIREMENTS.md`, `.planning/milestones/v1.8-MILESTONE-AUDIT.md`, `.planning/milestones/v1.8-VERIFICATIONS.md`
 
 ## Requirements
 
@@ -67,9 +57,10 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 ### Active
 
-- [ ] Reduce dead, duplicated, stale, local-only, or drifting repo surfaces and make cleanup ownership explicit
-- [ ] Split the highest-risk oversized modules into clearer bounded units without regressing the shipped operator contract
-- [ ] Align CI, docs, and verification around the cleaned codebase so future refactors stay safe
+- [ ] Expand the enterprise baseline without weakening the trust-first operator contract
+- [ ] Broaden supervised and operator-gated autonomy while preserving auditability, rollback, and approval controls
+- [ ] Continue deeper product parity and usability work across the shipped self-hosted assistant surface
+- [ ] Continue cleanup follow-up only where the guardrail bundle keeps refactors truthful and safe
 
 ### Out of Scope
 
@@ -80,9 +71,9 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 ## Context
 
-This remains a large brownfield Rust monorepo with broad runtime, CLI, control-plane, memory, tools, channel, voice, browser, deployment, and operator surfaces. v1.0 converted that breadth into a cleaner MVP by making operator trust visible at the edges that matter, v1.1 hardened the lifecycle and enterprise baseline around that trust, v1.2 deepened the most operator-visible OpenClaw parity surfaces without reopening MVP sprawl, v1.3 turned the first enterprise and supervised-autonomy contracts into a coherent operator loop, v1.4 extended that loop into explicit governance and operator-gated full autonomy, v1.5 made the platform legible as one self-hosted open-source product with explicit deployment paths and transition visibility, v1.6 turned onboarding and setup into one truthful lifecycle from first install through repair and handoff, and v1.7 made the documentation set legible enough to match the shipped product baseline.
+This remains a large brownfield Rust monorepo with broad runtime, CLI, control-plane, memory, tools, channel, voice, browser, deployment, and operator surfaces. v1.0 converted that breadth into a cleaner MVP by making operator trust visible at the edges that matter, v1.1 hardened the lifecycle and enterprise baseline around that trust, v1.2 deepened the most operator-visible OpenClaw parity surfaces without reopening MVP sprawl, v1.3 turned the first enterprise and supervised-autonomy contracts into a coherent operator loop, v1.4 extended that loop into explicit governance and operator-gated full autonomy, v1.5 made the platform legible as one self-hosted open-source product with explicit deployment paths and transition visibility, v1.6 turned onboarding and setup into one truthful lifecycle from first install through repair and handoff, v1.7 made the documentation set legible enough to match the shipped product baseline, and v1.8 converted cleanup debt into an explicit maintained contract instead of leaving it as background churn.
 
-The next milestone should build on all of those shipped layers by shrinking brownfield complexity instead of widening the surface again immediately. Current concerns already called out oversized command hubs, sidecar or contract drift risk, stale CI or docs references, and local-environment noise inside the repo tree. v1.8 treats that cleanup as first-class product-enabling work rather than opportunistic background tidying.
+The next milestone should build on all of those shipped layers without reopening uncontrolled sprawl. Cleanup remains relevant, but now it should continue behind the v1.8 guardrail bundle rather than as ad hoc repo churn.
 
 ## Constraints
 
@@ -112,14 +103,14 @@ The next milestone should build on all of those shipped layers by shrinking brow
 | Interpret “god mode” as an explicit operator-gated full-autonomy lane rather than a removal of audit or control boundaries | The platform’s trust-first contract still needs to hold even when trusted operators deliberately enable a stronger autonomy mode | ✓ Good |
 | Treat documentation convergence as product work rather than post-hoc cleanup | The repo now has enough shipped depth that drift between README, docs mirrors, and docs-site guidance directly reduces usability and trust | ✓ Good |
 | Use OpenClaw’s public docs style as inspiration for clarity and entry-point design, not as a content-copying exercise | The goal is a clearer self-hosted product story, tighter onboarding path, and better docs information architecture grounded in OpenRustClaw’s actual shipped behavior | ✓ Good |
-| Treat codebase cleanup as a milestone in its own right | The repo is now broad enough that oversized modules, stale paths, and contract drift directly slow down safe product work | — Pending |
+| Treat codebase cleanup as a milestone in its own right | The repo is now broad enough that oversized modules, stale paths, and contract drift directly slow down safe product work | ✓ Good |
 
-## Current Milestone Goals
+## Next Milestone Goals
 
-- Inventory and prioritize cleanup targets so later refactors stop happening by intuition alone
-- Remove stale or drifting repo surfaces that no longer match the shipped product contract
-- Decompose the highest-risk oversized command or control surfaces behind stable behavior contracts
-- Lock cleanup in with targeted verification and an explicit remaining-debt record
+- Expand the enterprise baseline from the shipped governance, audit, and admin surfaces
+- Broaden autonomy only where operator controls, rollback, and evidence remain explicit
+- Continue deeper product parity and usability work without eroding the self-hosted trust contract
+- Keep chipping away at structural debt in `start.rs`, `skills.rs`, and large adapters only behind the cleanup guardrail bundle
 
 ## Evolution
 
@@ -139,4 +130,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-27 after starting v1.8*
+*Last updated: 2026-03-27 after archiving v1.8*
