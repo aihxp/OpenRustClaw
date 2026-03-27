@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Deeper OpenClaw Surface Parity
-current_phase: 14
-current_phase_name: Control UI Surface Completion
+current_phase: 15
+current_phase_name: Voice and Call Handling Parity
 current_plan: Not started
 status: Ready to discuss
-stopped_at: Phase 13 completed; Phase 14 is ready for discuss and planning.
-last_updated: "2026-03-27T02:21:33.124Z"
-last_activity: 2026-03-27 -- Phase 13 completed
+stopped_at: Phase 14 completed; Phase 15 is ready for discuss and planning.
+last_updated: "2026-03-27T03:50:00Z"
+last_activity: 2026-03-27 -- Phase 14 completed
 progress:
   total_phases: 5
-  completed_phases: 3
-  total_plans: 9
-  completed_plans: 9
-  percent: 60
+  completed_phases: 4
+  total_plans: 12
+  completed_plans: 12
+  percent: 80
 ---
 
 # Project State
@@ -24,21 +24,21 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-26)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** Phase 14 - Control UI Surface Completion
+**Current focus:** Phase 15 - Voice and Call Handling Parity
 
 ## Current Position
 
-Current Phase: 14
-Current Phase Name: Control UI Surface Completion
+Current Phase: 15
+Current Phase Name: Voice and Call Handling Parity
 Total Phases: 5
 Current Plan: Not started
 Total Plans in Phase: 0
 Status: Ready to discuss
-Last activity: 2026-03-27 - Phase 13 completed
+Last activity: 2026-03-27 - Phase 14 completed
 
-Phase: 4 of 5 (Control UI Surface Completion)
+Phase: 5 of 5 (Voice and Call Handling Parity)
 Plan: 0 of 0 in current phase
-Progress: [██████░░░░] 60%
+Progress: [████████░░] 80%
 
 ## Performance Metrics
 
@@ -86,6 +86,7 @@ Recent decisions affecting current work:
 - Phase 11 now adds a durable browser workflow history ledger plus shipped runtime and Control UI inspection for recent richer browser runs.
 - Phase 12 now exposes typed supervision reports plus Control UI tables for delegated tasks, worker outcomes, approval context, live attention signals, and recent orchestration events.
 - Phase 13 now exposes a typed mobile operator report plus a main mobile node view that surfaces attention signals and recent activity from the existing mobile receipt model.
+- Phase 14 now replaces the remaining priority raw Control UI panes with typed voice, talk, skill, bounded voice-call, and mobile sub-detail renderers, then closes with matching docs and verification evidence.
 
 ### Pending Todos
 
@@ -97,6 +98,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-26 23:09
-Stopped at: Phase 13 completed; Phase 14 is ready for discuss and planning.
+Last session: 2026-03-27 03:50
+Stopped at: Phase 14 completed; Phase 15 is ready for discuss and planning.
 Resume file: None

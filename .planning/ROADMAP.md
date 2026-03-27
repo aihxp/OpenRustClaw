@@ -21,7 +21,7 @@ This milestone deepens the five highest-value OpenClaw parity surfaces without a
 - [x] **Phase 11: Browser Automation Depth** - Deepen browser automation parity with richer multi-step workflows, artifacts, and inspection without weakening the browser trust contract.
 - [x] **Phase 12: Multi-Agent Supervision Parity** - Expand orchestration and delegated-run supervision so multi-agent behavior is easier to inspect, control, and trust.
 - [x] **Phase 13: Mobile Runtime Parity** - Broaden mobile runtime and operator parity while preserving approval gates and durable receipts.
-- [ ] **Phase 14: Control UI Surface Completion** - Bring the shipped Control UI closer to OpenClaw parity across the deeper browser, supervision, and mobile surfaces.
+- [x] **Phase 14: Control UI Surface Completion** - Bring the shipped Control UI closer to OpenClaw parity across the deeper browser, supervision, and mobile surfaces.
 - [ ] **Phase 15: Voice and Call Handling Parity** - Deepen voice and call-handling parity with richer operator-visible control, health, and evidence.
 
 ### Phase Details
@@ -79,10 +79,12 @@ Plans:
   1. Control UI covers more of the parity-critical surfaces operators actually use.
   2. The deeper UI remains backed by typed runtime contracts instead of frontend-only reconstruction.
   3. The operator dashboard becomes a more complete parity surface rather than a partial monitor.
-**Plans**: TBD
+**Plans**: 3/3 plans complete
 
 Plans:
-- [ ] TBD (run `$gsd-plan-phase 14` to break down)
+- [x] **14-01** Upgrade the first batch of high-value raw detail panes
+- [x] **14-02** Extend typed rendering to the next priority panes
+- [x] **14-03** Align Control UI docs and preserve verification
 
 ### Phase 15: Voice and Call Handling Parity
 **Goal**: Deepen voice and call-handling parity with richer inspection, control, and durable evidence.
@@ -104,7 +106,7 @@ Plans:
 | 11. Browser Automation Depth | 3/3 | Complete    | 2026-03-26 |
 | 12. Multi-Agent Supervision Parity | 3/3 | Complete    | 2026-03-27 |
 | 13. Mobile Runtime Parity | 3/3 | Complete    | 2026-03-27 |
-| 14. Control UI Surface Completion | 0/TBD | Not started | - |
+| 14. Control UI Surface Completion | 3/3 | Complete    | 2026-03-27 |
 | 15. Voice and Call Handling Parity | 0/TBD | Not started | - |
 
 ## Phase History
@@ -134,5 +136,5 @@ Plans:
 ## Current Status
 
 - Active milestone: v1.2 Deeper OpenClaw Surface Parity
-- Next step: `$gsd-discuss-phase 14` or `$gsd-plan-phase 14`
+- Next step: `$gsd-discuss-phase 15` or `$gsd-plan-phase 15`
 - Archived v1.0 and v1.1 planning artifacts live under `.planning/milestones/`.
