@@ -2,6 +2,7 @@
 
 ## Milestones
 
+- 🚧 **v1.8 Clean Codebase** — phases 37-40
 - ✅ **v1.0 Rust OpenClaw MVP** — shipped 2026-03-26. Archive: `.planning/milestones/v1.0-ROADMAP.md`
 - ✅ **v1.1 Lifecycle Integrity and Enterprise Foundations** — shipped 2026-03-26. Archive: `.planning/milestones/v1.1-ROADMAP.md`
 - ✅ **v1.2 Deeper OpenClaw Surface Parity** — shipped 2026-03-27. Archive: `.planning/milestones/v1.2-ROADMAP.md`
@@ -13,11 +14,89 @@
 
 ## Current Status
 
-- No active milestone open.
-- Next step: `$gsd-new-milestone`
+- Active milestone: v1.8 Clean Codebase
+- Next step: `$gsd-discuss-phase 37`
 - Archived milestone planning artifacts live under `.planning/milestones/`.
 
+## Roadmap v1.8: Clean Codebase
+
+### Overview
+
+This milestone treats cleanup as a real delivery lane. The order is deliberate: first make cleanup targets and no-touch boundaries explicit so refactors stop being guesswork, then remove stale repo drift and local-noise paths that no longer belong in the canonical product surface, then decompose the highest-risk oversized command or control surfaces behind stable contracts, and finally lock the cleanup in with targeted verification plus a maintained remaining-debt record.
+
+### Phases
+
+**Phase Numbering:**
+- Integer phases continue across milestones to preserve one linear execution history.
+- Decimal phases are reserved for urgent insertions if roadmap assumptions break.
+
+- [ ] **Phase 37: Codebase Cleanup Inventory and Refactor Contract** - inventory cleanup targets, define refactor boundaries, and establish the priority order for brownfield cleanup work.
+- [ ] **Phase 38: Repo Hygiene and Drift Reduction** - remove stale repo paths, generated or local-noise artifacts, and docs or CI contract mismatches.
+- [ ] **Phase 39: Command Surface Decomposition and Boundary Cleanup** - split the highest-risk oversized command or control surfaces into smaller bounded units without changing shipped behavior.
+- [ ] **Phase 40: Cleanup Verification and Maintenance Guardrails** - add targeted verification, document remaining debt, and preserve the cleanup contract for future milestones.
+
+### Phase Details
+
+### Phase 37: Codebase Cleanup Inventory and Refactor Contract
+**Goal**: Turn cleanup into an explicit brownfield contract so later refactors are guided by one inventory of priority hotspots, safe boundaries, and no-touch zones.
+**Depends on**: v1.7 archive state
+**Requirements**: [CLEAN-01, CLEAN-02]
+**Success Criteria** (what must be TRUE):
+  1. The repo identifies canonical, oversized, deprecated, generated, and cleanup-candidate surfaces in one maintained inventory.
+  2. High-risk hotspots and no-touch boundaries are explicit before code movement starts.
+  3. The milestone has a prioritized cleanup target list instead of ad hoc refactor guesses.
+**Plans**: Not started
+
+### Phase 38: Repo Hygiene and Drift Reduction
+**Goal**: Remove stale or drifting repo surfaces so the workspace, CI, and docs all point at the actual shipped product contract.
+**Depends on**: Phase 37
+**Requirements**: [HYGI-01, HYGI-02]
+**Success Criteria** (what must be TRUE):
+  1. Stale, duplicate, generated, or local-environment noise paths targeted by the cleanup contract are removed, ignored, or relocated appropriately.
+  2. CI, docs, and canonical filenames no longer reference known missing or renamed surfaces.
+  3. The repo tree is measurably clearer for maintainers before structural refactors continue.
+**Plans**: Not started
+
+### Phase 39: Command Surface Decomposition and Boundary Cleanup
+**Goal**: Reduce regression risk by shrinking at least the priority oversized command or control surfaces behind stable behavior contracts.
+**Depends on**: Phase 38
+**Requirements**: [STRC-01, STRC-02]
+**Success Criteria** (what must be TRUE):
+  1. Priority oversized modules are broken into smaller bounded units with clearer ownership.
+  2. Cleanup-sensitive Rust, sidecar, and operator-surface contracts are easier to trace after the refactor.
+  3. Shipped runtime and operator behavior stays intact while internals become easier to navigate.
+**Plans**: Not started
+
+### Phase 40: Cleanup Verification and Maintenance Guardrails
+**Goal**: Make the cleanup durable by proving the refactor did not regress core behavior and by keeping the remaining debt visible.
+**Depends on**: Phase 39
+**Requirements**: [SAFE-01, SAFE-02]
+**Success Criteria** (what must be TRUE):
+  1. Cleanup-sensitive surfaces have a targeted verification bundle that can be rerun later.
+  2. Remaining cleanup debt is recorded in one maintained artifact instead of being rediscovered piecemeal.
+  3. The next milestone inherits a cleaner and safer baseline rather than reopening the same structural drift.
+**Plans**: Not started
+
+## Progress
+
+| Phase | Plans Complete | Status | Completed |
+|-------|----------------|--------|-----------|
+| 37. Codebase Cleanup Inventory and Refactor Contract | 0/0 | Not Started | - |
+| 38. Repo Hygiene and Drift Reduction | 0/0 | Not Started | - |
+| 39. Command Surface Decomposition and Boundary Cleanup | 0/0 | Not Started | - |
+| 40. Cleanup Verification and Maintenance Guardrails | 0/0 | Not Started | - |
+
 ## Phase History
+
+<details>
+<summary>🚧 v1.8 Clean Codebase — ACTIVE</summary>
+
+- [ ] **Phase 37: Codebase Cleanup Inventory and Refactor Contract**
+- [ ] **Phase 38: Repo Hygiene and Drift Reduction**
+- [ ] **Phase 39: Command Surface Decomposition and Boundary Cleanup**
+- [ ] **Phase 40: Cleanup Verification and Maintenance Guardrails**
+
+</details>
 
 <details>
 <summary>✅ v1.7 Documentation Convergence and OpenClaw-Inspired Docs Rewrite — SHIPPED 2026-03-27</summary>
