@@ -3028,6 +3028,10 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             post(enterprise_access_upsert_operator_handler),
         )
         .route(
+            "/control/enterprise/governance/rules",
+            post(enterprise_governance_upsert_rule_handler),
+        )
+        .route(
             "/control/enterprise/foundations",
             get(enterprise_foundations_handler),
         )
@@ -5220,6 +5224,22 @@ struct EnterpriseAccessOperatorPayload {
     active: bool,
 }
 
+#[derive(serde::Deserialize)]
+struct EnterpriseGovernanceRulePayload {
+    scope: String,
+    approval_mode: String,
+    #[serde(default)]
+    requester_roles: Vec<String>,
+    #[serde(default)]
+    approver_roles: Vec<String>,
+    #[serde(default = "default_active_true")]
+    forbid_self_approval: bool,
+    #[serde(default = "default_active_true")]
+    active: bool,
+    #[serde(default)]
+    detail: Option<String>,
+}
+
 #[derive(serde::Deserialize, Default)]
 struct ListLimitQuery {
     #[serde(default)]
@@ -7124,6 +7144,41 @@ async fn enterprise_access_upsert_operator_handler(
         },
     );
     record_operator_tool_result("enterprise.access.upsert_operator", started_at, &result);
+    match result {
+        Ok(_) => match inspect::enterprise_access_summary(&state.workspace_root) {
+            Ok(summary) => (StatusCode::OK, Json(serde_json::json!(summary))).into_response(),
+            Err(error) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": error.to_string()})),
+            )
+                .into_response(),
+        },
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn enterprise_governance_upsert_rule_handler(
+    State(state): State<RuntimeControlState>,
+    Json(payload): Json<EnterpriseGovernanceRulePayload>,
+) -> impl IntoResponse {
+    let started_at = std::time::Instant::now();
+    let result = enterprise_access::upsert_governance_rule(
+        &state.workspace_root,
+        enterprise_access::EnterpriseGovernanceRuleRequest {
+            scope: payload.scope,
+            approval_mode: payload.approval_mode,
+            requester_roles: payload.requester_roles,
+            approver_roles: payload.approver_roles,
+            forbid_self_approval: payload.forbid_self_approval,
+            active: payload.active,
+            detail: payload.detail,
+        },
+    );
+    record_operator_tool_result("enterprise.governance.upsert_rule", started_at, &result);
     match result {
         Ok(_) => match inspect::enterprise_access_summary(&state.workspace_root) {
             Ok(summary) => (StatusCode::OK, Json(serde_json::json!(summary))).into_response(),
@@ -12648,6 +12703,19 @@ mod tests {
             },
         )
         .expect("bootstrap enterprise access");
+        enterprise_access::upsert_operator(
+            temp.path(),
+            enterprise_access::EnterpriseAccessOperatorRequest {
+                id: "admin-1".to_string(),
+                name: None,
+                email: None,
+                role: "admin".to_string(),
+                token: "admin-secret-123".to_string(),
+                scopes: Vec::new(),
+                active: true,
+            },
+        )
+        .expect("upsert enterprise admin");
 
         let app = protect_enterprise_router(
             Router::new().route(
@@ -12679,6 +12747,8 @@ mod tests {
                     .uri("/control/enterprise/policy")
                     .header(enterprise_access::OPERATOR_ID_HEADER, "owner-1")
                     .header(enterprise_access::OPERATOR_TOKEN_HEADER, "owner-secret-123")
+                    .header(enterprise_access::APPROVER_ID_HEADER, "admin-1")
+                    .header(enterprise_access::APPROVER_TOKEN_HEADER, "admin-secret-123")
                     .body(Body::from("{}"))
                     .expect("request"),
             )

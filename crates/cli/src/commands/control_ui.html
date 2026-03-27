@@ -466,6 +466,14 @@
           <div class="surface" style="margin-top: 12px">
             <table class="table">
               <thead>
+                <tr><th>Scope</th><th>Mode</th><th>Roles</th><th>Coverage</th></tr>
+              </thead>
+              <tbody id="enterprise-governance-rules"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
+            </table>
+          </div>
+          <div class="surface" style="margin-top: 12px">
+            <table class="table">
+              <thead>
                 <tr><th>Method</th><th>Route</th><th>Scope</th><th>Detail</th></tr>
               </thead>
               <tbody id="enterprise-protected-routes"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
@@ -478,6 +486,8 @@
           <div class="form-grid" style="margin-top: 12px">
             <input id="enterprise-operator-id" type="text" placeholder="enterprise operator id header" />
             <input id="enterprise-operator-token" type="password" placeholder="enterprise operator token header" />
+            <input id="enterprise-approver-id" type="text" placeholder="optional enterprise approver id header" />
+            <input id="enterprise-approver-token" type="password" placeholder="optional enterprise approver token header" />
             <div class="action-row">
               <button class="secondary" id="enterprise-credentials-save">Save Operator Headers</button>
               <button class="secondary" id="enterprise-credentials-clear">Clear Operator Headers</button>
@@ -552,6 +562,29 @@
               <button class="secondary" id="enterprise-audit-export">Export Audit Bundle</button>
             </div>
             <textarea id="enterprise-audit-export-note" rows="2" spellcheck="false" placeholder="optional audit export note"></textarea>
+            <div class="action-row">
+              <input id="enterprise-governance-scope" type="text" placeholder="governance scope, e.g. enterprise.config.write" />
+              <select id="enterprise-governance-mode">
+                <option value="single">approval mode: single</option>
+                <option value="dual">approval mode: dual</option>
+              </select>
+            </div>
+            <div class="action-row">
+              <input id="enterprise-governance-requester-roles" type="text" placeholder="requester roles csv" />
+              <input id="enterprise-governance-approver-roles" type="text" placeholder="approver roles csv" />
+            </div>
+            <div class="action-row">
+              <select id="enterprise-governance-self-approval">
+                <option value="true">forbid self approval: true</option>
+                <option value="false">forbid self approval: false</option>
+              </select>
+              <select id="enterprise-governance-active">
+                <option value="true">governance rule active: true</option>
+                <option value="false">governance rule active: false</option>
+              </select>
+            </div>
+            <textarea id="enterprise-governance-detail" rows="2" spellcheck="false" placeholder="optional governance detail override"></textarea>
+            <button id="enterprise-governance-update">Upsert Governance Rule</button>
           </div>
           <div class="surface" style="margin-top: 12px"><pre id="enterprise-admin-result">No enterprise admin action executed yet.</pre></div>
         </article>
@@ -1548,15 +1581,25 @@
       const enterpriseOperatorState = (() => {
         const queryOperatorId = controlUiQuery.get("operator_id");
         const queryOperatorToken = controlUiQuery.get("operator_token");
+        const queryApproverId = controlUiQuery.get("approver_id");
+        const queryApproverToken = controlUiQuery.get("approver_token");
         if (queryOperatorId !== null) {
           window.localStorage.setItem("openrustclawEnterpriseOperatorId", queryOperatorId);
         }
         if (queryOperatorToken !== null) {
           window.localStorage.setItem("openrustclawEnterpriseOperatorToken", queryOperatorToken);
         }
+        if (queryApproverId !== null) {
+          window.localStorage.setItem("openrustclawEnterpriseApproverId", queryApproverId);
+        }
+        if (queryApproverToken !== null) {
+          window.localStorage.setItem("openrustclawEnterpriseApproverToken", queryApproverToken);
+        }
         return {
           id: window.localStorage.getItem("openrustclawEnterpriseOperatorId") || "",
           token: window.localStorage.getItem("openrustclawEnterpriseOperatorToken") || "",
+          approverId: window.localStorage.getItem("openrustclawEnterpriseApproverId") || "",
+          approverToken: window.localStorage.getItem("openrustclawEnterpriseApproverToken") || "",
         };
       })();
       let configEditorDirty = false;
@@ -1815,12 +1858,14 @@
           target.className = "summary-card empty";
           target.textContent = report?.error || "No enterprise access summary available.";
           renderTableRows("enterprise-operators-table", [], "No enterprise operators configured yet.");
+          renderTableRows("enterprise-governance-rules", [], "No enterprise governance rules available.");
           renderTableRows("enterprise-protected-routes", [], "No protected enterprise routes configured.");
           return;
         }
 
         const organization = report.organization || {};
         const operators = report.operators || [];
+        const governance = report.governance || {};
         const roleCoverage = (report.role_grants || [])
           .filter((entry) => (entry.operator_count || 0) > 0)
           .map((entry) => `${entry.role}:${entry.operator_count}`)
@@ -1834,8 +1879,9 @@
           copy: report.detail || "No enterprise access summary available.",
           stats: [
             { label: "Organization", value: organization.name || "-", detail: organization.id || "-" },
-            { label: "Headers", value: report.operator_id_header || "-", detail: report.operator_token_header || "-" },
+            { label: "Headers", value: report.operator_id_header || "-", detail: governance.approver_id_header || report.operator_token_header || "-" },
             { label: "Operators", value: `${operators.length}`, detail: roleCoverage },
+            { label: "Governance", value: `${governance.active_rule_count ?? 0} active rule(s)`, detail: `${governance.dual_approval_rule_count ?? 0} dual approval` },
             { label: "Protected Routes", value: `${(report.protected_routes || []).length}`, detail: report.explicit_identity_required ? "identity required" : "waiting for bootstrap" },
             { label: "Registry", value: report.registry_path || "-", detail: organization.created_at || "-" },
           ],
@@ -1848,6 +1894,14 @@
           <td>${escapeHtml(operator.updated_at || "-")}</td>
         </tr>`);
         renderTableRows("enterprise-operators-table", operatorRows, "No enterprise operators configured yet.");
+
+        const governanceRows = (governance.rules || []).map((rule) => `<tr>
+          <td><strong>${escapeHtml(rule.scope || "-")}</strong><div class="muted">${escapeHtml(rule.detail || "-")}</div></td>
+          <td>${escapeHtml(rule.approval_mode || "-")}<div class="muted">${rule.forbid_self_approval ? "self approval blocked" : "self approval allowed"}</div></td>
+          <td><strong>${escapeHtml((rule.requester_roles || []).join(", ") || "-")}</strong><div class="muted">${escapeHtml((rule.approver_roles || []).join(", ") || "no secondary approver")}</div></td>
+          <td><strong>${escapeHtml(rule.coverage_status || "-")}</strong><div class="muted">${escapeHtml(`${rule.eligible_requester_count ?? 0} requester / ${rule.eligible_approver_count ?? 0} approver`)}</div></td>
+        </tr>`);
+        renderTableRows("enterprise-governance-rules", governanceRows, "No enterprise governance rules available.");
 
         const protectedRouteRows = (report.protected_routes || []).map((route) => `<tr>
           <td>${escapeHtml(route.method || "-")}</td>
@@ -1868,6 +1922,7 @@
         const policy = report.policy || {};
         const supervision = report.supervision || {};
         const organization = access.organization || {};
+        const governance = access.governance || {};
 
         renderSummaryCard("enterprise-admin", "No enterprise admin summary available.", buildSummaryMarkup({
           kicker: "Enterprise Operator Loop",
@@ -1878,6 +1933,7 @@
           stats: [
             { label: "Organization", value: organization.name || "-", detail: organization.id || "-" },
             { label: "Approval Policy", value: policy.approval_policy || "-", detail: policy.autonomy_level || "-" },
+            { label: "Governance", value: `${governance.active_rule_count ?? 0} active rule(s)`, detail: `${governance.dual_approval_rule_count ?? 0} dual approval` },
             { label: "Browser Policy", value: `${(policy.browser?.allowed_backends || []).length} backend(s)`, detail: policy.browser?.audit_log_path || "-" },
             { label: "Audit Export", value: policy.audit_export?.export_root || "-", detail: `${policy.audit_export?.recent_event_limit ?? 0} events / ${policy.audit_export?.tool_history_limit ?? 0} tools` },
             { label: "Active Runs", value: `${supervision.active_run_count ?? 0}`, detail: `${supervision.attention_required_count ?? 0} attention, ${(supervision.escalated_count ?? 0)} escalated` },
@@ -1898,6 +1954,19 @@
         setInputValue("enterprise-audit-export-root", policy.audit_export?.export_root || "");
         setInputValue("enterprise-audit-event-limit", policy.audit_export?.recent_event_limit ?? "");
         setInputValue("enterprise-audit-tool-limit", policy.audit_export?.tool_history_limit ?? "");
+        const governanceRule = (governance.rules || []).find((rule) => rule.scope === "enterprise.config.write")
+          || (governance.rules || [])[0]
+          || {};
+        setInputValue("enterprise-governance-scope", governanceRule.scope || "enterprise.config.write");
+        setInputValue("enterprise-governance-requester-roles", (governanceRule.requester_roles || []).join(", "));
+        setInputValue("enterprise-governance-approver-roles", (governanceRule.approver_roles || []).join(", "));
+        setSelectValue("enterprise-governance-self-approval", governanceRule.forbid_self_approval ?? true);
+        setSelectValue("enterprise-governance-active", governanceRule.active ?? true);
+        setInputValue("enterprise-governance-detail", governanceRule.detail || "");
+        const governanceMode = document.getElementById("enterprise-governance-mode");
+        if (governanceMode) {
+          governanceMode.value = governanceRule.approval_mode || "single";
+        }
         if ((access.operators || []).length && !document.getElementById("enterprise-operator-manage-role").value.trim()) {
           setInputValue("enterprise-operator-manage-role", "operator");
         }
@@ -2547,17 +2616,27 @@
         if (enterpriseOperatorState.token) {
           headers["x-openrustclaw-operator-token"] = enterpriseOperatorState.token;
         }
+        if (enterpriseOperatorState.approverId) {
+          headers["x-openrustclaw-approver-id"] = enterpriseOperatorState.approverId;
+        }
+        if (enterpriseOperatorState.approverToken) {
+          headers["x-openrustclaw-approver-token"] = enterpriseOperatorState.approverToken;
+        }
         return headers;
       }
 
       function populateEnterpriseCredentialInputs() {
         setInputValue("enterprise-operator-id", enterpriseOperatorState.id);
         setInputValue("enterprise-operator-token", enterpriseOperatorState.token);
+        setInputValue("enterprise-approver-id", enterpriseOperatorState.approverId);
+        setInputValue("enterprise-approver-token", enterpriseOperatorState.approverToken);
       }
 
-      function rememberEnterpriseOperatorCredentials(id, token) {
+      function rememberEnterpriseOperatorCredentials(id, token, approverId, approverToken) {
         enterpriseOperatorState.id = id || "";
         enterpriseOperatorState.token = token || "";
+        enterpriseOperatorState.approverId = approverId || "";
+        enterpriseOperatorState.approverToken = approverToken || "";
         if (enterpriseOperatorState.id) {
           window.localStorage.setItem("openrustclawEnterpriseOperatorId", enterpriseOperatorState.id);
         } else {
@@ -2567,6 +2646,16 @@
           window.localStorage.setItem("openrustclawEnterpriseOperatorToken", enterpriseOperatorState.token);
         } else {
           window.localStorage.removeItem("openrustclawEnterpriseOperatorToken");
+        }
+        if (enterpriseOperatorState.approverId) {
+          window.localStorage.setItem("openrustclawEnterpriseApproverId", enterpriseOperatorState.approverId);
+        } else {
+          window.localStorage.removeItem("openrustclawEnterpriseApproverId");
+        }
+        if (enterpriseOperatorState.approverToken) {
+          window.localStorage.setItem("openrustclawEnterpriseApproverToken", enterpriseOperatorState.approverToken);
+        } else {
+          window.localStorage.removeItem("openrustclawEnterpriseApproverToken");
         }
         populateEnterpriseCredentialInputs();
       }
@@ -2687,17 +2776,19 @@
         rememberEnterpriseOperatorCredentials(
           document.getElementById("enterprise-operator-id").value.trim(),
           document.getElementById("enterprise-operator-token").value.trim(),
+          document.getElementById("enterprise-approver-id").value.trim(),
+          document.getElementById("enterprise-approver-token").value.trim(),
         );
         setText("enterprise-admin-result", {
           status: "ok",
           detail: enterpriseOperatorState.id
-            ? `Saved enterprise operator headers for ${enterpriseOperatorState.id}.`
+            ? `Saved enterprise headers for ${enterpriseOperatorState.id}${enterpriseOperatorState.approverId ? ` with approver ${enterpriseOperatorState.approverId}` : ""}.`
             : "Cleared enterprise operator headers.",
         });
       }
 
       async function clearEnterpriseOperatorHeaders() {
-        rememberEnterpriseOperatorCredentials("", "");
+        rememberEnterpriseOperatorCredentials("", "", "", "");
         setText("enterprise-admin-result", {
           status: "ok",
           detail: "Cleared enterprise operator headers.",
@@ -2723,7 +2814,7 @@
             owner_token: ownerToken,
           }),
         });
-        rememberEnterpriseOperatorCredentials(ownerId, ownerToken);
+        rememberEnterpriseOperatorCredentials(ownerId, ownerToken, enterpriseOperatorState.approverId, enterpriseOperatorState.approverToken);
         setText("enterprise-admin-result", result);
         document.getElementById("enterprise-bootstrap-owner-token").value = "";
         await refreshEnterpriseAdminSurfaces();
@@ -2785,6 +2876,27 @@
           method: "POST",
           body: JSON.stringify({
             note: document.getElementById("enterprise-audit-export-note").value.trim() || null,
+          }),
+        });
+        setText("enterprise-admin-result", result);
+        await refreshEnterpriseAdminSurfaces();
+      }
+
+      async function upsertEnterpriseGovernanceRule() {
+        const scope = document.getElementById("enterprise-governance-scope").value.trim();
+        if (!scope) {
+          throw new Error("Governance rule upsert requires a scope");
+        }
+        const result = await fetchJson("/control/enterprise/governance/rules", {
+          method: "POST",
+          body: JSON.stringify({
+            scope,
+            approval_mode: document.getElementById("enterprise-governance-mode").value,
+            requester_roles: splitCsvValues(document.getElementById("enterprise-governance-requester-roles").value),
+            approver_roles: splitCsvValues(document.getElementById("enterprise-governance-approver-roles").value),
+            forbid_self_approval: parseBooleanSelect("enterprise-governance-self-approval"),
+            active: parseBooleanSelect("enterprise-governance-active"),
+            detail: document.getElementById("enterprise-governance-detail").value.trim() || null,
           }),
         });
         setText("enterprise-admin-result", result);
@@ -5425,6 +5537,13 @@
       document.getElementById("enterprise-audit-export").addEventListener("click", async () => {
         try {
           await exportEnterpriseAuditBundle();
+        } catch (error) {
+          setText("enterprise-admin-result", { error: error.message });
+        }
+      });
+      document.getElementById("enterprise-governance-update").addEventListener("click", async () => {
+        try {
+          await upsertEnterpriseGovernanceRule();
         } catch (error) {
           setText("enterprise-admin-result", { error: error.message });
         }

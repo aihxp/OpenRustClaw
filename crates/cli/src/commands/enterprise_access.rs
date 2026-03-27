@@ -11,6 +11,8 @@ use super::control;
 
 pub const OPERATOR_ID_HEADER: &str = "x-openrustclaw-operator-id";
 pub const OPERATOR_TOKEN_HEADER: &str = "x-openrustclaw-operator-token";
+pub const APPROVER_ID_HEADER: &str = "x-openrustclaw-approver-id";
+pub const APPROVER_TOKEN_HEADER: &str = "x-openrustclaw-approver-token";
 
 const ENTERPRISE_ACCESS_VERSION: u32 = 1;
 const ENTERPRISE_SCOPE_IDENTITY_WRITE: &str = "enterprise.identity.write";
@@ -19,6 +21,8 @@ const ENTERPRISE_SCOPE_AUDIT_EXPORT: &str = "enterprise.audit.export";
 const ENTERPRISE_SCOPE_MOBILE_COMMAND_MANAGE: &str = "enterprise.mobile.command.manage";
 const ENTERPRISE_SCOPE_RUNTIME_CONTROL: &str = "enterprise.runtime.control";
 const ENTERPRISE_SCOPE_SKILLS_AUTH_MANAGE: &str = "enterprise.skills.auth.manage";
+const APPROVAL_MODE_SINGLE: &str = "single";
+const APPROVAL_MODE_DUAL: &str = "dual";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EnterpriseAccessManifest {
@@ -27,6 +31,8 @@ pub struct EnterpriseAccessManifest {
     pub organization: EnterpriseOrganization,
     #[serde(default)]
     pub operators: Vec<EnterpriseOperatorRecord>,
+    #[serde(default = "default_governance_policy")]
+    pub governance: EnterpriseGovernancePolicy,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -53,6 +59,45 @@ pub struct EnterpriseOperatorRecord {
     pub token_sha256: String,
     pub created_at: String,
     pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EnterpriseGovernancePolicy {
+    #[serde(default = "default_governance_rules")]
+    pub rules: Vec<EnterpriseGovernanceRule>,
+    #[serde(default)]
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EnterpriseGovernanceRule {
+    pub scope: String,
+    pub approval_mode: String,
+    #[serde(default)]
+    pub requester_roles: Vec<String>,
+    #[serde(default)]
+    pub approver_roles: Vec<String>,
+    #[serde(default = "default_true")]
+    pub forbid_self_approval: bool,
+    #[serde(default = "default_true")]
+    pub active: bool,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EnterpriseGovernanceRuleRequest {
+    pub scope: String,
+    pub approval_mode: String,
+    #[serde(default)]
+    pub requester_roles: Vec<String>,
+    #[serde(default)]
+    pub approver_roles: Vec<String>,
+    #[serde(default = "default_true")]
+    pub forbid_self_approval: bool,
+    #[serde(default = "default_true")]
+    pub active: bool,
+    #[serde(default)]
+    pub detail: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -87,6 +132,11 @@ pub struct EnterpriseAuthenticatedOperator {
     pub id: String,
     pub role: String,
     pub scopes: Vec<String>,
+    pub approval_mode: String,
+    #[serde(default)]
+    pub approved_by: Option<String>,
+    #[serde(default)]
+    pub governance_scope: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -134,6 +184,13 @@ const ENTERPRISE_PROTECTED_ROUTE_SPECS: &[EnterpriseProtectedRouteSpec] = &[
         suffix: "",
         scope: ENTERPRISE_SCOPE_IDENTITY_WRITE,
         detail: "Operator provisioning changes the enterprise identity boundary.",
+    },
+    EnterpriseProtectedRouteSpec {
+        method: "POST",
+        prefix: "/control/enterprise/governance/rules",
+        suffix: "",
+        scope: ENTERPRISE_SCOPE_CONFIG_WRITE,
+        detail: "Enterprise governance rule updates change approval-chain and separation-of-duties behavior.",
     },
     EnterpriseProtectedRouteSpec {
         method: "POST",
@@ -260,6 +317,20 @@ fn default_version() -> u32 {
     ENTERPRISE_ACCESS_VERSION
 }
 
+fn default_governance_policy() -> EnterpriseGovernancePolicy {
+    EnterpriseGovernancePolicy {
+        rules: default_governance_rules(),
+        updated_at: String::new(),
+    }
+}
+
+fn default_governance_rules() -> Vec<EnterpriseGovernanceRule> {
+    all_scope_names()
+        .into_iter()
+        .map(|scope| default_governance_rule(&scope))
+        .collect()
+}
+
 fn default_true() -> bool {
     true
 }
@@ -326,6 +397,10 @@ pub fn bootstrap_manifest(
             created_at: now.clone(),
             updated_at: now,
         }],
+        governance: EnterpriseGovernancePolicy {
+            rules: default_governance_rules(),
+            updated_at: Utc::now().to_rfc3339(),
+        },
     };
     save_manifest(workspace_root, &manifest)?;
     Ok(manifest)
@@ -377,6 +452,38 @@ pub fn upsert_operator(
     Ok(record)
 }
 
+pub fn upsert_governance_rule(
+    workspace_root: &Path,
+    request: EnterpriseGovernanceRuleRequest,
+) -> Result<EnterpriseGovernanceRule> {
+    let mut manifest = load_manifest(workspace_root)?
+        .ok_or_else(|| anyhow!("enterprise access is not bootstrapped yet"))?;
+    let rule = normalize_governance_rule_request(
+        &request,
+        manifest
+            .governance
+            .rules
+            .iter()
+            .find(|entry| entry.scope == request.scope),
+    )?;
+
+    if let Some(existing) = manifest
+        .governance
+        .rules
+        .iter_mut()
+        .find(|entry| entry.scope == rule.scope)
+    {
+        *existing = rule.clone();
+    } else {
+        manifest.governance.rules.push(rule.clone());
+    }
+
+    manifest.governance.rules = sort_governance_rules(manifest.governance.rules);
+    manifest.governance.updated_at = Utc::now().to_rfc3339();
+    save_manifest(workspace_root, &manifest)?;
+    Ok(rule)
+}
+
 pub fn authenticate_request(
     workspace_root: &Path,
     headers: &HeaderMap,
@@ -384,24 +491,14 @@ pub fn authenticate_request(
 ) -> Result<EnterpriseAuthenticatedOperator> {
     let manifest = load_manifest(workspace_root)?
         .ok_or_else(|| anyhow!("enterprise access is not configured"))?;
-    let operator_id = header_value(headers, OPERATOR_ID_HEADER)
-        .ok_or_else(|| anyhow!("missing required header `{}`", OPERATOR_ID_HEADER))?;
-    let operator_token = header_value(headers, OPERATOR_TOKEN_HEADER)
-        .ok_or_else(|| anyhow!("missing required header `{}`", OPERATOR_TOKEN_HEADER))?;
-    let operator = manifest
-        .operators
-        .iter()
-        .find(|entry| entry.id == operator_id)
-        .ok_or_else(|| anyhow!("unknown enterprise operator '{}'", operator_id))?;
-    if !operator.active {
-        anyhow::bail!("enterprise operator '{}' is inactive", operator.id);
-    }
-    if operator.token_sha256 != hash_secret(&operator_token) {
-        anyhow::bail!("invalid enterprise operator token");
-    }
-
-    let scopes = merge_scopes(&default_scopes_for_role(&operator.role), &operator.scopes);
-    if !scopes.iter().any(|scope| scope == required_scope) {
+    let operator = authenticate_named_operator(
+        &manifest,
+        headers,
+        OPERATOR_ID_HEADER,
+        OPERATOR_TOKEN_HEADER,
+        "operator",
+    )?;
+    if !operator.scopes.iter().any(|scope| scope == required_scope) {
         anyhow::bail!(
             "enterprise operator '{}' lacks required scope '{}'",
             operator.id,
@@ -409,10 +506,59 @@ pub fn authenticate_request(
         );
     }
 
+    let governance_rule = governance_rule_for_scope(&manifest, required_scope);
+    if governance_rule.active && !role_allowed(&governance_rule.requester_roles, &operator.role) {
+        anyhow::bail!(
+            "enterprise operator '{}' with role '{}' is not allowed to request scope '{}' under enterprise governance",
+            operator.id,
+            operator.role,
+            required_scope
+        );
+    }
+
+    let approved_by = if governance_rule.active
+        && governance_rule.approval_mode == APPROVAL_MODE_DUAL
+    {
+        let approver = authenticate_named_operator(
+            &manifest,
+            headers,
+            APPROVER_ID_HEADER,
+            APPROVER_TOKEN_HEADER,
+            "approver",
+        )?;
+        if !approver.scopes.iter().any(|scope| scope == required_scope) {
+            anyhow::bail!(
+                "enterprise approver '{}' lacks required scope '{}'",
+                approver.id,
+                required_scope
+            );
+        }
+        if !role_allowed(&governance_rule.approver_roles, &approver.role) {
+            anyhow::bail!(
+                "enterprise approver '{}' with role '{}' is not allowed to approve scope '{}' under enterprise governance",
+                approver.id,
+                approver.role,
+                required_scope
+            );
+        }
+        if governance_rule.forbid_self_approval && approver.id == operator.id {
+            anyhow::bail!(
+                "enterprise governance for scope '{}' requires a second operator; self-approval is not allowed",
+                required_scope
+            );
+        }
+        Some(approver.id)
+    } else {
+        None
+    };
+
     Ok(EnterpriseAuthenticatedOperator {
         id: operator.id.clone(),
         role: operator.role.clone(),
-        scopes,
+        scopes: operator.scopes,
+        approval_mode: governance_rule.approval_mode,
+        approved_by,
+        governance_scope: Some(required_scope.to_string()),
     })
 }
 
@@ -440,6 +586,10 @@ pub fn role_defaults() -> Vec<(String, Vec<String>)> {
         .into_iter()
         .map(|role| (role.to_string(), default_scopes_for_role(role)))
         .collect()
+}
+
+pub fn governance_defaults() -> Vec<EnterpriseGovernanceRule> {
+    default_governance_rules()
 }
 
 pub fn access_is_configured(workspace_root: &Path) -> Result<bool> {
@@ -480,6 +630,86 @@ fn route_display_path(spec: &EnterpriseProtectedRouteSpec) -> String {
         spec.prefix.to_string()
     } else {
         format!("{}{{id}}{}", spec.prefix, spec.suffix)
+    }
+}
+
+fn default_governance_rule(scope: &str) -> EnterpriseGovernanceRule {
+    match scope {
+        ENTERPRISE_SCOPE_IDENTITY_WRITE => EnterpriseGovernanceRule {
+            scope: scope.to_string(),
+            approval_mode: APPROVAL_MODE_SINGLE.to_string(),
+            requester_roles: vec!["owner".to_string(), "admin".to_string()],
+            approver_roles: Vec::new(),
+            forbid_self_approval: true,
+            active: true,
+            detail: "Enterprise identity writes stay restricted to owner or admin roles.".to_string(),
+        },
+        ENTERPRISE_SCOPE_CONFIG_WRITE => EnterpriseGovernanceRule {
+            scope: scope.to_string(),
+            approval_mode: APPROVAL_MODE_DUAL.to_string(),
+            requester_roles: vec!["owner".to_string(), "admin".to_string()],
+            approver_roles: vec!["owner".to_string(), "admin".to_string()],
+            forbid_self_approval: true,
+            active: true,
+            detail: "Enterprise configuration and policy writes require a second owner or admin approver.".to_string(),
+        },
+        ENTERPRISE_SCOPE_AUDIT_EXPORT => EnterpriseGovernanceRule {
+            scope: scope.to_string(),
+            approval_mode: APPROVAL_MODE_SINGLE.to_string(),
+            requester_roles: vec![
+                "owner".to_string(),
+                "admin".to_string(),
+                "auditor".to_string(),
+            ],
+            approver_roles: Vec::new(),
+            forbid_self_approval: true,
+            active: true,
+            detail: "Audit export stays available to enterprise reviewers without secondary approval.".to_string(),
+        },
+        ENTERPRISE_SCOPE_MOBILE_COMMAND_MANAGE => EnterpriseGovernanceRule {
+            scope: scope.to_string(),
+            approval_mode: APPROVAL_MODE_SINGLE.to_string(),
+            requester_roles: vec![
+                "owner".to_string(),
+                "admin".to_string(),
+                "operator".to_string(),
+            ],
+            approver_roles: Vec::new(),
+            forbid_self_approval: true,
+            active: true,
+            detail: "Mobile command actions stay scoped to operators, admins, or owners.".to_string(),
+        },
+        ENTERPRISE_SCOPE_RUNTIME_CONTROL => EnterpriseGovernanceRule {
+            scope: scope.to_string(),
+            approval_mode: APPROVAL_MODE_SINGLE.to_string(),
+            requester_roles: vec![
+                "owner".to_string(),
+                "admin".to_string(),
+                "operator".to_string(),
+            ],
+            approver_roles: Vec::new(),
+            forbid_self_approval: true,
+            active: true,
+            detail: "Runtime supervision actions stay limited to actively scoped operators.".to_string(),
+        },
+        ENTERPRISE_SCOPE_SKILLS_AUTH_MANAGE => EnterpriseGovernanceRule {
+            scope: scope.to_string(),
+            approval_mode: APPROVAL_MODE_DUAL.to_string(),
+            requester_roles: vec!["owner".to_string(), "admin".to_string()],
+            approver_roles: vec!["owner".to_string(), "admin".to_string()],
+            forbid_self_approval: true,
+            active: true,
+            detail: "Enterprise-facing auth-plugin changes require a second owner or admin approver.".to_string(),
+        },
+        _ => EnterpriseGovernanceRule {
+            scope: scope.to_string(),
+            approval_mode: APPROVAL_MODE_SINGLE.to_string(),
+            requester_roles: vec!["owner".to_string()],
+            approver_roles: Vec::new(),
+            forbid_self_approval: true,
+            active: true,
+            detail: "Enterprise governance defaults to a single scoped owner request.".to_string(),
+        },
     }
 }
 
@@ -526,6 +756,144 @@ fn header_value(headers: &HeaderMap, name: &str) -> Option<String> {
         .and_then(|value| value.to_str().ok())
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
+}
+
+fn governance_rule_for_scope(
+    manifest: &EnterpriseAccessManifest,
+    required_scope: &str,
+) -> EnterpriseGovernanceRule {
+    manifest
+        .governance
+        .rules
+        .iter()
+        .find(|entry| entry.scope == required_scope)
+        .cloned()
+        .unwrap_or_else(|| default_governance_rule(required_scope))
+}
+
+fn role_allowed(allowed_roles: &[String], actual_role: &str) -> bool {
+    allowed_roles.is_empty() || allowed_roles.iter().any(|role| role == actual_role)
+}
+
+fn sort_governance_rules(rules: Vec<EnterpriseGovernanceRule>) -> Vec<EnterpriseGovernanceRule> {
+    let mut normalized = rules;
+    let scope_order = all_scope_names();
+    normalized.sort_by(|left, right| {
+        let left_index = scope_order
+            .iter()
+            .position(|scope| scope == &left.scope)
+            .unwrap_or(scope_order.len());
+        let right_index = scope_order
+            .iter()
+            .position(|scope| scope == &right.scope)
+            .unwrap_or(scope_order.len());
+        left_index
+            .cmp(&right_index)
+            .then_with(|| left.scope.cmp(&right.scope))
+    });
+    normalized
+}
+
+fn normalize_governance_rule_request(
+    request: &EnterpriseGovernanceRuleRequest,
+    existing: Option<&EnterpriseGovernanceRule>,
+) -> Result<EnterpriseGovernanceRule> {
+    validate_scope(&request.scope)?;
+    validate_approval_mode(&request.approval_mode)?;
+    validate_role_list(&request.requester_roles, "requester roles")?;
+    validate_role_list(&request.approver_roles, "approver roles")?;
+    if request.approval_mode.trim() == APPROVAL_MODE_DUAL && request.approver_roles.is_empty() {
+        anyhow::bail!("dual approval governance requires at least one approver role");
+    }
+
+    let detail = request
+        .detail
+        .as_ref()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .or_else(|| existing.map(|value| value.detail.clone()))
+        .unwrap_or_else(|| default_governance_rule(request.scope.trim()).detail);
+
+    Ok(EnterpriseGovernanceRule {
+        scope: request.scope.trim().to_string(),
+        approval_mode: request.approval_mode.trim().to_string(),
+        requester_roles: sort_roles(request.requester_roles.clone()),
+        approver_roles: sort_roles(request.approver_roles.clone()),
+        forbid_self_approval: request.forbid_self_approval,
+        active: request.active,
+        detail,
+    })
+}
+
+fn sort_roles(roles: Vec<String>) -> Vec<String> {
+    let mut values = BTreeSet::new();
+    for role in roles {
+        if !role.trim().is_empty() {
+            values.insert(role.trim().to_string());
+        }
+    }
+    values.into_iter().collect()
+}
+
+fn authenticate_named_operator(
+    manifest: &EnterpriseAccessManifest,
+    headers: &HeaderMap,
+    id_header: &str,
+    token_header: &str,
+    label: &str,
+) -> Result<EnterpriseAuthenticatedOperator> {
+    let operator_id = header_value(headers, id_header)
+        .ok_or_else(|| anyhow!("missing required {} header `{}`", label, id_header))?;
+    let operator_token = header_value(headers, token_header)
+        .ok_or_else(|| anyhow!("missing required {} header `{}`", label, token_header))?;
+    let operator = manifest
+        .operators
+        .iter()
+        .find(|entry| entry.id == operator_id)
+        .ok_or_else(|| anyhow!("unknown enterprise {} '{}'", label, operator_id))?;
+    if !operator.active {
+        anyhow::bail!("enterprise {} '{}' is inactive", label, operator.id);
+    }
+    if operator.token_sha256 != hash_secret(&operator_token) {
+        anyhow::bail!("invalid enterprise {} token", label);
+    }
+
+    Ok(EnterpriseAuthenticatedOperator {
+        id: operator.id.clone(),
+        role: operator.role.clone(),
+        scopes: merge_scopes(&default_scopes_for_role(&operator.role), &operator.scopes),
+        approval_mode: APPROVAL_MODE_SINGLE.to_string(),
+        approved_by: None,
+        governance_scope: None,
+    })
+}
+
+fn validate_scope(scope: &str) -> Result<()> {
+    let normalized = scope.trim();
+    if normalized.is_empty() {
+        anyhow::bail!("governance scope is required");
+    }
+    if !all_scope_names().iter().any(|value| value == normalized) {
+        anyhow::bail!("unsupported enterprise governance scope '{}'", normalized);
+    }
+    Ok(())
+}
+
+fn validate_approval_mode(mode: &str) -> Result<()> {
+    match mode.trim() {
+        APPROVAL_MODE_SINGLE | APPROVAL_MODE_DUAL => Ok(()),
+        other => Err(anyhow!(
+            "unsupported enterprise approval mode '{}'; expected single or dual",
+            other
+        )),
+    }
+}
+
+fn validate_role_list(roles: &[String], label: &str) -> Result<()> {
+    for role in roles {
+        validate_role(role).with_context(|| format!("invalid {}", label))?;
+    }
+    Ok(())
 }
 
 fn validate_role(role: &str) -> Result<()> {
@@ -577,9 +945,11 @@ fn slugify(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        EnterpriseAccessBootstrapRequest, EnterpriseAccessOperatorRequest, OPERATOR_ID_HEADER,
-        OPERATOR_TOKEN_HEADER, authenticate_request, bootstrap_manifest, load_manifest,
-        protected_scope_for_request, role_defaults, upsert_operator,
+        APPROVER_ID_HEADER, APPROVER_TOKEN_HEADER, EnterpriseAccessBootstrapRequest,
+        EnterpriseAccessOperatorRequest, EnterpriseGovernanceRuleRequest, OPERATOR_ID_HEADER,
+        OPERATOR_TOKEN_HEADER, authenticate_request, bootstrap_manifest, governance_defaults,
+        load_manifest, protected_scope_for_request, role_defaults, upsert_governance_rule,
+        upsert_operator,
     };
     use anyhow::Result;
     use axum::http::{HeaderMap, HeaderValue, Method};
@@ -649,6 +1019,117 @@ mod tests {
     }
 
     #[test]
+    fn governance_defaults_require_dual_approval_for_config_writes() {
+        let defaults = governance_defaults();
+        let config_rule = defaults
+            .iter()
+            .find(|rule| rule.scope == "enterprise.config.write")
+            .expect("config write governance rule");
+        assert_eq!(config_rule.approval_mode, "dual");
+        assert!(config_rule.forbid_self_approval);
+    }
+
+    #[test]
+    fn authenticate_request_requires_secondary_approver_for_governed_scope() -> Result<()> {
+        let root = tempdir().expect("tempdir");
+        bootstrap_manifest(
+            root.path(),
+            EnterpriseAccessBootstrapRequest {
+                organization_id: "acme".to_string(),
+                organization_name: "Acme Ops".to_string(),
+                owner_id: "owner-1".to_string(),
+                owner_name: None,
+                owner_email: None,
+                owner_token: "super-secret-owner".to_string(),
+            },
+        )?;
+        upsert_operator(
+            root.path(),
+            EnterpriseAccessOperatorRequest {
+                id: "admin-1".to_string(),
+                name: None,
+                email: None,
+                role: "admin".to_string(),
+                token: "admin-secret".to_string(),
+                scopes: Vec::new(),
+                active: true,
+            },
+        )?;
+
+        let mut operator_only = HeaderMap::new();
+        operator_only.insert(OPERATOR_ID_HEADER, HeaderValue::from_static("owner-1"));
+        operator_only.insert(
+            OPERATOR_TOKEN_HEADER,
+            HeaderValue::from_static("super-secret-owner"),
+        );
+        assert!(
+            authenticate_request(root.path(), &operator_only, "enterprise.config.write").is_err()
+        );
+
+        let mut self_approved = operator_only.clone();
+        self_approved.insert(APPROVER_ID_HEADER, HeaderValue::from_static("owner-1"));
+        self_approved.insert(
+            APPROVER_TOKEN_HEADER,
+            HeaderValue::from_static("super-secret-owner"),
+        );
+        assert!(
+            authenticate_request(root.path(), &self_approved, "enterprise.config.write").is_err()
+        );
+
+        let mut dual_headers = operator_only;
+        dual_headers.insert(APPROVER_ID_HEADER, HeaderValue::from_static("admin-1"));
+        dual_headers.insert(
+            APPROVER_TOKEN_HEADER,
+            HeaderValue::from_static("admin-secret"),
+        );
+        let auth = authenticate_request(root.path(), &dual_headers, "enterprise.config.write")?;
+        assert_eq!(auth.approval_mode, "dual");
+        assert_eq!(auth.approved_by.as_deref(), Some("admin-1"));
+        Ok(())
+    }
+
+    #[test]
+    fn upsert_governance_rule_persists_role_and_mode_overrides() -> Result<()> {
+        let root = tempdir().expect("tempdir");
+        bootstrap_manifest(
+            root.path(),
+            EnterpriseAccessBootstrapRequest {
+                organization_id: "acme".to_string(),
+                organization_name: "Acme Ops".to_string(),
+                owner_id: "owner-1".to_string(),
+                owner_name: None,
+                owner_email: None,
+                owner_token: "super-secret-owner".to_string(),
+            },
+        )?;
+
+        let rule = upsert_governance_rule(
+            root.path(),
+            EnterpriseGovernanceRuleRequest {
+                scope: "enterprise.runtime.control".to_string(),
+                approval_mode: "dual".to_string(),
+                requester_roles: vec!["admin".to_string(), "owner".to_string()],
+                approver_roles: vec!["owner".to_string()],
+                forbid_self_approval: true,
+                active: true,
+                detail: Some("runtime changes require owner approval".to_string()),
+            },
+        )?;
+
+        assert_eq!(rule.approval_mode, "dual");
+        let manifest = load_manifest(root.path())?.expect("manifest");
+        let runtime_rule = manifest
+            .governance
+            .rules
+            .iter()
+            .find(|entry| entry.scope == "enterprise.runtime.control")
+            .expect("runtime governance rule");
+        assert_eq!(runtime_rule.approval_mode, "dual");
+        assert_eq!(runtime_rule.approver_roles, vec!["owner".to_string()]);
+        Ok(())
+    }
+
+    #[test]
     fn protected_scope_classifies_sensitive_routes() {
         assert_eq!(
             protected_scope_for_request(&Method::PUT, "/control/enterprise/policy"),
@@ -659,11 +1140,17 @@ mod tests {
             Some("enterprise.audit.export")
         );
         assert_eq!(
-            protected_scope_for_request(&Method::POST, "/control/orchestration/active/run-1/escalate"),
+            protected_scope_for_request(
+                &Method::POST,
+                "/control/orchestration/active/run-1/escalate"
+            ),
             Some("enterprise.runtime.control")
         );
         assert_eq!(
-            protected_scope_for_request(&Method::POST, "/control/orchestration/active/run-1/rollback"),
+            protected_scope_for_request(
+                &Method::POST,
+                "/control/orchestration/active/run-1/rollback"
+            ),
             Some("enterprise.runtime.control")
         );
         assert_eq!(
@@ -673,6 +1160,10 @@ mod tests {
         assert_eq!(
             protected_scope_for_request(&Method::POST, "/control/mobile/commands/abc/approve"),
             Some("enterprise.mobile.command.manage")
+        );
+        assert_eq!(
+            protected_scope_for_request(&Method::POST, "/control/enterprise/governance/rules"),
+            Some("enterprise.config.write")
         );
         assert_eq!(
             protected_scope_for_request(

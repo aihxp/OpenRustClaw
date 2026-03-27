@@ -196,6 +196,32 @@ pub struct EnterpriseRoleGrantSummary {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct EnterpriseGovernanceRuleSummary {
+    pub scope: String,
+    pub approval_mode: String,
+    pub requester_roles: Vec<String>,
+    pub approver_roles: Vec<String>,
+    pub forbid_self_approval: bool,
+    pub active: bool,
+    pub eligible_requester_count: usize,
+    pub eligible_approver_count: usize,
+    pub coverage_status: String,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct EnterpriseGovernanceReport {
+    pub status: String,
+    pub detail: String,
+    pub updated_at: String,
+    pub approver_id_header: String,
+    pub approver_token_header: String,
+    pub active_rule_count: usize,
+    pub dual_approval_rule_count: usize,
+    pub rules: Vec<EnterpriseGovernanceRuleSummary>,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct EnterpriseAccessReport {
     pub status: String,
     pub detail: String,
@@ -206,6 +232,7 @@ pub struct EnterpriseAccessReport {
     pub organization: Option<EnterpriseAccessOrganizationSummary>,
     pub operators: Vec<EnterpriseAccessOperatorSummary>,
     pub role_grants: Vec<EnterpriseRoleGrantSummary>,
+    pub governance: EnterpriseGovernanceReport,
     pub protected_routes: Vec<enterprise_access::EnterpriseProtectedRoute>,
 }
 
@@ -832,15 +859,17 @@ pub fn enterprise_access_summary(workspace_root: &Path) -> Result<EnterpriseAcce
 
     let detail = if let Some(manifest) = manifest.as_ref() {
         format!(
-            "Enterprise access is bootstrapped for organization `{}` with {} operator(s). Sensitive control routes now require `{}` and `{}` headers when their scope boundary is active.",
+            "Enterprise access is bootstrapped for organization `{}` with {} operator(s). Sensitive control routes now require `{}` and `{}` headers when their scope boundary is active, and governed scopes can additionally require `{}` and `{}` for a second approver.",
             manifest.organization.id,
             manifest.operators.len(),
             enterprise_access::OPERATOR_ID_HEADER,
-            enterprise_access::OPERATOR_TOKEN_HEADER
+            enterprise_access::OPERATOR_TOKEN_HEADER,
+            enterprise_access::APPROVER_ID_HEADER,
+            enterprise_access::APPROVER_TOKEN_HEADER
         )
     } else {
         format!(
-            "Enterprise access is not bootstrapped yet. Bootstrap the file-backed organization registry to require scoped operator identity on sensitive control routes via `{}` and `{}`.",
+            "Enterprise access is not bootstrapped yet. Bootstrap the file-backed organization registry to require scoped operator identity on sensitive control routes via `{}` and `{}`, then layer governed dual-approval headers where the policy demands them.",
             enterprise_access::OPERATOR_ID_HEADER,
             enterprise_access::OPERATOR_TOKEN_HEADER
         )
@@ -896,6 +925,106 @@ pub fn enterprise_access_summary(workspace_root: &Path) -> Result<EnterpriseAcce
         })
         .unwrap_or_default();
 
+    let governance_rules = manifest
+        .as_ref()
+        .map(|value| value.governance.rules.clone())
+        .unwrap_or_else(enterprise_access::governance_defaults);
+    let active_operator_roles = manifest
+        .as_ref()
+        .map(|value| {
+            value
+                .operators
+                .iter()
+                .filter(|entry| entry.active)
+                .map(|entry| entry.role.clone())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let governance_rule_summaries = governance_rules
+        .iter()
+        .map(|rule| {
+            let eligible_requester_count = active_operator_roles
+                .iter()
+                .filter(|role| {
+                    rule.requester_roles.is_empty()
+                        || rule.requester_roles.iter().any(|allowed| allowed == *role)
+                })
+                .count();
+            let eligible_approver_count = active_operator_roles
+                .iter()
+                .filter(|role| {
+                    rule.approver_roles.is_empty()
+                        || rule.approver_roles.iter().any(|allowed| allowed == *role)
+                })
+                .count();
+            let coverage_status = if !rule.active {
+                "disabled".to_string()
+            } else if rule.approval_mode == "dual"
+                && (eligible_requester_count == 0
+                    || eligible_approver_count == 0
+                    || active_operator_roles.len() < 2)
+            {
+                "coverage_gap".to_string()
+            } else if eligible_requester_count == 0 {
+                "coverage_gap".to_string()
+            } else {
+                "ready".to_string()
+            };
+
+            EnterpriseGovernanceRuleSummary {
+                scope: rule.scope.clone(),
+                approval_mode: rule.approval_mode.clone(),
+                requester_roles: rule.requester_roles.clone(),
+                approver_roles: rule.approver_roles.clone(),
+                forbid_self_approval: rule.forbid_self_approval,
+                active: rule.active,
+                eligible_requester_count,
+                eligible_approver_count,
+                coverage_status,
+                detail: rule.detail.clone(),
+            }
+        })
+        .collect::<Vec<_>>();
+    let dual_approval_rule_count = governance_rule_summaries
+        .iter()
+        .filter(|rule| rule.active && rule.approval_mode == "dual")
+        .count();
+    let active_rule_count = governance_rule_summaries
+        .iter()
+        .filter(|rule| rule.active)
+        .count();
+    let governance = EnterpriseGovernanceReport {
+        status: if explicit_identity_required {
+            "ok".to_string()
+        } else {
+            "bootstrap_required".to_string()
+        },
+        detail: if explicit_identity_required {
+            format!(
+                "{} governed enterprise scope(s) are active, with {} requiring explicit dual approval through `{}` and `{}`.",
+                active_rule_count,
+                dual_approval_rule_count,
+                enterprise_access::APPROVER_ID_HEADER,
+                enterprise_access::APPROVER_TOKEN_HEADER
+            )
+        } else {
+            format!(
+                "Governance defaults are defined but inactive until enterprise access is bootstrapped. Dual-approval scopes will require `{}` and `{}` once the registry is live.",
+                enterprise_access::APPROVER_ID_HEADER,
+                enterprise_access::APPROVER_TOKEN_HEADER
+            )
+        },
+        updated_at: manifest
+            .as_ref()
+            .map(|value| value.governance.updated_at.clone())
+            .unwrap_or_default(),
+        approver_id_header: enterprise_access::APPROVER_ID_HEADER.to_string(),
+        approver_token_header: enterprise_access::APPROVER_TOKEN_HEADER.to_string(),
+        active_rule_count,
+        dual_approval_rule_count,
+        rules: governance_rule_summaries,
+    };
+
     Ok(EnterpriseAccessReport {
         status: if explicit_identity_required {
             "ok".to_string()
@@ -910,6 +1039,7 @@ pub fn enterprise_access_summary(workspace_root: &Path) -> Result<EnterpriseAcce
         organization,
         operators,
         role_grants,
+        governance,
         protected_routes,
     })
 }
@@ -965,7 +1095,7 @@ pub fn enterprise_admin_summary(
     let requires_operator_headers = access.explicit_identity_required;
     let detail = if requires_operator_headers {
         format!(
-            "Enterprise admin is live for organization `{}` with {} operator(s). Use `/control/ui` with the scoped operator headers to manage policy, identity, audit export, and supervised-runtime controls from one shipped surface.",
+            "Enterprise admin is live for organization `{}` with {} operator(s). Use `/control/ui` with the scoped operator headers to manage policy, identity, governance, audit export, and supervised-runtime controls from one shipped surface.",
             access
                 .organization
                 .as_ref()
@@ -974,7 +1104,7 @@ pub fn enterprise_admin_summary(
             access.operators.len()
         )
     } else {
-        "Enterprise admin is not bootstrapped yet. Bootstrap enterprise access first, then use the same shipped surface to manage policy, audit export, and supervised-runtime controls under scoped operator identity.".to_string()
+        "Enterprise admin is not bootstrapped yet. Bootstrap enterprise access first, then use the same shipped surface to manage policy, governance, audit export, and supervised-runtime controls under scoped operator identity.".to_string()
     };
 
     Ok(EnterpriseAdminReport {
@@ -1517,8 +1647,8 @@ mod tests {
 
     use crate::commands::browser::{ExternalBackendAuditEntry, backend_policy};
     use crate::commands::enterprise_access::{
-        EnterpriseAccessBootstrapRequest, EnterpriseAccessOperatorRequest, bootstrap_manifest,
-        upsert_operator,
+        APPROVER_ID_HEADER, EnterpriseAccessBootstrapRequest, EnterpriseAccessOperatorRequest,
+        bootstrap_manifest, upsert_operator,
     };
 
     #[test]
@@ -1622,6 +1752,8 @@ mod tests {
         assert!(!report.explicit_identity_required);
         assert!(report.organization.is_none());
         assert!(!report.protected_routes.is_empty());
+        assert_eq!(report.governance.status, "bootstrap_required");
+        assert!(report.governance.dual_approval_rule_count >= 1);
 
         bootstrap_manifest(
             root.path(),
@@ -1655,6 +1787,14 @@ mod tests {
             Some("acme")
         );
         assert_eq!(report.operators.len(), 2);
+        assert_eq!(report.governance.status, "ok");
+        assert!(report.governance.dual_approval_rule_count >= 1);
+        assert_eq!(report.governance.approver_id_header, APPROVER_ID_HEADER);
+        assert!(report.governance.rules.iter().any(|rule| {
+            rule.scope == "enterprise.config.write"
+                && rule.approval_mode == "dual"
+                && rule.coverage_status == "ready"
+        }));
         assert!(report.role_grants.iter().any(|entry| {
             entry.role == "admin" && entry.operator_count == 1 && !entry.default_scopes.is_empty()
         }));
@@ -1695,11 +1835,10 @@ mod tests {
                 .map(|value| value.id.as_str()),
             Some("acme")
         );
-        assert!(
-            report
-                .detail
-                .contains("manage policy, identity, audit export, and supervised-runtime controls")
-        );
+        assert!(report.detail.contains(
+            "manage policy, identity, governance, audit export, and supervised-runtime controls"
+        ));
+        assert!(report.access.governance.dual_approval_rule_count >= 1);
         Ok(())
     }
 

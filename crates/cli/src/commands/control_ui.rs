@@ -127,6 +127,7 @@ mod tests {
     fn dashboard_includes_enterprise_access_panel() {
         assert!(CONTROL_UI_HTML.contains("enterprise-access"));
         assert!(CONTROL_UI_HTML.contains("enterprise-operators-table"));
+        assert!(CONTROL_UI_HTML.contains("enterprise-governance-rules"));
         assert!(CONTROL_UI_HTML.contains("enterprise-protected-routes"));
         assert!(CONTROL_UI_HTML.contains("function loadEnterpriseAccess"));
         assert!(CONTROL_UI_HTML.contains("function renderEnterpriseAccess"));
@@ -137,9 +138,12 @@ mod tests {
         assert!(CONTROL_UI_HTML.contains("enterprise-admin"));
         assert!(CONTROL_UI_HTML.contains("enterprise-admin-result"));
         assert!(CONTROL_UI_HTML.contains("enterprise-operator-id"));
+        assert!(CONTROL_UI_HTML.contains("enterprise-approver-id"));
+        assert!(CONTROL_UI_HTML.contains("enterprise-governance-update"));
         assert!(CONTROL_UI_HTML.contains("function loadEnterpriseAdmin"));
         assert!(CONTROL_UI_HTML.contains("function renderEnterpriseAdmin"));
         assert!(CONTROL_UI_HTML.contains("function updateEnterprisePolicy"));
+        assert!(CONTROL_UI_HTML.contains("function upsertEnterpriseGovernanceRule"));
         assert!(CONTROL_UI_HTML.contains("function exportEnterpriseAuditBundle"));
         assert!(CONTROL_UI_HTML.contains("function bootstrapEnterpriseAccess"));
     }

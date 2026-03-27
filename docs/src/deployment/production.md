@@ -6,7 +6,7 @@ For final MVP sign-off, pair this guide with [Release Checklist](./release-check
 
 For the current enterprise-readiness baseline, also review `/control/enterprise/foundations` in the running control plane. That summary is intentionally narrow: it shows the explicit runtime approval policy, the browser external-backend allowlist and audit log, mobile command approval-state metrics, and recent durable audit evidence for approval-sensitive actions. It is a foundation for future enterprise work, not a claim that RBAC, SSO, or compliance packaging are already complete.
 
-If you want the Phase 16 enterprise access boundary active, bootstrap `/control/enterprise/access/bootstrap` first, then provision additional operators through `/control/enterprise/access/operators`. After bootstrap, the initial sensitive-route contract requires both the regular control-plane auth boundary and scoped enterprise operator headers:
+If you want the enterprise access boundary active, bootstrap `/control/enterprise/access/bootstrap` first, then provision additional operators through `/control/enterprise/access/operators`. After bootstrap, the initial sensitive-route contract requires both the regular control-plane auth boundary and scoped enterprise operator headers:
 
 - `x-openrustclaw-operator-id`
 - `x-openrustclaw-operator-token`
@@ -21,6 +21,17 @@ Phase 17 adds a second enterprise operator loop on top of that identity boundary
 
 Treat this as an operator-managed policy and evidence layer. It improves reviewability and handoff, but it is still not a replacement for full compliance packaging, external GRC systems, or enterprise IAM products.
 
+Phase 20 deepens that loop into explicit enterprise governance:
+
+- `/control/enterprise/access` and `/control/enterprise/admin` now include typed governance rules per protected scope.
+- `POST /control/enterprise/governance/rules` updates one governance rule at a time from the shipped operator surface.
+- Governed dual-approval scopes require the regular operator headers plus the optional second-approver headers:
+  - `x-openrustclaw-approver-id`
+  - `x-openrustclaw-approver-token`
+- The shipped `/control/ui` `Enterprise Admin` panel now stores both requester and approver headers locally so protected writes can satisfy the stronger governance contract without dropping to raw curl calls.
+
+Treat that as an operator-gated governance baseline. It gives OpenRustClaw explicit approval-chain and separation-of-duties behavior for higher-risk enterprise writes, but it is still not a replacement for external approval systems, enterprise IAM suites, or compliance programs.
+
 Phase 18 adds a supervised-autonomy operator loop over active orchestration runs:
 
 - `POST /control/orchestration/active/{run_id}/pause|resume|kill` remains the low-level control surface.
@@ -33,8 +44,8 @@ Use those supervision controls as the truth source for longer-running operator-m
 Phase 19 closes the currently shipped enterprise slice with a consolidated admin/operator surface:
 
 - `GET /control/enterprise/admin` combines enterprise access state, enterprise policy state, and active supervised-run attention counts into one typed summary.
-- `/control/ui` now includes an `Enterprise Admin` panel that stores `x-openrustclaw-operator-id` and `x-openrustclaw-operator-token` locally in the browser for protected enterprise writes.
-- That same panel can bootstrap enterprise access, upsert operators, update enterprise policy, and trigger durable audit-export bundles without dropping to raw route calls.
+- `/control/ui` now includes an `Enterprise Admin` panel that stores `x-openrustclaw-operator-id`, `x-openrustclaw-operator-token`, `x-openrustclaw-approver-id`, and `x-openrustclaw-approver-token` locally in the browser for protected enterprise writes.
+- That same panel can bootstrap enterprise access, upsert operators, update enterprise policy, upsert governance rules, and trigger durable audit-export bundles without dropping to raw route calls.
 - The admin summary also points operators back to the shipped supervision surface when active orchestration runs still require escalation or rollback review.
 
 Treat that panel as the current enterprise operator loop, not full IAM. It makes the shipped access, policy, audit, and supervision controls usable from one place, but it does not replace SSO, SCIM, or multi-tenant administration.
