@@ -28,6 +28,7 @@ pub mod orchestrate;
 pub mod runtime;
 pub mod schedule;
 pub mod security;
+pub mod self_hosted;
 pub mod services;
 pub mod session;
 pub mod signal;

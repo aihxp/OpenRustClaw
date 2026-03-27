@@ -437,6 +437,10 @@
           <div class="surface"><pre id="control-runtime">Loading…</pre></div>
         </article>
         <article class="panel span-6">
+          <h2>Self-Hosted Product Mode</h2>
+          <div class="surface"><div id="self-hosted-product-mode" class="summary-card empty">Loading…</div></div>
+        </article>
+        <article class="panel span-6">
           <h2>Security Posture</h2>
           <div class="surface"><pre id="security-posture">Loading…</pre></div>
         </article>
@@ -2891,6 +2895,32 @@
       async function loadSecurityPosture() {
         const payload = await fetchJson("/control/security/posture");
         setText("security-posture", payload);
+      }
+
+      function renderSelfHostedProductMode(report) {
+        if (!report || report.error) {
+          renderSummaryCard("self-hosted-product-mode", report?.error || "No self-hosted product mode summary available.", null);
+          return;
+        }
+
+        renderSummaryCard("self-hosted-product-mode", "No self-hosted product mode summary available.", buildSummaryMarkup({
+          kicker: "Self-Hosted Open-Source Product",
+          title: `${report.mode_label || report.mode || "Unknown"} deployment path`,
+          copy: report.detail || "No self-hosted product mode summary available.",
+          stats: [
+            { label: "Mode", value: report.mode_label || "-", detail: report.mode || "-" },
+            { label: "Onboarding", value: report.onboarding_path || "-", detail: report.explicit_mode_selected ? "explicit" : "default until onboarding" },
+            { label: "Operators", value: report.multi_user ? "multi-user" : "single operator", detail: report.operator_model || "-" },
+            { label: "Runtime", value: report.recommended_runtime_mode || "-", detail: report.enterprise_controls_expected ? "stronger policy posture expected" : "lightweight trust posture" },
+            { label: "Identity", value: report.self_hosted ? "self-hosted" : "-", detail: report.open_source ? "open-source" : "-" },
+            { label: "Next Modes", value: (report.transition_targets || []).join(", ") || "-", detail: report.manifest_path || "-" },
+          ],
+        }));
+      }
+
+      async function loadSelfHostedProductMode() {
+        const payload = await fetchJson("/control/self-hosted/product-mode");
+        renderSelfHostedProductMode(payload);
       }
 
       async function loadEnterpriseFoundations() {
@@ -5349,6 +5379,7 @@
             loadRuntimeBeacon(),
             loadRuntimeReloadPlan(),
             loadSecurityPosture(),
+            loadSelfHostedProductMode(),
             loadEnterpriseFoundations(),
             loadEnterpriseAdmin(),
             loadEnterpriseAccess(),

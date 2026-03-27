@@ -77,6 +77,13 @@ mod tests {
     }
 
     #[test]
+    fn dashboard_includes_self_hosted_product_mode_panel() {
+        assert!(CONTROL_UI_HTML.contains("self-hosted-product-mode"));
+        assert!(CONTROL_UI_HTML.contains("function loadSelfHostedProductMode"));
+        assert!(CONTROL_UI_HTML.contains("function renderSelfHostedProductMode"));
+    }
+
+    #[test]
     fn dashboard_includes_orchestration_supervision_tables() {
         assert!(CONTROL_UI_HTML.contains("orchestration-workers"));
         assert!(CONTROL_UI_HTML.contains("orchestration-delegations"));

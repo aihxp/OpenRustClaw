@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 
 use super::{
     browser, control, enterprise_access, enterprise_autonomy, enterprise_policy, mobile,
-    orchestrate, skills, talk, voice_runtime,
+    orchestrate, self_hosted, skills, talk, voice_runtime,
 };
 
 #[derive(Debug, Clone, Serialize)]
@@ -146,6 +146,24 @@ pub struct EnterprisePolicyBoundary {
     pub allow_local_cli_wrappers: bool,
     pub allow_cloud_agent_execution: bool,
     pub browser_audit_log_path: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SelfHostedProductModeReport {
+    pub status: String,
+    pub detail: String,
+    pub manifest_path: String,
+    pub explicit_mode_selected: bool,
+    pub self_hosted: bool,
+    pub open_source: bool,
+    pub mode: String,
+    pub mode_label: String,
+    pub onboarding_path: String,
+    pub operator_model: String,
+    pub recommended_runtime_mode: String,
+    pub multi_user: bool,
+    pub enterprise_controls_expected: bool,
+    pub transition_targets: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -846,6 +864,68 @@ pub fn enterprise_foundations_summary(
         policy,
         mobile_metrics,
         recent_events,
+    })
+}
+
+pub fn self_hosted_product_mode_summary(workspace_root: &Path) -> Result<SelfHostedProductModeReport> {
+    let manifest_path = self_hosted::self_hosted_product_path(workspace_root)
+        .display()
+        .to_string();
+    let manifest = self_hosted::load_manifest(workspace_root)?;
+    let (explicit_mode_selected, profile, status) = if let Some(value) = manifest {
+        (true, value.profile, "ok".to_string())
+    } else {
+        let descriptor = self_hosted::default_descriptor();
+        (
+            false,
+            self_hosted::SelfHostedProductProfile {
+                mode: descriptor.mode.to_string(),
+                onboarding_path: descriptor.onboarding_path.to_string(),
+                self_hosted: true,
+                open_source: true,
+                note: None,
+                updated_at: String::new(),
+            },
+            "implicit_default".to_string(),
+        )
+    };
+    let descriptor = self_hosted::descriptor_for(&profile.mode)?;
+    let detail = if explicit_mode_selected {
+        format!(
+            "OpenRustClaw is configured as a {} self-hosted open-source deployment. {} The current onboarding path is `{}`, the recommended runtime execution mode is `{}`, and the next valid product-mode transitions are {}.",
+            descriptor.label,
+            descriptor.detail,
+            profile.onboarding_path,
+            descriptor.recommended_runtime_mode,
+            descriptor.transition_targets.join(", ")
+        )
+    } else {
+        format!(
+            "No explicit product mode is saved yet, so OpenRustClaw currently reads as the default {} self-hosted open-source deployment. {} Run onboarding to lock in a mode-specific path before broadening the operator surface.",
+            descriptor.label.to_ascii_lowercase(),
+            descriptor.detail
+        )
+    };
+
+    Ok(SelfHostedProductModeReport {
+        status,
+        detail,
+        manifest_path,
+        explicit_mode_selected,
+        self_hosted: profile.self_hosted,
+        open_source: profile.open_source,
+        mode: descriptor.mode.to_string(),
+        mode_label: descriptor.label.to_string(),
+        onboarding_path: profile.onboarding_path,
+        operator_model: descriptor.operator_model.to_string(),
+        recommended_runtime_mode: descriptor.recommended_runtime_mode.to_string(),
+        multi_user: descriptor.multi_user,
+        enterprise_controls_expected: descriptor.enterprise_controls_expected,
+        transition_targets: descriptor
+            .transition_targets
+            .iter()
+            .map(|value| (*value).to_string())
+            .collect(),
     })
 }
 
@@ -1640,7 +1720,7 @@ fn build_voice_operator_recent_activity(
 mod tests {
     use super::{
         enterprise_access_summary, enterprise_admin_summary, enterprise_foundations_summary,
-        new_tool_execution_record, tool_execution_log_path,
+        new_tool_execution_record, self_hosted_product_mode_summary, tool_execution_log_path,
     };
     use anyhow::Result;
     use chrono::{DateTime, Utc};
@@ -1653,6 +1733,7 @@ mod tests {
         APPROVER_ID_HEADER, EnterpriseAccessBootstrapRequest, EnterpriseAccessOperatorRequest,
         bootstrap_manifest, upsert_operator,
     };
+    use crate::commands::self_hosted;
 
     #[test]
     fn enterprise_foundations_summary_reports_policy_and_recent_audit_evidence() -> Result<()> {
@@ -1801,6 +1882,40 @@ mod tests {
         assert!(report.role_grants.iter().any(|entry| {
             entry.role == "admin" && entry.operator_count == 1 && !entry.default_scopes.is_empty()
         }));
+        Ok(())
+    }
+
+    #[test]
+    fn self_hosted_product_mode_summary_defaults_to_solo_self_hosted() -> Result<()> {
+        let root = tempdir().expect("tempdir");
+        let report = self_hosted_product_mode_summary(root.path())?;
+        assert_eq!(report.status, "implicit_default");
+        assert!(!report.explicit_mode_selected);
+        assert_eq!(report.mode, self_hosted::MODE_SOLO);
+        assert!(report.self_hosted);
+        assert!(report.open_source);
+        assert_eq!(report.recommended_runtime_mode, "solo_claw");
+        assert!(report.transition_targets.iter().any(|value| value == "team"));
+        Ok(())
+    }
+
+    #[test]
+    fn self_hosted_product_mode_summary_reports_explicit_company_mode() -> Result<()> {
+        let root = tempdir().expect("tempdir");
+        self_hosted::configure_mode(
+            root.path(),
+            self_hosted::MODE_COMPANY,
+            Some("company_ops_setup"),
+            Some("phase 24 test"),
+        )?;
+
+        let report = self_hosted_product_mode_summary(root.path())?;
+        assert_eq!(report.status, "ok");
+        assert!(report.explicit_mode_selected);
+        assert_eq!(report.mode_label, "Company");
+        assert_eq!(report.onboarding_path, "company_ops_setup");
+        assert!(report.enterprise_controls_expected);
+        assert!(report.multi_user);
         Ok(())
     }
 
