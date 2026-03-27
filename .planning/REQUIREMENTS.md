@@ -54,8 +54,8 @@
 | CLEAN-02 | Phase 37 | Complete |
 | HYGI-01 | Phase 38 | Complete |
 | HYGI-02 | Phase 38 | Complete |
-| STRC-01 | Phase 39 | Pending |
-| STRC-02 | Phase 39 | Pending |
+| STRC-01 | Phase 39 | Complete |
+| STRC-02 | Phase 39 | Complete |
 | SAFE-01 | Phase 40 | Pending |
 | SAFE-02 | Phase 40 | Pending |
 

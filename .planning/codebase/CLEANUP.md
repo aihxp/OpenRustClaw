@@ -85,9 +85,16 @@ These are the current source-of-truth surfaces that cleanup work must preserve:
 
 ## Deferred Cleanup Debt
 
+- `start.rs` still remains a large command hub even after the Phase 39 auth extraction; more route-family decomposition is still follow-up work
 - broader `skills.rs` decomposition
 - channel-adapter decomposition for Discord and Teams
 - wider contract testing between Rust runtime and optional sidecar
+
+## Completed In v1.8 So Far
+
+- Phase 37: cleanup inventory and no-touch boundaries written here
+- Phase 38: CI and sidecar local-artifact hygiene aligned to current canonical surfaces
+- Phase 39: control-auth and enterprise-access middleware extracted from `crates/cli/src/commands/start.rs` into `crates/cli/src/commands/start/auth.rs`
 
 ---
 *Update this file when cleanup targets are completed or reprioritized.*
