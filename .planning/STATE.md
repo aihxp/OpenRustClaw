@@ -1,16 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: null
-milestone_name: null
-current_phase: null
-current_phase_name: null
-current_plan: null
-status: Ready for new milestone
-stopped_at: Milestone v1.2 completed and archived; define the next version with $gsd-new-milestone.
-last_updated: "2026-03-27T03:20:09Z"
-last_activity: 2026-03-27 -- milestone v1.2 completed
+milestone: v1.3
+milestone_name: Enterprise Expansion and Supervised Autonomy Foundations
+current_phase: 16
+current_phase_name: Enterprise Identity and Access Boundaries
+current_plan: Not started
+status: Defining requirements
+stopped_at: Milestone v1.3 started; Phase 16 is ready for discuss and planning.
+last_updated: "2026-03-27T05:01:16Z"
+last_activity: 2026-03-27 -- milestone v1.3 started
 progress:
-  total_phases: 0
+  total_phases: 4
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -21,22 +21,22 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-03-26)
+See: .planning/PROJECT.md (updated 2026-03-27)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** No active milestone
+**Current focus:** Phase 16 - Enterprise Identity and Access Boundaries
 
 ## Current Position
 
-Current Phase: None
-Current Phase Name: None
-Total Phases: 0
-Current Plan: None
+Current Phase: 16
+Current Phase Name: Enterprise Identity and Access Boundaries
+Total Phases: 4
+Current Plan: Not started
 Total Plans in Phase: 0
-Status: Ready for new milestone
-Last activity: 2026-03-27 - milestone v1.2 completed
+Status: Defining requirements
+Last activity: 2026-03-27 - milestone v1.3 started
 
-Phase: 0 of 0 (No active milestone)
+Phase: 1 of 4 (Enterprise Identity and Access Boundaries)
 Plan: 0 of 0 in current phase
 Progress: [░░░░░░░░░░] 0%
 
@@ -88,6 +88,7 @@ Recent decisions affecting current work:
 - Phase 13 now exposes a typed mobile operator report plus a main mobile node view that surfaces attention signals and recent activity from the existing mobile receipt model.
 - Phase 14 now replaces the remaining priority raw Control UI panes with typed voice, talk, skill, bounded voice-call, and mobile sub-detail renderers, then closes with matching docs and verification evidence.
 - Phase 15 now adds a typed voice operator report across voice sessions, talk receipts, and bounded voice-call receipts, then surfaces that report in `/control/ui` before closing the v1.2 milestone cleanly.
+- v1.3 now takes an enterprise-first path: identity and access boundaries first, then policy and audit controls, then supervised-autonomy escalation and rollback, then one enabling admin/operator surface.
 
 ### Pending Todos
 
@@ -99,6 +100,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-26 23:20
-Stopped at: Milestone v1.2 completed and archived; define the next version with $gsd-new-milestone.
+Last session: 2026-03-27 01:01
+Stopped at: Milestone v1.3 started; Phase 16 is ready for discuss and planning.
 Resume file: None

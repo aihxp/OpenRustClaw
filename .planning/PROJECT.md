@@ -14,12 +14,18 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 - **Shipped milestones:** v1.0 Rust OpenClaw MVP and v1.1 Lifecycle Integrity and Enterprise Foundations on 2026-03-26, plus v1.2 Deeper OpenClaw Surface Parity on 2026-03-27
 - **Archive:** `.planning/milestones/v1.0-*`, `.planning/milestones/v1.1-*`, `.planning/milestones/v1.2-*`
-- **Planning state:** No active milestone is open; use `$gsd-new-milestone` to define the next version
+- **Planning state:** v1.3 Enterprise Expansion and Supervised Autonomy Foundations is now active
 - **Known audit debt:** v1.0 archive still records missing phase `VERIFICATION.md` artifacts; v1.1 closes that workflow gap going forward
 
-## Current Planning State
+## Current Milestone: v1.3 Enterprise Expansion and Supervised Autonomy Foundations
 
-No active milestone is currently open. The next planning step is to choose the next version scope with `$gsd-new-milestone`.
+**Goal:** Expand the platform from a production-capable operator deployment toward an enterprise-ready foundation, while adding the minimum supervised-autonomy layer those enterprise controls require.
+
+**Target features:**
+- explicit enterprise identity, access, and operator-role boundaries
+- durable enterprise policy controls, approval rules, and audit-export surfaces
+- stronger supervised autonomy with escalation, rollback, and operator intervention contracts
+- one enabling admin/operator surface slice to make the new enterprise and autonomy layers usable
 
 ## Requirements
 
@@ -38,9 +44,9 @@ No active milestone is currently open. The next planning step is to choose the n
 
 ### Active
 
-- [ ] No active milestone yet — define the next version scope with `$gsd-new-milestone`
-- [ ] Decide whether the next expansion priority is enterprise breadth, broader supervised autonomy, or another parity slice
-- [ ] Preserve the v1.1 lifecycle contract and the v1.2 parity gains while selecting the next milestone
+- [ ] Expand enterprise identity, access, policy, and audit capabilities without weakening the existing trust-first runtime contract
+- [ ] Add a supervised-autonomy foundation with explicit escalation, rollback, and operator-intervention semantics
+- [ ] Keep new enterprise and autonomy capabilities operator-usable through one enabling admin/control surface slice
 
 ### Out of Scope
 
@@ -53,7 +59,7 @@ No active milestone is currently open. The next planning step is to choose the n
 
 This remains a large brownfield Rust monorepo with broad runtime, CLI, control-plane, memory, tools, channel, voice, browser, and deployment surfaces. v1.0 converted that breadth into a cleaner MVP by making operator trust visible at the edges that matter, v1.1 hardened the lifecycle and enterprise baseline around that trust, and v1.2 deepened the most operator-visible OpenClaw parity surfaces without reopening MVP sprawl.
 
-The next milestone should build on all three shipped layers rather than reopen foundational debt. The current planning question is which next lane deserves priority: enterprise breadth, broader supervised autonomy, or another parity push.
+The next milestone should build on all three shipped layers rather than reopen foundational debt. v1.3 now takes the enterprise-first path, adds the minimum supervised-autonomy layer enterprise operators will need, and avoids another broad parity sweep until those foundations are in place.
 
 ## Constraints
 
@@ -75,12 +81,13 @@ The next milestone should build on all three shipped layers rather than reopen f
 | Define the first enterprise slice around explicit approval boundaries plus durable audit evidence | The repo needed a truthful foundation before larger governance work like RBAC or compliance packaging | ✓ Good |
 | Prioritize deeper OpenClaw parity through a focused top-five surface slice | Browser depth, supervision, mobile, Control UI, and voice/calls are the clearest next parity gains without scattering effort | ✓ Good |
 | Keep deeper parity work grounded in typed runtime summaries instead of frontend-only stitching | Browser, supervision, mobile, Control UI, and voice parity all landed more cleanly when the Rust-owned control plane aggregated the operator story first | ✓ Good |
+| Sequence enterprise expansion ahead of another broad parity milestone | Identity, policy, audit, and supervised-autonomy controls are now the clearest blockers to enterprise readiness | ✓ Good |
 
 ## Next Milestone Goals
 
-- Choose the next milestone scope explicitly with `$gsd-new-milestone`
+- Expand enterprise identity, policy, and audit foundations into a usable operator-ready baseline
+- Add supervised-autonomy contracts for escalation, rollback, and operator intervention without jumping to unsupervised autonomy
 - Preserve the verification/archive contract from v1.1 and the deeper operator parity surfaces from v1.2 as a non-negotiable baseline
-- Decide whether the next priority is enterprise expansion, broader supervised autonomy, or another focused parity slice
 
 ## Evolution
 
@@ -100,4 +107,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-27 after completing milestone v1.2*
+*Last updated: 2026-03-27 after starting milestone v1.3*
