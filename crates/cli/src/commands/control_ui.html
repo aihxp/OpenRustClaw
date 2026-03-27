@@ -472,6 +472,89 @@
             </table>
           </div>
         </article>
+        <article class="panel span-12">
+          <h2>Enterprise Admin</h2>
+          <div class="surface"><div id="enterprise-admin" class="summary-card empty">Loading…</div></div>
+          <div class="form-grid" style="margin-top: 12px">
+            <input id="enterprise-operator-id" type="text" placeholder="enterprise operator id header" />
+            <input id="enterprise-operator-token" type="password" placeholder="enterprise operator token header" />
+            <div class="action-row">
+              <button class="secondary" id="enterprise-credentials-save">Save Operator Headers</button>
+              <button class="secondary" id="enterprise-credentials-clear">Clear Operator Headers</button>
+              <button class="secondary" id="enterprise-admin-refresh">Refresh Admin</button>
+            </div>
+            <input id="enterprise-bootstrap-org-id" type="text" placeholder="bootstrap organization id" />
+            <input id="enterprise-bootstrap-org-name" type="text" placeholder="bootstrap organization name" />
+            <div class="action-row">
+              <input id="enterprise-bootstrap-owner-id" type="text" placeholder="bootstrap owner id" />
+              <input id="enterprise-bootstrap-owner-token" type="password" placeholder="bootstrap owner token" />
+            </div>
+            <div class="action-row">
+              <input id="enterprise-bootstrap-owner-name" type="text" placeholder="optional owner name" />
+              <input id="enterprise-bootstrap-owner-email" type="text" placeholder="optional owner email" />
+            </div>
+            <button id="enterprise-bootstrap-submit">Bootstrap Enterprise Access</button>
+            <div class="action-row">
+              <input id="enterprise-operator-manage-id" type="text" placeholder="operator id" />
+              <input id="enterprise-operator-manage-role" type="text" placeholder="owner | admin | operator | auditor" />
+            </div>
+            <div class="action-row">
+              <input id="enterprise-operator-manage-name" type="text" placeholder="optional operator name" />
+              <input id="enterprise-operator-manage-email" type="text" placeholder="optional operator email" />
+            </div>
+            <div class="action-row">
+              <input id="enterprise-operator-manage-scopes" type="text" placeholder="optional scopes csv override" />
+              <input id="enterprise-operator-manage-token" type="password" placeholder="operator token" />
+            </div>
+            <select id="enterprise-operator-manage-active">
+              <option value="true">operator active: true</option>
+              <option value="false">operator active: false</option>
+            </select>
+            <button id="enterprise-operator-manage-submit">Upsert Enterprise Operator</button>
+            <div class="action-row">
+              <input id="enterprise-approval-policy" type="text" placeholder="approval policy, e.g. side_effects" />
+              <input id="enterprise-browser-backends" type="text" placeholder="browser backends csv" />
+            </div>
+            <div class="action-row">
+              <select id="enterprise-browser-local-cli">
+                <option value="true">allow local CLI wrappers: true</option>
+                <option value="false">allow local CLI wrappers: false</option>
+              </select>
+              <select id="enterprise-browser-cloud-agent">
+                <option value="true">allow cloud agent execution: true</option>
+                <option value="false">allow cloud agent execution: false</option>
+              </select>
+            </div>
+            <input id="enterprise-browser-env-allowlist" type="text" placeholder="browser env allowlist csv" />
+            <div class="action-row">
+              <select id="enterprise-mobile-send-approval">
+                <option value="true">send message requires approval: true</option>
+                <option value="false">send message requires approval: false</option>
+              </select>
+              <select id="enterprise-mobile-push-approval">
+                <option value="true">push notification requires approval: true</option>
+                <option value="false">push notification requires approval: false</option>
+              </select>
+            </div>
+            <div class="action-row">
+              <select id="enterprise-mobile-sync-approval">
+                <option value="true">sync now requires approval: true</option>
+                <option value="false">sync now requires approval: false</option>
+              </select>
+              <input id="enterprise-audit-export-root" type="text" placeholder="audit export root" />
+            </div>
+            <div class="action-row">
+              <input id="enterprise-audit-event-limit" type="number" min="1" placeholder="recent event limit" />
+              <input id="enterprise-audit-tool-limit" type="number" min="1" placeholder="tool history limit" />
+            </div>
+            <div class="action-row">
+              <button id="enterprise-policy-update">Update Enterprise Policy</button>
+              <button class="secondary" id="enterprise-audit-export">Export Audit Bundle</button>
+            </div>
+            <textarea id="enterprise-audit-export-note" rows="2" spellcheck="false" placeholder="optional audit export note"></textarea>
+          </div>
+          <div class="surface" style="margin-top: 12px"><pre id="enterprise-admin-result">No enterprise admin action executed yet.</pre></div>
+        </article>
         <article class="panel span-6">
           <h2>Scheduler Health</h2>
           <div class="surface"><pre id="scheduler-status">Loading…</pre></div>
@@ -1462,6 +1545,20 @@
         }
         return window.localStorage.getItem("openrustclawControlToken") || "";
       })();
+      const enterpriseOperatorState = (() => {
+        const queryOperatorId = controlUiQuery.get("operator_id");
+        const queryOperatorToken = controlUiQuery.get("operator_token");
+        if (queryOperatorId !== null) {
+          window.localStorage.setItem("openrustclawEnterpriseOperatorId", queryOperatorId);
+        }
+        if (queryOperatorToken !== null) {
+          window.localStorage.setItem("openrustclawEnterpriseOperatorToken", queryOperatorToken);
+        }
+        return {
+          id: window.localStorage.getItem("openrustclawEnterpriseOperatorId") || "",
+          token: window.localStorage.getItem("openrustclawEnterpriseOperatorToken") || "",
+        };
+      })();
       let configEditorDirty = false;
       let currentOrchestrationReceipt = null;
       let currentActiveOrchestrationRun = null;
@@ -1491,6 +1588,43 @@
       function truncateText(value, limit = 96) {
         const text = String(value || "");
         return text.length > limit ? `${text.slice(0, limit - 1)}…` : text;
+      }
+
+      function splitCsvValues(raw) {
+        return [...new Set(String(raw || "")
+          .split(/[,\n]/)
+          .map((value) => value.trim())
+          .filter(Boolean))];
+      }
+
+      function parseBooleanSelect(id) {
+        return document.getElementById(id).value === "true";
+      }
+
+      function parseNumberInput(id) {
+        const raw = document.getElementById(id).value.trim();
+        if (!raw) {
+          return null;
+        }
+        const value = Number(raw);
+        if (!Number.isFinite(value) || value <= 0) {
+          throw new Error(`${id} must be a positive number`);
+        }
+        return Math.floor(value);
+      }
+
+      function setInputValue(id, value) {
+        const element = document.getElementById(id);
+        if (element) {
+          element.value = value ?? "";
+        }
+      }
+
+      function setSelectValue(id, value) {
+        const element = document.getElementById(id);
+        if (element) {
+          element.value = value ? "true" : "false";
+        }
       }
 
       function renderSummaryCard(targetId, emptyLabel, markup) {
@@ -1722,6 +1856,52 @@
           <td>${escapeHtml(route.detail || "-")}</td>
         </tr>`);
         renderTableRows("enterprise-protected-routes", protectedRouteRows, "No protected enterprise routes configured.");
+      }
+
+      function renderEnterpriseAdmin(report) {
+        if (!report || report.error) {
+          renderSummaryCard("enterprise-admin", report?.error || "No enterprise admin summary available.", null);
+          return;
+        }
+
+        const access = report.access || {};
+        const policy = report.policy || {};
+        const supervision = report.supervision || {};
+        const organization = access.organization || {};
+
+        renderSummaryCard("enterprise-admin", "No enterprise admin summary available.", buildSummaryMarkup({
+          kicker: "Enterprise Operator Loop",
+          title: report.requires_operator_headers
+            ? `${(access.operators || []).length} scoped operator(s) with live admin controls`
+            : "Bootstrap enterprise access before protected admin actions are enforced",
+          copy: report.detail || "No enterprise admin summary available.",
+          stats: [
+            { label: "Organization", value: organization.name || "-", detail: organization.id || "-" },
+            { label: "Approval Policy", value: policy.approval_policy || "-", detail: policy.autonomy_level || "-" },
+            { label: "Browser Policy", value: `${(policy.browser?.allowed_backends || []).length} backend(s)`, detail: policy.browser?.audit_log_path || "-" },
+            { label: "Audit Export", value: policy.audit_export?.export_root || "-", detail: `${policy.audit_export?.recent_event_limit ?? 0} events / ${policy.audit_export?.tool_history_limit ?? 0} tools` },
+            { label: "Active Runs", value: `${supervision.active_run_count ?? 0}`, detail: `${supervision.attention_required_count ?? 0} attention, ${(supervision.escalated_count ?? 0)} escalated` },
+            { label: "Headers", value: access.operator_id_header || "-", detail: report.requires_operator_headers ? "required for protected writes" : "becomes required after bootstrap" },
+          ],
+        }));
+
+        setInputValue("enterprise-bootstrap-org-id", organization.id || "");
+        setInputValue("enterprise-bootstrap-org-name", organization.name || "");
+        setInputValue("enterprise-approval-policy", policy.approval_policy || "");
+        setInputValue("enterprise-browser-backends", (policy.browser?.allowed_backends || []).join(", "));
+        setSelectValue("enterprise-browser-local-cli", policy.browser?.allow_local_cli_wrappers ?? true);
+        setSelectValue("enterprise-browser-cloud-agent", policy.browser?.allow_cloud_agent_execution ?? false);
+        setInputValue("enterprise-browser-env-allowlist", (policy.browser?.command_env_allowlist || []).join(", "));
+        setSelectValue("enterprise-mobile-send-approval", policy.mobile?.send_message_requires_approval ?? true);
+        setSelectValue("enterprise-mobile-push-approval", policy.mobile?.push_notification_requires_approval ?? true);
+        setSelectValue("enterprise-mobile-sync-approval", policy.mobile?.sync_now_requires_approval ?? false);
+        setInputValue("enterprise-audit-export-root", policy.audit_export?.export_root || "");
+        setInputValue("enterprise-audit-event-limit", policy.audit_export?.recent_event_limit ?? "");
+        setInputValue("enterprise-audit-tool-limit", policy.audit_export?.tool_history_limit ?? "");
+        if ((access.operators || []).length && !document.getElementById("enterprise-operator-manage-role").value.trim()) {
+          setInputValue("enterprise-operator-manage-role", "operator");
+        }
+        renderEnterpriseAccess(access);
       }
 
       function renderVoiceOperatorReport(report) {
@@ -2359,8 +2539,40 @@
         renderTableRows("mobile-command-events-detail", rows, "No mobile command events loaded yet.");
       }
 
+      function enterpriseOperatorHeaders() {
+        const headers = {};
+        if (enterpriseOperatorState.id) {
+          headers["x-openrustclaw-operator-id"] = enterpriseOperatorState.id;
+        }
+        if (enterpriseOperatorState.token) {
+          headers["x-openrustclaw-operator-token"] = enterpriseOperatorState.token;
+        }
+        return headers;
+      }
+
+      function populateEnterpriseCredentialInputs() {
+        setInputValue("enterprise-operator-id", enterpriseOperatorState.id);
+        setInputValue("enterprise-operator-token", enterpriseOperatorState.token);
+      }
+
+      function rememberEnterpriseOperatorCredentials(id, token) {
+        enterpriseOperatorState.id = id || "";
+        enterpriseOperatorState.token = token || "";
+        if (enterpriseOperatorState.id) {
+          window.localStorage.setItem("openrustclawEnterpriseOperatorId", enterpriseOperatorState.id);
+        } else {
+          window.localStorage.removeItem("openrustclawEnterpriseOperatorId");
+        }
+        if (enterpriseOperatorState.token) {
+          window.localStorage.setItem("openrustclawEnterpriseOperatorToken", enterpriseOperatorState.token);
+        } else {
+          window.localStorage.removeItem("openrustclawEnterpriseOperatorToken");
+        }
+        populateEnterpriseCredentialInputs();
+      }
+
       function controlHeaders(extraHeaders = {}) {
-        const headers = { ...extraHeaders };
+        const headers = { ...enterpriseOperatorHeaders(), ...extraHeaders };
         if (!headers["content-type"]) {
           headers["content-type"] = "application/json";
         }
@@ -2455,6 +2667,128 @@
       async function loadEnterpriseAccess() {
         const payload = await fetchJson("/control/enterprise/access");
         renderEnterpriseAccess(payload);
+      }
+
+      async function loadEnterpriseAdmin() {
+        const payload = await fetchJson("/control/enterprise/admin");
+        renderEnterpriseAdmin(payload);
+      }
+
+      async function refreshEnterpriseAdminSurfaces() {
+        await Promise.all([
+          loadEnterpriseAdmin(),
+          loadEnterpriseFoundations(),
+          loadEnterpriseAccess(),
+          loadActiveOrchestrationRuns(),
+        ]);
+      }
+
+      async function saveEnterpriseOperatorHeaders() {
+        rememberEnterpriseOperatorCredentials(
+          document.getElementById("enterprise-operator-id").value.trim(),
+          document.getElementById("enterprise-operator-token").value.trim(),
+        );
+        setText("enterprise-admin-result", {
+          status: "ok",
+          detail: enterpriseOperatorState.id
+            ? `Saved enterprise operator headers for ${enterpriseOperatorState.id}.`
+            : "Cleared enterprise operator headers.",
+        });
+      }
+
+      async function clearEnterpriseOperatorHeaders() {
+        rememberEnterpriseOperatorCredentials("", "");
+        setText("enterprise-admin-result", {
+          status: "ok",
+          detail: "Cleared enterprise operator headers.",
+        });
+      }
+
+      async function bootstrapEnterpriseAccess() {
+        const organizationId = document.getElementById("enterprise-bootstrap-org-id").value.trim();
+        const organizationName = document.getElementById("enterprise-bootstrap-org-name").value.trim();
+        const ownerId = document.getElementById("enterprise-bootstrap-owner-id").value.trim();
+        const ownerToken = document.getElementById("enterprise-bootstrap-owner-token").value.trim();
+        if (!organizationId || !organizationName || !ownerId || !ownerToken) {
+          throw new Error("Bootstrap requires organization id, organization name, owner id, and owner token");
+        }
+        const result = await fetchJson("/control/enterprise/access/bootstrap", {
+          method: "POST",
+          body: JSON.stringify({
+            organization_id: organizationId,
+            organization_name: organizationName,
+            owner_id: ownerId,
+            owner_name: document.getElementById("enterprise-bootstrap-owner-name").value.trim() || null,
+            owner_email: document.getElementById("enterprise-bootstrap-owner-email").value.trim() || null,
+            owner_token: ownerToken,
+          }),
+        });
+        rememberEnterpriseOperatorCredentials(ownerId, ownerToken);
+        setText("enterprise-admin-result", result);
+        document.getElementById("enterprise-bootstrap-owner-token").value = "";
+        await refreshEnterpriseAdminSurfaces();
+      }
+
+      async function upsertEnterpriseOperator() {
+        const id = document.getElementById("enterprise-operator-manage-id").value.trim();
+        const role = document.getElementById("enterprise-operator-manage-role").value.trim();
+        const token = document.getElementById("enterprise-operator-manage-token").value.trim();
+        if (!id || !role || !token) {
+          throw new Error("Operator upsert requires operator id, role, and token");
+        }
+        const result = await fetchJson("/control/enterprise/access/operators", {
+          method: "POST",
+          body: JSON.stringify({
+            id,
+            name: document.getElementById("enterprise-operator-manage-name").value.trim() || null,
+            email: document.getElementById("enterprise-operator-manage-email").value.trim() || null,
+            role,
+            token,
+            scopes: splitCsvValues(document.getElementById("enterprise-operator-manage-scopes").value),
+            active: parseBooleanSelect("enterprise-operator-manage-active"),
+          }),
+        });
+        setText("enterprise-admin-result", result);
+        document.getElementById("enterprise-operator-manage-token").value = "";
+        await refreshEnterpriseAdminSurfaces();
+      }
+
+      async function updateEnterprisePolicy() {
+        const result = await fetchJson("/control/enterprise/policy", {
+          method: "PUT",
+          body: JSON.stringify({
+            approval_policy: document.getElementById("enterprise-approval-policy").value.trim() || null,
+            browser: {
+              allowed_backends: splitCsvValues(document.getElementById("enterprise-browser-backends").value),
+              allow_local_cli_wrappers: parseBooleanSelect("enterprise-browser-local-cli"),
+              allow_cloud_agent_execution: parseBooleanSelect("enterprise-browser-cloud-agent"),
+              command_env_allowlist: splitCsvValues(document.getElementById("enterprise-browser-env-allowlist").value),
+            },
+            mobile: {
+              send_message_requires_approval: parseBooleanSelect("enterprise-mobile-send-approval"),
+              push_notification_requires_approval: parseBooleanSelect("enterprise-mobile-push-approval"),
+              sync_now_requires_approval: parseBooleanSelect("enterprise-mobile-sync-approval"),
+            },
+            audit_export: {
+              export_root: document.getElementById("enterprise-audit-export-root").value.trim() || null,
+              recent_event_limit: parseNumberInput("enterprise-audit-event-limit"),
+              tool_history_limit: parseNumberInput("enterprise-audit-tool-limit"),
+            },
+          }),
+        });
+        setText("enterprise-admin-result", result);
+        await refreshEnterpriseAdminSurfaces();
+      }
+
+      async function exportEnterpriseAuditBundle() {
+        const result = await fetchJson("/control/enterprise/audit/export", {
+          method: "POST",
+          body: JSON.stringify({
+            note: document.getElementById("enterprise-audit-export-note").value.trim() || null,
+          }),
+        });
+        setText("enterprise-admin-result", result);
+        await refreshEnterpriseAdminSurfaces();
       }
 
       async function scanRuntimeHealth() {
@@ -4697,6 +5031,7 @@
             loadRuntimeReloadPlan(),
             loadSecurityPosture(),
             loadEnterpriseFoundations(),
+            loadEnterpriseAdmin(),
             loadEnterpriseAccess(),
             loadVaultStatus(),
             loadSchedulerStatus(),
@@ -5043,6 +5378,55 @@
           await loadChannelProbes(true);
         } catch (error) {
           renderTableRows("channel-probes", [], error.message);
+        }
+      });
+      document.getElementById("enterprise-credentials-save").addEventListener("click", async () => {
+        try {
+          await saveEnterpriseOperatorHeaders();
+        } catch (error) {
+          setText("enterprise-admin-result", { error: error.message });
+        }
+      });
+      document.getElementById("enterprise-credentials-clear").addEventListener("click", async () => {
+        try {
+          await clearEnterpriseOperatorHeaders();
+        } catch (error) {
+          setText("enterprise-admin-result", { error: error.message });
+        }
+      });
+      document.getElementById("enterprise-admin-refresh").addEventListener("click", async () => {
+        try {
+          await refreshEnterpriseAdminSurfaces();
+        } catch (error) {
+          setText("enterprise-admin-result", { error: error.message });
+        }
+      });
+      document.getElementById("enterprise-bootstrap-submit").addEventListener("click", async () => {
+        try {
+          await bootstrapEnterpriseAccess();
+        } catch (error) {
+          setText("enterprise-admin-result", { error: error.message });
+        }
+      });
+      document.getElementById("enterprise-operator-manage-submit").addEventListener("click", async () => {
+        try {
+          await upsertEnterpriseOperator();
+        } catch (error) {
+          setText("enterprise-admin-result", { error: error.message });
+        }
+      });
+      document.getElementById("enterprise-policy-update").addEventListener("click", async () => {
+        try {
+          await updateEnterprisePolicy();
+        } catch (error) {
+          setText("enterprise-admin-result", { error: error.message });
+        }
+      });
+      document.getElementById("enterprise-audit-export").addEventListener("click", async () => {
+        try {
+          await exportEnterpriseAuditBundle();
+        } catch (error) {
+          setText("enterprise-admin-result", { error: error.message });
         }
       });
       document.getElementById("voice-status-refresh").addEventListener("click", async () => {
@@ -5748,6 +6132,7 @@
       window.prefillSkillInstall = prefillSkillInstall;
       window.inspectMobileNode = inspectMobileNode;
 
+      populateEnterpriseCredentialInputs();
       refreshAll();
       setInterval(() => {
         loadActiveOrchestrationRuns().catch(() => {});

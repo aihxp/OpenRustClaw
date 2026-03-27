@@ -91,8 +91,8 @@ use super::talk;
 use super::voice_runtime;
 use super::voice_runtime::InboundVoiceTranscriber;
 use super::{
-    assistant, browser, control, control_ui, doctor, enterprise_access, enterprise_policy,
-    inspect, logs, mobile, orchestrate, runtime, security, services, skills, tools,
+    assistant, browser, control, control_ui, doctor, enterprise_access, enterprise_policy, inspect,
+    logs, mobile, orchestrate, runtime, security, services, skills, tools,
 };
 
 /// Run the start command - load config, optionally start the compatibility/experimental sidecar, and start the gateway.
@@ -3018,6 +3018,7 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             get(runtime_operator_ops_handler),
         )
         .route("/control/enterprise/access", get(enterprise_access_handler))
+        .route("/control/enterprise/admin", get(enterprise_admin_handler))
         .route(
             "/control/enterprise/access/bootstrap",
             post(enterprise_access_bootstrap_handler),
@@ -7060,6 +7061,17 @@ async fn enterprise_access_handler(State(state): State<RuntimeControlState>) -> 
     }
 }
 
+async fn enterprise_admin_handler(State(state): State<RuntimeControlState>) -> impl IntoResponse {
+    match inspect::enterprise_admin_summary(&state.workspace_root, &state.config_path) {
+        Ok(summary) => (StatusCode::OK, Json(serde_json::json!(summary))).into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
 async fn enterprise_access_bootstrap_handler(
     State(state): State<RuntimeControlState>,
     Json(payload): Json<EnterpriseAccessBootstrapPayload>,
@@ -7137,8 +7149,8 @@ async fn enterprise_foundations_handler(
         Err(error) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({"error": error.to_string()})),
-            )
-                .into_response(),
+        )
+            .into_response(),
     }
 }
 
@@ -7158,7 +7170,8 @@ async fn enterprise_policy_update_handler(
     Json(payload): Json<enterprise_policy::EnterprisePolicyUpdateRequest>,
 ) -> impl IntoResponse {
     let started_at = std::time::Instant::now();
-    let result = enterprise_policy::update_policy(&state.workspace_root, &state.config_path, payload);
+    let result =
+        enterprise_policy::update_policy(&state.workspace_root, &state.config_path, payload);
     record_operator_tool_result("enterprise.policy.update", started_at, &result);
     match result {
         Ok(summary) => (StatusCode::OK, Json(serde_json::json!(summary))).into_response(),
@@ -7175,7 +7188,8 @@ async fn enterprise_audit_export_handler(
     Json(payload): Json<enterprise_policy::EnterpriseAuditExportRequest>,
 ) -> impl IntoResponse {
     let started_at = std::time::Instant::now();
-    let result = enterprise_policy::export_audit_bundle(&state.workspace_root, &state.config_path, payload);
+    let result =
+        enterprise_policy::export_audit_bundle(&state.workspace_root, &state.config_path, payload);
     record_operator_tool_result("enterprise.audit.export", started_at, &result);
     match result {
         Ok(summary) => (StatusCode::OK, Json(serde_json::json!(summary))).into_response(),
@@ -12619,7 +12633,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn enterprise_access_middleware_blocks_enterprise_policy_write_without_operator_headers() {
+    async fn enterprise_access_middleware_blocks_enterprise_policy_write_without_operator_headers()
+    {
         let temp = tempdir().expect("tempdir");
         enterprise_access::bootstrap_manifest(
             temp.path(),
@@ -12635,7 +12650,10 @@ mod tests {
         .expect("bootstrap enterprise access");
 
         let app = protect_enterprise_router(
-            Router::new().route("/control/enterprise/policy", put(|| async { StatusCode::OK })),
+            Router::new().route(
+                "/control/enterprise/policy",
+                put(|| async { StatusCode::OK }),
+            ),
             EnterpriseAccessState {
                 workspace_root: temp.path().to_path_buf(),
             },

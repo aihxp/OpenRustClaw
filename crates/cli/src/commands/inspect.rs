@@ -12,7 +12,10 @@ use std::fs::{self, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 
-use super::{browser, control, enterprise_access, mobile, skills, talk, voice_runtime};
+use super::{
+    browser, control, enterprise_access, enterprise_policy, mobile, orchestrate, skills, talk,
+    voice_runtime,
+};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct AssistantContinuitySummary {
@@ -204,6 +207,26 @@ pub struct EnterpriseAccessReport {
     pub operators: Vec<EnterpriseAccessOperatorSummary>,
     pub role_grants: Vec<EnterpriseRoleGrantSummary>,
     pub protected_routes: Vec<enterprise_access::EnterpriseProtectedRoute>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct EnterpriseAdminSupervisionSummary {
+    pub active_run_count: usize,
+    pub attention_required_count: usize,
+    pub escalated_count: usize,
+    pub rollback_requested_count: usize,
+    pub route_hint: String,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct EnterpriseAdminReport {
+    pub status: String,
+    pub detail: String,
+    pub requires_operator_headers: bool,
+    pub access: EnterpriseAccessReport,
+    pub policy: enterprise_policy::EnterprisePolicyReport,
+    pub supervision: EnterpriseAdminSupervisionSummary,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -891,6 +914,83 @@ pub fn enterprise_access_summary(workspace_root: &Path) -> Result<EnterpriseAcce
     })
 }
 
+pub fn enterprise_admin_summary(
+    workspace_root: &Path,
+    config_path: &str,
+) -> Result<EnterpriseAdminReport> {
+    let access = enterprise_access_summary(workspace_root)?;
+    let policy = enterprise_policy::summary(workspace_root, config_path)?;
+    let active_runs = orchestrate::list_active_runs(workspace_root, true, 20)?;
+    let attention_required_count = active_runs
+        .iter()
+        .filter(|run| {
+            run.lifecycle.intervention_required
+                || run.pause_requested
+                || run.kill_requested
+                || run.last_error.is_some()
+                || run.lifecycle.state != "active"
+        })
+        .count();
+    let escalated_count = active_runs
+        .iter()
+        .filter(|run| run.lifecycle.escalation_requested || run.lifecycle.state == "escalated")
+        .count();
+    let rollback_requested_count = active_runs
+        .iter()
+        .filter(|run| {
+            run.lifecycle.rollback_requested || run.lifecycle.state == "rollback_requested"
+        })
+        .count();
+
+    let supervision = EnterpriseAdminSupervisionSummary {
+        active_run_count: active_runs.len(),
+        attention_required_count,
+        escalated_count,
+        rollback_requested_count,
+        route_hint: "/control/ui".to_string(),
+        detail: if active_runs.is_empty() {
+            "No active supervised orchestration runs currently need enterprise operator attention."
+                .to_string()
+        } else {
+            format!(
+                "{} active supervised run(s), {} needing attention, {} escalated, {} waiting on rollback handling.",
+                active_runs.len(),
+                attention_required_count,
+                escalated_count,
+                rollback_requested_count
+            )
+        },
+    };
+
+    let requires_operator_headers = access.explicit_identity_required;
+    let detail = if requires_operator_headers {
+        format!(
+            "Enterprise admin is live for organization `{}` with {} operator(s). Use `/control/ui` with the scoped operator headers to manage policy, identity, audit export, and supervised-runtime controls from one shipped surface.",
+            access
+                .organization
+                .as_ref()
+                .map(|value| value.id.as_str())
+                .unwrap_or("-"),
+            access.operators.len()
+        )
+    } else {
+        "Enterprise admin is not bootstrapped yet. Bootstrap enterprise access first, then use the same shipped surface to manage policy, audit export, and supervised-runtime controls under scoped operator identity.".to_string()
+    };
+
+    Ok(EnterpriseAdminReport {
+        status: if requires_operator_headers {
+            "ok".to_string()
+        } else {
+            "bootstrap_required".to_string()
+        },
+        detail,
+        requires_operator_headers,
+        access,
+        policy,
+        supervision,
+    })
+}
+
 pub async fn voice_operator_report_summary(
     config: &AppConfig,
     workspace_root: &Path,
@@ -1406,8 +1506,8 @@ fn build_voice_operator_recent_activity(
 #[cfg(test)]
 mod tests {
     use super::{
-        enterprise_access_summary, enterprise_foundations_summary, new_tool_execution_record,
-        tool_execution_log_path,
+        enterprise_access_summary, enterprise_admin_summary, enterprise_foundations_summary,
+        new_tool_execution_record, tool_execution_log_path,
     };
     use anyhow::Result;
     use chrono::{DateTime, Utc};
@@ -1558,6 +1658,48 @@ mod tests {
         assert!(report.role_grants.iter().any(|entry| {
             entry.role == "admin" && entry.operator_count == 1 && !entry.default_scopes.is_empty()
         }));
+        Ok(())
+    }
+
+    #[test]
+    fn enterprise_admin_summary_combines_access_policy_and_supervision() -> Result<()> {
+        let root = tempdir().expect("tempdir");
+
+        let report = enterprise_admin_summary(root.path(), "config/default.toml")?;
+        assert_eq!(report.status, "bootstrap_required");
+        assert!(!report.requires_operator_headers);
+        assert_eq!(report.policy.approval_policy, "side_effects");
+        assert_eq!(report.supervision.active_run_count, 0);
+        assert_eq!(report.supervision.attention_required_count, 0);
+
+        bootstrap_manifest(
+            root.path(),
+            EnterpriseAccessBootstrapRequest {
+                organization_id: "acme".to_string(),
+                organization_name: "Acme Ops".to_string(),
+                owner_id: "owner-1".to_string(),
+                owner_name: Some("Owner".to_string()),
+                owner_email: None,
+                owner_token: "owner-secret-123".to_string(),
+            },
+        )?;
+
+        let report = enterprise_admin_summary(root.path(), "config/default.toml")?;
+        assert_eq!(report.status, "ok");
+        assert!(report.requires_operator_headers);
+        assert_eq!(
+            report
+                .access
+                .organization
+                .as_ref()
+                .map(|value| value.id.as_str()),
+            Some("acme")
+        );
+        assert!(
+            report
+                .detail
+                .contains("manage policy, identity, audit export, and supervised-runtime controls")
+        );
         Ok(())
     }
 

@@ -131,4 +131,16 @@ mod tests {
         assert!(CONTROL_UI_HTML.contains("function loadEnterpriseAccess"));
         assert!(CONTROL_UI_HTML.contains("function renderEnterpriseAccess"));
     }
+
+    #[test]
+    fn dashboard_includes_enterprise_admin_panel() {
+        assert!(CONTROL_UI_HTML.contains("enterprise-admin"));
+        assert!(CONTROL_UI_HTML.contains("enterprise-admin-result"));
+        assert!(CONTROL_UI_HTML.contains("enterprise-operator-id"));
+        assert!(CONTROL_UI_HTML.contains("function loadEnterpriseAdmin"));
+        assert!(CONTROL_UI_HTML.contains("function renderEnterpriseAdmin"));
+        assert!(CONTROL_UI_HTML.contains("function updateEnterprisePolicy"));
+        assert!(CONTROL_UI_HTML.contains("function exportEnterpriseAuditBundle"));
+        assert!(CONTROL_UI_HTML.contains("function bootstrapEnterpriseAccess"));
+    }
 }
