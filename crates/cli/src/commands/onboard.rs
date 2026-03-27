@@ -1,6 +1,6 @@
 //! Interactive Onboarding Wizard
 
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use chrono::Utc;
 use console::style;
 use dialoguer::{Confirm, Input, MultiSelect, Password, Select, theme::ColorfulTheme};
@@ -10,7 +10,7 @@ use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use tokio::fs;
 
-use super::{channels, control, doctor, runtime, self_hosted};
+use super::{channels, control, doctor, runtime, self_hosted, services};
 use super::{chat, models};
 
 /// Onboarding wizard state
@@ -164,6 +164,17 @@ pub struct SetupState {
     pub next_action: Option<String>,
     #[serde(default)]
     pub current_step: Option<String>,
+    #[serde(default)]
+    pub bootstrap_outcomes: Vec<SetupBootstrapOutcome>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SetupBootstrapOutcome {
+    pub category: String,
+    pub target: String,
+    pub status: String,
+    pub detail: String,
+    pub updated_at: String,
 }
 
 fn default_setup_state_version() -> u32 {
@@ -319,6 +330,7 @@ impl OnboardingWizard {
                         .first()
                         .map(|step| format!("Complete {}", step.name())),
                     current_step: steps.first().map(|step| step.id().to_string()),
+                    bootstrap_outcomes: Vec::new(),
                 },
             },
         )?;
@@ -644,6 +656,14 @@ async fn run_gateway_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
     save_gateway_config(&host, port, &jwt_secret).await?;
 
     wizard.state.gateway_configured = true;
+    let workspace_root = std::env::current_dir()?;
+    record_bootstrap_outcome(
+        &workspace_root,
+        "runtime",
+        "gateway",
+        "ready",
+        format!("Gateway configured for {host}:{port}."),
+    )?;
     println!("✓ Gateway configured on {}:{}", host, port);
     Ok(true)
 }
@@ -667,18 +687,46 @@ async fn run_channel_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
         .default(0)
         .interact()?;
 
-    match selection {
-        0 => setup_telegram(wizard).await?,
-        1 => setup_discord(wizard).await?,
-        2 => setup_slack(wizard).await?,
-        3 => println!("WhatsApp setup requires additional steps. See docs/whatsapp-setup.md"),
+    let platform = match selection {
+        0 => Some(setup_telegram(wizard).await?),
+        1 => Some(setup_discord(wizard).await?),
+        2 => Some(setup_slack(wizard).await?),
+        3 => {
+            let workspace_root = std::env::current_dir()?;
+            record_bootstrap_outcome(
+                &workspace_root,
+                "channel",
+                "whatsapp",
+                "warning",
+                "WhatsApp bootstrap still needs manual setup. Review docs/whatsapp-setup.md before claiming channel readiness.",
+            )?;
+            return Err(anyhow!(
+                "WhatsApp bootstrap is not automated yet. Review docs/whatsapp-setup.md and rerun onboarding after completing the manual steps."
+            ));
+        }
         _ => return Ok(true),
+    };
+
+    if let Some(platform) = platform {
+        let workspace_root = std::env::current_dir()?;
+        let assessment = validate_channel_bootstrap(&workspace_root, platform).await?;
+        record_bootstrap_outcome(
+            &workspace_root,
+            "channel",
+            platform,
+            assessment.status,
+            assessment.detail.clone(),
+        )?;
+        print_bootstrap_assessment(platform, &assessment);
+        if assessment.blocking {
+            return Err(anyhow!(assessment.detail));
+        }
     }
 
     Ok(true)
 }
 
-async fn setup_telegram(wizard: &mut OnboardingWizard) -> Result<()> {
+async fn setup_telegram(wizard: &mut OnboardingWizard) -> Result<&'static str> {
     println!("\nTo set up Telegram:");
     println!("1. Message @BotFather on Telegram");
     println!("2. Create a new bot with /newbot");
@@ -698,12 +746,13 @@ async fn setup_telegram(wizard: &mut OnboardingWizard) -> Result<()> {
         println!("✓ Telegram configured");
     } else {
         println!("⚠️  No token provided, skipping Telegram setup");
+        return Err(anyhow!("Telegram setup was skipped because no token was provided."));
     }
 
-    Ok(())
+    Ok("telegram")
 }
 
-async fn setup_discord(wizard: &mut OnboardingWizard) -> Result<()> {
+async fn setup_discord(wizard: &mut OnboardingWizard) -> Result<&'static str> {
     println!("\nTo set up Discord:");
     println!("1. Go to https://discord.com/developers/applications");
     println!("2. Create a New Application");
@@ -720,12 +769,13 @@ async fn setup_discord(wizard: &mut OnboardingWizard) -> Result<()> {
         println!("✓ Discord configured");
     } else {
         println!("⚠️  No token provided, skipping Discord setup");
+        return Err(anyhow!("Discord setup was skipped because no bot token was provided."));
     }
 
-    Ok(())
+    Ok("discord")
 }
 
-async fn setup_slack(wizard: &mut OnboardingWizard) -> Result<()> {
+async fn setup_slack(wizard: &mut OnboardingWizard) -> Result<&'static str> {
     println!("\nTo set up Slack:");
     println!("1. Go to https://api.slack.com/apps");
     println!("2. Create a New App from scratch");
@@ -742,9 +792,10 @@ async fn setup_slack(wizard: &mut OnboardingWizard) -> Result<()> {
         println!("✓ Slack configured");
     } else {
         println!("⚠️  No token provided, skipping Slack setup");
+        return Err(anyhow!("Slack setup was skipped because no bot token was provided."));
     }
 
-    Ok(())
+    Ok("slack")
 }
 
 // ============================================================================
@@ -782,6 +833,28 @@ async fn run_model_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
             )?;
             wizard.state.model_configured = true;
             wizard.state.preferred_provider = Some("ollama".to_string());
+            let provider_assessment = validate_provider_bootstrap(&workspace_root, "ollama").await?;
+            record_bootstrap_outcome(
+                &workspace_root,
+                "provider",
+                "ollama",
+                provider_assessment.status,
+                provider_assessment.detail.clone(),
+            )?;
+            print_bootstrap_assessment("ollama", &provider_assessment);
+            let runtime_assessment =
+                runtime_lane_assessment(&workspace_root, wizard.state.deployment_mode.as_deref()).await?;
+            record_bootstrap_outcome(
+                &workspace_root,
+                "runtime",
+                "control_plane_lane",
+                runtime_assessment.status,
+                runtime_assessment.detail.clone(),
+            )?;
+            print_bootstrap_assessment("control-plane lane", &runtime_assessment);
+            if provider_assessment.blocking {
+                return Err(anyhow!(provider_assessment.detail));
+            }
             println!("✓ Model configured (Ollama - local)");
             return Ok(true);
         }
@@ -805,6 +878,28 @@ async fn run_model_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
         )?;
         wizard.state.model_configured = true;
         wizard.state.preferred_provider = Some(provider_name.to_string());
+        let provider_assessment = validate_provider_bootstrap(&workspace_root, provider_name).await?;
+        record_bootstrap_outcome(
+            &workspace_root,
+            "provider",
+            provider_name,
+            provider_assessment.status,
+            provider_assessment.detail.clone(),
+        )?;
+        print_bootstrap_assessment(provider_name, &provider_assessment);
+        let runtime_assessment =
+            runtime_lane_assessment(&workspace_root, wizard.state.deployment_mode.as_deref()).await?;
+        record_bootstrap_outcome(
+            &workspace_root,
+            "runtime",
+            "control_plane_lane",
+            runtime_assessment.status,
+            runtime_assessment.detail.clone(),
+        )?;
+        print_bootstrap_assessment("control-plane lane", &runtime_assessment);
+        if provider_assessment.blocking {
+            return Err(anyhow!(provider_assessment.detail));
+        }
         println!("✓ Model configured ({provider_name})");
         println!(
             "  Control-plane actions will prefer the dedicated fallback lane in config/default.toml"
@@ -875,9 +970,22 @@ async fn run_control_plane_setup(wizard: &mut OnboardingWizard) -> Result<bool> 
     )?;
 
     wizard.state.execution_mode = Some(mode.to_string());
+    let workspace_root = std::env::current_dir()?;
+    let assessment = validate_execution_mode_bootstrap(&workspace_root, mode, wizard.state.deployment_mode.as_deref())?;
+    record_bootstrap_outcome(
+        &workspace_root,
+        "runtime",
+        "execution_mode",
+        assessment.status,
+        assessment.detail.clone(),
+    )?;
+    print_bootstrap_assessment("runtime mode", &assessment);
     println!("✓ Control-plane registry initialized at .claw/control/");
     println!("✓ Runtime mode configured as {mode}");
     println!("  Inspect: openrustclaw control describe");
+    if assessment.blocking {
+        return Err(anyhow!(assessment.detail));
+    }
     Ok(true)
 }
 
@@ -1055,6 +1163,7 @@ where
             blockers: Vec::new(),
             next_action: None,
             current_step: None,
+            bootstrap_outcomes: Vec::new(),
         },
     });
     mutator(&mut manifest.setup);
@@ -1125,6 +1234,208 @@ fn finalize_setup_state(workspace_root: &Path, readiness: &doctor::FirstStartRea
                     .to_string());
         }
     })
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct BootstrapAssessment {
+    status: &'static str,
+    detail: String,
+    blocking: bool,
+}
+
+fn print_bootstrap_assessment(target: &str, assessment: &BootstrapAssessment) {
+    let label = match assessment.status {
+        "ready" => "✓",
+        "warning" => "⚠",
+        _ => "✗",
+    };
+    println!("  {label} {} bootstrap: {}", target, assessment.detail);
+}
+
+fn record_bootstrap_outcome(
+    workspace_root: &Path,
+    category: &str,
+    target: &str,
+    status: &str,
+    detail: impl Into<String>,
+) -> Result<()> {
+    let detail = detail.into();
+    with_setup_state_mut(workspace_root, |setup| {
+        let outcome = SetupBootstrapOutcome {
+            category: category.to_string(),
+            target: target.to_string(),
+            status: status.to_string(),
+            detail,
+            updated_at: Utc::now().to_rfc3339(),
+        };
+        if let Some(existing) = setup
+            .bootstrap_outcomes
+            .iter_mut()
+            .find(|existing| existing.category == category && existing.target == target)
+        {
+            *existing = outcome;
+        } else {
+            setup.bootstrap_outcomes.push(outcome);
+        }
+    })
+}
+
+#[cfg(test)]
+fn bootstrap_outcome_for<'a>(
+    setup: &'a SetupState,
+    category: &str,
+    target: &str,
+) -> Option<&'a SetupBootstrapOutcome> {
+    setup.bootstrap_outcomes.iter().find(|outcome| {
+        outcome.category == category && outcome.target == target
+    })
+}
+
+async fn validate_provider_bootstrap(
+    workspace_root: &Path,
+    provider_name: &str,
+) -> Result<BootstrapAssessment> {
+    let report = runtime::runtime_health_status("config/default.toml", workspace_root, true).await?;
+    let Some(entry) = report.providers.iter().find(|entry| entry.provider == provider_name) else {
+        return Ok(BootstrapAssessment {
+            status: "blocked",
+            detail: format!(
+                "Runtime health did not return a `{provider_name}` provider entry after setup."
+            ),
+            blocking: true,
+        });
+    };
+
+    if entry.healthy {
+        Ok(BootstrapAssessment {
+            status: "ready",
+            detail: format!(
+                "Provider `{provider_name}` is reachable with model `{}`.",
+                entry.model
+            ),
+            blocking: false,
+        })
+    } else {
+        Ok(BootstrapAssessment {
+            status: "blocked",
+            detail: format!(
+                "Provider `{provider_name}` is configured but not ready: {}",
+                entry
+                    .issue
+                    .clone()
+                    .unwrap_or_else(|| "health probe failed".to_string())
+            ),
+            blocking: true,
+        })
+    }
+}
+
+async fn runtime_lane_assessment(
+    workspace_root: &Path,
+    deployment_mode: Option<&str>,
+) -> Result<BootstrapAssessment> {
+    let report = runtime::runtime_health_status("config/default.toml", workspace_root, true).await?;
+    if report.degraded_control_plane_mode {
+        return Ok(BootstrapAssessment {
+            status: "warning",
+            detail: report
+                .failover_recommendations
+                .first()
+                .cloned()
+                .or_else(|| report.operator_warnings.first().cloned())
+                .unwrap_or_else(|| {
+                    "No healthy control-plane fallback is available yet for the current runtime lane.".to_string()
+                }),
+            blocking: false,
+        });
+    }
+
+    let mode_label = deployment_mode.unwrap_or(self_hosted::MODE_SOLO);
+    Ok(BootstrapAssessment {
+        status: "ready",
+        detail: format!(
+            "Runtime provider lane is healthy for the current `{mode_label}` deployment path."
+        ),
+        blocking: false,
+    })
+}
+
+fn validate_execution_mode_bootstrap(
+    workspace_root: &Path,
+    execution_mode: &str,
+    deployment_mode: Option<&str>,
+) -> Result<BootstrapAssessment> {
+    let registry = control::load_registry(control::control_root_for(workspace_root))?;
+    let Some(runtime_spec) = registry.runtime else {
+        return Ok(BootstrapAssessment {
+            status: "blocked",
+            detail: "Control-plane runtime registry was not written during setup.".to_string(),
+            blocking: true,
+        });
+    };
+
+    let deployment_mode = deployment_mode.unwrap_or(self_hosted::MODE_SOLO);
+    let descriptor = self_hosted::descriptor_for(deployment_mode)?;
+    if runtime_spec.mode == descriptor.recommended_runtime_mode {
+        Ok(BootstrapAssessment {
+            status: "ready",
+            detail: format!(
+                "Execution mode `{}` matches the recommended runtime shape for the {} deployment path.",
+                runtime_spec.mode, descriptor.label
+            ),
+            blocking: false,
+        })
+    } else if runtime_spec.mode == execution_mode {
+        Ok(BootstrapAssessment {
+            status: "warning",
+            detail: format!(
+                "Execution mode `{}` was saved successfully, but the {} deployment path recommends `{}` as the initial runtime shape.",
+                runtime_spec.mode, descriptor.label, descriptor.recommended_runtime_mode
+            ),
+            blocking: false,
+        })
+    } else {
+        Ok(BootstrapAssessment {
+            status: "blocked",
+            detail: format!(
+                "Control-plane runtime registry saved `{}` instead of the selected `{execution_mode}` mode.",
+                runtime_spec.mode
+            ),
+            blocking: true,
+        })
+    }
+}
+
+async fn validate_channel_bootstrap(
+    workspace_root: &Path,
+    platform: &str,
+) -> Result<BootstrapAssessment> {
+    let report = services::channel_probes_status("config/default.toml", workspace_root, true).await?;
+    let Some(entry) = report.entries.iter().find(|entry| entry.platform == platform) else {
+        return Ok(BootstrapAssessment {
+            status: "blocked",
+            detail: format!("No `{platform}` channel probe result was produced after setup."),
+            blocking: true,
+        });
+    };
+
+    match entry.status {
+        services::ChannelProbeStatus::Ready => Ok(BootstrapAssessment {
+            status: "ready",
+            detail: entry.detail.clone(),
+            blocking: false,
+        }),
+        services::ChannelProbeStatus::Warning => Ok(BootstrapAssessment {
+            status: "warning",
+            detail: entry.detail.clone(),
+            blocking: true,
+        }),
+        services::ChannelProbeStatus::Failed => Ok(BootstrapAssessment {
+            status: "blocked",
+            detail: entry.detail.clone(),
+            blocking: true,
+        }),
+    }
 }
 
 async fn save_gateway_config(host: &str, port: u16, jwt_secret: &str) -> Result<()> {
@@ -1628,6 +1939,7 @@ mod tests {
                 blockers: Vec::new(),
                 next_action: Some("Complete AI Model Setup".to_string()),
                 current_step: Some("model".to_string()),
+                bootstrap_outcomes: Vec::new(),
             },
         };
 
@@ -1638,6 +1950,78 @@ mod tests {
         let steps = selected_steps_from_setup_state(&loaded.setup);
         assert_eq!(steps.len(), 1);
         assert_eq!(steps[0].id(), "model");
+    }
+
+    #[test]
+    fn test_record_bootstrap_outcome_replaces_existing_entry() {
+        let dir = tempfile::tempdir().unwrap();
+        record_bootstrap_outcome(
+            dir.path(),
+            "provider",
+            "anthropic",
+            "warning",
+            "initial warning",
+        )
+        .unwrap();
+        record_bootstrap_outcome(
+            dir.path(),
+            "provider",
+            "anthropic",
+            "ready",
+            "provider reachable",
+        )
+        .unwrap();
+
+        let loaded = load_setup_state(dir.path()).unwrap().unwrap();
+        assert_eq!(loaded.setup.bootstrap_outcomes.len(), 1);
+        let outcome =
+            bootstrap_outcome_for(&loaded.setup, "provider", "anthropic").unwrap();
+        assert_eq!(outcome.status, "ready");
+        assert_eq!(outcome.detail, "provider reachable");
+    }
+
+    #[test]
+    fn test_validate_execution_mode_bootstrap_warns_on_non_recommended_mode() {
+        let dir = tempfile::tempdir().unwrap();
+        let control_root = control::control_root_for(dir.path());
+        let control_root_str = control_root.display().to_string();
+        self_hosted::configure_mode(
+            dir.path(),
+            self_hosted::MODE_ENTERPRISE,
+            Some("enterprise_governed_setup"),
+            None,
+        )
+        .unwrap();
+        control::init(Some(&control_root_str)).unwrap();
+        control::configure_mode(
+            Some(&control_root_str),
+            "task_assigned",
+            Some("main"),
+            None,
+            false,
+            Some("strict"),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+
+        let assessment = validate_execution_mode_bootstrap(
+            dir.path(),
+            "task_assigned",
+            Some(self_hosted::MODE_ENTERPRISE),
+        )
+        .unwrap();
+        assert_eq!(assessment.status, "warning");
+        assert!(!assessment.blocking);
+        assert!(assessment.detail.contains("recommends `orchestrated`"));
     }
 
     #[test]
