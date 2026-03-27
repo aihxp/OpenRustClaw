@@ -52,10 +52,11 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 - ✓ Self-hosted product modes are now a first-class control-plane contract with a shipped runtime and Control UI summary — v1.5 Phase 24
 - ✓ Onboarding now offers explicit self-hosted deployment paths with mode-aware defaults and first-start diagnostics — v1.5 Phase 25
 - ✓ Product-mode upgrades and downgrades are now durable, warning-aware, and available through the shipped control surface — v1.5 Phase 26
+- ✓ Docs and shipped control surfaces now align around the self-hosted open-source product story, deployment paths, and transition visibility — v1.5 Phase 27
 
 ### Active
 
-- [ ] Keep self-hosted product framing, onboarding, and mode transitions aligned across docs and shipped control surfaces
+- None. v1.5 execution scope is complete and ready for milestone audit.
 
 ### Out of Scope
 

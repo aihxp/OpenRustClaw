@@ -4,17 +4,17 @@ milestone: v1.5
 milestone_name: Self-Hosted Product Modes and Lifecycle Packaging
 current_phase: 27
 current_phase_name: Self-Hosted Product Surface Alignment
-current_plan: Not started
-status: Phase 26 complete; Phase 27 ready
-stopped_at: Phase 26 complete; Phase 27 is ready for discuss and planning.
-last_updated: "2026-03-27T23:45:00.000Z"
-last_activity: 2026-03-27 -- Phase 26 completed
+current_plan: Complete
+status: Phase 27 complete; milestone ready for audit
+stopped_at: Phase 27 complete; v1.5 execution scope is finished and ready for milestone audit.
+last_updated: "2026-03-28T00:15:00.000Z"
+last_activity: 2026-03-27 -- Phase 27 completed
 progress:
   total_phases: 4
-  completed_phases: 3
-  total_plans: 6
-  completed_plans: 6
-  percent: 75
+  completed_phases: 4
+  total_plans: 8
+  completed_plans: 8
+  percent: 100
 ---
 
 # Project State
@@ -24,21 +24,21 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-27)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** Phase 27 - Self-Hosted Product Surface Alignment
+**Current focus:** Milestone lifecycle closeout for v1.5
 
 ## Current Position
 
 Current Phase: 27
 Current Phase Name: Self-Hosted Product Surface Alignment
 Total Phases: 4
-Current Plan: Not started
-Total Plans in Phase: 0
-Status: Phase 26 complete; Phase 27 ready
-Last activity: 2026-03-27 -- Phase 26 completed
+Current Plan: Complete
+Total Plans in Phase: 2
+Status: Phase 27 complete; milestone ready for audit
+Last activity: 2026-03-27 -- Phase 27 completed
 
 Phase: 4 of 4 (Self-Hosted Product Surface Alignment)
-Plan: 0 of 0
-Progress: [███████░░░] 75%
+Plan: 2 of 2
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -102,6 +102,7 @@ Recent decisions affecting current work:
 - Phase 24 now persists the self-hosted product mode as a first-class control-plane contract and exposes it through a shipped runtime and Control UI summary.
 - Phase 25 now makes onboarding choose and persist the deployment path explicitly, and doctor surfaces missing product-mode selection as warning-only first-start context.
 - Phase 26 now exposes durable product-mode upgrade or downgrade transitions with recent receipts and retained-state warnings in the shipped control surface.
+- Phase 27 now aligns the public docs and shipped dashboard wording around the self-hosted open-source product story, explicit deployment paths, and transition visibility.
 
 ### Pending Todos
 
@@ -114,5 +115,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-27 04:44
-Stopped at: Phase 26 complete; Phase 27 is ready for discuss and planning.
+Stopped at: Phase 27 complete; v1.5 execution scope is finished and ready for milestone audit.
 Resume file: None

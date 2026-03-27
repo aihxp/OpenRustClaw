@@ -20,10 +20,10 @@ This milestone makes OpenRustClaw legible as one self-hosted open-source product
 - Integer phases continue across milestones to preserve one linear execution history.
 - Decimal phases are reserved for urgent insertions if roadmap assumptions break.
 
-- [ ] **Phase 24: Self-Hosted Product Modes and Instance Profile Contract** - Define explicit deployment modes and the instance-profile contract behind them.
-- [ ] **Phase 25: Tiered Onboarding and First-Run Paths** - Add differentiated onboarding flows for solo, multi-user team, company, and enterprise installs.
-- [ ] **Phase 26: Upgrade and Downgrade Lifecycle** - Add explicit upgrade and downgrade paths between deployment modes.
-- [ ] **Phase 27: Self-Hosted Product Surface Alignment** - Align docs and shipped operator surfaces around the current mode and transition path.
+- [x] **Phase 24: Self-Hosted Product Modes and Instance Profile Contract** - Define explicit deployment modes and the instance-profile contract behind them.
+- [x] **Phase 25: Tiered Onboarding and First-Run Paths** - Add differentiated onboarding flows for solo, multi-user team, company, and enterprise installs.
+- [x] **Phase 26: Upgrade and Downgrade Lifecycle** - Add explicit upgrade and downgrade paths between deployment modes.
+- [x] **Phase 27: Self-Hosted Product Surface Alignment** - Align docs and shipped operator surfaces around the current mode and transition path.
 
 ### Phase Details
 
@@ -74,10 +74,9 @@ Plans:
   1. Docs and shipped control surfaces consistently present OpenRustClaw as a self-hosted open-source product.
   2. The current deployment mode and transition path are visible from operator-facing surfaces.
   3. The milestone closes with a truthful product-mode baseline rather than disconnected docs and setup behavior.
-**Plans**: TBD
-
-Plans:
-- [ ] TBD (run `$gsd-plan-phase 27` to break down)
+**Plans**:
+- [x] 27-01 Align public self-hosted product docs
+- [x] 27-02 Tighten self-hosted control surface copy
 
 ## Progress
 
@@ -86,12 +85,12 @@ Plans:
 | 24. Self-Hosted Product Modes and Instance Profile Contract | 2/2 | Complete | 2026-03-27 |
 | 25. Tiered Onboarding and First-Run Paths | 2/2 | Complete | 2026-03-27 |
 | 26. Upgrade and Downgrade Lifecycle | 2/2 | Complete | 2026-03-27 |
-| 27. Self-Hosted Product Surface Alignment | 0/TBD | Not started | - |
+| 27. Self-Hosted Product Surface Alignment | 2/2 | Complete | 2026-03-27 |
 
 ## Current Status
 
 - Active milestone: v1.5 Self-Hosted Product Modes and Lifecycle Packaging
-- Next step: `$gsd-discuss-phase 27` or `$gsd-plan-phase 27`
+- Next step: milestone audit and archive lifecycle
 - Archived milestone planning artifacts live under `.planning/milestones/`.
 
 ## Phase History

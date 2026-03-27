@@ -22,7 +22,7 @@
 
 ### Product and Operator Surface Alignment
 
-- [ ] **SURF-01**: Docs and shipped control surfaces consistently describe the product as self-hosted open-source and reflect the current deployment mode plus transition path.
+- [x] **SURF-01**: Docs and shipped control surfaces consistently describe the product as self-hosted open-source and reflect the current deployment mode plus transition path.
 
 ## v1.6+ Requirements
 
@@ -60,7 +60,7 @@
 | ONBR-02 | Phase 25 | Complete |
 | LIFE-01 | Phase 26 | Complete |
 | LIFE-02 | Phase 26 | Complete |
-| SURF-01 | Phase 27 | Pending |
+| SURF-01 | Phase 27 | Complete |
 
 **Coverage:**
 - v1.5 requirements: 7 total
