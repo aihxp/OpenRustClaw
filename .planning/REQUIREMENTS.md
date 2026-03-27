@@ -1,30 +1,26 @@
 # Requirements: OpenRustClaw
 
-**Defined:** 2026-03-27
+**Defined:** 2026-03-28
 **Core Value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
 
-## v1.5 Requirements
+## v1.6 Requirements
 
-### Self-Hosted Product Modes
+### Setup State and Recovery
 
-- [x] **MODE-01**: OpenRustClaw is framed explicitly as a self-hosted open-source product for solo, multi-user team, company, and enterprise deployments.
-- [x] **MODE-02**: Deployment mode is modeled as a first-class instance profile rather than implied by scattered docs or enterprise toggles.
+- [ ] **SETUP-01**: Onboarding persists a resumable setup-state contract that records deployment path, completed steps, current blockers, and the next recommended action.
+- [ ] **SETUP-02**: Existing or partially configured workspaces can re-enter setup through explicit resume, repair, or reset-with-backup paths instead of manual state edits.
 
-### Tiered Onboarding
+### Provider, Runtime, and Channel Bootstrap
 
-- [x] **ONBR-01**: First-run setup offers differentiated paths for solo, multi-user team, company, and enterprise installs instead of one flat onboarding flow.
-- [x] **ONBR-02**: Each onboarding path explains the mode-specific trust boundary, required setup steps, and recommended defaults truthfully.
+- [ ] **BOOT-01**: Setup drives the core provider, model, runtime, and control-plane configuration to a truthful ready or blocked state for the selected deployment mode.
+- [ ] **BOOT-02**: Setup can validate and, where supported, bootstrap key runtime or channel surfaces before claiming the workspace is ready.
 
-### Upgrade and Downgrade Lifecycle
+### Operator Handoff and Visibility
 
-- [x] **LIFE-01**: Operators can upgrade between product modes without ambiguous state transitions or hidden policy drift.
-- [x] **LIFE-02**: Operators can downgrade between product modes with explicit handling for permissions, governance, and retained data implications.
+- [ ] **HANDOFF-01**: Setup ends with an explicit ready, blocked, or degraded handoff summary rather than a vague success message.
+- [ ] **HANDOFF-02**: Docs and shipped operator surfaces consistently reflect setup progress, unresolved blockers, and the next action after onboarding.
 
-### Product and Operator Surface Alignment
-
-- [x] **SURF-01**: Docs and shipped control surfaces consistently describe the product as self-hosted open-source and reflect the current deployment mode plus transition path.
-
-## v1.6+ Requirements
+## v1.7+ Requirements
 
 ### Broader Enterprise Expansion
 
@@ -39,34 +35,33 @@
 
 ### Additional Parity
 
-- [ ] **PAR-01**: Remaining OpenClaw surfaces can deepen further without weakening the enterprise and autonomy contract.
+- [ ] **PAR-01**: Remaining OpenClaw surfaces can deepen further without weakening the enterprise, autonomy, and self-hosted product contract.
 
 ## Out of Scope
 
 | Feature | Reason |
 |---------|--------|
-| Hosted SaaS packaging, billing, or commercial licensing workflows in this milestone | The current request is about self-hosted mode clarity and lifecycle, not hosted commercialization |
-| Full enterprise IAM, SCIM, and tenant-aware RBAC implementation in the same milestone | Larger than the focused product-mode and onboarding slice |
-| Automatic in-place migrations for every future mode change with no operator review | Upgrade and downgrade paths should be explicit and operator-auditable first |
-| Silent or default-on full-autonomy mode for all installs | The self-hosted mode system should not weaken the operator-gated trust contract already established |
+| Hosted SaaS onboarding, billing, or commercial account packaging in this milestone | The goal is to improve self-hosted onboarding and setup, not add a hosted product |
+| Deep enterprise IAM, SCIM, or tenant-aware RBAC implementation in the same milestone | Larger than the setup hardening lane |
+| Full autonomous setup that mutates all runtime surfaces without operator review | Setup still needs explicit trust boundaries and truthful readiness checks |
+| Broad new assistant or channel feature families unrelated to onboarding or setup | This milestone is convergence work on the first-install path |
 
 ## Traceability
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| MODE-01 | Phase 24 | Complete |
-| MODE-02 | Phase 24 | Complete |
-| ONBR-01 | Phase 25 | Complete |
-| ONBR-02 | Phase 25 | Complete |
-| LIFE-01 | Phase 26 | Complete |
-| LIFE-02 | Phase 26 | Complete |
-| SURF-01 | Phase 27 | Complete |
+| SETUP-01 | Phase 28 | Pending |
+| SETUP-02 | Phase 30 | Pending |
+| BOOT-01 | Phase 29 | Pending |
+| BOOT-02 | Phase 29 | Pending |
+| HANDOFF-01 | Phase 31 | Pending |
+| HANDOFF-02 | Phase 31 | Pending |
 
 **Coverage:**
-- v1.5 requirements: 7 total
-- Mapped to phases: 7
+- v1.6 requirements: 6 total
+- Mapped to phases: 6
 - Unmapped: 0
 
 ---
-*Requirements defined: 2026-03-27*
-*Last updated: 2026-03-27 at milestone start*
+*Requirements defined: 2026-03-28*
+*Last updated: 2026-03-28 at milestone start*
