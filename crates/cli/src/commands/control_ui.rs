@@ -81,6 +81,8 @@ mod tests {
         assert!(CONTROL_UI_HTML.contains("self-hosted-product-mode"));
         assert!(CONTROL_UI_HTML.contains("self-hosted-product-transitions"));
         assert!(CONTROL_UI_HTML.contains("self-hosted-transition-submit"));
+        assert!(CONTROL_UI_HTML.contains("Self-Hosted Open-Source Product"));
+        assert!(CONTROL_UI_HTML.contains("Current self-hosted deployment path"));
         assert!(CONTROL_UI_HTML.contains("function loadSelfHostedProductMode"));
         assert!(CONTROL_UI_HTML.contains("function renderSelfHostedProductMode"));
         assert!(CONTROL_UI_HTML.contains("function transitionSelfHostedProductMode"));

@@ -1,6 +1,6 @@
 # Quickstart Guide
 
-Get up and running with OpenRustClaw in just 5 minutes. This guide walks you through starting the server, having your first conversation, and making your first tool call.
+Get up and running with OpenRustClaw in just 5 minutes. This guide walks you through the self-hosted first run, starting the server, having your first conversation, and making your first tool call.
 
 ---
 
@@ -31,7 +31,16 @@ openrustclaw doctor
 # Should show no blocking first-start issues for your chosen path
 ```
 
-If you want guided setup instead, run `openrustclaw onboard`. The wizard only offers to launch the persisted assistant session after the post-setup health gate confirms provider and workspace readiness.
+OpenRustClaw currently supports four self-hosted deployment paths:
+
+- `solo`
+- `team`
+- `company`
+- `enterprise`
+
+If you want guided setup instead, run `openrustclaw onboard`. The wizard asks which deployment path you want, writes that choice into the workspace product-mode contract, and only offers to launch the persisted assistant session after the post-setup health gate confirms provider and workspace readiness.
+
+You can inspect or change that path later from `/control/ui` in the `Self-Hosted Product Mode` panel or through `GET/POST /control/self-hosted/product-mode`.
 
 ---
 
@@ -192,6 +201,8 @@ openrustclaw memory timeline --limit 10
 If you start `openrustclaw assistant` again, it will resume the same active CLI session for this workspace and user instead of starting from an empty in-memory transcript. `openrustclaw session show` now makes that continuity explicit by surfacing the assistant surface, persistence model, route binding, and restored history count before the raw metadata dump. The older `openrustclaw chat` command now reuses the same persisted assistant path.
 
 If `openrustclaw start` is running, you can inspect the same continuity contract in Control UI at `/control/ui`: the Sessions table calls out assistant-managed surfaces directly, and Session Detail summarizes whether the session looks resumed before showing the raw JSON report.
+
+The same dashboard also exposes `Self-Hosted Product Mode`, so you can confirm whether this workspace is currently running as `solo`, `team`, `company`, or `enterprise`, and review recent upgrade or downgrade receipts before changing the deployment path again.
 
 The same Control UI now exposes the tool and coding audit path used for production trust checks:
 

@@ -4,7 +4,9 @@
 [![Rust](https://img.shields.io/badge/rust-2024_edition-orange.svg)](https://www.rust-lang.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-A high-performance AI agent platform written in Rust. 43 crates, 20 LLM providers, 15 CLI-startable messaging channels, and an optional Python sidecar kept only for bounded workflow compatibility.
+A high-performance self-hosted open-source AI agent platform written in Rust. 43 crates, 20 LLM providers, 15 CLI-startable messaging channels, and an optional Python sidecar kept only for bounded workflow compatibility.
+
+OpenRustClaw is packaged as one self-hosted product with four supported deployment paths: `solo`, `team`, `company`, and `enterprise`. The onboarding flow now asks which path you want first, and the shipped control surface preserves explicit upgrade or downgrade transitions between those modes instead of leaving them as undocumented file edits.
 
 Current execution planning lives in:
 
@@ -34,14 +36,23 @@ The remaining closeout order is deliberate: operator-trust surfaces, the trust-f
 
 ## Quick Start
 
+Choose the path that matches the install you actually want to run:
+
+- `solo` for one operator on one self-hosted workspace
+- `team` for a small multi-user install with shared operator context
+- `company` for a stronger internal operator baseline and broader policy expectations
+- `enterprise` for the full enterprise access, governance, audit, and operator-gated autonomy lane
+
+You choose that path during `openrustclaw onboard`, and you can later review or change it from the `Self-Hosted Product Mode` panel in `/control/ui` or through `GET/POST /control/self-hosted/product-mode`.
+
 ```bash
 git clone https://github.com/aihxp/OpenRustClaw.git
 cd OpenRustClaw
 cargo build --release
 
-# Interactive setup -- configures providers, channels, and security,
-# then offers to launch the persisted assistant once the health gate
-# confirms provider and workspace readiness
+# Interactive setup -- picks a deployment path, configures providers,
+# channels, and security, then offers to launch the persisted assistant
+# once the health gate confirms provider and workspace readiness
 ./target/release/openrustclaw onboard
 
 # Verify first-start readiness for your workspace
@@ -63,6 +74,8 @@ openrustclaw start --channels=telegram,discord,slack
 ```
 
 When the runtime is up, `/control/ui` reuses the same typed session inspection surface, including assistant continuity summaries that show surface, persistence model, route binding, and restored history count instead of leaving operators to decode raw metadata by hand.
+
+That same shipped dashboard now includes `Self-Hosted Product Mode`, which summarizes the current deployment path, onboarding path, runtime posture, recent upgrade or downgrade receipts, and any retained-state warnings that matter before changing modes again.
 
 For the runtime operator loop, use the same shipped control and CLI surfaces you will rely on in production: check `openrustclaw runtime services install-status`, `openrustclaw runtime health`, and `openrustclaw runtime upgrade-plan` before restart windows, then review `/control/runtime/operator-ops` or the `Operator Ops Summary` panel in `/control/ui` for the current managed-service, runtime-lock, reload, and recovery state. Take a workspace snapshot with `openrustclaw runtime backup` before binary or config changes, and use `openrustclaw runtime rollback-plan --artifact <path>` if a rollout needs to be reverted.
 

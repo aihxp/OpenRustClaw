@@ -1,6 +1,6 @@
 # Creating Your First Agent
 
-This guide walks you through creating a custom AI agent with OpenRustClaw. You'll learn how to configure providers, add custom tools, set up memory, and deploy your agent.
+This guide walks you through creating a custom AI agent with OpenRustClaw. You'll learn how to configure providers, add custom tools, set up memory, and deploy your agent inside the same self-hosted product surface used for `solo`, `team`, `company`, or `enterprise` installs.
 
 ---
 
@@ -11,6 +11,8 @@ A **Code Review Agent** that:
 - Remembers your coding preferences
 - Schedules daily code review reminders
 - Integrates with your Git workflow
+
+Before starting this guide, make sure the workspace already has the deployment path you want. `openrustclaw onboard` now selects that path explicitly, and `/control/ui` exposes the current product mode plus explicit upgrade or downgrade actions through `Self-Hosted Product Mode` if you need to change it later.
 
 ---
 

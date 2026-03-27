@@ -1,6 +1,6 @@
 # Installation
 
-This guide walks you through installing OpenRustClaw from source, configuring your environment, and verifying your installation.
+This guide walks you through installing OpenRustClaw from source, configuring your environment, and verifying your installation as a self-hosted open-source deployment.
 
 ---
 
@@ -327,12 +327,19 @@ This checks:
 
 For the cleanest first run, prefer the guided path:
 
+- `solo` for one operator on one self-hosted workspace
+- `team` for a shared multi-user deployment
+- `company` for an internal company install with stronger policy expectations
+- `enterprise` for the enterprise access, governance, audit, and operator-gated autonomy baseline
+
 ```bash
 openrustclaw onboard
 openrustclaw doctor
 ```
 
-The onboarding wizard only offers to launch the persisted assistant session after the post-setup health gate confirms provider and workspace readiness.
+The onboarding wizard now records the chosen deployment path as the workspace product mode. It only offers to launch the persisted assistant session after the post-setup health gate confirms provider and workspace readiness.
+
+If your install evolves later, use the shipped `Self-Hosted Product Mode` panel in `/control/ui` or `POST /control/self-hosted/product-mode` to apply an explicit upgrade or downgrade instead of editing workspace state by hand.
 
 If you already configured the workspace manually, continue with a direct assistant launch:
 
@@ -376,6 +383,8 @@ openrustclaw runtime upgrade-plan --config config/default.toml
 ```
 
 After `openrustclaw start`, open `/control/ui` and review `Operator Ops Summary`. That panel is backed by `/control/runtime/operator-ops` and pulls together runtime health, beacon, managed-service state, runtime-lock state, reload guidance, and the next recommended recovery actions.
+
+Before promoting the workspace from `solo` to `team`, `company`, or `enterprise`, also review `Self-Hosted Product Mode` in that same dashboard. It shows the current deployment path, recommended runtime posture, recent transitions, and any retained-state warnings that would matter during an upgrade or downgrade.
 
 ---
 
