@@ -8,101 +8,25 @@
 - ✅ **v1.3 Enterprise Expansion and Supervised Autonomy Foundations** — shipped 2026-03-27. Archive: `.planning/milestones/v1.3-ROADMAP.md`
 - ✅ **v1.4 Enterprise Governance and Operator-Gated Full Autonomy** — shipped 2026-03-27. Archive: `.planning/milestones/v1.4-ROADMAP.md`
 - ✅ **v1.5 Self-Hosted Product Modes and Lifecycle Packaging** — shipped 2026-03-27. Archive: `.planning/milestones/v1.5-ROADMAP.md`
-- 🚧 **v1.6 Proper Onboarding and Setup** — phases 28-31
-
-## Roadmap v1.6: Proper Onboarding and Setup
-
-### Overview
-
-This milestone turns onboarding and setup into one believable self-hosted product journey. The order is deliberate: first define durable setup state plus a standard-versus-advanced setup-path contract, then make provider or runtime or channel bootstrap mode-aware, then harden repair and re-entry for partial installs, and finally close with a truthful setup handoff and aligned operator surfaces.
-
-### Phases
-
-**Phase Numbering:**
-- Integer phases continue across milestones to preserve one linear execution history.
-- Decimal phases are reserved for urgent insertions if roadmap assumptions break.
-
-- [x] **Phase 28: Setup State and Resumable Onboarding Contract** - completed 2026-03-28. Defined the durable setup-state model and resumable onboarding flow.
-- [x] **Phase 29: Mode-Aware Provider, Runtime, and Channel Bootstrap** - completed 2026-03-28. Setup now validates provider, runtime, and channel bootstrap through shipped health/probe surfaces and persists those outcomes in setup state.
-- [x] **Phase 30: Setup Repair and Existing Workspace Recovery** - completed 2026-03-28. Existing workspaces now expose an explicit repair path derived from setup state and doctor diagnostics.
-- [x] **Phase 31: Setup Handoff and Operator Surface Alignment** - completed 2026-03-28. Setup handoff is now explicit across onboarding, Control UI, and setup docs.
-
-### Phase Details
-
-### Phase 28: Setup State and Resumable Onboarding Contract
-**Goal**: Define the durable setup-state contract so onboarding can resume truthfully instead of acting like every run is a fresh workspace.
-**Depends on**: v1.5 archive state
-**Requirements**: [SETUP-01, PATH-01]
-**Success Criteria** (what must be TRUE):
-  1. Setup progress is persisted as first-class state rather than inferred from scattered files.
-  2. The chosen deployment mode, setup depth, completed steps, blockers, and next action are inspectable.
-  3. Operators can choose a standard path or an advanced/custom path without creating a disconnected setup state model.
-**Plans**: 2 plans complete
-
-Plans:
-- [x] 28-01 Add Durable Setup-State Contract
-- [x] 28-02 Resume Onboarding with Standard, Advanced, and Custom Paths
-
-### Phase 29: Mode-Aware Provider, Runtime, and Channel Bootstrap
-**Goal**: Make setup actually configure and validate the core runtime path for the selected deployment mode.
-**Depends on**: Phase 28
-**Requirements**: [BOOT-01, BOOT-02, PATH-02]
-**Success Criteria** (what must be TRUE):
-  1. Setup drives provider, model, runtime, and control-plane configuration to a truthful ready or blocked state.
-  2. Setup can validate and, where supported, bootstrap key runtime or channel surfaces before claiming success.
-  3. Standard and advanced/custom setup paths remain mode-aware but converge on the same readiness contract.
-**Plans**: 3 plans complete
-
-Plans:
-- [x] 29-01 Persist Bootstrap Outcomes in Setup State
-- [x] 29-02 Validate Provider and Runtime Bootstrap During Onboarding
-- [x] 29-03 Validate Channel Bootstrap During Onboarding
-
-### Phase 30: Setup Repair and Existing Workspace Recovery
-**Goal**: Give operators explicit ways to resume, repair, or reset partial setups without manual workspace surgery.
-**Depends on**: Phase 29
-**Requirements**: [SETUP-02]
-**Success Criteria** (what must be TRUE):
-  1. Existing or partial workspaces can re-enter setup through explicit choices instead of hidden heuristics.
-  2. Repair and reset-with-backup flows preserve trust and visibility around what will change.
-  3. Setup recovery uses the same durable setup-state contract instead of bypassing it.
-**Plans**: 2 plans complete
-
-Plans:
-- [x] 30-01 Add Explicit Repair Entry to Onboarding
-- [x] 30-02 Derive Repair Steps from Durable Setup State and Doctor
-
-### Phase 31: Setup Handoff and Operator Surface Alignment
-**Goal**: End setup with a clear operator handoff and make the same setup state legible across docs and shipped surfaces.
-**Depends on**: Phase 30
-**Requirements**: [HANDOFF-01, HANDOFF-02]
-**Success Criteria** (what must be TRUE):
-  1. Setup ends with explicit ready, blocked, or degraded status plus concrete next actions.
-  2. The operator-facing setup story is consistent across onboarding output, docs, and shipped dashboard surfaces.
-  3. The milestone closes with a truthful setup baseline rather than another partial wizard improvement.
-**Plans**: 3 plans complete
-
-Plans:
-- [x] 31-01 Print an Explicit CLI Setup Handoff
-- [x] 31-02 Expose Setup Handoff in the Shipped Operator Surface
-- [x] 31-03 Align Setup Docs with the Shipped Handoff Contract
-
-## Progress
-
-| Phase | Plans Complete | Status | Completed |
-|-------|----------------|--------|-----------|
-| 28. Setup State and Resumable Onboarding Contract | 2/2 | Complete | 2026-03-28 |
-| 29. Mode-Aware Provider, Runtime, and Channel Bootstrap | 3/3 | Complete | 2026-03-28 |
-| 30. Setup Repair and Existing Workspace Recovery | 2/2 | Complete | 2026-03-28 |
-| 31. Setup Handoff and Operator Surface Alignment | 3/3 | Complete | 2026-03-28 |
+- ✅ **v1.6 Proper Onboarding and Setup** — shipped 2026-03-28. Archive: `.planning/milestones/v1.6-ROADMAP.md`
 
 ## Current Status
 
-- Active milestone: v1.6 Proper Onboarding and Setup
-- Next step: `$gsd-audit-milestone`
+- No active milestone open.
+- Next step: `$gsd-new-milestone`
 - Archived milestone planning artifacts live under `.planning/milestones/`.
 
 ## Phase History
+
+<details>
+<summary>✅ v1.6 Proper Onboarding and Setup — SHIPPED 2026-03-28</summary>
+
+- [x] **Phase 28: Setup State and Resumable Onboarding Contract** — completed 2026-03-28
+- [x] **Phase 29: Mode-Aware Provider, Runtime, and Channel Bootstrap** — completed 2026-03-28
+- [x] **Phase 30: Setup Repair and Existing Workspace Recovery** — completed 2026-03-28
+- [x] **Phase 31: Setup Handoff and Operator Surface Alignment** — completed 2026-03-28
+
+</details>
 
 <details>
 <summary>✅ v1.5 Self-Hosted Product Modes and Lifecycle Packaging — SHIPPED 2026-03-27</summary>

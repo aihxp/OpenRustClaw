@@ -1,20 +1,20 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.6
-milestone_name: Proper Onboarding and Setup
-current_phase: 31
-current_phase_name: Setup Handoff and Operator Surface Alignment
-current_plan: Not started
-status: All v1.6 phases complete; milestone ready for audit
-stopped_at: Phase 31 complete; run milestone audit and archive.
-last_updated: "2026-03-28T05:05:00.000Z"
-last_activity: 2026-03-28 -- Phase 31 completed
+milestone: null
+milestone_name: null
+current_phase: null
+current_phase_name: null
+current_plan: null
+status: No active milestone
+stopped_at: v1.6 archived; start the next milestone with $gsd-new-milestone.
+last_updated: "2026-03-28T05:30:00.000Z"
+last_activity: 2026-03-28 -- v1.6 archived
 progress:
-  total_phases: 4
-  completed_phases: 4
-  total_plans: 10
-  completed_plans: 10
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -24,29 +24,29 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-28)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** Milestone audit and completion
+**Current focus:** No active milestone
 
 ## Current Position
 
-Current Phase: 31
-Current Phase Name: Setup Handoff and Operator Surface Alignment
-Total Phases: 4
-Current Plan: Not started
-Total Plans in Phase: 3
-Status: All v1.6 phases complete; milestone ready for audit
-Last activity: 2026-03-28 -- Phase 31 completed
+Current Phase: -
+Current Phase Name: -
+Total Phases: 0
+Current Plan: -
+Total Plans in Phase: 0
+Status: No active milestone
+Last activity: 2026-03-28 -- v1.6 archived
 
-Phase: 4 of 4 (Setup Handoff and Operator Surface Alignment)
-Plan: 3 of 3
-Progress: [██████████] 100%
+Phase: 0 of 0
+Plan: 0 of 0
+Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 35
+- Total plans completed: 45
 - Average duration: historical average retained across shipped milestones
-- Total execution time: multiple shipped milestones completed across v1.0-v1.5
+- Total execution time: multiple shipped milestones completed across v1.0-v1.6
 
 ## Accumulated Context
 
@@ -62,12 +62,8 @@ Recent decisions affecting current work:
 - v1.3 established the enterprise operator baseline across identity, policy, audit export, supervised autonomy, and one shipped admin surface.
 - v1.4 added stronger enterprise governance plus an explicit operator-gated full-autonomy lane with durable budgets, kill switch, and dashboard controls.
 - v1.5 made OpenRustClaw legible as one self-hosted open-source product with explicit `solo`, `team`, `company`, and `enterprise` deployment paths, mode-aware onboarding, and reviewable upgrade or downgrade transitions.
-- v1.5 is archived.
-- v1.6 now focuses on making onboarding and setup feel like one coherent, resumable first-install path.
-- Phase 28 now persists the durable setup-state contract and standard/advanced/custom setup-path selection before bootstrap and recovery work build on top of it.
-- Phase 29 now validates provider, runtime, and channel bootstrap through shipped health and probe surfaces, and records those bootstrap outcomes in setup state.
-- Phase 30 now adds an explicit repair path derived from durable setup state and doctor diagnostics instead of hidden workspace surgery.
-- Phase 31 now exposes one explicit setup handoff across onboarding, Control UI, and setup docs, so the milestone is ready for audit.
+- v1.6 made onboarding and setup truthful end-to-end with durable setup state, validated bootstrap outcomes, explicit repair, and one shared setup handoff surface.
+- v1.6 is archived; the next milestone has not been defined yet.
 
 ### Pending Todos
 
@@ -79,6 +75,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-28 05:05
-Stopped at: Phase 31 complete; run milestone audit and archive.
+Last session: 2026-03-28 05:30
+Stopped at: v1.6 archived; start the next milestone with $gsd-new-milestone.
 Resume file: None

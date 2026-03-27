@@ -1,5 +1,20 @@
 # Project Milestones: OpenRustClaw
 
+## v1.6 Proper Onboarding and Setup (Shipped: 2026-03-28)
+
+**Phases completed:** 4 phases, 10 plans, 0 tasks
+**Verification archive:** `.planning/milestones/v1.6-VERIFICATIONS.md`
+**Verification debt:** none
+
+**Key accomplishments:**
+
+- Added a durable setup-state contract with resumable Standard, Advanced, and Custom onboarding paths.
+- Made onboarding validate provider, runtime, and channel bootstrap through shipped health and probe surfaces instead of assuming config writes equal readiness.
+- Added an explicit repair path for existing workspaces that derives targeted rerun steps from setup state and doctor diagnostics.
+- Closed the loop with a shared setup handoff contract across onboarding, `/control/setup/handoff`, Control UI, and the setup docs.
+
+---
+
 ## v1.5 Self-Hosted Product Modes and Lifecycle Packaging (Shipped: 2026-03-27)
 
 **Phases completed:** 4 phases, 8 plans, 0 tasks
