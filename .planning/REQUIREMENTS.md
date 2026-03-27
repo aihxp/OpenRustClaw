@@ -8,7 +8,7 @@
 ### Setup State and Recovery
 
 - [x] **SETUP-01**: Onboarding persists a resumable setup-state contract that records deployment path, completed steps, current blockers, and the next recommended action.
-- [ ] **SETUP-02**: Existing or partially configured workspaces can re-enter setup through explicit resume, repair, or reset-with-backup paths instead of manual state edits.
+- [x] **SETUP-02**: Existing or partially configured workspaces can re-enter setup through explicit resume, repair, or reset-with-backup paths instead of manual state edits.
 
 ### Setup Path Selection
 
@@ -58,7 +58,7 @@
 | SETUP-01 | Phase 28 | Complete |
 | PATH-01 | Phase 28 | Complete |
 | PATH-02 | Phase 29 | Complete |
-| SETUP-02 | Phase 30 | Pending |
+| SETUP-02 | Phase 30 | Complete |
 | BOOT-01 | Phase 29 | Complete |
 | BOOT-02 | Phase 29 | Complete |
 | HANDOFF-01 | Phase 31 | Pending |

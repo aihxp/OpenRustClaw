@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.6
 milestone_name: Proper Onboarding and Setup
-current_phase: 30
-current_phase_name: Setup Repair and Existing Workspace Recovery
+current_phase: 31
+current_phase_name: Setup Handoff and Operator Surface Alignment
 current_plan: Not started
-status: Phase 29 complete; Phase 30 ready
-stopped_at: Phase 29 complete; Phase 30 is ready for discuss and planning.
-last_updated: "2026-03-28T03:35:00.000Z"
-last_activity: 2026-03-28 -- Phase 29 completed
+status: Phase 30 complete; Phase 31 ready
+stopped_at: Phase 30 complete; Phase 31 is ready for discuss and planning.
+last_updated: "2026-03-28T04:20:00.000Z"
+last_activity: 2026-03-28 -- Phase 30 completed
 progress:
   total_phases: 4
-  completed_phases: 2
-  total_plans: 5
-  completed_plans: 5
-  percent: 50
+  completed_phases: 3
+  total_plans: 7
+  completed_plans: 7
+  percent: 75
 ---
 
 # Project State
@@ -24,21 +24,21 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-28)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** Phase 30 - Setup Repair and Existing Workspace Recovery
+**Current focus:** Phase 31 - Setup Handoff and Operator Surface Alignment
 
 ## Current Position
 
-Current Phase: 30
-Current Phase Name: Setup Repair and Existing Workspace Recovery
+Current Phase: 31
+Current Phase Name: Setup Handoff and Operator Surface Alignment
 Total Phases: 4
 Current Plan: Not started
 Total Plans in Phase: 0
-Status: Phase 29 complete; Phase 30 ready
-Last activity: 2026-03-28 -- Phase 29 completed
+Status: Phase 30 complete; Phase 31 ready
+Last activity: 2026-03-28 -- Phase 30 completed
 
-Phase: 3 of 4 (Setup Repair and Existing Workspace Recovery)
+Phase: 4 of 4 (Setup Handoff and Operator Surface Alignment)
 Plan: 0 of 0
-Progress: [█████░░░░░] 50%
+Progress: [███████░░░] 75%
 
 ## Performance Metrics
 
@@ -66,6 +66,7 @@ Recent decisions affecting current work:
 - v1.6 now focuses on making onboarding and setup feel like one coherent, resumable first-install path.
 - Phase 28 now persists the durable setup-state contract and standard/advanced/custom setup-path selection before bootstrap and recovery work build on top of it.
 - Phase 29 now validates provider, runtime, and channel bootstrap through shipped health and probe surfaces, and records those bootstrap outcomes in setup state.
+- Phase 30 now adds an explicit repair path derived from durable setup state and doctor diagnostics instead of hidden workspace surgery.
 
 ### Pending Todos
 
@@ -77,6 +78,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-28 03:35
-Stopped at: Phase 29 complete; Phase 30 is ready for discuss and planning.
+Last session: 2026-03-28 04:20
+Stopped at: Phase 30 complete; Phase 31 is ready for discuss and planning.
 Resume file: None

@@ -56,10 +56,10 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 - ✓ Docs and shipped control surfaces now align around the self-hosted open-source product story, deployment paths, and transition visibility — v1.5 Phase 27
 - ✓ Onboarding now persists durable setup state and supports standard, advanced, and custom resume-aware setup paths — v1.6 Phase 28
 - ✓ Onboarding now validates provider, runtime, and channel bootstrap through shipped health and probe surfaces and records those outcomes in setup state — v1.6 Phase 29
+- ✓ Existing workspaces can now re-enter setup through an explicit repair path derived from setup state and doctor diagnostics — v1.6 Phase 30
 
 ### Active
 
-- [ ] Ensure setup surfaces can repair or resume partial and failed installs instead of forcing manual state edits
 - [ ] Keep setup docs and shipped operator surfaces aligned with the actual setup contract
 - [ ] Close setup with a clear operator handoff that reflects durable bootstrap state instead of wizard optimism
 

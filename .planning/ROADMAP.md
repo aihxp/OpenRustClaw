@@ -24,7 +24,7 @@ This milestone turns onboarding and setup into one believable self-hosted produc
 
 - [x] **Phase 28: Setup State and Resumable Onboarding Contract** - completed 2026-03-28. Defined the durable setup-state model and resumable onboarding flow.
 - [x] **Phase 29: Mode-Aware Provider, Runtime, and Channel Bootstrap** - completed 2026-03-28. Setup now validates provider, runtime, and channel bootstrap through shipped health/probe surfaces and persists those outcomes in setup state.
-- [ ] **Phase 30: Setup Repair and Existing Workspace Recovery** - Add explicit resume, repair, and reset-with-backup paths for partial or drifted setups.
+- [x] **Phase 30: Setup Repair and Existing Workspace Recovery** - completed 2026-03-28. Existing workspaces now expose an explicit repair path derived from setup state and doctor diagnostics.
 - [ ] **Phase 31: Setup Handoff and Operator Surface Alignment** - Close the loop with an explicit setup summary, next-action handoff, and aligned docs or control surfaces.
 
 ### Phase Details
@@ -66,10 +66,11 @@ Plans:
   1. Existing or partial workspaces can re-enter setup through explicit choices instead of hidden heuristics.
   2. Repair and reset-with-backup flows preserve trust and visibility around what will change.
   3. Setup recovery uses the same durable setup-state contract instead of bypassing it.
-**Plans**: TBD
+**Plans**: 2 plans complete
 
 Plans:
-- [ ] TBD (run `$gsd-plan-phase 30` to break down)
+- [x] 30-01 Add Explicit Repair Entry to Onboarding
+- [x] 30-02 Derive Repair Steps from Durable Setup State and Doctor
 
 ### Phase 31: Setup Handoff and Operator Surface Alignment
 **Goal**: End setup with a clear operator handoff and make the same setup state legible across docs and shipped surfaces.
@@ -90,13 +91,13 @@ Plans:
 |-------|----------------|--------|-----------|
 | 28. Setup State and Resumable Onboarding Contract | 2/2 | Complete | 2026-03-28 |
 | 29. Mode-Aware Provider, Runtime, and Channel Bootstrap | 3/3 | Complete | 2026-03-28 |
-| 30. Setup Repair and Existing Workspace Recovery | 0/TBD | Not started | - |
+| 30. Setup Repair and Existing Workspace Recovery | 2/2 | Complete | 2026-03-28 |
 | 31. Setup Handoff and Operator Surface Alignment | 0/TBD | Not started | - |
 
 ## Current Status
 
 - Active milestone: v1.6 Proper Onboarding and Setup
-- Next step: `$gsd-discuss-phase 30` or `$gsd-plan-phase 30`
+- Next step: `$gsd-discuss-phase 31` or `$gsd-plan-phase 31`
 - Archived milestone planning artifacts live under `.planning/milestones/`.
 
 ## Phase History
