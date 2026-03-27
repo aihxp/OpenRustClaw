@@ -19,6 +19,8 @@ use openrustclaw_mobile::{MobileNodeHandle, NodeConfig};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+use super::enterprise_policy;
+
 pub const DEFAULT_MOBILE_ROOT: &str = ".claw/mobile";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2996,7 +2998,9 @@ pub async fn dispatch_command_data(
 
     let approval_required = request
         .require_approval
-        .unwrap_or_else(|| request.command.default_requires_approval());
+        .unwrap_or_else(|| {
+            enterprise_policy::approval_required_for_command(workspace_root, &request.command)
+        });
     let mut record = MobileCommandRecord {
         id: uuid::Uuid::new_v4().to_string(),
         node_id: manifest.node.id.clone(),
@@ -4674,6 +4678,7 @@ fn sync_config_from_spec(spec: &MobileSyncSpec) -> Result<SyncConfig> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::commands::enterprise_policy;
     use tempfile::tempdir;
 
     #[test]
@@ -4884,6 +4889,70 @@ mod tests {
         assert!(approved.result["message_id"].as_str().is_some());
         unsafe {
             std::env::remove_var("MOBILE_TOKEN_EXEC");
+        }
+    }
+
+    #[tokio::test]
+    async fn dispatch_command_uses_enterprise_mobile_policy_override() {
+        let temp = tempdir().expect("tempdir");
+        unsafe {
+            std::env::set_var("MOBILE_TOKEN_POLICY", "secret");
+        }
+        pair_node_data(
+            temp.path(),
+            MobilePairRequest {
+                id: "iphone-policy".to_string(),
+                gateway_url: "wss://example.com/gateway".to_string(),
+                auth_token_env: "MOBILE_TOKEN_POLICY".to_string(),
+                device_name: Some("Studio iPhone".to_string()),
+                platform: Some("ios".to_string()),
+                capabilities: vec!["mobile".to_string(), "notifications".to_string()],
+                enabled: true,
+                sync: None,
+                notifications: None,
+                metadata: Value::Null,
+            },
+        )
+        .expect("pair node");
+
+        let config_path = temp.path().join("config/default.toml");
+        crate::commands::runtime::write_config_with_backup(
+            &config_path.display().to_string(),
+            &openrustclaw_core::config::AppConfig::default(),
+        )
+        .expect("write config");
+        enterprise_policy::update_policy(
+            temp.path(),
+            &config_path.display().to_string(),
+            enterprise_policy::EnterprisePolicyUpdateRequest {
+                approval_policy: None,
+                browser: None,
+                mobile: Some(enterprise_policy::EnterpriseMobileApprovalPolicyUpdate {
+                    send_message_requires_approval: Some(false),
+                    push_notification_requires_approval: None,
+                    sync_now_requires_approval: None,
+                }),
+                audit_export: None,
+            },
+        )
+        .expect("update enterprise policy");
+
+        let record = dispatch_command_data(
+            temp.path(),
+            MobileCommandDispatchRequest {
+                node_id: "iphone-policy".to_string(),
+                command: DeviceCommandKind::SendMessage,
+                payload: json!({"target":"ops-room","content":"hello"}),
+                approved_by: None,
+                require_approval: None,
+            },
+        )
+        .await
+        .expect("dispatch command");
+
+        assert_eq!(record.status, "executed");
+        unsafe {
+            std::env::remove_var("MOBILE_TOKEN_POLICY");
         }
     }
 

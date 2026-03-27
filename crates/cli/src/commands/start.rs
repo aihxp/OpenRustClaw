@@ -91,8 +91,8 @@ use super::talk;
 use super::voice_runtime;
 use super::voice_runtime::InboundVoiceTranscriber;
 use super::{
-    assistant, browser, control, control_ui, doctor, enterprise_access, inspect, logs, mobile,
-    orchestrate, runtime, security, services, skills, tools,
+    assistant, browser, control, control_ui, doctor, enterprise_access, enterprise_policy,
+    inspect, logs, mobile, orchestrate, runtime, security, services, skills, tools,
 };
 
 /// Run the start command - load config, optionally start the compatibility/experimental sidecar, and start the gateway.
@@ -3029,6 +3029,14 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
         .route(
             "/control/enterprise/foundations",
             get(enterprise_foundations_handler),
+        )
+        .route(
+            "/control/enterprise/policy",
+            get(enterprise_policy_handler).put(enterprise_policy_update_handler),
+        )
+        .route(
+            "/control/enterprise/audit/export",
+            post(enterprise_audit_export_handler),
         )
         .route("/control/security/posture", get(security_posture_handler))
         .route("/control/runtime/health", get(runtime_health_handler))
@@ -7110,6 +7118,51 @@ async fn enterprise_foundations_handler(
         Ok(summary) => (StatusCode::OK, Json(serde_json::json!(summary))).into_response(),
         Err(error) => (
             StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+            )
+                .into_response(),
+    }
+}
+
+async fn enterprise_policy_handler(State(state): State<RuntimeControlState>) -> impl IntoResponse {
+    match enterprise_policy::summary(&state.workspace_root, &state.config_path) {
+        Ok(summary) => (StatusCode::OK, Json(serde_json::json!(summary))).into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn enterprise_policy_update_handler(
+    State(state): State<RuntimeControlState>,
+    Json(payload): Json<enterprise_policy::EnterprisePolicyUpdateRequest>,
+) -> impl IntoResponse {
+    let started_at = std::time::Instant::now();
+    let result = enterprise_policy::update_policy(&state.workspace_root, &state.config_path, payload);
+    record_operator_tool_result("enterprise.policy.update", started_at, &result);
+    match result {
+        Ok(summary) => (StatusCode::OK, Json(serde_json::json!(summary))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn enterprise_audit_export_handler(
+    State(state): State<RuntimeControlState>,
+    Json(payload): Json<enterprise_policy::EnterpriseAuditExportRequest>,
+) -> impl IntoResponse {
+    let started_at = std::time::Instant::now();
+    let result = enterprise_policy::export_audit_bundle(&state.workspace_root, &state.config_path, payload);
+    record_operator_tool_result("enterprise.audit.export", started_at, &result);
+    match result {
+        Ok(summary) => (StatusCode::OK, Json(serde_json::json!(summary))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": error.to_string()})),
         )
             .into_response(),
@@ -12476,6 +12529,57 @@ mod tests {
                     .header(enterprise_access::OPERATOR_ID_HEADER, "owner-1")
                     .header(enterprise_access::OPERATOR_TOKEN_HEADER, "owner-secret-123")
                     .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(allowed.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn enterprise_access_middleware_blocks_enterprise_policy_write_without_operator_headers() {
+        let temp = tempdir().expect("tempdir");
+        enterprise_access::bootstrap_manifest(
+            temp.path(),
+            enterprise_access::EnterpriseAccessBootstrapRequest {
+                organization_id: "acme".to_string(),
+                organization_name: "Acme Ops".to_string(),
+                owner_id: "owner-1".to_string(),
+                owner_name: None,
+                owner_email: None,
+                owner_token: "owner-secret-123".to_string(),
+            },
+        )
+        .expect("bootstrap enterprise access");
+
+        let app = protect_enterprise_router(
+            Router::new().route("/control/enterprise/policy", put(|| async { StatusCode::OK })),
+            EnterpriseAccessState {
+                workspace_root: temp.path().to_path_buf(),
+            },
+        );
+
+        let denied = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri("/control/enterprise/policy")
+                    .body(Body::from("{}"))
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(denied.status(), StatusCode::FORBIDDEN);
+
+        let allowed = app
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri("/control/enterprise/policy")
+                    .header(enterprise_access::OPERATOR_ID_HEADER, "owner-1")
+                    .header(enterprise_access::OPERATOR_TOKEN_HEADER, "owner-secret-123")
+                    .body(Body::from("{}"))
                     .expect("request"),
             )
             .await

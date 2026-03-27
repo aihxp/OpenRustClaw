@@ -15,6 +15,7 @@ pub const OPERATOR_TOKEN_HEADER: &str = "x-openrustclaw-operator-token";
 const ENTERPRISE_ACCESS_VERSION: u32 = 1;
 const ENTERPRISE_SCOPE_IDENTITY_WRITE: &str = "enterprise.identity.write";
 const ENTERPRISE_SCOPE_CONFIG_WRITE: &str = "enterprise.config.write";
+const ENTERPRISE_SCOPE_AUDIT_EXPORT: &str = "enterprise.audit.export";
 const ENTERPRISE_SCOPE_MOBILE_COMMAND_MANAGE: &str = "enterprise.mobile.command.manage";
 const ENTERPRISE_SCOPE_RUNTIME_CONTROL: &str = "enterprise.runtime.control";
 const ENTERPRISE_SCOPE_SKILLS_AUTH_MANAGE: &str = "enterprise.skills.auth.manage";
@@ -106,6 +107,20 @@ struct EnterpriseProtectedRouteSpec {
 }
 
 const ENTERPRISE_PROTECTED_ROUTE_SPECS: &[EnterpriseProtectedRouteSpec] = &[
+    EnterpriseProtectedRouteSpec {
+        method: "PUT",
+        prefix: "/control/enterprise/policy",
+        suffix: "",
+        scope: ENTERPRISE_SCOPE_CONFIG_WRITE,
+        detail: "Enterprise policy writes change approval, browser, mobile, and export controls.",
+    },
+    EnterpriseProtectedRouteSpec {
+        method: "POST",
+        prefix: "/control/enterprise/audit/export",
+        suffix: "",
+        scope: ENTERPRISE_SCOPE_AUDIT_EXPORT,
+        detail: "Enterprise audit export writes durable evidence bundles for operator review.",
+    },
     EnterpriseProtectedRouteSpec {
         method: "PUT",
         prefix: "/control/config",
@@ -439,6 +454,7 @@ fn default_scopes_for_role(role: &str) -> Vec<String> {
         "admin" => vec![
             ENTERPRISE_SCOPE_IDENTITY_WRITE.to_string(),
             ENTERPRISE_SCOPE_CONFIG_WRITE.to_string(),
+            ENTERPRISE_SCOPE_AUDIT_EXPORT.to_string(),
             ENTERPRISE_SCOPE_RUNTIME_CONTROL.to_string(),
             ENTERPRISE_SCOPE_SKILLS_AUTH_MANAGE.to_string(),
         ],
@@ -446,7 +462,7 @@ fn default_scopes_for_role(role: &str) -> Vec<String> {
             ENTERPRISE_SCOPE_MOBILE_COMMAND_MANAGE.to_string(),
             ENTERPRISE_SCOPE_RUNTIME_CONTROL.to_string(),
         ],
-        "auditor" => Vec::new(),
+        "auditor" => vec![ENTERPRISE_SCOPE_AUDIT_EXPORT.to_string()],
         _ => Vec::new(),
     }
 }
@@ -600,6 +616,14 @@ mod tests {
     #[test]
     fn protected_scope_classifies_sensitive_routes() {
         assert_eq!(
+            protected_scope_for_request(&Method::PUT, "/control/enterprise/policy"),
+            Some("enterprise.config.write")
+        );
+        assert_eq!(
+            protected_scope_for_request(&Method::POST, "/control/enterprise/audit/export"),
+            Some("enterprise.audit.export")
+        );
+        assert_eq!(
             protected_scope_for_request(&Method::PUT, "/control/config"),
             Some("enterprise.config.write")
         );
@@ -632,6 +656,11 @@ mod tests {
             .find(|(role, _)| role == "auditor")
             .expect("auditor");
         assert!(!owner.1.is_empty());
-        assert!(auditor.1.is_empty());
+        assert!(
+            auditor
+                .1
+                .iter()
+                .any(|scope| scope == "enterprise.audit.export")
+        );
     }
 }
