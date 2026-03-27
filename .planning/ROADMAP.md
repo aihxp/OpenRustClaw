@@ -84,14 +84,14 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 24. Self-Hosted Product Modes and Instance Profile Contract | 2/2 | Complete | 2026-03-27 |
-| 25. Tiered Onboarding and First-Run Paths | 0/TBD | Not started | - |
+| 25. Tiered Onboarding and First-Run Paths | 2/2 | Complete | 2026-03-27 |
 | 26. Upgrade and Downgrade Lifecycle | 0/TBD | Not started | - |
 | 27. Self-Hosted Product Surface Alignment | 0/TBD | Not started | - |
 
 ## Current Status
 
 - Active milestone: v1.5 Self-Hosted Product Modes and Lifecycle Packaging
-- Next step: `$gsd-discuss-phase 25` or `$gsd-plan-phase 25`
+- Next step: `$gsd-discuss-phase 26` or `$gsd-plan-phase 26`
 - Archived milestone planning artifacts live under `.planning/milestones/`.
 
 ## Phase History

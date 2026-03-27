@@ -50,10 +50,10 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 - ✓ Full autonomy is now a separate operator-gated lane with budgets, kill switch, and durable lifecycle evidence — v1.4 Phase 22
 - ✓ Operators can now inspect and control the full-autonomy lane from the shipped dashboard — v1.4 Phase 23
 - ✓ Self-hosted product modes are now a first-class control-plane contract with a shipped runtime and Control UI summary — v1.5 Phase 24
+- ✓ Onboarding now offers explicit self-hosted deployment paths with mode-aware defaults and first-start diagnostics — v1.5 Phase 25
 
 ### Active
 
-- [ ] Add guided onboarding paths that fit the selected deployment mode instead of treating all installs the same
 - [ ] Support safe upgrade and downgrade flows between product modes
 - [ ] Keep self-hosted product framing, onboarding, and mode transitions aligned across docs and shipped control surfaces
 

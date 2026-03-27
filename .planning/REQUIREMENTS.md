@@ -12,8 +12,8 @@
 
 ### Tiered Onboarding
 
-- [ ] **ONBR-01**: First-run setup offers differentiated paths for solo, multi-user team, company, and enterprise installs instead of one flat onboarding flow.
-- [ ] **ONBR-02**: Each onboarding path explains the mode-specific trust boundary, required setup steps, and recommended defaults truthfully.
+- [x] **ONBR-01**: First-run setup offers differentiated paths for solo, multi-user team, company, and enterprise installs instead of one flat onboarding flow.
+- [x] **ONBR-02**: Each onboarding path explains the mode-specific trust boundary, required setup steps, and recommended defaults truthfully.
 
 ### Upgrade and Downgrade Lifecycle
 
@@ -56,8 +56,8 @@
 |-------------|-------|--------|
 | MODE-01 | Phase 24 | Complete |
 | MODE-02 | Phase 24 | Complete |
-| ONBR-01 | Phase 25 | Pending |
-| ONBR-02 | Phase 25 | Pending |
+| ONBR-01 | Phase 25 | Complete |
+| ONBR-02 | Phase 25 | Complete |
 | LIFE-01 | Phase 26 | Pending |
 | LIFE-02 | Phase 26 | Pending |
 | SURF-01 | Phase 27 | Pending |

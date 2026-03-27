@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.5
 milestone_name: Self-Hosted Product Modes and Lifecycle Packaging
-current_phase: 25
-current_phase_name: Tiered Onboarding and First-Run Paths
+current_phase: 26
+current_phase_name: Upgrade and Downgrade Lifecycle
 current_plan: Not started
-status: Phase 24 complete; Phase 25 ready
-stopped_at: Phase 24 complete; Phase 25 is ready for discuss and planning.
-last_updated: "2026-03-27T22:30:00.000Z"
-last_activity: 2026-03-27 -- Phase 24 completed
+status: Phase 25 complete; Phase 26 ready
+stopped_at: Phase 25 complete; Phase 26 is ready for discuss and planning.
+last_updated: "2026-03-27T23:10:00.000Z"
+last_activity: 2026-03-27 -- Phase 25 completed
 progress:
   total_phases: 4
-  completed_phases: 1
-  total_plans: 2
-  completed_plans: 2
-  percent: 25
+  completed_phases: 2
+  total_plans: 4
+  completed_plans: 4
+  percent: 50
 ---
 
 # Project State
@@ -24,21 +24,21 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-27)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** Phase 25 - Tiered Onboarding and First-Run Paths
+**Current focus:** Phase 26 - Upgrade and Downgrade Lifecycle
 
 ## Current Position
 
-Current Phase: 25
-Current Phase Name: Tiered Onboarding and First-Run Paths
+Current Phase: 26
+Current Phase Name: Upgrade and Downgrade Lifecycle
 Total Phases: 4
 Current Plan: Not started
 Total Plans in Phase: 0
-Status: Phase 24 complete; Phase 25 ready
-Last activity: 2026-03-27 -- Phase 24 completed
+Status: Phase 25 complete; Phase 26 ready
+Last activity: 2026-03-27 -- Phase 25 completed
 
-Phase: 2 of 4 (Tiered Onboarding and First-Run Paths)
+Phase: 3 of 4 (Upgrade and Downgrade Lifecycle)
 Plan: 0 of 0
-Progress: [██░░░░░░░░] 25%
+Progress: [█████░░░░░] 50%
 
 ## Performance Metrics
 
@@ -100,6 +100,7 @@ Recent decisions affecting current work:
 - Phase 23 now adds the shipped Control UI operator loop for full-autonomy inspection and control, completing the milestone execution scope.
 - v1.5 now focuses on explicit self-hosted product modes, differentiated onboarding, and reversible upgrade or downgrade lifecycle paths across solo, multi-user team, company, and enterprise deployments.
 - Phase 24 now persists the self-hosted product mode as a first-class control-plane contract and exposes it through a shipped runtime and Control UI summary.
+- Phase 25 now makes onboarding choose and persist the deployment path explicitly, and doctor surfaces missing product-mode selection as warning-only first-start context.
 
 ### Pending Todos
 
@@ -112,5 +113,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-27 04:44
-Stopped at: Phase 24 complete; Phase 25 is ready for discuss and planning.
+Stopped at: Phase 25 complete; Phase 26 is ready for discuss and planning.
 Resume file: None
