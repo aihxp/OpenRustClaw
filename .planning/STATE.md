@@ -3,14 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.6
 milestone_name: Proper Onboarding and Setup
 current_phase: null
-current_phase_name: null
-current_plan: null
-status: Defining requirements
-stopped_at: Milestone v1.6 started; define requirements and roadmap next.
-last_updated: "2026-03-28T00:40:00.000Z"
-last_activity: 2026-03-28 -- Milestone v1.6 started
+current_phase_name: Setup State and Resumable Onboarding Contract
+current_phase: 28
+current_plan: Not started
+status: Phase 28 ready for discuss and planning
+stopped_at: Requirements and roadmap defined for v1.6; Phase 28 is ready.
+last_updated: "2026-03-28T00:50:00.000Z"
+last_activity: 2026-03-28 -- Milestone v1.6 planned
 progress:
-  total_phases: 0
+  total_phases: 4
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -24,19 +25,19 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-28)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** Defining requirements for v1.6 Proper Onboarding and Setup
+**Current focus:** Phase 28 - Setup State and Resumable Onboarding Contract
 
 ## Current Position
 
-Current Phase: Not started
-Current Phase Name: Defining requirements
-Total Phases: 0
-Current Plan: -
+Current Phase: 28
+Current Phase Name: Setup State and Resumable Onboarding Contract
+Total Phases: 4
+Current Plan: Not started
 Total Plans in Phase: 0
-Status: Defining requirements
-Last activity: 2026-03-28 -- Milestone v1.6 started
+Status: Phase 28 ready for discuss and planning
+Last activity: 2026-03-28 -- Milestone v1.6 planned
 
-Phase: Not started
+Phase: 1 of 4 (Setup State and Resumable Onboarding Contract)
 Plan: 0 of 0
 Progress: [░░░░░░░░░░] 0%
 
@@ -64,6 +65,7 @@ Recent decisions affecting current work:
 - v1.5 made OpenRustClaw legible as one self-hosted open-source product with explicit `solo`, `team`, `company`, and `enterprise` deployment paths, mode-aware onboarding, and reviewable upgrade or downgrade transitions.
 - v1.5 is archived.
 - v1.6 now focuses on making onboarding and setup feel like one coherent, resumable first-install path.
+- Phase 28 will define the durable setup-state contract before bootstrap and recovery work build on top of it.
 
 ### Pending Todos
 
@@ -76,5 +78,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-27 04:44
-Stopped at: Milestone v1.6 started; define requirements and roadmap next.
+Stopped at: Requirements and roadmap defined for v1.6; Phase 28 is ready.
 Resume file: None

@@ -8,11 +8,92 @@
 - ✅ **v1.3 Enterprise Expansion and Supervised Autonomy Foundations** — shipped 2026-03-27. Archive: `.planning/milestones/v1.3-ROADMAP.md`
 - ✅ **v1.4 Enterprise Governance and Operator-Gated Full Autonomy** — shipped 2026-03-27. Archive: `.planning/milestones/v1.4-ROADMAP.md`
 - ✅ **v1.5 Self-Hosted Product Modes and Lifecycle Packaging** — shipped 2026-03-27. Archive: `.planning/milestones/v1.5-ROADMAP.md`
+- 🚧 **v1.6 Proper Onboarding and Setup** — phases 28-31
+
+## Roadmap v1.6: Proper Onboarding and Setup
+
+### Overview
+
+This milestone turns onboarding and setup into one believable self-hosted product journey. The order is deliberate: first define durable setup state and resumability, then make provider or runtime or channel bootstrap mode-aware, then harden repair and re-entry for partial installs, and finally close with a truthful setup handoff and aligned operator surfaces.
+
+### Phases
+
+**Phase Numbering:**
+- Integer phases continue across milestones to preserve one linear execution history.
+- Decimal phases are reserved for urgent insertions if roadmap assumptions break.
+
+- [ ] **Phase 28: Setup State and Resumable Onboarding Contract** - Define the durable setup-state model and resumable onboarding flow.
+- [ ] **Phase 29: Mode-Aware Provider, Runtime, and Channel Bootstrap** - Make setup actually drive the selected deployment path to a truthful ready or blocked state.
+- [ ] **Phase 30: Setup Repair and Existing Workspace Recovery** - Add explicit resume, repair, and reset-with-backup paths for partial or drifted setups.
+- [ ] **Phase 31: Setup Handoff and Operator Surface Alignment** - Close the loop with an explicit setup summary, next-action handoff, and aligned docs or control surfaces.
+
+### Phase Details
+
+### Phase 28: Setup State and Resumable Onboarding Contract
+**Goal**: Define the durable setup-state contract so onboarding can resume truthfully instead of acting like every run is a fresh workspace.
+**Depends on**: v1.5 archive state
+**Requirements**: [SETUP-01]
+**Success Criteria** (what must be TRUE):
+  1. Setup progress is persisted as first-class state rather than inferred from scattered files.
+  2. The chosen deployment path, completed steps, blockers, and next action are inspectable.
+  3. Re-entering onboarding can resume from the recorded setup state without hiding drift.
+**Plans**: TBD
+
+Plans:
+- [ ] TBD (run `$gsd-plan-phase 28` to break down)
+
+### Phase 29: Mode-Aware Provider, Runtime, and Channel Bootstrap
+**Goal**: Make setup actually configure and validate the core runtime path for the selected deployment mode.
+**Depends on**: Phase 28
+**Requirements**: [BOOT-01, BOOT-02]
+**Success Criteria** (what must be TRUE):
+  1. Setup drives provider, model, runtime, and control-plane configuration to a truthful ready or blocked state.
+  2. Setup can validate and, where supported, bootstrap key runtime or channel surfaces before claiming success.
+  3. The setup path remains mode-aware rather than pretending every install needs the same bootstrap depth.
+**Plans**: TBD
+
+Plans:
+- [ ] TBD (run `$gsd-plan-phase 29` to break down)
+
+### Phase 30: Setup Repair and Existing Workspace Recovery
+**Goal**: Give operators explicit ways to resume, repair, or reset partial setups without manual workspace surgery.
+**Depends on**: Phase 29
+**Requirements**: [SETUP-02]
+**Success Criteria** (what must be TRUE):
+  1. Existing or partial workspaces can re-enter setup through explicit choices instead of hidden heuristics.
+  2. Repair and reset-with-backup flows preserve trust and visibility around what will change.
+  3. Setup recovery uses the same durable setup-state contract instead of bypassing it.
+**Plans**: TBD
+
+Plans:
+- [ ] TBD (run `$gsd-plan-phase 30` to break down)
+
+### Phase 31: Setup Handoff and Operator Surface Alignment
+**Goal**: End setup with a clear operator handoff and make the same setup state legible across docs and shipped surfaces.
+**Depends on**: Phase 30
+**Requirements**: [HANDOFF-01, HANDOFF-02]
+**Success Criteria** (what must be TRUE):
+  1. Setup ends with explicit ready, blocked, or degraded status plus concrete next actions.
+  2. The operator-facing setup story is consistent across onboarding output, docs, and shipped dashboard surfaces.
+  3. The milestone closes with a truthful setup baseline rather than another partial wizard improvement.
+**Plans**: TBD
+
+Plans:
+- [ ] TBD (run `$gsd-plan-phase 31` to break down)
+
+## Progress
+
+| Phase | Plans Complete | Status | Completed |
+|-------|----------------|--------|-----------|
+| 28. Setup State and Resumable Onboarding Contract | 0/TBD | Not started | - |
+| 29. Mode-Aware Provider, Runtime, and Channel Bootstrap | 0/TBD | Not started | - |
+| 30. Setup Repair and Existing Workspace Recovery | 0/TBD | Not started | - |
+| 31. Setup Handoff and Operator Surface Alignment | 0/TBD | Not started | - |
 
 ## Current Status
 
-- No active milestone open.
-- Next step: `$gsd-new-milestone`
+- Active milestone: v1.6 Proper Onboarding and Setup
+- Next step: `$gsd-discuss-phase 28` or `$gsd-plan-phase 28`
 - Archived milestone planning artifacts live under `.planning/milestones/`.
 
 ## Phase History
