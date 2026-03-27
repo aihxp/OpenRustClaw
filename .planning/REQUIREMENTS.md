@@ -7,12 +7,12 @@
 
 ### Setup State and Recovery
 
-- [ ] **SETUP-01**: Onboarding persists a resumable setup-state contract that records deployment path, completed steps, current blockers, and the next recommended action.
+- [x] **SETUP-01**: Onboarding persists a resumable setup-state contract that records deployment path, completed steps, current blockers, and the next recommended action.
 - [ ] **SETUP-02**: Existing or partially configured workspaces can re-enter setup through explicit resume, repair, or reset-with-backup paths instead of manual state edits.
 
 ### Setup Path Selection
 
-- [ ] **PATH-01**: First-run setup offers a standard path for the common self-hosted install and an advanced or custom path for operators who need deeper control.
+- [x] **PATH-01**: First-run setup offers a standard path for the common self-hosted install and an advanced or custom path for operators who need deeper control.
 - [ ] **PATH-02**: Standard and advanced or custom setup paths stay mode-aware and converge back into the same truthful readiness and handoff contract.
 
 ### Provider, Runtime, and Channel Bootstrap
@@ -55,8 +55,8 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SETUP-01 | Phase 28 | Pending |
-| PATH-01 | Phase 28 | Pending |
+| SETUP-01 | Phase 28 | Complete |
+| PATH-01 | Phase 28 | Complete |
 | PATH-02 | Phase 29 | Pending |
 | SETUP-02 | Phase 30 | Pending |
 | BOOT-01 | Phase 29 | Pending |

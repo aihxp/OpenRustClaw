@@ -2,20 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.6
 milestone_name: Proper Onboarding and Setup
-current_phase: null
-current_phase_name: Setup State and Resumable Onboarding Contract
-current_phase: 28
+current_phase: 29
+current_phase_name: Mode-Aware Provider, Runtime, and Channel Bootstrap
 current_plan: Not started
-status: Phase 28 ready for discuss and planning
-stopped_at: Requirements and roadmap defined for v1.6; Phase 28 is ready.
-last_updated: "2026-03-28T00:50:00.000Z"
-last_activity: 2026-03-28 -- Milestone v1.6 planned
+status: Phase 28 complete; Phase 29 ready
+stopped_at: Phase 28 complete; Phase 29 is ready for discuss and planning.
+last_updated: "2026-03-28T02:10:00.000Z"
+last_activity: 2026-03-28 -- Phase 28 completed
 progress:
   total_phases: 4
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  completed_phases: 1
+  total_plans: 2
+  completed_plans: 2
+  percent: 25
 ---
 
 # Project State
@@ -25,21 +24,21 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-28)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** Phase 28 - Setup State and Resumable Onboarding Contract
+**Current focus:** Phase 29 - Mode-Aware Provider, Runtime, and Channel Bootstrap
 
 ## Current Position
 
-Current Phase: 28
-Current Phase Name: Setup State and Resumable Onboarding Contract
+Current Phase: 29
+Current Phase Name: Mode-Aware Provider, Runtime, and Channel Bootstrap
 Total Phases: 4
 Current Plan: Not started
 Total Plans in Phase: 0
-Status: Phase 28 ready for discuss and planning
-Last activity: 2026-03-28 -- Milestone v1.6 planned
+Status: Phase 28 complete; Phase 29 ready
+Last activity: 2026-03-28 -- Phase 28 completed
 
-Phase: 1 of 4 (Setup State and Resumable Onboarding Contract)
+Phase: 2 of 4 (Mode-Aware Provider, Runtime, and Channel Bootstrap)
 Plan: 0 of 0
-Progress: [░░░░░░░░░░] 0%
+Progress: [███░░░░░░░] 25%
 
 ## Performance Metrics
 
@@ -65,7 +64,7 @@ Recent decisions affecting current work:
 - v1.5 made OpenRustClaw legible as one self-hosted open-source product with explicit `solo`, `team`, `company`, and `enterprise` deployment paths, mode-aware onboarding, and reviewable upgrade or downgrade transitions.
 - v1.5 is archived.
 - v1.6 now focuses on making onboarding and setup feel like one coherent, resumable first-install path.
-- Phase 28 will define the durable setup-state contract before bootstrap and recovery work build on top of it.
+- Phase 28 now persists the durable setup-state contract and standard/advanced/custom setup-path selection before bootstrap and recovery work build on top of it.
 
 ### Pending Todos
 
@@ -78,5 +77,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-27 04:44
-Stopped at: Requirements and roadmap defined for v1.6; Phase 28 is ready.
+Stopped at: Phase 28 complete; Phase 29 is ready for discuss and planning.
 Resume file: None
