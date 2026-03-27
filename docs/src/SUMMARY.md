@@ -2,18 +2,26 @@
 
 [Introduction](./introduction.md)
 
-# Planning
-- [Documentation Contract](./planning/documentation-contract.md)
-- [Roadmap](./planning/roadmap.md)
-- [Feature Matrix](./planning/feature-matrix.md)
-- [Surface Matrix](./planning/surface-matrix.md)
-- [Product Positioning](./planning/product-positioning.md)
-- [Docs Audit](./planning/docs-audit.md)
-
-# Getting Started
+# Start Here
 - [Installation](./getting-started/installation.md)
 - [Quickstart](./getting-started/quickstart.md)
 - [First Agent](./getting-started/first-agent.md)
+
+# Operate
+- [Production Deployment](./deployment/production.md)
+- [Release Checklist](./deployment/release-checklist.md)
+- [Observability & Monitoring](./operations/observability.md)
+- [Security](./guides/security.md)
+- [Configuring Providers](./guides/providers.md)
+- [Local Tool Profiles](./guides/tools.md)
+
+# Build and Extend
+- [Creating Skills](./guides/skills.md)
+- [Connecting MCP Servers](./guides/mcp-servers.md)
+- [mcp2cli - Token-Efficient Discovery](./guides/mcp2cli.md)
+- [Memory System](./guides/memory.md)
+- [Scheduling Tasks](./guides/scheduling.md)
+- [Cursor Integration](./guides/cursor-integration.md)
 
 # Architecture
 - [Overview](./architecture/overview.md)
@@ -23,16 +31,13 @@
 - [MCP Integration](./architecture/mcp-integration.md)
 - [Memory & RAG](./architecture/memory-rag.md)
 
-# Guides
-- [Configuring Providers](./guides/providers.md)
-- [Memory System](./guides/memory.md)
-- [Scheduling Tasks](./guides/scheduling.md)
-- [Creating Skills](./guides/skills.md)
-- [Connecting MCP Servers](./guides/mcp-servers.md)
-- [mcp2cli - Token-Efficient Discovery](./guides/mcp2cli.md)
-- [Local Tool Profiles](./guides/tools.md)
-- [Security](./guides/security.md)
-- [Cursor Integration](./guides/cursor-integration.md)
+# Planning
+- [Documentation Contract](./planning/documentation-contract.md)
+- [Roadmap](./planning/roadmap.md)
+- [Feature Matrix](./planning/feature-matrix.md)
+- [Surface Matrix](./planning/surface-matrix.md)
+- [Product Positioning](./planning/product-positioning.md)
+- [Docs Audit](./planning/docs-audit.md)
 
 # API Reference
 - [Core](./api-reference/core.md)
@@ -43,13 +48,6 @@
 - [Security](./api-reference/security.md)
 - [Scheduler](./api-reference/scheduler.md)
 - [CLI](./api-reference/cli.md)
-
-# Operations
-- [Observability & Monitoring](./operations/observability.md)
-
-# Deployment
-- [Production Deployment](./deployment/production.md)
-- [Release Checklist](./deployment/release-checklist.md)
 
 # Contributing
 - [Development Setup](./contributing/development.md)
