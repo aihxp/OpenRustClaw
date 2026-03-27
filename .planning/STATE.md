@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.8
 milestone_name: Clean Codebase
-current_phase: 37
-current_phase_name: Codebase Cleanup Inventory and Refactor Contract
+current_phase: 38
+current_phase_name: Repo Hygiene and Drift Reduction
 current_plan: null
-status: Milestone initialized
-stopped_at: Start with $gsd-discuss-phase 37 or $gsd-plan-phase 37.
+status: Phase 37 complete
+stopped_at: Continue with $gsd-discuss-phase 38 or $gsd-plan-phase 38.
 last_updated: "2026-03-27T21:45:54.000Z"
-last_activity: 2026-03-27 -- milestone v1.8 started
+last_activity: 2026-03-27 -- completed Phase 37 cleanup inventory
 progress:
   total_phases: 4
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  completed_phases: 1
+  total_plans: 2
+  completed_plans: 2
+  percent: 25
 ---
 
 # Project State
@@ -24,21 +24,21 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-27)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** Phase 37 - Codebase Cleanup Inventory and Refactor Contract
+**Current focus:** Phase 38 - Repo Hygiene and Drift Reduction
 
 ## Current Position
 
-Current Phase: 37
-Current Phase Name: Codebase Cleanup Inventory and Refactor Contract
+Current Phase: 38
+Current Phase Name: Repo Hygiene and Drift Reduction
 Total Phases: 4
 Current Plan: -
 Total Plans in Phase: 0
-Status: Milestone initialized
-Last activity: 2026-03-27 -- milestone v1.8 started
+Status: Phase 37 complete
+Last activity: 2026-03-27 -- completed Phase 37 cleanup inventory
 
-Phase: 1 of 4
+Phase: 2 of 4
 Plan: 0 of 0
-Progress: [░░░░░░░░░░] 0%
+Progress: [██░░░░░░░░] 25%
 
 ## Performance Metrics
 
@@ -65,6 +65,7 @@ Recent decisions affecting current work:
 - v1.6 made onboarding and setup truthful end-to-end with durable setup state, validated bootstrap outcomes, explicit repair, and one shared setup handoff surface.
 - v1.7 treated documentation drift as product debt and converged the README, repo-root docs, and docs-site sources into one canonical self-hosted product story.
 - v1.8 now focuses on cleanup inventory, repo hygiene, structural decomposition, and cleanup-safe verification.
+- Phase 37 established the cleanup contract and prioritized CI drift plus `start.rs` middleware extraction as the first bounded cleanup slices.
 
 ### Pending Todos
 
@@ -77,5 +78,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-27 21:45
-Stopped at: Start with $gsd-discuss-phase 37 or $gsd-plan-phase 37.
+Stopped at: Continue with $gsd-discuss-phase 38 or $gsd-plan-phase 38.
 Resume file: None

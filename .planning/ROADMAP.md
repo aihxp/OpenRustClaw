@@ -30,7 +30,7 @@ This milestone treats cleanup as a real delivery lane. The order is deliberate: 
 - Integer phases continue across milestones to preserve one linear execution history.
 - Decimal phases are reserved for urgent insertions if roadmap assumptions break.
 
-- [ ] **Phase 37: Codebase Cleanup Inventory and Refactor Contract** - inventory cleanup targets, define refactor boundaries, and establish the priority order for brownfield cleanup work.
+- [x] **Phase 37: Codebase Cleanup Inventory and Refactor Contract** - completed 2026-03-27. Cleanup targets, no-touch boundaries, and the milestone cleanup order are now explicit.
 - [ ] **Phase 38: Repo Hygiene and Drift Reduction** - remove stale repo paths, generated or local-noise artifacts, and docs or CI contract mismatches.
 - [ ] **Phase 39: Command Surface Decomposition and Boundary Cleanup** - split the highest-risk oversized command or control surfaces into smaller bounded units without changing shipped behavior.
 - [ ] **Phase 40: Cleanup Verification and Maintenance Guardrails** - add targeted verification, document remaining debt, and preserve the cleanup contract for future milestones.
@@ -45,7 +45,11 @@ This milestone treats cleanup as a real delivery lane. The order is deliberate: 
   1. The repo identifies canonical, oversized, deprecated, generated, and cleanup-candidate surfaces in one maintained inventory.
   2. High-risk hotspots and no-touch boundaries are explicit before code movement starts.
   3. The milestone has a prioritized cleanup target list instead of ad hoc refactor guesses.
-**Plans**: Not started
+**Plans**: 2 plans complete
+
+Plans:
+- [x] 37-01 Inventory cleanup hotspots and boundaries
+- [x] 37-02 Map cleanup order and guarded follow-up slices
 
 ### Phase 38: Repo Hygiene and Drift Reduction
 **Goal**: Remove stale or drifting repo surfaces so the workspace, CI, and docs all point at the actual shipped product contract.
@@ -81,7 +85,7 @@ This milestone treats cleanup as a real delivery lane. The order is deliberate: 
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 37. Codebase Cleanup Inventory and Refactor Contract | 0/0 | Not Started | - |
+| 37. Codebase Cleanup Inventory and Refactor Contract | 2/2 | Complete | 2026-03-27 |
 | 38. Repo Hygiene and Drift Reduction | 0/0 | Not Started | - |
 | 39. Command Surface Decomposition and Boundary Cleanup | 0/0 | Not Started | - |
 | 40. Cleanup Verification and Maintenance Guardrails | 0/0 | Not Started | - |
@@ -91,7 +95,7 @@ This milestone treats cleanup as a real delivery lane. The order is deliberate: 
 <details>
 <summary>🚧 v1.8 Clean Codebase — ACTIVE</summary>
 
-- [ ] **Phase 37: Codebase Cleanup Inventory and Refactor Contract**
+- [x] **Phase 37: Codebase Cleanup Inventory and Refactor Contract** — completed 2026-03-27
 - [ ] **Phase 38: Repo Hygiene and Drift Reduction**
 - [ ] **Phase 39: Command Surface Decomposition and Boundary Cleanup**
 - [ ] **Phase 40: Cleanup Verification and Maintenance Guardrails**

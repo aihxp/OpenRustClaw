@@ -50,8 +50,8 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| CLEAN-01 | Phase 37 | Pending |
-| CLEAN-02 | Phase 37 | Pending |
+| CLEAN-01 | Phase 37 | Complete |
+| CLEAN-02 | Phase 37 | Complete |
 | HYGI-01 | Phase 38 | Pending |
 | HYGI-02 | Phase 38 | Pending |
 | STRC-01 | Phase 39 | Pending |
