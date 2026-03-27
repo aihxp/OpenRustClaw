@@ -2,7 +2,7 @@
 
 ## What This Is
 
-OpenRustClaw is a Rust-first OpenClaw-style assistant platform with a shipped v1.0 MVP, a completed v1.1 lifecycle and enterprise-foundations follow-up, and an active v1.2 parity push. It now has a coherent production-ready baseline across onboarding, assistant continuity, memory policy, tool and coding evidence, communications, runtime operations, security posture, release exit, milestone verification integrity, and a narrow enterprise approval/audit foundation.
+OpenRustClaw is a Rust-first OpenClaw-style assistant platform with a shipped v1.0 MVP, a completed v1.1 lifecycle and enterprise-foundations follow-up, and a shipped v1.2 parity milestone. It now has a coherent production-ready baseline across onboarding, assistant continuity, memory policy, tool and coding evidence, communications, runtime operations, security posture, release exit, milestone verification integrity, a narrow enterprise approval or audit foundation, and materially deeper parity across browser, orchestration, mobile, Control UI, and voice or call handling surfaces.
 
 The product target remains broader than the MVP: a general-purpose assistant platform that can eventually support coding, communications, business operations, and deeper autonomous workflows. The difference after v1.0 is that the repo now has a believable trust baseline instead of a wide but loosely connected surface.
 
@@ -12,21 +12,14 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 ## Current State
 
-- **Shipped milestones:** v1.0 Rust OpenClaw MVP and v1.1 Lifecycle Integrity and Enterprise Foundations on 2026-03-26
-- **Archive:** `.planning/milestones/v1.0-*`, `.planning/milestones/v1.1-*`
-- **Planning state:** v1.2 Deeper OpenClaw Surface Parity is active
+- **Shipped milestones:** v1.0 Rust OpenClaw MVP and v1.1 Lifecycle Integrity and Enterprise Foundations on 2026-03-26, plus v1.2 Deeper OpenClaw Surface Parity on 2026-03-27
+- **Archive:** `.planning/milestones/v1.0-*`, `.planning/milestones/v1.1-*`, `.planning/milestones/v1.2-*`
+- **Planning state:** No active milestone is open; use `$gsd-new-milestone` to define the next version
 - **Known audit debt:** v1.0 archive still records missing phase `VERIFICATION.md` artifacts; v1.1 closes that workflow gap going forward
 
-## Current Milestone: v1.2 Deeper OpenClaw Surface Parity
+## Current Planning State
 
-**Goal:** Deepen the highest-leverage OpenClaw parity surfaces without weakening the v1.1 trust and verification baseline.
-
-**Target features:**
-- richer browser automation depth and artifacts
-- stronger multi-agent supervision and orchestration parity
-- broader mobile runtime and operator parity
-- deeper Control UI parity across shipped surfaces
-- richer voice and call-handling parity
+No active milestone is currently open. The next planning step is to choose the next version scope with `$gsd-new-milestone`.
 
 ## Requirements
 
@@ -41,12 +34,13 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 - ✓ Security posture and MVP release exit are exposed through shipped docs, control surfaces, and an automated release gate — v1.0
 - ✓ Completed phases now require preserved `VERIFICATION.md` artifacts and milestone archives preserve that evidence truthfully — v1.1
 - ✓ Approval-sensitive assistant actions now expose an enterprise foundations baseline with explicit policy and durable audit evidence — v1.1
+- ✓ Browser, orchestration, mobile, Control UI, and voice or call parity now expose materially deeper typed operator surfaces without weakening the trust-first runtime contract — v1.2
 
 ### Active
 
-- [ ] Deepen browser automation parity without regressing the existing browser policy and audit contract
-- [ ] Expand multi-agent supervision, mobile parity, Control UI depth, and voice/call handling under the same trust-first baseline
-- [ ] Preserve the v1.1 verification and archive contract while expanding deeper OpenClaw parity
+- [ ] No active milestone yet — define the next version scope with `$gsd-new-milestone`
+- [ ] Decide whether the next expansion priority is enterprise breadth, broader supervised autonomy, or another parity slice
+- [ ] Preserve the v1.1 lifecycle contract and the v1.2 parity gains while selecting the next milestone
 
 ### Out of Scope
 
@@ -57,9 +51,9 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 ## Context
 
-This remains a large brownfield Rust monorepo with broad runtime, CLI, control-plane, memory, tools, channel, voice, browser, and deployment surfaces. v1.0 converted that breadth into a cleaner MVP by making operator trust visible at the edges that matter: first run, session continuity, memory policy, execution evidence, communications evidence, runtime health, security posture, and release exit.
+This remains a large brownfield Rust monorepo with broad runtime, CLI, control-plane, memory, tools, channel, voice, browser, and deployment surfaces. v1.0 converted that breadth into a cleaner MVP by making operator trust visible at the edges that matter, v1.1 hardened the lifecycle and enterprise baseline around that trust, and v1.2 deepened the most operator-visible OpenClaw parity surfaces without reopening MVP sprawl.
 
-The next milestone should build on that baseline rather than reopen MVP-sprawl. The current planning question is no longer which lane to choose; it is how to deepen the highest-value OpenClaw parity surfaces while keeping the lifecycle and trust gains from v1.1 intact.
+The next milestone should build on all three shipped layers rather than reopen foundational debt. The current planning question is which next lane deserves priority: enterprise breadth, broader supervised autonomy, or another parity push.
 
 ## Constraints
 
@@ -80,12 +74,13 @@ The next milestone should build on that baseline rather than reopen MVP-sprawl. 
 | Archive milestone verification evidence explicitly during milestone completion | Later review should not depend on live phase directories or manual reconstruction | ✓ Good |
 | Define the first enterprise slice around explicit approval boundaries plus durable audit evidence | The repo needed a truthful foundation before larger governance work like RBAC or compliance packaging | ✓ Good |
 | Prioritize deeper OpenClaw parity through a focused top-five surface slice | Browser depth, supervision, mobile, Control UI, and voice/calls are the clearest next parity gains without scattering effort | ✓ Good |
+| Keep deeper parity work grounded in typed runtime summaries instead of frontend-only stitching | Browser, supervision, mobile, Control UI, and voice parity all landed more cleanly when the Rust-owned control plane aggregated the operator story first | ✓ Good |
 
 ## Next Milestone Goals
 
-- Deepen the top five OpenClaw parity surfaces under one milestone
-- Keep the verification/archive contract from v1.1 as a non-negotiable baseline
-- Defer broader enterprise governance and business-ops autonomy until parity work proves the current surfaces are coherent
+- Choose the next milestone scope explicitly with `$gsd-new-milestone`
+- Preserve the verification/archive contract from v1.1 and the deeper operator parity surfaces from v1.2 as a non-negotiable baseline
+- Decide whether the next priority is enterprise expansion, broader supervised autonomy, or another focused parity slice
 
 ## Evolution
 
@@ -105,4 +100,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-26 after starting milestone v1.2*
+*Last updated: 2026-03-27 after completing milestone v1.2*

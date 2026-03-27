@@ -1,5 +1,21 @@
 # Project Milestones: OpenRustClaw
 
+## v1.2 Deeper OpenClaw Surface Parity (Shipped: 2026-03-27)
+
+**Phases completed:** 5 phases, 15 plans, 28 tasks
+**Verification archive:** `.planning/milestones/v1.2-VERIFICATIONS.md`
+**Verification debt:** none
+
+**Key accomplishments:**
+
+- Added a durable browser workflow history ledger plus shipped runtime and dashboard inspection for richer bounded browser runs.
+- Expanded orchestration parity with typed supervision reports and Control UI visibility into delegated tasks, worker outcomes, and live attention signals.
+- Added a typed per-node mobile operator report so approval pressure, sync conflicts, and recent node activity are visible from one runtime summary.
+- Replaced the remaining priority raw dashboard panes with typed Control UI renderers across voice, talk, extension, bounded voice-call, and mobile sub-detail surfaces.
+- Added a typed voice operator report and a report-driven top-level voice Control UI surface over persisted voice sessions, talk receipts, and bounded voice-call evidence.
+
+---
+
 ## v1.1 Lifecycle Integrity and Enterprise Foundations (Shipped: 2026-03-26)
 
 **Phases completed:** 3 phases, 9 plans, 23 tasks

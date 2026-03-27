@@ -1,20 +1,20 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.2
-milestone_name: Deeper OpenClaw Surface Parity
-current_phase: 15
-current_phase_name: Voice and Call Handling Parity
-current_plan: Complete
-status: Ready for audit
-stopped_at: Phase 15 completed; milestone v1.2 is ready for audit.
-last_updated: "2026-03-27T03:16:46Z"
-last_activity: 2026-03-27 -- Phase 15 completed
+milestone: null
+milestone_name: null
+current_phase: null
+current_phase_name: null
+current_plan: null
+status: Ready for new milestone
+stopped_at: Milestone v1.2 completed and archived; define the next version with $gsd-new-milestone.
+last_updated: "2026-03-27T03:20:09Z"
+last_activity: 2026-03-27 -- milestone v1.2 completed
 progress:
-  total_phases: 5
-  completed_phases: 5
-  total_plans: 15
-  completed_plans: 15
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -24,21 +24,21 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-26)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** Milestone v1.2 audit
+**Current focus:** No active milestone
 
 ## Current Position
 
-Current Phase: 15
-Current Phase Name: Voice and Call Handling Parity
-Total Phases: 5
-Current Plan: Complete
-Total Plans in Phase: 3
-Status: Ready for audit
-Last activity: 2026-03-27 - Phase 15 completed
+Current Phase: None
+Current Phase Name: None
+Total Phases: 0
+Current Plan: None
+Total Plans in Phase: 0
+Status: Ready for new milestone
+Last activity: 2026-03-27 - milestone v1.2 completed
 
-Phase: 5 of 5 (Voice and Call Handling Parity)
-Plan: 3 of 3 in current phase
-Progress: [██████████] 100%
+Phase: 0 of 0 (No active milestone)
+Plan: 0 of 0 in current phase
+Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
@@ -87,7 +87,7 @@ Recent decisions affecting current work:
 - Phase 12 now exposes typed supervision reports plus Control UI tables for delegated tasks, worker outcomes, approval context, live attention signals, and recent orchestration events.
 - Phase 13 now exposes a typed mobile operator report plus a main mobile node view that surfaces attention signals and recent activity from the existing mobile receipt model.
 - Phase 14 now replaces the remaining priority raw Control UI panes with typed voice, talk, skill, bounded voice-call, and mobile sub-detail renderers, then closes with matching docs and verification evidence.
-- Phase 15 now adds a typed voice operator report across voice sessions, talk receipts, and bounded voice-call receipts, then surfaces that report in `/control/ui` before closing the milestone for audit.
+- Phase 15 now adds a typed voice operator report across voice sessions, talk receipts, and bounded voice-call receipts, then surfaces that report in `/control/ui` before closing the v1.2 milestone cleanly.
 
 ### Pending Todos
 
@@ -99,6 +99,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-26 23:16
-Stopped at: Phase 15 completed; milestone v1.2 is ready for audit.
+Last session: 2026-03-26 23:20
+Stopped at: Milestone v1.2 completed and archived; define the next version with $gsd-new-milestone.
 Resume file: None
