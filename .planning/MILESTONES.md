@@ -1,5 +1,20 @@
 # Project Milestones: OpenRustClaw
 
+## v1.7 Documentation Convergence and OpenClaw-Inspired Docs Rewrite (Shipped: 2026-03-27)
+
+**Phases completed:** 5 phases, 10 plans, 0 tasks
+**Verification archive:** `.planning/milestones/v1.7-VERIFICATIONS.md`
+**Verification debt:** none
+
+**Key accomplishments:**
+
+- Defined the canonical documentation ownership contract across README, root planning docs, mdBook mirrors, and milestone artifacts.
+- Rewrote the README and mdBook entry surfaces so OpenRustClaw now reads like one coherent self-hosted product.
+- Aligned installation, quickstart, and first-agent around the shipped onboarding, repair, and setup-handoff lifecycle.
+- Rewrote operator and planning docs into a tighter, truthful runbook set and locked the result in with a standing docs audit and maintenance workflow.
+
+---
+
 ## v1.6 Proper Onboarding and Setup (Shipped: 2026-03-28)
 
 **Phases completed:** 4 phases, 10 plans, 0 tasks

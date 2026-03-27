@@ -1,20 +1,20 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.7
-milestone_name: Documentation Convergence and OpenClaw-Inspired Docs Rewrite
-current_phase: 36
-current_phase_name: Documentation Governance and Drift Prevention
+milestone: null
+milestone_name: null
+current_phase: null
+current_phase_name: null
 current_plan: null
-status: All phases complete
-stopped_at: Run $gsd-audit-milestone, then complete and archive v1.7.
-last_updated: "2026-03-27T22:25:00.000Z"
-last_activity: 2026-03-27 -- completed Phase 36 documentation governance
+status: No active milestone
+stopped_at: v1.7 archived; start the next milestone with $gsd-new-milestone.
+last_updated: "2026-03-27T21:30:14.000Z"
+last_activity: 2026-03-27 -- v1.7 archived
 progress:
-  total_phases: 5
-  completed_phases: 5
-  total_plans: 10
-  completed_plans: 10
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -24,29 +24,29 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-27)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** Milestone audit and archive
+**Current focus:** No active milestone
 
 ## Current Position
 
-Current Phase: 36
-Current Phase Name: Documentation Governance and Drift Prevention
-Total Phases: 5
+Current Phase: -
+Current Phase Name: -
+Total Phases: 0
 Current Plan: -
-Total Plans in Phase: 2
-Status: All phases complete
-Last activity: 2026-03-27 -- completed Phase 36 documentation governance
+Total Plans in Phase: 0
+Status: No active milestone
+Last activity: 2026-03-27 -- v1.7 archived
 
-Phase: 5 of 5
+Phase: 0 of 0
 Plan: 0 of 0
-Progress: [██████████] 100%
+Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 45
+- Total plans completed: 50
 - Average duration: historical average retained across shipped milestones
-- Total execution time: multiple shipped milestones completed across v1.0-v1.6
+- Total execution time: multiple shipped milestones completed across v1.0-v1.7
 
 ## Accumulated Context
 
@@ -63,12 +63,8 @@ Recent decisions affecting current work:
 - v1.4 added stronger enterprise governance plus an explicit operator-gated full-autonomy lane with durable budgets, kill switch, and dashboard controls.
 - v1.5 made OpenRustClaw legible as one self-hosted open-source product with explicit `solo`, `team`, `company`, and `enterprise` deployment paths, mode-aware onboarding, and reviewable upgrade or downgrade transitions.
 - v1.6 made onboarding and setup truthful end-to-end with durable setup state, validated bootstrap outcomes, explicit repair, and one shared setup handoff surface.
-- v1.7 will treat documentation drift as product debt and converge the README, repo-root docs, and docs-site sources into one canonical self-hosted product story.
-- Phase 32 established the canonical docs ownership contract and made merge-or-delete rules explicit before the public rewrite.
-- Phase 33 rewrote the README and mdBook entry surfaces so the project now reads like one coherent self-hosted product.
-- Phase 34 aligned installation, quickstart, and first-agent around the shipped onboarding, repair, and setup-handoff lifecycle.
-- Phase 35 rewrote operator guides and canonical planning docs so they reinforce the same self-hosted product story.
-- Phase 36 locked in the documentation maintenance workflow, refreshed the docs audit, and removed the last stale redirect.
+- v1.7 treated documentation drift as product debt and converged the README, repo-root docs, and docs-site sources into one canonical self-hosted product story.
+- v1.7 is archived; the next milestone has not been defined yet.
 
 ### Pending Todos
 
@@ -80,6 +76,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-27 22:25
-Stopped at: Run $gsd-audit-milestone, then complete and archive v1.7.
+Last session: 2026-03-27 21:30
+Stopped at: v1.7 archived; start the next milestone with $gsd-new-milestone.
 Resume file: None
