@@ -353,11 +353,23 @@ async fn check_channels_registry(repair: bool) -> Result<()> {
 fn check_onboarding_state() -> Result<()> {
     let cwd = std::env::current_dir()?;
     let status = onboard::workspace_status(&cwd);
-    if !status.env_present && !status.control_registry_present && !status.channels_registry_present
+    if !status.env_present
+        && !status.control_registry_present
+        && !status.channels_registry_present
+        && !status.setup_state_present
     {
         anyhow::bail!(
             "No onboarding-managed workspace state detected yet. Run `openrustclaw onboard` or scaffold control/channel state manually."
         );
+    }
+    if let Some(setup_state) = onboard::load_setup_state(&cwd)? {
+        let setup = setup_state.setup;
+        if !matches!(setup.status.as_str(), "ready" | "completed") {
+            let detail = setup
+                .next_action
+                .unwrap_or_else(|| "rerun `openrustclaw onboard` to continue setup.".to_string());
+            anyhow::bail!("Setup state is {}. {}", setup.status, detail);
+        }
     }
     Ok(())
 }

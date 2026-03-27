@@ -5,7 +5,7 @@ use chrono::Utc;
 use console::style;
 use dialoguer::{Confirm, Input, MultiSelect, Password, Select, theme::ColorfulTheme};
 use indicatif::{ProgressBar, ProgressStyle};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use tokio::fs;
@@ -26,6 +26,7 @@ pub struct OnboardingState {
     pub daemon_installed: bool,
     pub skills_installed: Vec<String>,
     pub profile: Option<String>,
+    pub workspace_action: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -36,6 +37,9 @@ pub struct OnboardingWorkspaceStatus {
     pub channels_registry_present: bool,
     pub product_mode_present: bool,
     pub product_mode_label: Option<String>,
+    pub setup_state_present: bool,
+    pub setup_status: Option<String>,
+    pub setup_next_action: Option<String>,
     pub user_service_present: bool,
 }
 
@@ -47,20 +51,31 @@ pub struct OnboardingWizard {
 
 #[derive(Clone, Copy)]
 enum OnboardingProfile {
-    QuickStart,
+    Standard,
     Advanced,
+    Custom,
 }
 
 impl OnboardingProfile {
     fn label(&self) -> &'static str {
         match self {
-            OnboardingProfile::QuickStart => "QuickStart",
+            OnboardingProfile::Standard => "Standard",
             OnboardingProfile::Advanced => "Advanced",
+            OnboardingProfile::Custom => "Custom",
+        }
+    }
+
+    fn from_label(label: &str) -> Self {
+        match label {
+            "Advanced" => OnboardingProfile::Advanced,
+            "Custom" => OnboardingProfile::Custom,
+            _ => OnboardingProfile::Standard,
         }
     }
 }
 
 /// Enum representing all onboarding steps
+#[derive(Clone, Copy)]
 enum OnboardingStep {
     Gateway,
     Channel,
@@ -71,6 +86,17 @@ enum OnboardingStep {
 }
 
 impl OnboardingStep {
+    fn id(&self) -> &'static str {
+        match self {
+            OnboardingStep::Gateway => "gateway",
+            OnboardingStep::Channel => "channel",
+            OnboardingStep::Model => "model",
+            OnboardingStep::ControlPlane => "control_plane",
+            OnboardingStep::Skill => "skill",
+            OnboardingStep::Daemon => "daemon",
+        }
+    }
+
     fn name(&self) -> &'static str {
         match self {
             OnboardingStep::Gateway => "Gateway Setup",
@@ -105,6 +131,45 @@ impl OnboardingStep {
     }
 }
 
+const SETUP_STATE_VERSION: u32 = 1;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SetupStateManifest {
+    #[serde(default = "default_setup_state_version")]
+    pub version: u32,
+    pub setup: SetupState,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SetupState {
+    pub started_at: String,
+    pub updated_at: String,
+    #[serde(default)]
+    pub completed_at: Option<String>,
+    pub status: String,
+    pub workspace_action: String,
+    #[serde(default)]
+    pub deployment_mode: Option<String>,
+    #[serde(default)]
+    pub deployment_path: Option<String>,
+    #[serde(default)]
+    pub setup_path: Option<String>,
+    #[serde(default)]
+    pub selected_steps: Vec<String>,
+    #[serde(default)]
+    pub completed_steps: Vec<String>,
+    #[serde(default)]
+    pub blockers: Vec<String>,
+    #[serde(default)]
+    pub next_action: Option<String>,
+    #[serde(default)]
+    pub current_step: Option<String>,
+}
+
+fn default_setup_state_version() -> u32 {
+    SETUP_STATE_VERSION
+}
+
 impl OnboardingWizard {
     /// Create a new onboarding wizard
     pub fn new() -> Self {
@@ -120,40 +185,83 @@ impl OnboardingWizard {
         let workspace_root = std::env::current_dir()?;
 
         let workspace_status = workspace_status(workspace_root.as_path());
+        let existing_setup_state = load_setup_state(&workspace_root)?;
+        let existing_setup_resumable = existing_setup_state
+            .as_ref()
+            .map(setup_state_is_resumable)
+            .unwrap_or(false);
+
         if workspace_status.env_present
             || workspace_status.control_registry_present
             || workspace_status.channels_registry_present
+            || workspace_status.product_mode_present
+            || workspace_status.setup_state_present
         {
-            let choices = vec![
-                "Modify existing workspace state",
-                "Keep existing state and only run a health check",
-                "Reset onboarding-managed state with backup",
-            ];
+            let mut choices = Vec::new();
+            let mut resume_choice = None;
+            if existing_setup_resumable {
+                let setup = &existing_setup_state
+                    .as_ref()
+                    .expect("checked resumable state")
+                    .setup;
+                let detail = setup
+                    .current_step
+                    .clone()
+                    .or_else(|| setup.next_action.clone())
+                    .unwrap_or_else(|| "continue previous setup".to_string());
+                resume_choice = Some(choices.len());
+                choices.push(format!("Resume previous setup ({detail})"));
+            }
+            let modify_choice = choices.len();
+            choices.push("Modify existing workspace state".to_string());
+            let health_choice = choices.len();
+            choices.push("Keep existing state and only run a health check".to_string());
+            let reset_choice = choices.len();
+            choices.push("Reset onboarding-managed state with backup".to_string());
             let selection = Select::with_theme(&self.theme)
                 .with_prompt("Existing OpenRustClaw workspace state was detected")
                 .items(&choices)
-                .default(0)
+                .default(resume_choice.unwrap_or(modify_choice))
                 .interact()?;
 
+            if Some(selection) == resume_choice {
+                self.print_workspace_status(&workspace_status);
+                self.load_from_setup_state(existing_setup_state.as_ref().expect("resume state"))?;
+                let steps = selected_steps_from_setup_state(
+                    &existing_setup_state.as_ref().expect("resume state").setup,
+                );
+                self.run_selected_steps(&workspace_root, steps).await?;
+                let healthy = self.run_post_onboarding_health_check().await?;
+                self.print_completion();
+                self.maybe_launch_assistant(healthy).await?;
+                return Ok(());
+            }
+
             match selection {
-                1 => {
+                value if value == health_choice => {
                     self.print_workspace_status(&workspace_status);
                     let healthy = self.run_post_onboarding_health_check().await?;
                     self.print_completion();
                     self.maybe_launch_assistant(healthy).await?;
                     return Ok(());
                 }
-                2 => {
+                value if value == reset_choice => {
                     let backup_path = backup_and_reset_workspace_state().await?;
                     println!(
                         "✓ Existing onboarding-managed state backed up to {}",
                         backup_path.display()
                     );
+                    self.state.workspace_action = Some("reset_with_backup".to_string());
                 }
                 _ => {
                     self.print_workspace_status(&workspace_status);
+                    self.state.workspace_action = Some("modify_existing".to_string());
                 }
             }
+        }
+
+        if self.state.workspace_action.is_none() {
+            self.state.workspace_action = Some("new_workspace".to_string());
         }
 
         let deployment_mode = select_deployment_mode(&self.theme, &workspace_root)?;
@@ -181,58 +289,41 @@ impl OnboardingWizard {
             descriptor.recommended_runtime_mode
         );
 
-        let profile = match Select::with_theme(&self.theme)
-            .with_prompt(format!(
-                "Choose how much of the {} setup to do now",
-                descriptor.label
-            ))
-            .items(&[
-                "QuickStart - gateway, one channel, provider, and control plane",
-                "Advanced - everything in QuickStart plus skills and system service",
-            ])
-            .default(default_onboarding_profile_for_mode(descriptor.mode).index())
-            .interact()?
-        {
-            1 => OnboardingProfile::Advanced,
-            _ => OnboardingProfile::QuickStart,
-        };
+        let (profile, steps) = select_setup_path(
+            &self.theme,
+            descriptor.mode,
+            self.state.deployment_mode.as_deref(),
+        )?;
         self.state.profile = Some(profile.label().to_string());
+        save_setup_state(
+            &workspace_root,
+            &SetupStateManifest {
+                version: SETUP_STATE_VERSION,
+                setup: SetupState {
+                    started_at: Utc::now().to_rfc3339(),
+                    updated_at: Utc::now().to_rfc3339(),
+                    completed_at: None,
+                    status: "in_progress".to_string(),
+                    workspace_action: self
+                        .state
+                        .workspace_action
+                        .clone()
+                        .unwrap_or_else(|| "new_workspace".to_string()),
+                    deployment_mode: self.state.deployment_mode.clone(),
+                    deployment_path: self.state.deployment_path.clone(),
+                    setup_path: self.state.profile.clone(),
+                    selected_steps: step_ids(&steps),
+                    completed_steps: Vec::new(),
+                    blockers: Vec::new(),
+                    next_action: steps
+                        .first()
+                        .map(|step| format!("Complete {}", step.name())),
+                    current_step: steps.first().map(|step| step.id().to_string()),
+                },
+            },
+        )?;
 
-        let quickstart_steps = vec![
-            OnboardingStep::Gateway,
-            OnboardingStep::Channel,
-            OnboardingStep::Model,
-            OnboardingStep::ControlPlane,
-        ];
-        let advanced_steps = vec![
-            OnboardingStep::Gateway,
-            OnboardingStep::Channel,
-            OnboardingStep::Model,
-            OnboardingStep::ControlPlane,
-            OnboardingStep::Skill,
-            OnboardingStep::Daemon,
-        ];
-
-        let steps = match profile {
-            OnboardingProfile::QuickStart => quickstart_steps,
-            OnboardingProfile::Advanced => advanced_steps,
-        };
-
-        for step in steps {
-            println!("\n{}", style(format!("📋 {}", step.name())).bold().cyan());
-            println!("{}", style(step.description()).dim());
-
-            match step.run(self).await {
-                Ok(true) => {}
-                Ok(false) => {
-                    println!("⚠️  Step skipped or failed, but continuing...");
-                }
-                Err(e) => {
-                    println!("⚠️  Step error: {}", e);
-                    println!("    Continuing...");
-                }
-            }
-        }
+        self.run_selected_steps(&workspace_root, steps).await?;
 
         let healthy = self.run_post_onboarding_health_check().await?;
         self.print_completion();
@@ -258,6 +349,51 @@ Let's get started!
         );
     }
 
+    fn load_from_setup_state(&mut self, setup_state: &SetupStateManifest) -> Result<()> {
+        self.state.deployment_mode = setup_state.setup.deployment_mode.clone();
+        self.state.deployment_path = setup_state.setup.deployment_path.clone();
+        self.state.profile = setup_state.setup.setup_path.clone();
+        self.state.workspace_action = Some(setup_state.setup.workspace_action.clone());
+        Ok(())
+    }
+
+    async fn run_selected_steps(
+        &mut self,
+        workspace_root: &Path,
+        steps: Vec<OnboardingStep>,
+    ) -> Result<()> {
+        for step in steps {
+            set_setup_state_current_step(workspace_root, &step)?;
+            println!("\n{}", style(format!("📋 {}", step.name())).bold().cyan());
+            println!("{}", style(step.description()).dim());
+
+            match step.run(self).await {
+                Ok(true) => {
+                    mark_setup_state_step_completed(workspace_root, &step)?;
+                }
+                Ok(false) => {
+                    mark_setup_state_step_blocked(
+                        workspace_root,
+                        &step,
+                        format!("{} was skipped or not completed", step.name()),
+                    )?;
+                    println!("⚠️  Step skipped or failed, but continuing...");
+                }
+                Err(e) => {
+                    mark_setup_state_step_blocked(
+                        workspace_root,
+                        &step,
+                        format!("{} failed: {}", step.name(), e),
+                    )?;
+                    println!("⚠️  Step error: {}", e);
+                    println!("    Continuing...");
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     fn print_completion(&self) {
         println!("\n{}", style("✅ Onboarding complete!").bold().green());
         println!("\nConfiguration summary:");
@@ -277,7 +413,7 @@ Let's get started!
         );
         println!(
             "  Path: {}",
-            self.state.profile.as_deref().unwrap_or("QuickStart")
+            self.state.profile.as_deref().unwrap_or("Standard")
         );
         println!(
             "  Gateway: {}",
@@ -371,6 +507,20 @@ Let's get started!
                 })
         );
         println!(
+            "  setup state: {}",
+            status
+                .setup_status
+                .as_deref()
+                .unwrap_or(if status.setup_state_present {
+                    "present"
+                } else {
+                    "absent"
+                })
+        );
+        if let Some(next_action) = status.setup_next_action.as_deref() {
+            println!("  next action: {next_action}");
+        }
+        println!(
             "  user service: {}",
             if status.user_service_present {
                 "present"
@@ -400,6 +550,8 @@ Let's get started!
             }
             println!("  ⚠ Review `openrustclaw doctor --deep` before first start.");
         }
+        let workspace_root = std::env::current_dir()?;
+        finalize_setup_state(&workspace_root, &readiness)?;
         Ok(readiness.ready)
     }
 
@@ -824,6 +976,157 @@ fn generate_jwt_secret() -> String {
     base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &bytes)
 }
 
+pub fn setup_state_path(workspace_root: &Path) -> PathBuf {
+    control::control_root_for(workspace_root).join("setup-state.json")
+}
+
+pub fn load_setup_state(workspace_root: &Path) -> Result<Option<SetupStateManifest>> {
+    let path = setup_state_path(workspace_root);
+    if !path.exists() {
+        return Ok(None);
+    }
+    let raw = std::fs::read_to_string(&path)?;
+    let state = serde_json::from_str(&raw)?;
+    Ok(Some(state))
+}
+
+pub fn save_setup_state(workspace_root: &Path, manifest: &SetupStateManifest) -> Result<()> {
+    let path = setup_state_path(workspace_root);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(&path, serde_json::to_string_pretty(manifest)?)?;
+    Ok(())
+}
+
+fn setup_state_is_resumable(manifest: &SetupStateManifest) -> bool {
+    matches!(manifest.setup.status.as_str(), "in_progress" | "blocked")
+}
+
+fn step_ids(steps: &[OnboardingStep]) -> Vec<String> {
+    steps.iter().map(|step| step.id().to_string()).collect()
+}
+
+fn step_from_id(id: &str) -> Option<OnboardingStep> {
+    match id {
+        "gateway" => Some(OnboardingStep::Gateway),
+        "channel" => Some(OnboardingStep::Channel),
+        "model" => Some(OnboardingStep::Model),
+        "control_plane" => Some(OnboardingStep::ControlPlane),
+        "skill" => Some(OnboardingStep::Skill),
+        "daemon" => Some(OnboardingStep::Daemon),
+        _ => None,
+    }
+}
+
+fn selected_steps_from_setup_state(setup: &SetupState) -> Vec<OnboardingStep> {
+    let selected = setup
+        .selected_steps
+        .iter()
+        .filter(|id| !setup.completed_steps.contains(*id))
+        .filter_map(|id| step_from_id(id))
+        .collect::<Vec<_>>();
+    if selected.is_empty() {
+        steps_for_profile(OnboardingProfile::from_label(
+            setup.setup_path.as_deref().unwrap_or("Standard"),
+        ))
+    } else {
+        selected
+    }
+}
+
+fn with_setup_state_mut<F>(workspace_root: &Path, mutator: F) -> Result<()>
+where
+    F: FnOnce(&mut SetupState),
+{
+    let mut manifest = load_setup_state(workspace_root)?.unwrap_or(SetupStateManifest {
+        version: SETUP_STATE_VERSION,
+        setup: SetupState {
+            started_at: Utc::now().to_rfc3339(),
+            updated_at: Utc::now().to_rfc3339(),
+            completed_at: None,
+            status: "in_progress".to_string(),
+            workspace_action: "new_workspace".to_string(),
+            deployment_mode: None,
+            deployment_path: None,
+            setup_path: None,
+            selected_steps: Vec::new(),
+            completed_steps: Vec::new(),
+            blockers: Vec::new(),
+            next_action: None,
+            current_step: None,
+        },
+    });
+    mutator(&mut manifest.setup);
+    manifest.setup.updated_at = Utc::now().to_rfc3339();
+    save_setup_state(workspace_root, &manifest)
+}
+
+fn next_pending_step_name(setup: &SetupState) -> Option<String> {
+    setup
+        .selected_steps
+        .iter()
+        .find(|id| !setup.completed_steps.contains(*id))
+        .and_then(|id| step_from_id(id))
+        .map(|step| step.name().to_string())
+}
+
+fn set_setup_state_current_step(workspace_root: &Path, step: &OnboardingStep) -> Result<()> {
+    with_setup_state_mut(workspace_root, |setup| {
+        setup.status = "in_progress".to_string();
+        setup.current_step = Some(step.id().to_string());
+        setup.next_action = Some(format!("Complete {}", step.name()));
+    })
+}
+
+fn mark_setup_state_step_completed(workspace_root: &Path, step: &OnboardingStep) -> Result<()> {
+    with_setup_state_mut(workspace_root, |setup| {
+        let step_id = step.id().to_string();
+        if !setup.completed_steps.contains(&step_id) {
+            setup.completed_steps.push(step_id);
+        }
+        setup.blockers
+            .retain(|item| !item.contains(step.name()) && !item.contains(step.id()));
+        setup.current_step = None;
+        setup.next_action = next_pending_step_name(setup).map(|name| format!("Complete {name}"));
+    })
+}
+
+fn mark_setup_state_step_blocked(
+    workspace_root: &Path,
+    step: &OnboardingStep,
+    message: String,
+) -> Result<()> {
+    with_setup_state_mut(workspace_root, |setup| {
+        setup.status = "blocked".to_string();
+        setup.current_step = Some(step.id().to_string());
+        if !setup.blockers.contains(&message) {
+            setup.blockers.push(message.clone());
+        }
+        setup.next_action = Some(format!("Review {} and rerun onboarding", step.name()));
+    })
+}
+
+fn finalize_setup_state(workspace_root: &Path, readiness: &doctor::FirstStartReadiness) -> Result<()> {
+    with_setup_state_mut(workspace_root, |setup| {
+        setup.completed_at = Some(Utc::now().to_rfc3339());
+        setup.current_step = None;
+        if readiness.ready {
+            setup.status = "ready".to_string();
+            setup.blockers.clear();
+            setup.next_action = Some(
+                "Start the gateway or launch the persisted assistant session.".to_string(),
+            );
+        } else {
+            setup.status = "blocked".to_string();
+            setup.blockers = readiness.blocking_items.clone();
+            setup.next_action =
+                Some("Run `openrustclaw doctor --deep`, fix blockers, then rerun onboarding."
+                    .to_string());
+        }
+    })
+}
+
 async fn save_gateway_config(host: &str, port: u16, jwt_secret: &str) -> Result<()> {
     let env_content = format!(
         r#"# OpenRustClaw Configuration - Generated by onboarding wizard
@@ -916,6 +1219,7 @@ pub fn workspace_status(workspace_root: &Path) -> OnboardingWorkspaceStatus {
         runtime::runtime_service_install_status("config/default.toml", workspace_root)
             .map(|status| status.installed)
             .unwrap_or(false);
+    let setup_state = load_setup_state(workspace_root).ok().flatten();
 
     OnboardingWorkspaceStatus {
         workspace_root: workspace_root.display().to_string(),
@@ -924,6 +1228,9 @@ pub fn workspace_status(workspace_root: &Path) -> OnboardingWorkspaceStatus {
         channels_registry_present: channels_root.exists(),
         product_mode_present: product_mode.is_some(),
         product_mode_label,
+        setup_state_present: setup_state.is_some(),
+        setup_status: setup_state.as_ref().map(|state| state.setup.status.clone()),
+        setup_next_action: setup_state.and_then(|state| state.setup.next_action),
         user_service_present: service_present,
     }
 }
@@ -982,8 +1289,9 @@ impl DeploymentModeChoice {
 impl OnboardingProfile {
     fn index(self) -> usize {
         match self {
-            OnboardingProfile::QuickStart => 0,
+            OnboardingProfile::Standard => 0,
             OnboardingProfile::Advanced => 1,
+            OnboardingProfile::Custom => 2,
         }
     }
 }
@@ -991,7 +1299,7 @@ impl OnboardingProfile {
 fn default_onboarding_profile_for_mode(mode: &str) -> OnboardingProfile {
     match mode {
         self_hosted::MODE_COMPANY | self_hosted::MODE_ENTERPRISE => OnboardingProfile::Advanced,
-        _ => OnboardingProfile::QuickStart,
+        _ => OnboardingProfile::Standard,
     }
 }
 
@@ -1015,6 +1323,80 @@ fn select_deployment_mode(theme: &ColorfulTheme, workspace_root: &Path) -> Resul
         .default(default_mode.index())
         .interact()?;
     Ok(items[selection])
+}
+
+fn steps_for_profile(profile: OnboardingProfile) -> Vec<OnboardingStep> {
+    match profile {
+        OnboardingProfile::Standard => vec![
+            OnboardingStep::Gateway,
+            OnboardingStep::Channel,
+            OnboardingStep::Model,
+            OnboardingStep::ControlPlane,
+        ],
+        OnboardingProfile::Advanced => vec![
+            OnboardingStep::Gateway,
+            OnboardingStep::Channel,
+            OnboardingStep::Model,
+            OnboardingStep::ControlPlane,
+            OnboardingStep::Skill,
+            OnboardingStep::Daemon,
+        ],
+        OnboardingProfile::Custom => Vec::new(),
+    }
+}
+
+fn select_setup_path(
+    theme: &ColorfulTheme,
+    mode: &str,
+    prior_mode: Option<&str>,
+) -> Result<(OnboardingProfile, Vec<OnboardingStep>)> {
+    let default_profile = default_onboarding_profile_for_mode(prior_mode.unwrap_or(mode));
+    let profile = match Select::with_theme(theme)
+        .with_prompt(format!("Choose how much of the {} setup to do now", self_hosted::descriptor_for(mode)?.label))
+        .items(&[
+            "Standard - gateway, one channel, provider, and control plane",
+            "Advanced - everything in Standard plus skills and system service",
+            "Custom - choose the exact setup steps to run now",
+        ])
+        .default(default_profile.index())
+        .interact()?
+    {
+        1 => OnboardingProfile::Advanced,
+        2 => OnboardingProfile::Custom,
+        _ => OnboardingProfile::Standard,
+    };
+
+    if !matches!(profile, OnboardingProfile::Custom) {
+        return Ok((profile, steps_for_profile(profile)));
+    }
+
+    let all_steps = [
+        OnboardingStep::Gateway,
+        OnboardingStep::Channel,
+        OnboardingStep::Model,
+        OnboardingStep::ControlPlane,
+        OnboardingStep::Skill,
+        OnboardingStep::Daemon,
+    ];
+    let labels = all_steps
+        .iter()
+        .map(|step| format!("{} - {}", step.name(), step.description()))
+        .collect::<Vec<_>>();
+    let defaults = [true, true, true, true, false, false];
+    let selections = MultiSelect::with_theme(theme)
+        .with_prompt("Choose the setup steps to run now")
+        .items(&labels)
+        .defaults(&defaults)
+        .interact()?;
+
+    let mut steps = selections
+        .iter()
+        .filter_map(|idx| all_steps.get(*idx).copied())
+        .collect::<Vec<_>>();
+    if steps.is_empty() {
+        steps = steps_for_profile(OnboardingProfile::Standard);
+    }
+    Ok((profile, steps))
 }
 
 async fn backup_and_reset_workspace_state() -> Result<PathBuf> {
@@ -1097,6 +1479,7 @@ mod tests {
         assert!(!state.daemon_installed);
         assert!(state.skills_installed.is_empty());
         assert!(state.profile.is_none());
+        assert!(state.workspace_action.is_none());
     }
 
     #[test]
@@ -1111,6 +1494,7 @@ mod tests {
         assert!(!wizard.state.daemon_installed);
         assert!(wizard.state.skills_installed.is_empty());
         assert!(wizard.state.profile.is_none());
+        assert!(wizard.state.workspace_action.is_none());
     }
 
     #[test]
@@ -1201,6 +1585,9 @@ mod tests {
         assert!(!status.channels_registry_present);
         assert!(!status.product_mode_present);
         assert!(status.product_mode_label.is_none());
+        assert!(!status.setup_state_present);
+        assert!(status.setup_status.is_none());
+        assert!(status.setup_next_action.is_none());
     }
 
     #[test]
@@ -1211,8 +1598,46 @@ mod tests {
         );
         assert_eq!(
             default_onboarding_profile_for_mode(self_hosted::MODE_SOLO).label(),
-            "QuickStart"
+            "Standard"
         );
+    }
+
+    #[test]
+    fn test_steps_for_standard_and_advanced_paths() {
+        assert_eq!(steps_for_profile(OnboardingProfile::Standard).len(), 4);
+        assert_eq!(steps_for_profile(OnboardingProfile::Advanced).len(), 6);
+        assert!(steps_for_profile(OnboardingProfile::Custom).is_empty());
+    }
+
+    #[test]
+    fn test_setup_state_round_trip_and_resume_detection() {
+        let dir = tempfile::tempdir().unwrap();
+        let manifest = SetupStateManifest {
+            version: SETUP_STATE_VERSION,
+            setup: SetupState {
+                started_at: Utc::now().to_rfc3339(),
+                updated_at: Utc::now().to_rfc3339(),
+                completed_at: None,
+                status: "in_progress".to_string(),
+                workspace_action: "new_workspace".to_string(),
+                deployment_mode: Some(self_hosted::MODE_SOLO.to_string()),
+                deployment_path: Some("solo_starter".to_string()),
+                setup_path: Some("Custom".to_string()),
+                selected_steps: vec!["gateway".to_string(), "model".to_string()],
+                completed_steps: vec!["gateway".to_string()],
+                blockers: Vec::new(),
+                next_action: Some("Complete AI Model Setup".to_string()),
+                current_step: Some("model".to_string()),
+            },
+        };
+
+        save_setup_state(dir.path(), &manifest).unwrap();
+        let loaded = load_setup_state(dir.path()).unwrap().unwrap();
+        assert_eq!(loaded.setup.setup_path.as_deref(), Some("Custom"));
+        assert!(setup_state_is_resumable(&loaded));
+        let steps = selected_steps_from_setup_state(&loaded.setup);
+        assert_eq!(steps.len(), 1);
+        assert_eq!(steps[0].id(), "model");
     }
 
     #[test]
