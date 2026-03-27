@@ -1,18 +1,18 @@
 ---
 gsd_state_version: 1.0
-milestone: null
-milestone_name: null
-current_phase: null
-current_phase_name: null
+milestone: v1.7
+milestone_name: Documentation Convergence and OpenClaw-Inspired Docs Rewrite
+current_phase: 32
+current_phase_name: Documentation Inventory and Canonical Source Contract
 current_plan: null
-status: No active milestone
-stopped_at: v1.6 archived; start the next milestone with $gsd-new-milestone.
-last_updated: "2026-03-28T05:30:00.000Z"
-last_activity: 2026-03-28 -- v1.6 archived
+status: Milestone planned
+stopped_at: Start Phase 32 with $gsd-discuss-phase 32 or $gsd-plan-phase 32.
+last_updated: "2026-03-27T21:09:28.000Z"
+last_activity: 2026-03-27 -- milestone v1.7 defined
 progress:
-  total_phases: 0
+  total_phases: 5
   completed_phases: 0
-  total_plans: 0
+  total_plans: 10
   completed_plans: 0
   percent: 0
 ---
@@ -21,22 +21,22 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-03-28)
+See: .planning/PROJECT.md (updated 2026-03-27)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** No active milestone
+**Current focus:** Phase 32 - Documentation Inventory and Canonical Source Contract
 
 ## Current Position
 
-Current Phase: -
-Current Phase Name: -
-Total Phases: 0
+Current Phase: 32
+Current Phase Name: Documentation Inventory and Canonical Source Contract
+Total Phases: 5
 Current Plan: -
-Total Plans in Phase: 0
-Status: No active milestone
-Last activity: 2026-03-28 -- v1.6 archived
+Total Plans in Phase: 2
+Status: Milestone planned
+Last activity: 2026-03-27 -- milestone v1.7 defined
 
-Phase: 0 of 0
+Phase: 0 of 5
 Plan: 0 of 0
 Progress: [░░░░░░░░░░] 0%
 
@@ -63,7 +63,7 @@ Recent decisions affecting current work:
 - v1.4 added stronger enterprise governance plus an explicit operator-gated full-autonomy lane with durable budgets, kill switch, and dashboard controls.
 - v1.5 made OpenRustClaw legible as one self-hosted open-source product with explicit `solo`, `team`, `company`, and `enterprise` deployment paths, mode-aware onboarding, and reviewable upgrade or downgrade transitions.
 - v1.6 made onboarding and setup truthful end-to-end with durable setup state, validated bootstrap outcomes, explicit repair, and one shared setup handoff surface.
-- v1.6 is archived; the next milestone has not been defined yet.
+- v1.7 will treat documentation drift as product debt and converge the README, repo-root docs, and docs-site sources into one canonical self-hosted product story.
 
 ### Pending Todos
 
@@ -75,6 +75,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-28 05:30
-Stopped at: v1.6 archived; start the next milestone with $gsd-new-milestone.
+Last session: 2026-03-27 21:09
+Stopped at: Start Phase 32 with $gsd-discuss-phase 32 or $gsd-plan-phase 32.
 Resume file: None
