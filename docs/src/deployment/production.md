@@ -32,6 +32,15 @@ Phase 20 deepens that loop into explicit enterprise governance:
 
 Treat that as an operator-gated governance baseline. It gives OpenRustClaw explicit approval-chain and separation-of-duties behavior for higher-risk enterprise writes, but it is still not a replacement for external approval systems, enterprise IAM suites, or compliance programs.
 
+Phase 21 strengthens the enterprise audit handoff and review path:
+
+- `PUT /control/enterprise/policy` now also controls enterprise audit retention days and recent-export review limits.
+- `POST /control/enterprise/audit/export` now writes richer bundles with governance state, supervision context, enterprise foundations, and recent enterprise or autonomy operator history.
+- `GET /control/enterprise/audit/review` gives one typed review summary for recent retained bundles plus current governance and supervision context.
+- `/control/ui` now includes an `Enterprise Audit Review` panel so operators can inspect recent retained bundles without manually opening export files under `.claw/control/enterprise/exports/`.
+
+Treat that as a bounded operator review package, not a full compliance archive. It improves retention and handoff for the shipped enterprise lane, but it still stops short of external SIEM, legal hold, or compliance packaging.
+
 Phase 18 adds a supervised-autonomy operator loop over active orchestration runs:
 
 - `POST /control/orchestration/active/{run_id}/pause|resume|kill` remains the low-level control surface.

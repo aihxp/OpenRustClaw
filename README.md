@@ -76,6 +76,8 @@ Phase 18 extends the supervised orchestration lane with explicit lifecycle contr
 
 Phase 20 deepens that enterprise loop into a real governance contract. `/control/enterprise/access` and `/control/enterprise/admin` now expose typed governance rules per protected scope, higher-risk scopes can require dual approval, and `/control/ui` persists both requester and optional approver headers through `x-openrustclaw-operator-id`, `x-openrustclaw-operator-token`, `x-openrustclaw-approver-id`, and `x-openrustclaw-approver-token`. The shipped admin surface can now upsert governance rules through `/control/enterprise/governance/rules` in addition to bootstrap, operator provisioning, policy updates, and audit exports. This is still an operator-managed governance baseline, not external IAM, SSO, SCIM, or multi-tenant administration.
 
+Phase 21 extends that same enterprise policy surface into a bounded audit-review contract. `/control/enterprise/policy` now carries retention and recent-export limits for enterprise bundles, `POST /control/enterprise/audit/export` now packages governance and supervision context alongside enterprise foundations and recent operator history, and `GET /control/enterprise/audit/review` plus the `Enterprise Audit Review` panel in `/control/ui` let operators inspect recent retained bundles without reading raw JSON exports by hand.
+
 For the final MVP release loop, review `/control/security/posture` or the `Security Posture` panel in `/control/ui`, confirm the observability checks in [docs/src/operations/observability.md](docs/src/operations/observability.md), and walk the operator checklist in [docs/src/deployment/release-checklist.md](docs/src/deployment/release-checklist.md) before cutting a release candidate.
 
 ## Architecture

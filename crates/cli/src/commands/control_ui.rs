@@ -124,6 +124,14 @@ mod tests {
     }
 
     #[test]
+    fn dashboard_includes_enterprise_audit_review_panel() {
+        assert!(CONTROL_UI_HTML.contains("enterprise-audit-review"));
+        assert!(CONTROL_UI_HTML.contains("enterprise-audit-exports"));
+        assert!(CONTROL_UI_HTML.contains("function loadEnterpriseAuditReview"));
+        assert!(CONTROL_UI_HTML.contains("function renderEnterpriseAuditReview"));
+    }
+
+    #[test]
     fn dashboard_includes_enterprise_access_panel() {
         assert!(CONTROL_UI_HTML.contains("enterprise-access"));
         assert!(CONTROL_UI_HTML.contains("enterprise-operators-table"));
@@ -140,6 +148,8 @@ mod tests {
         assert!(CONTROL_UI_HTML.contains("enterprise-operator-id"));
         assert!(CONTROL_UI_HTML.contains("enterprise-approver-id"));
         assert!(CONTROL_UI_HTML.contains("enterprise-governance-update"));
+        assert!(CONTROL_UI_HTML.contains("enterprise-audit-retention-days"));
+        assert!(CONTROL_UI_HTML.contains("enterprise-audit-export-history-limit"));
         assert!(CONTROL_UI_HTML.contains("function loadEnterpriseAdmin"));
         assert!(CONTROL_UI_HTML.contains("function renderEnterpriseAdmin"));
         assert!(CONTROL_UI_HTML.contains("function updateEnterprisePolicy"));

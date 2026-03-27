@@ -453,6 +453,18 @@
           </div>
         </article>
         <article class="panel span-12">
+          <h2>Enterprise Audit Review</h2>
+          <div class="surface"><div id="enterprise-audit-review" class="summary-card empty">Loading…</div></div>
+          <div class="surface" style="margin-top: 12px">
+            <table class="table">
+              <thead>
+                <tr><th>Exported</th><th>Bundle</th><th>Evidence</th><th>Detail</th></tr>
+              </thead>
+              <tbody id="enterprise-audit-exports"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </article>
+        <article class="panel span-12">
           <h2>Enterprise Access</h2>
           <div class="surface"><div id="enterprise-access" class="summary-card empty">Loading…</div></div>
           <div class="surface" style="margin-top: 12px">
@@ -556,6 +568,10 @@
             <div class="action-row">
               <input id="enterprise-audit-event-limit" type="number" min="1" placeholder="recent event limit" />
               <input id="enterprise-audit-tool-limit" type="number" min="1" placeholder="tool history limit" />
+            </div>
+            <div class="action-row">
+              <input id="enterprise-audit-retention-days" type="number" min="1" placeholder="retention days" />
+              <input id="enterprise-audit-export-history-limit" type="number" min="1" placeholder="recent export limit" />
             </div>
             <div class="action-row">
               <button id="enterprise-policy-update">Update Enterprise Policy</button>
@@ -1852,6 +1868,41 @@
         renderTableRows("enterprise-audit-table", rows, "No recent enterprise audit evidence.");
       }
 
+      function renderEnterpriseAuditReview(report) {
+        const target = document.getElementById("enterprise-audit-review");
+        if (!report || report.error) {
+          target.className = "summary-card empty";
+          target.textContent = report?.error || "No enterprise audit review summary available.";
+          renderTableRows("enterprise-audit-exports", [], "No enterprise audit exports retained yet.");
+          return;
+        }
+
+        const governance = report.governance || {};
+        const supervision = report.supervision || {};
+
+        renderSummaryCard("enterprise-audit-review", "No enterprise audit review summary available.", buildSummaryMarkup({
+          kicker: "Enterprise Audit Review",
+          title: `${(report.recent_exports || []).length} retained export(s)`,
+          copy: report.detail || "No enterprise audit review summary available.",
+          stats: [
+            { label: "Export Root", value: report.export_root || "-", detail: `${report.retention_days ?? 0} day retention` },
+            { label: "Recent Exports", value: `${(report.recent_exports || []).length}`, detail: `${report.export_history_limit ?? 0} bundle limit` },
+            { label: "Review Events", value: `${(report.recent_operator_history?.entries || []).length}`, detail: `${report.recent_event_limit ?? 0} event limit` },
+            { label: "Tool History", value: `${report.tool_history_limit ?? 0}`, detail: "generic execution history limit" },
+            { label: "Governance", value: `${governance.active_rule_count ?? 0} active rule(s)`, detail: `${governance.dual_approval_rule_count ?? 0} dual approval` },
+            { label: "Attention", value: `${supervision.attention_required_count ?? 0}`, detail: `${supervision.escalated_count ?? 0} escalated` },
+          ],
+        }));
+
+        const exportRows = (report.recent_exports || []).map((entry) => `<tr>
+          <td>${escapeHtml(entry.exported_at || "-")}</td>
+          <td><span class="mono">${escapeHtml(entry.export_path || "-")}</span><div class="muted">${escapeHtml(entry.note || "no note")}</div></td>
+          <td><strong>${escapeHtml(`${entry.recent_event_count ?? 0} events / ${entry.operator_event_count ?? 0} review / ${entry.tool_history_count ?? 0} tools`)}</strong><div class="muted">${escapeHtml(`${entry.governance_rule_count ?? 0} governance rule(s)`)}</div></td>
+          <td>${escapeHtml(`${entry.attention_required_count ?? 0} attention needed`)}</td>
+        </tr>`);
+        renderTableRows("enterprise-audit-exports", exportRows, "No enterprise audit exports retained yet.");
+      }
+
       function renderEnterpriseAccess(report) {
         const target = document.getElementById("enterprise-access");
         if (!report || report.error) {
@@ -1954,6 +2005,8 @@
         setInputValue("enterprise-audit-export-root", policy.audit_export?.export_root || "");
         setInputValue("enterprise-audit-event-limit", policy.audit_export?.recent_event_limit ?? "");
         setInputValue("enterprise-audit-tool-limit", policy.audit_export?.tool_history_limit ?? "");
+        setInputValue("enterprise-audit-retention-days", policy.audit_export?.retention_days ?? "");
+        setInputValue("enterprise-audit-export-history-limit", policy.audit_export?.export_history_limit ?? "");
         const governanceRule = (governance.rules || []).find((rule) => rule.scope === "enterprise.config.write")
           || (governance.rules || [])[0]
           || {};
@@ -2753,6 +2806,11 @@
         renderEnterpriseFoundations(payload);
       }
 
+      async function loadEnterpriseAuditReview() {
+        const payload = await fetchJson("/control/enterprise/audit/review");
+        renderEnterpriseAuditReview(payload);
+      }
+
       async function loadEnterpriseAccess() {
         const payload = await fetchJson("/control/enterprise/access");
         renderEnterpriseAccess(payload);
@@ -2767,6 +2825,7 @@
         await Promise.all([
           loadEnterpriseAdmin(),
           loadEnterpriseFoundations(),
+          loadEnterpriseAuditReview(),
           loadEnterpriseAccess(),
           loadActiveOrchestrationRuns(),
         ]);
@@ -2864,6 +2923,8 @@
               export_root: document.getElementById("enterprise-audit-export-root").value.trim() || null,
               recent_event_limit: parseNumberInput("enterprise-audit-event-limit"),
               tool_history_limit: parseNumberInput("enterprise-audit-tool-limit"),
+              retention_days: parseNumberInput("enterprise-audit-retention-days"),
+              export_history_limit: parseNumberInput("enterprise-audit-export-history-limit"),
             },
           }),
         });

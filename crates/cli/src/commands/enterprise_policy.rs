@@ -1,5 +1,5 @@
 use anyhow::{Context, Result, anyhow};
-use chrono::Utc;
+use chrono::{Duration, Utc};
 use openrustclaw_core::config::AppConfig;
 use openrustclaw_mobile::protocol::DeviceCommandKind;
 use serde::{Deserialize, Serialize};
@@ -13,6 +13,8 @@ const ENTERPRISE_POLICY_VERSION: u32 = 1;
 const DEFAULT_EXPORT_ROOT: &str = ".claw/control/enterprise/exports";
 const DEFAULT_RECENT_EVENT_LIMIT: usize = 25;
 const DEFAULT_TOOL_HISTORY_LIMIT: usize = 50;
+const DEFAULT_RETENTION_DAYS: usize = 30;
+const DEFAULT_EXPORT_HISTORY_LIMIT: usize = 12;
 
 fn default_version() -> u32 {
     ENTERPRISE_POLICY_VERSION
@@ -28,6 +30,14 @@ fn default_recent_event_limit() -> usize {
 
 fn default_tool_history_limit() -> usize {
     DEFAULT_TOOL_HISTORY_LIMIT
+}
+
+fn default_retention_days() -> usize {
+    DEFAULT_RETENTION_DAYS
+}
+
+fn default_export_history_limit() -> usize {
+    DEFAULT_EXPORT_HISTORY_LIMIT
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -81,6 +91,10 @@ pub struct EnterpriseAuditExportPolicy {
     pub recent_event_limit: usize,
     #[serde(default = "default_tool_history_limit")]
     pub tool_history_limit: usize,
+    #[serde(default = "default_retention_days")]
+    pub retention_days: usize,
+    #[serde(default = "default_export_history_limit")]
+    pub export_history_limit: usize,
 }
 
 impl Default for EnterpriseAuditExportPolicy {
@@ -89,6 +103,8 @@ impl Default for EnterpriseAuditExportPolicy {
             export_root: default_export_root(),
             recent_event_limit: default_recent_event_limit(),
             tool_history_limit: default_tool_history_limit(),
+            retention_days: default_retention_days(),
+            export_history_limit: default_export_history_limit(),
         }
     }
 }
@@ -159,6 +175,10 @@ pub struct EnterpriseAuditExportPolicyUpdate {
     pub recent_event_limit: Option<usize>,
     #[serde(default)]
     pub tool_history_limit: Option<usize>,
+    #[serde(default)]
+    pub retention_days: Option<usize>,
+    #[serde(default)]
+    pub export_history_limit: Option<usize>,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -175,6 +195,35 @@ pub struct EnterpriseAuditExportReceipt {
     pub export_path: String,
     pub recent_event_count: usize,
     pub tool_history_count: usize,
+    pub operator_event_count: usize,
+    pub pruned_export_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct EnterpriseAuditExportSummary {
+    pub exported_at: String,
+    pub export_path: String,
+    pub note: Option<String>,
+    pub recent_event_count: usize,
+    pub tool_history_count: usize,
+    pub operator_event_count: usize,
+    pub governance_rule_count: usize,
+    pub attention_required_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct EnterpriseAuditReviewReport {
+    pub status: String,
+    pub detail: String,
+    pub export_root: String,
+    pub retention_days: usize,
+    pub export_history_limit: usize,
+    pub recent_event_limit: usize,
+    pub tool_history_limit: usize,
+    pub recent_exports: Vec<EnterpriseAuditExportSummary>,
+    pub recent_operator_history: inspect::ToolExecutionHistoryReport,
+    pub governance: inspect::EnterpriseGovernanceReport,
+    pub supervision: inspect::EnterpriseAdminSupervisionSummary,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -184,6 +233,9 @@ struct EnterpriseAuditExportBundle {
     note: Option<String>,
     policy: EnterprisePolicyReport,
     enterprise_foundations: inspect::EnterpriseFoundationsReport,
+    governance: inspect::EnterpriseGovernanceReport,
+    supervision: inspect::EnterpriseAdminSupervisionSummary,
+    operator_history: inspect::ToolExecutionHistoryReport,
     tool_history: inspect::ToolExecutionHistoryReport,
 }
 
@@ -203,8 +255,12 @@ pub fn load_manifest(workspace_root: &Path) -> Result<Option<EnterprisePolicyMan
         return Ok(None);
     }
 
-    let raw = fs::read_to_string(&path)
-        .with_context(|| format!("failed to read enterprise policy manifest {}", path.display()))?;
+    let raw = fs::read_to_string(&path).with_context(|| {
+        format!(
+            "failed to read enterprise policy manifest {}",
+            path.display()
+        )
+    })?;
     let manifest = serde_json::from_str::<EnterprisePolicyManifest>(&raw).with_context(|| {
         format!(
             "failed to parse enterprise policy manifest {}",
@@ -244,8 +300,8 @@ pub fn summary(workspace_root: &Path, config_path: &str) -> Result<EnterprisePol
         .unwrap_or(&default_autonomy.approval_policy)
         .to_string();
 
-    let config =
-        runtime::load_effective_config(config_path, workspace_root).unwrap_or_else(|_| AppConfig::default());
+    let config = runtime::load_effective_config(config_path, workspace_root)
+        .unwrap_or_else(|_| AppConfig::default());
     let browser = browser_summary_from_config(&config);
     let manifest = load_manifest(workspace_root)?.unwrap_or_default();
     let access_boundary_active = enterprise_access::access_is_configured(workspace_root)?;
@@ -287,7 +343,8 @@ pub fn update_policy(
     if let Some(browser_update) = request.browser {
         let mut config = runtime::load_effective_config(config_path, workspace_root)?;
         if let Some(allowed_backends) = browser_update.allowed_backends {
-            config.external_backends.allowed_backends = normalize_browser_backends(&allowed_backends)?;
+            config.external_backends.allowed_backends =
+                normalize_browser_backends(&allowed_backends)?;
         }
         if let Some(value) = browser_update.allow_local_cli_wrappers {
             config.external_backends.allow_local_cli_wrappers = value;
@@ -328,6 +385,12 @@ pub fn update_policy(
             if let Some(limit) = audit_update.tool_history_limit {
                 manifest.audit_export.tool_history_limit = limit.max(1);
             }
+            if let Some(days) = audit_update.retention_days {
+                manifest.audit_export.retention_days = days.max(1);
+            }
+            if let Some(limit) = audit_update.export_history_limit {
+                manifest.audit_export.export_history_limit = limit.max(1);
+            }
         }
         manifest.updated_at = Some(Utc::now().to_rfc3339());
         save_manifest(workspace_root, &manifest)?;
@@ -336,14 +399,57 @@ pub fn update_policy(
     summary(workspace_root, config_path)
 }
 
+pub fn review_summary(
+    workspace_root: &Path,
+    config_path: &str,
+) -> Result<EnterpriseAuditReviewReport> {
+    let policy = summary(workspace_root, config_path)?;
+    let access = inspect::enterprise_access_summary(workspace_root)?;
+    let admin = inspect::enterprise_admin_summary(workspace_root, config_path)?;
+    let recent_operator_history = review_operator_history(
+        workspace_root,
+        policy.audit_export.tool_history_limit,
+        policy.audit_export.recent_event_limit,
+    )?;
+    let recent_exports = list_recent_exports(workspace_root, &policy.audit_export)?;
+
+    Ok(EnterpriseAuditReviewReport {
+        status: "ok".to_string(),
+        detail: format!(
+            "{} retained export(s) under `{}` with {} recent enterprise or autonomy operator event(s).",
+            recent_exports.len(),
+            policy.audit_export.export_root,
+            recent_operator_history.entries.len()
+        ),
+        export_root: policy.audit_export.export_root.clone(),
+        retention_days: policy.audit_export.retention_days,
+        export_history_limit: policy.audit_export.export_history_limit,
+        recent_event_limit: policy.audit_export.recent_event_limit,
+        tool_history_limit: policy.audit_export.tool_history_limit,
+        recent_exports,
+        recent_operator_history,
+        governance: access.governance,
+        supervision: admin.supervision,
+    })
+}
+
 pub fn export_audit_bundle(
     workspace_root: &Path,
     config_path: &str,
     request: EnterpriseAuditExportRequest,
 ) -> Result<EnterpriseAuditExportReceipt> {
     let policy = summary(workspace_root, config_path)?;
-    let foundations =
-        inspect::enterprise_foundations_summary(workspace_root, policy.audit_export.recent_event_limit)?;
+    let foundations = inspect::enterprise_foundations_summary(
+        workspace_root,
+        policy.audit_export.recent_event_limit,
+    )?;
+    let access = inspect::enterprise_access_summary(workspace_root)?;
+    let admin = inspect::enterprise_admin_summary(workspace_root, config_path)?;
+    let operator_history = review_operator_history(
+        workspace_root,
+        policy.audit_export.tool_history_limit,
+        policy.audit_export.recent_event_limit,
+    )?;
     let tool_history = inspect::tool_execution_history(
         workspace_root,
         policy.audit_export.tool_history_limit,
@@ -355,6 +461,8 @@ pub fn export_audit_bundle(
     let export_root = resolve_workspace_path(workspace_root, &policy.audit_export.export_root);
     fs::create_dir_all(&export_root)
         .with_context(|| format!("failed to create {}", export_root.display()))?;
+    let pruned_export_count =
+        prune_expired_exports(&export_root, policy.audit_export.retention_days)?;
     let export_path = export_root.join(format!(
         "enterprise-audit-{}.json",
         Utc::now().format("%Y%m%dT%H%M%SZ")
@@ -367,6 +475,9 @@ pub fn export_audit_bundle(
         }),
         policy,
         enterprise_foundations: foundations,
+        governance: access.governance,
+        supervision: admin.supervision,
+        operator_history: operator_history.clone(),
         tool_history,
     };
     fs::write(&export_path, serde_json::to_vec_pretty(&bundle)?)
@@ -375,14 +486,174 @@ pub fn export_audit_bundle(
     Ok(EnterpriseAuditExportReceipt {
         status: "ok".to_string(),
         detail: format!(
-            "Enterprise audit bundle exported with {} recent event(s) and {} tool execution record(s).",
+            "Enterprise audit bundle exported with {} recent event(s), {} review event(s), and {} tool execution record(s).",
             bundle.enterprise_foundations.recent_events.len(),
+            bundle.operator_history.entries.len(),
             bundle.tool_history.entries.len()
         ),
         exported_at,
         export_path: export_path.display().to_string(),
         recent_event_count: bundle.enterprise_foundations.recent_events.len(),
         tool_history_count: bundle.tool_history.entries.len(),
+        operator_event_count: bundle.operator_history.entries.len(),
+        pruned_export_count,
+    })
+}
+
+fn review_operator_history(
+    workspace_root: &Path,
+    tool_history_limit: usize,
+    review_event_limit: usize,
+) -> Result<inspect::ToolExecutionHistoryReport> {
+    let history = inspect::tool_execution_history(
+        workspace_root,
+        tool_history_limit.max(review_event_limit).max(1) * 3,
+        Some("runtime_tool"),
+        None,
+        None,
+    )?;
+    let mut entries = history
+        .entries
+        .into_iter()
+        .filter(|entry| {
+            entry.tool_name.starts_with("enterprise.")
+                || entry.tool_name.starts_with("orchestration.active.")
+                || entry.tool_name.starts_with("mobile.command.")
+        })
+        .collect::<Vec<_>>();
+    entries.truncate(review_event_limit.max(1));
+    Ok(inspect::ToolExecutionHistoryReport {
+        limit: review_event_limit.max(1),
+        entries,
+    })
+}
+
+fn list_recent_exports(
+    workspace_root: &Path,
+    policy: &EnterpriseAuditExportPolicy,
+) -> Result<Vec<EnterpriseAuditExportSummary>> {
+    let export_root = resolve_workspace_path(workspace_root, &policy.export_root);
+    if !export_root.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut exports = Vec::new();
+    for path in list_export_paths(&export_root)? {
+        let Ok(raw) = fs::read_to_string(&path) else {
+            continue;
+        };
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(&raw) else {
+            continue;
+        };
+        let Some(summary) = export_summary_from_value(&path, &value) else {
+            continue;
+        };
+        exports.push(summary);
+    }
+
+    exports.sort_by(|left, right| right.exported_at.cmp(&left.exported_at));
+    exports.truncate(policy.export_history_limit.max(1));
+    Ok(exports)
+}
+
+fn list_export_paths(export_root: &Path) -> Result<Vec<PathBuf>> {
+    let mut paths = fs::read_dir(export_root)?
+        .filter_map(|entry| entry.ok().map(|value| value.path()))
+        .filter(|path| path.extension().and_then(|value| value.to_str()) == Some("json"))
+        .collect::<Vec<_>>();
+    paths.sort();
+    Ok(paths)
+}
+
+fn prune_expired_exports(export_root: &Path, retention_days: usize) -> Result<usize> {
+    if !export_root.exists() {
+        return Ok(0);
+    }
+
+    let cutoff = Utc::now() - Duration::days(retention_days.max(1) as i64);
+    let mut pruned = 0;
+    for path in list_export_paths(export_root)? {
+        let Ok(raw) = fs::read_to_string(&path) else {
+            continue;
+        };
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(&raw) else {
+            continue;
+        };
+        let Some(exported_at_raw) = value.get("exported_at").and_then(|field| field.as_str())
+        else {
+            continue;
+        };
+        let Ok(exported_at) = chrono::DateTime::parse_from_rfc3339(exported_at_raw) else {
+            continue;
+        };
+        if exported_at.with_timezone(&Utc) < cutoff {
+            fs::remove_file(&path).with_context(|| {
+                format!("failed to remove expired audit bundle {}", path.display())
+            })?;
+            pruned += 1;
+        }
+    }
+    Ok(pruned)
+}
+
+fn export_summary_from_value(
+    path: &Path,
+    value: &serde_json::Value,
+) -> Option<EnterpriseAuditExportSummary> {
+    let exported_at = value.get("exported_at")?.as_str()?.to_string();
+    let note = value
+        .get("note")
+        .and_then(|field| field.as_str())
+        .map(ToString::to_string);
+    let recent_event_count = value
+        .get("enterprise_foundations")
+        .and_then(|field| field.get("recent_events"))
+        .and_then(|field| field.as_array())
+        .map(|events| events.len())
+        .unwrap_or(0);
+    let tool_history_count = value
+        .get("tool_history")
+        .and_then(|field| field.get("entries"))
+        .and_then(|field| field.as_array())
+        .map(|entries| entries.len())
+        .unwrap_or(0);
+    let operator_event_count = value
+        .get("operator_history")
+        .and_then(|field| field.get("entries"))
+        .and_then(|field| field.as_array())
+        .map(|entries| entries.len())
+        .unwrap_or(0);
+    let governance_rule_count = value
+        .get("governance")
+        .and_then(|field| field.get("rules"))
+        .and_then(|field| field.as_array())
+        .map(|rules| {
+            rules
+                .iter()
+                .filter(|rule| {
+                    rule.get("active")
+                        .and_then(|field| field.as_bool())
+                        .unwrap_or(false)
+                })
+                .count()
+        })
+        .unwrap_or(0);
+    let attention_required_count = value
+        .get("supervision")
+        .and_then(|field| field.get("attention_required_count"))
+        .and_then(|field| field.as_u64())
+        .map(|value| value as usize)
+        .unwrap_or(0);
+
+    Some(EnterpriseAuditExportSummary {
+        exported_at,
+        export_path: path.display().to_string(),
+        note,
+        recent_event_count,
+        tool_history_count,
+        operator_event_count,
+        governance_rule_count,
+        attention_required_count,
     })
 }
 
@@ -410,8 +681,12 @@ fn save_manifest(workspace_root: &Path, manifest: &EnterprisePolicyManifest) -> 
         fs::create_dir_all(parent)
             .with_context(|| format!("failed to create {}", parent.display()))?;
     }
-    fs::write(&path, serde_json::to_vec_pretty(manifest)?)
-        .with_context(|| format!("failed to write enterprise policy manifest {}", path.display()))?;
+    fs::write(&path, serde_json::to_vec_pretty(manifest)?).with_context(|| {
+        format!(
+            "failed to write enterprise policy manifest {}",
+            path.display()
+        )
+    })?;
     Ok(())
 }
 
@@ -472,9 +747,10 @@ fn validate_approval_policy(value: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        EnterpriseAuditExportRequest, EnterprisePolicyUpdateRequest, EnterpriseBrowserPolicyUpdate,
-        EnterpriseMobileApprovalPolicyUpdate, EnterpriseAuditExportPolicyUpdate,
-        approval_required_for_command, export_audit_bundle, summary, update_policy,
+        EnterpriseAuditExportPolicyUpdate, EnterpriseAuditExportRequest,
+        EnterpriseBrowserPolicyUpdate, EnterpriseMobileApprovalPolicyUpdate,
+        EnterprisePolicyUpdateRequest, approval_required_for_command, export_audit_bundle,
+        review_summary, summary, update_policy,
     };
     use anyhow::Result;
     use openrustclaw_core::config::AppConfig;
@@ -482,6 +758,9 @@ mod tests {
     use std::fs;
     use tempfile::tempdir;
 
+    use crate::commands::enterprise_access::{
+        EnterpriseAccessBootstrapRequest, bootstrap_manifest,
+    };
     use crate::commands::inspect::{append_tool_execution_record, new_tool_execution_record};
     use crate::commands::runtime;
 
@@ -489,12 +768,21 @@ mod tests {
     fn summary_reports_default_enterprise_policy_surface() -> Result<()> {
         let root = tempdir().expect("tempdir");
 
-        let report = summary(root.path(), &root.path().join("config/default.toml").display().to_string())?;
+        let report = summary(
+            root.path(),
+            &root
+                .path()
+                .join("config/default.toml")
+                .display()
+                .to_string(),
+        )?;
         assert_eq!(report.approval_policy, "side_effects");
         assert!(report.mobile.send_message_requires_approval);
         assert!(report.mobile.push_notification_requires_approval);
         assert!(!report.mobile.sync_now_requires_approval);
         assert_eq!(report.audit_export.recent_event_limit, 25);
+        assert_eq!(report.audit_export.retention_days, 30);
+        assert_eq!(report.audit_export.export_history_limit, 12);
         Ok(())
     }
 
@@ -502,7 +790,10 @@ mod tests {
     fn update_policy_writes_runtime_config_and_mobile_overrides() -> Result<()> {
         let root = tempdir().expect("tempdir");
         let config_path = root.path().join("config/default.toml");
-        runtime::write_config_with_backup(&config_path.display().to_string(), &AppConfig::default())?;
+        runtime::write_config_with_backup(
+            &config_path.display().to_string(),
+            &AppConfig::default(),
+        )?;
 
         let report = update_policy(
             root.path(),
@@ -510,10 +801,17 @@ mod tests {
             EnterprisePolicyUpdateRequest {
                 approval_policy: Some("always".to_string()),
                 browser: Some(EnterpriseBrowserPolicyUpdate {
-                    allowed_backends: Some(vec!["native".to_string(), "agent_browser_cli".to_string()]),
+                    allowed_backends: Some(vec![
+                        "native".to_string(),
+                        "agent_browser_cli".to_string(),
+                    ]),
                     allow_local_cli_wrappers: Some(false),
                     allow_cloud_agent_execution: Some(true),
-                    command_env_allowlist: Some(vec!["PATH".to_string(), "HOME".to_string(), "PATH".to_string()]),
+                    command_env_allowlist: Some(vec![
+                        "PATH".to_string(),
+                        "HOME".to_string(),
+                        "PATH".to_string(),
+                    ]),
                 }),
                 mobile: Some(EnterpriseMobileApprovalPolicyUpdate {
                     send_message_requires_approval: Some(false),
@@ -524,6 +822,8 @@ mod tests {
                     export_root: Some(".claw/control/enterprise/custom-exports".to_string()),
                     recent_event_limit: Some(7),
                     tool_history_limit: Some(9),
+                    retention_days: Some(14),
+                    export_history_limit: Some(4),
                 }),
             },
         )?;
@@ -535,14 +835,25 @@ mod tests {
         );
         assert!(!report.browser.allow_local_cli_wrappers);
         assert!(report.browser.allow_cloud_agent_execution);
-        assert_eq!(report.browser.command_env_allowlist, vec!["HOME".to_string(), "PATH".to_string()]);
+        assert_eq!(
+            report.browser.command_env_allowlist,
+            vec!["HOME".to_string(), "PATH".to_string()]
+        );
         assert!(!report.mobile.send_message_requires_approval);
         assert!(report.mobile.sync_now_requires_approval);
         assert_eq!(report.audit_export.recent_event_limit, 7);
         assert_eq!(report.audit_export.tool_history_limit, 9);
+        assert_eq!(report.audit_export.retention_days, 14);
+        assert_eq!(report.audit_export.export_history_limit, 4);
 
-        assert!(!approval_required_for_command(root.path(), &DeviceCommandKind::SendMessage));
-        assert!(approval_required_for_command(root.path(), &DeviceCommandKind::SyncNow));
+        assert!(!approval_required_for_command(
+            root.path(),
+            &DeviceCommandKind::SendMessage
+        ));
+        assert!(approval_required_for_command(
+            root.path(),
+            &DeviceCommandKind::SyncNow
+        ));
 
         Ok(())
     }
@@ -551,7 +862,21 @@ mod tests {
     fn export_audit_bundle_writes_durable_json_bundle() -> Result<()> {
         let root = tempdir().expect("tempdir");
         let config_path = root.path().join("config/default.toml");
-        runtime::write_config_with_backup(&config_path.display().to_string(), &AppConfig::default())?;
+        runtime::write_config_with_backup(
+            &config_path.display().to_string(),
+            &AppConfig::default(),
+        )?;
+        bootstrap_manifest(
+            root.path(),
+            EnterpriseAccessBootstrapRequest {
+                organization_id: "acme".to_string(),
+                organization_name: "Acme Ops".to_string(),
+                owner_id: "owner-1".to_string(),
+                owner_name: None,
+                owner_email: None,
+                owner_token: "owner-secret-123".to_string(),
+            },
+        )?;
 
         update_policy(
             root.path(),
@@ -564,6 +889,8 @@ mod tests {
                     export_root: Some(".claw/control/enterprise/exports".to_string()),
                     recent_event_limit: Some(5),
                     tool_history_limit: Some(5),
+                    retention_days: Some(30),
+                    export_history_limit: Some(5),
                 }),
             },
         )?;
@@ -592,10 +919,67 @@ mod tests {
 
         assert_eq!(receipt.status, "ok");
         assert!(receipt.export_path.ends_with(".json"));
+        assert_eq!(receipt.pruned_export_count, 0);
         let payload = fs::read_to_string(&receipt.export_path)?;
         assert!(payload.contains("\"enterprise_foundations\""));
+        assert!(payload.contains("\"governance\""));
+        assert!(payload.contains("\"operator_history\""));
         assert!(payload.contains("\"tool_history\""));
         assert!(payload.contains("phase 17 verification"));
+        Ok(())
+    }
+
+    #[test]
+    fn review_summary_reports_recent_exports_and_retention_contract() -> Result<()> {
+        let root = tempdir().expect("tempdir");
+        let config_path = root.path().join("config/default.toml");
+        runtime::write_config_with_backup(
+            &config_path.display().to_string(),
+            &AppConfig::default(),
+        )?;
+        bootstrap_manifest(
+            root.path(),
+            EnterpriseAccessBootstrapRequest {
+                organization_id: "acme".to_string(),
+                organization_name: "Acme Ops".to_string(),
+                owner_id: "owner-1".to_string(),
+                owner_name: None,
+                owner_email: None,
+                owner_token: "owner-secret-123".to_string(),
+            },
+        )?;
+        update_policy(
+            root.path(),
+            &config_path.display().to_string(),
+            EnterprisePolicyUpdateRequest {
+                approval_policy: None,
+                browser: None,
+                mobile: None,
+                audit_export: Some(EnterpriseAuditExportPolicyUpdate {
+                    export_root: Some(".claw/control/enterprise/review-exports".to_string()),
+                    recent_event_limit: Some(4),
+                    tool_history_limit: Some(6),
+                    retention_days: Some(10),
+                    export_history_limit: Some(3),
+                }),
+            },
+        )?;
+
+        let export = export_audit_bundle(
+            root.path(),
+            &config_path.display().to_string(),
+            EnterpriseAuditExportRequest {
+                note: Some("review package".to_string()),
+            },
+        )?;
+
+        let review = review_summary(root.path(), &config_path.display().to_string())?;
+        assert_eq!(review.status, "ok");
+        assert_eq!(review.retention_days, 10);
+        assert_eq!(review.export_history_limit, 3);
+        assert_eq!(review.recent_exports.len(), 1);
+        assert_eq!(review.recent_exports[0].export_path, export.export_path);
+        assert!(review.governance.dual_approval_rule_count >= 1);
         Ok(())
     }
 }

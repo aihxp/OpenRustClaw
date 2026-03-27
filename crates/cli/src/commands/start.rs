@@ -3040,6 +3040,10 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             get(enterprise_policy_handler).put(enterprise_policy_update_handler),
         )
         .route(
+            "/control/enterprise/audit/review",
+            get(enterprise_audit_review_handler),
+        )
+        .route(
             "/control/enterprise/audit/export",
             post(enterprise_audit_export_handler),
         )
@@ -7250,6 +7254,19 @@ async fn enterprise_audit_export_handler(
         Ok(summary) => (StatusCode::OK, Json(serde_json::json!(summary))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn enterprise_audit_review_handler(
+    State(state): State<RuntimeControlState>,
+) -> impl IntoResponse {
+    match enterprise_policy::review_summary(&state.workspace_root, &state.config_path) {
+        Ok(summary) => (StatusCode::OK, Json(serde_json::json!(summary))).into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({"error": error.to_string()})),
         )
             .into_response(),
