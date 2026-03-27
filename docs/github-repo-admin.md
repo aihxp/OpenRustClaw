@@ -35,7 +35,13 @@ bash scripts/github-repo-admin.sh apply-live
 
 `show-desired` and `validate-local` do not require GitHub auth.
 
-`show-live`, `check-live`, and `apply-live` require a valid `GITHUB_TOKEN` or `GH_TOKEN` with permission to administer `aihxp/OpenRustClaw`.
+`show-live`, `check-live`, and `apply-live` require GitHub auth for `aihxp/OpenRustClaw`.
+
+The helper resolves auth in this order:
+
+1. `GH_TOKEN`
+2. `gh auth token` from the local `gh` keyring login
+3. `GITHUB_TOKEN`
 
 ## Verification
 

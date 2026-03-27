@@ -16,7 +16,8 @@ Usage:
   scripts/github-repo-admin.sh apply-live
 
 Environment:
-  GITHUB_TOKEN or GH_TOKEN  GitHub token with repo administration access
+  GH_TOKEN                  Optional explicit GitHub token override
+  GITHUB_TOKEN              Optional fallback token if no gh keyring token exists
 EOF
 }
 
@@ -46,9 +47,10 @@ PY
 }
 
 validate_token() {
-  local token="${GITHUB_TOKEN:-${GH_TOKEN:-}}"
+  local token
+  token=$(resolve_token)
   if [[ -z "$token" ]]; then
-    echo "Missing GITHUB_TOKEN/GH_TOKEN. Live GitHub operations are unavailable." >&2
+    echo "Missing a valid GitHub token. Live GitHub operations are unavailable." >&2
     exit 1
   fi
   local code
@@ -63,10 +65,30 @@ validate_token() {
   fi
 }
 
+resolve_token() {
+  if [[ -n "${GH_TOKEN:-}" ]]; then
+    printf '%s\n' "$GH_TOKEN"
+    return 0
+  fi
+  if token=$(env -u GITHUB_TOKEN gh auth token 2>/dev/null); then
+    if [[ -n "$token" ]]; then
+      printf '%s\n' "$token"
+      return 0
+    fi
+  fi
+  if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+    printf '%s\n' "$GITHUB_TOKEN"
+    return 0
+  fi
+  return 1
+}
+
 api_get() {
   local path="$1"
+  local token
+  token=$(resolve_token)
   curl -sS \
-    -H "Authorization: Bearer ${GITHUB_TOKEN:-${GH_TOKEN:-}}" \
+    -H "Authorization: Bearer ${token}" \
     -H "Accept: application/vnd.github+json" \
     "https://api.github.com${path}"
 }
@@ -74,8 +96,10 @@ api_get() {
 api_patch() {
   local path="$1"
   local payload="$2"
+  local token
+  token=$(resolve_token)
   curl -sS -X PATCH \
-    -H "Authorization: Bearer ${GITHUB_TOKEN:-${GH_TOKEN:-}}" \
+    -H "Authorization: Bearer ${token}" \
     -H "Accept: application/vnd.github+json" \
     -H "Content-Type: application/json" \
     "https://api.github.com${path}" \
@@ -85,8 +109,10 @@ api_patch() {
 api_put() {
   local path="$1"
   local payload="$2"
+  local token
+  token=$(resolve_token)
   curl -sS -X PUT \
-    -H "Authorization: Bearer ${GITHUB_TOKEN:-${GH_TOKEN:-}}" \
+    -H "Authorization: Bearer ${token}" \
     -H "Accept: application/vnd.github+json" \
     -H "Content-Type: application/vnd.github+json" \
     "https://api.github.com${path}" \
@@ -134,9 +160,13 @@ show_live() {
   validate_token
   local repo
   repo=$(json_field repo)
-  api_get "/repos/${repo}" | python3 - <<'PY'
+  local live_repo
+  live_repo=$(mktemp)
+  api_get "/repos/${repo}" >"$live_repo"
+  python3 - "$live_repo" <<'PY'
 import json, sys
-repo = json.load(sys.stdin)
+with open(sys.argv[1], "r", encoding="utf-8") as fh:
+    repo = json.load(fh)
 print(json.dumps({
     "full_name": repo["full_name"],
     "description": repo["description"],

@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.9
 milestone_name: GitHub Repository Presence and Actions Recovery
-current_phase: 41
-current_phase_name: GitHub About and Public Positioning Contract
-current_plan: 41-02
-status: Phase 41 in progress
-stopped_at: Live GitHub repo metadata sync is blocked by invalid GitHub credentials.
-last_updated: "2026-03-27T22:40:00Z"
-last_activity: 2026-03-27 -- phase 41 local metadata contract landed; live repo sync blocked by auth
+current_phase: 42
+current_phase_name: GitHub Topics and Discovery Surface
+current_plan: null
+status: Phase 41 complete; ready for Phase 42
+stopped_at: Phase 41 complete; next up is Phase 42.
+last_updated: "2026-03-27T23:30:00Z"
+last_activity: 2026-03-27 -- phase 41 completed and live GitHub repo metadata verified
 progress:
   total_phases: 4
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 8
-  completed_plans: 1
-  percent: 0
+  completed_plans: 2
+  percent: 25
 ---
 
 # Project State
@@ -24,21 +24,21 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-27)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** Phase 41 local contract complete, live GitHub sync blocked
+**Current focus:** Phase 41 complete; Phase 42 next
 
 ## Current Position
 
-Current Phase: 41
-Current Phase Name: GitHub About and Public Positioning Contract
+Current Phase: 42
+Current Phase Name: GitHub Topics and Discovery Surface
 Total Phases: 4
-Current Plan: 41-02
-Total Plans in Phase: 2
-Status: Phase 41 in progress
-Last activity: 2026-03-27 -- phase 41 local metadata contract landed; live repo sync blocked by auth
+Current Plan: -
+Total Plans in Phase: 0
+Status: Phase 41 complete; ready for Phase 42
+Last activity: 2026-03-27 -- phase 41 completed and live GitHub repo metadata verified
 
-Phase: 0 of 4
-Plan: 1 of 2
-Progress: [----------] 0%
+Phase: 1 of 4
+Plan: 0 of 0
+Progress: [██--------] 25%
 
 ## Performance Metrics
 
@@ -68,7 +68,7 @@ Recent decisions affecting current work:
 - Phase 40 added a repo-hygiene verification script, wired it into CI, and preserved a rerun bundle for future cleanup follow-up work.
 - v1.9 now targets public GitHub repo truthfulness: repo About, discovery topics, and Actions health need to match the shipped product surface.
 - Phase 41 added the local GitHub repo metadata contract, admin script, and repo-admin guide.
-- Live GitHub repo metadata sync is currently blocked because the available token fails GitHub API auth with HTTP 401.
+- The stale `GITHUB_TOKEN` export in `~/.bashrc` was removed, local `gh` auth was normalized to `aihxp`, and the live GitHub repo metadata now matches the local contract.
 
 ### Pending Todos
 
@@ -80,6 +80,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-27 22:40
-Stopped at: Live GitHub repo metadata sync is blocked by invalid GitHub credentials.
+Last session: 2026-03-27 23:30
+Stopped at: Phase 41 complete; next up is Phase 42.
 Resume file: None
