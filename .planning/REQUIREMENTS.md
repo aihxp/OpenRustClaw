@@ -7,8 +7,8 @@
 
 ### Self-Hosted Product Modes
 
-- [ ] **MODE-01**: OpenRustClaw is framed explicitly as a self-hosted open-source product for solo, multi-user team, company, and enterprise deployments.
-- [ ] **MODE-02**: Deployment mode is modeled as a first-class instance profile rather than implied by scattered docs or enterprise toggles.
+- [x] **MODE-01**: OpenRustClaw is framed explicitly as a self-hosted open-source product for solo, multi-user team, company, and enterprise deployments.
+- [x] **MODE-02**: Deployment mode is modeled as a first-class instance profile rather than implied by scattered docs or enterprise toggles.
 
 ### Tiered Onboarding
 
@@ -54,8 +54,8 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| MODE-01 | Phase 24 | Pending |
-| MODE-02 | Phase 24 | Pending |
+| MODE-01 | Phase 24 | Complete |
+| MODE-02 | Phase 24 | Complete |
 | ONBR-01 | Phase 25 | Pending |
 | ONBR-02 | Phase 25 | Pending |
 | LIFE-01 | Phase 26 | Pending |

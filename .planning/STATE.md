@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.5
 milestone_name: Self-Hosted Product Modes and Lifecycle Packaging
-current_phase: 24
-current_phase_name: Self-Hosted Product Modes and Instance Profile Contract
+current_phase: 25
+current_phase_name: Tiered Onboarding and First-Run Paths
 current_plan: Not started
-status: Milestone v1.5 planned
-stopped_at: Milestone v1.5 planned; Phase 24 is ready for discuss and planning.
-last_updated: "2026-03-27T20:15:00.000Z"
-last_activity: 2026-03-27 -- Milestone v1.5 started
+status: Phase 24 complete; Phase 25 ready
+stopped_at: Phase 24 complete; Phase 25 is ready for discuss and planning.
+last_updated: "2026-03-27T22:30:00.000Z"
+last_activity: 2026-03-27 -- Phase 24 completed
 progress:
   total_phases: 4
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  completed_phases: 1
+  total_plans: 2
+  completed_plans: 2
+  percent: 25
 ---
 
 # Project State
@@ -24,21 +24,21 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-27)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** Phase 24 - Self-Hosted Product Modes and Instance Profile Contract
+**Current focus:** Phase 25 - Tiered Onboarding and First-Run Paths
 
 ## Current Position
 
-Current Phase: 24
-Current Phase Name: Self-Hosted Product Modes and Instance Profile Contract
+Current Phase: 25
+Current Phase Name: Tiered Onboarding and First-Run Paths
 Total Phases: 4
 Current Plan: Not started
 Total Plans in Phase: 0
-Status: Milestone v1.5 planned
-Last activity: 2026-03-27 -- Milestone v1.5 started
+Status: Phase 24 complete; Phase 25 ready
+Last activity: 2026-03-27 -- Phase 24 completed
 
-Phase: 1 of 4 (Self-Hosted Product Modes and Instance Profile Contract)
+Phase: 2 of 4 (Tiered Onboarding and First-Run Paths)
 Plan: 0 of 0
-Progress: [░░░░░░░░░░] 0%
+Progress: [██░░░░░░░░] 25%
 
 ## Performance Metrics
 
@@ -99,6 +99,7 @@ Recent decisions affecting current work:
 - Phase 22 now adds a dedicated enterprise full-autonomy manifest, event ledger, protected enable or disable or kill-switch routes, and typed admin or audit summaries for the stronger autonomy lane.
 - Phase 23 now adds the shipped Control UI operator loop for full-autonomy inspection and control, completing the milestone execution scope.
 - v1.5 now focuses on explicit self-hosted product modes, differentiated onboarding, and reversible upgrade or downgrade lifecycle paths across solo, multi-user team, company, and enterprise deployments.
+- Phase 24 now persists the self-hosted product mode as a first-class control-plane contract and exposes it through a shipped runtime and Control UI summary.
 
 ### Pending Todos
 
@@ -111,5 +112,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-27 04:44
-Stopped at: Milestone v1.5 planned; Phase 24 is ready for discuss and planning.
+Stopped at: Phase 24 complete; Phase 25 is ready for discuss and planning.
 Resume file: None
