@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Deeper OpenClaw Surface Parity
-current_phase: 13
-current_phase_name: Mobile Runtime Parity
+current_phase: 14
+current_phase_name: Control UI Surface Completion
 current_plan: Not started
 status: Ready to discuss
-stopped_at: Phase 12 completed; Phase 13 is ready for discuss and planning.
-last_updated: "2026-03-27T02:06:24.918Z"
-last_activity: 2026-03-27 -- Phase 12 completed
+stopped_at: Phase 13 completed; Phase 14 is ready for discuss and planning.
+last_updated: "2026-03-27T02:21:33.124Z"
+last_activity: 2026-03-27 -- Phase 13 completed
 progress:
   total_phases: 5
-  completed_phases: 2
-  total_plans: 6
-  completed_plans: 6
-  percent: 40
+  completed_phases: 3
+  total_plans: 9
+  completed_plans: 9
+  percent: 60
 ---
 
 # Project State
@@ -24,29 +24,29 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-26)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** Phase 13 - Mobile Runtime Parity
+**Current focus:** Phase 14 - Control UI Surface Completion
 
 ## Current Position
 
-Current Phase: 13
-Current Phase Name: Mobile Runtime Parity
+Current Phase: 14
+Current Phase Name: Control UI Surface Completion
 Total Phases: 5
 Current Plan: Not started
 Total Plans in Phase: 0
 Status: Ready to discuss
-Last activity: 2026-03-27 - Phase 12 completed
+Last activity: 2026-03-27 - Phase 13 completed
 
-Phase: 3 of 5 (Mobile Runtime Parity)
+Phase: 4 of 5 (Control UI Surface Completion)
 Plan: 0 of 0 in current phase
-Progress: [████░░░░░░] 40%
+Progress: [██████░░░░] 60%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 24
+- Total plans completed: 27
 - Average duration: 35 min
-- Total execution time: 13.7 hours
+- Total execution time: 15.0 hours
 
 **By Phase:**
 
@@ -60,11 +60,12 @@ Progress: [████░░░░░░] 40%
 | 6 | 3 | 55 min | 18 min |
 | 7 | 3 | 80 min | 27 min |
 | 12 | 3 | 85 min | 28 min |
+| 13 | 3 | 80 min | 27 min |
 
 **Recent Trend:**
 
-- Last 5 plans: 20 min, 20 min, 25 min, 40 min, 30 min
-- Trend: Stable to improving
+- Last 5 plans: 25 min, 40 min, 30 min, 40 min, 30 min
+- Trend: Stable
 
 ## Accumulated Context
 
@@ -84,6 +85,7 @@ Recent decisions affecting current work:
 - v1.2 focuses the next expansion lane on deeper OpenClaw surface parity across browser, supervision, mobile, Control UI, and voice or call handling.
 - Phase 11 now adds a durable browser workflow history ledger plus shipped runtime and Control UI inspection for recent richer browser runs.
 - Phase 12 now exposes typed supervision reports plus Control UI tables for delegated tasks, worker outcomes, approval context, live attention signals, and recent orchestration events.
+- Phase 13 now exposes a typed mobile operator report plus a main mobile node view that surfaces attention signals and recent activity from the existing mobile receipt model.
 
 ### Pending Todos
 
@@ -96,5 +98,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-26 23:09
-Stopped at: Phase 12 completed; Phase 13 is ready for discuss and planning.
+Stopped at: Phase 13 completed; Phase 14 is ready for discuss and planning.
 Resume file: None

@@ -17,8 +17,8 @@
 
 ### Mobile Parity
 
-- [ ] **MOBL-01**: Operator can inspect a broader mobile runtime state and action surface that feels materially closer to OpenClaw’s mobile lane.
-- [ ] **MOBL-02**: Mobile parity expansions keep approval gates, receipts, and operator evidence first-class.
+- [x] **MOBL-01**: Operator can inspect a broader mobile runtime state and action surface that feels materially closer to OpenClaw’s mobile lane.
+- [x] **MOBL-02**: Mobile parity expansions keep approval gates, receipts, and operator evidence first-class.
 
 ### Control UI Parity
 
@@ -59,8 +59,8 @@
 | BROW-02 | Phase 11 | Complete |
 | SUPR-01 | Phase 12 | Complete |
 | SUPR-02 | Phase 12 | Complete |
-| MOBL-01 | Phase 13 | Pending |
-| MOBL-02 | Phase 13 | Pending |
+| MOBL-01 | Phase 13 | Complete |
+| MOBL-02 | Phase 13 | Complete |
 | CTRL-01 | Phase 14 | Pending |
 | CTRL-02 | Phase 14 | Pending |
 | VOIC-01 | Phase 15 | Pending |
@@ -73,4 +73,4 @@
 
 ---
 *Requirements defined: 2026-03-26*
-*Last updated: 2026-03-27 after Phase 12 completion*
+*Last updated: 2026-03-27 after Phase 13 completion*
