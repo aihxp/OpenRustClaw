@@ -120,4 +120,13 @@ mod tests {
         assert!(CONTROL_UI_HTML.contains("enterprise-foundations"));
         assert!(CONTROL_UI_HTML.contains("function loadEnterpriseFoundations"));
     }
+
+    #[test]
+    fn dashboard_includes_enterprise_access_panel() {
+        assert!(CONTROL_UI_HTML.contains("enterprise-access"));
+        assert!(CONTROL_UI_HTML.contains("enterprise-operators-table"));
+        assert!(CONTROL_UI_HTML.contains("enterprise-protected-routes"));
+        assert!(CONTROL_UI_HTML.contains("function loadEnterpriseAccess"));
+        assert!(CONTROL_UI_HTML.contains("function renderEnterpriseAccess"));
+    }
 }

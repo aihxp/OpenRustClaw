@@ -68,6 +68,7 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
 tempfile.workspace = true
+tower.workspace = true
 
 [features]
 default = ["voice", "cursor"]

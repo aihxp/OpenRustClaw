@@ -12,7 +12,7 @@ use std::fs::{self, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 
-use super::{browser, control, mobile, skills, talk, voice_runtime};
+use super::{browser, control, enterprise_access, mobile, skills, talk, voice_runtime};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct AssistantContinuitySummary {
@@ -163,6 +163,47 @@ pub struct EnterpriseFoundationsReport {
     pub policy: EnterprisePolicyBoundary,
     pub mobile_metrics: mobile::MobileCommandMetricsSummary,
     pub recent_events: Vec<EnterpriseAuditEntry>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct EnterpriseAccessOrganizationSummary {
+    pub id: String,
+    pub name: String,
+    pub slug: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct EnterpriseAccessOperatorSummary {
+    pub id: String,
+    pub name: Option<String>,
+    pub email: Option<String>,
+    pub role: String,
+    pub active: bool,
+    pub scope_count: usize,
+    pub scopes: Vec<String>,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct EnterpriseRoleGrantSummary {
+    pub role: String,
+    pub default_scopes: Vec<String>,
+    pub operator_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct EnterpriseAccessReport {
+    pub status: String,
+    pub detail: String,
+    pub explicit_identity_required: bool,
+    pub registry_path: String,
+    pub operator_id_header: String,
+    pub operator_token_header: String,
+    pub organization: Option<EnterpriseAccessOrganizationSummary>,
+    pub operators: Vec<EnterpriseAccessOperatorSummary>,
+    pub role_grants: Vec<EnterpriseRoleGrantSummary>,
+    pub protected_routes: Vec<enterprise_access::EnterpriseProtectedRoute>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -757,6 +798,99 @@ pub fn enterprise_foundations_summary(
     })
 }
 
+pub fn enterprise_access_summary(workspace_root: &Path) -> Result<EnterpriseAccessReport> {
+    let registry_path = enterprise_access::enterprise_access_path(workspace_root)
+        .display()
+        .to_string();
+    let protected_routes = enterprise_access::protected_routes();
+    let role_defaults = enterprise_access::role_defaults();
+    let manifest = enterprise_access::load_manifest(workspace_root)?;
+    let explicit_identity_required = manifest.is_some();
+
+    let detail = if let Some(manifest) = manifest.as_ref() {
+        format!(
+            "Enterprise access is bootstrapped for organization `{}` with {} operator(s). Sensitive control routes now require `{}` and `{}` headers when their scope boundary is active.",
+            manifest.organization.id,
+            manifest.operators.len(),
+            enterprise_access::OPERATOR_ID_HEADER,
+            enterprise_access::OPERATOR_TOKEN_HEADER
+        )
+    } else {
+        format!(
+            "Enterprise access is not bootstrapped yet. Bootstrap the file-backed organization registry to require scoped operator identity on sensitive control routes via `{}` and `{}`.",
+            enterprise_access::OPERATOR_ID_HEADER,
+            enterprise_access::OPERATOR_TOKEN_HEADER
+        )
+    };
+
+    let role_grants = role_defaults
+        .into_iter()
+        .map(|(role, default_scopes)| {
+            let operator_count = manifest
+                .as_ref()
+                .map(|value| {
+                    value
+                        .operators
+                        .iter()
+                        .filter(|operator| operator.role == role)
+                        .count()
+                })
+                .unwrap_or(0);
+            EnterpriseRoleGrantSummary {
+                role,
+                default_scopes,
+                operator_count,
+            }
+        })
+        .collect::<Vec<_>>();
+
+    let organization = manifest
+        .as_ref()
+        .map(|value| EnterpriseAccessOrganizationSummary {
+            id: value.organization.id.clone(),
+            name: value.organization.name.clone(),
+            slug: value.organization.slug.clone(),
+            created_at: value.organization.created_at.clone(),
+        });
+
+    let operators = manifest
+        .as_ref()
+        .map(|value| {
+            value
+                .operators
+                .iter()
+                .map(|operator| EnterpriseAccessOperatorSummary {
+                    id: operator.id.clone(),
+                    name: operator.name.clone(),
+                    email: operator.email.clone(),
+                    role: operator.role.clone(),
+                    active: operator.active,
+                    scope_count: operator.scopes.len(),
+                    scopes: operator.scopes.clone(),
+                    updated_at: operator.updated_at.clone(),
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    Ok(EnterpriseAccessReport {
+        status: if explicit_identity_required {
+            "ok".to_string()
+        } else {
+            "bootstrap_required".to_string()
+        },
+        detail,
+        explicit_identity_required,
+        registry_path,
+        operator_id_header: enterprise_access::OPERATOR_ID_HEADER.to_string(),
+        operator_token_header: enterprise_access::OPERATOR_TOKEN_HEADER.to_string(),
+        organization,
+        operators,
+        role_grants,
+        protected_routes,
+    })
+}
+
 pub async fn voice_operator_report_summary(
     config: &AppConfig,
     workspace_root: &Path,
@@ -771,7 +905,8 @@ pub async fn voice_operator_report_summary(
         .unwrap_or(0);
     let voice_metrics = voice_runtime::voice_metrics(workspace_root).await?;
     let voice_outcomes =
-        voice_runtime::voice_session_outcomes(workspace_root, stale_after_secs, Some(limit)).await?;
+        voice_runtime::voice_session_outcomes(workspace_root, stale_after_secs, Some(limit))
+            .await?;
     let voice_health = voice_runtime::voice_session_health(
         workspace_root,
         voice_runtime::VoiceSessionHealthRequest { stale_after_secs },
@@ -844,8 +979,12 @@ pub async fn voice_operator_report_summary(
         &talk_metrics,
         &voice_calls.calls,
     );
-    let recent_activity =
-        build_voice_operator_recent_activity(&voice_outcomes, &talk_status, &voice_calls.calls, limit);
+    let recent_activity = build_voice_operator_recent_activity(
+        &voice_outcomes,
+        &talk_status,
+        &voice_calls.calls,
+        limit,
+    );
 
     let status = if !voice_status.enabled {
         "degraded"
@@ -1198,48 +1337,60 @@ fn build_voice_operator_recent_activity(
 ) -> Vec<VoiceOperatorRecentActivity> {
     let mut entries = Vec::new();
 
-    entries.extend(voice_outcomes.outcomes.iter().map(|entry| VoiceOperatorRecentActivity {
-        kind: "voice_session".to_string(),
-        observed_at: entry.last_activity_at.clone(),
-        status: entry.outcome_label.clone(),
-        label: entry.session_id.clone(),
-        detail: format!(
-            "{} turn(s), {} artifact(s). {}",
-            entry.turn_count, entry.artifact_count, entry.detail
-        ),
-        target_id: Some(entry.session_id.clone()),
-    }));
+    entries.extend(
+        voice_outcomes
+            .outcomes
+            .iter()
+            .map(|entry| VoiceOperatorRecentActivity {
+                kind: "voice_session".to_string(),
+                observed_at: entry.last_activity_at.clone(),
+                status: entry.outcome_label.clone(),
+                label: entry.session_id.clone(),
+                detail: format!(
+                    "{} turn(s), {} artifact(s). {}",
+                    entry.turn_count, entry.artifact_count, entry.detail
+                ),
+                target_id: Some(entry.session_id.clone()),
+            }),
+    );
 
-    entries.extend(talk_status.sessions.iter().map(|entry| VoiceOperatorRecentActivity {
-        kind: "talk_session".to_string(),
-        observed_at: entry.last_activity_at.clone(),
-        status: entry.status.clone(),
-        label: entry.id.clone(),
-        detail: format!(
-            "Wake word '{}', {} turn(s), final state {}.",
-            entry.wake_word,
-            entry.turn_count,
-            entry.final_state.as_deref().unwrap_or("unknown")
-        ),
-        target_id: Some(entry.id.clone()),
-    }));
+    entries.extend(
+        talk_status
+            .sessions
+            .iter()
+            .map(|entry| VoiceOperatorRecentActivity {
+                kind: "talk_session".to_string(),
+                observed_at: entry.last_activity_at.clone(),
+                status: entry.status.clone(),
+                label: entry.id.clone(),
+                detail: format!(
+                    "Wake word '{}', {} turn(s), final state {}.",
+                    entry.wake_word,
+                    entry.turn_count,
+                    entry.final_state.as_deref().unwrap_or("unknown")
+                ),
+                target_id: Some(entry.id.clone()),
+            }),
+    );
 
-    entries.extend(voice_calls.iter().map(|call| VoiceOperatorRecentActivity {
-        kind: "voice_call".to_string(),
-        observed_at: call
-            .last_seen_at
-            .clone()
-            .or_else(|| call.ended_at.clone())
-            .unwrap_or_else(|| call.started_at.clone()),
-        status: call.health.clone(),
-        label: call.call_id.clone(),
-        detail: format!(
-            "Plugin {} for skill {}. Remote: {}.",
-            call.plugin_id,
-            call.skill_name,
-            call.remote.as_deref().unwrap_or("n/a")
-        ),
-        target_id: Some(call.call_id.clone()),
+    entries.extend(voice_calls.iter().map(|call| {
+        VoiceOperatorRecentActivity {
+            kind: "voice_call".to_string(),
+            observed_at: call
+                .last_seen_at
+                .clone()
+                .or_else(|| call.ended_at.clone())
+                .unwrap_or_else(|| call.started_at.clone()),
+            status: call.health.clone(),
+            label: call.call_id.clone(),
+            detail: format!(
+                "Plugin {} for skill {}. Remote: {}.",
+                call.plugin_id,
+                call.skill_name,
+                call.remote.as_deref().unwrap_or("n/a")
+            ),
+            target_id: Some(call.call_id.clone()),
+        }
     }));
 
     entries.sort_by(|left, right| {
@@ -1255,7 +1406,8 @@ fn build_voice_operator_recent_activity(
 #[cfg(test)]
 mod tests {
     use super::{
-        enterprise_foundations_summary, new_tool_execution_record, tool_execution_log_path,
+        enterprise_access_summary, enterprise_foundations_summary, new_tool_execution_record,
+        tool_execution_log_path,
     };
     use anyhow::Result;
     use chrono::{DateTime, Utc};
@@ -1264,6 +1416,10 @@ mod tests {
     use tempfile::tempdir;
 
     use crate::commands::browser::{ExternalBackendAuditEntry, backend_policy};
+    use crate::commands::enterprise_access::{
+        EnterpriseAccessBootstrapRequest, EnterpriseAccessOperatorRequest, bootstrap_manifest,
+        upsert_operator,
+    };
 
     #[test]
     fn enterprise_foundations_summary_reports_policy_and_recent_audit_evidence() -> Result<()> {
@@ -1355,6 +1511,53 @@ mod tests {
             entry.kind == "mobile.command.approve" && entry.source == "runtime_tool"
         }));
 
+        Ok(())
+    }
+
+    #[test]
+    fn enterprise_access_summary_reports_bootstrap_state_and_operator_counts() -> Result<()> {
+        let root = tempdir().expect("tempdir");
+        let report = enterprise_access_summary(root.path())?;
+        assert_eq!(report.status, "bootstrap_required");
+        assert!(!report.explicit_identity_required);
+        assert!(report.organization.is_none());
+        assert!(!report.protected_routes.is_empty());
+
+        bootstrap_manifest(
+            root.path(),
+            EnterpriseAccessBootstrapRequest {
+                organization_id: "acme".to_string(),
+                organization_name: "Acme Ops".to_string(),
+                owner_id: "owner-1".to_string(),
+                owner_name: Some("Owner".to_string()),
+                owner_email: None,
+                owner_token: "owner-secret-123".to_string(),
+            },
+        )?;
+        upsert_operator(
+            root.path(),
+            EnterpriseAccessOperatorRequest {
+                id: "admin-1".to_string(),
+                name: Some("Admin".to_string()),
+                email: None,
+                role: "admin".to_string(),
+                token: "admin-secret-123".to_string(),
+                scopes: vec![],
+                active: true,
+            },
+        )?;
+
+        let report = enterprise_access_summary(root.path())?;
+        assert_eq!(report.status, "ok");
+        assert!(report.explicit_identity_required);
+        assert_eq!(
+            report.organization.as_ref().map(|value| value.id.as_str()),
+            Some("acme")
+        );
+        assert_eq!(report.operators.len(), 2);
+        assert!(report.role_grants.iter().any(|entry| {
+            entry.role == "admin" && entry.operator_count == 1 && !entry.default_scopes.is_empty()
+        }));
         Ok(())
     }
 

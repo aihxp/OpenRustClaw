@@ -452,6 +452,26 @@
             </table>
           </div>
         </article>
+        <article class="panel span-12">
+          <h2>Enterprise Access</h2>
+          <div class="surface"><div id="enterprise-access" class="summary-card empty">Loading…</div></div>
+          <div class="surface" style="margin-top: 12px">
+            <table class="table">
+              <thead>
+                <tr><th>Operator</th><th>Role</th><th>Scope Count</th><th>Updated</th></tr>
+              </thead>
+              <tbody id="enterprise-operators-table"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
+            </table>
+          </div>
+          <div class="surface" style="margin-top: 12px">
+            <table class="table">
+              <thead>
+                <tr><th>Method</th><th>Route</th><th>Scope</th><th>Detail</th></tr>
+              </thead>
+              <tbody id="enterprise-protected-routes"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </article>
         <article class="panel span-6">
           <h2>Scheduler Health</h2>
           <div class="surface"><pre id="scheduler-status">Loading…</pre></div>
@@ -1647,6 +1667,55 @@
         renderTableRows("enterprise-audit-table", rows, "No recent enterprise audit evidence.");
       }
 
+      function renderEnterpriseAccess(report) {
+        const target = document.getElementById("enterprise-access");
+        if (!report || report.error) {
+          target.className = "summary-card empty";
+          target.textContent = report?.error || "No enterprise access summary available.";
+          renderTableRows("enterprise-operators-table", [], "No enterprise operators configured yet.");
+          renderTableRows("enterprise-protected-routes", [], "No protected enterprise routes configured.");
+          return;
+        }
+
+        const organization = report.organization || {};
+        const operators = report.operators || [];
+        const roleCoverage = (report.role_grants || [])
+          .filter((entry) => (entry.operator_count || 0) > 0)
+          .map((entry) => `${entry.role}:${entry.operator_count}`)
+          .join(", ") || "bootstrap pending";
+
+        renderSummaryCard("enterprise-access", "No enterprise access summary available.", buildSummaryMarkup({
+          kicker: "Enterprise Identity Boundary",
+          title: report.explicit_identity_required
+            ? `${operators.length} operator(s) under scoped access`
+            : "Bootstrap required before scoped enterprise identity is enforced",
+          copy: report.detail || "No enterprise access summary available.",
+          stats: [
+            { label: "Organization", value: organization.name || "-", detail: organization.id || "-" },
+            { label: "Headers", value: report.operator_id_header || "-", detail: report.operator_token_header || "-" },
+            { label: "Operators", value: `${operators.length}`, detail: roleCoverage },
+            { label: "Protected Routes", value: `${(report.protected_routes || []).length}`, detail: report.explicit_identity_required ? "identity required" : "waiting for bootstrap" },
+            { label: "Registry", value: report.registry_path || "-", detail: organization.created_at || "-" },
+          ],
+        }));
+
+        const operatorRows = operators.map((operator) => `<tr>
+          <td><strong>${escapeHtml(operator.name || operator.id || "-")}</strong><div class="muted">${escapeHtml(operator.id || "-")}</div></td>
+          <td>${escapeHtml(operator.role || "-")}</td>
+          <td><strong>${escapeHtml(String(operator.scope_count ?? 0))}</strong><div class="muted">${escapeHtml((operator.scopes || []).slice(0, 3).join(", ") || "-")}</div></td>
+          <td>${escapeHtml(operator.updated_at || "-")}</td>
+        </tr>`);
+        renderTableRows("enterprise-operators-table", operatorRows, "No enterprise operators configured yet.");
+
+        const protectedRouteRows = (report.protected_routes || []).map((route) => `<tr>
+          <td>${escapeHtml(route.method || "-")}</td>
+          <td><span class="mono">${escapeHtml(route.path || "-")}</span></td>
+          <td><strong>${escapeHtml(route.scope || "-")}</strong></td>
+          <td>${escapeHtml(route.detail || "-")}</td>
+        </tr>`);
+        renderTableRows("enterprise-protected-routes", protectedRouteRows, "No protected enterprise routes configured.");
+      }
+
       function renderVoiceOperatorReport(report) {
         if (!report || report.error) {
           renderSummaryCard("voice-operator-report", report?.error || "No voice operator summary available.", null);
@@ -2373,6 +2442,11 @@
       async function loadEnterpriseFoundations() {
         const payload = await fetchJson("/control/enterprise/foundations");
         renderEnterpriseFoundations(payload);
+      }
+
+      async function loadEnterpriseAccess() {
+        const payload = await fetchJson("/control/enterprise/access");
+        renderEnterpriseAccess(payload);
       }
 
       async function scanRuntimeHealth() {
@@ -4564,6 +4638,7 @@
             loadRuntimeReloadPlan(),
             loadSecurityPosture(),
             loadEnterpriseFoundations(),
+            loadEnterpriseAccess(),
             loadVaultStatus(),
             loadSchedulerStatus(),
             loadChannelProbes(),

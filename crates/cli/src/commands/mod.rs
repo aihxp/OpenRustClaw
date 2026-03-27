@@ -7,6 +7,7 @@ pub mod control_ui;
 #[cfg(feature = "cursor")]
 pub mod cursor;
 pub mod doctor;
+pub mod enterprise_access;
 pub mod gmail;
 pub mod google_chat;
 pub mod imessage;

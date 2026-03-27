@@ -6,6 +6,13 @@ For final MVP sign-off, pair this guide with [Release Checklist](./release-check
 
 For the current enterprise-readiness baseline, also review `/control/enterprise/foundations` in the running control plane. That summary is intentionally narrow: it shows the explicit runtime approval policy, the browser external-backend allowlist and audit log, mobile command approval-state metrics, and recent durable audit evidence for approval-sensitive actions. It is a foundation for future enterprise work, not a claim that RBAC, SSO, or compliance packaging are already complete.
 
+If you want the Phase 16 enterprise access boundary active, bootstrap `/control/enterprise/access/bootstrap` first, then provision additional operators through `/control/enterprise/access/operators`. After bootstrap, the initial sensitive-route contract requires both the regular control-plane auth boundary and scoped enterprise operator headers:
+
+- `x-openrustclaw-operator-id`
+- `x-openrustclaw-operator-token`
+
+The shipped `/control/enterprise/access` summary and matching Control UI panel show which routes are protected by that scoped operator boundary. This remains a file-backed enterprise access foundation rather than full SSO, SCIM, or compliance-grade IAM.
+
 ## Table of Contents
 
 - [Prerequisites](#prerequisites)

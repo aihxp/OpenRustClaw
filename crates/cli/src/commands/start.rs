@@ -6,7 +6,7 @@ use axum::{
     Json, Router,
     body::Bytes,
     extract::{
-        Path as AxumPath, Query, Request, State,
+        Extension, Path as AxumPath, Query, Request, State,
         ws::{Message as WsMessage, WebSocket, WebSocketUpgrade},
     },
     http::{HeaderMap, StatusCode},
@@ -91,8 +91,8 @@ use super::talk;
 use super::voice_runtime;
 use super::voice_runtime::InboundVoiceTranscriber;
 use super::{
-    assistant, browser, control, control_ui, doctor, inspect, logs, mobile, orchestrate, runtime,
-    security, services, skills, tools,
+    assistant, browser, control, control_ui, doctor, enterprise_access, inspect, logs, mobile,
+    orchestrate, runtime, security, services, skills, tools,
 };
 
 /// Run the start command - load config, optionally start the compatibility/experimental sidecar, and start the gateway.
@@ -550,29 +550,39 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
         control_auth_state.clone(),
     ));
     app = app.merge(protect_control_router(
-        control_plane_router(ControlPlaneApiState {
-            control_root,
-            workspace_root: workspace_root.clone(),
-            config_path: config_path.to_string(),
-        }),
+        protect_enterprise_router(
+            control_plane_router(ControlPlaneApiState {
+                control_root,
+                workspace_root: workspace_root.clone(),
+                config_path: config_path.to_string(),
+            }),
+            EnterpriseAccessState {
+                workspace_root: workspace_root.clone(),
+            },
+        ),
         control_auth_state.clone(),
     ));
     app = app.merge(protect_control_router(
-        runtime_control_router(RuntimeControlState {
-            config_path: config_path.to_string(),
-            workspace_root: workspace_root.clone(),
-            pool: pool.clone(),
-            memory_store: memory_store.clone(),
-            core_memory_store: core_memory_store.clone(),
-            session_manager: session_manager.clone(),
-            channel_registry: channel_registry.clone(),
-            langsmith: channel_langsmith_client(&config),
-            event_bus: event_bus.clone(),
-            channel_agent: channel_agent.clone(),
-            gateway_addr: addr.clone(),
-            started_at,
-            sidecar_running: sidecar.is_some(),
-        }),
+        protect_enterprise_router(
+            runtime_control_router(RuntimeControlState {
+                config_path: config_path.to_string(),
+                workspace_root: workspace_root.clone(),
+                pool: pool.clone(),
+                memory_store: memory_store.clone(),
+                core_memory_store: core_memory_store.clone(),
+                session_manager: session_manager.clone(),
+                channel_registry: channel_registry.clone(),
+                langsmith: channel_langsmith_client(&config),
+                event_bus: event_bus.clone(),
+                channel_agent: channel_agent.clone(),
+                gateway_addr: addr.clone(),
+                started_at,
+                sidecar_running: sidecar.is_some(),
+            }),
+            EnterpriseAccessState {
+                workspace_root: workspace_root.clone(),
+            },
+        ),
         control_auth_state,
     ));
     app = app.layer(metrics_middleware());
@@ -2573,6 +2583,11 @@ struct RuntimeControlState {
 }
 
 #[derive(Clone)]
+struct EnterpriseAccessState {
+    workspace_root: PathBuf,
+}
+
+#[derive(Clone)]
 struct ControlAuthState {
     bearer_token: Option<Arc<String>>,
     trusted_proxy_token: Option<Arc<String>>,
@@ -2584,6 +2599,13 @@ fn protect_control_router(router: Router, state: ControlAuthState) -> Router {
     router.layer(middleware::from_fn_with_state(
         state,
         control_auth_middleware,
+    ))
+}
+
+fn protect_enterprise_router(router: Router, state: EnterpriseAccessState) -> Router {
+    router.layer(middleware::from_fn_with_state(
+        state,
+        enterprise_access_middleware,
     ))
 }
 
@@ -2764,6 +2786,44 @@ async fn control_auth_middleware(
         })),
     )
         .into_response()
+}
+
+async fn enterprise_access_middleware(
+    State(state): State<EnterpriseAccessState>,
+    req: Request,
+    next: Next,
+) -> Response {
+    let Some(required_scope) =
+        enterprise_access::protected_scope_for_request(req.method(), req.uri().path())
+    else {
+        return next.run(req).await;
+    };
+
+    let access_enabled =
+        enterprise_access::access_is_configured(&state.workspace_root).unwrap_or(false);
+    if !access_enabled {
+        return next.run(req).await;
+    }
+
+    match enterprise_access::authenticate_request(
+        &state.workspace_root,
+        req.headers(),
+        required_scope,
+    ) {
+        Ok(operator) => {
+            let mut req = req;
+            req.extensions_mut().insert(operator);
+            next.run(req).await
+        }
+        Err(error) => (
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({
+                "error": error.to_string(),
+                "required_scope": required_scope,
+            })),
+        )
+            .into_response(),
+    }
 }
 
 fn record_operator_tool_result<T, E>(
@@ -2956,6 +3016,15 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
         .route(
             "/control/runtime/operator-ops",
             get(runtime_operator_ops_handler),
+        )
+        .route("/control/enterprise/access", get(enterprise_access_handler))
+        .route(
+            "/control/enterprise/access/bootstrap",
+            post(enterprise_access_bootstrap_handler),
+        )
+        .route(
+            "/control/enterprise/access/operators",
+            post(enterprise_access_upsert_operator_handler),
         )
         .route(
             "/control/enterprise/foundations",
@@ -5111,6 +5180,29 @@ struct RuntimeVaultValueRequest {
     value: String,
 }
 
+#[derive(serde::Deserialize)]
+struct EnterpriseAccessBootstrapPayload {
+    organization_id: String,
+    organization_name: String,
+    owner_id: String,
+    owner_name: Option<String>,
+    owner_email: Option<String>,
+    owner_token: String,
+}
+
+#[derive(serde::Deserialize)]
+struct EnterpriseAccessOperatorPayload {
+    id: String,
+    name: Option<String>,
+    email: Option<String>,
+    role: String,
+    token: String,
+    #[serde(default)]
+    scopes: Vec<String>,
+    #[serde(default = "default_active_true")]
+    active: bool,
+}
+
 #[derive(serde::Deserialize, Default)]
 struct ListLimitQuery {
     #[serde(default)]
@@ -6235,9 +6327,16 @@ async fn mobile_command_metrics_handler(
 
 async fn mobile_command_dispatch_handler(
     State(state): State<RuntimeControlState>,
+    operator: Option<Extension<enterprise_access::EnterpriseAuthenticatedOperator>>,
     Json(payload): Json<mobile::MobileCommandDispatchRequest>,
 ) -> impl IntoResponse {
     let started_at = std::time::Instant::now();
+    let mut payload = payload;
+    if let Some(Extension(operator)) = operator
+        && payload.approved_by.is_none()
+    {
+        payload.approved_by = Some(operator.id);
+    }
     let result = mobile::dispatch_command_data(&state.workspace_root, payload).await;
     record_operator_tool_result("mobile.command.dispatch", started_at, &result);
     match result {
@@ -6253,9 +6352,18 @@ async fn mobile_command_dispatch_handler(
 async fn mobile_command_approve_handler(
     State(state): State<RuntimeControlState>,
     AxumPath(id): AxumPath<String>,
+    operator: Option<Extension<enterprise_access::EnterpriseAuthenticatedOperator>>,
     Json(payload): Json<mobile::MobileCommandDecisionRequest>,
 ) -> impl IntoResponse {
     let started_at = std::time::Instant::now();
+    let payload = if let Some(Extension(operator)) = operator {
+        mobile::MobileCommandDecisionRequest {
+            decided_by: operator.id,
+            reason: payload.reason,
+        }
+    } else {
+        payload
+    };
     let result = mobile::approve_command_data(&state.workspace_root, &id, payload).await;
     record_operator_tool_result("mobile.command.approve", started_at, &result);
     match result {
@@ -6271,9 +6379,18 @@ async fn mobile_command_approve_handler(
 async fn mobile_command_reject_handler(
     State(state): State<RuntimeControlState>,
     AxumPath(id): AxumPath<String>,
+    operator: Option<Extension<enterprise_access::EnterpriseAuthenticatedOperator>>,
     Json(payload): Json<mobile::MobileCommandDecisionRequest>,
 ) -> impl IntoResponse {
     let started_at = std::time::Instant::now();
+    let payload = if let Some(Extension(operator)) = operator {
+        mobile::MobileCommandDecisionRequest {
+            decided_by: operator.id,
+            reason: payload.reason,
+        }
+    } else {
+        payload
+    };
     let result = mobile::reject_command_data(&state.workspace_root, &id, payload);
     record_operator_tool_result("mobile.command.reject", started_at, &result);
     match result {
@@ -6900,6 +7017,86 @@ async fn security_posture_handler(State(state): State<RuntimeControlState>) -> i
         Ok(summary) => (StatusCode::OK, Json(serde_json::json!(summary))).into_response(),
         Err(error) => (
             StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn enterprise_access_handler(State(state): State<RuntimeControlState>) -> impl IntoResponse {
+    match inspect::enterprise_access_summary(&state.workspace_root) {
+        Ok(summary) => (StatusCode::OK, Json(serde_json::json!(summary))).into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn enterprise_access_bootstrap_handler(
+    State(state): State<RuntimeControlState>,
+    Json(payload): Json<EnterpriseAccessBootstrapPayload>,
+) -> impl IntoResponse {
+    let started_at = std::time::Instant::now();
+    let result = enterprise_access::bootstrap_manifest(
+        &state.workspace_root,
+        enterprise_access::EnterpriseAccessBootstrapRequest {
+            organization_id: payload.organization_id,
+            organization_name: payload.organization_name,
+            owner_id: payload.owner_id,
+            owner_name: payload.owner_name,
+            owner_email: payload.owner_email,
+            owner_token: payload.owner_token,
+        },
+    );
+    record_operator_tool_result("enterprise.access.bootstrap", started_at, &result);
+    match result {
+        Ok(_) => match inspect::enterprise_access_summary(&state.workspace_root) {
+            Ok(summary) => (StatusCode::OK, Json(serde_json::json!(summary))).into_response(),
+            Err(error) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": error.to_string()})),
+            )
+                .into_response(),
+        },
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn enterprise_access_upsert_operator_handler(
+    State(state): State<RuntimeControlState>,
+    Json(payload): Json<EnterpriseAccessOperatorPayload>,
+) -> impl IntoResponse {
+    let started_at = std::time::Instant::now();
+    let result = enterprise_access::upsert_operator(
+        &state.workspace_root,
+        enterprise_access::EnterpriseAccessOperatorRequest {
+            id: payload.id,
+            name: payload.name,
+            email: payload.email,
+            role: payload.role,
+            token: payload.token,
+            scopes: payload.scopes,
+            active: payload.active,
+        },
+    );
+    record_operator_tool_result("enterprise.access.upsert_operator", started_at, &result);
+    match result {
+        Ok(_) => match inspect::enterprise_access_summary(&state.workspace_root) {
+            Ok(summary) => (StatusCode::OK, Json(serde_json::json!(summary))).into_response(),
+            Err(error) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": error.to_string()})),
+            )
+                .into_response(),
+        },
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": error.to_string()})),
         )
             .into_response(),
@@ -11981,11 +12178,13 @@ struct McpPromoteOptimizationCandidateArgs {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::body::Body;
     use ed25519_dalek::{Signer, SigningKey};
     use openrustclaw_core::config::{AppConfig, DiscordConfig, SlackConfig, SlackMode};
     use openrustclaw_core::error::{Error, ProviderError};
     use openrustclaw_core::types::{FinishReason, IncomingMessage, Role, TokenUsage};
     use tempfile::tempdir;
+    use tower::ServiceExt;
 
     struct MockProvider;
 
@@ -12228,6 +12427,60 @@ mod tests {
 
         let written = std::fs::read_to_string(path).expect("read written config");
         assert!(written.contains("[providers]"));
+    }
+
+    #[tokio::test]
+    async fn enterprise_access_middleware_blocks_protected_route_without_operator_headers() {
+        let temp = tempdir().expect("tempdir");
+        enterprise_access::bootstrap_manifest(
+            temp.path(),
+            enterprise_access::EnterpriseAccessBootstrapRequest {
+                organization_id: "acme".to_string(),
+                organization_name: "Acme Ops".to_string(),
+                owner_id: "owner-1".to_string(),
+                owner_name: None,
+                owner_email: None,
+                owner_token: "owner-secret-123".to_string(),
+            },
+        )
+        .expect("bootstrap enterprise access");
+
+        let app = protect_enterprise_router(
+            Router::new().route(
+                "/control/mobile/commands/cmd-1/approve",
+                post(|| async { StatusCode::OK }),
+            ),
+            EnterpriseAccessState {
+                workspace_root: temp.path().to_path_buf(),
+            },
+        );
+
+        let denied = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/control/mobile/commands/cmd-1/approve")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(denied.status(), StatusCode::FORBIDDEN);
+
+        let allowed = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/control/mobile/commands/cmd-1/approve")
+                    .header(enterprise_access::OPERATOR_ID_HEADER, "owner-1")
+                    .header(enterprise_access::OPERATOR_TOKEN_HEADER, "owner-secret-123")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(allowed.status(), StatusCode::OK);
     }
 
     #[tokio::test]
