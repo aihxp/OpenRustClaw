@@ -14,14 +14,18 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 - **Shipped milestones:** v1.0 Rust OpenClaw MVP and v1.1 Lifecycle Integrity and Enterprise Foundations on 2026-03-26, plus v1.2 Deeper OpenClaw Surface Parity, v1.3 Enterprise Expansion and Supervised Autonomy Foundations, v1.4 Enterprise Governance and Operator-Gated Full Autonomy, and v1.5 Self-Hosted Product Modes and Lifecycle Packaging on 2026-03-27
 - **Archive:** `.planning/milestones/v1.0-*`, `.planning/milestones/v1.1-*`, `.planning/milestones/v1.2-*`, `.planning/milestones/v1.3-*`, `.planning/milestones/v1.4-*`, `.planning/milestones/v1.5-*`
-- **Planning state:** no active milestone is open
+- **Planning state:** v1.6 Proper Onboarding and Setup is now active
 - **Known audit debt:** v1.0 archive still records missing phase `VERIFICATION.md` artifacts; v1.1 closes that workflow gap going forward
 
-## Most Recent Milestone: v1.5 Self-Hosted Product Modes and Lifecycle Packaging
+## Current Milestone: v1.6 Proper Onboarding and Setup
 
-**Result:** Shipped 2026-03-27. OpenRustClaw now presents one explicit self-hosted open-source product story across onboarding, runtime inspection, Control UI, and docs, with first-class deployment paths and durable upgrade or downgrade transitions between them.
+**Goal:** Turn first install into a truthful, end-to-end setup journey that gets a self-hosted workspace from blank state to ready assistant and runtime handoff with repairable failures and explicit operator checkpoints.
 
-**Archive:** `.planning/milestones/v1.5-ROADMAP.md`, `.planning/milestones/v1.5-REQUIREMENTS.md`, `.planning/milestones/v1.5-MILESTONE-AUDIT.md`, `.planning/milestones/v1.5-VERIFICATIONS.md`
+**Target features:**
+- durable setup-state tracking for first install, partial setup, and resumed onboarding
+- mode-aware provider, channel, and runtime setup flows that end in a truthful readiness handoff
+- repair and retry paths for failed or partially configured workspaces
+- docs and shipped operator surfaces that make setup progress and next actions legible
 
 ## Requirements
 
@@ -52,9 +56,9 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 ### Active
 
-- [ ] Expand the enterprise baseline into deeper RBAC, SSO, SCIM, and tenant-aware governance
-- [ ] Broaden supervised and full autonomy into more domains without dropping budgets, approvals, or audit evidence
-- [ ] Continue parity and product depth only in ways that preserve the enterprise, autonomy, and self-hosted product contract
+- [ ] Make onboarding and setup resumable, mode-aware, and truthful from blank workspace to ready handoff
+- [ ] Ensure setup surfaces can repair or resume partial and failed installs instead of forcing manual state edits
+- [ ] Keep setup docs and shipped operator surfaces aligned with the actual setup contract
 
 ### Out of Scope
 
@@ -67,7 +71,7 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 This remains a large brownfield Rust monorepo with broad runtime, CLI, control-plane, memory, tools, channel, voice, browser, and deployment surfaces. v1.0 converted that breadth into a cleaner MVP by making operator trust visible at the edges that matter, v1.1 hardened the lifecycle and enterprise baseline around that trust, v1.2 deepened the most operator-visible OpenClaw parity surfaces without reopening MVP sprawl, v1.3 turned the first enterprise and supervised-autonomy contracts into a coherent operator loop, v1.4 extended that loop into explicit governance and operator-gated full autonomy, and v1.5 made the platform legible as one self-hosted open-source product with explicit deployment paths and transition visibility.
 
-The next milestone should build on all six shipped layers rather than reopen foundational debt. Enterprise expansion, broader supervised autonomy, and any deeper parity work should now treat the v1.4 governance and full-autonomy contract plus the v1.5 self-hosted product-mode baseline as fixed infrastructure.
+The next milestone should build on all six shipped layers rather than reopen foundational debt. Enterprise expansion, broader supervised autonomy, and any deeper parity work should now treat the v1.4 governance and full-autonomy contract plus the v1.5 self-hosted product-mode baseline as fixed infrastructure. The immediate gap is that onboarding and setup still need to feel like one complete product journey rather than a cluster of adjacent setup commands.
 
 ## Constraints
 
@@ -96,9 +100,9 @@ The next milestone should build on all six shipped layers rather than reopen fou
 
 ## Next Milestone Goals
 
-- Expand the enterprise baseline into deeper organization lifecycle, tenant-awareness, and external identity or compliance controls
-- Broaden supervised and full autonomy into more domains without dropping explicit operator control paths
+- Make first install, partial setup recovery, and post-setup handoff feel like one coherent Rust-owned onboarding path
 - Preserve the verification/archive contract, enterprise governance baseline, shipped autonomy control surface, and self-hosted product-mode contract as non-negotiable foundations
+- Leave larger enterprise expansion and autonomy breadth for a later milestone after setup convergence is credible
 
 ## Evolution
 
@@ -118,4 +122,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-28 after archiving v1.5*
+*Last updated: 2026-03-28 for milestone v1.6*

@@ -1,14 +1,14 @@
 ---
 gsd_state_version: 1.0
-milestone: null
-milestone_name: null
+milestone: v1.6
+milestone_name: Proper Onboarding and Setup
 current_phase: null
 current_phase_name: null
 current_plan: null
-status: No active milestone
-stopped_at: v1.5 archived; start the next milestone with $gsd-new-milestone.
-last_updated: "2026-03-28T00:30:00.000Z"
-last_activity: 2026-03-27 -- v1.5 archived
+status: Defining requirements
+stopped_at: Milestone v1.6 started; define requirements and roadmap next.
+last_updated: "2026-03-28T00:40:00.000Z"
+last_activity: 2026-03-28 -- Milestone v1.6 started
 progress:
   total_phases: 0
   completed_phases: 0
@@ -24,19 +24,19 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-28)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** No active milestone
+**Current focus:** Defining requirements for v1.6 Proper Onboarding and Setup
 
 ## Current Position
 
-Current Phase: -
-Current Phase Name: -
+Current Phase: Not started
+Current Phase Name: Defining requirements
 Total Phases: 0
 Current Plan: -
 Total Plans in Phase: 0
-Status: No active milestone
-Last activity: 2026-03-27 -- v1.5 archived
+Status: Defining requirements
+Last activity: 2026-03-28 -- Milestone v1.6 started
 
-Phase: 0 of 0
+Phase: Not started
 Plan: 0 of 0
 Progress: [░░░░░░░░░░] 0%
 
@@ -62,7 +62,8 @@ Recent decisions affecting current work:
 - v1.3 established the enterprise operator baseline across identity, policy, audit export, supervised autonomy, and one shipped admin surface.
 - v1.4 added stronger enterprise governance plus an explicit operator-gated full-autonomy lane with durable budgets, kill switch, and dashboard controls.
 - v1.5 made OpenRustClaw legible as one self-hosted open-source product with explicit `solo`, `team`, `company`, and `enterprise` deployment paths, mode-aware onboarding, and reviewable upgrade or downgrade transitions.
-- v1.5 is archived; the next milestone has not been defined yet.
+- v1.5 is archived.
+- v1.6 now focuses on making onboarding and setup feel like one coherent, resumable first-install path.
 
 ### Pending Todos
 
@@ -75,5 +76,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-27 04:44
-Stopped at: v1.5 archived; start the next milestone with $gsd-new-milestone.
+Stopped at: Milestone v1.6 started; define requirements and roadmap next.
 Resume file: None
