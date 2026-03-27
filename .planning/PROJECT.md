@@ -23,6 +23,7 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 **Target features:**
 - durable setup-state tracking for first install, partial setup, and resumed onboarding
+- a clear standard setup path plus an advanced or custom path for operators who need more control
 - mode-aware provider, channel, and runtime setup flows that end in a truthful readiness handoff
 - repair and retry paths for failed or partially configured workspaces
 - docs and shipped operator surfaces that make setup progress and next actions legible
@@ -57,6 +58,7 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 ### Active
 
 - [ ] Make onboarding and setup resumable, mode-aware, and truthful from blank workspace to ready handoff
+- [ ] Offer a standard setup path by default plus an advanced or custom path without fragmenting the product story
 - [ ] Ensure setup surfaces can repair or resume partial and failed installs instead of forcing manual state edits
 - [ ] Keep setup docs and shipped operator surfaces aligned with the actual setup contract
 
@@ -101,6 +103,7 @@ The next milestone should build on all six shipped layers rather than reopen fou
 ## Next Milestone Goals
 
 - Make first install, partial setup recovery, and post-setup handoff feel like one coherent Rust-owned onboarding path
+- Make setup depth explicit with a standard default path plus advanced or custom flows for operators who need deeper control
 - Preserve the verification/archive contract, enterprise governance baseline, shipped autonomy control surface, and self-hosted product-mode contract as non-negotiable foundations
 - Leave larger enterprise expansion and autonomy breadth for a later milestone after setup convergence is credible
 

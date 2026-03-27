@@ -14,7 +14,7 @@
 
 ### Overview
 
-This milestone turns onboarding and setup into one believable self-hosted product journey. The order is deliberate: first define durable setup state and resumability, then make provider or runtime or channel bootstrap mode-aware, then harden repair and re-entry for partial installs, and finally close with a truthful setup handoff and aligned operator surfaces.
+This milestone turns onboarding and setup into one believable self-hosted product journey. The order is deliberate: first define durable setup state plus a standard-versus-advanced setup-path contract, then make provider or runtime or channel bootstrap mode-aware, then harden repair and re-entry for partial installs, and finally close with a truthful setup handoff and aligned operator surfaces.
 
 ### Phases
 
@@ -32,11 +32,11 @@ This milestone turns onboarding and setup into one believable self-hosted produc
 ### Phase 28: Setup State and Resumable Onboarding Contract
 **Goal**: Define the durable setup-state contract so onboarding can resume truthfully instead of acting like every run is a fresh workspace.
 **Depends on**: v1.5 archive state
-**Requirements**: [SETUP-01]
+**Requirements**: [SETUP-01, PATH-01]
 **Success Criteria** (what must be TRUE):
   1. Setup progress is persisted as first-class state rather than inferred from scattered files.
-  2. The chosen deployment path, completed steps, blockers, and next action are inspectable.
-  3. Re-entering onboarding can resume from the recorded setup state without hiding drift.
+  2. The chosen deployment mode, setup depth, completed steps, blockers, and next action are inspectable.
+  3. Operators can choose a standard path or an advanced/custom path without creating a disconnected setup state model.
 **Plans**: TBD
 
 Plans:
@@ -45,11 +45,11 @@ Plans:
 ### Phase 29: Mode-Aware Provider, Runtime, and Channel Bootstrap
 **Goal**: Make setup actually configure and validate the core runtime path for the selected deployment mode.
 **Depends on**: Phase 28
-**Requirements**: [BOOT-01, BOOT-02]
+**Requirements**: [BOOT-01, BOOT-02, PATH-02]
 **Success Criteria** (what must be TRUE):
   1. Setup drives provider, model, runtime, and control-plane configuration to a truthful ready or blocked state.
   2. Setup can validate and, where supported, bootstrap key runtime or channel surfaces before claiming success.
-  3. The setup path remains mode-aware rather than pretending every install needs the same bootstrap depth.
+  3. Standard and advanced/custom setup paths remain mode-aware but converge on the same readiness contract.
 **Plans**: TBD
 
 Plans:

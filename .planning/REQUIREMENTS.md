@@ -10,6 +10,11 @@
 - [ ] **SETUP-01**: Onboarding persists a resumable setup-state contract that records deployment path, completed steps, current blockers, and the next recommended action.
 - [ ] **SETUP-02**: Existing or partially configured workspaces can re-enter setup through explicit resume, repair, or reset-with-backup paths instead of manual state edits.
 
+### Setup Path Selection
+
+- [ ] **PATH-01**: First-run setup offers a standard path for the common self-hosted install and an advanced or custom path for operators who need deeper control.
+- [ ] **PATH-02**: Standard and advanced or custom setup paths stay mode-aware and converge back into the same truthful readiness and handoff contract.
+
 ### Provider, Runtime, and Channel Bootstrap
 
 - [ ] **BOOT-01**: Setup drives the core provider, model, runtime, and control-plane configuration to a truthful ready or blocked state for the selected deployment mode.
@@ -51,6 +56,8 @@
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | SETUP-01 | Phase 28 | Pending |
+| PATH-01 | Phase 28 | Pending |
+| PATH-02 | Phase 29 | Pending |
 | SETUP-02 | Phase 30 | Pending |
 | BOOT-01 | Phase 29 | Pending |
 | BOOT-02 | Phase 29 | Pending |
@@ -58,8 +65,8 @@
 | HANDOFF-02 | Phase 31 | Pending |
 
 **Coverage:**
-- v1.6 requirements: 6 total
-- Mapped to phases: 6
+- v1.6 requirements: 8 total
+- Mapped to phases: 8
 - Unmapped: 0
 
 ---
