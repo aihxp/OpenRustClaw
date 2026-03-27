@@ -1,20 +1,20 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.4
-milestone_name: Enterprise Governance and Operator-Gated Full Autonomy
-current_phase: 23
-current_phase_name: Enterprise Autonomy Control Surface
-current_plan: 23-01 Surface Full-Autonomy Inspection In Control UI
-status: Phase 23 planned
-stopped_at: Phase 23 planned; implementation is ready to start at 23-01.
-last_updated: "2026-03-27T19:00:00.000Z"
-last_activity: 2026-03-27 -- Phase 23 planned
+milestone: null
+milestone_name: null
+current_phase: null
+current_phase_name: null
+current_plan: null
+status: No active milestone
+stopped_at: v1.4 archived; start the next milestone with $gsd-new-milestone.
+last_updated: "2026-03-27T19:55:00.000Z"
+last_activity: 2026-03-27 -- v1.4 archived
 progress:
-  total_phases: 4
-  completed_phases: 3
-  total_plans: 6
-  completed_plans: 3
-  percent: 75
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -24,21 +24,21 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-27)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** Phase 23 - Enterprise Autonomy Control Surface
+**Current focus:** No active milestone
 
 ## Current Position
 
-Current Phase: 23
-Current Phase Name: Enterprise Autonomy Control Surface
-Total Phases: 4
-Current Plan: 23-01 Surface Full-Autonomy Inspection In Control UI
-Total Plans in Phase: 3
-Status: Phase 23 planned
-Last activity: 2026-03-27 -- Phase 23 planned
+Current Phase: -
+Current Phase Name: -
+Total Phases: 0
+Current Plan: -
+Total Plans in Phase: 0
+Status: No active milestone
+Last activity: 2026-03-27 -- v1.4 archived
 
-Phase: 4 of 4 (Enterprise Autonomy Control Surface)
-Plan: 0 of 3 in current phase
-Progress: [███████░░░] 75%
+Phase: 0 of 0
+Plan: 0 of 0
+Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
@@ -97,7 +97,8 @@ Recent decisions affecting current work:
 - Phase 20 now adds explicit enterprise governance rules, dual-approval headers for higher-risk scopes, and a shipped governance operator loop in Control UI.
 - Phase 21 now adds bounded enterprise audit retention, richer governance and supervision export packaging, and a shipped audit review surface in Control UI.
 - Phase 22 now adds a dedicated enterprise full-autonomy manifest, event ledger, protected enable or disable or kill-switch routes, and typed admin or audit summaries for the stronger autonomy lane.
-- Phase 23 planning now focuses only on the shipped Control UI operator loop for full-autonomy inspection and control.
+- Phase 23 now adds the shipped Control UI operator loop for full-autonomy inspection and control, completing the milestone execution scope.
+- v1.4 is archived; the next milestone has not been defined yet.
 
 ### Pending Todos
 
@@ -110,5 +111,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-27 04:44
-Stopped at: Phase 23 planned; implementation is ready to start at 23-01.
+Stopped at: v1.4 archived; start the next milestone with $gsd-new-milestone.
 Resume file: None

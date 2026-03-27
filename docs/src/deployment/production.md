@@ -51,6 +51,14 @@ Phase 22 adds operator-gated full autonomy as a separate enterprise lane:
 
 Treat that lane as explicit and reversible. It is the shipped answer to "god mode," but it is still bounded by runtime budgets, enterprise approvals, and durable audit evidence rather than being a silent global default.
 
+Phase 23 makes that same lane operable from the shipped dashboard:
+
+- `/control/ui` now includes an `Enterprise Full Autonomy` panel with recent event and execution evidence.
+- The existing `Enterprise Admin` panel now exposes override-budget inputs plus `Enable Full Autonomy`, `Disable Full Autonomy`, and `Kill Switch` actions.
+- Those actions reuse the same saved requester and approver headers already used for enterprise governance writes, so the stronger autonomy lane stays inside the same enterprise approval contract.
+
+Treat that UI as the production operator surface for the shipped full-autonomy lane. It is meant to make high-risk autonomy changes visible and reversible from the normal control plane, not to hide them behind CLI-only internals.
+
 Phase 18 adds a supervised-autonomy operator loop over active orchestration runs:
 
 - `POST /control/orchestration/active/{run_id}/pause|resume|kill` remains the low-level control surface.

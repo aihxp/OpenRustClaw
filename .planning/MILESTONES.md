@@ -1,5 +1,20 @@
 # Project Milestones: OpenRustClaw
 
+## v1.4 Enterprise Governance and Operator-Gated Full Autonomy (Shipped: 2026-03-27)
+
+**Phases completed:** 4 phases, 12 plans, 0 tasks
+**Verification archive:** `.planning/milestones/v1.4-VERIFICATIONS.md`
+**Verification debt:** none
+
+**Key accomplishments:**
+
+- Deepened enterprise governance with explicit per-scope approval-chain and separation-of-duties rules.
+- Expanded enterprise audit retention and review so governance, supervision, and operator evidence are exportable and reviewable from one typed surface.
+- Added an explicit operator-gated full-autonomy lane with bounded budgets, baseline restoration, durable lifecycle events, and a kill switch.
+- Closed the milestone with a shipped Control UI surface for inspecting and controlling the stronger autonomy lane from the same enterprise admin workflow.
+
+---
+
 ## v1.3 Enterprise Expansion and Supervised Autonomy Foundations (Shipped: 2026-03-27)
 
 **Phases completed:** 4 phases, 12 plans, 0 tasks

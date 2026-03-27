@@ -132,6 +132,15 @@ mod tests {
     }
 
     #[test]
+    fn dashboard_includes_enterprise_autonomy_panel() {
+        assert!(CONTROL_UI_HTML.contains("enterprise-autonomy"));
+        assert!(CONTROL_UI_HTML.contains("enterprise-autonomy-events"));
+        assert!(CONTROL_UI_HTML.contains("enterprise-autonomy-runs"));
+        assert!(CONTROL_UI_HTML.contains("function loadEnterpriseAutonomy"));
+        assert!(CONTROL_UI_HTML.contains("function renderEnterpriseAutonomy"));
+    }
+
+    #[test]
     fn dashboard_includes_enterprise_access_panel() {
         assert!(CONTROL_UI_HTML.contains("enterprise-access"));
         assert!(CONTROL_UI_HTML.contains("enterprise-operators-table"));
@@ -150,8 +159,15 @@ mod tests {
         assert!(CONTROL_UI_HTML.contains("enterprise-governance-update"));
         assert!(CONTROL_UI_HTML.contains("enterprise-audit-retention-days"));
         assert!(CONTROL_UI_HTML.contains("enterprise-audit-export-history-limit"));
+        assert!(CONTROL_UI_HTML.contains("enterprise-autonomy-max-delegations"));
+        assert!(CONTROL_UI_HTML.contains("enterprise-autonomy-enable"));
+        assert!(CONTROL_UI_HTML.contains("enterprise-autonomy-disable"));
+        assert!(CONTROL_UI_HTML.contains("enterprise-autonomy-kill-switch"));
         assert!(CONTROL_UI_HTML.contains("function loadEnterpriseAdmin"));
         assert!(CONTROL_UI_HTML.contains("function renderEnterpriseAdmin"));
+        assert!(CONTROL_UI_HTML.contains("function enableEnterpriseAutonomy"));
+        assert!(CONTROL_UI_HTML.contains("function disableEnterpriseAutonomy"));
+        assert!(CONTROL_UI_HTML.contains("function killSwitchEnterpriseAutonomy"));
         assert!(CONTROL_UI_HTML.contains("function updateEnterprisePolicy"));
         assert!(CONTROL_UI_HTML.contains("function upsertEnterpriseGovernanceRule"));
         assert!(CONTROL_UI_HTML.contains("function exportEnterpriseAuditBundle"));

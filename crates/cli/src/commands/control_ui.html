@@ -465,6 +465,26 @@
           </div>
         </article>
         <article class="panel span-12">
+          <h2>Enterprise Full Autonomy</h2>
+          <div class="surface"><div id="enterprise-autonomy" class="summary-card empty">Loading…</div></div>
+          <div class="surface" style="margin-top: 12px">
+            <table class="table">
+              <thead>
+                <tr><th>When</th><th>Action</th><th>Operator</th><th>Detail</th></tr>
+              </thead>
+              <tbody id="enterprise-autonomy-events"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
+            </table>
+          </div>
+          <div class="surface" style="margin-top: 12px">
+            <table class="table">
+              <thead>
+                <tr><th>Run</th><th>Status</th><th>Policy</th><th>Detail</th></tr>
+              </thead>
+              <tbody id="enterprise-autonomy-runs"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </article>
+        <article class="panel span-12">
           <h2>Enterprise Access</h2>
           <div class="surface"><div id="enterprise-access" class="summary-card empty">Loading…</div></div>
           <div class="surface" style="margin-top: 12px">
@@ -578,6 +598,20 @@
               <button class="secondary" id="enterprise-audit-export">Export Audit Bundle</button>
             </div>
             <textarea id="enterprise-audit-export-note" rows="2" spellcheck="false" placeholder="optional audit export note"></textarea>
+            <div class="action-row">
+              <input id="enterprise-autonomy-max-delegations" type="number" min="1" placeholder="full autonomy max delegations" />
+              <input id="enterprise-autonomy-max-iterations" type="number" min="1" placeholder="full autonomy max iterations" />
+            </div>
+            <div class="action-row">
+              <input id="enterprise-autonomy-max-runtime-secs" type="number" min="1" placeholder="full autonomy max runtime secs" />
+              <input id="enterprise-autonomy-max-lesson-hints" type="number" min="1" placeholder="full autonomy max lesson hints" />
+            </div>
+            <textarea id="enterprise-autonomy-note" rows="2" spellcheck="false" placeholder="full autonomy note or disable / kill-switch reason"></textarea>
+            <div class="action-row">
+              <button id="enterprise-autonomy-enable">Enable Full Autonomy</button>
+              <button class="secondary" id="enterprise-autonomy-disable">Disable Full Autonomy</button>
+              <button class="secondary" id="enterprise-autonomy-kill-switch">Kill Switch</button>
+            </div>
             <div class="action-row">
               <input id="enterprise-governance-scope" type="text" placeholder="governance scope, e.g. enterprise.config.write" />
               <select id="enterprise-governance-mode">
@@ -1963,6 +1997,61 @@
         renderTableRows("enterprise-protected-routes", protectedRouteRows, "No protected enterprise routes configured.");
       }
 
+      function renderEnterpriseAutonomy(report) {
+        if (!report || report.error) {
+          renderSummaryCard("enterprise-autonomy", report?.error || "No enterprise autonomy summary available.", null);
+          renderTableRows("enterprise-autonomy-events", [], "No enterprise autonomy events available.");
+          renderTableRows("enterprise-autonomy-runs", [], "No enterprise autonomy runs available.");
+          return;
+        }
+
+        const execution = report.execution || {};
+        const overridePolicy = report.override_policy || {};
+        const baselinePolicy = report.baseline_policy || {};
+        renderSummaryCard("enterprise-autonomy", "No enterprise autonomy summary available.", buildSummaryMarkup({
+          kicker: "Operator-Gated Full Autonomy",
+          title: report.enabled
+            ? `Full autonomy active under ${humanizeStatusLabel(overridePolicy.autonomy_level || "unknown")}`
+            : humanizeStatusLabel(report.status || "ready"),
+          copy: report.detail || "No enterprise autonomy summary available.",
+          stats: [
+            { label: "Governance Scope", value: report.governance_scope || "-", detail: report.access_boundary_active ? "enterprise access bootstrapped" : "bootstrap required" },
+            { label: "Override Policy", value: overridePolicy.approval_policy || "-", detail: `${overridePolicy.autonomy_level || "-"} autonomy` },
+            { label: "Budgets", value: `${overridePolicy.max_delegations ?? 0} delegations / ${overridePolicy.max_iterations ?? 0} turns`, detail: `${overridePolicy.max_runtime_secs ?? 0}s runtime` },
+            { label: "Baseline Restore", value: baselinePolicy.approval_policy || "-", detail: `${baselinePolicy.autonomy_level || "-"} autonomy` },
+            { label: "Execution", value: `${execution.active_run_count ?? 0} active`, detail: `${execution.recent_run_count ?? 0} recent / ${execution.killed_run_count ?? 0} kill-switched` },
+            { label: "Updated", value: report.updated_at || "-", detail: report.enabled_by || report.disabled_by || report.kill_switch_by || "-" },
+          ],
+        }));
+
+        const eventRows = (report.recent_events || []).map((event) => `<tr>
+          <td>${escapeHtml(event.created_at || "-")}</td>
+          <td><strong>${escapeHtml(humanizeStatusLabel(event.kind || "-"))}</strong></td>
+          <td>${escapeHtml(event.operator_id || "-")}</td>
+          <td>${escapeHtml(event.reason || event.note || `${event.affected_run_ids?.length || 0} affected run(s)`)}</td>
+        </tr>`);
+        renderTableRows("enterprise-autonomy-events", eventRows, "No enterprise autonomy events available.");
+
+        const runRows = [
+          ...((execution.active_runs || []).map((run) => ({ ...run, lane: "active" }))),
+          ...((execution.recent_runs || []).map((run) => ({ ...run, lane: "recent" }))),
+        ].map((run) => `<tr>
+          <td><strong>${escapeHtml(run.run_id || "-")}</strong><div class="muted">${escapeHtml(run.created_at || "-")}</div></td>
+          <td>${escapeHtml(humanizeStatusLabel(run.status || "-"))}</td>
+          <td><strong>${escapeHtml(run.approval_policy || "-")}</strong><div class="muted">${escapeHtml(run.autonomy_level || "-")}</div></td>
+          <td>${escapeHtml(`${run.lane || "recent"} lane • ${run.worker_count ?? 0} worker(s) • ${run.failed_count ?? 0} failed`)}</td>
+        </tr>`);
+        renderTableRows("enterprise-autonomy-runs", runRows, "No enterprise autonomy runs available.");
+
+        setInputValue("enterprise-autonomy-max-delegations", overridePolicy.max_delegations ?? "");
+        setInputValue("enterprise-autonomy-max-iterations", overridePolicy.max_iterations ?? "");
+        setInputValue("enterprise-autonomy-max-runtime-secs", overridePolicy.max_runtime_secs ?? "");
+        setInputValue("enterprise-autonomy-max-lesson-hints", overridePolicy.max_lesson_hints ?? "");
+        if (!document.getElementById("enterprise-autonomy-note").value.trim()) {
+          setInputValue("enterprise-autonomy-note", report.note || report.disable_reason || report.kill_switch_reason || "");
+        }
+      }
+
       function renderEnterpriseAdmin(report) {
         if (!report || report.error) {
           renderSummaryCard("enterprise-admin", report?.error || "No enterprise admin summary available.", null);
@@ -1972,6 +2061,7 @@
         const access = report.access || {};
         const policy = report.policy || {};
         const supervision = report.supervision || {};
+        const autonomy = report.autonomy || {};
         const organization = access.organization || {};
         const governance = access.governance || {};
 
@@ -1987,6 +2077,7 @@
             { label: "Governance", value: `${governance.active_rule_count ?? 0} active rule(s)`, detail: `${governance.dual_approval_rule_count ?? 0} dual approval` },
             { label: "Browser Policy", value: `${(policy.browser?.allowed_backends || []).length} backend(s)`, detail: policy.browser?.audit_log_path || "-" },
             { label: "Audit Export", value: policy.audit_export?.export_root || "-", detail: `${policy.audit_export?.recent_event_limit ?? 0} events / ${policy.audit_export?.tool_history_limit ?? 0} tools` },
+            { label: "Full Autonomy", value: humanizeStatusLabel(autonomy.status || "unknown"), detail: autonomy.enabled ? `${autonomy.override_policy?.approval_policy || "-"} / ${autonomy.override_policy?.autonomy_level || "-"}` : autonomy.governance_scope || "-" },
             { label: "Active Runs", value: `${supervision.active_run_count ?? 0}`, detail: `${supervision.attention_required_count ?? 0} attention, ${(supervision.escalated_count ?? 0)} escalated` },
             { label: "Headers", value: access.operator_id_header || "-", detail: report.requires_operator_headers ? "required for protected writes" : "becomes required after bootstrap" },
           ],
@@ -2023,6 +2114,7 @@
         if ((access.operators || []).length && !document.getElementById("enterprise-operator-manage-role").value.trim()) {
           setInputValue("enterprise-operator-manage-role", "operator");
         }
+        renderEnterpriseAutonomy(autonomy);
         renderEnterpriseAccess(access);
       }
 
@@ -2821,9 +2913,15 @@
         renderEnterpriseAdmin(payload);
       }
 
+      async function loadEnterpriseAutonomy() {
+        const payload = await fetchJson("/control/enterprise/autonomy");
+        renderEnterpriseAutonomy(payload);
+      }
+
       async function refreshEnterpriseAdminSurfaces() {
         await Promise.all([
           loadEnterpriseAdmin(),
+          loadEnterpriseAutonomy(),
           loadEnterpriseFoundations(),
           loadEnterpriseAuditReview(),
           loadEnterpriseAccess(),
@@ -2958,6 +3056,54 @@
             forbid_self_approval: parseBooleanSelect("enterprise-governance-self-approval"),
             active: parseBooleanSelect("enterprise-governance-active"),
             detail: document.getElementById("enterprise-governance-detail").value.trim() || null,
+          }),
+        });
+        setText("enterprise-admin-result", result);
+        await refreshEnterpriseAdminSurfaces();
+      }
+
+      function currentEnterpriseOperatorId() {
+        const operatorId = document.getElementById("enterprise-operator-id").value.trim() || enterpriseOperatorState.id;
+        if (!operatorId) {
+          throw new Error("Full autonomy actions require a saved enterprise operator id");
+        }
+        return operatorId;
+      }
+
+      async function enableEnterpriseAutonomy() {
+        const result = await fetchJson("/control/enterprise/autonomy/enable", {
+          method: "POST",
+          body: JSON.stringify({
+            operator_id: currentEnterpriseOperatorId(),
+            note: document.getElementById("enterprise-autonomy-note").value.trim() || null,
+            max_delegations: parseNumberInput("enterprise-autonomy-max-delegations"),
+            max_iterations: parseNumberInput("enterprise-autonomy-max-iterations"),
+            max_runtime_secs: parseNumberInput("enterprise-autonomy-max-runtime-secs"),
+            max_lesson_hints: parseNumberInput("enterprise-autonomy-max-lesson-hints"),
+          }),
+        });
+        setText("enterprise-admin-result", result);
+        await refreshEnterpriseAdminSurfaces();
+      }
+
+      async function disableEnterpriseAutonomy() {
+        const result = await fetchJson("/control/enterprise/autonomy/disable", {
+          method: "POST",
+          body: JSON.stringify({
+            operator_id: currentEnterpriseOperatorId(),
+            reason: document.getElementById("enterprise-autonomy-note").value.trim() || null,
+          }),
+        });
+        setText("enterprise-admin-result", result);
+        await refreshEnterpriseAdminSurfaces();
+      }
+
+      async function killSwitchEnterpriseAutonomy() {
+        const result = await fetchJson("/control/enterprise/autonomy/kill-switch", {
+          method: "POST",
+          body: JSON.stringify({
+            operator_id: currentEnterpriseOperatorId(),
+            reason: document.getElementById("enterprise-autonomy-note").value.trim() || null,
           }),
         });
         setText("enterprise-admin-result", result);
@@ -5605,6 +5751,27 @@
       document.getElementById("enterprise-governance-update").addEventListener("click", async () => {
         try {
           await upsertEnterpriseGovernanceRule();
+        } catch (error) {
+          setText("enterprise-admin-result", { error: error.message });
+        }
+      });
+      document.getElementById("enterprise-autonomy-enable").addEventListener("click", async () => {
+        try {
+          await enableEnterpriseAutonomy();
+        } catch (error) {
+          setText("enterprise-admin-result", { error: error.message });
+        }
+      });
+      document.getElementById("enterprise-autonomy-disable").addEventListener("click", async () => {
+        try {
+          await disableEnterpriseAutonomy();
+        } catch (error) {
+          setText("enterprise-admin-result", { error: error.message });
+        }
+      });
+      document.getElementById("enterprise-autonomy-kill-switch").addEventListener("click", async () => {
+        try {
+          await killSwitchEnterpriseAutonomy();
         } catch (error) {
           setText("enterprise-admin-result", { error: error.message });
         }

@@ -80,6 +80,8 @@ Phase 21 extends that same enterprise policy surface into a bounded audit-review
 
 Phase 22 adds the requested "god mode" as an explicit enterprise full-autonomy lane instead of silently weakening the default runtime. `GET /control/enterprise/autonomy` now reports whether full autonomy is enabled, which override budgets are active, which baseline policy will be restored on shutdown, recent enable or disable or kill-switch events, and recent full-autonomy execution evidence. `POST /control/enterprise/autonomy/enable`, `/disable`, and `/kill-switch` are protected under the dedicated `enterprise.full_autonomy.manage` scope with dual approval by default, and enterprise audit review or export now preserves that stronger autonomy evidence alongside governance and supervision context.
 
+Phase 23 closes that lane with a real shipped operator surface. `/control/ui` now includes an `Enterprise Full Autonomy` panel plus matching controls in `Enterprise Admin`, so operators can inspect the stronger autonomy state, recent lifecycle events, recent execution evidence, and invoke enable, disable, or kill-switch actions without leaving the dashboard or dropping to raw route calls.
+
 For the final MVP release loop, review `/control/security/posture` or the `Security Posture` panel in `/control/ui`, confirm the observability checks in [docs/src/operations/observability.md](docs/src/operations/observability.md), and walk the operator checklist in [docs/src/deployment/release-checklist.md](docs/src/deployment/release-checklist.md) before cutting a release candidate.
 
 ## Architecture

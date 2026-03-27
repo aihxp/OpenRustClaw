@@ -2,7 +2,7 @@
 
 ## What This Is
 
-OpenRustClaw is a Rust-first OpenClaw-style assistant platform with shipped v1.0 through v1.3 milestones. It now has a coherent production-ready baseline across onboarding, assistant continuity, memory policy, tool and coding evidence, communications, runtime operations, security posture, release exit, milestone verification integrity, materially deeper operator parity across browser, orchestration, mobile, Control UI, and voice or call handling surfaces, plus an enterprise-first foundation for scoped operator identity, policy, audit export, supervised autonomy, and one shipped admin/operator loop.
+OpenRustClaw is a Rust-first OpenClaw-style assistant platform with shipped v1.0 through v1.4 milestones. It now has a coherent production-ready baseline across onboarding, assistant continuity, memory policy, tool and coding evidence, communications, runtime operations, security posture, release exit, milestone verification integrity, materially deeper operator parity across browser, orchestration, mobile, Control UI, and voice or call handling surfaces, plus an enterprise-first foundation for scoped operator identity, policy, audit export, supervised autonomy, governance, and an operator-gated full-autonomy lane with a shipped control surface.
 
 The product target remains broader than the MVP: a general-purpose assistant platform that can eventually support coding, communications, business operations, and deeper autonomous workflows. The difference after v1.0 is that the repo now has a believable trust baseline instead of a wide but loosely connected surface.
 
@@ -12,20 +12,16 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 ## Current State
 
-- **Shipped milestones:** v1.0 Rust OpenClaw MVP and v1.1 Lifecycle Integrity and Enterprise Foundations on 2026-03-26, plus v1.2 Deeper OpenClaw Surface Parity and v1.3 Enterprise Expansion and Supervised Autonomy Foundations on 2026-03-27
-- **Archive:** `.planning/milestones/v1.0-*`, `.planning/milestones/v1.1-*`, `.planning/milestones/v1.2-*`, `.planning/milestones/v1.3-*`
-- **Planning state:** v1.4 Enterprise Governance and Operator-Gated Full Autonomy is now active
+- **Shipped milestones:** v1.0 Rust OpenClaw MVP and v1.1 Lifecycle Integrity and Enterprise Foundations on 2026-03-26, plus v1.2 Deeper OpenClaw Surface Parity, v1.3 Enterprise Expansion and Supervised Autonomy Foundations, and v1.4 Enterprise Governance and Operator-Gated Full Autonomy on 2026-03-27
+- **Archive:** `.planning/milestones/v1.0-*`, `.planning/milestones/v1.1-*`, `.planning/milestones/v1.2-*`, `.planning/milestones/v1.3-*`, `.planning/milestones/v1.4-*`
+- **Planning state:** no active milestone is open
 - **Known audit debt:** v1.0 archive still records missing phase `VERIFICATION.md` artifacts; v1.1 closes that workflow gap going forward
 
-## Current Milestone: v1.4 Enterprise Governance and Operator-Gated Full Autonomy
+## Most Recent Milestone: v1.4 Enterprise Governance and Operator-Gated Full Autonomy
 
-**Goal:** Deepen the enterprise-ready governance baseline and add an explicit “god mode” or full-autonomy lane that trusted operators can enable deliberately, audit completely, and shut down immediately.
+**Result:** Shipped 2026-03-27. The platform now has explicit enterprise governance, retention-aware enterprise audit review, a durable and operator-gated full-autonomy lane, and a shipped dashboard surface for inspecting and controlling that stronger autonomy mode.
 
-**Target features:**
-- stronger enterprise governance over roles, approval chains, and high-risk operator actions
-- deeper enterprise audit, retention, and export packaging suitable for enterprise review
-- an explicit operator-gated full-autonomy mode that remains budgeted, kill-switchable, and evidence-rich
-- one shipped control surface for inspecting and governing the autonomy override lane
+**Archive:** `.planning/milestones/v1.4-ROADMAP.md`, `.planning/milestones/v1.4-REQUIREMENTS.md`, `.planning/milestones/v1.4-MILESTONE-AUDIT.md`, `.planning/milestones/v1.4-VERIFICATIONS.md`
 
 ## Requirements
 
@@ -45,13 +41,16 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 - ✓ Enterprise policy and audit controls now expose a unified typed surface with durable exportable evidence — v1.3 Phase 17
 - ✓ Supervised autonomy now uses explicit escalation, rollback, and intervention evidence rather than opaque active-run state — v1.3 Phase 18
 - ✓ Enterprise operators can manage the current access, policy, audit, and supervision baseline from one shipped admin/operator surface — v1.3 Phase 19
+- ✓ Enterprise governance now applies stronger approval-chain and separation-of-duties controls to higher-risk scopes — v1.4 Phase 20
+- ✓ Enterprise audit retention and review now preserve richer governance, supervision, and operator evidence — v1.4 Phase 21
+- ✓ Full autonomy is now a separate operator-gated lane with budgets, kill switch, and durable lifecycle evidence — v1.4 Phase 22
+- ✓ Operators can now inspect and control the full-autonomy lane from the shipped dashboard — v1.4 Phase 23
 
 ### Active
 
-- [ ] Expand enterprise governance beyond the current baseline with stronger role, approval, and separation-of-duties controls
-- [ ] Deepen enterprise audit and retention handling so exported evidence is more useful for enterprise review and operations
-- [ ] Add an explicit operator-gated full-autonomy mode that does not replace the default trust-first runtime path
-- [ ] Keep the full-autonomy override lane budgeted, kill-switchable, and operator-governed from shipped control surfaces
+- [ ] Expand the enterprise baseline into deeper RBAC, SSO, SCIM, and tenant-aware governance
+- [ ] Broaden supervised and full autonomy into more domains without dropping budgets, approvals, or audit evidence
+- [ ] Continue parity and product depth only in ways that preserve the enterprise and autonomy contract
 
 ### Out of Scope
 
@@ -62,9 +61,9 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 ## Context
 
-This remains a large brownfield Rust monorepo with broad runtime, CLI, control-plane, memory, tools, channel, voice, browser, and deployment surfaces. v1.0 converted that breadth into a cleaner MVP by making operator trust visible at the edges that matter, v1.1 hardened the lifecycle and enterprise baseline around that trust, v1.2 deepened the most operator-visible OpenClaw parity surfaces without reopening MVP sprawl, and v1.3 turned the first enterprise and supervised-autonomy contracts into a coherent operator loop.
+This remains a large brownfield Rust monorepo with broad runtime, CLI, control-plane, memory, tools, channel, voice, browser, and deployment surfaces. v1.0 converted that breadth into a cleaner MVP by making operator trust visible at the edges that matter, v1.1 hardened the lifecycle and enterprise baseline around that trust, v1.2 deepened the most operator-visible OpenClaw parity surfaces without reopening MVP sprawl, v1.3 turned the first enterprise and supervised-autonomy contracts into a coherent operator loop, and v1.4 extended that loop into explicit governance and operator-gated full autonomy.
 
-The next milestone should build on all four shipped layers rather than reopen foundational debt. v1.4 now takes the enterprise-first path further and adds the user's requested “god mode” as a separate operator-gated autonomy lane, not as a weakening of the default trust-first runtime.
+The next milestone should build on all five shipped layers rather than reopen foundational debt. Enterprise expansion, broader supervised autonomy, and any deeper parity work should now treat the v1.4 governance and full-autonomy contract as fixed baseline infrastructure.
 
 ## Constraints
 
@@ -93,9 +92,9 @@ The next milestone should build on all four shipped layers rather than reopen fo
 
 ## Next Milestone Goals
 
-- Expand the enterprise baseline into stronger governance, reviewability, and operational control
-- Add a full-autonomy override lane that remains explicit, bounded, and operator-governed
-- Preserve the verification/archive contract, enterprise admin baseline, and deeper operator parity surfaces as non-negotiable foundations
+- Expand the enterprise baseline into deeper organization lifecycle, tenant-awareness, and external identity or compliance controls
+- Broaden supervised and full autonomy into more domains without dropping explicit operator control paths
+- Preserve the verification/archive contract, enterprise governance baseline, and shipped autonomy control surface as non-negotiable foundations
 
 ## Evolution
 
@@ -115,4 +114,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-27 after starting milestone v1.4*
+*Last updated: 2026-03-27 after archiving v1.4*
