@@ -22,8 +22,8 @@
 
 ### Operator Handoff and Visibility
 
-- [ ] **HANDOFF-01**: Setup ends with an explicit ready, blocked, or degraded handoff summary rather than a vague success message.
-- [ ] **HANDOFF-02**: Docs and shipped operator surfaces consistently reflect setup progress, unresolved blockers, and the next action after onboarding.
+- [x] **HANDOFF-01**: Setup ends with an explicit ready, blocked, or degraded handoff summary rather than a vague success message.
+- [x] **HANDOFF-02**: Docs and shipped operator surfaces consistently reflect setup progress, unresolved blockers, and the next action after onboarding.
 
 ## v1.7+ Requirements
 
@@ -61,8 +61,8 @@
 | SETUP-02 | Phase 30 | Complete |
 | BOOT-01 | Phase 29 | Complete |
 | BOOT-02 | Phase 29 | Complete |
-| HANDOFF-01 | Phase 31 | Pending |
-| HANDOFF-02 | Phase 31 | Pending |
+| HANDOFF-01 | Phase 31 | Complete |
+| HANDOFF-02 | Phase 31 | Complete |
 
 **Coverage:**
 - v1.6 requirements: 8 total

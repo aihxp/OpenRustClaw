@@ -337,9 +337,9 @@ openrustclaw onboard
 openrustclaw doctor
 ```
 
-The onboarding wizard now records the chosen deployment path as the workspace product mode. It only offers to launch the persisted assistant session after the post-setup health gate confirms provider and workspace readiness.
+The onboarding wizard now records the chosen deployment path as the workspace product mode, supports `Standard`, `Advanced`, and `Custom` setup depth, and offers an explicit repair path for existing workspaces. It only offers to launch the persisted assistant session after the post-setup health gate confirms provider and workspace readiness.
 
-If your install evolves later, use the shipped `Self-Hosted Product Mode` panel in `/control/ui` or `POST /control/self-hosted/product-mode` to apply an explicit upgrade or downgrade instead of editing workspace state by hand.
+If your install evolves later, use the shipped `Self-Hosted Product Mode` panel in `/control/ui` or `POST /control/self-hosted/product-mode` to apply an explicit upgrade or downgrade instead of editing workspace state by hand. Use the `Setup Handoff` panel in that same dashboard to review the current setup status, next action, and retained bootstrap outcomes before first start or after a repair run.
 
 If you already configured the workspace manually, continue with a direct assistant launch:
 

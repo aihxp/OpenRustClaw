@@ -5,16 +5,16 @@ milestone_name: Proper Onboarding and Setup
 current_phase: 31
 current_phase_name: Setup Handoff and Operator Surface Alignment
 current_plan: Not started
-status: Phase 30 complete; Phase 31 ready
-stopped_at: Phase 30 complete; Phase 31 is ready for discuss and planning.
-last_updated: "2026-03-28T04:20:00.000Z"
-last_activity: 2026-03-28 -- Phase 30 completed
+status: All v1.6 phases complete; milestone ready for audit
+stopped_at: Phase 31 complete; run milestone audit and archive.
+last_updated: "2026-03-28T05:05:00.000Z"
+last_activity: 2026-03-28 -- Phase 31 completed
 progress:
   total_phases: 4
-  completed_phases: 3
-  total_plans: 7
-  completed_plans: 7
-  percent: 75
+  completed_phases: 4
+  total_plans: 10
+  completed_plans: 10
+  percent: 100
 ---
 
 # Project State
@@ -24,7 +24,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-28)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** Phase 31 - Setup Handoff and Operator Surface Alignment
+**Current focus:** Milestone audit and completion
 
 ## Current Position
 
@@ -32,13 +32,13 @@ Current Phase: 31
 Current Phase Name: Setup Handoff and Operator Surface Alignment
 Total Phases: 4
 Current Plan: Not started
-Total Plans in Phase: 0
-Status: Phase 30 complete; Phase 31 ready
-Last activity: 2026-03-28 -- Phase 30 completed
+Total Plans in Phase: 3
+Status: All v1.6 phases complete; milestone ready for audit
+Last activity: 2026-03-28 -- Phase 31 completed
 
 Phase: 4 of 4 (Setup Handoff and Operator Surface Alignment)
-Plan: 0 of 0
-Progress: [███████░░░] 75%
+Plan: 3 of 3
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -67,6 +67,7 @@ Recent decisions affecting current work:
 - Phase 28 now persists the durable setup-state contract and standard/advanced/custom setup-path selection before bootstrap and recovery work build on top of it.
 - Phase 29 now validates provider, runtime, and channel bootstrap through shipped health and probe surfaces, and records those bootstrap outcomes in setup state.
 - Phase 30 now adds an explicit repair path derived from durable setup state and doctor diagnostics instead of hidden workspace surgery.
+- Phase 31 now exposes one explicit setup handoff across onboarding, Control UI, and setup docs, so the milestone is ready for audit.
 
 ### Pending Todos
 
@@ -78,6 +79,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-28 04:20
-Stopped at: Phase 30 complete; Phase 31 is ready for discuss and planning.
+Last session: 2026-03-28 05:05
+Stopped at: Phase 31 complete; run milestone audit and archive.
 Resume file: None

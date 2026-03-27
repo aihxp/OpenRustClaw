@@ -25,7 +25,7 @@ This milestone turns onboarding and setup into one believable self-hosted produc
 - [x] **Phase 28: Setup State and Resumable Onboarding Contract** - completed 2026-03-28. Defined the durable setup-state model and resumable onboarding flow.
 - [x] **Phase 29: Mode-Aware Provider, Runtime, and Channel Bootstrap** - completed 2026-03-28. Setup now validates provider, runtime, and channel bootstrap through shipped health/probe surfaces and persists those outcomes in setup state.
 - [x] **Phase 30: Setup Repair and Existing Workspace Recovery** - completed 2026-03-28. Existing workspaces now expose an explicit repair path derived from setup state and doctor diagnostics.
-- [ ] **Phase 31: Setup Handoff and Operator Surface Alignment** - Close the loop with an explicit setup summary, next-action handoff, and aligned docs or control surfaces.
+- [x] **Phase 31: Setup Handoff and Operator Surface Alignment** - completed 2026-03-28. Setup handoff is now explicit across onboarding, Control UI, and setup docs.
 
 ### Phase Details
 
@@ -80,10 +80,12 @@ Plans:
   1. Setup ends with explicit ready, blocked, or degraded status plus concrete next actions.
   2. The operator-facing setup story is consistent across onboarding output, docs, and shipped dashboard surfaces.
   3. The milestone closes with a truthful setup baseline rather than another partial wizard improvement.
-**Plans**: TBD
+**Plans**: 3 plans complete
 
 Plans:
-- [ ] TBD (run `$gsd-plan-phase 31` to break down)
+- [x] 31-01 Print an Explicit CLI Setup Handoff
+- [x] 31-02 Expose Setup Handoff in the Shipped Operator Surface
+- [x] 31-03 Align Setup Docs with the Shipped Handoff Contract
 
 ## Progress
 
@@ -92,12 +94,12 @@ Plans:
 | 28. Setup State and Resumable Onboarding Contract | 2/2 | Complete | 2026-03-28 |
 | 29. Mode-Aware Provider, Runtime, and Channel Bootstrap | 3/3 | Complete | 2026-03-28 |
 | 30. Setup Repair and Existing Workspace Recovery | 2/2 | Complete | 2026-03-28 |
-| 31. Setup Handoff and Operator Surface Alignment | 0/TBD | Not started | - |
+| 31. Setup Handoff and Operator Surface Alignment | 3/3 | Complete | 2026-03-28 |
 
 ## Current Status
 
 - Active milestone: v1.6 Proper Onboarding and Setup
-- Next step: `$gsd-discuss-phase 31` or `$gsd-plan-phase 31`
+- Next step: `$gsd-audit-milestone`
 - Archived milestone planning artifacts live under `.planning/milestones/`.
 
 ## Phase History

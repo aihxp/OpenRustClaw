@@ -38,9 +38,9 @@ OpenRustClaw currently supports four self-hosted deployment paths:
 - `company`
 - `enterprise`
 
-If you want guided setup instead, run `openrustclaw onboard`. The wizard asks which deployment path you want, writes that choice into the workspace product-mode contract, and only offers to launch the persisted assistant session after the post-setup health gate confirms provider and workspace readiness.
+If you want guided setup instead, run `openrustclaw onboard`. The wizard asks which deployment path you want, offers `Standard`, `Advanced`, or `Custom` setup depth, writes that choice into the workspace product-mode contract, and only offers to launch the persisted assistant session after the post-setup health gate confirms provider and workspace readiness.
 
-You can inspect or change that path later from `/control/ui` in the `Self-Hosted Product Mode` panel or through `GET/POST /control/self-hosted/product-mode`.
+You can inspect or change that path later from `/control/ui` in the `Self-Hosted Product Mode` panel or through `GET/POST /control/self-hosted/product-mode`. The same dashboard now also exposes `Setup Handoff`, which shows whether setup is ready, blocked, or degraded plus the next action and retained bootstrap outcomes.
 
 ---
 
