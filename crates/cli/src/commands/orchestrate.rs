@@ -399,10 +399,91 @@ pub struct OrchestrationRunSummary {
     pub created_at: String,
     pub mode: String,
     pub route_source: String,
+    pub approval_policy: String,
     pub final_claw_id: String,
     pub final_provider: String,
     pub final_model: String,
+    pub worker_count: usize,
+    pub failed_count: usize,
+    pub needs_input_count: usize,
+    pub escalation_recommended: bool,
     pub receipt_path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReceiptRouteSummary {
+    pub execution_mode: String,
+    pub route_source: String,
+    pub selected_claw_id: String,
+    pub selected_claw_role: String,
+    pub selected_model_profile_id: String,
+    pub provider: String,
+    pub model: String,
+    pub approval_policy: String,
+    #[serde(default)]
+    pub autonomy_level: String,
+    #[serde(default)]
+    pub available_workers: Vec<String>,
+    #[serde(default)]
+    pub max_delegations: Option<usize>,
+    #[serde(default)]
+    pub max_iterations: Option<usize>,
+    #[serde(default)]
+    pub max_runtime_secs: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReceiptWorkerSummary {
+    pub claw_id: String,
+    pub status: String,
+    pub summary: String,
+    pub provider: String,
+    pub model: String,
+    pub model_profile_id: String,
+    pub question_count: usize,
+    #[serde(default)]
+    pub confidence: Option<f32>,
+    #[serde(default)]
+    pub next_step_recommendation: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReceiptDelegationSummary {
+    pub id: String,
+    pub claw_id: String,
+    pub reason: String,
+    pub instruction: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReceiptSupervisionReport {
+    pub run_id: String,
+    pub mode: String,
+    pub route: ReceiptRouteSummary,
+    #[serde(default)]
+    pub supervision: Option<SupervisionSummary>,
+    pub resource_totals: OrchestrationResourceTotals,
+    #[serde(default)]
+    pub delegations: Vec<ReceiptDelegationSummary>,
+    #[serde(default)]
+    pub workers: Vec<ReceiptWorkerSummary>,
+    #[serde(default)]
+    pub checkpoints: Vec<OrchestrationCheckpoint>,
+    #[serde(default)]
+    pub relationships: Vec<OrchestrationRelationship>,
+    #[serde(default)]
+    pub reflection_notes: Vec<String>,
+    #[serde(default)]
+    pub reflection_candidates: Vec<ReflectionCandidate>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ActiveRunSupervisionReport {
+    pub run: ActiveOrchestrationRun,
+    #[serde(default)]
+    pub recent_events: Vec<ActiveRunEvent>,
+    #[serde(default)]
+    pub attention_signals: Vec<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -860,9 +941,26 @@ pub fn list_runs(workspace_root: &Path, limit: usize) -> Result<Vec<Orchestratio
             created_at: record.created_at,
             mode: record.mode,
             route_source: record.routing.route_source,
+            approval_policy: record.routing.autonomy.approval_policy.clone(),
             final_claw_id: record.final_claw_id,
             final_provider: record.final_provider,
             final_model: record.final_model,
+            worker_count: record.worker_results.len(),
+            failed_count: record
+                .worker_results
+                .iter()
+                .filter(|worker| worker.status == "failed")
+                .count(),
+            needs_input_count: record
+                .worker_results
+                .iter()
+                .filter(|worker| worker.status == "needs_input")
+                .count(),
+            escalation_recommended: record
+                .supervision
+                .as_ref()
+                .map(|summary| summary.escalation_recommended)
+                .unwrap_or(false),
             receipt_path: record.receipt_path,
         });
     }
@@ -1042,16 +1140,92 @@ pub fn read_run_resources(workspace_root: &Path, receipt_id: &str) -> Result<ser
 
 pub fn read_run_supervision(workspace_root: &Path, receipt_id: &str) -> Result<serde_json::Value> {
     let run = read_run(workspace_root, receipt_id)?;
-    Ok(serde_json::json!({
-        "run_id": run.run_id,
-        "mode": run.mode,
-        "supervision": run.supervision,
-        "reflection_notes": run.reflection_notes,
-        "reflection_candidates": run.reflection_candidates,
-        "checkpoints": run.checkpoints,
-        "trace": run.trace,
-        "relationships": run.relationships,
-    }))
+    let report = ReceiptSupervisionReport {
+        run_id: run.run_id,
+        mode: run.mode,
+        route: ReceiptRouteSummary {
+            execution_mode: run.routing.execution_mode,
+            route_source: run.routing.route_source,
+            selected_claw_id: run.routing.selected_claw_id,
+            selected_claw_role: run.routing.selected_claw_role,
+            selected_model_profile_id: run.routing.selected_model_profile_id,
+            provider: run.routing.selected_model.provider,
+            model: run.routing.selected_model.model,
+            approval_policy: run.routing.autonomy.approval_policy.clone(),
+            autonomy_level: run.routing.autonomy.autonomy_level.clone(),
+            available_workers: run.routing.available_workers,
+            max_delegations: run.routing.request_overrides.max_delegations,
+            max_iterations: run.routing.request_overrides.max_iterations,
+            max_runtime_secs: run.routing.request_overrides.max_runtime_secs,
+        },
+        supervision: run.supervision,
+        resource_totals: summarize_trace_resources(&run.trace),
+        delegations: run
+            .delegations
+            .into_iter()
+            .map(|delegation| ReceiptDelegationSummary {
+                id: delegation.id,
+                claw_id: delegation.claw_id,
+                reason: delegation.reason,
+                instruction: delegation.instruction,
+            })
+            .collect(),
+        workers: run
+            .worker_results
+            .into_iter()
+            .map(|worker| ReceiptWorkerSummary {
+                claw_id: worker.claw_id,
+                status: worker.status,
+                summary: worker.summary,
+                provider: worker.provider,
+                model: worker.model,
+                model_profile_id: worker.model_profile_id,
+                question_count: worker.questions.len(),
+                confidence: worker.confidence,
+                next_step_recommendation: worker.next_step_recommendation,
+            })
+            .collect(),
+        checkpoints: run.checkpoints,
+        relationships: run.relationships,
+        reflection_notes: run.reflection_notes,
+        reflection_candidates: run.reflection_candidates,
+    };
+    Ok(serde_json::to_value(report)?)
+}
+
+pub fn read_active_run_supervision(
+    workspace_root: &Path,
+    run_id: &str,
+    event_limit: usize,
+) -> Result<serde_json::Value> {
+    let run = read_active_run(workspace_root, run_id)?;
+    let recent_events = read_active_run_events(workspace_root, run_id, event_limit.max(1))?;
+    let mut attention_signals = Vec::new();
+    if run.pause_requested {
+        attention_signals.push("pause requested by operator".to_string());
+    }
+    if run.kill_requested {
+        attention_signals.push("kill requested by operator".to_string());
+    }
+    if matches!(run.status.as_str(), "failed" | "killed") {
+        attention_signals.push(format!("run is {}", run.status));
+    }
+    if let Some(error) = run.last_error.as_deref()
+        && !error.trim().is_empty()
+    {
+        attention_signals.push(format!("last error: {error}"));
+    }
+    if recent_events
+        .iter()
+        .any(|event| matches!(event.status.as_str(), "failed" | "killed"))
+    {
+        attention_signals.push("recent events include failed or killed status".to_string());
+    }
+    Ok(serde_json::to_value(ActiveRunSupervisionReport {
+        run,
+        recent_events,
+        attention_signals,
+    })?)
 }
 
 pub fn promote_reflection_candidate(
@@ -3353,7 +3527,11 @@ mod tests {
                     warnings: vec![],
                 },
                 available_workers: vec![],
-                autonomy: control::AutonomyPolicy::default(),
+                autonomy: control::AutonomyPolicy {
+                    autonomy_level: "managed".to_string(),
+                    approval_policy: "side_effects".to_string(),
+                    ..control::AutonomyPolicy::default()
+                },
                 allow_shared_context: false,
                 isolation_mode: "strict".to_string(),
                 applied_lessons: vec![],
@@ -3644,6 +3822,162 @@ mod tests {
         assert_eq!(payload["totals"]["duration_ms"], 200);
         assert_eq!(payload["actors"][0]["actor_id"], "main");
         assert_eq!(payload["actors"][1]["actor_id"], "worker-a");
+    }
+
+    #[test]
+    fn read_run_supervision_returns_worker_and_delegation_details() {
+        let root = tempfile::tempdir().unwrap();
+        let record = OrchestrationRunRecord {
+            run_id: "run-12".to_string(),
+            created_at: "2026-03-19T00:00:00Z".to_string(),
+            mode: "orchestrated".to_string(),
+            request: OrchestrationRequest::default(),
+            routing: RoutingDecision {
+                execution_mode: "orchestrated".to_string(),
+                route_source: "default_claw".to_string(),
+                task_id: None,
+                category: Some("code".to_string()),
+                selected_claw_id: "main".to_string(),
+                selected_claw_role: "orchestrator".to_string(),
+                selected_agent_profile_id: "default".to_string(),
+                selected_model_profile_id: "primary".to_string(),
+                selected_model: ResolvedModelDecision {
+                    requested_profile_id: "primary".to_string(),
+                    selected_profile_id: "primary".to_string(),
+                    provider: "openrouter".to_string(),
+                    model: "test".to_string(),
+                    fallback_path: vec![],
+                    warnings: vec![],
+                },
+                available_workers: vec!["worker-a".to_string(), "worker-b".to_string()],
+                autonomy: control::AutonomyPolicy {
+                    autonomy_level: "managed".to_string(),
+                    approval_policy: "side_effects".to_string(),
+                    ..control::AutonomyPolicy::default()
+                },
+                allow_shared_context: false,
+                isolation_mode: "strict".to_string(),
+                applied_lessons: vec![],
+                steering_notes: vec![],
+                warnings: vec![],
+                request_overrides: OrchestrationRequestOverrides {
+                    model_profile_id: None,
+                    worker_model_profile_id: None,
+                    autonomy_level: Some("managed".to_string()),
+                    max_delegations: Some(2),
+                    max_iterations: Some(5),
+                    max_runtime_secs: Some(180),
+                    approval_policy: Some("side_effects".to_string()),
+                },
+            },
+            delegations: vec![DelegationTask {
+                id: "delegation-1".to_string(),
+                claw_id: "worker-a".to_string(),
+                instruction: "inspect the failing test path".to_string(),
+                reason: "worker owns the code area".to_string(),
+            }],
+            worker_results: vec![WorkerResultEnvelope {
+                claw_id: "worker-a".to_string(),
+                agent_profile_id: "worker".to_string(),
+                model_profile_id: "worker-profile".to_string(),
+                provider: "openrouter".to_string(),
+                model: "gpt-test".to_string(),
+                status: "needs_input".to_string(),
+                summary: "needs more context".to_string(),
+                full_output: "needs more context".to_string(),
+                questions: vec!["which failing test matters most?".to_string()],
+                confidence: Some(0.55),
+                next_step_recommendation: Some("narrow the failing scope".to_string()),
+            }],
+            checkpoints: vec![],
+            trace: vec![],
+            relationships: vec![],
+            transcript: vec![],
+            reflection_notes: vec!["consider narrowing delegation scope".to_string()],
+            reflection_candidates: vec![],
+            supervision: Some(SupervisionSummary {
+                checkpoint_count: 2,
+                worker_count: 1,
+                needs_input_count: 1,
+                failed_count: 0,
+                low_confidence_workers: vec!["worker-a".to_string()],
+                reflection_candidate_count: 0,
+                escalation_recommended: true,
+            }),
+            final_output: "blocked on worker input".to_string(),
+            final_claw_id: "main".to_string(),
+            final_model_profile_id: "primary".to_string(),
+            final_provider: "openrouter".to_string(),
+            final_model: "test".to_string(),
+            receipt_path: "supervision.json".to_string(),
+        };
+        let path = runs_root_for(root.path()).join("supervision.json");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, serde_json::to_vec_pretty(&record).unwrap()).unwrap();
+
+        let payload = read_run_supervision(root.path(), "supervision.json").unwrap();
+        assert_eq!(payload["route"]["approval_policy"], "side_effects");
+        assert_eq!(payload["delegations"][0]["claw_id"], "worker-a");
+        assert_eq!(payload["workers"][0]["status"], "needs_input");
+        assert_eq!(payload["workers"][0]["question_count"], 1);
+        assert_eq!(payload["supervision"]["escalation_recommended"], true);
+    }
+
+    #[test]
+    fn read_active_run_supervision_includes_recent_events_and_attention_signals() {
+        let root = tempfile::tempdir().unwrap();
+        let snapshot = ActiveOrchestrationRun {
+            run_id: "run-live".to_string(),
+            created_at: "2026-03-19T00:00:00Z".to_string(),
+            updated_at: "2026-03-19T00:00:00Z".to_string(),
+            started_at: Some("2026-03-19T00:00:01Z".to_string()),
+            finished_at: None,
+            status: "running".to_string(),
+            request: OrchestrationRequest::default(),
+            routing: None,
+            current_stage: Some("worker_execution".to_string()),
+            current_actor_type: Some("worker".to_string()),
+            current_actor_id: Some("worker-a".to_string()),
+            current_note: Some("waiting for worker output".to_string()),
+            pause_requested: true,
+            kill_requested: false,
+            checkpoint_count: 2,
+            trace_count: 3,
+            worker_count: 1,
+            relationship_count: 1,
+            resource_totals: Some(OrchestrationResourceTotals {
+                trace_count: 3,
+                estimated_input_tokens: 90,
+                estimated_output_tokens: 30,
+                duration_ms: 450,
+            }),
+            receipt_id: None,
+            receipt_path: None,
+            last_error: Some("worker timeout risk".to_string()),
+        };
+        write_active_run(root.path(), &snapshot).unwrap();
+
+        let monitor = ActiveRunMonitor::new(root.path(), "run-live");
+        monitor
+            .append_event(
+                "worker_execution",
+                "worker",
+                "worker-a",
+                "running",
+                "worker is still running",
+            )
+            .unwrap();
+
+        let payload = read_active_run_supervision(root.path(), "run-live", 10).unwrap();
+        assert_eq!(payload["run"]["run_id"], "run-live");
+        assert_eq!(payload["recent_events"][0]["actor_id"], "worker-a");
+        assert!(
+            payload["attention_signals"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|value| value.as_str() == Some("pause requested by operator"))
+        );
     }
 
     #[test]

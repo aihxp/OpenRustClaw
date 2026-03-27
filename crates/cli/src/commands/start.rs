@@ -3305,6 +3305,10 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             get(orchestration_active_run_events_handler),
         )
         .route(
+            "/control/orchestration/active/{run_id}/supervision",
+            get(orchestration_active_run_supervision_handler),
+        )
+        .route(
             "/control/orchestration/active/{run_id}/pause",
             post(orchestration_active_run_pause_handler),
         )
@@ -7414,6 +7418,25 @@ async fn orchestration_active_run_events_handler(
             Json(serde_json::json!({ "events": events })),
         )
             .into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn orchestration_active_run_supervision_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(run_id): AxumPath<String>,
+    Query(query): Query<ListLimitQuery>,
+) -> impl IntoResponse {
+    match orchestrate::read_active_run_supervision(
+        &state.workspace_root,
+        &run_id,
+        query.limit.unwrap_or(20),
+    ) {
+        Ok(report) => (StatusCode::OK, Json(report)).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": error.to_string()})),

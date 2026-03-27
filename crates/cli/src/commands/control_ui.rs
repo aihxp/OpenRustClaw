@@ -66,6 +66,14 @@ mod tests {
     }
 
     #[test]
+    fn dashboard_includes_orchestration_supervision_tables() {
+        assert!(CONTROL_UI_HTML.contains("orchestration-workers"));
+        assert!(CONTROL_UI_HTML.contains("orchestration-delegations"));
+        assert!(CONTROL_UI_HTML.contains("function renderReceiptSupervision"));
+        assert!(CONTROL_UI_HTML.contains("function renderActiveRunSupervision"));
+    }
+
+    #[test]
     fn dashboard_includes_enterprise_foundations_panel() {
         assert!(CONTROL_UI_HTML.contains("enterprise-foundations"));
         assert!(CONTROL_UI_HTML.contains("function loadEnterpriseFoundations"));

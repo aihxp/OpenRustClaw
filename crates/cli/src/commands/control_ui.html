@@ -1105,7 +1105,22 @@
         <article class="panel span-6">
           <h2>Active Supervision</h2>
           <div class="surface"><pre id="orchestration-active-detail">Select an active run to inspect.</pre></div>
-          <div class="surface"><pre id="orchestration-active-events">Select an active run to inspect recent events.</pre></div>
+          <div class="surface">
+            <table class="table">
+              <thead>
+                <tr><th>Signal</th></tr>
+              </thead>
+              <tbody id="orchestration-active-signals"><tr><td class="muted">Select an active run to inspect.</td></tr></tbody>
+            </table>
+          </div>
+          <div class="surface">
+            <table class="table">
+              <thead>
+                <tr><th>When</th><th>Stage</th><th>Actor</th><th>Status</th></tr>
+              </thead>
+              <tbody id="orchestration-active-events-table"><tr><td colspan="4" class="muted">Select an active run to inspect recent events.</td></tr></tbody>
+            </table>
+          </div>
         </article>
         <article class="panel span-6">
           <h2>Orchestration Runs</h2>
@@ -1121,6 +1136,22 @@
         <article class="panel span-6">
           <h2>Run Supervision</h2>
           <div class="surface"><pre id="orchestration-detail">Select an orchestration receipt to inspect.</pre></div>
+          <div class="surface">
+            <table class="table">
+              <thead>
+                <tr><th>Delegation</th><th>Reason</th></tr>
+              </thead>
+              <tbody id="orchestration-delegations"><tr><td colspan="2" class="muted">Select an orchestration receipt to inspect delegations.</td></tr></tbody>
+            </table>
+          </div>
+          <div class="surface">
+            <table class="table">
+              <thead>
+                <tr><th>Worker</th><th>Status</th><th>Summary</th><th>Next Step</th></tr>
+              </thead>
+              <tbody id="orchestration-workers"><tr><td colspan="4" class="muted">Select an orchestration receipt to inspect workers.</td></tr></tbody>
+            </table>
+          </div>
         </article>
         <article class="panel span-6">
           <h2>Reflection Candidates</h2>
@@ -3357,10 +3388,21 @@
         const payload = await fetchJson("/control/orchestration/runs");
         const runs = payload.runs || [];
         const rows = runs.map((run) => {
+          const supervision = [];
+          supervision.push(`${run.worker_count || 0} worker(s)`);
+          if ((run.failed_count || 0) > 0) {
+            supervision.push(`${run.failed_count} failed`);
+          }
+          if ((run.needs_input_count || 0) > 0) {
+            supervision.push(`${run.needs_input_count} need input`);
+          }
+          if (run.escalation_recommended) {
+            supervision.push("escalation recommended");
+          }
           return `<tr>
             <td>${run.created_at || "-"}</td>
             <td>${run.mode || "-"}</td>
-            <td>${run.final_claw_id || "-"}<div class="muted">${run.final_provider || "-"} / ${run.final_model || "-"}</div></td>
+            <td>${run.final_claw_id || "-"}<div class="muted">${run.final_provider || "-"} / ${run.final_model || "-"}</div><div class="muted">${run.approval_policy || "-"} / ${supervision.join(" · ")}</div></td>
             <td><button class="secondary" onclick="inspectOrchestrationRun('${run.receipt_id || ""}')">Inspect</button></td>
           </tr>`;
         });
@@ -3369,6 +3411,8 @@
           await inspectOrchestrationRun(runs[0].receipt_id);
         } else {
           setText("orchestration-detail", "No orchestration receipt selected.");
+          renderTableRows("orchestration-delegations", [], "Select an orchestration receipt to inspect delegations.");
+          renderTableRows("orchestration-workers", [], "Select an orchestration receipt to inspect workers.");
           setText("orchestration-trace", "No orchestration receipt selected.");
           setText("orchestration-transcript", "No orchestration receipt selected.");
           setText("orchestration-resources", "No orchestration receipt selected.");
@@ -3379,10 +3423,18 @@
         const payload = await fetchJson("/control/orchestration/active?active_only=true&limit=12");
         const runs = payload.runs || [];
         const rows = runs.map((run) => {
+          const detailBits = [];
+          detailBits.push(`${run.worker_count || 0} worker(s)`);
+          if (run.pause_requested) {
+            detailBits.push("pause requested");
+          }
+          if (run.kill_requested) {
+            detailBits.push("kill requested");
+          }
           return `<tr>
             <td>${run.status || "-"}</td>
             <td><strong>${run.run_id || "-"}</strong><div class="muted">${run.current_actor_id || "-"}</div></td>
-            <td>${run.current_stage || "-"}<div class="muted">${run.current_note || "-"}</div></td>
+            <td>${run.current_stage || "-"}<div class="muted">${run.current_note || "-"}</div><div class="muted">${detailBits.join(" · ")}</div></td>
             <td>
               <button class="secondary" onclick="inspectActiveOrchestrationRun('${run.run_id || ""}')">Watch</button>
               <button class="secondary" onclick="controlActiveOrchestrationRun('${run.run_id || ""}', 'pause')">Pause</button>
@@ -3397,6 +3449,43 @@
         }
       }
 
+      function renderReceiptSupervision(payload) {
+        const route = payload.route || {};
+        const supervision = payload.supervision || {};
+        const resourceTotals = payload.resource_totals || {};
+        const summary = [
+          `mode: ${payload.mode || "-"}`,
+          `execution: ${route.execution_mode || "-"}`,
+          `approval: ${route.approval_policy || "-"}`,
+          `selected claw: ${route.selected_claw_id || "-"}`,
+          `selected model: ${route.provider || "-"} / ${route.model || "-"}`,
+          `workers: ${supervision.worker_count ?? 0}`,
+          `needs input: ${supervision.needs_input_count ?? 0}`,
+          `failed: ${supervision.failed_count ?? 0}`,
+          `escalation: ${supervision.escalation_recommended ? "yes" : "no"}`,
+          `resources: ${(resourceTotals.estimated_input_tokens ?? 0)} in / ${(resourceTotals.estimated_output_tokens ?? 0)} out / ${(resourceTotals.duration_ms ?? 0)} ms`,
+        ];
+        setText("orchestration-detail", summary.join("\n"));
+
+        const delegationRows = (payload.delegations || []).map((delegation) => {
+          return `<tr>
+            <td><strong>${delegation.claw_id || "-"}</strong><div class="muted">${delegation.id || "-"}</div><div class="muted">${escapeHtml(String(delegation.instruction || "").slice(0, 180))}</div></td>
+            <td>${delegation.reason || "-"}</td>
+          </tr>`;
+        });
+        renderTableRows("orchestration-delegations", delegationRows, "No delegated tasks on this run.");
+
+        const workerRows = (payload.workers || []).map((worker) => {
+          return `<tr>
+            <td><strong>${worker.claw_id || "-"}</strong><div class="muted">${worker.provider || "-"} / ${worker.model || "-"}</div></td>
+            <td>${worker.status || "-"}<div class="muted">${worker.question_count || 0} question(s) / confidence ${worker.confidence ?? "-"}</div></td>
+            <td>${worker.summary || "-"}</td>
+            <td>${worker.next_step_recommendation || "-"}</td>
+          </tr>`;
+        });
+        renderTableRows("orchestration-workers", workerRows, "No worker results on this run.");
+      }
+
       async function inspectOrchestrationRun(receiptId) {
         currentOrchestrationReceipt = receiptId;
         const [payload, tracePayload, transcriptPayload, resourcePayload] = await Promise.all([
@@ -3405,7 +3494,7 @@
           fetchJson(`/control/orchestration/runs/${encodeURIComponent(receiptId)}/transcript`),
           fetchJson(`/control/orchestration/runs/${encodeURIComponent(receiptId)}/resources`),
         ]);
-        setText("orchestration-detail", payload);
+        renderReceiptSupervision(payload);
         setText("orchestration-trace", tracePayload);
         setText("orchestration-transcript", transcriptPayload);
         setText("orchestration-resources", resourcePayload);
@@ -3420,14 +3509,41 @@
         renderTableRows("reflection-candidates", rows, "No reflection candidates on this run.");
       }
 
+      function renderActiveRunSupervision(payload) {
+        const run = payload.run || {};
+        const summary = [
+          `status: ${run.status || "-"}`,
+          `stage: ${run.current_stage || "-"}`,
+          `actor: ${run.current_actor_type || "-"} / ${run.current_actor_id || "-"}`,
+          `note: ${run.current_note || "-"}`,
+          `pause requested: ${run.pause_requested ? "yes" : "no"}`,
+          `kill requested: ${run.kill_requested ? "yes" : "no"}`,
+          `workers: ${run.worker_count ?? 0}`,
+          `relationships: ${run.relationship_count ?? 0}`,
+          `resources: ${(run.resource_totals?.estimated_input_tokens ?? 0)} in / ${(run.resource_totals?.estimated_output_tokens ?? 0)} out / ${(run.resource_totals?.duration_ms ?? 0)} ms`,
+        ];
+        setText("orchestration-active-detail", summary.join("\n"));
+
+        const signalRows = (payload.attention_signals || []).map((signal) => {
+          return `<tr><td>${signal}</td></tr>`;
+        });
+        renderTableRows("orchestration-active-signals", signalRows, "No active attention signals.");
+
+        const eventRows = (payload.recent_events || []).map((event) => {
+          return `<tr>
+            <td>${event.created_at || "-"}</td>
+            <td>${event.stage || "-"}</td>
+            <td><strong>${event.actor_id || "-"}</strong><div class="muted">${event.actor_type || "-"}</div></td>
+            <td>${event.status || "-"}<div class="muted">${event.note || "-"}</div></td>
+          </tr>`;
+        });
+        renderTableRows("orchestration-active-events-table", eventRows, "No active run events recorded.");
+      }
+
       async function inspectActiveOrchestrationRun(runId) {
         currentActiveOrchestrationRun = runId;
-        const [state, events] = await Promise.all([
-          fetchJson(`/control/orchestration/active/${encodeURIComponent(runId)}`),
-          fetchJson(`/control/orchestration/active/${encodeURIComponent(runId)}/events?limit=20`),
-        ]);
-        setText("orchestration-active-detail", state);
-        setText("orchestration-active-events", events);
+        const payload = await fetchJson(`/control/orchestration/active/${encodeURIComponent(runId)}/supervision?limit=20`);
+        renderActiveRunSupervision(payload);
       }
 
       async function controlActiveOrchestrationRun(runId, action) {
