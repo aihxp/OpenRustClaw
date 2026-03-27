@@ -11,14 +11,112 @@
 - ✅ **v1.6 Proper Onboarding and Setup** — shipped 2026-03-28. Archive: `.planning/milestones/v1.6-ROADMAP.md`
 - ✅ **v1.7 Documentation Convergence and OpenClaw-Inspired Docs Rewrite** — shipped 2026-03-27. Archive: `.planning/milestones/v1.7-ROADMAP.md`
 - ✅ **v1.8 Clean Codebase** — shipped 2026-03-27. Archive: `.planning/milestones/v1.8-ROADMAP.md`
+- ◆ **v1.9 GitHub Repository Presence and Actions Recovery** — in progress
 
 ## Current Status
 
-- No active milestone open.
-- Next step: `$gsd-new-milestone`
-- Archived milestone planning artifacts live under `.planning/milestones/`.
+- Active milestone: **v1.9 GitHub Repository Presence and Actions Recovery**
+- Progress: 0 of 4 phases complete (0%)
+- Next phase: **Phase 41**
+- Next step: `$gsd-plan-phase 41` or `$gsd-autonomous`
+
+## Roadmap v1.9: GitHub Repository Presence and Actions Recovery
+
+**Goal:** Make the public GitHub repo surface truthful and current, add a maintained discovery-tag contract, and repair GitHub Actions so the repo's automation story matches the shipped product.
+
+### Overview
+
+This milestone is about making the GitHub repo itself truthful and operational again. The order is deliberate: first align the public repo framing with the shipped product so the entry surface stops misleading operators, then define the discovery tag contract, then repair the automation surface so badges and workflow status mean something again, and finally close with a repeatable admin sync and verification bundle for future GitHub maintenance.
+
+### Phases
+
+**Phase Numbering:**
+- Integer phases continue across milestones to preserve one linear execution history.
+- Decimal phases are reserved for urgent insertions if roadmap assumptions break.
+
+- [ ] **Phase 41: GitHub About and Public Positioning Contract** - Align the repo About language, linked entry surface, README badge targets, and public-facing guidance with the current self-hosted Rust-first product story.
+- [ ] **Phase 42: GitHub Topics and Discovery Surface** - Define the canonical GitHub topic or word-tag set, document it in-repo, and create a safe sync path for keeping repo discovery metadata aligned.
+- [ ] **Phase 43: GitHub Actions Audit and Repair** - Audit the live Actions surface against local workflow files, remove or fix stale jobs, and make badges, workflow names, and release automation match the current verification contract.
+- [ ] **Phase 44: GitHub Admin Sync and Verification Exit** - Add a repeatable admin checklist or sync path for repo metadata and workflow health, then close the milestone with local plus live GitHub verification evidence.
+
+### Phase Details
+
+### Phase 41: GitHub About and Public Positioning Contract
+**Goal**: Replace stale GitHub repo framing with a public entry surface that matches the shipped self-hosted Rust-first product.
+**Depends on**: v1.8 archive state
+**Requirements**: [GHMD-01, GHMD-02]
+**Success Criteria** (what must be TRUE):
+  1. The public repo About wording, README entry surface, and linked resources describe the same current product.
+  2. The repo no longer advertises the stale hybrid-framework positioning that conflicts with shipped docs.
+  3. Repo entry links and badges point at the current documentation and automation surfaces.
+**Plans**: 2 plans pending
+
+Plans:
+- [ ] 41-01 Align GitHub About wording with the current product story
+- [ ] 41-02 Normalize README badges and public entry links
+
+### Phase 42: GitHub Topics and Discovery Surface
+**Goal**: Make repo discovery metadata intentional and repeatable instead of ad hoc or stale.
+**Depends on**: Phase 41
+**Requirements**: [DISC-01, DISC-02]
+**Success Criteria** (what must be TRUE):
+  1. OpenRustClaw has a canonical topic or word-tag set that reflects the shipped product.
+  2. The topic or tag set is documented in-repo and safe to reapply later.
+  3. Discovery metadata does not drift independently from the product story.
+**Plans**: 2 plans pending
+
+Plans:
+- [ ] 42-01 Define the canonical GitHub topic or tag set
+- [ ] 42-02 Add repo-admin sync guidance for discovery metadata
+
+### Phase 43: GitHub Actions Audit and Repair
+**Goal**: Restore confidence in the public automation surface by making workflows, badges, and release jobs reflect the current verification contract.
+**Depends on**: Phase 42
+**Requirements**: [ACT-01, ACT-02, ACT-03]
+**Success Criteria** (what must be TRUE):
+  1. Public workflow names, badges, and run expectations map cleanly to the current repo layout and verification bundle.
+  2. Stale or failing workflow paths are fixed, removed, or clearly downgraded.
+  3. Release or tag automation remains consistent with shipped milestone tags and release artifacts.
+**Plans**: 2 plans pending
+
+Plans:
+- [ ] 43-01 Audit live GitHub Actions against local workflow definitions
+- [ ] 43-02 Repair workflow, badge, and release-contract drift
+
+### Phase 44: GitHub Admin Sync and Verification Exit
+**Goal**: Close the milestone with one repeatable path for future GitHub metadata and Actions maintenance.
+**Depends on**: Phase 43
+**Requirements**: [OPS-01, OPS-02]
+**Success Criteria** (what must be TRUE):
+  1. Repo-admin metadata and workflow sync has one documented repeatable process.
+  2. The milestone records both local validation and live GitHub surface evidence.
+  3. Future repo-maintenance work can build on a truthful GitHub baseline rather than rediscovering drift.
+**Plans**: 2 plans pending
+
+Plans:
+- [ ] 44-01 Add GitHub admin sync and verification checklist
+- [ ] 44-02 Close the milestone with live GitHub surface evidence
+
+## Progress
+
+| Phase | Plans Complete | Status | Completed |
+|-------|----------------|--------|-----------|
+| 41. GitHub About and Public Positioning Contract | 0/2 | Pending | - |
+| 42. GitHub Topics and Discovery Surface | 0/2 | Pending | - |
+| 43. GitHub Actions Audit and Repair | 0/2 | Pending | - |
+| 44. GitHub Admin Sync and Verification Exit | 0/2 | Pending | - |
 
 ## Phase History
+
+<details>
+<summary>🚧 v1.9 GitHub Repository Presence and Actions Recovery — ACTIVE</summary>
+
+- [ ] **Phase 41: GitHub About and Public Positioning Contract**
+- [ ] **Phase 42: GitHub Topics and Discovery Surface**
+- [ ] **Phase 43: GitHub Actions Audit and Repair**
+- [ ] **Phase 44: GitHub Admin Sync and Verification Exit**
+
+</details>
 
 <details>
 <summary>✅ v1.8 Clean Codebase — SHIPPED 2026-03-27</summary>
