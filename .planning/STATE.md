@@ -1,20 +1,20 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.3
-milestone_name: Enterprise Expansion and Supervised Autonomy Foundations
-current_phase: 0
-current_phase_name: Milestone Complete
-current_plan: 0
-status: milestone_complete
-stopped_at: v1.3 archived and phase directories cleaned up; next step is planning the next milestone.
-last_updated: "2026-03-27T08:06:00.000Z"
-last_activity: 2026-03-27 -- v1.3 milestone archived and phase directories cleaned up
+milestone: v1.4
+milestone_name: Enterprise Governance and Operator-Gated Full Autonomy
+current_phase: 20
+current_phase_name: Enterprise Governance and Approval Chains
+current_plan: Not started
+status: Defining requirements
+stopped_at: Milestone v1.4 started; Phase 20 is ready for discuss and planning.
+last_updated: "2026-03-27T08:15:00.000Z"
+last_activity: 2026-03-27 -- milestone v1.4 started
 progress:
-  total_phases: 0
-  completed_phases: 4
-  total_plans: 12
-  completed_plans: 12
-  percent: 100
+  total_phases: 4
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -24,21 +24,21 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-27)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** Planning the next milestone
+**Current focus:** Phase 20 - Enterprise Governance and Approval Chains
 
 ## Current Position
 
-Current Phase: 0
-Current Phase Name: Milestone Complete
-Total Phases: 0
-Current Plan: 0
+Current Phase: 20
+Current Phase Name: Enterprise Governance and Approval Chains
+Total Phases: 4
+Current Plan: Not started
 Total Plans in Phase: 0
-Status: Milestone complete
-Last activity: 2026-03-27 -- v1.3 milestone archived and phase directories cleaned up
+Status: Defining requirements
+Last activity: 2026-03-27 -- milestone v1.4 started
 
-Phase: 0 of 0 (Milestone Complete)
+Phase: 1 of 4 (Enterprise Governance and Approval Chains)
 Plan: 0 of 0 in current phase
-Progress: [██████████] 100%
+Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
@@ -93,7 +93,7 @@ Recent decisions affecting current work:
 - Phase 17 now adds a unified enterprise policy surface, durable audit export bundle, protected export scope, and mobile approval overrides driven by enterprise policy instead of only hardcoded command defaults.
 - Phase 18 now adds explicit supervised lifecycle state, escalation and rollback controls, structured intervention history, and Control UI visibility for longer-running orchestrated runs.
 - Phase 19 now adds a typed enterprise admin summary plus a shipped Control UI operator loop for enterprise bootstrap, scoped headers, policy updates, audit export, and supervised-run attention visibility.
-- The next milestone should choose a focused next lane instead of reopening enterprise expansion, broader autonomy, and parity work all at once.
+- v1.4 now takes an enterprise-first path again, but adds the requested “god mode” as an explicit operator-gated full-autonomy lane rather than weakening the default trust-first runtime.
 
 ### Pending Todos
 
@@ -106,5 +106,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-27 04:44
-Stopped at: v1.3 archived and phase directories cleaned up; next step is planning the next milestone.
+Stopped at: Milestone v1.4 started; Phase 20 is ready for discuss and planning.
 Resume file: None

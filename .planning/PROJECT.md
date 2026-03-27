@@ -14,8 +14,18 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 - **Shipped milestones:** v1.0 Rust OpenClaw MVP and v1.1 Lifecycle Integrity and Enterprise Foundations on 2026-03-26, plus v1.2 Deeper OpenClaw Surface Parity and v1.3 Enterprise Expansion and Supervised Autonomy Foundations on 2026-03-27
 - **Archive:** `.planning/milestones/v1.0-*`, `.planning/milestones/v1.1-*`, `.planning/milestones/v1.2-*`, `.planning/milestones/v1.3-*`
-- **Planning state:** No active milestone is currently open
+- **Planning state:** v1.4 Enterprise Governance and Operator-Gated Full Autonomy is now active
 - **Known audit debt:** v1.0 archive still records missing phase `VERIFICATION.md` artifacts; v1.1 closes that workflow gap going forward
+
+## Current Milestone: v1.4 Enterprise Governance and Operator-Gated Full Autonomy
+
+**Goal:** Deepen the enterprise-ready governance baseline and add an explicit “god mode” or full-autonomy lane that trusted operators can enable deliberately, audit completely, and shut down immediately.
+
+**Target features:**
+- stronger enterprise governance over roles, approval chains, and high-risk operator actions
+- deeper enterprise audit, retention, and export packaging suitable for enterprise review
+- an explicit operator-gated full-autonomy mode that remains budgeted, kill-switchable, and evidence-rich
+- one shipped control surface for inspecting and governing the autonomy override lane
 
 ## Requirements
 
@@ -38,9 +48,10 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 ### Active
 
-- [ ] Define the next post-v1.3 milestone with `$gsd-new-milestone`
-- [ ] Choose how to sequence broader enterprise expansion, broader supervised autonomy, and any narrower parity-enabling work
-- [ ] Preserve the verification/archive contract and shipped enterprise admin baseline while opening the next milestone
+- [ ] Expand enterprise governance beyond the current baseline with stronger role, approval, and separation-of-duties controls
+- [ ] Deepen enterprise audit and retention handling so exported evidence is more useful for enterprise review and operations
+- [ ] Add an explicit operator-gated full-autonomy mode that does not replace the default trust-first runtime path
+- [ ] Keep the full-autonomy override lane budgeted, kill-switchable, and operator-governed from shipped control surfaces
 
 ### Out of Scope
 
@@ -53,7 +64,7 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 This remains a large brownfield Rust monorepo with broad runtime, CLI, control-plane, memory, tools, channel, voice, browser, and deployment surfaces. v1.0 converted that breadth into a cleaner MVP by making operator trust visible at the edges that matter, v1.1 hardened the lifecycle and enterprise baseline around that trust, v1.2 deepened the most operator-visible OpenClaw parity surfaces without reopening MVP sprawl, and v1.3 turned the first enterprise and supervised-autonomy contracts into a coherent operator loop.
 
-The next milestone should build on all four shipped layers rather than reopen foundational debt. The immediate planning question is no longer whether the platform has an enterprise/admin baseline; it is which expansion lane should deepen next without weakening that new baseline.
+The next milestone should build on all four shipped layers rather than reopen foundational debt. v1.4 now takes the enterprise-first path further and adds the user's requested “god mode” as a separate operator-gated autonomy lane, not as a weakening of the default trust-first runtime.
 
 ## Constraints
 
@@ -78,12 +89,13 @@ The next milestone should build on all four shipped layers rather than reopen fo
 | Sequence enterprise expansion ahead of another broad parity milestone | Identity, policy, audit, and supervised-autonomy controls are now the clearest blockers to enterprise readiness | ✓ Good |
 | Layer enterprise operator identity on top of the existing control auth boundary | The control bearer and trusted-proxy transport boundary already exists, so enterprise identity should narrow sensitive operator actions instead of replacing the outer control contract | ✓ Good |
 | Keep the v1.3 enterprise admin surface inside the shipped Control UI and typed runtime reports | The current goal was operator usability for the existing enterprise/autonomy contract, not a separate admin product or frontend-only state layer | ✓ Good |
+| Interpret “god mode” as an explicit operator-gated full-autonomy lane rather than a removal of audit or control boundaries | The platform’s trust-first contract still needs to hold even when trusted operators deliberately enable a stronger autonomy mode | ✓ Good |
 
 ## Next Milestone Goals
 
-- Decide the next milestone boundary with `$gsd-new-milestone`
+- Expand the enterprise baseline into stronger governance, reviewability, and operational control
+- Add a full-autonomy override lane that remains explicit, bounded, and operator-governed
 - Preserve the verification/archive contract, enterprise admin baseline, and deeper operator parity surfaces as non-negotiable foundations
-- Choose a focused next expansion lane instead of reopening all deferred ambitions at once
 
 ## Evolution
 
@@ -103,4 +115,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-27 after v1.3 milestone completion*
+*Last updated: 2026-03-27 after starting milestone v1.4*
