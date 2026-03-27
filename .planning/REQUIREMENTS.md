@@ -7,13 +7,13 @@
 
 ### Repository Presence
 
-- [ ] **GHMD-01**: The public GitHub repo About description and linked entry metadata describe OpenRustClaw as a self-hosted open-source Rust-first assistant platform rather than the older hybrid framework framing.
-- [ ] **GHMD-02**: The repo's public entry surface, including README badges and linked resources, points at the current shipped documentation and release paths.
+- [x] **GHMD-01**: The public GitHub repo About description and linked entry metadata describe OpenRustClaw as a self-hosted open-source Rust-first assistant platform rather than the older hybrid framework framing.
+- [x] **GHMD-02**: The repo's public entry surface, including README badges and linked resources, points at the current shipped documentation and release paths.
 
 ### Discovery and Topics
 
-- [ ] **DISC-01**: OpenRustClaw has a canonical GitHub topic or word-tag set that reflects the product's self-hosted, Rust-first, assistant, and enterprise-capable positioning.
-- [ ] **DISC-02**: The canonical GitHub topic or tag set is documented in-repo so future repo-admin updates stay consistent.
+- [x] **DISC-01**: OpenRustClaw has a canonical GitHub topic or word-tag set that reflects the product's self-hosted, Rust-first, assistant, and enterprise-capable positioning.
+- [x] **DISC-02**: The canonical GitHub topic or tag set is documented in-repo so future repo-admin updates stay consistent.
 
 ### Actions and Release Automation
 
@@ -45,10 +45,10 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| GHMD-01 | Phase 41 | Pending |
-| GHMD-02 | Phase 41 | Pending |
-| DISC-01 | Phase 42 | Pending |
-| DISC-02 | Phase 42 | Pending |
+| GHMD-01 | Phase 41 | Complete |
+| GHMD-02 | Phase 41 | Complete |
+| DISC-01 | Phase 42 | Complete |
+| DISC-02 | Phase 42 | Complete |
 | ACT-01 | Phase 43 | Pending |
 | ACT-02 | Phase 43 | Pending |
 | ACT-03 | Phase 43 | Pending |
@@ -62,4 +62,4 @@
 
 ---
 *Requirements defined: 2026-03-27*
-*Last updated: 2026-03-27 after starting v1.9*
+*Last updated: 2026-03-27 after completing phases 41-42*

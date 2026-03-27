@@ -21,6 +21,24 @@ That file is the source of truth for:
 - homepage
 - GitHub topics
 
+## Canonical Topic Set
+
+OpenRustClaw currently publishes this canonical GitHub topic set:
+
+- `rust`
+- `self-hosted`
+- `assistant`
+- `ai-assistant`
+- `open-source`
+- `llm`
+- `mcp`
+- `browser-automation`
+- `voice-assistant`
+- `enterprise`
+
+Keep the topic set in `.github/repository-metadata.json` aligned with the current shipped product story.
+If the product claim changes, update the metadata file first, then re-run the repo-admin sync.
+
 ## Admin Commands
 
 Use the repo-admin helper:
@@ -55,6 +73,7 @@ Minimum live verification when GitHub auth is available:
 
 ```bash
 bash scripts/github-repo-admin.sh check-live
+env -u GITHUB_TOKEN gh run list --repo aihxp/OpenRustClaw --limit 10
 ```
 
 ## Notes

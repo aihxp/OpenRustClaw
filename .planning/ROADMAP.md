@@ -16,10 +16,10 @@
 ## Current Status
 
 - Active milestone: **v1.9 GitHub Repository Presence and Actions Recovery**
-- Progress: 1 of 4 phases complete (25%)
-- Next phase: **Phase 42**
-- Current execution: **Phase 41 complete**
-- Next step: `$gsd-plan-phase 42` or `$gsd-autonomous`
+- Progress: 2 of 4 phases complete (50%)
+- Next phase: **Phase 43**
+- Current execution: **Phase 42 complete**
+- Next step: `$gsd-plan-phase 43` or `$gsd-autonomous`
 
 ## Roadmap v1.9: GitHub Repository Presence and Actions Recovery
 
@@ -64,11 +64,11 @@ Plans:
   1. OpenRustClaw has a canonical topic or word-tag set that reflects the shipped product.
   2. The topic or tag set is documented in-repo and safe to reapply later.
   3. Discovery metadata does not drift independently from the product story.
-**Plans**: 2 plans pending
+**Plans**: 2 plans complete
 
 Plans:
-- [ ] 42-01 Define the canonical GitHub topic or tag set
-- [ ] 42-02 Add repo-admin sync guidance for discovery metadata
+- [x] 42-01 Define the canonical GitHub topic or tag set
+- [x] 42-02 Add repo-admin sync guidance for discovery metadata
 
 ### Phase 43: GitHub Actions Audit and Repair
 **Goal**: Restore confidence in the public automation surface by making workflows, badges, and release jobs reflect the current verification contract.
@@ -103,7 +103,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 41. GitHub About and Public Positioning Contract | 2/2 | Complete | 2026-03-27 |
-| 42. GitHub Topics and Discovery Surface | 0/2 | Pending | - |
+| 42. GitHub Topics and Discovery Surface | 2/2 | Complete | 2026-03-27 |
 | 43. GitHub Actions Audit and Repair | 0/2 | Pending | - |
 | 44. GitHub Admin Sync and Verification Exit | 0/2 | Pending | - |
 
@@ -113,7 +113,7 @@ Plans:
 <summary>🚧 v1.9 GitHub Repository Presence and Actions Recovery — ACTIVE</summary>
 
 - [x] **Phase 41: GitHub About and Public Positioning Contract** — completed 2026-03-27
-- [ ] **Phase 42: GitHub Topics and Discovery Surface**
+- [x] **Phase 42: GitHub Topics and Discovery Surface** — completed 2026-03-27
 - [ ] **Phase 43: GitHub Actions Audit and Repair**
 - [ ] **Phase 44: GitHub Admin Sync and Verification Exit**
 
