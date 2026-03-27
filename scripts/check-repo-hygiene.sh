@@ -21,7 +21,6 @@ search '## Scope Split|## Phase 1 Completion Note' docs/surface-matrix.md
 search '## What It Ships Well|## Where It Is Intentionally Stronger|## Current Boundaries' docs/product-positioning.md
 search 'mod auth;|use self::auth::' crates/cli/src/commands/start.rs
 search 'Completed In v1.8 So Far|Deferred Cleanup Debt' .planning/codebase/CLEANUP.md
+search '^/sidecar/\.venv/$|^/sidecar/\.pytest_cache/$|^/sidecar/src/\*\*/__pycache__/$' .gitignore
 
-git check-ignore -q sidecar/.venv
-git check-ignore -q sidecar/.pytest_cache
-git check-ignore -q sidecar/src/__pycache__
+# Guard the canonical ignore contract directly instead of depending on runner-specific path checks.
