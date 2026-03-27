@@ -4,17 +4,17 @@ milestone: v1.2
 milestone_name: Deeper OpenClaw Surface Parity
 current_phase: 15
 current_phase_name: Voice and Call Handling Parity
-current_plan: Not started
-status: Ready to discuss
-stopped_at: Phase 14 completed; Phase 15 is ready for discuss and planning.
-last_updated: "2026-03-27T03:50:00Z"
-last_activity: 2026-03-27 -- Phase 14 completed
+current_plan: Complete
+status: Ready for audit
+stopped_at: Phase 15 completed; milestone v1.2 is ready for audit.
+last_updated: "2026-03-27T03:16:46Z"
+last_activity: 2026-03-27 -- Phase 15 completed
 progress:
   total_phases: 5
-  completed_phases: 4
-  total_plans: 12
-  completed_plans: 12
-  percent: 80
+  completed_phases: 5
+  total_plans: 15
+  completed_plans: 15
+  percent: 100
 ---
 
 # Project State
@@ -24,21 +24,21 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-26)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** Phase 15 - Voice and Call Handling Parity
+**Current focus:** Milestone v1.2 audit
 
 ## Current Position
 
 Current Phase: 15
 Current Phase Name: Voice and Call Handling Parity
 Total Phases: 5
-Current Plan: Not started
-Total Plans in Phase: 0
-Status: Ready to discuss
-Last activity: 2026-03-27 - Phase 14 completed
+Current Plan: Complete
+Total Plans in Phase: 3
+Status: Ready for audit
+Last activity: 2026-03-27 - Phase 15 completed
 
 Phase: 5 of 5 (Voice and Call Handling Parity)
-Plan: 0 of 0 in current phase
-Progress: [████████░░] 80%
+Plan: 3 of 3 in current phase
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -87,6 +87,7 @@ Recent decisions affecting current work:
 - Phase 12 now exposes typed supervision reports plus Control UI tables for delegated tasks, worker outcomes, approval context, live attention signals, and recent orchestration events.
 - Phase 13 now exposes a typed mobile operator report plus a main mobile node view that surfaces attention signals and recent activity from the existing mobile receipt model.
 - Phase 14 now replaces the remaining priority raw Control UI panes with typed voice, talk, skill, bounded voice-call, and mobile sub-detail renderers, then closes with matching docs and verification evidence.
+- Phase 15 now adds a typed voice operator report across voice sessions, talk receipts, and bounded voice-call receipts, then surfaces that report in `/control/ui` before closing the milestone for audit.
 
 ### Pending Todos
 
@@ -98,6 +99,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-27 03:50
-Stopped at: Phase 14 completed; Phase 15 is ready for discuss and planning.
+Last session: 2026-03-26 23:16
+Stopped at: Phase 15 completed; milestone v1.2 is ready for audit.
 Resume file: None

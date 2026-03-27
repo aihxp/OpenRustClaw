@@ -22,7 +22,7 @@ This milestone deepens the five highest-value OpenClaw parity surfaces without a
 - [x] **Phase 12: Multi-Agent Supervision Parity** - Expand orchestration and delegated-run supervision so multi-agent behavior is easier to inspect, control, and trust.
 - [x] **Phase 13: Mobile Runtime Parity** - Broaden mobile runtime and operator parity while preserving approval gates and durable receipts.
 - [x] **Phase 14: Control UI Surface Completion** - Bring the shipped Control UI closer to OpenClaw parity across the deeper browser, supervision, and mobile surfaces.
-- [ ] **Phase 15: Voice and Call Handling Parity** - Deepen voice and call-handling parity with richer operator-visible control, health, and evidence.
+- [x] **Phase 15: Voice and Call Handling Parity** - Deepen voice and call-handling parity with richer operator-visible control, health, and evidence.
 
 ### Phase Details
 
@@ -94,10 +94,12 @@ Plans:
   1. Operators can inspect and manage richer voice or call-handling flows than the current MVP lane.
   2. Voice and call parity surfaces preserve session health, artifacts, and operator evidence.
   3. The resulting voice surface feels closer to real OpenClaw parity while staying bounded and truthful.
-**Plans**: TBD
+**Plans**: 3/3 plans complete
 
 Plans:
-- [ ] TBD (run `$gsd-plan-phase 15` to break down)
+- [x] **15-01** Add a typed voice operator report
+- [x] **15-02** Surface the voice operator report in Control UI
+- [x] **15-03** Align voice docs and preserve verification
 
 ## Progress
 
@@ -107,7 +109,7 @@ Plans:
 | 12. Multi-Agent Supervision Parity | 3/3 | Complete    | 2026-03-27 |
 | 13. Mobile Runtime Parity | 3/3 | Complete    | 2026-03-27 |
 | 14. Control UI Surface Completion | 3/3 | Complete    | 2026-03-27 |
-| 15. Voice and Call Handling Parity | 0/TBD | Not started | - |
+| 15. Voice and Call Handling Parity | 3/3 | Complete    | 2026-03-27 |
 
 ## Phase History
 
@@ -136,5 +138,5 @@ Plans:
 ## Current Status
 
 - Active milestone: v1.2 Deeper OpenClaw Surface Parity
-- Next step: `$gsd-discuss-phase 15` or `$gsd-plan-phase 15`
+- Next step: `$gsd-audit-milestone`
 - Archived v1.0 and v1.1 planning artifacts live under `.planning/milestones/`.

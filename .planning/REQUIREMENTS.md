@@ -22,13 +22,13 @@
 
 ### Control UI Parity
 
-- [ ] **CTRL-01**: Control UI exposes deeper parity across the shipped runtime surfaces so operators do not need to drop to scattered raw endpoints for common workflows.
-- [ ] **CTRL-02**: New Control UI parity surfaces remain coherent with the typed runtime contracts rather than adding one-off frontend-only logic.
+- [x] **CTRL-01**: Control UI exposes deeper parity across the shipped runtime surfaces so operators do not need to drop to scattered raw endpoints for common workflows.
+- [x] **CTRL-02**: New Control UI parity surfaces remain coherent with the typed runtime contracts rather than adding one-off frontend-only logic.
 
 ### Voice and Call Parity
 
-- [ ] **VOIC-01**: Operator can inspect and manage richer voice or call-handling workflows that move closer to OpenClaw’s real-time voice surface.
-- [ ] **VOIC-02**: Voice and call parity surfaces preserve durable artifacts, session health, and operator-visible evidence instead of opaque runtime behavior.
+- [x] **VOIC-01**: Operator can inspect and manage richer voice or call-handling workflows that move closer to OpenClaw’s real-time voice surface.
+- [x] **VOIC-02**: Voice and call parity surfaces preserve durable artifacts, session health, and operator-visible evidence instead of opaque runtime behavior.
 
 ## v1.3+ Requirements
 
@@ -61,10 +61,10 @@
 | SUPR-02 | Phase 12 | Complete |
 | MOBL-01 | Phase 13 | Complete |
 | MOBL-02 | Phase 13 | Complete |
-| CTRL-01 | Phase 14 | Pending |
-| CTRL-02 | Phase 14 | Pending |
-| VOIC-01 | Phase 15 | Pending |
-| VOIC-02 | Phase 15 | Pending |
+| CTRL-01 | Phase 14 | Complete |
+| CTRL-02 | Phase 14 | Complete |
+| VOIC-01 | Phase 15 | Complete |
+| VOIC-02 | Phase 15 | Complete |
 
 **Coverage:**
 - v1.2 requirements: 10 total
@@ -73,4 +73,4 @@
 
 ---
 *Requirements defined: 2026-03-26*
-*Last updated: 2026-03-27 after Phase 13 completion*
+*Last updated: 2026-03-27 after Phase 15 completion*
