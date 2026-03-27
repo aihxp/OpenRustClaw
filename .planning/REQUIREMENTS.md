@@ -65,7 +65,7 @@
 | SETUP-01 | Phase 34 | Complete |
 | OPS-01 | Phase 35 | Complete |
 | SURF-01 | Phase 35 | Complete |
-| GOV-01 | Phase 36 | Pending |
+| GOV-01 | Phase 36 | Complete |
 
 **Coverage:**
 - v1.7 requirements: 8 total

@@ -27,7 +27,7 @@ This milestone treats documentation as a real product surface. The order is deli
 - [x] **Phase 33: README and Documentation Entry Surface Rewrite** - completed 2026-03-27. The repo and mdBook entry surfaces now tell one clearer self-hosted product story.
 - [x] **Phase 34: Getting Started and Setup Guide Convergence** - completed 2026-03-27. The getting-started path now shares one setup lifecycle and handoff story.
 - [x] **Phase 35: Operator, Deployment, and Planning Docs Sync** - completed 2026-03-27. Operator guides and canonical planning docs now match the rewritten product story.
-- [ ] **Phase 36: Documentation Governance and Drift Prevention** - lock in canonical docs maintenance rules, deletion cleanup, and future-sync expectations.
+- [x] **Phase 36: Documentation Governance and Drift Prevention** - completed 2026-03-27. The docs contract, audit, and cleanup rules now make the rewrite durable.
 
 ### Phase Details
 
@@ -95,11 +95,11 @@ Plans:
   1. The docs set has explicit maintenance and ownership rules.
   2. Cleanup decisions from earlier phases are fully applied or documented.
   3. Future milestones have a clear rule for how to update docs without recreating parallel drift.
-**Plans**: 0 plans complete
+**Plans**: 2 plans complete
 
 Plans:
-- [ ] 36-01 Add documentation maintenance contract
-- [ ] 36-02 Complete cleanup, redirects, and verification sync
+- [x] 36-01 Add documentation maintenance contract
+- [x] 36-02 Complete cleanup, redirects, and verification sync
 
 ## Progress
 
@@ -109,12 +109,12 @@ Plans:
 | 33. README and Documentation Entry Surface Rewrite | 2/2 | Complete | 2026-03-27 |
 | 34. Getting Started and Setup Guide Convergence | 2/2 | Complete | 2026-03-27 |
 | 35. Operator, Deployment, and Planning Docs Sync | 2/2 | Complete | 2026-03-27 |
-| 36. Documentation Governance and Drift Prevention | 0/2 | Pending | - |
+| 36. Documentation Governance and Drift Prevention | 2/2 | Complete | 2026-03-27 |
 
 ## Current Status
 
 - Active milestone: v1.7 Documentation Convergence and OpenClaw-Inspired Docs Rewrite
-- Next step: `$gsd-discuss-phase 36`
+- Next step: `$gsd-audit-milestone`
 - Archived milestone planning artifacts live under `.planning/milestones/`.
 
 ## Phase History

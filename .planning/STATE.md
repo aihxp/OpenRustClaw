@@ -5,16 +5,16 @@ milestone_name: Documentation Convergence and OpenClaw-Inspired Docs Rewrite
 current_phase: 36
 current_phase_name: Documentation Governance and Drift Prevention
 current_plan: null
-status: Phase 35 complete
-stopped_at: Continue with $gsd-discuss-phase 36 or $gsd-plan-phase 36.
-last_updated: "2026-03-27T22:10:00.000Z"
-last_activity: 2026-03-27 -- completed Phase 35 operator and planning docs sync
+status: All phases complete
+stopped_at: Run $gsd-audit-milestone, then complete and archive v1.7.
+last_updated: "2026-03-27T22:25:00.000Z"
+last_activity: 2026-03-27 -- completed Phase 36 documentation governance
 progress:
   total_phases: 5
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 10
-  completed_plans: 8
-  percent: 80
+  completed_plans: 10
+  percent: 100
 ---
 
 # Project State
@@ -24,7 +24,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-27)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** Phase 36 - Documentation Governance and Drift Prevention
+**Current focus:** Milestone audit and archive
 
 ## Current Position
 
@@ -33,12 +33,12 @@ Current Phase Name: Documentation Governance and Drift Prevention
 Total Phases: 5
 Current Plan: -
 Total Plans in Phase: 2
-Status: Phase 35 complete
-Last activity: 2026-03-27 -- completed Phase 35 operator and planning docs sync
+Status: All phases complete
+Last activity: 2026-03-27 -- completed Phase 36 documentation governance
 
-Phase: 4 of 5
+Phase: 5 of 5
 Plan: 0 of 0
-Progress: [████████░░] 80%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -68,6 +68,7 @@ Recent decisions affecting current work:
 - Phase 33 rewrote the README and mdBook entry surfaces so the project now reads like one coherent self-hosted product.
 - Phase 34 aligned installation, quickstart, and first-agent around the shipped onboarding, repair, and setup-handoff lifecycle.
 - Phase 35 rewrote operator guides and canonical planning docs so they reinforce the same self-hosted product story.
+- Phase 36 locked in the documentation maintenance workflow, refreshed the docs audit, and removed the last stale redirect.
 
 ### Pending Todos
 
@@ -79,6 +80,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-27 22:10
-Stopped at: Continue with $gsd-discuss-phase 36 or $gsd-plan-phase 36.
+Last session: 2026-03-27 22:25
+Stopped at: Run $gsd-audit-milestone, then complete and archive v1.7.
 Resume file: None
