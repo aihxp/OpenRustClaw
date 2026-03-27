@@ -1,0 +1,57 @@
+# GitHub Repo Admin
+
+This document is the canonical in-repo contract for OpenRustClaw's public GitHub surface.
+
+It covers:
+
+- the desired repo About description and homepage
+- the canonical GitHub topic set
+- the repeatable admin flow for checking or applying that metadata
+- the verification path for repo-facing GitHub Actions and badges
+
+## Canonical Metadata
+
+The desired public repo metadata lives in:
+
+- `.github/repository-metadata.json`
+
+That file is the source of truth for:
+
+- repo description
+- homepage
+- GitHub topics
+
+## Admin Commands
+
+Use the repo-admin helper:
+
+```bash
+bash scripts/github-repo-admin.sh show-desired
+bash scripts/github-repo-admin.sh validate-local
+bash scripts/github-repo-admin.sh show-live
+bash scripts/github-repo-admin.sh check-live
+bash scripts/github-repo-admin.sh apply-live
+```
+
+`show-desired` and `validate-local` do not require GitHub auth.
+
+`show-live`, `check-live`, and `apply-live` require a valid `GITHUB_TOKEN` or `GH_TOKEN` with permission to administer `aihxp/OpenRustClaw`.
+
+## Verification
+
+Minimum local verification:
+
+```bash
+bash scripts/github-repo-admin.sh validate-local
+```
+
+Minimum live verification when GitHub auth is available:
+
+```bash
+bash scripts/github-repo-admin.sh check-live
+```
+
+## Notes
+
+- If GitHub auth is unavailable, keep `.github/repository-metadata.json` current and treat live repo-surface sync as blocked, not silently complete.
+- GitHub topics and the About panel are not stored in git by default; this doc plus `scripts/github-repo-admin.sh` make that admin surface repeatable.

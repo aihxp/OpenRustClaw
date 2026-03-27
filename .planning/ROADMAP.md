@@ -18,6 +18,7 @@
 - Active milestone: **v1.9 GitHub Repository Presence and Actions Recovery**
 - Progress: 0 of 4 phases complete (0%)
 - Next phase: **Phase 41**
+- Current execution: **Phase 41 in progress**
 - Next step: `$gsd-plan-phase 41` or `$gsd-autonomous`
 
 ## Roadmap v1.9: GitHub Repository Presence and Actions Recovery
@@ -49,11 +50,11 @@ This milestone is about making the GitHub repo itself truthful and operational a
   1. The public repo About wording, README entry surface, and linked resources describe the same current product.
   2. The repo no longer advertises the stale hybrid-framework positioning that conflicts with shipped docs.
   3. Repo entry links and badges point at the current documentation and automation surfaces.
-**Plans**: 2 plans pending
+**Plans**: 1 of 2 plans complete
 
 Plans:
-- [ ] 41-01 Align GitHub About wording with the current product story
-- [ ] 41-02 Normalize README badges and public entry links
+- [x] 41-01 Add the canonical repo metadata contract and README admin links
+- [ ] 41-02 Apply and verify the live GitHub About surface
 
 ### Phase 42: GitHub Topics and Discovery Surface
 **Goal**: Make repo discovery metadata intentional and repeatable instead of ad hoc or stale.
@@ -101,7 +102,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 41. GitHub About and Public Positioning Contract | 0/2 | Pending | - |
+| 41. GitHub About and Public Positioning Contract | 1/2 | In Progress | - |
 | 42. GitHub Topics and Discovery Surface | 0/2 | Pending | - |
 | 43. GitHub Actions Audit and Repair | 0/2 | Pending | - |
 | 44. GitHub Admin Sync and Verification Exit | 0/2 | Pending | - |
@@ -111,7 +112,7 @@ Plans:
 <details>
 <summary>🚧 v1.9 GitHub Repository Presence and Actions Recovery — ACTIVE</summary>
 
-- [ ] **Phase 41: GitHub About and Public Positioning Contract**
+- [~] **Phase 41: GitHub About and Public Positioning Contract** — in progress; local metadata contract landed, live GitHub update blocked by invalid token
 - [ ] **Phase 42: GitHub Topics and Discovery Surface**
 - [ ] **Phase 43: GitHub Actions Audit and Repair**
 - [ ] **Phase 44: GitHub Admin Sync and Verification Exit**

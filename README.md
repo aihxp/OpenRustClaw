@@ -1,6 +1,7 @@
 # OpenRustClaw
 
 [![CI](https://github.com/aihxp/OpenRustClaw/actions/workflows/ci.yml/badge.svg)](https://github.com/aihxp/OpenRustClaw/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/aihxp/OpenRustClaw)](https://github.com/aihxp/OpenRustClaw/releases)
 [![Rust](https://img.shields.io/badge/rust-2024_edition-orange.svg)](https://www.rust-lang.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
@@ -92,6 +93,7 @@ Use these as the main entry points:
 | Production deployment and operations | [docs/src/deployment/production.md](docs/src/deployment/production.md) |
 | Security model and operator guidance | [docs/src/guides/security.md](docs/src/guides/security.md) |
 | Observability and runtime signals | [docs/src/operations/observability.md](docs/src/operations/observability.md) |
+| GitHub repo metadata and admin sync | [docs/github-repo-admin.md](docs/github-repo-admin.md) |
 | Canonical docs ownership rules | [docs/documentation-contract.md](docs/documentation-contract.md) |
 | Shipped-surface planning references | [docs/roadmap.md](docs/roadmap.md), [docs/feature-matrix.md](docs/feature-matrix.md), [docs/surface-matrix.md](docs/surface-matrix.md), [docs/product-positioning.md](docs/product-positioning.md) |
 

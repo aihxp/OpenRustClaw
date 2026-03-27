@@ -1,0 +1,17 @@
+{
+  "repo": "aihxp/OpenRustClaw",
+  "description": "Self-hosted open-source Rust-first assistant platform with a trust-first control plane, durable operator surfaces, and optional enterprise governance and autonomy lanes.",
+  "homepage": "https://github.com/aihxp/OpenRustClaw",
+  "topics": [
+    "rust",
+    "self-hosted",
+    "assistant",
+    "ai-assistant",
+    "open-source",
+    "llm",
+    "mcp",
+    "browser-automation",
+    "voice-assistant",
+    "enterprise"
+  ]
+}
