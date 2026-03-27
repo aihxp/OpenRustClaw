@@ -4,15 +4,15 @@ milestone: v1.4
 milestone_name: Enterprise Governance and Operator-Gated Full Autonomy
 current_phase: 20
 current_phase_name: Enterprise Governance and Approval Chains
-current_plan: Not started
-status: Defining requirements
-stopped_at: Milestone v1.4 started; Phase 20 is ready for discuss and planning.
-last_updated: "2026-03-27T08:15:00.000Z"
-last_activity: 2026-03-27 -- milestone v1.4 started
+current_plan: 20-01 Add A Typed Enterprise Governance Contract
+status: Phase 20 planned
+stopped_at: Phase 20 plans created; 20-01 governance contract implementation is next.
+last_updated: "2026-03-27T12:10:00.000Z"
+last_activity: 2026-03-27 -- Phase 20 planned
 progress:
   total_phases: 4
   completed_phases: 0
-  total_plans: 0
+  total_plans: 3
   completed_plans: 0
   percent: 0
 ---
@@ -31,13 +31,13 @@ See: .planning/PROJECT.md (updated 2026-03-27)
 Current Phase: 20
 Current Phase Name: Enterprise Governance and Approval Chains
 Total Phases: 4
-Current Plan: Not started
-Total Plans in Phase: 0
-Status: Defining requirements
-Last activity: 2026-03-27 -- milestone v1.4 started
+Current Plan: 20-01 Add A Typed Enterprise Governance Contract
+Total Plans in Phase: 3
+Status: Phase 20 planned
+Last activity: 2026-03-27 -- Phase 20 planned
 
 Phase: 1 of 4 (Enterprise Governance and Approval Chains)
-Plan: 0 of 0 in current phase
+Plan: 0 of 3 in current phase
 Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
@@ -106,5 +106,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-27 04:44
-Stopped at: Milestone v1.4 started; Phase 20 is ready for discuss and planning.
+Stopped at: Phase 20 plans created; 20-01 governance contract implementation is next.
 Resume file: None
