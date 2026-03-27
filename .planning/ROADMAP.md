@@ -9,11 +9,112 @@
 - ✅ **v1.4 Enterprise Governance and Operator-Gated Full Autonomy** — shipped 2026-03-27. Archive: `.planning/milestones/v1.4-ROADMAP.md`
 - ✅ **v1.5 Self-Hosted Product Modes and Lifecycle Packaging** — shipped 2026-03-27. Archive: `.planning/milestones/v1.5-ROADMAP.md`
 - ✅ **v1.6 Proper Onboarding and Setup** — shipped 2026-03-28. Archive: `.planning/milestones/v1.6-ROADMAP.md`
+- 🚧 **v1.7 Documentation Convergence and OpenClaw-Inspired Docs Rewrite** — phases 32-36
+
+## Roadmap v1.7: Documentation Convergence and OpenClaw-Inspired Docs Rewrite
+
+### Overview
+
+This milestone treats documentation as a real product surface. The order is deliberate: first establish a canonical docs contract and inventory so the repo stops pretending multiple overlapping files are equally authoritative, then rewrite the README and documentation entry surfaces around one clearer self-hosted product story, then converge setup and getting-started guidance, then rewrite operator and planning docs against the shipped runtime surface, and finally lock the result in with a docs-governance and drift-prevention contract.
+
+### Phases
+
+**Phase Numbering:**
+- Integer phases continue across milestones to preserve one linear execution history.
+- Decimal phases are reserved for urgent insertions if roadmap assumptions break.
+
+- [ ] **Phase 32: Documentation Inventory and Canonical Source Contract** - define what each docs surface owns, identify merge/delete targets, and make source-of-truth boundaries explicit.
+- [ ] **Phase 33: README and Documentation Entry Surface Rewrite** - rewrite the top-level product story, primary entry points, and audience-aware navigation around a clearer OpenClaw-inspired structure.
+- [ ] **Phase 34: Getting Started and Setup Guide Convergence** - align installation, quickstart, first-agent, setup handoff, and upgrade or downgrade docs around the shipped setup lifecycle.
+- [ ] **Phase 35: Operator, Deployment, and Planning Docs Sync** - rewrite operator and planning-facing docs so deployment, security, observability, matrices, and product-positioning pages match the shipped runtime and control surfaces.
+- [ ] **Phase 36: Documentation Governance and Drift Prevention** - lock in canonical docs maintenance rules, deletion cleanup, and future-sync expectations.
+
+### Phase Details
+
+### Phase 32: Documentation Inventory and Canonical Source Contract
+**Goal**: Define the documentation ownership model so future rewrites converge existing files instead of adding another parallel layer.
+**Depends on**: v1.6 archive state
+**Requirements**: [DOCS-01, DOCS-02]
+**Success Criteria** (what must be TRUE):
+  1. The repo identifies which files are canonical, mirrored, derived, or candidates for deletion.
+  2. Duplicate or stale docs families are inventory-backed rather than handled ad hoc.
+  3. The milestone has an explicit merge/delete target list before the rewrite begins.
+**Plans**: 0 plans complete
+
+Plans:
+- [ ] 32-01 Audit README, repo-root docs, and docs-site overlap
+- [ ] 32-02 Define canonical ownership and cleanup rules
+
+### Phase 33: README and Documentation Entry Surface Rewrite
+**Goal**: Make the first impression legible so OpenRustClaw reads like one coherent self-hosted product instead of a broad codebase dump.
+**Depends on**: Phase 32
+**Requirements**: [ENTRY-01, ENTRY-02]
+**Success Criteria** (what must be TRUE):
+  1. README and docs landing surfaces tell one consistent product story.
+  2. New users can identify what OpenRustClaw is, who it is for, and how to start.
+  3. The rewrite borrows the clarity of OpenClaw’s public docs style without drifting into inaccurate or copied claims.
+**Plans**: 0 plans complete
+
+Plans:
+- [ ] 33-01 Rewrite README around the self-hosted product story
+- [ ] 33-02 Rewrite docs introduction and primary navigation entry points
+
+### Phase 34: Getting Started and Setup Guide Convergence
+**Goal**: Ensure setup-facing docs all describe the same shipped lifecycle instead of sending operators through conflicting paths.
+**Depends on**: Phase 33
+**Requirements**: [SETUP-01]
+**Success Criteria** (what must be TRUE):
+  1. Installation, quickstart, first-agent, and setup handoff pages all agree on the setup path.
+  2. Standard, Advanced, and Custom setup depth plus repair and upgrade or downgrade expectations are documented consistently.
+  3. The getting-started path reads like one guided flow instead of several disconnected docs.
+**Plans**: 0 plans complete
+
+Plans:
+- [ ] 34-01 Converge install and quickstart guidance
+- [ ] 34-02 Align first-agent and setup handoff docs with shipped setup surfaces
+
+### Phase 35: Operator, Deployment, and Planning Docs Sync
+**Goal**: Rewrite operator-facing and planning-facing documentation so the shipped runtime and control surfaces are described truthfully and compactly.
+**Depends on**: Phase 34
+**Requirements**: [OPS-01, SURF-01]
+**Success Criteria** (what must be TRUE):
+  1. Deployment, production, security, observability, and release guidance reflect the shipped product.
+  2. Feature matrix, surface matrix, roadmap, and product-positioning pages fit the same product story and navigation model.
+  3. Stale promises or outdated matrix rows are removed rather than preserved for historical comfort.
+**Plans**: 0 plans complete
+
+Plans:
+- [ ] 35-01 Rewrite operator docs around the current runtime and control surface
+- [ ] 35-02 Sync planning and matrix docs with shipped behavior
+
+### Phase 36: Documentation Governance and Drift Prevention
+**Goal**: Make the docs rewrite durable by defining how future milestones merge, delete, verify, and keep canonical docs synchronized.
+**Depends on**: Phase 35
+**Requirements**: [GOV-01]
+**Success Criteria** (what must be TRUE):
+  1. The docs set has explicit maintenance and ownership rules.
+  2. Cleanup decisions from earlier phases are fully applied or documented.
+  3. Future milestones have a clear rule for how to update docs without recreating parallel drift.
+**Plans**: 0 plans complete
+
+Plans:
+- [ ] 36-01 Add documentation maintenance contract
+- [ ] 36-02 Complete cleanup, redirects, and verification sync
+
+## Progress
+
+| Phase | Plans Complete | Status | Completed |
+|-------|----------------|--------|-----------|
+| 32. Documentation Inventory and Canonical Source Contract | 0/2 | Pending | - |
+| 33. README and Documentation Entry Surface Rewrite | 0/2 | Pending | - |
+| 34. Getting Started and Setup Guide Convergence | 0/2 | Pending | - |
+| 35. Operator, Deployment, and Planning Docs Sync | 0/2 | Pending | - |
+| 36. Documentation Governance and Drift Prevention | 0/2 | Pending | - |
 
 ## Current Status
 
-- No active milestone open.
-- Next step: `$gsd-new-milestone`
+- Active milestone: v1.7 Documentation Convergence and OpenClaw-Inspired Docs Rewrite
+- Next step: `$gsd-discuss-phase 32`
 - Archived milestone planning artifacts live under `.planning/milestones/`.
 
 ## Phase History
