@@ -21,7 +21,7 @@ This milestone extends the enterprise baseline from v1.3 into stronger governanc
 - Decimal phases are reserved for urgent insertions if roadmap assumptions break.
 
 - [x] **Phase 20: Enterprise Governance and Approval Chains** - completed 2026-03-27. Deepened role, approval, and separation-of-duties controls for sensitive enterprise actions.
-- [ ] **Phase 21: Enterprise Audit Retention and Review Packaging** - Strengthen retention, export, and enterprise reviewability for governance and autonomy evidence.
+- [x] **Phase 21: Enterprise Audit Retention and Review Packaging** - completed 2026-03-27. Strengthened retention, export, and enterprise reviewability for governance and autonomy evidence.
 - [ ] **Phase 22: Operator-Gated Full Autonomy Mode** - Add an explicit full-autonomy override lane with budgets, kill switches, and durable operator-visible evidence.
 - [ ] **Phase 23: Enterprise Autonomy Control Surface** - Make governance and full-autonomy controls usable and inspectable from shipped operator surfaces.
 
@@ -50,12 +50,12 @@ Plans:
   1. Enterprise evidence exports preserve richer governance and operator context.
   2. Audit retention and export behavior is configurable from one coherent enterprise surface.
   3. Operators can review the strengthened audit contract without scraping multiple raw ledgers.
-**Plans**: TBD
+**Plans**: 3 plans complete
 
 Plans:
-- [ ] 21-01 Deepen Enterprise Audit Retention Policy
-- [ ] 21-02 Package Governance And Autonomy Evidence For Review
-- [ ] 21-03 Surface Enterprise Audit Review In Control UI
+- [x] 21-01 Deepen Enterprise Audit Retention Policy
+- [x] 21-02 Package Governance And Autonomy Evidence For Review
+- [x] 21-03 Surface Enterprise Audit Review In Control UI
 
 ### Phase 22: Operator-Gated Full Autonomy Mode
 **Goal**: Add an explicit full-autonomy override lane that trusted operators can enable deliberately without changing the default trust-first runtime path.
@@ -88,14 +88,14 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 20. Enterprise Governance and Approval Chains | 3/3 | Complete | 2026-03-27 |
-| 21. Enterprise Audit Retention and Review Packaging | 0/3 | Planned | - |
+| 21. Enterprise Audit Retention and Review Packaging | 3/3 | Complete | 2026-03-27 |
 | 22. Operator-Gated Full Autonomy Mode | 0/TBD | Not started | - |
 | 23. Enterprise Autonomy Control Surface | 0/TBD | Not started | - |
 
 ## Current Status
 
 - Active milestone: v1.4 Enterprise Governance and Operator-Gated Full Autonomy
-- Next step: execute Phase 21 plan 21-01
+- Next step: `$gsd-discuss-phase 22` or `$gsd-plan-phase 22`
 - Archived milestone planning artifacts live under `.planning/milestones/`.
 
 ## Phase History
