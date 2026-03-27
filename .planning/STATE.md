@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.7
 milestone_name: Documentation Convergence and OpenClaw-Inspired Docs Rewrite
-current_phase: 34
-current_phase_name: Getting Started and Setup Guide Convergence
+current_phase: 35
+current_phase_name: Operator, Deployment, and Planning Docs Sync
 current_plan: null
-status: Phase 33 complete
-stopped_at: Continue with $gsd-discuss-phase 34 or $gsd-plan-phase 34.
-last_updated: "2026-03-27T21:40:00.000Z"
-last_activity: 2026-03-27 -- completed Phase 33 docs entry rewrite
+status: Phase 34 complete
+stopped_at: Continue with $gsd-discuss-phase 35 or $gsd-plan-phase 35.
+last_updated: "2026-03-27T21:55:00.000Z"
+last_activity: 2026-03-27 -- completed Phase 34 getting-started convergence
 progress:
   total_phases: 5
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 10
-  completed_plans: 4
-  percent: 40
+  completed_plans: 6
+  percent: 60
 ---
 
 # Project State
@@ -24,21 +24,21 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-27)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** Phase 34 - Getting Started and Setup Guide Convergence
+**Current focus:** Phase 35 - Operator, Deployment, and Planning Docs Sync
 
 ## Current Position
 
-Current Phase: 34
-Current Phase Name: Getting Started and Setup Guide Convergence
+Current Phase: 35
+Current Phase Name: Operator, Deployment, and Planning Docs Sync
 Total Phases: 5
 Current Plan: -
 Total Plans in Phase: 2
-Status: Phase 33 complete
-Last activity: 2026-03-27 -- completed Phase 33 docs entry rewrite
+Status: Phase 34 complete
+Last activity: 2026-03-27 -- completed Phase 34 getting-started convergence
 
-Phase: 2 of 5
+Phase: 3 of 5
 Plan: 0 of 0
-Progress: [████░░░░░░] 40%
+Progress: [██████░░░░] 60%
 
 ## Performance Metrics
 
@@ -66,6 +66,7 @@ Recent decisions affecting current work:
 - v1.7 will treat documentation drift as product debt and converge the README, repo-root docs, and docs-site sources into one canonical self-hosted product story.
 - Phase 32 established the canonical docs ownership contract and made merge-or-delete rules explicit before the public rewrite.
 - Phase 33 rewrote the README and mdBook entry surfaces so the project now reads like one coherent self-hosted product.
+- Phase 34 aligned installation, quickstart, and first-agent around the shipped onboarding, repair, and setup-handoff lifecycle.
 
 ### Pending Todos
 
@@ -77,6 +78,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-27 21:40
-Stopped at: Continue with $gsd-discuss-phase 34 or $gsd-plan-phase 34.
+Last session: 2026-03-27 21:55
+Stopped at: Continue with $gsd-discuss-phase 35 or $gsd-plan-phase 35.
 Resume file: None

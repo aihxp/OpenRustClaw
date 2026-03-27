@@ -25,7 +25,7 @@ This milestone treats documentation as a real product surface. The order is deli
 
 - [x] **Phase 32: Documentation Inventory and Canonical Source Contract** - completed 2026-03-27. Documentation ownership, mirror rules, and cleanup criteria are now explicit.
 - [x] **Phase 33: README and Documentation Entry Surface Rewrite** - completed 2026-03-27. The repo and mdBook entry surfaces now tell one clearer self-hosted product story.
-- [ ] **Phase 34: Getting Started and Setup Guide Convergence** - align installation, quickstart, first-agent, setup handoff, and upgrade or downgrade docs around the shipped setup lifecycle.
+- [x] **Phase 34: Getting Started and Setup Guide Convergence** - completed 2026-03-27. The getting-started path now shares one setup lifecycle and handoff story.
 - [ ] **Phase 35: Operator, Deployment, and Planning Docs Sync** - rewrite operator and planning-facing docs so deployment, security, observability, matrices, and product-positioning pages match the shipped runtime and control surfaces.
 - [ ] **Phase 36: Documentation Governance and Drift Prevention** - lock in canonical docs maintenance rules, deletion cleanup, and future-sync expectations.
 
@@ -67,11 +67,11 @@ Plans:
   1. Installation, quickstart, first-agent, and setup handoff pages all agree on the setup path.
   2. Standard, Advanced, and Custom setup depth plus repair and upgrade or downgrade expectations are documented consistently.
   3. The getting-started path reads like one guided flow instead of several disconnected docs.
-**Plans**: 0 plans complete
+**Plans**: 2 plans complete
 
 Plans:
-- [ ] 34-01 Converge install and quickstart guidance
-- [ ] 34-02 Align first-agent and setup handoff docs with shipped setup surfaces
+- [x] 34-01 Converge install and quickstart guidance
+- [x] 34-02 Align first-agent and setup handoff docs with shipped setup surfaces
 
 ### Phase 35: Operator, Deployment, and Planning Docs Sync
 **Goal**: Rewrite operator-facing and planning-facing documentation so the shipped runtime and control surfaces are described truthfully and compactly.
@@ -107,14 +107,14 @@ Plans:
 |-------|----------------|--------|-----------|
 | 32. Documentation Inventory and Canonical Source Contract | 2/2 | Complete | 2026-03-27 |
 | 33. README and Documentation Entry Surface Rewrite | 2/2 | Complete | 2026-03-27 |
-| 34. Getting Started and Setup Guide Convergence | 0/2 | Pending | - |
+| 34. Getting Started and Setup Guide Convergence | 2/2 | Complete | 2026-03-27 |
 | 35. Operator, Deployment, and Planning Docs Sync | 0/2 | Pending | - |
 | 36. Documentation Governance and Drift Prevention | 0/2 | Pending | - |
 
 ## Current Status
 
 - Active milestone: v1.7 Documentation Convergence and OpenClaw-Inspired Docs Rewrite
-- Next step: `$gsd-discuss-phase 34`
+- Next step: `$gsd-discuss-phase 35`
 - Archived milestone planning artifacts live under `.planning/milestones/`.
 
 ## Phase History

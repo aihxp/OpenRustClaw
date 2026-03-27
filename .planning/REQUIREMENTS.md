@@ -62,7 +62,7 @@
 | DOCS-02 | Phase 32 | Pending |
 | ENTRY-01 | Phase 33 | Complete |
 | ENTRY-02 | Phase 33 | Complete |
-| SETUP-01 | Phase 34 | Pending |
+| SETUP-01 | Phase 34 | Complete |
 | OPS-01 | Phase 35 | Pending |
 | SURF-01 | Phase 35 | Pending |
 | GOV-01 | Phase 36 | Pending |
