@@ -491,13 +491,41 @@
               <tbody id="voice-outcomes-table"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
             </table>
           </div>
-          <div class="surface" style="margin-top: 12px"><pre id="voice-sessions">No voice sessions loaded yet.</pre></div>
+          <div class="surface" style="margin-top: 12px">
+            <table class="table">
+              <thead>
+                <tr><th>Session</th><th>Providers</th><th>Activity</th><th>Action</th></tr>
+              </thead>
+              <tbody id="voice-sessions"><tr><td colspan="4" class="muted">No voice sessions loaded yet.</td></tr></tbody>
+            </table>
+          </div>
           <div class="surface" style="margin-top: 12px"><pre id="voice-session-health">No voice session health loaded yet.</pre></div>
-          <div class="surface" style="margin-top: 12px"><pre id="voice-session-detail">No voice session inspected yet.</pre></div>
-          <div class="surface" style="margin-top: 12px"><pre id="voice-session-metrics">No voice session metrics loaded yet.</pre></div>
-          <div class="surface" style="margin-top: 12px"><pre id="voice-session-transcript">No voice session transcript loaded yet.</pre></div>
-          <div class="surface" style="margin-top: 12px"><pre id="voice-session-artifacts">No voice session artifacts loaded yet.</pre></div>
-          <div class="surface" style="margin-top: 12px"><pre id="voice-session-events">No voice session events loaded yet.</pre></div>
+          <div class="surface" style="margin-top: 12px"><div id="voice-session-detail" class="summary-card empty">No voice session inspected yet.</div></div>
+          <div class="surface" style="margin-top: 12px"><div id="voice-session-metrics" class="summary-card empty">No voice session metrics loaded yet.</div></div>
+          <div class="surface" style="margin-top: 12px">
+            <table class="table">
+              <thead>
+                <tr><th>#</th><th>Role</th><th>Text</th><th>Artifact</th></tr>
+              </thead>
+              <tbody id="voice-session-transcript"><tr><td colspan="4" class="muted">No voice session transcript loaded yet.</td></tr></tbody>
+            </table>
+          </div>
+          <div class="surface" style="margin-top: 12px">
+            <table class="table">
+              <thead>
+                <tr><th>#</th><th>Role</th><th>When</th><th>Artifact</th></tr>
+              </thead>
+              <tbody id="voice-session-artifacts"><tr><td colspan="4" class="muted">No voice session artifacts loaded yet.</td></tr></tbody>
+            </table>
+          </div>
+          <div class="surface" style="margin-top: 12px">
+            <table class="table">
+              <thead>
+                <tr><th>#</th><th>Kind</th><th>When</th><th>Summary</th></tr>
+              </thead>
+              <tbody id="voice-session-events"><tr><td colspan="4" class="muted">No voice session events loaded yet.</td></tr></tbody>
+            </table>
+          </div>
           <div class="surface" style="margin-top: 12px"><pre id="voice-voices">No voice catalog loaded yet.</pre></div>
         </article>
         <article class="panel span-6">
@@ -518,10 +546,24 @@
           </div>
           <div class="surface"><pre id="talk-runtime-status">Loading…</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="talk-runtime-metrics">No talk metrics loaded yet.</pre></div>
-          <div class="surface" style="margin-top: 12px"><pre id="talk-sessions">No talk receipts loaded yet.</pre></div>
-          <div class="surface" style="margin-top: 12px"><pre id="talk-session-detail">No talk receipt inspected yet.</pre></div>
-          <div class="surface" style="margin-top: 12px"><pre id="talk-session-metrics-detail">No talk session metrics loaded yet.</pre></div>
-          <div class="surface" style="margin-top: 12px"><pre id="talk-session-events-detail">No talk event timeline loaded yet.</pre></div>
+          <div class="surface" style="margin-top: 12px">
+            <table class="table">
+              <thead>
+                <tr><th>Session</th><th>Provider</th><th>Activity</th><th>Action</th></tr>
+              </thead>
+              <tbody id="talk-sessions"><tr><td colspan="4" class="muted">No talk receipts loaded yet.</td></tr></tbody>
+            </table>
+          </div>
+          <div class="surface" style="margin-top: 12px"><div id="talk-session-detail" class="summary-card empty">No talk receipt inspected yet.</div></div>
+          <div class="surface" style="margin-top: 12px"><div id="talk-session-metrics-detail" class="summary-card empty">No talk session metrics loaded yet.</div></div>
+          <div class="surface" style="margin-top: 12px">
+            <table class="table">
+              <thead>
+                <tr><th>#</th><th>Kind</th><th>When</th><th>Summary</th></tr>
+              </thead>
+              <tbody id="talk-session-events-detail"><tr><td colspan="4" class="muted">No talk event timeline loaded yet.</td></tr></tbody>
+            </table>
+          </div>
         </article>
         <article class="panel span-6">
           <h2>Voice Media</h2>
@@ -1375,9 +1417,25 @@
 
       function humanizeStatusLabel(value) {
         return String(value || "unknown")
-          .split("-")
+          .split(/[-_]/)
           .map((part) => part ? `${part[0].toUpperCase()}${part.slice(1)}` : part)
           .join(" ");
+      }
+
+      function truncateText(value, limit = 96) {
+        const text = String(value || "");
+        return text.length > limit ? `${text.slice(0, limit - 1)}…` : text;
+      }
+
+      function renderSummaryCard(targetId, emptyLabel, markup) {
+        const target = document.getElementById(targetId);
+        if (!markup) {
+          target.className = "summary-card empty";
+          target.textContent = emptyLabel;
+          return;
+        }
+        target.className = "summary-card";
+        target.innerHTML = markup;
       }
 
       function memoryPolicySummary(entry) {
@@ -1511,6 +1569,243 @@
           </tr>`;
         });
         renderTableRows("enterprise-audit-table", rows, "No recent enterprise audit evidence.");
+      }
+
+      function renderVoiceSessionList(payload) {
+        const sessions = payload?.sessions || [];
+        const rows = sessions.map((entry) => {
+          const sessionId = JSON.stringify(entry.id || "");
+          const artifactCount = (entry.turns || []).filter((turn) => turn.synthesized_output_path).length;
+          return `<tr>
+            <td><strong>${escapeHtml(entry.id || "-")}</strong><div class="muted">${escapeHtml(humanizeStatusLabel(entry.status || "-"))} / ${escapeHtml(humanizeStatusLabel(entry.live_state || "-"))}</div></td>
+            <td>${escapeHtml(entry.stt_provider || "-")}<div class="muted">${escapeHtml(entry.tts_provider || "-")} / ${escapeHtml(entry.tts_voice || "-")}</div></td>
+            <td>${escapeHtml(entry.last_activity_at || "-")}<div class="muted">${escapeHtml(String((entry.turns || []).length))} turn(s) / ${escapeHtml(String(artifactCount))} artifact(s)</div></td>
+            <td><button class="secondary" onclick="selectVoiceSession(${sessionId})">Inspect</button></td>
+          </tr>`;
+        });
+        renderTableRows("voice-sessions", rows, "No voice sessions loaded yet.");
+      }
+
+      function renderVoiceSessionDetail(session) {
+        if (!session || session.error) {
+          renderSummaryCard("voice-session-detail", session?.error || "No voice session inspected yet.", null);
+          return;
+        }
+
+        renderSummaryCard("voice-session-detail", "No voice session inspected yet.", `
+          <div>
+            <div class="summary-kicker">Voice Session</div>
+            <div class="summary-title">${escapeHtml(session.id || "-")}</div>
+            <div class="summary-copy">${escapeHtml(session.assistant_prompt || "No assistant prompt recorded.")}</div>
+          </div>
+          <div class="summary-grid">
+            <div class="summary-stat">
+              <label>Status</label>
+              <strong>${escapeHtml(humanizeStatusLabel(session.status || "-"))}</strong>
+              <span class="muted">${escapeHtml(humanizeStatusLabel(session.live_state || "-"))}</span>
+            </div>
+            <div class="summary-stat">
+              <label>Providers</label>
+              <strong>${escapeHtml(session.stt_provider || "-")}</strong>
+              <span class="muted">${escapeHtml(session.tts_provider || "-")} / ${escapeHtml(session.tts_voice || "-")}</span>
+            </div>
+            <div class="summary-stat">
+              <label>Turns</label>
+              <strong>${escapeHtml(String((session.turns || []).length))}</strong>
+              <span class="muted">${escapeHtml(session.end_reason || "No end reason recorded")}</span>
+            </div>
+            <div class="summary-stat">
+              <label>Controls</label>
+              <strong>reconnect ${escapeHtml(String(session.reconnect_count ?? 0))}</strong>
+              <span class="muted">pause ${escapeHtml(String(session.pause_count ?? 0))} / interrupt ${escapeHtml(String(session.interrupted_count ?? 0))}</span>
+            </div>
+            <div class="summary-stat">
+              <label>Created</label>
+              <span class="mono">${escapeHtml(session.created_at || "-")}</span>
+            </div>
+            <div class="summary-stat">
+              <label>Last Activity</label>
+              <span class="mono">${escapeHtml(session.last_activity_at || "-")}</span>
+            </div>
+          </div>
+        `);
+      }
+
+      function renderVoiceSessionMetrics(metrics) {
+        if (!metrics || metrics.error) {
+          renderSummaryCard("voice-session-metrics", metrics?.error || "No voice session metrics loaded yet.", null);
+          return;
+        }
+
+        renderSummaryCard("voice-session-metrics", "No voice session metrics loaded yet.", `
+          <div>
+            <div class="summary-kicker">Voice Metrics</div>
+            <div class="summary-title">${escapeHtml(metrics.session_id || "-")}</div>
+            <div class="summary-copy">${escapeHtml(String(metrics.turn_count ?? 0))} turn(s), ${escapeHtml(String(metrics.artifact_count ?? 0))} artifact(s), ${escapeHtml(String(metrics.transcript_chars ?? 0))} transcript chars.</div>
+          </div>
+          <div class="summary-grid">
+            <div class="summary-stat">
+              <label>Turn Split</label>
+              <strong>${escapeHtml(String(metrics.user_turn_count ?? 0))} user</strong>
+              <span class="muted">${escapeHtml(String(metrics.assistant_turn_count ?? 0))} assistant</span>
+            </div>
+            <div class="summary-stat">
+              <label>Transcript</label>
+              <strong>${escapeHtml(String(metrics.user_chars ?? 0))} user chars</strong>
+              <span class="muted">${escapeHtml(String(metrics.assistant_chars ?? 0))} assistant chars</span>
+            </div>
+            <div class="summary-stat">
+              <label>Artifacts</label>
+              <strong>${escapeHtml(String(metrics.artifact_bytes ?? 0))} bytes</strong>
+              <span class="muted">${escapeHtml(String(metrics.artifact_count ?? 0))} output(s)</span>
+            </div>
+            <div class="summary-stat">
+              <label>Live Controls</label>
+              <strong>idle ${escapeHtml(String(metrics.idle_secs ?? 0))}s</strong>
+              <span class="muted">reconnect ${escapeHtml(String(metrics.reconnect_count ?? 0))} / pause ${escapeHtml(String(metrics.pause_count ?? 0))} / interrupt ${escapeHtml(String(metrics.interrupted_count ?? 0))}</span>
+            </div>
+            <div class="summary-stat">
+              <label>Average Turn Size</label>
+              <strong>${escapeHtml(String(metrics.avg_user_turn_chars ?? "-"))}</strong>
+              <span class="muted">assistant ${escapeHtml(String(metrics.avg_assistant_turn_chars ?? "-"))}</span>
+            </div>
+            <div class="summary-stat">
+              <label>Duration</label>
+              <span class="mono">${escapeHtml(String(metrics.duration_secs ?? "-"))}s</span>
+            </div>
+          </div>
+        `);
+      }
+
+      function renderVoiceSessionTranscript(payload) {
+        const rows = (payload?.turns || []).map((turn) => `<tr>
+          <td>${escapeHtml(String(turn.index ?? "-"))}</td>
+          <td><strong>${escapeHtml(humanizeStatusLabel(turn.role || "-"))}</strong><div class="muted">${escapeHtml(turn.created_at || "-")}</div></td>
+          <td>${escapeHtml(truncateText(turn.text || "-", 220))}</td>
+          <td>${escapeHtml(turn.synthesized_output_path || "-")}</td>
+        </tr>`);
+        renderTableRows("voice-session-transcript", rows, "No voice session transcript loaded yet.");
+      }
+
+      function renderVoiceSessionArtifacts(payload) {
+        const rows = (payload?.artifacts || []).map((artifact) => `<tr>
+          <td>${escapeHtml(String(artifact.index ?? "-"))}</td>
+          <td><strong>${escapeHtml(humanizeStatusLabel(artifact.role || "-"))}</strong><div class="muted">${artifact.exists ? "present" : "missing"}</div></td>
+          <td>${escapeHtml(artifact.created_at || "-")}</td>
+          <td><strong>${escapeHtml(artifact.path || "-")}</strong><div class="muted">${escapeHtml(String(artifact.bytes ?? 0))} bytes</div></td>
+        </tr>`);
+        renderTableRows("voice-session-artifacts", rows, "No voice session artifacts loaded yet.");
+      }
+
+      function renderVoiceSessionEvents(payload) {
+        const rows = (payload?.events || []).map((event) => `<tr>
+          <td>${escapeHtml(String(event.index ?? "-"))}</td>
+          <td><strong>${escapeHtml(humanizeStatusLabel(event.kind || "-"))}</strong><div class="muted">${escapeHtml(event.synthesized_output_path || "-")}</div></td>
+          <td>${escapeHtml(event.created_at || "-")}</td>
+          <td>${escapeHtml(event.summary || "-")}</td>
+        </tr>`);
+        renderTableRows("voice-session-events", rows, "No voice session events loaded yet.");
+      }
+
+      function renderTalkSessionList(payload) {
+        const sessions = payload?.sessions || [];
+        const rows = sessions.map((entry) => {
+          const sessionId = JSON.stringify(entry.id || "");
+          return `<tr>
+            <td><strong>${escapeHtml(entry.id || "-")}</strong><div class="muted">${escapeHtml(humanizeStatusLabel(entry.status || "-"))} / ${escapeHtml(humanizeStatusLabel(entry.final_state || "-"))}</div></td>
+            <td>${escapeHtml(entry.requested_provider || "-")}<div class="muted">${escapeHtml(entry.requested_model || "-")} / wake ${escapeHtml(entry.wake_word || "-")}</div></td>
+            <td>${escapeHtml(entry.last_activity_at || "-")}<div class="muted">${escapeHtml(String(entry.turn_count ?? 0))} turn(s)</div></td>
+            <td><button class="secondary" onclick="selectTalkSession(${sessionId})">Inspect</button></td>
+          </tr>`;
+        });
+        renderTableRows("talk-sessions", rows, "No talk receipts loaded yet.");
+      }
+
+      function renderTalkSessionDetail(session) {
+        if (!session || session.error) {
+          renderSummaryCard("talk-session-detail", session?.error || "No talk receipt inspected yet.", null);
+          return;
+        }
+
+        renderSummaryCard("talk-session-detail", "No talk receipt inspected yet.", `
+          <div>
+            <div class="summary-kicker">Talk Receipt</div>
+            <div class="summary-title">${escapeHtml(session.id || "-")}</div>
+            <div class="summary-copy">${escapeHtml(String(session.turn_count ?? 0))} turn(s), wake word ${escapeHtml(session.wake_word || "-")}, silence timeout ${escapeHtml(String(session.silence_timeout_secs ?? "-"))}s.</div>
+          </div>
+          <div class="summary-grid">
+            <div class="summary-stat">
+              <label>Status</label>
+              <strong>${escapeHtml(humanizeStatusLabel(session.status || "-"))}</strong>
+              <span class="muted">${escapeHtml(humanizeStatusLabel(session.final_state || "unknown"))}</span>
+            </div>
+            <div class="summary-stat">
+              <label>Provider</label>
+              <strong>${escapeHtml(session.requested_provider || "-")}</strong>
+              <span class="muted">${escapeHtml(session.requested_model || "default model")}</span>
+            </div>
+            <div class="summary-stat">
+              <label>Utterance Budget</label>
+              <strong>${escapeHtml(String(session.max_utterance_secs ?? "-"))}s</strong>
+              <span class="muted">${session.barge_in ? "barge-in enabled" : "barge-in disabled"}</span>
+            </div>
+            <div class="summary-stat">
+              <label>Snapshots</label>
+              <strong>${escapeHtml(String((session.snapshots || []).length))}</strong>
+              <span class="muted">${escapeHtml(String((session.turns || []).length))} captured turn(s)</span>
+            </div>
+            <div class="summary-stat">
+              <label>Created</label>
+              <span class="mono">${escapeHtml(session.created_at || "-")}</span>
+            </div>
+            <div class="summary-stat">
+              <label>Last Activity</label>
+              <span class="mono">${escapeHtml(session.last_activity_at || "-")}</span>
+            </div>
+          </div>
+        `);
+      }
+
+      function renderTalkSessionMetrics(metrics) {
+        if (!metrics || metrics.error) {
+          renderSummaryCard("talk-session-metrics-detail", metrics?.error || "No talk session metrics loaded yet.", null);
+          return;
+        }
+
+        renderSummaryCard("talk-session-metrics-detail", "No talk session metrics loaded yet.", `
+          <div>
+            <div class="summary-kicker">Talk Metrics</div>
+            <div class="summary-title">${escapeHtml(metrics.session_id || "-")}</div>
+            <div class="summary-copy">${escapeHtml(String(metrics.event_count ?? 0))} event(s) built from ${escapeHtml(String(metrics.snapshot_count ?? 0))} snapshot(s).</div>
+          </div>
+          <div class="summary-grid">
+            <div class="summary-stat">
+              <label>Status</label>
+              <strong>${escapeHtml(humanizeStatusLabel(metrics.status || "-"))}</strong>
+              <span class="muted">${escapeHtml(humanizeStatusLabel(metrics.final_state || "unknown"))}</span>
+            </div>
+            <div class="summary-stat">
+              <label>Turns</label>
+              <strong>${escapeHtml(String(metrics.turn_count ?? 0))}</strong>
+              <span class="muted">${escapeHtml(String(metrics.snapshot_count ?? 0))} snapshot(s)</span>
+            </div>
+            <div class="summary-stat">
+              <label>Duration</label>
+              <strong>${escapeHtml(String(metrics.duration_secs ?? "-"))}s</strong>
+              <span class="muted">closed ${escapeHtml(metrics.closed_at || "-")}</span>
+            </div>
+          </div>
+        `);
+      }
+
+      function renderTalkSessionEvents(payload) {
+        const rows = (payload?.events || []).map((event) => `<tr>
+          <td>${escapeHtml(String(event.index ?? "-"))}</td>
+          <td><strong>${escapeHtml(humanizeStatusLabel(event.kind || "-"))}</strong></td>
+          <td>${escapeHtml(event.observed_at || "-")}</td>
+          <td>${escapeHtml(event.summary || "-")}</td>
+        </tr>`);
+        renderTableRows("talk-session-events-detail", rows, "No talk event timeline loaded yet.");
       }
 
       function controlHeaders(extraHeaders = {}) {
@@ -1649,8 +1944,19 @@
 
       async function loadVoiceSessions() {
         const payload = await fetchJson("/control/voice/sessions");
-        setText("voice-sessions", payload);
+        renderVoiceSessionList(payload);
         await loadVoiceOutcomes();
+        const sessions = payload.sessions || [];
+        const currentSessionId = document.getElementById("voice-session-id").value.trim();
+        if (sessions.length && !currentSessionId) {
+          await selectVoiceSession(sessions[0].id);
+        } else if (!sessions.length) {
+          renderSummaryCard("voice-session-detail", "No voice session inspected yet.", null);
+          renderSummaryCard("voice-session-metrics", "No voice session metrics loaded yet.", null);
+          renderTableRows("voice-session-transcript", [], "No voice session transcript loaded yet.");
+          renderTableRows("voice-session-artifacts", [], "No voice session artifacts loaded yet.");
+          renderTableRows("voice-session-events", [], "No voice session events loaded yet.");
+        }
       }
 
       async function loadVoiceOutcomes() {
@@ -1690,17 +1996,15 @@
         const limit = document.getElementById("talk-session-limit").value.trim();
         const query = limit ? `?limit=${encodeURIComponent(limit)}` : "";
         const payload = await fetchJson(`/control/talk/sessions${query}`);
-        setText("talk-sessions", payload);
+        renderTalkSessionList(payload);
         const sessions = payload.sessions || [];
         if (sessions.length) {
-          document.getElementById("talk-session-id").value = sessions[0].id;
-          await loadTalkSession();
-          await loadTalkSessionMetrics();
-          await loadTalkSessionEvents();
+          const currentSessionId = document.getElementById("talk-session-id").value.trim();
+          await selectTalkSession(currentSessionId || sessions[0].id);
         } else {
-          setText("talk-session-detail", "No talk receipt inspected yet.");
-          setText("talk-session-metrics-detail", "No talk session metrics loaded yet.");
-          setText("talk-session-events-detail", "No talk event timeline loaded yet.");
+          renderSummaryCard("talk-session-detail", "No talk receipt inspected yet.", null);
+          renderSummaryCard("talk-session-metrics-detail", "No talk session metrics loaded yet.", null);
+          renderTableRows("talk-session-events-detail", [], "No talk event timeline loaded yet.");
         }
       }
 
@@ -1710,7 +2014,7 @@
           throw new Error("A talk session id is required");
         }
         const payload = await fetchJson(`/control/talk/sessions/${encodeURIComponent(sessionId)}`);
-        setText("talk-session-detail", payload);
+        renderTalkSessionDetail(payload);
       }
 
       async function loadTalkSessionMetrics() {
@@ -1719,7 +2023,7 @@
           throw new Error("A talk session id is required");
         }
         const payload = await fetchJson(`/control/talk/sessions/${encodeURIComponent(sessionId)}/metrics`);
-        setText("talk-session-metrics-detail", payload);
+        renderTalkSessionMetrics(payload);
       }
 
       async function loadTalkSessionEvents() {
@@ -1728,7 +2032,14 @@
           throw new Error("A talk session id is required");
         }
         const payload = await fetchJson(`/control/talk/sessions/${encodeURIComponent(sessionId)}/events`);
-        setText("talk-session-events-detail", payload);
+        renderTalkSessionEvents(payload);
+      }
+
+      async function selectTalkSession(sessionId) {
+        document.getElementById("talk-session-id").value = sessionId;
+        await loadTalkSession();
+        await loadTalkSessionMetrics();
+        await loadTalkSessionEvents();
       }
 
       async function loadVoiceMetrics() {
@@ -1755,7 +2066,7 @@
           throw new Error("A voice session id is required");
         }
         const payload = await fetchJson(`/control/voice/sessions/${encodeURIComponent(sessionId)}/transcript`);
-        setText("voice-session-transcript", payload);
+        renderVoiceSessionTranscript(payload);
       }
 
       async function loadVoiceSessionMetrics() {
@@ -1764,7 +2075,7 @@
           throw new Error("A voice session id is required");
         }
         const payload = await fetchJson(`/control/voice/sessions/${encodeURIComponent(sessionId)}/metrics`);
-        setText("voice-session-metrics", payload);
+        renderVoiceSessionMetrics(payload);
       }
 
       async function loadVoiceSessionArtifacts() {
@@ -1773,7 +2084,7 @@
           throw new Error("A voice session id is required");
         }
         const payload = await fetchJson(`/control/voice/sessions/${encodeURIComponent(sessionId)}/artifacts`);
-        setText("voice-session-artifacts", payload);
+        renderVoiceSessionArtifacts(payload);
       }
 
       async function loadVoiceSessionEvents() {
@@ -1782,7 +2093,12 @@
           throw new Error("A voice session id is required");
         }
         const payload = await fetchJson(`/control/voice/sessions/${encodeURIComponent(sessionId)}/events`);
-        setText("voice-session-events", payload);
+        renderVoiceSessionEvents(payload);
+      }
+
+      async function selectVoiceSession(sessionId) {
+        document.getElementById("voice-session-id").value = sessionId;
+        await inspectVoiceSession();
       }
 
       async function startVoiceSession() {
@@ -1798,11 +2114,11 @@
         if (sessionId) {
           document.getElementById("voice-session-id").value = sessionId;
         }
-        setText("voice-session-detail", result);
-        setText("voice-session-metrics", "No voice session metrics loaded yet.");
-        setText("voice-session-transcript", "No voice session transcript loaded yet.");
-        setText("voice-session-artifacts", "No voice session artifacts loaded yet.");
-        setText("voice-session-events", "No voice session events loaded yet.");
+        renderVoiceSessionDetail(result.session || result);
+        renderSummaryCard("voice-session-metrics", "No voice session metrics loaded yet.", null);
+        renderTableRows("voice-session-transcript", [], "No voice session transcript loaded yet.");
+        renderTableRows("voice-session-artifacts", [], "No voice session artifacts loaded yet.");
+        renderTableRows("voice-session-events", [], "No voice session events loaded yet.");
         await loadVoiceMetrics();
         await loadVoiceSessions();
         await loadVoiceSessionHealth();
@@ -1814,7 +2130,7 @@
           throw new Error("A voice session id is required");
         }
         const payload = await fetchJson(`/control/voice/sessions/${encodeURIComponent(sessionId)}`);
-        setText("voice-session-detail", payload);
+        renderVoiceSessionDetail(payload);
         await loadVoiceSessionMetrics();
         await loadVoiceSessionTranscript();
         await loadVoiceSessionArtifacts();
@@ -1837,7 +2153,8 @@
             body: JSON.stringify({ text }),
           },
         );
-        setText("voice-session-detail", payload);
+        renderVoiceSessionDetail(payload.session || payload);
+        await loadVoiceSessionMetrics();
         await loadVoiceSessionTranscript();
         await loadVoiceSessionArtifacts();
         await loadVoiceSessionEvents();
@@ -1868,10 +2185,11 @@
             }),
           },
         );
-        setText("voice-session-detail", payload);
+        renderVoiceSessionDetail(payload.session || payload);
         if (payload.synthesis) {
           setText("voice-synthesis-result", payload.synthesis);
         }
+        await loadVoiceSessionMetrics();
         await loadVoiceSessionTranscript();
         await loadVoiceSessionArtifacts();
         await loadVoiceSessionEvents();
@@ -1893,7 +2211,8 @@
             }),
           },
         );
-        setText("voice-session-detail", payload);
+        renderVoiceSessionDetail(payload.session || payload);
+        await loadVoiceSessionMetrics();
         await loadVoiceSessionTranscript();
         await loadVoiceSessionArtifacts();
         await loadVoiceSessionEvents();
@@ -1919,10 +2238,11 @@
             }),
           },
         );
-        setText("voice-session-detail", payload);
+        renderVoiceSessionDetail(payload.session || payload);
         if (payload.synthesis) {
           setText("voice-synthesis-result", payload.synthesis);
         }
+        await loadVoiceSessionMetrics();
         await loadVoiceSessionTranscript();
         await loadVoiceSessionArtifacts();
         await loadVoiceSessionEvents();
@@ -1944,7 +2264,8 @@
             }),
           },
         );
-        setText("voice-session-detail", payload);
+        renderVoiceSessionDetail(payload.session || payload);
+        await loadVoiceSessionMetrics();
         await loadVoiceSessionTranscript();
         await loadVoiceSessionArtifacts();
         await loadVoiceSessionEvents();
@@ -1966,7 +2287,8 @@
             }),
           },
         );
-        setText("voice-session-detail", payload);
+        renderVoiceSessionDetail(payload.session || payload);
+        await loadVoiceSessionMetrics();
         await loadVoiceSessionTranscript();
         await loadVoiceSessionArtifacts();
         await loadVoiceSessionEvents();
@@ -1988,7 +2310,8 @@
             }),
           },
         );
-        setText("voice-session-detail", payload);
+        renderVoiceSessionDetail(payload.session || payload);
+        await loadVoiceSessionMetrics();
         await loadVoiceSessionTranscript();
         await loadVoiceSessionArtifacts();
         await loadVoiceSessionEvents();
@@ -2025,7 +2348,7 @@
           const firstSession = payload.reaped_sessions[0];
           if (firstSession && firstSession.id) {
             document.getElementById("voice-session-id").value = firstSession.id;
-            setText("voice-session-detail", firstSession);
+            renderVoiceSessionDetail(firstSession);
           }
         }
         await loadVoiceSessions();
@@ -4112,7 +4435,7 @@
         try {
           await loadVoiceSessions();
         } catch (error) {
-          setText("voice-sessions", { error: error.message });
+          renderTableRows("voice-sessions", [], error.message);
         }
       });
       document.getElementById("voice-session-health-refresh").addEventListener("click", async () => {
@@ -4147,28 +4470,28 @@
         try {
           await loadTalkSessions();
         } catch (error) {
-          setText("talk-sessions", { error: error.message });
+          renderTableRows("talk-sessions", [], error.message);
         }
       });
       document.getElementById("talk-session-inspect").addEventListener("click", async () => {
         try {
           await loadTalkSession();
         } catch (error) {
-          setText("talk-session-detail", { error: error.message });
+          renderSummaryCard("talk-session-detail", error.message, null);
         }
       });
       document.getElementById("talk-session-metrics").addEventListener("click", async () => {
         try {
           await loadTalkSessionMetrics();
         } catch (error) {
-          setText("talk-session-metrics-detail", { error: error.message });
+          renderSummaryCard("talk-session-metrics-detail", error.message, null);
         }
       });
       document.getElementById("talk-session-events").addEventListener("click", async () => {
         try {
           await loadTalkSessionEvents();
         } catch (error) {
-          setText("talk-session-events-detail", { error: error.message });
+          renderTableRows("talk-session-events-detail", [], error.message);
         }
       });
       document.getElementById("voice-transcribe").addEventListener("click", async () => {
@@ -4189,91 +4512,91 @@
         try {
           await startVoiceSession();
         } catch (error) {
-          setText("voice-session-detail", { error: error.message });
+          renderSummaryCard("voice-session-detail", error.message, null);
         }
       });
       document.getElementById("voice-session-inspect").addEventListener("click", async () => {
         try {
           await inspectVoiceSession();
         } catch (error) {
-          setText("voice-session-detail", { error: error.message });
+          renderSummaryCard("voice-session-detail", error.message, null);
         }
       });
       document.getElementById("voice-session-metrics-refresh").addEventListener("click", async () => {
         try {
           await loadVoiceSessionMetrics();
         } catch (error) {
-          setText("voice-session-metrics", { error: error.message });
+          renderSummaryCard("voice-session-metrics", error.message, null);
         }
       });
       document.getElementById("voice-session-transcript-refresh").addEventListener("click", async () => {
         try {
           await loadVoiceSessionTranscript();
         } catch (error) {
-          setText("voice-session-transcript", { error: error.message });
+          renderTableRows("voice-session-transcript", [], error.message);
         }
       });
       document.getElementById("voice-session-artifacts-refresh").addEventListener("click", async () => {
         try {
           await loadVoiceSessionArtifacts();
         } catch (error) {
-          setText("voice-session-artifacts", { error: error.message });
+          renderTableRows("voice-session-artifacts", [], error.message);
         }
       });
       document.getElementById("voice-session-events-refresh").addEventListener("click", async () => {
         try {
           await loadVoiceSessionEvents();
         } catch (error) {
-          setText("voice-session-events", { error: error.message });
+          renderTableRows("voice-session-events", [], error.message);
         }
       });
       document.getElementById("voice-session-append").addEventListener("click", async () => {
         try {
           await appendVoiceSessionUser();
         } catch (error) {
-          setText("voice-session-detail", { error: error.message });
+          renderSummaryCard("voice-session-detail", error.message, null);
         }
       });
       document.getElementById("voice-session-respond").addEventListener("click", async () => {
         try {
           await respondVoiceSession();
         } catch (error) {
-          setText("voice-session-detail", { error: error.message });
+          renderSummaryCard("voice-session-detail", error.message, null);
         }
       });
       document.getElementById("voice-session-reconnect").addEventListener("click", async () => {
         try {
           await reconnectVoiceSession();
         } catch (error) {
-          setText("voice-session-detail", { error: error.message });
+          renderSummaryCard("voice-session-detail", error.message, null);
         }
       });
       document.getElementById("voice-session-pause").addEventListener("click", async () => {
         try {
           await pauseVoiceSession();
         } catch (error) {
-          setText("voice-session-detail", { error: error.message });
+          renderSummaryCard("voice-session-detail", error.message, null);
         }
       });
       document.getElementById("voice-session-resume").addEventListener("click", async () => {
         try {
           await resumeVoiceSession();
         } catch (error) {
-          setText("voice-session-detail", { error: error.message });
+          renderSummaryCard("voice-session-detail", error.message, null);
         }
       });
       document.getElementById("voice-session-interrupt").addEventListener("click", async () => {
         try {
           await interruptVoiceSession();
         } catch (error) {
-          setText("voice-session-detail", { error: error.message });
+          renderSummaryCard("voice-session-detail", error.message, null);
         }
       });
       document.getElementById("voice-session-end").addEventListener("click", async () => {
         try {
           await endVoiceSession();
         } catch (error) {
-          setText("voice-session-detail", { error: error.message });
+          renderSummaryCard("voice-session-detail", error.message, null);
         }
       });
       document.getElementById("voice-session-prewarm").addEventListener("click", async () => {

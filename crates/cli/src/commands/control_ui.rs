@@ -81,6 +81,18 @@ mod tests {
     }
 
     #[test]
+    fn dashboard_includes_voice_and_talk_detail_renderers() {
+        assert!(CONTROL_UI_HTML.contains("id=\"voice-session-transcript\""));
+        assert!(CONTROL_UI_HTML.contains("function renderVoiceSessionDetail"));
+        assert!(CONTROL_UI_HTML.contains("function renderVoiceSessionMetrics"));
+        assert!(CONTROL_UI_HTML.contains("function renderVoiceSessionTranscript"));
+        assert!(CONTROL_UI_HTML.contains("id=\"talk-session-events-detail\""));
+        assert!(CONTROL_UI_HTML.contains("function renderTalkSessionDetail"));
+        assert!(CONTROL_UI_HTML.contains("function renderTalkSessionMetrics"));
+        assert!(CONTROL_UI_HTML.contains("function renderTalkSessionEvents"));
+    }
+
+    #[test]
     fn dashboard_includes_enterprise_foundations_panel() {
         assert!(CONTROL_UI_HTML.contains("enterprise-foundations"));
         assert!(CONTROL_UI_HTML.contains("function loadEnterpriseFoundations"));
