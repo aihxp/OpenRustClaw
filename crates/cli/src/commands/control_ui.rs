@@ -79,8 +79,11 @@ mod tests {
     #[test]
     fn dashboard_includes_self_hosted_product_mode_panel() {
         assert!(CONTROL_UI_HTML.contains("self-hosted-product-mode"));
+        assert!(CONTROL_UI_HTML.contains("self-hosted-product-transitions"));
+        assert!(CONTROL_UI_HTML.contains("self-hosted-transition-submit"));
         assert!(CONTROL_UI_HTML.contains("function loadSelfHostedProductMode"));
         assert!(CONTROL_UI_HTML.contains("function renderSelfHostedProductMode"));
+        assert!(CONTROL_UI_HTML.contains("function transitionSelfHostedProductMode"));
     }
 
     #[test]

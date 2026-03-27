@@ -153,6 +153,7 @@ pub struct SelfHostedProductModeReport {
     pub status: String,
     pub detail: String,
     pub manifest_path: String,
+    pub events_path: String,
     pub explicit_mode_selected: bool,
     pub self_hosted: bool,
     pub open_source: bool,
@@ -164,6 +165,10 @@ pub struct SelfHostedProductModeReport {
     pub multi_user: bool,
     pub enterprise_controls_expected: bool,
     pub transition_targets: Vec<String>,
+    pub upgrade_targets: Vec<String>,
+    pub downgrade_targets: Vec<String>,
+    pub current_warnings: Vec<String>,
+    pub recent_transitions: Vec<self_hosted::SelfHostedProductTransitionEvent>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -871,6 +876,9 @@ pub fn self_hosted_product_mode_summary(workspace_root: &Path) -> Result<SelfHos
     let manifest_path = self_hosted::self_hosted_product_path(workspace_root)
         .display()
         .to_string();
+    let events_path = self_hosted::self_hosted_product_events_path(workspace_root)
+        .display()
+        .to_string();
     let manifest = self_hosted::load_manifest(workspace_root)?;
     let (explicit_mode_selected, profile, status) = if let Some(value) = manifest {
         (true, value.profile, "ok".to_string())
@@ -890,6 +898,31 @@ pub fn self_hosted_product_mode_summary(workspace_root: &Path) -> Result<SelfHos
         )
     };
     let descriptor = self_hosted::descriptor_for(&profile.mode)?;
+    let recent_transitions = self_hosted::recent_transition_events(workspace_root, 8)?;
+    let current_warnings = self_hosted::current_warnings(workspace_root, descriptor.mode)?;
+    let upgrade_targets = descriptor
+        .transition_targets
+        .iter()
+        .copied()
+        .filter(|value| value != &descriptor.mode)
+        .filter(|value| match *value {
+            self_hosted::MODE_TEAM => descriptor.mode == self_hosted::MODE_SOLO,
+            self_hosted::MODE_COMPANY => {
+                descriptor.mode == self_hosted::MODE_SOLO
+                    || descriptor.mode == self_hosted::MODE_TEAM
+            }
+            self_hosted::MODE_ENTERPRISE => descriptor.mode != self_hosted::MODE_ENTERPRISE,
+            _ => false,
+        })
+        .map(|value| value.to_string())
+        .collect::<Vec<_>>();
+    let downgrade_targets = descriptor
+        .transition_targets
+        .iter()
+        .copied()
+        .filter(|value| !upgrade_targets.iter().any(|entry| entry == value))
+        .map(|value| value.to_string())
+        .collect::<Vec<_>>();
     let detail = if explicit_mode_selected {
         format!(
             "OpenRustClaw is configured as a {} self-hosted open-source deployment. {} The current onboarding path is `{}`, the recommended runtime execution mode is `{}`, and the next valid product-mode transitions are {}.",
@@ -911,6 +944,7 @@ pub fn self_hosted_product_mode_summary(workspace_root: &Path) -> Result<SelfHos
         status,
         detail,
         manifest_path,
+        events_path,
         explicit_mode_selected,
         self_hosted: profile.self_hosted,
         open_source: profile.open_source,
@@ -926,6 +960,10 @@ pub fn self_hosted_product_mode_summary(workspace_root: &Path) -> Result<SelfHos
             .iter()
             .map(|value| (*value).to_string())
             .collect(),
+        upgrade_targets,
+        downgrade_targets,
+        current_warnings,
+        recent_transitions,
     })
 }
 
@@ -1916,6 +1954,27 @@ mod tests {
         assert_eq!(report.onboarding_path, "company_ops_setup");
         assert!(report.enterprise_controls_expected);
         assert!(report.multi_user);
+        Ok(())
+    }
+
+    #[test]
+    fn self_hosted_product_mode_summary_reports_recent_transition_receipts() -> Result<()> {
+        let root = tempdir().expect("tempdir");
+        self_hosted::configure_mode(root.path(), self_hosted::MODE_TEAM, None, None)?;
+        self_hosted::transition_mode(
+            root.path(),
+            self_hosted::SelfHostedProductTransitionRequest {
+                target_mode: self_hosted::MODE_COMPANY.to_string(),
+                actor: "operator-1".to_string(),
+                reason: Some("team grew".to_string()),
+                via: Some("test".to_string()),
+            },
+        )?;
+
+        let report = self_hosted_product_mode_summary(root.path())?;
+        assert_eq!(report.mode, self_hosted::MODE_COMPANY);
+        assert_eq!(report.recent_transitions.len(), 1);
+        assert_eq!(report.recent_transitions[0].direction, "upgrade");
         Ok(())
     }
 

@@ -436,9 +436,29 @@
           <h2>Control Registry</h2>
           <div class="surface"><pre id="control-runtime">Loading…</pre></div>
         </article>
-        <article class="panel span-6">
+        <article class="panel span-12">
           <h2>Self-Hosted Product Mode</h2>
           <div class="surface"><div id="self-hosted-product-mode" class="summary-card empty">Loading…</div></div>
+          <div class="surface" style="margin-top: 12px">
+            <table class="table">
+              <thead>
+                <tr><th>When</th><th>Direction</th><th>Actor</th><th>Detail</th></tr>
+              </thead>
+              <tbody id="self-hosted-product-transitions"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
+            </table>
+          </div>
+          <div class="form-grid" style="margin-top: 12px">
+            <input id="self-hosted-transition-actor" type="text" placeholder="transition actor id" />
+            <select id="self-hosted-transition-target">
+              <option value="solo">target mode: solo</option>
+              <option value="team">target mode: team</option>
+              <option value="company">target mode: company</option>
+              <option value="enterprise">target mode: enterprise</option>
+            </select>
+            <input id="self-hosted-transition-reason" type="text" placeholder="optional reason for upgrade or downgrade" />
+            <button id="self-hosted-transition-submit">Apply Product Mode Transition</button>
+          </div>
+          <div class="surface" style="margin-top: 12px"><pre id="self-hosted-transition-result">No product-mode transition run yet.</pre></div>
         </article>
         <article class="panel span-6">
           <h2>Security Posture</h2>
@@ -2900,6 +2920,7 @@
       function renderSelfHostedProductMode(report) {
         if (!report || report.error) {
           renderSummaryCard("self-hosted-product-mode", report?.error || "No self-hosted product mode summary available.", null);
+          renderTableRows("self-hosted-product-transitions", [], "No product-mode transitions recorded yet.");
           return;
         }
 
@@ -2913,14 +2934,47 @@
             { label: "Operators", value: report.multi_user ? "multi-user" : "single operator", detail: report.operator_model || "-" },
             { label: "Runtime", value: report.recommended_runtime_mode || "-", detail: report.enterprise_controls_expected ? "stronger policy posture expected" : "lightweight trust posture" },
             { label: "Identity", value: report.self_hosted ? "self-hosted" : "-", detail: report.open_source ? "open-source" : "-" },
-            { label: "Next Modes", value: (report.transition_targets || []).join(", ") || "-", detail: report.manifest_path || "-" },
+            { label: "Upgrades", value: (report.upgrade_targets || []).join(", ") || "-", detail: (report.downgrade_targets || []).join(", ") || "no downgrade target" },
+            { label: "Warnings", value: `${(report.current_warnings || []).length}`, detail: report.events_path || "-" },
           ],
         }));
+
+        const warnings = (report.current_warnings || []).map((warning) => `<div>${escapeHtml(warning)}</div>`).join("");
+        if (warnings) {
+          document.getElementById("self-hosted-product-mode").insertAdjacentHTML("beforeend", `<div class="muted" style="margin-top: 12px">${warnings}</div>`);
+        }
+
+        renderTableRows(
+          "self-hosted-product-transitions",
+          (report.recent_transitions || []).map((entry) => `
+            <tr>
+              <td>${escapeHtml(entry.created_at || "-")}</td>
+              <td>${escapeHtml(entry.direction || "-")}</td>
+              <td>${escapeHtml(entry.actor || "-")}</td>
+              <td>${escapeHtml(`${entry.from_mode || "-"} → ${entry.to_mode || "-"}${entry.reason ? ` (${entry.reason})` : ""}`)}</td>
+            </tr>
+          `),
+          "No product-mode transitions recorded yet."
+        );
+        setSelectValue("self-hosted-transition-target", (report.transition_targets || [report.mode || "solo"])[0]);
       }
 
       async function loadSelfHostedProductMode() {
         const payload = await fetchJson("/control/self-hosted/product-mode");
         renderSelfHostedProductMode(payload);
+      }
+
+      async function transitionSelfHostedProductMode() {
+        const result = await fetchJson("/control/self-hosted/product-mode", {
+          method: "POST",
+          body: JSON.stringify({
+            target_mode: document.getElementById("self-hosted-transition-target").value,
+            actor: document.getElementById("self-hosted-transition-actor").value.trim(),
+            reason: document.getElementById("self-hosted-transition-reason").value.trim() || null,
+          }),
+        });
+        setText("self-hosted-transition-result", result);
+        renderSelfHostedProductMode(result);
       }
 
       async function loadEnterpriseFoundations() {
@@ -5728,6 +5782,13 @@
           await loadChannelProbes(true);
         } catch (error) {
           renderTableRows("channel-probes", [], error.message);
+        }
+      });
+      document.getElementById("self-hosted-transition-submit").addEventListener("click", async () => {
+        try {
+          await transitionSelfHostedProductMode();
+        } catch (error) {
+          setText("self-hosted-transition-result", { error: error.message });
         }
       });
       document.getElementById("enterprise-credentials-save").addEventListener("click", async () => {

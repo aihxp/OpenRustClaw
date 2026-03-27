@@ -92,8 +92,8 @@ use super::voice_runtime;
 use super::voice_runtime::InboundVoiceTranscriber;
 use super::{
     assistant, browser, control, control_ui, doctor, enterprise_access, enterprise_autonomy,
-    enterprise_policy, inspect, logs, mobile, orchestrate, runtime, security, services, skills,
-    tools,
+    enterprise_policy, inspect, logs, mobile, orchestrate, runtime, security, self_hosted,
+    services, skills, tools,
 };
 
 /// Run the start command - load config, optionally start the compatibility/experimental sidecar, and start the gateway.
@@ -3020,7 +3020,8 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
         )
         .route(
             "/control/self-hosted/product-mode",
-            get(self_hosted_product_mode_handler),
+            get(self_hosted_product_mode_handler)
+                .post(self_hosted_product_mode_transition_handler),
         )
         .route("/control/enterprise/access", get(enterprise_access_handler))
         .route("/control/enterprise/admin", get(enterprise_admin_handler))
@@ -5288,6 +5289,14 @@ struct EnterpriseAutonomyDisablePayload {
 }
 
 #[derive(serde::Deserialize)]
+struct SelfHostedProductTransitionPayload {
+    target_mode: String,
+    actor: String,
+    #[serde(default)]
+    reason: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
 struct EnterpriseAutonomyKillSwitchPayload {
     operator_id: String,
     #[serde(default)]
@@ -7142,6 +7151,38 @@ async fn self_hosted_product_mode_handler(
         Ok(summary) => (StatusCode::OK, Json(serde_json::json!(summary))).into_response(),
         Err(error) => (
             StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn self_hosted_product_mode_transition_handler(
+    State(state): State<RuntimeControlState>,
+    Json(payload): Json<SelfHostedProductTransitionPayload>,
+) -> impl IntoResponse {
+    let started_at = std::time::Instant::now();
+    let result = self_hosted::transition_mode(
+        &state.workspace_root,
+        self_hosted::SelfHostedProductTransitionRequest {
+            target_mode: payload.target_mode,
+            actor: payload.actor,
+            reason: payload.reason,
+            via: Some("control_api".to_string()),
+        },
+    );
+    record_operator_tool_result("self_hosted.product_mode.transition", started_at, &result);
+    match result {
+        Ok(_) => match inspect::self_hosted_product_mode_summary(&state.workspace_root) {
+            Ok(summary) => (StatusCode::OK, Json(serde_json::json!(summary))).into_response(),
+            Err(error) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": error.to_string()})),
+            )
+                .into_response(),
+        },
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": error.to_string()})),
         )
             .into_response(),
