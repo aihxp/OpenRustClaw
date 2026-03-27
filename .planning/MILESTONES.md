@@ -1,5 +1,20 @@
 # Project Milestones: OpenRustClaw
 
+## v1.3 Enterprise Expansion and Supervised Autonomy Foundations (Shipped: 2026-03-27)
+
+**Phases completed:** 4 phases, 12 plans, 0 tasks
+**Verification archive:** `.planning/milestones/v1.3-VERIFICATIONS.md`
+**Verification debt:** none
+
+**Key accomplishments:**
+
+- Added the first-class enterprise operator registry, bootstrap flow, and typed access summary.
+- Expanded enterprise policy into a unified typed control surface with durable audit-export bundles.
+- Added explicit supervised-autonomy escalation, rollback, and intervention evidence for active orchestration runs.
+- Closed the milestone with a shipped enterprise admin loop in Control UI backed by a typed enterprise admin summary.
+
+---
+
 ## v1.2 Deeper OpenClaw Surface Parity (Shipped: 2026-03-27)
 
 **Phases completed:** 5 phases, 15 plans, 28 tasks

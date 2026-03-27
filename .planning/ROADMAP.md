@@ -5,92 +5,56 @@
 - ✅ **v1.0 Rust OpenClaw MVP** — shipped 2026-03-26. Archive: `.planning/milestones/v1.0-ROADMAP.md`
 - ✅ **v1.1 Lifecycle Integrity and Enterprise Foundations** — shipped 2026-03-26. Archive: `.planning/milestones/v1.1-ROADMAP.md`
 - ✅ **v1.2 Deeper OpenClaw Surface Parity** — shipped 2026-03-27. Archive: `.planning/milestones/v1.2-ROADMAP.md`
-- 🚧 **v1.3 Enterprise Expansion and Supervised Autonomy Foundations** — phases 16-19
+- ✅ **v1.3 Enterprise Expansion and Supervised Autonomy Foundations** — shipped 2026-03-27. Archive: `.planning/milestones/v1.3-ROADMAP.md`
+- 📋 **Next milestone** — not planned yet. Start with `$gsd-new-milestone`.
 
-## Roadmap v1.3: Enterprise Expansion and Supervised Autonomy Foundations
+## Phase History
 
-### Overview
+<details>
+<summary>✅ v1.3 Enterprise Expansion and Supervised Autonomy Foundations — SHIPPED 2026-03-27</summary>
 
-This milestone expands the platform toward enterprise readiness without losing the trust-first baseline already shipped. The order is deliberate: first establish enterprise identity and access boundaries, then deepen policy and audit controls, then add the supervised-autonomy lifecycle those controls need, and finally close the slice with one enabling admin/operator surface.
+- [x] **Phase 16: Enterprise Identity and Access Boundaries** — completed 2026-03-27
+- [x] **Phase 17: Enterprise Policy and Audit Controls** — completed 2026-03-27
+- [x] **Phase 18: Supervised Autonomy Escalation and Rollback** — completed 2026-03-27
+- [x] **Phase 19: Enterprise Admin Surface** — completed 2026-03-27
 
-### Phases
+</details>
 
-**Phase Numbering:**
-- Integer phases continue across milestones to preserve one linear execution history.
-- Decimal phases are reserved for urgent insertions if roadmap assumptions break.
+<details>
+<summary>✅ v1.2 Deeper OpenClaw Surface Parity — SHIPPED 2026-03-27</summary>
 
-- [x] **Phase 16: Enterprise Identity and Access Boundaries** - Add organization-oriented authentication and role-aware control boundaries for sensitive operator actions.
-- [x] **Phase 17: Enterprise Policy and Audit Controls** - Expand policy management and audit evidence into a real enterprise operator surface. (completed 2026-03-27)
-- [x] **Phase 18: Supervised Autonomy Escalation and Rollback** - Add explicit escalation, rollback, and operator-intervention semantics for longer-running supervised workflows. (completed 2026-03-27)
-- [ ] **Phase 19: Enterprise Admin Surface** - Make the new enterprise and supervised-autonomy controls usable from shipped operator surfaces.
+- [x] **Phase 11: Browser Automation Depth** — completed 2026-03-27
+- [x] **Phase 12: Multi-Agent Supervision Parity** — completed 2026-03-27
+- [x] **Phase 13: Mobile Runtime Parity** — completed 2026-03-27
+- [x] **Phase 14: Control UI Surface Completion** — completed 2026-03-27
+- [x] **Phase 15: Voice and Call Handling Parity** — completed 2026-03-27
 
-### Phase Details
+</details>
 
-### Phase 16: Enterprise Identity and Access Boundaries
-**Goal**: Add enterprise-oriented authentication and role-aware access boundaries without weakening the shipped control-plane trust model.
-**Depends on**: v1.2 archive state
-**Requirements**: [ENTE-01, ENTE-02]
-**Success Criteria** (what must be TRUE):
-  1. Sensitive operator actions no longer assume one shared operator identity.
-  2. Role and scope boundaries exist for enterprise-sensitive control-plane actions.
-  3. The new access model remains inspectable and compatible with the existing Rust-owned control plane.
-**Plans**: 3 complete
+<details>
+<summary>✅ v1.1 Lifecycle Integrity and Enterprise Foundations — SHIPPED 2026-03-26</summary>
 
-Plans:
-- [x] 16-01 Add the enterprise operator registry and access summary
-- [x] 16-02 Enforce scoped operator identity on sensitive control actions
-- [x] 16-03 Surface the enterprise access boundary in Control UI and docs
+- [x] **Phase 8: Verification Artifact Contract** — completed 2026-03-26
+- [x] **Phase 9: Milestone Lifecycle Integrity** — completed 2026-03-26
+- [x] **Phase 10: Enterprise Policy and Audit Foundations** — completed 2026-03-26
 
-### Phase 17: Enterprise Policy and Audit Controls
-**Goal**: Expand policy and audit surfaces so enterprise operators can inspect, configure, and export sensitive-action evidence coherently.
-**Depends on**: Phase 16
-**Requirements**: [ENTE-03, ENTE-04]
-**Success Criteria** (what must be TRUE):
-  1. Enterprise operators can inspect durable policy and audit state from one coherent surface.
-  2. Approval-sensitive and autonomy-sensitive controls are explicitly configurable rather than hardcoded assumptions.
-  3. Exportable evidence exists for the new enterprise policy and audit contract.
-**Plans**: 3/3 plans complete
+</details>
 
-Plans:
-- [ ] TBD (run `$gsd-plan-phase 17` to break down)
+<details>
+<summary>✅ v1.0 Rust OpenClaw MVP — SHIPPED 2026-03-26</summary>
 
-### Phase 18: Supervised Autonomy Escalation and Rollback
-**Goal**: Add explicit escalation, rollback, and intervention semantics for longer-running supervised workflows.
-**Depends on**: Phase 17
-**Requirements**: [AUTO-03, AUTO-04]
-**Success Criteria** (what must be TRUE):
-  1. Longer-running supervised workflows can escalate, pause, and roll back through explicit lifecycle states.
-  2. Escalation and rollback decisions preserve durable operator-visible evidence.
-  3. The autonomy expansion remains supervision-first rather than drifting toward opaque autonomous execution.
-**Plans**: 3/3 plans complete
+- [x] **Phase 1: Onboarding and First-Run Trust** — completed 2026-03-26
+- [x] **Phase 2: Core Assistant and Session Continuity** — completed 2026-03-26
+- [x] **Phase 3: Memory Durability and Write Policy** — completed 2026-03-26
+- [x] **Phase 4: Tool, MCP, and Coding Workflow Hardening** — completed 2026-03-26
+- [x] **Phase 5: Email and Voice Communications** — completed 2026-03-26
+- [x] **Phase 6: Deployment, Runtime, and Operator Ops** — completed 2026-03-26
+- [x] **Phase 7: Security, Observability, and Release Exit** — completed 2026-03-26
 
-Plans:
-- [ ] TBD (run `$gsd-plan-phase 18` to break down)
-
-### Phase 19: Enterprise Admin Surface
-**Goal**: Make the new enterprise and supervised-autonomy capabilities operator-usable from shipped control surfaces.
-**Depends on**: Phase 18
-**Requirements**: [ADMN-01]
-**Success Criteria** (what must be TRUE):
-  1. Operators can use the new enterprise and supervised-autonomy controls without falling back to scattered CLI internals.
-  2. The admin/operator surface stays grounded in typed runtime contracts rather than frontend-only stitching.
-  3. Docs and verification close the milestone with a truthful enterprise-ready baseline.
-**Plans**: TBD
-
-Plans:
-- [ ] TBD (run `$gsd-plan-phase 19` to break down)
-
-## Progress
-
-| Phase | Plans Complete | Status | Completed |
-|-------|----------------|--------|-----------|
-| 16. Enterprise Identity and Access Boundaries | 3/3 | Complete | 2026-03-27 |
-| 17. Enterprise Policy and Audit Controls | 3/3 | Complete    | 2026-03-27 |
-| 18. Supervised Autonomy Escalation and Rollback | 3/3 | Complete    | 2026-03-27 |
-| 19. Enterprise Admin Surface | 0/TBD | Not started | - |
+</details>
 
 ## Current Status
 
-- Active milestone: v1.3 Enterprise Expansion and Supervised Autonomy Foundations
-- Next step: `$gsd-discuss-phase 19` or `$gsd-plan-phase 19`
-- Archived milestone planning artifacts live under `.planning/milestones/`.
+- No active milestone is open.
+- Use `$gsd-new-milestone` to define the next requirements and roadmap.
+- Archived v1.3 planning artifacts live under `.planning/milestones/`.

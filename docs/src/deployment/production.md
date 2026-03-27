@@ -30,6 +30,15 @@ Phase 18 adds a supervised-autonomy operator loop over active orchestration runs
 
 Use those supervision controls as the truth source for longer-running operator-managed runs. They are intended to make intervention explicit and auditable, not to create an unbounded autonomous executor.
 
+Phase 19 closes the currently shipped enterprise slice with a consolidated admin/operator surface:
+
+- `GET /control/enterprise/admin` combines enterprise access state, enterprise policy state, and active supervised-run attention counts into one typed summary.
+- `/control/ui` now includes an `Enterprise Admin` panel that stores `x-openrustclaw-operator-id` and `x-openrustclaw-operator-token` locally in the browser for protected enterprise writes.
+- That same panel can bootstrap enterprise access, upsert operators, update enterprise policy, and trigger durable audit-export bundles without dropping to raw route calls.
+- The admin summary also points operators back to the shipped supervision surface when active orchestration runs still require escalation or rollback review.
+
+Treat that panel as the current enterprise operator loop, not full IAM. It makes the shipped access, policy, audit, and supervision controls usable from one place, but it does not replace SSO, SCIM, or multi-tenant administration.
+
 ## Table of Contents
 
 - [Prerequisites](#prerequisites)

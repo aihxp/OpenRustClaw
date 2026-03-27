@@ -74,6 +74,8 @@ Phase 17 extends that baseline with a unified `/control/enterprise/policy` surfa
 
 Phase 18 extends the supervised orchestration lane with explicit lifecycle controls on active runs. `/control/orchestration/active/{run_id}/escalate` and `/control/orchestration/active/{run_id}/rollback` now sit alongside pause, resume, and kill; active supervision payloads include lifecycle state plus structured intervention history; and `/control/ui` shows that same escalation and rollback evidence instead of hiding it in raw active-run notes.
 
+Phase 19 closes the current v1.3 slice with a real `Enterprise Admin` operator loop in `/control/ui` and a matching `/control/enterprise/admin` summary route. Operators can now persist the scoped enterprise headers used for protected writes, bootstrap enterprise access, provision additional operators, update enterprise policy, and export audit bundles from the shipped control surface instead of manually assembling those calls by route. The same admin summary also shows active supervised-run attention counts so enterprise operators can see when orchestration still needs review.
+
 For the final MVP release loop, review `/control/security/posture` or the `Security Posture` panel in `/control/ui`, confirm the observability checks in [docs/src/operations/observability.md](docs/src/operations/observability.md), and walk the operator checklist in [docs/src/deployment/release-checklist.md](docs/src/deployment/release-checklist.md) before cutting a release candidate.
 
 ## Architecture
