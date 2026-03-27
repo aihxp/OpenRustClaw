@@ -1,18 +1,18 @@
 ---
 gsd_state_version: 1.0
-milestone: null
-milestone_name: null
+milestone: v1.9
+milestone_name: GitHub Repository Presence and Actions Recovery
 current_phase: null
 current_phase_name: null
 current_plan: null
-status: No active milestone
-stopped_at: v1.8 archived; start the next milestone with $gsd-new-milestone.
-last_updated: "2026-03-27T22:20:00.000Z"
-last_activity: 2026-03-27 -- v1.8 archived
+status: Defining requirements
+stopped_at: Milestone v1.9 started; define requirements and roadmap.
+last_updated: "2026-03-27T22:19:14Z"
+last_activity: 2026-03-27 -- milestone v1.9 started
 progress:
-  total_phases: 0
+  total_phases: 4
   completed_phases: 0
-  total_plans: 0
+  total_plans: 8
   completed_plans: 0
   percent: 0
 ---
@@ -24,19 +24,19 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-27)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** No active milestone
+**Current focus:** Defining requirements for v1.9
 
 ## Current Position
 
 Current Phase: -
 Current Phase Name: -
-Total Phases: 0
+Total Phases: 4
 Current Plan: -
 Total Plans in Phase: 0
-Status: No active milestone
-Last activity: 2026-03-27 -- v1.8 archived
+Status: Defining requirements
+Last activity: 2026-03-27 -- milestone v1.9 started
 
-Phase: 0 of 0
+Phase: 0 of 4
 Plan: 0 of 0
 Progress: [----------] 0%
 
@@ -66,7 +66,7 @@ Recent decisions affecting current work:
 - v1.7 treated documentation drift as product debt and converged the README, repo-root docs, and docs-site sources into one canonical self-hosted product story.
 - v1.8 converted codebase cleanup into an explicit contract with a maintained inventory, CI-safe repo-hygiene checks, and a bounded `start/auth.rs` extraction.
 - Phase 40 added a repo-hygiene verification script, wired it into CI, and preserved a rerun bundle for future cleanup follow-up work.
-- v1.8 is archived; the next milestone has not been defined yet.
+- v1.9 now targets public GitHub repo truthfulness: repo About, discovery topics, and Actions health need to match the shipped product surface.
 
 ### Pending Todos
 
@@ -78,6 +78,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-27 22:20
-Stopped at: v1.8 archived; start the next milestone with $gsd-new-milestone.
+Last session: 2026-03-27 22:19
+Stopped at: Milestone v1.9 started; define requirements and roadmap.
 Resume file: None
