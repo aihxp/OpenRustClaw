@@ -20,7 +20,7 @@ This milestone expands the platform toward enterprise readiness without losing t
 - Decimal phases are reserved for urgent insertions if roadmap assumptions break.
 
 - [x] **Phase 16: Enterprise Identity and Access Boundaries** - Add organization-oriented authentication and role-aware control boundaries for sensitive operator actions.
-- [ ] **Phase 17: Enterprise Policy and Audit Controls** - Expand policy management and audit evidence into a real enterprise operator surface.
+- [x] **Phase 17: Enterprise Policy and Audit Controls** - Expand policy management and audit evidence into a real enterprise operator surface. (completed 2026-03-27)
 - [ ] **Phase 18: Supervised Autonomy Escalation and Rollback** - Add explicit escalation, rollback, and operator-intervention semantics for longer-running supervised workflows.
 - [ ] **Phase 19: Enterprise Admin Surface** - Make the new enterprise and supervised-autonomy controls usable from shipped operator surfaces.
 
@@ -49,7 +49,7 @@ Plans:
   1. Enterprise operators can inspect durable policy and audit state from one coherent surface.
   2. Approval-sensitive and autonomy-sensitive controls are explicitly configurable rather than hardcoded assumptions.
   3. Exportable evidence exists for the new enterprise policy and audit contract.
-**Plans**: TBD
+**Plans**: 3/3 plans complete
 
 Plans:
 - [ ] TBD (run `$gsd-plan-phase 17` to break down)
@@ -85,12 +85,12 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 16. Enterprise Identity and Access Boundaries | 3/3 | Complete | 2026-03-27 |
-| 17. Enterprise Policy and Audit Controls | 0/TBD | Not started | - |
+| 17. Enterprise Policy and Audit Controls | 3/3 | Complete    | 2026-03-27 |
 | 18. Supervised Autonomy Escalation and Rollback | 0/TBD | Not started | - |
 | 19. Enterprise Admin Surface | 0/TBD | Not started | - |
 
 ## Current Status
 
 - Active milestone: v1.3 Enterprise Expansion and Supervised Autonomy Foundations
-- Next step: `$gsd-discuss-phase 17` or `$gsd-plan-phase 17`
+- Next step: `$gsd-discuss-phase 18` or `$gsd-plan-phase 18`
 - Archived milestone planning artifacts live under `.planning/milestones/`.

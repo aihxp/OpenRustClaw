@@ -13,6 +13,14 @@ If you want the Phase 16 enterprise access boundary active, bootstrap `/control/
 
 The shipped `/control/enterprise/access` summary and matching Control UI panel show which routes are protected by that scoped operator boundary. This remains a file-backed enterprise access foundation rather than full SSO, SCIM, or compliance-grade IAM.
 
+Phase 17 adds a second enterprise operator loop on top of that identity boundary:
+
+- `GET /control/enterprise/policy` shows the current approval policy, browser backend policy, mobile command approval defaults, and audit-export settings from one typed surface.
+- `PUT /control/enterprise/policy` lets a scoped operator update those controls without manually editing both runtime YAML and runtime TOML files.
+- `POST /control/enterprise/audit/export` writes a durable JSON bundle under `.claw/control/enterprise/exports/` with the current policy summary, recent enterprise audit evidence, and recent operator tool history.
+
+Treat this as an operator-managed policy and evidence layer. It improves reviewability and handoff, but it is still not a replacement for full compliance packaging, external GRC systems, or enterprise IAM products.
+
 ## Table of Contents
 
 - [Prerequisites](#prerequisites)

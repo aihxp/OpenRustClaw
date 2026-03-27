@@ -70,6 +70,8 @@ For the current enterprise baseline, review `/control/enterprise/foundations` or
 
 The v1.3 enterprise access slice adds `/control/enterprise/access` and an `Enterprise Access` panel in `/control/ui`. That file-backed surface shows the bootstrapped organization, scoped enterprise operators, protected control routes, and the required `x-openrustclaw-operator-id` plus `x-openrustclaw-operator-token` headers used for the initial sensitive-action boundary. It is an operator-managed access foundation, not full IAM, SSO, or multi-tenant RBAC.
 
+Phase 17 extends that baseline with a unified `/control/enterprise/policy` surface for the currently shippable enterprise-sensitive controls: runtime approval policy, browser backend allowlist and wrapper/cloud switches, mobile command approval defaults, and audit-export settings. The paired `POST /control/enterprise/audit/export` route writes a durable JSON evidence bundle under `.claw/control/enterprise/exports/`, so operators can hand off the current policy state plus recent enterprise audit evidence without scraping multiple ledgers by hand.
+
 For the final MVP release loop, review `/control/security/posture` or the `Security Posture` panel in `/control/ui`, confirm the observability checks in [docs/src/operations/observability.md](docs/src/operations/observability.md), and walk the operator checklist in [docs/src/deployment/release-checklist.md](docs/src/deployment/release-checklist.md) before cutting a release candidate.
 
 ## Architecture

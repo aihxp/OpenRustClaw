@@ -12,8 +12,8 @@
 
 ### Enterprise Policy and Audit
 
-- [ ] **ENTE-03**: Enterprise operators can inspect and export durable policy and audit evidence for sensitive assistant actions.
-- [ ] **ENTE-04**: Approval, browser, mobile, and autonomy-sensitive policy controls can be configured from one coherent enterprise policy surface.
+- [x] **ENTE-03**: Enterprise operators can inspect and export durable policy and audit evidence for sensitive assistant actions.
+- [x] **ENTE-04**: Approval, browser, mobile, and autonomy-sensitive policy controls can be configured from one coherent enterprise policy surface.
 
 ### Supervised Autonomy Foundations
 
@@ -55,8 +55,8 @@
 |-------------|-------|--------|
 | ENTE-01 | Phase 16 | Passed |
 | ENTE-02 | Phase 16 | Passed |
-| ENTE-03 | Phase 17 | Pending |
-| ENTE-04 | Phase 17 | Pending |
+| ENTE-03 | Phase 17 | Complete |
+| ENTE-04 | Phase 17 | Complete |
 | AUTO-03 | Phase 18 | Pending |
 | AUTO-04 | Phase 18 | Pending |
 | ADMN-01 | Phase 19 | Pending |

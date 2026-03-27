@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Enterprise Expansion and Supervised Autonomy Foundations
-current_phase: 17
-current_phase_name: Enterprise Policy and Audit Controls
-current_plan: 1
-status: executing
-stopped_at: Phase 16 complete; Phase 17 is ready for discuss and planning.
-last_updated: "2026-03-27T06:42:59.043Z"
-last_activity: 2026-03-27 -- Phase 17 execution started
+current_phase: 18
+current_phase_name: supervised autonomy escalation and rollback
+current_plan: Not started
+status: ready_to_plan
+stopped_at: Phase 17 complete; Phase 18 is ready for discuss and planning.
+last_updated: "2026-03-27T07:06:47.547Z"
+last_activity: 2026-03-27 -- Phase 17 complete, transitioned to Phase 18
 progress:
   total_phases: 4
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 6
-  completed_plans: 3
-  percent: 25
+  completed_plans: 6
+  percent: 50
 ---
 
 # Project State
@@ -24,21 +24,21 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-27)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** Phase 17 — Enterprise Policy and Audit Controls
+**Current focus:** Phase 18 — Supervised Autonomy Escalation and Rollback
 
 ## Current Position
 
-Current Phase: 17
-Current Phase Name: Enterprise Policy and Audit Controls
+Current Phase: 18
+Current Phase Name: Supervised Autonomy Escalation and Rollback
 Total Phases: 4
-Current Plan: 1
-Total Plans in Phase: 3
-Status: Executing Phase 17
-Last activity: 2026-03-27 -- Phase 17 execution started
+Current Plan: Not started
+Total Plans in Phase: TBD
+Status: Ready to plan Phase 18
+Last activity: 2026-03-27 -- Phase 17 complete, transitioned to Phase 18
 
-Phase: 17 (Enterprise Policy and Audit Controls) — EXECUTING
-Plan: 1 of 3
-Progress: [██░░░░░░░░] 25%
+Phase: 18 (Supervised Autonomy Escalation and Rollback) — READY TO PLAN
+Plan: Not started
+Progress: [█████░░░░░] 50%
 
 ## Performance Metrics
 
@@ -90,6 +90,7 @@ Recent decisions affecting current work:
 - Phase 15 now adds a typed voice operator report across voice sessions, talk receipts, and bounded voice-call receipts, then surfaces that report in `/control/ui` before closing the v1.2 milestone cleanly.
 - v1.3 now takes an enterprise-first path: identity and access boundaries first, then policy and audit controls, then supervised-autonomy escalation and rollback, then one enabling admin/operator surface.
 - Phase 16 now adds a bootstrapped enterprise organization and operator registry, scoped operator headers for selected sensitive routes, and a dedicated enterprise access panel in Control UI.
+- Phase 17 now adds a unified enterprise policy surface, durable audit export bundle, protected export scope, and mobile approval overrides driven by enterprise policy instead of only hardcoded command defaults.
 
 ### Pending Todos
 
@@ -101,6 +102,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-27 01:37
-Stopped at: Phase 16 complete; Phase 17 is ready for discuss and planning.
+Last session: 2026-03-27 03:07
+Stopped at: Phase 17 complete; Phase 18 is ready for discuss and planning.
 Resume file: None
