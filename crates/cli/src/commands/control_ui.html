@@ -480,9 +480,26 @@
             <button class="secondary" id="voice-sessions-refresh">List Sessions</button>
             <button class="secondary" id="voice-voices-refresh">List Voices</button>
           </div>
-          <div class="surface"><pre id="voice-status">Loading…</pre></div>
-          <div class="surface" style="margin-top: 12px"><pre id="voice-providers">No provider catalog loaded yet.</pre></div>
-          <div class="surface" style="margin-top: 12px"><pre id="voice-metrics">No voice metrics loaded yet.</pre></div>
+          <div class="surface"><div id="voice-operator-report" class="summary-card empty">Loading…</div></div>
+          <div class="surface" style="margin-top: 12px">
+            <table class="table">
+              <thead>
+                <tr><th>Signal</th><th>Severity</th><th>Route</th><th>Detail</th></tr>
+              </thead>
+              <tbody id="voice-operator-signals"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
+            </table>
+          </div>
+          <div class="surface" style="margin-top: 12px">
+            <table class="table">
+              <thead>
+                <tr><th>Kind</th><th>When</th><th>Status</th><th>Detail</th></tr>
+              </thead>
+              <tbody id="voice-operator-activity"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
+            </table>
+          </div>
+          <div class="surface" style="margin-top: 12px"><div id="voice-status" class="summary-card empty">Loading…</div></div>
+          <div class="surface" style="margin-top: 12px"><div id="voice-providers" class="summary-card empty">No provider catalog loaded yet.</div></div>
+          <div class="surface" style="margin-top: 12px"><div id="voice-metrics" class="summary-card empty">No voice metrics loaded yet.</div></div>
           <div class="surface" style="margin-top: 12px">
             <table class="table">
               <thead>
@@ -499,7 +516,7 @@
               <tbody id="voice-sessions"><tr><td colspan="4" class="muted">No voice sessions loaded yet.</td></tr></tbody>
             </table>
           </div>
-          <div class="surface" style="margin-top: 12px"><pre id="voice-session-health">No voice session health loaded yet.</pre></div>
+          <div class="surface" style="margin-top: 12px"><div id="voice-session-health" class="summary-card empty">No voice session health loaded yet.</div></div>
           <div class="surface" style="margin-top: 12px"><div id="voice-session-detail" class="summary-card empty">No voice session inspected yet.</div></div>
           <div class="surface" style="margin-top: 12px"><div id="voice-session-metrics" class="summary-card empty">No voice session metrics loaded yet.</div></div>
           <div class="surface" style="margin-top: 12px">
@@ -526,7 +543,7 @@
               <tbody id="voice-session-events"><tr><td colspan="4" class="muted">No voice session events loaded yet.</td></tr></tbody>
             </table>
           </div>
-          <div class="surface" style="margin-top: 12px"><pre id="voice-voices">No voice catalog loaded yet.</pre></div>
+          <div class="surface" style="margin-top: 12px"><div id="voice-voices" class="summary-card empty">No voice catalog loaded yet.</div></div>
         </article>
         <article class="panel span-6">
           <h2>Talk Runtime</h2>
@@ -544,8 +561,8 @@
               <button class="secondary" id="talk-session-metrics">Session Metrics</button>
             </div>
           </div>
-          <div class="surface"><pre id="talk-runtime-status">Loading…</pre></div>
-          <div class="surface" style="margin-top: 12px"><pre id="talk-runtime-metrics">No talk metrics loaded yet.</pre></div>
+          <div class="surface"><div id="talk-runtime-status" class="summary-card empty">Loading…</div></div>
+          <div class="surface" style="margin-top: 12px"><div id="talk-runtime-metrics" class="summary-card empty">No talk metrics loaded yet.</div></div>
           <div class="surface" style="margin-top: 12px">
             <table class="table">
               <thead>
@@ -1630,6 +1647,176 @@
         renderTableRows("enterprise-audit-table", rows, "No recent enterprise audit evidence.");
       }
 
+      function renderVoiceOperatorReport(report) {
+        if (!report || report.error) {
+          renderSummaryCard("voice-operator-report", report?.error || "No voice operator summary available.", null);
+          renderTableRows("voice-operator-signals", [], "No voice attention signals available.");
+          renderTableRows("voice-operator-activity", [], "No recent voice activity available.");
+          return;
+        }
+
+        const voice = report.voice_lane || {};
+        const talk = report.talk_lane || {};
+        const calls = report.bounded_call_lane || {};
+        const coverage = report.provider_coverage || {};
+        const status = report.voice_status || {};
+
+        renderSummaryCard("voice-operator-report", "No voice operator summary available.", buildSummaryMarkup({
+          kicker: "Voice Operator Surface",
+          title: `${humanizeStatusLabel(report.status || "unknown")} voice and call runtime`,
+          copy: report.detail || "No voice operator summary available.",
+          stats: [
+            { label: "Providers", value: `${coverage.stt_ready ?? 0}/${coverage.stt_total ?? 0} STT`, detail: `${coverage.tts_ready ?? 0}/${coverage.tts_total ?? 0} TTS ready` },
+            { label: "Voice Sessions", value: `${voice.active_sessions ?? 0} active`, detail: `${voice.stale_sessions ?? 0} stale, ${voice.attention_needed ?? 0} attention` },
+            { label: "Talk Runtime", value: `${talk.active_sessions ?? 0} active`, detail: `${talk.error_sessions ?? 0} error receipt(s)` },
+            { label: "Bounded Calls", value: `${calls.active_calls ?? 0} active`, detail: `${calls.stale_calls ?? 0} stale, ${calls.reconnects ?? 0} reconnect(s)` },
+            { label: "Voice Catalog", value: `${coverage.catalog_voice_count ?? 0} voice(s)`, detail: status.tts_voice || "-" },
+            { label: "Configured", value: status.enabled ? "enabled" : "disabled", detail: `${status.stt_provider || "-"} -> ${status.tts_provider || "-"}` },
+          ],
+        }));
+
+        const signalRows = (report.attention_signals || []).map((signal) => `<tr>
+          <td><strong>${escapeHtml(humanizeStatusLabel(signal.kind || "-"))}</strong><div class="muted">${escapeHtml(signal.target_id || "-")}</div></td>
+          <td>${escapeHtml(humanizeStatusLabel(signal.severity || "-"))}</td>
+          <td><span class="mono">${escapeHtml(signal.route_hint || "-")}</span></td>
+          <td>${escapeHtml(signal.detail || signal.summary || "-")}</td>
+        </tr>`);
+        renderTableRows("voice-operator-signals", signalRows, "No voice attention signals available.");
+
+        const activityRows = (report.recent_activity || []).map((entry) => `<tr>
+          <td><strong>${escapeHtml(humanizeStatusLabel(entry.kind || "-"))}</strong><div class="muted">${escapeHtml(entry.label || "-")}</div></td>
+          <td>${escapeHtml(entry.observed_at || "-")}</td>
+          <td>${escapeHtml(humanizeStatusLabel(entry.status || "-"))}</td>
+          <td>${escapeHtml(entry.detail || "-")}</td>
+        </tr>`);
+        renderTableRows("voice-operator-activity", activityRows, "No recent voice activity available.");
+      }
+
+      function renderVoiceStatus(payload) {
+        if (!payload || payload.error) {
+          renderSummaryCard("voice-status", payload?.error || "No voice status available.", null);
+          return;
+        }
+        renderSummaryCard("voice-status", "No voice status available.", buildSummaryMarkup({
+          kicker: "Voice Status",
+          title: payload.enabled ? "Voice runtime enabled" : "Voice runtime disabled",
+          copy: `STT ${payload.stt_provider || "-"} / TTS ${payload.tts_provider || "-"} over the shipped voice runtime lane.`,
+          stats: [
+            { label: "Inbound Notes", value: payload.transcribe_inbound_notes ? "enabled" : "disabled", detail: payload.download_dir || "-" },
+            { label: "STT", value: payload.stt_model || "-", detail: payload.stt_language || "-" },
+            { label: "TTS", value: payload.tts_model || "-", detail: payload.tts_voice || "-" },
+            { label: "Timeout", value: `${payload.timeout_secs ?? 0}s`, detail: `${payload.max_audio_bytes ?? 0} max bytes` },
+            { label: "STT Auth", value: payload.api_key_present ? "present" : "missing", detail: payload.api_key_env || "-" },
+            { label: "TTS Auth", value: payload.tts_api_key_present ? "present" : "missing", detail: payload.tts_api_key_env || "-" },
+          ],
+        }));
+      }
+
+      function renderVoiceProviders(payload) {
+        if (!payload || payload.error) {
+          renderSummaryCard("voice-providers", payload?.error || "No provider catalog loaded yet.", null);
+          return;
+        }
+        const stt = payload.stt || [];
+        const tts = payload.tts || [];
+        const sttReady = stt.filter((provider) => provider.api_key_present).length;
+        const ttsReady = tts.filter((provider) => provider.api_key_present).length;
+        renderSummaryCard("voice-providers", "No provider catalog loaded yet.", buildSummaryMarkup({
+          kicker: "Voice Providers",
+          title: `${stt.length} STT / ${tts.length} TTS lane(s)`,
+          copy: "Provider readiness stays explicit before operators use voice or call controls.",
+          stats: [
+            { label: "STT Ready", value: `${sttReady}/${stt.length}`, detail: stt[0]?.provider || "-" },
+            { label: "TTS Ready", value: `${ttsReady}/${tts.length}`, detail: tts[0]?.provider || "-" },
+            { label: "Inbound Notes", value: `${stt.filter((provider) => provider.supports_inbound_notes).length}`, detail: "supporting lane(s)" },
+            { label: "Voice Catalog", value: `${tts.filter((provider) => provider.supports_voice_catalog).length}`, detail: "catalog-capable lane(s)" },
+          ],
+        }));
+      }
+
+      function renderVoiceMetrics(payload) {
+        if (!payload || payload.error) {
+          renderSummaryCard("voice-metrics", payload?.error || "No voice metrics loaded yet.", null);
+          return;
+        }
+        renderSummaryCard("voice-metrics", "No voice metrics loaded yet.", buildSummaryMarkup({
+          kicker: "Voice Metrics",
+          title: `${payload.total_sessions ?? 0} session(s)`,
+          copy: `${payload.active_sessions ?? 0} active, ${payload.ended_sessions ?? 0} ended, ${payload.total_turns ?? 0} total turns.`,
+          stats: [
+            { label: "Artifacts", value: `${payload.total_artifacts ?? 0}`, detail: `${payload.total_artifact_bytes ?? 0} bytes` },
+            { label: "Transcript", value: `${payload.total_transcript_chars ?? 0} chars`, detail: "captured text" },
+            { label: "Average Turns", value: String(payload.avg_turns_per_session ?? 0), detail: payload.avg_session_duration_secs ? `${Math.round(payload.avg_session_duration_secs)}s avg duration` : "duration pending" },
+          ],
+        }));
+      }
+
+      function renderVoiceSessionHealth(payload) {
+        if (!payload || payload.error) {
+          renderSummaryCard("voice-session-health", payload?.error || "No voice session health loaded yet.", null);
+          return;
+        }
+        renderSummaryCard("voice-session-health", "No voice session health loaded yet.", buildSummaryMarkup({
+          kicker: "Voice Session Health",
+          title: `${payload.total_sessions ?? 0} session(s) checked`,
+          copy: `${payload.active_sessions ?? 0} active, ${payload.ended_sessions ?? 0} ended, ${payload.stale_sessions ?? 0} stale over a ${payload.stale_after_secs ?? 0}s threshold.`,
+          stats: [
+            { label: "Active", value: `${payload.active_sessions ?? 0}`, detail: payload.oldest_active_idle_secs != null ? `${payload.oldest_active_idle_secs}s oldest idle` : "no active sessions" },
+            { label: "Stale", value: `${payload.stale_sessions ?? 0}`, detail: `${payload.ended_sessions ?? 0} ended` },
+          ],
+        }));
+      }
+
+      function renderVoiceVoices(payload) {
+        if (!payload || payload.error) {
+          renderSummaryCard("voice-voices", payload?.error || "No voice catalog loaded yet.", null);
+          return;
+        }
+        renderSummaryCard("voice-voices", "No voice catalog loaded yet.", buildSummaryMarkup({
+          kicker: "Voice Catalog",
+          title: `${payload.voices?.length ?? 0} voice(s)`,
+          copy: `Default voice ${payload.default_voice || "-"} via ${payload.provider || "-"} / ${payload.model || "-"}.`,
+          stats: (payload.voices || []).slice(0, 4).map((voice) => ({
+            label: voice.name || voice.id || "-",
+            value: voice.language || "-",
+            detail: voice.preview_url || "-"
+          })),
+        }));
+      }
+
+      function renderTalkStatus(payload) {
+        if (!payload || payload.error) {
+          renderSummaryCard("talk-runtime-status", payload?.error || "No talk status available.", null);
+          return;
+        }
+        const latest = payload.latest_session || {};
+        renderSummaryCard("talk-runtime-status", "No talk status available.", buildSummaryMarkup({
+          kicker: "Talk Status",
+          title: `${payload.total_sessions ?? 0} receipt(s)`,
+          copy: `${payload.active_sessions ?? 0} active, ${payload.ended_sessions ?? 0} ended in the talk runtime lane.`,
+          stats: [
+            { label: "Latest Session", value: latest.id || "-", detail: latest.requested_provider || "-" },
+            { label: "Wake Word", value: latest.wake_word || "-", detail: latest.final_state || latest.status || "-" },
+          ],
+        }));
+      }
+
+      function renderTalkMetrics(payload) {
+        if (!payload || payload.error) {
+          renderSummaryCard("talk-runtime-metrics", payload?.error || "No talk metrics loaded yet.", null);
+          return;
+        }
+        renderSummaryCard("talk-runtime-metrics", "No talk metrics loaded yet.", buildSummaryMarkup({
+          kicker: "Talk Metrics",
+          title: `${payload.total_sessions ?? 0} receipt(s)`,
+          copy: `${payload.active_sessions ?? 0} active, ${payload.error_sessions ?? 0} error, ${payload.total_turns ?? 0} turns.`,
+          stats: [
+            { label: "Events", value: `${payload.total_events ?? 0}`, detail: "derived timeline events" },
+            { label: "Average Turns", value: String(payload.avg_turns_per_session ?? 0), detail: `${payload.ended_sessions ?? 0} ended` },
+          ],
+        }));
+      }
+
       function renderVoiceSessionList(payload) {
         const sessions = payload?.sessions || [];
         const rows = sessions.map((entry) => {
@@ -2219,19 +2406,30 @@
         renderTableRows("channel-probes", rows, "No enabled channels to probe.");
       }
 
+      async function loadVoiceOperatorReport() {
+        const staleAfterSecs = document.getElementById("voice-session-stale-secs").value.trim();
+        const query = new URLSearchParams({ limit: "12" });
+        if (staleAfterSecs) {
+          query.set("stale_after_secs", staleAfterSecs);
+        }
+        const payload = await fetchJson(`/control/voice/operator-summary?${query.toString()}`);
+        renderVoiceOperatorReport(payload);
+      }
+
       async function loadVoiceStatus() {
         const payload = await fetchJson("/control/voice/status");
-        setText("voice-status", payload);
+        renderVoiceStatus(payload);
       }
 
       async function loadVoiceProviders() {
         const payload = await fetchJson("/control/voice/providers");
-        setText("voice-providers", payload);
+        renderVoiceProviders(payload);
       }
 
       async function loadVoiceSessions() {
         const payload = await fetchJson("/control/voice/sessions");
         renderVoiceSessionList(payload);
+        await loadVoiceOperatorReport();
         await loadVoiceOutcomes();
         const sessions = payload.sessions || [];
         const currentSessionId = document.getElementById("voice-session-id").value.trim();
@@ -2271,12 +2469,12 @@
         const limit = document.getElementById("talk-session-limit").value.trim();
         const query = limit ? `?limit=${encodeURIComponent(limit)}` : "";
         const payload = await fetchJson(`/control/talk/status${query}`);
-        setText("talk-runtime-status", payload);
+        renderTalkStatus(payload);
       }
 
       async function loadTalkMetrics() {
         const payload = await fetchJson("/control/talk/metrics");
-        setText("talk-runtime-metrics", payload);
+        renderTalkMetrics(payload);
       }
 
       async function loadTalkSessions() {
@@ -2284,6 +2482,7 @@
         const query = limit ? `?limit=${encodeURIComponent(limit)}` : "";
         const payload = await fetchJson(`/control/talk/sessions${query}`);
         renderTalkSessionList(payload);
+        await loadVoiceOperatorReport();
         const sessions = payload.sessions || [];
         if (sessions.length) {
           const currentSessionId = document.getElementById("talk-session-id").value.trim();
@@ -2331,20 +2530,21 @@
 
       async function loadVoiceMetrics() {
         const payload = await fetchJson("/control/voice/metrics");
-        setText("voice-metrics", payload);
+        renderVoiceMetrics(payload);
       }
 
       async function loadVoiceSessionHealth() {
         const staleAfterSecs = document.getElementById("voice-session-stale-secs").value.trim();
         const query = staleAfterSecs ? `?stale_after_secs=${encodeURIComponent(staleAfterSecs)}` : "";
         const payload = await fetchJson(`/control/voice/sessions/health${query}`);
-        setText("voice-session-health", payload);
+        renderVoiceSessionHealth(payload);
+        await loadVoiceOperatorReport();
         await loadVoiceOutcomes();
       }
 
       async function loadVoiceVoices() {
         const payload = await fetchJson("/control/voice/voices");
-        setText("voice-voices", payload);
+        renderVoiceVoices(payload);
       }
 
       async function loadVoiceSessionTranscript() {
@@ -2978,6 +3178,8 @@
         if (payload.call && payload.call.call_id) {
           document.getElementById("skill-voice-call-id").value = payload.call.call_id;
         }
+        await loadVoiceCalls();
+        await loadVoiceOperatorReport();
       }
 
       async function prewarmCurrentVoicePlugin() {
@@ -3000,6 +3202,7 @@
       async function loadVoiceCalls() {
         const payload = await fetchJson("/control/skills/voice-calls");
         renderSkillDetail(payload);
+        await loadVoiceOperatorReport();
       }
 
       async function loadVoiceCallHealth() {
@@ -3039,6 +3242,7 @@
           }),
         });
         renderSkillDetail(payload);
+        await loadVoiceCalls();
       }
 
       async function endCurrentVoiceCall() {
@@ -3054,6 +3258,7 @@
           }),
         });
         renderSkillDetail(payload);
+        await loadVoiceCalls();
       }
 
       async function reconnectCurrentVoiceCall() {
@@ -3075,6 +3280,7 @@
           }),
         });
         renderSkillDetail(payload);
+        await loadVoiceCalls();
       }
 
       async function loadSkillCatalog(mode = "popular") {
@@ -4361,6 +4567,7 @@
             loadVaultStatus(),
             loadSchedulerStatus(),
             loadChannelProbes(),
+            loadVoiceOperatorReport(),
             loadTalkStatus(),
             loadTalkSessions(),
             loadVoiceStatus(),
@@ -4708,21 +4915,21 @@
         try {
           await loadVoiceStatus();
         } catch (error) {
-          setText("voice-status", { error: error.message });
+          renderSummaryCard("voice-status", error.message, null);
         }
       });
       document.getElementById("voice-providers-refresh").addEventListener("click", async () => {
         try {
           await loadVoiceProviders();
         } catch (error) {
-          setText("voice-providers", { error: error.message });
+          renderSummaryCard("voice-providers", error.message, null);
         }
       });
       document.getElementById("voice-metrics-refresh").addEventListener("click", async () => {
         try {
           await loadVoiceMetrics();
         } catch (error) {
-          setText("voice-metrics", { error: error.message });
+          renderSummaryCard("voice-metrics", error.message, null);
         }
       });
       document.getElementById("voice-sessions-refresh").addEventListener("click", async () => {
@@ -4736,28 +4943,28 @@
         try {
           await loadVoiceSessionHealth();
         } catch (error) {
-          setText("voice-session-health", { error: error.message });
+          renderSummaryCard("voice-session-health", error.message, null);
         }
       });
       document.getElementById("voice-voices-refresh").addEventListener("click", async () => {
         try {
           await loadVoiceVoices();
         } catch (error) {
-          setText("voice-voices", { error: error.message });
+          renderSummaryCard("voice-voices", error.message, null);
         }
       });
       document.getElementById("talk-status-refresh").addEventListener("click", async () => {
         try {
           await loadTalkStatus();
         } catch (error) {
-          setText("talk-runtime-status", { error: error.message });
+          renderSummaryCard("talk-runtime-status", error.message, null);
         }
       });
       document.getElementById("talk-metrics-refresh").addEventListener("click", async () => {
         try {
           await loadTalkMetrics();
         } catch (error) {
-          setText("talk-runtime-metrics", { error: error.message });
+          renderSummaryCard("talk-runtime-metrics", error.message, null);
         }
       });
       document.getElementById("talk-sessions-refresh").addEventListener("click", async () => {
@@ -4904,7 +5111,8 @@
         try {
           await reapVoiceSessions();
         } catch (error) {
-          setText("voice-session-health", { error: error.message });
+          renderSummaryCard("voice-session-health", error.message, null);
+          renderSummaryCard("voice-operator-report", error.message, null);
         }
       });
       document.getElementById("media-inspect").addEventListener("click", async () => {

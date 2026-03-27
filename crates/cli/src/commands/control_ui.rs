@@ -54,6 +54,17 @@ mod tests {
     }
 
     #[test]
+    fn dashboard_includes_voice_operator_report_rendering() {
+        assert!(CONTROL_UI_HTML.contains("voice-operator-report"));
+        assert!(CONTROL_UI_HTML.contains("voice-operator-signals"));
+        assert!(CONTROL_UI_HTML.contains("voice-operator-activity"));
+        assert!(CONTROL_UI_HTML.contains("function loadVoiceOperatorReport"));
+        assert!(CONTROL_UI_HTML.contains("function renderVoiceOperatorReport"));
+        assert!(CONTROL_UI_HTML.contains("function renderVoiceStatus"));
+        assert!(CONTROL_UI_HTML.contains("function renderTalkStatus"));
+    }
+
+    #[test]
     fn dashboard_includes_runtime_operator_ops_panel() {
         assert!(CONTROL_UI_HTML.contains("runtime-operator-ops"));
         assert!(CONTROL_UI_HTML.contains("function loadRuntimeOperatorOps"));
