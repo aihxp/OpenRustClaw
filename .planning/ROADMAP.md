@@ -80,10 +80,12 @@ Plans:
   1. Operators can inspect, configure, and shut down the full-autonomy lane from shipped control surfaces.
   2. The admin surface stays grounded in typed runtime contracts rather than frontend-only stitching.
   3. Docs and verification close the milestone with a truthful enterprise-autonomy baseline.
-**Plans**: TBD
+**Plans**: 3 plans complete
 
 Plans:
-- [ ] TBD (run `$gsd-plan-phase 23` to break down)
+- [ ] 23-01 Surface Full-Autonomy Inspection In Control UI
+- [ ] 23-02 Add Enable, Disable, And Kill-Switch Controls To The Shipped Admin Surface
+- [ ] 23-03 Close The Enterprise Autonomy Operator Loop
 
 ## Progress
 
@@ -92,12 +94,12 @@ Plans:
 | 20. Enterprise Governance and Approval Chains | 3/3 | Complete | 2026-03-27 |
 | 21. Enterprise Audit Retention and Review Packaging | 3/3 | Complete | 2026-03-27 |
 | 22. Operator-Gated Full Autonomy Mode | 3/3 | Complete | 2026-03-27 |
-| 23. Enterprise Autonomy Control Surface | 0/TBD | Not started | - |
+| 23. Enterprise Autonomy Control Surface | 0/3 | Planned | - |
 
 ## Current Status
 
 - Active milestone: v1.4 Enterprise Governance and Operator-Gated Full Autonomy
-- Next step: `$gsd-discuss-phase 23` or `$gsd-plan-phase 23`
+- Next step: `$gsd-execute-phase 23`
 - Archived milestone planning artifacts live under `.planning/milestones/`.
 
 ## Phase History
