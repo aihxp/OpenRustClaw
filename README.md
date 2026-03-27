@@ -72,6 +72,8 @@ The v1.3 enterprise access slice adds `/control/enterprise/access` and an `Enter
 
 Phase 17 extends that baseline with a unified `/control/enterprise/policy` surface for the currently shippable enterprise-sensitive controls: runtime approval policy, browser backend allowlist and wrapper/cloud switches, mobile command approval defaults, and audit-export settings. The paired `POST /control/enterprise/audit/export` route writes a durable JSON evidence bundle under `.claw/control/enterprise/exports/`, so operators can hand off the current policy state plus recent enterprise audit evidence without scraping multiple ledgers by hand.
 
+Phase 18 extends the supervised orchestration lane with explicit lifecycle controls on active runs. `/control/orchestration/active/{run_id}/escalate` and `/control/orchestration/active/{run_id}/rollback` now sit alongside pause, resume, and kill; active supervision payloads include lifecycle state plus structured intervention history; and `/control/ui` shows that same escalation and rollback evidence instead of hiding it in raw active-run notes.
+
 For the final MVP release loop, review `/control/security/posture` or the `Security Posture` panel in `/control/ui`, confirm the observability checks in [docs/src/operations/observability.md](docs/src/operations/observability.md), and walk the operator checklist in [docs/src/deployment/release-checklist.md](docs/src/deployment/release-checklist.md) before cutting a release candidate.
 
 ## Architecture

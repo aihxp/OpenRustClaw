@@ -21,6 +21,15 @@ Phase 17 adds a second enterprise operator loop on top of that identity boundary
 
 Treat this as an operator-managed policy and evidence layer. It improves reviewability and handoff, but it is still not a replacement for full compliance packaging, external GRC systems, or enterprise IAM products.
 
+Phase 18 adds a supervised-autonomy operator loop over active orchestration runs:
+
+- `POST /control/orchestration/active/{run_id}/pause|resume|kill` remains the low-level control surface.
+- `POST /control/orchestration/active/{run_id}/escalate` now records an explicit supervised escalation with operator rationale.
+- `POST /control/orchestration/active/{run_id}/rollback` records a rollback decision with optional rollback reference and moves the run into an explicit supervised recovery path.
+- `/control/orchestration/active/{run_id}/supervision` now reports lifecycle state and structured intervention history in addition to recent events and attention signals.
+
+Use those supervision controls as the truth source for longer-running operator-managed runs. They are intended to make intervention explicit and auditable, not to create an unbounded autonomous executor.
+
 ## Table of Contents
 
 - [Prerequisites](#prerequisites)

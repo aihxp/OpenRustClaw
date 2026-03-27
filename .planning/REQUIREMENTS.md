@@ -17,8 +17,8 @@
 
 ### Supervised Autonomy Foundations
 
-- [ ] **AUTO-03**: Longer-running supervised workflows expose explicit escalation, pause, rollback, and operator-intervention states instead of opaque execution.
-- [ ] **AUTO-04**: Supervised autonomy decisions preserve durable operator-visible evidence about why escalation or rollback happened.
+- [x] **AUTO-03**: Longer-running supervised workflows expose explicit escalation, pause, rollback, and operator-intervention states instead of opaque execution.
+- [x] **AUTO-04**: Supervised autonomy decisions preserve durable operator-visible evidence about why escalation or rollback happened.
 
 ### Admin and Operator Surface
 
@@ -57,8 +57,8 @@
 | ENTE-02 | Phase 16 | Passed |
 | ENTE-03 | Phase 17 | Complete |
 | ENTE-04 | Phase 17 | Complete |
-| AUTO-03 | Phase 18 | Pending |
-| AUTO-04 | Phase 18 | Pending |
+| AUTO-03 | Phase 18 | Complete |
+| AUTO-04 | Phase 18 | Complete |
 | ADMN-01 | Phase 19 | Pending |
 
 **Coverage:**
