@@ -23,7 +23,7 @@ This milestone turns onboarding and setup into one believable self-hosted produc
 - Decimal phases are reserved for urgent insertions if roadmap assumptions break.
 
 - [x] **Phase 28: Setup State and Resumable Onboarding Contract** - completed 2026-03-28. Defined the durable setup-state model and resumable onboarding flow.
-- [ ] **Phase 29: Mode-Aware Provider, Runtime, and Channel Bootstrap** - Make setup actually drive the selected deployment path to a truthful ready or blocked state.
+- [x] **Phase 29: Mode-Aware Provider, Runtime, and Channel Bootstrap** - completed 2026-03-28. Setup now validates provider, runtime, and channel bootstrap through shipped health/probe surfaces and persists those outcomes in setup state.
 - [ ] **Phase 30: Setup Repair and Existing Workspace Recovery** - Add explicit resume, repair, and reset-with-backup paths for partial or drifted setups.
 - [ ] **Phase 31: Setup Handoff and Operator Surface Alignment** - Close the loop with an explicit setup summary, next-action handoff, and aligned docs or control surfaces.
 
@@ -51,10 +51,12 @@ Plans:
   1. Setup drives provider, model, runtime, and control-plane configuration to a truthful ready or blocked state.
   2. Setup can validate and, where supported, bootstrap key runtime or channel surfaces before claiming success.
   3. Standard and advanced/custom setup paths remain mode-aware but converge on the same readiness contract.
-**Plans**: TBD
+**Plans**: 3 plans complete
 
 Plans:
-- [ ] TBD (run `$gsd-plan-phase 29` to break down)
+- [x] 29-01 Persist Bootstrap Outcomes in Setup State
+- [x] 29-02 Validate Provider and Runtime Bootstrap During Onboarding
+- [x] 29-03 Validate Channel Bootstrap During Onboarding
 
 ### Phase 30: Setup Repair and Existing Workspace Recovery
 **Goal**: Give operators explicit ways to resume, repair, or reset partial setups without manual workspace surgery.
@@ -87,14 +89,14 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 28. Setup State and Resumable Onboarding Contract | 2/2 | Complete | 2026-03-28 |
-| 29. Mode-Aware Provider, Runtime, and Channel Bootstrap | 0/TBD | Not started | - |
+| 29. Mode-Aware Provider, Runtime, and Channel Bootstrap | 3/3 | Complete | 2026-03-28 |
 | 30. Setup Repair and Existing Workspace Recovery | 0/TBD | Not started | - |
 | 31. Setup Handoff and Operator Surface Alignment | 0/TBD | Not started | - |
 
 ## Current Status
 
 - Active milestone: v1.6 Proper Onboarding and Setup
-- Next step: `$gsd-discuss-phase 29` or `$gsd-plan-phase 29`
+- Next step: `$gsd-discuss-phase 30` or `$gsd-plan-phase 30`
 - Archived milestone planning artifacts live under `.planning/milestones/`.
 
 ## Phase History

@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.6
 milestone_name: Proper Onboarding and Setup
-current_phase: 29
-current_phase_name: Mode-Aware Provider, Runtime, and Channel Bootstrap
+current_phase: 30
+current_phase_name: Setup Repair and Existing Workspace Recovery
 current_plan: Not started
-status: Phase 28 complete; Phase 29 ready
-stopped_at: Phase 28 complete; Phase 29 is ready for discuss and planning.
-last_updated: "2026-03-28T02:10:00.000Z"
-last_activity: 2026-03-28 -- Phase 28 completed
+status: Phase 29 complete; Phase 30 ready
+stopped_at: Phase 29 complete; Phase 30 is ready for discuss and planning.
+last_updated: "2026-03-28T03:35:00.000Z"
+last_activity: 2026-03-28 -- Phase 29 completed
 progress:
   total_phases: 4
-  completed_phases: 1
-  total_plans: 2
-  completed_plans: 2
-  percent: 25
+  completed_phases: 2
+  total_plans: 5
+  completed_plans: 5
+  percent: 50
 ---
 
 # Project State
@@ -24,21 +24,21 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-28)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** Phase 29 - Mode-Aware Provider, Runtime, and Channel Bootstrap
+**Current focus:** Phase 30 - Setup Repair and Existing Workspace Recovery
 
 ## Current Position
 
-Current Phase: 29
-Current Phase Name: Mode-Aware Provider, Runtime, and Channel Bootstrap
+Current Phase: 30
+Current Phase Name: Setup Repair and Existing Workspace Recovery
 Total Phases: 4
 Current Plan: Not started
 Total Plans in Phase: 0
-Status: Phase 28 complete; Phase 29 ready
-Last activity: 2026-03-28 -- Phase 28 completed
+Status: Phase 29 complete; Phase 30 ready
+Last activity: 2026-03-28 -- Phase 29 completed
 
-Phase: 2 of 4 (Mode-Aware Provider, Runtime, and Channel Bootstrap)
+Phase: 3 of 4 (Setup Repair and Existing Workspace Recovery)
 Plan: 0 of 0
-Progress: [███░░░░░░░] 25%
+Progress: [█████░░░░░] 50%
 
 ## Performance Metrics
 
@@ -65,6 +65,7 @@ Recent decisions affecting current work:
 - v1.5 is archived.
 - v1.6 now focuses on making onboarding and setup feel like one coherent, resumable first-install path.
 - Phase 28 now persists the durable setup-state contract and standard/advanced/custom setup-path selection before bootstrap and recovery work build on top of it.
+- Phase 29 now validates provider, runtime, and channel bootstrap through shipped health and probe surfaces, and records those bootstrap outcomes in setup state.
 
 ### Pending Todos
 
@@ -76,6 +77,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-27 04:44
-Stopped at: Phase 28 complete; Phase 29 is ready for discuss and planning.
+Last session: 2026-03-28 03:35
+Stopped at: Phase 29 complete; Phase 30 is ready for discuss and planning.
 Resume file: None

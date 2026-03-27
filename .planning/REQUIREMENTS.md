@@ -13,12 +13,12 @@
 ### Setup Path Selection
 
 - [x] **PATH-01**: First-run setup offers a standard path for the common self-hosted install and an advanced or custom path for operators who need deeper control.
-- [ ] **PATH-02**: Standard and advanced or custom setup paths stay mode-aware and converge back into the same truthful readiness and handoff contract.
+- [x] **PATH-02**: Standard and advanced or custom setup paths stay mode-aware and converge back into the same truthful readiness and handoff contract.
 
 ### Provider, Runtime, and Channel Bootstrap
 
-- [ ] **BOOT-01**: Setup drives the core provider, model, runtime, and control-plane configuration to a truthful ready or blocked state for the selected deployment mode.
-- [ ] **BOOT-02**: Setup can validate and, where supported, bootstrap key runtime or channel surfaces before claiming the workspace is ready.
+- [x] **BOOT-01**: Setup drives the core provider, model, runtime, and control-plane configuration to a truthful ready or blocked state for the selected deployment mode.
+- [x] **BOOT-02**: Setup can validate and, where supported, bootstrap key runtime or channel surfaces before claiming the workspace is ready.
 
 ### Operator Handoff and Visibility
 
@@ -57,10 +57,10 @@
 |-------------|-------|--------|
 | SETUP-01 | Phase 28 | Complete |
 | PATH-01 | Phase 28 | Complete |
-| PATH-02 | Phase 29 | Pending |
+| PATH-02 | Phase 29 | Complete |
 | SETUP-02 | Phase 30 | Pending |
-| BOOT-01 | Phase 29 | Pending |
-| BOOT-02 | Phase 29 | Pending |
+| BOOT-01 | Phase 29 | Complete |
+| BOOT-02 | Phase 29 | Complete |
 | HANDOFF-01 | Phase 31 | Pending |
 | HANDOFF-02 | Phase 31 | Pending |
 
