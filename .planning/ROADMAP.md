@@ -65,10 +65,12 @@ Plans:
   1. Full autonomy is an explicit operator-gated mode rather than a hidden default behavior change.
   2. Full-autonomy runs preserve budgets, kill switches, and durable enablement or shutdown evidence.
   3. The stronger autonomy lane remains operator-governed and reversible rather than opaque.
-**Plans**: TBD
+**Plans**: 3 plans complete
 
 Plans:
-- [ ] TBD (run `$gsd-plan-phase 22` to break down)
+- [ ] 22-01 Add A Durable Full-Autonomy Override Contract
+- [ ] 22-02 Enforce Full-Autonomy Enablement, Disable, And Kill-Switch Actions
+- [ ] 22-03 Close The Backend Full-Autonomy Lane With Audit And Docs
 
 ### Phase 23: Enterprise Autonomy Control Surface
 **Goal**: Make the enterprise governance and full-autonomy override lane usable and governable from shipped control surfaces.
@@ -89,13 +91,13 @@ Plans:
 |-------|----------------|--------|-----------|
 | 20. Enterprise Governance and Approval Chains | 3/3 | Complete | 2026-03-27 |
 | 21. Enterprise Audit Retention and Review Packaging | 3/3 | Complete | 2026-03-27 |
-| 22. Operator-Gated Full Autonomy Mode | 0/TBD | Not started | - |
+| 22. Operator-Gated Full Autonomy Mode | 0/3 | Planned | - |
 | 23. Enterprise Autonomy Control Surface | 0/TBD | Not started | - |
 
 ## Current Status
 
 - Active milestone: v1.4 Enterprise Governance and Operator-Gated Full Autonomy
-- Next step: `$gsd-discuss-phase 22` or `$gsd-plan-phase 22`
+- Next step: `$gsd-execute-phase 22`
 - Archived milestone planning artifacts live under `.planning/milestones/`.
 
 ## Phase History
