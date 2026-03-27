@@ -74,6 +74,13 @@ mod tests {
     }
 
     #[test]
+    fn dashboard_includes_mobile_operator_report_rendering() {
+        assert!(CONTROL_UI_HTML.contains("mobile-node-signals"));
+        assert!(CONTROL_UI_HTML.contains("mobile-node-activity-table"));
+        assert!(CONTROL_UI_HTML.contains("function renderMobileNodeReport"));
+    }
+
+    #[test]
     fn dashboard_includes_enterprise_foundations_panel() {
         assert!(CONTROL_UI_HTML.contains("enterprise-foundations"));
         assert!(CONTROL_UI_HTML.contains("function loadEnterpriseFoundations"));

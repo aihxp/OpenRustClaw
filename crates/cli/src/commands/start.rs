@@ -3053,6 +3053,10 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
         .route("/control/mobile/nodes/pair", post(mobile_pair_handler))
         .route("/control/mobile/nodes/{id}", get(mobile_node_handler))
         .route(
+            "/control/mobile/nodes/{id}/summary",
+            get(mobile_node_summary_handler),
+        )
+        .route(
             "/control/mobile/nodes/{id}/unpair",
             post(mobile_node_unpair_handler),
         )
@@ -5896,6 +5900,21 @@ async fn mobile_node_handler(
         Ok(node) => (StatusCode::OK, Json(serde_json::json!(node))).into_response(),
         Err(error) => (
             StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn mobile_node_summary_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(id): AxumPath<String>,
+    Query(query): Query<MobileLimitQuery>,
+) -> impl IntoResponse {
+    match mobile::mobile_node_report_data(&state.workspace_root, &id, query.limit.or(Some(12))) {
+        Ok(report) => (StatusCode::OK, Json(serde_json::json!(report))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": error.to_string()})),
         )
             .into_response(),

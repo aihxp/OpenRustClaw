@@ -914,11 +914,26 @@
             </div>
           </div>
           <div class="surface"><pre id="mobile-node-detail">Select a mobile node to inspect.</pre></div>
+          <div class="surface" style="margin-top: 12px">
+            <table class="table">
+              <thead>
+                <tr><th>Attention Signal</th><th>Severity</th></tr>
+              </thead>
+              <tbody id="mobile-node-signals"><tr><td colspan="2" class="muted">Select a mobile node to inspect.</td></tr></tbody>
+            </table>
+          </div>
           <div class="surface" style="margin-top: 12px"><pre id="mobile-metrics">No mobile metrics loaded yet.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="mobile-node-push">No mobile push state loaded yet.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="mobile-node-sync">No mobile sync state loaded yet.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="mobile-node-capabilities">No mobile capabilities loaded yet.</pre></div>
-          <div class="surface" style="margin-top: 12px"><pre id="mobile-node-activity">No mobile activity loaded yet.</pre></div>
+          <div class="surface" style="margin-top: 12px">
+            <table class="table">
+              <thead>
+                <tr><th>When</th><th>Kind</th><th>Status</th><th>Summary</th></tr>
+              </thead>
+              <tbody id="mobile-node-activity-table"><tr><td colspan="4" class="muted">No mobile activity loaded yet.</td></tr></tbody>
+            </table>
+          </div>
           <div class="surface" style="margin-top: 12px"><pre id="mobile-app-session-metrics">No mobile app-session metrics loaded yet.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="mobile-app-session-detail">No mobile app session selected.</pre></div>
           <div class="surface" style="margin-top: 12px"><pre id="mobile-node-pairings">No mobile pairing history loaded yet.</pre></div>
@@ -2582,6 +2597,8 @@
           await inspectMobileNode(nodes[0].node.id);
         } else {
           setText("mobile-node-detail", "No mobile node selected.");
+          renderTableRows("mobile-node-signals", [], "Select a mobile node to inspect.");
+          renderTableRows("mobile-node-activity-table", [], "No mobile activity loaded yet.");
           setText("mobile-app-session-detail", "No mobile app session selected.");
           setText("mobile-node-pairings", "No mobile pairing history loaded yet.");
           setText("mobile-capability-execution-detail", "No mobile capability execution selected.");
@@ -2589,36 +2606,91 @@
         }
       }
 
+      function renderMobileNodeReport(report) {
+        const manifest = report.manifest?.node || {};
+        const status = report.node_status || {};
+        const summary = report.summary || {};
+        const runtime = report.runtime || {};
+        const push = report.push || {};
+        const sync = report.sync || {};
+        const appSessions = report.app_session_metrics || {};
+        const commandMetrics = report.command_metrics || {};
+        const lines = [
+          `node: ${summary.node_id || manifest.id || "-"}`,
+          `device: ${manifest.device_name || "-"}`,
+          `platform: ${manifest.platform || "-"}`,
+          `readiness: ${status.readiness || "-"}`,
+          `runtime: ${summary.runtime_status || runtime.runtime_status || "-"} (${runtime.app_state || "-"} / ${runtime.network || "-"})`,
+          `battery: ${runtime.battery_percent ?? "-"}%`,
+          `push: ${push.push_provider || "-"} / token ${push.push_token_present ? "present" : "missing"} / authorized ${push.notifications_authorized ? "yes" : "no"}`,
+          `sync: ${sync.sync_state || "-"} / pending changes ${sync.pending_change_count ?? "-"} / conflicts ${sync.pending_conflict_count ?? 0}`,
+          `sessions: ${summary.active_app_sessions ?? 0} active / ${summary.app_sessions ?? 0} total`,
+          `commands: ${summary.commands ?? 0} total / ${commandMetrics.pending_approval_commands ?? 0} pending approval`,
+          `messages: ${summary.inbox_messages ?? 0} inbox / ${summary.outbox_messages ?? 0} outbox / ${summary.notifications ?? 0} notifications`,
+          `artifacts: ${summary.capability_executions ?? 0} capability runs / ${summary.media_artifacts ?? 0} media artifacts`,
+          `recent activity: ${(report.recent_activity || []).length} item(s)`,
+        ];
+        setText("mobile-node-detail", lines.join("\n"));
+
+        const signalRows = (report.attention_signals || []).map((signal) => `<tr>
+          <td>${signal.summary || "-"}</td>
+          <td>${signal.severity || "-"}</td>
+        </tr>`);
+        renderTableRows("mobile-node-signals", signalRows, "No active mobile attention signals.");
+
+        const activityRows = (report.recent_activity || []).map((entry) => `<tr>
+          <td>${entry.created_at || "-"}</td>
+          <td><strong>${entry.kind || "-"}</strong><div class="muted">${entry.id || "-"}</div></td>
+          <td>${entry.status || "-"}</td>
+          <td>${entry.summary || "-"}</td>
+        </tr>`);
+        renderTableRows("mobile-node-activity-table", activityRows, "No mobile activity loaded yet.");
+
+        setText("mobile-node-push", [
+          `provider: ${push.push_provider || "-"}`,
+          `token present: ${push.push_token_present ? "yes" : "no"}`,
+          `notifications authorized: ${push.notifications_authorized ? "yes" : "no"}`,
+          `updated at: ${push.push_token_updated_at || "-"}`,
+        ].join("\n"));
+        setText("mobile-node-sync", [
+          `state: ${sync.sync_state || "-"}`,
+          `pending changes: ${sync.pending_change_count ?? "-"}`,
+          `pending conflicts: ${sync.pending_conflict_count ?? 0}`,
+          `resolved conflicts: ${sync.resolved_conflict_count ?? 0}`,
+          `last sync result: ${sync.last_sync_result || "-"}`,
+          `last sync at: ${sync.last_sync_at || "-"}`,
+        ].join("\n"));
+        setText("mobile-app-session-metrics", [
+          `total sessions: ${appSessions.total_sessions ?? 0}`,
+          `active sessions: ${appSessions.active_sessions ?? 0}`,
+          `ended sessions: ${appSessions.ended_sessions ?? 0}`,
+          `avg duration secs: ${appSessions.avg_duration_secs ?? "-"}`,
+          `newest session: ${appSessions.newest_session_at || "-"}`,
+        ].join("\n"));
+      }
+
       async function inspectMobileNode(id) {
-        const [manifest, status, runtime, push, sync, capabilities, activity, pairings, conflicts, appSessions] = await Promise.all([
-          fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}`),
-          fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}/status`),
-          fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}/runtime`),
-          fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}/push`),
-          fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}/sync`),
+        const [report, capabilities, pairings, conflicts, appSessions] = await Promise.all([
+          fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}/summary?limit=25`),
           fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}/capabilities`),
-          fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}/activity?limit=25`),
           fetchJson(`/control/mobile/pairings?node_id=${encodeURIComponent(id)}&limit=20`),
           fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}/sync-conflicts?limit=20`),
           fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}/app-sessions?limit=20`),
         ]);
-        setText("mobile-node-detail", { manifest, status, runtime });
-        setText("mobile-node-push", push);
-        setText("mobile-node-sync", sync);
+        renderMobileNodeReport(report);
         setText("mobile-node-capabilities", capabilities);
-        setText("mobile-node-activity", activity);
         setText("mobile-node-pairings", pairings);
         setText("mobile-sync-conflict-detail", conflicts);
         setText("mobile-app-session-detail", appSessions);
         document.getElementById("mobile-source-node").value = id;
         document.getElementById("mobile-command-node").value = id;
-        document.getElementById("mobile-runtime-app-state").value = runtime.app_state || "";
-        document.getElementById("mobile-runtime-network").value = runtime.network || "";
-        document.getElementById("mobile-runtime-battery").value = runtime.battery_percent ?? "";
-        document.getElementById("mobile-push-provider").value = push.push_provider || "";
-        document.getElementById("mobile-sync-state").value = sync.sync_state || "";
-        document.getElementById("mobile-sync-pending").value = sync.pending_change_count ?? "";
-        document.getElementById("mobile-sync-result").value = sync.last_sync_result || "";
+        document.getElementById("mobile-runtime-app-state").value = report.runtime?.app_state || "";
+        document.getElementById("mobile-runtime-network").value = report.runtime?.network || "";
+        document.getElementById("mobile-runtime-battery").value = report.runtime?.battery_percent ?? "";
+        document.getElementById("mobile-push-provider").value = report.push?.push_provider || "";
+        document.getElementById("mobile-sync-state").value = report.sync?.sync_state || "";
+        document.getElementById("mobile-sync-pending").value = report.sync?.pending_change_count ?? "";
+        document.getElementById("mobile-sync-result").value = report.sync?.last_sync_result || "";
         await loadMobileAppSessions(id);
         await loadMobileSyncConflicts(id);
         await loadMobileNotifications(id);
@@ -2638,8 +2710,8 @@
         if (!id) {
           throw new Error("Select a mobile node first.");
         }
-        const activity = await fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}/activity?limit=25`);
-        setText("mobile-node-activity", activity);
+        const report = await fetchJson(`/control/mobile/nodes/${encodeURIComponent(id)}/summary?limit=25`);
+        renderMobileNodeReport(report);
       }
 
       async function loadMobileAppSessionMetrics(nodeId = null) {

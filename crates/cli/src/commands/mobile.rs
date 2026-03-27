@@ -626,6 +626,30 @@ pub struct MobileNodeSummaryResult {
     pub summary: MobileNodeSummary,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct MobileOperatorAttentionSignal {
+    pub kind: String,
+    pub severity: String,
+    pub summary: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MobileNodeOperatorReport {
+    pub status: String,
+    pub manifest: MobileNodeManifest,
+    pub node_status: MobileNodeStatus,
+    pub summary: MobileNodeSummary,
+    pub runtime: MobileNodeRuntimeState,
+    pub push: MobileNodePushState,
+    pub sync: MobileNodeSyncState,
+    pub app_session_metrics: MobileAppSessionMetricsSummary,
+    pub command_metrics: MobileCommandMetricsSummary,
+    #[serde(default)]
+    pub recent_activity: Vec<MobileNodeActivityEntry>,
+    #[serde(default)]
+    pub attention_signals: Vec<MobileOperatorAttentionSignal>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MobilePairingRecord {
     pub id: String,
@@ -1663,6 +1687,46 @@ pub fn mobile_node_summary_data(
             capability_executions,
             media_artifacts,
         },
+    })
+}
+
+pub fn mobile_node_report_data(
+    workspace_root: &Path,
+    node_id: &str,
+    activity_limit: Option<usize>,
+) -> Result<MobileNodeOperatorReport> {
+    let manifest = inspect_node_data(workspace_root, node_id)?;
+    let node_status = node_status_data(workspace_root, node_id)?;
+    let summary = mobile_node_summary_data(workspace_root, node_id)?.summary;
+    let runtime = node_runtime_data(workspace_root, node_id)?;
+    let push = node_push_state_data(workspace_root, node_id)?;
+    let sync = node_sync_state_data(workspace_root, node_id)?;
+    let app_session_metrics =
+        app_session_metrics_data(workspace_root, Some(node_id), None)?.metrics;
+    let command_metrics = command_metrics_data(workspace_root, Some(node_id), None)?.metrics;
+    let recent_activity = node_activity_data(workspace_root, node_id, activity_limit)?.entries;
+    let attention_signals = mobile_attention_signals(
+        &node_status,
+        &summary,
+        &runtime,
+        &push,
+        &sync,
+        &app_session_metrics,
+        &command_metrics,
+    );
+
+    Ok(MobileNodeOperatorReport {
+        status: "ok".to_string(),
+        manifest,
+        node_status,
+        summary,
+        runtime,
+        push,
+        sync,
+        app_session_metrics,
+        command_metrics,
+        recent_activity,
+        attention_signals,
     })
 }
 
@@ -4167,6 +4231,127 @@ fn runtime_activity_entries(runtime: &MobileNodeRuntimeState) -> Vec<MobileNodeA
         });
     }
     entries
+}
+
+fn mobile_attention_signals(
+    node_status: &MobileNodeStatus,
+    summary: &MobileNodeSummary,
+    runtime: &MobileNodeRuntimeState,
+    push: &MobileNodePushState,
+    sync: &MobileNodeSyncState,
+    app_session_metrics: &MobileAppSessionMetricsSummary,
+    command_metrics: &MobileCommandMetricsSummary,
+) -> Vec<MobileOperatorAttentionSignal> {
+    let mut signals = Vec::new();
+
+    if node_status.readiness != "ready_for_runtime" {
+        signals.push(MobileOperatorAttentionSignal {
+            kind: "node_readiness".to_string(),
+            severity: "high".to_string(),
+            summary: format!("node readiness is {}", node_status.readiness),
+        });
+    }
+    if !runtime.reachable {
+        signals.push(MobileOperatorAttentionSignal {
+            kind: "connectivity".to_string(),
+            severity: "high".to_string(),
+            summary: "node is not currently reachable".to_string(),
+        });
+    }
+    if !push.push_token_present {
+        signals.push(MobileOperatorAttentionSignal {
+            kind: "push_registration".to_string(),
+            severity: "medium".to_string(),
+            summary: "push token is missing".to_string(),
+        });
+    }
+    if !push.notifications_authorized {
+        signals.push(MobileOperatorAttentionSignal {
+            kind: "notification_authorization".to_string(),
+            severity: "medium".to_string(),
+            summary: "device notifications are not authorized".to_string(),
+        });
+    }
+    if sync.pending_conflict_count > 0 {
+        signals.push(MobileOperatorAttentionSignal {
+            kind: "sync_conflicts".to_string(),
+            severity: "high".to_string(),
+            summary: format!(
+                "{} sync conflict(s) need resolution",
+                sync.pending_conflict_count
+            ),
+        });
+    }
+    if command_metrics.pending_approval_commands > 0 {
+        signals.push(MobileOperatorAttentionSignal {
+            kind: "pending_approval".to_string(),
+            severity: "high".to_string(),
+            summary: format!(
+                "{} mobile command(s) are waiting for approval",
+                command_metrics.pending_approval_commands
+            ),
+        });
+    }
+    if matches!(runtime.wake_state.as_str(), "requested" | "dispatched") {
+        signals.push(MobileOperatorAttentionSignal {
+            kind: "wake_request".to_string(),
+            severity: "medium".to_string(),
+            summary: format!("wake request is {}", runtime.wake_state),
+        });
+    }
+    if runtime.rehydrate_state == "requested" {
+        signals.push(MobileOperatorAttentionSignal {
+            kind: "rehydrate_request".to_string(),
+            severity: "medium".to_string(),
+            summary: "rehydrate has been requested but not completed".to_string(),
+        });
+    }
+    if runtime.pending_notification_count > 0 {
+        signals.push(MobileOperatorAttentionSignal {
+            kind: "notifications_pending".to_string(),
+            severity: "low".to_string(),
+            summary: format!(
+                "{} notification(s) remain pending acknowledgement",
+                runtime.pending_notification_count
+            ),
+        });
+    }
+    if runtime.pending_inbound_message_count > 0 {
+        signals.push(MobileOperatorAttentionSignal {
+            kind: "inbox_backlog".to_string(),
+            severity: "low".to_string(),
+            summary: format!(
+                "{} inbound mobile message(s) remain unacknowledged",
+                runtime.pending_inbound_message_count
+            ),
+        });
+    }
+    if runtime.pending_outbound_message_count > 0 {
+        signals.push(MobileOperatorAttentionSignal {
+            kind: "outbox_backlog".to_string(),
+            severity: "low".to_string(),
+            summary: format!(
+                "{} outbound mobile message(s) remain unacknowledged",
+                runtime.pending_outbound_message_count
+            ),
+        });
+    }
+    if summary.capability_executions > 0 && summary.media_artifacts == 0 {
+        signals.push(MobileOperatorAttentionSignal {
+            kind: "capability_artifacts".to_string(),
+            severity: "low".to_string(),
+            summary: "capability executions exist without derived media artifacts yet".to_string(),
+        });
+    }
+    if runtime.reachable && app_session_metrics.active_sessions == 0 {
+        signals.push(MobileOperatorAttentionSignal {
+            kind: "app_sessions".to_string(),
+            severity: "low".to_string(),
+            summary: "node is reachable but has no active app sessions".to_string(),
+        });
+    }
+
+    signals
 }
 
 fn summarize_body(value: &str, limit: usize) -> String {
