@@ -3,21 +3,28 @@
 **Defined:** 2026-03-27
 **Core Value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
 
-## Current Status
+## v1.5 Requirements
 
-- No active milestone requirements are open.
-- Most recently shipped milestone: `v1.4 Enterprise Governance and Operator-Gated Full Autonomy`
-- For archived v1.4 requirements, see `.planning/milestones/v1.4-REQUIREMENTS.md`
-- Start the next milestone with `$gsd-new-milestone`
+### Self-Hosted Product Modes
 
-## Recently Validated
+- [ ] **MODE-01**: OpenRustClaw is framed explicitly as a self-hosted open-source product for solo, multi-user team, company, and enterprise deployments.
+- [ ] **MODE-02**: Deployment mode is modeled as a first-class instance profile rather than implied by scattered docs or enterprise toggles.
 
-- ✓ `GOV-01` and `GOV-02` — stronger enterprise governance and separation-of-duties controls shipped in v1.4 Phase 20
-- ✓ `AUD-01` and `AUD-02` — richer enterprise audit retention and review packaging shipped in v1.4 Phase 21
-- ✓ `AUTO-05` and `AUTO-06` — explicit operator-gated full autonomy with budgets, kill switch, and durable evidence shipped in v1.4 Phase 22
-- ✓ `ADMN-02` — shipped enterprise autonomy control surface in `/control/ui` landed in v1.4 Phase 23
+### Tiered Onboarding
 
-## Next-Line Requirements
+- [ ] **ONBR-01**: First-run setup offers differentiated paths for solo, multi-user team, company, and enterprise installs instead of one flat onboarding flow.
+- [ ] **ONBR-02**: Each onboarding path explains the mode-specific trust boundary, required setup steps, and recommended defaults truthfully.
+
+### Upgrade and Downgrade Lifecycle
+
+- [ ] **LIFE-01**: Operators can upgrade between product modes without ambiguous state transitions or hidden policy drift.
+- [ ] **LIFE-02**: Operators can downgrade between product modes with explicit handling for permissions, governance, and retained data implications.
+
+### Product and Operator Surface Alignment
+
+- [ ] **SURF-01**: Docs and shipped control surfaces consistently describe the product as self-hosted open-source and reflect the current deployment mode plus transition path.
+
+## v1.6+ Requirements
 
 ### Broader Enterprise Expansion
 
@@ -38,27 +45,28 @@
 
 | Feature | Reason |
 |---------|--------|
-| Silent or default-on “god mode” for all operators | Full autonomy must remain explicit and operator-gated rather than a hidden weakening of trust boundaries |
-| Full unsupervised AGI or autonomous business operation with no operator control path | Still outside the intended trust and safety boundary |
-| Full enterprise IAM, SCIM, and multi-tenant governance packaging in one milestone | Still larger than the currently shipped enterprise baseline |
-| Another broad multi-surface parity milestone with no enterprise or autonomy guardrails | Future parity work should keep the enterprise and autonomy contract intact |
+| Hosted SaaS packaging, billing, or commercial licensing workflows in this milestone | The current request is about self-hosted mode clarity and lifecycle, not hosted commercialization |
+| Full enterprise IAM, SCIM, and tenant-aware RBAC implementation in the same milestone | Larger than the focused product-mode and onboarding slice |
+| Automatic in-place migrations for every future mode change with no operator review | Upgrade and downgrade paths should be explicit and operator-auditable first |
+| Silent or default-on full-autonomy mode for all installs | The self-hosted mode system should not weaken the operator-gated trust contract already established |
 
-## Pending Requirement Backlog
+## Traceability
 
-| Requirement | Area | Status |
-|-------------|------|--------|
-| ENT-01 | Enterprise Expansion | Backlog |
-| ENT-02 | Enterprise Expansion | Backlog |
-| AUTO-01 | Broader Autonomy | Backlog |
-| AUTO-02 | Broader Autonomy | Backlog |
-| AUTO-03 | Broader Autonomy | Backlog |
-| PAR-01 | Additional Parity | Backlog |
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| MODE-01 | Phase 24 | Pending |
+| MODE-02 | Phase 24 | Pending |
+| ONBR-01 | Phase 25 | Pending |
+| ONBR-02 | Phase 25 | Pending |
+| LIFE-01 | Phase 26 | Pending |
+| LIFE-02 | Phase 26 | Pending |
+| SURF-01 | Phase 27 | Pending |
 
 **Coverage:**
-- Active next-line requirements: 6 total
-- Open milestone requirements: 0
-- Next milestone: not started
+- v1.5 requirements: 7 total
+- Mapped to phases: 7
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-27*
-*Last updated: 2026-03-27 after archiving v1.4*
+*Last updated: 2026-03-27 at milestone start*
