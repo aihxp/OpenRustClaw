@@ -267,7 +267,9 @@ impl OnboardingWizard {
                 let repair_plan =
                     build_setup_repair_plan(&workspace_root, existing_setup_state.as_ref()).await?;
                 if repair_plan.steps.is_empty() {
-                    println!("No targeted repair steps were identified. Running a health check only.");
+                    println!(
+                        "No targeted repair steps were identified. Running a health check only."
+                    );
                     let healthy = self.run_post_onboarding_health_check().await?;
                     self.print_completion();
                     self.maybe_launch_assistant(healthy).await?;
@@ -280,7 +282,8 @@ impl OnboardingWizard {
                     .interact()?;
                 if proceed {
                     prepare_setup_state_for_repair(&workspace_root, &repair_plan.steps)?;
-                    self.run_selected_steps(&workspace_root, repair_plan.steps).await?;
+                    self.run_selected_steps(&workspace_root, repair_plan.steps)
+                        .await?;
                 }
                 let healthy = self.run_post_onboarding_health_check().await?;
                 self.print_completion();
@@ -827,7 +830,9 @@ async fn setup_telegram(wizard: &mut OnboardingWizard) -> Result<&'static str> {
         println!("✓ Telegram configured");
     } else {
         println!("⚠️  No token provided, skipping Telegram setup");
-        return Err(anyhow!("Telegram setup was skipped because no token was provided."));
+        return Err(anyhow!(
+            "Telegram setup was skipped because no token was provided."
+        ));
     }
 
     Ok("telegram")
@@ -850,7 +855,9 @@ async fn setup_discord(wizard: &mut OnboardingWizard) -> Result<&'static str> {
         println!("✓ Discord configured");
     } else {
         println!("⚠️  No token provided, skipping Discord setup");
-        return Err(anyhow!("Discord setup was skipped because no bot token was provided."));
+        return Err(anyhow!(
+            "Discord setup was skipped because no bot token was provided."
+        ));
     }
 
     Ok("discord")
@@ -873,7 +880,9 @@ async fn setup_slack(wizard: &mut OnboardingWizard) -> Result<&'static str> {
         println!("✓ Slack configured");
     } else {
         println!("⚠️  No token provided, skipping Slack setup");
-        return Err(anyhow!("Slack setup was skipped because no bot token was provided."));
+        return Err(anyhow!(
+            "Slack setup was skipped because no bot token was provided."
+        ));
     }
 
     Ok("slack")
@@ -914,7 +923,8 @@ async fn run_model_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
             )?;
             wizard.state.model_configured = true;
             wizard.state.preferred_provider = Some("ollama".to_string());
-            let provider_assessment = validate_provider_bootstrap(&workspace_root, "ollama").await?;
+            let provider_assessment =
+                validate_provider_bootstrap(&workspace_root, "ollama").await?;
             record_bootstrap_outcome(
                 &workspace_root,
                 "provider",
@@ -924,7 +934,8 @@ async fn run_model_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
             )?;
             print_bootstrap_assessment("ollama", &provider_assessment);
             let runtime_assessment =
-                runtime_lane_assessment(&workspace_root, wizard.state.deployment_mode.as_deref()).await?;
+                runtime_lane_assessment(&workspace_root, wizard.state.deployment_mode.as_deref())
+                    .await?;
             record_bootstrap_outcome(
                 &workspace_root,
                 "runtime",
@@ -959,7 +970,8 @@ async fn run_model_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
         )?;
         wizard.state.model_configured = true;
         wizard.state.preferred_provider = Some(provider_name.to_string());
-        let provider_assessment = validate_provider_bootstrap(&workspace_root, provider_name).await?;
+        let provider_assessment =
+            validate_provider_bootstrap(&workspace_root, provider_name).await?;
         record_bootstrap_outcome(
             &workspace_root,
             "provider",
@@ -969,7 +981,8 @@ async fn run_model_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
         )?;
         print_bootstrap_assessment(provider_name, &provider_assessment);
         let runtime_assessment =
-            runtime_lane_assessment(&workspace_root, wizard.state.deployment_mode.as_deref()).await?;
+            runtime_lane_assessment(&workspace_root, wizard.state.deployment_mode.as_deref())
+                .await?;
         record_bootstrap_outcome(
             &workspace_root,
             "runtime",
@@ -1052,7 +1065,11 @@ async fn run_control_plane_setup(wizard: &mut OnboardingWizard) -> Result<bool> 
 
     wizard.state.execution_mode = Some(mode.to_string());
     let workspace_root = std::env::current_dir()?;
-    let assessment = validate_execution_mode_bootstrap(&workspace_root, mode, wizard.state.deployment_mode.as_deref())?;
+    let assessment = validate_execution_mode_bootstrap(
+        &workspace_root,
+        mode,
+        wizard.state.deployment_mode.as_deref(),
+    )?;
     record_bootstrap_outcome(
         &workspace_root,
         "runtime",
@@ -1283,7 +1300,9 @@ pub fn setup_handoff_detail(setup: &SetupState) -> String {
                 )
             })
             .or_else(|| setup.next_action.clone())
-            .unwrap_or_else(|| "Setup is usable but still has warning-level bootstrap issues.".to_string()),
+            .unwrap_or_else(|| {
+                "Setup is usable but still has warning-level bootstrap issues.".to_string()
+            }),
         "ready" => "The workspace is ready for first start and assistant handoff.".to_string(),
         "in_progress" => setup
             .next_action
@@ -1344,7 +1363,8 @@ fn mark_setup_state_step_completed(workspace_root: &Path, step: &OnboardingStep)
         if !setup.completed_steps.contains(&step_id) {
             setup.completed_steps.push(step_id);
         }
-        setup.blockers
+        setup
+            .blockers
             .retain(|item| !item.contains(step.name()) && !item.contains(step.id()));
         setup.current_step = None;
         setup.next_action = next_pending_step_name(setup).map(|name| format!("Complete {name}"));
@@ -1366,22 +1386,25 @@ fn mark_setup_state_step_blocked(
     })
 }
 
-fn finalize_setup_state(workspace_root: &Path, readiness: &doctor::FirstStartReadiness) -> Result<()> {
+fn finalize_setup_state(
+    workspace_root: &Path,
+    readiness: &doctor::FirstStartReadiness,
+) -> Result<()> {
     with_setup_state_mut(workspace_root, |setup| {
         setup.completed_at = Some(Utc::now().to_rfc3339());
         setup.current_step = None;
         if readiness.ready {
             setup.status = "ready".to_string();
             setup.blockers.clear();
-            setup.next_action = Some(
-                "Start the gateway or launch the persisted assistant session.".to_string(),
-            );
+            setup.next_action =
+                Some("Start the gateway or launch the persisted assistant session.".to_string());
         } else {
             setup.status = "blocked".to_string();
             setup.blockers = readiness.blocking_items.clone();
-            setup.next_action =
-                Some("Run `openrustclaw doctor --deep`, fix blockers, then rerun onboarding."
-                    .to_string());
+            setup.next_action = Some(
+                "Run `openrustclaw doctor --deep`, fix blockers, then rerun onboarding."
+                    .to_string(),
+            );
         }
     })
 }
@@ -1436,17 +1459,23 @@ fn bootstrap_outcome_for<'a>(
     category: &str,
     target: &str,
 ) -> Option<&'a SetupBootstrapOutcome> {
-    setup.bootstrap_outcomes.iter().find(|outcome| {
-        outcome.category == category && outcome.target == target
-    })
+    setup
+        .bootstrap_outcomes
+        .iter()
+        .find(|outcome| outcome.category == category && outcome.target == target)
 }
 
 async fn validate_provider_bootstrap(
     workspace_root: &Path,
     provider_name: &str,
 ) -> Result<BootstrapAssessment> {
-    let report = runtime::runtime_health_status("config/default.toml", workspace_root, true).await?;
-    let Some(entry) = report.providers.iter().find(|entry| entry.provider == provider_name) else {
+    let report =
+        runtime::runtime_health_status("config/default.toml", workspace_root, true).await?;
+    let Some(entry) = report
+        .providers
+        .iter()
+        .find(|entry| entry.provider == provider_name)
+    else {
         return Ok(BootstrapAssessment {
             status: "blocked",
             detail: format!(
@@ -1484,7 +1513,8 @@ async fn runtime_lane_assessment(
     workspace_root: &Path,
     deployment_mode: Option<&str>,
 ) -> Result<BootstrapAssessment> {
-    let report = runtime::runtime_health_status("config/default.toml", workspace_root, true).await?;
+    let report =
+        runtime::runtime_health_status("config/default.toml", workspace_root, true).await?;
     if report.degraded_control_plane_mode {
         return Ok(BootstrapAssessment {
             status: "warning",
@@ -1560,8 +1590,13 @@ async fn validate_channel_bootstrap(
     workspace_root: &Path,
     platform: &str,
 ) -> Result<BootstrapAssessment> {
-    let report = services::channel_probes_status("config/default.toml", workspace_root, true).await?;
-    let Some(entry) = report.entries.iter().find(|entry| entry.platform == platform) else {
+    let report =
+        services::channel_probes_status("config/default.toml", workspace_root, true).await?;
+    let Some(entry) = report
+        .entries
+        .iter()
+        .find(|entry| entry.platform == platform)
+    else {
         return Ok(BootstrapAssessment {
             status: "blocked",
             detail: format!("No `{platform}` channel probe result was produced after setup."),
@@ -1651,7 +1686,8 @@ fn derive_setup_repair_plan(
             reasons.push(format!(
                 "{} requires repair: {}",
                 check.label,
-                check.message
+                check
+                    .message
                     .clone()
                     .unwrap_or_else(|| "diagnostic reported a blocker".to_string())
             ));
@@ -1714,12 +1750,14 @@ fn prepare_setup_state_for_repair(workspace_root: &Path, steps: &[OnboardingStep
         setup.status = "in_progress".to_string();
         setup.completed_at = None;
         setup.selected_steps = selected_step_ids.clone();
-        setup.completed_steps
+        setup
+            .completed_steps
             .retain(|id| !selected_step_ids.contains(id));
         setup.blockers.clear();
         if setup.deployment_mode.is_none() {
-            setup.deployment_mode =
-                product_mode.as_ref().map(|manifest| manifest.profile.mode.clone());
+            setup.deployment_mode = product_mode
+                .as_ref()
+                .map(|manifest| manifest.profile.mode.clone());
         }
         if setup.deployment_path.is_none() {
             setup.deployment_path = product_mode
@@ -1727,7 +1765,9 @@ fn prepare_setup_state_for_repair(workspace_root: &Path, steps: &[OnboardingStep
                 .map(|manifest| manifest.profile.onboarding_path.clone());
         }
         setup.current_step = steps.first().map(|step| step.id().to_string());
-        setup.next_action = steps.first().map(|step| format!("Complete {}", step.name()));
+        setup.next_action = steps
+            .first()
+            .map(|step| format!("Complete {}", step.name()));
     })
 }
 
@@ -1867,7 +1907,8 @@ impl DeploymentModeChoice {
     }
 
     fn label(self) -> String {
-        let descriptor = self_hosted::descriptor_for(self.mode()).expect("supported deployment mode");
+        let descriptor =
+            self_hosted::descriptor_for(self.mode()).expect("supported deployment mode");
         format!("{} - {}", descriptor.label, descriptor.operator_model)
     }
 
@@ -1915,12 +1956,18 @@ fn default_runtime_mode_index(mode: Option<&str>) -> usize {
     }
 }
 
-fn select_deployment_mode(theme: &ColorfulTheme, workspace_root: &Path) -> Result<DeploymentModeChoice> {
+fn select_deployment_mode(
+    theme: &ColorfulTheme,
+    workspace_root: &Path,
+) -> Result<DeploymentModeChoice> {
     let default_mode = self_hosted::load_manifest(workspace_root)?
         .map(|manifest| DeploymentModeChoice::from_mode(&manifest.profile.mode))
         .unwrap_or(DeploymentModeChoice::Solo);
     let items = DeploymentModeChoice::items();
-    let labels = items.iter().map(|choice| choice.label()).collect::<Vec<_>>();
+    let labels = items
+        .iter()
+        .map(|choice| choice.label())
+        .collect::<Vec<_>>();
     let selection = Select::with_theme(theme)
         .with_prompt("Choose the self-hosted deployment path")
         .items(&labels)
@@ -1956,7 +2003,10 @@ fn select_setup_path(
 ) -> Result<(OnboardingProfile, Vec<OnboardingStep>)> {
     let default_profile = default_onboarding_profile_for_mode(prior_mode.unwrap_or(mode));
     let profile = match Select::with_theme(theme)
-        .with_prompt(format!("Choose how much of the {} setup to do now", self_hosted::descriptor_for(mode)?.label))
+        .with_prompt(format!(
+            "Choose how much of the {} setup to do now",
+            self_hosted::descriptor_for(mode)?.label
+        ))
         .items(&[
             "Standard - gateway, one channel, provider, and control plane",
             "Advanced - everything in Standard plus skills and system service",
@@ -2267,8 +2317,7 @@ mod tests {
 
         let loaded = load_setup_state(dir.path()).unwrap().unwrap();
         assert_eq!(loaded.setup.bootstrap_outcomes.len(), 1);
-        let outcome =
-            bootstrap_outcome_for(&loaded.setup, "provider", "anthropic").unwrap();
+        let outcome = bootstrap_outcome_for(&loaded.setup, "provider", "anthropic").unwrap();
         assert_eq!(outcome.status, "ready");
         assert_eq!(outcome.detail, "provider reachable");
     }
@@ -2382,12 +2431,21 @@ mod tests {
         assert_eq!(plan.steps.len(), 2);
         assert_eq!(plan.steps[0].id(), "model");
         assert_eq!(plan.steps[1].id(), "channel");
-        assert!(plan.reasons.iter().any(|reason| reason.contains("unfinished steps")));
-        assert!(plan.reasons.iter().any(|reason| reason.contains("provider not ready")));
-        assert!(plan
-            .reasons
-            .iter()
-            .any(|reason| reason.contains("Slack auth probe failed")));
+        assert!(
+            plan.reasons
+                .iter()
+                .any(|reason| reason.contains("unfinished steps"))
+        );
+        assert!(
+            plan.reasons
+                .iter()
+                .any(|reason| reason.contains("provider not ready"))
+        );
+        assert!(
+            plan.reasons
+                .iter()
+                .any(|reason| reason.contains("Slack auth probe failed"))
+        );
     }
 
     #[test]
@@ -2447,7 +2505,10 @@ mod tests {
     fn test_default_runtime_mode_index_matches_deployment_mode() {
         assert_eq!(default_runtime_mode_index(Some(self_hosted::MODE_SOLO)), 0);
         assert_eq!(default_runtime_mode_index(Some(self_hosted::MODE_TEAM)), 1);
-        assert_eq!(default_runtime_mode_index(Some(self_hosted::MODE_ENTERPRISE)), 3);
+        assert_eq!(
+            default_runtime_mode_index(Some(self_hosted::MODE_ENTERPRISE)),
+            3
+        );
     }
 
     #[test]

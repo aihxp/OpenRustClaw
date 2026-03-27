@@ -442,7 +442,10 @@ mod tests {
         .expect("upsert enterprise admin");
 
         let app = protect_enterprise_router(
-            Router::new().route("/control/enterprise/policy", put(|| async { StatusCode::OK })),
+            Router::new().route(
+                "/control/enterprise/policy",
+                put(|| async { StatusCode::OK }),
+            ),
             EnterpriseAccessState {
                 workspace_root: temp.path().to_path_buf(),
             },

@@ -2996,11 +2996,9 @@ pub async fn dispatch_command_data(
         ));
     }
 
-    let approval_required = request
-        .require_approval
-        .unwrap_or_else(|| {
-            enterprise_policy::approval_required_for_command(workspace_root, &request.command)
-        });
+    let approval_required = request.require_approval.unwrap_or_else(|| {
+        enterprise_policy::approval_required_for_command(workspace_root, &request.command)
+    });
     let mut record = MobileCommandRecord {
         id: uuid::Uuid::new_v4().to_string(),
         node_id: manifest.node.id.clone(),

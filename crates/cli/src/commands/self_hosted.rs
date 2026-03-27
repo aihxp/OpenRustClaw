@@ -97,8 +97,8 @@ pub fn load_manifest(workspace_root: &Path) -> Result<Option<SelfHostedProductMa
         return Ok(None);
     }
 
-    let raw = fs::read_to_string(&path)
-        .with_context(|| format!("failed to read {}", path.display()))?;
+    let raw =
+        fs::read_to_string(&path).with_context(|| format!("failed to read {}", path.display()))?;
     let manifest = serde_json::from_str(&raw)
         .with_context(|| format!("failed to parse {}", path.display()))?;
     Ok(Some(manifest))
@@ -127,7 +127,9 @@ pub fn configure_mode(
                 .to_string(),
             self_hosted: true,
             open_source: true,
-            note: note.map(|value| value.trim().to_string()).filter(|value| !value.is_empty()),
+            note: note
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty()),
             updated_at: Utc::now().to_rfc3339(),
         },
     };
@@ -207,7 +209,8 @@ pub fn recent_transition_events(
         return Ok(Vec::new());
     }
 
-    let file = fs::File::open(&path).with_context(|| format!("failed to read {}", path.display()))?;
+    let file =
+        fs::File::open(&path).with_context(|| format!("failed to read {}", path.display()))?;
     let reader = BufReader::new(file);
     let mut events = Vec::new();
     for line in reader.lines() {
@@ -239,7 +242,8 @@ pub fn current_warnings(workspace_root: &Path, mode: &str) -> Result<Vec<String>
     }
     if mode == MODE_ENTERPRISE && enterprise_access::load_manifest(workspace_root)?.is_none() {
         warnings.push(
-            "Enterprise mode is selected, but enterprise access is not bootstrapped yet.".to_string(),
+            "Enterprise mode is selected, but enterprise access is not bootstrapped yet."
+                .to_string(),
         );
     }
     if mode == MODE_SOLO
@@ -419,7 +423,10 @@ mod tests {
         assert_eq!(manifest.profile.onboarding_path, "shared_team_setup");
         assert!(manifest.profile.self_hosted);
         assert!(manifest.profile.open_source);
-        assert_eq!(load_manifest(root.path())?.expect("manifest").profile.mode, MODE_TEAM);
+        assert_eq!(
+            load_manifest(root.path())?.expect("manifest").profile.mode,
+            MODE_TEAM
+        );
         Ok(())
     }
 
@@ -455,7 +462,10 @@ mod tests {
         assert_eq!(event.from_mode, MODE_TEAM);
         assert_eq!(event.to_mode, MODE_COMPANY);
         assert_eq!(recent_transition_events(root.path(), 5)?.len(), 1);
-        assert_eq!(load_manifest(root.path())?.expect("manifest").profile.mode, MODE_COMPANY);
+        assert_eq!(
+            load_manifest(root.path())?.expect("manifest").profile.mode,
+            MODE_COMPANY
+        );
         Ok(())
     }
 }

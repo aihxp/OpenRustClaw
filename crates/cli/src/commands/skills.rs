@@ -2458,7 +2458,9 @@ pub async fn voice_calls_data() -> Result<SkillVoiceCallsResult> {
     voice_calls_data_for(&workspace_root).await
 }
 
-pub async fn voice_call_health_data_for(workspace_root: &Path) -> Result<SkillVoiceCallHealthResult> {
+pub async fn voice_call_health_data_for(
+    workspace_root: &Path,
+) -> Result<SkillVoiceCallHealthResult> {
     let result = voice_calls_data_for(workspace_root).await?;
     Ok(SkillVoiceCallHealthResult {
         status: "ok".to_string(),

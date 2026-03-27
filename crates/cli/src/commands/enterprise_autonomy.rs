@@ -195,23 +195,21 @@ pub fn load_manifest(workspace_root: &Path) -> Result<Option<EnterpriseAutonomyM
         return Ok(None);
     }
 
-    let raw = fs::read_to_string(&path)
-        .with_context(|| format!("failed to read {}", path.display()))?;
+    let raw =
+        fs::read_to_string(&path).with_context(|| format!("failed to read {}", path.display()))?;
     let manifest = serde_json::from_str(&raw)
         .with_context(|| format!("failed to parse {}", path.display()))?;
     Ok(Some(manifest))
 }
 
-pub fn recent_events(
-    workspace_root: &Path,
-    limit: usize,
-) -> Result<Vec<EnterpriseAutonomyEvent>> {
+pub fn recent_events(workspace_root: &Path, limit: usize) -> Result<Vec<EnterpriseAutonomyEvent>> {
     let path = enterprise_autonomy_events_path(workspace_root);
     if !path.exists() {
         return Ok(Vec::new());
     }
 
-    let file = fs::File::open(&path).with_context(|| format!("failed to read {}", path.display()))?;
+    let file =
+        fs::File::open(&path).with_context(|| format!("failed to read {}", path.display()))?;
     let reader = BufReader::new(file);
     let mut events = Vec::new();
     for line in reader.lines() {
@@ -437,7 +435,9 @@ pub fn summary(workspace_root: &Path, limit: usize) -> Result<EnterpriseAutonomy
         status,
         detail,
         access_boundary_active,
-        manifest_path: enterprise_autonomy_path(workspace_root).display().to_string(),
+        manifest_path: enterprise_autonomy_path(workspace_root)
+            .display()
+            .to_string(),
         events_path: enterprise_autonomy_events_path(workspace_root)
             .display()
             .to_string(),
@@ -576,7 +576,9 @@ fn validate_operator_id(operator_id: &str) -> Result<()> {
 }
 
 fn trim_optional(value: Option<String>) -> Option<String> {
-    value.map(|value| value.trim().to_string()).filter(|value| !value.is_empty())
+    value
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
 }
 
 fn save_manifest(workspace_root: &Path, manifest: &EnterpriseAutonomyManifest) -> Result<()> {

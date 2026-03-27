@@ -906,7 +906,10 @@ impl ActiveRunMonitor {
         self.append_event(
             snapshot.current_stage.as_deref().unwrap_or("failed"),
             "orchestrator",
-            snapshot.current_actor_id.as_deref().unwrap_or("orchestrator"),
+            snapshot
+                .current_actor_id
+                .as_deref()
+                .unwrap_or("orchestrator"),
             snapshot.status.as_str(),
             error,
         )?;
@@ -1039,7 +1042,8 @@ async fn run_internal(
             &snapshot.run_id,
             Some(snapshot.lifecycle.clone()),
         )?;
-        record.decision_history = read_active_run_decisions(workspace_root, &snapshot.run_id, usize::MAX)?;
+        record.decision_history =
+            read_active_run_decisions(workspace_root, &snapshot.run_id, usize::MAX)?;
     }
     record.receipt_path = save_run_record(workspace_root, &record)?
         .display()
@@ -1239,9 +1243,11 @@ pub fn read_active_run_decisions(
         if line.trim().is_empty() {
             continue;
         }
-        decisions.push(serde_json::from_str::<ActiveRunDecisionRecord>(line).with_context(
-            || format!("Failed to decode decision line in '{}'", path.display()),
-        )?);
+        decisions.push(
+            serde_json::from_str::<ActiveRunDecisionRecord>(line).with_context(|| {
+                format!("Failed to decode decision line in '{}'", path.display())
+            })?,
+        );
     }
     if decisions.len() > limit {
         decisions = decisions.split_off(decisions.len() - limit);
@@ -1343,21 +1349,14 @@ fn apply_active_lifecycle_action(
                 snapshot.lifecycle.state = "rollback_requested".to_string();
                 snapshot.lifecycle.intervention_required = true;
                 snapshot.lifecycle.rollback_requested = true;
-                snapshot.lifecycle.rollback_reference =
-                    rollback_reference.map(ToString::to_string);
+                snapshot.lifecycle.rollback_reference = rollback_reference.map(ToString::to_string);
             }
             _ => {}
         }
         snapshot.current_stage = Some(stage.to_string());
         snapshot.current_note = Some(note.clone());
     })?;
-    monitor.append_event(
-        stage,
-        "operator",
-        requested_by,
-        status,
-        note.clone(),
-    )?;
+    monitor.append_event(stage, "operator", requested_by, status, note.clone())?;
     let decision = monitor.append_decision(
         action,
         requested_by,
@@ -1527,7 +1526,10 @@ pub fn read_active_run_supervision(
     let decision_history = read_active_run_decisions(workspace_root, run_id, event_limit.max(1))?;
     let mut attention_signals = Vec::new();
     if run.lifecycle.intervention_required {
-        attention_signals.push(format!("operator intervention required: {}", run.lifecycle.state));
+        attention_signals.push(format!(
+            "operator intervention required: {}",
+            run.lifecycle.state
+        ));
     }
     if run.pause_requested {
         attention_signals.push("pause requested by operator".to_string());
@@ -4408,10 +4410,15 @@ mod tests {
         assert_eq!(decisions.len(), 2);
         assert_eq!(decisions[0].action, "escalate");
         assert_eq!(decisions[1].action, "rollback");
-        assert_eq!(decisions[1].rollback_reference.as_deref(), Some("receipt-17.json"));
+        assert_eq!(
+            decisions[1].rollback_reference.as_deref(),
+            Some("receipt-17.json")
+        );
 
         let monitor = ActiveRunMonitor::new(root.path(), "run-decision");
-        let finalized = monitor.finalize_failure("rollback requested by operator").unwrap();
+        let finalized = monitor
+            .finalize_failure("rollback requested by operator")
+            .unwrap();
         assert_eq!(finalized.status, "rolled_back");
 
         let payload = read_active_run_supervision(root.path(), "run-decision", 10).unwrap();

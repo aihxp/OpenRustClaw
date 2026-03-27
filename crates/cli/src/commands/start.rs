@@ -2782,8 +2782,7 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
         )
         .route(
             "/control/self-hosted/product-mode",
-            get(self_hosted_product_mode_handler)
-                .post(self_hosted_product_mode_transition_handler),
+            get(self_hosted_product_mode_handler).post(self_hosted_product_mode_transition_handler),
         )
         .route("/control/setup/handoff", get(setup_handoff_handler))
         .route("/control/enterprise/access", get(enterprise_access_handler))

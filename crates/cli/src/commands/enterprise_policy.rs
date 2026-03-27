@@ -408,7 +408,8 @@ pub fn review_summary(
     let policy = summary(workspace_root, config_path)?;
     let access = inspect::enterprise_access_summary(workspace_root)?;
     let admin = inspect::enterprise_admin_summary(workspace_root, config_path)?;
-    let autonomy = enterprise_autonomy::summary(workspace_root, policy.audit_export.recent_event_limit)?;
+    let autonomy =
+        enterprise_autonomy::summary(workspace_root, policy.audit_export.recent_event_limit)?;
     let recent_operator_history = review_operator_history(
         workspace_root,
         policy.audit_export.tool_history_limit,
@@ -449,7 +450,8 @@ pub fn export_audit_bundle(
     )?;
     let access = inspect::enterprise_access_summary(workspace_root)?;
     let admin = inspect::enterprise_admin_summary(workspace_root, config_path)?;
-    let autonomy = enterprise_autonomy::summary(workspace_root, policy.audit_export.recent_event_limit)?;
+    let autonomy =
+        enterprise_autonomy::summary(workspace_root, policy.audit_export.recent_event_limit)?;
     let operator_history = review_operator_history(
         workspace_root,
         policy.audit_export.tool_history_limit,

@@ -13,8 +13,8 @@ use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 
 use super::{
-    browser, control, enterprise_access, enterprise_autonomy, enterprise_policy, mobile,
-    onboard, orchestrate, self_hosted, skills, talk, voice_runtime,
+    browser, control, enterprise_access, enterprise_autonomy, enterprise_policy, mobile, onboard,
+    orchestrate, self_hosted, skills, talk, voice_runtime,
 };
 
 #[derive(Debug, Clone, Serialize)]
@@ -892,7 +892,9 @@ pub fn enterprise_foundations_summary(
     })
 }
 
-pub fn self_hosted_product_mode_summary(workspace_root: &Path) -> Result<SelfHostedProductModeReport> {
+pub fn self_hosted_product_mode_summary(
+    workspace_root: &Path,
+) -> Result<SelfHostedProductModeReport> {
     let manifest_path = self_hosted::self_hosted_product_path(workspace_root)
         .display()
         .to_string();
@@ -988,7 +990,9 @@ pub fn self_hosted_product_mode_summary(workspace_root: &Path) -> Result<SelfHos
 }
 
 pub fn setup_handoff_summary(workspace_root: &Path) -> Result<SetupHandoffReport> {
-    let manifest_path = onboard::setup_state_path(workspace_root).display().to_string();
+    let manifest_path = onboard::setup_state_path(workspace_root)
+        .display()
+        .to_string();
     let setup_state = onboard::load_setup_state(workspace_root)?;
     if let Some(setup_state) = setup_state {
         let status = onboard::setup_handoff_status(&setup_state.setup).to_string();
@@ -2002,7 +2006,12 @@ mod tests {
         assert!(report.self_hosted);
         assert!(report.open_source);
         assert_eq!(report.recommended_runtime_mode, "solo_claw");
-        assert!(report.transition_targets.iter().any(|value| value == "team"));
+        assert!(
+            report
+                .transition_targets
+                .iter()
+                .any(|value| value == "team")
+        );
         Ok(())
     }
 
@@ -2054,9 +2063,7 @@ mod tests {
         assert_eq!(report.status, "not_started");
         assert!(!report.explicit_setup_state);
         assert!(!report.ready_for_first_start);
-        assert!(report
-            .detail
-            .contains("Run `openrustclaw onboard`"));
+        assert!(report.detail.contains("Run `openrustclaw onboard`"));
         Ok(())
     }
 
@@ -2141,7 +2148,10 @@ mod tests {
             "manage policy, identity, governance, audit export, supervised-runtime controls, and the explicit full-autonomy lane"
         ));
         assert!(report.access.governance.dual_approval_rule_count >= 1);
-        assert_eq!(report.autonomy.governance_scope, "enterprise.full_autonomy.manage");
+        assert_eq!(
+            report.autonomy.governance_scope,
+            "enterprise.full_autonomy.manage"
+        );
         Ok(())
     }
 

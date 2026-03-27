@@ -1,6 +1,8 @@
 use chrono::{Duration, Utc};
 use openrustclaw_cli::commands::inspect::voice_operator_report_summary;
-use openrustclaw_cli::commands::talk::{TalkSessionReceipt, TalkSessionStateSnapshot, TalkSessionTurn};
+use openrustclaw_cli::commands::talk::{
+    TalkSessionReceipt, TalkSessionStateSnapshot, TalkSessionTurn,
+};
 use openrustclaw_cli::commands::voice_runtime::{VoiceSessionRecord, VoiceSessionTurn};
 use openrustclaw_core::config::AppConfig;
 use serde_json::json;
@@ -108,7 +110,9 @@ async fn voice_operator_report_surfaces_attention_across_voice_talk_and_calls() 
         }]
     });
     write_json(
-        &workspace.path().join(".claw/control/skill-voice-calls.json"),
+        &workspace
+            .path()
+            .join(".claw/control/skill-voice-calls.json"),
         &stale_voice_call,
     )?;
 
