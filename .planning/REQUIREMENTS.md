@@ -17,8 +17,8 @@
 
 ### Upgrade and Downgrade Lifecycle
 
-- [ ] **LIFE-01**: Operators can upgrade between product modes without ambiguous state transitions or hidden policy drift.
-- [ ] **LIFE-02**: Operators can downgrade between product modes with explicit handling for permissions, governance, and retained data implications.
+- [x] **LIFE-01**: Operators can upgrade between product modes without ambiguous state transitions or hidden policy drift.
+- [x] **LIFE-02**: Operators can downgrade between product modes with explicit handling for permissions, governance, and retained data implications.
 
 ### Product and Operator Surface Alignment
 
@@ -58,8 +58,8 @@
 | MODE-02 | Phase 24 | Complete |
 | ONBR-01 | Phase 25 | Complete |
 | ONBR-02 | Phase 25 | Complete |
-| LIFE-01 | Phase 26 | Pending |
-| LIFE-02 | Phase 26 | Pending |
+| LIFE-01 | Phase 26 | Complete |
+| LIFE-02 | Phase 26 | Complete |
 | SURF-01 | Phase 27 | Pending |
 
 **Coverage:**

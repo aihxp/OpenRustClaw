@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.5
 milestone_name: Self-Hosted Product Modes and Lifecycle Packaging
-current_phase: 26
-current_phase_name: Upgrade and Downgrade Lifecycle
+current_phase: 27
+current_phase_name: Self-Hosted Product Surface Alignment
 current_plan: Not started
-status: Phase 25 complete; Phase 26 ready
-stopped_at: Phase 25 complete; Phase 26 is ready for discuss and planning.
-last_updated: "2026-03-27T23:10:00.000Z"
-last_activity: 2026-03-27 -- Phase 25 completed
+status: Phase 26 complete; Phase 27 ready
+stopped_at: Phase 26 complete; Phase 27 is ready for discuss and planning.
+last_updated: "2026-03-27T23:45:00.000Z"
+last_activity: 2026-03-27 -- Phase 26 completed
 progress:
   total_phases: 4
-  completed_phases: 2
-  total_plans: 4
-  completed_plans: 4
-  percent: 50
+  completed_phases: 3
+  total_plans: 6
+  completed_plans: 6
+  percent: 75
 ---
 
 # Project State
@@ -24,21 +24,21 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-27)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** Phase 26 - Upgrade and Downgrade Lifecycle
+**Current focus:** Phase 27 - Self-Hosted Product Surface Alignment
 
 ## Current Position
 
-Current Phase: 26
-Current Phase Name: Upgrade and Downgrade Lifecycle
+Current Phase: 27
+Current Phase Name: Self-Hosted Product Surface Alignment
 Total Phases: 4
 Current Plan: Not started
 Total Plans in Phase: 0
-Status: Phase 25 complete; Phase 26 ready
-Last activity: 2026-03-27 -- Phase 25 completed
+Status: Phase 26 complete; Phase 27 ready
+Last activity: 2026-03-27 -- Phase 26 completed
 
-Phase: 3 of 4 (Upgrade and Downgrade Lifecycle)
+Phase: 4 of 4 (Self-Hosted Product Surface Alignment)
 Plan: 0 of 0
-Progress: [█████░░░░░] 50%
+Progress: [███████░░░] 75%
 
 ## Performance Metrics
 
@@ -101,6 +101,7 @@ Recent decisions affecting current work:
 - v1.5 now focuses on explicit self-hosted product modes, differentiated onboarding, and reversible upgrade or downgrade lifecycle paths across solo, multi-user team, company, and enterprise deployments.
 - Phase 24 now persists the self-hosted product mode as a first-class control-plane contract and exposes it through a shipped runtime and Control UI summary.
 - Phase 25 now makes onboarding choose and persist the deployment path explicitly, and doctor surfaces missing product-mode selection as warning-only first-start context.
+- Phase 26 now exposes durable product-mode upgrade or downgrade transitions with recent receipts and retained-state warnings in the shipped control surface.
 
 ### Pending Todos
 
@@ -113,5 +114,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-27 04:44
-Stopped at: Phase 25 complete; Phase 26 is ready for discuss and planning.
+Stopped at: Phase 26 complete; Phase 27 is ready for discuss and planning.
 Resume file: None
