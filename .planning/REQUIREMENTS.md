@@ -1,31 +1,34 @@
 # Requirements: OpenRustClaw
 
-**Defined:** 2026-03-28
+**Defined:** 2026-03-27
 **Core Value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
 
-## v1.6 Requirements
+## v1.7 Requirements
 
-### Setup State and Recovery
+### Canonical Documentation Contract
 
-- [x] **SETUP-01**: Onboarding persists a resumable setup-state contract that records deployment path, completed steps, current blockers, and the next recommended action.
-- [x] **SETUP-02**: Existing or partially configured workspaces can re-enter setup through explicit resume, repair, or reset-with-backup paths instead of manual state edits.
+- [ ] **DOCS-01**: OpenRustClaw defines one canonical ownership contract for `README.md`, repo-root docs mirrors, and the docs-site source so operators know which document is authoritative for each topic.
+- [ ] **DOCS-02**: Redundant, stale, or overlapping docs are merged, deleted, or clearly redirected instead of surviving as parallel conflicting sources.
 
-### Setup Path Selection
+### Product Story and Entry Surfaces
 
-- [x] **PATH-01**: First-run setup offers a standard path for the common self-hosted install and an advanced or custom path for operators who need deeper control.
-- [x] **PATH-02**: Standard and advanced or custom setup paths stay mode-aware and converge back into the same truthful readiness and handoff contract.
+- [ ] **ENTRY-01**: README and docs landing pages present one clear self-hosted open-source product story for `solo`, `team`, `company`, and `enterprise` operators, inspired by OpenClaw-style clarity but grounded in OpenRustClaw’s shipped behavior.
+- [ ] **ENTRY-02**: Top-level docs navigation makes it obvious where new users, advanced operators, and enterprise or autonomy-oriented readers should start.
 
-### Provider, Runtime, and Channel Bootstrap
+### Setup and Getting Started
 
-- [x] **BOOT-01**: Setup drives the core provider, model, runtime, and control-plane configuration to a truthful ready or blocked state for the selected deployment mode.
-- [x] **BOOT-02**: Setup can validate and, where supported, bootstrap key runtime or channel surfaces before claiming the workspace is ready.
+- [ ] **SETUP-01**: Installation, quickstart, first-agent, and setup-handoff guidance all describe the same Standard, Advanced, and Custom setup lifecycle plus repair and upgrade or downgrade expectations.
 
-### Operator Handoff and Visibility
+### Operator and Surface Sync
 
-- [x] **HANDOFF-01**: Setup ends with an explicit ready, blocked, or degraded handoff summary rather than a vague success message.
-- [x] **HANDOFF-02**: Docs and shipped operator surfaces consistently reflect setup progress, unresolved blockers, and the next action after onboarding.
+- [ ] **OPS-01**: Deployment, security, observability, and release docs are rewritten to match the shipped runtime, enterprise, and autonomy control surfaces without stale promises.
+- [ ] **SURF-01**: Feature-matrix, surface-matrix, product-positioning, and related planning-facing docs are synced with the current shipped product narrative and linked from the canonical entry surfaces.
 
-## v1.7+ Requirements
+### Documentation Governance
+
+- [ ] **GOV-01**: The docs set includes an explicit maintenance rule for how future milestones update, merge, delete, and verify canonical docs so drift does not reappear.
+
+## v1.8+ Requirements
 
 ### Broader Enterprise Expansion
 
@@ -46,29 +49,29 @@
 
 | Feature | Reason |
 |---------|--------|
-| Hosted SaaS onboarding, billing, or commercial account packaging in this milestone | The goal is to improve self-hosted onboarding and setup, not add a hosted product |
-| Deep enterprise IAM, SCIM, or tenant-aware RBAC implementation in the same milestone | Larger than the setup hardening lane |
-| Full autonomous setup that mutates all runtime surfaces without operator review | Setup still needs explicit trust boundaries and truthful readiness checks |
-| Broad new assistant or channel feature families unrelated to onboarding or setup | This milestone is convergence work on the first-install path |
+| Broad new runtime, enterprise, or autonomy implementation work in this milestone | This cycle is for documentation convergence, not another large feature lane |
+| A marketing-first site rewrite disconnected from shipped product behavior | The goal is truthful docs, not branding collateral |
+| Keeping multiple overlapping copies of the same guide “just in case” | This milestone explicitly aims to reduce drift by deleting or consolidating duplicates |
+| Replacing all planning artifacts with polished end-user docs | Planning references still matter, but they need clear boundaries from user-facing guidance |
 
 ## Traceability
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SETUP-01 | Phase 28 | Complete |
-| PATH-01 | Phase 28 | Complete |
-| PATH-02 | Phase 29 | Complete |
-| SETUP-02 | Phase 30 | Complete |
-| BOOT-01 | Phase 29 | Complete |
-| BOOT-02 | Phase 29 | Complete |
-| HANDOFF-01 | Phase 31 | Complete |
-| HANDOFF-02 | Phase 31 | Complete |
+| DOCS-01 | Phase 32 | Pending |
+| DOCS-02 | Phase 32 | Pending |
+| ENTRY-01 | Phase 33 | Pending |
+| ENTRY-02 | Phase 33 | Pending |
+| SETUP-01 | Phase 34 | Pending |
+| OPS-01 | Phase 35 | Pending |
+| SURF-01 | Phase 35 | Pending |
+| GOV-01 | Phase 36 | Pending |
 
 **Coverage:**
-- v1.6 requirements: 8 total
+- v1.7 requirements: 8 total
 - Mapped to phases: 8
 - Unmapped: 0
 
 ---
-*Requirements defined: 2026-03-28*
-*Last updated: 2026-03-28 at milestone start*
+*Requirements defined: 2026-03-27*
+*Last updated: 2026-03-27 at milestone start*
