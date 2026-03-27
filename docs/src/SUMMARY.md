@@ -3,6 +3,7 @@
 [Introduction](./introduction.md)
 
 # Planning
+- [Documentation Contract](./planning/documentation-contract.md)
 - [Roadmap](./planning/roadmap.md)
 - [Feature Matrix](./planning/feature-matrix.md)
 - [Surface Matrix](./planning/surface-matrix.md)
