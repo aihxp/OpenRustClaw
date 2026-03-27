@@ -559,7 +559,19 @@ cargo build  # build.rs will regenerate
 
 ## 📚 Resources
 
+- [Documentation Contract](../../documentation-contract.md)
+- [Docs Audit](../planning/docs-audit.md)
 - [Architecture Overview](../architecture/overview.md)
 - [Rust Core](../architecture/rust-core.md)
 - [Testing Guide](./testing.md)
 - [API Reference](../api-reference/)
+
+## Documentation Hygiene
+
+When shipped behavior changes:
+
+1. update the canonical doc first
+2. update any mdBook mirror or stub that points to it
+3. update the relevant planning doc under `docs/` if the shipped-surface claim changed
+4. update `docs/docs-audit.md` if the feature-family coverage changed
+5. delete stale duplicates instead of leaving them behind

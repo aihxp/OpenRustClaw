@@ -64,6 +64,18 @@ Every milestone that changes shipped behavior should update:
 
 If a milestone cannot name the canonical doc it changed, the documentation work is incomplete.
 
+## Maintenance Workflow
+
+Use this lightweight workflow for future docs work:
+
+1. change the canonical page first
+2. update any mdBook mirror or stub that points at it
+3. update the relevant planning doc if the shipped-surface claim changed
+4. update `docs/docs-audit.md` if the feature-family coverage changed
+5. delete stale duplicates instead of leaving them behind as “temporary” copies
+
+The acceptable end state is one canonical page plus clearly marked mirrors, not two partially correct pages.
+
 ## Current Cleanup Targets
 
 This milestone should specifically converge:
@@ -79,4 +91,3 @@ This milestone should specifically converge:
 - turning planning docs into marketing copy
 - keeping duplicate pages alive for convenience
 - documenting unshipped behavior as if it is already supported
-

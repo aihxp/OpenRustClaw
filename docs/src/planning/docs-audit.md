@@ -9,4 +9,4 @@ It records, for each shipped feature family:
 - troubleshooting coverage,
 - representative automated tests.
 
-Use that repo-root file when checking the final Phase 8 documentation gate.
+Use it with `docs/documentation-contract.md` when checking whether the docs set is still synchronized after a milestone.
