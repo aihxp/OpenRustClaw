@@ -16,6 +16,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Install parity contract dependencies
+        run: sudo apt-get update && sudo apt-get install -y ripgrep
       - name: Validate parity contract docs
         run: |
           test -f docs/feature-matrix.md
