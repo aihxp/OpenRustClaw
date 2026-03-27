@@ -75,7 +75,7 @@ impl OnboardingProfile {
 }
 
 /// Enum representing all onboarding steps
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum OnboardingStep {
     Gateway,
     Channel,
@@ -177,6 +177,12 @@ pub struct SetupBootstrapOutcome {
     pub updated_at: String,
 }
 
+#[derive(Debug, Clone)]
+struct SetupRepairPlan {
+    steps: Vec<OnboardingStep>,
+    reasons: Vec<String>,
+}
+
 fn default_setup_state_version() -> u32 {
     SETUP_STATE_VERSION
 }
@@ -223,6 +229,8 @@ impl OnboardingWizard {
                 resume_choice = Some(choices.len());
                 choices.push(format!("Resume previous setup ({detail})"));
             }
+            let repair_choice = choices.len();
+            choices.push("Repair setup blockers or workspace drift".to_string());
             let modify_choice = choices.len();
             choices.push("Modify existing workspace state".to_string());
             let health_choice = choices.len();
@@ -242,6 +250,38 @@ impl OnboardingWizard {
                     &existing_setup_state.as_ref().expect("resume state").setup,
                 );
                 self.run_selected_steps(&workspace_root, steps).await?;
+                let healthy = self.run_post_onboarding_health_check().await?;
+                self.print_completion();
+                self.maybe_launch_assistant(healthy).await?;
+                return Ok(());
+            }
+
+            if selection == repair_choice {
+                self.print_workspace_status(&workspace_status);
+                if let Some(setup_state) = existing_setup_state.as_ref() {
+                    self.load_from_setup_state(setup_state)?;
+                } else {
+                    self.load_from_workspace_profile(&workspace_root)?;
+                }
+                self.state.workspace_action = Some("repair_existing".to_string());
+                let repair_plan =
+                    build_setup_repair_plan(&workspace_root, existing_setup_state.as_ref()).await?;
+                if repair_plan.steps.is_empty() {
+                    println!("No targeted repair steps were identified. Running a health check only.");
+                    let healthy = self.run_post_onboarding_health_check().await?;
+                    self.print_completion();
+                    self.maybe_launch_assistant(healthy).await?;
+                    return Ok(());
+                }
+                print_repair_plan(&repair_plan);
+                let proceed = Confirm::with_theme(&self.theme)
+                    .with_prompt("Run this targeted repair plan now?")
+                    .default(true)
+                    .interact()?;
+                if proceed {
+                    prepare_setup_state_for_repair(&workspace_root, &repair_plan.steps)?;
+                    self.run_selected_steps(&workspace_root, repair_plan.steps).await?;
+                }
                 let healthy = self.run_post_onboarding_health_check().await?;
                 self.print_completion();
                 self.maybe_launch_assistant(healthy).await?;
@@ -366,6 +406,14 @@ Let's get started!
         self.state.deployment_path = setup_state.setup.deployment_path.clone();
         self.state.profile = setup_state.setup.setup_path.clone();
         self.state.workspace_action = Some(setup_state.setup.workspace_action.clone());
+        Ok(())
+    }
+
+    fn load_from_workspace_profile(&mut self, workspace_root: &Path) -> Result<()> {
+        if let Some(manifest) = self_hosted::load_manifest(workspace_root)? {
+            self.state.deployment_mode = Some(manifest.profile.mode);
+            self.state.deployment_path = Some(manifest.profile.onboarding_path);
+        }
         Ok(())
     }
 
@@ -1438,6 +1486,149 @@ async fn validate_channel_bootstrap(
     }
 }
 
+fn print_repair_plan(plan: &SetupRepairPlan) {
+    println!("\n{}", style("Proposed repair plan:").bold().cyan());
+    for step in &plan.steps {
+        println!("  - {}", step.name());
+    }
+    if !plan.reasons.is_empty() {
+        println!("  Reasons:");
+        for reason in &plan.reasons {
+            println!("    - {}", reason);
+        }
+    }
+}
+
+async fn build_setup_repair_plan(
+    _workspace_root: &Path,
+    setup_state: Option<&SetupStateManifest>,
+) -> Result<SetupRepairPlan> {
+    let report = doctor::collect_report(false, true, None).await?;
+    Ok(derive_setup_repair_plan(
+        setup_state.map(|manifest| &manifest.setup),
+        &report,
+    ))
+}
+
+fn derive_setup_repair_plan(
+    setup_state: Option<&SetupState>,
+    report: &doctor::DiagnosticReport,
+) -> SetupRepairPlan {
+    let mut steps = Vec::new();
+    let mut reasons = Vec::new();
+
+    if let Some(setup) = setup_state {
+        let unfinished_steps = selected_steps_from_setup_state(setup);
+        for step in &unfinished_steps {
+            add_repair_step(&mut steps, *step);
+        }
+        if !unfinished_steps.is_empty() {
+            reasons.push("Durable setup state still has unfinished steps.".to_string());
+        }
+
+        for outcome in &setup.bootstrap_outcomes {
+            if outcome.status == "ready" {
+                continue;
+            }
+            if let Some(step) = repair_step_for_bootstrap_outcome(outcome) {
+                add_repair_step(&mut steps, step);
+                reasons.push(format!(
+                    "{} bootstrap is {}: {}",
+                    outcome.target, outcome.status, outcome.detail
+                ));
+            }
+        }
+    }
+
+    for check in &report.checks {
+        if !diagnostic_check_requires_repair(check) {
+            continue;
+        }
+        if let Some(step) = repair_step_for_diagnostic_check(check) {
+            add_repair_step(&mut steps, step);
+            reasons.push(format!(
+                "{} requires repair: {}",
+                check.label,
+                check.message
+                    .clone()
+                    .unwrap_or_else(|| "diagnostic reported a blocker".to_string())
+            ));
+        }
+    }
+
+    SetupRepairPlan { steps, reasons }
+}
+
+fn diagnostic_check_requires_repair(check: &doctor::DiagnosticCheck) -> bool {
+    match check.id.as_str() {
+        _ if check.status == doctor::DiagnosticStatus::Failed => true,
+        "api_keys" | "control_registry" | "onboarding_state" => {
+            check.status != doctor::DiagnosticStatus::Ok
+        }
+        "channel_readiness" => {
+            if check.status == doctor::DiagnosticStatus::Ok {
+                false
+            } else {
+                let message = check.message.as_deref().unwrap_or_default();
+                !message.contains("No shipped channels are enabled")
+            }
+        }
+        _ => false,
+    }
+}
+
+fn repair_step_for_bootstrap_outcome(outcome: &SetupBootstrapOutcome) -> Option<OnboardingStep> {
+    match (outcome.category.as_str(), outcome.target.as_str()) {
+        ("runtime", "gateway") => Some(OnboardingStep::Gateway),
+        ("provider", _) => Some(OnboardingStep::Model),
+        ("runtime", "control_plane_lane") => Some(OnboardingStep::Model),
+        ("runtime", "execution_mode") => Some(OnboardingStep::ControlPlane),
+        ("channel", _) => Some(OnboardingStep::Channel),
+        _ => None,
+    }
+}
+
+fn repair_step_for_diagnostic_check(check: &doctor::DiagnosticCheck) -> Option<OnboardingStep> {
+    match check.id.as_str() {
+        "api_keys" => Some(OnboardingStep::Model),
+        "channel_readiness" => Some(OnboardingStep::Channel),
+        "control_registry" => Some(OnboardingStep::ControlPlane),
+        "onboarding_state" => Some(OnboardingStep::Model),
+        _ => None,
+    }
+}
+
+fn add_repair_step(steps: &mut Vec<OnboardingStep>, step: OnboardingStep) {
+    if !steps.contains(&step) {
+        steps.push(step);
+    }
+}
+
+fn prepare_setup_state_for_repair(workspace_root: &Path, steps: &[OnboardingStep]) -> Result<()> {
+    let selected_step_ids = step_ids(steps);
+    let product_mode = self_hosted::load_manifest(workspace_root)?;
+    with_setup_state_mut(workspace_root, move |setup| {
+        setup.workspace_action = "repair_existing".to_string();
+        setup.status = "in_progress".to_string();
+        setup.completed_at = None;
+        setup.selected_steps = selected_step_ids.clone();
+        setup.completed_steps
+            .retain(|id| !selected_step_ids.contains(id));
+        setup.blockers.clear();
+        if setup.deployment_mode.is_none() {
+            setup.deployment_mode =
+                product_mode.as_ref().map(|manifest| manifest.profile.mode.clone());
+        }
+        if setup.deployment_path.is_none() {
+            setup.deployment_path = product_mode
+                .as_ref()
+                .map(|manifest| manifest.profile.onboarding_path.clone());
+        }
+        setup.current_step = steps.first().map(|step| step.id().to_string());
+        setup.next_action = steps.first().map(|step| format!("Complete {}", step.name()));
+    })
+}
+
 async fn save_gateway_config(host: &str, port: u16, jwt_secret: &str) -> Result<()> {
     let env_content = format!(
         r#"# OpenRustClaw Configuration - Generated by onboarding wizard
@@ -2022,6 +2213,132 @@ mod tests {
         assert_eq!(assessment.status, "warning");
         assert!(!assessment.blocking);
         assert!(assessment.detail.contains("recommends `orchestrated`"));
+    }
+
+    #[test]
+    fn test_derive_setup_repair_plan_uses_bootstrap_outcomes_and_diagnostics() {
+        let setup = SetupState {
+            started_at: Utc::now().to_rfc3339(),
+            updated_at: Utc::now().to_rfc3339(),
+            completed_at: None,
+            status: "blocked".to_string(),
+            workspace_action: "repair_existing".to_string(),
+            deployment_mode: Some(self_hosted::MODE_TEAM.to_string()),
+            deployment_path: Some("shared_team_setup".to_string()),
+            setup_path: Some("Advanced".to_string()),
+            selected_steps: vec![
+                "gateway".to_string(),
+                "model".to_string(),
+                "channel".to_string(),
+            ],
+            completed_steps: vec!["gateway".to_string()],
+            blockers: vec!["Provider bootstrap failed".to_string()],
+            next_action: Some("Review AI Model Setup and rerun onboarding".to_string()),
+            current_step: Some("model".to_string()),
+            bootstrap_outcomes: vec![
+                SetupBootstrapOutcome {
+                    category: "provider".to_string(),
+                    target: "anthropic".to_string(),
+                    status: "blocked".to_string(),
+                    detail: "provider not ready".to_string(),
+                    updated_at: Utc::now().to_rfc3339(),
+                },
+                SetupBootstrapOutcome {
+                    category: "channel".to_string(),
+                    target: "slack".to_string(),
+                    status: "warning".to_string(),
+                    detail: "channel probe failed".to_string(),
+                    updated_at: Utc::now().to_rfc3339(),
+                },
+            ],
+        };
+        let report = doctor::DiagnosticReport {
+            generated_at: Utc::now(),
+            config_path: "config/default.toml".to_string(),
+            deep: true,
+            checks: vec![
+                doctor::DiagnosticCheck {
+                    id: "api_keys".to_string(),
+                    label: "provider API keys".to_string(),
+                    status: doctor::DiagnosticStatus::Failed,
+                    message: Some("Anthropic key missing".to_string()),
+                },
+                doctor::DiagnosticCheck {
+                    id: "channel_readiness".to_string(),
+                    label: "channel readiness".to_string(),
+                    status: doctor::DiagnosticStatus::Failed,
+                    message: Some("Slack auth probe failed".to_string()),
+                },
+            ],
+            passed: 0,
+            warnings: 0,
+            failed: 2,
+            healthy: false,
+        };
+
+        let plan = derive_setup_repair_plan(Some(&setup), &report);
+        assert_eq!(plan.steps.len(), 2);
+        assert_eq!(plan.steps[0].id(), "model");
+        assert_eq!(plan.steps[1].id(), "channel");
+        assert!(plan.reasons.iter().any(|reason| reason.contains("unfinished steps")));
+        assert!(plan.reasons.iter().any(|reason| reason.contains("provider not ready")));
+        assert!(plan
+            .reasons
+            .iter()
+            .any(|reason| reason.contains("Slack auth probe failed")));
+    }
+
+    #[test]
+    fn test_prepare_setup_state_for_repair_retargets_selected_steps() {
+        let dir = tempfile::tempdir().unwrap();
+        let manifest = SetupStateManifest {
+            version: SETUP_STATE_VERSION,
+            setup: SetupState {
+                started_at: Utc::now().to_rfc3339(),
+                updated_at: Utc::now().to_rfc3339(),
+                completed_at: Some(Utc::now().to_rfc3339()),
+                status: "ready".to_string(),
+                workspace_action: "new_workspace".to_string(),
+                deployment_mode: Some(self_hosted::MODE_COMPANY.to_string()),
+                deployment_path: Some("company_ops_setup".to_string()),
+                setup_path: Some("Advanced".to_string()),
+                selected_steps: vec![
+                    "gateway".to_string(),
+                    "model".to_string(),
+                    "channel".to_string(),
+                ],
+                completed_steps: vec![
+                    "gateway".to_string(),
+                    "model".to_string(),
+                    "channel".to_string(),
+                ],
+                blockers: vec!["old blocker".to_string()],
+                next_action: Some("done".to_string()),
+                current_step: None,
+                bootstrap_outcomes: Vec::new(),
+            },
+        };
+        save_setup_state(dir.path(), &manifest).unwrap();
+
+        prepare_setup_state_for_repair(
+            dir.path(),
+            &[OnboardingStep::Model, OnboardingStep::Channel],
+        )
+        .unwrap();
+
+        let loaded = load_setup_state(dir.path()).unwrap().unwrap();
+        assert_eq!(loaded.setup.workspace_action, "repair_existing");
+        assert_eq!(loaded.setup.status, "in_progress");
+        assert_eq!(
+            loaded.setup.selected_steps,
+            vec!["model".to_string(), "channel".to_string()]
+        );
+        assert_eq!(loaded.setup.completed_steps, vec!["gateway".to_string()]);
+        assert_eq!(loaded.setup.current_step.as_deref(), Some("model"));
+        assert_eq!(
+            loaded.setup.next_action.as_deref(),
+            Some("Complete AI Model Setup")
+        );
     }
 
     #[test]
