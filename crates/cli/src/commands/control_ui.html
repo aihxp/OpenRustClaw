@@ -1231,6 +1231,14 @@
           <div class="surface">
             <table class="table">
               <thead>
+                <tr><th>When</th><th>Action</th><th>Operator</th><th>Detail</th></tr>
+              </thead>
+              <tbody id="orchestration-active-decisions"><tr><td colspan="4" class="muted">Select an active run to inspect intervention history.</td></tr></tbody>
+            </table>
+          </div>
+          <div class="surface">
+            <table class="table">
+              <thead>
                 <tr><th>When</th><th>Stage</th><th>Actor</th><th>Status</th></tr>
               </thead>
               <tbody id="orchestration-active-events-table"><tr><td colspan="4" class="muted">Select an active run to inspect recent events.</td></tr></tbody>
@@ -4368,6 +4376,12 @@
           if (run.escalation_recommended) {
             supervision.push("escalation recommended");
           }
+          if (run.lifecycle_state) {
+            supervision.push(`lifecycle ${run.lifecycle_state}`);
+          }
+          if ((run.decision_count || 0) > 0) {
+            supervision.push(`${run.decision_count} decision(s)`);
+          }
           return `<tr>
             <td>${run.created_at || "-"}</td>
             <td>${run.mode || "-"}</td>
@@ -4400,6 +4414,9 @@
           if (run.kill_requested) {
             detailBits.push("kill requested");
           }
+          if (run.lifecycle?.state) {
+            detailBits.push(`lifecycle ${run.lifecycle.state}`);
+          }
           return `<tr>
             <td>${run.status || "-"}</td>
             <td><strong>${run.run_id || "-"}</strong><div class="muted">${run.current_actor_id || "-"}</div></td>
@@ -4407,7 +4424,9 @@
             <td>
               <button class="secondary" onclick="inspectActiveOrchestrationRun('${run.run_id || ""}')">Watch</button>
               <button class="secondary" onclick="controlActiveOrchestrationRun('${run.run_id || ""}', 'pause')">Pause</button>
+              <button class="secondary" onclick="controlActiveOrchestrationRun('${run.run_id || ""}', 'escalate')">Escalate</button>
               <button class="secondary" onclick="controlActiveOrchestrationRun('${run.run_id || ""}', 'resume')">Resume</button>
+              <button class="danger" onclick="controlActiveOrchestrationRun('${run.run_id || ""}', 'rollback')">Rollback</button>
               <button class="danger" onclick="controlActiveOrchestrationRun('${run.run_id || ""}', 'kill')">Kill</button>
             </td>
           </tr>`;
@@ -4426,12 +4445,14 @@
           `mode: ${payload.mode || "-"}`,
           `execution: ${route.execution_mode || "-"}`,
           `approval: ${route.approval_policy || "-"}`,
+          `lifecycle: ${payload.lifecycle?.state || "-"}`,
           `selected claw: ${route.selected_claw_id || "-"}`,
           `selected model: ${route.provider || "-"} / ${route.model || "-"}`,
           `workers: ${supervision.worker_count ?? 0}`,
           `needs input: ${supervision.needs_input_count ?? 0}`,
           `failed: ${supervision.failed_count ?? 0}`,
           `escalation: ${supervision.escalation_recommended ? "yes" : "no"}`,
+          `intervention evidence: ${payload.decision_history?.length ?? 0}`,
           `resources: ${(resourceTotals.estimated_input_tokens ?? 0)} in / ${(resourceTotals.estimated_output_tokens ?? 0)} out / ${(resourceTotals.duration_ms ?? 0)} ms`,
         ];
         setText("orchestration-detail", summary.join("\n"));
@@ -4482,9 +4503,12 @@
         const run = payload.run || {};
         const summary = [
           `status: ${run.status || "-"}`,
+          `lifecycle: ${run.lifecycle?.state || "-"}`,
           `stage: ${run.current_stage || "-"}`,
           `actor: ${run.current_actor_type || "-"} / ${run.current_actor_id || "-"}`,
           `note: ${run.current_note || "-"}`,
+          `intervention required: ${run.lifecycle?.intervention_required ? "yes" : "no"}`,
+          `decisions: ${run.lifecycle?.decision_count ?? 0}`,
           `pause requested: ${run.pause_requested ? "yes" : "no"}`,
           `kill requested: ${run.kill_requested ? "yes" : "no"}`,
           `workers: ${run.worker_count ?? 0}`,
@@ -4497,6 +4521,24 @@
           return `<tr><td>${signal}</td></tr>`;
         });
         renderTableRows("orchestration-active-signals", signalRows, "No active attention signals.");
+
+        const decisionRows = (payload.decision_history || []).map((decision) => {
+          const detail = [];
+          if (decision.reason) {
+            detail.push(decision.reason);
+          }
+          if (decision.rollback_reference) {
+            detail.push(`rollback ref: ${decision.rollback_reference}`);
+          }
+          detail.push(`state: ${decision.resulting_state || "-"}`);
+          return `<tr>
+            <td>${decision.created_at || "-"}</td>
+            <td>${decision.action || "-"}</td>
+            <td>${decision.requested_by || "-"}</td>
+            <td>${escapeHtml(detail.join(" · "))}</td>
+          </tr>`;
+        });
+        renderTableRows("orchestration-active-decisions", decisionRows, "No supervised intervention decisions recorded.");
 
         const eventRows = (payload.recent_events || []).map((event) => {
           return `<tr>
@@ -4516,9 +4558,26 @@
       }
 
       async function controlActiveOrchestrationRun(runId, action) {
-        const result = await fetchJson(`/control/orchestration/active/${encodeURIComponent(runId)}/${action}`, {
-          method: "POST",
-        });
+        let options = { method: "POST" };
+        if (action === "escalate" || action === "rollback") {
+          const reason = window.prompt(`${action} reason`, "");
+          if (reason === null) {
+            return;
+          }
+          const payload = { reason };
+          if (action === "rollback") {
+            const rollbackReference = window.prompt("optional rollback reference", "");
+            if (rollbackReference === null) {
+              return;
+            }
+            if (rollbackReference) {
+              payload.rollback_reference = rollbackReference;
+            }
+          }
+          options.headers = { "Content-Type": "application/json" };
+          options.body = JSON.stringify(payload);
+        }
+        const result = await fetchJson(`/control/orchestration/active/${encodeURIComponent(runId)}/${action}`, options);
         setText("orchestration-active-detail", result);
         await loadActiveOrchestrationRuns();
         await inspectActiveOrchestrationRun(runId);

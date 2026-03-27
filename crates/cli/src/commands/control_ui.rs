@@ -80,8 +80,10 @@ mod tests {
     fn dashboard_includes_orchestration_supervision_tables() {
         assert!(CONTROL_UI_HTML.contains("orchestration-workers"));
         assert!(CONTROL_UI_HTML.contains("orchestration-delegations"));
+        assert!(CONTROL_UI_HTML.contains("orchestration-active-decisions"));
         assert!(CONTROL_UI_HTML.contains("function renderReceiptSupervision"));
         assert!(CONTROL_UI_HTML.contains("function renderActiveRunSupervision"));
+        assert!(CONTROL_UI_HTML.contains("controlActiveOrchestrationRun"));
     }
 
     #[test]

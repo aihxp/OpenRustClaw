@@ -172,6 +172,41 @@ const ENTERPRISE_PROTECTED_ROUTE_SPECS: &[EnterpriseProtectedRouteSpec] = &[
     },
     EnterpriseProtectedRouteSpec {
         method: "POST",
+        prefix: "/control/orchestration/active/",
+        suffix: "/pause",
+        scope: ENTERPRISE_SCOPE_RUNTIME_CONTROL,
+        detail: "Pausing an orchestration run changes supervised runtime behavior.",
+    },
+    EnterpriseProtectedRouteSpec {
+        method: "POST",
+        prefix: "/control/orchestration/active/",
+        suffix: "/resume",
+        scope: ENTERPRISE_SCOPE_RUNTIME_CONTROL,
+        detail: "Resuming an orchestration run changes supervised runtime behavior.",
+    },
+    EnterpriseProtectedRouteSpec {
+        method: "POST",
+        prefix: "/control/orchestration/active/",
+        suffix: "/kill",
+        scope: ENTERPRISE_SCOPE_RUNTIME_CONTROL,
+        detail: "Killing an orchestration run stops a supervised runtime workflow.",
+    },
+    EnterpriseProtectedRouteSpec {
+        method: "POST",
+        prefix: "/control/orchestration/active/",
+        suffix: "/escalate",
+        scope: ENTERPRISE_SCOPE_RUNTIME_CONTROL,
+        detail: "Escalating an orchestration run requires explicit operator review.",
+    },
+    EnterpriseProtectedRouteSpec {
+        method: "POST",
+        prefix: "/control/orchestration/active/",
+        suffix: "/rollback",
+        scope: ENTERPRISE_SCOPE_RUNTIME_CONTROL,
+        detail: "Rolling back an orchestration run records an explicit supervised recovery action.",
+    },
+    EnterpriseProtectedRouteSpec {
+        method: "POST",
         prefix: "/control/runtime/switch-provider",
         suffix: "",
         scope: ENTERPRISE_SCOPE_RUNTIME_CONTROL,
@@ -622,6 +657,14 @@ mod tests {
         assert_eq!(
             protected_scope_for_request(&Method::POST, "/control/enterprise/audit/export"),
             Some("enterprise.audit.export")
+        );
+        assert_eq!(
+            protected_scope_for_request(&Method::POST, "/control/orchestration/active/run-1/escalate"),
+            Some("enterprise.runtime.control")
+        );
+        assert_eq!(
+            protected_scope_for_request(&Method::POST, "/control/orchestration/active/run-1/rollback"),
+            Some("enterprise.runtime.control")
         );
         assert_eq!(
             protected_scope_for_request(&Method::PUT, "/control/config"),

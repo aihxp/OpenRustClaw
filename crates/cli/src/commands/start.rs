@@ -3406,6 +3406,14 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             post(orchestration_active_run_kill_handler),
         )
         .route(
+            "/control/orchestration/active/{run_id}/escalate",
+            post(orchestration_active_run_escalate_handler),
+        )
+        .route(
+            "/control/orchestration/active/{run_id}/rollback",
+            post(orchestration_active_run_rollback_handler),
+        )
+        .route(
             "/control/orchestration/runs",
             get(orchestration_runs_handler),
         )
@@ -5271,6 +5279,16 @@ struct OrchestrationRequestPayload {
     max_iterations: Option<usize>,
     max_runtime_secs: Option<u64>,
     approval_policy: Option<String>,
+}
+
+#[derive(serde::Deserialize, Default)]
+struct OrchestrationLifecyclePayload {
+    #[serde(default)]
+    requested_by: Option<String>,
+    #[serde(default)]
+    reason: Option<String>,
+    #[serde(default)]
+    rollback_reference: Option<String>,
 }
 
 #[derive(serde::Deserialize)]
@@ -7760,11 +7778,75 @@ async fn orchestration_active_run_pause_handler(
     }
 }
 
+async fn orchestration_active_run_escalate_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(run_id): AxumPath<String>,
+    operator: Option<Extension<enterprise_access::EnterpriseAuthenticatedOperator>>,
+    Json(payload): Json<OrchestrationLifecyclePayload>,
+) -> impl IntoResponse {
+    let started_at = std::time::Instant::now();
+    let payload = if let Some(Extension(operator)) = operator {
+        orchestrate::ActiveRunInterventionRequest {
+            requested_by: Some(operator.id),
+            reason: payload.reason,
+            rollback_reference: payload.rollback_reference,
+        }
+    } else {
+        orchestrate::ActiveRunInterventionRequest {
+            requested_by: payload.requested_by,
+            reason: payload.reason,
+            rollback_reference: payload.rollback_reference,
+        }
+    };
+    let result = orchestrate::escalate_active_run(&state.workspace_root, &run_id, payload);
+    record_operator_tool_result("orchestration.active.escalate", started_at, &result);
+    match result {
+        Ok(run) => (StatusCode::OK, Json(serde_json::json!(run))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
 async fn orchestration_active_run_resume_handler(
     State(state): State<RuntimeControlState>,
     AxumPath(run_id): AxumPath<String>,
 ) -> impl IntoResponse {
     match orchestrate::resume_active_run(&state.workspace_root, &run_id) {
+        Ok(run) => (StatusCode::OK, Json(serde_json::json!(run))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn orchestration_active_run_rollback_handler(
+    State(state): State<RuntimeControlState>,
+    AxumPath(run_id): AxumPath<String>,
+    operator: Option<Extension<enterprise_access::EnterpriseAuthenticatedOperator>>,
+    Json(payload): Json<OrchestrationLifecyclePayload>,
+) -> impl IntoResponse {
+    let started_at = std::time::Instant::now();
+    let payload = if let Some(Extension(operator)) = operator {
+        orchestrate::ActiveRunInterventionRequest {
+            requested_by: Some(operator.id),
+            reason: payload.reason,
+            rollback_reference: payload.rollback_reference,
+        }
+    } else {
+        orchestrate::ActiveRunInterventionRequest {
+            requested_by: payload.requested_by,
+            reason: payload.reason,
+            rollback_reference: payload.rollback_reference,
+        }
+    };
+    let result = orchestrate::rollback_active_run(&state.workspace_root, &run_id, payload);
+    record_operator_tool_result("orchestration.active.rollback", started_at, &result);
+    match result {
         Ok(run) => (StatusCode::OK, Json(serde_json::json!(run))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,

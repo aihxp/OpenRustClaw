@@ -29,6 +29,10 @@ fn default_active_status() -> String {
     "queued".to_string()
 }
 
+fn default_lifecycle_state() -> String {
+    "queued".to_string()
+}
+
 fn default_transcript_role() -> String {
     "assistant".to_string()
 }
@@ -279,6 +283,61 @@ pub struct ActiveRunEvent {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SupervisionLifecycleSummary {
+    #[serde(default = "default_lifecycle_state")]
+    pub state: String,
+    #[serde(default)]
+    pub intervention_required: bool,
+    #[serde(default)]
+    pub escalation_requested: bool,
+    #[serde(default)]
+    pub rollback_requested: bool,
+    #[serde(default)]
+    pub rollback_reference: Option<String>,
+    #[serde(default)]
+    pub decision_count: usize,
+    #[serde(default)]
+    pub last_decision_at: Option<String>,
+}
+
+impl Default for SupervisionLifecycleSummary {
+    fn default() -> Self {
+        Self {
+            state: default_lifecycle_state(),
+            intervention_required: false,
+            escalation_requested: false,
+            rollback_requested: false,
+            rollback_reference: None,
+            decision_count: 0,
+            last_decision_at: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ActiveRunDecisionRecord {
+    pub decision_id: String,
+    pub created_at: String,
+    pub action: String,
+    pub requested_by: String,
+    #[serde(default)]
+    pub reason: Option<String>,
+    #[serde(default)]
+    pub rollback_reference: Option<String>,
+    pub resulting_state: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ActiveRunInterventionRequest {
+    #[serde(default)]
+    pub requested_by: Option<String>,
+    #[serde(default)]
+    pub reason: Option<String>,
+    #[serde(default)]
+    pub rollback_reference: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActiveOrchestrationRun {
     pub run_id: String,
     pub created_at: String,
@@ -300,6 +359,8 @@ pub struct ActiveOrchestrationRun {
     pub current_actor_id: Option<String>,
     #[serde(default)]
     pub current_note: Option<String>,
+    #[serde(default)]
+    pub lifecycle: SupervisionLifecycleSummary,
     #[serde(default)]
     pub pause_requested: bool,
     #[serde(default)]
@@ -384,6 +445,10 @@ pub struct OrchestrationRunRecord {
     pub reflection_candidates: Vec<ReflectionCandidate>,
     #[serde(default)]
     pub supervision: Option<SupervisionSummary>,
+    #[serde(default)]
+    pub lifecycle: SupervisionLifecycleSummary,
+    #[serde(default)]
+    pub decision_history: Vec<ActiveRunDecisionRecord>,
     pub final_output: String,
     pub final_claw_id: String,
     pub final_model_profile_id: String,
@@ -407,6 +472,8 @@ pub struct OrchestrationRunSummary {
     pub failed_count: usize,
     pub needs_input_count: usize,
     pub escalation_recommended: bool,
+    pub lifecycle_state: String,
+    pub decision_count: usize,
     pub receipt_path: String,
 }
 
@@ -462,6 +529,7 @@ pub struct ReceiptSupervisionReport {
     pub route: ReceiptRouteSummary,
     #[serde(default)]
     pub supervision: Option<SupervisionSummary>,
+    pub lifecycle: SupervisionLifecycleSummary,
     pub resource_totals: OrchestrationResourceTotals,
     #[serde(default)]
     pub delegations: Vec<ReceiptDelegationSummary>,
@@ -475,6 +543,8 @@ pub struct ReceiptSupervisionReport {
     pub reflection_notes: Vec<String>,
     #[serde(default)]
     pub reflection_candidates: Vec<ReflectionCandidate>,
+    #[serde(default)]
+    pub decision_history: Vec<ActiveRunDecisionRecord>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -484,6 +554,8 @@ pub struct ActiveRunSupervisionReport {
     pub recent_events: Vec<ActiveRunEvent>,
     #[serde(default)]
     pub attention_signals: Vec<String>,
+    #[serde(default)]
+    pub decision_history: Vec<ActiveRunDecisionRecord>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -584,6 +656,10 @@ fn active_run_events_path(workspace_root: &Path, run_id: &str) -> PathBuf {
     active_runs_root_for(workspace_root).join(format!("{run_id}.events.jsonl"))
 }
 
+fn active_run_decisions_path(workspace_root: &Path, run_id: &str) -> PathBuf {
+    active_runs_root_for(workspace_root).join(format!("{run_id}.decisions.jsonl"))
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ActiveRunMonitor {
     workspace_root: PathBuf,
@@ -654,6 +730,42 @@ impl ActiveRunMonitor {
         Ok(())
     }
 
+    fn append_decision(
+        &self,
+        action: &str,
+        requested_by: &str,
+        reason: Option<&str>,
+        rollback_reference: Option<&str>,
+        resulting_state: &str,
+    ) -> Result<ActiveRunDecisionRecord> {
+        let path = active_run_decisions_path(&self.workspace_root, &self.run_id);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("Failed to create '{}'", parent.display()))?;
+        }
+        let record = ActiveRunDecisionRecord {
+            decision_id: Uuid::new_v4().to_string(),
+            created_at: Utc::now().to_rfc3339(),
+            action: action.to_string(),
+            requested_by: requested_by.to_string(),
+            reason: reason.map(ToString::to_string),
+            rollback_reference: rollback_reference.map(ToString::to_string),
+            resulting_state: resulting_state.to_string(),
+        };
+        let mut encoded =
+            serde_json::to_string(&record).context("Failed to encode active run decision")?;
+        encoded.push('\n');
+        use std::io::Write;
+        let mut file = fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .with_context(|| format!("Failed to open '{}'", path.display()))?;
+        file.write_all(encoded.as_bytes())
+            .with_context(|| format!("Failed to append '{}'", path.display()))?;
+        Ok(record)
+    }
+
     fn update_stage(
         &self,
         status: &str,
@@ -671,6 +783,16 @@ impl ActiveRunMonitor {
             snapshot.current_note = Some(note.clone());
             if snapshot.started_at.is_none() && status == "running" {
                 snapshot.started_at = Some(Utc::now().to_rfc3339());
+            }
+            if !snapshot.lifecycle.intervention_required {
+                snapshot.lifecycle.state = match status {
+                    "running" => "running".to_string(),
+                    "paused" => "paused".to_string(),
+                    "completed" => "completed".to_string(),
+                    "failed" => "failed".to_string(),
+                    "killed" => "killed".to_string(),
+                    other => other.to_string(),
+                };
             }
         })?;
         self.append_event(stage, actor_type, actor_id, status, note)?;
@@ -740,7 +862,7 @@ impl ActiveRunMonitor {
 
     fn finalize_success(&self, record: &OrchestrationRunRecord) -> Result<ActiveOrchestrationRun> {
         self.update_from_record(record)?;
-        self.mutate_snapshot(|snapshot| {
+        let snapshot = self.mutate_snapshot(|snapshot| {
             snapshot.status = "completed".to_string();
             snapshot.finished_at = Some(Utc::now().to_rfc3339());
             snapshot.current_stage = Some("completed".to_string());
@@ -748,21 +870,47 @@ impl ActiveRunMonitor {
             snapshot.current_actor_id = Some(record.final_claw_id.clone());
             snapshot.current_note = Some("run completed".to_string());
             snapshot.last_error = None;
-        })
+            snapshot.lifecycle.state = "completed".to_string();
+            snapshot.lifecycle.intervention_required = false;
+        })?;
+        self.append_event(
+            "completed",
+            "orchestrator",
+            record.final_claw_id.as_str(),
+            "completed",
+            "run completed",
+        )?;
+        Ok(snapshot)
     }
 
     fn finalize_failure(&self, error: &str) -> Result<ActiveOrchestrationRun> {
-        self.mutate_snapshot(|snapshot| {
-            snapshot.status = if snapshot.kill_requested {
+        let snapshot = self.mutate_snapshot(|snapshot| {
+            snapshot.status = if snapshot.lifecycle.rollback_requested {
+                "rolled_back".to_string()
+            } else if snapshot.kill_requested {
                 "killed".to_string()
             } else {
                 "failed".to_string()
             };
             snapshot.finished_at = Some(Utc::now().to_rfc3339());
-            snapshot.current_stage = Some("completed".to_string());
+            snapshot.current_stage = Some(snapshot.status.clone());
+            snapshot.current_actor_type = Some("orchestrator".to_string());
+            snapshot.current_actor_id = snapshot
+                .current_actor_id
+                .clone()
+                .or_else(|| Some("orchestrator".to_string()));
             snapshot.current_note = Some(error.to_string());
             snapshot.last_error = Some(error.to_string());
-        })
+            snapshot.lifecycle.state = snapshot.status.clone();
+        })?;
+        self.append_event(
+            snapshot.current_stage.as_deref().unwrap_or("failed"),
+            "orchestrator",
+            snapshot.current_actor_id.as_deref().unwrap_or("orchestrator"),
+            snapshot.status.as_str(),
+            error,
+        )?;
+        Ok(snapshot)
     }
 }
 
@@ -804,6 +952,7 @@ pub async fn submit(
         current_actor_type: Some("orchestrator".to_string()),
         current_actor_id: None,
         current_note: Some("queued for background execution".to_string()),
+        lifecycle: SupervisionLifecycleSummary::default(),
         pause_requested: false,
         kill_requested: false,
         checkpoint_count: 0,
@@ -883,6 +1032,15 @@ async fn run_internal(
         )
         .await?
     };
+    if let Some(monitor) = monitor {
+        let snapshot = monitor.read_snapshot()?;
+        record.lifecycle = lifecycle_summary_for(
+            workspace_root,
+            &snapshot.run_id,
+            Some(snapshot.lifecycle.clone()),
+        )?;
+        record.decision_history = read_active_run_decisions(workspace_root, &snapshot.run_id, usize::MAX)?;
+    }
     record.receipt_path = save_run_record(workspace_root, &record)?
         .display()
         .to_string();
@@ -961,6 +1119,8 @@ pub fn list_runs(workspace_root: &Path, limit: usize) -> Result<Vec<Orchestratio
                 .as_ref()
                 .map(|summary| summary.escalation_recommended)
                 .unwrap_or(false),
+            lifecycle_state: record.lifecycle.state.clone(),
+            decision_count: record.decision_history.len(),
             receipt_path: record.receipt_path,
         });
     }
@@ -1006,7 +1166,12 @@ pub fn list_active_runs(
         }
         let run: ActiveOrchestrationRun = serde_json::from_slice(&fs::read(&path)?)
             .with_context(|| format!("Failed to decode '{}'", path.display()))?;
-        if active_only && matches!(run.status.as_str(), "completed" | "failed" | "killed") {
+        if active_only
+            && matches!(
+                run.status.as_str(),
+                "completed" | "failed" | "killed" | "rolled_back"
+            )
+        {
             continue;
         }
         runs.push(run);
@@ -1055,41 +1220,198 @@ pub fn read_active_run_events(
     Ok(events)
 }
 
-fn update_active_flags(
+pub fn read_active_run_decisions(
     workspace_root: &Path,
     run_id: &str,
-    pause_requested: Option<bool>,
-    kill_requested: Option<bool>,
+    limit: usize,
+) -> Result<Vec<ActiveRunDecisionRecord>> {
+    if run_id.contains('/') || run_id.contains('\\') {
+        anyhow::bail!("invalid active run id");
+    }
+    let path = active_run_decisions_path(workspace_root, run_id);
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let content = fs::read_to_string(&path)
+        .with_context(|| format!("Failed to read '{}'", path.display()))?;
+    let mut decisions = Vec::new();
+    for line in content.lines() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        decisions.push(serde_json::from_str::<ActiveRunDecisionRecord>(line).with_context(
+            || format!("Failed to decode decision line in '{}'", path.display()),
+        )?);
+    }
+    if decisions.len() > limit {
+        decisions = decisions.split_off(decisions.len() - limit);
+    }
+    Ok(decisions)
+}
+
+fn lifecycle_summary_for(
+    workspace_root: &Path,
+    run_id: &str,
+    base: Option<SupervisionLifecycleSummary>,
+) -> Result<SupervisionLifecycleSummary> {
+    let mut lifecycle = base.unwrap_or_default();
+    let decisions = read_active_run_decisions(workspace_root, run_id, usize::MAX)?;
+    lifecycle.decision_count = decisions.len();
+    lifecycle.last_decision_at = decisions.last().map(|record| record.created_at.clone());
+    Ok(lifecycle)
+}
+
+fn apply_active_lifecycle_action(
+    workspace_root: &Path,
+    run_id: &str,
+    action: &str,
+    requested_by: &str,
+    reason: Option<&str>,
+    rollback_reference: Option<&str>,
 ) -> Result<ActiveOrchestrationRun> {
     let monitor = ActiveRunMonitor::new(workspace_root, run_id);
+    let (stage, status, note, resulting_state) = match action {
+        "pause" => (
+            "supervision_pause",
+            "pause_requested",
+            reason
+                .map(|value| format!("pause requested by operator: {value}"))
+                .unwrap_or_else(|| "pause requested by operator".to_string()),
+            "pause_requested".to_string(),
+        ),
+        "resume" => (
+            "supervision_resume",
+            "running",
+            reason
+                .map(|value| format!("resumed by operator: {value}"))
+                .unwrap_or_else(|| "resumed by operator".to_string()),
+            "running".to_string(),
+        ),
+        "kill" => (
+            "supervision_kill",
+            "kill_requested",
+            reason
+                .map(|value| format!("kill requested by operator: {value}"))
+                .unwrap_or_else(|| "kill requested by operator".to_string()),
+            "kill_requested".to_string(),
+        ),
+        "escalate" => (
+            "supervision_escalate",
+            "escalated",
+            reason
+                .map(|value| format!("escalated for operator review: {value}"))
+                .unwrap_or_else(|| "escalated for operator review".to_string()),
+            "escalated".to_string(),
+        ),
+        "rollback" => (
+            "supervision_rollback",
+            "rollback_requested",
+            reason
+                .map(|value| format!("rollback requested by operator: {value}"))
+                .unwrap_or_else(|| "rollback requested by operator".to_string()),
+            "rollback_requested".to_string(),
+        ),
+        other => anyhow::bail!("unsupported orchestration lifecycle action '{other}'"),
+    };
     monitor.mutate_snapshot(|snapshot| {
-        if let Some(pause_requested) = pause_requested {
-            snapshot.pause_requested = pause_requested;
-            if pause_requested && snapshot.status == "running" {
-                snapshot.current_note = Some("pause requested by operator".to_string());
-            } else if !pause_requested && snapshot.status == "paused" {
-                snapshot.current_note = Some("resume requested by operator".to_string());
+        match action {
+            "pause" => {
+                snapshot.pause_requested = true;
+                snapshot.lifecycle.state = "pause_requested".to_string();
+                snapshot.lifecycle.intervention_required = false;
             }
-        }
-        if let Some(kill_requested) = kill_requested {
-            snapshot.kill_requested = kill_requested;
-            if kill_requested {
-                snapshot.current_note = Some("kill requested by operator".to_string());
+            "resume" => {
+                snapshot.pause_requested = false;
+                snapshot.lifecycle.state = "running".to_string();
+                snapshot.lifecycle.intervention_required = false;
+                snapshot.lifecycle.escalation_requested = false;
             }
+            "kill" => {
+                snapshot.kill_requested = true;
+                snapshot.lifecycle.state = "kill_requested".to_string();
+                snapshot.lifecycle.intervention_required = true;
+            }
+            "escalate" => {
+                snapshot.pause_requested = true;
+                snapshot.lifecycle.state = "escalated".to_string();
+                snapshot.lifecycle.intervention_required = true;
+                snapshot.lifecycle.escalation_requested = true;
+            }
+            "rollback" => {
+                snapshot.pause_requested = true;
+                snapshot.kill_requested = true;
+                snapshot.lifecycle.state = "rollback_requested".to_string();
+                snapshot.lifecycle.intervention_required = true;
+                snapshot.lifecycle.rollback_requested = true;
+                snapshot.lifecycle.rollback_reference =
+                    rollback_reference.map(ToString::to_string);
+            }
+            _ => {}
         }
-    })
+        snapshot.current_stage = Some(stage.to_string());
+        snapshot.current_note = Some(note.clone());
+    })?;
+    monitor.append_event(
+        stage,
+        "operator",
+        requested_by,
+        status,
+        note.clone(),
+    )?;
+    let decision = monitor.append_decision(
+        action,
+        requested_by,
+        reason,
+        rollback_reference,
+        &resulting_state,
+    )?;
+    let updated = monitor.mutate_snapshot(|snapshot| {
+        snapshot.lifecycle.decision_count += 1;
+        snapshot.lifecycle.last_decision_at = Some(decision.created_at.clone());
+    })?;
+    Ok(updated)
 }
 
 pub fn pause_active_run(workspace_root: &Path, run_id: &str) -> Result<ActiveOrchestrationRun> {
-    update_active_flags(workspace_root, run_id, Some(true), None)
+    apply_active_lifecycle_action(workspace_root, run_id, "pause", "operator", None, None)
 }
 
 pub fn resume_active_run(workspace_root: &Path, run_id: &str) -> Result<ActiveOrchestrationRun> {
-    update_active_flags(workspace_root, run_id, Some(false), None)
+    apply_active_lifecycle_action(workspace_root, run_id, "resume", "operator", None, None)
 }
 
 pub fn kill_active_run(workspace_root: &Path, run_id: &str) -> Result<ActiveOrchestrationRun> {
-    update_active_flags(workspace_root, run_id, None, Some(true))
+    apply_active_lifecycle_action(workspace_root, run_id, "kill", "operator", None, None)
+}
+
+pub fn escalate_active_run(
+    workspace_root: &Path,
+    run_id: &str,
+    request: ActiveRunInterventionRequest,
+) -> Result<ActiveOrchestrationRun> {
+    apply_active_lifecycle_action(
+        workspace_root,
+        run_id,
+        "escalate",
+        request.requested_by.as_deref().unwrap_or("operator"),
+        request.reason.as_deref(),
+        None,
+    )
+}
+
+pub fn rollback_active_run(
+    workspace_root: &Path,
+    run_id: &str,
+    request: ActiveRunInterventionRequest,
+) -> Result<ActiveOrchestrationRun> {
+    apply_active_lifecycle_action(
+        workspace_root,
+        run_id,
+        "rollback",
+        request.requested_by.as_deref().unwrap_or("operator"),
+        request.reason.as_deref(),
+        request.rollback_reference.as_deref(),
+    )
 }
 
 pub fn read_run(workspace_root: &Path, receipt_id: &str) -> Result<OrchestrationRunRecord> {
@@ -1159,6 +1481,7 @@ pub fn read_run_supervision(workspace_root: &Path, receipt_id: &str) -> Result<s
             max_runtime_secs: run.routing.request_overrides.max_runtime_secs,
         },
         supervision: run.supervision,
+        lifecycle: run.lifecycle,
         resource_totals: summarize_trace_resources(&run.trace),
         delegations: run
             .delegations
@@ -1189,6 +1512,7 @@ pub fn read_run_supervision(workspace_root: &Path, receipt_id: &str) -> Result<s
         relationships: run.relationships,
         reflection_notes: run.reflection_notes,
         reflection_candidates: run.reflection_candidates,
+        decision_history: run.decision_history,
     };
     Ok(serde_json::to_value(report)?)
 }
@@ -1200,7 +1524,11 @@ pub fn read_active_run_supervision(
 ) -> Result<serde_json::Value> {
     let run = read_active_run(workspace_root, run_id)?;
     let recent_events = read_active_run_events(workspace_root, run_id, event_limit.max(1))?;
+    let decision_history = read_active_run_decisions(workspace_root, run_id, event_limit.max(1))?;
     let mut attention_signals = Vec::new();
+    if run.lifecycle.intervention_required {
+        attention_signals.push(format!("operator intervention required: {}", run.lifecycle.state));
+    }
     if run.pause_requested {
         attention_signals.push("pause requested by operator".to_string());
     }
@@ -1221,10 +1549,17 @@ pub fn read_active_run_supervision(
     {
         attention_signals.push("recent events include failed or killed status".to_string());
     }
+    if run.lifecycle.rollback_requested {
+        attention_signals.push("rollback requested for this run".to_string());
+    }
+    if run.lifecycle.escalation_requested {
+        attention_signals.push("run has been escalated for operator review".to_string());
+    }
     Ok(serde_json::to_value(ActiveRunSupervisionReport {
         run,
         recent_events,
         attention_signals,
+        decision_history,
     })?)
 }
 
@@ -2212,6 +2547,8 @@ async fn run_direct(
         reflection_notes: routing.steering_notes.clone(),
         reflection_candidates,
         supervision: Some(supervision),
+        lifecycle: SupervisionLifecycleSummary::default(),
+        decision_history: Vec::new(),
         final_output: prompt.response.message.content,
         final_claw_id: claw.id.clone(),
         final_model_profile_id: executable.decision.selected_profile_id.clone(),
@@ -2542,6 +2879,8 @@ async fn run_orchestrated(
                 reflection_notes,
                 reflection_candidates,
                 supervision: Some(supervision),
+                lifecycle: SupervisionLifecycleSummary::default(),
+                decision_history: Vec::new(),
                 final_output: plan
                     .direct_response
                     .unwrap_or_else(|| "critic requested direct answer".to_string()),
@@ -2573,6 +2912,8 @@ async fn run_orchestrated(
             reflection_notes,
             reflection_candidates,
             supervision: Some(supervision),
+            lifecycle: SupervisionLifecycleSummary::default(),
+            decision_history: Vec::new(),
             final_output: plan
                 .direct_response
                 .unwrap_or(planner_response.response.message.content),
@@ -3121,6 +3462,8 @@ async fn run_orchestrated(
         reflection_notes,
         reflection_candidates,
         supervision: Some(supervision),
+        lifecycle: SupervisionLifecycleSummary::default(),
+        decision_history: Vec::new(),
         final_output: final_response.response.message.content,
         final_claw_id: orchestrator.id.clone(),
         final_model_profile_id: orchestrator_model.decision.selected_profile_id.clone(),
@@ -3547,6 +3890,8 @@ mod tests {
             reflection_notes: vec![],
             reflection_candidates: vec![],
             supervision: None,
+            lifecycle: SupervisionLifecycleSummary::default(),
+            decision_history: vec![],
             transcript: vec![],
             final_output: "ok".to_string(),
             final_claw_id: "claw-a".to_string(),
@@ -3636,6 +3981,8 @@ mod tests {
             reflection_notes: vec![],
             reflection_candidates: vec![],
             supervision: None,
+            lifecycle: SupervisionLifecycleSummary::default(),
+            decision_history: vec![],
             transcript: vec![],
             final_output: "ok".to_string(),
             final_claw_id: "claw-a".to_string(),
@@ -3707,6 +4054,8 @@ mod tests {
             reflection_notes: vec![],
             reflection_candidates: vec![],
             supervision: None,
+            lifecycle: SupervisionLifecycleSummary::default(),
+            decision_history: vec![],
             final_output: "ok".to_string(),
             final_claw_id: "main".to_string(),
             final_model_profile_id: "primary".to_string(),
@@ -3803,6 +4152,8 @@ mod tests {
             reflection_notes: vec![],
             reflection_candidates: vec![],
             supervision: None,
+            lifecycle: SupervisionLifecycleSummary::default(),
+            decision_history: vec![],
             transcript: vec![],
             final_output: "ok".to_string(),
             final_claw_id: "main".to_string(),
@@ -3904,6 +4255,8 @@ mod tests {
                 reflection_candidate_count: 0,
                 escalation_recommended: true,
             }),
+            lifecycle: SupervisionLifecycleSummary::default(),
+            decision_history: vec![],
             final_output: "blocked on worker input".to_string(),
             final_claw_id: "main".to_string(),
             final_model_profile_id: "primary".to_string(),
@@ -3921,6 +4274,8 @@ mod tests {
         assert_eq!(payload["workers"][0]["status"], "needs_input");
         assert_eq!(payload["workers"][0]["question_count"], 1);
         assert_eq!(payload["supervision"]["escalation_recommended"], true);
+        assert_eq!(payload["lifecycle"]["state"], "queued");
+        assert_eq!(payload["decision_history"].as_array().unwrap().len(), 0);
     }
 
     #[test]
@@ -3939,6 +4294,15 @@ mod tests {
             current_actor_type: Some("worker".to_string()),
             current_actor_id: Some("worker-a".to_string()),
             current_note: Some("waiting for worker output".to_string()),
+            lifecycle: SupervisionLifecycleSummary {
+                state: "pause_requested".to_string(),
+                intervention_required: true,
+                escalation_requested: true,
+                rollback_requested: false,
+                rollback_reference: None,
+                decision_count: 0,
+                last_decision_at: None,
+            },
             pause_requested: true,
             kill_requested: false,
             checkpoint_count: 2,
@@ -3978,6 +4342,82 @@ mod tests {
                 .iter()
                 .any(|value| value.as_str() == Some("pause requested by operator"))
         );
+        assert_eq!(payload["run"]["lifecycle"]["state"], "pause_requested");
+    }
+
+    #[test]
+    fn lifecycle_actions_record_decisions_and_rolled_back_state() {
+        let root = tempfile::tempdir().unwrap();
+        let snapshot = ActiveOrchestrationRun {
+            run_id: "run-decision".to_string(),
+            created_at: "2026-03-19T00:00:00Z".to_string(),
+            updated_at: "2026-03-19T00:00:00Z".to_string(),
+            started_at: Some("2026-03-19T00:00:01Z".to_string()),
+            finished_at: None,
+            status: "running".to_string(),
+            request: OrchestrationRequest::default(),
+            routing: None,
+            current_stage: Some("worker_execution".to_string()),
+            current_actor_type: Some("worker".to_string()),
+            current_actor_id: Some("worker-a".to_string()),
+            current_note: Some("running".to_string()),
+            lifecycle: SupervisionLifecycleSummary {
+                state: "running".to_string(),
+                ..SupervisionLifecycleSummary::default()
+            },
+            pause_requested: false,
+            kill_requested: false,
+            checkpoint_count: 0,
+            trace_count: 0,
+            worker_count: 0,
+            relationship_count: 0,
+            resource_totals: None,
+            receipt_id: None,
+            receipt_path: None,
+            last_error: None,
+        };
+        write_active_run(root.path(), &snapshot).unwrap();
+
+        let escalated = escalate_active_run(
+            root.path(),
+            "run-decision",
+            ActiveRunInterventionRequest {
+                requested_by: Some("owner-1".to_string()),
+                reason: Some("worker needs approval".to_string()),
+                rollback_reference: None,
+            },
+        )
+        .unwrap();
+        assert_eq!(escalated.lifecycle.state, "escalated");
+        assert!(escalated.lifecycle.intervention_required);
+
+        let rollback = rollback_active_run(
+            root.path(),
+            "run-decision",
+            ActiveRunInterventionRequest {
+                requested_by: Some("owner-1".to_string()),
+                reason: Some("unsafe path".to_string()),
+                rollback_reference: Some("receipt-17.json".to_string()),
+            },
+        )
+        .unwrap();
+        assert!(rollback.kill_requested);
+        assert!(rollback.lifecycle.rollback_requested);
+
+        let decisions = read_active_run_decisions(root.path(), "run-decision", 10).unwrap();
+        assert_eq!(decisions.len(), 2);
+        assert_eq!(decisions[0].action, "escalate");
+        assert_eq!(decisions[1].action, "rollback");
+        assert_eq!(decisions[1].rollback_reference.as_deref(), Some("receipt-17.json"));
+
+        let monitor = ActiveRunMonitor::new(root.path(), "run-decision");
+        let finalized = monitor.finalize_failure("rollback requested by operator").unwrap();
+        assert_eq!(finalized.status, "rolled_back");
+
+        let payload = read_active_run_supervision(root.path(), "run-decision", 10).unwrap();
+        assert_eq!(payload["run"]["status"], "rolled_back");
+        assert_eq!(payload["run"]["lifecycle"]["state"], "rolled_back");
+        assert_eq!(payload["decision_history"].as_array().unwrap().len(), 2);
     }
 
     #[test]
@@ -4112,6 +4552,8 @@ mod tests {
                 reflection_candidate_count: 1,
                 escalation_recommended: true,
             }),
+            lifecycle: SupervisionLifecycleSummary::default(),
+            decision_history: vec![],
             transcript: vec![],
             final_output: "ok".to_string(),
             final_claw_id: "main".to_string(),
@@ -4156,6 +4598,7 @@ mod tests {
             current_actor_type: Some("orchestrator".to_string()),
             current_actor_id: Some("main".to_string()),
             current_note: Some("queued".to_string()),
+            lifecycle: SupervisionLifecycleSummary::default(),
             pause_requested: false,
             kill_requested: false,
             checkpoint_count: 0,
