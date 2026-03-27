@@ -522,6 +522,39 @@ Let's get started!
                 "✗ Not installed"
             }
         );
+        if let Ok(workspace_root) = std::env::current_dir()
+            && let Ok(Some(setup_state)) = load_setup_state(&workspace_root)
+        {
+            let handoff = setup_handoff_status(&setup_state.setup);
+            println!(
+                "\nSetup handoff: {}",
+                handoff.replace('_', " ").to_ascii_uppercase()
+            );
+            println!("  {}", setup_handoff_detail(&setup_state.setup));
+            if let Some(next_action) = setup_state.setup.next_action.as_deref() {
+                println!("  Next action: {next_action}");
+            }
+            let pending = pending_step_names(&setup_state.setup);
+            if !pending.is_empty() {
+                println!("  Pending steps: {}", pending.join(", "));
+            }
+            if !setup_state.setup.blockers.is_empty() {
+                println!("  Blockers:");
+                for blocker in &setup_state.setup.blockers {
+                    println!("    - {blocker}");
+                }
+            }
+            let outcomes = non_ready_bootstrap_outcomes(&setup_state.setup);
+            if !outcomes.is_empty() {
+                println!("  Bootstrap attention:");
+                for outcome in outcomes {
+                    println!(
+                        "    - {} {}: {}",
+                        outcome.category, outcome.target, outcome.detail
+                    );
+                }
+            }
+        }
         println!("\nNext steps:");
         println!("  openrustclaw start    # Start the gateway");
         println!("  openrustclaw assistant # Start the persisted assistant session");
@@ -1188,6 +1221,75 @@ fn selected_steps_from_setup_state(setup: &SetupState) -> Vec<OnboardingStep> {
         ))
     } else {
         selected
+    }
+}
+
+pub fn pending_step_names(setup: &SetupState) -> Vec<String> {
+    setup
+        .selected_steps
+        .iter()
+        .filter(|id| !setup.completed_steps.contains(*id))
+        .filter_map(|id| step_from_id(id))
+        .map(|step| step.name().to_string())
+        .collect()
+}
+
+pub fn non_ready_bootstrap_outcomes(setup: &SetupState) -> Vec<SetupBootstrapOutcome> {
+    setup
+        .bootstrap_outcomes
+        .iter()
+        .filter(|outcome| outcome.status != "ready")
+        .cloned()
+        .collect()
+}
+
+pub fn setup_handoff_status(setup: &SetupState) -> &'static str {
+    if setup.status == "blocked"
+        || setup
+            .bootstrap_outcomes
+            .iter()
+            .any(|outcome| outcome.status == "blocked")
+    {
+        "blocked"
+    } else if setup
+        .bootstrap_outcomes
+        .iter()
+        .any(|outcome| outcome.status == "warning")
+    {
+        "degraded"
+    } else if matches!(setup.status.as_str(), "ready" | "completed") {
+        "ready"
+    } else if setup.status == "in_progress" {
+        "in_progress"
+    } else {
+        "unknown"
+    }
+}
+
+pub fn setup_handoff_detail(setup: &SetupState) -> String {
+    match setup_handoff_status(setup) {
+        "blocked" => setup
+            .blockers
+            .first()
+            .cloned()
+            .or_else(|| setup.next_action.clone())
+            .unwrap_or_else(|| "Setup is blocked and needs operator attention.".to_string()),
+        "degraded" => non_ready_bootstrap_outcomes(setup)
+            .first()
+            .map(|outcome| {
+                format!(
+                    "{} {} needs review: {}",
+                    outcome.category, outcome.target, outcome.detail
+                )
+            })
+            .or_else(|| setup.next_action.clone())
+            .unwrap_or_else(|| "Setup is usable but still has warning-level bootstrap issues.".to_string()),
+        "ready" => "The workspace is ready for first start and assistant handoff.".to_string(),
+        "in_progress" => setup
+            .next_action
+            .clone()
+            .unwrap_or_else(|| "Setup is still in progress.".to_string()),
+        _ => "Setup state exists but does not yet map to a known handoff status.".to_string(),
     }
 }
 

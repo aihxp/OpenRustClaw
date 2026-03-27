@@ -89,6 +89,15 @@ mod tests {
     }
 
     #[test]
+    fn dashboard_includes_setup_handoff_panel() {
+        assert!(CONTROL_UI_HTML.contains("setup-handoff"));
+        assert!(CONTROL_UI_HTML.contains("setup-bootstrap-outcomes"));
+        assert!(CONTROL_UI_HTML.contains("Current onboarding status"));
+        assert!(CONTROL_UI_HTML.contains("function loadSetupHandoff"));
+        assert!(CONTROL_UI_HTML.contains("function renderSetupHandoff"));
+    }
+
+    #[test]
     fn dashboard_includes_orchestration_supervision_tables() {
         assert!(CONTROL_UI_HTML.contains("orchestration-workers"));
         assert!(CONTROL_UI_HTML.contains("orchestration-delegations"));

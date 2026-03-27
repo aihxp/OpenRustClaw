@@ -461,6 +461,19 @@
           </div>
           <div class="surface" style="margin-top: 12px"><pre id="self-hosted-transition-result">No self-hosted mode transition run yet.</pre></div>
         </article>
+        <article class="panel span-12">
+          <h2>Setup Handoff</h2>
+          <p class="muted">Current onboarding status, next action, and retained bootstrap outcomes from the durable setup-state contract.</p>
+          <div class="surface"><div id="setup-handoff" class="summary-card empty">Loading…</div></div>
+          <div class="surface" style="margin-top: 12px">
+            <table class="table">
+              <thead>
+                <tr><th>Surface</th><th>Status</th><th>Updated</th><th>Detail</th></tr>
+              </thead>
+              <tbody id="setup-bootstrap-outcomes"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </article>
         <article class="panel span-6">
           <h2>Security Posture</h2>
           <div class="surface"><pre id="security-posture">Loading…</pre></div>
@@ -2965,6 +2978,57 @@
         renderSelfHostedProductMode(payload);
       }
 
+      function renderSetupHandoff(report) {
+        if (!report || report.error) {
+          renderSummaryCard("setup-handoff", report?.error || "No setup handoff summary available.", null);
+          renderTableRows("setup-bootstrap-outcomes", [], "No bootstrap outcomes recorded yet.");
+          return;
+        }
+
+        renderSummaryCard("setup-handoff", "No setup handoff summary available.", buildSummaryMarkup({
+          kicker: "Onboarding / Setup",
+          title: `${String(report.status || "unknown").replaceAll("_", " ")} handoff`,
+          copy: report.detail || "No setup handoff summary available.",
+          stats: [
+            { label: "Ready", value: report.ready_for_first_start ? "yes" : "no", detail: report.next_action || report.manifest_path || "-" },
+            { label: "Deployment", value: report.deployment_mode || "-", detail: report.deployment_path || "-" },
+            { label: "Path", value: report.setup_path || "-", detail: report.workspace_action || "-" },
+            { label: "Steps", value: `${report.completed_step_count || 0}/${report.selected_step_count || 0}`, detail: (report.pending_steps || []).join(", ") || "no pending steps" },
+            { label: "Current", value: report.current_step || "-", detail: report.next_action || "-" },
+            { label: "Blockers", value: `${(report.blockers || []).length}`, detail: report.manifest_path || "-" },
+          ],
+        }));
+
+        const extras = [];
+        if ((report.blockers || []).length) {
+          extras.push(`<div><strong>Blockers</strong></div>${report.blockers.map((item) => `<div>${escapeHtml(item)}</div>`).join("")}`);
+        }
+        if ((report.pending_steps || []).length) {
+          extras.push(`<div style="margin-top: 10px"><strong>Pending</strong>: ${escapeHtml(report.pending_steps.join(", "))}</div>`);
+        }
+        if (extras.length) {
+          document.getElementById("setup-handoff").insertAdjacentHTML("beforeend", `<div class="muted" style="margin-top: 12px">${extras.join("")}</div>`);
+        }
+
+        renderTableRows(
+          "setup-bootstrap-outcomes",
+          (report.bootstrap_outcomes || []).map((entry) => `
+            <tr>
+              <td>${escapeHtml(`${entry.category || "-"} / ${entry.target || "-"}`)}</td>
+              <td>${escapeHtml(entry.status || "-")}</td>
+              <td>${escapeHtml(entry.updated_at || "-")}</td>
+              <td>${escapeHtml(entry.detail || "-")}</td>
+            </tr>
+          `),
+          "No bootstrap outcomes recorded yet."
+        );
+      }
+
+      async function loadSetupHandoff() {
+        const payload = await fetchJson("/control/setup/handoff");
+        renderSetupHandoff(payload);
+      }
+
       async function transitionSelfHostedProductMode() {
         const result = await fetchJson("/control/self-hosted/product-mode", {
           method: "POST",
@@ -5435,6 +5499,7 @@
             loadRuntimeReloadPlan(),
             loadSecurityPosture(),
             loadSelfHostedProductMode(),
+            loadSetupHandoff(),
             loadEnterpriseFoundations(),
             loadEnterpriseAdmin(),
             loadEnterpriseAccess(),

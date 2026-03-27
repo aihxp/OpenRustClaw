@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 
 use super::{
     browser, control, enterprise_access, enterprise_autonomy, enterprise_policy, mobile,
-    orchestrate, self_hosted, skills, talk, voice_runtime,
+    onboard, orchestrate, self_hosted, skills, talk, voice_runtime,
 };
 
 #[derive(Debug, Clone, Serialize)]
@@ -169,6 +169,26 @@ pub struct SelfHostedProductModeReport {
     pub downgrade_targets: Vec<String>,
     pub current_warnings: Vec<String>,
     pub recent_transitions: Vec<self_hosted::SelfHostedProductTransitionEvent>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SetupHandoffReport {
+    pub status: String,
+    pub detail: String,
+    pub manifest_path: String,
+    pub explicit_setup_state: bool,
+    pub deployment_mode: Option<String>,
+    pub deployment_path: Option<String>,
+    pub setup_path: Option<String>,
+    pub workspace_action: Option<String>,
+    pub current_step: Option<String>,
+    pub next_action: Option<String>,
+    pub ready_for_first_start: bool,
+    pub selected_step_count: usize,
+    pub completed_step_count: usize,
+    pub pending_steps: Vec<String>,
+    pub blockers: Vec<String>,
+    pub bootstrap_outcomes: Vec<onboard::SetupBootstrapOutcome>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -967,6 +987,54 @@ pub fn self_hosted_product_mode_summary(workspace_root: &Path) -> Result<SelfHos
     })
 }
 
+pub fn setup_handoff_summary(workspace_root: &Path) -> Result<SetupHandoffReport> {
+    let manifest_path = onboard::setup_state_path(workspace_root).display().to_string();
+    let setup_state = onboard::load_setup_state(workspace_root)?;
+    if let Some(setup_state) = setup_state {
+        let status = onboard::setup_handoff_status(&setup_state.setup).to_string();
+        let detail = onboard::setup_handoff_detail(&setup_state.setup);
+        let pending_steps = onboard::pending_step_names(&setup_state.setup);
+        let ready_for_first_start = status == "ready";
+        Ok(SetupHandoffReport {
+            status,
+            detail,
+            manifest_path,
+            explicit_setup_state: true,
+            deployment_mode: setup_state.setup.deployment_mode,
+            deployment_path: setup_state.setup.deployment_path,
+            setup_path: setup_state.setup.setup_path,
+            workspace_action: Some(setup_state.setup.workspace_action),
+            current_step: setup_state.setup.current_step,
+            next_action: setup_state.setup.next_action,
+            ready_for_first_start,
+            selected_step_count: setup_state.setup.selected_steps.len(),
+            completed_step_count: setup_state.setup.completed_steps.len(),
+            pending_steps,
+            blockers: setup_state.setup.blockers,
+            bootstrap_outcomes: setup_state.setup.bootstrap_outcomes,
+        })
+    } else {
+        Ok(SetupHandoffReport {
+            status: "not_started".to_string(),
+            detail: "No durable setup state is recorded yet. Run `openrustclaw onboard` to create the setup contract before first start.".to_string(),
+            manifest_path,
+            explicit_setup_state: false,
+            deployment_mode: None,
+            deployment_path: None,
+            setup_path: None,
+            workspace_action: None,
+            current_step: None,
+            next_action: Some("Run `openrustclaw onboard`.".to_string()),
+            ready_for_first_start: false,
+            selected_step_count: 0,
+            completed_step_count: 0,
+            pending_steps: Vec::new(),
+            blockers: Vec::new(),
+            bootstrap_outcomes: Vec::new(),
+        })
+    }
+}
+
 pub fn enterprise_access_summary(workspace_root: &Path) -> Result<EnterpriseAccessReport> {
     let registry_path = enterprise_access::enterprise_access_path(workspace_root)
         .display()
@@ -1758,7 +1826,8 @@ fn build_voice_operator_recent_activity(
 mod tests {
     use super::{
         enterprise_access_summary, enterprise_admin_summary, enterprise_foundations_summary,
-        new_tool_execution_record, self_hosted_product_mode_summary, tool_execution_log_path,
+        new_tool_execution_record, self_hosted_product_mode_summary, setup_handoff_summary,
+        tool_execution_log_path,
     };
     use anyhow::Result;
     use chrono::{DateTime, Utc};
@@ -1771,7 +1840,7 @@ mod tests {
         APPROVER_ID_HEADER, EnterpriseAccessBootstrapRequest, EnterpriseAccessOperatorRequest,
         bootstrap_manifest, upsert_operator,
     };
-    use crate::commands::self_hosted;
+    use crate::commands::{onboard, self_hosted};
 
     #[test]
     fn enterprise_foundations_summary_reports_policy_and_recent_audit_evidence() -> Result<()> {
@@ -1975,6 +2044,61 @@ mod tests {
         assert_eq!(report.mode, self_hosted::MODE_COMPANY);
         assert_eq!(report.recent_transitions.len(), 1);
         assert_eq!(report.recent_transitions[0].direction, "upgrade");
+        Ok(())
+    }
+
+    #[test]
+    fn setup_handoff_summary_defaults_to_not_started() -> Result<()> {
+        let root = tempdir().expect("tempdir");
+        let report = setup_handoff_summary(root.path())?;
+        assert_eq!(report.status, "not_started");
+        assert!(!report.explicit_setup_state);
+        assert!(!report.ready_for_first_start);
+        assert!(report
+            .detail
+            .contains("Run `openrustclaw onboard`"));
+        Ok(())
+    }
+
+    #[test]
+    fn setup_handoff_summary_reports_degraded_setup_state() -> Result<()> {
+        let root = tempdir().expect("tempdir");
+        onboard::save_setup_state(
+            root.path(),
+            &onboard::SetupStateManifest {
+                version: 1,
+                setup: onboard::SetupState {
+                    started_at: Utc::now().to_rfc3339(),
+                    updated_at: Utc::now().to_rfc3339(),
+                    completed_at: Some(Utc::now().to_rfc3339()),
+                    status: "ready".to_string(),
+                    workspace_action: "repair_existing".to_string(),
+                    deployment_mode: Some(self_hosted::MODE_TEAM.to_string()),
+                    deployment_path: Some("shared_team_setup".to_string()),
+                    setup_path: Some("Advanced".to_string()),
+                    selected_steps: vec!["gateway".to_string(), "model".to_string()],
+                    completed_steps: vec!["gateway".to_string(), "model".to_string()],
+                    blockers: Vec::new(),
+                    next_action: Some("Start the gateway.".to_string()),
+                    current_step: None,
+                    bootstrap_outcomes: vec![onboard::SetupBootstrapOutcome {
+                        category: "channel".to_string(),
+                        target: "slack".to_string(),
+                        status: "warning".to_string(),
+                        detail: "Slack auth probe failed".to_string(),
+                        updated_at: Utc::now().to_rfc3339(),
+                    }],
+                },
+            },
+        )?;
+
+        let report = setup_handoff_summary(root.path())?;
+        assert_eq!(report.status, "degraded");
+        assert!(report.explicit_setup_state);
+        assert!(!report.ready_for_first_start);
+        assert_eq!(report.completed_step_count, 2);
+        assert_eq!(report.bootstrap_outcomes.len(), 1);
+        assert!(report.detail.contains("needs review"));
         Ok(())
     }
 
