@@ -1,5 +1,20 @@
 # Project Milestones: OpenRustClaw
 
+## v1.5 Self-Hosted Product Modes and Lifecycle Packaging (Shipped: 2026-03-27)
+
+**Phases completed:** 4 phases, 8 plans, 0 tasks
+**Verification archive:** `.planning/milestones/v1.5-VERIFICATIONS.md`
+**Verification debt:** none
+
+**Key accomplishments:**
+
+- Added a first-class self-hosted product-mode contract for `solo`, `team`, `company`, and `enterprise` deployments.
+- Made onboarding choose and persist the deployment path explicitly instead of leaving it implied by later configuration drift.
+- Added explicit upgrade and downgrade transitions with durable receipts and retained-state warnings.
+- Aligned the README, installation path, quickstart, first-agent guide, and shipped dashboard wording around the same self-hosted open-source product story.
+
+---
+
 ## v1.4 Enterprise Governance and Operator-Gated Full Autonomy (Shipped: 2026-03-27)
 
 **Phases completed:** 4 phases, 12 plans, 0 tasks

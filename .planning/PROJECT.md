@@ -2,7 +2,7 @@
 
 ## What This Is
 
-OpenRustClaw is a self-hosted open-source Rust-first OpenClaw-style assistant platform with shipped v1.0 through v1.4 milestones. It now has a coherent production-ready baseline across onboarding, assistant continuity, memory policy, tool and coding evidence, communications, runtime operations, security posture, release exit, milestone verification integrity, materially deeper operator parity across browser, orchestration, mobile, Control UI, and voice or call handling surfaces, plus an enterprise-first foundation for scoped operator identity, policy, audit export, supervised autonomy, governance, and an operator-gated full-autonomy lane with a shipped control surface.
+OpenRustClaw is a self-hosted open-source Rust-first OpenClaw-style assistant platform with shipped v1.0 through v1.5 milestones. It now has a coherent production-ready baseline across onboarding, assistant continuity, memory policy, tool and coding evidence, communications, runtime operations, security posture, release exit, milestone verification integrity, materially deeper operator parity across browser, orchestration, mobile, Control UI, and voice or call handling surfaces, an enterprise-first foundation for scoped operator identity, policy, audit export, supervised autonomy, governance, and an operator-gated full-autonomy lane, plus an explicit self-hosted product-mode contract across `solo`, `team`, `company`, and `enterprise` deployments.
 
 The product target remains broader than the MVP: a general-purpose assistant platform that can eventually support coding, communications, business operations, and deeper autonomous workflows. The difference after v1.0 is that the repo now has a believable trust baseline instead of a wide but loosely connected surface.
 
@@ -12,20 +12,16 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 ## Current State
 
-- **Shipped milestones:** v1.0 Rust OpenClaw MVP and v1.1 Lifecycle Integrity and Enterprise Foundations on 2026-03-26, plus v1.2 Deeper OpenClaw Surface Parity, v1.3 Enterprise Expansion and Supervised Autonomy Foundations, and v1.4 Enterprise Governance and Operator-Gated Full Autonomy on 2026-03-27
-- **Archive:** `.planning/milestones/v1.0-*`, `.planning/milestones/v1.1-*`, `.planning/milestones/v1.2-*`, `.planning/milestones/v1.3-*`, `.planning/milestones/v1.4-*`
-- **Planning state:** v1.5 Self-Hosted Product Modes and Lifecycle Packaging is now active
+- **Shipped milestones:** v1.0 Rust OpenClaw MVP and v1.1 Lifecycle Integrity and Enterprise Foundations on 2026-03-26, plus v1.2 Deeper OpenClaw Surface Parity, v1.3 Enterprise Expansion and Supervised Autonomy Foundations, v1.4 Enterprise Governance and Operator-Gated Full Autonomy, and v1.5 Self-Hosted Product Modes and Lifecycle Packaging on 2026-03-27
+- **Archive:** `.planning/milestones/v1.0-*`, `.planning/milestones/v1.1-*`, `.planning/milestones/v1.2-*`, `.planning/milestones/v1.3-*`, `.planning/milestones/v1.4-*`, `.planning/milestones/v1.5-*`
+- **Planning state:** no active milestone is open
 - **Known audit debt:** v1.0 archive still records missing phase `VERIFICATION.md` artifacts; v1.1 closes that workflow gap going forward
 
-## Current Milestone: v1.5 Self-Hosted Product Modes and Lifecycle Packaging
+## Most Recent Milestone: v1.5 Self-Hosted Product Modes and Lifecycle Packaging
 
-**Goal:** Make OpenRustClaw legible and operable as a self-hosted open-source product for solo users, multi-user teams, companies, and enterprises, with guided initial setup paths and safe upgrade or downgrade flows between those modes.
+**Result:** Shipped 2026-03-27. OpenRustClaw now presents one explicit self-hosted open-source product story across onboarding, runtime inspection, Control UI, and docs, with first-class deployment paths and durable upgrade or downgrade transitions between them.
 
-**Target features:**
-- explicit self-hosted product modes for solo, multi-user team, company, and enterprise deployments
-- onboarding or first-run setup that branches into mode-specific paths instead of one flat wizard
-- safe upgrade and downgrade flows between deployment modes without hidden data or policy drift
-- docs and shipped control surfaces that consistently frame OpenRustClaw as a self-hosted open-source product
+**Archive:** `.planning/milestones/v1.5-ROADMAP.md`, `.planning/milestones/v1.5-REQUIREMENTS.md`, `.planning/milestones/v1.5-MILESTONE-AUDIT.md`, `.planning/milestones/v1.5-VERIFICATIONS.md`
 
 ## Requirements
 
@@ -56,7 +52,9 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 ### Active
 
-- None. v1.5 execution scope is complete and ready for milestone audit.
+- [ ] Expand the enterprise baseline into deeper RBAC, SSO, SCIM, and tenant-aware governance
+- [ ] Broaden supervised and full autonomy into more domains without dropping budgets, approvals, or audit evidence
+- [ ] Continue parity and product depth only in ways that preserve the enterprise, autonomy, and self-hosted product contract
 
 ### Out of Scope
 
@@ -67,9 +65,9 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 ## Context
 
-This remains a large brownfield Rust monorepo with broad runtime, CLI, control-plane, memory, tools, channel, voice, browser, and deployment surfaces. v1.0 converted that breadth into a cleaner MVP by making operator trust visible at the edges that matter, v1.1 hardened the lifecycle and enterprise baseline around that trust, v1.2 deepened the most operator-visible OpenClaw parity surfaces without reopening MVP sprawl, v1.3 turned the first enterprise and supervised-autonomy contracts into a coherent operator loop, and v1.4 extended that loop into explicit governance and operator-gated full autonomy.
+This remains a large brownfield Rust monorepo with broad runtime, CLI, control-plane, memory, tools, channel, voice, browser, and deployment surfaces. v1.0 converted that breadth into a cleaner MVP by making operator trust visible at the edges that matter, v1.1 hardened the lifecycle and enterprise baseline around that trust, v1.2 deepened the most operator-visible OpenClaw parity surfaces without reopening MVP sprawl, v1.3 turned the first enterprise and supervised-autonomy contracts into a coherent operator loop, v1.4 extended that loop into explicit governance and operator-gated full autonomy, and v1.5 made the platform legible as one self-hosted open-source product with explicit deployment paths and transition visibility.
 
-The next milestone should build on all five shipped layers rather than reopen foundational debt. Enterprise expansion, broader supervised autonomy, and any deeper parity work should now treat the v1.4 governance and full-autonomy contract as fixed baseline infrastructure, while also making the product legible as one self-hosted open-source offering with clearer deployment paths.
+The next milestone should build on all six shipped layers rather than reopen foundational debt. Enterprise expansion, broader supervised autonomy, and any deeper parity work should now treat the v1.4 governance and full-autonomy contract plus the v1.5 self-hosted product-mode baseline as fixed infrastructure.
 
 ## Constraints
 
@@ -98,9 +96,9 @@ The next milestone should build on all five shipped layers rather than reopen fo
 
 ## Next Milestone Goals
 
-- Make the self-hosted product modes and deployment paths explicit from first run onward
-- Add reversible upgrade and downgrade lifecycle support across solo, multi-user team, company, and enterprise modes
-- Preserve the verification/archive contract, enterprise governance baseline, and shipped autonomy control surface as non-negotiable foundations
+- Expand the enterprise baseline into deeper organization lifecycle, tenant-awareness, and external identity or compliance controls
+- Broaden supervised and full autonomy into more domains without dropping explicit operator control paths
+- Preserve the verification/archive contract, enterprise governance baseline, shipped autonomy control surface, and self-hosted product-mode contract as non-negotiable foundations
 
 ## Evolution
 
@@ -120,4 +118,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-27 for milestone v1.5*
+*Last updated: 2026-03-28 after archiving v1.5*
