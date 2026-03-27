@@ -23,7 +23,7 @@ This milestone treats documentation as a real product surface. The order is deli
 - Integer phases continue across milestones to preserve one linear execution history.
 - Decimal phases are reserved for urgent insertions if roadmap assumptions break.
 
-- [ ] **Phase 32: Documentation Inventory and Canonical Source Contract** - define what each docs surface owns, identify merge/delete targets, and make source-of-truth boundaries explicit.
+- [x] **Phase 32: Documentation Inventory and Canonical Source Contract** - completed 2026-03-27. Documentation ownership, mirror rules, and cleanup criteria are now explicit.
 - [ ] **Phase 33: README and Documentation Entry Surface Rewrite** - rewrite the top-level product story, primary entry points, and audience-aware navigation around a clearer OpenClaw-inspired structure.
 - [ ] **Phase 34: Getting Started and Setup Guide Convergence** - align installation, quickstart, first-agent, setup handoff, and upgrade or downgrade docs around the shipped setup lifecycle.
 - [ ] **Phase 35: Operator, Deployment, and Planning Docs Sync** - rewrite operator and planning-facing docs so deployment, security, observability, matrices, and product-positioning pages match the shipped runtime and control surfaces.
@@ -39,11 +39,11 @@ This milestone treats documentation as a real product surface. The order is deli
   1. The repo identifies which files are canonical, mirrored, derived, or candidates for deletion.
   2. Duplicate or stale docs families are inventory-backed rather than handled ad hoc.
   3. The milestone has an explicit merge/delete target list before the rewrite begins.
-**Plans**: 0 plans complete
+**Plans**: 2 plans complete
 
 Plans:
-- [ ] 32-01 Audit README, repo-root docs, and docs-site overlap
-- [ ] 32-02 Define canonical ownership and cleanup rules
+- [x] 32-01 Audit README, repo-root docs, and docs-site overlap
+- [x] 32-02 Define canonical ownership and cleanup rules
 
 ### Phase 33: README and Documentation Entry Surface Rewrite
 **Goal**: Make the first impression legible so OpenRustClaw reads like one coherent self-hosted product instead of a broad codebase dump.
@@ -105,7 +105,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 32. Documentation Inventory and Canonical Source Contract | 0/2 | Pending | - |
+| 32. Documentation Inventory and Canonical Source Contract | 2/2 | Complete | 2026-03-27 |
 | 33. README and Documentation Entry Surface Rewrite | 0/2 | Pending | - |
 | 34. Getting Started and Setup Guide Convergence | 0/2 | Pending | - |
 | 35. Operator, Deployment, and Planning Docs Sync | 0/2 | Pending | - |
@@ -114,7 +114,7 @@ Plans:
 ## Current Status
 
 - Active milestone: v1.7 Documentation Convergence and OpenClaw-Inspired Docs Rewrite
-- Next step: `$gsd-discuss-phase 32`
+- Next step: `$gsd-discuss-phase 33`
 - Archived milestone planning artifacts live under `.planning/milestones/`.
 
 ## Phase History
