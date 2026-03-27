@@ -19,7 +19,7 @@ This milestone deepens the five highest-value OpenClaw parity surfaces without a
 - Decimal phases are reserved for urgent insertions if roadmap assumptions break.
 
 - [x] **Phase 11: Browser Automation Depth** - Deepen browser automation parity with richer multi-step workflows, artifacts, and inspection without weakening the browser trust contract.
-- [ ] **Phase 12: Multi-Agent Supervision Parity** - Expand orchestration and delegated-run supervision so multi-agent behavior is easier to inspect, control, and trust.
+- [x] **Phase 12: Multi-Agent Supervision Parity** - Expand orchestration and delegated-run supervision so multi-agent behavior is easier to inspect, control, and trust.
 - [ ] **Phase 13: Mobile Runtime Parity** - Broaden mobile runtime and operator parity while preserving approval gates and durable receipts.
 - [ ] **Phase 14: Control UI Surface Completion** - Bring the shipped Control UI closer to OpenClaw parity across the deeper browser, supervision, and mobile surfaces.
 - [ ] **Phase 15: Voice and Call Handling Parity** - Deepen voice and call-handling parity with richer operator-visible control, health, and evidence.
@@ -49,10 +49,12 @@ Plans:
   1. Operators can inspect more of the delegated-run lifecycle than final receipts alone.
   2. Supervision parity preserves approval, trace, and resource visibility as delegation deepens.
   3. The expanded supervision lane remains operator-readable from shipped surfaces.
-**Plans**: TBD
+**Plans**: 3/3 plans complete
 
 Plans:
-- [ ] TBD (run `$gsd-plan-phase 12` to break down)
+- [x] **12-01** Add richer typed supervision summaries to orchestration runtime
+- [x] **12-02** Surface richer supervision in runtime APIs and Control UI
+- [x] **12-03** Align supervision docs and preserve verification
 
 ### Phase 13: Mobile Runtime Parity
 **Goal**: Broaden mobile runtime and operator parity so the shipped mobile lane feels materially closer to OpenClaw.
@@ -98,7 +100,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 11. Browser Automation Depth | 3/3 | Complete    | 2026-03-26 |
-| 12. Multi-Agent Supervision Parity | 0/TBD | Not started | - |
+| 12. Multi-Agent Supervision Parity | 3/3 | Complete    | 2026-03-27 |
 | 13. Mobile Runtime Parity | 0/TBD | Not started | - |
 | 14. Control UI Surface Completion | 0/TBD | Not started | - |
 | 15. Voice and Call Handling Parity | 0/TBD | Not started | - |
@@ -130,5 +132,5 @@ Plans:
 ## Current Status
 
 - Active milestone: v1.2 Deeper OpenClaw Surface Parity
-- Next step: `$gsd-discuss-phase 12` or `$gsd-plan-phase 12`
+- Next step: `$gsd-discuss-phase 13` or `$gsd-plan-phase 13`
 - Archived v1.0 and v1.1 planning artifacts live under `.planning/milestones/`.

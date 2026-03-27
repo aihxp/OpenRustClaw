@@ -12,8 +12,8 @@
 
 ### Supervision Parity
 
-- [ ] **SUPR-01**: Operator can inspect and control multi-agent or orchestration runs with stronger supervision detail, not just final receipts.
-- [ ] **SUPR-02**: Multi-agent parity surfaces preserve explicit approval, trace, and resource visibility when delegated work expands.
+- [x] **SUPR-01**: Operator can inspect and control multi-agent or orchestration runs with stronger supervision detail, not just final receipts.
+- [x] **SUPR-02**: Multi-agent parity surfaces preserve explicit approval, trace, and resource visibility when delegated work expands.
 
 ### Mobile Parity
 
@@ -57,8 +57,8 @@
 |-------------|-------|--------|
 | BROW-01 | Phase 11 | Complete |
 | BROW-02 | Phase 11 | Complete |
-| SUPR-01 | Phase 12 | Pending |
-| SUPR-02 | Phase 12 | Pending |
+| SUPR-01 | Phase 12 | Complete |
+| SUPR-02 | Phase 12 | Complete |
 | MOBL-01 | Phase 13 | Pending |
 | MOBL-02 | Phase 13 | Pending |
 | CTRL-01 | Phase 14 | Pending |
@@ -73,4 +73,4 @@
 
 ---
 *Requirements defined: 2026-03-26*
-*Last updated: 2026-03-26 after milestone v1.2 definition*
+*Last updated: 2026-03-27 after Phase 12 completion*
