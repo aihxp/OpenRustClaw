@@ -7,7 +7,7 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use super::{control, enterprise_access, inspect, runtime};
+use super::{control, enterprise_access, enterprise_autonomy, inspect, runtime};
 
 const ENTERPRISE_POLICY_VERSION: u32 = 1;
 const DEFAULT_EXPORT_ROOT: &str = ".claw/control/enterprise/exports";
@@ -223,6 +223,7 @@ pub struct EnterpriseAuditReviewReport {
     pub recent_exports: Vec<EnterpriseAuditExportSummary>,
     pub recent_operator_history: inspect::ToolExecutionHistoryReport,
     pub governance: inspect::EnterpriseGovernanceReport,
+    pub autonomy: enterprise_autonomy::EnterpriseAutonomyReport,
     pub supervision: inspect::EnterpriseAdminSupervisionSummary,
 }
 
@@ -234,6 +235,7 @@ struct EnterpriseAuditExportBundle {
     policy: EnterprisePolicyReport,
     enterprise_foundations: inspect::EnterpriseFoundationsReport,
     governance: inspect::EnterpriseGovernanceReport,
+    autonomy: enterprise_autonomy::EnterpriseAutonomyReport,
     supervision: inspect::EnterpriseAdminSupervisionSummary,
     operator_history: inspect::ToolExecutionHistoryReport,
     tool_history: inspect::ToolExecutionHistoryReport,
@@ -406,6 +408,7 @@ pub fn review_summary(
     let policy = summary(workspace_root, config_path)?;
     let access = inspect::enterprise_access_summary(workspace_root)?;
     let admin = inspect::enterprise_admin_summary(workspace_root, config_path)?;
+    let autonomy = enterprise_autonomy::summary(workspace_root, policy.audit_export.recent_event_limit)?;
     let recent_operator_history = review_operator_history(
         workspace_root,
         policy.audit_export.tool_history_limit,
@@ -429,6 +432,7 @@ pub fn review_summary(
         recent_exports,
         recent_operator_history,
         governance: access.governance,
+        autonomy,
         supervision: admin.supervision,
     })
 }
@@ -445,6 +449,7 @@ pub fn export_audit_bundle(
     )?;
     let access = inspect::enterprise_access_summary(workspace_root)?;
     let admin = inspect::enterprise_admin_summary(workspace_root, config_path)?;
+    let autonomy = enterprise_autonomy::summary(workspace_root, policy.audit_export.recent_event_limit)?;
     let operator_history = review_operator_history(
         workspace_root,
         policy.audit_export.tool_history_limit,
@@ -476,6 +481,7 @@ pub fn export_audit_bundle(
         policy,
         enterprise_foundations: foundations,
         governance: access.governance,
+        autonomy,
         supervision: admin.supervision,
         operator_history: operator_history.clone(),
         tool_history,

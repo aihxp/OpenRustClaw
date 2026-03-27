@@ -22,7 +22,7 @@ This milestone extends the enterprise baseline from v1.3 into stronger governanc
 
 - [x] **Phase 20: Enterprise Governance and Approval Chains** - completed 2026-03-27. Deepened role, approval, and separation-of-duties controls for sensitive enterprise actions.
 - [x] **Phase 21: Enterprise Audit Retention and Review Packaging** - completed 2026-03-27. Strengthened retention, export, and enterprise reviewability for governance and autonomy evidence.
-- [ ] **Phase 22: Operator-Gated Full Autonomy Mode** - Add an explicit full-autonomy override lane with budgets, kill switches, and durable operator-visible evidence.
+- [x] **Phase 22: Operator-Gated Full Autonomy Mode** - completed 2026-03-27. Added a dedicated enterprise full-autonomy lane with explicit enable or disable or kill-switch state, dedicated governance scope, and durable audit evidence.
 - [ ] **Phase 23: Enterprise Autonomy Control Surface** - Make governance and full-autonomy controls usable and inspectable from shipped operator surfaces.
 
 ### Phase Details
@@ -68,9 +68,9 @@ Plans:
 **Plans**: 3 plans complete
 
 Plans:
-- [ ] 22-01 Add A Durable Full-Autonomy Override Contract
-- [ ] 22-02 Enforce Full-Autonomy Enablement, Disable, And Kill-Switch Actions
-- [ ] 22-03 Close The Backend Full-Autonomy Lane With Audit And Docs
+- [x] 22-01 Add A Durable Full-Autonomy Override Contract
+- [x] 22-02 Enforce Full-Autonomy Enablement, Disable, And Kill-Switch Actions
+- [x] 22-03 Close The Backend Full-Autonomy Lane With Audit And Docs
 
 ### Phase 23: Enterprise Autonomy Control Surface
 **Goal**: Make the enterprise governance and full-autonomy override lane usable and governable from shipped control surfaces.
@@ -91,13 +91,13 @@ Plans:
 |-------|----------------|--------|-----------|
 | 20. Enterprise Governance and Approval Chains | 3/3 | Complete | 2026-03-27 |
 | 21. Enterprise Audit Retention and Review Packaging | 3/3 | Complete | 2026-03-27 |
-| 22. Operator-Gated Full Autonomy Mode | 0/3 | Planned | - |
+| 22. Operator-Gated Full Autonomy Mode | 3/3 | Complete | 2026-03-27 |
 | 23. Enterprise Autonomy Control Surface | 0/TBD | Not started | - |
 
 ## Current Status
 
 - Active milestone: v1.4 Enterprise Governance and Operator-Gated Full Autonomy
-- Next step: `$gsd-execute-phase 22`
+- Next step: `$gsd-discuss-phase 23` or `$gsd-plan-phase 23`
 - Archived milestone planning artifacts live under `.planning/milestones/`.
 
 ## Phase History

@@ -18,6 +18,7 @@ const ENTERPRISE_ACCESS_VERSION: u32 = 1;
 const ENTERPRISE_SCOPE_IDENTITY_WRITE: &str = "enterprise.identity.write";
 const ENTERPRISE_SCOPE_CONFIG_WRITE: &str = "enterprise.config.write";
 const ENTERPRISE_SCOPE_AUDIT_EXPORT: &str = "enterprise.audit.export";
+const ENTERPRISE_SCOPE_FULL_AUTONOMY_MANAGE: &str = "enterprise.full_autonomy.manage";
 const ENTERPRISE_SCOPE_MOBILE_COMMAND_MANAGE: &str = "enterprise.mobile.command.manage";
 const ENTERPRISE_SCOPE_RUNTIME_CONTROL: &str = "enterprise.runtime.control";
 const ENTERPRISE_SCOPE_SKILLS_AUTH_MANAGE: &str = "enterprise.skills.auth.manage";
@@ -191,6 +192,27 @@ const ENTERPRISE_PROTECTED_ROUTE_SPECS: &[EnterpriseProtectedRouteSpec] = &[
         suffix: "",
         scope: ENTERPRISE_SCOPE_CONFIG_WRITE,
         detail: "Enterprise governance rule updates change approval-chain and separation-of-duties behavior.",
+    },
+    EnterpriseProtectedRouteSpec {
+        method: "POST",
+        prefix: "/control/enterprise/autonomy/enable",
+        suffix: "",
+        scope: ENTERPRISE_SCOPE_FULL_AUTONOMY_MANAGE,
+        detail: "Enabling full autonomy activates the stronger operator-gated execution lane.",
+    },
+    EnterpriseProtectedRouteSpec {
+        method: "POST",
+        prefix: "/control/enterprise/autonomy/disable",
+        suffix: "",
+        scope: ENTERPRISE_SCOPE_FULL_AUTONOMY_MANAGE,
+        detail: "Disabling full autonomy restores the baseline runtime autonomy contract.",
+    },
+    EnterpriseProtectedRouteSpec {
+        method: "POST",
+        prefix: "/control/enterprise/autonomy/kill-switch",
+        suffix: "",
+        scope: ENTERPRISE_SCOPE_FULL_AUTONOMY_MANAGE,
+        detail: "The full-autonomy kill switch disables the stronger lane and stops matching active runs.",
     },
     EnterpriseProtectedRouteSpec {
         method: "POST",
@@ -666,6 +688,15 @@ fn default_governance_rule(scope: &str) -> EnterpriseGovernanceRule {
             active: true,
             detail: "Audit export stays available to enterprise reviewers without secondary approval.".to_string(),
         },
+        ENTERPRISE_SCOPE_FULL_AUTONOMY_MANAGE => EnterpriseGovernanceRule {
+            scope: scope.to_string(),
+            approval_mode: APPROVAL_MODE_DUAL.to_string(),
+            requester_roles: vec!["owner".to_string(), "admin".to_string()],
+            approver_roles: vec!["owner".to_string(), "admin".to_string()],
+            forbid_self_approval: true,
+            active: true,
+            detail: "Full-autonomy enablement and shutdown require dual owner or admin approval.".to_string(),
+        },
         ENTERPRISE_SCOPE_MOBILE_COMMAND_MANAGE => EnterpriseGovernanceRule {
             scope: scope.to_string(),
             approval_mode: APPROVAL_MODE_SINGLE.to_string(),
@@ -720,6 +751,7 @@ fn default_scopes_for_role(role: &str) -> Vec<String> {
             ENTERPRISE_SCOPE_IDENTITY_WRITE.to_string(),
             ENTERPRISE_SCOPE_CONFIG_WRITE.to_string(),
             ENTERPRISE_SCOPE_AUDIT_EXPORT.to_string(),
+            ENTERPRISE_SCOPE_FULL_AUTONOMY_MANAGE.to_string(),
             ENTERPRISE_SCOPE_RUNTIME_CONTROL.to_string(),
             ENTERPRISE_SCOPE_SKILLS_AUTH_MANAGE.to_string(),
         ],
@@ -1027,6 +1059,12 @@ mod tests {
             .expect("config write governance rule");
         assert_eq!(config_rule.approval_mode, "dual");
         assert!(config_rule.forbid_self_approval);
+        let autonomy_rule = defaults
+            .iter()
+            .find(|rule| rule.scope == "enterprise.full_autonomy.manage")
+            .expect("full autonomy governance rule");
+        assert_eq!(autonomy_rule.approval_mode, "dual");
+        assert!(autonomy_rule.forbid_self_approval);
     }
 
     #[test]
@@ -1164,6 +1202,10 @@ mod tests {
         assert_eq!(
             protected_scope_for_request(&Method::POST, "/control/enterprise/governance/rules"),
             Some("enterprise.config.write")
+        );
+        assert_eq!(
+            protected_scope_for_request(&Method::POST, "/control/enterprise/autonomy/enable"),
+            Some("enterprise.full_autonomy.manage")
         );
         assert_eq!(
             protected_scope_for_request(

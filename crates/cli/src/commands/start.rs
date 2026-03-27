@@ -91,8 +91,9 @@ use super::talk;
 use super::voice_runtime;
 use super::voice_runtime::InboundVoiceTranscriber;
 use super::{
-    assistant, browser, control, control_ui, doctor, enterprise_access, enterprise_policy, inspect,
-    logs, mobile, orchestrate, runtime, security, services, skills, tools,
+    assistant, browser, control, control_ui, doctor, enterprise_access, enterprise_autonomy,
+    enterprise_policy, inspect, logs, mobile, orchestrate, runtime, security, services, skills,
+    tools,
 };
 
 /// Run the start command - load config, optionally start the compatibility/experimental sidecar, and start the gateway.
@@ -3020,6 +3021,10 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
         .route("/control/enterprise/access", get(enterprise_access_handler))
         .route("/control/enterprise/admin", get(enterprise_admin_handler))
         .route(
+            "/control/enterprise/autonomy",
+            get(enterprise_autonomy_handler),
+        )
+        .route(
             "/control/enterprise/access/bootstrap",
             post(enterprise_access_bootstrap_handler),
         )
@@ -3030,6 +3035,18 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
         .route(
             "/control/enterprise/governance/rules",
             post(enterprise_governance_upsert_rule_handler),
+        )
+        .route(
+            "/control/enterprise/autonomy/enable",
+            post(enterprise_autonomy_enable_handler),
+        )
+        .route(
+            "/control/enterprise/autonomy/disable",
+            post(enterprise_autonomy_disable_handler),
+        )
+        .route(
+            "/control/enterprise/autonomy/kill-switch",
+            post(enterprise_autonomy_kill_switch_handler),
         )
         .route(
             "/control/enterprise/foundations",
@@ -5245,6 +5262,35 @@ struct EnterpriseGovernanceRulePayload {
 }
 
 #[derive(serde::Deserialize, Default)]
+struct EnterpriseAutonomyEnablePayload {
+    operator_id: String,
+    #[serde(default)]
+    note: Option<String>,
+    #[serde(default)]
+    max_delegations: Option<usize>,
+    #[serde(default)]
+    max_iterations: Option<usize>,
+    #[serde(default)]
+    max_runtime_secs: Option<u64>,
+    #[serde(default)]
+    max_lesson_hints: Option<usize>,
+}
+
+#[derive(serde::Deserialize)]
+struct EnterpriseAutonomyDisablePayload {
+    operator_id: String,
+    #[serde(default)]
+    reason: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
+struct EnterpriseAutonomyKillSwitchPayload {
+    operator_id: String,
+    #[serde(default)]
+    reason: Option<String>,
+}
+
+#[derive(serde::Deserialize, Default)]
 struct ListLimitQuery {
     #[serde(default)]
     limit: Option<usize>,
@@ -7096,6 +7142,19 @@ async fn enterprise_admin_handler(State(state): State<RuntimeControlState>) -> i
     }
 }
 
+async fn enterprise_autonomy_handler(
+    State(state): State<RuntimeControlState>,
+) -> impl IntoResponse {
+    match enterprise_autonomy::summary(&state.workspace_root, 10) {
+        Ok(summary) => (StatusCode::OK, Json(serde_json::json!(summary))).into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
 async fn enterprise_access_bootstrap_handler(
     State(state): State<RuntimeControlState>,
     Json(payload): Json<EnterpriseAccessBootstrapPayload>,
@@ -7185,6 +7244,100 @@ async fn enterprise_governance_upsert_rule_handler(
     record_operator_tool_result("enterprise.governance.upsert_rule", started_at, &result);
     match result {
         Ok(_) => match inspect::enterprise_access_summary(&state.workspace_root) {
+            Ok(summary) => (StatusCode::OK, Json(serde_json::json!(summary))).into_response(),
+            Err(error) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": error.to_string()})),
+            )
+                .into_response(),
+        },
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn enterprise_autonomy_enable_handler(
+    State(state): State<RuntimeControlState>,
+    Json(payload): Json<EnterpriseAutonomyEnablePayload>,
+) -> impl IntoResponse {
+    let started_at = std::time::Instant::now();
+    let result = enterprise_autonomy::enable(
+        &state.workspace_root,
+        enterprise_autonomy::EnterpriseAutonomyEnableRequest {
+            operator_id: payload.operator_id,
+            note: payload.note,
+            max_delegations: payload.max_delegations,
+            max_iterations: payload.max_iterations,
+            max_runtime_secs: payload.max_runtime_secs,
+            max_lesson_hints: payload.max_lesson_hints,
+        },
+    );
+    record_operator_tool_result("enterprise.autonomy.enable", started_at, &result);
+    match result {
+        Ok(_) => match enterprise_autonomy::summary(&state.workspace_root, 10) {
+            Ok(summary) => (StatusCode::OK, Json(serde_json::json!(summary))).into_response(),
+            Err(error) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": error.to_string()})),
+            )
+                .into_response(),
+        },
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn enterprise_autonomy_disable_handler(
+    State(state): State<RuntimeControlState>,
+    Json(payload): Json<EnterpriseAutonomyDisablePayload>,
+) -> impl IntoResponse {
+    let started_at = std::time::Instant::now();
+    let result = enterprise_autonomy::disable(
+        &state.workspace_root,
+        enterprise_autonomy::EnterpriseAutonomyDisableRequest {
+            operator_id: payload.operator_id,
+            reason: payload.reason,
+        },
+    );
+    record_operator_tool_result("enterprise.autonomy.disable", started_at, &result);
+    match result {
+        Ok(_) => match enterprise_autonomy::summary(&state.workspace_root, 10) {
+            Ok(summary) => (StatusCode::OK, Json(serde_json::json!(summary))).into_response(),
+            Err(error) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": error.to_string()})),
+            )
+                .into_response(),
+        },
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn enterprise_autonomy_kill_switch_handler(
+    State(state): State<RuntimeControlState>,
+    Json(payload): Json<EnterpriseAutonomyKillSwitchPayload>,
+) -> impl IntoResponse {
+    let started_at = std::time::Instant::now();
+    let result = enterprise_autonomy::kill_switch(
+        &state.workspace_root,
+        enterprise_autonomy::EnterpriseAutonomyKillSwitchRequest {
+            operator_id: payload.operator_id,
+            reason: payload.reason,
+        },
+    );
+    record_operator_tool_result("enterprise.autonomy.kill_switch", started_at, &result);
+    match result {
+        Ok(_) => match enterprise_autonomy::summary(&state.workspace_root, 10) {
             Ok(summary) => (StatusCode::OK, Json(serde_json::json!(summary))).into_response(),
             Err(error) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -12762,6 +12915,90 @@ mod tests {
                 Request::builder()
                     .method("PUT")
                     .uri("/control/enterprise/policy")
+                    .header(enterprise_access::OPERATOR_ID_HEADER, "owner-1")
+                    .header(enterprise_access::OPERATOR_TOKEN_HEADER, "owner-secret-123")
+                    .header(enterprise_access::APPROVER_ID_HEADER, "admin-1")
+                    .header(enterprise_access::APPROVER_TOKEN_HEADER, "admin-secret-123")
+                    .body(Body::from("{}"))
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(allowed.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn enterprise_access_middleware_blocks_full_autonomy_write_without_dual_approval() {
+        let temp = tempdir().expect("tempdir");
+        enterprise_access::bootstrap_manifest(
+            temp.path(),
+            enterprise_access::EnterpriseAccessBootstrapRequest {
+                organization_id: "acme".to_string(),
+                organization_name: "Acme Ops".to_string(),
+                owner_id: "owner-1".to_string(),
+                owner_name: None,
+                owner_email: None,
+                owner_token: "owner-secret-123".to_string(),
+            },
+        )
+        .expect("bootstrap enterprise access");
+        enterprise_access::upsert_operator(
+            temp.path(),
+            enterprise_access::EnterpriseAccessOperatorRequest {
+                id: "admin-1".to_string(),
+                name: None,
+                email: None,
+                role: "admin".to_string(),
+                token: "admin-secret-123".to_string(),
+                scopes: Vec::new(),
+                active: true,
+            },
+        )
+        .expect("upsert enterprise admin");
+
+        let app = protect_enterprise_router(
+            Router::new().route(
+                "/control/enterprise/autonomy/enable",
+                post(|| async { StatusCode::OK }),
+            ),
+            EnterpriseAccessState {
+                workspace_root: temp.path().to_path_buf(),
+            },
+        );
+
+        let denied = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/control/enterprise/autonomy/enable")
+                    .body(Body::from("{}"))
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(denied.status(), StatusCode::FORBIDDEN);
+
+        let operator_only = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/control/enterprise/autonomy/enable")
+                    .header(enterprise_access::OPERATOR_ID_HEADER, "owner-1")
+                    .header(enterprise_access::OPERATOR_TOKEN_HEADER, "owner-secret-123")
+                    .body(Body::from("{}"))
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(operator_only.status(), StatusCode::FORBIDDEN);
+
+        let allowed = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/control/enterprise/autonomy/enable")
                     .header(enterprise_access::OPERATOR_ID_HEADER, "owner-1")
                     .header(enterprise_access::OPERATOR_TOKEN_HEADER, "owner-secret-123")
                     .header(enterprise_access::APPROVER_ID_HEADER, "admin-1")

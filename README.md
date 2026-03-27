@@ -78,6 +78,8 @@ Phase 20 deepens that enterprise loop into a real governance contract. `/control
 
 Phase 21 extends that same enterprise policy surface into a bounded audit-review contract. `/control/enterprise/policy` now carries retention and recent-export limits for enterprise bundles, `POST /control/enterprise/audit/export` now packages governance and supervision context alongside enterprise foundations and recent operator history, and `GET /control/enterprise/audit/review` plus the `Enterprise Audit Review` panel in `/control/ui` let operators inspect recent retained bundles without reading raw JSON exports by hand.
 
+Phase 22 adds the requested "god mode" as an explicit enterprise full-autonomy lane instead of silently weakening the default runtime. `GET /control/enterprise/autonomy` now reports whether full autonomy is enabled, which override budgets are active, which baseline policy will be restored on shutdown, recent enable or disable or kill-switch events, and recent full-autonomy execution evidence. `POST /control/enterprise/autonomy/enable`, `/disable`, and `/kill-switch` are protected under the dedicated `enterprise.full_autonomy.manage` scope with dual approval by default, and enterprise audit review or export now preserves that stronger autonomy evidence alongside governance and supervision context.
+
 For the final MVP release loop, review `/control/security/posture` or the `Security Posture` panel in `/control/ui`, confirm the observability checks in [docs/src/operations/observability.md](docs/src/operations/observability.md), and walk the operator checklist in [docs/src/deployment/release-checklist.md](docs/src/deployment/release-checklist.md) before cutting a release candidate.
 
 ## Architecture

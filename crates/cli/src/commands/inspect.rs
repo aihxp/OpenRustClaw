@@ -13,8 +13,8 @@ use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 
 use super::{
-    browser, control, enterprise_access, enterprise_policy, mobile, orchestrate, skills, talk,
-    voice_runtime,
+    browser, control, enterprise_access, enterprise_autonomy, enterprise_policy, mobile,
+    orchestrate, skills, talk, voice_runtime,
 };
 
 #[derive(Debug, Clone, Serialize)]
@@ -253,6 +253,7 @@ pub struct EnterpriseAdminReport {
     pub requires_operator_headers: bool,
     pub access: EnterpriseAccessReport,
     pub policy: enterprise_policy::EnterprisePolicyReport,
+    pub autonomy: enterprise_autonomy::EnterpriseAutonomyReport,
     pub supervision: EnterpriseAdminSupervisionSummary,
 }
 
@@ -1050,6 +1051,7 @@ pub fn enterprise_admin_summary(
 ) -> Result<EnterpriseAdminReport> {
     let access = enterprise_access_summary(workspace_root)?;
     let policy = enterprise_policy::summary(workspace_root, config_path)?;
+    let autonomy = enterprise_autonomy::summary(workspace_root, 10)?;
     let active_runs = orchestrate::list_active_runs(workspace_root, true, 20)?;
     let attention_required_count = active_runs
         .iter()
@@ -1095,7 +1097,7 @@ pub fn enterprise_admin_summary(
     let requires_operator_headers = access.explicit_identity_required;
     let detail = if requires_operator_headers {
         format!(
-            "Enterprise admin is live for organization `{}` with {} operator(s). Use `/control/ui` with the scoped operator headers to manage policy, identity, governance, audit export, and supervised-runtime controls from one shipped surface.",
+            "Enterprise admin is live for organization `{}` with {} operator(s). Use `/control/ui` with the scoped operator headers to manage policy, identity, governance, audit export, supervised-runtime controls, and the explicit full-autonomy lane from one shipped surface.",
             access
                 .organization
                 .as_ref()
@@ -1117,6 +1119,7 @@ pub fn enterprise_admin_summary(
         requires_operator_headers,
         access,
         policy,
+        autonomy,
         supervision,
     })
 }
@@ -1809,6 +1812,7 @@ mod tests {
         assert_eq!(report.status, "bootstrap_required");
         assert!(!report.requires_operator_headers);
         assert_eq!(report.policy.approval_policy, "side_effects");
+        assert_eq!(report.autonomy.status, "bootstrap_required");
         assert_eq!(report.supervision.active_run_count, 0);
         assert_eq!(report.supervision.attention_required_count, 0);
 
@@ -1836,9 +1840,10 @@ mod tests {
             Some("acme")
         );
         assert!(report.detail.contains(
-            "manage policy, identity, governance, audit export, and supervised-runtime controls"
+            "manage policy, identity, governance, audit export, supervised-runtime controls, and the explicit full-autonomy lane"
         ));
         assert!(report.access.governance.dual_approval_rule_count >= 1);
+        assert_eq!(report.autonomy.governance_scope, "enterprise.full_autonomy.manage");
         Ok(())
     }
 

@@ -1015,6 +1015,18 @@ pub fn set_runtime_approval_policy(root: &Path, approval_policy: &str) -> Result
     Ok(())
 }
 
+pub fn runtime_autonomy_policy(root: &Path) -> Result<AutonomyPolicy> {
+    Ok(read_runtime(root)?.runtime.autonomy)
+}
+
+pub fn set_runtime_autonomy(root: &Path, autonomy: &AutonomyPolicy) -> Result<()> {
+    let mut runtime = read_runtime(root)?;
+    runtime.runtime.autonomy = autonomy.clone();
+    write_yaml(&runtime_path(root), &runtime)?;
+    sync_runtime_artifact(root)?;
+    Ok(())
+}
+
 pub fn assign_task(root: Option<&str>, task_id: &str, claw_id: &str) -> Result<()> {
     let root = resolve_root(root)?;
     let mut runtime = read_runtime(&root)?;

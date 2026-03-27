@@ -41,6 +41,16 @@ Phase 21 strengthens the enterprise audit handoff and review path:
 
 Treat that as a bounded operator review package, not a full compliance archive. It improves retention and handoff for the shipped enterprise lane, but it still stops short of external SIEM, legal hold, or compliance packaging.
 
+Phase 22 adds operator-gated full autonomy as a separate enterprise lane:
+
+- `GET /control/enterprise/autonomy` reports the current full-autonomy manifest, active override budgets, baseline policy, recent lifecycle events, and recent execution evidence.
+- `POST /control/enterprise/autonomy/enable` deliberately switches the runtime into the stronger autonomy override without changing the default trust-first baseline for everyone else.
+- `POST /control/enterprise/autonomy/disable` restores the captured baseline autonomy policy for future runs.
+- `POST /control/enterprise/autonomy/kill-switch` restores the baseline and issues kill requests to matching active full-autonomy runs.
+- Those write routes are protected under the dedicated `enterprise.full_autonomy.manage` scope, which defaults to dual owner or admin approval.
+
+Treat that lane as explicit and reversible. It is the shipped answer to "god mode," but it is still bounded by runtime budgets, enterprise approvals, and durable audit evidence rather than being a silent global default.
+
 Phase 18 adds a supervised-autonomy operator loop over active orchestration runs:
 
 - `POST /control/orchestration/active/{run_id}/pause|resume|kill` remains the low-level control surface.
