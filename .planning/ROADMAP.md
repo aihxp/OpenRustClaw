@@ -31,7 +31,7 @@ This milestone treats cleanup as a real delivery lane. The order is deliberate: 
 - Decimal phases are reserved for urgent insertions if roadmap assumptions break.
 
 - [x] **Phase 37: Codebase Cleanup Inventory and Refactor Contract** - completed 2026-03-27. Cleanup targets, no-touch boundaries, and the milestone cleanup order are now explicit.
-- [ ] **Phase 38: Repo Hygiene and Drift Reduction** - remove stale repo paths, generated or local-noise artifacts, and docs or CI contract mismatches.
+- [x] **Phase 38: Repo Hygiene and Drift Reduction** - completed 2026-03-27. CI now matches the current canonical docs, and sidecar local Python state is explicitly non-canonical repo surface.
 - [ ] **Phase 39: Command Surface Decomposition and Boundary Cleanup** - split the highest-risk oversized command or control surfaces into smaller bounded units without changing shipped behavior.
 - [ ] **Phase 40: Cleanup Verification and Maintenance Guardrails** - add targeted verification, document remaining debt, and preserve the cleanup contract for future milestones.
 
@@ -59,7 +59,11 @@ Plans:
   1. Stale, duplicate, generated, or local-environment noise paths targeted by the cleanup contract are removed, ignored, or relocated appropriately.
   2. CI, docs, and canonical filenames no longer reference known missing or renamed surfaces.
   3. The repo tree is measurably clearer for maintainers before structural refactors continue.
-**Plans**: Not started
+**Plans**: 2 plans complete
+
+Plans:
+- [x] 38-01 Align CI with canonical planning docs
+- [x] 38-02 Tighten sidecar hygiene boundaries
 
 ### Phase 39: Command Surface Decomposition and Boundary Cleanup
 **Goal**: Reduce regression risk by shrinking at least the priority oversized command or control surfaces behind stable behavior contracts.
@@ -86,7 +90,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 37. Codebase Cleanup Inventory and Refactor Contract | 2/2 | Complete | 2026-03-27 |
-| 38. Repo Hygiene and Drift Reduction | 0/0 | Not Started | - |
+| 38. Repo Hygiene and Drift Reduction | 2/2 | Complete | 2026-03-27 |
 | 39. Command Surface Decomposition and Boundary Cleanup | 0/0 | Not Started | - |
 | 40. Cleanup Verification and Maintenance Guardrails | 0/0 | Not Started | - |
 
@@ -96,7 +100,7 @@ Plans:
 <summary>🚧 v1.8 Clean Codebase — ACTIVE</summary>
 
 - [x] **Phase 37: Codebase Cleanup Inventory and Refactor Contract** — completed 2026-03-27
-- [ ] **Phase 38: Repo Hygiene and Drift Reduction**
+- [x] **Phase 38: Repo Hygiene and Drift Reduction** — completed 2026-03-27
 - [ ] **Phase 39: Command Surface Decomposition and Boundary Cleanup**
 - [ ] **Phase 40: Cleanup Verification and Maintenance Guardrails**
 

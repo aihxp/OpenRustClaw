@@ -147,6 +147,8 @@ mypy src/
 ruff check src/
 ```
 
+Local developer artifacts such as `.venv/`, `.pytest_cache/`, and `__pycache__/` are intentionally non-canonical. They should stay ignored and should never be treated as source inputs for repo cleanup or runtime behavior.
+
 ## Project Structure
 
 ```

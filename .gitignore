@@ -11,6 +11,15 @@ __pycache__/
 *.pyc
 *.egg-info/
 .venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Sidecar local Python state
+/sidecar/.venv/
+/sidecar/.pytest_cache/
+/sidecar/__pycache__/
+/sidecar/src/**/__pycache__/
 
 # IDE
 .idea/

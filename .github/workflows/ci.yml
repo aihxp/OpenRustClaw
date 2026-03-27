@@ -20,16 +20,13 @@ jobs:
         run: |
           test -f docs/feature-matrix.md
           test -f docs/roadmap.md
-          test -f docs/parity-matrix.md
-          test -f docs/parity-positioning.md
+          test -f docs/surface-matrix.md
+          test -f docs/product-positioning.md
           test -f .github/release.yml
-          rg -n 'OpenClaw feature family|Scope Split|Phase 1 Completion Note' docs/parity-matrix.md
-          rg -n 'What We Already Match Well|Where OpenRustClaw Is Intentionally Stronger|Current Claim Boundary' docs/parity-positioning.md
-          rg -n '\[x\] Build a full OpenClaw parity matrix' docs/roadmap.md
-          rg -n '\[x\] Split parity targets into:' docs/roadmap.md
-          rg -n '\[x\] Add a `docs/parity-matrix.md` artifact' docs/roadmap.md
-          rg -n '\[x\] Add parity labels to CI and release notes' docs/roadmap.md
-          rg -n '\[x\] Add a single page that explains which OpenClaw features are matched' docs/roadmap.md
+          rg -n '## Core Runtime|## Experience Layers' docs/feature-matrix.md
+          rg -n '## Scope Split|## Phase 1 Completion Note' docs/surface-matrix.md
+          rg -n '## What It Ships Well|## Where It Is Intentionally Stronger|## Current Boundaries' docs/product-positioning.md
+          rg -n '\[feature-matrix.md\]|\[surface-matrix.md\]|\[product-positioning.md\]' docs/roadmap.md
 
   check:
     name: Shipped Surface Check

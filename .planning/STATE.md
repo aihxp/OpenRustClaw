@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.8
 milestone_name: Clean Codebase
-current_phase: 38
-current_phase_name: Repo Hygiene and Drift Reduction
+current_phase: 39
+current_phase_name: Command Surface Decomposition and Boundary Cleanup
 current_plan: null
-status: Phase 37 complete
-stopped_at: Continue with $gsd-discuss-phase 38 or $gsd-plan-phase 38.
+status: Phase 38 complete
+stopped_at: Continue with $gsd-discuss-phase 39 or $gsd-plan-phase 39.
 last_updated: "2026-03-27T21:45:54.000Z"
 last_activity: 2026-03-27 -- completed Phase 37 cleanup inventory
 progress:
   total_phases: 4
-  completed_phases: 1
-  total_plans: 2
-  completed_plans: 2
-  percent: 25
+  completed_phases: 2
+  total_plans: 4
+  completed_plans: 4
+  percent: 50
 ---
 
 # Project State
@@ -24,21 +24,21 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-27)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** Phase 38 - Repo Hygiene and Drift Reduction
+**Current focus:** Phase 39 - Command Surface Decomposition and Boundary Cleanup
 
 ## Current Position
 
-Current Phase: 38
-Current Phase Name: Repo Hygiene and Drift Reduction
+Current Phase: 39
+Current Phase Name: Command Surface Decomposition and Boundary Cleanup
 Total Phases: 4
 Current Plan: -
 Total Plans in Phase: 0
-Status: Phase 37 complete
-Last activity: 2026-03-27 -- completed Phase 37 cleanup inventory
+Status: Phase 38 complete
+Last activity: 2026-03-27 -- completed Phase 38 repo hygiene
 
-Phase: 2 of 4
+Phase: 3 of 4
 Plan: 0 of 0
-Progress: [██░░░░░░░░] 25%
+Progress: [█████░░░░░] 50%
 
 ## Performance Metrics
 
@@ -66,6 +66,7 @@ Recent decisions affecting current work:
 - v1.7 treated documentation drift as product debt and converged the README, repo-root docs, and docs-site sources into one canonical self-hosted product story.
 - v1.8 now focuses on cleanup inventory, repo hygiene, structural decomposition, and cleanup-safe verification.
 - Phase 37 established the cleanup contract and prioritized CI drift plus `start.rs` middleware extraction as the first bounded cleanup slices.
+- Phase 38 aligned the shipped-surface CI contract to the current canonical docs and made sidecar local Python state explicit non-canonical repo noise.
 
 ### Pending Todos
 
@@ -78,5 +79,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-27 21:45
-Stopped at: Continue with $gsd-discuss-phase 38 or $gsd-plan-phase 38.
+Stopped at: Continue with $gsd-discuss-phase 39 or $gsd-plan-phase 39.
 Resume file: None
