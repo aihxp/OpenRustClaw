@@ -1,16 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: null
-milestone_name: null
-current_phase: null
-current_phase_name: null
+milestone: v1.8
+milestone_name: Clean Codebase
+current_phase: 37
+current_phase_name: Codebase Cleanup Inventory and Refactor Contract
 current_plan: null
-status: No active milestone
-stopped_at: v1.7 archived; start the next milestone with $gsd-new-milestone.
-last_updated: "2026-03-27T21:30:14.000Z"
-last_activity: 2026-03-27 -- v1.7 archived
+status: Milestone initialized
+stopped_at: Start with $gsd-discuss-phase 37 or $gsd-plan-phase 37.
+last_updated: "2026-03-27T21:45:54.000Z"
+last_activity: 2026-03-27 -- milestone v1.8 started
 progress:
-  total_phases: 0
+  total_phases: 4
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -24,19 +24,19 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-27)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** No active milestone
+**Current focus:** Phase 37 - Codebase Cleanup Inventory and Refactor Contract
 
 ## Current Position
 
-Current Phase: -
-Current Phase Name: -
-Total Phases: 0
+Current Phase: 37
+Current Phase Name: Codebase Cleanup Inventory and Refactor Contract
+Total Phases: 4
 Current Plan: -
 Total Plans in Phase: 0
-Status: No active milestone
-Last activity: 2026-03-27 -- v1.7 archived
+Status: Milestone initialized
+Last activity: 2026-03-27 -- milestone v1.8 started
 
-Phase: 0 of 0
+Phase: 1 of 4
 Plan: 0 of 0
 Progress: [░░░░░░░░░░] 0%
 
@@ -64,7 +64,7 @@ Recent decisions affecting current work:
 - v1.5 made OpenRustClaw legible as one self-hosted open-source product with explicit `solo`, `team`, `company`, and `enterprise` deployment paths, mode-aware onboarding, and reviewable upgrade or downgrade transitions.
 - v1.6 made onboarding and setup truthful end-to-end with durable setup state, validated bootstrap outcomes, explicit repair, and one shared setup handoff surface.
 - v1.7 treated documentation drift as product debt and converged the README, repo-root docs, and docs-site sources into one canonical self-hosted product story.
-- v1.7 is archived; the next milestone has not been defined yet.
+- v1.8 now focuses on cleanup inventory, repo hygiene, structural decomposition, and cleanup-safe verification.
 
 ### Pending Todos
 
@@ -76,6 +76,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-27 21:30
-Stopped at: v1.7 archived; start the next milestone with $gsd-new-milestone.
+Last session: 2026-03-27 21:45
+Stopped at: Start with $gsd-discuss-phase 37 or $gsd-plan-phase 37.
 Resume file: None

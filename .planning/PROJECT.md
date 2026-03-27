@@ -14,7 +14,7 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 - **Shipped milestones:** v1.0 Rust OpenClaw MVP and v1.1 Lifecycle Integrity and Enterprise Foundations on 2026-03-26, plus v1.2 Deeper OpenClaw Surface Parity, v1.3 Enterprise Expansion and Supervised Autonomy Foundations, v1.4 Enterprise Governance and Operator-Gated Full Autonomy, v1.5 Self-Hosted Product Modes and Lifecycle Packaging, and v1.7 Documentation Convergence and OpenClaw-Inspired Docs Rewrite on 2026-03-27, and v1.6 Proper Onboarding and Setup on 2026-03-28
 - **Archive:** `.planning/milestones/v1.0-*`, `.planning/milestones/v1.1-*`, `.planning/milestones/v1.2-*`, `.planning/milestones/v1.3-*`, `.planning/milestones/v1.4-*`, `.planning/milestones/v1.5-*`, `.planning/milestones/v1.6-*`, `.planning/milestones/v1.7-*`
-- **Planning state:** no active milestone is open
+- **Planning state:** v1.8 is open and ready for Phase 37 planning
 - **Known audit debt:** v1.0 archive still records missing phase `VERIFICATION.md` artifacts; v1.1 closed that workflow gap going forward
 
 ## Most Recent Milestone: v1.7 Documentation Convergence and OpenClaw-Inspired Docs Rewrite
@@ -22,6 +22,16 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 **Result:** Shipped 2026-03-27. OpenRustClaw now has a canonical documentation ownership contract, rewritten repo and mdBook entry surfaces, aligned getting-started and operator guides, and an explicit docs maintenance and audit loop.
 
 **Archive:** `.planning/milestones/v1.7-ROADMAP.md`, `.planning/milestones/v1.7-REQUIREMENTS.md`, `.planning/milestones/v1.7-MILESTONE-AUDIT.md`, `.planning/milestones/v1.7-VERIFICATIONS.md`
+
+## Current Milestone: v1.8 Clean Codebase
+
+**Goal:** Reduce brownfield structural debt so future feature work lands in a smaller, clearer, and safer codebase.
+
+**Target features:**
+- explicit cleanup inventory for oversized, deprecated, generated, or drifting surfaces
+- removal of stale repo paths and contract mismatches across docs, CI, and workspace artifacts
+- bounded decomposition of priority oversized command and control surfaces without breaking shipped behavior
+- targeted cleanup verification and a maintained follow-up debt record
 
 ## Requirements
 
@@ -57,10 +67,9 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 ### Active
 
-- [ ] Expand the enterprise baseline into deeper RBAC, SSO, SCIM, and tenant-aware governance
-- [ ] Broaden supervised and full autonomy into more domains without dropping budgets, approvals, or audit evidence
-- [ ] Continue parity and product depth only in ways that preserve the enterprise, autonomy, self-hosted product, and canonical docs contract
-- [ ] Preserve the docs contract and audit loop whenever shipped behavior changes
+- [ ] Reduce dead, duplicated, stale, local-only, or drifting repo surfaces and make cleanup ownership explicit
+- [ ] Split the highest-risk oversized modules into clearer bounded units without regressing the shipped operator contract
+- [ ] Align CI, docs, and verification around the cleaned codebase so future refactors stay safe
 
 ### Out of Scope
 
@@ -73,13 +82,14 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 This remains a large brownfield Rust monorepo with broad runtime, CLI, control-plane, memory, tools, channel, voice, browser, deployment, and operator surfaces. v1.0 converted that breadth into a cleaner MVP by making operator trust visible at the edges that matter, v1.1 hardened the lifecycle and enterprise baseline around that trust, v1.2 deepened the most operator-visible OpenClaw parity surfaces without reopening MVP sprawl, v1.3 turned the first enterprise and supervised-autonomy contracts into a coherent operator loop, v1.4 extended that loop into explicit governance and operator-gated full autonomy, v1.5 made the platform legible as one self-hosted open-source product with explicit deployment paths and transition visibility, v1.6 turned onboarding and setup into one truthful lifecycle from first install through repair and handoff, and v1.7 made the documentation set legible enough to match the shipped product baseline.
 
-The next milestone should build on all of those shipped layers rather than reopen foundational docs drift. Future expansion should now treat the canonical docs contract and audit loop as fixed infrastructure alongside the runtime, enterprise, autonomy, and setup baselines.
+The next milestone should build on all of those shipped layers by shrinking brownfield complexity instead of widening the surface again immediately. Current concerns already called out oversized command hubs, sidecar or contract drift risk, stale CI or docs references, and local-environment noise inside the repo tree. v1.8 treats that cleanup as first-class product-enabling work rather than opportunistic background tidying.
 
 ## Constraints
 
 - **Rust-first runtime:** The Rust runtime remains the primary production path
 - **Truth over gloss:** Documentation changes must describe shipped behavior and supported paths, not aspirational marketing claims
 - **Brownfield pragmatism:** Prefer converging or deleting existing docs over creating another layer of parallel files
+- **Cleanup without regressions:** Internal refactors must preserve the shipped operator, runtime, and control-surface behavior
 - **Canonical ownership:** Every major docs surface should have one primary owner and clearly documented mirrors or derived views
 - **Security baseline:** Production auth, secret handling, sandboxing, and origin/runtime trust boundaries stay on by default
 
@@ -102,12 +112,14 @@ The next milestone should build on all of those shipped layers rather than reope
 | Interpret “god mode” as an explicit operator-gated full-autonomy lane rather than a removal of audit or control boundaries | The platform’s trust-first contract still needs to hold even when trusted operators deliberately enable a stronger autonomy mode | ✓ Good |
 | Treat documentation convergence as product work rather than post-hoc cleanup | The repo now has enough shipped depth that drift between README, docs mirrors, and docs-site guidance directly reduces usability and trust | ✓ Good |
 | Use OpenClaw’s public docs style as inspiration for clarity and entry-point design, not as a content-copying exercise | The goal is a clearer self-hosted product story, tighter onboarding path, and better docs information architecture grounded in OpenRustClaw’s actual shipped behavior | ✓ Good |
+| Treat codebase cleanup as a milestone in its own right | The repo is now broad enough that oversized modules, stale paths, and contract drift directly slow down safe product work | — Pending |
 
-## Next Milestone Goals
+## Current Milestone Goals
 
-- Expand the enterprise baseline into deeper organization lifecycle, tenant-awareness, and external identity or compliance controls
-- Broaden supervised and full autonomy into more domains without dropping explicit operator control paths
-- Preserve the verification/archive contract, enterprise governance baseline, self-hosted product contract, setup lifecycle baseline, and canonical docs contract as non-negotiable foundations
+- Inventory and prioritize cleanup targets so later refactors stop happening by intuition alone
+- Remove stale or drifting repo surfaces that no longer match the shipped product contract
+- Decompose the highest-risk oversized command or control surfaces behind stable behavior contracts
+- Lock cleanup in with targeted verification and an explicit remaining-debt record
 
 ## Evolution
 
@@ -127,4 +139,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-27 after archiving v1.7*
+*Last updated: 2026-03-27 after starting v1.8*
