@@ -10,7 +10,7 @@ use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use tokio::fs;
 
-use super::{channels, control, doctor, runtime};
+use super::{channels, control, doctor, runtime, self_hosted};
 use super::{chat, models};
 
 /// Onboarding wizard state
@@ -21,6 +21,8 @@ pub struct OnboardingState {
     pub model_configured: bool,
     pub preferred_provider: Option<String>,
     pub execution_mode: Option<String>,
+    pub deployment_mode: Option<String>,
+    pub deployment_path: Option<String>,
     pub daemon_installed: bool,
     pub skills_installed: Vec<String>,
     pub profile: Option<String>,
@@ -32,6 +34,8 @@ pub struct OnboardingWorkspaceStatus {
     pub env_present: bool,
     pub control_registry_present: bool,
     pub channels_registry_present: bool,
+    pub product_mode_present: bool,
+    pub product_mode_label: Option<String>,
     pub user_service_present: bool,
 }
 
@@ -41,6 +45,7 @@ pub struct OnboardingWizard {
     state: OnboardingState,
 }
 
+#[derive(Clone, Copy)]
 enum OnboardingProfile {
     QuickStart,
     Advanced,
@@ -112,8 +117,9 @@ impl OnboardingWizard {
     /// Run the onboarding wizard
     pub async fn run(&mut self) -> Result<()> {
         self.print_welcome();
+        let workspace_root = std::env::current_dir()?;
 
-        let workspace_status = workspace_status(std::env::current_dir()?.as_path());
+        let workspace_status = workspace_status(workspace_root.as_path());
         if workspace_status.env_present
             || workspace_status.control_registry_present
             || workspace_status.channels_registry_present
@@ -150,13 +156,41 @@ impl OnboardingWizard {
             }
         }
 
+        let deployment_mode = select_deployment_mode(&self.theme, &workspace_root)?;
+        let descriptor = self_hosted::descriptor_for(deployment_mode.mode())?;
+        self_hosted::configure_mode(
+            &workspace_root,
+            descriptor.mode,
+            Some(descriptor.onboarding_path),
+            Some("selected during onboarding"),
+        )?;
+        self.state.deployment_mode = Some(descriptor.mode.to_string());
+        self.state.deployment_path = Some(descriptor.onboarding_path.to_string());
+
+        println!(
+            "\n{}",
+            style(format!(
+                "Selected deployment path: {} — {}",
+                descriptor.label, descriptor.operator_model
+            ))
+            .bold()
+            .cyan()
+        );
+        println!(
+            "  This self-hosted open-source path recommends `{}` as the initial runtime shape.",
+            descriptor.recommended_runtime_mode
+        );
+
         let profile = match Select::with_theme(&self.theme)
-            .with_prompt("Choose your onboarding path")
+            .with_prompt(format!(
+                "Choose how much of the {} setup to do now",
+                descriptor.label
+            ))
             .items(&[
                 "QuickStart - gateway, one channel, provider, and control plane",
                 "Advanced - everything in QuickStart plus skills and system service",
             ])
-            .default(0)
+            .default(default_onboarding_profile_for_mode(descriptor.mode).index())
             .interact()?
         {
             1 => OnboardingProfile::Advanced,
@@ -227,6 +261,20 @@ Let's get started!
     fn print_completion(&self) {
         println!("\n{}", style("✅ Onboarding complete!").bold().green());
         println!("\nConfiguration summary:");
+        println!(
+            "  Deployment Mode: {}",
+            self.state
+                .deployment_mode
+                .as_deref()
+                .unwrap_or("solo (default)")
+        );
+        println!(
+            "  Deployment Path: {}",
+            self.state
+                .deployment_path
+                .as_deref()
+                .unwrap_or("solo_starter")
+        );
         println!(
             "  Path: {}",
             self.state.profile.as_deref().unwrap_or("QuickStart")
@@ -310,6 +358,17 @@ Let's get started!
             } else {
                 "absent"
             }
+        );
+        println!(
+            "  product mode: {}",
+            status
+                .product_mode_label
+                .as_deref()
+                .unwrap_or(if status.product_mode_present {
+                    "present"
+                } else {
+                    "absent"
+                })
         );
         println!(
             "  user service: {}",
@@ -623,7 +682,9 @@ async fn run_control_plane_setup(wizard: &mut OnboardingWizard) -> Result<bool> 
     let selection = Select::with_theme(&wizard.theme)
         .with_prompt("Choose how work should be assigned")
         .items(&modes)
-        .default(0)
+        .default(default_runtime_mode_index(
+            wizard.state.deployment_mode.as_deref(),
+        ))
         .interact()?;
 
     let (mode, orchestrator) = match selection {
@@ -846,6 +907,11 @@ async fn install_daemon() -> Result<()> {
 pub fn workspace_status(workspace_root: &Path) -> OnboardingWorkspaceStatus {
     let control_root = control::control_root_for(workspace_root);
     let channels_root = channels::channels_root_for(workspace_root);
+    let product_mode = self_hosted::load_manifest(workspace_root).ok().flatten();
+    let product_mode_label = product_mode
+        .as_ref()
+        .and_then(|manifest| self_hosted::descriptor_for(&manifest.profile.mode).ok())
+        .map(|descriptor| descriptor.label.to_string());
     let service_present =
         runtime::runtime_service_install_status("config/default.toml", workspace_root)
             .map(|status| status.installed)
@@ -856,8 +922,99 @@ pub fn workspace_status(workspace_root: &Path) -> OnboardingWorkspaceStatus {
         env_present: workspace_root.join(".env").exists(),
         control_registry_present: control_root.exists(),
         channels_registry_present: channels_root.exists(),
+        product_mode_present: product_mode.is_some(),
+        product_mode_label,
         user_service_present: service_present,
     }
+}
+
+#[derive(Clone, Copy)]
+enum DeploymentModeChoice {
+    Solo,
+    Team,
+    Company,
+    Enterprise,
+}
+
+impl DeploymentModeChoice {
+    fn mode(self) -> &'static str {
+        match self {
+            DeploymentModeChoice::Solo => self_hosted::MODE_SOLO,
+            DeploymentModeChoice::Team => self_hosted::MODE_TEAM,
+            DeploymentModeChoice::Company => self_hosted::MODE_COMPANY,
+            DeploymentModeChoice::Enterprise => self_hosted::MODE_ENTERPRISE,
+        }
+    }
+
+    fn items() -> [DeploymentModeChoice; 4] {
+        [
+            DeploymentModeChoice::Solo,
+            DeploymentModeChoice::Team,
+            DeploymentModeChoice::Company,
+            DeploymentModeChoice::Enterprise,
+        ]
+    }
+
+    fn label(self) -> String {
+        let descriptor = self_hosted::descriptor_for(self.mode()).expect("supported deployment mode");
+        format!("{} - {}", descriptor.label, descriptor.operator_model)
+    }
+
+    fn index(self) -> usize {
+        match self {
+            DeploymentModeChoice::Solo => 0,
+            DeploymentModeChoice::Team => 1,
+            DeploymentModeChoice::Company => 2,
+            DeploymentModeChoice::Enterprise => 3,
+        }
+    }
+
+    fn from_mode(mode: &str) -> Self {
+        match mode {
+            self_hosted::MODE_TEAM => DeploymentModeChoice::Team,
+            self_hosted::MODE_COMPANY => DeploymentModeChoice::Company,
+            self_hosted::MODE_ENTERPRISE => DeploymentModeChoice::Enterprise,
+            _ => DeploymentModeChoice::Solo,
+        }
+    }
+}
+
+impl OnboardingProfile {
+    fn index(self) -> usize {
+        match self {
+            OnboardingProfile::QuickStart => 0,
+            OnboardingProfile::Advanced => 1,
+        }
+    }
+}
+
+fn default_onboarding_profile_for_mode(mode: &str) -> OnboardingProfile {
+    match mode {
+        self_hosted::MODE_COMPANY | self_hosted::MODE_ENTERPRISE => OnboardingProfile::Advanced,
+        _ => OnboardingProfile::QuickStart,
+    }
+}
+
+fn default_runtime_mode_index(mode: Option<&str>) -> usize {
+    match mode.unwrap_or(self_hosted::MODE_SOLO) {
+        self_hosted::MODE_TEAM => 1,
+        self_hosted::MODE_COMPANY | self_hosted::MODE_ENTERPRISE => 3,
+        _ => 0,
+    }
+}
+
+fn select_deployment_mode(theme: &ColorfulTheme, workspace_root: &Path) -> Result<DeploymentModeChoice> {
+    let default_mode = self_hosted::load_manifest(workspace_root)?
+        .map(|manifest| DeploymentModeChoice::from_mode(&manifest.profile.mode))
+        .unwrap_or(DeploymentModeChoice::Solo);
+    let items = DeploymentModeChoice::items();
+    let labels = items.iter().map(|choice| choice.label()).collect::<Vec<_>>();
+    let selection = Select::with_theme(theme)
+        .with_prompt("Choose the self-hosted deployment path")
+        .items(&labels)
+        .default(default_mode.index())
+        .interact()?;
+    Ok(items[selection])
 }
 
 async fn backup_and_reset_workspace_state() -> Result<PathBuf> {
@@ -935,6 +1092,8 @@ mod tests {
         assert!(state.channels_configured.is_empty());
         assert!(!state.model_configured);
         assert!(state.preferred_provider.is_none());
+        assert!(state.deployment_mode.is_none());
+        assert!(state.deployment_path.is_none());
         assert!(!state.daemon_installed);
         assert!(state.skills_installed.is_empty());
         assert!(state.profile.is_none());
@@ -947,6 +1106,8 @@ mod tests {
         assert!(wizard.state.channels_configured.is_empty());
         assert!(!wizard.state.model_configured);
         assert!(wizard.state.preferred_provider.is_none());
+        assert!(wizard.state.deployment_mode.is_none());
+        assert!(wizard.state.deployment_path.is_none());
         assert!(!wizard.state.daemon_installed);
         assert!(wizard.state.skills_installed.is_empty());
         assert!(wizard.state.profile.is_none());
@@ -1038,6 +1199,27 @@ mod tests {
         assert!(!status.env_present);
         assert!(!status.control_registry_present);
         assert!(!status.channels_registry_present);
+        assert!(!status.product_mode_present);
+        assert!(status.product_mode_label.is_none());
+    }
+
+    #[test]
+    fn test_default_onboarding_profile_for_enterprise_is_advanced() {
+        assert_eq!(
+            default_onboarding_profile_for_mode(self_hosted::MODE_ENTERPRISE).label(),
+            "Advanced"
+        );
+        assert_eq!(
+            default_onboarding_profile_for_mode(self_hosted::MODE_SOLO).label(),
+            "QuickStart"
+        );
+    }
+
+    #[test]
+    fn test_default_runtime_mode_index_matches_deployment_mode() {
+        assert_eq!(default_runtime_mode_index(Some(self_hosted::MODE_SOLO)), 0);
+        assert_eq!(default_runtime_mode_index(Some(self_hosted::MODE_TEAM)), 1);
+        assert_eq!(default_runtime_mode_index(Some(self_hosted::MODE_ENTERPRISE)), 3);
     }
 
     #[test]

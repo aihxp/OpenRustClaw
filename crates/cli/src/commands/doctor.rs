@@ -5,7 +5,7 @@ use chrono::Utc;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 
-use super::{channels, control, onboard, runtime, services};
+use super::{channels, control, onboard, runtime, self_hosted, services};
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -243,6 +243,12 @@ pub async fn collect_report(
         true,
     ));
     checks.push(diagnostic_check(
+        "product_mode",
+        "self-hosted product mode",
+        check_product_mode(),
+        true,
+    ));
+    checks.push(diagnostic_check(
         "channel_readiness",
         "enabled channel readiness probes",
         check_channel_readiness(&config_path).await,
@@ -351,6 +357,17 @@ fn check_onboarding_state() -> Result<()> {
     {
         anyhow::bail!(
             "No onboarding-managed workspace state detected yet. Run `openrustclaw onboard` or scaffold control/channel state manually."
+        );
+    }
+    Ok(())
+}
+
+fn check_product_mode() -> Result<()> {
+    let cwd = std::env::current_dir()?;
+    let manifest = self_hosted::load_manifest(&cwd)?;
+    if manifest.is_none() {
+        anyhow::bail!(
+            "No explicit self-hosted product mode selected yet. Run `openrustclaw onboard` to choose solo, team, company, or enterprise."
         );
     }
     Ok(())
@@ -713,5 +730,18 @@ mod tests {
         assert!(!readiness.ready);
         assert_eq!(readiness.blocking_items.len(), 1);
         assert!(readiness.blocking_items[0].contains("onboarding-managed workspace state"));
+    }
+
+    #[test]
+    fn test_first_start_readiness_does_not_block_missing_product_mode_warning() {
+        let readiness = first_start_readiness(&sample_report(vec![DiagnosticCheck {
+            id: "product_mode".to_string(),
+            label: "self-hosted product mode".to_string(),
+            status: DiagnosticStatus::Warning,
+            message: Some("No explicit self-hosted product mode selected yet.".to_string()),
+        }]));
+
+        assert!(readiness.ready);
+        assert!(readiness.blocking_items.is_empty());
     }
 }
