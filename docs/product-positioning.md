@@ -1,84 +1,38 @@
 # Product Positioning
 
-This page explains how to read OpenRustClaw's current product contract.
+OpenRustClaw is a self-hosted open-source assistant product, not a hosted SaaS wrapper and not just a loose codebase of experiments. Its product claim is a Rust-first runtime with durable operator surfaces, explicit setup and control boundaries, and a growing but truthfully described enterprise and autonomy lane.
 
-The goal is not to frame OpenRustClaw as a shadow of another runtime. The goal is to describe the
-shipped operator surface clearly, explain the intentional product boundaries, and keep the runtime
-truthful about what is and is not part of the supported path.
+## What It Ships Well
 
-## What OpenRustClaw Ships Well
+- self-hosted onboarding and setup with durable handoff
+- persisted assistant continuity and policy-aware memory
+- shared CLI, HTTP, MCP, and Control UI operator surfaces
+- bounded tools, browser, communications, voice, and mobile inspection paths
+- enterprise access, policy, governance, audit export, and operator-gated autonomy controls
 
-- Rust-owned gateway runtime and durable scheduling
-- Core, recall, and archive memory with operator inspection
-- Shared CLI, MCP, HTTP, and Control UI operator surfaces
-- Multi-channel routing, pairing, and account/binding controls
-- Media inspection, extraction, and description workflows
-- Voice-note transcription, talk runtime inspection, and bounded voice-call hooks
-- Mobile node pairing, receipts, summaries, and command execution flows
-- Skills install/update/verify lifecycle with bounded Rust/WASM execution
+## Where It Is Intentionally Stronger
 
-## Where OpenRustClaw Is Intentionally Stronger
+- Rust-first production ownership instead of a compatibility-first runtime core
+- explicit operator evidence and inspection surfaces instead of hidden behavior
+- stronger control over high-risk autonomy changes
+- tighter docs-to-runtime truthfulness as part of the shipped product contract
 
-- Rust-owned durability and process ownership instead of a weaker compatibility-first runtime model
-- Stronger skill capability enforcement and verification-aware execution controls
-- Compiled skill help/schema artifacts and explicit extension manifests for model/operator routing
-- Broader multi-provider model support
-- First-class MCP and `mcp2-cli` workflows
-- Tighter runtime/docs/test truthfulness and CI gates around the shipped surface
+## Current Boundaries
 
-These are product choices to preserve, not liabilities to apologize for.
+OpenRustClaw is intentionally bounded in a few places:
 
-## Current Claim Boundaries
+- it is self-hosted, not a hosted assistant platform
+- the sidecar is optional compatibility tooling, not the default runtime brain
+- full autonomy is gated and reviewed, not a silent default
+- enterprise foundations are real, but they do not yet equal complete IAM or compliance packaging
 
-OpenRustClaw is intentionally opinionated about a few boundaries:
+## What Counts as a Valid Claim
 
-- interactive live chat remains CLI/MCP-first instead of becoming a separate browser-chat surface
-- Mattermost is shipped as a first-class Rust channel rather than as a second plugin-channel runtime
-- provider-auth support is the bounded OIDC auth-plugin lane over the shared runtime vault
-- optional channel/workstation/cloud-agent expansion remains separate from the current shipped surface
+A claim belongs in the product story only when:
 
-These are intentional boundaries for the current product surface, not documentation gaps.
+- the runtime supports it end to end
+- an operator can inspect or control it through shipped surfaces
+- the docs describe it truthfully
 
-## How LangGraph Fits
+Everything else belongs in future milestone planning, not in the current product pitch.
 
-LangGraph is retained as a controlled compatibility and experimentation lane:
-
-- Rust-native execution is the long-term production target
-- sidecar compatibility is acceptable for bounded flows still being migrated
-- LangGraph remains useful for experimentation and authoring
-- LangGraph is not the production-critical durability boundary
-
-Rust owns:
-
-- scheduler and event loop
-- retries, leases, and checkpoints
-- persistence
-- operator inspection
-
-## What Counts As Shipped
-
-A feature only counts as part of the supported OpenRustClaw surface when:
-
-- startup/config exists
-- runtime behavior works end to end
-- persistence semantics match operator expectations
-- representative tests exist
-- user-facing docs are accurate
-
-Repo scaffolding, partial crates, or hidden experimental code do not count.
-
-## What Does Not Count As A Failure
-
-- using Rust where another ecosystem might use Node/TypeScript
-- reducing or removing Python from the production path
-- exposing stronger capability/sandbox limits
-- adding operator tooling beyond the minimum documented surface
-
-## Current Statement
-
-Today, OpenRustClaw can fairly claim:
-
-- a coherent shipped operator surface
-- Rust-owned production runtime paths for the supported product contract
-- stronger Rust-native foundations for durability, observability, and extension security
-- explicit, documented claim boundaries where the product stays intentionally bounded

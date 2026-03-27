@@ -1,8 +1,8 @@
 # OpenRustClaw Surface Matrix
 
-This is the source-backed surface inventory for the current OpenRustClaw program.
+This is the source-backed surface inventory for the current self-hosted OpenRustClaw product.
 
-It maps the declared shipped OpenRustClaw feature families to the current implementation state, the owning code, representative tests, local docs, and the severity of the remaining delivery gap. The final docs/test audit artifact for shipped feature families lives in [docs-audit.md](docs-audit.md).
+It maps the declared shipped feature families to the current implementation state, owning code, representative tests, local docs, and the severity of the remaining delivery gap. Use it with [docs-audit.md](docs-audit.md) and [documentation-contract.md](documentation-contract.md) when reviewing whether the docs and runtime still tell the same story.
 
 Reviewed against the current shipped OpenRustClaw surface on 2026-03-25.
 

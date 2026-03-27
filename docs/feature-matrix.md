@@ -1,10 +1,13 @@
 # OpenRustClaw Feature Matrix
 
-Companion planning docs:
+This is the canonical shipped-surface feature matrix for the current self-hosted OpenRustClaw product. It is intentionally detailed and planning-facing.
+
+Use it alongside:
 
 - [roadmap.md](roadmap.md)
 - [surface-matrix.md](surface-matrix.md)
 - [product-positioning.md](product-positioning.md)
+- [documentation-contract.md](documentation-contract.md)
 
 Status values:
 
