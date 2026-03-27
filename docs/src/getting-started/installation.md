@@ -1,513 +1,120 @@
 # Installation
 
-This guide walks you through installing OpenRustClaw from source, configuring your environment, and verifying your installation as a self-hosted open-source deployment.
+This guide gets a workspace ready for the shipped OpenRustClaw setup flow. The goal is not just to compile the project. The goal is to finish with a workspace that can truthfully pass onboarding, `doctor`, and the first assistant launch.
 
----
-
-## 📋 Prerequisites
-
-Before installing OpenRustClaw, ensure you have the following dependencies installed:
+## Before You Start
 
 ### Required
 
-| Dependency | Version | Purpose |
-|------------|---------|---------|
-| **Rust** | 1.85+ | Core framework (stable channel) |
-| **protoc** | 3.20+ | Protocol Buffers compiler |
-| **SQLite** | 3.35+ | Database (usually pre-installed) |
+| Dependency | Recommended version | Why |
+| --- | --- | --- |
+| Rust | 1.85+ | primary runtime and CLI |
+| `protoc` | 3.20+ | protobuf compilation |
+| SQLite | 3.35+ | default local persistence |
 
-### Optional but Recommended
+### Optional
 
-| Dependency | Purpose |
-|------------|---------|
-| **Python** | Optional compatibility sidecar and sidecar-focused development |
-| **mdbook** | Build documentation |
-| **cargo-watch** | Auto-rebuild during development |
-| **just** | Task runner (alternative to make) |
+| Dependency | Why |
+| --- | --- |
+| Python 3.11+ | only for the optional compatibility sidecar |
+| `mdbook` | build the docs locally |
+| `cargo-watch` | local development convenience |
 
----
+OpenRustClaw is self-hosted and open source. You can start in `solo`, `team`, `company`, or `enterprise` mode. You do not need to decide every detail before building; onboarding captures that choice later.
 
-## 🦀 Installing Rust
-
-### Linux/macOS
+## 1. Clone and Build
 
 ```bash
-# Using rustup (recommended)
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-
-# Follow the prompts, then reload your shell
-source $HOME/.cargo/env
-
-# Verify installation
-rustc --version  # Should show 1.85.0 or higher
-cargo --version
-```
-
-### Windows
-
-```powershell
-# Download and run rustup-init.exe from https://rustup.rs/
-# Or use winget
-winget install Rustlang.Rustup
-
-# Verify installation
-rustc --version
-cargo --version
-```
-
-### Updating Rust
-
-```bash
-# Update to latest stable
-rustup update stable
-
-# Install specific components if needed
-rustup component add rustfmt clippy
-```
-
----
-
-## 🐍 Optional Python Compatibility Sidecar
-
-Python is no longer required for the default production or local runtime path. Install it only if you need the bounded compatibility sidecar or are working on the sidecar itself.
-
-### Linux (Ubuntu/Debian)
-
-```bash
-# Install Python 3.11+
-sudo apt update
-sudo apt install python3.11 python3.11-venv python3.11-dev python3-pip
-
-# Verify installation
-python3.11 --version
-```
-
-### macOS
-
-```bash
-# Using Homebrew
-brew install python@3.11
-
-# Verify installation
-python3 --version
-```
-
-### Windows
-
-```powershell
-# Download from python.org or use winget
-winget install Python.Python.3.11
-
-# Verify installation
-python --version
-```
-
-### Setting up the Optional Sidecar Virtual Environment
-
-```bash
-# Create a virtual environment for the optional sidecar
-cd sidecar
-python3 -m venv .venv
-
-# Activate it
-# Linux/macOS:
-source .venv/bin/activate
-# Windows:
-# .venv\Scripts\activate
-
-# Install dependencies
-pip install -e ".[dev]"
-```
-
----
-
-## 📦 Installing protoc
-
-### Linux (Ubuntu/Debian)
-
-```bash
-sudo apt install protobuf-compiler
-
-# Verify
-protoc --version  # Should show 3.20.0 or higher
-```
-
-### macOS
-
-```bash
-# Using Homebrew
-brew install protobuf
-
-# Verify
-protoc --version
-```
-
-### Windows
-
-```powershell
-# Using Chocolatey
-choco install protoc
-
-# Or download from https://github.com/protocolbuffers/protobuf/releases
-# Add to PATH manually
-```
-
----
-
-## 📥 Installing OpenRustClaw from Source
-
-### 1. Clone the Repository
-
-```bash
-# Clone with SSH
-git clone git@github.com:openrustclaw/openrustclaw.git
-
-# Or clone with HTTPS
-git clone https://github.com/openrustclaw/openrustclaw.git
-
-# Enter the directory
+git clone https://github.com/aihxp/OpenRustClaw.git
 cd OpenRustClaw
+cargo build --workspace
 ```
 
-### 2. Build the Rust Workspace
+If you package local release artifacts for operator testing:
 
 ```bash
-# Build all crates in debug mode (faster compile, slower runtime)
-cargo build --workspace
-
-# Or build in release mode (slower compile, faster runtime)
-cargo build --workspace --release
-
-# Package a versioned release artifact for the current host target
 scripts/build-release-artifacts.sh
 ```
 
-The first build will take several minutes as it downloads and compiles dependencies. Subsequent builds will be much faster.
+## 2. Configure the Environment
 
-Tag builds and manual runs of `.github/workflows/release-binaries.yml` now also package `openrustclaw` tarballs plus `.sha256` files for the declared Linux/macOS x86_64 and ARM64 release targets.
-
-### 3. Verify the Build
+Copy the example environment file and add at least one provider key:
 
 ```bash
-# Check that the CLI binary works
-cargo run --bin openrustclaw -- --help
-
-# You should see the CLI help output
-```
-
----
-
-## ⚙️ Configuration Setup
-
-### 1. Copy the Example Environment File
-
-```bash
-# Copy the example environment file
 cp .env.example .env
-
-# Edit it with your favorite editor
-nano .env  # or vim, code, etc.
 ```
 
-### 2. Configure API Keys
-
-Edit `.env` and add your API keys:
+Common starting point:
 
 ```bash
-# === LLM Provider API Keys ===
-# At least one provider is required
-ANTHROPIC_API_KEY=sk-ant-api03-xxxxxxxxxxxxxxxxxxxxxxxx
-OPENAI_API_KEY=sk-proj-xxxxxxxxxxxxxxxxxxxxxxxx
-OPENROUTER_API_KEY=sk-or-v1-xxxxxxxxxxxxxxxxxxxxxxxx
-
-# For local models (optional)
-OLLAMA_BASE_URL=http://localhost:11434
+ANTHROPIC_API_KEY=...
+OPENAI_API_KEY=...
+OPENROUTER_API_KEY=...
+OLLAMA_HOST=http://localhost:11434
 ```
 
-#### Getting API Keys
+You do not need every provider configured. The main requirement is that the deployment mode and setup depth you choose can pass the health gate for at least one usable runtime lane.
 
-**Anthropic:**
-1. Visit [console.anthropic.com](https://console.anthropic.com)
-2. Create an account or sign in
-3. Go to "Get API keys"
-4. Generate a new key
-
-**OpenAI:**
-1. Visit [platform.openai.com](https://platform.openai.com)
-2. Create an account or sign in
-3. Go to "API keys"
-4. Create a new secret key
-
-**OpenRouter:**
-1. Visit [openrouter.ai](https://openrouter.ai)
-2. Create an account
-3. Go to "Keys"
-4. Create a new key
-
-### 3. Configure Gateway (Optional)
+## 3. Run Onboarding
 
 ```bash
-# === Gateway Configuration ===
-GATEWAY_HOST=127.0.0.1
-GATEWAY_PORT=18789
-GATEWAY_ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+cargo run --bin openrustclaw -- onboard
 ```
 
-### 4. Configure Database (Optional)
+The onboarding flow now does the real first-start work:
+
+- asks which product mode you want: `solo`, `team`, `company`, or `enterprise`
+- offers `Standard`, `Advanced`, or `Custom` setup depth
+- records durable setup state for resume and repair
+- validates provider, runtime, and supported channel bootstrap before it claims the workspace is ready
+- ends with an explicit setup handoff instead of a vague success message
+
+### Setup Depth
+
+| Depth | Best for |
+| --- | --- |
+| `Standard` | a straightforward self-hosted install with guided defaults |
+| `Advanced` | operators who want deeper configuration choices up front |
+| `Custom` | operators who want the most explicit control over what gets configured |
+
+## 4. Verify Readiness
+
+After onboarding, run:
 
 ```bash
-# === Database ===
-DATABASE_URL=sqlite://data/openrustclaw.db
-DATABASE_WAL_MODE=true  # Enable for better concurrency
-```
-
-### 5. Configure Security (Production)
-
-```bash
-# === Security ===
-# Generate a random secret (at least 32 characters)
-AUTH_SECRET=$(openssl rand -base64 32)
-
-# Or use a passphrase
-AUTH_SECRET=your-very-long-and-random-secret-key-here
-
-# For skill signing (optional)
-# Generate with: openrustclaw security generate-keys
-SKILL_SIGNING_KEY=
-```
-
-### 6. Configure Observability (Optional)
-
-```bash
-# === LangSmith Observability ===
-LANGSMITH_API_KEY=lsv2_xxxxxxxxxxxxxxxxxxxxxxxx
-LANGSMITH_PROJECT=openrustclaw
-LANGSMITH_ENDPOINT=https://api.smith.langchain.com
-```
-
-## Optional Compatibility Sidecar Setup
-
-If you need the legacy compatibility sidecar for migration or workflow experiments, set it up after the Rust workspace is already working:
-
-```bash
-cd sidecar
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
-python src/server.py --help
-```
-
-Get your LangSmith API key at [smith.langchain.com](https://smith.langchain.com).
-
----
-
-## ✅ Verifying Installation
-
-### 1. Run Diagnostics
-
-```bash
-# Run the built-in doctor command
-cargo run --bin openrustclaw -- doctor
-
-# Or if installed globally
 openrustclaw doctor
 ```
 
-This checks:
-- ✅ Database connectivity
-- ✅ Database migrations
-- ✅ Provider API key presence
-- ✅ Runtime configuration files
-- ✅ Data and skills directories
-- ✅ Control and channel workspace state
-- ✅ Enabled-channel readiness probes
-- ✅ Optional sidecar availability
+If the workspace is already partially configured, onboarding and `doctor` now support resume and repair instead of forcing manual file surgery.
 
-### 2. Choose Your First-Run Path
-
-For the cleanest first run, prefer the guided path:
-
-- `solo` for one operator on one self-hosted workspace
-- `team` for a shared multi-user deployment
-- `company` for an internal company install with stronger policy expectations
-- `enterprise` for the enterprise access, governance, audit, and operator-gated autonomy baseline
+Use these checks before you launch the runtime:
 
 ```bash
-openrustclaw onboard
-openrustclaw doctor
+openrustclaw runtime status
+openrustclaw session list
 ```
 
-The onboarding wizard now records the chosen deployment path as the workspace product mode, supports `Standard`, `Advanced`, and `Custom` setup depth, and offers an explicit repair path for existing workspaces. It only offers to launch the persisted assistant session after the post-setup health gate confirms provider and workspace readiness.
-
-If your install evolves later, use the shipped `Self-Hosted Product Mode` panel in `/control/ui` or `POST /control/self-hosted/product-mode` to apply an explicit upgrade or downgrade instead of editing workspace state by hand. Use the `Setup Handoff` panel in that same dashboard to review the current setup status, next action, and retained bootstrap outcomes before first start or after a repair run.
-
-If you already configured the workspace manually, continue with a direct assistant launch:
+## 5. Start the Runtime
 
 ```bash
-# List available models
-openrustclaw models list --provider anthropic
-
-# Start the assistant and ask a simple question
-openrustclaw assistant --provider anthropic
+openrustclaw start
 ```
 
-### 3. Test Memory System
+Open `/control/ui` after startup. The shipped dashboard includes:
 
-```bash
-# Check memory stats
-openrustclaw memory stats
+- `Setup Handoff`
+- `Self-Hosted Product Mode`
+- session continuity
+- runtime status
+- enterprise and autonomy surfaces when relevant to the chosen deployment path
 
-# Store a test memory in the assistant session
-openrustclaw assistant
+## Optional: Compatibility Sidecar
 
-# Then inspect recent memory activity
-openrustclaw memory timeline --limit 10
-```
+Python is no longer part of the default production path. Install and run the sidecar only if you explicitly need a bounded compatibility workflow or are developing the sidecar itself.
 
-### 4. Verify the Runtime Ops Path
+## Next Steps
 
-Before treating the workspace as production-ready, validate the bounded runtime install and recovery flow:
+- [Quickstart](./quickstart.md) for the first persisted assistant loop
+- [First Agent](./first-agent.md) for a first useful assistant workflow
+- [Production Deployment](../deployment/production.md) for operator-managed environments
 
-```bash
-# Inspect how this host would manage the runtime
-openrustclaw runtime services install-status
-
-# Verify current runtime health and fallback posture
-openrustclaw runtime health
-
-# Take the same workspace snapshot you will use before config or binary changes
-openrustclaw runtime backup
-
-# Review the restart and recovery playbook for the current config
-openrustclaw runtime upgrade-plan --config config/default.toml
-```
-
-After `openrustclaw start`, open `/control/ui` and review `Operator Ops Summary`. That panel is backed by `/control/runtime/operator-ops` and pulls together runtime health, beacon, managed-service state, runtime-lock state, reload guidance, and the next recommended recovery actions.
-
-Before promoting the workspace from `solo` to `team`, `company`, or `enterprise`, also review `Self-Hosted Product Mode` in that same dashboard. It shows the current deployment path, recommended runtime posture, recent transitions, and any retained-state warnings that would matter during an upgrade or downgrade.
-
----
-
-## 🔧 Troubleshooting
-
-### Build Issues
-
-#### "linker `cc` not found" (Linux)
-
-```bash
-# Install build essentials
-sudo apt update
-sudo apt install build-essential pkg-config libssl-dev
-```
-
-#### "protoc not found"
-
-```bash
-# Install protobuf compiler
-# Ubuntu/Debian:
-sudo apt install protobuf-compiler
-
-# macOS:
-brew install protobuf
-
-# Then rebuild
-cargo clean
-cargo build --workspace
-```
-
-#### Slow compilation
-
-```bash
-# Use sccache for faster rebuilds
-cargo install sccache
-export RUSTC_WRAPPER=sccache
-
-# Or use mold linker (Linux)
-cargo install mold
-export RUSTFLAGS="-C link-arg=-fuse-ld=mold"
-```
-
-### Runtime Issues
-
-#### "Failed to connect to sidecar"
-
-This only applies if you intentionally enabled the optional compatibility sidecar.
-
-```bash
-# Start the sidecar manually first
-cd sidecar
-source .venv/bin/activate
-python src/server.py
-
-# In another terminal, start the gateway
-cargo run --bin openrustclaw -- start
-```
-
-#### "Database locked" errors
-
-```bash
-# Ensure WAL mode is enabled in .env
-DATABASE_WAL_MODE=true
-
-# Or manually enable it
-sqlite3 data/openrustclaw.db "PRAGMA journal_mode=WAL;"
-```
-
-#### "Rate limited by provider"
-
-```bash
-# Configure multiple providers for fallback
-# In .env, set keys for multiple providers
-# OpenRustClaw will automatically fallback
-```
-
-#### "Authentication failed"
-
-```bash
-# Check your API keys are valid
-openrustclaw doctor --verbose
-
-# Verify key format (no extra spaces)
-echo $ANTHROPIC_API_KEY | wc -c  # Should match expected length
-```
-
-### Python Sidecar Issues
-
-#### "ModuleNotFoundError: No module named 'langgraph'"
-
-```bash
-cd sidecar
-source .venv/bin/activate
-pip install -e ".[dev]"
-```
-
-#### "gRPC connection refused"
-
-This only applies if you are using the optional compatibility sidecar lane.
-
-```bash
-# Check if sidecar port is available
-lsof -i :50051  # macOS/Linux
-netstat -ano | findstr :50051  # Windows
-
-# Change port in .env if needed
-SIDECAR_GRPC_PORT=50052
-```
-
----
-
-## 🚀 Next Steps
-
-Now that you have OpenRustClaw installed:
-
-1. **[Quickstart Guide](./quickstart.md)** — Your first 5 minutes with OpenRustClaw
-2. **[First Agent](./first-agent.md)** — Create a custom agent
-3. **[Architecture Overview](../architecture/overview.md)** — Understand the system design
-
----
-
-## 📚 Additional Resources
-
-- [Environment Variables Reference](../guides/providers.md)
-- [Security Configuration](../guides/security.md)
-- [Troubleshooting FAQ](../contributing/development.md#troubleshooting)
