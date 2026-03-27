@@ -63,8 +63,8 @@
 | ENTRY-01 | Phase 33 | Complete |
 | ENTRY-02 | Phase 33 | Complete |
 | SETUP-01 | Phase 34 | Complete |
-| OPS-01 | Phase 35 | Pending |
-| SURF-01 | Phase 35 | Pending |
+| OPS-01 | Phase 35 | Complete |
+| SURF-01 | Phase 35 | Complete |
 | GOV-01 | Phase 36 | Pending |
 
 **Coverage:**

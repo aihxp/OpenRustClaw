@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.7
 milestone_name: Documentation Convergence and OpenClaw-Inspired Docs Rewrite
-current_phase: 35
-current_phase_name: Operator, Deployment, and Planning Docs Sync
+current_phase: 36
+current_phase_name: Documentation Governance and Drift Prevention
 current_plan: null
-status: Phase 34 complete
-stopped_at: Continue with $gsd-discuss-phase 35 or $gsd-plan-phase 35.
-last_updated: "2026-03-27T21:55:00.000Z"
-last_activity: 2026-03-27 -- completed Phase 34 getting-started convergence
+status: Phase 35 complete
+stopped_at: Continue with $gsd-discuss-phase 36 or $gsd-plan-phase 36.
+last_updated: "2026-03-27T22:10:00.000Z"
+last_activity: 2026-03-27 -- completed Phase 35 operator and planning docs sync
 progress:
   total_phases: 5
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 10
-  completed_plans: 6
-  percent: 60
+  completed_plans: 8
+  percent: 80
 ---
 
 # Project State
@@ -24,21 +24,21 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-27)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** Phase 35 - Operator, Deployment, and Planning Docs Sync
+**Current focus:** Phase 36 - Documentation Governance and Drift Prevention
 
 ## Current Position
 
-Current Phase: 35
-Current Phase Name: Operator, Deployment, and Planning Docs Sync
+Current Phase: 36
+Current Phase Name: Documentation Governance and Drift Prevention
 Total Phases: 5
 Current Plan: -
 Total Plans in Phase: 2
-Status: Phase 34 complete
-Last activity: 2026-03-27 -- completed Phase 34 getting-started convergence
+Status: Phase 35 complete
+Last activity: 2026-03-27 -- completed Phase 35 operator and planning docs sync
 
-Phase: 3 of 5
+Phase: 4 of 5
 Plan: 0 of 0
-Progress: [██████░░░░] 60%
+Progress: [████████░░] 80%
 
 ## Performance Metrics
 
@@ -67,6 +67,7 @@ Recent decisions affecting current work:
 - Phase 32 established the canonical docs ownership contract and made merge-or-delete rules explicit before the public rewrite.
 - Phase 33 rewrote the README and mdBook entry surfaces so the project now reads like one coherent self-hosted product.
 - Phase 34 aligned installation, quickstart, and first-agent around the shipped onboarding, repair, and setup-handoff lifecycle.
+- Phase 35 rewrote operator guides and canonical planning docs so they reinforce the same self-hosted product story.
 
 ### Pending Todos
 
@@ -78,6 +79,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-27 21:55
-Stopped at: Continue with $gsd-discuss-phase 35 or $gsd-plan-phase 35.
+Last session: 2026-03-27 22:10
+Stopped at: Continue with $gsd-discuss-phase 36 or $gsd-plan-phase 36.
 Resume file: None

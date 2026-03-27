@@ -26,7 +26,7 @@ This milestone treats documentation as a real product surface. The order is deli
 - [x] **Phase 32: Documentation Inventory and Canonical Source Contract** - completed 2026-03-27. Documentation ownership, mirror rules, and cleanup criteria are now explicit.
 - [x] **Phase 33: README and Documentation Entry Surface Rewrite** - completed 2026-03-27. The repo and mdBook entry surfaces now tell one clearer self-hosted product story.
 - [x] **Phase 34: Getting Started and Setup Guide Convergence** - completed 2026-03-27. The getting-started path now shares one setup lifecycle and handoff story.
-- [ ] **Phase 35: Operator, Deployment, and Planning Docs Sync** - rewrite operator and planning-facing docs so deployment, security, observability, matrices, and product-positioning pages match the shipped runtime and control surfaces.
+- [x] **Phase 35: Operator, Deployment, and Planning Docs Sync** - completed 2026-03-27. Operator guides and canonical planning docs now match the rewritten product story.
 - [ ] **Phase 36: Documentation Governance and Drift Prevention** - lock in canonical docs maintenance rules, deletion cleanup, and future-sync expectations.
 
 ### Phase Details
@@ -81,11 +81,11 @@ Plans:
   1. Deployment, production, security, observability, and release guidance reflect the shipped product.
   2. Feature matrix, surface matrix, roadmap, and product-positioning pages fit the same product story and navigation model.
   3. Stale promises or outdated matrix rows are removed rather than preserved for historical comfort.
-**Plans**: 0 plans complete
+**Plans**: 2 plans complete
 
 Plans:
-- [ ] 35-01 Rewrite operator docs around the current runtime and control surface
-- [ ] 35-02 Sync planning and matrix docs with shipped behavior
+- [x] 35-01 Rewrite operator docs around the current runtime and control surface
+- [x] 35-02 Sync planning and matrix docs with shipped behavior
 
 ### Phase 36: Documentation Governance and Drift Prevention
 **Goal**: Make the docs rewrite durable by defining how future milestones merge, delete, verify, and keep canonical docs synchronized.
@@ -108,13 +108,13 @@ Plans:
 | 32. Documentation Inventory and Canonical Source Contract | 2/2 | Complete | 2026-03-27 |
 | 33. README and Documentation Entry Surface Rewrite | 2/2 | Complete | 2026-03-27 |
 | 34. Getting Started and Setup Guide Convergence | 2/2 | Complete | 2026-03-27 |
-| 35. Operator, Deployment, and Planning Docs Sync | 0/2 | Pending | - |
+| 35. Operator, Deployment, and Planning Docs Sync | 2/2 | Complete | 2026-03-27 |
 | 36. Documentation Governance and Drift Prevention | 0/2 | Pending | - |
 
 ## Current Status
 
 - Active milestone: v1.7 Documentation Convergence and OpenClaw-Inspired Docs Rewrite
-- Next step: `$gsd-discuss-phase 35`
+- Next step: `$gsd-discuss-phase 36`
 - Archived milestone planning artifacts live under `.planning/milestones/`.
 
 ## Phase History
