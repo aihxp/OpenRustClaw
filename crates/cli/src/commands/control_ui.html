@@ -810,10 +810,24 @@
               <button class="secondary" id="skill-voice-end">End Voice Call</button>
             </div>
           </div>
-          <div class="surface" style="margin-top: 12px"><pre id="voice-call-events">No voice call events loaded yet.</pre></div>
-          <div class="surface"><pre id="voice-call-artifacts">No voice call artifacts loaded yet.</pre></div>
-          <div class="surface"><pre id="voice-call-metrics">No voice call metrics loaded yet.</pre></div>
-          <div class="surface"><pre id="skill-detail">Select an installed or discovered extension to inspect.</pre></div>
+          <div class="surface" style="margin-top: 12px">
+            <table class="table">
+              <thead>
+                <tr><th>Kind</th><th>When</th><th>Status</th><th>Detail</th></tr>
+              </thead>
+              <tbody id="voice-call-events"><tr><td colspan="4" class="muted">No voice call events loaded yet.</td></tr></tbody>
+            </table>
+          </div>
+          <div class="surface">
+            <table class="table">
+              <thead>
+                <tr><th>Kind</th><th>When</th><th>Artifact</th><th>Output</th></tr>
+              </thead>
+              <tbody id="voice-call-artifacts"><tr><td colspan="4" class="muted">No voice call artifacts loaded yet.</td></tr></tbody>
+            </table>
+          </div>
+          <div class="surface"><div id="voice-call-metrics" class="summary-card empty">No voice call metrics loaded yet.</div></div>
+          <div class="surface"><div id="skill-detail" class="summary-card empty">Select an installed or discovered extension to inspect.</div></div>
         </article>
 
         <article class="panel span-6">
@@ -977,14 +991,14 @@
             </table>
           </div>
           <div class="surface" style="margin-top: 12px"><pre id="mobile-app-session-metrics">No mobile app-session metrics loaded yet.</pre></div>
-          <div class="surface" style="margin-top: 12px"><pre id="mobile-app-session-detail">No mobile app session selected.</pre></div>
+          <div class="surface" style="margin-top: 12px"><div id="mobile-app-session-detail" class="summary-card empty">No mobile app session selected.</div></div>
           <div class="surface" style="margin-top: 12px"><pre id="mobile-node-pairings">No mobile pairing history loaded yet.</pre></div>
-          <div class="surface" style="margin-top: 12px"><pre id="mobile-sync-conflict-detail">No mobile sync conflict selected.</pre></div>
-          <div class="surface" style="margin-top: 12px"><pre id="mobile-capability-execution-detail">No mobile capability execution selected.</pre></div>
-          <div class="surface" style="margin-top: 12px"><pre id="mobile-media-artifact-detail">No mobile media artifact selected.</pre></div>
-          <div class="surface" style="margin-top: 12px"><pre id="mobile-notification-detail">No mobile notification selected.</pre></div>
-          <div class="surface" style="margin-top: 12px"><pre id="mobile-inbox-detail">No mobile inbox message selected.</pre></div>
-          <div class="surface" style="margin-top: 12px"><pre id="mobile-outbox-detail">No mobile outbound message selected.</pre></div>
+          <div class="surface" style="margin-top: 12px"><div id="mobile-sync-conflict-detail" class="summary-card empty">No mobile sync conflict selected.</div></div>
+          <div class="surface" style="margin-top: 12px"><div id="mobile-capability-execution-detail" class="summary-card empty">No mobile capability execution selected.</div></div>
+          <div class="surface" style="margin-top: 12px"><div id="mobile-media-artifact-detail" class="summary-card empty">No mobile media artifact selected.</div></div>
+          <div class="surface" style="margin-top: 12px"><div id="mobile-notification-detail" class="summary-card empty">No mobile notification selected.</div></div>
+          <div class="surface" style="margin-top: 12px"><div id="mobile-inbox-detail" class="summary-card empty">No mobile inbox message selected.</div></div>
+          <div class="surface" style="margin-top: 12px"><div id="mobile-outbox-detail" class="summary-card empty">No mobile outbound message selected.</div></div>
         </article>
         <article class="panel span-6">
           <h2>Mobile Preview</h2>
@@ -1145,8 +1159,15 @@
         </article>
         <article class="panel span-12">
           <h2>Mobile Command Detail</h2>
-          <div class="surface"><pre id="mobile-command-detail">No mobile command selected.</pre></div>
-          <div class="surface" style="margin-top: 12px"><pre id="mobile-command-events-detail">No mobile command events loaded yet.</pre></div>
+          <div class="surface"><div id="mobile-command-detail" class="summary-card empty">No mobile command selected.</div></div>
+          <div class="surface" style="margin-top: 12px">
+            <table class="table">
+              <thead>
+                <tr><th>#</th><th>Kind</th><th>When</th><th>Summary</th></tr>
+              </thead>
+              <tbody id="mobile-command-events-detail"><tr><td colspan="4" class="muted">No mobile command events loaded yet.</td></tr></tbody>
+            </table>
+          </div>
         </article>
         <article class="panel span-6">
           <h2>Active Orchestration</h2>
@@ -1436,6 +1457,44 @@
         }
         target.className = "summary-card";
         target.innerHTML = markup;
+      }
+
+      function objectPreview(value, limit = 220) {
+        if (value === null || value === undefined) {
+          return "-";
+        }
+        if (typeof value === "string") {
+          return truncateText(value, limit);
+        }
+        if (Array.isArray(value) && !value.length) {
+          return "-";
+        }
+        if (typeof value === "object" && !Array.isArray(value) && !Object.keys(value).length) {
+          return "-";
+        }
+        return truncateText(pretty(value), limit);
+      }
+
+      function renderSummaryStats(stats) {
+        return (stats || []).map((stat) => `<div class="summary-stat">
+            <label>${escapeHtml(stat.label || "-")}</label>
+            <strong>${escapeHtml(stat.value || "-")}</strong>
+            <span class="muted">${escapeHtml(stat.detail || "-")}</span>
+          </div>`).join("");
+      }
+
+      function buildSummaryMarkup({ kicker, title, copy, stats = [], extra = "" }) {
+        return `
+          <div>
+            <div class="summary-kicker">${escapeHtml(kicker || "-")}</div>
+            <div class="summary-title">${escapeHtml(title || "-")}</div>
+            <div class="summary-copy">${escapeHtml(copy || "-")}</div>
+          </div>
+          <div class="summary-grid">
+            ${renderSummaryStats(stats)}
+          </div>
+          ${extra}
+        `;
       }
 
       function memoryPolicySummary(entry) {
@@ -1806,6 +1865,234 @@
           <td>${escapeHtml(event.summary || "-")}</td>
         </tr>`);
         renderTableRows("talk-session-events-detail", rows, "No talk event timeline loaded yet.");
+      }
+
+      function renderSkillDetail(payload) {
+        if (!payload || payload.error) {
+          renderSummaryCard("skill-detail", payload?.error || "Select an installed or discovered extension to inspect.", null);
+          return;
+        }
+
+        if (payload.skill) {
+          const detail = payload.skill;
+          const registry = detail.registry || {};
+          renderSummaryCard("skill-detail", "Select an installed or discovered extension to inspect.", buildSummaryMarkup({
+            kicker: "Extension Detail",
+            title: detail.skill?.name || "-",
+            copy: detail.skill?.description || registry.description || "No extension description available.",
+            stats: [
+              { label: "Source", value: detail.skill?.source || "-", detail: detail.skill?.local_path || "-" },
+              { label: "Version", value: detail.skill?.version || registry.version || "-", detail: detail.skill?.enabled ? "enabled" : "disabled" },
+              { label: "Trust", value: detail.skill?.verified ? "verified" : (detail.skill?.signature_present ? "signed" : "unsigned"), detail: detail.skill?.schema_present ? "schema present" : "no schema" },
+              { label: "Capabilities", value: (detail.skill?.capabilities || []).join(", ") || "-", detail: registry.categories?.join(", ") || "-" },
+              { label: "Registry", value: registry.author || "-", detail: registry.repository || "-" },
+              { label: "Published", value: registry.published_at || "-", detail: registry.updated_at || "-" },
+            ],
+          }));
+          return;
+        }
+
+        if (payload.calls) {
+          const calls = payload.calls || [];
+          const extra = calls.length
+            ? `<div class="summary-copy" style="margin-top: 12px">${calls.slice(0, 4).map((call) => `${escapeHtml(call.call_id || "-")} · ${escapeHtml(call.status || "-")} · ${escapeHtml(call.remote || "-")}`).join("<br />")}</div>`
+            : "";
+          renderSummaryCard("skill-detail", "Select an installed or discovered extension to inspect.", buildSummaryMarkup({
+            kicker: "Voice Call Inventory",
+            title: `${payload.count ?? calls.length} call(s)`,
+            copy: calls.length ? "Recent bounded voice-call receipts are available below." : "No bounded voice-call receipts recorded.",
+            stats: [
+              { label: "Status", value: payload.status || "-", detail: calls[0]?.health || "no active call selected" },
+              { label: "Latest", value: calls[0]?.call_id || "-", detail: calls[0]?.skill_name || "-" },
+            ],
+            extra,
+          }));
+          if (calls.length && !document.getElementById("skill-voice-call-id").value.trim()) {
+            document.getElementById("skill-voice-call-id").value = calls[0].call_id || "";
+          }
+          return;
+        }
+
+        const call = payload.call || {};
+        renderSummaryCard("skill-detail", "Select an installed or discovered extension to inspect.", buildSummaryMarkup({
+          kicker: payload.action ? "Extension Mutation" : "Extension Action",
+          title: payload.skill_name || call.skill_name || payload.plugin_id || payload.provider_id || payload.job_id || payload.workflow_id || payload.action || payload.status || "Extension Detail",
+          copy: payload.message || payload.guidance || payload.command_preview || call.remote || objectPreview(payload.reference_result || payload.output || payload.invocation || payload.calls),
+          stats: [
+            { label: "Status", value: payload.status || call.status || "-", detail: payload.action || call.health || "-" },
+            { label: "Target", value: payload.plugin_id || payload.provider_id || call.call_id || payload.skill_name || "-", detail: call.remote || payload.service || payload.component || "-" },
+            { label: "Job / Path", value: payload.job_id || payload.output_root || payload.output_path || payload.source_path || "-", detail: payload.workflow_id || payload.component || "-" },
+            { label: "Verification", value: payload.verified_execution ? "verified" : (payload.verified === false ? "not verified" : "-"), detail: payload.runtime || call.status || "-" },
+          ],
+        }));
+      }
+
+      function renderVoiceCallMetrics(payload) {
+        const metrics = payload?.metrics || payload || {};
+        renderSummaryCard("voice-call-metrics", "No voice call metrics loaded yet.", buildSummaryMarkup({
+          kicker: "Voice Call Metrics",
+          title: `${metrics.total ?? 0} call(s)`,
+          copy: `${metrics.active ?? 0} active, ${metrics.stale ?? 0} stale, ${metrics.ended ?? 0} ended.`,
+          stats: [
+            { label: "Reconnects", value: String(metrics.reconnects ?? 0), detail: `${metrics.reaped ?? 0} reaped` },
+            { label: "Greeting Audio", value: String(metrics.with_greeting_audio ?? 0), detail: `${metrics.with_start_hook_output ?? 0} start hook(s)` },
+            { label: "Hook Outputs", value: String(metrics.with_end_hook_output ?? 0), detail: `${metrics.with_reconnect_hook_output ?? 0} reconnect hook(s)` },
+          ],
+        }));
+      }
+
+      function renderVoiceCallEvents(payload) {
+        const rows = (payload?.events || []).map((event) => `<tr>
+          <td><strong>${escapeHtml(humanizeStatusLabel(event.kind || "-"))}</strong><div class="muted">${escapeHtml(event.call_id || "-")}</div></td>
+          <td>${escapeHtml(event.observed_at || "-")}</td>
+          <td>${escapeHtml(event.status || "-")}<div class="muted">${escapeHtml(event.health || "-")}</div></td>
+          <td>${escapeHtml(event.reason || objectPreview(event.details))}</td>
+        </tr>`);
+        renderTableRows("voice-call-events", rows, "No voice call events loaded yet.");
+      }
+
+      function renderVoiceCallArtifacts(payload) {
+        const rows = (payload?.artifacts || []).map((artifact) => `<tr>
+          <td><strong>${escapeHtml(humanizeStatusLabel(artifact.kind || "-"))}</strong></td>
+          <td>${escapeHtml(artifact.observed_at || "-")}</td>
+          <td>${escapeHtml(artifact.path || "-")}</td>
+          <td>${escapeHtml(objectPreview(artifact.output))}</td>
+        </tr>`);
+        renderTableRows("voice-call-artifacts", rows, "No voice call artifacts loaded yet.");
+      }
+
+      function renderMobileAppSessionDetail(payload) {
+        if (!payload || payload.error) {
+          renderSummaryCard("mobile-app-session-detail", payload?.error || "No mobile app session selected.", null);
+          return;
+        }
+
+        const session = payload.session || payload;
+        const events = payload.events || [];
+        const extra = events.length
+          ? `<div class="summary-copy" style="margin-top: 12px">${events.slice(0, 4).map((event) => `${escapeHtml(event.observed_at || "-")} · ${escapeHtml(event.kind || "-")} · ${escapeHtml(objectPreview(event.details, 96))}`).join("<br />")}</div>`
+          : "";
+        renderSummaryCard("mobile-app-session-detail", "No mobile app session selected.", buildSummaryMarkup({
+          kicker: payload.events ? "App Session Events" : "Mobile App Session",
+          title: session.id || "-",
+          copy: `${session.assistant_identity || "-"} on ${session.assistant_surface || "-"} using ${session.assistant_session_model || "-"}.`,
+          stats: [
+            { label: "Status", value: session.status || "-", detail: session.node_id || "-" },
+            { label: "Last Seen", value: session.last_seen_at || "-", detail: session.started_at || "-" },
+            { label: "Runtime", value: session.network || "-", detail: `${session.battery_percent ?? "-"}% battery` },
+            { label: "Entry / Exit", value: session.entry_reason || "-", detail: session.exit_reason || "-" },
+            { label: "Duration", value: `${session.duration_secs ?? "-"}s`, detail: session.ended_at || "-" },
+            { label: "Events", value: String(payload.event_count ?? events.length ?? 0), detail: events[0]?.kind || "-" },
+          ],
+          extra,
+        }));
+      }
+
+      function renderMobileSyncConflictDetail(record) {
+        renderSummaryCard("mobile-sync-conflict-detail", "No mobile sync conflict selected.", buildSummaryMarkup({
+          kicker: "Sync Conflict",
+          title: record?.item_key || "-",
+          copy: record?.summary || record?.details || "No sync-conflict detail recorded.",
+          stats: [
+            { label: "Status", value: record?.status || "-", detail: record?.conflict_type || "-" },
+            { label: "Node", value: record?.node_id || "-", detail: record?.created_at || "-" },
+            { label: "Resolution", value: record?.resolution || "-", detail: record?.resolution_hint || "-" },
+            { label: "Resolved By", value: record?.resolved_by || "-", detail: record?.resolved_at || "-" },
+          ],
+        }));
+      }
+
+      function renderMobileCapabilityExecutionDetail(record) {
+        renderSummaryCard("mobile-capability-execution-detail", "No mobile capability execution selected.", buildSummaryMarkup({
+          kicker: "Capability Execution",
+          title: `${record?.capability || "-"} / ${record?.id || "-"}`,
+          copy: objectPreview(record?.result),
+          stats: [
+            { label: "Status", value: record?.status || "-", detail: record?.node_id || "-" },
+            { label: "Requested By", value: record?.requested_by || "-", detail: record?.created_at || "-" },
+          ],
+        }));
+      }
+
+      function renderMobileMediaArtifactDetail(record) {
+        renderSummaryCard("mobile-media-artifact-detail", "No mobile media artifact selected.", buildSummaryMarkup({
+          kicker: "Media Artifact",
+          title: `${record?.capability || "-"} / ${record?.media_kind || "-"}`,
+          copy: record?.summary || objectPreview(record?.artifact),
+          stats: [
+            { label: "Status", value: record?.status || "-", detail: record?.node_id || "-" },
+            { label: "Mime", value: record?.mime || "-", detail: record?.created_at || "-" },
+            { label: "Execution", value: record?.execution_id || "-", detail: record?.requested_by || "-" },
+          ],
+        }));
+      }
+
+      function renderMobileNotificationDetail(record) {
+        renderSummaryCard("mobile-notification-detail", "No mobile notification selected.", buildSummaryMarkup({
+          kicker: "Notification",
+          title: record?.title || "-",
+          copy: record?.body || objectPreview(record?.preview),
+          stats: [
+            { label: "Status", value: record?.status || "-", detail: record?.node_id || "-" },
+            { label: "Priority", value: record?.priority || "-", detail: record?.notification_type || "-" },
+            { label: "Dispatch", value: record?.dispatched_at || "-", detail: record?.created_at || "-" },
+            { label: "Acknowledge", value: record?.acknowledged_by || "-", detail: record?.acknowledged_at || "-" },
+            { label: "Command", value: record?.command_id || "-", detail: objectPreview(record?.data, 96) },
+          ],
+        }));
+      }
+
+      function renderMobileInboxDetail(record) {
+        renderSummaryCard("mobile-inbox-detail", "No mobile inbox message selected.", buildSummaryMarkup({
+          kicker: "Inbox Message",
+          title: `${record?.source || "-"} → ${record?.target || "-"}`,
+          copy: record?.content_preview || objectPreview(record?.preview),
+          stats: [
+            { label: "Status", value: record?.status || "-", detail: record?.node_id || "-" },
+            { label: "Content Type", value: record?.content_type || "-", detail: `${record?.bytes ?? 0} bytes` },
+            { label: "Reported", value: record?.reported_at || "-", detail: record?.created_at || "-" },
+            { label: "Acknowledge", value: record?.acknowledged_by || "-", detail: record?.acknowledged_at || "-" },
+          ],
+        }));
+      }
+
+      function renderMobileOutboxDetail(record) {
+        renderSummaryCard("mobile-outbox-detail", "No mobile outbound message selected.", buildSummaryMarkup({
+          kicker: "Outbound Message",
+          title: `${record?.node_id || "-"} → ${record?.target || "-"}`,
+          copy: record?.content_preview || objectPreview(record?.preview),
+          stats: [
+            { label: "Status", value: record?.status || "-", detail: record?.command_id || "-" },
+            { label: "Content Type", value: record?.content_type || "-", detail: `${record?.bytes ?? 0} bytes` },
+            { label: "Dispatch", value: record?.dispatched_at || "-", detail: record?.created_at || "-" },
+            { label: "Acknowledge", value: record?.acknowledged_by || "-", detail: record?.acknowledged_at || "-" },
+          ],
+        }));
+      }
+
+      function renderMobileCommandDetail(record) {
+        renderSummaryCard("mobile-command-detail", "No mobile command selected.", buildSummaryMarkup({
+          kicker: "Mobile Command",
+          title: `${record?.command || "-"} / ${record?.id || "-"}`,
+          copy: `Capability ${record?.required_capability || "-"}${record?.decided_reason ? `; ${record.decided_reason}` : ""}`,
+          stats: [
+            { label: "Status", value: record?.status || "-", detail: record?.node_id || "-" },
+            { label: "Approval", value: record?.approval_required ? "required" : "not required", detail: record?.approved_by || "-" },
+            { label: "Created", value: record?.created_at || "-", detail: record?.approved_at || "-" },
+            { label: "Executed", value: record?.executed_at || "-", detail: objectPreview(record?.payload, 96) },
+            { label: "Result", value: objectPreview(record?.result, 48), detail: "-" },
+          ],
+        }));
+      }
+
+      function renderMobileCommandEvents(payload) {
+        const rows = (payload?.events || []).map((event) => `<tr>
+          <td>${escapeHtml(String(event.index ?? "-"))}</td>
+          <td><strong>${escapeHtml(humanizeStatusLabel(event.kind || "-"))}</strong></td>
+          <td>${escapeHtml(event.observed_at || "-")}</td>
+          <td>${escapeHtml(event.summary || "-")}</td>
+        </tr>`);
+        renderTableRows("mobile-command-events-detail", rows, "No mobile command events loaded yet.");
       }
 
       function controlHeaders(extraHeaders = {}) {
@@ -2499,21 +2786,21 @@
         if (skills.length && !currentSkillName) {
           await inspectSkill(skills[0].name);
         } else if (!skills.length) {
-          setText("skill-detail", "No installed extension selected.");
+          renderSummaryCard("skill-detail", "No installed extension selected.", null);
         }
       }
 
       async function inspectSkill(name) {
         currentSkillName = name;
         const payload = await fetchJson(`/control/skills/${encodeURIComponent(name)}`);
-        setText("skill-detail", payload);
+        renderSkillDetail(payload);
       }
 
       async function compileSkill(name) {
         const payload = await fetchJson(`/control/skills/${encodeURIComponent(name)}/compile`, {
           method: "POST",
         });
-        setText("skill-detail", payload);
+        renderSkillDetail(payload);
         await inspectSkill(name);
       }
 
@@ -2531,7 +2818,7 @@
             detail,
           }),
         });
-        setText("skill-detail", payload);
+        renderSkillDetail(payload);
       }
 
       async function executeCurrentSkill() {
@@ -2547,7 +2834,7 @@
             input: input || null,
           }),
         });
-        setText("skill-detail", payload);
+        renderSkillDetail(payload);
       }
 
       async function scheduleCurrentSkillBackground() {
@@ -2567,7 +2854,7 @@
             every_seconds: everySeconds ? Number(everySeconds) : null,
           }),
         });
-        setText("skill-detail", payload);
+        renderSkillDetail(payload);
       }
 
       async function bindCurrentSkillChannelExtension() {
@@ -2591,7 +2878,7 @@
             trigger,
           }),
         });
-        setText("skill-detail", payload);
+        renderSkillDetail(payload);
       }
 
       async function bindCurrentSkillAuthPlugin() {
@@ -2619,7 +2906,7 @@
             scopes: scopes || null,
           }),
         });
-        setText("skill-detail", payload);
+        renderSkillDetail(payload);
         await inspectSkill(currentSkillName);
       }
 
@@ -2635,7 +2922,7 @@
             redirect_uri: redirectUri || null,
           }),
         });
-        setText("skill-detail", payload);
+        renderSkillDetail(payload);
         if (payload.authorization_url) {
           window.open(payload.authorization_url, "_blank", "noopener,noreferrer");
         }
@@ -2664,7 +2951,7 @@
             default_voice: defaultVoice || null,
           }),
         });
-        setText("skill-detail", payload);
+        renderSkillDetail(payload);
         await inspectSkill(currentSkillName);
       }
 
@@ -2687,7 +2974,7 @@
             stale_after_secs: staleAfterSecs ? Number(staleAfterSecs) : null,
           }),
         });
-        setText("skill-detail", payload);
+        renderSkillDetail(payload);
         if (payload.call && payload.call.call_id) {
           document.getElementById("skill-voice-call-id").value = payload.call.call_id;
         }
@@ -2707,22 +2994,22 @@
             voice: defaultVoice || null,
           }),
         });
-        setText("skill-detail", payload);
+        renderSkillDetail(payload);
       }
 
       async function loadVoiceCalls() {
         const payload = await fetchJson("/control/skills/voice-calls");
-        setText("skill-detail", payload);
+        renderSkillDetail(payload);
       }
 
       async function loadVoiceCallHealth() {
         const payload = await fetchJson("/control/skills/voice-calls/health");
-        setText("skill-detail", payload);
+        renderSkillDetail(payload);
       }
 
       async function loadVoiceCallMetrics() {
         const payload = await fetchJson("/control/skills/voice-calls/metrics");
-        setText("voice-call-metrics", payload);
+        renderVoiceCallMetrics(payload);
       }
 
       async function loadVoiceCallEvents() {
@@ -2731,7 +3018,7 @@
           throw new Error("Enter a voice call id first");
         }
         const payload = await fetchJson(`/control/skills/voice-calls/${encodeURIComponent(callId)}/events`);
-        setText("voice-call-events", payload);
+        renderVoiceCallEvents(payload);
       }
 
       async function loadVoiceCallArtifacts() {
@@ -2740,7 +3027,7 @@
           throw new Error("Enter a voice call id first");
         }
         const payload = await fetchJson(`/control/skills/voice-calls/${encodeURIComponent(callId)}/artifacts`);
-        setText("voice-call-artifacts", payload);
+        renderVoiceCallArtifacts(payload);
       }
 
       async function reapVoiceCalls() {
@@ -2751,7 +3038,7 @@
             stale_after_secs: staleAfterSecs ? Number(staleAfterSecs) : null,
           }),
         });
-        setText("skill-detail", payload);
+        renderSkillDetail(payload);
       }
 
       async function endCurrentVoiceCall() {
@@ -2766,7 +3053,7 @@
             reason: reason || null,
           }),
         });
-        setText("skill-detail", payload);
+        renderSkillDetail(payload);
       }
 
       async function reconnectCurrentVoiceCall() {
@@ -2787,7 +3074,7 @@
             stale_after_secs: staleAfterSecs ? Number(staleAfterSecs) : null,
           }),
         });
-        setText("skill-detail", payload);
+        renderSkillDetail(payload);
       }
 
       async function loadSkillCatalog(mode = "popular") {
@@ -2835,7 +3122,7 @@
           method: "POST",
           body: JSON.stringify({ name }),
         });
-        setText("skill-detail", result);
+        renderSkillDetail(result);
         await loadInstalledSkills();
         document.getElementById("skill-install-name").value = "";
       }
@@ -2844,7 +3131,7 @@
         const result = await fetchJson(`/control/skills/${encodeURIComponent(name)}/${action}`, {
           method: "POST",
         });
-        setText("skill-detail", result);
+        renderSkillDetail(result);
         if (action === "uninstall") {
           if (currentSkillName === name) {
             currentSkillName = null;
@@ -2922,10 +3209,14 @@
           setText("mobile-node-detail", "No mobile node selected.");
           renderTableRows("mobile-node-signals", [], "Select a mobile node to inspect.");
           renderTableRows("mobile-node-activity-table", [], "No mobile activity loaded yet.");
-          setText("mobile-app-session-detail", "No mobile app session selected.");
+          renderSummaryCard("mobile-app-session-detail", "No mobile app session selected.", null);
           setText("mobile-node-pairings", "No mobile pairing history loaded yet.");
-          setText("mobile-capability-execution-detail", "No mobile capability execution selected.");
-          setText("mobile-media-artifact-detail", "No mobile media artifact selected.");
+          renderSummaryCard("mobile-sync-conflict-detail", "No mobile sync conflict selected.", null);
+          renderSummaryCard("mobile-capability-execution-detail", "No mobile capability execution selected.", null);
+          renderSummaryCard("mobile-media-artifact-detail", "No mobile media artifact selected.", null);
+          renderSummaryCard("mobile-notification-detail", "No mobile notification selected.", null);
+          renderSummaryCard("mobile-inbox-detail", "No mobile inbox message selected.", null);
+          renderSummaryCard("mobile-outbox-detail", "No mobile outbound message selected.", null);
         }
       }
 
@@ -3003,8 +3294,8 @@
         renderMobileNodeReport(report);
         setText("mobile-node-capabilities", capabilities);
         setText("mobile-node-pairings", pairings);
-        setText("mobile-sync-conflict-detail", conflicts);
-        setText("mobile-app-session-detail", appSessions);
+        renderSummaryCard("mobile-sync-conflict-detail", "No mobile sync conflict selected.", null);
+        renderSummaryCard("mobile-app-session-detail", "No mobile app session selected.", null);
         document.getElementById("mobile-source-node").value = id;
         document.getElementById("mobile-command-node").value = id;
         document.getElementById("mobile-runtime-app-state").value = report.runtime?.app_state || "";
@@ -3061,20 +3352,20 @@
         if (sessions.length) {
           await inspectMobileAppSession(sessions[0].id);
         } else {
-          setText("mobile-app-session-detail", "No mobile app session selected.");
+          renderSummaryCard("mobile-app-session-detail", "No mobile app session selected.", null);
         }
       }
 
       async function inspectMobileAppSession(id) {
         currentMobileAppSessionId = id;
         const payload = await fetchJson(`/control/mobile/app-sessions/${encodeURIComponent(id)}`);
-        setText("mobile-app-session-detail", payload);
+        renderMobileAppSessionDetail(payload);
       }
 
       async function inspectMobileAppSessionEvents(id) {
         currentMobileAppSessionId = id;
         const payload = await fetchJson(`/control/mobile/app-sessions/${encodeURIComponent(id)}/events`);
-        setText("mobile-app-session-detail", payload);
+        renderMobileAppSessionDetail(payload);
       }
 
       async function loadMobilePairings(idOverride = null) {
@@ -3179,11 +3470,14 @@
         setText("mobile-node-push", "No mobile push state loaded yet.");
         setText("mobile-node-sync", "No mobile sync state loaded yet.");
         setText("mobile-node-capabilities", "No mobile capabilities loaded yet.");
-        setText("mobile-node-activity", "No mobile activity loaded yet.");
-        setText("mobile-app-session-detail", "No mobile app session selected.");
-        setText("mobile-sync-conflict-detail", "No mobile sync conflict selected.");
-        setText("mobile-capability-execution-detail", "No mobile capability execution selected.");
-        setText("mobile-media-artifact-detail", "No mobile media artifact selected.");
+        renderTableRows("mobile-node-activity-table", [], "No mobile activity loaded yet.");
+        renderSummaryCard("mobile-app-session-detail", "No mobile app session selected.", null);
+        renderSummaryCard("mobile-sync-conflict-detail", "No mobile sync conflict selected.", null);
+        renderSummaryCard("mobile-capability-execution-detail", "No mobile capability execution selected.", null);
+        renderSummaryCard("mobile-media-artifact-detail", "No mobile media artifact selected.", null);
+        renderSummaryCard("mobile-notification-detail", "No mobile notification selected.", null);
+        renderSummaryCard("mobile-inbox-detail", "No mobile inbox message selected.", null);
+        renderSummaryCard("mobile-outbox-detail", "No mobile outbound message selected.", null);
         await loadMobilePairings(id);
         await loadMobileNodes();
       }
@@ -3207,13 +3501,13 @@
         if (conflicts.length) {
           await inspectMobileSyncConflict(conflicts[0].id);
         } else {
-          setText("mobile-sync-conflict-detail", "No mobile sync conflict selected.");
+          renderSummaryCard("mobile-sync-conflict-detail", "No mobile sync conflict selected.", null);
         }
       }
 
       async function inspectMobileSyncConflict(id) {
         const payload = await fetchJson(`/control/mobile/sync-conflicts/${encodeURIComponent(id)}`);
-        setText("mobile-sync-conflict-detail", payload);
+        renderMobileSyncConflictDetail(payload);
       }
 
       async function reportMobileSyncConflict() {
@@ -3228,7 +3522,7 @@
             resolution_hint: emptyToNull(document.getElementById("mobile-sync-conflict-resolution").value),
           }),
         });
-        setText("mobile-sync-conflict-detail", result);
+        renderMobileSyncConflictDetail(result);
         await loadMobileSyncConflicts(nodeId);
         await inspectMobileNode(nodeId);
       }
@@ -3241,7 +3535,7 @@
             resolution: emptyToNull(document.getElementById("mobile-sync-conflict-resolution").value),
           }),
         });
-        setText("mobile-sync-conflict-detail", result);
+        renderMobileSyncConflictDetail(result);
         const nodeId = document.getElementById("mobile-source-node").value.trim();
         await loadMobileSyncConflicts(nodeId);
         await inspectMobileNode(nodeId);
@@ -3289,13 +3583,13 @@
         if (notifications.length) {
           await inspectMobileNotification(notifications[0].id);
         } else {
-          setText("mobile-notification-detail", "No mobile notification selected.");
+          renderSummaryCard("mobile-notification-detail", "No mobile notification selected.", null);
         }
       }
 
       async function inspectMobileNotification(id) {
         const payload = await fetchJson(`/control/mobile/notifications/${encodeURIComponent(id)}`);
-        setText("mobile-notification-detail", payload);
+        renderMobileNotificationDetail(payload);
       }
 
       async function sendMobileNotification() {
@@ -3308,7 +3602,7 @@
             requested_by: "control_ui",
           }),
         });
-        setText("mobile-notification-detail", result);
+        renderMobileNotificationDetail(result);
         await loadMobileNotifications(document.getElementById("mobile-source-node").value.trim());
         await inspectMobileNode(document.getElementById("mobile-source-node").value.trim());
       }
@@ -3320,7 +3614,7 @@
             acknowledged_by: "control_ui",
           }),
         });
-        setText("mobile-notification-detail", result);
+        renderMobileNotificationDetail(result);
         await loadMobileNotifications(document.getElementById("mobile-source-node").value.trim());
         await inspectMobileNode(document.getElementById("mobile-source-node").value.trim());
       }
@@ -3344,13 +3638,13 @@
         if (messages.length) {
           await inspectMobileInboxMessage(messages[0].id);
         } else {
-          setText("mobile-inbox-detail", "No mobile inbox message selected.");
+          renderSummaryCard("mobile-inbox-detail", "No mobile inbox message selected.", null);
         }
       }
 
       async function inspectMobileInboxMessage(id) {
         const payload = await fetchJson(`/control/mobile/inbox/${encodeURIComponent(id)}`);
-        setText("mobile-inbox-detail", payload);
+        renderMobileInboxDetail(payload);
       }
 
       async function reportMobileInboxMessage() {
@@ -3368,7 +3662,7 @@
             },
           }),
         });
-        setText("mobile-inbox-detail", result);
+        renderMobileInboxDetail(result);
         await loadMobileInbox(nodeId);
         await inspectMobileNode(nodeId);
       }
@@ -3380,7 +3674,7 @@
             acknowledged_by: "control_ui",
           }),
         });
-        setText("mobile-inbox-detail", result);
+        renderMobileInboxDetail(result);
         await loadMobileInbox(document.getElementById("mobile-source-node").value.trim());
         await inspectMobileNode(document.getElementById("mobile-source-node").value.trim());
       }
@@ -3404,13 +3698,13 @@
         if (messages.length) {
           await inspectMobileOutboxMessage(messages[0].id);
         } else {
-          setText("mobile-outbox-detail", "No mobile outbound message selected.");
+          renderSummaryCard("mobile-outbox-detail", "No mobile outbound message selected.", null);
         }
       }
 
       async function inspectMobileOutboxMessage(id) {
         const payload = await fetchJson(`/control/mobile/outbox/${encodeURIComponent(id)}`);
-        setText("mobile-outbox-detail", payload);
+        renderMobileOutboxDetail(payload);
       }
 
       async function sendMobileOutboundMessage() {
@@ -3428,7 +3722,7 @@
             },
           }),
         });
-        setText("mobile-outbox-detail", result);
+        renderMobileOutboxDetail(result);
         await loadMobileOutbox(nodeId);
         await inspectMobileNode(nodeId);
       }
@@ -3440,7 +3734,7 @@
             acknowledged_by: "control_ui",
           }),
         });
-        setText("mobile-outbox-detail", result);
+        renderMobileOutboxDetail(result);
         await loadMobileOutbox(document.getElementById("mobile-source-node").value.trim());
         await inspectMobileNode(document.getElementById("mobile-source-node").value.trim());
       }
@@ -3494,7 +3788,7 @@
           }),
         });
         setText("mobile-preview-result", result);
-        setText("mobile-capability-execution-detail", result);
+        renderMobileCapabilityExecutionDetail(result);
         await loadMobileCapabilityExecutions(nodeId);
         await loadMobileMediaArtifacts(nodeId);
         await inspectMobileNode(nodeId);
@@ -3518,13 +3812,13 @@
         if (executions.length) {
           await inspectMobileCapabilityExecution(executions[0].id);
         } else {
-          setText("mobile-capability-execution-detail", "No mobile capability execution selected.");
+          renderSummaryCard("mobile-capability-execution-detail", "No mobile capability execution selected.", null);
         }
       }
 
       async function inspectMobileCapabilityExecution(id) {
         const payload = await fetchJson(`/control/mobile/capabilities/executions/${encodeURIComponent(id)}`);
-        setText("mobile-capability-execution-detail", payload);
+        renderMobileCapabilityExecutionDetail(payload);
       }
 
       async function loadMobileMediaArtifacts(nodeIdOverride = null) {
@@ -3545,13 +3839,13 @@
         if (artifacts.length) {
           await inspectMobileMediaArtifact(artifacts[0].id);
         } else {
-          setText("mobile-media-artifact-detail", "No mobile media artifact selected.");
+          renderSummaryCard("mobile-media-artifact-detail", "No mobile media artifact selected.", null);
         }
       }
 
       async function inspectMobileMediaArtifact(id) {
         const payload = await fetchJson(`/control/mobile/media-artifacts/${encodeURIComponent(id)}`);
-        setText("mobile-media-artifact-detail", payload);
+        renderMobileMediaArtifactDetail(payload);
       }
 
       async function loadMobileCommands() {
@@ -3574,16 +3868,16 @@
         if (commands.length) {
           await inspectMobileCommand(commands[0].id);
         } else {
-          setText("mobile-command-detail", "No mobile command selected.");
-          setText("mobile-command-events-detail", "No mobile command events loaded yet.");
+          renderSummaryCard("mobile-command-detail", "No mobile command selected.", null);
+          renderTableRows("mobile-command-events-detail", [], "No mobile command events loaded yet.");
         }
       }
 
       async function inspectMobileCommand(id) {
         const payload = await fetchJson(`/control/mobile/commands/${encodeURIComponent(id)}`);
-        setText("mobile-command-detail", payload);
+        renderMobileCommandDetail(payload);
         const events = await fetchJson(`/control/mobile/commands/${encodeURIComponent(id)}/events`);
-        setText("mobile-command-events-detail", events);
+        renderMobileCommandEvents(events);
       }
 
       async function loadMobileCommandMetrics() {
@@ -3606,7 +3900,7 @@
             approved_by: emptyToNull(document.getElementById("mobile-command-approved-by").value),
           }),
         });
-        setText("mobile-command-detail", result);
+        renderMobileCommandDetail(result);
         await loadMobileCommands();
       }
 
@@ -3618,7 +3912,7 @@
             reason: "approved from control ui",
           }),
         });
-        setText("mobile-command-detail", result);
+        renderMobileCommandDetail(result);
         await loadMobileCommands();
       }
 
@@ -3630,7 +3924,7 @@
             reason: "rejected from control ui",
           }),
         });
-        setText("mobile-command-detail", result);
+        renderMobileCommandDetail(result);
         await loadMobileCommands();
       }
 
@@ -4708,7 +5002,7 @@
         try {
           await loadMobileActivity();
         } catch (error) {
-          setText("mobile-node-activity", { error: error.message });
+          renderTableRows("mobile-node-activity-table", [], error.message);
         }
       });
       document.getElementById("mobile-app-session-metrics-refresh").addEventListener("click", async () => {
@@ -4722,14 +5016,14 @@
         try {
           await loadMobileAppSessions();
         } catch (error) {
-          setText("mobile-app-session-detail", { error: error.message });
+          renderSummaryCard("mobile-app-session-detail", error.message, null);
         }
       });
       document.getElementById("mobile-app-sessions-refresh-2").addEventListener("click", async () => {
         try {
           await loadMobileAppSessions();
         } catch (error) {
-          setText("mobile-app-session-detail", { error: error.message });
+          renderSummaryCard("mobile-app-session-detail", error.message, null);
         }
       });
       document.getElementById("mobile-app-session-events-refresh").addEventListener("click", async () => {
@@ -4739,7 +5033,7 @@
           }
           await inspectMobileAppSessionEvents(currentMobileAppSessionId);
         } catch (error) {
-          setText("mobile-app-session-detail", { error: error.message });
+          renderSummaryCard("mobile-app-session-detail", error.message, null);
         }
       });
       document.getElementById("mobile-pairings-refresh").addEventListener("click", async () => {
@@ -4774,42 +5068,42 @@
         try {
           await reportMobileSyncConflict();
         } catch (error) {
-          setText("mobile-sync-conflict-detail", { error: error.message });
+          renderSummaryCard("mobile-sync-conflict-detail", error.message, null);
         }
       });
       document.getElementById("mobile-sync-conflicts-refresh").addEventListener("click", async () => {
         try {
           await loadMobileSyncConflicts();
         } catch (error) {
-          setText("mobile-sync-conflict-detail", { error: error.message });
+          renderSummaryCard("mobile-sync-conflict-detail", error.message, null);
         }
       });
       document.getElementById("mobile-notifications-refresh").addEventListener("click", async () => {
         try {
           await loadMobileNotifications();
         } catch (error) {
-          setText("mobile-notification-detail", { error: error.message });
+          renderSummaryCard("mobile-notification-detail", error.message, null);
         }
       });
       document.getElementById("mobile-inbox-refresh").addEventListener("click", async () => {
         try {
           await loadMobileInbox();
         } catch (error) {
-          setText("mobile-inbox-detail", { error: error.message });
+          renderSummaryCard("mobile-inbox-detail", error.message, null);
         }
       });
       document.getElementById("mobile-outbox-refresh").addEventListener("click", async () => {
         try {
           await loadMobileOutbox();
         } catch (error) {
-          setText("mobile-outbox-detail", { error: error.message });
+          renderSummaryCard("mobile-outbox-detail", error.message, null);
         }
       });
       document.getElementById("mobile-send-notification").addEventListener("click", async () => {
         try {
           await sendMobileNotification();
         } catch (error) {
-          setText("mobile-notification-detail", { error: error.message });
+          renderSummaryCard("mobile-notification-detail", error.message, null);
         }
       });
       document.getElementById("mobile-runtime-wake").addEventListener("click", async () => {
@@ -4837,7 +5131,7 @@
         try {
           await loadMobileCommands();
         } catch (error) {
-          setText("mobile-command-detail", { error: error.message });
+          renderSummaryCard("mobile-command-detail", error.message, null);
         }
       });
       document.getElementById("mobile-command-metrics-refresh").addEventListener("click", async () => {
@@ -4851,7 +5145,7 @@
         try {
           await dispatchMobileCommand();
         } catch (error) {
-          setText("mobile-command-detail", { error: error.message });
+          renderSummaryCard("mobile-command-detail", error.message, null);
         }
       });
       document.getElementById("mobile-preview-message").addEventListener("click", async () => {
@@ -4865,14 +5159,14 @@
         try {
           await sendMobileOutboundMessage();
         } catch (error) {
-          setText("mobile-outbox-detail", { error: error.message });
+          renderSummaryCard("mobile-outbox-detail", error.message, null);
         }
       });
       document.getElementById("mobile-report-message").addEventListener("click", async () => {
         try {
           await reportMobileInboxMessage();
         } catch (error) {
-          setText("mobile-inbox-detail", { error: error.message });
+          renderSummaryCard("mobile-inbox-detail", error.message, null);
         }
       });
       document.getElementById("mobile-preview-notification").addEventListener("click", async () => {
@@ -4900,21 +5194,21 @@
         try {
           await executeMobileCapability();
         } catch (error) {
-          setText("mobile-capability-execution-detail", { error: error.message });
+          renderSummaryCard("mobile-capability-execution-detail", error.message, null);
         }
       });
       document.getElementById("mobile-capability-executions-refresh").addEventListener("click", async () => {
         try {
           await loadMobileCapabilityExecutions();
         } catch (error) {
-          setText("mobile-capability-execution-detail", { error: error.message });
+          renderSummaryCard("mobile-capability-execution-detail", error.message, null);
         }
       });
       document.getElementById("mobile-media-artifacts-refresh").addEventListener("click", async () => {
         try {
           await loadMobileMediaArtifacts();
         } catch (error) {
-          setText("mobile-media-artifact-detail", { error: error.message });
+          renderSummaryCard("mobile-media-artifact-detail", error.message, null);
         }
       });
       document.getElementById("logs-refresh").addEventListener("click", async () => {
@@ -4928,161 +5222,161 @@
         try {
           await loadSkillCatalog("search");
         } catch (error) {
-          setText("skill-detail", { error: error.message });
+          renderSummaryCard("skill-detail", error.message, null);
         }
       });
       document.getElementById("skills-popular").addEventListener("click", async () => {
         try {
           await loadSkillCatalog("popular");
         } catch (error) {
-          setText("skill-detail", { error: error.message });
+          renderSummaryCard("skill-detail", error.message, null);
         }
       });
       document.getElementById("skills-trending").addEventListener("click", async () => {
         try {
           await loadSkillCatalog("trending");
         } catch (error) {
-          setText("skill-detail", { error: error.message });
+          renderSummaryCard("skill-detail", error.message, null);
         }
       });
       document.getElementById("skills-install").addEventListener("click", async () => {
         try {
           await installSkill();
         } catch (error) {
-          setText("skill-detail", { error: error.message });
+          renderSummaryCard("skill-detail", error.message, null);
         }
       });
       document.getElementById("skills-refresh").addEventListener("click", async () => {
         try {
           await loadInstalledSkills();
         } catch (error) {
-          setText("skill-detail", { error: error.message });
+          renderSummaryCard("skill-detail", error.message, null);
         }
       });
       document.getElementById("skill-invoke").addEventListener("click", async () => {
         try {
           await invokeCurrentSkill(false);
         } catch (error) {
-          setText("skill-detail", { error: error.message });
+          renderSummaryCard("skill-detail", error.message, null);
         }
       });
       document.getElementById("skill-invoke-detail").addEventListener("click", async () => {
         try {
           await invokeCurrentSkill(true);
         } catch (error) {
-          setText("skill-detail", { error: error.message });
+          renderSummaryCard("skill-detail", error.message, null);
         }
       });
       document.getElementById("skill-execute").addEventListener("click", async () => {
         try {
           await executeCurrentSkill();
         } catch (error) {
-          setText("skill-detail", { error: error.message });
+          renderSummaryCard("skill-detail", error.message, null);
         }
       });
       document.getElementById("skill-background-schedule").addEventListener("click", async () => {
         try {
           await scheduleCurrentSkillBackground();
         } catch (error) {
-          setText("skill-detail", { error: error.message });
+          renderSummaryCard("skill-detail", error.message, null);
         }
       });
       document.getElementById("skill-channel-bind").addEventListener("click", async () => {
         try {
           await bindCurrentSkillChannelExtension();
         } catch (error) {
-          setText("skill-detail", { error: error.message });
+          renderSummaryCard("skill-detail", error.message, null);
         }
       });
       document.getElementById("skill-auth-bind").addEventListener("click", async () => {
         try {
           await bindCurrentSkillAuthPlugin();
         } catch (error) {
-          setText("skill-detail", { error: error.message });
+          renderSummaryCard("skill-detail", error.message, null);
         }
       });
       document.getElementById("skill-auth-authorize").addEventListener("click", async () => {
         try {
           await authorizeCurrentSkillAuthPlugin();
         } catch (error) {
-          setText("skill-detail", { error: error.message });
+          renderSummaryCard("skill-detail", error.message, null);
         }
       });
       document.getElementById("skill-voice-bind").addEventListener("click", async () => {
         try {
           await bindCurrentSkillVoicePlugin();
         } catch (error) {
-          setText("skill-detail", { error: error.message });
+          renderSummaryCard("skill-detail", error.message, null);
         }
       });
       document.getElementById("skill-voice-prewarm").addEventListener("click", async () => {
         try {
           await prewarmCurrentVoicePlugin();
         } catch (error) {
-          setText("skill-detail", { error: error.message });
+          renderSummaryCard("skill-detail", error.message, null);
         }
       });
       document.getElementById("skill-voice-start").addEventListener("click", async () => {
         try {
           await startCurrentVoiceCall();
         } catch (error) {
-          setText("skill-detail", { error: error.message });
+          renderSummaryCard("skill-detail", error.message, null);
         }
       });
       document.getElementById("skill-voice-list").addEventListener("click", async () => {
         try {
           await loadVoiceCalls();
         } catch (error) {
-          setText("skill-detail", { error: error.message });
+          renderSummaryCard("skill-detail", error.message, null);
         }
       });
       document.getElementById("skill-voice-health").addEventListener("click", async () => {
         try {
           await loadVoiceCallHealth();
         } catch (error) {
-          setText("skill-detail", { error: error.message });
+          renderSummaryCard("skill-detail", error.message, null);
         }
       });
       document.getElementById("skill-voice-metrics").addEventListener("click", async () => {
         try {
           await loadVoiceCallMetrics();
         } catch (error) {
-          setText("voice-call-metrics", { error: error.message });
+          renderSummaryCard("voice-call-metrics", error.message, null);
         }
       });
       document.getElementById("skill-voice-events").addEventListener("click", async () => {
         try {
           await loadVoiceCallEvents();
         } catch (error) {
-          setText("voice-call-events", { error: error.message });
+          renderTableRows("voice-call-events", [], error.message);
         }
       });
       document.getElementById("skill-voice-artifacts").addEventListener("click", async () => {
         try {
           await loadVoiceCallArtifacts();
         } catch (error) {
-          setText("voice-call-artifacts", { error: error.message });
+          renderTableRows("voice-call-artifacts", [], error.message);
         }
       });
       document.getElementById("skill-voice-reap").addEventListener("click", async () => {
         try {
           await reapVoiceCalls();
         } catch (error) {
-          setText("skill-detail", { error: error.message });
+          renderSummaryCard("skill-detail", error.message, null);
         }
       });
       document.getElementById("skill-voice-reconnect").addEventListener("click", async () => {
         try {
           await reconnectCurrentVoiceCall();
         } catch (error) {
-          setText("skill-detail", { error: error.message });
+          renderSummaryCard("skill-detail", error.message, null);
         }
       });
       document.getElementById("skill-voice-end").addEventListener("click", async () => {
         try {
           await endCurrentVoiceCall();
         } catch (error) {
-          setText("skill-detail", { error: error.message });
+          renderSummaryCard("skill-detail", error.message, null);
         }
       });
       document.getElementById("lesson-create").addEventListener("click", async () => {

@@ -93,6 +93,18 @@ mod tests {
     }
 
     #[test]
+    fn dashboard_includes_skill_and_mobile_detail_renderers() {
+        assert!(CONTROL_UI_HTML.contains("id=\"voice-call-events\""));
+        assert!(CONTROL_UI_HTML.contains("function renderSkillDetail"));
+        assert!(CONTROL_UI_HTML.contains("function renderVoiceCallMetrics"));
+        assert!(CONTROL_UI_HTML.contains("id=\"mobile-command-events-detail\""));
+        assert!(CONTROL_UI_HTML.contains("function renderMobileAppSessionDetail"));
+        assert!(CONTROL_UI_HTML.contains("function renderMobileSyncConflictDetail"));
+        assert!(CONTROL_UI_HTML.contains("function renderMobileCommandDetail"));
+        assert!(CONTROL_UI_HTML.contains("function renderMobileCommandEvents"));
+    }
+
+    #[test]
     fn dashboard_includes_enterprise_foundations_panel() {
         assert!(CONTROL_UI_HTML.contains("enterprise-foundations"));
         assert!(CONTROL_UI_HTML.contains("function loadEnterpriseFoundations"));
