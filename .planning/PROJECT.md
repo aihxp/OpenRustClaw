@@ -2,7 +2,7 @@
 
 ## What This Is
 
-OpenRustClaw is a Rust-first OpenClaw-style assistant platform with shipped v1.0 through v1.4 milestones. It now has a coherent production-ready baseline across onboarding, assistant continuity, memory policy, tool and coding evidence, communications, runtime operations, security posture, release exit, milestone verification integrity, materially deeper operator parity across browser, orchestration, mobile, Control UI, and voice or call handling surfaces, plus an enterprise-first foundation for scoped operator identity, policy, audit export, supervised autonomy, governance, and an operator-gated full-autonomy lane with a shipped control surface.
+OpenRustClaw is a self-hosted open-source Rust-first OpenClaw-style assistant platform with shipped v1.0 through v1.4 milestones. It now has a coherent production-ready baseline across onboarding, assistant continuity, memory policy, tool and coding evidence, communications, runtime operations, security posture, release exit, milestone verification integrity, materially deeper operator parity across browser, orchestration, mobile, Control UI, and voice or call handling surfaces, plus an enterprise-first foundation for scoped operator identity, policy, audit export, supervised autonomy, governance, and an operator-gated full-autonomy lane with a shipped control surface.
 
 The product target remains broader than the MVP: a general-purpose assistant platform that can eventually support coding, communications, business operations, and deeper autonomous workflows. The difference after v1.0 is that the repo now has a believable trust baseline instead of a wide but loosely connected surface.
 
@@ -14,14 +14,18 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 - **Shipped milestones:** v1.0 Rust OpenClaw MVP and v1.1 Lifecycle Integrity and Enterprise Foundations on 2026-03-26, plus v1.2 Deeper OpenClaw Surface Parity, v1.3 Enterprise Expansion and Supervised Autonomy Foundations, and v1.4 Enterprise Governance and Operator-Gated Full Autonomy on 2026-03-27
 - **Archive:** `.planning/milestones/v1.0-*`, `.planning/milestones/v1.1-*`, `.planning/milestones/v1.2-*`, `.planning/milestones/v1.3-*`, `.planning/milestones/v1.4-*`
-- **Planning state:** no active milestone is open
+- **Planning state:** v1.5 Self-Hosted Product Modes and Lifecycle Packaging is now active
 - **Known audit debt:** v1.0 archive still records missing phase `VERIFICATION.md` artifacts; v1.1 closes that workflow gap going forward
 
-## Most Recent Milestone: v1.4 Enterprise Governance and Operator-Gated Full Autonomy
+## Current Milestone: v1.5 Self-Hosted Product Modes and Lifecycle Packaging
 
-**Result:** Shipped 2026-03-27. The platform now has explicit enterprise governance, retention-aware enterprise audit review, a durable and operator-gated full-autonomy lane, and a shipped dashboard surface for inspecting and controlling that stronger autonomy mode.
+**Goal:** Make OpenRustClaw legible and operable as a self-hosted open-source product for solo users, multi-user teams, companies, and enterprises, with guided initial setup paths and safe upgrade or downgrade flows between those modes.
 
-**Archive:** `.planning/milestones/v1.4-ROADMAP.md`, `.planning/milestones/v1.4-REQUIREMENTS.md`, `.planning/milestones/v1.4-MILESTONE-AUDIT.md`, `.planning/milestones/v1.4-VERIFICATIONS.md`
+**Target features:**
+- explicit self-hosted product modes for solo, multi-user team, company, and enterprise deployments
+- onboarding or first-run setup that branches into mode-specific paths instead of one flat wizard
+- safe upgrade and downgrade flows between deployment modes without hidden data or policy drift
+- docs and shipped control surfaces that consistently frame OpenRustClaw as a self-hosted open-source product
 
 ## Requirements
 
@@ -48,9 +52,10 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 ### Active
 
-- [ ] Expand the enterprise baseline into deeper RBAC, SSO, SCIM, and tenant-aware governance
-- [ ] Broaden supervised and full autonomy into more domains without dropping budgets, approvals, or audit evidence
-- [ ] Continue parity and product depth only in ways that preserve the enterprise and autonomy contract
+- [ ] Make product modes explicit for self-hosted solo, team, company, and enterprise deployments
+- [ ] Add guided onboarding paths that fit the selected deployment mode instead of treating all installs the same
+- [ ] Support safe upgrade and downgrade flows between product modes
+- [ ] Keep self-hosted product framing, onboarding, and mode transitions aligned across docs and shipped control surfaces
 
 ### Out of Scope
 
@@ -63,7 +68,7 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 This remains a large brownfield Rust monorepo with broad runtime, CLI, control-plane, memory, tools, channel, voice, browser, and deployment surfaces. v1.0 converted that breadth into a cleaner MVP by making operator trust visible at the edges that matter, v1.1 hardened the lifecycle and enterprise baseline around that trust, v1.2 deepened the most operator-visible OpenClaw parity surfaces without reopening MVP sprawl, v1.3 turned the first enterprise and supervised-autonomy contracts into a coherent operator loop, and v1.4 extended that loop into explicit governance and operator-gated full autonomy.
 
-The next milestone should build on all five shipped layers rather than reopen foundational debt. Enterprise expansion, broader supervised autonomy, and any deeper parity work should now treat the v1.4 governance and full-autonomy contract as fixed baseline infrastructure.
+The next milestone should build on all five shipped layers rather than reopen foundational debt. Enterprise expansion, broader supervised autonomy, and any deeper parity work should now treat the v1.4 governance and full-autonomy contract as fixed baseline infrastructure, while also making the product legible as one self-hosted open-source offering with clearer deployment paths.
 
 ## Constraints
 
@@ -92,8 +97,8 @@ The next milestone should build on all five shipped layers rather than reopen fo
 
 ## Next Milestone Goals
 
-- Expand the enterprise baseline into deeper organization lifecycle, tenant-awareness, and external identity or compliance controls
-- Broaden supervised and full autonomy into more domains without dropping explicit operator control paths
+- Make the self-hosted product modes and deployment paths explicit from first run onward
+- Add reversible upgrade and downgrade lifecycle support across solo, multi-user team, company, and enterprise modes
 - Preserve the verification/archive contract, enterprise governance baseline, and shipped autonomy control surface as non-negotiable foundations
 
 ## Evolution
@@ -114,4 +119,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-27 after archiving v1.4*
+*Last updated: 2026-03-27 for milestone v1.5*

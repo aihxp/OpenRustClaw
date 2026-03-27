@@ -1,16 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: null
-milestone_name: null
-current_phase: null
-current_phase_name: null
-current_plan: null
-status: No active milestone
-stopped_at: v1.4 archived; start the next milestone with $gsd-new-milestone.
-last_updated: "2026-03-27T19:55:00.000Z"
-last_activity: 2026-03-27 -- v1.4 archived
+milestone: v1.5
+milestone_name: Self-Hosted Product Modes and Lifecycle Packaging
+current_phase: 24
+current_phase_name: Self-Hosted Product Modes and Instance Profile Contract
+current_plan: Not started
+status: Milestone v1.5 planned
+stopped_at: Milestone v1.5 planned; Phase 24 is ready for discuss and planning.
+last_updated: "2026-03-27T20:15:00.000Z"
+last_activity: 2026-03-27 -- Milestone v1.5 started
 progress:
-  total_phases: 0
+  total_phases: 4
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -24,19 +24,19 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-27)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** No active milestone
+**Current focus:** Phase 24 - Self-Hosted Product Modes and Instance Profile Contract
 
 ## Current Position
 
-Current Phase: -
-Current Phase Name: -
-Total Phases: 0
-Current Plan: -
+Current Phase: 24
+Current Phase Name: Self-Hosted Product Modes and Instance Profile Contract
+Total Phases: 4
+Current Plan: Not started
 Total Plans in Phase: 0
-Status: No active milestone
-Last activity: 2026-03-27 -- v1.4 archived
+Status: Milestone v1.5 planned
+Last activity: 2026-03-27 -- Milestone v1.5 started
 
-Phase: 0 of 0
+Phase: 1 of 4 (Self-Hosted Product Modes and Instance Profile Contract)
 Plan: 0 of 0
 Progress: [░░░░░░░░░░] 0%
 
@@ -98,7 +98,7 @@ Recent decisions affecting current work:
 - Phase 21 now adds bounded enterprise audit retention, richer governance and supervision export packaging, and a shipped audit review surface in Control UI.
 - Phase 22 now adds a dedicated enterprise full-autonomy manifest, event ledger, protected enable or disable or kill-switch routes, and typed admin or audit summaries for the stronger autonomy lane.
 - Phase 23 now adds the shipped Control UI operator loop for full-autonomy inspection and control, completing the milestone execution scope.
-- v1.4 is archived; the next milestone has not been defined yet.
+- v1.5 now focuses on explicit self-hosted product modes, differentiated onboarding, and reversible upgrade or downgrade lifecycle paths across solo, multi-user team, company, and enterprise deployments.
 
 ### Pending Todos
 
@@ -111,5 +111,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-27 04:44
-Stopped at: v1.4 archived; start the next milestone with $gsd-new-milestone.
+Stopped at: Milestone v1.5 planned; Phase 24 is ready for discuss and planning.
 Resume file: None
