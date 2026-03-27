@@ -19,7 +19,7 @@ This milestone expands the platform toward enterprise readiness without losing t
 - Integer phases continue across milestones to preserve one linear execution history.
 - Decimal phases are reserved for urgent insertions if roadmap assumptions break.
 
-- [ ] **Phase 16: Enterprise Identity and Access Boundaries** - Add organization-oriented authentication and role-aware control boundaries for sensitive operator actions.
+- [x] **Phase 16: Enterprise Identity and Access Boundaries** - Add organization-oriented authentication and role-aware control boundaries for sensitive operator actions.
 - [ ] **Phase 17: Enterprise Policy and Audit Controls** - Expand policy management and audit evidence into a real enterprise operator surface.
 - [ ] **Phase 18: Supervised Autonomy Escalation and Rollback** - Add explicit escalation, rollback, and operator-intervention semantics for longer-running supervised workflows.
 - [ ] **Phase 19: Enterprise Admin Surface** - Make the new enterprise and supervised-autonomy controls usable from shipped operator surfaces.
@@ -34,10 +34,12 @@ This milestone expands the platform toward enterprise readiness without losing t
   1. Sensitive operator actions no longer assume one shared operator identity.
   2. Role and scope boundaries exist for enterprise-sensitive control-plane actions.
   3. The new access model remains inspectable and compatible with the existing Rust-owned control plane.
-**Plans**: TBD
+**Plans**: 3 complete
 
 Plans:
-- [ ] TBD (run `$gsd-plan-phase 16` to break down)
+- [x] 16-01 Add the enterprise operator registry and access summary
+- [x] 16-02 Enforce scoped operator identity on sensitive control actions
+- [x] 16-03 Surface the enterprise access boundary in Control UI and docs
 
 ### Phase 17: Enterprise Policy and Audit Controls
 **Goal**: Expand policy and audit surfaces so enterprise operators can inspect, configure, and export sensitive-action evidence coherently.
@@ -82,7 +84,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 16. Enterprise Identity and Access Boundaries | 0/TBD | Not started | - |
+| 16. Enterprise Identity and Access Boundaries | 3/3 | Complete | 2026-03-27 |
 | 17. Enterprise Policy and Audit Controls | 0/TBD | Not started | - |
 | 18. Supervised Autonomy Escalation and Rollback | 0/TBD | Not started | - |
 | 19. Enterprise Admin Surface | 0/TBD | Not started | - |
@@ -90,5 +92,5 @@ Plans:
 ## Current Status
 
 - Active milestone: v1.3 Enterprise Expansion and Supervised Autonomy Foundations
-- Next step: `$gsd-discuss-phase 16` or `$gsd-plan-phase 16`
+- Next step: `$gsd-discuss-phase 17` or `$gsd-plan-phase 17`
 - Archived milestone planning artifacts live under `.planning/milestones/`.

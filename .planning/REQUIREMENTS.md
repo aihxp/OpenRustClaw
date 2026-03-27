@@ -7,8 +7,8 @@
 
 ### Enterprise Identity and Access
 
-- [ ] **ENTE-01**: Enterprise operators can authenticate through a first-class organization-oriented access boundary rather than a single shared operator secret.
-- [ ] **ENTE-02**: Role and scope boundaries exist for sensitive control-plane actions so approval-sensitive operations are not implicitly all-powerful.
+- [x] **ENTE-01**: Enterprise operators can authenticate through a first-class organization-oriented access boundary rather than a single shared operator secret. — Phase 16
+- [x] **ENTE-02**: Role and scope boundaries exist for sensitive control-plane actions so approval-sensitive operations are not implicitly all-powerful. — Phase 16
 
 ### Enterprise Policy and Audit
 
@@ -53,8 +53,8 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| ENTE-01 | Phase 16 | Pending |
-| ENTE-02 | Phase 16 | Pending |
+| ENTE-01 | Phase 16 | Passed |
+| ENTE-02 | Phase 16 | Passed |
 | ENTE-03 | Phase 17 | Pending |
 | ENTE-04 | Phase 17 | Pending |
 | AUTO-03 | Phase 18 | Pending |
@@ -68,4 +68,4 @@
 
 ---
 *Requirements defined: 2026-03-27*
-*Last updated: 2026-03-27 at milestone start*
+*Last updated: 2026-03-27 after completing Phase 16*

@@ -41,10 +41,11 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 - ✓ Completed phases now require preserved `VERIFICATION.md` artifacts and milestone archives preserve that evidence truthfully — v1.1
 - ✓ Approval-sensitive assistant actions now expose an enterprise foundations baseline with explicit policy and durable audit evidence — v1.1
 - ✓ Browser, orchestration, mobile, Control UI, and voice or call parity now expose materially deeper typed operator surfaces without weakening the trust-first runtime contract — v1.2
+- ✓ Enterprise access now uses a bootstrapped organization or operator registry plus scoped headers on selected sensitive control actions, with a matching control summary and dashboard surface — v1.3 Phase 16
 
 ### Active
 
-- [ ] Expand enterprise identity, access, policy, and audit capabilities without weakening the existing trust-first runtime contract
+- [ ] Expand enterprise policy and audit capabilities without weakening the existing trust-first runtime contract
 - [ ] Add a supervised-autonomy foundation with explicit escalation, rollback, and operator-intervention semantics
 - [ ] Keep new enterprise and autonomy capabilities operator-usable through one enabling admin/control surface slice
 
@@ -82,6 +83,7 @@ The next milestone should build on all three shipped layers rather than reopen f
 | Prioritize deeper OpenClaw parity through a focused top-five surface slice | Browser depth, supervision, mobile, Control UI, and voice/calls are the clearest next parity gains without scattering effort | ✓ Good |
 | Keep deeper parity work grounded in typed runtime summaries instead of frontend-only stitching | Browser, supervision, mobile, Control UI, and voice parity all landed more cleanly when the Rust-owned control plane aggregated the operator story first | ✓ Good |
 | Sequence enterprise expansion ahead of another broad parity milestone | Identity, policy, audit, and supervised-autonomy controls are now the clearest blockers to enterprise readiness | ✓ Good |
+| Layer enterprise operator identity on top of the existing control auth boundary | The control bearer and trusted-proxy transport boundary already exists, so enterprise identity should narrow sensitive operator actions instead of replacing the outer control contract | ✓ Good |
 
 ## Next Milestone Goals
 
@@ -107,4 +109,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-27 after starting milestone v1.3*
+*Last updated: 2026-03-27 after completing Phase 16 of milestone v1.3*

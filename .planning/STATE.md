@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Enterprise Expansion and Supervised Autonomy Foundations
-current_phase: 16
-current_phase_name: Enterprise Identity and Access Boundaries
+current_phase: 17
+current_phase_name: Enterprise Policy and Audit Controls
 current_plan: Not started
-status: Defining requirements
-stopped_at: Milestone v1.3 started; Phase 16 is ready for discuss and planning.
-last_updated: "2026-03-27T05:01:16Z"
-last_activity: 2026-03-27 -- milestone v1.3 started
+status: Ready to discuss
+stopped_at: Phase 16 complete; Phase 17 is ready for discuss and planning.
+last_updated: "2026-03-27T05:37:03Z"
+last_activity: 2026-03-27 -- Phase 16 completed
 progress:
   total_phases: 4
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  completed_phases: 1
+  total_plans: 3
+  completed_plans: 3
+  percent: 25
 ---
 
 # Project State
@@ -24,21 +24,21 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-27)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** Phase 16 - Enterprise Identity and Access Boundaries
+**Current focus:** Phase 17 — Enterprise Policy and Audit Controls
 
 ## Current Position
 
-Current Phase: 16
-Current Phase Name: Enterprise Identity and Access Boundaries
+Current Phase: 17
+Current Phase Name: Enterprise Policy and Audit Controls
 Total Phases: 4
 Current Plan: Not started
 Total Plans in Phase: 0
-Status: Defining requirements
-Last activity: 2026-03-27 - milestone v1.3 started
+Status: Ready to discuss Phase 17
+Last activity: 2026-03-27 -- Phase 16 completed
 
-Phase: 1 of 4 (Enterprise Identity and Access Boundaries)
+Phase: 2 of 4 (Enterprise Policy and Audit Controls)
 Plan: 0 of 0 in current phase
-Progress: [░░░░░░░░░░] 0%
+Progress: [██░░░░░░░░] 25%
 
 ## Performance Metrics
 
@@ -89,6 +89,7 @@ Recent decisions affecting current work:
 - Phase 14 now replaces the remaining priority raw Control UI panes with typed voice, talk, skill, bounded voice-call, and mobile sub-detail renderers, then closes with matching docs and verification evidence.
 - Phase 15 now adds a typed voice operator report across voice sessions, talk receipts, and bounded voice-call receipts, then surfaces that report in `/control/ui` before closing the v1.2 milestone cleanly.
 - v1.3 now takes an enterprise-first path: identity and access boundaries first, then policy and audit controls, then supervised-autonomy escalation and rollback, then one enabling admin/operator surface.
+- Phase 16 now adds a bootstrapped enterprise organization and operator registry, scoped operator headers for selected sensitive routes, and a dedicated enterprise access panel in Control UI.
 
 ### Pending Todos
 
@@ -100,6 +101,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-27 01:01
-Stopped at: Milestone v1.3 started; Phase 16 is ready for discuss and planning.
+Last session: 2026-03-27 01:37
+Stopped at: Phase 16 complete; Phase 17 is ready for discuss and planning.
 Resume file: None
