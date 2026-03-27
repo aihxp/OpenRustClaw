@@ -44,3 +44,4 @@ mod security_test;
 mod tool_execution_history_test;
 #[cfg(test)]
 mod voice_outcomes_test;
+mod voice_operator_report_test;

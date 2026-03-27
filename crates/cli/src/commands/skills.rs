@@ -2437,8 +2437,7 @@ pub async fn bind_voice_plugin_data(
     })
 }
 
-pub async fn voice_calls_data() -> Result<SkillVoiceCallsResult> {
-    let workspace_root = current_workspace_root()?;
+pub async fn voice_calls_data_for(workspace_root: &Path) -> Result<SkillVoiceCallsResult> {
     let mut registry = load_voice_call_registry(&workspace_root)?;
     let now = Utc::now();
     for call in &mut registry.calls {
@@ -2454,12 +2453,22 @@ pub async fn voice_calls_data() -> Result<SkillVoiceCallsResult> {
     })
 }
 
-pub async fn voice_call_health_data() -> Result<SkillVoiceCallHealthResult> {
-    let result = voice_calls_data().await?;
+pub async fn voice_calls_data() -> Result<SkillVoiceCallsResult> {
+    let workspace_root = current_workspace_root()?;
+    voice_calls_data_for(&workspace_root).await
+}
+
+pub async fn voice_call_health_data_for(workspace_root: &Path) -> Result<SkillVoiceCallHealthResult> {
+    let result = voice_calls_data_for(workspace_root).await?;
     Ok(SkillVoiceCallHealthResult {
         status: "ok".to_string(),
         health: voice_call_health_summary(&result.calls),
     })
+}
+
+pub async fn voice_call_health_data() -> Result<SkillVoiceCallHealthResult> {
+    let workspace_root = current_workspace_root()?;
+    voice_call_health_data_for(&workspace_root).await
 }
 
 pub async fn voice_call_events_data(call_id: &str) -> Result<SkillVoiceCallEventsResult> {
@@ -2492,12 +2501,19 @@ pub async fn voice_call_artifacts_data(call_id: &str) -> Result<SkillVoiceCallAr
     })
 }
 
-pub async fn voice_call_metrics_data() -> Result<SkillVoiceCallMetricsResult> {
-    let result = voice_calls_data().await?;
+pub async fn voice_call_metrics_data_for(
+    workspace_root: &Path,
+) -> Result<SkillVoiceCallMetricsResult> {
+    let result = voice_calls_data_for(workspace_root).await?;
     Ok(SkillVoiceCallMetricsResult {
         status: "ok".to_string(),
         metrics: voice_call_metrics_summary(&result.calls),
     })
+}
+
+pub async fn voice_call_metrics_data() -> Result<SkillVoiceCallMetricsResult> {
+    let workspace_root = current_workspace_root()?;
+    voice_call_metrics_data_for(&workspace_root).await
 }
 
 async fn execute_voice_call_hook(

@@ -2967,6 +2967,10 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
         .route("/control/voice/status", get(voice_status_handler))
         .route("/control/voice/providers", get(voice_providers_handler))
         .route("/control/voice/metrics", get(voice_metrics_handler))
+        .route(
+            "/control/voice/operator-summary",
+            get(voice_operator_report_handler),
+        )
         .route("/control/voice/outcomes", get(voice_outcomes_handler))
         .route("/control/voice/sessions", get(voice_sessions_handler))
         .route(
@@ -5359,6 +5363,34 @@ async fn voice_metrics_handler(State(state): State<RuntimeControlState>) -> impl
         Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn voice_operator_report_handler(
+    State(state): State<RuntimeControlState>,
+    Query(query): Query<inspect::VoiceOperatorReportRequest>,
+) -> impl IntoResponse {
+    match runtime::load_effective_config(&state.config_path, &state.workspace_root) {
+        Ok(config) => match inspect::voice_operator_report_summary(
+            &config,
+            &state.workspace_root,
+            query.limit.unwrap_or(12),
+            query.stale_after_secs,
+        )
+        .await
+        {
+            Ok(summary) => (StatusCode::OK, Json(serde_json::json!(summary))).into_response(),
+            Err(error) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": error.to_string()})),
+            )
+                .into_response(),
+        },
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({"error": error.to_string()})),
         )
             .into_response(),

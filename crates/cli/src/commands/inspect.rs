@@ -1,5 +1,6 @@
 use anyhow::Result;
 use chrono::Utc;
+use openrustclaw_core::config::AppConfig;
 use openrustclaw_core::types::{MemoryEntry, Message};
 use openrustclaw_db::models::MemoryArchiveRow;
 use openrustclaw_db::{
@@ -11,7 +12,7 @@ use std::fs::{self, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 
-use super::{browser, control, mobile};
+use super::{browser, control, mobile, skills, talk, voice_runtime};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct AssistantContinuitySummary {
@@ -162,6 +163,97 @@ pub struct EnterpriseFoundationsReport {
     pub policy: EnterprisePolicyBoundary,
     pub mobile_metrics: mobile::MobileCommandMetricsSummary,
     pub recent_events: Vec<EnterpriseAuditEntry>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct VoiceOperatorReportRequest {
+    #[serde(default)]
+    pub limit: Option<usize>,
+    #[serde(default)]
+    pub stale_after_secs: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct VoiceProviderCoverage {
+    pub stt_total: usize,
+    pub stt_ready: usize,
+    pub tts_total: usize,
+    pub tts_ready: usize,
+    pub catalog_voice_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct VoiceOperatorLaneSummary {
+    pub total_sessions: usize,
+    pub active_sessions: usize,
+    pub ended_sessions: usize,
+    pub stale_sessions: usize,
+    pub paused_sessions: usize,
+    pub attention_needed: usize,
+    pub total_turns: usize,
+    pub total_artifacts: usize,
+    pub avg_turns_per_session: f64,
+    #[serde(default)]
+    pub avg_session_duration_secs: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct TalkOperatorLaneSummary {
+    pub total_sessions: usize,
+    pub active_sessions: usize,
+    pub ended_sessions: usize,
+    pub error_sessions: usize,
+    pub total_turns: usize,
+    pub total_events: usize,
+    pub avg_turns_per_session: f64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct VoiceCallOperatorLaneSummary {
+    pub total_calls: usize,
+    pub active_calls: usize,
+    pub stale_calls: usize,
+    pub ended_calls: usize,
+    pub reaped_calls: usize,
+    pub reconnects: usize,
+    pub with_greeting_audio: usize,
+    #[serde(default)]
+    pub oldest_active_call_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct VoiceOperatorAttentionSignal {
+    pub kind: String,
+    pub severity: String,
+    pub summary: String,
+    pub detail: String,
+    pub route_hint: String,
+    #[serde(default)]
+    pub target_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct VoiceOperatorRecentActivity {
+    pub kind: String,
+    pub observed_at: String,
+    pub status: String,
+    pub label: String,
+    pub detail: String,
+    #[serde(default)]
+    pub target_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct VoiceOperatorReport {
+    pub status: String,
+    pub detail: String,
+    pub voice_status: voice_runtime::VoiceStatus,
+    pub provider_coverage: VoiceProviderCoverage,
+    pub voice_lane: VoiceOperatorLaneSummary,
+    pub talk_lane: TalkOperatorLaneSummary,
+    pub bounded_call_lane: VoiceCallOperatorLaneSummary,
+    pub attention_signals: Vec<VoiceOperatorAttentionSignal>,
+    pub recent_activity: Vec<VoiceOperatorRecentActivity>,
 }
 
 pub async fn list_sessions(
@@ -665,6 +757,130 @@ pub fn enterprise_foundations_summary(
     })
 }
 
+pub async fn voice_operator_report_summary(
+    config: &AppConfig,
+    workspace_root: &Path,
+    limit: usize,
+    stale_after_secs: Option<u64>,
+) -> Result<VoiceOperatorReport> {
+    let limit = limit.max(1);
+    let voice_status = voice_runtime::voice_status(config, workspace_root);
+    let provider_catalog = voice_runtime::voice_provider_catalog(config);
+    let catalog_voice_count = voice_runtime::list_voices_with_config(config, workspace_root)
+        .map(|result| result.voices.len())
+        .unwrap_or(0);
+    let voice_metrics = voice_runtime::voice_metrics(workspace_root).await?;
+    let voice_outcomes =
+        voice_runtime::voice_session_outcomes(workspace_root, stale_after_secs, Some(limit)).await?;
+    let voice_health = voice_runtime::voice_session_health(
+        workspace_root,
+        voice_runtime::VoiceSessionHealthRequest { stale_after_secs },
+    )
+    .await?;
+    let talk_status = talk::runtime_status(workspace_root, limit).await?;
+    let talk_metrics = talk::runtime_metrics_data(workspace_root).await?;
+    let voice_calls = skills::voice_calls_data_for(workspace_root).await?;
+    let voice_call_health = skills::voice_call_health_data_for(workspace_root).await?;
+    let voice_call_metrics = skills::voice_call_metrics_data_for(workspace_root).await?;
+
+    let provider_coverage = VoiceProviderCoverage {
+        stt_total: provider_catalog.stt.len(),
+        stt_ready: provider_catalog
+            .stt
+            .iter()
+            .filter(|provider| provider.api_key_present)
+            .count(),
+        tts_total: provider_catalog.tts.len(),
+        tts_ready: provider_catalog
+            .tts
+            .iter()
+            .filter(|provider| provider.api_key_present)
+            .count(),
+        catalog_voice_count,
+    };
+
+    let voice_lane = VoiceOperatorLaneSummary {
+        total_sessions: voice_metrics.total_sessions,
+        active_sessions: voice_metrics.active_sessions,
+        ended_sessions: voice_metrics.ended_sessions,
+        stale_sessions: voice_health.stale_sessions,
+        paused_sessions: voice_outcomes
+            .outcomes
+            .iter()
+            .filter(|entry| entry.outcome_label == "paused")
+            .count(),
+        attention_needed: voice_outcomes.attention_needed,
+        total_turns: voice_metrics.total_turns,
+        total_artifacts: voice_metrics.total_artifacts,
+        avg_turns_per_session: voice_metrics.avg_turns_per_session,
+        avg_session_duration_secs: voice_metrics.avg_session_duration_secs,
+    };
+
+    let talk_lane = TalkOperatorLaneSummary {
+        total_sessions: talk_metrics.total_sessions,
+        active_sessions: talk_metrics.active_sessions,
+        ended_sessions: talk_metrics.ended_sessions,
+        error_sessions: talk_metrics.error_sessions,
+        total_turns: talk_metrics.total_turns,
+        total_events: talk_metrics.total_events,
+        avg_turns_per_session: talk_metrics.avg_turns_per_session,
+    };
+
+    let bounded_call_lane = VoiceCallOperatorLaneSummary {
+        total_calls: voice_call_metrics.metrics.total,
+        active_calls: voice_call_health.health.active,
+        stale_calls: voice_call_health.health.stale,
+        ended_calls: voice_call_health.health.ended,
+        reaped_calls: voice_call_health.health.reaped,
+        reconnects: voice_call_metrics.metrics.reconnects,
+        with_greeting_audio: voice_call_metrics.metrics.with_greeting_audio,
+        oldest_active_call_id: voice_call_health.health.oldest_active_call_id.clone(),
+    };
+
+    let attention_signals = build_voice_operator_attention_signals(
+        &voice_status,
+        &provider_coverage,
+        &voice_outcomes,
+        &talk_metrics,
+        &voice_calls.calls,
+    );
+    let recent_activity =
+        build_voice_operator_recent_activity(&voice_outcomes, &talk_status, &voice_calls.calls, limit);
+
+    let status = if !voice_status.enabled {
+        "degraded"
+    } else if attention_signals.is_empty() {
+        "ok"
+    } else {
+        "attention"
+    }
+    .to_string();
+
+    let detail = format!(
+        "Voice runtime is {} with {} session(s) needing attention, {} talk error receipt(s), and {} stale bounded voice call(s).",
+        if voice_status.enabled {
+            "enabled"
+        } else {
+            "disabled"
+        },
+        voice_outcomes.attention_needed,
+        talk_metrics.error_sessions,
+        voice_call_health.health.stale
+    );
+
+    Ok(VoiceOperatorReport {
+        status,
+        detail,
+        voice_status,
+        provider_coverage,
+        voice_lane,
+        talk_lane,
+        bounded_call_lane,
+        attention_signals,
+        recent_activity,
+    })
+}
+
 pub async fn memory_namespaces(store: &SqliteMemoryStore) -> Result<Vec<String>> {
     Ok(store.list_namespaces().await?)
 }
@@ -866,6 +1082,174 @@ fn parse_optional_json_value(value: Option<String>) -> serde_json::Value {
     value
         .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
         .unwrap_or_else(|| serde_json::json!({}))
+}
+
+fn build_voice_operator_attention_signals(
+    voice_status: &voice_runtime::VoiceStatus,
+    provider_coverage: &VoiceProviderCoverage,
+    voice_outcomes: &voice_runtime::VoiceOutcomesSummary,
+    talk_metrics: &talk::TalkRuntimeMetrics,
+    voice_calls: &[skills::SkillVoiceCallRecord],
+) -> Vec<VoiceOperatorAttentionSignal> {
+    let mut signals = Vec::new();
+
+    if !voice_status.enabled {
+        signals.push(VoiceOperatorAttentionSignal {
+            kind: "voice_disabled".to_string(),
+            severity: "critical".to_string(),
+            summary: "Voice runtime is disabled".to_string(),
+            detail: "The shipped voice surface is configured off, so operators cannot rely on voice parity routes as an active lane.".to_string(),
+            route_hint: "/control/voice/status".to_string(),
+            target_id: None,
+        });
+    }
+
+    if voice_status.enabled
+        && (!voice_status.api_key_present
+            || !voice_status.tts_api_key_present
+            || provider_coverage.stt_ready == 0
+            || provider_coverage.tts_ready == 0)
+    {
+        signals.push(VoiceOperatorAttentionSignal {
+            kind: "provider_readiness".to_string(),
+            severity: "critical".to_string(),
+            summary: "Voice provider readiness is incomplete".to_string(),
+            detail: format!(
+                "STT ready: {}/{}. TTS ready: {}/{}. The configured voice lane is enabled but provider credentials or readiness are still missing.",
+                provider_coverage.stt_ready,
+                provider_coverage.stt_total,
+                provider_coverage.tts_ready,
+                provider_coverage.tts_total
+            ),
+            route_hint: "/control/voice/providers".to_string(),
+            target_id: None,
+        });
+    }
+
+    signals.extend(
+        voice_outcomes
+            .outcomes
+            .iter()
+            .filter(|entry| entry.attention_needed)
+            .take(3)
+            .map(|entry| VoiceOperatorAttentionSignal {
+                kind: format!("voice_session_{}", entry.outcome_label),
+                severity: if entry.stale { "critical" } else { "warning" }.to_string(),
+                summary: format!(
+                    "Voice session {} is {}",
+                    entry.session_id, entry.outcome_label
+                ),
+                detail: format!(
+                    "{}. Idle for {}s with {} turn(s) and {} artifact(s).",
+                    entry.detail, entry.idle_secs, entry.turn_count, entry.artifact_count
+                ),
+                route_hint: format!("/control/voice/sessions/{}", entry.session_id),
+                target_id: Some(entry.session_id.clone()),
+            }),
+    );
+
+    signals.extend(
+        talk_metrics
+            .sessions
+            .iter()
+            .filter(|entry| entry.status == "error")
+            .take(3)
+            .map(|entry| VoiceOperatorAttentionSignal {
+                kind: "talk_error".to_string(),
+                severity: "warning".to_string(),
+                summary: format!("Talk receipt {} ended in error", entry.session_id),
+                detail: format!(
+                    "Talk session recorded {} event(s) across {} turn(s). Final state: {}.",
+                    entry.event_count,
+                    entry.turn_count,
+                    entry.final_state.as_deref().unwrap_or("unknown")
+                ),
+                route_hint: format!("/control/talk/sessions/{}", entry.session_id),
+                target_id: Some(entry.session_id.clone()),
+            }),
+    );
+
+    signals.extend(
+        voice_calls
+            .iter()
+            .filter(|call| call.health == "stale")
+            .take(3)
+            .map(|call| VoiceOperatorAttentionSignal {
+                kind: "voice_call_stale".to_string(),
+                severity: "warning".to_string(),
+                summary: format!("Bounded voice call {} is stale", call.call_id),
+                detail: format!(
+                    "Plugin {} for skill {} has gone stale after {}s without a fresh receipt.",
+                    call.plugin_id, call.skill_name, call.stale_after_secs
+                ),
+                route_hint: format!("/control/skills/voice-calls/{}/events", call.call_id),
+                target_id: Some(call.call_id.clone()),
+            }),
+    );
+
+    signals
+}
+
+fn build_voice_operator_recent_activity(
+    voice_outcomes: &voice_runtime::VoiceOutcomesSummary,
+    talk_status: &talk::TalkRuntimeStatus,
+    voice_calls: &[skills::SkillVoiceCallRecord],
+    limit: usize,
+) -> Vec<VoiceOperatorRecentActivity> {
+    let mut entries = Vec::new();
+
+    entries.extend(voice_outcomes.outcomes.iter().map(|entry| VoiceOperatorRecentActivity {
+        kind: "voice_session".to_string(),
+        observed_at: entry.last_activity_at.clone(),
+        status: entry.outcome_label.clone(),
+        label: entry.session_id.clone(),
+        detail: format!(
+            "{} turn(s), {} artifact(s). {}",
+            entry.turn_count, entry.artifact_count, entry.detail
+        ),
+        target_id: Some(entry.session_id.clone()),
+    }));
+
+    entries.extend(talk_status.sessions.iter().map(|entry| VoiceOperatorRecentActivity {
+        kind: "talk_session".to_string(),
+        observed_at: entry.last_activity_at.clone(),
+        status: entry.status.clone(),
+        label: entry.id.clone(),
+        detail: format!(
+            "Wake word '{}', {} turn(s), final state {}.",
+            entry.wake_word,
+            entry.turn_count,
+            entry.final_state.as_deref().unwrap_or("unknown")
+        ),
+        target_id: Some(entry.id.clone()),
+    }));
+
+    entries.extend(voice_calls.iter().map(|call| VoiceOperatorRecentActivity {
+        kind: "voice_call".to_string(),
+        observed_at: call
+            .last_seen_at
+            .clone()
+            .or_else(|| call.ended_at.clone())
+            .unwrap_or_else(|| call.started_at.clone()),
+        status: call.health.clone(),
+        label: call.call_id.clone(),
+        detail: format!(
+            "Plugin {} for skill {}. Remote: {}.",
+            call.plugin_id,
+            call.skill_name,
+            call.remote.as_deref().unwrap_or("n/a")
+        ),
+        target_id: Some(call.call_id.clone()),
+    }));
+
+    entries.sort_by(|left, right| {
+        right
+            .observed_at
+            .cmp(&left.observed_at)
+            .then_with(|| left.label.cmp(&right.label))
+    });
+    entries.truncate(limit.max(1));
+    entries
 }
 
 #[cfg(test)]
