@@ -53,7 +53,9 @@ Plans:
 **Plans**: TBD
 
 Plans:
-- [ ] TBD (run `$gsd-plan-phase 21` to break down)
+- [ ] 21-01 Deepen Enterprise Audit Retention Policy
+- [ ] 21-02 Package Governance And Autonomy Evidence For Review
+- [ ] 21-03 Surface Enterprise Audit Review In Control UI
 
 ### Phase 22: Operator-Gated Full Autonomy Mode
 **Goal**: Add an explicit full-autonomy override lane that trusted operators can enable deliberately without changing the default trust-first runtime path.
@@ -86,14 +88,14 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 20. Enterprise Governance and Approval Chains | 3/3 | Complete | 2026-03-27 |
-| 21. Enterprise Audit Retention and Review Packaging | 0/TBD | Not started | - |
+| 21. Enterprise Audit Retention and Review Packaging | 0/3 | Planned | - |
 | 22. Operator-Gated Full Autonomy Mode | 0/TBD | Not started | - |
 | 23. Enterprise Autonomy Control Surface | 0/TBD | Not started | - |
 
 ## Current Status
 
 - Active milestone: v1.4 Enterprise Governance and Operator-Gated Full Autonomy
-- Next step: `$gsd-discuss-phase 21` or `$gsd-plan-phase 21`
+- Next step: execute Phase 21 plan 21-01
 - Archived milestone planning artifacts live under `.planning/milestones/`.
 
 ## Phase History
