@@ -6,7 +6,93 @@
 - ✅ **v1.1 Lifecycle Integrity and Enterprise Foundations** — shipped 2026-03-26. Archive: `.planning/milestones/v1.1-ROADMAP.md`
 - ✅ **v1.2 Deeper OpenClaw Surface Parity** — shipped 2026-03-27. Archive: `.planning/milestones/v1.2-ROADMAP.md`
 - ✅ **v1.3 Enterprise Expansion and Supervised Autonomy Foundations** — shipped 2026-03-27. Archive: `.planning/milestones/v1.3-ROADMAP.md`
-- 📋 **Next milestone** — not planned yet. Start with `$gsd-new-milestone`.
+- 🚧 **v1.4 Enterprise Governance and Operator-Gated Full Autonomy** — phases 20-23
+
+## Roadmap v1.4: Enterprise Governance and Operator-Gated Full Autonomy
+
+### Overview
+
+This milestone extends the enterprise baseline from v1.3 into stronger governance and audit posture, then adds the user-requested “god mode” as a separate operator-gated full-autonomy lane. The order is deliberate: first deepen governance boundaries, then strengthen audit and retention, then add the explicit autonomy override, and finally close with one shipped control surface that keeps the stronger autonomy lane inspectable and kill-switchable.
+
+### Phases
+
+**Phase Numbering:**
+- Integer phases continue across milestones to preserve one linear execution history.
+- Decimal phases are reserved for urgent insertions if roadmap assumptions break.
+
+- [ ] **Phase 20: Enterprise Governance and Approval Chains** - Deepen role, approval, and separation-of-duties controls for sensitive enterprise actions.
+- [ ] **Phase 21: Enterprise Audit Retention and Review Packaging** - Strengthen retention, export, and enterprise reviewability for governance and autonomy evidence.
+- [ ] **Phase 22: Operator-Gated Full Autonomy Mode** - Add an explicit full-autonomy override lane with budgets, kill switches, and durable operator-visible evidence.
+- [ ] **Phase 23: Enterprise Autonomy Control Surface** - Make governance and full-autonomy controls usable and inspectable from shipped operator surfaces.
+
+### Phase Details
+
+### Phase 20: Enterprise Governance and Approval Chains
+**Goal**: Deepen enterprise governance beyond the current baseline with stronger role boundaries, approval chains, and separation-of-duties controls.
+**Depends on**: v1.3 archive state
+**Requirements**: [GOV-01, GOV-02]
+**Success Criteria** (what must be TRUE):
+  1. Sensitive enterprise actions can express stronger approval and role boundaries than the current flat operator model.
+  2. Governance controls preserve separation of duties for higher-risk actions.
+  3. The deeper governance contract remains inspectable from the Rust-owned control plane.
+**Plans**: TBD
+
+Plans:
+- [ ] TBD (run `$gsd-plan-phase 20` to break down)
+
+### Phase 21: Enterprise Audit Retention and Review Packaging
+**Goal**: Expand enterprise audit and retention handling so governance and autonomy evidence is more useful for enterprise review and operations.
+**Depends on**: Phase 20
+**Requirements**: [AUD-01, AUD-02]
+**Success Criteria** (what must be TRUE):
+  1. Enterprise evidence exports preserve richer governance and operator context.
+  2. Audit retention and export behavior is configurable from one coherent enterprise surface.
+  3. Operators can review the strengthened audit contract without scraping multiple raw ledgers.
+**Plans**: TBD
+
+Plans:
+- [ ] TBD (run `$gsd-plan-phase 21` to break down)
+
+### Phase 22: Operator-Gated Full Autonomy Mode
+**Goal**: Add an explicit full-autonomy override lane that trusted operators can enable deliberately without changing the default trust-first runtime path.
+**Depends on**: Phase 21
+**Requirements**: [AUTO-05, AUTO-06]
+**Success Criteria** (what must be TRUE):
+  1. Full autonomy is an explicit operator-gated mode rather than a hidden default behavior change.
+  2. Full-autonomy runs preserve budgets, kill switches, and durable enablement or shutdown evidence.
+  3. The stronger autonomy lane remains operator-governed and reversible rather than opaque.
+**Plans**: TBD
+
+Plans:
+- [ ] TBD (run `$gsd-plan-phase 22` to break down)
+
+### Phase 23: Enterprise Autonomy Control Surface
+**Goal**: Make the enterprise governance and full-autonomy override lane usable and governable from shipped control surfaces.
+**Depends on**: Phase 22
+**Requirements**: [ADMN-02]
+**Success Criteria** (what must be TRUE):
+  1. Operators can inspect, configure, and shut down the full-autonomy lane from shipped control surfaces.
+  2. The admin surface stays grounded in typed runtime contracts rather than frontend-only stitching.
+  3. Docs and verification close the milestone with a truthful enterprise-autonomy baseline.
+**Plans**: TBD
+
+Plans:
+- [ ] TBD (run `$gsd-plan-phase 23` to break down)
+
+## Progress
+
+| Phase | Plans Complete | Status | Completed |
+|-------|----------------|--------|-----------|
+| 20. Enterprise Governance and Approval Chains | 0/TBD | Not started | - |
+| 21. Enterprise Audit Retention and Review Packaging | 0/TBD | Not started | - |
+| 22. Operator-Gated Full Autonomy Mode | 0/TBD | Not started | - |
+| 23. Enterprise Autonomy Control Surface | 0/TBD | Not started | - |
+
+## Current Status
+
+- Active milestone: v1.4 Enterprise Governance and Operator-Gated Full Autonomy
+- Next step: `$gsd-discuss-phase 20` or `$gsd-plan-phase 20`
+- Archived milestone planning artifacts live under `.planning/milestones/`.
 
 ## Phase History
 
@@ -52,9 +138,3 @@
 - [x] **Phase 7: Security, Observability, and Release Exit** — completed 2026-03-26
 
 </details>
-
-## Current Status
-
-- No active milestone is open.
-- Use `$gsd-new-milestone` to define the next requirements and roadmap.
-- Archived v1.3 planning artifacts live under `.planning/milestones/`.
