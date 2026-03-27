@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.8
 milestone_name: Clean Codebase
-current_phase: 40
-current_phase_name: Cleanup Verification and Maintenance Guardrails
+current_phase: null
+current_phase_name: null
 current_plan: null
-status: Phase 39 complete
-stopped_at: Continue with $gsd-discuss-phase 40 or $gsd-plan-phase 40.
+status: All phases complete
+stopped_at: Cleanup phases complete; run milestone audit and archive.
 last_updated: "2026-03-27T21:45:54.000Z"
-last_activity: 2026-03-27 -- completed Phase 37 cleanup inventory
+last_activity: 2026-03-27 -- completed Phase 40 cleanup guardrails
 progress:
   total_phases: 4
-  completed_phases: 3
-  total_plans: 6
-  completed_plans: 6
-  percent: 75
+  completed_phases: 4
+  total_plans: 8
+  completed_plans: 8
+  percent: 100
 ---
 
 # Project State
@@ -24,21 +24,21 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-27)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** Phase 40 - Cleanup Verification and Maintenance Guardrails
+**Current focus:** Milestone audit and archive
 
 ## Current Position
 
-Current Phase: 40
-Current Phase Name: Cleanup Verification and Maintenance Guardrails
+Current Phase: -
+Current Phase Name: -
 Total Phases: 4
 Current Plan: -
 Total Plans in Phase: 0
-Status: Phase 39 complete
-Last activity: 2026-03-27 -- completed Phase 39 command-surface cleanup
+Status: All phases complete
+Last activity: 2026-03-27 -- completed Phase 40 cleanup guardrails
 
 Phase: 4 of 4
 Plan: 0 of 0
-Progress: [███████░░░] 75%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -68,6 +68,7 @@ Recent decisions affecting current work:
 - Phase 37 established the cleanup contract and prioritized CI drift plus `start.rs` middleware extraction as the first bounded cleanup slices.
 - Phase 38 aligned the shipped-surface CI contract to the current canonical docs and made sidecar local Python state explicit non-canonical repo noise.
 - Phase 39 extracted the control-auth and enterprise-access middleware cluster into `crates/cli/src/commands/start/auth.rs` and moved its focused tests with it.
+- Phase 40 added a repo-hygiene verification script, wired it into CI, and preserved the rerun bundle plus deferred cleanup debt in the cleanup contract.
 
 ### Pending Todos
 
@@ -80,5 +81,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-27 21:45
-Stopped at: Continue with $gsd-discuss-phase 40 or $gsd-plan-phase 40.
+Stopped at: Cleanup phases complete; run milestone audit and archive.
 Resume file: None

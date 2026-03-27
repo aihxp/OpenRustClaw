@@ -27,6 +27,10 @@ jobs:
           rg -n '## Scope Split|## Phase 1 Completion Note' docs/surface-matrix.md
           rg -n '## What It Ships Well|## Where It Is Intentionally Stronger|## Current Boundaries' docs/product-positioning.md
           rg -n '\[feature-matrix.md\]|\[surface-matrix.md\]|\[product-positioning.md\]' docs/roadmap.md
+      - name: Validate repo hygiene contract
+        run: |
+          chmod +x scripts/check-repo-hygiene.sh
+          scripts/check-repo-hygiene.sh
 
   check:
     name: Shipped Surface Check

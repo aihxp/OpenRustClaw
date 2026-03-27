@@ -33,7 +33,7 @@ This milestone treats cleanup as a real delivery lane. The order is deliberate: 
 - [x] **Phase 37: Codebase Cleanup Inventory and Refactor Contract** - completed 2026-03-27. Cleanup targets, no-touch boundaries, and the milestone cleanup order are now explicit.
 - [x] **Phase 38: Repo Hygiene and Drift Reduction** - completed 2026-03-27. CI now matches the current canonical docs, and sidecar local Python state is explicitly non-canonical repo surface.
 - [x] **Phase 39: Command Surface Decomposition and Boundary Cleanup** - completed 2026-03-27. The control-auth and enterprise-access middleware slice now lives in a dedicated `start/auth.rs` module with its focused tests.
-- [ ] **Phase 40: Cleanup Verification and Maintenance Guardrails** - add targeted verification, document remaining debt, and preserve the cleanup contract for future milestones.
+- [x] **Phase 40: Cleanup Verification and Maintenance Guardrails** - completed 2026-03-27. Cleanup guardrails now live in CI and one rerunnable verification bundle.
 
 ### Phase Details
 
@@ -87,7 +87,11 @@ Plans:
   1. Cleanup-sensitive surfaces have a targeted verification bundle that can be rerun later.
   2. Remaining cleanup debt is recorded in one maintained artifact instead of being rediscovered piecemeal.
   3. The next milestone inherits a cleaner and safer baseline rather than reopening the same structural drift.
-**Plans**: Not started
+**Plans**: 2 plans complete
+
+Plans:
+- [x] 40-01 Add repo-hygiene verification script and CI guardrail
+- [x] 40-02 Record the cleanup rerun bundle and remaining debt
 
 ## Progress
 
@@ -96,7 +100,7 @@ Plans:
 | 37. Codebase Cleanup Inventory and Refactor Contract | 2/2 | Complete | 2026-03-27 |
 | 38. Repo Hygiene and Drift Reduction | 2/2 | Complete | 2026-03-27 |
 | 39. Command Surface Decomposition and Boundary Cleanup | 2/2 | Complete | 2026-03-27 |
-| 40. Cleanup Verification and Maintenance Guardrails | 0/0 | Not Started | - |
+| 40. Cleanup Verification and Maintenance Guardrails | 2/2 | Complete | 2026-03-27 |
 
 ## Phase History
 
@@ -106,7 +110,7 @@ Plans:
 - [x] **Phase 37: Codebase Cleanup Inventory and Refactor Contract** — completed 2026-03-27
 - [x] **Phase 38: Repo Hygiene and Drift Reduction** — completed 2026-03-27
 - [x] **Phase 39: Command Surface Decomposition and Boundary Cleanup** — completed 2026-03-27
-- [ ] **Phase 40: Cleanup Verification and Maintenance Guardrails**
+- [x] **Phase 40: Cleanup Verification and Maintenance Guardrails** — completed 2026-03-27
 
 </details>
 

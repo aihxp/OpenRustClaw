@@ -90,6 +90,19 @@ These are the current source-of-truth surfaces that cleanup work must preserve:
 - channel-adapter decomposition for Discord and Teams
 - wider contract testing between Rust runtime and optional sidecar
 
+## Verification Bundle
+
+Rerun the current cleanup guardrails with:
+
+```bash
+bash scripts/check-repo-hygiene.sh
+cargo test -p openrustclaw-cli control_origin_validation -- --nocapture
+cargo test -p openrustclaw-cli enterprise_access_middleware_blocks -- --nocapture
+cargo test -p openrustclaw-cli onboard -- --nocapture
+cargo test -p openrustclaw-cli doctor -- --nocapture
+mdbook build docs
+```
+
 ## Completed In v1.8 So Far
 
 - Phase 37: cleanup inventory and no-touch boundaries written here

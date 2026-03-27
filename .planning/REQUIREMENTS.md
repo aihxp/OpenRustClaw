@@ -56,8 +56,8 @@
 | HYGI-02 | Phase 38 | Complete |
 | STRC-01 | Phase 39 | Complete |
 | STRC-02 | Phase 39 | Complete |
-| SAFE-01 | Phase 40 | Pending |
-| SAFE-02 | Phase 40 | Pending |
+| SAFE-01 | Phase 40 | Complete |
+| SAFE-02 | Phase 40 | Complete |
 
 **Coverage:**
 - v1.8 requirements: 8 total
