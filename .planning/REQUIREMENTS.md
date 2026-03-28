@@ -1,63 +1,77 @@
 # Requirements: OpenRustClaw
 
-## Active Milestone: v1.17 Greenfield Conversion: Completion Metrics and Remaining Hotspots
+## Active Milestone: v1.20 Full Greenfield Conversion: Control Plane Route Families II
 
-**Goal:** Continue the greenfield transition by extracting the next remaining `skills.rs` and `runtime.rs` hotspots while making the conversion measurable through a truthful completion-percentage inventory and one shipped progress surface.
+**Goal:** Continue the post-`18/18` greenfield program by shrinking the next remaining control-plane hotspots in `start.rs`, focusing on lessons, skill-control, voice-call and channel-extension routes, plus shared route-state cleanup.
 
-**Current greenfield baseline:** Provisional `12/18` ranked seams migrated through `openrustclaw-app`, or about `67%` complete. Phase 73 will turn this baseline into the canonical maintained ledger.
+**Current greenfield baseline:** The historical ranked seam ledger from `v1.13` through `v1.18` remains complete at `18/18` and retired. The deeper full-conversion roadmap now stands at `1/6` milestones shipped, or about `17%` complete, with `v1.20` targeting `2/6`, or about `33%`, in `.planning/codebase/GREENFIELD-FULL-CONVERSION.md`.
 
 ## Requirements
 
-### GFC-13 Greenfield completion baseline and percentage reporting
+### GFC-25 Autonomy lessons and lesson mutation route families
 
-OpenRustClaw must define one explicit ranked seam inventory for the brownfield-to-greenfield transition so the completion percentage is derived from real migrated versus remaining seams instead of phase count or anecdotal status updates.
+The autonomy lesson listing, detail, and mutation route families in `crates/cli/src/commands/start.rs` must move behind stable application service boundaries so lesson-control flows stop owning business orchestration inside the route hub.
 
-**Status:** Planned for v1.17 Phase 73.
-
-**Acceptance signals:**
-- one canonical seam inventory exists for the prioritized legacy hotspots
-- the current greenfield completion percentage is derived from that inventory and recorded truthfully
-- the inventory names both migrated seams and the remaining ranked follow-on queue
-
-### GFC-14 Remaining skills auth or channel lifecycle boundary
-
-At least one real auth-plugin or channel-extension lifecycle lane in `crates/cli/src/commands/skills.rs` must move behind a stable service boundary so future lifecycle work stops accumulating directly inside the hotspot.
-
-**Status:** Planned for v1.17 Phase 74.
+**Status:** Planned for v1.20 Phase 85.
 
 **Acceptance signals:**
-- one real auth-plugin, channel-extension, or equivalent remaining skills lifecycle lane moves behind a stable service or adapter boundary
-- the migration preserves the shipped CLI and control/runtime contract
-- contributor guidance can point future lifecycle work at the new seam instead of `skills.rs`
+- the autonomy lesson route family is composed through `openrustclaw-app`
+- `start.rs` becomes the HTTP adapter for lesson summary and lesson mutation flows instead of owning the business rules directly
+- verification proves the shipped lesson-control contract remains truthful
 
-### GFC-15 Runtime upgrade or rollback planning boundary
+### GFC-26 Remaining skill-control route families
 
-One larger runtime upgrade, self-update, or rollback planning seam must move out of `crates/cli/src/commands/runtime.rs` and behind a cleaner application service so the greenfield transition broadens beyond provider switching, vault mutation, and reload planning.
+The remaining skill-control route families in `crates/cli/src/commands/start.rs` that still adapt route-local logic over legacy command helpers must move behind stable application boundaries so the control plane stops deepening that legacy orchestration path.
 
-**Status:** Planned for v1.17 Phase 75.
-
-**Acceptance signals:**
-- one real runtime upgrade, self-update, or rollback planning seam is migrated out of command-local orchestration
-- existing runtime and operator behavior remains stable from the shipped contract perspective
-- verification proves the migrated planning path still behaves truthfully
-
-### GFC-16 Greenfield progress surface and runtime-maintenance route boundary
-
-One shipped inspect or `/control/...` runtime-maintenance surface must expose the greenfield completion percentage and remaining queue while also moving one more bounded runtime-maintenance family behind the new application services introduced by this milestone.
-
-**Status:** Planned for v1.17 Phase 76.
+**Status:** Planned for v1.20 Phase 86.
 
 **Acceptance signals:**
-- one shipped inspect or control-plane surface reports the greenfield completion percentage and remaining ranked queue
-- one bounded runtime-maintenance route or summary family moves behind a stable application seam
-- the extraction materially reduces remaining route-local or summary-local coupling around runtime maintenance and conversion progress reporting
+- the remaining skill-control route families are composed through `openrustclaw-app`
+- `start.rs` becomes the HTTP adapter for those skill-control surfaces instead of owning orchestration directly
+- verification proves the shipped skill-control contract remains truthful
+
+### GFC-27 Voice-call and channel-extension control route families
+
+The remaining voice-call and channel-extension control route families in `crates/cli/src/commands/start.rs` must move behind bounded application-owned orchestration so those control surfaces stop depending on route-local business logic.
+
+**Status:** Planned for v1.20 Phase 87.
+
+**Acceptance signals:**
+- voice-call and channel-extension control routes compose through `openrustclaw-app`
+- `start.rs` becomes the HTTP adapter for those control surfaces instead of owning business orchestration directly
+- verification proves the shipped voice-call and channel-extension control contract remains truthful
+
+### GFC-28 Control-plane route registration and shared state cleanup
+
+Shared route registration, state wiring, and cleanup after the first two full-conversion control-plane milestones must be reduced so future route extractions stop depending on oversized `start.rs` setup and ad hoc shared helper drift.
+
+**Status:** Planned for v1.20 Phase 88.
+
+**Acceptance signals:**
+- shared control-plane route registration and state wiring are materially simpler after the migrated route families
+- the migrated route families no longer require ad hoc `start.rs` helper sprawl to register or resolve shared state
+- verification proves the shipped control-plane route map still behaves truthfully after cleanup
+
+## Traceability
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| GFC-25 | Phase 85 | Pending |
+| GFC-26 | Phase 86 | Pending |
+| GFC-27 | Phase 87 | Pending |
+| GFC-28 | Phase 88 | Pending |
+
+**Coverage:**
+- v1 requirements: 4 total
+- Mapped to phases: 4
+- Unmapped: 0
 
 ## Most Recent Archive
 
-- Last shipped milestone: `v1.16 Greenfield Conversion: Skills and Runtime Hotspots`
-- Archived requirements: `.planning/milestones/v1.16-REQUIREMENTS.md`
-- Archived verification bundle: `.planning/milestones/v1.16-VERIFICATIONS.md`
+- Last shipped milestone: `v1.19 Full Greenfield Conversion: Control Plane Route Families I`
+- Archived requirements: `.planning/milestones/v1.19-REQUIREMENTS.md`
+- Archived verification bundle: `.planning/milestones/v1.19-VERIFICATIONS.md`
 
 ## Next Step
 
-Continue with `$gsd-plan-phase 73` or `$gsd-autonomous`.
+Plan and execute `v1.20` starting with `$gsd-plan-phase 85`.

@@ -2,7 +2,7 @@
 
 ## What This Is
 
-OpenRustClaw is a self-hosted open-source Rust-first OpenClaw-style assistant platform with shipped v1.0 through v1.16 milestones. It now has a coherent production-ready baseline across onboarding, assistant continuity, memory policy, tool and coding evidence, communications, runtime operations, security posture, release exit, milestone verification integrity, materially deeper operator parity across browser, orchestration, mobile, Control UI, and voice or call handling surfaces, an enterprise-first foundation for scoped operator identity, policy, audit export, supervised autonomy, governance, and an operator-gated full-autonomy lane, an explicit self-hosted product-mode contract across `solo`, `team`, `company`, and `enterprise` deployments, a truthful setup lifecycle from first install through repair and handoff, a canonical documentation contract that keeps the repo entrypoint, guided docs, and planning docs aligned, a cleaner codebase baseline with explicit cleanup inventory, repo-hygiene guardrails, an extracted control-auth boundary, a repaired tagged-release workflow that now produces truthful downloadable binary artifacts on GitHub, a first truthful public Rust package surface on crates.io and docs.rs, a bounded remote-connectivity story around node-first guidance with SSH tunnel and reverse-proxy fallbacks preserved explicitly in setup state and operator surfaces, and a broadened greenfield application lane that now owns typed report, route, mutation, and bounded runtime-command seams while the remaining legacy command hubs are being reduced incrementally instead of rewritten wholesale.
+OpenRustClaw is a self-hosted open-source Rust-first OpenClaw-style assistant platform with shipped v1.0 through v1.19 milestones. It now has a coherent production-ready baseline across onboarding, assistant continuity, memory policy, tool and coding evidence, communications, runtime operations, security posture, release exit, milestone verification integrity, materially deeper operator parity across browser, orchestration, mobile, Control UI, and voice or call handling surfaces, an enterprise-first foundation for scoped operator identity, policy, audit export, supervised autonomy, governance, and an operator-gated full-autonomy lane, an explicit self-hosted product-mode contract across `solo`, `team`, `company`, and `enterprise` deployments, a truthful setup lifecycle from first install through repair and handoff, a canonical documentation contract that keeps the repo entrypoint, guided docs, and planning docs aligned, a cleaner codebase baseline with explicit cleanup inventory, repo-hygiene guardrails, an extracted control-auth boundary, a repaired tagged-release workflow that now produces truthful downloadable binary artifacts on GitHub, a first truthful public Rust package surface on crates.io and docs.rs, a bounded remote-connectivity story around node-first guidance with SSH tunnel and reverse-proxy fallbacks preserved explicitly in setup state and operator surfaces, and a greenfield application lane that now owns the full ranked seam inventory behind `openrustclaw-app`, with the retired historical ledger closed truthfully at `18/18` migrated seams and the first post-ledger full-conversion queue shipped.
 
 The product target remains broader than the MVP: a general-purpose assistant platform that can eventually support coding, communications, business operations, and deeper autonomous workflows. After v1.7, the repo also has one clearer documentation story instead of several drifting versions of the product. After v1.8, the repo also has a more explicit cleanup contract for keeping that surface maintainable.
 
@@ -12,27 +12,28 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 ## Current State
 
-- **Shipped milestones:** v1.0 Rust OpenClaw MVP, v1.1 Lifecycle Integrity and Enterprise Foundations, v1.2 Deeper OpenClaw Surface Parity, v1.3 Enterprise Expansion and Supervised Autonomy Foundations, v1.4 Enterprise Governance and Operator-Gated Full Autonomy, v1.5 Self-Hosted Product Modes and Lifecycle Packaging, v1.6 Proper Onboarding and Setup, v1.7 Documentation Convergence and OpenClaw-Inspired Docs Rewrite, v1.8 Clean Codebase, v1.9 GitHub Repository Presence and Actions Recovery, v1.10 Release Binaries Workflow Recovery, v1.11 Crates.io and Docs.rs Publication Foundation, v1.12 Secure Node Connectivity and SSH Tunnel Revisit, v1.13 Brownfield-to-Greenfield Transition, v1.14 Continued Greenfield Conversion, v1.15 Deeper Greenfield Conversion, and v1.16 Greenfield Conversion: Skills and Runtime Hotspots
-- **Archive:** `.planning/milestones/v1.0-*` through `.planning/milestones/v1.16-*`
-- **Planning state:** v1.17 is active
+- **Shipped milestones:** v1.0 Rust OpenClaw MVP, v1.1 Lifecycle Integrity and Enterprise Foundations, v1.2 Deeper OpenClaw Surface Parity, v1.3 Enterprise Expansion and Supervised Autonomy Foundations, v1.4 Enterprise Governance and Operator-Gated Full Autonomy, v1.5 Self-Hosted Product Modes and Lifecycle Packaging, v1.6 Proper Onboarding and Setup, v1.7 Documentation Convergence and OpenClaw-Inspired Docs Rewrite, v1.8 Clean Codebase, v1.9 GitHub Repository Presence and Actions Recovery, v1.10 Release Binaries Workflow Recovery, v1.11 Crates.io and Docs.rs Publication Foundation, v1.12 Secure Node Connectivity and SSH Tunnel Revisit, v1.13 Brownfield-to-Greenfield Transition, v1.14 Continued Greenfield Conversion, v1.15 Deeper Greenfield Conversion, v1.16 Greenfield Conversion: Skills and Runtime Hotspots, v1.17 Greenfield Conversion: Completion Metrics and Remaining Hotspots, v1.18 Greenfield Conversion: Final Ranked Seam and 100% Completion Path, and v1.19 Full Greenfield Conversion: Control Plane Route Families I
+- **Archive:** `.planning/milestones/v1.0-*` through `.planning/milestones/v1.19-*`
+- **Planning state:** v1.20 is active
 - **Known audit debt:** v1.0 archive still records missing phase `VERIFICATION.md` artifacts; v1.1 closed that workflow gap going forward
-- **Greenfield conversion baseline:** provisional `12/18` ranked seams migrated, or about `67%` complete, across the current `openrustclaw-app` transition inventory
+- **Greenfield conversion baseline:** canonical `18/18` ranked seams migrated, or `100%` complete, across the retired historical transition inventory; deeper follow-on work is now sequenced in `.planning/codebase/GREENFIELD-FULL-CONVERSION.md`
 
-## Most Recent Milestone: v1.16 Greenfield Conversion: Skills and Runtime Hotspots
+## Most Recent Milestone: v1.19 Full Greenfield Conversion: Control Plane Route Families I
 
-**Result:** Shipped 2026-03-28. OpenRustClaw continued the greenfield conversion by moving the remaining voice-plugin binding lane, the runtime vault mutation seam, the runtime reload-plan seam, and the `/control/runtime/vault` route family behind `openrustclaw-app`, so `skills.rs`, `runtime.rs`, and `start.rs` all shed more business-logic ownership without breaking the shipped operator surface.
+**Result:** Shipped 2026-03-28. OpenRustClaw started the post-`18/18` full-conversion program by moving the remaining control config, diagnostics, channel registry lifecycle, and read-heavy runtime or operator status route families in `start.rs` behind `openrustclaw-app`. The control-plane hotspot is materially smaller, the shipped compatibility surface is preserved, and the broader follow-on sequence remains explicit in `.planning/codebase/GREENFIELD-FULL-CONVERSION.md`.
 
-**Archive:** `.planning/milestones/v1.16-ROADMAP.md`, `.planning/milestones/v1.16-REQUIREMENTS.md`, `.planning/milestones/v1.16-MILESTONE-AUDIT.md`, `.planning/milestones/v1.16-VERIFICATIONS.md`
+**Archive:** `.planning/milestones/v1.19-ROADMAP.md`, `.planning/milestones/v1.19-REQUIREMENTS.md`, `.planning/milestones/v1.19-MILESTONE-AUDIT.md`, `.planning/milestones/v1.19-VERIFICATIONS.md`
 
-## Current Milestone: v1.17 Greenfield Conversion: Completion Metrics and Remaining Hotspots
+## Current Milestone: v1.20 Full Greenfield Conversion: Control Plane Route Families II
 
-**Goal:** Continue the greenfield transition by extracting the next remaining `skills.rs` and `runtime.rs` hotspots while making the migration measurable through a truthful completion-percentage inventory and operator-facing progress surface.
+**Goal:** Continue the post-`18/18` full-conversion program by extracting the second queue of remaining control-plane route families from `start.rs`, while keeping the broader program completion percentage explicit.
 
 **Target features:**
-- define the canonical ranked seam inventory for the greenfield conversion and turn the current provisional `12/18` baseline into a maintained percentage
-- move one real auth-plugin or channel-extension lifecycle lane out of `skills.rs`
-- move one real runtime upgrade, self-update, or rollback planning seam out of `runtime.rs`
-- surface the greenfield completion percentage and remaining queue through a shipped inspect or control-plane surface while moving one more bounded runtime-maintenance route family behind the app lane
+- move autonomy lessons and lesson mutation route families out of `start.rs`
+- move the remaining skill-control route families that still depend on route-local orchestration out of `start.rs`
+- move voice-call and channel-extension control route families out of `start.rs`
+- clean up route registration and shared control state after the first two control-plane route milestones
+- keep the full-conversion roadmap baseline explicit at `1/6` milestones shipped, or about `17%`, with `v1.20` targeting `2/6`, or about `33%`
 
 ## Requirements
 
@@ -84,13 +85,25 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 - ✓ The runtime vault set and delete mutation lane now runs through `openrustclaw-app`, with `runtime.rs` reduced to the workspace vault I/O adapter — v1.16 Phase 70
 - ✓ The runtime reload-plan seam now runs through `openrustclaw-app`, with `runtime.rs` reduced to the snapshot and reload-state adapter — v1.16 Phase 71
 - ✓ The `/control/runtime/vault` route family now runs through `openrustclaw-app`, with `start.rs` reduced to the HTTP adapter for the migrated runtime vault control flow — v1.16 Phase 72
+- ✓ Greenfield conversion progress is now measured against a canonical ranked seam inventory instead of milestone count or anecdotal status — v1.17 Phase 73
+- ✓ One remaining auth-plugin lifecycle lane now runs through `openrustclaw-app`, with `skills.rs` reduced to the adapter around compiled artifacts, registry persistence, and plugin-event publication — v1.17 Phase 74
+- ✓ Runtime upgrade, self-update, and rollback planning now run through `openrustclaw-app`, with `runtime.rs` reduced to the adapter around status, health, locks, service-manager support, and artifact metadata — v1.17 Phase 75
+- ✓ `/control/runtime/maintenance` now reports the canonical greenfield score and remaining queue through `openrustclaw-app`, with the post-milestone baseline now at `17/18` migrated seams — v1.17 Phase 76
+- ✓ The remaining channel-extension and background workflow lifecycle lane now runs through `openrustclaw-app`, with `skills.rs` reduced to the adapter around background workflow scheduling, binding persistence, and plugin-event publication — v1.18 Phase 77
+- ✓ The canonical seam inventory and shipped progress surface now report `18/18` migrated seams and `100%` completion from the maintained ledger — v1.18 Phase 78
+- ✓ The current ranked seam inventory now retires explicitly at `18/18`, with the closure rule recorded before any deeper follow-on queue can exist — v1.18 Phase 79
+- ✓ Shipped progress and contributor-facing planning surfaces now preserve the retired-ledger decision and require an explicit new canonical queue for future deeper greenfield work — v1.18 Phase 80
+- ✓ The remaining control config route family now runs through `openrustclaw-app`, with `start.rs` reduced to the HTTP adapter for `/control/config`, `/control/config/validate`, and `/control/config/update` — v1.19 Phase 81
+- ✓ The diagnostics summary and live operator event route family now run through `openrustclaw-app`, with `start.rs` reduced to the transport adapter for those surfaces — v1.19 Phase 82
+- ✓ Channel registry account and binding lifecycle mutations now run through `openrustclaw-app`, with `start.rs` reduced to the HTTP adapter for the shipped registry mutation routes — v1.19 Phase 83
+- ✓ The remaining read-heavy runtime, voice, talk, and mobile status route family now runs through `openrustclaw-app`, with `start.rs` reduced to the HTTP adapter for those status surfaces — v1.19 Phase 84
 
 ### Active
 
-- [ ] Greenfield conversion progress should be measured against a canonical ranked seam inventory and surfaced as a truthful completion percentage — target v1.17
-- [ ] One remaining auth-plugin or channel-extension lifecycle lane should move out of `skills.rs` and into `openrustclaw-app` while preserving the shipped CLI and control contract — target v1.17
-- [ ] One larger runtime upgrade, self-update, or rollback planning seam should move behind the greenfield lane instead of remaining in command-local orchestration — target v1.17
-- [ ] One more bounded runtime-maintenance inspect or `/control/...` surface should expose the greenfield percentage and call the new application services directly — target v1.17
+- [ ] The autonomy lessons and lesson mutation route families should move out of `start.rs` and into `openrustclaw-app` while preserving the shipped control-plane lesson contract — target v1.20
+- [ ] The remaining skill-control route families should move out of `start.rs` and into `openrustclaw-app` while preserving the shipped skill-control contract — target v1.20
+- [ ] Voice-call and channel-extension control route families should move out of `start.rs` and into `openrustclaw-app` while preserving the shipped control-plane contract — target v1.20
+- [ ] Route registration and shared control state should be cleaned up after the first two control-plane route milestones so future route extractions stop depending on ad hoc `start.rs` wiring — target v1.20
 
 ### Out of Scope
 
@@ -111,7 +124,9 @@ The most recent milestone deepened that same migration strategy without changing
 
 The most recent milestone kept that same posture and closed the next ranked hotspot queue. `v1.16` moved the remaining voice-plugin binding lane, the runtime vault mutation seam, the runtime reload-plan seam, and the `/control/runtime/vault` route family behind `openrustclaw-app`, which further reduced direct legacy coupling in `skills.rs`, `runtime.rs`, and `start.rs`.
 
-The next milestone keeps the same migration posture but makes it measurable. `v1.17` will formalize a ranked seam inventory, report the greenfield completion percentage from that inventory, and then spend the next extractions on remaining `skills.rs`, `runtime.rs`, and runtime-maintenance route hotspots.
+The most recent milestone finished the current ranked migration queue. `v1.18` moved the last remaining channel-extension and background workflow lifecycle seam behind `openrustclaw-app`, advanced the canonical baseline to `18/18`, and retired the current ranked ledger with an explicit rule that any deeper follow-on queue must be defined separately.
+
+The most recent milestone turned that follow-on decision into a real execution program. `v1.19` started the broader full-conversion roadmap by extracting the first four remaining control-plane route families from `start.rs`, and `v1.20` now continues that same program with the second control-plane queue while keeping the roadmap progress baseline explicit at `1/6` milestones shipped.
 
 ## Constraints
 
@@ -162,14 +177,17 @@ The next milestone keeps the same migration posture but makes it measurable. `v1
 | Use the provider or model switch lane as the first bounded runtime command extraction | That lane already powered the shipped CLI and control API, owned real config mutation plus backup persistence, and stayed narrow enough to migrate without reopening the larger backup, reload, or upgrade surfaces in the same phase | ✓ Good |
 | Continue greenfield conversion by prioritizing the remaining `skills.rs` plugin lanes and larger `runtime.rs` seams before reopening broad new migration targets | The next honest hotspots are now the remaining mutation-heavy skills behavior and the larger runtime mutation and recovery lanes, with another route extraction only where it materially reduces coupling around those seams | ✓ Good |
 | Keep the v1.16 queue focused on remaining plugin-binding plus runtime mutation, reload-planning, and follow-on runtime control seams | Those were the highest-value remaining hotspots that could shrink `skills.rs`, `runtime.rs`, and `start.rs` further without broadening the milestone into another rewrite | ✓ Good |
-| Measure greenfield conversion against a ranked seam inventory instead of raw phase count or line count | Phase count alone overstates progress, while file size alone hides shipped boundary wins; a seam inventory is the most honest way to report conversion completion | — Pending |
+| Measure greenfield conversion against a ranked seam inventory instead of raw phase count or line count | Phase count alone overstates progress, while file size alone hides shipped boundary wins; a seam inventory is the most honest way to report conversion completion | ✓ Good |
+| Ship the greenfield progress surface from the same canonical inventory used for milestone planning | The percentage surface would drift immediately if it duplicated state or derived progress from milestone count instead of the maintained seam ledger | ✓ Good |
+| Retire the current ranked seam inventory at `18/18` and require any deeper follow-on work to define a new canonical queue explicitly | Preserving a fixed completed denominator keeps historical progress truthful and prevents future work from silently rewriting the meaning of the shipped `100%` baseline | ✓ Good |
+| Treat post-`18/18` full conversion as an adapter-only architecture program rather than as an attempt to maximize lines moved into one crate | The real target is ownership of business logic and stable boundaries, not raw line migration or a cosmetic crate split | ✓ Good |
 
 ## Next Milestone Goals
 
-- define the canonical greenfield seam inventory and completion percentage baseline
-- extract one remaining `skills.rs` auth-plugin or channel-extension lifecycle seam
-- extract one larger runtime upgrade or rollback planning seam
-- expose the completion percentage and remaining queue through a shipped inspect or control-plane surface
+- reduce `start.rs` further by extracting the second control-plane route-family queue behind `openrustclaw-app`
+- keep the broader full-conversion sequence explicit in `.planning/codebase/GREENFIELD-FULL-CONVERSION.md`
+- preserve the retired `18/18` ledger as the historical baseline instead of silently extending it
+- keep the full-conversion roadmap percentage explicit, starting from `1/6` milestones shipped, or about `17%`
 
 ## Evolution
 
@@ -189,4 +207,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-28 after starting v1.17 milestone*
+*Last updated: 2026-03-28 after starting v1.20 milestone*
