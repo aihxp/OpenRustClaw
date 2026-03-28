@@ -179,6 +179,7 @@ pub struct SetupHandoffReport {
     pub explicit_setup_state: bool,
     pub deployment_mode: Option<String>,
     pub deployment_path: Option<String>,
+    pub remote_connectivity_profile: Option<onboard::RemoteConnectivityProfile>,
     pub setup_path: Option<String>,
     pub workspace_action: Option<String>,
     pub current_step: Option<String>,
@@ -1006,6 +1007,7 @@ pub fn setup_handoff_summary(workspace_root: &Path) -> Result<SetupHandoffReport
             explicit_setup_state: true,
             deployment_mode: setup_state.setup.deployment_mode,
             deployment_path: setup_state.setup.deployment_path,
+            remote_connectivity_profile: setup_state.setup.remote_connectivity_profile,
             setup_path: setup_state.setup.setup_path,
             workspace_action: Some(setup_state.setup.workspace_action),
             current_step: setup_state.setup.current_step,
@@ -1025,6 +1027,7 @@ pub fn setup_handoff_summary(workspace_root: &Path) -> Result<SetupHandoffReport
             explicit_setup_state: false,
             deployment_mode: None,
             deployment_path: None,
+            remote_connectivity_profile: None,
             setup_path: None,
             workspace_action: None,
             current_step: None,
@@ -2082,6 +2085,12 @@ mod tests {
                     workspace_action: "repair_existing".to_string(),
                     deployment_mode: Some(self_hosted::MODE_TEAM.to_string()),
                     deployment_path: Some("shared_team_setup".to_string()),
+                    remote_connectivity_profile: Some(onboard::RemoteConnectivityProfile {
+                        mode: "remote_access".to_string(),
+                        primary_path: "node_first".to_string(),
+                        fallback_paths: vec!["ssh_tunnel".to_string()],
+                        detail: "Remote access profile saved.".to_string(),
+                    }),
                     setup_path: Some("Advanced".to_string()),
                     selected_steps: vec!["gateway".to_string(), "model".to_string()],
                     completed_steps: vec!["gateway".to_string(), "model".to_string()],
@@ -2105,6 +2114,13 @@ mod tests {
         assert!(!report.ready_for_first_start);
         assert_eq!(report.completed_step_count, 2);
         assert_eq!(report.bootstrap_outcomes.len(), 1);
+        assert_eq!(
+            report
+                .remote_connectivity_profile
+                .as_ref()
+                .map(|profile| profile.primary_path.as_str()),
+            Some("node_first")
+        );
         assert!(report.detail.contains("needs review"));
         Ok(())
     }

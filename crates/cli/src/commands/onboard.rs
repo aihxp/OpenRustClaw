@@ -23,6 +23,7 @@ pub struct OnboardingState {
     pub execution_mode: Option<String>,
     pub deployment_mode: Option<String>,
     pub deployment_path: Option<String>,
+    pub remote_connectivity_profile: Option<RemoteConnectivityProfile>,
     pub daemon_installed: bool,
     pub skills_installed: Vec<String>,
     pub profile: Option<String>,
@@ -140,6 +141,15 @@ pub struct SetupStateManifest {
     pub setup: SetupState,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct RemoteConnectivityProfile {
+    pub mode: String,
+    pub primary_path: String,
+    #[serde(default)]
+    pub fallback_paths: Vec<String>,
+    pub detail: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SetupState {
     pub started_at: String,
@@ -152,6 +162,8 @@ pub struct SetupState {
     pub deployment_mode: Option<String>,
     #[serde(default)]
     pub deployment_path: Option<String>,
+    #[serde(default)]
+    pub remote_connectivity_profile: Option<RemoteConnectivityProfile>,
     #[serde(default)]
     pub setup_path: Option<String>,
     #[serde(default)]
@@ -365,6 +377,7 @@ impl OnboardingWizard {
                         .unwrap_or_else(|| "new_workspace".to_string()),
                     deployment_mode: self.state.deployment_mode.clone(),
                     deployment_path: self.state.deployment_path.clone(),
+                    remote_connectivity_profile: self.state.remote_connectivity_profile.clone(),
                     setup_path: self.state.profile.clone(),
                     selected_steps: step_ids(&steps),
                     completed_steps: Vec::new(),
@@ -407,6 +420,8 @@ Let's get started!
     fn load_from_setup_state(&mut self, setup_state: &SetupStateManifest) -> Result<()> {
         self.state.deployment_mode = setup_state.setup.deployment_mode.clone();
         self.state.deployment_path = setup_state.setup.deployment_path.clone();
+        self.state.remote_connectivity_profile =
+            setup_state.setup.remote_connectivity_profile.clone();
         self.state.profile = setup_state.setup.setup_path.clone();
         self.state.workspace_action = Some(setup_state.setup.workspace_action.clone());
         Ok(())
@@ -716,12 +731,28 @@ async fn run_gateway_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
         .default(0)
         .interact()?;
 
-    if mode == 1 {
+    let connectivity_profile = if mode == 1 {
         println!("Remote gateway/client mode is not a separate shipped runtime yet.");
         println!(
             "Current remote-connectivity direction: prefer a node-first path, fall back to an SSH tunnel if needed, and only use a reverse proxy as a last resort you fully control."
         );
-    }
+
+        let remote_profiles = vec![
+            "Node-first with SSH tunnel fallback and reverse proxy last resort",
+            "Node-first with SSH tunnel fallback only",
+            "SSH tunnel fallback only for now",
+            "Reverse proxy only as a last resort",
+        ];
+        let selection = Select::with_theme(&wizard.theme)
+            .with_prompt("Remote connectivity profile")
+            .items(&remote_profiles)
+            .default(0)
+            .interact()?;
+        remote_connectivity_profile_for_selection(selection)
+    } else {
+        local_connectivity_profile()
+    };
+    wizard.state.remote_connectivity_profile = Some(connectivity_profile.clone());
 
     let host: String = Input::with_theme(&wizard.theme)
         .with_prompt("Gateway host")
@@ -741,6 +772,14 @@ async fn run_gateway_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
 
     wizard.state.gateway_configured = true;
     let workspace_root = std::env::current_dir()?;
+    let (remote_status, remote_detail) = remote_connectivity_bootstrap_outcome(&connectivity_profile);
+    record_bootstrap_outcome(
+        &workspace_root,
+        "remote_connectivity",
+        "gateway_access",
+        remote_status,
+        remote_detail,
+    )?;
     record_bootstrap_outcome(
         &workspace_root,
         "runtime",
@@ -750,6 +789,66 @@ async fn run_gateway_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
     )?;
     println!("✓ Gateway configured on {}:{}", host, port);
     Ok(true)
+}
+
+fn local_connectivity_profile() -> RemoteConnectivityProfile {
+    RemoteConnectivityProfile {
+        mode: "local_only".to_string(),
+        primary_path: "local_runtime".to_string(),
+        fallback_paths: Vec::new(),
+        detail: "Local runtime selected. No remote connectivity fallback is active for this workspace.".to_string(),
+    }
+}
+
+fn remote_connectivity_profile_for_selection(selection: usize) -> RemoteConnectivityProfile {
+    match selection {
+        1 => RemoteConnectivityProfile {
+            mode: "remote_access".to_string(),
+            primary_path: "node_first".to_string(),
+            fallback_paths: vec!["ssh_tunnel".to_string()],
+            detail: "Remote access profile saved: prefer a node-first path and use an SSH tunnel if the node path is unavailable.".to_string(),
+        },
+        2 => RemoteConnectivityProfile {
+            mode: "remote_access".to_string(),
+            primary_path: "ssh_tunnel".to_string(),
+            fallback_paths: Vec::new(),
+            detail: "Remote access profile saved: use SSH tunnel as the temporary compatibility path until a node-first path is available.".to_string(),
+        },
+        3 => RemoteConnectivityProfile {
+            mode: "remote_access".to_string(),
+            primary_path: "reverse_proxy".to_string(),
+            fallback_paths: Vec::new(),
+            detail: "Remote access profile saved: reverse proxy is the chosen last-resort path and should only be used when you control the proxy boundary end to end.".to_string(),
+        },
+        _ => RemoteConnectivityProfile {
+            mode: "remote_access".to_string(),
+            primary_path: "node_first".to_string(),
+            fallback_paths: vec![
+                "ssh_tunnel".to_string(),
+                "reverse_proxy".to_string(),
+            ],
+            detail: "Remote access profile saved: prefer a node-first path, use SSH tunnel as the first fallback, and keep reverse proxy as the last-resort fallback.".to_string(),
+        },
+    }
+}
+
+fn remote_connectivity_bootstrap_outcome(
+    profile: &RemoteConnectivityProfile,
+) -> (&'static str, String) {
+    if profile.mode == "local_only" {
+        (
+            "ready",
+            "Local runtime remains the active control path for this workspace.".to_string(),
+        )
+    } else {
+        (
+            "warning",
+            format!(
+                "{} Finish the host-level remote bootstrap manually, then verify the resulting path with `openrustclaw doctor` and the setup handoff surface.",
+                profile.detail
+            ),
+        )
+    }
 }
 
 // ============================================================================
@@ -1326,6 +1425,7 @@ where
             workspace_action: "new_workspace".to_string(),
             deployment_mode: None,
             deployment_path: None,
+            remote_connectivity_profile: None,
             setup_path: None,
             selected_steps: Vec::new(),
             completed_steps: Vec::new(),
@@ -2276,6 +2376,12 @@ mod tests {
                 workspace_action: "new_workspace".to_string(),
                 deployment_mode: Some(self_hosted::MODE_SOLO.to_string()),
                 deployment_path: Some("solo_starter".to_string()),
+                remote_connectivity_profile: Some(RemoteConnectivityProfile {
+                    mode: "remote_access".to_string(),
+                    primary_path: "node_first".to_string(),
+                    fallback_paths: vec!["ssh_tunnel".to_string()],
+                    detail: "Remote access profile saved.".to_string(),
+                }),
                 setup_path: Some("Custom".to_string()),
                 selected_steps: vec!["gateway".to_string(), "model".to_string()],
                 completed_steps: vec!["gateway".to_string()],
@@ -2289,10 +2395,32 @@ mod tests {
         save_setup_state(dir.path(), &manifest).unwrap();
         let loaded = load_setup_state(dir.path()).unwrap().unwrap();
         assert_eq!(loaded.setup.setup_path.as_deref(), Some("Custom"));
+        assert_eq!(
+            loaded
+                .setup
+                .remote_connectivity_profile
+                .as_ref()
+                .map(|profile| profile.primary_path.as_str()),
+            Some("node_first")
+        );
         assert!(setup_state_is_resumable(&loaded));
         let steps = selected_steps_from_setup_state(&loaded.setup);
         assert_eq!(steps.len(), 1);
         assert_eq!(steps[0].id(), "model");
+    }
+
+    #[test]
+    fn test_remote_connectivity_profiles_capture_fallback_order() {
+        let local = local_connectivity_profile();
+        assert_eq!(local.mode, "local_only");
+        assert!(local.fallback_paths.is_empty());
+
+        let remote = remote_connectivity_profile_for_selection(0);
+        assert_eq!(remote.primary_path, "node_first");
+        assert_eq!(
+            remote.fallback_paths,
+            vec!["ssh_tunnel".to_string(), "reverse_proxy".to_string()]
+        );
     }
 
     #[test]
@@ -2376,6 +2504,7 @@ mod tests {
             workspace_action: "repair_existing".to_string(),
             deployment_mode: Some(self_hosted::MODE_TEAM.to_string()),
             deployment_path: Some("shared_team_setup".to_string()),
+            remote_connectivity_profile: None,
             setup_path: Some("Advanced".to_string()),
             selected_steps: vec![
                 "gateway".to_string(),
@@ -2461,6 +2590,7 @@ mod tests {
                 workspace_action: "new_workspace".to_string(),
                 deployment_mode: Some(self_hosted::MODE_COMPANY.to_string()),
                 deployment_path: Some("company_ops_setup".to_string()),
+                remote_connectivity_profile: None,
                 setup_path: Some("Advanced".to_string()),
                 selected_steps: vec![
                     "gateway".to_string(),
