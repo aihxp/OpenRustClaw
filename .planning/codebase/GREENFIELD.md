@@ -148,6 +148,15 @@ The greenfield lane now also owns the first enterprise access write-route family
 3. `start.rs` acts as the HTTP adapter that maps payloads into the shared service and records operator tool results
 4. the shipped `/control/enterprise/access/bootstrap`, `/control/enterprise/access/operators`, and `/control/enterprise/governance/rules` surface continues to return the same enterprise access summary contract
 
+### Current Phase 67 Outcome
+
+The greenfield lane now also owns the skill registry mutation lane:
+
+1. skill files, DB persistence, ClawHub registry access, compile attempts, and plugin-event publication still live behind the existing `skills.rs` adapter helpers
+2. `openrustclaw-app` now owns install, update, and uninstall orchestration plus mutation-result shaping for that lane
+3. `skills.rs` acts as the async adapter that maps workspace and registry primitives into the shared service
+4. the shipped control and runtime mutation contract for install, update, and uninstall continues to return the same skill mutation shape
+
 ## Review Defaults
 
 When reviewing new work during `v1.13`:
@@ -181,10 +190,10 @@ After `v1.14`, the next `skills.rs` migration queue should start from the remain
 2. install and registry workflows
 3. auth-plugin and voice-plugin lifecycle helpers
 
-After Phase 66, the next ranked greenfield queue is:
+After Phase 67, the next ranked greenfield queue is:
 
-1. the mutation-heavy `skills.rs` lanes
-2. a bounded runtime command seam outside report composition
+1. a bounded runtime command seam outside report composition
+2. the remaining plugin-binding and voice-plugin mutation lanes in `skills.rs`
 3. another bounded route family only if it materially improves the remaining migration path
 
 ## Verification Bundle

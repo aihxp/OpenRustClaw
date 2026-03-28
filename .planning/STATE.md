@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.15
 milestone_name: Deeper Greenfield Conversion
-current_phase: 67
-current_phase_name: Skills Mutation and Registry Boundary
+current_phase: 68
+current_phase_name: Runtime Command Boundary Cleanup
 current_plan: null
-status: Phase 66 complete; ready to begin Phase 67
-stopped_at: Run $gsd-discuss-phase 67, $gsd-plan-phase 67, or $gsd-autonomous to continue v1.15.
-last_updated: "2026-03-28T15:40:00Z"
-last_activity: 2026-03-28 -- completed Phase 66 Additional Route Family Extraction
+status: Phase 67 complete; ready to begin Phase 68
+stopped_at: Run $gsd-discuss-phase 68, $gsd-plan-phase 68, or $gsd-autonomous to continue v1.15.
+last_updated: "2026-03-28T18:45:00Z"
+last_activity: 2026-03-28 -- completed Phase 67 Skills Mutation and Registry Boundary
 progress:
   total_phases: 4
-  completed_phases: 2
-  total_plans: 2
-  completed_plans: 2
-  percent: 50
+  completed_phases: 3
+  total_plans: 3
+  completed_plans: 3
+  percent: 75
 ---
 
 # Project State
@@ -28,17 +28,17 @@ See: .planning/PROJECT.md (updated 2026-03-28)
 
 ## Current Position
 
-Current Phase: 67
-Current Phase Name: Skills Mutation and Registry Boundary
+Current Phase: 68
+Current Phase Name: Runtime Command Boundary Cleanup
 Total Phases: 4
 Current Plan: -
 Total Plans in Phase: 0
-Status: Phase 66 complete; ready to begin Phase 67
-Last activity: 2026-03-28 -- completed Phase 66 Additional Route Family Extraction
+Status: Phase 67 complete; ready to begin Phase 68
+Last activity: 2026-03-28 -- completed Phase 67 Skills Mutation and Registry Boundary
 
-Phase: 2 of 4
-Plan: 2 of 2
-Progress: [█████-----] 50%
+Phase: 3 of 4
+Plan: 3 of 3
+Progress: [███████---] 75%
 
 ## Performance Metrics
 
@@ -87,6 +87,7 @@ Recent decisions affecting current work:
 - v1.15 continues the same transition pattern with the next ranked seams: another inspection aggregate, another route family, the mutation-heavy `skills.rs` lanes, and one bounded runtime command extraction.
 - Phase 65 moved the enterprise admin aggregation into `openrustclaw-app`, with `inspect.rs` now acting as the adapter that loads enterprise access, policy, autonomy, and orchestration state into the new service.
 - Phase 66 moved the enterprise access write route family into `openrustclaw-app`, with `start.rs` now acting as the HTTP adapter for bootstrap, operator-upsert, and governance-rule-upsert flows while preserving the shipped enterprise access summary contract.
+- Phase 67 moved the skills install, update, and uninstall mutation lane into `openrustclaw-app`, with `skills.rs` now acting as the adapter around workspace files, DB state, registry operations, compile attempts, and plugin-event publication.
 
 ### Pending Todos
 
@@ -99,5 +100,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-28 04:45
-Stopped at: Run $gsd-discuss-phase 67, $gsd-plan-phase 67, or $gsd-autonomous to continue v1.15.
+Stopped at: Run $gsd-discuss-phase 68, $gsd-plan-phase 68, or $gsd-autonomous to continue v1.15.
 Resume file: None

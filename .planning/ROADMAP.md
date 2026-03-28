@@ -22,10 +22,10 @@
 ## Current Status
 
 - Active milestone: **v1.15 Deeper Greenfield Conversion**
-- Progress: 2 of 4 phases complete
+- Progress: 3 of 4 phases complete
 - Most recent shipment: **v1.14 Continued Greenfield Conversion**
-- Current execution: **Phase 67 not started**
-- Next step: `$gsd-discuss-phase 67`, `$gsd-plan-phase 67`, or `$gsd-autonomous`
+- Current execution: **Phase 68 not started**
+- Next step: `$gsd-discuss-phase 68`, `$gsd-plan-phase 68`, or `$gsd-autonomous`
 
 ## Live Planning
 
@@ -33,7 +33,7 @@
 
 - [x] **Phase 65: Inspection Aggregation Expansion** (completed 2026-03-28)
 - [x] **Phase 66: Additional Route Family Extraction** (completed 2026-03-28)
-- [ ] **Phase 67: Skills Mutation and Registry Boundary**
+- [x] **Phase 67: Skills Mutation and Registry Boundary** (completed 2026-03-28)
 - [ ] **Phase 68: Runtime Command Boundary Cleanup**
 
 ### Phase 65: Inspection Aggregation Expansion
@@ -72,6 +72,11 @@ Plans:
 - one real mutation-heavy `skills.rs` slice moves behind a stable boundary
 - the migration starts from mutation, removal, install, or registry flows rather than reopening the compiled overview seam
 - contributor guidance can point future skills work at the new boundary
+
+**Plans:** 1/1 plans complete
+
+Plans:
+- [x] 67-01 Extract the skill registry mutation lane
 
 ### Phase 68: Runtime Command Boundary Cleanup
 

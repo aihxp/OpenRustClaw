@@ -32,6 +32,8 @@ Another bounded runtime or `/control/...` route family must stop coupling direct
 
 The mutation-heavy `skills.rs` lanes must gain a real service boundary so future skills work stops treating the compiled overview seam as the only extraction while install, mutation, and registry behavior keep growing inside the hotspot.
 
+**Status:** Completed in v1.15 Phase 67 via the skill registry mutation service.
+
 **Acceptance signals:**
 - one real mutation-heavy slice of `skills.rs` moves behind a stable service or adapter boundary
 - the milestone starts from compiled-skill mutation, removal, install, or registry flows instead of reopening the already-migrated overview seam
@@ -54,4 +56,4 @@ At least one remaining runtime command seam must move behind a cleaner applicati
 
 ## Next Step
 
-Continue with `$gsd-discuss-phase 67`, `$gsd-plan-phase 67`, or `$gsd-autonomous`.
+Continue with `$gsd-discuss-phase 68`, `$gsd-plan-phase 68`, or `$gsd-autonomous`.

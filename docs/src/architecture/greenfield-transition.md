@@ -63,6 +63,8 @@ The enterprise admin aggregation now follows the same pattern too. `openrustclaw
 
 The next route-family extraction is now shipped too. The enterprise access bootstrap, operator-upsert, and governance-rule-upsert flow now runs through `openrustclaw-app`, while `start.rs` only adapts HTTP payloads, records operator tool results, and returns the same enterprise access summary contract.
 
+The first mutation-heavy `skills.rs` seam is now shipped too. The install, update, and uninstall registry lane now runs through `openrustclaw-app`, while `skills.rs` only adapts workspace files, DB state, registry operations, compile attempts, and plugin-event publication into that shared service.
+
 ## Contributor Defaults
 
 When adding or changing behavior during this transition:

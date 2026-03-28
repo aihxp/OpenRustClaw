@@ -77,10 +77,10 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 - ✓ The compiled-skill overview lane now runs through `openrustclaw-app`, with `skills.rs` and `start.rs` reduced to adapters for the shipped compiled-skill CLI and MCP/runtime surface — v1.14 Phase 64
 - ✓ The enterprise admin aggregation now runs through `openrustclaw-app`, with `inspect.rs` reduced to the workspace adapter for enterprise access, policy, autonomy, and supervision inputs — v1.15 Phase 65
 - ✓ The enterprise access write route family now runs through `openrustclaw-app`, with `start.rs` reduced to the HTTP adapter for bootstrap, operator-upsert, and governance-rule-upsert orchestration — v1.15 Phase 66
+- ✓ The install, update, and uninstall skills mutation lane now runs through `openrustclaw-app`, with `skills.rs` reduced to the adapter around workspace files, DB state, registry operations, compile attempts, and plugin-event publication — v1.15 Phase 67
 
 ### Active
 
-- [ ] The mutation-heavy `skills.rs` lanes still need a real service boundary beyond the read-only compiled overview path — v1.15
 - [ ] Remaining runtime command seams still need bounded application or adapter extraction so greenfield work does not stall at report composition only — v1.15
 
 ### Out of Scope
@@ -98,7 +98,7 @@ The most recent milestone changed the implementation posture instead of adding a
 
 The most recent milestone broadened that work into the next ranked migration queue. Instead of stopping at one proving slice, `v1.14` extended the greenfield lane across inspection summaries, selected control routes, mobile operator reporting, and the first bounded `skills.rs` cleanup seam.
 
-The next milestone continues that same migration strategy without changing the contract. `v1.15` focuses on the next ranked seams that are still blocking contributor defaults from becoming the everyday architecture reality: the remaining mutation-heavy `skills.rs` paths and one bounded runtime command seam, with the next route-family extraction already completed in Phase 66.
+The next milestone continues that same migration strategy without changing the contract. `v1.15` now focuses on the remaining bounded runtime command seam, with the next route-family extraction and the first mutation-heavy `skills.rs` seam already completed in Phases 66 and 67.
 
 ## Constraints
 
@@ -145,6 +145,7 @@ The next milestone continues that same migration strategy without changing the c
 | Use the compiled-skill overview lane as the first `skills.rs` seam instead of attempting a broad skills rewrite | Compiled manifests, artifacts, reference previews, and executable-component discovery already powered both CLI and MCP/runtime surfaces, so extracting that read-only lane created a real shared boundary with bounded risk | ✓ Good |
 | Use the enterprise admin surface as the next inspection aggregation extraction instead of trying to move every enterprise summary at once | It is a real shipped aggregation over access, policy, autonomy, and supervision, so moving that composition first reduces `inspect.rs` ownership without forcing a broad enterprise rewrite in one phase | ✓ Good |
 | Use the enterprise access write family as the next bounded `start.rs` route extraction | The bootstrap, operator-upsert, and governance-rule-upsert handlers all shared the same mutation-and-report pattern, so extracting them together reduced real route coupling without changing the shipped enterprise summary contract | ✓ Good |
+| Use the install, update, and uninstall lane as the first mutation-heavy `skills.rs` extraction | That lane already powered the shipped control API and combined registry calls, policy checks, DB writes, compile attempts, and mutation-result shaping, so moving it first created a real service seam instead of another read-only helper split | ✓ Good |
 
 ## Next Milestone Goals
 
@@ -171,4 +172,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-28 after completing v1.15 Phase 66*
+*Last updated: 2026-03-28 after completing v1.15 Phase 67*
