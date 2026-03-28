@@ -578,7 +578,7 @@ When shipped behavior changes:
 
 ## Greenfield Transition Defaults
 
-During `v1.13`, new code should default to the greenfield transition lane:
+During `v1.14`, new code should default to the greenfield transition lane:
 
 1. keep domain contracts in the existing shared crates
 2. put new business logic in `openrustclaw-app` unless the work is purely domain-layer or purely presentation-layer
@@ -588,17 +588,26 @@ During `v1.13`, new code should default to the greenfield transition lane:
 
 The first proving slice, setup handoff reporting, is already migrated: onboarding state still persists in the CLI onboarding module, but `openrustclaw-app` now owns the report composition used by the runtime and Control UI.
 
+That migration set now also includes:
+
+- self-hosted product-mode summary composition
+- the `/control/self-hosted/product-mode` transition route family
+- the mobile node operator summary report
+- the compiled-skill overview seam shared by `skills.rs` and `start.rs`
+
 The next migration queue is:
 
-1. broader inspection summary composition
-2. selected route families from `start.rs`
-3. mobile operator reporting
-4. `skills.rs` decomposition
+1. additional `start.rs` route families beyond the self-hosted product-mode path
+2. remaining typed report families still composed directly in adapter modules
+3. `skills.rs` mutation, install, and plugin lifecycle lanes
+4. runtime-facing command seams still concentrated in legacy command hubs
 
 Use the current baseline before widening that slice:
 
 ```bash
 cargo test -p openrustclaw-cli setup_handoff_summary -- --nocapture
 cargo test -p openrustclaw-cli dashboard_includes_setup_handoff_panel -- --nocapture
+cargo test -p openrustclaw-cli test_invoke_compiled_skill_includes_reference_preview -- --nocapture
+cargo test -p openrustclaw-cli mcp_server_exposes_compiled_skill_tools -- --nocapture
 mdbook build docs
 ```

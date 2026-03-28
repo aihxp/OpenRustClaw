@@ -21,10 +21,10 @@
 ## Current Status
 
 - Active milestone: **v1.14 Continued Greenfield Conversion**
-- Progress: 3 of 4 phases complete
+- Progress: 4 of 4 phases complete
 - Most recent shipment: **v1.13 Brownfield-to-Greenfield Transition**
-- Current execution: **Phase 64 not started**
-- Next step: `$gsd-discuss-phase 64`, `$gsd-plan-phase 64`, or `$gsd-autonomous`
+- Current execution: **All v1.14 phases complete**
+- Next step: `$gsd-audit-milestone`, `$gsd-complete-milestone`, or `$gsd-autonomous`
 
 ## Live Planning
 
@@ -33,7 +33,7 @@
 - [x] **Phase 61: Inspection Summary Service Extraction** (completed 2026-03-28)
 - [x] **Phase 62: Control Route Family Service Extraction** (completed 2026-03-28)
 - [x] **Phase 63: Mobile Operator Report Migration** (completed 2026-03-28)
-- [ ] **Phase 64: Skills Surface Boundary Cleanup**
+- [x] **Phase 64: Skills Surface Boundary Cleanup** (completed 2026-03-28)
 
 ### Phase 61: Inspection Summary Service Extraction
 
@@ -86,7 +86,7 @@ Plans:
 - contributor guidance can point future work at the new seam
 - remaining `skills.rs` cleanup debt is preserved explicitly
 
-**Plans:** 0/1 plans complete
+**Plans:** 1/1 plans complete
 
 Plans:
-- [ ] 64-01 Extract the first stable service seam from `skills.rs`
+- [x] 64-01 Extract the first stable service seam from `skills.rs`

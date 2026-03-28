@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.14
 milestone_name: Continued Greenfield Conversion
-current_phase: 63
-current_phase_name: Mobile Operator Report Migration
+current_phase: 64
+current_phase_name: Skills Surface Boundary Cleanup
 current_plan: null
-status: Phase 63 complete; ready to begin Phase 64
-stopped_at: Run $gsd-discuss-phase 64, $gsd-plan-phase 64, or $gsd-autonomous to continue v1.14.
-last_updated: "2026-03-28T16:10:00Z"
-last_activity: 2026-03-28 -- completed Phase 63 Mobile Operator Report Migration
+status: Phase 64 complete; ready for milestone audit and archive
+stopped_at: Run $gsd-audit-milestone, $gsd-complete-milestone, or $gsd-autonomous to finish v1.14.
+last_updated: "2026-03-28T20:10:00Z"
+last_activity: 2026-03-28 -- completed Phase 64 Skills Surface Boundary Cleanup
 progress:
   total_phases: 4
-  completed_phases: 3
-  total_plans: 3
-  completed_plans: 3
-  percent: 75
+  completed_phases: 4
+  total_plans: 4
+  completed_plans: 4
+  percent: 100
 ---
 
 # Project State
@@ -24,21 +24,21 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-28)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** Define and execute v1.14 Continued Greenfield Conversion
+**Current focus:** Audit and complete v1.14 Continued Greenfield Conversion
 
 ## Current Position
 
-Current Phase: 63
-Current Phase Name: Mobile Operator Report Migration
+Current Phase: 64
+Current Phase Name: Skills Surface Boundary Cleanup
 Total Phases: 4
 Current Plan: -
 Total Plans in Phase: 1
-Status: Phase 63 complete; ready to begin Phase 64
-Last activity: 2026-03-28 -- completed Phase 63 Mobile Operator Report Migration
+Status: Phase 64 complete; ready for milestone audit and archive
+Last activity: 2026-03-28 -- completed Phase 64 Skills Surface Boundary Cleanup
 
-Phase: 3 of 4
-Plan: 3 of 3
-Progress: [███████---] 75%
+Phase: 4 of 4
+Plan: 4 of 4
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -83,6 +83,7 @@ Recent decisions affecting current work:
 - Phase 61 broadened the greenfield lane with a second typed report family: self-hosted product-mode summary composition now lives in `openrustclaw-app`, while `inspect.rs` only adapts persisted state into that service.
 - Phase 62 moved the first bounded `start.rs` control route family into the greenfield lane: the self-hosted product-mode transition path now delegates transition-and-report orchestration through `openrustclaw-app`, while `start.rs` only remains the HTTP adapter.
 - Phase 63 proved the greenfield lane on a second operator-facing surface: the mobile node operator report now runs through `openrustclaw-app`, while `mobile.rs` only adapts node state, metrics, and recent activity into the report service.
+- Phase 64 carved the first stable seam out of `skills.rs`: compiled manifest loading, artifact loading, executable-component derivation, and compiled reference reading now run through `openrustclaw-app`, while `skills.rs` and `start.rs` only adapt that shared compiled-skill overview lane.
 
 ### Pending Todos
 
@@ -95,5 +96,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-28 04:45
-Stopped at: Run $gsd-discuss-phase 64, $gsd-plan-phase 64, or $gsd-autonomous to continue v1.14.
+Stopped at: Run $gsd-audit-milestone, $gsd-complete-milestone, or $gsd-autonomous to finish v1.14.
 Resume file: None

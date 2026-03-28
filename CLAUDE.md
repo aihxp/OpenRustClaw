@@ -27,10 +27,10 @@ cargo test --workspace
 core → db → memory, providers, mcp, observability, security → agent → gateway → channels → skills, scheduler → langbridge → cli
 
 ## Greenfield Transition Defaults
-- `openrustclaw-app` is the default home for new application-level business logic during `v1.13`
+- `openrustclaw-app` is the default home for new application-level business logic during the greenfield transition milestones
 - Treat `crates/cli/src/commands/start.rs`, `mobile.rs`, `skills.rs`, `runtime.rs`, and `inspect.rs` as adapter or compatibility surfaces unless an active migration slice explicitly targets them
 - If a change must touch a legacy hotspot, keep the logic bounded and preserve the proving-slice verification bundle before broadening scope
-- Current proving slice: setup handoff reporting (`openrustclaw-app` owns composition; CLI adapts durable setup state)
+- Current migrated slices: setup handoff reporting, self-hosted product-mode summary and route flows, the mobile operator report, and the compiled-skill overview seam
 
 ## Error Handling
 - thiserror for library errors (crates/core/src/error.rs)

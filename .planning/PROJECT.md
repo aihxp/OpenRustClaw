@@ -14,7 +14,7 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 - **Shipped milestones:** v1.0 Rust OpenClaw MVP, v1.1 Lifecycle Integrity and Enterprise Foundations, v1.2 Deeper OpenClaw Surface Parity, v1.3 Enterprise Expansion and Supervised Autonomy Foundations, v1.4 Enterprise Governance and Operator-Gated Full Autonomy, v1.5 Self-Hosted Product Modes and Lifecycle Packaging, v1.6 Proper Onboarding and Setup, v1.7 Documentation Convergence and OpenClaw-Inspired Docs Rewrite, v1.8 Clean Codebase, v1.9 GitHub Repository Presence and Actions Recovery, v1.10 Release Binaries Workflow Recovery, v1.11 Crates.io and Docs.rs Publication Foundation, v1.12 Secure Node Connectivity and SSH Tunnel Revisit, and v1.13 Brownfield-to-Greenfield Transition
 - **Archive:** `.planning/milestones/v1.0-*` through `.planning/milestones/v1.13-*`
-- **Planning state:** v1.14 is active
+- **Planning state:** v1.14 is active and all planned phases are complete
 - **Known audit debt:** v1.0 archive still records missing phase `VERIFICATION.md` artifacts; v1.1 closed that workflow gap going forward
 
 ## Most Recent Milestone: v1.13 Brownfield-to-Greenfield Transition
@@ -76,10 +76,11 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 - ✓ A second typed operator summary family now runs through `openrustclaw-app`, with self-hosted product-mode report composition moved out of `inspect.rs` and into the greenfield lane — v1.14 Phase 61
 - ✓ The `/control/self-hosted/product-mode` route family now runs through a greenfield application service seam, with `start.rs` reduced to the HTTP adapter for the migrated transition path — v1.14 Phase 62
 - ✓ The mobile node operator summary report now runs through `openrustclaw-app`, with `mobile.rs` reduced to the workspace adapter for the migrated operator-facing mobile report — v1.14 Phase 63
+- ✓ The compiled-skill overview lane now runs through `openrustclaw-app`, with `skills.rs` and `start.rs` reduced to adapters for the shipped compiled-skill CLI and MCP/runtime surface — v1.14 Phase 64
 
 ### Active
 
-- [ ] The `skills.rs` command surface needs a bounded service seam so future work stops deepening that hotspot by default — v1.14
+- [ ] No new v1.14 requirements remain; milestone is ready for audit and archive
 
 ### Out of Scope
 
@@ -94,7 +95,7 @@ This remains a large brownfield Rust monorepo with broad runtime, CLI, control-p
 
 The most recent milestone changed the implementation posture instead of adding another wide product surface. v1.13 created a greenfield-style lane inside the existing repo, proved it with a shipped setup handoff slice, and turned that lane into the default contribution contract for follow-on work.
 
-The next milestone extends that work into the next ranked migration queue. Instead of stopping at one proving slice, `v1.14` broadens the greenfield lane across inspection summaries, selected control routes, mobile operator reporting, and the first bounded `skills.rs` cleanup seam.
+The current milestone extends that work into the next ranked migration queue. Instead of stopping at one proving slice, `v1.14` broadens the greenfield lane across inspection summaries, selected control routes, mobile operator reporting, and the first bounded `skills.rs` cleanup seam.
 
 ## Constraints
 
@@ -138,6 +139,7 @@ The next milestone extends that work into the next ranked migration queue. Inste
 | Treat large command modules as compatibility surfaces unless a migration phase explicitly targets them | The transition only works if future contributors stop treating legacy hotspots as the default home for every new behavior | ✓ Good |
 | Keep persisted self-hosted product-mode storage and transition receipts in the existing CLI adapter module while moving summary composition into `openrustclaw-app` | The second summary extraction needed to broaden the greenfield lane without mixing storage migration into the same bounded slice | ✓ Good |
 | Use the self-hosted product-mode transition route as the first bounded `start.rs` route-family extraction | It already had a matching greenfield summary service, one GET and one POST contract, and shipped Control UI coverage, which made it the safest truthful proving route | ✓ Good |
+| Use the compiled-skill overview lane as the first `skills.rs` seam instead of attempting a broad skills rewrite | Compiled manifests, artifacts, reference previews, and executable-component discovery already powered both CLI and MCP/runtime surfaces, so extracting that read-only lane created a real shared boundary with bounded risk | ✓ Good |
 
 ## Next Milestone Goals
 
@@ -164,4 +166,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-28 after starting v1.14*
+*Last updated: 2026-03-28 after completing v1.14 execution*

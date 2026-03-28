@@ -10,6 +10,8 @@
 
 OpenRustClaw must move broader inspection-summary composition out of `crates/cli/src/commands/inspect.rs` and into the greenfield application lane so typed operator summaries stop being owned primarily by a legacy CLI command hub.
 
+**Status:** Completed in v1.14 Phase 61 via the self-hosted product-mode summary service.
+
 **Acceptance signals:**
 - at least one additional typed inspection family is composed in `openrustclaw-app`
 - `inspect.rs` becomes an adapter for that migrated summary instead of owning the business rules directly
@@ -41,6 +43,8 @@ At least one mobile operator-reporting surface must follow the proving-slice pat
 
 The `skills.rs` hotspot must gain a bounded service seam so future work has a cleaner place to land than the legacy command module itself.
 
+**Status:** Completed in v1.14 Phase 64 via the compiled-skill overview service seam.
+
 **Acceptance signals:**
 - one meaningful slice of `skills.rs` is extracted behind a stable service or adapter boundary
 - contributor guidance can point future work at that seam instead of the hotspot
@@ -54,4 +58,4 @@ The `skills.rs` hotspot must gain a bounded service seam so future work has a cl
 
 ## Next Step
 
-Start execution with `$gsd-plan-phase 64` or `$gsd-autonomous`.
+Run `$gsd-audit-milestone`, `$gsd-complete-milestone`, or `$gsd-autonomous` to close the milestone lifecycle.

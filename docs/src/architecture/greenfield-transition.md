@@ -57,6 +57,8 @@ The first bounded `start.rs` route-family extraction is now shipped too. The `/c
 
 The same migration pattern now covers a second operator-facing surface: the mobile node operator report is composed in `openrustclaw-app`, while `mobile.rs` only adapts node state, metrics, and recent activity into that service and preserves the shipped `/control/mobile/nodes/{id}/summary` contract.
 
+The first bounded `skills.rs` seam is now shipped too. The compiled-skill overview lane, including manifest loading, artifact loading, executable-component discovery, and compiled reference reading, now runs through `openrustclaw-app`, while `skills.rs` and `start.rs` only adapt that shared service into the existing CLI and MCP/runtime surface.
+
 ## Contributor Defaults
 
 When adding or changing behavior during this transition:
@@ -65,6 +67,8 @@ When adding or changing behavior during this transition:
 2. treat large command modules as adapters unless the task is explicitly a compatibility fix
 3. avoid adding fresh cross-module helpers that deepen legacy coupling
 4. keep the existing verification bundle green before expanding the migration
+
+For `skills.rs`, start from the new compiled-skill overview seam before touching the broader mutation, install, or plugin lifecycle lanes.
 
 ## Verification Baseline
 

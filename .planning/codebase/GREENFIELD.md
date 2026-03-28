@@ -121,6 +121,15 @@ The greenfield lane now also owns a second operator-facing report surface:
 3. `mobile.rs` acts as the workspace adapter that loads mobile state into that service
 4. the `/control/mobile/nodes/{id}/summary` route and Control UI continue to consume the same shipped report contract
 
+### Current Phase 64 Outcome
+
+The greenfield lane now also owns the first bounded compiled-skill overview seam:
+
+1. compiled skill storage, compilation, and mutation-heavy lifecycle behavior still live in the existing skills crate and CLI adapters
+2. `openrustclaw-app` now owns compiled manifest loading, artifact loading, executable-component derivation, and compiled reference reading for the shared overview lane
+3. `skills.rs` acts as the CLI adapter for compiled-skill detail and preview flows
+4. `start.rs` acts as the MCP/runtime adapter for the same compiled-skill overview contract
+
 ## Review Defaults
 
 When reviewing new work during `v1.13`:
@@ -147,6 +156,12 @@ Unless a future milestone reprioritizes it, the preferred migration order after 
 2. selected `start.rs` route families
 3. mobile operator reporting
 4. `skills.rs` decomposition
+
+After `v1.14`, the next `skills.rs` migration queue should start from the remaining mutation-heavy lanes rather than reopening the compiled overview slice:
+
+1. compiled-skill mutation and removal flows
+2. install and registry workflows
+3. auth-plugin and voice-plugin lifecycle helpers
 
 ## Verification Bundle
 
