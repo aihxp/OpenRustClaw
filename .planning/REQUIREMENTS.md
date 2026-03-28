@@ -1,45 +1,46 @@
-# Requirements: v1.23 Full Greenfield Conversion: Setup and Secondary Command Surfaces
+# Requirements: v1.24 Full Greenfield Conversion: Adapter-Only Exit and Enforcement
 
 **Started:** 2026-03-28
 **Historical greenfield baseline:** retired `18/18` ranked seam ledger complete, or `100%`
-**Full-conversion roadmap baseline:** `4/6` milestones shipped, or about `67%`
-**Target after shipment:** `5/6` milestones shipped, or about `83%`
+**Full-conversion roadmap baseline:** `5/6` milestones shipped, or about `83%`
+**Target after shipment:** `6/6` milestones shipped, or `100%`
 
 ## Scope
 
-This milestone continues the post-`18/18` full-conversion program by targeting the remaining setup-lifecycle and secondary command-module seams that still own mixed business logic outside the major hotspots already reduced in `start.rs`, `mobile.rs`, `voice_runtime.rs`, `orchestrate.rs`, and `browser.rs`.
+This milestone closes the six-queue full-conversion program by removing the final residual helper ownership left in legacy command hubs, formalizing the remaining adapter and port boundaries, and adding the guardrails and exit audit needed to claim an adapter-only architecture truthfully.
 
 ## Milestone Requirements
 
-### Setup Lifecycle
+### Final Hotspot Cleanup
 
-- [ ] **GFC-37**: Operator-facing onboarding, repair, and resume orchestration compose through `openrustclaw-app`, with `onboard.rs` reduced toward an adapter around setup state, workspace I/O, and bounded runtime probes.
+- [ ] **GFC-41**: The targeted final residual helper seams in legacy command hotspots are extracted behind `openrustclaw-app` or deleted, leaving those modules with less hidden business-rule ownership.
 
-### Secondary Lifecycle Commands
+### Boundary Formalization
 
-- [ ] **GFC-38**: The targeted residual lifecycle seams in `channels.rs`, `schedule.rs`, `services.rs`, and `control.rs` compose through `openrustclaw-app`, with those command modules reduced toward adapters around transport, persistence, and bounded side effects.
+- [ ] **GFC-42**: The targeted remaining persistence and external side-effect seams use explicit adapter or port boundaries so legacy command modules read as adapters instead of orchestration hubs.
 
-### Secondary Operator Helpers
+### Enforcement
 
-- [ ] **GFC-39**: The targeted residual operator, media, tools, and memory helper seams compose through `openrustclaw-app`, with the affected secondary command modules reduced toward adapters around artifact, runtime, and workspace inputs.
+- [ ] **GFC-43**: The repo ships architecture guardrails and contributor-facing defaults that block or strongly discourage new business logic from landing in legacy command hubs.
 
-### Adapter Cleanup
+### Exit Audit
 
-- [ ] **GFC-40**: Transition-era helper duplication created during the brownfield-to-greenfield migration is removed, consolidated, or explicitly bounded so the affected command modules expose clearer adapter-only ownership.
+- [ ] **GFC-44**: The full-conversion exit audit, verification bundle, and scorecard state truthfully whether the six-milestone adapter-only target is met and document any residual exceptions explicitly.
 
 ## Future Requirements
 
-- Final adapter-only enforcement, architecture guardrails, and the exit audit remain deferred to `v1.24 Full Greenfield Conversion: Adapter-Only Exit and Enforcement`.
+- Any post-`v1.24` architectural cleanup or deeper refactors require a new canonical queue after the six-milestone full-conversion program is closed and audited.
 
 ## Out of Scope
 
-- Defining a new greenfield percentage denominator beyond the six-milestone full-conversion program
-- Broad new product capabilities unrelated to shrinking setup and secondary command ownership
-- Final architecture guardrails and exit-scorecard claims before the `v1.24` enforcement milestone
+- New end-user product features unrelated to adapter-only exit and enforcement
+- Reopening the retired historical `18/18` seam ledger with a new denominator
+- Claiming total raw-line migration across the whole Rust codebase instead of proving adapter-only ownership
+- Broad rewrites that discard working adapters instead of tightening and auditing them
 
 ## Traceability
 
-- `GFC-37` -> Phase 97
-- `GFC-38` -> Phase 98
-- `GFC-39` -> Phase 99
-- `GFC-40` -> Phase 100
+- `GFC-41` -> Phase 101
+- `GFC-42` -> Phase 102
+- `GFC-43` -> Phase 103
+- `GFC-44` -> Phase 104

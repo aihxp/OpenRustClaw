@@ -25,93 +25,94 @@
 - ✅ **v1.20 Full Greenfield Conversion: Control Plane Route Families II** — shipped 2026-03-28. Archive: `.planning/milestones/v1.20-ROADMAP.md`
 - ✅ **v1.21 Full Greenfield Conversion: Mobile and Voice Runtime Services** — shipped 2026-03-28. Archive: `.planning/milestones/v1.21-ROADMAP.md`
 - ✅ **v1.22 Full Greenfield Conversion: Orchestration and Browser Services** — shipped 2026-03-28. Archive: `.planning/milestones/v1.22-ROADMAP.md`
-- 🚧 **v1.23 Full Greenfield Conversion: Setup and Secondary Command Surfaces** — active. Baseline: `4/6` shipped milestones, or about `67%`; target after shipment: `5/6`, or about `83%`
+- ✅ **v1.23 Full Greenfield Conversion: Setup and Secondary Command Surfaces** — shipped 2026-03-28. Archive: `.planning/milestones/v1.23-ROADMAP.md`
+- 🚧 **v1.24 Full Greenfield Conversion: Adapter-Only Exit and Enforcement** — active. Baseline: `5/6` shipped milestones, or about `83%`; target after shipment: `6/6`, or `100%`
 
 ## Current Status
 
-- Active milestone: **v1.23 Full Greenfield Conversion: Setup and Secondary Command Surfaces**
+- Active milestone: **v1.24 Full Greenfield Conversion: Adapter-Only Exit and Enforcement**
 - Progress: **0 of 4 phases complete**
-- Most recent shipment: **v1.22 Full Greenfield Conversion: Orchestration and Browser Services**
+- Most recent shipment: **v1.23 Full Greenfield Conversion: Setup and Secondary Command Surfaces**
 - Greenfield conversion baseline: **historical `18/18` ranked seam ledger complete and retired**
-- Full-conversion roadmap progress: **`4/6` milestones shipped, or about `67%`**
-- Current execution: **Phase 97 ready for planning**
-- Next step: `$gsd-plan-phase 97` or `$gsd-autonomous`
+- Full-conversion roadmap progress: **`5/6` milestones shipped, or about `83%`**
+- Current execution: **Phase 101 ready for planning**
+- Next step: `$gsd-plan-phase 101` or `$gsd-autonomous`
 
 ## Live Planning
 
 ### Phase Checklist
 
-- [ ] **Phase 97: Onboarding, Repair, and Resume Orchestration Services**
-- [ ] **Phase 98: Secondary Lifecycle Command Services**
-- [ ] **Phase 99: Secondary Operator, Media, Tools, and Memory Service Seams**
-- [ ] **Phase 100: Transition Helper Cleanup and Adapter Convergence**
+- [ ] **Phase 101: Final Residual Helper Extraction and Hotspot Deletion**
+- [ ] **Phase 102: Adapter and Port Boundary Formalization**
+- [ ] **Phase 103: Architecture Guardrails and Contribution Enforcement**
+- [ ] **Phase 104: Full-Conversion Exit Audit and Scorecard**
 
 ### Current Queue Rule
 
 The original ranked greenfield seam inventory remains closed at `18/18` and retired. Follow-on work proceeds under the six-milestone full-conversion roadmap in `.planning/codebase/GREENFIELD-FULL-CONVERSION.md`, which measures progress by migrated adapter-only queues instead of extending the retired historical denominator.
 
-### Phase 97: Onboarding, Repair, and Resume Orchestration Services
+### Phase 101: Final Residual Helper Extraction and Hotspot Deletion
 
-**Goal:** Move onboarding, repair, and resume orchestration business logic out of `onboard.rs` so setup lifecycle flows compose through `openrustclaw-app` instead of command-local orchestration.
+**Goal:** Remove or extract the last remaining mixed-responsibility helper ownership from the targeted legacy command hotspots so the final queue starts by shrinking real adapter drift instead of adding new abstraction labels.
 
-**Depends on:** Phase 96
-**Requirements:** `GFC-37`
+**Depends on:** Phase 100
+**Requirements:** `GFC-41`
 
 **Success criteria:**
-1. onboarding, repair, and resume orchestration compose through `openrustclaw-app`
-2. `onboard.rs` no longer owns the dominant setup-transition and step-planning rules for the targeted slice
-3. verification proves the shipped setup lifecycle contract remains truthful
+1. the targeted final residual helper seams are either extracted behind `openrustclaw-app` or deleted
+2. the affected legacy command modules lose more hidden business-rule ownership instead of gaining new local helpers
+3. verification proves the migrated operator and runtime contracts remain truthful after the cleanup
 
 **Plans:** 0/0 plans complete
 
 Plans:
 - none yet
 
-### Phase 98: Secondary Lifecycle Command Services
+### Phase 102: Adapter and Port Boundary Formalization
 
-**Goal:** Move the targeted residual lifecycle seams in `channels.rs`, `schedule.rs`, `services.rs`, and `control.rs` behind `openrustclaw-app` so those command modules keep shrinking toward adapter-only ownership.
+**Goal:** Make the remaining persistence and external side-effect boundaries explicit so the final legacy command surfaces read as adapters over named ports instead of mixed orchestration hubs.
 
-**Depends on:** Phase 97
-**Requirements:** `GFC-38`
+**Depends on:** Phase 101
+**Requirements:** `GFC-42`
 
 **Success criteria:**
-1. the targeted secondary lifecycle command seams compose through `openrustclaw-app`
-2. legacy lifecycle command modules stop owning the dominant mutation and report-composition rules for those seams
-3. verification proves the shipped lifecycle and control contracts remain truthful
+1. the targeted persistence and integration seams use explicit adapter or port boundaries
+2. remaining legacy command modules read primarily as transport, workspace, or external-system adapters
+3. verification proves the extracted boundaries preserve the shipped command and control contracts
 
 **Plans:** 0/0 plans complete
 
 Plans:
 - none yet
 
-### Phase 99: Secondary Operator, Media, Tools, and Memory Service Seams
+### Phase 103: Architecture Guardrails and Contribution Enforcement
 
-**Goal:** Move the targeted residual operator, media, tools, and memory helper seams behind `openrustclaw-app` so neighboring secondary command modules stop deepening brownfield ownership.
+**Goal:** Add durable architecture guardrails so new business logic does not silently drift back into legacy command hubs after the full-conversion work ships.
 
-**Depends on:** Phase 98
-**Requirements:** `GFC-39`
+**Depends on:** Phase 102
+**Requirements:** `GFC-43`
 
 **Success criteria:**
-1. the targeted operator, media, tools, and memory seams compose through `openrustclaw-app`
-2. affected secondary command modules become adapters around bounded workspace, runtime, or artifact I/O
-3. verification proves the shipped operator-facing helper contracts remain truthful
+1. the repo contains explicit guardrails that block or warn on new business logic landing in legacy command hotspots
+2. contributor-facing planning and architecture surfaces point new logic to the greenfield lane by default
+3. verification proves the enforcement layer itself is stable and maintainable
 
 **Plans:** 0/0 plans complete
 
 Plans:
 - none yet
 
-### Phase 100: Transition Helper Cleanup and Adapter Convergence
+### Phase 104: Full-Conversion Exit Audit and Scorecard
 
-**Goal:** Clean up transition-era helper duplication and normalize the affected adapters after the setup and secondary command-surface extractions land.
+**Goal:** Close the six-milestone full-conversion program with a truthful audit, verification bundle, and exit scorecard that states whether the adapter-only architecture claim is now warranted.
 
-**Depends on:** Phase 99
-**Requirements:** `GFC-40`
+**Depends on:** Phase 103
+**Requirements:** `GFC-44`
 
 **Success criteria:**
-1. duplicated transition-era helper logic is removed, consolidated, or explicitly bounded
-2. the affected command modules expose clearer shared adapter and service boundaries after the milestone extractions
-3. verification proves the cleanup does not regress the migrated setup and secondary command contracts
+1. the final audit and verification bundle cover the full-conversion exit criteria explicitly
+2. the shipped planning and contributor surfaces report the broader roadmap as `6/6`, or `100%`, only if the exit criteria are met
+3. any remaining exceptions are documented truthfully instead of being hidden behind a blanket completion claim
 
 **Plans:** 0/0 plans complete
 
