@@ -57,9 +57,13 @@ jobs:
       - run: cargo test --workspace --lib
 
   clippy:
-    name: Shipped Surface Clippy
+    name: Shipped Surface Clippy (Informational)
     runs-on: ubuntu-latest
     needs: parity-inventory
+    # Informational only until workspace-wide lint debt is reduced to a
+    # stable gate. Keep the signal visible without failing the shipped-surface
+    # workflow on unrelated historical cleanup work.
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable

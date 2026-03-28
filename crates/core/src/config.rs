@@ -319,7 +319,7 @@ pub struct ObservabilityConfig {
 }
 
 /// Voice runtime configuration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct VoiceConfig {
     #[serde(default)]
     pub enabled: bool,
@@ -331,18 +331,6 @@ pub struct VoiceConfig {
     pub tts: VoiceTtsRuntimeConfig,
     #[serde(default)]
     pub talk_mode: VoiceTalkModeRuntimeConfig,
-}
-
-impl Default for VoiceConfig {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            wake_word: VoiceWakeWordConfig::default(),
-            stt: VoiceSttRuntimeConfig::default(),
-            tts: VoiceTtsRuntimeConfig::default(),
-            talk_mode: VoiceTalkModeRuntimeConfig::default(),
-        }
-    }
 }
 
 /// Wake-word configuration for voice flows.

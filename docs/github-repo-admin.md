@@ -8,6 +8,7 @@ It covers:
 - the canonical GitHub topic set
 - the repeatable admin flow for checking or applying that metadata
 - the verification path for repo-facing GitHub Actions and badges
+- the repeatable workflow-health checks for the public GitHub Actions surface
 
 ## Canonical Metadata
 
@@ -73,10 +74,38 @@ Minimum live verification when GitHub auth is available:
 
 ```bash
 bash scripts/github-repo-admin.sh check-live
-env -u GITHUB_TOKEN gh run list --repo aihxp/OpenRustClaw --limit 10
+bash scripts/github-actions-admin.sh recent-runs
+bash scripts/github-actions-admin.sh check-main-ci
 ```
 
 ## Notes
 
 - If GitHub auth is unavailable, keep `.github/repository-metadata.json` current and treat live repo-surface sync as blocked, not silently complete.
 - GitHub topics and the About panel are not stored in git by default; this doc plus `scripts/github-repo-admin.sh` make that admin surface repeatable.
+
+## Workflow Health
+
+Use the Actions helper for the public automation surface:
+
+```bash
+bash scripts/github-actions-admin.sh workflows
+bash scripts/github-actions-admin.sh recent-runs
+bash scripts/github-actions-admin.sh check-main-ci
+```
+
+`check-main-ci` currently expects the latest `main` runs for:
+
+- `Shipped Surface CI`
+- `Shipped Surface E2E Tests`
+
+to be either `success` or `skipped`.
+
+Within `Shipped Surface CI`, the current hard gate is the shipped-surface verification bundle:
+
+- parity inventory
+- cargo check
+- cargo test
+- rustfmt
+- runtime budget checks
+
+`Shipped Surface Clippy (Informational)` and `Shipped Surface Security Audit` stay visible in the run, but they are currently advisory signals rather than workflow-failing gates because they still reflect broader workspace lint and upstream dependency debt outside this GitHub-recovery milestone.

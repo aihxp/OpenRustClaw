@@ -202,17 +202,16 @@ impl CandidateRunner {
                 )));
             }
 
-            if let Some(field_path) = &change.field_path {
-                if !policy.allowed_fields.is_empty()
-                    && !policy.allowed_fields.iter().any(|allowed| {
-                        field_path == allowed || field_path.starts_with(&format!("{allowed}."))
-                    })
-                {
-                    return Err(Error::Config(format!(
-                        "field '{}' is outside the allowed field list",
-                        field_path
-                    )));
-                }
+            if let Some(field_path) = &change.field_path
+                && !policy.allowed_fields.is_empty()
+                && !policy.allowed_fields.iter().any(|allowed| {
+                    field_path == allowed || field_path.starts_with(&format!("{allowed}."))
+                })
+            {
+                return Err(Error::Config(format!(
+                    "field '{}' is outside the allowed field list",
+                    field_path
+                )));
             }
         }
 
@@ -457,17 +456,17 @@ async fn run_eval(
     });
 
     store
-        .record_evaluation(
+        .record_evaluation(crate::store::CandidateEvaluationInput {
             candidate_id,
-            &eval.name,
+            eval_name: &eval.name,
             status,
             exit_code,
             duration_ms,
-            &stdout,
-            &stderr,
+            stdout: &stdout,
+            stderr: &stderr,
             metrics,
             trace_id,
-        )
+        })
         .await
 }
 

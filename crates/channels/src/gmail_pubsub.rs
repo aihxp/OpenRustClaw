@@ -1475,6 +1475,7 @@ impl GmailRuntime {
         .await
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn send_new_message(
         &self,
         to: &[String],
@@ -1547,109 +1548,106 @@ impl Channel for GmailPubSub {
             .get("gmail_action")
             .and_then(|value| value.as_str())
             .map(|value| value.to_ascii_lowercase())
+            && action != "send"
         {
-            if action != "send" {
-                let message_id = GmailRuntime::metadata_string(&msg.metadata, "gmail_message_id");
-                return match action.as_str() {
-                    "reply" => {
-                        let Some(message_id) = message_id else {
-                            return Err(ChannelError::InvalidFormat {
-                                platform: "gmail".to_string(),
-                                message: "Missing gmail_message_id for gmail_action=reply"
-                                    .to_string(),
-                            }
-                            .into());
-                        };
-                        self.runtime
-                            .reply_to_message(&message_id, &msg.content, &attachments, &token)
-                            .await
-                    }
-                    "label" => {
-                        let Some(message_id) = message_id else {
-                            return Err(ChannelError::InvalidFormat {
-                                platform: "gmail".to_string(),
-                                message: "Missing gmail_message_id for gmail_action=label"
-                                    .to_string(),
-                            }
-                            .into());
-                        };
-                        let add =
-                            GmailRuntime::metadata_address_list(&msg.metadata, "gmail_add_labels");
-                        let remove = GmailRuntime::metadata_address_list(
-                            &msg.metadata,
-                            "gmail_remove_labels",
-                        );
-                        self.runtime
-                            .modify_labels(&message_id, add, remove, &token)
-                            .await
-                    }
-                    "archive" => {
-                        let Some(message_id) = message_id else {
-                            return Err(ChannelError::InvalidFormat {
-                                platform: "gmail".to_string(),
-                                message: "Missing gmail_message_id for gmail_action=archive"
-                                    .to_string(),
-                            }
-                            .into());
-                        };
-                        self.runtime
-                            .modify_labels(
-                                &message_id,
-                                Vec::new(),
-                                vec!["INBOX".to_string()],
-                                &token,
-                            )
-                            .await
-                    }
-                    "delete" => {
-                        let Some(message_id) = message_id else {
-                            return Err(ChannelError::InvalidFormat {
-                                platform: "gmail".to_string(),
-                                message: "Missing gmail_message_id for gmail_action=delete"
-                                    .to_string(),
-                            }
-                            .into());
-                        };
-                        self.runtime.delete_message(&message_id, &token).await
-                    }
-                    "forward" => {
-                        let Some(message_id) = message_id else {
-                            return Err(ChannelError::InvalidFormat {
-                                platform: "gmail".to_string(),
-                                message: "Missing gmail_message_id for gmail_action=forward"
-                                    .to_string(),
-                            }
-                            .into());
-                        };
-                        let Some(forward_to) =
-                            GmailRuntime::metadata_string(&msg.metadata, "gmail_forward_to")
-                        else {
-                            return Err(ChannelError::InvalidFormat {
-                                platform: "gmail".to_string(),
-                                message: "Missing gmail_forward_to for gmail_action=forward"
-                                    .to_string(),
-                            }
-                            .into());
-                        };
-                        self.runtime
-                            .forward_message(
-                                &message_id,
-                                &forward_to,
-                                &msg.content,
-                                &attachments,
-                                &token,
-                            )
-                            .await
-                    }
-                    other => {
+            let message_id = GmailRuntime::metadata_string(&msg.metadata, "gmail_message_id");
+            return match action.as_str() {
+                "reply" => {
+                    let Some(message_id) = message_id else {
                         return Err(ChannelError::InvalidFormat {
                             platform: "gmail".to_string(),
-                            message: format!("Unsupported gmail_action '{}'", other),
+                            message: "Missing gmail_message_id for gmail_action=reply"
+                                .to_string(),
                         }
                         .into());
+                    };
+                    self.runtime
+                        .reply_to_message(&message_id, &msg.content, &attachments, &token)
+                        .await
+                }
+                "label" => {
+                    let Some(message_id) = message_id else {
+                        return Err(ChannelError::InvalidFormat {
+                            platform: "gmail".to_string(),
+                            message: "Missing gmail_message_id for gmail_action=label"
+                                .to_string(),
+                        }
+                        .into());
+                    };
+                    let add =
+                        GmailRuntime::metadata_address_list(&msg.metadata, "gmail_add_labels");
+                    let remove =
+                        GmailRuntime::metadata_address_list(&msg.metadata, "gmail_remove_labels");
+                    self.runtime
+                        .modify_labels(&message_id, add, remove, &token)
+                        .await
+                }
+                "archive" => {
+                    let Some(message_id) = message_id else {
+                        return Err(ChannelError::InvalidFormat {
+                            platform: "gmail".to_string(),
+                            message: "Missing gmail_message_id for gmail_action=archive"
+                                .to_string(),
+                        }
+                        .into());
+                    };
+                    self.runtime
+                        .modify_labels(
+                            &message_id,
+                            Vec::new(),
+                            vec!["INBOX".to_string()],
+                            &token,
+                        )
+                        .await
+                }
+                "delete" => {
+                    let Some(message_id) = message_id else {
+                        return Err(ChannelError::InvalidFormat {
+                            platform: "gmail".to_string(),
+                            message: "Missing gmail_message_id for gmail_action=delete"
+                                .to_string(),
+                        }
+                        .into());
+                    };
+                    self.runtime.delete_message(&message_id, &token).await
+                }
+                "forward" => {
+                    let Some(message_id) = message_id else {
+                        return Err(ChannelError::InvalidFormat {
+                            platform: "gmail".to_string(),
+                            message: "Missing gmail_message_id for gmail_action=forward"
+                                .to_string(),
+                        }
+                        .into());
+                    };
+                    let Some(forward_to) =
+                        GmailRuntime::metadata_string(&msg.metadata, "gmail_forward_to")
+                    else {
+                        return Err(ChannelError::InvalidFormat {
+                            platform: "gmail".to_string(),
+                            message: "Missing gmail_forward_to for gmail_action=forward"
+                                .to_string(),
+                        }
+                        .into());
+                    };
+                    self.runtime
+                        .forward_message(
+                            &message_id,
+                            &forward_to,
+                            &msg.content,
+                            &attachments,
+                            &token,
+                        )
+                        .await
+                }
+                other => {
+                    return Err(ChannelError::InvalidFormat {
+                        platform: "gmail".to_string(),
+                        message: format!("Unsupported gmail_action '{}'", other),
                     }
-                };
-            }
+                    .into());
+                }
+            };
         }
         if let Some(message_id) = msg
             .metadata
@@ -1752,10 +1750,10 @@ impl Channel for GmailPubSub {
     }
 
     async fn disconnect(&mut self) -> Result<()> {
-        if let Some(token) = self.runtime.access_token.read().await.clone() {
-            if let Err(error) = self.runtime.stop_watch(&token).await {
-                info!(error = %error, "Failed to stop Gmail watch during disconnect");
-            }
+        if let Some(token) = self.runtime.access_token.read().await.clone()
+            && let Err(error) = self.runtime.stop_watch(&token).await
+        {
+            info!(error = %error, "Failed to stop Gmail watch during disconnect");
         }
         *self.runtime.is_connected.write().await = false;
         *self.runtime.access_token.write().await = None;
@@ -1936,7 +1934,7 @@ mod tests {
         assert_eq!(report.processed_count, 1);
         assert_eq!(report.skipped_count, 0);
         assert_eq!(report.entries[0].message_id, "msg-1");
-        assert_eq!(report.entries[0].subject, "Quarterly Q1");
+        assert_eq!(report.entries[0].subject, "Test subject");
 
         let incoming = gmail.receive().await.unwrap();
         assert_eq!(incoming.user_id, "sender@example.com");

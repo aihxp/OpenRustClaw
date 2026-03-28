@@ -160,7 +160,7 @@ impl GoogleMeetClient {
     pub async fn list_conference_records(&self, page_size: usize) -> Result<Value> {
         self.get_json_with_query(
             "conferenceRecords",
-            &[("pageSize", page_size.max(1).min(200).to_string())],
+            &[("pageSize", page_size.clamp(1, 200).to_string())],
         )
         .await
     }
@@ -172,7 +172,7 @@ impl GoogleMeetClient {
     ) -> Result<Value> {
         self.get_json_with_query(
             &format!("{}/participants", conference_record),
-            &[("pageSize", page_size.max(1).min(200).to_string())],
+            &[("pageSize", page_size.clamp(1, 200).to_string())],
         )
         .await
     }
@@ -184,7 +184,7 @@ impl GoogleMeetClient {
     ) -> Result<Value> {
         self.get_json_with_query(
             &format!("{}/recordings", conference_record),
-            &[("pageSize", page_size.max(1).min(200).to_string())],
+            &[("pageSize", page_size.clamp(1, 200).to_string())],
         )
         .await
     }
@@ -196,7 +196,7 @@ impl GoogleMeetClient {
     ) -> Result<Value> {
         self.get_json_with_query(
             &format!("{}/transcripts", conference_record),
-            &[("pageSize", page_size.max(1).min(200).to_string())],
+            &[("pageSize", page_size.clamp(1, 200).to_string())],
         )
         .await
     }
@@ -208,7 +208,7 @@ impl GoogleMeetClient {
     ) -> Result<Value> {
         self.get_json_with_query(
             &format!("{}/entries", transcript_name),
-            &[("pageSize", page_size.max(1).min(1000).to_string())],
+            &[("pageSize", page_size.clamp(1, 1000).to_string())],
         )
         .await
     }

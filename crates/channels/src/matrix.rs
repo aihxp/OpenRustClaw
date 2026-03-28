@@ -166,7 +166,7 @@ impl MatrixChannel {
         metadata: &serde_json::Value,
     ) -> Option<(String, Option<String>)> {
         let refs = metadata.get("file_references")?.as_array()?;
-        for entry in refs {
+        if let Some(entry) = refs.iter().next() {
             let local_path = entry
                 .get("local_path")
                 .or_else(|| entry.get("path"))
@@ -208,9 +208,7 @@ impl MatrixChannel {
 
     fn parse_mxc_uri(uri: &str) -> Option<(&str, &str)> {
         let trimmed = uri.strip_prefix("mxc://")?;
-        let mut parts = trimmed.splitn(2, '/');
-        let server = parts.next()?;
-        let media_id = parts.next()?;
+        let (server, media_id) = trimmed.split_once('/')?;
         if server.is_empty() || media_id.is_empty() {
             return None;
         }

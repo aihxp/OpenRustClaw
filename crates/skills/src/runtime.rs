@@ -91,16 +91,15 @@ pub fn resolve_compiled_skill_background_service(
     let executable_components = compiled_skill_executable_components(artifact);
     let mut services = compiled_skill_background_services(artifact);
 
-    if let Some(component) = requested_component {
-        if !executable_components
+    if let Some(component) = requested_component
+        && !executable_components
             .iter()
             .any(|candidate| candidate == component)
-        {
-            return Err(Error::Internal(format!(
-                "Component '{}' is not executable for compiled skill '{}'",
-                component, artifact.manifest.name
-            )));
-        }
+    {
+        return Err(Error::Internal(format!(
+            "Component '{}' is not executable for compiled skill '{}'",
+            component, artifact.manifest.name
+        )));
     }
 
     let mut resolved = if let Some(service_name) = requested_service {

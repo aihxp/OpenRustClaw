@@ -132,12 +132,12 @@ impl TextToSpeech {
                         "Failed to join audio playback task: {error}"
                     ))
                 })??;
-            return Ok(());
+            Ok(())
         }
         #[cfg(not(feature = "audio"))]
         {
             // Placeholder - would actually speak here without the audio feature.
-            return Ok(());
+            Ok(())
         }
     }
 
@@ -189,12 +189,12 @@ impl TextToSpeech {
 
                 writer.finalize()?;
             }
-            return Ok(bytes);
+            Ok(bytes)
         }
         #[cfg(not(feature = "audio"))]
         {
             let _ = text;
-            return Ok(Vec::new());
+            Ok(Vec::new())
         }
     }
 
@@ -212,17 +212,17 @@ impl TextToSpeech {
     pub async fn available_voices(&self) -> VoiceResult<Vec<VoiceInfo>> {
         #[cfg(feature = "audio")]
         {
-            return Ok(vec![VoiceInfo {
+            Ok(vec![VoiceInfo {
                 id: "system-tone".to_string(),
                 name: "System Tone".to_string(),
                 language: Some("en".to_string()),
                 gender: None,
                 preview_url: None,
-            }]);
+            }])
         }
         #[cfg(not(feature = "audio"))]
         {
-            return Ok(vec![]);
+            Ok(vec![])
         }
     }
 }

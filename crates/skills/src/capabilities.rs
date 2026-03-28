@@ -68,7 +68,7 @@ pub fn sensitive_capabilities(
         .filter(|capability| is_sensitive_capability(capability))
         .cloned()
         .collect();
-    sensitive.sort_by_key(|capability| canonical_capability_name(capability));
+    sensitive.sort_by_key(canonical_capability_name);
     sensitive
 }
 

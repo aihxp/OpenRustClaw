@@ -115,6 +115,7 @@ pub struct RustWorkflowDispatcher {
 }
 
 impl RustWorkflowDispatcher {
+    #[allow(clippy::too_many_arguments)]
     pub fn from_runtime_parts(
         pool: SqlitePool,
         memory_store: Arc<SqliteMemoryStore>,
@@ -281,47 +282,47 @@ impl RustWorkflowDispatcher {
             .or_else(|| invocation.input.get("job_type").and_then(Value::as_str))
             .map(ToString::to_string);
 
-        if let Some(inner_workflow) = inner_workflow {
-            if inner_workflow != "scheduler" {
-                self.checkpoint(
-                    &invocation,
-                    1,
-                    serde_json::json!({"status": "dispatching", "inner_workflow": inner_workflow}),
-                )
-                .await?;
+        if let Some(inner_workflow) = inner_workflow
+            && inner_workflow != "scheduler"
+        {
+            self.checkpoint(
+                &invocation,
+                1,
+                serde_json::json!({"status": "dispatching", "inner_workflow": inner_workflow}),
+            )
+            .await?;
 
-                let nested_input = invocation
-                    .input
-                    .get("input")
-                    .cloned()
-                    .unwrap_or_else(|| invocation.input.clone());
-                let nested = WorkflowInvocation::new(
-                    inner_workflow.clone(),
-                    invocation.thread_id.clone(),
-                    nested_input,
-                )
-                .with_metadata(invocation.metadata.clone())
-                .with_configurable(invocation.configurable.clone());
+            let nested_input = invocation
+                .input
+                .get("input")
+                .cloned()
+                .unwrap_or_else(|| invocation.input.clone());
+            let nested = WorkflowInvocation::new(
+                inner_workflow.clone(),
+                invocation.thread_id.clone(),
+                nested_input,
+            )
+            .with_metadata(invocation.metadata.clone())
+            .with_configurable(invocation.configurable.clone());
 
-                let result = match inner_workflow.as_str() {
-                    "agent" => self.execute_agent(nested).await?,
-                    "memory_maintenance" => self.execute_memory_maintenance(nested).await?,
-                    "rag" => self.execute_rag(nested).await?,
-                    "reminder" => self.execute_reminder(nested).await?,
-                    _ => self.dispatch_compat(nested).await?,
-                };
+            let result = match inner_workflow.as_str() {
+                "agent" => self.execute_agent(nested).await?,
+                "memory_maintenance" => self.execute_memory_maintenance(nested).await?,
+                "rag" => self.execute_rag(nested).await?,
+                "reminder" => self.execute_reminder(nested).await?,
+                _ => self.dispatch_compat(nested).await?,
+            };
 
-                self.checkpoint(
-                    &invocation,
-                    2,
-                    serde_json::json!({
-                        "status": result.status,
-                        "inner_workflow": inner_workflow,
-                    }),
-                )
-                .await?;
-                return Ok(result);
-            }
+            self.checkpoint(
+                &invocation,
+                2,
+                serde_json::json!({
+                    "status": result.status,
+                    "inner_workflow": inner_workflow,
+                }),
+            )
+            .await?;
+            return Ok(result);
         }
 
         self.checkpoint(&invocation, 1, serde_json::json!({"status": "completed"}))
@@ -506,7 +507,7 @@ impl RustWorkflowDispatcher {
             .get("age_days")
             .and_then(Value::as_i64)
             .unwrap_or(30)
-            .max(1) as i64;
+            .max(1);
         let limit = invocation
             .input
             .get("limit")

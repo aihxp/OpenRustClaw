@@ -133,9 +133,9 @@ impl IMessageChannel {
                     .clone()
                     .filter(|value| !value.trim().is_empty())
             });
-        let is_group = payload.is_group.unwrap_or_else(|| {
-            !participant_addresses.is_empty() && participant_addresses.len() > 1
-        });
+        let is_group = payload
+            .is_group
+            .unwrap_or(!participant_addresses.is_empty() && participant_addresses.len() > 1);
         let file_references: Vec<Value> = payload
             .attachments
             .as_deref()

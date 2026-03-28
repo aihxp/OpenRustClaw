@@ -1167,6 +1167,7 @@ fn trusted_proxy_authorized(state: &GatewayState, headers: &HeaderMap) -> bool {
     }
 }
 
+#[allow(clippy::result_large_err)]
 fn validate_internal_api(
     state: &GatewayState,
     headers: &HeaderMap,

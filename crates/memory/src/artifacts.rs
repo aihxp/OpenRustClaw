@@ -82,7 +82,7 @@ impl WorkspaceArtifactRegistry {
             }
         }
 
-        discovered.sort_by(|a, b| artifact_precedence(a).cmp(&artifact_precedence(b)));
+        discovered.sort_by_key(artifact_precedence);
         Ok(discovered)
     }
 

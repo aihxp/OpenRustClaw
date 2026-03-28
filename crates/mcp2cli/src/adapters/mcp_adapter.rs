@@ -231,15 +231,15 @@ impl McpAdapter {
             while i < tokens.len() {
                 let token = tokens[i];
 
-                if let Some(param_name) = token.strip_prefix("--") {
-                    if let Some(param_def) = params.iter().find(|p| p.name == param_name) {
-                        if param_def.type_name == "boolean" {
-                            result.insert(param_name.to_string(), Value::Bool(true));
-                        } else if i + 1 < tokens.len() {
-                            let value = Self::parse_value(tokens[i + 1], &param_def.type_name);
-                            result.insert(param_name.to_string(), value);
-                            i += 1;
-                        }
+                if let Some(param_name) = token.strip_prefix("--")
+                    && let Some(param_def) = params.iter().find(|p| p.name == param_name)
+                {
+                    if param_def.type_name == "boolean" {
+                        result.insert(param_name.to_string(), Value::Bool(true));
+                    } else if i + 1 < tokens.len() {
+                        let value = Self::parse_value(tokens[i + 1], &param_def.type_name);
+                        result.insert(param_name.to_string(), value);
+                        i += 1;
                     }
                 }
 
@@ -478,10 +478,10 @@ impl RemoteSseClient {
         }
 
         let response_text = response.text().await.unwrap_or_default();
-        if !response_text.trim().is_empty() {
-            if let Ok(payload) = serde_json::from_str::<Value>(&response_text) {
-                return parse_jsonrpc_response(payload, id);
-            }
+        if !response_text.trim().is_empty()
+            && let Ok(payload) = serde_json::from_str::<Value>(&response_text)
+        {
+            return parse_jsonrpc_response(payload, id);
         }
 
         timeout(Duration::from_secs(30), async {

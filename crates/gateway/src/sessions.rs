@@ -103,19 +103,18 @@ impl SessionManager {
         platform: Platform,
         route_key: Option<&str>,
     ) -> Result<Session> {
-        if let (Some(store), Some(route_key)) = (&self.store, route_key) {
-            if let Some(restored) = store
+        if let (Some(store), Some(route_key)) = (&self.store, route_key)
+            && let Some(restored) = store
                 .find_active_by_route_key(route_key)
                 .await
                 .map_err(|error| Error::Gateway(GatewayError::WebSocket(error.to_string())))?
-            {
-                let session = restored.session;
-                self.sessions
-                    .write()
-                    .await
-                    .insert(session.id.to_string(), session.clone());
-                return Ok(session);
-            }
+        {
+            let session = restored.session;
+            self.sessions
+                .write()
+                .await
+                .insert(session.id.to_string(), session.clone());
+            return Ok(session);
         }
 
         self.create_session_with_route(user_id, session_type, platform, route_key)
@@ -131,31 +130,30 @@ impl SessionManager {
         workspace_id: Option<&str>,
         metadata: Option<serde_json::Value>,
     ) -> Result<Session> {
-        if let (Some(store), Some(route_key)) = (&self.store, route_key) {
-            if let Some(restored) = store
+        if let (Some(store), Some(route_key)) = (&self.store, route_key)
+            && let Some(restored) = store
                 .find_active_by_route_key(route_key)
                 .await
                 .map_err(|error| Error::Gateway(GatewayError::WebSocket(error.to_string())))?
-            {
-                let mut session = restored.session;
-                if let Some(workspace_id) = workspace_id {
-                    session.workspace_id = Some(workspace_id.to_string());
-                }
-                session.metadata["route_key"] = serde_json::Value::String(route_key.to_string());
-                if let Some(metadata) = metadata.clone() {
-                    session.metadata = merge_json(session.metadata, metadata);
-                }
-                apply_assistant_session_metadata(&mut session, platform);
-                store
-                    .create_or_update(&session, Some(route_key), SessionStatus::Active)
-                    .await
-                    .map_err(|error| Error::Gateway(GatewayError::WebSocket(error.to_string())))?;
-                self.sessions
-                    .write()
-                    .await
-                    .insert(session.id.to_string(), session.clone());
-                return Ok(session);
+        {
+            let mut session = restored.session;
+            if let Some(workspace_id) = workspace_id {
+                session.workspace_id = Some(workspace_id.to_string());
             }
+            session.metadata["route_key"] = serde_json::Value::String(route_key.to_string());
+            if let Some(metadata) = metadata.clone() {
+                session.metadata = merge_json(session.metadata, metadata);
+            }
+            apply_assistant_session_metadata(&mut session, platform);
+            store
+                .create_or_update(&session, Some(route_key), SessionStatus::Active)
+                .await
+                .map_err(|error| Error::Gateway(GatewayError::WebSocket(error.to_string())))?;
+            self.sessions
+                .write()
+                .await
+                .insert(session.id.to_string(), session.clone());
+            return Ok(session);
         }
 
         self.create_session_with_context(
@@ -175,19 +173,18 @@ impl SessionManager {
             return Ok(session);
         }
 
-        if let Some(store) = &self.store {
-            if let Some(persisted) = store
+        if let Some(store) = &self.store
+            && let Some(persisted) = store
                 .get_session(id)
                 .await
                 .map_err(|error| Error::Gateway(GatewayError::WebSocket(error.to_string())))?
-            {
-                let session = persisted.session;
-                self.sessions
-                    .write()
-                    .await
-                    .insert(session.id.to_string(), session.clone());
-                return Ok(session);
-            }
+        {
+            let session = persisted.session;
+            self.sessions
+                .write()
+                .await
+                .insert(session.id.to_string(), session.clone());
+            return Ok(session);
         }
 
         Err(Error::Gateway(GatewayError::SessionNotFound(
@@ -206,8 +203,8 @@ impl SessionManager {
                 .read()
                 .await
                 .values()
-                .cloned()
                 .take(limit)
+                .cloned()
                 .map(|session| PersistedSession {
                     session,
                     status: SessionStatus::Active,

@@ -270,22 +270,21 @@ impl SchedulerWorker {
         let invocation = WorkflowInvocation::new(&job.workflow_id, &thread_id, workflow_input)
             .with_metadata(workflow_metadata)
             .with_configurable(workflow_configurable);
-        if let Some(event_bus) = &self.event_bus {
-            if let Err(error) = event_bus
+        if let Some(event_bus) = &self.event_bus
+            && let Err(error) = event_bus
                 .publish(openrustclaw_core::types::Event::SchedulerJobFired {
                     job_id: job.id.clone(),
                     job_name: job.name.clone(),
                 })
                 .await
-            {
-                warn!(error = %error, job_id = %job.id, "Failed to publish scheduler job fired event");
-            }
+        {
+            warn!(error = %error, job_id = %job.id, "Failed to publish scheduler job fired event");
         }
         let mut scheduler_trace = self.build_scheduler_trace(&job, &thread_id, &idempotency_key);
-        if let (Some(client), Some(trace)) = (&self.langsmith, scheduler_trace.as_ref()) {
-            if let Err(error) = client.trace_run(trace).await {
-                warn!(error = %error, job_id = %job.id, "Failed to create LangSmith scheduler trace");
-            }
+        if let (Some(client), Some(trace)) = (&self.langsmith, scheduler_trace.as_ref())
+            && let Err(error) = client.trace_run(trace).await
+        {
+            warn!(error = %error, job_id = %job.id, "Failed to create LangSmith scheduler trace");
         }
 
         match dispatcher.dispatch(invocation).await {

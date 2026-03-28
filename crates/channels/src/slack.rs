@@ -1496,11 +1496,11 @@ impl SlackEventHandler {
         if let Some(response_url) = payload.get("response_url").and_then(|value| value.as_str()) {
             metadata["slack_response_url"] = serde_json::json!(response_url);
         }
-        if let Some(container) = payload.get("container").and_then(|value| value.as_object()) {
-            if let Some(message_ts) = container.get("message_ts").and_then(|value| value.as_str()) {
-                metadata["slack_event_ts"] = serde_json::json!(message_ts);
-                metadata["slack_thread_ts"] = serde_json::json!(message_ts);
-            }
+        if let Some(container) = payload.get("container").and_then(|value| value.as_object())
+            && let Some(message_ts) = container.get("message_ts").and_then(|value| value.as_str())
+        {
+            metadata["slack_event_ts"] = serde_json::json!(message_ts);
+            metadata["slack_thread_ts"] = serde_json::json!(message_ts);
         }
 
         self.enqueue_incoming(IncomingMessage {

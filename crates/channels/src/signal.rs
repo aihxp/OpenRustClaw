@@ -49,6 +49,7 @@ pub struct SignalChannel {
 }
 
 /// Signal envelope types received from signal-cli daemon.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum SignalEnvelope {
@@ -255,6 +256,7 @@ impl SignalChannel {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn build_incoming_metadata(
         data_message: &DataMessage,
         timestamp: u64,
@@ -597,13 +599,13 @@ impl SignalChannel {
                 }
 
                 // Check group allowlist
-                if let Some(ref group) = group_info {
-                    if require_allowlist && !allowed_groups.is_empty() {
-                        if !allowlist_contains(allowed_groups, &group.group_id) {
-                            debug!(group_id = %group.group_id, "Group not in allowlist, ignoring message");
-                            return Ok(());
-                        }
-                    }
+                if let Some(ref group) = group_info
+                    && require_allowlist
+                    && !allowed_groups.is_empty()
+                    && !allowlist_contains(allowed_groups, &group.group_id)
+                {
+                    debug!(group_id = %group.group_id, "Group not in allowlist, ignoring message");
+                    return Ok(());
                 }
 
                 if data_message.message.is_some() || !data_message.attachments.is_empty() {

@@ -387,14 +387,14 @@ impl MattermostWebhookHandler {
     ) -> Result<serde_json::Value> {
         let event = MattermostChannel::event_from_bytes(content_type, body)?;
 
-        if let Some(expected) = self.channel.config.webhook_token.as_deref() {
-            if event.token.as_deref() != Some(expected) {
-                return Err(ChannelError::AuthFailed {
-                    platform: "mattermost".to_string(),
-                    message: "Invalid Mattermost webhook token".to_string(),
-                }
-                .into());
+        if let Some(expected) = self.channel.config.webhook_token.as_deref()
+            && event.token.as_deref() != Some(expected)
+        {
+            return Err(ChannelError::AuthFailed {
+                platform: "mattermost".to_string(),
+                message: "Invalid Mattermost webhook token".to_string(),
             }
+            .into());
         }
 
         if !self.channel.config.allowlist.is_empty() {

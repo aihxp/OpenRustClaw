@@ -348,16 +348,14 @@ impl Channel for DiscordChannel {
             .metadata
             .get("discord_guild_id")
             .and_then(|v| v.as_str())
+            && !self.config.allowed_guilds.is_empty()
+            && !self.config.allowed_guilds.contains(&guild_id.to_string())
         {
-            if !self.config.allowed_guilds.is_empty()
-                && !self.config.allowed_guilds.contains(&guild_id.to_string())
-            {
-                return Err(ChannelError::PermissionDenied {
-                    platform: "discord".to_string(),
-                    message: format!("guild {} is not allowed", guild_id),
-                }
-                .into());
+            return Err(ChannelError::PermissionDenied {
+                platform: "discord".to_string(),
+                message: format!("guild {} is not allowed", guild_id),
             }
+            .into());
         }
 
         // Check if we should send as embed
@@ -787,22 +785,22 @@ where
                                     })?;
                                     gateway_session.write().await.session_id = Some(ready.session_id);
                                 }
-                                if let Some(event_type) = envelope.t.as_deref() {
-                                    if let Some(message) = normalize_gateway_event(
+                                if let Some(event_type) = envelope.t.as_deref()
+                                    && let Some(message) = normalize_gateway_event(
                                         &client,
                                         &config,
                                         event_type,
                                         envelope.d,
                                     )
-                                    .await? {
-                                        incoming_tx
-                                            .send(message)
-                                            .await
-                                            .map_err(|e| ChannelError::Connection {
-                                                platform: "discord".to_string(),
-                                                message: format!("Failed to enqueue Discord gateway event: {}", e),
-                                            })?;
-                                    }
+                                    .await?
+                                {
+                                    incoming_tx
+                                        .send(message)
+                                        .await
+                                        .map_err(|e| ChannelError::Connection {
+                                            platform: "discord".to_string(),
+                                            message: format!("Failed to enqueue Discord gateway event: {}", e),
+                                        })?;
                                 }
                                 if let Some(sequence) = last_sequence {
                                     gateway_session.write().await.last_sequence = Some(sequence);

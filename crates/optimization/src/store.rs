@@ -18,6 +18,18 @@ pub struct OptimizationStore {
     pool: SqlitePool,
 }
 
+pub struct CandidateEvaluationInput<'a> {
+    pub candidate_id: &'a str,
+    pub eval_name: &'a str,
+    pub status: &'a str,
+    pub exit_code: Option<i64>,
+    pub duration_ms: i64,
+    pub stdout: &'a str,
+    pub stderr: &'a str,
+    pub metrics: serde_json::Value,
+    pub trace_id: Option<String>,
+}
+
 impl OptimizationStore {
     pub fn new(pool: SqlitePool) -> Self {
         Self { pool }
@@ -280,15 +292,7 @@ impl OptimizationStore {
 
     pub async fn record_evaluation(
         &self,
-        candidate_id: &str,
-        eval_name: &str,
-        status: &str,
-        exit_code: Option<i64>,
-        duration_ms: i64,
-        stdout: &str,
-        stderr: &str,
-        metrics: serde_json::Value,
-        trace_id: Option<String>,
+        input: CandidateEvaluationInput<'_>,
     ) -> Result<CandidateEvaluationRecord> {
         let id = Uuid::new_v4().to_string();
         let created_at = Utc::now();
@@ -301,21 +305,21 @@ impl OptimizationStore {
             "#,
         )
         .bind(&id)
-        .bind(candidate_id)
-        .bind(eval_name)
-        .bind(status)
-        .bind(exit_code)
-        .bind(duration_ms)
-        .bind(stdout)
-        .bind(stderr)
-        .bind(metrics.to_string())
-        .bind(trace_id)
+        .bind(input.candidate_id)
+        .bind(input.eval_name)
+        .bind(input.status)
+        .bind(input.exit_code)
+        .bind(input.duration_ms)
+        .bind(input.stdout)
+        .bind(input.stderr)
+        .bind(input.metrics.to_string())
+        .bind(input.trace_id)
         .bind(created_at.to_rfc3339())
         .execute(&self.pool)
         .await
         .map_err(db_query_error)?;
 
-        self.list_evaluations(candidate_id)
+        self.list_evaluations(input.candidate_id)
             .await?
             .into_iter()
             .find(|record| record.id == id)
