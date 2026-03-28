@@ -130,6 +130,15 @@ The greenfield lane now also owns the first bounded compiled-skill overview seam
 3. `skills.rs` acts as the CLI adapter for compiled-skill detail and preview flows
 4. `start.rs` acts as the MCP/runtime adapter for the same compiled-skill overview contract
 
+### Current Phase 65 Outcome
+
+The greenfield lane now also owns the enterprise admin aggregation:
+
+1. enterprise access, policy, autonomy, and orchestration state still load through existing CLI-owned modules
+2. `openrustclaw-app` now owns enterprise admin status, detail, and supervision composition
+3. `inspect.rs` acts as the workspace adapter that maps enterprise state into that aggregation service
+4. the shipped `/control/enterprise/admin` route and Control UI continue to consume the same enterprise admin contract
+
 ## Review Defaults
 
 When reviewing new work during `v1.13`:
@@ -162,6 +171,12 @@ After `v1.14`, the next `skills.rs` migration queue should start from the remain
 1. compiled-skill mutation and removal flows
 2. install and registry workflows
 3. auth-plugin and voice-plugin lifecycle helpers
+
+After Phase 65, the next ranked greenfield queue is:
+
+1. another bounded runtime or `/control/...` route family
+2. the mutation-heavy `skills.rs` lanes
+3. a bounded runtime command seam outside report composition
 
 ## Verification Bundle
 

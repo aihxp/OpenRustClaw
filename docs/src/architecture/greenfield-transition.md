@@ -59,6 +59,8 @@ The same migration pattern now covers a second operator-facing surface: the mobi
 
 The first bounded `skills.rs` seam is now shipped too. The compiled-skill overview lane, including manifest loading, artifact loading, executable-component discovery, and compiled reference reading, now runs through `openrustclaw-app`, while `skills.rs` and `start.rs` only adapt that shared service into the existing CLI and MCP/runtime surface.
 
+The enterprise admin aggregation now follows the same pattern too. `openrustclaw-app` owns the enterprise admin status, detail, and supervision composition, while `inspect.rs` only adapts enterprise access, policy, autonomy, and orchestration state into that shared service and preserves the shipped `/control/enterprise/admin` contract.
+
 ## Contributor Defaults
 
 When adding or changing behavior during this transition:

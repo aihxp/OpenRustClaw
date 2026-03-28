@@ -10,6 +10,8 @@
 
 OpenRustClaw must move another real inspection or aggregation family out of `crates/cli/src/commands/inspect.rs` so the greenfield lane keeps absorbing operator-facing report composition instead of stalling after the first few migrated summaries.
 
+**Status:** Completed in v1.15 Phase 65 via the enterprise admin aggregation service.
+
 **Acceptance signals:**
 - at least one additional inspection or aggregation family is composed in `openrustclaw-app`
 - `inspect.rs` becomes an adapter for that migrated surface instead of owning the business rules directly
@@ -50,4 +52,4 @@ At least one remaining runtime command seam must move behind a cleaner applicati
 
 ## Next Step
 
-Start execution with `$gsd-discuss-phase 65`, `$gsd-plan-phase 65`, or `$gsd-autonomous`.
+Continue with `$gsd-discuss-phase 66`, `$gsd-plan-phase 66`, or `$gsd-autonomous`.

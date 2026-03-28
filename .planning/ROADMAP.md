@@ -22,16 +22,16 @@
 ## Current Status
 
 - Active milestone: **v1.15 Deeper Greenfield Conversion**
-- Progress: 0 of 4 phases complete
+- Progress: 1 of 4 phases complete
 - Most recent shipment: **v1.14 Continued Greenfield Conversion**
-- Current execution: **Phase 65 not started**
-- Next step: `$gsd-discuss-phase 65`, `$gsd-plan-phase 65`, or `$gsd-autonomous`
+- Current execution: **Phase 66 not started**
+- Next step: `$gsd-discuss-phase 66`, `$gsd-plan-phase 66`, or `$gsd-autonomous`
 
 ## Live Planning
 
 ### Phase Checklist
 
-- [ ] **Phase 65: Inspection Aggregation Expansion**
+- [x] **Phase 65: Inspection Aggregation Expansion** (completed 2026-03-28)
 - [ ] **Phase 66: Additional Route Family Extraction**
 - [ ] **Phase 67: Skills Mutation and Registry Boundary**
 - [ ] **Phase 68: Runtime Command Boundary Cleanup**
@@ -44,6 +44,11 @@
 - at least one additional inspection or aggregation family is composed in `openrustclaw-app`
 - `inspect.rs` becomes an adapter for the migrated surface
 - report-facing verification remains truthful
+
+**Plans:** 1/1 plans complete
+
+Plans:
+- [x] 65-01 Extract the enterprise admin aggregation family
 
 ### Phase 66: Additional Route Family Extraction
 

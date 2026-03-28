@@ -75,10 +75,10 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 - ✓ The `/control/self-hosted/product-mode` route family now runs through a greenfield application service seam, with `start.rs` reduced to the HTTP adapter for the migrated transition path — v1.14 Phase 62
 - ✓ The mobile node operator summary report now runs through `openrustclaw-app`, with `mobile.rs` reduced to the workspace adapter for the migrated operator-facing mobile report — v1.14 Phase 63
 - ✓ The compiled-skill overview lane now runs through `openrustclaw-app`, with `skills.rs` and `start.rs` reduced to adapters for the shipped compiled-skill CLI and MCP/runtime surface — v1.14 Phase 64
+- ✓ The enterprise admin aggregation now runs through `openrustclaw-app`, with `inspect.rs` reduced to the workspace adapter for enterprise access, policy, autonomy, and supervision inputs — v1.15 Phase 65
 
 ### Active
 
-- [ ] The next typed inspection or aggregation family still needs to leave `inspect.rs` so report composition keeps moving into `openrustclaw-app` — v1.15
 - [ ] Another bounded runtime or `/control/...` route family still needs to move behind a stable application-facing seam — v1.15
 - [ ] The mutation-heavy `skills.rs` lanes still need a real service boundary beyond the read-only compiled overview path — v1.15
 - [ ] Remaining runtime command seams still need bounded application or adapter extraction so greenfield work does not stall at report composition only — v1.15
@@ -143,6 +143,7 @@ The next milestone continues that same migration strategy without changing the c
 | Keep persisted self-hosted product-mode storage and transition receipts in the existing CLI adapter module while moving summary composition into `openrustclaw-app` | The second summary extraction needed to broaden the greenfield lane without mixing storage migration into the same bounded slice | ✓ Good |
 | Use the self-hosted product-mode transition route as the first bounded `start.rs` route-family extraction | It already had a matching greenfield summary service, one GET and one POST contract, and shipped Control UI coverage, which made it the safest truthful proving route | ✓ Good |
 | Use the compiled-skill overview lane as the first `skills.rs` seam instead of attempting a broad skills rewrite | Compiled manifests, artifacts, reference previews, and executable-component discovery already powered both CLI and MCP/runtime surfaces, so extracting that read-only lane created a real shared boundary with bounded risk | ✓ Good |
+| Use the enterprise admin surface as the next inspection aggregation extraction instead of trying to move every enterprise summary at once | It is a real shipped aggregation over access, policy, autonomy, and supervision, so moving that composition first reduces `inspect.rs` ownership without forcing a broad enterprise rewrite in one phase | ✓ Good |
 
 ## Next Milestone Goals
 
@@ -169,4 +170,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-28 after starting v1.15*
+*Last updated: 2026-03-28 after completing v1.15 Phase 65*

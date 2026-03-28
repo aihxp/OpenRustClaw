@@ -594,6 +594,7 @@ That migration set now also includes:
 - the `/control/self-hosted/product-mode` transition route family
 - the mobile node operator summary report
 - the compiled-skill overview seam shared by `skills.rs` and `start.rs`
+- the enterprise admin aggregation service used by the shipped enterprise admin surface
 
 The next migration queue is:
 
