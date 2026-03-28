@@ -90,6 +90,26 @@ These are the current source-of-truth surfaces that cleanup work must preserve:
 - channel-adapter decomposition for Discord and Teams
 - wider contract testing between Rust runtime and optional sidecar
 
+## Greenfield Follow-Up Queue
+
+After `v1.13`, the next cleanup and migration targets should be treated as application-lane follow-up, not as more opportunistic legacy growth:
+
+1. broader inspection summary composition behind `openrustclaw-app`
+2. selected `start.rs` route families behind cleaner service seams
+3. mobile operator reporting behind stable report services
+4. `skills.rs` decomposition once a bounded service seam is identified
+
+## Compatibility-Only Exceptions
+
+Legacy hotspots can still accept changes when the task is clearly one of these:
+
+- bug fix or regression repair in shipped behavior
+- security or auth hardening
+- runtime compatibility update needed to keep an existing surface working
+- adapter glue into an already approved migration seam
+
+They should not be the default home for new cross-cutting business logic anymore.
+
 ## Verification Bundle
 
 Rerun the current cleanup guardrails with:

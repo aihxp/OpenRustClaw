@@ -103,6 +103,24 @@ When reviewing new work during `v1.13`:
 - prefer extracting one stable interface over adding one more helper to a hotspot file
 - require every migration to preserve the current verification bundle before widening scope
 
+## Default Contribution Checklist
+
+Before adding new logic:
+
+1. decide whether the change is domain, application, adapter, or compatibility-only work
+2. if it is application work, default to `openrustclaw-app`
+3. if it touches a legacy hotspot, note why that hotspot is still the right place
+4. preserve the proving-slice verification bundle before widening the migration
+
+## Next Migration Queue
+
+Unless a future milestone reprioritizes it, the preferred migration order after the setup handoff proving slice is:
+
+1. broader inspection summary composition
+2. selected `start.rs` route families
+3. mobile operator reporting
+4. `skills.rs` decomposition
+
 ## Verification Bundle
 
 Use this bundle to confirm the chosen proving slice stays stable while the architecture changes around it:
