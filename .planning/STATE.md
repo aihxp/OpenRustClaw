@@ -5,16 +5,16 @@ milestone_name: GitHub Repository Presence and Actions Recovery
 current_phase: 43
 current_phase_name: GitHub Actions Audit and Repair
 current_plan: null
-status: Phase 42 complete; ready for Phase 43
-stopped_at: Phase 42 complete; next up is Phase 43.
-last_updated: "2026-03-27T23:45:00Z"
-last_activity: 2026-03-27 -- phase 42 completed and live topic contract verified
+status: Phase 44 complete; milestone ready for audit and archive
+stopped_at: Phase 44 complete; next up is milestone audit and archive.
+last_updated: "2026-03-28T00:39:00Z"
+last_activity: 2026-03-28 -- phases 43-44 completed and live GitHub workflow health verified
 progress:
   total_phases: 4
-  completed_phases: 2
+  completed_phases: 4
   total_plans: 8
-  completed_plans: 4
-  percent: 50
+  completed_plans: 8
+  percent: 100
 ---
 
 # Project State
@@ -24,7 +24,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-27)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** Phase 42 complete; Phase 43 next
+**Current focus:** v1.9 complete; milestone audit and archive next
 
 ## Current Position
 
@@ -33,12 +33,12 @@ Current Phase Name: GitHub Actions Audit and Repair
 Total Phases: 4
 Current Plan: -
 Total Plans in Phase: 0
-Status: Phase 42 complete; ready for Phase 43
-Last activity: 2026-03-27 -- phase 42 completed and live topic contract verified
+Status: Phase 44 complete; milestone ready for audit and archive
+Last activity: 2026-03-28 -- phases 43-44 completed and live GitHub workflow health verified
 
-Phase: 2 of 4
-Plan: 0 of 0
-Progress: [█████-----] 50%
+Phase: 4 of 4
+Plan: 2 of 2
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -70,6 +70,8 @@ Recent decisions affecting current work:
 - Phase 41 added the local GitHub repo metadata contract, admin script, and repo-admin guide.
 - The stale `GITHUB_TOKEN` export in `~/.bashrc` was removed, local `gh` auth was normalized to `aihxp`, and the live GitHub repo metadata now matches the local contract.
 - Phase 42 made the canonical topic set explicit in the repo-admin docs and verified that the live topic set matches the local contract.
+- Phase 43 repaired the shipped GitHub workflow surface so the latest `main` CI run is green while Clippy and RustSec remain explicit informational signals.
+- Phase 44 closed the repo-admin maintenance loop with one repeatable workflow-health helper and live verification against the latest `main` GitHub runs.
 
 ### Pending Todos
 
@@ -81,6 +83,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-27 23:45
-Stopped at: Phase 42 complete; next up is Phase 43.
+Last session: 2026-03-28 00:39
+Stopped at: Phase 44 complete; next up is milestone audit and archive.
 Resume file: None

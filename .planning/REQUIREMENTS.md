@@ -17,14 +17,14 @@
 
 ### Actions and Release Automation
 
-- [ ] **ACT-01**: Public GitHub Actions workflows referenced by badges, release tags, or operator docs execute against the current repo layout and shipped verification contract.
-- [ ] **ACT-02**: Stale, failing, or misleading GitHub Actions jobs are repaired, removed, or clearly downgraded to informational status.
-- [ ] **ACT-03**: Tag or release automation stays consistent with shipped milestone tags and binary publishing expectations.
+- [x] **ACT-01**: Public GitHub Actions workflows referenced by badges, release tags, or operator docs execute against the current repo layout and shipped verification contract.
+- [x] **ACT-02**: Stale, failing, or misleading GitHub Actions jobs are repaired, removed, or clearly downgraded to informational status.
+- [x] **ACT-03**: Tag or release automation stays consistent with shipped milestone tags and binary publishing expectations.
 
 ### GitHub Admin Verification
 
-- [ ] **OPS-01**: The repo includes a repeatable admin sync path for About metadata, topics, and workflow health when authenticated GitHub access is available.
-- [ ] **OPS-02**: The milestone closes with evidence from both local verification and live GitHub surface checks.
+- [x] **OPS-01**: The repo includes a repeatable admin sync path for About metadata, topics, and workflow health when authenticated GitHub access is available.
+- [x] **OPS-02**: The milestone closes with evidence from both local verification and live GitHub surface checks.
 
 ## v2 Requirements
 
@@ -49,11 +49,11 @@
 | GHMD-02 | Phase 41 | Complete |
 | DISC-01 | Phase 42 | Complete |
 | DISC-02 | Phase 42 | Complete |
-| ACT-01 | Phase 43 | Pending |
-| ACT-02 | Phase 43 | Pending |
-| ACT-03 | Phase 43 | Pending |
-| OPS-01 | Phase 44 | Pending |
-| OPS-02 | Phase 44 | Pending |
+| ACT-01 | Phase 43 | Complete |
+| ACT-02 | Phase 43 | Complete |
+| ACT-03 | Phase 43 | Complete |
+| OPS-01 | Phase 44 | Complete |
+| OPS-02 | Phase 44 | Complete |
 
 **Coverage:**
 - v1 requirements: 9 total
@@ -62,4 +62,4 @@
 
 ---
 *Requirements defined: 2026-03-27*
-*Last updated: 2026-03-27 after completing phases 41-42*
+*Last updated: 2026-03-28 after completing phases 43-44*

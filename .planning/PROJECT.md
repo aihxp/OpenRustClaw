@@ -14,14 +14,14 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 - **Shipped milestones:** v1.0 Rust OpenClaw MVP, v1.1 Lifecycle Integrity and Enterprise Foundations, v1.2 Deeper OpenClaw Surface Parity, v1.3 Enterprise Expansion and Supervised Autonomy Foundations, v1.4 Enterprise Governance and Operator-Gated Full Autonomy, v1.5 Self-Hosted Product Modes and Lifecycle Packaging, v1.6 Proper Onboarding and Setup, v1.7 Documentation Convergence and OpenClaw-Inspired Docs Rewrite, and v1.8 Clean Codebase
 - **Archive:** `.planning/milestones/v1.0-*` through `.planning/milestones/v1.8-*`
-- **Planning state:** v1.9 is open and ready for Phase 41 planning
+- **Planning state:** v1.9 is complete and ready for audit and archive
 - **Known audit debt:** v1.0 archive still records missing phase `VERIFICATION.md` artifacts; v1.1 closed that workflow gap going forward
 
-## Most Recent Milestone: v1.8 Clean Codebase
+## Most Recent Milestone: v1.9 GitHub Repository Presence and Actions Recovery
 
-**Result:** Shipped 2026-03-27. OpenRustClaw now has an explicit cleanup inventory, repo-hygiene and drift guardrails, one extracted `start/auth.rs` boundary for the control-auth cluster, and a verification bundle that keeps cleanup work from quietly regressing.
+**Result:** Shipped 2026-03-28. OpenRustClaw now has truthful GitHub repo metadata, a canonical topic contract, a repo-admin metadata helper, a workflow-health admin helper, and a repaired shipped-surface GitHub Actions contract whose latest `main` CI and E2E runs both pass.
 
-**Archive:** `.planning/milestones/v1.8-ROADMAP.md`, `.planning/milestones/v1.8-REQUIREMENTS.md`, `.planning/milestones/v1.8-MILESTONE-AUDIT.md`, `.planning/milestones/v1.8-VERIFICATIONS.md`
+**Archive:** pending milestone completion this turn
 
 ## Current Milestone: v1.9 GitHub Repository Presence and Actions Recovery
 
@@ -64,13 +64,11 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 - ✓ Existing workspaces can now re-enter setup through an explicit repair path derived from setup state and doctor diagnostics — v1.6 Phase 30
 - ✓ Onboarding, Control UI, and setup docs now share one explicit setup handoff contract — v1.6 Phase 31
 - ✓ OpenRustClaw now has a canonical docs ownership contract, rewritten entry surfaces, aligned getting-started and operator guides, and a standing docs audit and maintenance workflow — v1.7 Phases 32-36
+- ✓ The public GitHub repo entry surface, discovery metadata, and GitHub workflow-health contract now match the shipped product and can be revalidated through repeatable admin helpers — v1.9 Phases 41-44
 
 ### Active
 
-- [ ] The public GitHub repo entry surface must describe OpenRustClaw as the shipped self-hosted Rust-first assistant product, not the older hybrid framework framing
-- [ ] GitHub discovery surfaces must have a maintained topic or tag contract aligned to the product's modes and major capabilities
-- [ ] GitHub Actions, badges, and release automation must reflect the current shipped verification and release contract without stale or misleading workflows
-- [ ] Repo-admin sync for GitHub metadata and workflow health must be documented and repeatable
+- [ ] No active milestone requirements until the next milestone opens
 
 ### Out of Scope
 
@@ -83,7 +81,7 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 This remains a large brownfield Rust monorepo with broad runtime, CLI, control-plane, memory, tools, channel, voice, browser, deployment, and operator surfaces. v1.0 converted that breadth into a cleaner MVP by making operator trust visible at the edges that matter, v1.1 hardened the lifecycle and enterprise baseline around that trust, v1.2 deepened the most operator-visible OpenClaw parity surfaces without reopening MVP sprawl, v1.3 turned the first enterprise and supervised-autonomy contracts into a coherent operator loop, v1.4 extended that loop into explicit governance and operator-gated full autonomy, v1.5 made the platform legible as one self-hosted open-source product with explicit deployment paths and transition visibility, v1.6 turned onboarding and setup into one truthful lifecycle from first install through repair and handoff, v1.7 made the documentation set legible enough to match the shipped product baseline, and v1.8 converted cleanup debt into an explicit maintained contract instead of leaving it as background churn.
 
-The next milestone is outward-facing: the public GitHub repo still exposes stale framing in the About panel, its discovery tags are not being treated as part of the canonical product surface, and the Actions page needs to be brought back into alignment with the current shipped verification story. This work is partly code and docs, partly repo-admin surface, so the milestone needs both in-repo contracts and live GitHub verification.
+The most recent milestone was outward-facing: the public GitHub repo now has truthful About and topic metadata, and the Actions page now reflects the current verification story with a passing `main` CI and E2E surface. The next milestone can build on a cleaner GitHub baseline instead of first repairing public repo drift.
 
 ## Constraints
 
@@ -118,10 +116,7 @@ The next milestone is outward-facing: the public GitHub repo still exposes stale
 
 ## Next Milestone Goals
 
-- Replace stale GitHub repo framing with the current self-hosted assistant product story
-- Define and preserve a canonical GitHub topic or tag set for discovery
-- Repair or simplify GitHub Actions so the public automation surface matches the current verification contract
-- Add a repeatable repo-admin sync and verification path for future GitHub surface maintenance
+- No active next-milestone goals yet — use `$gsd-new-milestone` to open the next cycle
 
 ## Evolution
 
@@ -141,4 +136,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-27 after starting v1.9*
+*Last updated: 2026-03-28 after completing v1.9*
