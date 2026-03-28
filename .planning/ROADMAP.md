@@ -20,17 +20,17 @@
 ## Current Status
 
 - Active milestone: **v1.13 Brownfield-to-Greenfield Transition**
-- Progress: 1 of 4 phases complete
+- Progress: 2 of 4 phases complete
 - Most recent shipment: **v1.12 Secure Node Connectivity and SSH Tunnel Revisit**
-- Current execution: **Phase 58 not started**
-- Next step: `$gsd-plan-phase 58` or `$gsd-autonomous`
+- Current execution: **Phase 59 not started**
+- Next step: `$gsd-plan-phase 59` or `$gsd-autonomous`
 
 ## Live Planning
 
 ### Phase Checklist
 
 - [x] **Phase 57: Greenfield Boundary Contract and Migration Inventory** (completed 2026-03-28)
-- [ ] **Phase 58: Greenfield Core Shell and Service Interfaces**
+- [x] **Phase 58: Greenfield Core Shell and Service Interfaces** (completed 2026-03-28)
 - [ ] **Phase 59: First Vertical Slice Migration**
 - [ ] **Phase 60: Brownfield Containment and Contributor Defaults**
 
@@ -57,10 +57,10 @@ Plans:
 - dependency direction is cleaner and bounded
 - stable service interfaces exist for the first migration work
 
-**Plans:** 0/1 plans complete
+**Plans:** 1/1 plans complete
 
 Plans:
-- [ ] 58-01 Create the greenfield core shell and service boundaries
+- [x] 58-01 Create the greenfield core shell and service boundaries
 
 ### Phase 59: First Vertical Slice Migration
 
