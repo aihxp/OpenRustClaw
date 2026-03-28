@@ -23,6 +23,9 @@ use openrustclaw_app::enterprise_access_control::{
     EnterpriseAccessOperatorUpsertRequest as AppEnterpriseAccessOperatorUpsertRequest,
     EnterpriseGovernanceRuleUpsertRequest as AppEnterpriseGovernanceRuleUpsertRequest,
 };
+use openrustclaw_app::runtime_vault_control::{
+    RuntimeVaultControlService, RuntimeVaultControlSource,
+};
 use openrustclaw_channels::discord::DiscordInteractionsHandler;
 use openrustclaw_channels::gmail_pubsub::GmailWebhookHandler;
 use openrustclaw_channels::google_chat::GoogleChatWebhookHandler;
@@ -7650,21 +7653,15 @@ async fn runtime_switch_model_handler(
 async fn runtime_vault_status_handler(
     State(state): State<RuntimeControlState>,
 ) -> impl IntoResponse {
-    let path = runtime::vault_path_for(&state.workspace_root);
-    match runtime::list_vault_keys(&state.workspace_root) {
-        Ok(keys) => (
-            StatusCode::OK,
-            Json(serde_json::json!({
-                "path": path,
-                "present": path.exists(),
-                "entries": keys,
-                "count": keys.len(),
-            })),
-        )
-            .into_response(),
+    match RuntimeVaultControlService::new(WorkspaceRuntimeVaultControlSource {
+        workspace_root: &state.workspace_root,
+    })
+    .status()
+    {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": error.to_string(), "path": path})),
+            Json(serde_json::json!({"error": error.to_string()})),
         )
             .into_response(),
     }
@@ -7675,12 +7672,12 @@ async fn runtime_vault_set_handler(
     AxumPath(key): AxumPath<String>,
     Json(payload): Json<RuntimeVaultValueRequest>,
 ) -> impl IntoResponse {
-    match runtime::set_vault_secret(&state.workspace_root, &key, &payload.value) {
-        Ok(()) => (
-            StatusCode::OK,
-            Json(serde_json::json!({"status": "ok", "key": key})),
-        )
-            .into_response(),
+    match RuntimeVaultControlService::new(WorkspaceRuntimeVaultControlSource {
+        workspace_root: &state.workspace_root,
+    })
+    .set_secret(&key, &payload.value)
+    {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": error.to_string()})),
@@ -7693,17 +7690,48 @@ async fn runtime_vault_delete_handler(
     State(state): State<RuntimeControlState>,
     AxumPath(key): AxumPath<String>,
 ) -> impl IntoResponse {
-    match runtime::delete_vault_secret(&state.workspace_root, &key) {
-        Ok(()) => (
-            StatusCode::OK,
-            Json(serde_json::json!({"status": "ok", "key": key})),
-        )
-            .into_response(),
+    match RuntimeVaultControlService::new(WorkspaceRuntimeVaultControlSource {
+        workspace_root: &state.workspace_root,
+    })
+    .delete_secret(&key)
+    {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": error.to_string()})),
         )
             .into_response(),
+    }
+}
+
+struct WorkspaceRuntimeVaultControlSource<'a> {
+    workspace_root: &'a Path,
+}
+
+impl RuntimeVaultControlSource for WorkspaceRuntimeVaultControlSource<'_> {
+    fn vault_path(&self) -> String {
+        runtime::vault_path_for(self.workspace_root)
+            .display()
+            .to_string()
+    }
+
+    fn vault_present(&self) -> bool {
+        runtime::vault_path_for(self.workspace_root).exists()
+    }
+
+    fn list_vault_keys(&self) -> openrustclaw_core::error::Result<Vec<String>> {
+        runtime::list_vault_keys(self.workspace_root)
+            .map_err(|error| CoreError::Internal(error.to_string()))
+    }
+
+    fn set_vault_secret(&self, key: &str, value: &str) -> openrustclaw_core::error::Result<()> {
+        runtime::set_vault_secret(self.workspace_root, key, value)
+            .map_err(|error| CoreError::Internal(error.to_string()))
+    }
+
+    fn delete_vault_secret(&self, key: &str) -> openrustclaw_core::error::Result<()> {
+        runtime::delete_vault_secret(self.workspace_root, key)
+            .map_err(|error| CoreError::Internal(error.to_string()))
     }
 }
 
@@ -12388,11 +12416,14 @@ struct McpPromoteOptimizationCandidateArgs {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::body::{Body, to_bytes};
+    use axum::http::Request;
     use ed25519_dalek::{Signer, SigningKey};
     use openrustclaw_core::config::{AppConfig, DiscordConfig, SlackConfig, SlackMode};
     use openrustclaw_core::error::{Error, ProviderError};
     use openrustclaw_core::types::{FinishReason, IncomingMessage, Role, TokenUsage};
     use tempfile::tempdir;
+    use tower::ServiceExt;
 
     struct MockProvider;
 
@@ -12494,6 +12525,60 @@ mod tests {
         )
     }
 
+    struct EnvVarGuard {
+        key: &'static str,
+        previous: Option<String>,
+    }
+
+    impl EnvVarGuard {
+        fn set(key: &'static str, value: &str) -> Self {
+            let previous = std::env::var(key).ok();
+            // SAFETY: tests in this module mutate process env in a controlled scope.
+            unsafe { std::env::set_var(key, value) };
+            Self { key, previous }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            if let Some(previous) = self.previous.as_deref() {
+                // SAFETY: tests in this module mutate process env in a controlled scope.
+                unsafe { std::env::set_var(self.key, previous) };
+            } else {
+                // SAFETY: tests in this module mutate process env in a controlled scope.
+                unsafe { std::env::remove_var(self.key) };
+            }
+        }
+    }
+
+    async fn test_runtime_control_state(workspace_root: PathBuf) -> RuntimeControlState {
+        let pool = openrustclaw_db::init_pool("sqlite::memory:", 1)
+            .await
+            .expect("pool");
+        openrustclaw_db::run_migrations(&pool)
+            .await
+            .expect("migrations");
+
+        RuntimeControlState {
+            config_path: workspace_root
+                .join("config/default.toml")
+                .display()
+                .to_string(),
+            workspace_root,
+            pool: pool.clone(),
+            memory_store: Arc::new(SqliteMemoryStore::new(pool.clone())),
+            core_memory_store: Arc::new(SqliteCoreMemoryStore::new(pool.clone())),
+            session_manager: Arc::new(SessionManager::new()),
+            channel_registry: Arc::new(tokio::sync::RwLock::new(ChannelRegistry::default())),
+            langsmith: None,
+            event_bus: DurableEventBus::new(pool, 16),
+            channel_agent: None,
+            gateway_addr: "127.0.0.1:18789".to_string(),
+            started_at: Utc::now(),
+            sidecar_running: false,
+        }
+    }
+
     #[test]
     fn gate_nonshipping_channels_disables_gated_runtime_surfaces() {
         let mut config = AppConfig::default().channels;
@@ -12536,6 +12621,67 @@ mod tests {
         config.security.require_auth = true;
 
         assert!(validate_gateway_network_mode(&config).is_ok());
+    }
+
+    #[tokio::test]
+    async fn runtime_vault_route_family_uses_service_lane() {
+        let temp = tempdir().unwrap();
+        std::fs::create_dir_all(temp.path().join("config")).unwrap();
+        std::fs::write(
+            temp.path().join("config").join("default.toml"),
+            toml::to_string_pretty(&AppConfig::default()).unwrap(),
+        )
+        .unwrap();
+
+        let _passphrase =
+            EnvVarGuard::set("OPENRUSTCLAW_VAULT_PASSPHRASE", "route-family-passphrase");
+        let router =
+            runtime_control_router(test_runtime_control_state(temp.path().to_path_buf()).await);
+
+        let put_response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri("/control/runtime/vault/OPENAI_API_KEY")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"value":"secret-1"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(put_response.status(), StatusCode::OK);
+
+        let get_response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/control/runtime/vault")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(get_response.status(), StatusCode::OK);
+        let get_body = to_bytes(get_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let get_body = String::from_utf8(get_body.to_vec()).unwrap();
+        assert!(get_body.contains("\"count\":1"));
+        assert!(get_body.contains("OPENAI_API_KEY"));
+
+        let delete_response = router
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/control/runtime/vault/OPENAI_API_KEY")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(delete_response.status(), StatusCode::OK);
     }
 
     #[test]

@@ -1,20 +1,20 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.16
-milestone_name: Greenfield Conversion: Skills and Runtime Hotspots
+milestone: null
+milestone_name: null
 current_phase: null
 current_phase_name: null
 current_plan: null
-status: Milestone defined; ready for Phase 69 planning
-stopped_at: Run $gsd-discuss-phase 69, $gsd-plan-phase 69, or $gsd-autonomous to begin v1.16.
-last_updated: "2026-03-28T16:20:00Z"
-last_activity: 2026-03-28 -- started v1.16 Greenfield Conversion: Skills and Runtime Hotspots
+status: milestone_complete
+stopped_at: Run $gsd-new-milestone to define the next milestone.
+last_updated: "2026-03-28T15:46:29.352Z"
+last_activity: 2026-03-28
 progress:
   total_phases: 4
-  completed_phases: 0
+  completed_phases: 4
   total_plans: 4
-  completed_plans: 0
-  percent: 0
+  completed_plans: 4
+  percent: 100
 ---
 
 # Project State
@@ -24,21 +24,21 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-28)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** Define and execute v1.16 Greenfield Conversion: Skills and Runtime Hotspots
+**Current focus:** Prepare the next milestone after shipping v1.16 Greenfield Conversion: Skills and Runtime Hotspots
 
 ## Current Position
 
-Current Phase: -
-Current Phase Name: -
+Current Phase: None
+Current Phase Name: None
 Total Phases: 4
-Current Plan: -
-Total Plans in Phase: 1
-Status: Milestone defined; ready for Phase 69 planning
-Last activity: 2026-03-28 -- started v1.16 Greenfield Conversion: Skills and Runtime Hotspots
+Current Plan: None
+Total Plans in Phase: 0
+Status: v1.16 milestone complete and archived
+Last activity: 2026-03-28
 
-Phase: 0 of 4
-Plan: 0 of 0
-Progress: [----------] 0%
+Phase: 4 of 4
+Plan: 4 of 4
+Progress: [##########] 100%
 
 ## Performance Metrics
 
@@ -89,7 +89,7 @@ Recent decisions affecting current work:
 - Phase 66 moved the enterprise access write route family into `openrustclaw-app`, with `start.rs` now acting as the HTTP adapter for bootstrap, operator-upsert, and governance-rule-upsert flows while preserving the shipped enterprise access summary contract.
 - Phase 67 moved the skills install, update, and uninstall mutation lane into `openrustclaw-app`, with `skills.rs` now acting as the adapter around workspace files, DB state, registry operations, compile attempts, and plugin-event publication.
 - Phase 68 moved the runtime provider or model switch lane into `openrustclaw-app`, with `runtime.rs` now acting as the adapter around config loading, provider validation, and config persistence with backup.
-- v1.16 continues the same migration posture with the next ranked queue: the remaining `skills.rs` plugin lifecycle lanes, the next larger runtime mutation and recovery seams, and one more bounded follow-on control route extraction.
+- v1.16 shipped the next ranked hotspot queue: the remaining voice-plugin binding lane, the runtime vault mutation seam, the runtime reload-plan seam, and the `/control/runtime/vault` route family now run through `openrustclaw-app`.
 
 ### Pending Todos
 
@@ -102,5 +102,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-28 04:45
-Stopped at: Run $gsd-discuss-phase 69, $gsd-plan-phase 69, or $gsd-autonomous to begin v1.16.
+Stopped at: Run $gsd-new-milestone to define the next milestone.
 Resume file: None

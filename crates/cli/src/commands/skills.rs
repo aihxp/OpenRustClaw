@@ -11,6 +11,9 @@ use openrustclaw_app::skill_registry_mutation::{
     SkillMutationReport as AppSkillMutationReport, SkillRegistryMutationService,
     SkillRegistryMutationSource, WorkspaceSkillCandidate,
 };
+use openrustclaw_app::skill_voice_plugin_binding::{
+    SkillVoicePluginBindingReport, SkillVoicePluginBindingRequest, SkillVoicePluginBindingService,
+};
 use openrustclaw_core::error::Error as CoreError;
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
@@ -2738,29 +2741,6 @@ pub async fn bind_voice_plugin_data(
 ) -> Result<SkillBindVoicePluginResult> {
     let workspace_root = current_workspace_root()?;
     let artifact = compiled_skill_detail_or_compile(skill_name).await?;
-    if matches!(
-        artifact.manifest.status,
-        openrustclaw_skills::CompiledSkillStatus::Blocked
-    ) {
-        anyhow::bail!(
-            "Compiled skill '{}' is blocked and cannot be bound as a voice plugin",
-            artifact.manifest.name
-        );
-    }
-    if !artifact.manifest.declared_voice_call_plugins.is_empty()
-        && !artifact
-            .manifest
-            .declared_voice_call_plugins
-            .iter()
-            .any(|plugin| plugin == plugin_id)
-    {
-        anyhow::bail!(
-            "Compiled skill '{}' declares voice call plugins [{}], not '{}'",
-            artifact.manifest.name,
-            artifact.manifest.declared_voice_call_plugins.join(", "),
-            plugin_id
-        );
-    }
 
     let (service, component) = if options.service.is_some() || options.component.is_some() {
         let resolved = resolve_compiled_skill_background_service(
@@ -2776,20 +2756,39 @@ pub async fn bind_voice_plugin_data(
 
     let now = Utc::now().to_rfc3339();
     let mut registry = load_voice_plugin_registry(&workspace_root)?;
-    let configured_at = registry
+    let existing_configured_at = registry
         .bindings
         .get(plugin_id)
         .map(|binding| binding.configured_at.clone())
-        .unwrap_or_else(|| now.clone());
+        .clone();
+    let SkillVoicePluginBindingReport { binding, .. } = SkillVoicePluginBindingService::new()
+        .bind(
+            SkillVoicePluginBindingRequest {
+                plugin_id: plugin_id.to_string(),
+                skill_name: artifact.manifest.name.clone(),
+                declared_voice_call_plugins: artifact.manifest.declared_voice_call_plugins.clone(),
+                blocked: matches!(
+                    artifact.manifest.status,
+                    openrustclaw_skills::CompiledSkillStatus::Blocked
+                ),
+                service: service.clone(),
+                component: component.clone(),
+                greeting_text: options.greeting_text.map(ToString::to_string),
+                default_voice: options.default_voice.map(ToString::to_string),
+            },
+            existing_configured_at,
+            now,
+        )
+        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
     let binding = SkillVoicePluginBinding {
-        plugin_id: plugin_id.to_string(),
-        skill_name: artifact.manifest.name.clone(),
-        service: service.clone(),
-        component: component.clone(),
-        greeting_text: options.greeting_text.map(ToString::to_string),
-        default_voice: options.default_voice.map(ToString::to_string),
-        configured_at,
-        updated_at: now,
+        plugin_id: binding.plugin_id,
+        skill_name: binding.skill_name,
+        service: binding.service,
+        component: binding.component,
+        greeting_text: binding.greeting_text,
+        default_voice: binding.default_voice,
+        configured_at: binding.configured_at,
+        updated_at: binding.updated_at,
     };
     registry
         .bindings
@@ -5534,6 +5533,59 @@ mod tests {
             .fetch_one(&pool)
             .await?;
         assert_eq!(remaining, 0);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn bind_voice_plugin_data_uses_service_lane() -> Result<()> {
+        let tmp = tempfile::tempdir()?;
+        std::fs::create_dir_all(tmp.path().join("skills").join("voice-demo"))?;
+        std::fs::create_dir_all(tmp.path().join("config"))?;
+
+        let db_path = tmp.path().join("skills.db");
+        std::fs::write(&db_path, [])?;
+
+        std::fs::write(
+            tmp.path()
+                .join("skills")
+                .join("voice-demo")
+                .join("SKILL.md"),
+            "# Voice Demo\n\nA voice-ready workspace skill.\n\ncapabilities: file_read\n",
+        )?;
+
+        let mut config = openrustclaw_core::config::AppConfig::default();
+        config.database.url = format!("sqlite://{}?mode=rwc", db_path.display());
+        std::fs::write(
+            tmp.path().join("config").join("default.toml"),
+            toml::to_string_pretty(&config)?,
+        )?;
+
+        let _guard = CurrentDirGuard::enter(tmp.path())?;
+        let result = bind_voice_plugin_data(
+            "support-line",
+            "voice-demo",
+            SkillBindVoicePluginOptions {
+                service: None,
+                component: None,
+                greeting_text: Some("hello"),
+                default_voice: Some("nova"),
+            },
+        )
+        .await?;
+
+        assert_eq!(result.status, "ok");
+        assert_eq!(result.plugin_id, "support-line");
+        assert_eq!(result.skill_name, "Voice Demo");
+        assert_eq!(result.greeting_text.as_deref(), Some("hello"));
+        assert_eq!(result.default_voice.as_deref(), Some("nova"));
+
+        let registry = load_voice_plugin_registry(tmp.path())?;
+        let binding = registry.bindings.get("support-line").unwrap();
+        assert_eq!(binding.skill_name, "Voice Demo");
+        assert_eq!(binding.greeting_text.as_deref(), Some("hello"));
+        assert_eq!(binding.default_voice.as_deref(), Some("nova"));
 
         Ok(())
     }

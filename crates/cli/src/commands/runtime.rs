@@ -13,6 +13,10 @@ use chrono::Utc;
 use openrustclaw_app::runtime_provider_switch::{
     RuntimeConfigMutationSource, RuntimeProviderSwitchRequest, RuntimeProviderSwitchService,
 };
+use openrustclaw_app::runtime_reload_planning::{
+    RuntimeAppliedSnapshot, RuntimeReloadPlan, RuntimeReloadPlanningService,
+};
+use openrustclaw_app::runtime_vault::{RuntimeVaultService, RuntimeVaultState};
 use openrustclaw_core::config::AppConfig;
 use openrustclaw_core::error::Error as CoreError;
 use openrustclaw_core::traits::LlmProvider;
@@ -218,39 +222,6 @@ struct ProviderHealthProbe {
     issue: Option<String>,
     model_available: Option<bool>,
     limit_snapshot: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RuntimeAppliedSnapshot {
-    pub captured_at: String,
-    pub config_path: String,
-    pub default_provider: String,
-    pub enabled_channels: Vec<String>,
-    pub provider_fingerprint: String,
-    pub gateway_fingerprint: String,
-    pub security_fingerprint: String,
-    pub scheduler_fingerprint: String,
-    pub sidecar_fingerprint: String,
-    pub channel_fingerprint: String,
-    pub channel_route_fingerprint: String,
-    pub artifact_fingerprint: String,
-    pub artifact_paths: Vec<String>,
-    pub persona_paths: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RuntimeReloadPlan {
-    pub generated_at: String,
-    pub config_path: String,
-    pub applied_snapshot_at: Option<String>,
-    pub status: String,
-    pub live_reload_ready: bool,
-    pub restart_required: bool,
-    pub live_reload_changes: Vec<String>,
-    pub provider_changes: Vec<String>,
-    pub artifact_changes: Vec<String>,
-    pub restart_required_reasons: Vec<String>,
-    pub changed_artifacts: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1135,110 +1106,7 @@ pub async fn scan_runtime_health(
 pub fn runtime_reload_plan(config_path: &str, workspace_root: &Path) -> Result<RuntimeReloadPlan> {
     let current = capture_runtime_snapshot(config_path, workspace_root)?;
     let applied = load_applied_runtime_snapshot(workspace_root)?;
-
-    let mut live_reload_changes = Vec::new();
-    let mut provider_changes = Vec::new();
-    let mut artifact_changes = Vec::new();
-    let mut restart_required_reasons = Vec::new();
-
-    if let Some(previous) = &applied {
-        if previous.provider_fingerprint != current.provider_fingerprint {
-            provider_changes.push(format!(
-                "Provider/model routing changed: {} -> {}",
-                previous.default_provider, current.default_provider
-            ));
-            live_reload_changes.push(
-                "Provider and model routing can rebind live through the shipped runtime reload path."
-                    .to_string(),
-            );
-        }
-
-        if previous.artifact_fingerprint != current.artifact_fingerprint {
-            artifact_changes.push(
-                "Workspace persona/instruction artifacts changed and will be read on the next turn."
-                    .to_string(),
-            );
-            live_reload_changes.push(
-                "Prompt artifact changes are live-safe because the agent runtime resolves workspace artifacts per request."
-                    .to_string(),
-            );
-        }
-
-        if previous.gateway_fingerprint != current.gateway_fingerprint {
-            restart_required_reasons.push(
-                "Gateway host/port settings changed and require a process restart.".to_string(),
-            );
-        }
-        if previous.security_fingerprint != current.security_fingerprint {
-            restart_required_reasons.push(
-                "Gateway auth/origin policy changed and requires a process restart.".to_string(),
-            );
-        }
-        if previous.scheduler_fingerprint != current.scheduler_fingerprint {
-            restart_required_reasons
-                .push("Scheduler timing changed and requires worker restart.".to_string());
-        }
-        if previous.sidecar_fingerprint != current.sidecar_fingerprint {
-            restart_required_reasons
-                .push("Sidecar launch settings changed and require process restart.".to_string());
-        }
-        if previous.enabled_channels != current.enabled_channels {
-            restart_required_reasons.push(
-                "Enabled channel set changed and requires channel transport restart.".to_string(),
-            );
-        } else if previous.channel_route_fingerprint != current.channel_route_fingerprint {
-            restart_required_reasons.push(
-                "Webhook or transport-routing paths changed and require process restart."
-                    .to_string(),
-            );
-        } else if previous.channel_fingerprint != current.channel_fingerprint {
-            restart_required_reasons.push(
-                "Running channel transport settings changed; restart is required to reconnect safely."
-                    .to_string(),
-            );
-        }
-    }
-
-    let changed_artifacts = applied
-        .as_ref()
-        .map(|previous| {
-            current
-                .artifact_paths
-                .iter()
-                .filter(|path| !previous.artifact_paths.contains(*path))
-                .cloned()
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
-
-    let restart_required = !restart_required_reasons.is_empty();
-    let live_reload_ready = !restart_required
-        && (!live_reload_changes.is_empty()
-            || applied
-                .as_ref()
-                .map(|previous| previous.provider_fingerprint != current.provider_fingerprint)
-                .unwrap_or(false));
-    let status = if restart_required {
-        "restart_required"
-    } else if live_reload_ready {
-        "live_reload_ready"
-    } else {
-        "up_to_date"
-    };
-
-    Ok(RuntimeReloadPlan {
-        generated_at: Utc::now().to_rfc3339(),
-        config_path: config_path.to_string(),
-        applied_snapshot_at: applied.map(|snapshot| snapshot.captured_at),
-        status: status.to_string(),
-        live_reload_ready,
-        restart_required,
-        live_reload_changes,
-        provider_changes,
-        artifact_changes,
-        restart_required_reasons,
-        changed_artifacts,
-    })
+    Ok(RuntimeReloadPlanningService::new().build_plan(current, applied, Utc::now().to_rfc3339()))
 }
 
 pub fn mark_runtime_applied(
@@ -2186,17 +2054,41 @@ pub fn get_vault_secret(workspace_root: &Path, key: &str) -> Result<String> {
 }
 
 pub fn set_vault_secret(workspace_root: &Path, key: &str, value: &str) -> Result<()> {
-    let mut vault = load_vault(workspace_root, None).unwrap_or_default();
-    vault.version = 1;
-    vault.entries.insert(key.to_string(), value.to_string());
-    vault.updated_at = Some(Utc::now().to_rfc3339());
+    let vault = load_vault(workspace_root, None).unwrap_or_default();
+    let (vault, _) = RuntimeVaultService::new().set_secret(
+        RuntimeVaultState {
+            version: vault.version,
+            entries: vault.entries,
+            updated_at: vault.updated_at,
+        },
+        key,
+        value,
+        Utc::now().to_rfc3339(),
+    );
+    let vault = RuntimeVault {
+        version: vault.version,
+        entries: vault.entries,
+        updated_at: vault.updated_at,
+    };
     save_vault(workspace_root, &vault)
 }
 
 pub fn delete_vault_secret(workspace_root: &Path, key: &str) -> Result<()> {
-    let mut vault = load_vault(workspace_root, None)?;
-    vault.entries.remove(key);
-    vault.updated_at = Some(Utc::now().to_rfc3339());
+    let vault = load_vault(workspace_root, None)?;
+    let (vault, _) = RuntimeVaultService::new().delete_secret(
+        RuntimeVaultState {
+            version: vault.version,
+            entries: vault.entries,
+            updated_at: vault.updated_at,
+        },
+        key,
+        Utc::now().to_rfc3339(),
+    );
+    let vault = RuntimeVault {
+        version: vault.version,
+        entries: vault.entries,
+        updated_at: vault.updated_at,
+    };
     save_vault(workspace_root, &vault)
 }
 
@@ -3567,6 +3459,62 @@ mod tests {
         let persisted = AppConfig::load_from(config_path.to_str().unwrap())?;
         assert_eq!(persisted.providers.default_provider, "openai");
         assert_eq!(persisted.providers.openai.model, "gpt-4.1-mini");
+        Ok(())
+    }
+
+    #[test]
+    fn set_and_delete_vault_secret_use_service_lane() -> Result<()> {
+        let temp = tempdir()?;
+        let workspace_root = temp.path();
+        let _passphrase = EnvVarGuard::set("OPENRUSTCLAW_VAULT_PASSPHRASE", "test-passphrase");
+
+        set_vault_secret(workspace_root, "OPENAI_API_KEY", "secret-1")?;
+        set_vault_secret(workspace_root, "ANTHROPIC_API_KEY", "secret-2")?;
+
+        let keys = list_vault_keys(workspace_root)?;
+        assert_eq!(
+            keys,
+            vec![
+                "ANTHROPIC_API_KEY".to_string(),
+                "OPENAI_API_KEY".to_string()
+            ]
+        );
+        assert_eq!(
+            get_vault_secret(workspace_root, "OPENAI_API_KEY")?,
+            "secret-1"
+        );
+
+        delete_vault_secret(workspace_root, "OPENAI_API_KEY")?;
+
+        let keys = list_vault_keys(workspace_root)?;
+        assert_eq!(keys, vec!["ANTHROPIC_API_KEY".to_string()]);
+        assert!(get_vault_secret(workspace_root, "OPENAI_API_KEY").is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn runtime_reload_plan_uses_service_lane() -> Result<()> {
+        let temp = tempdir()?;
+        let workspace_root = temp.path();
+        fs::create_dir_all(workspace_root.join("config"))?;
+
+        let mut config = AppConfig::default();
+        config.providers.default_provider = "anthropic".to_string();
+        let config_path = workspace_root.join("config/default.toml");
+        fs::write(&config_path, toml::to_string_pretty(&config)?)?;
+
+        let applied = capture_runtime_snapshot(config_path.to_str().unwrap(), workspace_root)?;
+        save_runtime_snapshot(workspace_root, &applied)?;
+
+        config.providers.default_provider = "openai".to_string();
+        config.providers.openai.api_key_env = Some("OPENAI_API_KEY".to_string());
+        fs::write(&config_path, toml::to_string_pretty(&config)?)?;
+
+        let plan = runtime_reload_plan(config_path.to_str().unwrap(), workspace_root)?;
+        assert_eq!(plan.status, "live_reload_ready");
+        assert!(plan.live_reload_ready);
+        assert!(!plan.restart_required);
+        assert_eq!(plan.provider_changes.len(), 1);
         Ok(())
     }
 }

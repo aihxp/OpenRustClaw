@@ -1,5 +1,20 @@
 # Project Milestones: OpenRustClaw
 
+## v1.16 Greenfield Conversion: Skills and Runtime Hotspots (Shipped: 2026-03-28)
+
+**Phases completed:** 4 phases, 4 plans, 0 tasks
+**Verification archive:** `.planning/milestones/v1.16-VERIFICATIONS.md`
+**Verification debt:** none
+
+**Key accomplishments:**
+
+- Broadened the greenfield application lane across the remaining voice-plugin binding seam, a runtime vault mutation seam, a larger runtime reload-planning seam, and one follow-on runtime control-route family.
+- Moved the voice-plugin bind mutation lane out of `skills.rs` and into `openrustclaw-app` while preserving the shipped CLI and control-facing contract.
+- Moved runtime vault set or delete and runtime reload-plan orchestration out of `runtime.rs`, leaving the CLI module as the workspace and persistence adapter.
+- Moved the `/control/runtime/vault` route family out of `start.rs` and behind a shared application service boundary.
+
+---
+
 ## v1.15 Deeper Greenfield Conversion (Shipped: 2026-03-28)
 
 **Phases completed:** 4 phases, 4 plans, 0 tasks
