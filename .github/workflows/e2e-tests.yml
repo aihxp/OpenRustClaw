@@ -38,7 +38,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libsqlite3-dev protobuf-compiler
+          sudo apt-get install -y libsqlite3-dev protobuf-compiler libasound2-dev
 
       - name: Build E2E tests
         run: cargo build -p openrustclaw-e2e-tests --release
@@ -69,7 +69,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libsqlite3-dev protobuf-compiler
+          sudo apt-get install -y libsqlite3-dev protobuf-compiler libasound2-dev
 
       - name: Run horizontal tests
         run: cargo test -p openrustclaw-e2e-tests --release -- --nocapture horizontal
@@ -101,7 +101,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libsqlite3-dev protobuf-compiler
+          sudo apt-get install -y libsqlite3-dev protobuf-compiler libasound2-dev
 
       - name: Run vertical tests - ${{ matrix.layer }}
         run: cargo test -p openrustclaw-e2e-tests --release -- --nocapture test_${{ matrix.layer }}_layer
@@ -130,7 +130,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libsqlite3-dev protobuf-compiler
+          sudo apt-get install -y libsqlite3-dev protobuf-compiler libasound2-dev
 
       - name: Run regression tests
         run: cargo test -p openrustclaw-e2e-tests --release -- --nocapture regression
@@ -159,7 +159,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libsqlite3-dev protobuf-compiler
+          sudo apt-get install -y libsqlite3-dev protobuf-compiler libasound2-dev
 
       - name: Run live provider tests
         env:
