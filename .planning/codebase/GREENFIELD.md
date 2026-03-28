@@ -94,6 +94,15 @@ That target shape is now real for the first proving slice:
 3. `inspect.rs` acts as the compatibility adapter into that service
 4. `start.rs` and Control UI still consume the same report contract
 
+### Current Phase 61 Outcome
+
+The greenfield lane now also owns a second typed operator summary:
+
+1. persisted self-hosted product-mode state still lives behind the existing CLI adapter module
+2. `openrustclaw-app` now owns self-hosted product-mode report composition
+3. `inspect.rs` adapts saved product-mode state, warnings, and transition receipts into that service
+4. runtime and Control UI still consume the same self-hosted product-mode report contract
+
 ## Review Defaults
 
 When reviewing new work during `v1.13`:

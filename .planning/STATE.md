@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.14
 milestone_name: Continued Greenfield Conversion
-current_phase: 61
-current_phase_name: Inspection Summary Service Extraction
+current_phase: 62
+current_phase_name: Control Route Family Service Extraction
 current_plan: null
-status: Milestone v1.14 defined; ready to begin Phase 61
-stopped_at: Run $gsd-discuss-phase 61, $gsd-plan-phase 61, or $gsd-autonomous to continue v1.14.
-last_updated: "2026-03-28T08:05:00Z"
-last_activity: 2026-03-28 -- started milestone v1.14 Continued Greenfield Conversion
+status: Phase 61 complete; ready to begin Phase 62
+stopped_at: Run $gsd-discuss-phase 62, $gsd-plan-phase 62, or $gsd-autonomous to continue v1.14.
+last_updated: "2026-03-28T08:45:00Z"
+last_activity: 2026-03-28 -- completed Phase 61 Inspection Summary Service Extraction
 progress:
   total_phases: 4
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  completed_phases: 1
+  total_plans: 1
+  completed_plans: 1
+  percent: 25
 ---
 
 # Project State
@@ -28,17 +28,17 @@ See: .planning/PROJECT.md (updated 2026-03-28)
 
 ## Current Position
 
-Current Phase: 61
-Current Phase Name: Inspection Summary Service Extraction
+Current Phase: 62
+Current Phase Name: Control Route Family Service Extraction
 Total Phases: 4
 Current Plan: -
 Total Plans in Phase: 0
-Status: Milestone v1.14 defined; ready to begin Phase 61
-Last activity: 2026-03-28 -- started milestone v1.14 Continued Greenfield Conversion
+Status: Phase 61 complete; ready to begin Phase 62
+Last activity: 2026-03-28 -- completed Phase 61 Inspection Summary Service Extraction
 
-Phase: 0 of 4
-Plan: 0 of 0
-Progress: [----------] 0%
+Phase: 1 of 4
+Plan: 1 of 1
+Progress: [██--------] 25%
 
 ## Performance Metrics
 
@@ -80,6 +80,7 @@ Recent decisions affecting current work:
 - Phase 59 proved the greenfield lane with shipped code: setup handoff reporting now runs through `openrustclaw-app`, while CLI code only adapts durable onboarding state into that service.
 - Phase 60 made the new lane the default contribution contract: `openrustclaw-app` is now the preferred home for application logic, and the next migration queue is preserved explicitly.
 - v1.14 continues that migration queue with four next-step targets: inspection summaries, selected control routes, mobile operator reporting, and a bounded `skills.rs` service seam.
+- Phase 61 broadened the greenfield lane with a second typed report family: self-hosted product-mode summary composition now lives in `openrustclaw-app`, while `inspect.rs` only adapts persisted state into that service.
 
 ### Pending Todos
 
@@ -91,6 +92,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-28 04:05
-Stopped at: Run $gsd-discuss-phase 61, $gsd-plan-phase 61, or $gsd-autonomous to continue v1.14.
+Last session: 2026-03-28 04:45
+Stopped at: Run $gsd-discuss-phase 62, $gsd-plan-phase 62, or $gsd-autonomous to continue v1.14.
 Resume file: None

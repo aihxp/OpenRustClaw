@@ -73,10 +73,10 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 - ✓ The repo now has a real greenfield application shell in `openrustclaw-app` plus a stable setup-handoff service boundary for future adapters — v1.13 Phase 58
 - ✓ The setup handoff proving slice now runs through `openrustclaw-app`, with CLI code reduced to a bounded adapter that preserves the existing runtime and Control UI contract — v1.13 Phase 59
 - ✓ Contributor and planning defaults now make `openrustclaw-app` the default application lane, preserve compatibility-only exceptions for legacy hotspots, and keep the next migration queue explicit — v1.13 Phase 60
+- ✓ A second typed operator summary family now runs through `openrustclaw-app`, with self-hosted product-mode report composition moved out of `inspect.rs` and into the greenfield lane — v1.14 Phase 61
 
 ### Active
 
-- [ ] More inspection and report composition logic must move into `openrustclaw-app` so `inspect.rs` stops acting as the long-term business-logic owner for typed operator summaries — v1.14
 - [ ] Selected control route families must stop coupling directly to mixed CLI command modules and instead call stable greenfield services — v1.14
 - [ ] Mobile operator reporting must follow the proving-slice pattern so one more real operator surface runs through the greenfield application lane — v1.14
 - [ ] The `skills.rs` command surface needs a bounded service seam so future work stops deepening that hotspot by default — v1.14
@@ -136,6 +136,7 @@ The next milestone extends that work into the next ranked migration queue. Inste
 | Use `openrustclaw-app` as the first application shell instead of extending the CLI crate into a second mixed-responsibility hub | The transition needs one bounded home for services, but the new lane should not immediately inherit transport and command concerns from `openrustclaw-cli` | ✓ Good |
 | Keep durable setup-state persistence in the CLI onboarding module for the first migrated slice while moving report composition into `openrustclaw-app` | The proving slice needed to shrink report ownership first without expanding migration scope into storage or onboarding behavior | ✓ Good |
 | Treat large command modules as compatibility surfaces unless a migration phase explicitly targets them | The transition only works if future contributors stop treating legacy hotspots as the default home for every new behavior | ✓ Good |
+| Keep persisted self-hosted product-mode storage and transition receipts in the existing CLI adapter module while moving summary composition into `openrustclaw-app` | The second summary extraction needed to broaden the greenfield lane without mixing storage migration into the same bounded slice | ✓ Good |
 
 ## Next Milestone Goals
 

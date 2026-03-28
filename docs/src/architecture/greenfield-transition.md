@@ -51,6 +51,8 @@ It is the right first slice because it is operator-visible, already tested, and 
 
 That migration is now in place: `inspect.rs` loads the durable setup state, maps it into `openrustclaw-app`, and returns the same setup handoff report contract to the runtime and Control UI surfaces.
 
+The next inspection-summary extraction is also shipped: self-hosted product-mode reporting now follows the same pattern, with `openrustclaw-app` owning the report composition while CLI code only adapts persisted state and receipts.
+
 ## Contributor Defaults
 
 When adding or changing behavior during this transition:

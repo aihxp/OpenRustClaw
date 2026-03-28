@@ -1,5 +1,10 @@
 use anyhow::Result;
 use chrono::Utc;
+use openrustclaw_app::self_hosted_product::{
+    SelfHostedProductModeReport, SelfHostedProductModeService, SelfHostedProductModeSource,
+    SelfHostedProductModeState,
+    SelfHostedProductTransitionEvent as AppSelfHostedProductTransitionEvent,
+};
 use openrustclaw_app::setup_handoff::{
     RemoteConnectivityProfile as AppRemoteConnectivityProfile,
     SetupBootstrapOutcome as AppSetupBootstrapOutcome, SetupHandoffReport, SetupHandoffService,
@@ -152,29 +157,6 @@ pub struct EnterprisePolicyBoundary {
     pub allow_local_cli_wrappers: bool,
     pub allow_cloud_agent_execution: bool,
     pub browser_audit_log_path: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct SelfHostedProductModeReport {
-    pub status: String,
-    pub detail: String,
-    pub manifest_path: String,
-    pub events_path: String,
-    pub explicit_mode_selected: bool,
-    pub self_hosted: bool,
-    pub open_source: bool,
-    pub mode: String,
-    pub mode_label: String,
-    pub onboarding_path: String,
-    pub operator_model: String,
-    pub recommended_runtime_mode: String,
-    pub multi_user: bool,
-    pub enterprise_controls_expected: bool,
-    pub transition_targets: Vec<String>,
-    pub upgrade_targets: Vec<String>,
-    pub downgrade_targets: Vec<String>,
-    pub current_warnings: Vec<String>,
-    pub recent_transitions: Vec<self_hosted::SelfHostedProductTransitionEvent>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -878,101 +860,104 @@ pub fn enterprise_foundations_summary(
     })
 }
 
+struct WorkspaceSelfHostedProductModeSource<'a> {
+    workspace_root: &'a Path,
+    manifest_path: String,
+    events_path: String,
+}
+
+impl<'a> WorkspaceSelfHostedProductModeSource<'a> {
+    fn new(workspace_root: &'a Path) -> Self {
+        Self {
+            workspace_root,
+            manifest_path: self_hosted::self_hosted_product_path(workspace_root)
+                .display()
+                .to_string(),
+            events_path: self_hosted::self_hosted_product_events_path(workspace_root)
+                .display()
+                .to_string(),
+        }
+    }
+}
+
+impl SelfHostedProductModeSource for WorkspaceSelfHostedProductModeSource<'_> {
+    fn load_self_hosted_product_mode_state(
+        &self,
+    ) -> openrustclaw_core::error::Result<SelfHostedProductModeState> {
+        let manifest = self_hosted::load_manifest(self.workspace_root).map_err(|error| {
+            CoreError::Internal(format!(
+                "failed to load self-hosted product mode manifest: {error}"
+            ))
+        })?;
+
+        let (explicit_mode_selected, profile) = if let Some(value) = manifest {
+            (true, value.profile)
+        } else {
+            let descriptor = self_hosted::default_descriptor();
+            (
+                false,
+                self_hosted::SelfHostedProductProfile {
+                    mode: descriptor.mode.to_string(),
+                    onboarding_path: descriptor.onboarding_path.to_string(),
+                    self_hosted: true,
+                    open_source: true,
+                    note: None,
+                    updated_at: String::new(),
+                },
+            )
+        };
+        let current_warnings = self_hosted::current_warnings(self.workspace_root, &profile.mode)
+            .map_err(|error| {
+                CoreError::Internal(format!(
+                    "failed to collect self-hosted product mode warnings: {error}"
+                ))
+            })?;
+        let recent_transitions = self_hosted::recent_transition_events(self.workspace_root, 8)
+            .map_err(|error| {
+                CoreError::Internal(format!(
+                    "failed to load self-hosted product mode transitions: {error}"
+                ))
+            })?
+            .into_iter()
+            .map(map_self_hosted_transition_event)
+            .collect();
+
+        Ok(SelfHostedProductModeState {
+            manifest_path: self.manifest_path.clone(),
+            events_path: self.events_path.clone(),
+            explicit_mode_selected,
+            self_hosted: profile.self_hosted,
+            open_source: profile.open_source,
+            mode: profile.mode,
+            onboarding_path: profile.onboarding_path,
+            current_warnings,
+            recent_transitions,
+        })
+    }
+}
+
+fn map_self_hosted_transition_event(
+    event: self_hosted::SelfHostedProductTransitionEvent,
+) -> AppSelfHostedProductTransitionEvent {
+    AppSelfHostedProductTransitionEvent {
+        created_at: event.created_at,
+        from_mode: event.from_mode,
+        to_mode: event.to_mode,
+        direction: event.direction,
+        actor: event.actor,
+        reason: event.reason,
+        via: event.via,
+        warnings: event.warnings,
+    }
+}
+
 pub fn self_hosted_product_mode_summary(
     workspace_root: &Path,
 ) -> Result<SelfHostedProductModeReport> {
-    let manifest_path = self_hosted::self_hosted_product_path(workspace_root)
-        .display()
-        .to_string();
-    let events_path = self_hosted::self_hosted_product_events_path(workspace_root)
-        .display()
-        .to_string();
-    let manifest = self_hosted::load_manifest(workspace_root)?;
-    let (explicit_mode_selected, profile, status) = if let Some(value) = manifest {
-        (true, value.profile, "ok".to_string())
-    } else {
-        let descriptor = self_hosted::default_descriptor();
-        (
-            false,
-            self_hosted::SelfHostedProductProfile {
-                mode: descriptor.mode.to_string(),
-                onboarding_path: descriptor.onboarding_path.to_string(),
-                self_hosted: true,
-                open_source: true,
-                note: None,
-                updated_at: String::new(),
-            },
-            "implicit_default".to_string(),
-        )
-    };
-    let descriptor = self_hosted::descriptor_for(&profile.mode)?;
-    let recent_transitions = self_hosted::recent_transition_events(workspace_root, 8)?;
-    let current_warnings = self_hosted::current_warnings(workspace_root, descriptor.mode)?;
-    let upgrade_targets = descriptor
-        .transition_targets
-        .iter()
-        .copied()
-        .filter(|value| value != &descriptor.mode)
-        .filter(|value| match *value {
-            self_hosted::MODE_TEAM => descriptor.mode == self_hosted::MODE_SOLO,
-            self_hosted::MODE_COMPANY => {
-                descriptor.mode == self_hosted::MODE_SOLO
-                    || descriptor.mode == self_hosted::MODE_TEAM
-            }
-            self_hosted::MODE_ENTERPRISE => descriptor.mode != self_hosted::MODE_ENTERPRISE,
-            _ => false,
-        })
-        .map(|value| value.to_string())
-        .collect::<Vec<_>>();
-    let downgrade_targets = descriptor
-        .transition_targets
-        .iter()
-        .copied()
-        .filter(|value| !upgrade_targets.iter().any(|entry| entry == value))
-        .map(|value| value.to_string())
-        .collect::<Vec<_>>();
-    let detail = if explicit_mode_selected {
-        format!(
-            "OpenRustClaw is configured as a {} self-hosted open-source deployment. {} The current onboarding path is `{}`, the recommended runtime execution mode is `{}`, and the next valid product-mode transitions are {}.",
-            descriptor.label,
-            descriptor.detail,
-            profile.onboarding_path,
-            descriptor.recommended_runtime_mode,
-            descriptor.transition_targets.join(", ")
-        )
-    } else {
-        format!(
-            "No explicit product mode is saved yet, so OpenRustClaw currently reads as the default {} self-hosted open-source deployment. {} Run onboarding to lock in a mode-specific path before broadening the operator surface.",
-            descriptor.label.to_ascii_lowercase(),
-            descriptor.detail
-        )
-    };
-
-    Ok(SelfHostedProductModeReport {
-        status,
-        detail,
-        manifest_path,
-        events_path,
-        explicit_mode_selected,
-        self_hosted: profile.self_hosted,
-        open_source: profile.open_source,
-        mode: descriptor.mode.to_string(),
-        mode_label: descriptor.label.to_string(),
-        onboarding_path: profile.onboarding_path,
-        operator_model: descriptor.operator_model.to_string(),
-        recommended_runtime_mode: descriptor.recommended_runtime_mode.to_string(),
-        multi_user: descriptor.multi_user,
-        enterprise_controls_expected: descriptor.enterprise_controls_expected,
-        transition_targets: descriptor
-            .transition_targets
-            .iter()
-            .map(|value| (*value).to_string())
-            .collect(),
-        upgrade_targets,
-        downgrade_targets,
-        current_warnings,
-        recent_transitions,
-    })
+    let service = SelfHostedProductModeService::new(WorkspaceSelfHostedProductModeSource::new(
+        workspace_root,
+    ));
+    service.report().map_err(Into::into)
 }
 
 struct WorkspaceSetupHandoffSource<'a> {

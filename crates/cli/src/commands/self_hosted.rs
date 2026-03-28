@@ -73,10 +73,7 @@ pub struct SelfHostedModeDescriptor {
     pub onboarding_path: &'static str,
     pub operator_model: &'static str,
     pub recommended_runtime_mode: &'static str,
-    pub detail: &'static str,
     pub multi_user: bool,
-    pub enterprise_controls_expected: bool,
-    pub transition_targets: &'static [&'static str],
 }
 
 pub fn self_hosted_product_path(workspace_root: &Path) -> PathBuf {
@@ -267,10 +264,7 @@ pub fn descriptor_for(mode: &str) -> Result<SelfHostedModeDescriptor> {
             onboarding_path: "solo_starter",
             operator_model: "One primary operator on one self-hosted workspace",
             recommended_runtime_mode: "solo_claw",
-            detail: "Solo mode keeps OpenRustClaw lightweight for one operator while preserving the full self-hosted open-source runtime.",
             multi_user: false,
-            enterprise_controls_expected: false,
-            transition_targets: &[MODE_TEAM, MODE_COMPANY, MODE_ENTERPRISE],
         },
         MODE_TEAM => SelfHostedModeDescriptor {
             mode: MODE_TEAM,
@@ -278,10 +272,7 @@ pub fn descriptor_for(mode: &str) -> Result<SelfHostedModeDescriptor> {
             onboarding_path: "shared_team_setup",
             operator_model: "A small team shares one self-hosted deployment",
             recommended_runtime_mode: "task_assigned",
-            detail: "Team mode keeps the product self-hosted and open-source while preparing the workspace for multiple operators and shared channels.",
             multi_user: true,
-            enterprise_controls_expected: false,
-            transition_targets: &[MODE_SOLO, MODE_COMPANY, MODE_ENTERPRISE],
         },
         MODE_COMPANY => SelfHostedModeDescriptor {
             mode: MODE_COMPANY,
@@ -289,10 +280,7 @@ pub fn descriptor_for(mode: &str) -> Result<SelfHostedModeDescriptor> {
             onboarding_path: "company_ops_setup",
             operator_model: "An operator-managed company deployment with stronger operational defaults",
             recommended_runtime_mode: "orchestrated",
-            detail: "Company mode assumes a broader internal deployment, stronger operator practices, and a clearer path into governance without claiming full enterprise controls by default.",
             multi_user: true,
-            enterprise_controls_expected: true,
-            transition_targets: &[MODE_TEAM, MODE_ENTERPRISE],
         },
         MODE_ENTERPRISE => SelfHostedModeDescriptor {
             mode: MODE_ENTERPRISE,
@@ -300,10 +288,7 @@ pub fn descriptor_for(mode: &str) -> Result<SelfHostedModeDescriptor> {
             onboarding_path: "enterprise_governed_setup",
             operator_model: "A governed enterprise deployment with explicit access, policy, and audit expectations",
             recommended_runtime_mode: "orchestrated",
-            detail: "Enterprise mode keeps the product self-hosted and open-source while signaling the strongest operator, policy, audit, and governance expectations in the current shipped runtime.",
             multi_user: true,
-            enterprise_controls_expected: true,
-            transition_targets: &[MODE_COMPANY, MODE_TEAM],
         },
         _ => unreachable!("normalize_mode validates all supported modes"),
     };

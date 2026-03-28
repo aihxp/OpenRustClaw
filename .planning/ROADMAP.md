@@ -21,16 +21,16 @@
 ## Current Status
 
 - Active milestone: **v1.14 Continued Greenfield Conversion**
-- Progress: 0 of 4 phases complete
+- Progress: 1 of 4 phases complete
 - Most recent shipment: **v1.13 Brownfield-to-Greenfield Transition**
-- Current execution: **Phase 61 not started**
-- Next step: `$gsd-discuss-phase 61`, `$gsd-plan-phase 61`, or `$gsd-autonomous`
+- Current execution: **Phase 62 not started**
+- Next step: `$gsd-discuss-phase 62`, `$gsd-plan-phase 62`, or `$gsd-autonomous`
 
 ## Live Planning
 
 ### Phase Checklist
 
-- [ ] **Phase 61: Inspection Summary Service Extraction**
+- [x] **Phase 61: Inspection Summary Service Extraction** (completed 2026-03-28)
 - [ ] **Phase 62: Control Route Family Service Extraction**
 - [ ] **Phase 63: Mobile Operator Report Migration**
 - [ ] **Phase 64: Skills Surface Boundary Cleanup**
@@ -44,10 +44,10 @@
 - `inspect.rs` becomes an adapter for the migrated summary
 - existing report-facing verification remains truthful
 
-**Plans:** 0/1 plans complete
+**Plans:** 1/1 plans complete
 
 Plans:
-- [ ] 61-01 Migrate the next inspection summary family into the application lane
+- [x] 61-01 Migrate the next inspection summary family into the application lane
 
 ### Phase 62: Control Route Family Service Extraction
 
