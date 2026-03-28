@@ -1,5 +1,13 @@
 use anyhow::Result;
 use chrono::Utc;
+use openrustclaw_app::enterprise_admin::{
+    EnterpriseAdminAccessState as AppEnterpriseAdminAccessState,
+    EnterpriseAdminAutonomyState as AppEnterpriseAdminAutonomyState,
+    EnterpriseAdminPolicyState as AppEnterpriseAdminPolicyState,
+    EnterpriseAdminRunState as AppEnterpriseAdminRunState, EnterpriseAdminService,
+    EnterpriseAdminState as AppEnterpriseAdminState,
+    EnterpriseAdminSupervisionSummary as AppEnterpriseAdminSupervisionSummary,
+};
 use openrustclaw_app::self_hosted_product::{
     SelfHostedProductModeControlService, SelfHostedProductModeReport, SelfHostedProductModeService,
     SelfHostedProductModeSource, SelfHostedProductModeState,
@@ -1308,75 +1316,57 @@ pub fn enterprise_admin_summary(
     let policy = enterprise_policy::summary(workspace_root, config_path)?;
     let autonomy = enterprise_autonomy::summary(workspace_root, 10)?;
     let active_runs = orchestrate::list_active_runs(workspace_root, true, 20)?;
-    let attention_required_count = active_runs
-        .iter()
-        .filter(|run| {
-            run.lifecycle.intervention_required
-                || run.pause_requested
-                || run.kill_requested
-                || run.last_error.is_some()
-                || run.lifecycle.state != "active"
-        })
-        .count();
-    let escalated_count = active_runs
-        .iter()
-        .filter(|run| run.lifecycle.escalation_requested || run.lifecycle.state == "escalated")
-        .count();
-    let rollback_requested_count = active_runs
-        .iter()
-        .filter(|run| {
-            run.lifecycle.rollback_requested || run.lifecycle.state == "rollback_requested"
-        })
-        .count();
-
-    let supervision = EnterpriseAdminSupervisionSummary {
-        active_run_count: active_runs.len(),
-        attention_required_count,
-        escalated_count,
-        rollback_requested_count,
-        route_hint: "/control/ui".to_string(),
-        detail: if active_runs.is_empty() {
-            "No active supervised orchestration runs currently need enterprise operator attention."
-                .to_string()
-        } else {
-            format!(
-                "{} active supervised run(s), {} needing attention, {} escalated, {} waiting on rollback handling.",
-                active_runs.len(),
-                attention_required_count,
-                escalated_count,
-                rollback_requested_count
-            )
+    let presentation = EnterpriseAdminService::new(AppEnterpriseAdminState {
+        access: AppEnterpriseAdminAccessState {
+            organization_id: access.organization.as_ref().map(|value| value.id.clone()),
+            operator_count: access.operators.len(),
+            explicit_identity_required: access.explicit_identity_required,
         },
-    };
-
-    let requires_operator_headers = access.explicit_identity_required;
-    let detail = if requires_operator_headers {
-        format!(
-            "Enterprise admin is live for organization `{}` with {} operator(s). Use `/control/ui` with the scoped operator headers to manage policy, identity, governance, audit export, supervised-runtime controls, and the explicit full-autonomy lane from one shipped surface.",
-            access
-                .organization
-                .as_ref()
-                .map(|value| value.id.as_str())
-                .unwrap_or("-"),
-            access.operators.len()
-        )
-    } else {
-        "Enterprise admin is not bootstrapped yet. Bootstrap enterprise access first, then use the same shipped surface to manage policy, governance, audit export, and supervised-runtime controls under scoped operator identity.".to_string()
-    };
+        policy: AppEnterpriseAdminPolicyState {
+            approval_policy: policy.approval_policy.clone(),
+        },
+        autonomy: AppEnterpriseAdminAutonomyState {
+            status: autonomy.status.clone(),
+            governance_scope: autonomy.governance_scope.clone(),
+        },
+        active_runs: active_runs
+            .iter()
+            .map(|run| AppEnterpriseAdminRunState {
+                intervention_required: run.lifecycle.intervention_required,
+                pause_requested: run.pause_requested,
+                kill_requested: run.kill_requested,
+                has_last_error: run.last_error.is_some(),
+                lifecycle_state: run.lifecycle.state.clone(),
+                escalation_requested: run.lifecycle.escalation_requested,
+                rollback_requested: run.lifecycle.rollback_requested,
+            })
+            .collect(),
+    })
+    .report()?;
+    let supervision = map_enterprise_admin_supervision(presentation.supervision);
 
     Ok(EnterpriseAdminReport {
-        status: if requires_operator_headers {
-            "ok".to_string()
-        } else {
-            "bootstrap_required".to_string()
-        },
-        detail,
-        requires_operator_headers,
+        status: presentation.status,
+        detail: presentation.detail,
+        requires_operator_headers: presentation.requires_operator_headers,
         access,
         policy,
         autonomy,
         supervision,
     })
+}
+
+fn map_enterprise_admin_supervision(
+    summary: AppEnterpriseAdminSupervisionSummary,
+) -> EnterpriseAdminSupervisionSummary {
+    EnterpriseAdminSupervisionSummary {
+        active_run_count: summary.active_run_count,
+        attention_required_count: summary.attention_required_count,
+        escalated_count: summary.escalated_count,
+        rollback_requested_count: summary.rollback_requested_count,
+        route_hint: summary.route_hint,
+        detail: summary.detail,
+    }
 }
 
 pub async fn voice_operator_report_summary(
