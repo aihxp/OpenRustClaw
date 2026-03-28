@@ -1,5 +1,20 @@
 # Project Milestones: OpenRustClaw
 
+## v1.13 Brownfield-to-Greenfield Transition (Shipped: 2026-03-28)
+
+**Phases completed:** 4 phases, 4 plans, 0 tasks
+**Verification archive:** `.planning/milestones/v1.13-VERIFICATIONS.md`
+**Verification debt:** none
+
+**Key accomplishments:**
+
+- Defined one canonical greenfield transition contract instead of leaving architectural cleanup as vague rewrite language.
+- Added `openrustclaw-app` as the first real application-layer shell for future migration work.
+- Migrated the setup handoff proving slice so report composition now runs through the new application lane while preserving the shipped runtime and Control UI contract.
+- Locked contributor defaults so legacy command hubs are now explicitly compatibility surfaces unless a migration slice targets them.
+
+---
+
 ## v1.12 Secure Node Connectivity and SSH Tunnel Revisit (Shipped: 2026-03-28)
 
 **Phases completed:** 4 phases, 4 plans, 0 tasks

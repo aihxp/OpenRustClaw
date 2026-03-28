@@ -2,7 +2,7 @@
 
 ## What This Is
 
-OpenRustClaw is a self-hosted open-source Rust-first OpenClaw-style assistant platform with shipped v1.0 through v1.12 milestones. It now has a coherent production-ready baseline across onboarding, assistant continuity, memory policy, tool and coding evidence, communications, runtime operations, security posture, release exit, milestone verification integrity, materially deeper operator parity across browser, orchestration, mobile, Control UI, and voice or call handling surfaces, an enterprise-first foundation for scoped operator identity, policy, audit export, supervised autonomy, governance, and an operator-gated full-autonomy lane, an explicit self-hosted product-mode contract across `solo`, `team`, `company`, and `enterprise` deployments, a truthful setup lifecycle from first install through repair and handoff, a canonical documentation contract that keeps the repo entrypoint, guided docs, and planning docs aligned, a cleaner codebase baseline with explicit cleanup inventory, repo-hygiene guardrails, an extracted control-auth boundary, a repaired tagged-release workflow that now produces truthful downloadable binary artifacts on GitHub, a first truthful public Rust package surface on crates.io and docs.rs, and a bounded remote-connectivity story around node-first guidance with SSH tunnel and reverse-proxy fallbacks preserved explicitly in setup state and operator surfaces.
+OpenRustClaw is a self-hosted open-source Rust-first OpenClaw-style assistant platform with shipped v1.0 through v1.13 milestones. It now has a coherent production-ready baseline across onboarding, assistant continuity, memory policy, tool and coding evidence, communications, runtime operations, security posture, release exit, milestone verification integrity, materially deeper operator parity across browser, orchestration, mobile, Control UI, and voice or call handling surfaces, an enterprise-first foundation for scoped operator identity, policy, audit export, supervised autonomy, governance, and an operator-gated full-autonomy lane, an explicit self-hosted product-mode contract across `solo`, `team`, `company`, and `enterprise` deployments, a truthful setup lifecycle from first install through repair and handoff, a canonical documentation contract that keeps the repo entrypoint, guided docs, and planning docs aligned, a cleaner codebase baseline with explicit cleanup inventory, repo-hygiene guardrails, an extracted control-auth boundary, a repaired tagged-release workflow that now produces truthful downloadable binary artifacts on GitHub, a first truthful public Rust package surface on crates.io and docs.rs, a bounded remote-connectivity story around node-first guidance with SSH tunnel and reverse-proxy fallbacks preserved explicitly in setup state and operator surfaces, and the first real greenfield application lane for future migration work.
 
 The product target remains broader than the MVP: a general-purpose assistant platform that can eventually support coding, communications, business operations, and deeper autonomous workflows. After v1.7, the repo also has one clearer documentation story instead of several drifting versions of the product. After v1.8, the repo also has a more explicit cleanup contract for keeping that surface maintainable.
 
@@ -12,26 +12,20 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 ## Current State
 
-- **Shipped milestones:** v1.0 Rust OpenClaw MVP, v1.1 Lifecycle Integrity and Enterprise Foundations, v1.2 Deeper OpenClaw Surface Parity, v1.3 Enterprise Expansion and Supervised Autonomy Foundations, v1.4 Enterprise Governance and Operator-Gated Full Autonomy, v1.5 Self-Hosted Product Modes and Lifecycle Packaging, v1.6 Proper Onboarding and Setup, v1.7 Documentation Convergence and OpenClaw-Inspired Docs Rewrite, v1.8 Clean Codebase, v1.9 GitHub Repository Presence and Actions Recovery, v1.10 Release Binaries Workflow Recovery, v1.11 Crates.io and Docs.rs Publication Foundation, and v1.12 Secure Node Connectivity and SSH Tunnel Revisit
-- **Archive:** `.planning/milestones/v1.0-*` through `.planning/milestones/v1.12-*`
-- **Planning state:** v1.13 is active
+- **Shipped milestones:** v1.0 Rust OpenClaw MVP, v1.1 Lifecycle Integrity and Enterprise Foundations, v1.2 Deeper OpenClaw Surface Parity, v1.3 Enterprise Expansion and Supervised Autonomy Foundations, v1.4 Enterprise Governance and Operator-Gated Full Autonomy, v1.5 Self-Hosted Product Modes and Lifecycle Packaging, v1.6 Proper Onboarding and Setup, v1.7 Documentation Convergence and OpenClaw-Inspired Docs Rewrite, v1.8 Clean Codebase, v1.9 GitHub Repository Presence and Actions Recovery, v1.10 Release Binaries Workflow Recovery, v1.11 Crates.io and Docs.rs Publication Foundation, v1.12 Secure Node Connectivity and SSH Tunnel Revisit, and v1.13 Brownfield-to-Greenfield Transition
+- **Archive:** `.planning/milestones/v1.0-*` through `.planning/milestones/v1.13-*`
+- **Planning state:** no active milestone is open
 - **Known audit debt:** v1.0 archive still records missing phase `VERIFICATION.md` artifacts; v1.1 closed that workflow gap going forward
 
-## Most Recent Milestone: v1.12 Secure Node Connectivity and SSH Tunnel Revisit
+## Most Recent Milestone: v1.13 Brownfield-to-Greenfield Transition
 
-**Result:** Shipped 2026-03-28. OpenRustClaw now treats remote connectivity as an explicit product contract instead of an onboarding footnote: docs and onboarding lead with a node-first path, SSH tunnel remains the bounded fallback, reverse proxy remains last resort, and the chosen remote-connectivity profile is preserved in setup state and surfaced in the operator handoff.
+**Result:** Shipped 2026-03-28. OpenRustClaw now has a canonical greenfield transition contract, a real application-layer shell in `openrustclaw-app`, a shipped proving slice around setup handoff reporting, and explicit contributor defaults that keep future work from deepening legacy command hubs by default.
 
-**Archive:** `.planning/milestones/v1.12-ROADMAP.md`, `.planning/milestones/v1.12-REQUIREMENTS.md`, `.planning/milestones/v1.12-MILESTONE-AUDIT.md`, `.planning/milestones/v1.12-VERIFICATIONS.md`
+**Archive:** `.planning/milestones/v1.13-ROADMAP.md`, `.planning/milestones/v1.13-REQUIREMENTS.md`, `.planning/milestones/v1.13-MILESTONE-AUDIT.md`, `.planning/milestones/v1.13-VERIFICATIONS.md`
 
-## Current Milestone: v1.13 Brownfield-to-Greenfield Transition
+## Current Milestone
 
-**Goal:** Move OpenRustClaw from opportunistic brownfield change accumulation toward a greenfield-style architecture lane, without throwing away the shipped product surface.
-
-**Target features:**
-- define the clean architecture boundary, ownership rules, and migration inventory that future work must follow
-- introduce a greenfield core shell plus service interfaces so new work lands behind cleaner module boundaries
-- migrate one high-value vertical slice into the new lane to prove the path with shipped code, not just architecture notes
-- document compatibility, deprecation, and contributor defaults so the repo starts behaving like a greenfield codebase from here forward
+No active milestone is open. Use `$gsd-new-milestone` to define the next cycle.
 
 ## Requirements
 
@@ -74,7 +68,7 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 ### Active
 
-- None. Current milestone scope is fully validated and ready for audit.
+- [ ] No active milestone requirements until the next milestone opens
 
 ### Out of Scope
 
@@ -87,9 +81,7 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 This remains a large brownfield Rust monorepo with broad runtime, CLI, control-plane, memory, tools, channel, voice, browser, deployment, and operator surfaces. v1.0 converted that breadth into a cleaner MVP by making operator trust visible at the edges that matter, v1.1 hardened the lifecycle and enterprise baseline around that trust, v1.2 deepened the most operator-visible OpenClaw parity surfaces without reopening MVP sprawl, v1.3 turned the first enterprise and supervised-autonomy contracts into a coherent operator loop, v1.4 extended that loop into explicit governance and operator-gated full autonomy, v1.5 made the platform legible as one self-hosted open-source product with explicit deployment paths and transition visibility, v1.6 turned onboarding and setup into one truthful lifecycle from first install through repair and handoff, v1.7 made the documentation set legible enough to match the shipped product baseline, v1.8 converted cleanup debt into an explicit maintained contract instead of leaving it as background churn, v1.9 repaired the public GitHub repo surface, v1.10 restored the final broken public automation lane around tagged binary releases, and v1.11 extended that distribution story into the Rust ecosystem through the first truthful crates.io and docs.rs publication path.
 
-The most recent milestone closed a different operator trust gap: remote connectivity is no longer left as improvised tunnel advice. v1.12 aligned the docs, onboarding copy, setup state, and Control UI handoff around one bounded contract: node-first where supported, SSH tunnel as the main fallback, reverse proxy as the bounded last resort.
-
-The next milestone changes the implementation posture rather than adding another wide product surface. The goal is to stop treating every improvement as a brownfield patch on top of legacy seams and instead create a greenfield-style lane inside the existing repo, with one clean core, one migration inventory, and one proving slice that future work can build on.
+The most recent milestone changed the implementation posture instead of adding another wide product surface. v1.13 created a greenfield-style lane inside the existing repo, proved it with a shipped setup handoff slice, and turned that lane into the default contribution contract for follow-on work.
 
 ## Constraints
 
@@ -134,10 +126,7 @@ The next milestone changes the implementation posture rather than adding another
 
 ## Next Milestone Goals
 
-- define the canonical greenfield architecture boundary and migration inventory
-- land a clean core shell and service interface layer for future work
-- migrate one high-value vertical slice into the new lane
-- make contributor defaults and deprecation rules reinforce the new architecture
+- No active next-milestone goals yet — use `$gsd-new-milestone` to open the next cycle
 
 ## Evolution
 
@@ -157,4 +146,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-28 after starting v1.13*
+*Last updated: 2026-03-28 after completing v1.13*
