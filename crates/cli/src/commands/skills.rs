@@ -1524,7 +1524,7 @@ fn invoke_compiled_skill(
     });
 
     let reference_result = match options.reference {
-        Some(reference) if blocked => {
+        Some(_reference) if blocked => {
             anyhow::bail!(
                 "Compiled skill '{}' is blocked; reference access is disabled",
                 artifact.manifest.name

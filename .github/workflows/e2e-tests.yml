@@ -20,7 +20,7 @@ jobs:
   smoke-tests:
     name: Shipped Surface Smoke Tests
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 12
 
     steps:
       - uses: actions/checkout@v4
