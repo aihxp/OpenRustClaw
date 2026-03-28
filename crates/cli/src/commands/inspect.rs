@@ -1,8 +1,9 @@
 use anyhow::Result;
 use chrono::Utc;
 use openrustclaw_app::self_hosted_product::{
-    SelfHostedProductModeReport, SelfHostedProductModeService, SelfHostedProductModeSource,
-    SelfHostedProductModeState,
+    SelfHostedProductModeControlService, SelfHostedProductModeReport, SelfHostedProductModeService,
+    SelfHostedProductModeSource, SelfHostedProductModeState,
+    SelfHostedProductModeTransitionExecutor, SelfHostedProductModeTransitionRequest,
     SelfHostedProductTransitionEvent as AppSelfHostedProductTransitionEvent,
 };
 use openrustclaw_app::setup_handoff::{
@@ -936,6 +937,29 @@ impl SelfHostedProductModeSource for WorkspaceSelfHostedProductModeSource<'_> {
     }
 }
 
+impl SelfHostedProductModeTransitionExecutor for WorkspaceSelfHostedProductModeSource<'_> {
+    fn transition_self_hosted_product_mode(
+        &self,
+        request: SelfHostedProductModeTransitionRequest,
+    ) -> openrustclaw_core::error::Result<()> {
+        self_hosted::transition_mode(
+            self.workspace_root,
+            self_hosted::SelfHostedProductTransitionRequest {
+                target_mode: request.target_mode,
+                actor: request.actor,
+                reason: request.reason,
+                via: Some(request.via),
+            },
+        )
+        .map(|_| ())
+        .map_err(|error| {
+            CoreError::Internal(format!(
+                "failed to transition self-hosted product mode: {error}"
+            ))
+        })
+    }
+}
+
 fn map_self_hosted_transition_event(
     event: self_hosted::SelfHostedProductTransitionEvent,
 ) -> AppSelfHostedProductTransitionEvent {
@@ -958,6 +982,25 @@ pub fn self_hosted_product_mode_summary(
         workspace_root,
     ));
     service.report().map_err(Into::into)
+}
+
+pub fn transition_self_hosted_product_mode_summary(
+    workspace_root: &Path,
+    target_mode: String,
+    actor: String,
+    reason: Option<String>,
+) -> Result<SelfHostedProductModeReport> {
+    let service = SelfHostedProductModeControlService::new(
+        WorkspaceSelfHostedProductModeSource::new(workspace_root),
+    );
+    service
+        .transition_and_report(SelfHostedProductModeTransitionRequest {
+            target_mode,
+            actor,
+            reason,
+            via: "control_api".to_string(),
+        })
+        .map_err(Into::into)
 }
 
 struct WorkspaceSetupHandoffSource<'a> {
@@ -1853,7 +1896,7 @@ mod tests {
     use super::{
         enterprise_access_summary, enterprise_admin_summary, enterprise_foundations_summary,
         new_tool_execution_record, self_hosted_product_mode_summary, setup_handoff_summary,
-        tool_execution_log_path,
+        tool_execution_log_path, transition_self_hosted_product_mode_summary,
     };
     use anyhow::Result;
     use chrono::{DateTime, Utc};
@@ -2075,6 +2118,25 @@ mod tests {
         assert_eq!(report.mode, self_hosted::MODE_COMPANY);
         assert_eq!(report.recent_transitions.len(), 1);
         assert_eq!(report.recent_transitions[0].direction, "upgrade");
+        Ok(())
+    }
+
+    #[test]
+    fn transition_self_hosted_product_mode_summary_returns_updated_report() -> Result<()> {
+        let root = tempdir().expect("tempdir");
+        self_hosted::configure_mode(root.path(), self_hosted::MODE_TEAM, None, None)?;
+
+        let report = transition_self_hosted_product_mode_summary(
+            root.path(),
+            self_hosted::MODE_COMPANY.to_string(),
+            "operator-1".to_string(),
+            Some("team grew".to_string()),
+        )?;
+
+        assert_eq!(report.mode, self_hosted::MODE_COMPANY);
+        assert_eq!(report.status, "ok");
+        assert_eq!(report.recent_transitions.len(), 1);
+        assert_eq!(report.recent_transitions[0].actor, "operator-1");
         Ok(())
     }
 

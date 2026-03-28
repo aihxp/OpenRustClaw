@@ -58,6 +58,15 @@ pub struct SelfHostedProductModeReport {
     pub recent_transitions: Vec<SelfHostedProductTransitionEvent>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SelfHostedProductModeTransitionRequest {
+    pub target_mode: String,
+    pub actor: String,
+    #[serde(default)]
+    pub reason: Option<String>,
+    pub via: String,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct SelfHostedModeDescriptor {
     mode: &'static str,
@@ -161,6 +170,13 @@ pub trait SelfHostedProductModeSource {
     fn load_self_hosted_product_mode_state(&self) -> Result<SelfHostedProductModeState>;
 }
 
+pub trait SelfHostedProductModeTransitionExecutor {
+    fn transition_self_hosted_product_mode(
+        &self,
+        request: SelfHostedProductModeTransitionRequest,
+    ) -> Result<()>;
+}
+
 pub struct SelfHostedProductModeService<S> {
     source: S,
 }
@@ -176,62 +192,89 @@ where
     S: SelfHostedProductModeSource,
 {
     pub fn report(&self) -> Result<SelfHostedProductModeReport> {
-        let state = self.source.load_self_hosted_product_mode_state()?;
-        let descriptor = descriptor_for(&state.mode)?;
-        let upgrade_targets = upgrade_targets(descriptor);
-        let downgrade_targets = downgrade_targets(descriptor, &upgrade_targets);
-        let detail = if state.explicit_mode_selected {
-            format!(
-                "OpenRustClaw is configured as a {} self-hosted open-source deployment. {} The current onboarding path is `{}`, the recommended runtime execution mode is `{}`, and the next valid product-mode transitions are {}.",
-                descriptor.label,
-                descriptor.detail,
-                state.onboarding_path,
-                descriptor.recommended_runtime_mode,
-                descriptor.transition_targets.join(", ")
-            )
-        } else {
-            format!(
-                "No explicit product mode is saved yet, so OpenRustClaw currently reads as the default {} self-hosted open-source deployment. {} Run onboarding to lock in a mode-specific path before broadening the operator surface.",
-                descriptor.label.to_ascii_lowercase(),
-                descriptor.detail
-            )
-        };
-
-        Ok(SelfHostedProductModeReport {
-            status: if state.explicit_mode_selected {
-                "ok".to_string()
-            } else {
-                "implicit_default".to_string()
-            },
-            detail,
-            manifest_path: state.manifest_path,
-            events_path: state.events_path,
-            explicit_mode_selected: state.explicit_mode_selected,
-            self_hosted: state.self_hosted,
-            open_source: state.open_source,
-            mode: descriptor.mode.to_string(),
-            mode_label: descriptor.label.to_string(),
-            onboarding_path: state.onboarding_path,
-            operator_model: descriptor.operator_model.to_string(),
-            recommended_runtime_mode: descriptor.recommended_runtime_mode.to_string(),
-            multi_user: descriptor.multi_user,
-            enterprise_controls_expected: descriptor.enterprise_controls_expected,
-            transition_targets: descriptor
-                .transition_targets
-                .iter()
-                .map(|value| (*value).to_string())
-                .collect(),
-            upgrade_targets,
-            downgrade_targets,
-            current_warnings: state.current_warnings,
-            recent_transitions: state.recent_transitions,
-        })
+        report_from_state(self.source.load_self_hosted_product_mode_state()?)
     }
+}
+
+pub struct SelfHostedProductModeControlService<S> {
+    source: S,
+}
+
+impl<S> SelfHostedProductModeControlService<S> {
+    pub fn new(source: S) -> Self {
+        Self { source }
+    }
+}
+
+impl<S> SelfHostedProductModeControlService<S>
+where
+    S: SelfHostedProductModeSource + SelfHostedProductModeTransitionExecutor,
+{
+    pub fn transition_and_report(
+        &self,
+        request: SelfHostedProductModeTransitionRequest,
+    ) -> Result<SelfHostedProductModeReport> {
+        self.source.transition_self_hosted_product_mode(request)?;
+        report_from_state(self.source.load_self_hosted_product_mode_state()?)
+    }
+}
+
+fn report_from_state(state: SelfHostedProductModeState) -> Result<SelfHostedProductModeReport> {
+    let descriptor = descriptor_for(&state.mode)?;
+    let upgrade_targets = upgrade_targets(descriptor);
+    let downgrade_targets = downgrade_targets(descriptor, &upgrade_targets);
+    let detail = if state.explicit_mode_selected {
+        format!(
+            "OpenRustClaw is configured as a {} self-hosted open-source deployment. {} The current onboarding path is `{}`, the recommended runtime execution mode is `{}`, and the next valid product-mode transitions are {}.",
+            descriptor.label,
+            descriptor.detail,
+            state.onboarding_path,
+            descriptor.recommended_runtime_mode,
+            descriptor.transition_targets.join(", ")
+        )
+    } else {
+        format!(
+            "No explicit product mode is saved yet, so OpenRustClaw currently reads as the default {} self-hosted open-source deployment. {} Run onboarding to lock in a mode-specific path before broadening the operator surface.",
+            descriptor.label.to_ascii_lowercase(),
+            descriptor.detail
+        )
+    };
+
+    Ok(SelfHostedProductModeReport {
+        status: if state.explicit_mode_selected {
+            "ok".to_string()
+        } else {
+            "implicit_default".to_string()
+        },
+        detail,
+        manifest_path: state.manifest_path,
+        events_path: state.events_path,
+        explicit_mode_selected: state.explicit_mode_selected,
+        self_hosted: state.self_hosted,
+        open_source: state.open_source,
+        mode: descriptor.mode.to_string(),
+        mode_label: descriptor.label.to_string(),
+        onboarding_path: state.onboarding_path,
+        operator_model: descriptor.operator_model.to_string(),
+        recommended_runtime_mode: descriptor.recommended_runtime_mode.to_string(),
+        multi_user: descriptor.multi_user,
+        enterprise_controls_expected: descriptor.enterprise_controls_expected,
+        transition_targets: descriptor
+            .transition_targets
+            .iter()
+            .map(|value| (*value).to_string())
+            .collect(),
+        upgrade_targets,
+        downgrade_targets,
+        current_warnings: state.current_warnings,
+        recent_transitions: state.recent_transitions,
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::RefCell;
 
     struct StubSource {
         state: SelfHostedProductModeState,
@@ -240,6 +283,43 @@ mod tests {
     impl SelfHostedProductModeSource for StubSource {
         fn load_self_hosted_product_mode_state(&self) -> Result<SelfHostedProductModeState> {
             Ok(self.state.clone())
+        }
+    }
+
+    struct MutableStubSource {
+        state: RefCell<SelfHostedProductModeState>,
+    }
+
+    impl SelfHostedProductModeSource for MutableStubSource {
+        fn load_self_hosted_product_mode_state(&self) -> Result<SelfHostedProductModeState> {
+            Ok(self.state.borrow().clone())
+        }
+    }
+
+    impl SelfHostedProductModeTransitionExecutor for MutableStubSource {
+        fn transition_self_hosted_product_mode(
+            &self,
+            request: SelfHostedProductModeTransitionRequest,
+        ) -> Result<()> {
+            let mut state = self.state.borrow_mut();
+            let target_mode = normalize_mode(&request.target_mode)?;
+            state.explicit_mode_selected = true;
+            state.mode = target_mode.clone();
+            state.onboarding_path = format!("{target_mode}_path");
+            state.recent_transitions.insert(
+                0,
+                SelfHostedProductTransitionEvent {
+                    created_at: "2026-03-28T12:00:00Z".to_string(),
+                    from_mode: MODE_TEAM.to_string(),
+                    to_mode: target_mode,
+                    direction: "upgrade".to_string(),
+                    actor: request.actor,
+                    reason: request.reason,
+                    via: request.via,
+                    warnings: Vec::new(),
+                },
+            );
+            Ok(())
         }
     }
 
@@ -304,6 +384,37 @@ mod tests {
         assert!(report.multi_user);
         assert_eq!(report.recent_transitions.len(), 1);
         assert_eq!(report.upgrade_targets, vec![MODE_ENTERPRISE.to_string()]);
+        Ok(())
+    }
+
+    #[test]
+    fn control_service_transitions_and_returns_updated_report() -> Result<()> {
+        let service = SelfHostedProductModeControlService::new(MutableStubSource {
+            state: RefCell::new(SelfHostedProductModeState {
+                manifest_path: ".claw/control/self-hosted/product-mode.json".to_string(),
+                events_path: ".claw/control/self-hosted/product-mode-events.jsonl".to_string(),
+                explicit_mode_selected: true,
+                self_hosted: true,
+                open_source: true,
+                mode: MODE_TEAM.to_string(),
+                onboarding_path: "team_path".to_string(),
+                current_warnings: Vec::new(),
+                recent_transitions: Vec::new(),
+            }),
+        });
+
+        let report = service.transition_and_report(SelfHostedProductModeTransitionRequest {
+            target_mode: MODE_COMPANY.to_string(),
+            actor: "operator-1".to_string(),
+            reason: Some("team grew".to_string()),
+            via: "control_api".to_string(),
+        })?;
+
+        assert_eq!(report.mode, MODE_COMPANY);
+        assert_eq!(report.status, "ok");
+        assert_eq!(report.onboarding_path, "company_path");
+        assert_eq!(report.recent_transitions.len(), 1);
+        assert_eq!(report.recent_transitions[0].actor, "operator-1");
         Ok(())
     }
 }
