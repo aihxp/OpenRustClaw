@@ -10,6 +10,7 @@
 # Operate
 - [Production Deployment](./deployment/production.md)
 - [Release Checklist](./deployment/release-checklist.md)
+- [Crates.io Release](./deployment/crates-io-release.md)
 - [Observability & Monitoring](./operations/observability.md)
 - [Security](./guides/security.md)
 - [Configuring Providers](./guides/providers.md)

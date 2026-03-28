@@ -18,10 +18,10 @@
 ## Current Status
 
 - Active milestone: **v1.11 Crates.io and Docs.rs Publication Foundation**
-- Progress: 2 of 4 phases complete
+- Progress: 3 of 4 phases complete
 - Most recent shipment: **v1.10 Release Binaries Workflow Recovery**
-- Current execution: **Phase 50 complete**
-- Next step: Phase 51, Crates.io Publish Path and Dry-Run Verification
+- Current execution: **Phase 51 complete**
+- Next step: Phase 52, First Public Package Release Exit
 
 ## Live Planning
 
@@ -29,7 +29,7 @@
 
 - [x] **Phase 49: Public Crate Scope and Package Metadata Contract** - completed 2026-03-28
 - [x] **Phase 50: Docs.rs Documentation Surface** - completed 2026-03-28
-- [ ] **Phase 51: Crates.io Publish Path and Dry-Run Verification**
+- [x] **Phase 51: Crates.io Publish Path and Dry-Run Verification** - completed 2026-03-28
 - [ ] **Phase 52: First Public Package Release Exit**
 
 ### Phase 49: Public Crate Scope and Package Metadata Contract
@@ -68,6 +68,11 @@ Plans:
 - the publish path is documented end-to-end
 - dry-run verification passes for the selected crates
 - publish ordering and prerequisites are explicit
+
+**Plans:** 1 plan complete
+
+Plans:
+- [x] 51-01 Verify the first crates.io publish path
 
 ### Phase 52: First Public Package Release Exit
 
