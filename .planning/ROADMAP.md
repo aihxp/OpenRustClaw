@@ -14,14 +14,77 @@
 - ✅ **v1.9 GitHub Repository Presence and Actions Recovery** — shipped 2026-03-28. Archive: `.planning/milestones/v1.9-ROADMAP.md`
 - ✅ **v1.10 Release Binaries Workflow Recovery** — shipped 2026-03-28. Archive: `.planning/milestones/v1.10-ROADMAP.md`
 - ✅ **v1.11 Crates.io and Docs.rs Publication Foundation** — shipped 2026-03-28. Archive: `.planning/milestones/v1.11-ROADMAP.md`
+- 🚧 **v1.12 Secure Node Connectivity and SSH Tunnel Revisit** — active
 
 ## Current Status
 
-- Active milestone: none
-- Progress: 0 active phases
+- Active milestone: **v1.12 Secure Node Connectivity and SSH Tunnel Revisit**
+- Progress: 0 of 4 phases complete
 - Most recent shipment: **v1.11 Crates.io and Docs.rs Publication Foundation**
-- Next step: `$gsd-new-milestone`
+- Current execution: **Phase 53 not started**
+- Next step: `$gsd-plan-phase 53` or `$gsd-autonomous`
 
 ## Live Planning
 
-No active milestone is open. The last completed roadmap is archived at `.planning/milestones/v1.11-ROADMAP.md`.
+### Phase Checklist
+
+- [ ] **Phase 53: Node Identity and Topology Contract**
+- [ ] **Phase 54: SSH Tunnel Bootstrap and Remote Connectivity Path**
+- [ ] **Phase 55: Node Inspection, Recovery, and Operator Controls**
+- [ ] **Phase 56: Node Docs, Onboarding, and Verification Exit**
+
+### Phase 53: Node Identity and Topology Contract
+
+**Goal:** Define one truthful contract for local runtime, distributed nodes, mobile nodes, and SSH-tunneled remote access so the product stops mixing transport, topology, and node terminology.
+
+**Success criteria:**
+- node roles and supported topology modes are explicitly defined
+- the trust boundary between local runtime and remote connectivity is clear
+- unsupported or future node behaviors are called out honestly
+
+**Plans:** 0 plans complete
+
+Plans:
+- [ ] 53-01 Define the bounded node and topology contract
+
+### Phase 54: SSH Tunnel Bootstrap and Remote Connectivity Path
+
+**Goal:** Turn SSH tunnel usage from operator folklore into an explicit advanced bootstrap path for self-hosted remote connectivity.
+
+**Success criteria:**
+- the supported SSH tunnel path is documented or configured intentionally
+- bootstrap steps for remote connectivity are repeatable
+- the tunnel path preserves the existing security and control boundary
+
+**Plans:** 0 plans complete
+
+Plans:
+- [ ] 54-01 Implement the SSH tunnel bootstrap path
+
+### Phase 55: Node Inspection, Recovery, and Operator Controls
+
+**Goal:** Surface remote-node connectivity, tunnel state, and recovery evidence through shipped inspection and operator surfaces.
+
+**Success criteria:**
+- operators can inspect remote connectivity from one coherent shipped surface
+- failure modes distinguish auth, config, connectivity, and tunnel problems
+- repair or reconnect guidance is preserved in runtime evidence or operator docs
+
+**Plans:** 0 plans complete
+
+Plans:
+- [ ] 55-01 Surface node and tunnel health in operator controls
+
+### Phase 56: Node Docs, Onboarding, and Verification Exit
+
+**Goal:** Close the milestone by aligning onboarding, docs, and verification around the supported local and remote node connectivity contract.
+
+**Success criteria:**
+- setup guidance differentiates standard local deployment from advanced remote connectivity
+- docs and control surfaces tell the same node and tunnel story
+- milestone verification preserves the supported node and SSH tunnel contract
+
+**Plans:** 0 plans complete
+
+Plans:
+- [ ] 56-01 Align docs, onboarding, and milestone verification
