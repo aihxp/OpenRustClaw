@@ -67,10 +67,10 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 - ✓ The public GitHub repo entry surface, discovery metadata, and GitHub workflow-health contract now match the shipped product and can be revalidated through repeatable admin helpers — v1.9 Phases 41-44
 - ✓ Tagged GitHub releases now publish truthful tarball and checksum assets for all supported targets, with one repeatable operator validation path — v1.10 Phases 45-48
 - ✓ Node-first remote connectivity, SSH tunnel fallback, reverse-proxy last resort, and the saved remote-connectivity profile are now aligned across onboarding, setup state, operator handoff, and docs — v1.12 Phases 53-56
+- ✓ The repo now has a canonical greenfield transition contract with explicit containment rules, target layers, and a chosen first proving slice around setup handoff reporting — v1.13 Phase 57
 
 ### Active
 
-- [ ] OpenRustClaw must define a canonical greenfield architecture contract that identifies the new clean boundaries, brownfield containment seams, and the first migration targets for future work — v1.13
 - [ ] The repo must gain a real greenfield core shell and stable service interfaces so new features stop attaching directly to legacy command or runtime surfaces by default — v1.13
 - [ ] At least one high-value shipped vertical slice must be migrated into the new boundary to prove the architecture works in production code instead of only in planning docs — v1.13
 - [ ] Contributor and operator guidance must make the new lane the default, while preserving compatibility and explicit deprecation rules for remaining brownfield surfaces — v1.13
@@ -126,6 +126,7 @@ The next milestone changes the implementation posture rather than adding another
 | Make remote connectivity node-first with an SSH tunnel fallback instead of treating the tunnel as the primary transport | The product should preserve the cleaner node model where available, but operators still need a durable recovery path when direct node connectivity is broken or unsupported | ✓ Good |
 | Keep reverse proxy as a bounded third-tier fallback instead of promoting it to the default remote path | Reverse proxy exposure can help recovery in difficult self-hosted environments, but it should remain a clearly constrained last resort behind the node-first and SSH tunnel paths | ✓ Good |
 | Treat the brownfield-to-greenfield shift as a staged carve-out inside the shipped repo rather than a rewrite-from-scratch reset | The product already has real users and operator surfaces, so the safer path is to create a clean lane and migrate into it with compatibility boundaries | ✓ Good |
+| Use setup handoff reporting as the first greenfield proving slice | It crosses setup state, report composition, route exposure, and Control UI rendering while already having bounded regression tests | ✓ Good |
 
 ## Next Milestone Goals
 

@@ -575,3 +575,22 @@ When shipped behavior changes:
 3. update the relevant planning doc under `docs/` if the shipped-surface claim changed
 4. update `docs/docs-audit.md` if the feature-family coverage changed
 5. delete stale duplicates instead of leaving them behind
+
+## Greenfield Transition Defaults
+
+During `v1.13`, new code should default to the greenfield transition lane:
+
+1. keep domain contracts in the existing shared crates
+2. put new business logic in a reusable application-facing service layer
+3. treat large command modules like `start.rs`, `mobile.rs`, `skills.rs`, and `inspect.rs` as adapters unless the task is explicitly a compatibility fix
+4. migrate bounded shipped slices one at a time instead of mixing rewrite work with broad feature churn
+
+The first proving slice is setup handoff reporting across onboarding state, inspection, route exposure, and Control UI rendering.
+
+Use the current baseline before widening that slice:
+
+```bash
+cargo test -p openrustclaw-cli setup_handoff_summary -- --nocapture
+cargo test -p openrustclaw-cli dashboard_includes_setup_handoff_panel -- --nocapture
+mdbook build docs
+```

@@ -2,6 +2,16 @@
 
 This document provides a comprehensive overview of OpenRustClaw's architecture, explaining the design decisions, data flow, and component interactions.
 
+## Current Posture
+
+This page is still the broad system map. For the active architectural migration strategy, use [Greenfield Transition](./greenfield-transition.md).
+
+The important current truth is:
+
+- Rust remains the primary production runtime
+- the optional sidecar is a compatibility lane, not the default execution shape
+- the repo is moving toward a cleaner application-service lane inside the existing workspace rather than a rewrite-from-scratch reset
+
 ---
 
 ## 🏗️ High-Level Architecture
