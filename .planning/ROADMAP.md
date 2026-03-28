@@ -18,11 +18,19 @@
 ## Current Status
 
 - Active milestone: **v1.11 Crates.io and Docs.rs Publication Foundation**
-- Progress: 0 of 4 phases complete
+- Progress: 1 of 4 phases complete
 - Most recent shipment: **v1.10 Release Binaries Workflow Recovery**
-- Next step: `$gsd-discuss-phase 49` or `$gsd-plan-phase 49`
+- Current execution: **Phase 49 complete**
+- Next step: Phase 50, Docs.rs Documentation Surface
 
 ## Live Planning
+
+### Phase Checklist
+
+- [x] **Phase 49: Public Crate Scope and Package Metadata Contract** - completed 2026-03-28
+- [ ] **Phase 50: Docs.rs Documentation Surface**
+- [ ] **Phase 51: Crates.io Publish Path and Dry-Run Verification**
+- [ ] **Phase 52: First Public Package Release Exit**
 
 ### Phase 49: Public Crate Scope and Package Metadata Contract
 
@@ -32,6 +40,11 @@
 - the first public crate set is explicitly selected and documented
 - publishable vs internal-only crates are separated truthfully
 - selected publish targets have coherent package metadata requirements
+
+**Plans:** 1 plan complete
+
+Plans:
+- [x] 49-01 Lock the first public crate boundary around `openrustclaw-core`
 
 ### Phase 50: Docs.rs Documentation Surface
 

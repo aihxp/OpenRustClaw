@@ -52,7 +52,7 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT"
 authors = ["OpenRustClaw Contributors"]
-repository = "https://github.com/openrustclaw/openrustclaw"
+repository = "https://github.com/aihxp/OpenRustClaw"
 
 [workspace.dependencies]
 # Async runtime

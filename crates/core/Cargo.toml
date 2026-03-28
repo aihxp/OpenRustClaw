@@ -4,6 +4,12 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 description = "Core types, traits, and error handling for OpenRustClaw"
+readme = "README.md"
+repository.workspace = true
+homepage = "https://github.com/aihxp/OpenRustClaw"
+documentation = "https://docs.rs/openrustclaw-core"
+keywords = ["openrustclaw", "ai", "assistant", "agent", "core"]
+categories = ["development-tools", "asynchronous"]
 
 [dependencies]
 tokio.workspace = true
