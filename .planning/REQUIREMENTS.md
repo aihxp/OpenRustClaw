@@ -19,6 +19,8 @@ OpenRustClaw must move broader inspection-summary composition out of `crates/cli
 
 Selected `/control/...` route families in `crates/cli/src/commands/start.rs` must stop coupling directly to mixed CLI command logic and instead call stable application-facing services or adapters around them.
 
+**Status:** Completed in v1.14 Phase 62 via the `/control/self-hosted/product-mode` route family.
+
 **Acceptance signals:**
 - one bounded route family moves behind a cleaner service boundary
 - route behavior remains stable from the runtime API perspective
@@ -50,4 +52,4 @@ The `skills.rs` hotspot must gain a bounded service seam so future work has a cl
 
 ## Next Step
 
-Start execution with `$gsd-plan-phase 61` or `$gsd-autonomous`.
+Start execution with `$gsd-plan-phase 63` or `$gsd-autonomous`.

@@ -53,6 +53,8 @@ That migration is now in place: `inspect.rs` loads the durable setup state, maps
 
 The next inspection-summary extraction is also shipped: self-hosted product-mode reporting now follows the same pattern, with `openrustclaw-app` owning the report composition while CLI code only adapts persisted state and receipts.
 
+The first bounded `start.rs` route-family extraction is now shipped too. The `/control/self-hosted/product-mode` transition path delegates the transition-and-report use case through `openrustclaw-app`, while `inspect.rs` stays the workspace adapter and `start.rs` remains only the HTTP layer.
+
 ## Contributor Defaults
 
 When adding or changing behavior during this transition:

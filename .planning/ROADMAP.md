@@ -21,17 +21,17 @@
 ## Current Status
 
 - Active milestone: **v1.14 Continued Greenfield Conversion**
-- Progress: 1 of 4 phases complete
+- Progress: 2 of 4 phases complete
 - Most recent shipment: **v1.13 Brownfield-to-Greenfield Transition**
-- Current execution: **Phase 62 not started**
-- Next step: `$gsd-discuss-phase 62`, `$gsd-plan-phase 62`, or `$gsd-autonomous`
+- Current execution: **Phase 63 not started**
+- Next step: `$gsd-discuss-phase 63`, `$gsd-plan-phase 63`, or `$gsd-autonomous`
 
 ## Live Planning
 
 ### Phase Checklist
 
 - [x] **Phase 61: Inspection Summary Service Extraction** (completed 2026-03-28)
-- [ ] **Phase 62: Control Route Family Service Extraction**
+- [x] **Phase 62: Control Route Family Service Extraction** (completed 2026-03-28)
 - [ ] **Phase 63: Mobile Operator Report Migration**
 - [ ] **Phase 64: Skills Surface Boundary Cleanup**
 
@@ -58,10 +58,10 @@ Plans:
 - route behavior stays stable from the runtime API perspective
 - `start.rs` loses direct mixed-command coupling for the migrated family
 
-**Plans:** 0/1 plans complete
+**Plans:** 1/1 plans complete
 
 Plans:
-- [ ] 62-01 Extract a bounded control route family behind an application service seam
+- [x] 62-01 Extract a bounded control route family behind an application service seam
 
 ### Phase 63: Mobile Operator Report Migration
 

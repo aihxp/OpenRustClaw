@@ -103,6 +103,15 @@ The greenfield lane now also owns a second typed operator summary:
 3. `inspect.rs` adapts saved product-mode state, warnings, and transition receipts into that service
 4. runtime and Control UI still consume the same self-hosted product-mode report contract
 
+### Current Phase 62 Outcome
+
+The greenfield lane now also owns the first bounded `start.rs` control-route family:
+
+1. persisted self-hosted product-mode storage and transition receipts still live in the existing CLI adapter module
+2. `openrustclaw-app` now owns the product-mode transition-and-report use case
+3. `inspect.rs` remains the workspace adapter that bridges persisted state into that new service seam
+4. `start.rs` now acts as the HTTP adapter for the `/control/self-hosted/product-mode` transition path instead of orchestrating the business logic directly
+
 ## Review Defaults
 
 When reviewing new work during `v1.13`:

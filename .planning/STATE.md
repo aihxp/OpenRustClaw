@@ -5,16 +5,16 @@ milestone_name: Continued Greenfield Conversion
 current_phase: 62
 current_phase_name: Control Route Family Service Extraction
 current_plan: null
-status: Phase 61 complete; ready to begin Phase 62
-stopped_at: Run $gsd-discuss-phase 62, $gsd-plan-phase 62, or $gsd-autonomous to continue v1.14.
-last_updated: "2026-03-28T08:45:00Z"
-last_activity: 2026-03-28 -- completed Phase 61 Inspection Summary Service Extraction
+status: Phase 62 complete; ready to begin Phase 63
+stopped_at: Run $gsd-discuss-phase 63, $gsd-plan-phase 63, or $gsd-autonomous to continue v1.14.
+last_updated: "2026-03-28T14:10:00Z"
+last_activity: 2026-03-28 -- completed Phase 62 Control Route Family Service Extraction
 progress:
   total_phases: 4
-  completed_phases: 1
-  total_plans: 1
-  completed_plans: 1
-  percent: 25
+  completed_phases: 2
+  total_plans: 2
+  completed_plans: 2
+  percent: 50
 ---
 
 # Project State
@@ -32,13 +32,13 @@ Current Phase: 62
 Current Phase Name: Control Route Family Service Extraction
 Total Phases: 4
 Current Plan: -
-Total Plans in Phase: 0
-Status: Phase 61 complete; ready to begin Phase 62
-Last activity: 2026-03-28 -- completed Phase 61 Inspection Summary Service Extraction
+Total Plans in Phase: 1
+Status: Phase 62 complete; ready to begin Phase 63
+Last activity: 2026-03-28 -- completed Phase 62 Control Route Family Service Extraction
 
-Phase: 1 of 4
-Plan: 1 of 1
-Progress: [██--------] 25%
+Phase: 2 of 4
+Plan: 2 of 2
+Progress: [█████-----] 50%
 
 ## Performance Metrics
 
@@ -81,6 +81,7 @@ Recent decisions affecting current work:
 - Phase 60 made the new lane the default contribution contract: `openrustclaw-app` is now the preferred home for application logic, and the next migration queue is preserved explicitly.
 - v1.14 continues that migration queue with four next-step targets: inspection summaries, selected control routes, mobile operator reporting, and a bounded `skills.rs` service seam.
 - Phase 61 broadened the greenfield lane with a second typed report family: self-hosted product-mode summary composition now lives in `openrustclaw-app`, while `inspect.rs` only adapts persisted state into that service.
+- Phase 62 moved the first bounded `start.rs` control route family into the greenfield lane: the self-hosted product-mode transition path now delegates transition-and-report orchestration through `openrustclaw-app`, while `start.rs` only remains the HTTP adapter.
 
 ### Pending Todos
 
@@ -93,5 +94,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-28 04:45
-Stopped at: Run $gsd-discuss-phase 62, $gsd-plan-phase 62, or $gsd-autonomous to continue v1.14.
+Stopped at: Run $gsd-discuss-phase 63, $gsd-plan-phase 63, or $gsd-autonomous to continue v1.14.
 Resume file: None
