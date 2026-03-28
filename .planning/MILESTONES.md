@@ -1,5 +1,20 @@
 # Project Milestones: OpenRustClaw
 
+## v1.10 Release Binaries Workflow Recovery (Shipped: 2026-03-28)
+
+**Phases completed:** 4 phases, 4 plans, 0 tasks
+**Verification archive:** `.planning/milestones/v1.10-VERIFICATIONS.md`
+**Verification debt:** none
+
+**Key accomplishments:**
+
+- Captured the live failing tag contract from public GitHub evidence instead of guessing from stale release assumptions.
+- Repaired the supported Linux and macOS release matrix on GitHub-hosted runners and aligned the admin helper around that contract.
+- Proved the tagged publish path on `v1.10-rc1`, which now exposes tarball and checksum assets for all four supported targets.
+- Closed the milestone with one repeatable operator verification loop for branch dry-runs, tag validation, and archived release evidence.
+
+---
+
 ## v1.9 GitHub Repository Presence and Actions Recovery (Shipped: 2026-03-28)
 
 **Phases completed:** 4 phases, 8 plans, 0 tasks

@@ -2,7 +2,7 @@
 
 ## What This Is
 
-OpenRustClaw is a self-hosted open-source Rust-first OpenClaw-style assistant platform with shipped v1.0 through v1.9 milestones. It now has a coherent production-ready baseline across onboarding, assistant continuity, memory policy, tool and coding evidence, communications, runtime operations, security posture, release exit, milestone verification integrity, materially deeper operator parity across browser, orchestration, mobile, Control UI, and voice or call handling surfaces, an enterprise-first foundation for scoped operator identity, policy, audit export, supervised autonomy, governance, and an operator-gated full-autonomy lane, an explicit self-hosted product-mode contract across `solo`, `team`, `company`, and `enterprise` deployments, a truthful setup lifecycle from first install through repair and handoff, a canonical documentation contract that keeps the repo entrypoint, guided docs, and planning docs aligned, and a cleaner codebase baseline with explicit cleanup inventory, repo-hygiene guardrails, and an extracted control-auth boundary.
+OpenRustClaw is a self-hosted open-source Rust-first OpenClaw-style assistant platform with shipped v1.0 through v1.10 milestones. It now has a coherent production-ready baseline across onboarding, assistant continuity, memory policy, tool and coding evidence, communications, runtime operations, security posture, release exit, milestone verification integrity, materially deeper operator parity across browser, orchestration, mobile, Control UI, and voice or call handling surfaces, an enterprise-first foundation for scoped operator identity, policy, audit export, supervised autonomy, governance, and an operator-gated full-autonomy lane, an explicit self-hosted product-mode contract across `solo`, `team`, `company`, and `enterprise` deployments, a truthful setup lifecycle from first install through repair and handoff, a canonical documentation contract that keeps the repo entrypoint, guided docs, and planning docs aligned, a cleaner codebase baseline with explicit cleanup inventory, repo-hygiene guardrails, and an extracted control-auth boundary, and a repaired tagged-release workflow that now produces truthful downloadable binary artifacts on GitHub.
 
 The product target remains broader than the MVP: a general-purpose assistant platform that can eventually support coding, communications, business operations, and deeper autonomous workflows. After v1.7, the repo also has one clearer documentation story instead of several drifting versions of the product. After v1.8, the repo also has a more explicit cleanup contract for keeping that surface maintainable.
 
@@ -12,26 +12,20 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 ## Current State
 
-- **Shipped milestones:** v1.0 Rust OpenClaw MVP, v1.1 Lifecycle Integrity and Enterprise Foundations, v1.2 Deeper OpenClaw Surface Parity, v1.3 Enterprise Expansion and Supervised Autonomy Foundations, v1.4 Enterprise Governance and Operator-Gated Full Autonomy, v1.5 Self-Hosted Product Modes and Lifecycle Packaging, v1.6 Proper Onboarding and Setup, v1.7 Documentation Convergence and OpenClaw-Inspired Docs Rewrite, v1.8 Clean Codebase, and v1.9 GitHub Repository Presence and Actions Recovery
-- **Archive:** `.planning/milestones/v1.0-*` through `.planning/milestones/v1.9-*`
-- **Planning state:** v1.10 is open and ready for Phase 45 planning
+- **Shipped milestones:** v1.0 Rust OpenClaw MVP, v1.1 Lifecycle Integrity and Enterprise Foundations, v1.2 Deeper OpenClaw Surface Parity, v1.3 Enterprise Expansion and Supervised Autonomy Foundations, v1.4 Enterprise Governance and Operator-Gated Full Autonomy, v1.5 Self-Hosted Product Modes and Lifecycle Packaging, v1.6 Proper Onboarding and Setup, v1.7 Documentation Convergence and OpenClaw-Inspired Docs Rewrite, v1.8 Clean Codebase, v1.9 GitHub Repository Presence and Actions Recovery, and v1.10 Release Binaries Workflow Recovery
+- **Archive:** `.planning/milestones/v1.0-*` through `.planning/milestones/v1.10-*`
+- **Planning state:** no active milestone is open
 - **Known audit debt:** v1.0 archive still records missing phase `VERIFICATION.md` artifacts; v1.1 closed that workflow gap going forward
 
-## Most Recent Milestone: v1.9 GitHub Repository Presence and Actions Recovery
+## Most Recent Milestone: v1.10 Release Binaries Workflow Recovery
 
-**Result:** Shipped 2026-03-28. OpenRustClaw now has truthful live GitHub About metadata, a canonical discovery-topic contract, a repo-admin metadata helper, a workflow-health helper, and a repaired shipped-surface GitHub Actions contract whose latest `main` CI and E2E runs pass.
+**Result:** Shipped 2026-03-28. OpenRustClaw now has a truthful tagged binary release path: the repaired `Release Binaries` workflow passes on supported GitHub-hosted runners, the publish job succeeds on live tags, and the public `v1.10-rc1` release exposes tarball plus checksum assets for all four supported targets.
 
-**Archive:** `.planning/milestones/v1.9-ROADMAP.md`, `.planning/milestones/v1.9-REQUIREMENTS.md`, `.planning/milestones/v1.9-MILESTONE-AUDIT.md`, `.planning/milestones/v1.9-VERIFICATIONS.md`
+**Archive:** `.planning/milestones/v1.10-ROADMAP.md`, `.planning/milestones/v1.10-REQUIREMENTS.md`, `.planning/milestones/v1.10-MILESTONE-AUDIT.md`, `.planning/milestones/v1.10-VERIFICATIONS.md`
 
-## Current Milestone: v1.10 Release Binaries Workflow Recovery
+## Current Milestone
 
-**Goal:** Make the GitHub `Release Binaries` workflow produce truthful, repeatable tagged OpenRustClaw release artifacts again.
-
-**Target features:**
-- audit the live `release-binaries.yml` failures against the current tagged workflow runs
-- repair Linux release-build dependencies for `x86_64-unknown-linux-gnu` and `aarch64-unknown-linux-gnu`
-- harden the publish path so successful tag builds actually upload release assets to GitHub Releases
-- add a repeatable release verification and operator runbook path for future milestone tags
+No active milestone is open. Use `$gsd-new-milestone` to define the next cycle.
 
 ## Requirements
 
@@ -65,13 +59,11 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 - ✓ Onboarding, Control UI, and setup docs now share one explicit setup handoff contract — v1.6 Phase 31
 - ✓ OpenRustClaw now has a canonical docs ownership contract, rewritten entry surfaces, aligned getting-started and operator guides, and a standing docs audit and maintenance workflow — v1.7 Phases 32-36
 - ✓ The public GitHub repo entry surface, discovery metadata, and GitHub workflow-health contract now match the shipped product and can be revalidated through repeatable admin helpers — v1.9 Phases 41-44
+- ✓ Tagged GitHub releases now publish truthful tarball and checksum assets for all supported targets, with one repeatable operator validation path — v1.10 Phases 45-48
 
 ### Active
 
-- [ ] Tagged `Release Binaries` workflow runs must execute against the current repo and release packaging contract without immediate Linux dependency failures
-- [ ] Linux release targets must either build successfully on GitHub-hosted runners or be explicitly re-scoped with truthful target support boundaries
-- [ ] Successful tagged release runs must publish the expected tarball and checksum artifacts to GitHub Releases
-- [ ] The release workflow must have one repeatable verification and operator recovery path
+- [ ] No active milestone requirements until the next milestone opens
 
 ### Out of Scope
 
@@ -82,9 +74,9 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 ## Context
 
-This remains a large brownfield Rust monorepo with broad runtime, CLI, control-plane, memory, tools, channel, voice, browser, deployment, and operator surfaces. v1.0 converted that breadth into a cleaner MVP by making operator trust visible at the edges that matter, v1.1 hardened the lifecycle and enterprise baseline around that trust, v1.2 deepened the most operator-visible OpenClaw parity surfaces without reopening MVP sprawl, v1.3 turned the first enterprise and supervised-autonomy contracts into a coherent operator loop, v1.4 extended that loop into explicit governance and operator-gated full autonomy, v1.5 made the platform legible as one self-hosted open-source product with explicit deployment paths and transition visibility, v1.6 turned onboarding and setup into one truthful lifecycle from first install through repair and handoff, v1.7 made the documentation set legible enough to match the shipped product baseline, and v1.8 converted cleanup debt into an explicit maintained contract instead of leaving it as background churn.
+This remains a large brownfield Rust monorepo with broad runtime, CLI, control-plane, memory, tools, channel, voice, browser, deployment, and operator surfaces. v1.0 converted that breadth into a cleaner MVP by making operator trust visible at the edges that matter, v1.1 hardened the lifecycle and enterprise baseline around that trust, v1.2 deepened the most operator-visible OpenClaw parity surfaces without reopening MVP sprawl, v1.3 turned the first enterprise and supervised-autonomy contracts into a coherent operator loop, v1.4 extended that loop into explicit governance and operator-gated full autonomy, v1.5 made the platform legible as one self-hosted open-source product with explicit deployment paths and transition visibility, v1.6 turned onboarding and setup into one truthful lifecycle from first install through repair and handoff, v1.7 made the documentation set legible enough to match the shipped product baseline, v1.8 converted cleanup debt into an explicit maintained contract instead of leaving it as background churn, v1.9 repaired the public GitHub repo surface, and v1.10 restored the final broken public automation lane around tagged binary releases.
 
-The most recent milestone was outward-facing: the public GitHub repo now has truthful About and topic metadata, and the Actions page now reflects the current verification story with a passing `main` CI and E2E surface. The next milestone narrows onto the remaining broken public automation lane: the tagged `Release Binaries` workflow still fails on Linux release packaging and currently does not produce a trustworthy release artifact path.
+The most recent milestone closed a trust gap at the public release edge: GitHub tags now produce truthful downloadable binary artifacts again, and the repo has one repeatable operator validation loop for future release tags. The next milestone can build on a working release-distribution baseline instead of first repairing it.
 
 ## Constraints
 
@@ -116,13 +108,11 @@ The most recent milestone was outward-facing: the public GitHub repo now has tru
 | Use OpenClaw’s public docs style as inspiration for clarity and entry-point design, not as a content-copying exercise | The goal is a clearer self-hosted product story, tighter onboarding path, and better docs information architecture grounded in OpenRustClaw’s actual shipped behavior | ✓ Good |
 | Treat codebase cleanup as a milestone in its own right | The repo is now broad enough that oversized modules, stale paths, and contract drift directly slow down safe product work | ✓ Good |
 | Treat GitHub repo metadata, topics, and Actions as part of the shipped product surface | The repo page and automation are the first operator touchpoints, so stale metadata or broken workflows undermine trust before users even clone the code | ✓ Good |
+| Treat tagged binary release automation as part of the shipped public trust surface | A public tag that cannot produce downloadable artifacts undermines the repo's production-ready story even if the runtime itself is healthy | ✓ Good |
 
 ## Next Milestone Goals
 
-- Audit the current `Release Binaries` workflow failures against live tag-triggered runs
-- Repair Linux release-build dependency gaps and cross-compilation setup
-- Make tagged release publishing produce the expected GitHub release artifacts
-- Add a repeatable release verification and operator runbook path
+- No active next-milestone goals yet — use `$gsd-new-milestone` to open the next cycle
 
 ## Evolution
 
@@ -142,4 +132,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-28 after starting v1.10*
+*Last updated: 2026-03-28 after completing v1.10*
