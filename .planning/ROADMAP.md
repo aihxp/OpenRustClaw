@@ -47,28 +47,29 @@
 Plans:
 - [ ] 53-01 Define the bounded node and topology contract
 
-### Phase 54: Node-First Remote Connectivity and SSH Tunnel Fallback
+### Phase 54: Node-First Remote Connectivity and Fallback Paths
 
-**Goal:** Make remote connectivity node-first while turning SSH tunnel usage into an explicit advanced fallback path for self-hosted deployments.
+**Goal:** Make remote connectivity node-first while turning SSH tunnel usage into the primary fallback path and reverse proxy into a bounded last-resort fallback for self-hosted deployments.
 
 **Success criteria:**
 - the supported node-first path is documented or configured intentionally
 - SSH tunnel fallback steps are documented or configured intentionally
+- reverse-proxy fallback steps are documented as a last-resort path
 - bootstrap and failover steps for remote connectivity are repeatable
-- the node path and tunnel fallback both preserve the existing security and control boundary
+- the node path, SSH tunnel fallback, and reverse-proxy fallback all preserve the existing security and control boundary
 
 **Plans:** 0 plans complete
 
 Plans:
-- [ ] 54-01 Implement the node-first path with SSH tunnel fallback
+- [ ] 54-01 Implement the node-first path with SSH tunnel and reverse-proxy fallbacks
 
 ### Phase 55: Node Inspection, Recovery, and Operator Controls
 
-**Goal:** Surface remote-node connectivity, failover, tunnel state, and recovery evidence through shipped inspection and operator surfaces.
+**Goal:** Surface remote-node connectivity, failover, tunnel state, reverse-proxy fallback state, and recovery evidence through shipped inspection and operator surfaces.
 
 **Success criteria:**
 - operators can inspect remote connectivity from one coherent shipped surface
-- failure modes distinguish auth, config, connectivity, node-path, and tunnel-fallback problems
+- failure modes distinguish auth, config, connectivity, node-path, SSH-tunnel-fallback, and reverse-proxy-fallback problems
 - repair or reconnect guidance is preserved in runtime evidence or operator docs
 
 **Plans:** 0 plans complete
