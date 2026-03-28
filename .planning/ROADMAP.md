@@ -18,10 +18,10 @@
 ## Current Status
 
 - Active milestone: **v1.11 Crates.io and Docs.rs Publication Foundation**
-- Progress: 3 of 4 phases complete
+- Progress: 4 of 4 phases complete
 - Most recent shipment: **v1.10 Release Binaries Workflow Recovery**
-- Current execution: **Phase 52 blocked**
-- Next step: provide crates.io auth, then rerun Phase 52
+- Current execution: **Phase 52 complete**
+- Next step: milestone audit and archive
 
 ## Live Planning
 
@@ -30,7 +30,7 @@
 - [x] **Phase 49: Public Crate Scope and Package Metadata Contract** - completed 2026-03-28
 - [x] **Phase 50: Docs.rs Documentation Surface** - completed 2026-03-28
 - [x] **Phase 51: Crates.io Publish Path and Dry-Run Verification** - completed 2026-03-28
-- [ ] **Phase 52: First Public Package Release Exit**
+- [x] **Phase 52: First Public Package Release Exit** - completed 2026-03-28
 
 ### Phase 49: Public Crate Scope and Package Metadata Contract
 
@@ -83,9 +83,7 @@ Plans:
 - post-publish checks cover crates.io and docs.rs visibility
 - milestone verification archives the public package evidence bundle
 
-**Plans:** 1 plan in progress
+**Plans:** 1 plan complete
 
 Plans:
-- [ ] 52-01 Attempt the first public crate release
-
-**Current blocker:** `cargo publish -p openrustclaw-core --allow-dirty` reaches upload and then fails with `403 Forbidden` because the provided crates.io token does not have publish permission.
+- [x] 52-01 Attempt the first public crate release

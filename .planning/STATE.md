@@ -5,16 +5,16 @@ milestone_name: Crates.io and Docs.rs Publication Foundation
 current_phase: 52
 current_phase_name: First Public Package Release Exit
 current_plan: null
-status: Phase 52 blocked on insufficient crates.io token permissions
-stopped_at: Provide a crates.io token with publish scope and rerun $gsd-autonomous.
+status: v1.11 phase work complete; ready for milestone archive
+stopped_at: Run milestone audit and archive for v1.11.
 last_updated: "2026-03-28T03:19:17Z"
-last_activity: 2026-03-28 -- attempted live crates.io publish; blocked by token scope
+last_activity: 2026-03-28 -- completed Phase 52 and published openrustclaw-core
 progress:
   total_phases: 4
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 4
-  completed_plans: 3
-  percent: 75
+  completed_plans: 4
+  percent: 100
 ---
 
 # Project State
@@ -24,7 +24,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-28)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** v1.11 blocked at Phase 52 pending a crates.io publish-capable token
+**Current focus:** v1.11 complete; awaiting milestone archive
 
 ## Current Position
 
@@ -33,8 +33,8 @@ Current Phase Name: First Public Package Release Exit
 Total Phases: 4
 Current Plan: -
 Total Plans in Phase: 1
-Status: Phase 52 blocked on insufficient crates.io token permissions
-Last activity: 2026-03-28 -- attempted live crates.io publish; blocked by token scope
+Status: v1.11 phase work complete; ready for milestone archive
+Last activity: 2026-03-28 -- completed Phase 52 and published openrustclaw-core
 
 Phase: 3 of 4
 Plan: 0 of 0
@@ -72,7 +72,7 @@ Recent decisions affecting current work:
 - Phase 49 locked the first public crate boundary around `openrustclaw-core` and corrected the workspace repo metadata for crates.io discovery.
 - Phase 50 added an explicit docs.rs build contract and a real crate-level rustdoc landing surface for `openrustclaw-core`.
 - Phase 51 added a rerunnable crates.io readiness script, a docs-site publish runbook, and a passing publish dry-run for `openrustclaw-core`.
-- Phase 52 confirmed the final blocker is token scope: `cargo publish -p openrustclaw-core --allow-dirty` reaches upload and fails with `403 Forbidden`.
+- Phase 52 published `openrustclaw-core v0.1.0` to crates.io and confirmed docs.rs visibility for the new crate page.
 
 ### Pending Todos
 
@@ -85,5 +85,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-28 02:22
-Stopped at: Provide a crates.io token with publish scope and rerun $gsd-autonomous.
+Stopped at: Run milestone audit and archive for v1.11.
 Resume file: None

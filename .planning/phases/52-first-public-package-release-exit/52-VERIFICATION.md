@@ -1,8 +1,8 @@
 ---
 phase: 52
 verified: 2026-03-28
-status: blocked
-score: "0/3 must-haves verified"
+status: passed
+score: "3/3 must-haves verified"
 ---
 
 # Phase 52 Verification
@@ -15,10 +15,11 @@ score: "0/3 must-haves verified"
 
 ## Evidence
 
-- `test -n "$CARGO_REGISTRY_TOKEN" && echo CARGO_REGISTRY_TOKEN=set || echo CARGO_REGISTRY_TOKEN=unset`
-- `test -f "$HOME/.cargo/credentials.toml" && echo credentials_toml=present || echo credentials_toml=absent`
-- `cargo publish -p openrustclaw-core --allow-dirty`
+- `CARGO_REGISTRY_TOKEN=… cargo publish -p openrustclaw-core --allow-dirty`
+- `cargo search openrustclaw-core --limit 5`
+- `curl -I -s https://crates.io/api/v1/crates/openrustclaw-core`
+- `curl -I -s https://docs.rs/crate/openrustclaw-core/latest`
 
 ## Result
 
-Blocked pending a crates.io token with publish permission. A live `cargo publish -p openrustclaw-core --allow-dirty` reached the upload step and then failed with `403 Forbidden` because the token does not have the required permissions to perform this action. All local preflight and dry-run checks are complete, but the final public publish and docs.rs follow-up cannot happen until a maintainer provides a crates.io token with publish scope.
+Passed. `openrustclaw-core v0.1.0` is now published on crates.io, `cargo search` resolves it publicly, the crates.io API returns `200`, and docs.rs now serves the crate page at `/crate/openrustclaw-core/latest`.
