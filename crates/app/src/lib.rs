@@ -6,6 +6,7 @@
 //! coupling.
 
 pub mod compiled_skill_overview;
+pub mod enterprise_access_control;
 pub mod enterprise_admin;
 pub mod mobile_operator;
 pub mod self_hosted_product;

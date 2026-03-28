@@ -17,6 +17,12 @@ use chrono::{DateTime, Utc};
 use futures::{SinkExt, Stream, StreamExt};
 use openrustclaw_agent::runtime::AgentRuntime;
 use openrustclaw_app::compiled_skill_overview::CompiledSkillOverviewService;
+use openrustclaw_app::enterprise_access_control::{
+    EnterpriseAccessBootstrapRequest as AppEnterpriseAccessBootstrapRequest,
+    EnterpriseAccessControlService, EnterpriseAccessControlSource,
+    EnterpriseAccessOperatorUpsertRequest as AppEnterpriseAccessOperatorUpsertRequest,
+    EnterpriseGovernanceRuleUpsertRequest as AppEnterpriseGovernanceRuleUpsertRequest,
+};
 use openrustclaw_channels::discord::DiscordInteractionsHandler;
 use openrustclaw_channels::gmail_pubsub::GmailWebhookHandler;
 use openrustclaw_channels::google_chat::GoogleChatWebhookHandler;
@@ -6981,27 +6987,20 @@ async fn enterprise_access_bootstrap_handler(
     Json(payload): Json<EnterpriseAccessBootstrapPayload>,
 ) -> impl IntoResponse {
     let started_at = std::time::Instant::now();
-    let result = enterprise_access::bootstrap_manifest(
-        &state.workspace_root,
-        enterprise_access::EnterpriseAccessBootstrapRequest {
-            organization_id: payload.organization_id,
-            organization_name: payload.organization_name,
-            owner_id: payload.owner_id,
-            owner_name: payload.owner_name,
-            owner_email: payload.owner_email,
-            owner_token: payload.owner_token,
-        },
-    );
+    let service = EnterpriseAccessControlService::new(WorkspaceEnterpriseAccessControlSource::new(
+        state.workspace_root.clone(),
+    ));
+    let result = service.bootstrap_and_report(AppEnterpriseAccessBootstrapRequest {
+        organization_id: payload.organization_id,
+        organization_name: payload.organization_name,
+        owner_id: payload.owner_id,
+        owner_name: payload.owner_name,
+        owner_email: payload.owner_email,
+        owner_token: payload.owner_token,
+    });
     record_operator_tool_result("enterprise.access.bootstrap", started_at, &result);
     match result {
-        Ok(_) => match inspect::enterprise_access_summary(&state.workspace_root) {
-            Ok(summary) => (StatusCode::OK, Json(serde_json::json!(summary))).into_response(),
-            Err(error) => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": error.to_string()})),
-            )
-                .into_response(),
-        },
+        Ok(summary) => (StatusCode::OK, Json(serde_json::json!(summary))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": error.to_string()})),
@@ -7015,28 +7014,21 @@ async fn enterprise_access_upsert_operator_handler(
     Json(payload): Json<EnterpriseAccessOperatorPayload>,
 ) -> impl IntoResponse {
     let started_at = std::time::Instant::now();
-    let result = enterprise_access::upsert_operator(
-        &state.workspace_root,
-        enterprise_access::EnterpriseAccessOperatorRequest {
-            id: payload.id,
-            name: payload.name,
-            email: payload.email,
-            role: payload.role,
-            token: payload.token,
-            scopes: payload.scopes,
-            active: payload.active,
-        },
-    );
+    let service = EnterpriseAccessControlService::new(WorkspaceEnterpriseAccessControlSource::new(
+        state.workspace_root.clone(),
+    ));
+    let result = service.upsert_operator_and_report(AppEnterpriseAccessOperatorUpsertRequest {
+        id: payload.id,
+        name: payload.name,
+        email: payload.email,
+        role: payload.role,
+        token: payload.token,
+        scopes: payload.scopes,
+        active: payload.active,
+    });
     record_operator_tool_result("enterprise.access.upsert_operator", started_at, &result);
     match result {
-        Ok(_) => match inspect::enterprise_access_summary(&state.workspace_root) {
-            Ok(summary) => (StatusCode::OK, Json(serde_json::json!(summary))).into_response(),
-            Err(error) => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": error.to_string()})),
-            )
-                .into_response(),
-        },
+        Ok(summary) => (StatusCode::OK, Json(serde_json::json!(summary))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": error.to_string()})),
@@ -7050,9 +7042,11 @@ async fn enterprise_governance_upsert_rule_handler(
     Json(payload): Json<EnterpriseGovernanceRulePayload>,
 ) -> impl IntoResponse {
     let started_at = std::time::Instant::now();
-    let result = enterprise_access::upsert_governance_rule(
-        &state.workspace_root,
-        enterprise_access::EnterpriseGovernanceRuleRequest {
+    let service = EnterpriseAccessControlService::new(WorkspaceEnterpriseAccessControlSource::new(
+        state.workspace_root.clone(),
+    ));
+    let result =
+        service.upsert_governance_rule_and_report(AppEnterpriseGovernanceRuleUpsertRequest {
             scope: payload.scope,
             approval_mode: payload.approval_mode,
             requester_roles: payload.requester_roles,
@@ -7060,23 +7054,104 @@ async fn enterprise_governance_upsert_rule_handler(
             forbid_self_approval: payload.forbid_self_approval,
             active: payload.active,
             detail: payload.detail,
-        },
-    );
+        });
     record_operator_tool_result("enterprise.governance.upsert_rule", started_at, &result);
     match result {
-        Ok(_) => match inspect::enterprise_access_summary(&state.workspace_root) {
-            Ok(summary) => (StatusCode::OK, Json(serde_json::json!(summary))).into_response(),
-            Err(error) => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": error.to_string()})),
-            )
-                .into_response(),
-        },
+        Ok(summary) => (StatusCode::OK, Json(serde_json::json!(summary))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": error.to_string()})),
         )
             .into_response(),
+    }
+}
+
+struct WorkspaceEnterpriseAccessControlSource {
+    workspace_root: PathBuf,
+}
+
+impl WorkspaceEnterpriseAccessControlSource {
+    fn new(workspace_root: PathBuf) -> Self {
+        Self { workspace_root }
+    }
+}
+
+impl EnterpriseAccessControlSource for WorkspaceEnterpriseAccessControlSource {
+    type Report = inspect::EnterpriseAccessReport;
+
+    fn bootstrap_enterprise_access(
+        &self,
+        request: AppEnterpriseAccessBootstrapRequest,
+    ) -> openrustclaw_core::error::Result<()> {
+        enterprise_access::bootstrap_manifest(
+            &self.workspace_root,
+            enterprise_access::EnterpriseAccessBootstrapRequest {
+                organization_id: request.organization_id,
+                organization_name: request.organization_name,
+                owner_id: request.owner_id,
+                owner_name: request.owner_name,
+                owner_email: request.owner_email,
+                owner_token: request.owner_token,
+            },
+        )
+        .map(|_| ())
+        .map_err(|error| {
+            CoreError::Internal(format!("failed to bootstrap enterprise access: {error}"))
+        })
+    }
+
+    fn upsert_enterprise_access_operator(
+        &self,
+        request: AppEnterpriseAccessOperatorUpsertRequest,
+    ) -> openrustclaw_core::error::Result<()> {
+        enterprise_access::upsert_operator(
+            &self.workspace_root,
+            enterprise_access::EnterpriseAccessOperatorRequest {
+                id: request.id,
+                name: request.name,
+                email: request.email,
+                role: request.role,
+                token: request.token,
+                scopes: request.scopes,
+                active: request.active,
+            },
+        )
+        .map(|_| ())
+        .map_err(|error| {
+            CoreError::Internal(format!(
+                "failed to upsert enterprise access operator: {error}"
+            ))
+        })
+    }
+
+    fn upsert_enterprise_governance_rule(
+        &self,
+        request: AppEnterpriseGovernanceRuleUpsertRequest,
+    ) -> openrustclaw_core::error::Result<()> {
+        enterprise_access::upsert_governance_rule(
+            &self.workspace_root,
+            enterprise_access::EnterpriseGovernanceRuleRequest {
+                scope: request.scope,
+                approval_mode: request.approval_mode,
+                requester_roles: request.requester_roles,
+                approver_roles: request.approver_roles,
+                forbid_self_approval: request.forbid_self_approval,
+                active: request.active,
+                detail: request.detail,
+            },
+        )
+        .map(|_| ())
+        .map_err(|error| {
+            CoreError::Internal(format!(
+                "failed to upsert enterprise governance rule: {error}"
+            ))
+        })
+    }
+
+    fn load_enterprise_access_report(&self) -> openrustclaw_core::error::Result<Self::Report> {
+        inspect::enterprise_access_summary(&self.workspace_root).map_err(|error| {
+            CoreError::Internal(format!("failed to load enterprise access summary: {error}"))
+        })
     }
 }
 
