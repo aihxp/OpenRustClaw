@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.11
 milestone_name: Crates.io and Docs.rs Publication Foundation
-current_phase: 50
-current_phase_name: Docs.rs Documentation Surface
+current_phase: 51
+current_phase_name: Crates.io Publish Path and Dry-Run Verification
 current_plan: null
-status: Phase 49 complete; Phase 50 next
-stopped_at: Continue with Phase 50 docs.rs documentation hardening.
+status: Phase 50 complete; Phase 51 next
+stopped_at: Continue with Phase 51 crates.io publish-path verification.
 last_updated: "2026-03-28T03:19:17Z"
-last_activity: 2026-03-28 -- completed Phase 49 Public Crate Scope and Package Metadata Contract
+last_activity: 2026-03-28 -- completed Phase 50 Docs.rs Documentation Surface
 progress:
   total_phases: 4
-  completed_phases: 1
-  total_plans: 1
-  completed_plans: 1
-  percent: 25
+  completed_phases: 2
+  total_plans: 2
+  completed_plans: 2
+  percent: 50
 ---
 
 # Project State
@@ -24,21 +24,21 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-28)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** v1.11 Phase 50 Docs.rs Documentation Surface
+**Current focus:** v1.11 Phase 51 Crates.io Publish Path and Dry-Run Verification
 
 ## Current Position
 
-Current Phase: 50
-Current Phase Name: Docs.rs Documentation Surface
+Current Phase: 51
+Current Phase Name: Crates.io Publish Path and Dry-Run Verification
 Total Phases: 4
 Current Plan: -
 Total Plans in Phase: 0
-Status: Phase 49 complete; Phase 50 next
-Last activity: 2026-03-28 -- completed Phase 49 Public Crate Scope and Package Metadata Contract
+Status: Phase 50 complete; Phase 51 next
+Last activity: 2026-03-28 -- completed Phase 50 Docs.rs Documentation Surface
 
-Phase: 1 of 4
+Phase: 2 of 4
 Plan: 0 of 0
-Progress: [###-------] 25%
+Progress: [#####-----] 50%
 
 ## Performance Metrics
 
@@ -70,6 +70,7 @@ Recent decisions affecting current work:
 - v1.10 restored the public tagged release path: the repaired `Release Binaries` workflow now passes on supported runners and the public `v1.10-rc1` release exposes tarball and checksum assets for all four supported targets.
 - v1.11 is the next public-distribution step: define the first publishable crates, make docs.rs truthful, and establish the crates.io publication loop.
 - Phase 49 locked the first public crate boundary around `openrustclaw-core` and corrected the workspace repo metadata for crates.io discovery.
+- Phase 50 added an explicit docs.rs build contract and a real crate-level rustdoc landing surface for `openrustclaw-core`.
 
 ### Pending Todos
 
@@ -82,5 +83,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-28 02:22
-Stopped at: Continue with Phase 50 docs.rs documentation hardening.
+Stopped at: Continue with Phase 51 crates.io publish-path verification.
 Resume file: None

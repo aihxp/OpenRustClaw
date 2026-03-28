@@ -11,6 +11,11 @@ documentation = "https://docs.rs/openrustclaw-core"
 keywords = ["openrustclaw", "ai", "assistant", "agent", "core"]
 categories = ["development-tools", "asynchronous"]
 
+[package.metadata.docs.rs]
+default-target = "x86_64-unknown-linux-gnu"
+targets = []
+rustdoc-args = ["--cfg", "docsrs"]
+
 [dependencies]
 tokio.workspace = true
 futures.workspace = true

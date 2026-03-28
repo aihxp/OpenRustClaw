@@ -18,17 +18,17 @@
 ## Current Status
 
 - Active milestone: **v1.11 Crates.io and Docs.rs Publication Foundation**
-- Progress: 1 of 4 phases complete
+- Progress: 2 of 4 phases complete
 - Most recent shipment: **v1.10 Release Binaries Workflow Recovery**
-- Current execution: **Phase 49 complete**
-- Next step: Phase 50, Docs.rs Documentation Surface
+- Current execution: **Phase 50 complete**
+- Next step: Phase 51, Crates.io Publish Path and Dry-Run Verification
 
 ## Live Planning
 
 ### Phase Checklist
 
 - [x] **Phase 49: Public Crate Scope and Package Metadata Contract** - completed 2026-03-28
-- [ ] **Phase 50: Docs.rs Documentation Surface**
+- [x] **Phase 50: Docs.rs Documentation Surface** - completed 2026-03-28
 - [ ] **Phase 51: Crates.io Publish Path and Dry-Run Verification**
 - [ ] **Phase 52: First Public Package Release Exit**
 
@@ -54,6 +54,11 @@ Plans:
 - docs.rs-oriented builds succeed for the selected crates
 - docs configuration is explicit and version-controlled
 - public package docs point to the right entry surfaces
+
+**Plans:** 1 plan complete
+
+Plans:
+- [x] 50-01 Harden the docs.rs surface for `openrustclaw-core`
 
 ### Phase 51: Crates.io Publish Path and Dry-Run Verification
 

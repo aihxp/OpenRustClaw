@@ -542,7 +542,7 @@ pub struct ChannelsConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MattermostConfig {
     pub enabled: bool,
-    /// Mattermost server base URL (e.g. "https://chat.example.com")
+    /// Mattermost server base URL (e.g. "<https://chat.example.com>")
     pub server_url: String,
     /// Personal access token or bot token for REST API calls
     pub bot_token: String,
@@ -811,7 +811,7 @@ pub struct SignalConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MatrixConfig {
     pub enabled: bool,
-    /// Matrix homeserver URL (e.g., "https://matrix.org")
+    /// Matrix homeserver URL (e.g., "<https://matrix.org>")
     pub homeserver: String,
     /// Matrix user ID (e.g., "@bot:matrix.org")
     pub user_id: String,
