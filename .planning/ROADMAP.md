@@ -47,27 +47,28 @@
 Plans:
 - [ ] 53-01 Define the bounded node and topology contract
 
-### Phase 54: SSH Tunnel Bootstrap and Remote Connectivity Path
+### Phase 54: Node-First Remote Connectivity and Permanent Tunnel Fallback
 
-**Goal:** Turn SSH tunnel usage from operator folklore into an explicit advanced bootstrap path for self-hosted remote connectivity.
+**Goal:** Make remote connectivity node-first while turning permanent SSH tunnel usage into an explicit advanced fallback path for self-hosted deployments.
 
 **Success criteria:**
-- the supported SSH tunnel path is documented or configured intentionally
-- bootstrap steps for remote connectivity are repeatable
-- the tunnel path preserves the existing security and control boundary
+- the supported node-first path is documented or configured intentionally
+- permanent tunnel fallback steps are documented or configured intentionally
+- bootstrap and failover steps for remote connectivity are repeatable
+- the node path and tunnel fallback both preserve the existing security and control boundary
 
 **Plans:** 0 plans complete
 
 Plans:
-- [ ] 54-01 Implement the SSH tunnel bootstrap path
+- [ ] 54-01 Implement the node-first path with permanent tunnel fallback
 
 ### Phase 55: Node Inspection, Recovery, and Operator Controls
 
-**Goal:** Surface remote-node connectivity, tunnel state, and recovery evidence through shipped inspection and operator surfaces.
+**Goal:** Surface remote-node connectivity, failover, tunnel state, and recovery evidence through shipped inspection and operator surfaces.
 
 **Success criteria:**
 - operators can inspect remote connectivity from one coherent shipped surface
-- failure modes distinguish auth, config, connectivity, and tunnel problems
+- failure modes distinguish auth, config, connectivity, node-path, and tunnel-fallback problems
 - repair or reconnect guidance is preserved in runtime evidence or operator docs
 
 **Plans:** 0 plans complete

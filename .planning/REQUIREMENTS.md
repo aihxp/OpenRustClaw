@@ -2,13 +2,13 @@
 
 ## Active Milestone: v1.12 Secure Node Connectivity and SSH Tunnel Revisit
 
-**Goal:** Revisit OpenRustClaw's node model and establish a truthful SSH-tunneled remote connectivity path for self-hosted deployments, with operator-visible node health, recovery, and documentation.
+**Goal:** Revisit OpenRustClaw's node model around a primary node-first remote path and a permanent SSH tunnel fallback for self-hosted deployments, with operator-visible health, failover, recovery, and documentation.
 
 ## Requirements
 
 ### NODE-01 Node and topology contract
 
-OpenRustClaw must define one bounded node and topology model that explains how the local runtime, mobile nodes, distributed cluster nodes, and SSH-tunneled remote access relate to each other and where each mode is supported.
+OpenRustClaw must define one bounded node and topology model that explains how the local runtime, mobile nodes, distributed cluster nodes, and SSH-tunneled remote access relate to each other, where each mode is supported, and when the tunnel path acts as backup rather than the primary transport.
 
 **Acceptance signals:**
 - the product has one canonical explanation of node roles instead of scattered or conflicting terminology
@@ -17,25 +17,26 @@ OpenRustClaw must define one bounded node and topology model that explains how t
 
 ### NODE-02 SSH tunnel bootstrap path
 
-Operators must have one explicit supported SSH tunnel bootstrap path for advanced self-hosted remote deployments, including required config, trust boundaries, and the relationship between the local gateway and the remote endpoint.
+Operators must have one explicit supported node-first remote bootstrap path for advanced self-hosted deployments plus a permanent SSH tunnel fallback, including required config, trust boundaries, failover expectations, and the relationship between the local gateway and the remote endpoint.
 
 **Acceptance signals:**
-- onboarding or setup can describe or configure the supported SSH tunnel path intentionally
-- the security boundary for the tunneled path is documented and inspectable
+- onboarding or setup can describe or configure the supported node-first path intentionally
+- the permanent SSH tunnel fallback is documented or configurable as a recovery path
+- the security boundary for both the node path and tunneled fallback is documented and inspectable
 - remote exposure no longer depends on vague "bring your own tunnel" wording alone
 
 ### NODE-03 Remote node inspection and recovery
 
-Shipped operator surfaces must expose the health, enrollment state, tunnel state, and recovery clues for remote nodes or remote connectivity paths so operators can debug failures without stitching raw endpoints manually.
+Shipped operator surfaces must expose the health, enrollment state, failover state, tunnel state, and recovery clues for remote nodes or remote connectivity paths so operators can debug failures without stitching raw endpoints manually.
 
 **Acceptance signals:**
 - node connectivity state is available through one shipped inspection path
-- operator-visible evidence distinguishes between configuration, connectivity, auth, and tunnel failures
+- operator-visible evidence distinguishes between configuration, connectivity, auth, node-path, and tunnel-fallback failures
 - recovery guidance exists for reconnecting or repairing a remote node path
 
 ### NODE-04 Onboarding and docs alignment
 
-Onboarding and documentation must explain the supported local-only, remote-node, and SSH-tunneled deployment paths truthfully, including when operators should choose standard local setup versus advanced remote connectivity.
+Onboarding and documentation must explain the supported local-only, remote-node, and SSH-tunneled deployment paths truthfully, including when operators should choose standard local setup versus advanced remote connectivity and when the tunnel path is a backup rather than the preferred mode.
 
 **Acceptance signals:**
 - setup guidance clearly differentiates standard local deployment from advanced remote connectivity

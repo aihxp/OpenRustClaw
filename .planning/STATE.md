@@ -73,7 +73,7 @@ Recent decisions affecting current work:
 - Phase 50 added an explicit docs.rs build contract and a real crate-level rustdoc landing surface for `openrustclaw-core`.
 - Phase 51 added a rerunnable crates.io readiness script, a docs-site publish runbook, and a passing publish dry-run for `openrustclaw-core`.
 - Phase 52 published `openrustclaw-core v0.1.0` to crates.io and confirmed docs.rs visibility for the new crate page.
-- v1.12 reopens the remote-connectivity story so nodes, advanced remote access, and SSH tunnel usage become an explicit product contract instead of an onboarding footnote.
+- v1.12 reopens the remote-connectivity story so nodes, advanced remote access, and SSH tunnel usage become an explicit product contract instead of an onboarding footnote, with node-first behavior and permanent tunnel fallback.
 
 ### Pending Todos
 
