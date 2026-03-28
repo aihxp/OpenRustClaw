@@ -1,0 +1,11 @@
+[package]
+name = "openrustclaw-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Application-layer services for the greenfield OpenRustClaw architecture lane"
+
+[dependencies]
+openrustclaw-core.workspace = true
+serde.workspace = true
+

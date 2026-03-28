@@ -68,6 +68,7 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 - ✓ Tagged GitHub releases now publish truthful tarball and checksum assets for all supported targets, with one repeatable operator validation path — v1.10 Phases 45-48
 - ✓ Node-first remote connectivity, SSH tunnel fallback, reverse-proxy last resort, and the saved remote-connectivity profile are now aligned across onboarding, setup state, operator handoff, and docs — v1.12 Phases 53-56
 - ✓ The repo now has a canonical greenfield transition contract with explicit containment rules, target layers, and a chosen first proving slice around setup handoff reporting — v1.13 Phase 57
+- ✓ The repo now has a real greenfield application shell in `openrustclaw-app` plus a stable setup-handoff service boundary for future adapters — v1.13 Phase 58
 
 ### Active
 
@@ -127,6 +128,7 @@ The next milestone changes the implementation posture rather than adding another
 | Keep reverse proxy as a bounded third-tier fallback instead of promoting it to the default remote path | Reverse proxy exposure can help recovery in difficult self-hosted environments, but it should remain a clearly constrained last resort behind the node-first and SSH tunnel paths | ✓ Good |
 | Treat the brownfield-to-greenfield shift as a staged carve-out inside the shipped repo rather than a rewrite-from-scratch reset | The product already has real users and operator surfaces, so the safer path is to create a clean lane and migrate into it with compatibility boundaries | ✓ Good |
 | Use setup handoff reporting as the first greenfield proving slice | It crosses setup state, report composition, route exposure, and Control UI rendering while already having bounded regression tests | ✓ Good |
+| Use `openrustclaw-app` as the first application shell instead of extending the CLI crate into a second mixed-responsibility hub | The transition needs one bounded home for services, but the new lane should not immediately inherit transport and command concerns from `openrustclaw-cli` | ✓ Good |
 
 ## Next Milestone Goals
 

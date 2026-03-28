@@ -22,6 +22,8 @@ For `v1.13`, “greenfield” means new work should aim for this shape:
 
 The key rule is simple: **presentation and transport layers should call application services, not own the business rules themselves**.
 
+The first concrete application shell now exists in `crates/app` as `openrustclaw-app`.
+
 ## Current Brownfield Containment Surfaces
 
 The main legacy containment surfaces are:

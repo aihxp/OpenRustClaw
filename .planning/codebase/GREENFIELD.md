@@ -20,9 +20,9 @@ This contract defines how the repo moves toward a greenfield-style architecture 
 | adapters and presentation | CLI commands, `/control/...` handlers, control UI renderers, transport-specific bindings | domain crates plus greenfield application services | deep cross-calls into unrelated legacy command modules |
 | legacy containment zone | oversized mixed-surface modules kept for compatibility while migration proceeds | existing behavior only, adapter calls into new services allowed | new default feature logic that could live in the greenfield lane |
 
-### Expected New Entry Point
+### Current New Entry Point
 
-The next phase should introduce a dedicated greenfield application shell, most likely as a new crate or module layer centered on service interfaces and report builders.
+The greenfield application shell now lives in `crates/app` as `openrustclaw-app`.
 
 From this milestone forward, new behavior should be added by:
 

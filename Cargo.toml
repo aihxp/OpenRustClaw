@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "crates/app",
     "crates/cloudflare_ai",
     "crates/deepseek",
     "crates/ollama_sdk",
@@ -138,6 +139,7 @@ walkdir = "2"
 # Internal crates
 cloudflare-ai = { path = "crates/cloudflare_ai" }
 openrustclaw-core = { path = "crates/core" }
+openrustclaw-app = { path = "crates/app" }
 openrustclaw-db = { path = "crates/db" }
 openrustclaw-memory = { path = "crates/memory" }
 openrustclaw-providers = { path = "crates/providers" }
