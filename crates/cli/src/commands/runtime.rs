@@ -10,7 +10,11 @@ use argon2::Argon2;
 use chacha20poly1305::aead::{Aead, KeyInit};
 use chacha20poly1305::{Key, XChaCha20Poly1305, XNonce};
 use chrono::Utc;
+use openrustclaw_app::runtime_provider_switch::{
+    RuntimeConfigMutationSource, RuntimeProviderSwitchRequest, RuntimeProviderSwitchService,
+};
 use openrustclaw_core::config::AppConfig;
+use openrustclaw_core::error::Error as CoreError;
 use openrustclaw_core::traits::LlmProvider;
 use openrustclaw_memory::{WorkspaceArtifactRegistry, artifacts::ArtifactClass};
 use openrustclaw_providers::{
@@ -2204,48 +2208,17 @@ pub fn switch_provider(
     api_key_env: Option<&str>,
     fallback_chain: Option<Vec<String>>,
 ) -> Result<AppConfig> {
-    let mut config = load_effective_config(config_path, workspace_root)?;
-    match provider {
-        "anthropic" => {
-            if let Some(model) = model {
-                config.providers.anthropic.model = model.to_string();
-            }
-            if let Some(api_key_env) = api_key_env {
-                config.providers.anthropic.api_key_env = Some(api_key_env.to_string());
-            }
-        }
-        "openai" => {
-            if let Some(model) = model {
-                config.providers.openai.model = model.to_string();
-            }
-            if let Some(api_key_env) = api_key_env {
-                config.providers.openai.api_key_env = Some(api_key_env.to_string());
-            }
-        }
-        "openrouter" => {
-            if let Some(model) = model {
-                config.providers.openrouter.model = model.to_string();
-            }
-            if let Some(api_key_env) = api_key_env {
-                config.providers.openrouter.api_key_env = Some(api_key_env.to_string());
-            }
-        }
-        "ollama" => {
-            if let Some(model) = model {
-                config.providers.ollama.model = model.to_string();
-            }
-        }
-        _ => anyhow::bail!("Unknown provider '{}'", provider),
-    }
-
-    config.providers.default_provider = provider.to_string();
-    if let Some(fallback_chain) = fallback_chain {
-        config.providers.fallback_chain = fallback_chain;
-    }
-    ensure_control_plane_defaults(&mut config);
-    validate_runtime_provider(&config, provider)?;
-    write_config_with_backup(config_path, &config)?;
-    Ok(config)
+    RuntimeProviderSwitchService::new(WorkspaceRuntimeConfigMutationSource::new(
+        config_path,
+        workspace_root,
+    ))
+    .switch_provider(RuntimeProviderSwitchRequest {
+        provider: provider.to_string(),
+        model: model.map(str::to_string),
+        api_key_env: api_key_env.map(str::to_string),
+        fallback_chain,
+    })
+    .map_err(|error| anyhow::anyhow!(error.to_string()))
 }
 
 pub fn switch_model(
@@ -2254,14 +2227,54 @@ pub fn switch_model(
     provider: &str,
     model: &str,
 ) -> Result<AppConfig> {
-    switch_provider(
+    RuntimeProviderSwitchService::new(WorkspaceRuntimeConfigMutationSource::new(
         config_path,
         workspace_root,
-        provider,
-        Some(model),
-        None,
-        None,
-    )
+    ))
+    .switch_model(provider, model)
+    .map_err(|error| anyhow::anyhow!(error.to_string()))
+}
+
+struct WorkspaceRuntimeConfigMutationSource<'a> {
+    config_path: &'a str,
+    workspace_root: &'a Path,
+}
+
+impl<'a> WorkspaceRuntimeConfigMutationSource<'a> {
+    fn new(config_path: &'a str, workspace_root: &'a Path) -> Self {
+        Self {
+            config_path,
+            workspace_root,
+        }
+    }
+}
+
+impl RuntimeConfigMutationSource for WorkspaceRuntimeConfigMutationSource<'_> {
+    fn load_effective_runtime_config(&self) -> openrustclaw_core::error::Result<AppConfig> {
+        load_effective_config(self.config_path, self.workspace_root)
+            .map_err(|error| CoreError::Internal(format!("failed to load runtime config: {error}")))
+    }
+
+    fn validate_runtime_provider(
+        &self,
+        config: &AppConfig,
+        provider: &str,
+    ) -> openrustclaw_core::error::Result<()> {
+        validate_runtime_provider(config, provider).map_err(|error| {
+            CoreError::Internal(format!("runtime provider validation failed: {error}"))
+        })
+    }
+
+    fn write_runtime_config_with_backup(
+        &self,
+        config: &AppConfig,
+    ) -> openrustclaw_core::error::Result<()> {
+        write_config_with_backup(self.config_path, config).map_err(|error| {
+            CoreError::Internal(format!(
+                "failed to write runtime config with backup: {error}"
+            ))
+        })
+    }
 }
 
 fn effective_control_plane_action_provider(config: &AppConfig) -> String {
@@ -2285,72 +2298,6 @@ fn provider_model_for<'a>(config: &'a AppConfig, provider: &str) -> &'a str {
         "gemini" => &config.providers.gemini.model,
         _ => &config.providers.anthropic.model,
     }
-}
-
-fn provider_supports_control_plane(config: &AppConfig, provider: &str) -> bool {
-    match provider {
-        "ollama" => true,
-        "anthropic" => config.providers.anthropic.api_key_env.is_some(),
-        "openai" => config.providers.openai.api_key_env.is_some(),
-        "openrouter" => config.providers.openrouter.api_key_env.is_some(),
-        "gemini" => config.providers.gemini.api_key_env.is_some(),
-        _ => false,
-    }
-}
-
-fn preferred_control_plane_candidates(config: &AppConfig) -> Vec<String> {
-    let mut ordered = Vec::new();
-    let default = config.providers.default_provider.as_str();
-
-    for candidate in ["ollama", "openrouter", "anthropic", "openai", "gemini"] {
-        if candidate == default {
-            continue;
-        }
-        if provider_supports_control_plane(config, candidate)
-            && !ordered.iter().any(|entry| entry == candidate)
-        {
-            ordered.push(candidate.to_string());
-        }
-    }
-
-    if ordered.is_empty() {
-        ordered.push(config.providers.default_provider.clone());
-    }
-
-    ordered
-}
-
-fn ensure_control_plane_defaults(config: &mut AppConfig) {
-    let preferred = preferred_control_plane_candidates(config);
-    let default = config.providers.default_provider.clone();
-    let current = config.providers.control_plane_provider.clone();
-
-    let should_replace = current
-        .as_deref()
-        .map(|provider| provider == default || !provider_supports_control_plane(config, provider))
-        .unwrap_or(true);
-
-    if should_replace {
-        config.providers.control_plane_provider = preferred.first().cloned();
-    }
-
-    let primary = config.providers.control_plane_provider.clone();
-    let mut next_chain = Vec::new();
-    for candidate in preferred.into_iter().chain(
-        config
-            .providers
-            .control_plane_fallback_chain
-            .clone()
-            .into_iter(),
-    ) {
-        if Some(candidate.as_str()) == primary.as_deref() || candidate == default {
-            continue;
-        }
-        if !next_chain.iter().any(|existing| existing == &candidate) {
-            next_chain.push(candidate);
-        }
-    }
-    config.providers.control_plane_fallback_chain = next_chain;
 }
 
 pub fn write_config_with_backup(config_path: &str, config: &AppConfig) -> Result<()> {
@@ -3123,6 +3070,29 @@ mod tests {
     use crate::commands::logs;
     use tempfile::tempdir;
 
+    struct EnvVarGuard {
+        key: &'static str,
+        previous: Option<String>,
+    }
+
+    impl EnvVarGuard {
+        fn set(key: &'static str, value: &str) -> Self {
+            let previous = std::env::var(key).ok();
+            unsafe { std::env::set_var(key, value) };
+            Self { key, previous }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            if let Some(previous) = self.previous.as_deref() {
+                unsafe { std::env::set_var(self.key, previous) };
+            } else {
+                unsafe { std::env::remove_var(self.key) };
+            }
+        }
+    }
+
     #[test]
     fn runtime_backup_and_restore_round_trip_workspace_state() -> Result<()> {
         let temp = tempdir()?;
@@ -3557,6 +3527,46 @@ mod tests {
                 .iter()
                 .any(|entry| entry.contains("openrustclaw runtime upgrade-plan"))
         );
+        Ok(())
+    }
+
+    #[test]
+    fn switch_provider_updates_runtime_config_through_service_lane() -> Result<()> {
+        let temp = tempdir()?;
+        let workspace_root = temp.path();
+        fs::create_dir_all(workspace_root.join("config"))?;
+        let _openai_env = EnvVarGuard::set("OPENAI_API_KEY", "test-key");
+
+        let mut config = AppConfig::default();
+        config.providers.default_provider = "anthropic".to_string();
+        config.providers.control_plane_provider = None;
+        let config_path = workspace_root.join("config/default.toml");
+        fs::write(&config_path, toml::to_string_pretty(&config)?)?;
+
+        let updated = switch_provider(
+            config_path.to_str().unwrap(),
+            workspace_root,
+            "openai",
+            Some("gpt-4.1-mini"),
+            Some("OPENAI_API_KEY"),
+            Some(vec!["anthropic".to_string()]),
+        )?;
+
+        assert_eq!(updated.providers.default_provider, "openai");
+        assert_eq!(updated.providers.openai.model, "gpt-4.1-mini");
+        assert_eq!(
+            updated.providers.openai.api_key_env.as_deref(),
+            Some("OPENAI_API_KEY")
+        );
+        assert_eq!(
+            updated.providers.fallback_chain,
+            vec!["anthropic".to_string()]
+        );
+        assert!(updated.providers.control_plane_provider.is_some());
+
+        let persisted = AppConfig::load_from(config_path.to_str().unwrap())?;
+        assert_eq!(persisted.providers.default_provider, "openai");
+        assert_eq!(persisted.providers.openai.model, "gpt-4.1-mini");
         Ok(())
     }
 }

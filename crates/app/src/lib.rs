@@ -9,6 +9,7 @@ pub mod compiled_skill_overview;
 pub mod enterprise_access_control;
 pub mod enterprise_admin;
 pub mod mobile_operator;
+pub mod runtime_provider_switch;
 pub mod self_hosted_product;
 pub mod setup_handoff;
 pub mod skill_registry_mutation;
