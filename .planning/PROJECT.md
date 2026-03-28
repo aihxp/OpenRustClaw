@@ -75,10 +75,10 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 - ✓ Contributor and planning defaults now make `openrustclaw-app` the default application lane, preserve compatibility-only exceptions for legacy hotspots, and keep the next migration queue explicit — v1.13 Phase 60
 - ✓ A second typed operator summary family now runs through `openrustclaw-app`, with self-hosted product-mode report composition moved out of `inspect.rs` and into the greenfield lane — v1.14 Phase 61
 - ✓ The `/control/self-hosted/product-mode` route family now runs through a greenfield application service seam, with `start.rs` reduced to the HTTP adapter for the migrated transition path — v1.14 Phase 62
+- ✓ The mobile node operator summary report now runs through `openrustclaw-app`, with `mobile.rs` reduced to the workspace adapter for the migrated operator-facing mobile report — v1.14 Phase 63
 
 ### Active
 
-- [ ] Mobile operator reporting must follow the proving-slice pattern so one more real operator surface runs through the greenfield application lane — v1.14
 - [ ] The `skills.rs` command surface needs a bounded service seam so future work stops deepening that hotspot by default — v1.14
 
 ### Out of Scope

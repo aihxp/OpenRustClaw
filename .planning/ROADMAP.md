@@ -21,10 +21,10 @@
 ## Current Status
 
 - Active milestone: **v1.14 Continued Greenfield Conversion**
-- Progress: 2 of 4 phases complete
+- Progress: 3 of 4 phases complete
 - Most recent shipment: **v1.13 Brownfield-to-Greenfield Transition**
-- Current execution: **Phase 63 not started**
-- Next step: `$gsd-discuss-phase 63`, `$gsd-plan-phase 63`, or `$gsd-autonomous`
+- Current execution: **Phase 64 not started**
+- Next step: `$gsd-discuss-phase 64`, `$gsd-plan-phase 64`, or `$gsd-autonomous`
 
 ## Live Planning
 
@@ -32,7 +32,7 @@
 
 - [x] **Phase 61: Inspection Summary Service Extraction** (completed 2026-03-28)
 - [x] **Phase 62: Control Route Family Service Extraction** (completed 2026-03-28)
-- [ ] **Phase 63: Mobile Operator Report Migration**
+- [x] **Phase 63: Mobile Operator Report Migration** (completed 2026-03-28)
 - [ ] **Phase 64: Skills Surface Boundary Cleanup**
 
 ### Phase 61: Inspection Summary Service Extraction
@@ -72,10 +72,10 @@ Plans:
 - runtime and Control UI contracts stay intact
 - verification proves the migrated mobile surface still behaves truthfully
 
-**Plans:** 0/1 plans complete
+**Plans:** 1/1 plans complete
 
 Plans:
-- [ ] 63-01 Migrate the next mobile operator report into the application lane
+- [x] 63-01 Migrate the next mobile operator report into the application lane
 
 ### Phase 64: Skills Surface Boundary Cleanup
 

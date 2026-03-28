@@ -112,6 +112,15 @@ The greenfield lane now also owns the first bounded `start.rs` control-route fam
 3. `inspect.rs` remains the workspace adapter that bridges persisted state into that new service seam
 4. `start.rs` now acts as the HTTP adapter for the `/control/self-hosted/product-mode` transition path instead of orchestrating the business logic directly
 
+### Current Phase 63 Outcome
+
+The greenfield lane now also owns a second operator-facing report surface:
+
+1. persisted mobile node state, metrics, and activity receipts still live behind the existing CLI mobile data helpers
+2. `openrustclaw-app` now owns mobile node operator report composition and attention-signal derivation
+3. `mobile.rs` acts as the workspace adapter that loads mobile state into that service
+4. the `/control/mobile/nodes/{id}/summary` route and Control UI continue to consume the same shipped report contract
+
 ## Review Defaults
 
 When reviewing new work during `v1.13`:

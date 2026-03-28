@@ -55,6 +55,8 @@ The next inspection-summary extraction is also shipped: self-hosted product-mode
 
 The first bounded `start.rs` route-family extraction is now shipped too. The `/control/self-hosted/product-mode` transition path delegates the transition-and-report use case through `openrustclaw-app`, while `inspect.rs` stays the workspace adapter and `start.rs` remains only the HTTP layer.
 
+The same migration pattern now covers a second operator-facing surface: the mobile node operator report is composed in `openrustclaw-app`, while `mobile.rs` only adapts node state, metrics, and recent activity into that service and preserves the shipped `/control/mobile/nodes/{id}/summary` contract.
+
 ## Contributor Defaults
 
 When adding or changing behavior during this transition:

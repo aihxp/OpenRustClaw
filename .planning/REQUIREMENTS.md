@@ -30,6 +30,8 @@ Selected `/control/...` route families in `crates/cli/src/commands/start.rs` mus
 
 At least one mobile operator-reporting surface must follow the proving-slice pattern and run through the greenfield application lane.
 
+**Status:** Completed in v1.14 Phase 63 via the mobile node operator summary report.
+
 **Acceptance signals:**
 - one real mobile operator report is built by `openrustclaw-app`
 - the shipped Control UI or runtime route contract remains intact
@@ -52,4 +54,4 @@ The `skills.rs` hotspot must gain a bounded service seam so future work has a cl
 
 ## Next Step
 
-Start execution with `$gsd-plan-phase 63` or `$gsd-autonomous`.
+Start execution with `$gsd-plan-phase 64` or `$gsd-autonomous`.
