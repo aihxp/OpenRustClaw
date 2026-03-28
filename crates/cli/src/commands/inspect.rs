@@ -8,6 +8,7 @@ use openrustclaw_app::enterprise_admin::{
     EnterpriseAdminState as AppEnterpriseAdminState,
     EnterpriseAdminSupervisionSummary as AppEnterpriseAdminSupervisionSummary,
 };
+use openrustclaw_app::greenfield_progress::{GreenfieldProgressReport, GreenfieldProgressService};
 use openrustclaw_app::self_hosted_product::{
     SelfHostedProductModeControlService, SelfHostedProductModeReport, SelfHostedProductModeService,
     SelfHostedProductModeSource, SelfHostedProductModeState,
@@ -1011,6 +1012,10 @@ pub fn transition_self_hosted_product_mode_summary(
         .map_err(Into::into)
 }
 
+pub fn greenfield_progress_summary() -> GreenfieldProgressReport {
+    GreenfieldProgressService::new().report(Utc::now().to_rfc3339())
+}
+
 struct WorkspaceSetupHandoffSource<'a> {
     workspace_root: &'a Path,
     manifest_path: String,
@@ -1885,8 +1890,9 @@ fn build_voice_operator_recent_activity(
 mod tests {
     use super::{
         enterprise_access_summary, enterprise_admin_summary, enterprise_foundations_summary,
-        new_tool_execution_record, self_hosted_product_mode_summary, setup_handoff_summary,
-        tool_execution_log_path, transition_self_hosted_product_mode_summary,
+        greenfield_progress_summary, new_tool_execution_record, self_hosted_product_mode_summary,
+        setup_handoff_summary, tool_execution_log_path,
+        transition_self_hosted_product_mode_summary,
     };
     use anyhow::Result;
     use chrono::{DateTime, Utc};
@@ -2128,6 +2134,18 @@ mod tests {
         assert_eq!(report.recent_transitions.len(), 1);
         assert_eq!(report.recent_transitions[0].actor, "operator-1");
         Ok(())
+    }
+
+    #[test]
+    fn greenfield_progress_summary_reports_current_inventory_score() {
+        let report = greenfield_progress_summary();
+
+        assert_eq!(report.total_seams, 18);
+        assert_eq!(report.completed_seams, 18);
+        assert_eq!(report.remaining_seams, 0);
+        assert_eq!(report.completion_percent, 100);
+        assert_eq!(report.ledger_status, "complete");
+        assert_eq!(report.queue_decision, "retire_current_ranked_inventory");
     }
 
     #[test]

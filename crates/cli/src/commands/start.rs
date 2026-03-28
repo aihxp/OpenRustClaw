@@ -16,15 +16,53 @@ use axum::{
 use chrono::{DateTime, Utc};
 use futures::{SinkExt, Stream, StreamExt};
 use openrustclaw_agent::runtime::AgentRuntime;
+use openrustclaw_app::autonomy_lessons_control::{
+    AutonomyLessonRequest as AppAutonomyLessonRequest, AutonomyLessonsControlService,
+    AutonomyLessonsControlSource,
+};
+use openrustclaw_app::channel_registry_lifecycle::{
+    ChannelRegistryAccountMutationAction as AppChannelRegistryAccountMutationAction,
+    ChannelRegistryAccountUpsertRequest as AppChannelRegistryAccountUpsertRequest,
+    ChannelRegistryBindRequest as AppChannelRegistryBindRequest,
+    ChannelRegistryBindingUpsertRequest as AppChannelRegistryBindingUpsertRequest,
+    ChannelRegistryLifecycleService, ChannelRegistryLifecycleSource,
+    ChannelSendPolicyRequest as AppChannelSendPolicyRequest,
+};
 use openrustclaw_app::compiled_skill_overview::CompiledSkillOverviewService;
+use openrustclaw_app::control_config::{ControlConfigService, ControlConfigSource};
+use openrustclaw_app::control_diagnostics::{ControlDiagnosticsService, ControlDiagnosticsSource};
 use openrustclaw_app::enterprise_access_control::{
     EnterpriseAccessBootstrapRequest as AppEnterpriseAccessBootstrapRequest,
     EnterpriseAccessControlService, EnterpriseAccessControlSource,
     EnterpriseAccessOperatorUpsertRequest as AppEnterpriseAccessOperatorUpsertRequest,
     EnterpriseGovernanceRuleUpsertRequest as AppEnterpriseGovernanceRuleUpsertRequest,
 };
+use openrustclaw_app::operator_status_control::{
+    OperatorStatusControlService, OperatorStatusControlSource,
+};
+use openrustclaw_app::runtime_maintenance_control::RuntimeMaintenanceControlService;
 use openrustclaw_app::runtime_vault_control::{
     RuntimeVaultControlService, RuntimeVaultControlSource,
+};
+use openrustclaw_app::skill_control::{
+    SkillAuthAuthorizeRequest as AppSkillAuthAuthorizeRequest,
+    SkillAuthCallbackRequest as AppSkillAuthCallbackRequest,
+    SkillAuthExchangeRequest as AppSkillAuthExchangeRequest,
+    SkillBindAuthPluginRequest as AppSkillBindAuthPluginRequest,
+    SkillBindVoicePluginRequest as AppSkillBindVoicePluginRequest,
+    SkillCompileRequest as AppSkillCompileRequest, SkillControlService, SkillControlSource,
+    SkillExecuteRequest as AppSkillExecuteRequest, SkillInvokeRequest as AppSkillInvokeRequest,
+    SkillPrewarmVoicePluginRequest as AppSkillPrewarmVoicePluginRequest,
+    SkillScheduleBackgroundRequest as AppSkillScheduleBackgroundRequest,
+    SkillSearchRequest as AppSkillSearchRequest,
+};
+use openrustclaw_app::skill_voice_channel_control::{
+    SkillBindChannelExtensionRequest as AppSkillBindChannelExtensionRequest,
+    SkillEndVoiceCallRequest as AppSkillEndVoiceCallRequest,
+    SkillReapVoiceCallsRequest as AppSkillReapVoiceCallsRequest,
+    SkillReconnectVoiceCallRequest as AppSkillReconnectVoiceCallRequest,
+    SkillStartVoiceCallRequest as AppSkillStartVoiceCallRequest, SkillVoiceChannelControlService,
+    SkillVoiceChannelControlSource,
 };
 use openrustclaw_channels::discord::DiscordInteractionsHandler;
 use openrustclaw_channels::gmail_pubsub::GmailWebhookHandler;
@@ -2753,9 +2791,10 @@ fn channel_registry_router(registry: Arc<tokio::sync::RwLock<ChannelRegistry>>) 
         .with_state(ChannelRegistryApiState { registry })
 }
 
-fn control_plane_router(state: ControlPlaneApiState) -> Router {
-    Router::new()
-        .route("/control/runtime", get(control_runtime_handler))
+fn register_control_plane_greenfield_routes(
+    router: Router<ControlPlaneApiState>,
+) -> Router<ControlPlaneApiState> {
+    router
         .route("/control/autonomy", get(control_autonomy_handler))
         .route(
             "/control/autonomy/lessons",
@@ -2778,7 +2817,164 @@ fn control_plane_router(state: ControlPlaneApiState) -> Router {
             "/control/diagnostics/ws",
             get(control_diagnostics_ws_handler),
         )
-        .with_state(state)
+}
+
+fn control_plane_router(state: ControlPlaneApiState) -> Router {
+    register_control_plane_greenfield_routes(
+        Router::new().route("/control/runtime", get(control_runtime_handler)),
+    )
+    .with_state(state)
+}
+
+fn register_runtime_skill_control_routes(router: Router) -> Router {
+    router
+        .route("/control/skills", get(control_skills_handler))
+        .route(
+            "/control/skills/compile",
+            post(control_skill_compile_handler),
+        )
+        .route(
+            "/control/skills/compiled",
+            get(control_compiled_skills_handler),
+        )
+        .route(
+            "/control/skills/compiled/{name}",
+            get(control_compiled_skill_detail_handler),
+        )
+        .route(
+            "/control/skills/extensions",
+            get(control_extension_manifests_handler),
+        )
+        .route(
+            "/control/skills/extensions/{name}",
+            get(control_extension_manifest_handler),
+        )
+        .route(
+            "/control/skills/auth-plugins",
+            get(control_skill_auth_plugins_handler),
+        )
+        .route(
+            "/control/skills/auth-plugins/bind",
+            post(control_skill_bind_auth_plugin_handler),
+        )
+        .route(
+            "/control/skills/auth-plugins/callback",
+            get(control_skill_auth_callback_handler),
+        )
+        .route(
+            "/control/skills/auth-plugins/{provider_id}/authorize",
+            post(control_skill_auth_authorize_handler),
+        )
+        .route(
+            "/control/skills/auth-plugins/{provider_id}/exchange",
+            post(control_skill_auth_exchange_handler),
+        )
+        .route(
+            "/control/skills/voice-plugins",
+            get(control_skill_voice_plugins_handler),
+        )
+        .route(
+            "/control/skills/voice-plugins/bind",
+            post(control_skill_bind_voice_plugin_handler),
+        )
+        .route(
+            "/control/skills/voice-plugins/{plugin_id}/prewarm",
+            post(control_skill_prewarm_voice_plugin_handler),
+        )
+        .route("/control/skills/search", get(control_skills_search_handler))
+        .route(
+            "/control/skills/popular",
+            get(control_skills_popular_handler),
+        )
+        .route(
+            "/control/skills/trending",
+            get(control_skills_trending_handler),
+        )
+        .route(
+            "/control/skills/install",
+            post(control_skill_install_handler),
+        )
+        .route("/control/skills/{name}", get(control_skill_detail_handler))
+        .route(
+            "/control/skills/{name}/compile",
+            post(control_skill_compile_by_name_handler),
+        )
+        .route(
+            "/control/skills/{name}/update",
+            post(control_skill_update_handler),
+        )
+        .route(
+            "/control/skills/{name}/uninstall",
+            post(control_skill_uninstall_handler),
+        )
+        .route(
+            "/control/skills/{name}/verify",
+            post(control_skill_verify_handler),
+        )
+        .route(
+            "/control/skills/{name}/invoke",
+            post(control_skill_invoke_handler),
+        )
+        .route(
+            "/control/skills/{name}/execute",
+            post(control_skill_execute_handler),
+        )
+        .route(
+            "/control/skills/{name}/background-services",
+            get(control_skill_background_services_handler),
+        )
+        .route(
+            "/control/skills/{name}/background-services/schedule",
+            post(control_skill_schedule_background_handler),
+        )
+}
+
+fn register_runtime_skill_voice_channel_routes(router: Router) -> Router {
+    router
+        .route(
+            "/control/skills/voice-calls",
+            get(control_skill_voice_calls_handler),
+        )
+        .route(
+            "/control/skills/voice-calls/health",
+            get(control_skill_voice_call_health_handler),
+        )
+        .route(
+            "/control/skills/voice-calls/metrics",
+            get(control_skill_voice_call_metrics_handler),
+        )
+        .route(
+            "/control/skills/voice-calls/{call_id}/events",
+            get(control_skill_voice_call_events_handler),
+        )
+        .route(
+            "/control/skills/voice-calls/{call_id}/artifacts",
+            get(control_skill_voice_call_artifacts_handler),
+        )
+        .route(
+            "/control/skills/voice-calls/start",
+            post(control_skill_start_voice_call_handler),
+        )
+        .route(
+            "/control/skills/voice-calls/{call_id}/end",
+            post(control_skill_end_voice_call_handler),
+        )
+        .route(
+            "/control/skills/voice-calls/{call_id}/reconnect",
+            post(control_skill_reconnect_voice_call_handler),
+        )
+        .route(
+            "/control/skills/voice-calls/reap",
+            post(control_skill_reap_voice_calls_handler),
+        )
+        .route(
+            "/control/skills/channel-extensions",
+            get(control_skill_channel_extensions_handler),
+        )
+        .route(
+            "/control/skills/channel-extensions/bind",
+            post(control_skill_bind_channel_extension_handler),
+        )
 }
 
 fn runtime_control_router(state: RuntimeControlState) -> Router {
@@ -3125,6 +3321,10 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             get(runtime_reload_plan_handler),
         )
         .route(
+            "/control/runtime/maintenance",
+            get(runtime_maintenance_handler),
+        )
+        .route(
             "/control/runtime/upgrade-plan",
             get(runtime_upgrade_plan_handler),
         )
@@ -3283,149 +3483,6 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             "/control/browser/workflow-history",
             get(browser_workflow_history_handler),
         )
-        .route("/control/skills", get(control_skills_handler))
-        .route(
-            "/control/skills/compile",
-            post(control_skill_compile_handler),
-        )
-        .route(
-            "/control/skills/compiled",
-            get(control_compiled_skills_handler),
-        )
-        .route(
-            "/control/skills/compiled/{name}",
-            get(control_compiled_skill_detail_handler),
-        )
-        .route(
-            "/control/skills/extensions",
-            get(control_extension_manifests_handler),
-        )
-        .route(
-            "/control/skills/extensions/{name}",
-            get(control_extension_manifest_handler),
-        )
-        .route(
-            "/control/skills/auth-plugins",
-            get(control_skill_auth_plugins_handler),
-        )
-        .route(
-            "/control/skills/auth-plugins/bind",
-            post(control_skill_bind_auth_plugin_handler),
-        )
-        .route(
-            "/control/skills/auth-plugins/callback",
-            get(control_skill_auth_callback_handler),
-        )
-        .route(
-            "/control/skills/voice-plugins",
-            get(control_skill_voice_plugins_handler),
-        )
-        .route(
-            "/control/skills/voice-plugins/bind",
-            post(control_skill_bind_voice_plugin_handler),
-        )
-        .route(
-            "/control/skills/voice-plugins/{plugin_id}/prewarm",
-            post(control_skill_prewarm_voice_plugin_handler),
-        )
-        .route(
-            "/control/skills/voice-calls",
-            get(control_skill_voice_calls_handler),
-        )
-        .route(
-            "/control/skills/voice-calls/health",
-            get(control_skill_voice_call_health_handler),
-        )
-        .route(
-            "/control/skills/voice-calls/metrics",
-            get(control_skill_voice_call_metrics_handler),
-        )
-        .route(
-            "/control/skills/voice-calls/{call_id}/events",
-            get(control_skill_voice_call_events_handler),
-        )
-        .route(
-            "/control/skills/voice-calls/{call_id}/artifacts",
-            get(control_skill_voice_call_artifacts_handler),
-        )
-        .route(
-            "/control/skills/voice-calls/start",
-            post(control_skill_start_voice_call_handler),
-        )
-        .route(
-            "/control/skills/voice-calls/{call_id}/end",
-            post(control_skill_end_voice_call_handler),
-        )
-        .route(
-            "/control/skills/voice-calls/{call_id}/reconnect",
-            post(control_skill_reconnect_voice_call_handler),
-        )
-        .route(
-            "/control/skills/voice-calls/reap",
-            post(control_skill_reap_voice_calls_handler),
-        )
-        .route(
-            "/control/skills/channel-extensions",
-            get(control_skill_channel_extensions_handler),
-        )
-        .route(
-            "/control/skills/channel-extensions/bind",
-            post(control_skill_bind_channel_extension_handler),
-        )
-        .route("/control/skills/search", get(control_skills_search_handler))
-        .route(
-            "/control/skills/popular",
-            get(control_skills_popular_handler),
-        )
-        .route(
-            "/control/skills/trending",
-            get(control_skills_trending_handler),
-        )
-        .route(
-            "/control/skills/install",
-            post(control_skill_install_handler),
-        )
-        .route("/control/skills/{name}", get(control_skill_detail_handler))
-        .route(
-            "/control/skills/{name}/compile",
-            post(control_skill_compile_by_name_handler),
-        )
-        .route(
-            "/control/skills/{name}/update",
-            post(control_skill_update_handler),
-        )
-        .route(
-            "/control/skills/{name}/uninstall",
-            post(control_skill_uninstall_handler),
-        )
-        .route(
-            "/control/skills/{name}/verify",
-            post(control_skill_verify_handler),
-        )
-        .route(
-            "/control/skills/{name}/invoke",
-            post(control_skill_invoke_handler),
-        )
-        .route(
-            "/control/skills/{name}/execute",
-            post(control_skill_execute_handler),
-        )
-        .route(
-            "/control/skills/{name}/background-services",
-            get(control_skill_background_services_handler),
-        )
-        .route(
-            "/control/skills/{name}/background-services/schedule",
-            post(control_skill_schedule_background_handler),
-        )
-        .route(
-            "/control/skills/auth-plugins/{provider_id}/authorize",
-            post(control_skill_auth_authorize_handler),
-        )
-        .route(
-            "/control/skills/auth-plugins/{provider_id}/exchange",
-            post(control_skill_auth_exchange_handler),
-        )
         .route("/control/services/status", get(service_status_handler))
         .route(
             "/control/services/scheduler",
@@ -3465,7 +3522,8 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
         .route("/control/browser/pdf", post(browser_pdf_handler))
         .with_state(state);
 
-    router
+    let router = register_runtime_skill_control_routes(router);
+    register_runtime_skill_voice_channel_routes(router)
 }
 
 async fn channel_registry_index_handler(
@@ -3509,7 +3567,19 @@ async fn channel_registry_create_account_handler(
     State(state): State<ChannelRegistryApiState>,
     Json(payload): Json<super::channels::ChannelAccountSpec>,
 ) -> impl IntoResponse {
-    upsert_channel_registry_account(state.registry, None, payload).await
+    match ChannelRegistryLifecycleService::new(WorkspaceChannelRegistryLifecycleSource {
+        registry: state.registry,
+    })
+    .upsert_account(None, map_channel_account_spec_to_app(payload))
+    .await
+    {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
 }
 
 async fn channel_registry_update_account_handler(
@@ -3517,35 +3587,32 @@ async fn channel_registry_update_account_handler(
     AxumPath(id): AxumPath<String>,
     Json(payload): Json<super::channels::ChannelAccountSpec>,
 ) -> impl IntoResponse {
-    upsert_channel_registry_account(state.registry, Some(id), payload).await
+    match ChannelRegistryLifecycleService::new(WorkspaceChannelRegistryLifecycleSource {
+        registry: state.registry,
+    })
+    .upsert_account(Some(&id), map_channel_account_spec_to_app(payload))
+    .await
+    {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
 }
 
 async fn channel_registry_delete_account_handler(
     State(state): State<ChannelRegistryApiState>,
     AxumPath(id): AxumPath<String>,
 ) -> impl IntoResponse {
-    let root = {
-        state
-            .registry
-            .read()
-            .await
-            .root
-            .to_string_lossy()
-            .to_string()
-    };
-    match super::channels::delete_account(Some(&root), &id) {
-        Ok(()) => match reload_channel_registry(&state.registry).await {
-            Ok(()) => (
-                StatusCode::OK,
-                Json(serde_json::json!({"status": "ok", "account_id": id, "action": "delete"})),
-            )
-                .into_response(),
-            Err(error) => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": error.to_string()})),
-            )
-                .into_response(),
-        },
+    match ChannelRegistryLifecycleService::new(WorkspaceChannelRegistryLifecycleSource {
+        registry: state.registry,
+    })
+    .delete_account(&id)
+    .await
+    {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": error.to_string()})),
@@ -3558,14 +3625,38 @@ async fn channel_registry_approve_handler(
     State(state): State<ChannelRegistryApiState>,
     AxumPath(id): AxumPath<String>,
 ) -> impl IntoResponse {
-    mutate_channel_registry_account(state.registry, &id, "approve", None).await
+    match ChannelRegistryLifecycleService::new(WorkspaceChannelRegistryLifecycleSource {
+        registry: state.registry,
+    })
+    .approve_account(&id)
+    .await
+    {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
 }
 
 async fn channel_registry_block_handler(
     State(state): State<ChannelRegistryApiState>,
     AxumPath(id): AxumPath<String>,
 ) -> impl IntoResponse {
-    mutate_channel_registry_account(state.registry, &id, "block", None).await
+    match ChannelRegistryLifecycleService::new(WorkspaceChannelRegistryLifecycleSource {
+        registry: state.registry,
+    })
+    .block_account(&id)
+    .await
+    {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
 }
 
 #[derive(serde::Deserialize)]
@@ -3578,7 +3669,19 @@ async fn channel_registry_activation_handler(
     AxumPath(id): AxumPath<String>,
     Json(payload): Json<ChannelActivationRequest>,
 ) -> impl IntoResponse {
-    mutate_channel_registry_account(state.registry, &id, "activation", Some(payload.mode)).await
+    match ChannelRegistryLifecycleService::new(WorkspaceChannelRegistryLifecycleSource {
+        registry: state.registry,
+    })
+    .activate_account(&id, payload.mode)
+    .await
+    {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
 }
 
 #[derive(serde::Deserialize)]
@@ -3597,27 +3700,28 @@ async fn channel_registry_bind_handler(
     State(state): State<ChannelRegistryApiState>,
     Json(payload): Json<ChannelBindingRequest>,
 ) -> impl IntoResponse {
-    upsert_channel_registry_binding(
-        state.registry,
-        None,
-        ChannelBindingSpec {
-            id: payload.id,
-            platform: payload.platform,
-            enabled: true,
-            priority: 100,
-            workspace_match: payload.workspace_match,
-            account_match: payload.account_match,
-            channel_match: payload.channel_match,
-            workspace_target: payload.workspace_target,
-            agent_id: payload.agent_id,
-            activation_mode: payload.activation_mode,
-            direct_strategy: None,
-            group_strategy: None,
-            send_policy: None,
-            metadata: serde_json::json!({}),
-        },
-    )
+    match ChannelRegistryLifecycleService::new(WorkspaceChannelRegistryLifecycleSource {
+        registry: state.registry,
+    })
+    .bind_channel(AppChannelRegistryBindRequest {
+        id: payload.id,
+        platform: payload.platform,
+        workspace_match: payload.workspace_match,
+        account_match: payload.account_match,
+        channel_match: payload.channel_match,
+        workspace_target: payload.workspace_target,
+        agent_id: payload.agent_id,
+        activation_mode: payload.activation_mode,
+    })
     .await
+    {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
 }
 
 async fn channel_registry_binding_handler(
@@ -3640,144 +3744,32 @@ async fn channel_registry_update_binding_handler(
     AxumPath(id): AxumPath<String>,
     Json(payload): Json<ChannelBindingSpec>,
 ) -> impl IntoResponse {
-    upsert_channel_registry_binding(state.registry, Some(id), payload).await
+    match ChannelRegistryLifecycleService::new(WorkspaceChannelRegistryLifecycleSource {
+        registry: state.registry,
+    })
+    .upsert_binding(Some(&id), map_channel_binding_spec_to_app(payload))
+    .await
+    {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
 }
 
 async fn channel_registry_delete_binding_handler(
     State(state): State<ChannelRegistryApiState>,
     AxumPath(id): AxumPath<String>,
 ) -> impl IntoResponse {
-    let root = {
-        state
-            .registry
-            .read()
-            .await
-            .root
-            .to_string_lossy()
-            .to_string()
-    };
-    match super::channels::delete_binding(Some(&root), &id) {
-        Ok(()) => match reload_channel_registry(&state.registry).await {
-            Ok(()) => (
-                StatusCode::OK,
-                Json(serde_json::json!({"status": "ok", "binding_id": id, "action": "delete"})),
-            )
-                .into_response(),
-            Err(error) => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": error.to_string()})),
-            )
-                .into_response(),
-        },
-        Err(error) => (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": error.to_string()})),
-        )
-            .into_response(),
-    }
-}
-
-async fn upsert_channel_registry_account(
-    registry: Arc<tokio::sync::RwLock<ChannelRegistry>>,
-    expected_id: Option<String>,
-    payload: super::channels::ChannelAccountSpec,
-) -> axum::response::Response {
-    if let Some(expected_id) = expected_id.as_deref()
-        && payload.id != expected_id
+    match ChannelRegistryLifecycleService::new(WorkspaceChannelRegistryLifecycleSource {
+        registry: state.registry,
+    })
+    .delete_binding(&id)
+    .await
     {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "account id does not match path"})),
-        )
-            .into_response();
-    }
-
-    let root = { registry.read().await.root.to_string_lossy().to_string() };
-    match super::channels::upsert_account(Some(&root), payload.clone()) {
-        Ok(()) => match reload_channel_registry(&registry).await {
-            Ok(()) => (
-                StatusCode::OK,
-                Json(serde_json::json!({"status": "ok", "account_id": payload.id})),
-            )
-                .into_response(),
-            Err(error) => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": error.to_string()})),
-            )
-                .into_response(),
-        },
-        Err(error) => (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": error.to_string()})),
-        )
-            .into_response(),
-    }
-}
-
-async fn upsert_channel_registry_binding(
-    registry: Arc<tokio::sync::RwLock<ChannelRegistry>>,
-    expected_id: Option<String>,
-    payload: ChannelBindingSpec,
-) -> axum::response::Response {
-    if let Some(expected_id) = expected_id.as_deref()
-        && payload.id != expected_id
-    {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": "binding id does not match path"})),
-        )
-            .into_response();
-    }
-
-    let root = { registry.read().await.root.to_string_lossy().to_string() };
-    match super::channels::upsert_binding(Some(&root), payload.clone()) {
-        Ok(()) => match reload_channel_registry(&registry).await {
-            Ok(()) => (
-                StatusCode::OK,
-                Json(serde_json::json!({"status": "ok", "binding_id": payload.id})),
-            )
-                .into_response(),
-            Err(error) => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": error.to_string()})),
-            )
-                .into_response(),
-        },
-        Err(error) => (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({"error": error.to_string()})),
-        )
-            .into_response(),
-    }
-}
-
-async fn mutate_channel_registry_account(
-    registry: Arc<tokio::sync::RwLock<ChannelRegistry>>,
-    id: &str,
-    action: &str,
-    mode: Option<String>,
-) -> axum::response::Response {
-    let root = { registry.read().await.root.to_string_lossy().to_string() };
-    let result = match action {
-        "approve" => super::channels::approve(Some(&root), id),
-        "block" => super::channels::block(Some(&root), id),
-        "activation" => super::channels::activation(Some(&root), id, mode.as_deref().unwrap_or("")),
-        _ => Err(anyhow::anyhow!("unsupported channel registry action")),
-    };
-
-    match result {
-        Ok(()) => match reload_channel_registry(&registry).await {
-            Ok(()) => (
-                StatusCode::OK,
-                Json(serde_json::json!({"status": "ok", "account_id": id, "action": action})),
-            )
-                .into_response(),
-            Err(error) => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": error.to_string()})),
-            )
-                .into_response(),
-        },
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": error.to_string()})),
@@ -3817,20 +3809,12 @@ async fn control_runtime_handler(State(state): State<ControlPlaneApiState>) -> i
 }
 
 async fn control_autonomy_handler(State(state): State<ControlPlaneApiState>) -> impl IntoResponse {
-    match control::describe_registry(state.control_root.clone()) {
-        Ok(description) => (
-            StatusCode::OK,
-            Json(serde_json::json!({
-                "execution_mode": description["execution_mode"].clone(),
-                "default_claw": description["default_claw"].clone(),
-                "orchestrator_claw": description["orchestrator_claw"].clone(),
-                "allow_shared_context": description["allow_shared_context"].clone(),
-                "isolation_mode": description["isolation_mode"].clone(),
-                "autonomy": description["autonomy"].clone(),
-                "decision_lessons": description["decision_lessons"].clone(),
-            })),
-        )
-            .into_response(),
+    match AutonomyLessonsControlService::new(WorkspaceAutonomyLessonsControlSource {
+        control_root: &state.control_root,
+    })
+    .summary()
+    {
+        Ok(description) => (StatusCode::OK, Json(serde_json::json!(description))).into_response(),
         Err(error) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({"error": error.to_string()})),
@@ -3842,14 +3826,12 @@ async fn control_autonomy_handler(State(state): State<ControlPlaneApiState>) -> 
 async fn control_autonomy_lessons_handler(
     State(state): State<ControlPlaneApiState>,
 ) -> impl IntoResponse {
-    match control::describe_registry(state.control_root.clone()) {
-        Ok(description) => (
-            StatusCode::OK,
-            Json(serde_json::json!({
-                "decision_lessons": description["decision_lessons"].clone(),
-            })),
-        )
-            .into_response(),
+    match AutonomyLessonsControlService::new(WorkspaceAutonomyLessonsControlSource {
+        control_root: &state.control_root,
+    })
+    .lessons()
+    {
+        Ok(description) => (StatusCode::OK, Json(serde_json::json!(description))).into_response(),
         Err(error) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({"error": error.to_string()})),
@@ -3895,41 +3877,26 @@ async fn control_autonomy_create_lesson_handler(
     State(state): State<ControlPlaneApiState>,
     Json(payload): Json<AutonomyLessonPayload>,
 ) -> impl IntoResponse {
-    let control_root = state.control_root.to_string_lossy().to_string();
-    match control::create_lesson(
-        Some(&control_root),
-        control::NewLessonInput {
-            id: &payload.id,
-            active: payload.active,
-            signal: &payload.signal,
-            recommendation: &payload.recommendation,
-            rationale: payload.rationale.as_deref(),
-            confidence: payload.confidence.unwrap_or(0.7),
-            source: payload.source.as_deref(),
-            task_id: payload.task_id.as_deref(),
-            category: payload.category.as_deref(),
-            claw_id: payload.claw_id.as_deref(),
-            model_profile_id: payload.model_profile_id.as_deref(),
-            provider: payload.provider.as_deref(),
-            autonomy_level: payload.autonomy_level.as_deref(),
-            execution_mode: payload.execution_mode.as_deref(),
-        },
-    ) {
-        Ok(()) => match control::describe_registry(state.control_root.clone()) {
-            Ok(description) => (
-                StatusCode::OK,
-                Json(serde_json::json!({
-                    "status": "ok",
-                    "decision_lessons": description["decision_lessons"].clone(),
-                })),
-            )
-                .into_response(),
-            Err(error) => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": error.to_string()})),
-            )
-                .into_response(),
-        },
+    match AutonomyLessonsControlService::new(WorkspaceAutonomyLessonsControlSource {
+        control_root: &state.control_root,
+    })
+    .create_lesson(&AppAutonomyLessonRequest {
+        id: payload.id,
+        active: payload.active,
+        signal: payload.signal,
+        recommendation: payload.recommendation,
+        rationale: payload.rationale,
+        confidence: payload.confidence,
+        source: payload.source,
+        task_id: payload.task_id,
+        category: payload.category,
+        claw_id: payload.claw_id,
+        model_profile_id: payload.model_profile_id,
+        provider: payload.provider,
+        autonomy_level: payload.autonomy_level,
+        execution_mode: payload.execution_mode,
+    }) {
+        Ok(description) => (StatusCode::OK, Json(serde_json::json!(description))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": error.to_string()})),
@@ -3942,23 +3909,12 @@ async fn control_autonomy_deactivate_lesson_handler(
     State(state): State<ControlPlaneApiState>,
     AxumPath(id): AxumPath<String>,
 ) -> impl IntoResponse {
-    let control_root = state.control_root.to_string_lossy().to_string();
-    match control::deactivate_lesson(Some(&control_root), &id) {
-        Ok(()) => match control::describe_registry(state.control_root.clone()) {
-            Ok(description) => (
-                StatusCode::OK,
-                Json(serde_json::json!({
-                    "status": "ok",
-                    "decision_lessons": description["decision_lessons"].clone(),
-                })),
-            )
-                .into_response(),
-            Err(error) => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": error.to_string()})),
-            )
-                .into_response(),
-        },
+    match AutonomyLessonsControlService::new(WorkspaceAutonomyLessonsControlSource {
+        control_root: &state.control_root,
+    })
+    .deactivate_lesson(&id)
+    {
+        Ok(description) => (StatusCode::OK, Json(serde_json::json!(description))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": error.to_string()})),
@@ -4166,12 +4122,11 @@ fn default_skill_background_priority() -> i64 {
 }
 
 async fn control_skills_handler() -> impl IntoResponse {
-    match skills::installed_skills_data().await {
-        Ok(entries) => (
-            StatusCode::OK,
-            Json(serde_json::json!({ "skills": entries })),
-        )
-            .into_response(),
+    match SkillControlService::new(WorkspaceSkillControlSource)
+        .skills()
+        .await
+    {
+        Ok(entries) => (StatusCode::OK, Json(entries)).into_response(),
         Err(error) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({ "error": error.to_string() })),
@@ -4181,26 +4136,11 @@ async fn control_skills_handler() -> impl IntoResponse {
 }
 
 async fn control_skill_detail_handler(AxumPath(name): AxumPath<String>) -> impl IntoResponse {
-    match skills::installed_skill_detail_data(&name).await {
-        Ok(skill) => {
-            let compiled = skills::compiled_skill_detail_data(&name).await.ok();
-            let extension_manifest = skills::extension_manifest_data(&name).await.ok();
-            let background_services = skills::background_services_data(&name).await.ok();
-            let auth_plugins = skills::auth_plugins_for_skill_data(&name).await.ok();
-            let voice_plugins = skills::voice_plugins_for_skill_data(&name).await.ok();
-            (
-                StatusCode::OK,
-                Json(serde_json::json!({
-                    "skill": skill,
-                    "compiled": compiled,
-                    "extension_manifest": extension_manifest,
-                    "background_services": background_services,
-                    "auth_plugins": auth_plugins,
-                    "voice_plugins": voice_plugins,
-                })),
-            )
-                .into_response()
-        }
+    match SkillControlService::new(WorkspaceSkillControlSource)
+        .skill_detail(&name)
+        .await
+    {
+        Ok(skill) => (StatusCode::OK, Json(skill)).into_response(),
         Err(error) => (
             StatusCode::NOT_FOUND,
             Json(serde_json::json!({ "error": error.to_string() })),
@@ -4210,22 +4150,16 @@ async fn control_skill_detail_handler(AxumPath(name): AxumPath<String>) -> impl 
 }
 
 async fn control_skills_search_handler(Query(query): Query<SkillSearchQuery>) -> impl IntoResponse {
-    let Some(search) = query.q.as_deref().filter(|value| !value.trim().is_empty()) else {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({ "error": "query parameter `q` is required" })),
-        )
-            .into_response();
-    };
-
-    match skills::search_data(
-        search,
-        query.category.as_deref(),
-        query.sort.as_deref().unwrap_or("relevance"),
-    )
-    .await
+    match SkillControlService::new(WorkspaceSkillControlSource)
+        .search(AppSkillSearchRequest {
+            q: query.q,
+            category: query.category,
+            sort: query.sort,
+            limit: query.limit,
+        })
+        .await
     {
-        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "error": error.to_string() })),
@@ -4237,8 +4171,14 @@ async fn control_skills_search_handler(Query(query): Query<SkillSearchQuery>) ->
 async fn control_skills_popular_handler(
     Query(query): Query<SkillSearchQuery>,
 ) -> impl IntoResponse {
-    match skills::popular_data(query.limit.unwrap_or(12).max(1)).await {
-        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+    match SkillControlService::new(WorkspaceSkillControlSource)
+        .popular(AppSkillSearchRequest {
+            limit: query.limit,
+            ..Default::default()
+        })
+        .await
+    {
+        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "error": error.to_string() })),
@@ -4250,8 +4190,14 @@ async fn control_skills_popular_handler(
 async fn control_skills_trending_handler(
     Query(query): Query<SkillSearchQuery>,
 ) -> impl IntoResponse {
-    match skills::trending_data(query.limit.unwrap_or(12).max(1)).await {
-        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+    match SkillControlService::new(WorkspaceSkillControlSource)
+        .trending(AppSkillSearchRequest {
+            limit: query.limit,
+            ..Default::default()
+        })
+        .await
+    {
+        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "error": error.to_string() })),
@@ -4263,8 +4209,11 @@ async fn control_skills_trending_handler(
 async fn control_skill_install_handler(
     Json(payload): Json<SkillInstallPayload>,
 ) -> impl IntoResponse {
-    match skills::install_data(&payload.name).await {
-        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+    match SkillControlService::new(WorkspaceSkillControlSource)
+        .install(&payload.name)
+        .await
+    {
+        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "error": error.to_string() })),
@@ -4276,8 +4225,11 @@ async fn control_skill_install_handler(
 async fn control_skill_compile_handler(
     Json(payload): Json<SkillCompilePayload>,
 ) -> impl IntoResponse {
-    match skills::compile_data(payload.name.as_deref()).await {
-        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+    match SkillControlService::new(WorkspaceSkillControlSource)
+        .compile(AppSkillCompileRequest { name: payload.name })
+        .await
+    {
+        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "error": error.to_string() })),
@@ -4287,12 +4239,11 @@ async fn control_skill_compile_handler(
 }
 
 async fn control_compiled_skills_handler() -> impl IntoResponse {
-    match skills::compiled_skills_data().await {
-        Ok(compiled) => (
-            StatusCode::OK,
-            Json(serde_json::json!({ "compiled": compiled })),
-        )
-            .into_response(),
+    match SkillControlService::new(WorkspaceSkillControlSource)
+        .compiled_skills()
+        .await
+    {
+        Ok(compiled) => (StatusCode::OK, Json(compiled)).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "error": error.to_string() })),
@@ -4304,8 +4255,11 @@ async fn control_compiled_skills_handler() -> impl IntoResponse {
 async fn control_compiled_skill_detail_handler(
     AxumPath(name): AxumPath<String>,
 ) -> impl IntoResponse {
-    match skills::compiled_skill_detail_data(&name).await {
-        Ok(compiled) => (StatusCode::OK, Json(serde_json::json!(compiled))).into_response(),
+    match SkillControlService::new(WorkspaceSkillControlSource)
+        .compiled_skill_detail(&name)
+        .await
+    {
+        Ok(compiled) => (StatusCode::OK, Json(compiled)).into_response(),
         Err(error) => (
             StatusCode::NOT_FOUND,
             Json(serde_json::json!({ "error": error.to_string() })),
@@ -4315,12 +4269,11 @@ async fn control_compiled_skill_detail_handler(
 }
 
 async fn control_extension_manifests_handler() -> impl IntoResponse {
-    match skills::extension_manifests_data().await {
-        Ok(extensions) => (
-            StatusCode::OK,
-            Json(serde_json::json!({ "extensions": extensions })),
-        )
-            .into_response(),
+    match SkillControlService::new(WorkspaceSkillControlSource)
+        .extension_manifests()
+        .await
+    {
+        Ok(extensions) => (StatusCode::OK, Json(extensions)).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "error": error.to_string() })),
@@ -4330,8 +4283,11 @@ async fn control_extension_manifests_handler() -> impl IntoResponse {
 }
 
 async fn control_extension_manifest_handler(AxumPath(name): AxumPath<String>) -> impl IntoResponse {
-    match skills::extension_manifest_data(&name).await {
-        Ok(extension) => (StatusCode::OK, Json(serde_json::json!(extension))).into_response(),
+    match SkillControlService::new(WorkspaceSkillControlSource)
+        .extension_manifest(&name)
+        .await
+    {
+        Ok(extension) => (StatusCode::OK, Json(extension)).into_response(),
         Err(error) => (
             StatusCode::NOT_FOUND,
             Json(serde_json::json!({ "error": error.to_string() })),
@@ -4341,8 +4297,11 @@ async fn control_extension_manifest_handler(AxumPath(name): AxumPath<String>) ->
 }
 
 async fn control_skill_auth_plugins_handler() -> impl IntoResponse {
-    match skills::auth_plugins_data().await {
-        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+    match SkillControlService::new(WorkspaceSkillControlSource)
+        .auth_plugins()
+        .await
+    {
+        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "error": error.to_string() })),
@@ -4354,25 +4313,24 @@ async fn control_skill_auth_plugins_handler() -> impl IntoResponse {
 async fn control_skill_bind_auth_plugin_handler(
     Json(payload): Json<SkillBindAuthPluginPayload>,
 ) -> impl IntoResponse {
-    match skills::bind_auth_plugin_data(
-        &payload.provider_id,
-        &payload.skill_name,
-        skills::SkillBindAuthPluginOptions {
-            redirect_uri: payload.redirect_uri.as_deref(),
-            issuer: payload.issuer.as_deref(),
-            authorization_endpoint: payload.authorization_endpoint.as_deref(),
-            token_endpoint: payload.token_endpoint.as_deref(),
-            client_id_key: payload.client_id_key.as_deref(),
-            client_secret_key: payload.client_secret_key.as_deref(),
-            scopes: payload.scopes.as_deref(),
-            vault_key_prefix: payload.vault_key_prefix.as_deref(),
-            service: payload.service.as_deref(),
-            component: payload.component.as_deref(),
-        },
-    )
-    .await
+    match SkillControlService::new(WorkspaceSkillControlSource)
+        .bind_auth_plugin(AppSkillBindAuthPluginRequest {
+            provider_id: payload.provider_id,
+            skill_name: payload.skill_name,
+            redirect_uri: payload.redirect_uri,
+            issuer: payload.issuer,
+            authorization_endpoint: payload.authorization_endpoint,
+            token_endpoint: payload.token_endpoint,
+            client_id_key: payload.client_id_key,
+            client_secret_key: payload.client_secret_key,
+            scopes: payload.scopes,
+            vault_key_prefix: payload.vault_key_prefix,
+            service: payload.service,
+            component: payload.component,
+        })
+        .await
     {
-        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "error": error.to_string() })),
@@ -4384,41 +4342,25 @@ async fn control_skill_bind_auth_plugin_handler(
 async fn control_skill_auth_callback_handler(
     Query(query): Query<SkillAuthCallbackQuery>,
 ) -> impl IntoResponse {
-    if let Some(error_code) = query.error.as_deref() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({
-                "error": error_code,
-                "description": query.error_description,
-            })),
-        )
-            .into_response();
-    }
-
-    let Some(code) = query.code.as_deref() else {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({ "error": "query parameter `code` is required" })),
-        )
-            .into_response();
-    };
-    let Some(state) = query.state.as_deref() else {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({ "error": "query parameter `state` is required" })),
-        )
-            .into_response();
-    };
-
-    match skills::exchange_auth_plugin_callback_data(
-        query.provider_id.as_deref(),
-        code,
-        state,
-        query.redirect_uri.as_deref(),
-    )
-    .await
+    match SkillControlService::new(WorkspaceSkillControlSource)
+        .auth_callback(AppSkillAuthCallbackRequest {
+            provider_id: query.provider_id,
+            error: query.error,
+            error_description: query.error_description,
+            code: query.code,
+            state: query.state,
+            redirect_uri: query.redirect_uri,
+        })
+        .await
     {
-        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Ok(result) => {
+            let status = if result.get("error").is_some() {
+                StatusCode::BAD_REQUEST
+            } else {
+                StatusCode::OK
+            };
+            (status, Json(result)).into_response()
+        }
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "error": error.to_string() })),
@@ -4428,8 +4370,11 @@ async fn control_skill_auth_callback_handler(
 }
 
 async fn control_skill_voice_plugins_handler() -> impl IntoResponse {
-    match skills::voice_plugins_data().await {
-        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+    match SkillControlService::new(WorkspaceSkillControlSource)
+        .voice_plugins()
+        .await
+    {
+        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "error": error.to_string() })),
@@ -4441,19 +4386,18 @@ async fn control_skill_voice_plugins_handler() -> impl IntoResponse {
 async fn control_skill_bind_voice_plugin_handler(
     Json(payload): Json<SkillBindVoicePluginPayload>,
 ) -> impl IntoResponse {
-    match skills::bind_voice_plugin_data(
-        &payload.plugin_id,
-        &payload.skill_name,
-        skills::SkillBindVoicePluginOptions {
-            service: payload.service.as_deref(),
-            component: payload.component.as_deref(),
-            greeting_text: payload.greeting_text.as_deref(),
-            default_voice: payload.default_voice.as_deref(),
-        },
-    )
-    .await
+    match SkillControlService::new(WorkspaceSkillControlSource)
+        .bind_voice_plugin(AppSkillBindVoicePluginRequest {
+            plugin_id: payload.plugin_id,
+            skill_name: payload.skill_name,
+            service: payload.service,
+            component: payload.component,
+            greeting_text: payload.greeting_text,
+            default_voice: payload.default_voice,
+        })
+        .await
     {
-        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "error": error.to_string() })),
@@ -4463,8 +4407,11 @@ async fn control_skill_bind_voice_plugin_handler(
 }
 
 async fn control_skill_voice_calls_handler() -> impl IntoResponse {
-    match skills::voice_calls_data().await {
-        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+    match SkillVoiceChannelControlService::new(WorkspaceSkillVoiceChannelControlSource)
+        .voice_calls()
+        .await
+    {
+        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "error": error.to_string() })),
@@ -4474,8 +4421,11 @@ async fn control_skill_voice_calls_handler() -> impl IntoResponse {
 }
 
 async fn control_skill_voice_call_health_handler() -> impl IntoResponse {
-    match skills::voice_call_health_data().await {
-        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+    match SkillVoiceChannelControlService::new(WorkspaceSkillVoiceChannelControlSource)
+        .voice_call_health()
+        .await
+    {
+        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "error": error.to_string() })),
@@ -4485,8 +4435,11 @@ async fn control_skill_voice_call_health_handler() -> impl IntoResponse {
 }
 
 async fn control_skill_voice_call_metrics_handler() -> impl IntoResponse {
-    match skills::voice_call_metrics_data().await {
-        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+    match SkillVoiceChannelControlService::new(WorkspaceSkillVoiceChannelControlSource)
+        .voice_call_metrics()
+        .await
+    {
+        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "error": error.to_string() })),
@@ -4498,8 +4451,11 @@ async fn control_skill_voice_call_metrics_handler() -> impl IntoResponse {
 async fn control_skill_voice_call_events_handler(
     AxumPath(call_id): AxumPath<String>,
 ) -> impl IntoResponse {
-    match skills::voice_call_events_data(&call_id).await {
-        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+    match SkillVoiceChannelControlService::new(WorkspaceSkillVoiceChannelControlSource)
+        .voice_call_events(&call_id)
+        .await
+    {
+        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "error": error.to_string() })),
@@ -4511,8 +4467,11 @@ async fn control_skill_voice_call_events_handler(
 async fn control_skill_voice_call_artifacts_handler(
     AxumPath(call_id): AxumPath<String>,
 ) -> impl IntoResponse {
-    match skills::voice_call_artifacts_data(&call_id).await {
-        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+    match SkillVoiceChannelControlService::new(WorkspaceSkillVoiceChannelControlSource)
+        .voice_call_artifacts(&call_id)
+        .await
+    {
+        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "error": error.to_string() })),
@@ -4526,17 +4485,18 @@ async fn control_skill_prewarm_voice_plugin_handler(
     Json(payload): Json<SkillPrewarmVoicePluginPayload>,
 ) -> impl IntoResponse {
     let started_at = std::time::Instant::now();
-    let result = skills::prewarm_voice_plugin_data(
-        &plugin_id,
-        skills::SkillPrewarmVoicePluginOptions {
-            greeting_text: payload.greeting_text.as_deref(),
-            voice: payload.voice.as_deref(),
-        },
-    )
-    .await;
+    let result = SkillControlService::new(WorkspaceSkillControlSource)
+        .prewarm_voice_plugin(
+            &plugin_id,
+            AppSkillPrewarmVoicePluginRequest {
+                greeting_text: payload.greeting_text,
+                voice: payload.voice,
+            },
+        )
+        .await;
     record_operator_tool_result("skills.voice_plugin.prewarm", started_at, &result);
     match result {
-        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "error": error.to_string() })),
@@ -4549,20 +4509,19 @@ async fn control_skill_start_voice_call_handler(
     Json(payload): Json<SkillStartVoiceCallPayload>,
 ) -> impl IntoResponse {
     let started_at = std::time::Instant::now();
-    let result = skills::start_voice_call_data(
-        &payload.plugin_id,
-        skills::SkillStartVoiceCallOptions {
-            remote: payload.remote.as_deref(),
-            greeting_text: payload.greeting_text.as_deref(),
-            voice: payload.voice.as_deref(),
-            metadata: payload.metadata.as_deref(),
+    let result = SkillVoiceChannelControlService::new(WorkspaceSkillVoiceChannelControlSource)
+        .start_voice_call(AppSkillStartVoiceCallRequest {
+            plugin_id: payload.plugin_id,
+            remote: payload.remote,
+            greeting_text: payload.greeting_text,
+            voice: payload.voice,
+            metadata: payload.metadata,
             stale_after_secs: payload.stale_after_secs,
-        },
-    )
-    .await;
+        })
+        .await;
     record_operator_tool_result("skills.voice_call.start", started_at, &result);
     match result {
-        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "error": error.to_string() })),
@@ -4574,13 +4533,14 @@ async fn control_skill_start_voice_call_handler(
 async fn control_skill_reap_voice_calls_handler(
     Json(payload): Json<SkillReapVoiceCallsPayload>,
 ) -> impl IntoResponse {
-    match skills::reap_voice_calls_data(skills::SkillReapVoiceCallsOptions {
-        stale_after_secs: payload.stale_after_secs,
-        limit: payload.limit,
-    })
-    .await
+    match SkillVoiceChannelControlService::new(WorkspaceSkillVoiceChannelControlSource)
+        .reap_voice_calls(AppSkillReapVoiceCallsRequest {
+            stale_after_secs: payload.stale_after_secs,
+            limit: payload.limit,
+        })
+        .await
     {
-        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "error": error.to_string() })),
@@ -4594,17 +4554,18 @@ async fn control_skill_end_voice_call_handler(
     Json(payload): Json<SkillEndVoiceCallPayload>,
 ) -> impl IntoResponse {
     let started_at = std::time::Instant::now();
-    let result = skills::end_voice_call_data(
-        &call_id,
-        skills::SkillEndVoiceCallOptions {
-            reason: payload.reason.as_deref(),
-            metadata: payload.metadata.as_deref(),
-        },
-    )
-    .await;
+    let result = SkillVoiceChannelControlService::new(WorkspaceSkillVoiceChannelControlSource)
+        .end_voice_call(
+            &call_id,
+            AppSkillEndVoiceCallRequest {
+                reason: payload.reason,
+                metadata: payload.metadata,
+            },
+        )
+        .await;
     record_operator_tool_result("skills.voice_call.end", started_at, &result);
     match result {
-        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "error": error.to_string() })),
@@ -4618,20 +4579,21 @@ async fn control_skill_reconnect_voice_call_handler(
     Json(payload): Json<SkillReconnectVoiceCallPayload>,
 ) -> impl IntoResponse {
     let started_at = std::time::Instant::now();
-    let result = skills::reconnect_voice_call_data(
-        &call_id,
-        skills::SkillReconnectVoiceCallOptions {
-            remote: payload.remote.as_deref(),
-            greeting_text: payload.greeting_text.as_deref(),
-            voice: payload.voice.as_deref(),
-            metadata: payload.metadata.as_deref(),
-            stale_after_secs: payload.stale_after_secs,
-        },
-    )
-    .await;
+    let result = SkillVoiceChannelControlService::new(WorkspaceSkillVoiceChannelControlSource)
+        .reconnect_voice_call(
+            &call_id,
+            AppSkillReconnectVoiceCallRequest {
+                remote: payload.remote,
+                greeting_text: payload.greeting_text,
+                voice: payload.voice,
+                metadata: payload.metadata,
+                stale_after_secs: payload.stale_after_secs,
+            },
+        )
+        .await;
     record_operator_tool_result("skills.voice_call.reconnect", started_at, &result);
     match result {
-        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "error": error.to_string() })),
@@ -4641,8 +4603,11 @@ async fn control_skill_reconnect_voice_call_handler(
 }
 
 async fn control_skill_channel_extensions_handler() -> impl IntoResponse {
-    match skills::channel_extensions_data().await {
-        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+    match SkillVoiceChannelControlService::new(WorkspaceSkillVoiceChannelControlSource)
+        .channel_extensions()
+        .await
+    {
+        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "error": error.to_string() })),
@@ -4654,18 +4619,17 @@ async fn control_skill_channel_extensions_handler() -> impl IntoResponse {
 async fn control_skill_bind_channel_extension_handler(
     Json(payload): Json<SkillBindChannelExtensionPayload>,
 ) -> impl IntoResponse {
-    match skills::bind_channel_extension_data(
-        &payload.binding_id,
-        &payload.skill_name,
-        skills::SkillBindChannelExtensionOptions {
-            service: payload.service.as_deref(),
-            component: payload.component.as_deref(),
-            trigger: payload.trigger.as_deref(),
-        },
-    )
-    .await
+    match SkillVoiceChannelControlService::new(WorkspaceSkillVoiceChannelControlSource)
+        .bind_channel_extension(AppSkillBindChannelExtensionRequest {
+            binding_id: payload.binding_id,
+            skill_name: payload.skill_name,
+            service: payload.service,
+            component: payload.component,
+            trigger: payload.trigger,
+        })
+        .await
     {
-        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "error": error.to_string() })),
@@ -4677,8 +4641,11 @@ async fn control_skill_bind_channel_extension_handler(
 async fn control_skill_compile_by_name_handler(
     AxumPath(name): AxumPath<String>,
 ) -> impl IntoResponse {
-    match skills::compile_data(Some(&name)).await {
-        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+    match SkillControlService::new(WorkspaceSkillControlSource)
+        .compile_by_name(&name)
+        .await
+    {
+        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "error": error.to_string() })),
@@ -4692,19 +4659,20 @@ async fn control_skill_invoke_handler(
     Json(payload): Json<SkillInvokePayload>,
 ) -> impl IntoResponse {
     let started_at = std::time::Instant::now();
-    let result = skills::invoke_data(
-        &name,
-        skills::SkillInvokeOptions {
-            args: payload.args.as_deref(),
-            reference: payload.reference.as_deref(),
-            max_chars: payload.max_chars,
-            detail: payload.detail,
-        },
-    )
-    .await;
+    let result = SkillControlService::new(WorkspaceSkillControlSource)
+        .invoke(
+            &name,
+            AppSkillInvokeRequest {
+                args: payload.args,
+                reference: payload.reference,
+                max_chars: payload.max_chars,
+                detail: payload.detail,
+            },
+        )
+        .await;
     record_operator_tool_result("skills.invoke", started_at, &result);
     match result {
-        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "error": error.to_string() })),
@@ -4718,17 +4686,18 @@ async fn control_skill_execute_handler(
     Json(payload): Json<SkillExecutePayload>,
 ) -> impl IntoResponse {
     let started_at = std::time::Instant::now();
-    let result = skills::execute_data(
-        &name,
-        skills::SkillExecuteOptions {
-            component: payload.component.as_deref(),
-            input: payload.input.as_deref(),
-        },
-    )
-    .await;
+    let result = SkillControlService::new(WorkspaceSkillControlSource)
+        .execute(
+            &name,
+            AppSkillExecuteRequest {
+                component: payload.component,
+                input: payload.input,
+            },
+        )
+        .await;
     record_operator_tool_result("skills.execute", started_at, &result);
     match result {
-        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "error": error.to_string() })),
@@ -4741,15 +4710,16 @@ async fn control_skill_auth_authorize_handler(
     AxumPath(provider_id): AxumPath<String>,
     Json(payload): Json<SkillAuthAuthorizePayload>,
 ) -> impl IntoResponse {
-    match skills::authorize_auth_plugin_data(
-        &provider_id,
-        skills::SkillAuthAuthorizeOptions {
-            redirect_uri: payload.redirect_uri.as_deref(),
-        },
-    )
-    .await
+    match SkillControlService::new(WorkspaceSkillControlSource)
+        .auth_authorize(
+            &provider_id,
+            AppSkillAuthAuthorizeRequest {
+                redirect_uri: payload.redirect_uri,
+            },
+        )
+        .await
     {
-        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "error": error.to_string() })),
@@ -4762,17 +4732,18 @@ async fn control_skill_auth_exchange_handler(
     AxumPath(provider_id): AxumPath<String>,
     Json(payload): Json<SkillAuthExchangePayload>,
 ) -> impl IntoResponse {
-    match skills::exchange_auth_plugin_data(
-        &provider_id,
-        skills::SkillAuthExchangeOptions {
-            code: &payload.code,
-            state: &payload.state,
-            redirect_uri: payload.redirect_uri.as_deref(),
-        },
-    )
-    .await
+    match SkillControlService::new(WorkspaceSkillControlSource)
+        .auth_exchange(
+            &provider_id,
+            AppSkillAuthExchangeRequest {
+                code: payload.code,
+                state: payload.state,
+                redirect_uri: payload.redirect_uri,
+            },
+        )
+        .await
     {
-        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "error": error.to_string() })),
@@ -4784,8 +4755,11 @@ async fn control_skill_auth_exchange_handler(
 async fn control_skill_background_services_handler(
     AxumPath(name): AxumPath<String>,
 ) -> impl IntoResponse {
-    match skills::background_services_data(&name).await {
-        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+    match SkillControlService::new(WorkspaceSkillControlSource)
+        .background_services(&name)
+        .await
+    {
+        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "error": error.to_string() })),
@@ -4798,20 +4772,21 @@ async fn control_skill_schedule_background_handler(
     AxumPath(name): AxumPath<String>,
     Json(payload): Json<SkillScheduleBackgroundPayload>,
 ) -> impl IntoResponse {
-    match skills::schedule_background_service_data(
-        &name,
-        skills::SkillScheduleBackgroundOptions {
-            service: payload.service.as_deref(),
-            component: payload.component.as_deref(),
-            input: payload.input.as_deref(),
-            every_seconds: payload.every_seconds,
-            at: payload.at.as_deref(),
-            priority: payload.priority,
-        },
-    )
-    .await
+    match SkillControlService::new(WorkspaceSkillControlSource)
+        .schedule_background(
+            &name,
+            AppSkillScheduleBackgroundRequest {
+                service: payload.service,
+                component: payload.component,
+                input: payload.input,
+                every_seconds: payload.every_seconds,
+                at: payload.at,
+                priority: payload.priority,
+            },
+        )
+        .await
     {
-        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "error": error.to_string() })),
@@ -4821,8 +4796,11 @@ async fn control_skill_schedule_background_handler(
 }
 
 async fn control_skill_update_handler(AxumPath(name): AxumPath<String>) -> impl IntoResponse {
-    match skills::update_data(&name).await {
-        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+    match SkillControlService::new(WorkspaceSkillControlSource)
+        .update(&name)
+        .await
+    {
+        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "error": error.to_string() })),
@@ -4832,8 +4810,11 @@ async fn control_skill_update_handler(AxumPath(name): AxumPath<String>) -> impl 
 }
 
 async fn control_skill_uninstall_handler(AxumPath(name): AxumPath<String>) -> impl IntoResponse {
-    match skills::uninstall_data(&name).await {
-        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+    match SkillControlService::new(WorkspaceSkillControlSource)
+        .uninstall(&name)
+        .await
+    {
+        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "error": error.to_string() })),
@@ -4843,8 +4824,11 @@ async fn control_skill_uninstall_handler(AxumPath(name): AxumPath<String>) -> im
 }
 
 async fn control_skill_verify_handler(AxumPath(name): AxumPath<String>) -> impl IntoResponse {
-    match skills::verify_data(&name).await {
-        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
+    match SkillControlService::new(WorkspaceSkillControlSource)
+        .verify(&name)
+        .await
+    {
+        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({ "error": error.to_string() })),
@@ -4854,15 +4838,13 @@ async fn control_skill_verify_handler(AxumPath(name): AxumPath<String>) -> impl 
 }
 
 async fn control_config_handler(State(state): State<ControlPlaneApiState>) -> impl IntoResponse {
-    match runtime::load_effective_config(&state.config_path, &state.workspace_root) {
-        Ok(config) => (
-            StatusCode::OK,
-            Json(serde_json::json!({
-                "path": state.config_path,
-                "config": config,
-            })),
-        )
-            .into_response(),
+    match ControlConfigService::new(WorkspaceControlConfigSource {
+        workspace_root: &state.workspace_root,
+        config_path: &state.config_path,
+    })
+    .status()
+    {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
         Err(error) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({"error": error.to_string()})),
@@ -4875,16 +4857,13 @@ async fn control_config_validate_handler(
     State(state): State<ControlPlaneApiState>,
     Json(payload): Json<AppConfig>,
 ) -> impl IntoResponse {
-    match validate_control_config(&payload) {
-        Ok(rendered) => (
-            StatusCode::OK,
-            Json(serde_json::json!({
-                "status": "ok",
-                "path": state.config_path,
-                "bytes": rendered.len(),
-            })),
-        )
-            .into_response(),
+    match ControlConfigService::new(WorkspaceControlConfigSource {
+        workspace_root: &state.workspace_root,
+        config_path: &state.config_path,
+    })
+    .validate(&payload)
+    {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": error.to_string()})),
@@ -4897,20 +4876,13 @@ async fn control_config_update_handler(
     State(state): State<ControlPlaneApiState>,
     Json(payload): Json<AppConfig>,
 ) -> impl IntoResponse {
-    let rendered_len = validate_control_config(&payload).map(|value| value.len());
-    match rendered_len.and_then(|bytes| {
-        runtime::write_config_with_backup(&state.config_path, &payload)?;
-        Ok(bytes)
-    }) {
-        Ok(bytes) => (
-            StatusCode::OK,
-            Json(serde_json::json!({
-                "status": "ok",
-                "path": state.config_path,
-                "bytes": bytes,
-            })),
-        )
-            .into_response(),
+    match ControlConfigService::new(WorkspaceControlConfigSource {
+        workspace_root: &state.workspace_root,
+        config_path: &state.config_path,
+    })
+    .update(&payload)
+    {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": error.to_string()})),
@@ -4923,8 +4895,13 @@ async fn control_diagnostics_handler(
     State(state): State<ControlPlaneApiState>,
     Query(query): Query<DiagnosticsQuery>,
 ) -> impl IntoResponse {
-    match doctor::collect_report(query.repair, query.deep, Some(&state.config_path)).await {
-        Ok(report) => (StatusCode::OK, Json(serde_json::json!(report))).into_response(),
+    match ControlDiagnosticsService::new(WorkspaceControlDiagnosticsSource {
+        config_path: &state.config_path,
+    })
+    .report(query.repair, query.deep)
+    .await
+    {
+        Ok(report) => (StatusCode::OK, Json(report)).into_response(),
         Err(error) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({"error": error.to_string()})),
@@ -4947,17 +4924,21 @@ async fn diagnostics_ws_session(
     query: DiagnosticsQuery,
 ) {
     let (mut sender, mut receiver) = socket.split();
-    let mut ticker = interval(Duration::from_secs(query.interval_secs.unwrap_or(5).max(1)));
+    let service = ControlDiagnosticsService::new(WorkspaceControlDiagnosticsSource {
+        config_path: &state.config_path,
+    });
+    let mut ticker = interval(Duration::from_secs(
+        service.resolved_interval_secs(query.interval_secs),
+    ));
 
     loop {
         tokio::select! {
             _ = ticker.tick() => {
-                let payload = match doctor::collect_report(query.repair, query.deep, Some(&state.config_path)).await {
-                    Ok(report) => serde_json::json!({"type": "diagnostics", "report": report}),
-                    Err(error) => serde_json::json!({"type": "error", "error": error.to_string()}),
-                };
+                let payload = service.event_payload(query.repair, query.deep).await;
                 if sender
-                    .send(WsMessage::Text(payload.to_string().into()))
+                    .send(WsMessage::Text(serde_json::to_string(&payload).unwrap_or_else(|error| {
+                        serde_json::json!({"type": "error", "error": error.to_string()}).to_string()
+                    }).into()))
                     .await
                     .is_err()
                 {
@@ -4973,10 +4954,6 @@ async fn diagnostics_ws_session(
             }
         }
     }
-}
-
-fn validate_control_config(config: &AppConfig) -> Result<String> {
-    toml::to_string_pretty(config).context("Failed to render config TOML")
 }
 
 #[derive(serde::Deserialize)]
@@ -5286,7 +5263,10 @@ struct MobileCapabilityExecutionsQuery {
 }
 
 async fn runtime_status_handler(State(state): State<RuntimeControlState>) -> impl IntoResponse {
-    match runtime::runtime_status(&state.config_path, &state.workspace_root) {
+    match OperatorStatusControlService::new(WorkspaceOperatorStatusControlSource { state: &state })
+        .runtime_status()
+        .await
+    {
         Ok(status) => (StatusCode::OK, Json(serde_json::json!(status))).into_response(),
         Err(error) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -5297,15 +5277,11 @@ async fn runtime_status_handler(State(state): State<RuntimeControlState>) -> imp
 }
 
 async fn voice_status_handler(State(state): State<RuntimeControlState>) -> impl IntoResponse {
-    match runtime::load_effective_config(&state.config_path, &state.workspace_root) {
-        Ok(config) => (
-            StatusCode::OK,
-            Json(serde_json::json!(voice_runtime::voice_status(
-                &config,
-                &state.workspace_root,
-            ))),
-        )
-            .into_response(),
+    match OperatorStatusControlService::new(WorkspaceOperatorStatusControlSource { state: &state })
+        .voice_status()
+        .await
+    {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
         Err(error) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({"error": error.to_string()})),
@@ -5315,14 +5291,11 @@ async fn voice_status_handler(State(state): State<RuntimeControlState>) -> impl 
 }
 
 async fn voice_providers_handler(State(state): State<RuntimeControlState>) -> impl IntoResponse {
-    match runtime::load_effective_config(&state.config_path, &state.workspace_root) {
-        Ok(config) => (
-            StatusCode::OK,
-            Json(serde_json::json!(voice_runtime::voice_provider_catalog(
-                &config
-            ))),
-        )
-            .into_response(),
+    match OperatorStatusControlService::new(WorkspaceOperatorStatusControlSource { state: &state })
+        .voice_providers()
+        .await
+    {
+        Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
         Err(error) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({"error": error.to_string()})),
@@ -5332,7 +5305,10 @@ async fn voice_providers_handler(State(state): State<RuntimeControlState>) -> im
 }
 
 async fn voice_metrics_handler(State(state): State<RuntimeControlState>) -> impl IntoResponse {
-    match voice_runtime::voice_metrics(&state.workspace_root).await {
+    match OperatorStatusControlService::new(WorkspaceOperatorStatusControlSource { state: &state })
+        .voice_metrics()
+        .await
+    {
         Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
@@ -5346,22 +5322,11 @@ async fn voice_operator_report_handler(
     State(state): State<RuntimeControlState>,
     Query(query): Query<inspect::VoiceOperatorReportRequest>,
 ) -> impl IntoResponse {
-    match runtime::load_effective_config(&state.config_path, &state.workspace_root) {
-        Ok(config) => match inspect::voice_operator_report_summary(
-            &config,
-            &state.workspace_root,
-            query.limit.unwrap_or(12),
-            query.stale_after_secs,
-        )
+    match OperatorStatusControlService::new(WorkspaceOperatorStatusControlSource { state: &state })
+        .voice_operator_summary(query.limit, query.stale_after_secs)
         .await
-        {
-            Ok(summary) => (StatusCode::OK, Json(serde_json::json!(summary))).into_response(),
-            Err(error) => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": error.to_string()})),
-            )
-                .into_response(),
-        },
+    {
+        Ok(summary) => (StatusCode::OK, Json(serde_json::json!(summary))).into_response(),
         Err(error) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({"error": error.to_string()})),
@@ -5374,12 +5339,9 @@ async fn voice_outcomes_handler(
     State(state): State<RuntimeControlState>,
     Query(query): Query<VoiceOutcomeQuery>,
 ) -> impl IntoResponse {
-    match voice_runtime::voice_session_outcomes(
-        &state.workspace_root,
-        query.stale_after_secs,
-        query.limit,
-    )
-    .await
+    match OperatorStatusControlService::new(WorkspaceOperatorStatusControlSource { state: &state })
+        .voice_outcomes(query.stale_after_secs, query.limit)
+        .await
     {
         Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
         Err(error) => (
@@ -5391,7 +5353,10 @@ async fn voice_outcomes_handler(
 }
 
 async fn voice_sessions_handler(State(state): State<RuntimeControlState>) -> impl IntoResponse {
-    match voice_runtime::list_voice_sessions(&state.workspace_root).await {
+    match OperatorStatusControlService::new(WorkspaceOperatorStatusControlSource { state: &state })
+        .voice_sessions()
+        .await
+    {
         Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
@@ -5405,7 +5370,10 @@ async fn voice_session_health_handler(
     State(state): State<RuntimeControlState>,
     Query(query): Query<voice_runtime::VoiceSessionHealthRequest>,
 ) -> impl IntoResponse {
-    match voice_runtime::voice_session_health(&state.workspace_root, query).await {
+    match OperatorStatusControlService::new(WorkspaceOperatorStatusControlSource { state: &state })
+        .voice_session_health(query.stale_after_secs)
+        .await
+    {
         Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
@@ -5755,8 +5723,10 @@ async fn talk_status_handler(
     State(state): State<RuntimeControlState>,
     Query(query): Query<talk::TalkRuntimeListRequest>,
 ) -> impl IntoResponse {
-    let limit = query.limit.unwrap_or(20);
-    match talk::runtime_status(&state.workspace_root, limit).await {
+    match OperatorStatusControlService::new(WorkspaceOperatorStatusControlSource { state: &state })
+        .talk_status(query.limit)
+        .await
+    {
         Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
@@ -5768,7 +5738,10 @@ async fn talk_status_handler(
 
 #[cfg(feature = "voice")]
 async fn talk_metrics_handler(State(state): State<RuntimeControlState>) -> impl IntoResponse {
-    match talk::runtime_metrics_data(&state.workspace_root).await {
+    match OperatorStatusControlService::new(WorkspaceOperatorStatusControlSource { state: &state })
+        .talk_metrics()
+        .await
+    {
         Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
@@ -5783,8 +5756,10 @@ async fn talk_sessions_handler(
     State(state): State<RuntimeControlState>,
     Query(query): Query<talk::TalkRuntimeListRequest>,
 ) -> impl IntoResponse {
-    let limit = query.limit.unwrap_or(20);
-    match talk::list_talk_sessions(&state.workspace_root, limit).await {
+    match OperatorStatusControlService::new(WorkspaceOperatorStatusControlSource { state: &state })
+        .talk_sessions(query.limit)
+        .await
+    {
         Ok(result) => (StatusCode::OK, Json(serde_json::json!(result))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
@@ -5840,8 +5815,11 @@ async fn talk_session_metrics_handler(
 }
 
 async fn mobile_nodes_handler(State(state): State<RuntimeControlState>) -> impl IntoResponse {
-    match mobile::list_nodes_data(&state.workspace_root) {
-        Ok(nodes) => (StatusCode::OK, Json(serde_json::json!({ "nodes": nodes }))).into_response(),
+    match OperatorStatusControlService::new(WorkspaceOperatorStatusControlSource { state: &state })
+        .mobile_nodes()
+        .await
+    {
+        Ok(nodes) => (StatusCode::OK, Json(serde_json::json!(nodes))).into_response(),
         Err(error) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({"error": error.to_string()})),
@@ -5916,7 +5894,10 @@ async fn mobile_node_summary_handler(
     AxumPath(id): AxumPath<String>,
     Query(query): Query<MobileLimitQuery>,
 ) -> impl IntoResponse {
-    match mobile::mobile_node_report_data(&state.workspace_root, &id, query.limit.or(Some(12))) {
+    match OperatorStatusControlService::new(WorkspaceOperatorStatusControlSource { state: &state })
+        .mobile_node_summary(&id, query.limit)
+        .await
+    {
         Ok(report) => (StatusCode::OK, Json(serde_json::json!(report))).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,
@@ -6875,14 +6856,9 @@ async fn runtime_health_handler(State(state): State<RuntimeControlState>) -> imp
 async fn runtime_operator_ops_handler(
     State(state): State<RuntimeControlState>,
 ) -> impl IntoResponse {
-    match runtime::runtime_operator_ops_summary(
-        &state.config_path,
-        &state.workspace_root,
-        &state.gateway_addr,
-        Some(state.started_at),
-        state.sidecar_running,
-    )
-    .await
+    match OperatorStatusControlService::new(WorkspaceOperatorStatusControlSource { state: &state })
+        .runtime_operator_ops()
+        .await
     {
         Ok(summary) => (StatusCode::OK, Json(serde_json::json!(summary))).into_response(),
         Err(error) => (
@@ -7158,6 +7134,1164 @@ impl EnterpriseAccessControlSource for WorkspaceEnterpriseAccessControlSource {
     }
 }
 
+struct WorkspaceControlConfigSource<'a> {
+    workspace_root: &'a Path,
+    config_path: &'a str,
+}
+
+struct WorkspaceAutonomyLessonsControlSource<'a> {
+    control_root: &'a Path,
+}
+
+struct WorkspaceControlDiagnosticsSource<'a> {
+    config_path: &'a str,
+}
+
+impl AutonomyLessonsControlSource for WorkspaceAutonomyLessonsControlSource<'_> {
+    fn autonomy_description(&self) -> openrustclaw_core::error::Result<serde_json::Value> {
+        control::describe_registry(self.control_root.to_path_buf()).map_err(|error| {
+            CoreError::Internal(format!("failed to load autonomy control summary: {error}"))
+        })
+    }
+
+    fn create_lesson(
+        &self,
+        request: &AppAutonomyLessonRequest,
+    ) -> openrustclaw_core::error::Result<()> {
+        control::create_lesson(
+            self.control_root.to_str(),
+            control::NewLessonInput {
+                id: &request.id,
+                active: request.active,
+                signal: &request.signal,
+                recommendation: &request.recommendation,
+                rationale: request.rationale.as_deref(),
+                confidence: request.confidence.unwrap_or(0.7),
+                source: request.source.as_deref(),
+                task_id: request.task_id.as_deref(),
+                category: request.category.as_deref(),
+                claw_id: request.claw_id.as_deref(),
+                model_profile_id: request.model_profile_id.as_deref(),
+                provider: request.provider.as_deref(),
+                autonomy_level: request.autonomy_level.as_deref(),
+                execution_mode: request.execution_mode.as_deref(),
+            },
+        )
+        .map_err(|error| CoreError::Internal(format!("failed to create lesson: {error}")))
+    }
+
+    fn deactivate_lesson(&self, id: &str) -> openrustclaw_core::error::Result<()> {
+        control::deactivate_lesson(self.control_root.to_str(), id)
+            .map_err(|error| CoreError::Internal(format!("failed to deactivate lesson: {error}")))
+    }
+}
+
+#[async_trait]
+impl ControlDiagnosticsSource for WorkspaceControlDiagnosticsSource<'_> {
+    async fn collect_report(
+        &self,
+        repair: bool,
+        deep: bool,
+    ) -> openrustclaw_core::error::Result<serde_json::Value> {
+        let report = doctor::collect_report(repair, deep, Some(self.config_path))
+            .await
+            .map_err(|error| {
+                CoreError::Internal(format!("failed to collect diagnostics: {error}"))
+            })?;
+        serde_json::to_value(report).map_err(|error| {
+            CoreError::Internal(format!("failed to serialize diagnostics report: {error}"))
+        })
+    }
+}
+
+struct WorkspaceSkillControlSource;
+
+fn map_skill_control_error(context: &str, error: anyhow::Error) -> CoreError {
+    CoreError::Internal(format!("{context}: {error}"))
+}
+
+fn serialize_skill_control_value<T: serde::Serialize>(
+    value: T,
+    context: &str,
+) -> openrustclaw_core::error::Result<serde_json::Value> {
+    serde_json::to_value(value)
+        .map_err(|error| CoreError::Internal(format!("failed to serialize {context}: {error}")))
+}
+
+#[async_trait]
+impl SkillControlSource for WorkspaceSkillControlSource {
+    async fn installed_skills(&self) -> openrustclaw_core::error::Result<serde_json::Value> {
+        serialize_skill_control_value(
+            skills::installed_skills_data().await.map_err(|error| {
+                map_skill_control_error("failed to load installed skills", error)
+            })?,
+            "installed skills",
+        )
+    }
+
+    async fn installed_skill_detail(
+        &self,
+        name: &str,
+    ) -> openrustclaw_core::error::Result<serde_json::Value> {
+        serialize_skill_control_value(
+            skills::installed_skill_detail_data(name)
+                .await
+                .map_err(|error| {
+                    map_skill_control_error("failed to load installed skill detail", error)
+                })?,
+            "installed skill detail",
+        )
+    }
+
+    async fn compiled_skill_detail(
+        &self,
+        name: &str,
+    ) -> openrustclaw_core::error::Result<serde_json::Value> {
+        serialize_skill_control_value(
+            skills::compiled_skill_detail_data(name)
+                .await
+                .map_err(|error| {
+                    map_skill_control_error("failed to load compiled skill detail", error)
+                })?,
+            "compiled skill detail",
+        )
+    }
+
+    async fn extension_manifest(
+        &self,
+        name: &str,
+    ) -> openrustclaw_core::error::Result<serde_json::Value> {
+        serialize_skill_control_value(
+            skills::extension_manifest_data(name)
+                .await
+                .map_err(|error| {
+                    map_skill_control_error("failed to load extension manifest", error)
+                })?,
+            "extension manifest",
+        )
+    }
+
+    async fn background_services(
+        &self,
+        name: &str,
+    ) -> openrustclaw_core::error::Result<serde_json::Value> {
+        serialize_skill_control_value(
+            skills::background_services_data(name)
+                .await
+                .map_err(|error| {
+                    map_skill_control_error("failed to load background services", error)
+                })?,
+            "background services",
+        )
+    }
+
+    async fn auth_plugins_for_skill(
+        &self,
+        name: &str,
+    ) -> openrustclaw_core::error::Result<serde_json::Value> {
+        serialize_skill_control_value(
+            skills::auth_plugins_for_skill_data(name)
+                .await
+                .map_err(|error| {
+                    map_skill_control_error("failed to load auth plugins for skill", error)
+                })?,
+            "auth plugins for skill",
+        )
+    }
+
+    async fn voice_plugins_for_skill(
+        &self,
+        name: &str,
+    ) -> openrustclaw_core::error::Result<serde_json::Value> {
+        serialize_skill_control_value(
+            skills::voice_plugins_for_skill_data(name)
+                .await
+                .map_err(|error| {
+                    map_skill_control_error("failed to load voice plugins for skill", error)
+                })?,
+            "voice plugins for skill",
+        )
+    }
+
+    async fn search(
+        &self,
+        query: &str,
+        category: Option<&str>,
+        sort: &str,
+    ) -> openrustclaw_core::error::Result<serde_json::Value> {
+        serialize_skill_control_value(
+            skills::search_data(query, category, sort)
+                .await
+                .map_err(|error| map_skill_control_error("failed to search skills", error))?,
+            "skill catalog search",
+        )
+    }
+
+    async fn popular(&self, limit: usize) -> openrustclaw_core::error::Result<serde_json::Value> {
+        serialize_skill_control_value(
+            skills::popular_data(limit)
+                .await
+                .map_err(|error| map_skill_control_error("failed to load popular skills", error))?,
+            "popular skills",
+        )
+    }
+
+    async fn trending(&self, limit: usize) -> openrustclaw_core::error::Result<serde_json::Value> {
+        serialize_skill_control_value(
+            skills::trending_data(limit).await.map_err(|error| {
+                map_skill_control_error("failed to load trending skills", error)
+            })?,
+            "trending skills",
+        )
+    }
+
+    async fn install(&self, name: &str) -> openrustclaw_core::error::Result<serde_json::Value> {
+        serialize_skill_control_value(
+            skills::install_data(name)
+                .await
+                .map_err(|error| map_skill_control_error("failed to install skill", error))?,
+            "skill install result",
+        )
+    }
+
+    async fn compile(
+        &self,
+        name: Option<&str>,
+    ) -> openrustclaw_core::error::Result<serde_json::Value> {
+        serialize_skill_control_value(
+            skills::compile_data(name)
+                .await
+                .map_err(|error| map_skill_control_error("failed to compile skill", error))?,
+            "skill compile result",
+        )
+    }
+
+    async fn compiled_skills(&self) -> openrustclaw_core::error::Result<serde_json::Value> {
+        serialize_skill_control_value(
+            skills::compiled_skills_data().await.map_err(|error| {
+                map_skill_control_error("failed to load compiled skills", error)
+            })?,
+            "compiled skills",
+        )
+    }
+
+    async fn compiled_skill_artifact(
+        &self,
+        name: &str,
+    ) -> openrustclaw_core::error::Result<serde_json::Value> {
+        serialize_skill_control_value(
+            skills::compiled_skill_detail_data(name)
+                .await
+                .map_err(|error| {
+                    map_skill_control_error("failed to load compiled skill artifact", error)
+                })?,
+            "compiled skill artifact",
+        )
+    }
+
+    async fn extension_manifests(&self) -> openrustclaw_core::error::Result<serde_json::Value> {
+        serialize_skill_control_value(
+            skills::extension_manifests_data().await.map_err(|error| {
+                map_skill_control_error("failed to load extension manifests", error)
+            })?,
+            "extension manifests",
+        )
+    }
+
+    async fn extension_manifest_detail(
+        &self,
+        name: &str,
+    ) -> openrustclaw_core::error::Result<serde_json::Value> {
+        serialize_skill_control_value(
+            skills::extension_manifest_data(name)
+                .await
+                .map_err(|error| {
+                    map_skill_control_error("failed to load extension manifest detail", error)
+                })?,
+            "extension manifest detail",
+        )
+    }
+
+    async fn auth_plugins(&self) -> openrustclaw_core::error::Result<serde_json::Value> {
+        serialize_skill_control_value(
+            skills::auth_plugins_data()
+                .await
+                .map_err(|error| map_skill_control_error("failed to load auth plugins", error))?,
+            "auth plugins",
+        )
+    }
+
+    async fn bind_auth_plugin(
+        &self,
+        request: AppSkillBindAuthPluginRequest,
+    ) -> openrustclaw_core::error::Result<serde_json::Value> {
+        serialize_skill_control_value(
+            skills::bind_auth_plugin_data(
+                &request.provider_id,
+                &request.skill_name,
+                skills::SkillBindAuthPluginOptions {
+                    redirect_uri: request.redirect_uri.as_deref(),
+                    issuer: request.issuer.as_deref(),
+                    authorization_endpoint: request.authorization_endpoint.as_deref(),
+                    token_endpoint: request.token_endpoint.as_deref(),
+                    client_id_key: request.client_id_key.as_deref(),
+                    client_secret_key: request.client_secret_key.as_deref(),
+                    scopes: request.scopes.as_deref(),
+                    vault_key_prefix: request.vault_key_prefix.as_deref(),
+                    service: request.service.as_deref(),
+                    component: request.component.as_deref(),
+                },
+            )
+            .await
+            .map_err(|error| map_skill_control_error("failed to bind auth plugin", error))?,
+            "auth plugin bind result",
+        )
+    }
+
+    async fn exchange_auth_plugin_callback(
+        &self,
+        provider_id: Option<&str>,
+        code: &str,
+        state: &str,
+        redirect_uri: Option<&str>,
+    ) -> openrustclaw_core::error::Result<serde_json::Value> {
+        serialize_skill_control_value(
+            skills::exchange_auth_plugin_callback_data(provider_id, code, state, redirect_uri)
+                .await
+                .map_err(|error| {
+                    map_skill_control_error("failed to exchange auth callback", error)
+                })?,
+            "auth callback exchange result",
+        )
+    }
+
+    async fn voice_plugins(&self) -> openrustclaw_core::error::Result<serde_json::Value> {
+        serialize_skill_control_value(
+            skills::voice_plugins_data()
+                .await
+                .map_err(|error| map_skill_control_error("failed to load voice plugins", error))?,
+            "voice plugins",
+        )
+    }
+
+    async fn bind_voice_plugin(
+        &self,
+        request: AppSkillBindVoicePluginRequest,
+    ) -> openrustclaw_core::error::Result<serde_json::Value> {
+        serialize_skill_control_value(
+            skills::bind_voice_plugin_data(
+                &request.plugin_id,
+                &request.skill_name,
+                skills::SkillBindVoicePluginOptions {
+                    service: request.service.as_deref(),
+                    component: request.component.as_deref(),
+                    greeting_text: request.greeting_text.as_deref(),
+                    default_voice: request.default_voice.as_deref(),
+                },
+            )
+            .await
+            .map_err(|error| map_skill_control_error("failed to bind voice plugin", error))?,
+            "voice plugin bind result",
+        )
+    }
+
+    async fn prewarm_voice_plugin(
+        &self,
+        plugin_id: &str,
+        request: AppSkillPrewarmVoicePluginRequest,
+    ) -> openrustclaw_core::error::Result<serde_json::Value> {
+        serialize_skill_control_value(
+            skills::prewarm_voice_plugin_data(
+                plugin_id,
+                skills::SkillPrewarmVoicePluginOptions {
+                    greeting_text: request.greeting_text.as_deref(),
+                    voice: request.voice.as_deref(),
+                },
+            )
+            .await
+            .map_err(|error| map_skill_control_error("failed to prewarm voice plugin", error))?,
+            "voice plugin prewarm result",
+        )
+    }
+
+    async fn invoke(
+        &self,
+        name: &str,
+        request: AppSkillInvokeRequest,
+    ) -> openrustclaw_core::error::Result<serde_json::Value> {
+        serialize_skill_control_value(
+            skills::invoke_data(
+                name,
+                skills::SkillInvokeOptions {
+                    args: request.args.as_deref(),
+                    reference: request.reference.as_deref(),
+                    max_chars: request.max_chars,
+                    detail: request.detail,
+                },
+            )
+            .await
+            .map_err(|error| map_skill_control_error("failed to invoke skill", error))?,
+            "skill invoke result",
+        )
+    }
+
+    async fn execute(
+        &self,
+        name: &str,
+        request: AppSkillExecuteRequest,
+    ) -> openrustclaw_core::error::Result<serde_json::Value> {
+        serialize_skill_control_value(
+            skills::execute_data(
+                name,
+                skills::SkillExecuteOptions {
+                    component: request.component.as_deref(),
+                    input: request.input.as_deref(),
+                },
+            )
+            .await
+            .map_err(|error| map_skill_control_error("failed to execute skill", error))?,
+            "skill execute result",
+        )
+    }
+
+    async fn authorize_auth_plugin(
+        &self,
+        provider_id: &str,
+        request: AppSkillAuthAuthorizeRequest,
+    ) -> openrustclaw_core::error::Result<serde_json::Value> {
+        serialize_skill_control_value(
+            skills::authorize_auth_plugin_data(
+                provider_id,
+                skills::SkillAuthAuthorizeOptions {
+                    redirect_uri: request.redirect_uri.as_deref(),
+                },
+            )
+            .await
+            .map_err(|error| map_skill_control_error("failed to authorize auth plugin", error))?,
+            "auth plugin authorize result",
+        )
+    }
+
+    async fn exchange_auth_plugin(
+        &self,
+        provider_id: &str,
+        request: AppSkillAuthExchangeRequest,
+    ) -> openrustclaw_core::error::Result<serde_json::Value> {
+        serialize_skill_control_value(
+            skills::exchange_auth_plugin_data(
+                provider_id,
+                skills::SkillAuthExchangeOptions {
+                    code: &request.code,
+                    state: &request.state,
+                    redirect_uri: request.redirect_uri.as_deref(),
+                },
+            )
+            .await
+            .map_err(|error| map_skill_control_error("failed to exchange auth plugin", error))?,
+            "auth plugin exchange result",
+        )
+    }
+
+    async fn schedule_background(
+        &self,
+        name: &str,
+        request: AppSkillScheduleBackgroundRequest,
+    ) -> openrustclaw_core::error::Result<serde_json::Value> {
+        serialize_skill_control_value(
+            skills::schedule_background_service_data(
+                name,
+                skills::SkillScheduleBackgroundOptions {
+                    service: request.service.as_deref(),
+                    component: request.component.as_deref(),
+                    input: request.input.as_deref(),
+                    every_seconds: request.every_seconds,
+                    at: request.at.as_deref(),
+                    priority: request.priority,
+                },
+            )
+            .await
+            .map_err(|error| {
+                map_skill_control_error("failed to schedule background service", error)
+            })?,
+            "background service schedule result",
+        )
+    }
+
+    async fn update(&self, name: &str) -> openrustclaw_core::error::Result<serde_json::Value> {
+        serialize_skill_control_value(
+            skills::update_data(name)
+                .await
+                .map_err(|error| map_skill_control_error("failed to update skill", error))?,
+            "skill update result",
+        )
+    }
+
+    async fn uninstall(&self, name: &str) -> openrustclaw_core::error::Result<serde_json::Value> {
+        serialize_skill_control_value(
+            skills::uninstall_data(name)
+                .await
+                .map_err(|error| map_skill_control_error("failed to uninstall skill", error))?,
+            "skill uninstall result",
+        )
+    }
+
+    async fn verify(&self, name: &str) -> openrustclaw_core::error::Result<serde_json::Value> {
+        serialize_skill_control_value(
+            skills::verify_data(name)
+                .await
+                .map_err(|error| map_skill_control_error("failed to verify skill", error))?,
+            "skill verify result",
+        )
+    }
+}
+
+struct WorkspaceSkillVoiceChannelControlSource;
+
+#[async_trait]
+impl SkillVoiceChannelControlSource for WorkspaceSkillVoiceChannelControlSource {
+    async fn voice_calls(&self) -> openrustclaw_core::error::Result<serde_json::Value> {
+        serialize_skill_control_value(
+            skills::voice_calls_data()
+                .await
+                .map_err(|error| map_skill_control_error("failed to load voice calls", error))?,
+            "voice calls",
+        )
+    }
+
+    async fn voice_call_health(&self) -> openrustclaw_core::error::Result<serde_json::Value> {
+        serialize_skill_control_value(
+            skills::voice_call_health_data().await.map_err(|error| {
+                map_skill_control_error("failed to load voice call health", error)
+            })?,
+            "voice call health",
+        )
+    }
+
+    async fn voice_call_metrics(&self) -> openrustclaw_core::error::Result<serde_json::Value> {
+        serialize_skill_control_value(
+            skills::voice_call_metrics_data().await.map_err(|error| {
+                map_skill_control_error("failed to load voice call metrics", error)
+            })?,
+            "voice call metrics",
+        )
+    }
+
+    async fn voice_call_events(
+        &self,
+        call_id: &str,
+    ) -> openrustclaw_core::error::Result<serde_json::Value> {
+        serialize_skill_control_value(
+            skills::voice_call_events_data(call_id)
+                .await
+                .map_err(|error| {
+                    map_skill_control_error("failed to load voice call events", error)
+                })?,
+            "voice call events",
+        )
+    }
+
+    async fn voice_call_artifacts(
+        &self,
+        call_id: &str,
+    ) -> openrustclaw_core::error::Result<serde_json::Value> {
+        serialize_skill_control_value(
+            skills::voice_call_artifacts_data(call_id)
+                .await
+                .map_err(|error| {
+                    map_skill_control_error("failed to load voice call artifacts", error)
+                })?,
+            "voice call artifacts",
+        )
+    }
+
+    async fn start_voice_call(
+        &self,
+        request: AppSkillStartVoiceCallRequest,
+    ) -> openrustclaw_core::error::Result<serde_json::Value> {
+        serialize_skill_control_value(
+            skills::start_voice_call_data(
+                &request.plugin_id,
+                skills::SkillStartVoiceCallOptions {
+                    remote: request.remote.as_deref(),
+                    greeting_text: request.greeting_text.as_deref(),
+                    voice: request.voice.as_deref(),
+                    metadata: request.metadata.as_deref(),
+                    stale_after_secs: request.stale_after_secs,
+                },
+            )
+            .await
+            .map_err(|error| map_skill_control_error("failed to start voice call", error))?,
+            "voice call start result",
+        )
+    }
+
+    async fn reap_voice_calls(
+        &self,
+        request: AppSkillReapVoiceCallsRequest,
+    ) -> openrustclaw_core::error::Result<serde_json::Value> {
+        serialize_skill_control_value(
+            skills::reap_voice_calls_data(skills::SkillReapVoiceCallsOptions {
+                stale_after_secs: request.stale_after_secs,
+                limit: request.limit,
+            })
+            .await
+            .map_err(|error| map_skill_control_error("failed to reap voice calls", error))?,
+            "voice call reap result",
+        )
+    }
+
+    async fn end_voice_call(
+        &self,
+        call_id: &str,
+        request: AppSkillEndVoiceCallRequest,
+    ) -> openrustclaw_core::error::Result<serde_json::Value> {
+        serialize_skill_control_value(
+            skills::end_voice_call_data(
+                call_id,
+                skills::SkillEndVoiceCallOptions {
+                    reason: request.reason.as_deref(),
+                    metadata: request.metadata.as_deref(),
+                },
+            )
+            .await
+            .map_err(|error| map_skill_control_error("failed to end voice call", error))?,
+            "voice call end result",
+        )
+    }
+
+    async fn reconnect_voice_call(
+        &self,
+        call_id: &str,
+        request: AppSkillReconnectVoiceCallRequest,
+    ) -> openrustclaw_core::error::Result<serde_json::Value> {
+        serialize_skill_control_value(
+            skills::reconnect_voice_call_data(
+                call_id,
+                skills::SkillReconnectVoiceCallOptions {
+                    remote: request.remote.as_deref(),
+                    greeting_text: request.greeting_text.as_deref(),
+                    voice: request.voice.as_deref(),
+                    metadata: request.metadata.as_deref(),
+                    stale_after_secs: request.stale_after_secs,
+                },
+            )
+            .await
+            .map_err(|error| map_skill_control_error("failed to reconnect voice call", error))?,
+            "voice call reconnect result",
+        )
+    }
+
+    async fn channel_extensions(&self) -> openrustclaw_core::error::Result<serde_json::Value> {
+        serialize_skill_control_value(
+            skills::channel_extensions_data().await.map_err(|error| {
+                map_skill_control_error("failed to load channel extensions", error)
+            })?,
+            "channel extensions",
+        )
+    }
+
+    async fn bind_channel_extension(
+        &self,
+        request: AppSkillBindChannelExtensionRequest,
+    ) -> openrustclaw_core::error::Result<serde_json::Value> {
+        serialize_skill_control_value(
+            skills::bind_channel_extension_data(
+                &request.binding_id,
+                &request.skill_name,
+                skills::SkillBindChannelExtensionOptions {
+                    service: request.service.as_deref(),
+                    component: request.component.as_deref(),
+                    trigger: request.trigger.as_deref(),
+                },
+            )
+            .await
+            .map_err(|error| map_skill_control_error("failed to bind channel extension", error))?,
+            "channel extension bind result",
+        )
+    }
+}
+
+struct WorkspaceChannelRegistryLifecycleSource {
+    registry: Arc<tokio::sync::RwLock<ChannelRegistry>>,
+}
+
+#[async_trait]
+impl ChannelRegistryLifecycleSource for WorkspaceChannelRegistryLifecycleSource {
+    async fn upsert_account(
+        &self,
+        request: AppChannelRegistryAccountUpsertRequest,
+    ) -> openrustclaw_core::error::Result<()> {
+        let root = {
+            self.registry
+                .read()
+                .await
+                .root
+                .to_string_lossy()
+                .to_string()
+        };
+        super::channels::upsert_account(Some(&root), map_channel_account_spec_from_app(request))
+            .map_err(|error| {
+                CoreError::Internal(format!("failed to upsert channel account: {error}"))
+            })?;
+        reload_channel_registry(&self.registry)
+            .await
+            .map_err(|error| CoreError::Internal(format!("failed to reload registry: {error}")))?;
+        Ok(())
+    }
+
+    async fn delete_account(&self, id: &str) -> openrustclaw_core::error::Result<()> {
+        let root = {
+            self.registry
+                .read()
+                .await
+                .root
+                .to_string_lossy()
+                .to_string()
+        };
+        super::channels::delete_account(Some(&root), id).map_err(|error| {
+            CoreError::Internal(format!("failed to delete channel account: {error}"))
+        })?;
+        reload_channel_registry(&self.registry)
+            .await
+            .map_err(|error| CoreError::Internal(format!("failed to reload registry: {error}")))?;
+        Ok(())
+    }
+
+    async fn mutate_account(
+        &self,
+        id: &str,
+        action: AppChannelRegistryAccountMutationAction,
+    ) -> openrustclaw_core::error::Result<()> {
+        let root = {
+            self.registry
+                .read()
+                .await
+                .root
+                .to_string_lossy()
+                .to_string()
+        };
+        let result = match action {
+            AppChannelRegistryAccountMutationAction::Approve => {
+                super::channels::approve(Some(&root), id)
+            }
+            AppChannelRegistryAccountMutationAction::Block => {
+                super::channels::block(Some(&root), id)
+            }
+            AppChannelRegistryAccountMutationAction::Activation { mode } => {
+                super::channels::activation(Some(&root), id, &mode)
+            }
+        };
+        result.map_err(|error| {
+            CoreError::Internal(format!("failed to mutate channel account: {error}"))
+        })?;
+        reload_channel_registry(&self.registry)
+            .await
+            .map_err(|error| CoreError::Internal(format!("failed to reload registry: {error}")))?;
+        Ok(())
+    }
+
+    async fn upsert_binding(
+        &self,
+        request: AppChannelRegistryBindingUpsertRequest,
+    ) -> openrustclaw_core::error::Result<()> {
+        let root = {
+            self.registry
+                .read()
+                .await
+                .root
+                .to_string_lossy()
+                .to_string()
+        };
+        super::channels::upsert_binding(Some(&root), map_channel_binding_spec_from_app(request))
+            .map_err(|error| {
+                CoreError::Internal(format!("failed to upsert channel binding: {error}"))
+            })?;
+        reload_channel_registry(&self.registry)
+            .await
+            .map_err(|error| CoreError::Internal(format!("failed to reload registry: {error}")))?;
+        Ok(())
+    }
+
+    async fn delete_binding(&self, id: &str) -> openrustclaw_core::error::Result<()> {
+        let root = {
+            self.registry
+                .read()
+                .await
+                .root
+                .to_string_lossy()
+                .to_string()
+        };
+        super::channels::delete_binding(Some(&root), id).map_err(|error| {
+            CoreError::Internal(format!("failed to delete channel binding: {error}"))
+        })?;
+        reload_channel_registry(&self.registry)
+            .await
+            .map_err(|error| CoreError::Internal(format!("failed to reload registry: {error}")))?;
+        Ok(())
+    }
+}
+
+fn map_channel_send_policy_to_app(
+    policy: super::channels::ChannelSendPolicy,
+) -> AppChannelSendPolicyRequest {
+    AppChannelSendPolicyRequest {
+        mode: policy.mode,
+        max_chunk_chars: policy.max_chunk_chars,
+        chunk_delay_ms: policy.chunk_delay_ms,
+        coalesce_below_chars: policy.coalesce_below_chars,
+        preview_chars: policy.preview_chars,
+    }
+}
+
+fn map_channel_send_policy_from_app(
+    policy: AppChannelSendPolicyRequest,
+) -> super::channels::ChannelSendPolicy {
+    super::channels::ChannelSendPolicy {
+        mode: policy.mode,
+        max_chunk_chars: policy.max_chunk_chars,
+        chunk_delay_ms: policy.chunk_delay_ms,
+        coalesce_below_chars: policy.coalesce_below_chars,
+        preview_chars: policy.preview_chars,
+    }
+}
+
+fn map_channel_account_spec_to_app(
+    spec: super::channels::ChannelAccountSpec,
+) -> AppChannelRegistryAccountUpsertRequest {
+    AppChannelRegistryAccountUpsertRequest {
+        id: spec.id,
+        platform: spec.platform,
+        external_user_id: spec.external_user_id,
+        display_name: spec.display_name,
+        workspace_id: spec.workspace_id,
+        channel_scope: spec.channel_scope,
+        enabled: spec.enabled,
+        approved: spec.approved,
+        blocked: spec.blocked,
+        workspace_target: spec.workspace_target,
+        agent_id: spec.agent_id,
+        activation_mode: spec.activation_mode,
+        direct_strategy: spec.direct_strategy,
+        group_strategy: spec.group_strategy,
+        send_policy: spec.send_policy.map(map_channel_send_policy_to_app),
+        metadata: spec.metadata,
+    }
+}
+
+fn map_channel_account_spec_from_app(
+    spec: AppChannelRegistryAccountUpsertRequest,
+) -> super::channels::ChannelAccountSpec {
+    super::channels::ChannelAccountSpec {
+        id: spec.id,
+        platform: spec.platform,
+        external_user_id: spec.external_user_id,
+        display_name: spec.display_name,
+        workspace_id: spec.workspace_id,
+        channel_scope: spec.channel_scope,
+        enabled: spec.enabled,
+        approved: spec.approved,
+        blocked: spec.blocked,
+        workspace_target: spec.workspace_target,
+        agent_id: spec.agent_id,
+        activation_mode: spec.activation_mode,
+        direct_strategy: spec.direct_strategy,
+        group_strategy: spec.group_strategy,
+        send_policy: spec.send_policy.map(map_channel_send_policy_from_app),
+        metadata: spec.metadata,
+    }
+}
+
+fn map_channel_binding_spec_to_app(
+    spec: ChannelBindingSpec,
+) -> AppChannelRegistryBindingUpsertRequest {
+    AppChannelRegistryBindingUpsertRequest {
+        id: spec.id,
+        platform: spec.platform,
+        enabled: spec.enabled,
+        priority: spec.priority,
+        workspace_match: spec.workspace_match,
+        account_match: spec.account_match,
+        channel_match: spec.channel_match,
+        workspace_target: spec.workspace_target,
+        agent_id: spec.agent_id,
+        activation_mode: spec.activation_mode,
+        direct_strategy: spec.direct_strategy,
+        group_strategy: spec.group_strategy,
+        send_policy: spec.send_policy.map(map_channel_send_policy_to_app),
+        metadata: spec.metadata,
+    }
+}
+
+fn map_channel_binding_spec_from_app(
+    spec: AppChannelRegistryBindingUpsertRequest,
+) -> ChannelBindingSpec {
+    ChannelBindingSpec {
+        id: spec.id,
+        platform: spec.platform,
+        enabled: spec.enabled,
+        priority: spec.priority,
+        workspace_match: spec.workspace_match,
+        account_match: spec.account_match,
+        channel_match: spec.channel_match,
+        workspace_target: spec.workspace_target,
+        agent_id: spec.agent_id,
+        activation_mode: spec.activation_mode,
+        direct_strategy: spec.direct_strategy,
+        group_strategy: spec.group_strategy,
+        send_policy: spec.send_policy.map(map_channel_send_policy_from_app),
+        metadata: spec.metadata,
+    }
+}
+
+struct WorkspaceOperatorStatusControlSource<'a> {
+    state: &'a RuntimeControlState,
+}
+
+fn map_operator_status_error(context: &str, error: anyhow::Error) -> CoreError {
+    CoreError::Internal(format!("{context}: {error}"))
+}
+
+#[async_trait]
+impl OperatorStatusControlSource for WorkspaceOperatorStatusControlSource<'_> {
+    async fn runtime_status(&self) -> openrustclaw_core::error::Result<serde_json::Value> {
+        serde_json::to_value(
+            runtime::runtime_status(&self.state.config_path, &self.state.workspace_root).map_err(
+                |error| map_operator_status_error("failed to load runtime status", error),
+            )?,
+        )
+        .map_err(|error| {
+            CoreError::Internal(format!("failed to serialize runtime status: {error}"))
+        })
+    }
+
+    async fn runtime_operator_ops(&self) -> openrustclaw_core::error::Result<serde_json::Value> {
+        let summary = runtime::runtime_operator_ops_summary(
+            &self.state.config_path,
+            &self.state.workspace_root,
+            &self.state.gateway_addr,
+            Some(self.state.started_at),
+            self.state.sidecar_running,
+        )
+        .await
+        .map_err(|error| map_operator_status_error("failed to load runtime operator ops", error))?;
+        serde_json::to_value(summary).map_err(|error| {
+            CoreError::Internal(format!(
+                "failed to serialize runtime operator ops summary: {error}"
+            ))
+        })
+    }
+
+    async fn voice_status(&self) -> openrustclaw_core::error::Result<serde_json::Value> {
+        let config =
+            runtime::load_effective_config(&self.state.config_path, &self.state.workspace_root)
+                .map_err(|error| {
+                    map_operator_status_error("failed to load config for voice status", error)
+                })?;
+        serde_json::to_value(voice_runtime::voice_status(
+            &config,
+            &self.state.workspace_root,
+        ))
+        .map_err(|error| CoreError::Internal(format!("failed to serialize voice status: {error}")))
+    }
+
+    async fn voice_providers(&self) -> openrustclaw_core::error::Result<serde_json::Value> {
+        let config =
+            runtime::load_effective_config(&self.state.config_path, &self.state.workspace_root)
+                .map_err(|error| {
+                    map_operator_status_error("failed to load config for voice providers", error)
+                })?;
+        serde_json::to_value(voice_runtime::voice_provider_catalog(&config)).map_err(|error| {
+            CoreError::Internal(format!(
+                "failed to serialize voice provider catalog: {error}"
+            ))
+        })
+    }
+
+    async fn voice_metrics(&self) -> openrustclaw_core::error::Result<serde_json::Value> {
+        let result = voice_runtime::voice_metrics(&self.state.workspace_root)
+            .await
+            .map_err(|error| map_operator_status_error("failed to load voice metrics", error))?;
+        serde_json::to_value(result).map_err(|error| {
+            CoreError::Internal(format!("failed to serialize voice metrics: {error}"))
+        })
+    }
+
+    async fn voice_operator_summary(
+        &self,
+        limit: usize,
+        stale_after_secs: Option<u64>,
+    ) -> openrustclaw_core::error::Result<serde_json::Value> {
+        let config =
+            runtime::load_effective_config(&self.state.config_path, &self.state.workspace_root)
+                .map_err(|error| {
+                    map_operator_status_error(
+                        "failed to load config for voice operator summary",
+                        error,
+                    )
+                })?;
+        let summary = inspect::voice_operator_report_summary(
+            &config,
+            &self.state.workspace_root,
+            limit,
+            stale_after_secs,
+        )
+        .await
+        .map_err(|error| {
+            map_operator_status_error("failed to load voice operator summary", error)
+        })?;
+        serde_json::to_value(summary).map_err(|error| {
+            CoreError::Internal(format!(
+                "failed to serialize voice operator summary: {error}"
+            ))
+        })
+    }
+
+    async fn voice_outcomes(
+        &self,
+        stale_after_secs: Option<u64>,
+        limit: Option<usize>,
+    ) -> openrustclaw_core::error::Result<serde_json::Value> {
+        let result = voice_runtime::voice_session_outcomes(
+            &self.state.workspace_root,
+            stale_after_secs,
+            limit,
+        )
+        .await
+        .map_err(|error| map_operator_status_error("failed to load voice outcomes", error))?;
+        serde_json::to_value(result).map_err(|error| {
+            CoreError::Internal(format!("failed to serialize voice outcomes: {error}"))
+        })
+    }
+
+    async fn voice_sessions(&self) -> openrustclaw_core::error::Result<serde_json::Value> {
+        let result = voice_runtime::list_voice_sessions(&self.state.workspace_root)
+            .await
+            .map_err(|error| map_operator_status_error("failed to load voice sessions", error))?;
+        serde_json::to_value(result).map_err(|error| {
+            CoreError::Internal(format!("failed to serialize voice sessions: {error}"))
+        })
+    }
+
+    async fn voice_session_health(
+        &self,
+        stale_after_secs: Option<u64>,
+    ) -> openrustclaw_core::error::Result<serde_json::Value> {
+        let result = voice_runtime::voice_session_health(
+            &self.state.workspace_root,
+            voice_runtime::VoiceSessionHealthRequest { stale_after_secs },
+        )
+        .await
+        .map_err(|error| map_operator_status_error("failed to load voice session health", error))?;
+        serde_json::to_value(result).map_err(|error| {
+            CoreError::Internal(format!("failed to serialize voice session health: {error}"))
+        })
+    }
+
+    async fn talk_status(
+        &self,
+        limit: usize,
+    ) -> openrustclaw_core::error::Result<serde_json::Value> {
+        #[cfg(feature = "voice")]
+        {
+            let result = talk::runtime_status(&self.state.workspace_root, limit)
+                .await
+                .map_err(|error| map_operator_status_error("failed to load talk status", error))?;
+            return serde_json::to_value(result).map_err(|error| {
+                CoreError::Internal(format!("failed to serialize talk status: {error}"))
+            });
+        }
+        #[cfg(not(feature = "voice"))]
+        {
+            let _ = limit;
+            Err(CoreError::Internal(
+                "talk support is disabled in this build".to_string(),
+            ))
+        }
+    }
+
+    async fn talk_metrics(&self) -> openrustclaw_core::error::Result<serde_json::Value> {
+        #[cfg(feature = "voice")]
+        {
+            let result = talk::runtime_metrics_data(&self.state.workspace_root)
+                .await
+                .map_err(|error| map_operator_status_error("failed to load talk metrics", error))?;
+            return serde_json::to_value(result).map_err(|error| {
+                CoreError::Internal(format!("failed to serialize talk metrics: {error}"))
+            });
+        }
+        #[cfg(not(feature = "voice"))]
+        {
+            Err(CoreError::Internal(
+                "talk support is disabled in this build".to_string(),
+            ))
+        }
+    }
+
+    async fn talk_sessions(
+        &self,
+        limit: usize,
+    ) -> openrustclaw_core::error::Result<serde_json::Value> {
+        #[cfg(feature = "voice")]
+        {
+            let result = talk::list_talk_sessions(&self.state.workspace_root, limit)
+                .await
+                .map_err(|error| {
+                    map_operator_status_error("failed to load talk sessions", error)
+                })?;
+            return serde_json::to_value(result).map_err(|error| {
+                CoreError::Internal(format!("failed to serialize talk sessions: {error}"))
+            });
+        }
+        #[cfg(not(feature = "voice"))]
+        {
+            let _ = limit;
+            Err(CoreError::Internal(
+                "talk support is disabled in this build".to_string(),
+            ))
+        }
+    }
+
+    async fn mobile_nodes(&self) -> openrustclaw_core::error::Result<serde_json::Value> {
+        let nodes = mobile::list_nodes_data(&self.state.workspace_root)
+            .map_err(|error| map_operator_status_error("failed to load mobile nodes", error))?;
+        serde_json::to_value(nodes).map_err(|error| {
+            CoreError::Internal(format!("failed to serialize mobile nodes: {error}"))
+        })
+    }
+
+    async fn mobile_node_summary(
+        &self,
+        id: &str,
+        limit: Option<usize>,
+    ) -> openrustclaw_core::error::Result<serde_json::Value> {
+        let report = mobile::mobile_node_report_data(&self.state.workspace_root, id, limit)
+            .map_err(|error| {
+                map_operator_status_error("failed to load mobile node summary", error)
+            })?;
+        serde_json::to_value(report).map_err(|error| {
+            CoreError::Internal(format!("failed to serialize mobile node summary: {error}"))
+        })
+    }
+}
+
+impl ControlConfigSource for WorkspaceControlConfigSource<'_> {
+    fn config_path(&self) -> String {
+        self.config_path.to_string()
+    }
+
+    fn load_effective_config(&self) -> openrustclaw_core::error::Result<AppConfig> {
+        runtime::load_effective_config(self.config_path, self.workspace_root).map_err(|error| {
+            CoreError::Internal(format!("failed to load effective config: {error}"))
+        })
+    }
+
+    fn write_config_with_backup(&self, config: &AppConfig) -> openrustclaw_core::error::Result<()> {
+        runtime::write_config_with_backup(self.config_path, config).map_err(|error| {
+            CoreError::Internal(format!("failed to write config with backup: {error}"))
+        })
+    }
+}
+
 async fn enterprise_autonomy_enable_handler(
     State(state): State<RuntimeControlState>,
     Json(payload): Json<EnterpriseAutonomyEnablePayload>,
@@ -7372,6 +8506,14 @@ async fn runtime_upgrade_plan_handler(
         )
             .into_response(),
     }
+}
+
+async fn runtime_maintenance_handler(
+    State(_state): State<RuntimeControlState>,
+) -> impl IntoResponse {
+    let report =
+        RuntimeMaintenanceControlService::new().report(inspect::greenfield_progress_summary());
+    (StatusCode::OK, Json(serde_json::json!(report))).into_response()
 }
 
 async fn runtime_self_update_plan_handler(
@@ -12422,6 +13564,7 @@ mod tests {
     use openrustclaw_core::config::{AppConfig, DiscordConfig, SlackConfig, SlackMode};
     use openrustclaw_core::error::{Error, ProviderError};
     use openrustclaw_core::types::{FinishReason, IncomingMessage, Role, TokenUsage};
+    use serial_test::serial;
     use tempfile::tempdir;
     use tower::ServiceExt;
 
@@ -12551,6 +13694,24 @@ mod tests {
         }
     }
 
+    struct CurrentDirGuard {
+        previous: PathBuf,
+    }
+
+    impl CurrentDirGuard {
+        fn set(path: &Path) -> Self {
+            let previous = std::env::current_dir().expect("current dir");
+            std::env::set_current_dir(path).expect("set current dir");
+            Self { previous }
+        }
+    }
+
+    impl Drop for CurrentDirGuard {
+        fn drop(&mut self) {
+            let _ = std::env::set_current_dir(&self.previous);
+        }
+    }
+
     async fn test_runtime_control_state(workspace_root: PathBuf) -> RuntimeControlState {
         let pool = openrustclaw_db::init_pool("sqlite::memory:", 1)
             .await
@@ -12577,6 +13738,28 @@ mod tests {
             started_at: Utc::now(),
             sidecar_running: false,
         }
+    }
+
+    fn test_control_plane_state(workspace_root: PathBuf) -> ControlPlaneApiState {
+        ControlPlaneApiState {
+            control_root: workspace_root.join(".claw").join("control"),
+            config_path: workspace_root
+                .join("config/default.toml")
+                .display()
+                .to_string(),
+            workspace_root,
+        }
+    }
+
+    async fn test_channel_registry_state(
+        workspace_root: PathBuf,
+    ) -> Arc<tokio::sync::RwLock<ChannelRegistry>> {
+        let root = workspace_root.join(".claw").join("channels");
+        crate::commands::channels::init(Some(root.to_str().expect("channels root")))
+            .expect("init channels");
+        Arc::new(tokio::sync::RwLock::new(
+            load_registry(root).expect("load registry"),
+        ))
     }
 
     #[test]
@@ -12684,22 +13867,1046 @@ mod tests {
         assert_eq!(delete_response.status(), StatusCode::OK);
     }
 
-    #[test]
-    fn control_config_round_trip_writes_toml() {
+    #[tokio::test]
+    async fn runtime_maintenance_route_family_uses_service_lane() {
+        let temp = tempdir().unwrap();
+        std::fs::create_dir_all(temp.path().join("config")).unwrap();
+        std::fs::write(
+            temp.path().join("config").join("default.toml"),
+            toml::to_string_pretty(&AppConfig::default()).unwrap(),
+        )
+        .unwrap();
+
+        let router =
+            runtime_control_router(test_runtime_control_state(temp.path().to_path_buf()).await);
+
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/control/runtime/maintenance")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let body = String::from_utf8(body.to_vec()).unwrap();
+        assert!(body.contains("\"completion_percent\":100"));
+        assert!(body.contains("\"remaining_seams\":0"));
+        assert!(body.contains("\"ledger_status\":\"complete\""));
+        assert!(body.contains("\"queue_decision\":\"retire_current_ranked_inventory\""));
+        assert!(body.contains("\"maintenance_path\":\"/control/runtime/maintenance\""));
+    }
+
+    #[tokio::test]
+    async fn control_config_route_family_uses_service_lane() {
         let temp = tempdir().expect("tempdir");
-        let path = temp.path().join("config").join("runtime.toml");
-        let config = AppConfig::default();
+        std::fs::create_dir_all(temp.path().join("config")).expect("mkdirs");
+        std::fs::write(
+            temp.path().join("config").join("default.toml"),
+            toml::to_string_pretty(&AppConfig::default()).unwrap(),
+        )
+        .expect("write config");
 
-        let rendered = validate_control_config(&config).expect("render config");
-        assert!(rendered.contains("[gateway]"));
+        let router = control_plane_router(test_control_plane_state(temp.path().to_path_buf()));
 
-        std::fs::create_dir_all(path.parent().expect("parent dir")).expect("mkdirs");
-        std::fs::write(&path, rendered.as_bytes()).expect("write config");
-        let bytes = rendered.len();
-        assert!(bytes > 0);
+        let get_response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/control/config")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(get_response.status(), StatusCode::OK);
+        let get_body = to_bytes(get_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let get_body = String::from_utf8(get_body.to_vec()).unwrap();
+        assert!(get_body.contains("\"path\":"));
+        assert!(get_body.contains("\"gateway\""));
 
-        let written = std::fs::read_to_string(path).expect("read written config");
-        assert!(written.contains("[providers]"));
+        let mut updated = AppConfig::default();
+        updated.security.require_auth = true;
+        let payload = serde_json::to_vec(&updated).unwrap();
+
+        let validate_response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/control/config/validate")
+                    .header("content-type", "application/json")
+                    .body(Body::from(payload.clone()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(validate_response.status(), StatusCode::OK);
+        let validate_body = to_bytes(validate_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let validate_body = String::from_utf8(validate_body.to_vec()).unwrap();
+        assert!(validate_body.contains("\"status\":\"ok\""));
+        assert!(validate_body.contains("\"bytes\":"));
+
+        let update_response = router
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri("/control/config")
+                    .header("content-type", "application/json")
+                    .body(Body::from(payload))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(update_response.status(), StatusCode::OK);
+
+        let written = std::fs::read_to_string(temp.path().join("config").join("default.toml"))
+            .expect("read written config");
+        assert!(written.contains("require_auth = true"));
+    }
+
+    #[tokio::test]
+    async fn diagnostics_route_family_uses_service_lane() {
+        let temp = tempdir().expect("tempdir");
+        std::fs::create_dir_all(temp.path().join("config")).expect("mkdirs");
+        std::fs::write(
+            temp.path().join("config").join("default.toml"),
+            toml::to_string_pretty(&AppConfig::default()).unwrap(),
+        )
+        .expect("write config");
+
+        let router = control_plane_router(test_control_plane_state(temp.path().to_path_buf()));
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/control/diagnostics")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let body = String::from_utf8(body.to_vec()).unwrap();
+        assert!(body.contains("\"config_path\":"));
+        assert!(body.contains("\"checks\":"));
+        assert!(body.contains("\"healthy\":"));
+    }
+
+    #[tokio::test]
+    async fn autonomy_lessons_route_family_uses_service_lane() {
+        let temp = tempdir().expect("tempdir");
+        control::init(Some(
+            temp.path().join(".claw").join("control").to_str().unwrap(),
+        ))
+        .expect("init control");
+        let router = control_plane_router(test_control_plane_state(temp.path().to_path_buf()));
+
+        let create_response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/control/autonomy/lessons")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "id": "prefer-local-fallback",
+                            "active": true,
+                            "signal": "provider timeout",
+                            "recommendation": "prefer local fallback",
+                            "confidence": 0.9
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(create_response.status(), StatusCode::OK);
+        let create_body = to_bytes(create_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let create_body = String::from_utf8(create_body.to_vec()).unwrap();
+        assert!(create_body.contains("\"status\":\"ok\""));
+        assert!(create_body.contains("\"decision_lessons\":"));
+
+        let list_response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/control/autonomy/lessons")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(list_response.status(), StatusCode::OK);
+        let list_body = to_bytes(list_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let list_body = String::from_utf8(list_body.to_vec()).unwrap();
+        assert!(list_body.contains("\"prefer-local-fallback\""));
+
+        let deactivate_response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/control/autonomy/lessons/prefer-local-fallback/deactivate")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(deactivate_response.status(), StatusCode::OK);
+
+        let summary_response = router
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/control/autonomy")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(summary_response.status(), StatusCode::OK);
+        let summary_body = to_bytes(summary_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let summary_body = String::from_utf8(summary_body.to_vec()).unwrap();
+        assert!(summary_body.contains("\"decision_lessons\":"));
+        assert!(summary_body.contains("\"execution_mode\":"));
+    }
+
+    #[tokio::test]
+    async fn channel_registry_route_family_uses_service_lane() {
+        let temp = tempdir().expect("tempdir");
+        let registry = test_channel_registry_state(temp.path().to_path_buf()).await;
+        let router = channel_registry_router(registry.clone());
+
+        let create_account = serde_json::json!({
+            "id": "support-user",
+            "platform": "slack",
+            "external_user_id": "U123",
+            "display_name": "Support",
+            "workspace_id": "T123",
+            "enabled": true,
+            "approved": false,
+            "blocked": false,
+            "metadata": {}
+        });
+
+        let create_response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/control/channels/accounts")
+                    .header("content-type", "application/json")
+                    .body(Body::from(create_account.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(create_response.status(), StatusCode::OK);
+
+        let approve_response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/control/channels/accounts/support-user/approve")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(approve_response.status(), StatusCode::OK);
+
+        let bind_response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/control/channels/bindings")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "id": "support-binding",
+                            "platform": "slack",
+                            "workspace_match": "T123",
+                            "account_match": "support-user",
+                            "channel_match": "C123"
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(bind_response.status(), StatusCode::OK);
+
+        let get_binding = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/control/channels/bindings/support-binding")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(get_binding.status(), StatusCode::OK);
+        let binding_body = to_bytes(get_binding.into_body(), usize::MAX).await.unwrap();
+        let binding_body = String::from_utf8(binding_body.to_vec()).unwrap();
+        assert!(binding_body.contains("\"id\":\"support-binding\""));
+
+        let delete_binding = router
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/control/channels/bindings/support-binding")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(delete_binding.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn runtime_voice_talk_and_mobile_status_route_family_uses_service_lane() {
+        let temp = tempdir().expect("tempdir");
+        std::fs::create_dir_all(temp.path().join("config")).expect("mkdirs");
+        std::fs::write(
+            temp.path().join("config").join("default.toml"),
+            toml::to_string_pretty(&AppConfig::default()).unwrap(),
+        )
+        .expect("write config");
+
+        let router =
+            runtime_control_router(test_runtime_control_state(temp.path().to_path_buf()).await);
+
+        let runtime_status = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/control/runtime/status")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(runtime_status.status(), StatusCode::OK);
+        let runtime_status_body = to_bytes(runtime_status.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let runtime_status_body = String::from_utf8(runtime_status_body.to_vec()).unwrap();
+        assert!(runtime_status_body.contains("\"config_path\":"));
+        assert!(runtime_status_body.contains("\"network_mode\":"));
+
+        let voice_status = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/control/voice/status")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(voice_status.status(), StatusCode::OK);
+        let voice_status_body = to_bytes(voice_status.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let voice_status_body = String::from_utf8(voice_status_body.to_vec()).unwrap();
+        assert!(voice_status_body.contains("\"enabled\":"));
+
+        let talk_status = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/control/talk/status")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(talk_status.status(), StatusCode::OK);
+        let talk_status_body = to_bytes(talk_status.into_body(), usize::MAX).await.unwrap();
+        let talk_status_body = String::from_utf8(talk_status_body.to_vec()).unwrap();
+        assert!(talk_status_body.contains("\"total_sessions\":"));
+
+        let mobile_nodes = router
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/control/mobile/nodes")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(mobile_nodes.status(), StatusCode::OK);
+        let mobile_nodes_body = to_bytes(mobile_nodes.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let mobile_nodes_body = String::from_utf8(mobile_nodes_body.to_vec()).unwrap();
+        assert!(mobile_nodes_body.contains("\"nodes\":"));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn remaining_skill_control_route_family_uses_service_lane() {
+        let temp = tempdir().expect("tempdir");
+        std::fs::create_dir_all(temp.path().join("config")).expect("mkdirs");
+        std::fs::create_dir_all(temp.path().join("skills").join("demo").join("scripts"))
+            .expect("skill scripts");
+        std::fs::create_dir_all(temp.path().join("skills").join("demo").join("references"))
+            .expect("skill references");
+        std::fs::write(
+            temp.path().join("config").join("default.toml"),
+            toml::to_string_pretty(&AppConfig::default()).unwrap(),
+        )
+        .expect("write config");
+        std::fs::write(
+            temp.path().join("skills").join("demo").join("SKILL.md"),
+            r#"---
+name: demo
+description: "A deterministic route-family test skill"
+capabilities:
+  - file_read
+background_services:
+  - sync-loop
+---
+
+# Demo
+"#,
+        )
+        .expect("write skill");
+        std::fs::write(
+            temp.path()
+                .join("skills")
+                .join("demo")
+                .join("references")
+                .join("guide.md"),
+            "demo guide",
+        )
+        .expect("write guide");
+        std::fs::write(
+            temp.path()
+                .join("skills")
+                .join("demo")
+                .join("scripts")
+                .join("sync-loop.wat"),
+            r#"(module
+  (memory (export "memory") 1 1)
+  (data (i32.const 1024) "{\"ok\":true}")
+  (func (export "alloc") (param i32) (result i32) i32.const 0)
+  (func (export "run") (param i32 i32) (result i64)
+    (i64.or
+      (i64.shl (i64.extend_i32_u (i32.const 1024)) (i64.const 32))
+      (i64.extend_i32_u (i32.const 11)))))"#,
+        )
+        .expect("write component");
+
+        let _cwd = CurrentDirGuard::set(temp.path());
+        let router =
+            runtime_control_router(test_runtime_control_state(temp.path().to_path_buf()).await);
+
+        let compile_response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/control/skills/compile")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"name":"demo"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(compile_response.status(), StatusCode::OK);
+        let compile_body = to_bytes(compile_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let compile_body = String::from_utf8(compile_body.to_vec()).unwrap();
+        assert!(compile_body.contains("\"compiled_count\":1"));
+        assert!(compile_body.contains("\"name\":\"demo\""));
+
+        let compiled_response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/control/skills/compiled")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(compiled_response.status(), StatusCode::OK);
+        let compiled_body = to_bytes(compiled_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let compiled_body = String::from_utf8(compiled_body.to_vec()).unwrap();
+        assert!(compiled_body.contains("\"compiled\":"));
+        assert!(compiled_body.contains("\"name\":\"demo\""));
+
+        let detail_response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/control/skills/compiled/demo")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(detail_response.status(), StatusCode::OK);
+        let detail_body = to_bytes(detail_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let detail_body = String::from_utf8(detail_body.to_vec()).unwrap();
+        assert!(detail_body.contains("\"local_path\":"));
+        assert!(detail_body.contains("skills/demo/SKILL.md"));
+
+        let background_response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/control/skills/demo/background-services")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(background_response.status(), StatusCode::OK);
+        let background_body = to_bytes(background_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let background_body = String::from_utf8(background_body.to_vec()).unwrap();
+        assert!(background_body.contains("\"services\":"));
+        assert!(background_body.contains("\"name\":\"sync-loop\""));
+
+        let invoke_response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/control/skills/demo/invoke")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "args": "--topic rust",
+                            "reference": "references/guide.md",
+                            "max_chars": 4,
+                            "detail": true
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(invoke_response.status(), StatusCode::OK);
+        let invoke_body = to_bytes(invoke_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let invoke_body = String::from_utf8(invoke_body.to_vec()).unwrap();
+        assert!(
+            invoke_body
+                .contains("\"command_preview\":\"openrustclaw skills invoke demo --topic rust\"")
+        );
+        assert!(invoke_body.contains("\"reference_result\":"));
+
+        let execute_response = router
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/control/skills/demo/execute")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "component": "scripts/sync-loop.wat",
+                            "input": "{\"text\":\"hello\"}"
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(execute_response.status(), StatusCode::OK);
+        let execute_body = to_bytes(execute_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let execute_body = String::from_utf8(execute_body.to_vec()).unwrap();
+        assert!(execute_body.contains("\"output\":"));
+        assert!(execute_body.contains("\"ok\":true"));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn voice_call_and_channel_extension_route_family_uses_service_lane() {
+        let temp = tempdir().expect("tempdir");
+        let db_path = temp.path().join("skills.db");
+        std::fs::create_dir_all(temp.path().join("config")).expect("mkdirs");
+        std::fs::create_dir_all(temp.path().join("skills").join("demo").join("scripts"))
+            .expect("skill scripts");
+        std::fs::write(&db_path, []).expect("write db placeholder");
+        let mut config = AppConfig::default();
+        config.database.url = format!("sqlite://{}?mode=rwc", db_path.display());
+        std::fs::write(
+            temp.path().join("config").join("default.toml"),
+            toml::to_string_pretty(&config).unwrap(),
+        )
+        .expect("write config");
+        std::fs::write(
+            temp.path().join("skills").join("demo").join("SKILL.md"),
+            r#"---
+name: demo
+description: "Voice and channel extension route-family test skill"
+capabilities:
+  - file_read
+background_services:
+  - sync-loop
+---
+
+# Demo
+"#,
+        )
+        .expect("write skill");
+        std::fs::write(
+            temp.path()
+                .join("skills")
+                .join("demo")
+                .join("scripts")
+                .join("sync-loop.wat"),
+            r#"(module
+  (memory (export "memory") 1 1)
+  (data (i32.const 1024) "{\"ok\":true}")
+  (func (export "alloc") (param i32) (result i32) i32.const 0)
+  (func (export "run") (param i32 i32) (result i64)
+    (i64.or
+      (i64.shl (i64.extend_i32_u (i32.const 1024)) (i64.const 32))
+      (i64.extend_i32_u (i32.const 11)))))"#,
+        )
+        .expect("write component");
+
+        let _cwd = CurrentDirGuard::set(temp.path());
+        crate::commands::channels::bind(
+            None,
+            "support-inbox",
+            "slack",
+            Some("workspace-a"),
+            None,
+            None,
+            None,
+            None,
+            Some("mention"),
+        )
+        .expect("bind channel");
+
+        let router =
+            runtime_control_router(test_runtime_control_state(temp.path().to_path_buf()).await);
+
+        let compile_response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/control/skills/compile")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"name":"demo"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(compile_response.status(), StatusCode::OK);
+
+        let bind_voice_response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/control/skills/voice-plugins/bind")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "plugin_id": "support-line",
+                            "skill_name": "demo"
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(bind_voice_response.status(), StatusCode::OK);
+
+        let start_response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/control/skills/voice-calls/start")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "plugin_id": "support-line",
+                            "remote": "15551234567"
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(start_response.status(), StatusCode::OK);
+        let start_body = to_bytes(start_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let start_json: serde_json::Value = serde_json::from_slice(&start_body).unwrap();
+        let call_id = start_json["call"]["call_id"]
+            .as_str()
+            .expect("call id")
+            .to_string();
+        assert_eq!(start_json["call"]["plugin_id"], "support-line");
+
+        let calls_response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/control/skills/voice-calls")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(calls_response.status(), StatusCode::OK);
+        let calls_body = to_bytes(calls_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let calls_json: serde_json::Value = serde_json::from_slice(&calls_body).unwrap();
+        assert_eq!(calls_json["count"], 1);
+
+        let health_response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/control/skills/voice-calls/health")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(health_response.status(), StatusCode::OK);
+        let health_body = to_bytes(health_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let health_json: serde_json::Value = serde_json::from_slice(&health_body).unwrap();
+        assert!(health_json.get("health").is_some());
+
+        let metrics_response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/control/skills/voice-calls/metrics")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(metrics_response.status(), StatusCode::OK);
+        let metrics_body = to_bytes(metrics_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let metrics_json: serde_json::Value = serde_json::from_slice(&metrics_body).unwrap();
+        assert!(metrics_json.get("metrics").is_some());
+
+        let reconnect_response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(&format!("/control/skills/voice-calls/{call_id}/reconnect"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "remote": "15557654321"
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(reconnect_response.status(), StatusCode::OK);
+        let reconnect_body = to_bytes(reconnect_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let reconnect_json: serde_json::Value = serde_json::from_slice(&reconnect_body).unwrap();
+        assert_eq!(reconnect_json["call"]["remote"], "15557654321");
+
+        let events_response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(&format!("/control/skills/voice-calls/{call_id}/events"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(events_response.status(), StatusCode::OK);
+        let events_body = to_bytes(events_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let events_json: serde_json::Value = serde_json::from_slice(&events_body).unwrap();
+        assert_eq!(events_json["call"]["call_id"], call_id);
+        assert!(events_json["events"].is_array());
+
+        let artifacts_response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(&format!("/control/skills/voice-calls/{call_id}/artifacts"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(artifacts_response.status(), StatusCode::OK);
+        let artifacts_body = to_bytes(artifacts_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let artifacts_json: serde_json::Value = serde_json::from_slice(&artifacts_body).unwrap();
+        assert_eq!(artifacts_json["call"]["call_id"], call_id);
+        assert!(artifacts_json["artifacts"].is_array());
+
+        let reap_response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/control/skills/voice-calls/reap")
+                    .header("content-type", "application/json")
+                    .body(Body::from(r#"{"limit":1}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(reap_response.status(), StatusCode::OK);
+        let reap_body = to_bytes(reap_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let reap_json: serde_json::Value = serde_json::from_slice(&reap_body).unwrap();
+        assert_eq!(reap_json["checked"], 1);
+
+        let end_response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(&format!("/control/skills/voice-calls/{call_id}/end"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "reason": "operator_complete"
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(end_response.status(), StatusCode::OK);
+        let end_body = to_bytes(end_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let end_json: serde_json::Value = serde_json::from_slice(&end_body).unwrap();
+        assert_eq!(end_json["call"]["reason"], "operator_complete");
+
+        let bind_extension_response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/control/skills/channel-extensions/bind")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::json!({
+                            "binding_id": "support-inbox",
+                            "skill_name": "demo",
+                            "service": "sync-loop"
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(bind_extension_response.status(), StatusCode::OK);
+        let bind_extension_body = to_bytes(bind_extension_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let bind_extension_json: serde_json::Value =
+            serde_json::from_slice(&bind_extension_body).unwrap();
+        assert_eq!(bind_extension_json["binding_id"], "support-inbox");
+
+        let extensions_response = router
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/control/skills/channel-extensions")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(extensions_response.status(), StatusCode::OK);
+        let extensions_body = to_bytes(extensions_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let extensions_json: serde_json::Value = serde_json::from_slice(&extensions_body).unwrap();
+        assert_eq!(extensions_json["count"], 1);
+        assert_eq!(
+            extensions_json["extensions"][0]["binding_id"],
+            "support-inbox"
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn cleaned_up_route_registration_preserves_migrated_route_families() {
+        let temp = tempdir().expect("tempdir");
+        let db_path = temp.path().join("skills.db");
+        std::fs::create_dir_all(temp.path().join("config")).expect("mkdirs");
+        std::fs::write(&db_path, []).expect("write db placeholder");
+        let mut config = AppConfig::default();
+        config.database.url = format!("sqlite://{}?mode=rwc", db_path.display());
+        std::fs::write(
+            temp.path().join("config").join("default.toml"),
+            toml::to_string_pretty(&config).unwrap(),
+        )
+        .expect("write config");
+
+        let _cwd = CurrentDirGuard::set(temp.path());
+        control::init(Some(
+            temp.path().join(".claw").join("control").to_str().unwrap(),
+        ))
+        .expect("init control");
+        crate::commands::channels::init(Some(
+            temp.path().join(".claw").join("channels").to_str().unwrap(),
+        ))
+        .expect("init channels");
+
+        let control_router =
+            control_plane_router(test_control_plane_state(temp.path().to_path_buf()));
+        let runtime_router =
+            runtime_control_router(test_runtime_control_state(temp.path().to_path_buf()).await);
+
+        let control_config = control_router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/control/config")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(control_config.status(), StatusCode::OK);
+
+        let control_autonomy = control_router
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/control/autonomy")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(control_autonomy.status(), StatusCode::OK);
+
+        let skills_index = runtime_router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/control/skills")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(skills_index.status(), StatusCode::OK);
+
+        let voice_calls = runtime_router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/control/skills/voice-calls")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(voice_calls.status(), StatusCode::OK);
+
+        let channel_extensions = runtime_router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/control/skills/channel-extensions")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(channel_extensions.status(), StatusCode::OK);
+
+        let maintenance = runtime_router
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/control/runtime/maintenance")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(maintenance.status(), StatusCode::OK);
     }
 
     #[tokio::test]

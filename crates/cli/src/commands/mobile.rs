@@ -17,6 +17,26 @@ use openrustclaw_app::mobile_operator::{
     MobileNodeSyncState as AppMobileNodeSyncState,
     MobileNotificationSpec as AppMobileNotificationSpec, MobileSyncSpec as AppMobileSyncSpec,
 };
+use openrustclaw_app::mobile_runtime_control::{
+    MobileInboundMessageAckRequest as AppMobileInboundMessageAckRequest,
+    MobileInboundMessageRecord as AppMobileInboundMessageRecord,
+    MobileInboundMessageReportRequest as AppMobileInboundMessageReportRequest,
+    MobileNotificationAckRequest as AppMobileNotificationAckRequest,
+    MobileNotificationRecord as AppMobileNotificationRecord,
+    MobileNotificationSendRequest as AppMobileNotificationSendRequest,
+    MobileOutboundMessageAckRequest as AppMobileOutboundMessageAckRequest,
+    MobileOutboundMessageRecord as AppMobileOutboundMessageRecord,
+    MobileOutboundMessageSendRequest as AppMobileOutboundMessageSendRequest,
+    MobileRehydrateRequest as AppMobileRehydrateRequest, MobileRuntimeControlService,
+    MobileWakeRequest as AppMobileWakeRequest,
+};
+use openrustclaw_app::mobile_runtime_status::{
+    MobileHeartbeatRequest as AppMobileHeartbeatRequest,
+    MobileMetricsCounts as AppMobileMetricsCounts, MobileNodeRuntimeState as AppMobileRuntimeState,
+    MobileNodeSummaryCounts as AppMobileNodeSummaryCounts,
+    MobilePushRegistrationRequest as AppMobilePushRegistrationRequest, MobileRuntimeStatusService,
+    MobileSyncReportRequest as AppMobileSyncReportRequest,
+};
 use openrustclaw_mobile::node::MobileMessage;
 use openrustclaw_mobile::notifications::{
     Notification, NotificationConfig, NotificationPriority, NotificationType,
@@ -29,7 +49,7 @@ use openrustclaw_mobile::sync::{
     ConflictResolution, SyncConfig, SyncManager, SyncMode, SyncPriority,
 };
 use openrustclaw_mobile::{MobileNodeHandle, NodeConfig};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 
 use super::enterprise_policy;
@@ -313,7 +333,7 @@ pub struct MobileAppSessionRecord {
     pub exit_reason: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MobileAppSessionEvent {
     pub kind: String,
     pub observed_at: String,
@@ -323,7 +343,7 @@ pub struct MobileAppSessionEvent {
     pub details: Value,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MobileAppSessionEventsResult {
     pub status: String,
     pub session: MobileAppSessionRecord,
@@ -331,7 +351,7 @@ pub struct MobileAppSessionEventsResult {
     pub events: Vec<MobileAppSessionEvent>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MobileAppSessionMetricsSummary {
     pub total_sessions: usize,
     pub active_sessions: usize,
@@ -345,7 +365,7 @@ pub struct MobileAppSessionMetricsSummary {
     pub oldest_session_at: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MobileAppSessionMetricsResult {
     pub status: String,
     pub metrics: MobileAppSessionMetricsSummary,
@@ -542,7 +562,7 @@ pub struct MobileNodeActivityResult {
     pub entries: Vec<MobileNodeActivityEntry>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MobileCommandMetricsSummary {
     pub total_commands: usize,
     pub pending_approval_commands: usize,
@@ -554,13 +574,13 @@ pub struct MobileCommandMetricsSummary {
     pub avg_execution_latency_secs: Option<f64>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MobileCommandMetricsResult {
     pub status: String,
     pub metrics: MobileCommandMetricsSummary,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MobileCommandEvent {
     pub index: usize,
     pub kind: String,
@@ -568,7 +588,7 @@ pub struct MobileCommandEvent {
     pub summary: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MobileCommandEventsResult {
     pub command_id: String,
     pub node_id: String,
@@ -578,7 +598,7 @@ pub struct MobileCommandEventsResult {
     pub events: Vec<MobileCommandEvent>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MobileNodeSummary {
     pub node_id: String,
     pub runtime_status: String,
@@ -604,7 +624,7 @@ pub struct MobileNodeSummary {
     pub media_artifacts: usize,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MobileMetricsSummary {
     pub total_nodes: usize,
     pub paired_records: usize,
@@ -629,13 +649,13 @@ pub struct MobileMetricsSummary {
     pub media_artifacts: usize,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MobileMetricsResult {
     pub status: String,
     pub metrics: MobileMetricsSummary,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MobileNodeSummaryResult {
     pub status: String,
     pub summary: MobileNodeSummary,
@@ -731,6 +751,26 @@ fn map_mobile_error(error: anyhow::Error) -> openrustclaw_core::error::Error {
     openrustclaw_core::error::Error::Internal(format!(
         "failed to load mobile operator report state: {error}"
     ))
+}
+
+fn map_mobile_to_app<T, U>(value: &T) -> Result<U>
+where
+    T: Serialize,
+    U: DeserializeOwned,
+{
+    serde_json::from_value(serde_json::to_value(value).context("failed to serialize mobile value")?)
+        .context("failed to deserialize mobile app value")
+}
+
+fn map_mobile_from_app<T, U>(value: &T) -> Result<U>
+where
+    T: Serialize,
+    U: DeserializeOwned,
+{
+    serde_json::from_value(
+        serde_json::to_value(value).context("failed to serialize mobile app value")?,
+    )
+    .context("failed to deserialize mobile value")
 }
 
 fn map_manifest_to_app(manifest: MobileNodeManifest) -> AppMobileNodeManifest {
@@ -2109,47 +2149,47 @@ pub fn mobile_node_summary_data(
 ) -> Result<MobileNodeSummaryResult> {
     inspect_node_data(workspace_root, node_id)?;
     let runtime = load_runtime_state(workspace_root, node_id)?;
-    let pairings = list_pairing_data(workspace_root, Some(node_id), None)?.len();
-    let app_sessions = list_app_session_data(workspace_root, Some(node_id), None, None)?.len();
-    let active_app_sessions =
-        list_app_session_data(workspace_root, Some(node_id), Some("active"), None)?.len();
-    let ended_app_sessions =
-        list_app_session_data(workspace_root, Some(node_id), Some("ended"), None)?.len();
-    let sync_conflicts = list_sync_conflict_data(workspace_root, Some(node_id), None, None)?.len();
-    let notifications = list_notification_data(workspace_root, Some(node_id), None)?.len();
-    let inbox_messages = list_inbound_message_data(workspace_root, Some(node_id), None)?.len();
-    let outbox_messages = list_outbound_message_data(workspace_root, Some(node_id), None)?.len();
-    let commands = list_command_data(workspace_root, Some(node_id), None)?.len();
-    let capability_executions =
-        list_capability_execution_data(workspace_root, Some(node_id), None, None)?.len();
-    let media_artifacts =
-        list_media_artifact_data(workspace_root, Some(node_id), None, None)?.len();
+    let service = MobileRuntimeStatusService::new();
+    let summary = service.node_summary(
+        node_id,
+        &map_mobile_to_app::<_, AppMobileRuntimeState>(&runtime)?,
+        AppMobileNodeSummaryCounts {
+            pairings: list_pairing_data(workspace_root, Some(node_id), None)?.len(),
+            app_sessions: list_app_session_data(workspace_root, Some(node_id), None, None)?.len(),
+            active_app_sessions: list_app_session_data(
+                workspace_root,
+                Some(node_id),
+                Some("active"),
+                None,
+            )?
+            .len(),
+            ended_app_sessions: list_app_session_data(
+                workspace_root,
+                Some(node_id),
+                Some("ended"),
+                None,
+            )?
+            .len(),
+            sync_conflicts: list_sync_conflict_data(workspace_root, Some(node_id), None, None)?
+                .len(),
+            notifications: list_notification_data(workspace_root, Some(node_id), None)?.len(),
+            inbox_messages: list_inbound_message_data(workspace_root, Some(node_id), None)?.len(),
+            outbox_messages: list_outbound_message_data(workspace_root, Some(node_id), None)?.len(),
+            commands: list_command_data(workspace_root, Some(node_id), None)?.len(),
+            capability_executions: list_capability_execution_data(
+                workspace_root,
+                Some(node_id),
+                None,
+                None,
+            )?
+            .len(),
+            media_artifacts: list_media_artifact_data(workspace_root, Some(node_id), None, None)?
+                .len(),
+        },
+    );
     Ok(MobileNodeSummaryResult {
         status: "ok".to_string(),
-        summary: MobileNodeSummary {
-            node_id: node_id.to_string(),
-            runtime_status: runtime.runtime_status,
-            app_state: runtime.app_state,
-            network: runtime.network,
-            reachable: runtime.reachable,
-            push_token_present: runtime.push_token_present,
-            notifications_authorized: runtime.notifications_authorized,
-            wake_state: runtime.wake_state,
-            rehydrate_state: runtime.rehydrate_state,
-            sync_state: runtime.sync_state,
-            battery_percent: runtime.battery_percent,
-            pairings,
-            app_sessions,
-            active_app_sessions,
-            ended_app_sessions,
-            sync_conflicts,
-            notifications,
-            inbox_messages,
-            outbox_messages,
-            commands,
-            capability_executions,
-            media_artifacts,
-        },
+        summary: map_mobile_from_app::<_, MobileNodeSummary>(&summary)?,
     })
 }
 
@@ -2172,77 +2212,55 @@ pub fn mobile_node_report_data(
 pub fn mobile_metrics_data() -> Result<MobileMetricsResult> {
     let workspace_root = std::env::current_dir().context("failed to resolve workspace root")?;
     let nodes = list_nodes_data(&workspace_root)?;
-    let mut summary = MobileMetricsSummary {
-        total_nodes: nodes.len(),
-        paired_records: 0,
-        unpaired_records: 0,
-        reachable_nodes: 0,
-        push_token_present_nodes: 0,
-        notifications_authorized_nodes: 0,
-        waking_nodes: 0,
-        rehydrate_pending_nodes: 0,
-        total_app_sessions: 0,
-        active_app_sessions: 0,
-        ended_app_sessions: 0,
-        pending_notifications: 0,
-        delivered_notifications: 0,
-        pending_inbound_messages: 0,
-        acknowledged_inbound_messages: 0,
-        pending_outbound_messages: 0,
-        acknowledged_outbound_messages: 0,
-        commands: 0,
-        sync_conflicts: 0,
-        capability_executions: 0,
-        media_artifacts: 0,
-    };
+    let runtimes = nodes
+        .iter()
+        .map(|manifest| load_runtime_state(&workspace_root, &manifest.node.id))
+        .collect::<Result<Vec<_>>>()?;
 
-    for manifest in &nodes {
-        let runtime = load_runtime_state(&workspace_root, &manifest.node.id)?;
-        if runtime.reachable {
-            summary.reachable_nodes += 1;
-        }
-        if runtime.push_token_present {
-            summary.push_token_present_nodes += 1;
-        }
-        if runtime.notifications_authorized {
-            summary.notifications_authorized_nodes += 1;
-        }
-        if runtime.wake_state == "requested" {
-            summary.waking_nodes += 1;
-        }
-        if runtime.rehydrate_state == "requested" {
-            summary.rehydrate_pending_nodes += 1;
-        }
-        summary.pending_notifications += runtime.pending_notification_count;
-        summary.delivered_notifications += runtime.delivered_notification_count;
-        summary.pending_inbound_messages += runtime.pending_inbound_message_count;
-        summary.acknowledged_inbound_messages += runtime.acknowledged_inbound_message_count;
-        summary.pending_outbound_messages += runtime.pending_outbound_message_count;
-        summary.acknowledged_outbound_messages += runtime.acknowledged_outbound_message_count;
-    }
-
+    let mut paired_records = 0usize;
+    let mut unpaired_records = 0usize;
     for pairing in list_pairing_data(&workspace_root, None, None)? {
         match pairing.kind.as_str() {
-            "paired" => summary.paired_records += 1,
-            "unpaired" => summary.unpaired_records += 1,
+            "paired" => paired_records += 1,
+            "unpaired" => unpaired_records += 1,
             _ => {}
         }
     }
-
-    summary.total_app_sessions = list_app_session_data(&workspace_root, None, None, None)?.len();
-    summary.active_app_sessions =
-        list_app_session_data(&workspace_root, None, Some("active"), None)?.len();
-    summary.ended_app_sessions =
-        list_app_session_data(&workspace_root, None, Some("ended"), None)?.len();
-    summary.commands = list_command_data(&workspace_root, None, None)?.len();
-    summary.sync_conflicts = list_sync_conflict_data(&workspace_root, None, None, None)?.len();
-    summary.capability_executions =
-        list_capability_execution_data(&workspace_root, None, None, None)?.len();
-    summary.media_artifacts = list_media_artifact_data(&workspace_root, None, None, None)?.len();
+    let service = MobileRuntimeStatusService::new();
+    let summary = service.metrics(
+        &runtimes
+            .iter()
+            .map(map_mobile_to_app::<_, AppMobileRuntimeState>)
+            .collect::<Result<Vec<_>>>()?,
+        AppMobileMetricsCounts {
+            paired_records,
+            unpaired_records,
+            total_app_sessions: list_app_session_data(&workspace_root, None, None, None)?.len(),
+            active_app_sessions: list_app_session_data(
+                &workspace_root,
+                None,
+                Some("active"),
+                None,
+            )?
+            .len(),
+            ended_app_sessions: list_app_session_data(&workspace_root, None, Some("ended"), None)?
+                .len(),
+            commands: list_command_data(&workspace_root, None, None)?.len(),
+            sync_conflicts: list_sync_conflict_data(&workspace_root, None, None, None)?.len(),
+            capability_executions: list_capability_execution_data(
+                &workspace_root,
+                None,
+                None,
+                None,
+            )?
+            .len(),
+            media_artifacts: list_media_artifact_data(&workspace_root, None, None, None)?.len(),
+        },
+    );
 
     Ok(MobileMetricsResult {
         status: "ok".to_string(),
-        metrics: summary,
+        metrics: map_mobile_from_app::<_, MobileMetricsSummary>(&summary)?,
     })
 }
 
@@ -2252,37 +2270,14 @@ pub fn heartbeat_node_data(
     request: MobileHeartbeatRequest,
 ) -> Result<MobileNodeRuntimeState> {
     inspect_node_data(workspace_root, node_id)?;
-    let mut runtime = load_runtime_state(workspace_root, node_id)?;
-    let now = Utc::now().to_rfc3339();
-    if let Some(app_state) = request.app_state.filter(|value| !value.trim().is_empty()) {
-        runtime.app_state = app_state;
-    }
-    if let Some(network) = request.network.filter(|value| !value.trim().is_empty()) {
-        runtime.network = network;
-    }
-    if let Some(reachable) = request.reachable {
-        runtime.reachable = reachable;
-    }
-    if let Some(push_token_present) = request.push_token_present {
-        runtime.push_token_present = push_token_present;
-    }
-    if let Some(battery_percent) = request.battery_percent {
-        runtime.battery_percent = Some(battery_percent.min(100));
-    }
-    if !request.metadata.is_null() {
-        runtime.metadata = request.metadata;
-    }
-    runtime.last_heartbeat_at = Some(now);
+    let runtime = load_runtime_state(workspace_root, node_id)?;
+    let service = MobileRuntimeStatusService::new();
+    let runtime = map_mobile_from_app::<_, MobileNodeRuntimeState>(&service.heartbeat(
+        map_mobile_to_app::<_, AppMobileRuntimeState>(&runtime)?,
+        map_mobile_to_app::<_, AppMobileHeartbeatRequest>(&request)?,
+        Utc::now().to_rfc3339(),
+    ))?;
     record_app_session_heartbeat(workspace_root, &runtime, "heartbeat")?;
-    if runtime.reachable {
-        if matches!(runtime.wake_state.as_str(), "requested" | "dispatched") {
-            runtime.wake_state = "acknowledged".to_string();
-        }
-        if matches!(runtime.rehydrate_state.as_str(), "requested") {
-            runtime.rehydrate_state = "ready".to_string();
-        }
-    }
-    refresh_runtime_status(&mut runtime);
     save_runtime_state(workspace_root, &runtime)?;
     Ok(runtime)
 }
@@ -2290,14 +2285,11 @@ pub fn heartbeat_node_data(
 pub fn node_push_state_data(workspace_root: &Path, node_id: &str) -> Result<MobileNodePushState> {
     inspect_node_data(workspace_root, node_id)?;
     let runtime = load_runtime_state(workspace_root, node_id)?;
-    Ok(MobileNodePushState {
-        node_id: node_id.to_string(),
-        push_token_present: runtime.push_token_present,
-        notifications_authorized: runtime.notifications_authorized,
-        push_provider: runtime.push_provider,
-        push_token_updated_at: runtime.push_token_updated_at,
-        runtime_status: runtime.runtime_status,
-    })
+    let service = MobileRuntimeStatusService::new();
+    map_mobile_from_app::<_, MobileNodePushState>(&service.push_state(
+        node_id,
+        &map_mobile_to_app::<_, AppMobileRuntimeState>(&runtime)?,
+    ))
 }
 
 pub fn register_push_data(
@@ -2306,24 +2298,15 @@ pub fn register_push_data(
     request: MobilePushRegistrationRequest,
 ) -> Result<MobileNodePushState> {
     inspect_node_data(workspace_root, node_id)?;
-    let mut runtime = load_runtime_state(workspace_root, node_id)?;
-    let now = Utc::now().to_rfc3339();
-    if let Some(push_provider) = request
-        .push_provider
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        runtime.push_provider = Some(push_provider.to_string());
-    }
-    if let Some(push_token_present) = request.push_token_present {
-        runtime.push_token_present = push_token_present;
-        runtime.push_token_updated_at = Some(now.clone());
-    }
-    if let Some(notifications_authorized) = request.notifications_authorized {
-        runtime.notifications_authorized = notifications_authorized;
-    }
-    refresh_runtime_status(&mut runtime);
+    let service = MobileRuntimeStatusService::new();
+    let runtime = map_mobile_from_app::<_, MobileNodeRuntimeState>(&service.register_push(
+        map_mobile_to_app::<_, AppMobileRuntimeState>(&load_runtime_state(
+            workspace_root,
+            node_id,
+        )?)?,
+        map_mobile_to_app::<_, AppMobilePushRegistrationRequest>(&request)?,
+        Utc::now().to_rfc3339(),
+    ))?;
     save_runtime_state(workspace_root, &runtime)?;
     node_push_state_data(workspace_root, node_id)
 }
@@ -2332,23 +2315,21 @@ pub fn node_sync_state_data(workspace_root: &Path, node_id: &str) -> Result<Mobi
     inspect_node_data(workspace_root, node_id)?;
     let runtime = load_runtime_state(workspace_root, node_id)?;
     let conflicts = list_sync_conflict_data(workspace_root, Some(node_id), None, None)?;
-    Ok(MobileNodeSyncState {
-        node_id: node_id.to_string(),
-        sync_state: runtime.sync_state,
-        pending_change_count: runtime.pending_change_count,
-        pending_conflict_count: conflicts
-            .iter()
-            .filter(|record| record.status == "pending")
-            .count(),
-        resolved_conflict_count: conflicts
-            .iter()
-            .filter(|record| record.status == "resolved")
-            .count(),
-        last_sync_requested_at: runtime.last_sync_requested_at,
-        last_sync_at: runtime.last_sync_at,
-        last_sync_result: runtime.last_sync_result,
-        runtime_status: runtime.runtime_status,
-    })
+    let service = MobileRuntimeStatusService::new();
+    map_mobile_from_app::<_, MobileNodeSyncState>(
+        &service.sync_state(
+            node_id,
+            &map_mobile_to_app::<_, AppMobileRuntimeState>(&runtime)?,
+            conflicts
+                .iter()
+                .filter(|record| record.status == "pending")
+                .count(),
+            conflicts
+                .iter()
+                .filter(|record| record.status == "resolved")
+                .count(),
+        ),
+    )
 }
 
 pub fn list_sync_conflict_data(
@@ -2487,31 +2468,15 @@ pub fn report_sync_data(
     request: MobileSyncReportRequest,
 ) -> Result<MobileNodeSyncState> {
     inspect_node_data(workspace_root, node_id)?;
-    let mut runtime = load_runtime_state(workspace_root, node_id)?;
-    let now = Utc::now().to_rfc3339();
-    let sync_state = request
-        .sync_state
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .unwrap_or("synced")
-        .to_string();
-    runtime.sync_state = sync_state.clone();
-    runtime.pending_change_count = request.pending_change_count;
-    if matches!(sync_state.as_str(), "requested" | "syncing" | "in_progress") {
-        runtime.last_sync_requested_at = Some(now);
-    } else {
-        runtime.last_sync_at = Some(now);
-    }
-    if let Some(last_sync_result) = request
-        .last_sync_result
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        runtime.last_sync_result = Some(last_sync_result.to_string());
-    }
-    refresh_runtime_status(&mut runtime);
+    let service = MobileRuntimeStatusService::new();
+    let runtime = map_mobile_from_app::<_, MobileNodeRuntimeState>(&service.report_sync(
+        map_mobile_to_app::<_, AppMobileRuntimeState>(&load_runtime_state(
+            workspace_root,
+            node_id,
+        )?)?,
+        map_mobile_to_app::<_, AppMobileSyncReportRequest>(&request)?,
+        Utc::now().to_rfc3339(),
+    ))?;
     save_runtime_state(workspace_root, &runtime)?;
     node_sync_state_data(workspace_root, node_id)
 }
@@ -2856,23 +2821,15 @@ pub async fn send_notification_data(
     })?;
 
     let now = Utc::now();
-    let mut record = MobileNotificationRecord {
-        id: uuid::Uuid::new_v4().to_string(),
-        node_id: request.node_id.clone(),
-        title: request.title,
-        body: request.body,
-        status: "queued".to_string(),
-        priority: request.priority,
-        notification_type: request.notification_type,
-        data: request.data,
-        created_at: now.to_rfc3339(),
-        dispatched_at: None,
-        acknowledged_at: None,
-        acknowledged_by: None,
-        command_id: None,
-        preview: serde_json::to_value(&preview)
-            .context("failed to serialize notification preview")?,
-    };
+    let requested_by = request.requested_by.clone();
+    let mut record = map_mobile_from_app::<_, MobileNotificationRecord>(
+        &MobileRuntimeControlService::new().notification_record(
+            uuid::Uuid::new_v4().to_string(),
+            map_mobile_to_app::<_, AppMobileNotificationSendRequest>(&request)?,
+            serde_json::to_value(&preview).context("failed to serialize notification preview")?,
+            now.to_rfc3339(),
+        ),
+    )?;
 
     if status.readiness == "ready_for_runtime"
         && has_capability(&manifest.node.capabilities, "notifications")
@@ -2889,17 +2846,18 @@ pub async fn send_notification_data(
                     "type": record.notification_type,
                     "data": record.data,
                 }),
-                approved_by: request
-                    .requested_by
-                    .clone()
-                    .or_else(|| Some("mobile_runtime".to_string())),
+                approved_by: requested_by.or_else(|| Some("mobile_runtime".to_string())),
                 require_approval: Some(false),
             },
         )
         .await?;
-        record.status = "dispatched".to_string();
-        record.dispatched_at = Some(Utc::now().to_rfc3339());
-        record.command_id = Some(command.id);
+        record = map_mobile_from_app::<_, MobileNotificationRecord>(
+            &MobileRuntimeControlService::new().mark_notification_dispatched(
+                map_mobile_to_app::<_, AppMobileNotificationRecord>(&record)?,
+                command.id,
+                Utc::now().to_rfc3339(),
+            ),
+        )?;
     }
 
     runtime.last_notification_at = Some(Utc::now().to_rfc3339());
@@ -2918,17 +2876,19 @@ pub fn acknowledge_notification_data(
     if request.acknowledged_by.trim().is_empty() {
         return Err(anyhow!("acknowledged_by is required"));
     }
-    let mut record = inspect_notification_data(workspace_root, notification_id)?;
+    let record = inspect_notification_data(workspace_root, notification_id)?;
     if record.status == "acknowledged" {
         return Ok(record);
     }
-    let mut runtime = load_runtime_state(workspace_root, &record.node_id)?;
-    record.status = "acknowledged".to_string();
-    record.acknowledged_by = Some(request.acknowledged_by);
-    record.acknowledged_at = Some(Utc::now().to_rfc3339());
-    runtime.pending_notification_count = runtime.pending_notification_count.saturating_sub(1);
-    runtime.delivered_notification_count = runtime.delivered_notification_count.saturating_add(1);
-    refresh_runtime_status(&mut runtime);
+    let runtime = load_runtime_state(workspace_root, &record.node_id)?;
+    let (record, runtime) = MobileRuntimeControlService::new().acknowledge_notification(
+        map_mobile_to_app::<_, AppMobileNotificationRecord>(&record)?,
+        map_mobile_to_app::<_, AppMobileRuntimeState>(&runtime)?,
+        map_mobile_to_app::<_, AppMobileNotificationAckRequest>(&request)?,
+        Utc::now().to_rfc3339(),
+    );
+    let record = map_mobile_from_app::<_, MobileNotificationRecord>(&record)?;
+    let runtime = map_mobile_from_app::<_, MobileNodeRuntimeState>(&runtime)?;
     save_runtime_state(workspace_root, &runtime)?;
     write_notification_record(workspace_root, &record)?;
     Ok(record)
@@ -3013,25 +2973,19 @@ pub fn report_inbound_message_data(
     })?;
     let now = Utc::now().to_rfc3339();
     let mut runtime = load_runtime_state(workspace_root, &request.node_id)?;
-    let record = MobileInboundMessageRecord {
-        id: uuid::Uuid::new_v4().to_string(),
-        node_id: request.node_id,
-        source: request.source,
-        target: request.target,
-        status: "reported".to_string(),
-        content_type: Some(content_type),
-        content_preview: request.content,
-        bytes: preview
-            .get("bytes")
-            .and_then(Value::as_u64)
-            .unwrap_or_default() as usize,
-        created_at: now.clone(),
-        reported_at: Some(now.clone()),
-        acknowledged_at: None,
-        acknowledged_by: None,
-        metadata: request.metadata,
-        preview,
-    };
+    let record = map_mobile_from_app::<_, MobileInboundMessageRecord>(
+        &MobileRuntimeControlService::new().inbound_message_record(
+            uuid::Uuid::new_v4().to_string(),
+            map_mobile_to_app::<_, AppMobileInboundMessageReportRequest>(&request)?,
+            content_type,
+            preview.clone(),
+            preview
+                .get("bytes")
+                .and_then(Value::as_u64)
+                .unwrap_or_default() as usize,
+            now.clone(),
+        ),
+    )?;
 
     runtime.last_inbound_message_at = Some(now);
     runtime.pending_inbound_message_count = runtime.pending_inbound_message_count.saturating_add(1);
@@ -3049,19 +3003,20 @@ pub fn acknowledge_inbound_message_data(
     if request.acknowledged_by.trim().is_empty() {
         return Err(anyhow!("acknowledged_by is required"));
     }
-    let mut record = inspect_inbound_message_data(workspace_root, message_id)?;
+    let record = inspect_inbound_message_data(workspace_root, message_id)?;
     if record.status == "acknowledged" {
         return Ok(record);
     }
 
-    let mut runtime = load_runtime_state(workspace_root, &record.node_id)?;
-    record.status = "acknowledged".to_string();
-    record.acknowledged_by = Some(request.acknowledged_by);
-    record.acknowledged_at = Some(Utc::now().to_rfc3339());
-    runtime.pending_inbound_message_count = runtime.pending_inbound_message_count.saturating_sub(1);
-    runtime.acknowledged_inbound_message_count =
-        runtime.acknowledged_inbound_message_count.saturating_add(1);
-    refresh_runtime_status(&mut runtime);
+    let runtime = load_runtime_state(workspace_root, &record.node_id)?;
+    let (record, runtime) = MobileRuntimeControlService::new().acknowledge_inbound_message(
+        map_mobile_to_app::<_, AppMobileInboundMessageRecord>(&record)?,
+        map_mobile_to_app::<_, AppMobileRuntimeState>(&runtime)?,
+        map_mobile_to_app::<_, AppMobileInboundMessageAckRequest>(&request)?,
+        Utc::now().to_rfc3339(),
+    );
+    let record = map_mobile_from_app::<_, MobileInboundMessageRecord>(&record)?;
+    let runtime = map_mobile_from_app::<_, MobileNodeRuntimeState>(&runtime)?;
     save_runtime_state(workspace_root, &runtime)?;
     write_inbound_message_record(workspace_root, &record)?;
     Ok(record)
@@ -3143,26 +3098,21 @@ pub async fn send_outbound_message_data(
         content_type: Some(content_type.clone()),
     })?;
     let now = Utc::now();
+    let requested_by = request.requested_by.clone();
     let mut runtime = load_runtime_state(workspace_root, &request.node_id)?;
-    let mut record = MobileOutboundMessageRecord {
-        id: uuid::Uuid::new_v4().to_string(),
-        node_id: request.node_id.clone(),
-        target: request.target.clone(),
-        status: "queued".to_string(),
-        content_type: Some(content_type.clone()),
-        content_preview: request.content.clone(),
-        bytes: preview
-            .get("bytes")
-            .and_then(Value::as_u64)
-            .unwrap_or_default() as usize,
-        created_at: now.to_rfc3339(),
-        dispatched_at: None,
-        acknowledged_at: None,
-        acknowledged_by: None,
-        command_id: None,
-        metadata: request.metadata,
-        preview,
-    };
+    let mut record = map_mobile_from_app::<_, MobileOutboundMessageRecord>(
+        &MobileRuntimeControlService::new().outbound_message_record(
+            uuid::Uuid::new_v4().to_string(),
+            map_mobile_to_app::<_, AppMobileOutboundMessageSendRequest>(&request)?,
+            content_type.clone(),
+            preview.clone(),
+            preview
+                .get("bytes")
+                .and_then(Value::as_u64)
+                .unwrap_or_default() as usize,
+            now.to_rfc3339(),
+        ),
+    )?;
 
     if status.readiness == "ready_for_runtime"
         && has_capability(&manifest.node.capabilities, "mobile")
@@ -3177,17 +3127,18 @@ pub async fn send_outbound_message_data(
                     "content": request.content,
                     "content_type": content_type,
                 }),
-                approved_by: request
-                    .requested_by
-                    .clone()
-                    .or_else(|| Some("mobile_runtime".to_string())),
+                approved_by: requested_by.or_else(|| Some("mobile_runtime".to_string())),
                 require_approval: Some(false),
             },
         )
         .await?;
-        record.status = "dispatched".to_string();
-        record.dispatched_at = Some(Utc::now().to_rfc3339());
-        record.command_id = Some(command.id);
+        record = map_mobile_from_app::<_, MobileOutboundMessageRecord>(
+            &MobileRuntimeControlService::new().mark_outbound_message_dispatched(
+                map_mobile_to_app::<_, AppMobileOutboundMessageRecord>(&record)?,
+                command.id,
+                Utc::now().to_rfc3339(),
+            ),
+        )?;
     }
 
     runtime.last_outbound_message_at = Some(Utc::now().to_rfc3339());
@@ -3207,21 +3158,20 @@ pub fn acknowledge_outbound_message_data(
     if request.acknowledged_by.trim().is_empty() {
         return Err(anyhow!("acknowledged_by is required"));
     }
-    let mut record = inspect_outbound_message_data(workspace_root, message_id)?;
+    let record = inspect_outbound_message_data(workspace_root, message_id)?;
     if record.status == "acknowledged" {
         return Ok(record);
     }
 
-    let mut runtime = load_runtime_state(workspace_root, &record.node_id)?;
-    record.status = "acknowledged".to_string();
-    record.acknowledged_by = Some(request.acknowledged_by);
-    record.acknowledged_at = Some(Utc::now().to_rfc3339());
-    runtime.pending_outbound_message_count =
-        runtime.pending_outbound_message_count.saturating_sub(1);
-    runtime.acknowledged_outbound_message_count = runtime
-        .acknowledged_outbound_message_count
-        .saturating_add(1);
-    refresh_runtime_status(&mut runtime);
+    let runtime = load_runtime_state(workspace_root, &record.node_id)?;
+    let (record, runtime) = MobileRuntimeControlService::new().acknowledge_outbound_message(
+        map_mobile_to_app::<_, AppMobileOutboundMessageRecord>(&record)?,
+        map_mobile_to_app::<_, AppMobileRuntimeState>(&runtime)?,
+        map_mobile_to_app::<_, AppMobileOutboundMessageAckRequest>(&request)?,
+        Utc::now().to_rfc3339(),
+    );
+    let record = map_mobile_from_app::<_, MobileOutboundMessageRecord>(&record)?;
+    let runtime = map_mobile_from_app::<_, MobileNodeRuntimeState>(&runtime)?;
     save_runtime_state(workspace_root, &runtime)?;
     write_outbound_message_record(workspace_root, &record)?;
     Ok(record)
@@ -3274,70 +3224,12 @@ pub fn inspect_command_data(
 }
 
 fn command_timeline_events(command: &MobileCommandRecord) -> Vec<MobileCommandEvent> {
-    let mut events = Vec::new();
-    let mut index = 0usize;
-
-    events.push(MobileCommandEvent {
-        index,
-        kind: "command_dispatched".to_string(),
-        observed_at: command.created_at.to_rfc3339(),
-        summary: format!(
-            "{} dispatched for node {} (requires {})",
-            command.command, command.node_id, command.required_capability
-        ),
-    });
-    index += 1;
-
-    if command.approval_required {
-        if let Some(approved_at) = command.approved_at.as_ref() {
-            let kind = if command.status == "rejected" {
-                "command_rejected"
-            } else {
-                "command_approved"
-            };
-            events.push(MobileCommandEvent {
-                index,
-                kind: kind.to_string(),
-                observed_at: approved_at.to_rfc3339(),
-                summary: if command.status == "rejected" {
-                    format!(
-                        "{} rejected by {}",
-                        command.command,
-                        command.approved_by.as_deref().unwrap_or("operator")
-                    )
-                } else {
-                    format!(
-                        "{} approved by {}",
-                        command.command,
-                        command.approved_by.as_deref().unwrap_or("operator")
-                    )
-                },
-            });
-            index += 1;
-        }
-    } else if command.status == "rejected" {
-        events.push(MobileCommandEvent {
-            index,
-            kind: "command_rejected".to_string(),
-            observed_at: command.created_at.to_rfc3339(),
-            summary: format!("{} rejected for node {}", command.command, command.node_id),
-        });
-        index += 1;
-    }
-
-    if let Some(executed_at) = command.executed_at.as_ref() {
-        events.push(MobileCommandEvent {
-            index,
-            kind: "command_executed".to_string(),
-            observed_at: executed_at.to_rfc3339(),
-            summary: format!(
-                "{} executed for node {} with status {}",
-                command.command, command.node_id, command.status
-            ),
-        });
-    }
-
-    events
+    MobileRuntimeControlService::new()
+        .command_timeline_events(command)
+        .iter()
+        .map(map_mobile_from_app::<_, MobileCommandEvent>)
+        .collect::<Result<Vec<_>>>()
+        .unwrap_or_default()
 }
 
 fn command_execution_latency_secs(command: &MobileCommandRecord) -> Option<u64> {
@@ -3370,46 +3262,11 @@ pub fn command_metrics_data(
     limit: Option<usize>,
 ) -> Result<MobileCommandMetricsResult> {
     let commands = list_command_data(workspace_root, node_id, limit)?;
-    let mut by_command_kind: HashMap<String, usize> = HashMap::new();
-    let mut pending_approval_commands = 0usize;
-    let mut approved_commands = 0usize;
-    let mut executed_commands = 0usize;
-    let mut rejected_commands = 0usize;
-    let mut execution_latencies = Vec::new();
-
-    for command in &commands {
-        *by_command_kind
-            .entry(command.command.to_string())
-            .or_insert(0) += 1;
-        match command.status.as_str() {
-            "pending_approval" => pending_approval_commands += 1,
-            "approved" => approved_commands += 1,
-            "executed" => executed_commands += 1,
-            "rejected" => rejected_commands += 1,
-            _ => {}
-        }
-        if let Some(latency) = command_execution_latency_secs(command) {
-            execution_latencies.push(latency as f64);
-        }
-    }
-
-    let avg_execution_latency_secs = if execution_latencies.is_empty() {
-        None
-    } else {
-        Some(execution_latencies.iter().sum::<f64>() / execution_latencies.len() as f64)
-    };
+    let metrics = MobileRuntimeControlService::new().command_metrics(&commands);
 
     Ok(MobileCommandMetricsResult {
         status: "ok".to_string(),
-        metrics: MobileCommandMetricsSummary {
-            total_commands: commands.len(),
-            pending_approval_commands,
-            approved_commands,
-            executed_commands,
-            rejected_commands,
-            by_command_kind,
-            avg_execution_latency_secs,
-        },
+        metrics: map_mobile_from_app::<_, MobileCommandMetricsSummary>(&metrics)?,
     })
 }
 
@@ -3436,25 +3293,13 @@ pub async fn dispatch_command_data(
     let approval_required = request.require_approval.unwrap_or_else(|| {
         enterprise_policy::approval_required_for_command(workspace_root, &request.command)
     });
-    let mut record = MobileCommandRecord {
-        id: uuid::Uuid::new_v4().to_string(),
-        node_id: manifest.node.id.clone(),
-        command: request.command.clone(),
-        required_capability: capability.to_string(),
+    let mut record = MobileRuntimeControlService::new().dispatch_command_record(
+        request,
+        manifest.node.id.clone(),
+        capability.to_string(),
         approval_required,
-        status: if approval_required && request.approved_by.is_none() {
-            "pending_approval".to_string()
-        } else {
-            "approved".to_string()
-        },
-        payload: request.payload,
-        result: Value::Null,
-        created_at: Utc::now(),
-        approved_by: request.approved_by.clone(),
-        decided_reason: None,
-        approved_at: request.approved_by.as_ref().map(|_| Utc::now()),
-        executed_at: None,
-    };
+        Utc::now(),
+    );
 
     if record.status == "approved" {
         record.result = execute_command_for_node(&manifest, &status, &record).await?;
@@ -3473,12 +3318,7 @@ pub async fn wake_node_data(
 ) -> Result<MobileNodeRuntimeActionResult> {
     let manifest = inspect_node_data(workspace_root, node_id)?;
     let status = node_status_data(workspace_root, node_id)?;
-    let mut runtime = load_runtime_state(workspace_root, node_id)?;
-    let now = Utc::now().to_rfc3339();
-    runtime.wake_requested_at = Some(now);
-    runtime.wake_requested_by = request.requested_by.clone();
-    runtime.wake_reason = request.reason.clone();
-    runtime.wake_state = "requested".to_string();
+    let runtime = load_runtime_state(workspace_root, node_id)?;
 
     let mut command = None;
     if status.readiness == "ready_for_runtime"
@@ -3494,8 +3334,8 @@ pub async fn wake_node_data(
                 node_id: node_id.to_string(),
                 command: DeviceCommandKind::PushNotification,
                 payload: json!({
-                    "title": request.title.unwrap_or_else(|| format!("Wake {}", manifest.node.device_name)),
-                    "body": request.body.unwrap_or_else(|| "Operator requested a bounded wake ping".to_string()),
+                    "title": request.title.clone().unwrap_or_else(|| format!("Wake {}", manifest.node.device_name)),
+                    "body": request.body.clone().unwrap_or_else(|| "Operator requested a bounded wake ping".to_string()),
                     "type": "system",
                     "data": {
                         "node_id": node_id,
@@ -3507,23 +3347,26 @@ pub async fn wake_node_data(
             },
         )
         .await?;
-        runtime.wake_state = "dispatched".to_string();
-        runtime.last_wake_command_id = Some(record.id.clone());
         command = Some(record);
     }
 
-    refresh_runtime_status(&mut runtime);
-    save_runtime_state(workspace_root, &runtime)?;
-    Ok(MobileNodeRuntimeActionResult {
-        node_id: node_id.to_string(),
-        runtime,
+    let result = MobileRuntimeControlService::new().wake_node(
+        node_id,
+        &manifest.node.device_name,
+        map_mobile_to_app::<_, AppMobileRuntimeState>(&runtime)?,
+        map_mobile_to_app::<_, AppMobileWakeRequest>(&request)?,
+        status.readiness == "ready_for_runtime",
+        manifest
+            .node
+            .capabilities
+            .iter()
+            .any(|entry| entry == "notifications"),
         command,
-        preview: json!({
-            "requested": true,
-            "ready_for_runtime": status.readiness == "ready_for_runtime",
-            "notifications_capability": manifest.node.capabilities.iter().any(|entry| entry == "notifications"),
-        }),
-    })
+        Utc::now().to_rfc3339(),
+    );
+    let runtime = map_mobile_from_app::<_, MobileNodeRuntimeState>(&result.runtime)?;
+    save_runtime_state(workspace_root, &runtime)?;
+    map_mobile_from_app::<_, MobileNodeRuntimeActionResult>(&result)
 }
 
 pub async fn rehydrate_node_data(
@@ -3533,7 +3376,7 @@ pub async fn rehydrate_node_data(
 ) -> Result<MobileNodeRuntimeActionResult> {
     let manifest = inspect_node_data(workspace_root, node_id)?;
     let status = node_status_data(workspace_root, node_id)?;
-    let mut runtime = load_runtime_state(workspace_root, node_id)?;
+    let runtime = load_runtime_state(workspace_root, node_id)?;
     let pending_change_count = request.pending_change_count.unwrap_or(1);
     let preview = preview_sync_data(
         workspace_root,
@@ -3545,12 +3388,6 @@ pub async fn rehydrate_node_data(
             pending_change_count,
         },
     )?;
-    let now = Utc::now().to_rfc3339();
-    runtime.rehydrate_requested_at = Some(now);
-    runtime.rehydrate_requested_by = request.requested_by.clone();
-    runtime.rehydrate_reason = request.reason.clone();
-    runtime.rehydrate_pending_change_count = Some(pending_change_count);
-    runtime.rehydrate_state = "requested".to_string();
 
     let mut command = None;
     if status.readiness == "ready_for_runtime"
@@ -3574,19 +3411,21 @@ pub async fn rehydrate_node_data(
             },
         )
         .await?;
-        runtime.rehydrate_state = "synced".to_string();
-        runtime.last_rehydrate_command_id = Some(record.id.clone());
         command = Some(record);
     }
 
-    refresh_runtime_status(&mut runtime);
-    save_runtime_state(workspace_root, &runtime)?;
-    Ok(MobileNodeRuntimeActionResult {
-        node_id: node_id.to_string(),
-        runtime,
-        command,
+    let result = MobileRuntimeControlService::new().rehydrate_node(
+        node_id,
+        map_mobile_to_app::<_, AppMobileRuntimeState>(&runtime)?,
+        map_mobile_to_app::<_, AppMobileRehydrateRequest>(&request)?,
+        pending_change_count,
         preview,
-    })
+        command,
+        Utc::now().to_rfc3339(),
+    );
+    let runtime = map_mobile_from_app::<_, MobileNodeRuntimeState>(&result.runtime)?;
+    save_runtime_state(workspace_root, &runtime)?;
+    map_mobile_from_app::<_, MobileNodeRuntimeActionResult>(&result)
 }
 
 pub async fn approve_command_data(
@@ -3601,13 +3440,15 @@ pub async fn approve_command_data(
     let manifest = inspect_node_data(workspace_root, &record.node_id)?;
     let status = node_status_data(workspace_root, &record.node_id)?;
 
-    record.status = "approved".to_string();
-    record.approved_by = Some(request.decided_by);
-    record.decided_reason = request.reason;
-    record.approved_at = Some(Utc::now());
-    record.result = execute_command_for_node(&manifest, &status, &record).await?;
-    record.status = "executed".to_string();
-    record.executed_at = Some(Utc::now());
+    let approved_at = Utc::now();
+    let result = execute_command_for_node(&manifest, &status, &record).await?;
+    record = MobileRuntimeControlService::new().approve_command(
+        record,
+        request,
+        result,
+        approved_at,
+        Utc::now(),
+    );
 
     write_command_record(workspace_root, &record)?;
     Ok(record)
@@ -3623,10 +3464,7 @@ pub fn reject_command_data(
         return Err(anyhow!("command '{}' is not pending approval", record.id));
     }
 
-    record.status = "rejected".to_string();
-    record.approved_by = Some(request.decided_by);
-    record.decided_reason = request.reason;
-    record.approved_at = Some(Utc::now());
+    record = MobileRuntimeControlService::new().reject_command(record, request, Utc::now());
     write_command_record(workspace_root, &record)?;
     Ok(record)
 }
@@ -4548,128 +4386,24 @@ fn write_outbound_message_record(
 }
 
 fn refresh_runtime_status(runtime: &mut MobileNodeRuntimeState) {
-    runtime.runtime_status = if !runtime.reachable && runtime.last_heartbeat_at.is_some() {
-        "disconnected".to_string()
-    } else if runtime.rehydrate_state == "requested" {
-        "rehydrate_requested".to_string()
-    } else if runtime.rehydrate_state == "synced" {
-        "rehydrated".to_string()
-    } else if matches!(runtime.wake_state.as_str(), "requested" | "dispatched") {
-        "wake_requested".to_string()
-    } else if runtime.reachable && runtime.app_state == "active" {
-        "active".to_string()
-    } else if runtime.reachable && runtime.app_state == "background" {
-        "background".to_string()
-    } else if runtime.reachable {
-        "reachable".to_string()
-    } else {
-        "registered".to_string()
-    };
+    if let Ok(mut app_runtime) = map_mobile_to_app::<_, AppMobileRuntimeState>(runtime) {
+        MobileRuntimeStatusService::new().refresh_runtime_status(&mut app_runtime);
+        if let Ok(mapped) = map_mobile_from_app::<_, MobileNodeRuntimeState>(&app_runtime) {
+            *runtime = mapped;
+        }
+    }
 }
 
 fn runtime_activity_entries(runtime: &MobileNodeRuntimeState) -> Vec<MobileNodeActivityEntry> {
-    let mut entries = Vec::new();
-    if let Some(created_at) = runtime.last_heartbeat_at.as_ref() {
-        entries.push(MobileNodeActivityEntry {
-            kind: "runtime_heartbeat".to_string(),
-            id: runtime.node_id.clone(),
-            status: runtime.runtime_status.clone(),
-            created_at: created_at.clone(),
-            summary: format!(
-                "app={} network={} reachable={} battery={}",
-                runtime.app_state,
-                runtime.network,
-                runtime.reachable,
-                runtime
-                    .battery_percent
-                    .map(|value| format!("{value}%"))
-                    .unwrap_or_else(|| "-".to_string())
-            ),
-        });
-    }
-    if let Some(created_at) = runtime.push_token_updated_at.as_ref() {
-        entries.push(MobileNodeActivityEntry {
-            kind: "push_registration".to_string(),
-            id: runtime.node_id.clone(),
-            status: if runtime.push_token_present {
-                "registered".to_string()
-            } else {
-                "missing_token".to_string()
-            },
-            created_at: created_at.clone(),
-            summary: format!(
-                "provider={} notifications_authorized={}",
-                runtime.push_provider.as_deref().unwrap_or("-"),
-                runtime.notifications_authorized
-            ),
-        });
-    }
-    if let Some(created_at) = runtime.wake_requested_at.as_ref() {
-        entries.push(MobileNodeActivityEntry {
-            kind: "wake_request".to_string(),
-            id: runtime
-                .last_wake_command_id
-                .clone()
-                .unwrap_or_else(|| runtime.node_id.clone()),
-            status: runtime.wake_state.clone(),
-            created_at: created_at.clone(),
-            summary: runtime
-                .wake_reason
-                .clone()
-                .unwrap_or_else(|| "wake request recorded".to_string()),
-        });
-    }
-    if let Some(created_at) = runtime.rehydrate_requested_at.as_ref() {
-        entries.push(MobileNodeActivityEntry {
-            kind: "rehydrate_request".to_string(),
-            id: runtime
-                .last_rehydrate_command_id
-                .clone()
-                .unwrap_or_else(|| runtime.node_id.clone()),
-            status: runtime.rehydrate_state.clone(),
-            created_at: created_at.clone(),
-            summary: format!(
-                "{} pending_changes={}",
-                runtime
-                    .rehydrate_reason
-                    .clone()
-                    .unwrap_or_else(|| "rehydrate request recorded".to_string()),
-                runtime
-                    .rehydrate_pending_change_count
-                    .map(|value| value.to_string())
-                    .unwrap_or_else(|| "-".to_string())
-            ),
-        });
-    }
-    if let Some(created_at) = runtime.last_sync_requested_at.as_ref() {
-        entries.push(MobileNodeActivityEntry {
-            kind: "sync_request".to_string(),
-            id: runtime.node_id.clone(),
-            status: runtime.sync_state.clone(),
-            created_at: created_at.clone(),
-            summary: format!(
-                "pending_changes={} result={}",
-                runtime
-                    .pending_change_count
-                    .map(|value| value.to_string())
-                    .unwrap_or_else(|| "-".to_string()),
-                runtime.last_sync_result.as_deref().unwrap_or("-")
-            ),
-        });
-    }
-    if let Some(created_at) = runtime.last_sync_at.as_ref() {
-        entries.push(MobileNodeActivityEntry {
-            kind: "sync_result".to_string(),
-            id: runtime.node_id.clone(),
-            status: runtime.sync_state.clone(),
-            created_at: created_at.clone(),
-            summary: runtime
-                .last_sync_result
-                .clone()
-                .unwrap_or_else(|| "sync completed".to_string()),
-        });
-    }
-    entries
+    map_mobile_to_app::<_, AppMobileRuntimeState>(runtime)
+        .and_then(|app_runtime| {
+            MobileRuntimeStatusService::new()
+                .runtime_activity_entries(&app_runtime)
+                .iter()
+                .map(map_mobile_from_app::<_, MobileNodeActivityEntry>)
+                .collect::<Result<Vec<_>>>()
+        })
+        .unwrap_or_default()
 }
 
 fn summarize_body(value: &str, limit: usize) -> String {

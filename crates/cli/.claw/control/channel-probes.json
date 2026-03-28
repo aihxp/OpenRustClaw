@@ -1,0 +1,16 @@
+{
+  "generated_at": "2026-03-28T19:19:56.373995866+00:00",
+  "entries": [],
+  "monitor": {
+    "generated_at": "2026-03-28T19:19:56.373972119+00:00",
+    "health_monitor_enabled": true,
+    "auto_restart_on_failure": false,
+    "auto_restart_ready": false,
+    "consecutive_failure_threshold": 3,
+    "current_consecutive_failures": 0,
+    "degraded": false,
+    "failing_platforms": [],
+    "last_healthy_at": "2026-03-28T19:19:56.373972119+00:00",
+    "restart_requested": false
+  }
+}

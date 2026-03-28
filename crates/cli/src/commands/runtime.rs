@@ -10,6 +10,10 @@ use argon2::Argon2;
 use chacha20poly1305::aead::{Aead, KeyInit};
 use chacha20poly1305::{Key, XChaCha20Poly1305, XNonce};
 use chrono::Utc;
+use openrustclaw_app::runtime_maintenance_planning::{
+    RuntimeMaintenancePlanningService, RuntimeRollbackPlanningRequest,
+    RuntimeSelfUpdatePlanningRequest, RuntimeUpgradePlanningRequest,
+};
 use openrustclaw_app::runtime_provider_switch::{
     RuntimeConfigMutationSource, RuntimeProviderSwitchRequest, RuntimeProviderSwitchService,
 };
@@ -589,48 +593,23 @@ pub async fn runtime_upgrade_plan(
     let reload_plan = runtime_reload_plan(config_path, workspace_root)?;
     let service_install_status = runtime_service_install_status(config_path, workspace_root)?;
     let lock_status = runtime_lock_status(workspace_root)?;
-
-    let mut blockers = Vec::new();
-    if lock_status.active {
-        blockers.push("runtime lock is currently active; schedule the upgrade around the running process or stop it first".to_string());
-    }
-    if !runtime_health.startup_fallback_valid
-        && !runtime_health
+    let default_or_fallback_healthy = runtime_health.startup_fallback_valid
+        || runtime_health
             .providers
             .iter()
-            .any(|entry| entry.provider == runtime_health.default_provider && entry.healthy)
-    {
-        blockers.push(
-            "no healthy default or fallback control-plane provider is currently available"
-                .to_string(),
-        );
-    }
-    if !service_install_status.supported {
-        blockers
-            .push("no supported host user service manager is available on this host".to_string());
-    }
-
-    let mut steps = vec![
-        "Take a workspace snapshot with `openrustclaw runtime backup` before changing config or binaries.".to_string(),
-        "Rotate and archive the runtime log with `openrustclaw runtime services rotate-logs --keep 7 --max-bytes 10485760` before restart windows.".to_string(),
-        format!(
-            "Run `openrustclaw runtime migrate-config --config {}{}` to normalize any remaining legacy config keys.",
-            config_path,
-            if blockers.is_empty() { "" } else { "" }
-        ),
-    ];
-    if reload_plan.restart_required {
-        steps.push("The current reload plan reports restart-required changes; prefer a controlled restart rather than live rebind.".to_string());
-    } else {
-        steps.push("The current reload plan is live-safe; apply non-disruptive config changes before the maintenance restart if needed.".to_string());
-    }
-    if service_install_status.installed {
-        steps.push(
-            "Use the installed user service to restart cleanly after the upgrade.".to_string(),
-        );
-    } else {
-        steps.push("Consider `openrustclaw runtime services install --config ...` if this workspace should restart under a managed user service.".to_string());
-    }
+            .any(|entry| entry.provider == runtime_health.default_provider && entry.healthy);
+    let plan = RuntimeMaintenancePlanningService::new().build_upgrade_plan(
+        RuntimeUpgradePlanningRequest {
+            generated_at: Utc::now().to_rfc3339(),
+            config_path: config_path.to_string(),
+            default_or_fallback_healthy,
+            service_manager_supported: service_install_status.supported,
+            service_installed: service_install_status.installed,
+            restart_command: service_install_status.restart_command.clone(),
+            lock_active: lock_status.active,
+            reload_restart_required: reload_plan.restart_required,
+        },
+    );
 
     Ok(RuntimeUpgradePlan {
         generated_at: Utc::now().to_rfc3339(),
@@ -642,16 +621,12 @@ pub async fn runtime_upgrade_plan(
         lock_status,
         control_plane_action_provider,
         control_plane_action_model,
-        backup_command: "openrustclaw runtime backup".to_string(),
-        log_rotation_command:
-            "openrustclaw runtime services rotate-logs --keep 7 --max-bytes 10485760".to_string(),
-        migrate_config_command: format!(
-            "openrustclaw runtime migrate-config --config {} --apply",
-            config_path
-        ),
-        ready_for_upgrade: blockers.is_empty(),
-        blockers,
-        steps,
+        backup_command: plan.backup_command,
+        log_rotation_command: plan.log_rotation_command,
+        migrate_config_command: plan.migrate_config_command,
+        ready_for_upgrade: plan.ready,
+        blockers: plan.blockers,
+        steps: plan.steps,
     })
 }
 
@@ -675,65 +650,24 @@ pub async fn runtime_self_update_plan(
     let service_install_status = runtime_service_install_status(config_path, workspace_root)?;
     let lock_status = runtime_lock_status(workspace_root)?;
     let upgrade_plan = runtime_upgrade_plan(config_path, workspace_root).await?;
-
-    let mut blockers = Vec::new();
-    if lock_status.active {
-        blockers.push(
-            "runtime lock is active; stop or drain the running process before replacing the binary"
-                .to_string(),
-        );
-    }
-    if !artifact_exists {
-        blockers.push(format!(
-            "candidate artifact '{}' does not exist",
-            artifact.display()
-        ));
-    } else if !artifact.is_file() {
-        blockers.push(format!(
-            "candidate artifact '{}' is not a regular file",
-            artifact.display()
-        ));
-    } else if !artifact_executable {
-        blockers.push(format!(
-            "candidate artifact '{}' is not marked executable",
-            artifact.display()
-        ));
-    }
-    if artifact == current_exe {
-        blockers
-            .push("candidate artifact resolves to the currently running executable".to_string());
-    }
-    blockers.extend(upgrade_plan.blockers.iter().cloned());
-
-    let mut steps = vec![
-        "Take a workspace snapshot with `openrustclaw runtime backup` before replacing the binary."
-            .to_string(),
-        format!(
-            "Copy the current executable to '{}' as the rollback reference.",
-            rollback_path.display()
-        ),
-        format!(
-            "Validate the candidate artifact at '{}' and then replace the installed binary at '{}'.",
-            artifact.display(),
-            current_exe.display()
-        ),
-    ];
-    if let Some(restart_command) = service_install_status.restart_command.as_ref() {
-        steps.push(format!(
-            "Restart the managed runtime with `{}` after the binary swap.",
-            restart_command
-        ));
-    } else {
-        steps.push(
-            "Restart the runtime manually after the binary swap because no managed host service is installed."
-                .to_string(),
-        );
-    }
-    steps.push(format!(
-        "If the new binary is unhealthy, roll back with `openrustclaw runtime rollback-plan --config {} --artifact {}`.",
-        config_path,
-        rollback_path.display()
-    ));
+    let artifact_is_file = artifact.is_file();
+    let plan = RuntimeMaintenancePlanningService::new().build_self_update_plan(
+        RuntimeSelfUpdatePlanningRequest {
+            generated_at: Utc::now().to_rfc3339(),
+            config_path: config_path.to_string(),
+            current_executable: current_exe.display().to_string(),
+            artifact_path: artifact.display().to_string(),
+            recommended_rollback_path: rollback_path.display().to_string(),
+            artifact_exists,
+            artifact_is_file,
+            artifact_executable,
+            current_executable_matches_artifact: artifact == current_exe,
+            service_installed: service_install_status.installed,
+            restart_command: service_install_status.restart_command.clone(),
+            lock_active: lock_status.active,
+            inherited_upgrade_blockers: upgrade_plan.blockers.clone(),
+        },
+    );
 
     Ok(RuntimeSelfUpdatePlan {
         generated_at: Utc::now().to_rfc3339(),
@@ -749,10 +683,10 @@ pub async fn runtime_self_update_plan(
         lock_status,
         control_plane_action_provider: upgrade_plan.control_plane_action_provider,
         control_plane_action_model: upgrade_plan.control_plane_action_model,
-        backup_command: "openrustclaw runtime backup".to_string(),
-        ready: blockers.is_empty(),
-        blockers,
-        steps,
+        backup_command: plan.backup_command,
+        ready: plan.ready,
+        blockers: plan.blockers,
+        steps: plan.steps,
     })
 }
 
@@ -774,58 +708,21 @@ pub async fn runtime_rollback_plan(
     let rollback_artifact_size_bytes = file_size_bytes(&artifact);
     let service_install_status = runtime_service_install_status(config_path, workspace_root)?;
     let lock_status = runtime_lock_status(workspace_root)?;
-
-    let mut blockers = Vec::new();
-    if lock_status.active {
-        blockers.push(
-            "runtime lock is active; stop or drain the running process before rolling the binary back"
-                .to_string(),
-        );
-    }
-    if !rollback_artifact_exists {
-        blockers.push(format!(
-            "rollback artifact '{}' does not exist",
-            artifact.display()
-        ));
-    } else if !artifact.is_file() {
-        blockers.push(format!(
-            "rollback artifact '{}' is not a regular file",
-            artifact.display()
-        ));
-    } else if !rollback_artifact_executable {
-        blockers.push(format!(
-            "rollback artifact '{}' is not marked executable",
-            artifact.display()
-        ));
-    }
-    if artifact == current_exe {
-        blockers.push("rollback artifact resolves to the currently running executable".to_string());
-    }
-
-    let mut steps = vec![
-        "Take a fresh workspace snapshot with `openrustclaw runtime backup` before restoring the prior binary."
-            .to_string(),
-        format!(
-            "Replace the installed binary at '{}' with the rollback artifact at '{}'.",
-            current_exe.display(),
-            artifact.display()
-        ),
-    ];
-    if let Some(restart_command) = service_install_status.restart_command.as_ref() {
-        steps.push(format!(
-            "Restart the managed runtime with `{}` after restoring the binary.",
-            restart_command
-        ));
-    } else {
-        steps.push(
-            "Restart the runtime manually after restoring the binary because no managed host service is installed."
-                .to_string(),
-        );
-    }
-    steps.push(format!(
-        "Re-run `openrustclaw runtime upgrade-plan --config {}` and `openrustclaw runtime health` after rollback verification.",
-        config_path
-    ));
+    let plan = RuntimeMaintenancePlanningService::new().build_rollback_plan(
+        RuntimeRollbackPlanningRequest {
+            generated_at: Utc::now().to_rfc3339(),
+            config_path: config_path.to_string(),
+            current_executable: current_exe.display().to_string(),
+            artifact_path: artifact.display().to_string(),
+            artifact_exists: rollback_artifact_exists,
+            artifact_is_file: artifact.is_file(),
+            artifact_executable: rollback_artifact_executable,
+            current_executable_matches_artifact: artifact == current_exe,
+            service_installed: service_install_status.installed,
+            restart_command: service_install_status.restart_command.clone(),
+            lock_active: lock_status.active,
+        },
+    );
 
     Ok(RuntimeRollbackPlan {
         generated_at: Utc::now().to_rfc3339(),
@@ -839,10 +736,10 @@ pub async fn runtime_rollback_plan(
         lock_status,
         control_plane_action_provider: runtime_status.control_plane_action_provider,
         control_plane_action_model: runtime_status.control_plane_action_model,
-        backup_command: "openrustclaw runtime backup".to_string(),
-        ready: blockers.is_empty(),
-        blockers,
-        steps,
+        backup_command: plan.backup_command,
+        ready: plan.ready,
+        blockers: plan.blockers,
+        steps: plan.steps,
     })
 }
 
@@ -3347,6 +3244,100 @@ mod tests {
         ))?;
         assert!(rollback_plan.rollback_artifact_exists);
         assert!(rollback_plan.rollback_artifact_executable);
+        Ok(())
+    }
+
+    #[test]
+    fn runtime_maintenance_plans_use_service_lane() -> Result<()> {
+        let temp = tempdir()?;
+        let workspace_root = temp.path();
+        fs::create_dir_all(workspace_root.join("config"))?;
+        let config_path = workspace_root.join("config/default.toml");
+        fs::write(&config_path, toml::to_string_pretty(&AppConfig::default())?)?;
+
+        fs::create_dir_all(workspace_root.join(".claw/control"))?;
+        fs::write(
+            runtime_health_path_for(workspace_root),
+            serde_json::to_string_pretty(&RuntimeHealthReport {
+                generated_at: "2026-03-28T00:00:00Z".to_string(),
+                config_path: config_path.display().to_string(),
+                default_provider: "anthropic".to_string(),
+                fallback_chain: vec![],
+                control_plane_provider: None,
+                control_plane_fallback_chain: vec![],
+                recommended_control_plane_provider: None,
+                startup_fallback_valid: true,
+                degraded_control_plane_mode: false,
+                failover_recommendations: vec![],
+                operator_warnings: vec![],
+                providers: vec![RuntimeHealthProviderEntry {
+                    provider: "anthropic".to_string(),
+                    role: "default".to_string(),
+                    model: "claude-sonnet-4-20250514".to_string(),
+                    configured: true,
+                    healthy: true,
+                    issue_kind: None,
+                    recommendation: None,
+                    issue: None,
+                    model_available: Some(true),
+                    limit_snapshot: None,
+                }],
+                artifacts: RuntimeArtifactHealth {
+                    artifact_count: 0,
+                    persona_artifact_count: 0,
+                    registry_path: workspace_root.join(".claw/artifacts").display().to_string(),
+                    model_family: "anthropic".to_string(),
+                    included_for_default_model: 0,
+                },
+            })?,
+        )?;
+
+        let artifact_path = workspace_root.join("openrustclaw-next");
+        fs::write(&artifact_path, "#!/bin/sh\nexit 0\n")?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut permissions = fs::metadata(&artifact_path)?.permissions();
+            permissions.set_mode(0o755);
+            fs::set_permissions(&artifact_path, permissions)?;
+        }
+
+        let runtime = tokio::runtime::Runtime::new()?;
+        let upgrade_plan = runtime.block_on(runtime_upgrade_plan(
+            config_path.to_str().unwrap(),
+            workspace_root,
+        ))?;
+        assert!(
+            upgrade_plan
+                .steps
+                .iter()
+                .any(|step| step.contains("runtime migrate-config"))
+        );
+
+        let self_update_plan = runtime.block_on(runtime_self_update_plan(
+            config_path.to_str().unwrap(),
+            workspace_root,
+            artifact_path.to_str().unwrap(),
+        ))?;
+        assert!(
+            self_update_plan
+                .steps
+                .iter()
+                .any(|step| step.contains("rollback-plan"))
+        );
+
+        let rollback_plan = runtime.block_on(runtime_rollback_plan(
+            config_path.to_str().unwrap(),
+            workspace_root,
+            artifact_path.to_str().unwrap(),
+        ))?;
+        assert!(
+            rollback_plan
+                .steps
+                .iter()
+                .any(|step| step.contains("runtime health"))
+        );
+
         Ok(())
     }
 

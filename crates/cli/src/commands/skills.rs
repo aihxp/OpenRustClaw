@@ -4,6 +4,15 @@ use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use indicatif::{ProgressBar, ProgressStyle};
 use openrustclaw_app::compiled_skill_overview::CompiledSkillOverviewService;
+use openrustclaw_app::skill_auth_plugin_binding::{
+    SkillAuthPluginBindingRequest as AppSkillAuthPluginBindingRequest,
+    SkillAuthPluginBindingService,
+};
+use openrustclaw_app::skill_channel_extension_lifecycle::{
+    SkillBackgroundWorkflowScheduleRequest as AppSkillBackgroundWorkflowScheduleRequest,
+    SkillChannelExtensionBindingRequest as AppSkillChannelExtensionBindingRequest,
+    SkillChannelExtensionLifecycleService,
+};
 use openrustclaw_app::skill_registry_mutation::{
     RegistryInstallOutcome as AppRegistryInstallOutcome,
     RegistrySkillMetadata as AppRegistrySkillMetadata,
@@ -1387,54 +1396,6 @@ fn save_auth_plugin_sessions(
         .with_context(|| format!("Failed to write {}", path.display()))
 }
 
-fn sanitize_env_fragment(value: &str) -> String {
-    let sanitized = value
-        .chars()
-        .map(|ch| {
-            if ch.is_ascii_alphanumeric() {
-                ch.to_ascii_uppercase()
-            } else {
-                '_'
-            }
-        })
-        .collect::<String>();
-    let collapsed = sanitized
-        .split('_')
-        .filter(|segment| !segment.is_empty())
-        .collect::<Vec<_>>()
-        .join("_");
-    if collapsed.is_empty() {
-        "SKILL".to_string()
-    } else {
-        collapsed
-    }
-}
-
-fn default_auth_prefix(provider_id: &str) -> String {
-    format!("AUTH_PLUGIN_{}", sanitize_env_fragment(provider_id))
-}
-
-fn auth_scope_list(raw: Option<&str>) -> Vec<String> {
-    let scopes = raw
-        .map(|value| {
-            value
-                .split(|ch: char| ch == ',' || ch.is_whitespace())
-                .filter(|segment| !segment.trim().is_empty())
-                .map(|segment| segment.trim().to_string())
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
-    if scopes.is_empty() {
-        vec![
-            "openid".to_string(),
-            "email".to_string(),
-            "profile".to_string(),
-        ]
-    } else {
-        scopes
-    }
-}
-
 fn access_token_key(binding: &SkillAuthPluginBinding) -> String {
     format!("{}_ACCESS_TOKEN", binding.vault_key_prefix)
 }
@@ -1991,39 +1952,6 @@ async fn execute_compiled_skill(
     })
 }
 
-fn background_trigger(
-    every_seconds: Option<u64>,
-    at: Option<&str>,
-) -> Result<(String, serde_json::Value, Option<DateTime<Utc>>)> {
-    if every_seconds.is_some() && at.is_some() {
-        anyhow::bail!("Use either --every-seconds or --at, not both");
-    }
-
-    if let Some(run_at) = at {
-        let run_at = DateTime::parse_from_rfc3339(run_at)
-            .with_context(|| format!("Invalid RFC3339 timestamp for --at: {}", run_at))?
-            .with_timezone(&Utc);
-        Ok((
-            "absolute".to_string(),
-            serde_json::json!({
-                "type": "absolute",
-                "run_at": run_at.to_rfc3339(),
-            }),
-            Some(run_at),
-        ))
-    } else {
-        let every_seconds = every_seconds.unwrap_or(3600);
-        Ok((
-            "interval".to_string(),
-            serde_json::json!({
-                "type": "interval",
-                "interval_secs": every_seconds,
-            }),
-            Some(Utc::now() + chrono::Duration::seconds(every_seconds as i64)),
-        ))
-    }
-}
-
 pub async fn schedule_background_service_data(
     name: &str,
     options: SkillScheduleBackgroundOptions<'_>,
@@ -2042,8 +1970,6 @@ pub async fn schedule_background_service_data(
 
     let (config, pool) = load_skill_config_and_pool().await?;
     let compiled_root = ensure_compiled_root()?;
-    let (trigger_type, trigger_config, next_run_at) =
-        background_trigger(options.every_seconds, options.at)?;
     let skill_name = artifact.manifest.name.clone();
     let service_name = resolved.name.clone();
     let skill_input = match options.input {
@@ -2053,34 +1979,22 @@ pub async fn schedule_background_service_data(
     };
 
     let job_id = uuid::Uuid::new_v4().to_string();
-    let idempotency_key = format!("{}:{}", job_id, uuid::Uuid::new_v4());
-    let job_name = format!(
-        "skill-bg-{}-{}",
-        skill_name.replace(' ', "-").to_lowercase(),
-        service_name.replace(' ', "-").to_lowercase()
-    );
-    let metadata = serde_json::json!({
-        "input": {
-            "compiled_root": compiled_root.display().to_string(),
-            "skill_name": &skill_name,
-            "service": &service_name,
-            "component": &component,
-            "skill_input": skill_input,
-        },
-        "workflow_metadata": {
-            "skill_name": &skill_name,
-            "background_service": &service_name,
-            "component": &component,
-            "source_kind": "plugin_background_workflow",
-            "workspace_database": config.database.url,
-        },
-        "task": {
-            "priority": options.priority,
-            "source_kind": "plugin_background_workflow",
-            "owner": "skills",
-            "tags": ["skill", "background-service", &service_name],
-        }
-    });
+    let report = SkillChannelExtensionLifecycleService::new()
+        .schedule_background_workflow(AppSkillBackgroundWorkflowScheduleRequest {
+            job_id: job_id.clone(),
+            idempotency_key: format!("{}:{}", job_id, uuid::Uuid::new_v4()),
+            skill_name: skill_name.clone(),
+            service_name: service_name.clone(),
+            component: Some(component.clone()),
+            compiled_root: compiled_root.display().to_string(),
+            workspace_database_url: config.database.url.clone(),
+            input: skill_input,
+            every_seconds: options.every_seconds,
+            at: options.at.map(ToString::to_string),
+            priority: options.priority,
+            now: Utc::now().to_rfc3339(),
+        })
+        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
 
     sqlx::query(
         r#"
@@ -2091,52 +2005,34 @@ pub async fn schedule_background_service_data(
         ) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', 'UTC', 3, ?, 'skills', ?, ?, ?, 0, ?, datetime('now'))
         "#,
     )
-    .bind(&job_id)
-    .bind(&job_name)
-    .bind(format!(
-        "Compiled skill background workflow for {}:{}",
-        skill_name, service_name
-    ))
-    .bind("skill_background")
-    .bind(&trigger_type)
-    .bind(trigger_config.to_string())
-    .bind(idempotency_key)
-    .bind(options.priority)
-    .bind("skills")
-    .bind(serde_json::to_string(&vec![
-        "skill".to_string(),
-        "background-service".to_string(),
-        service_name.clone(),
-    ])?)
-    .bind(next_run_at.map(|value| value.to_rfc3339()))
-    .bind(metadata.to_string())
+    .bind(&report.scheduled_job.id)
+    .bind(&report.scheduled_job.name)
+    .bind(&report.scheduled_job.description)
+    .bind(&report.scheduled_job.workflow_id)
+    .bind(&report.scheduled_job.trigger_type)
+    .bind(report.scheduled_job.trigger_config.to_string())
+    .bind(&report.scheduled_job.idempotency_key)
+    .bind(report.scheduled_job.priority)
+    .bind(&report.scheduled_job.owner)
+    .bind(serde_json::to_string(&report.scheduled_job.tags)?)
+    .bind(report.scheduled_job.next_run_at.clone())
+    .bind(report.scheduled_job.metadata.to_string())
     .execute(&pool)
     .await
     .context("Failed to create background skill workflow job")?;
 
-    publish_plugin_event(
-        &pool,
-        "plugin.background_workflow_scheduled",
-        serde_json::json!({
-            "job_id": &job_id,
-            "skill_name": &skill_name,
-            "service": &service_name,
-            "component": &component,
-            "trigger_type": &trigger_type,
-        }),
-    )
-    .await;
+    publish_plugin_event(&pool, &report.event_name, report.event_payload.clone()).await;
 
     Ok(SkillScheduleBackgroundResult {
-        status: "ok".to_string(),
-        job_id,
-        workflow_id: "skill_background".to_string(),
-        skill_name,
-        service: service_name,
-        component,
-        compiled_root: compiled_root.display().to_string(),
-        trigger_type,
-        next_run_at: next_run_at.map(|value| value.to_rfc3339()),
+        status: report.status,
+        job_id: report.job_id,
+        workflow_id: report.workflow_id,
+        skill_name: report.skill_name,
+        service: report.service,
+        component: report.component,
+        compiled_root: report.compiled_root,
+        trigger_type: report.trigger_type,
+        next_run_at: report.next_run_at,
     })
 }
 
@@ -2202,52 +2098,30 @@ pub async fn bind_channel_extension_data(
     let resolved =
         resolve_compiled_skill_background_service(&artifact, options.service, options.component)
             .map_err(|error| anyhow::anyhow!(error.to_string()))?;
-    let component = resolved.component.clone().ok_or_else(|| {
-        anyhow::anyhow!(
-            "Channel extension service '{}' for '{}' has no executable component mapping",
-            resolved.name,
-            artifact.manifest.name
-        )
-    })?;
-    let trigger = options.trigger.unwrap_or("message");
-    if !matches!(trigger, "message" | "mentioned") {
-        anyhow::bail!(
-            "Unsupported trigger '{}'; use `message` or `mentioned`",
-            trigger
-        );
-    }
+    let report = SkillChannelExtensionLifecycleService::new()
+        .bind_channel_extension(AppSkillChannelExtensionBindingRequest {
+            binding_id: binding.id.clone(),
+            platform: binding.platform.clone(),
+            skill_name: artifact.manifest.name.clone(),
+            service_name: resolved.name.clone(),
+            component: resolved.component.clone(),
+            trigger: options.trigger.map(ToString::to_string),
+        })
+        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
 
-    binding.metadata["skill_channel_extension"] = serde_json::json!({
-        "skill_name": artifact.manifest.name,
-        "service": resolved.name,
-        "component": component,
-        "trigger": trigger,
-        "mode": "background_schedule",
-    });
+    binding.metadata["skill_channel_extension"] = report.binding_metadata;
     upsert_binding(None, binding.clone())?;
 
     let (_, pool) = load_skill_config_and_pool().await?;
-    publish_plugin_event(
-        &pool,
-        "plugin.channel_extension_bound",
-        serde_json::json!({
-            "binding_id": binding.id,
-            "platform": binding.platform,
-            "skill_name": artifact.manifest.name,
-            "service": resolved.name,
-            "component": component,
-            "trigger": trigger,
-        }),
-    )
-    .await;
+    publish_plugin_event(&pool, &report.event_name, report.event_payload.clone()).await;
 
     Ok(SkillBindChannelExtensionResult {
-        status: "ok".to_string(),
-        binding_id: binding.id,
-        skill_name: artifact.manifest.name,
-        trigger: trigger.to_string(),
-        service: Some(resolved.name),
-        component: Some(component),
+        status: report.status,
+        binding_id: report.binding_id,
+        skill_name: report.skill_name,
+        trigger: report.trigger,
+        service: report.service,
+        component: report.component,
     })
 }
 
@@ -2396,38 +2270,6 @@ pub async fn bind_auth_plugin_data(
 ) -> Result<SkillBindAuthPluginResult> {
     let workspace_root = current_workspace_root()?;
     let artifact = compiled_skill_detail_or_compile(skill_name).await?;
-    if matches!(
-        artifact.manifest.status,
-        openrustclaw_skills::CompiledSkillStatus::Blocked
-    ) {
-        anyhow::bail!(
-            "Compiled skill '{}' is blocked and cannot be bound as an auth plugin",
-            artifact.manifest.name
-        );
-    }
-    if !artifact.manifest.declared_auth_providers.is_empty()
-        && !artifact
-            .manifest
-            .declared_auth_providers
-            .iter()
-            .any(|provider| provider == provider_id)
-    {
-        anyhow::bail!(
-            "Compiled skill '{}' declares auth providers [{}], not '{}'",
-            artifact.manifest.name,
-            artifact.manifest.declared_auth_providers.join(", "),
-            provider_id
-        );
-    }
-    if options.issuer.is_none()
-        && (options.authorization_endpoint.is_none() || options.token_endpoint.is_none())
-    {
-        anyhow::bail!(
-            "Bind auth plugin '{}' with either --issuer for OIDC discovery or both --authorization-endpoint and --token-endpoint",
-            provider_id
-        );
-    }
-
     if options.service.is_some() || options.component.is_some() {
         let _ = resolve_compiled_skill_background_service(
             &artifact,
@@ -2437,22 +2279,6 @@ pub async fn bind_auth_plugin_data(
         .map_err(|error| anyhow::anyhow!(error.to_string()))?;
     }
 
-    let default_prefix = default_auth_prefix(provider_id);
-    let vault_key_prefix = options
-        .vault_key_prefix
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-        .unwrap_or(default_prefix);
-    let client_id_key = options
-        .client_id_key
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| format!("{}_CLIENT_ID", vault_key_prefix));
-    let client_secret_key = options
-        .client_secret_key
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| format!("{}_CLIENT_SECRET", vault_key_prefix));
     let now = Utc::now().to_rfc3339();
 
     let mut registry = load_auth_plugin_registry(&workspace_root)?;
@@ -2460,23 +2286,49 @@ pub async fn bind_auth_plugin_data(
         .bindings
         .get(provider_id)
         .map(|binding| binding.configured_at.clone())
-        .unwrap_or_else(|| now.clone());
+        .clone();
 
+    let app_binding = SkillAuthPluginBindingService::new()
+        .bind(
+            AppSkillAuthPluginBindingRequest {
+                provider_id: provider_id.to_string(),
+                skill_name: artifact.manifest.name.clone(),
+                declared_auth_providers: artifact.manifest.declared_auth_providers.clone(),
+                blocked: matches!(
+                    artifact.manifest.status,
+                    openrustclaw_skills::CompiledSkillStatus::Blocked
+                ),
+                redirect_uri: options.redirect_uri.map(ToString::to_string),
+                issuer: options.issuer.map(ToString::to_string),
+                authorization_endpoint: options.authorization_endpoint.map(ToString::to_string),
+                token_endpoint: options.token_endpoint.map(ToString::to_string),
+                client_id_key: options.client_id_key.map(ToString::to_string),
+                client_secret_key: options.client_secret_key.map(ToString::to_string),
+                raw_scopes: options.scopes.map(ToString::to_string),
+                vault_key_prefix: options.vault_key_prefix.map(ToString::to_string),
+                service: options.service.map(ToString::to_string),
+                component: options.component.map(ToString::to_string),
+            },
+            existing_configured_at,
+            now,
+        )
+        .map_err(|error| anyhow::anyhow!(error.to_string()))?
+        .binding;
     let binding = SkillAuthPluginBinding {
-        provider_id: provider_id.to_string(),
-        skill_name: artifact.manifest.name.clone(),
-        redirect_uri: options.redirect_uri.map(ToString::to_string),
-        issuer: options.issuer.map(ToString::to_string),
-        authorization_endpoint: options.authorization_endpoint.map(ToString::to_string),
-        token_endpoint: options.token_endpoint.map(ToString::to_string),
-        client_id_key: client_id_key.clone(),
-        client_secret_key: client_secret_key.clone(),
-        scopes: auth_scope_list(options.scopes),
-        vault_key_prefix: vault_key_prefix.clone(),
-        service: options.service.map(ToString::to_string),
-        component: options.component.map(ToString::to_string),
-        configured_at: existing_configured_at,
-        updated_at: now,
+        provider_id: app_binding.provider_id,
+        skill_name: app_binding.skill_name,
+        redirect_uri: app_binding.redirect_uri,
+        issuer: app_binding.issuer,
+        authorization_endpoint: app_binding.authorization_endpoint,
+        token_endpoint: app_binding.token_endpoint,
+        client_id_key: app_binding.client_id_key,
+        client_secret_key: app_binding.client_secret_key,
+        scopes: app_binding.scopes,
+        vault_key_prefix: app_binding.vault_key_prefix,
+        service: app_binding.service,
+        component: app_binding.component,
+        configured_at: app_binding.configured_at,
+        updated_at: app_binding.updated_at,
     };
     registry
         .bindings
@@ -2504,9 +2356,9 @@ pub async fn bind_auth_plugin_data(
         redirect_uri: binding.redirect_uri,
         authorization_endpoint: binding.authorization_endpoint,
         token_endpoint: binding.token_endpoint,
-        client_id_key,
-        client_secret_key,
-        vault_key_prefix,
+        client_id_key: binding.client_id_key,
+        client_secret_key: binding.client_secret_key,
+        vault_key_prefix: binding.vault_key_prefix,
         scopes: binding.scopes,
     })
 }
@@ -5533,6 +5385,194 @@ mod tests {
             .fetch_one(&pool)
             .await?;
         assert_eq!(remaining, 0);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn schedule_and_bind_channel_extension_use_service_lane() -> Result<()> {
+        let tmp = tempfile::tempdir()?;
+        std::fs::create_dir_all(
+            tmp.path()
+                .join("skills")
+                .join("channel-demo")
+                .join("scripts"),
+        )?;
+        std::fs::create_dir_all(tmp.path().join("config"))?;
+
+        let db_path = tmp.path().join("skills.db");
+        std::fs::write(&db_path, [])?;
+        std::fs::write(
+            tmp.path()
+                .join("skills")
+                .join("channel-demo")
+                .join("SKILL.md"),
+            r#"---
+name: Channel Demo
+description: Test channel extension skill
+background_services:
+  - sync-loop
+---
+
+Runs a background sync loop.
+"#,
+        )?;
+        std::fs::write(
+            tmp.path()
+                .join("skills")
+                .join("channel-demo")
+                .join("scripts")
+                .join("sync-loop.wat"),
+            r#"(module
+  (memory (export "memory") 1 1)
+  (data (i32.const 1024) "{\"ok\":true}")
+  (func (export "alloc") (param i32) (result i32) i32.const 0)
+  (func (export "run") (param i32 i32) (result i64)
+    (i64.or
+      (i64.shl (i64.extend_i32_u (i32.const 1024)) (i64.const 32))
+      (i64.extend_i32_u (i32.const 11)))))"#,
+        )?;
+
+        let mut config = openrustclaw_core::config::AppConfig::default();
+        config.database.url = format!("sqlite://{}?mode=rwc", db_path.display());
+        std::fs::write(
+            tmp.path().join("config").join("default.toml"),
+            toml::to_string_pretty(&config)?,
+        )?;
+
+        let _guard = CurrentDirGuard::enter(tmp.path())?;
+        crate::commands::channels::bind(
+            None,
+            "support-inbox",
+            "slack",
+            Some("workspace-a"),
+            None,
+            None,
+            None,
+            None,
+            Some("mention"),
+        )?;
+
+        let scheduled = schedule_background_service_data(
+            "channel-demo",
+            SkillScheduleBackgroundOptions {
+                service: None,
+                component: None,
+                input: Some(r#"{"seed":1}"#),
+                every_seconds: Some(600),
+                at: None,
+                priority: 7,
+            },
+        )
+        .await?;
+        assert_eq!(scheduled.status, "ok");
+        assert_eq!(scheduled.workflow_id, "skill_background");
+        assert_eq!(scheduled.skill_name, "Channel Demo");
+        assert_eq!(scheduled.service, "sync-loop");
+        assert_eq!(scheduled.component, "scripts/sync-loop.wat");
+        assert_eq!(scheduled.trigger_type, "interval");
+        assert!(scheduled.next_run_at.is_some());
+
+        let pool = openrustclaw_db::init_pool(&config.database.url, 1).await?;
+        openrustclaw_db::run_migrations(&pool).await?;
+        let scheduled_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM scheduled_jobs")
+            .fetch_one(&pool)
+            .await?;
+        assert_eq!(scheduled_count, 1);
+
+        let bound = bind_channel_extension_data(
+            "support-inbox",
+            "channel-demo",
+            SkillBindChannelExtensionOptions {
+                service: None,
+                component: None,
+                trigger: Some("mentioned"),
+            },
+        )
+        .await?;
+        assert_eq!(bound.status, "ok");
+        assert_eq!(bound.binding_id, "support-inbox");
+        assert_eq!(bound.skill_name, "Channel Demo");
+        assert_eq!(bound.trigger, "mentioned");
+        assert_eq!(bound.service.as_deref(), Some("sync-loop"));
+        assert_eq!(bound.component.as_deref(), Some("scripts/sync-loop.wat"));
+
+        let binding = read_binding(resolve_root(None)?, "support-inbox")?;
+        assert_eq!(
+            binding.metadata["skill_channel_extension"]["skill_name"],
+            serde_json::json!("Channel Demo")
+        );
+        assert_eq!(
+            binding.metadata["skill_channel_extension"]["mode"],
+            serde_json::json!("background_schedule")
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn bind_auth_plugin_data_uses_service_lane() -> Result<()> {
+        let tmp = tempfile::tempdir()?;
+        std::fs::create_dir_all(tmp.path().join("skills").join("auth-demo"))?;
+        std::fs::create_dir_all(tmp.path().join("config"))?;
+
+        let db_path = tmp.path().join("skills.db");
+        std::fs::write(&db_path, [])?;
+
+        std::fs::write(
+            tmp.path().join("skills").join("auth-demo").join("SKILL.md"),
+            "# Auth Demo\n\nauth_providers: github\n",
+        )?;
+
+        let mut config = openrustclaw_core::config::AppConfig::default();
+        config.database.url = format!("sqlite://{}?mode=rwc", db_path.display());
+        std::fs::write(
+            tmp.path().join("config").join("default.toml"),
+            toml::to_string_pretty(&config)?,
+        )?;
+
+        let _guard = CurrentDirGuard::enter(tmp.path())?;
+        let result = bind_auth_plugin_data(
+            "github",
+            "auth-demo",
+            SkillBindAuthPluginOptions {
+                redirect_uri: Some("http://localhost/callback"),
+                issuer: Some("https://github.com/login/oauth"),
+                authorization_endpoint: None,
+                token_endpoint: None,
+                client_id_key: None,
+                client_secret_key: None,
+                scopes: Some("read:user,user:email"),
+                vault_key_prefix: None,
+                service: None,
+                component: None,
+            },
+        )
+        .await?;
+
+        assert_eq!(result.status, "ok");
+        assert_eq!(result.provider_id, "github");
+        assert_eq!(result.skill_name, "Auth Demo");
+        assert_eq!(result.client_id_key, "GITHUB_CLIENT_ID");
+        assert_eq!(result.client_secret_key, "GITHUB_CLIENT_SECRET");
+        assert_eq!(result.vault_key_prefix, "GITHUB");
+        assert_eq!(
+            result.scopes,
+            vec!["read:user".to_string(), "user:email".to_string()]
+        );
+
+        let registry = load_auth_plugin_registry(tmp.path())?;
+        let binding = registry.bindings.get("github").unwrap();
+        assert_eq!(binding.skill_name, "Auth Demo");
+        assert_eq!(binding.client_id_key, "GITHUB_CLIENT_ID");
+        assert_eq!(binding.client_secret_key, "GITHUB_CLIENT_SECRET");
+        assert_eq!(binding.vault_key_prefix, "GITHUB");
+        assert_eq!(
+            binding.scopes,
+            vec!["read:user".to_string(), "user:email".to_string()]
+        );
 
         Ok(())
     }

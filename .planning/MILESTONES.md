@@ -1,5 +1,80 @@
 # Project Milestones: OpenRustClaw
 
+## v1.21 Full Greenfield Conversion: Mobile and Voice Runtime Services (Shipped: 2026-03-28)
+
+**Phases completed:** 4 phases, 4 plans, 0 tasks
+**Verification archive:** `.planning/milestones/v1.21-VERIFICATIONS.md`
+**Verification debt:** none
+
+**Key accomplishments:**
+
+- Moved the targeted mobile notification, outbound-message, dispatch, approval, wake, and rehydrate lifecycle lane out of `mobile.rs` and behind `openrustclaw-app`.
+- Moved the mobile heartbeat, push, sync, activity, node summary, and metrics aggregation lane out of `mobile.rs` and behind `openrustclaw-app`.
+- Moved voice provider resolution and voice-session lifecycle mutation out of `voice_runtime.rs` and behind `openrustclaw-app`.
+- Moved voice transcript, event, artifact, metrics, and outcome composition out of `voice_runtime.rs` and behind `openrustclaw-app`.
+
+---
+
+## v1.20 Full Greenfield Conversion: Control Plane Route Families II (Shipped: 2026-03-28)
+
+**Phases completed:** 4 phases, 4 plans, 0 tasks
+**Verification archive:** `.planning/milestones/v1.20-VERIFICATIONS.md`
+**Verification debt:** none
+
+**Key accomplishments:**
+
+- Moved the autonomy lesson and lesson-mutation control route family out of `start.rs` and behind `openrustclaw-app`.
+- Moved the remaining non-voice-call skill-control route family out of `start.rs` and behind `openrustclaw-app`.
+- Moved voice-call lifecycle and channel-extension control routes out of `start.rs` and behind `openrustclaw-app`.
+- Reduced migrated control-plane route registration sprawl in `start.rs` by splitting the shared route map into focused route-builder helpers.
+
+---
+
+## v1.19 Full Greenfield Conversion: Control Plane Route Families I (Shipped: 2026-03-28)
+
+**Phases completed:** 4 phases, 4 plans, 0 tasks
+**Verification archive:** `.planning/milestones/v1.19-VERIFICATIONS.md`
+**Verification debt:** none
+
+**Key accomplishments:**
+
+- Moved the remaining control config validation and mutation route family out of `start.rs` and behind `openrustclaw-app`.
+- Moved the diagnostics summary and live operator event route family out of `start.rs` and behind `openrustclaw-app`.
+- Moved channel registry account and binding lifecycle mutations out of `start.rs` and behind `openrustclaw-app`.
+- Moved the remaining read-heavy runtime, voice, talk, and mobile status route family out of `start.rs` and behind `openrustclaw-app`.
+
+---
+
+## v1.18 Greenfield Conversion: Final Ranked Seam and 100% Completion Path (Shipped: 2026-03-28)
+
+**Phases completed:** 4 phases, 4 plans, 0 tasks
+**Verification archive:** `.planning/milestones/v1.18-VERIFICATIONS.md`
+**Verification debt:** none
+
+**Key accomplishments:**
+
+- Closed the final ranked seam by moving background workflow scheduling and channel-extension binding behind `openrustclaw-app`.
+- Advanced the canonical greenfield seam ledger to `18/18` migrated seams and `100%` completion.
+- Retired the current ranked seam inventory and recorded the explicit rule that any deeper follow-on work must define a new canonical queue first.
+- Updated `/control/runtime/maintenance` and the planning surfaces to expose the completed ledger state and retirement decision truthfully.
+
+---
+
+## v1.17 Greenfield Conversion: Completion Metrics and Remaining Hotspots (Shipped: 2026-03-28)
+
+**Phases completed:** 4 phases, 4 plans, 0 tasks
+**Verification archive:** `.planning/milestones/v1.17-VERIFICATIONS.md`
+**Verification debt:** none
+
+**Key accomplishments:**
+
+- Defined the canonical ranked seam inventory and replaced vague milestone-count reporting with a real greenfield completion baseline.
+- Moved another auth-plugin lifecycle lane out of `skills.rs` and into `openrustclaw-app`.
+- Moved runtime upgrade, self-update, and rollback planning out of `runtime.rs` and behind a shared application service seam.
+- Shipped `/control/runtime/maintenance`, which now reports the canonical `17/18` migrated-seam score and remaining queue through `openrustclaw-app`.
+
+---
+
 ## v1.16 Greenfield Conversion: Skills and Runtime Hotspots (Shipped: 2026-03-28)
 
 **Phases completed:** 4 phases, 4 plans, 0 tasks

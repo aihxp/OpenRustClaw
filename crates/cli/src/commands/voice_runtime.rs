@@ -3,11 +3,14 @@ use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow};
 use chrono::{DateTime, Utc};
+use openrustclaw_app::{
+    voice_runtime_lifecycle as app_voice_lifecycle, voice_runtime_reporting as app_voice_reporting,
+};
 use openrustclaw_core::config::{AppConfig, VoiceSttRuntimeConfig, VoiceTtsRuntimeConfig};
 use openrustclaw_core::types::IncomingMessage;
 use reqwest::Url;
 use reqwest::multipart::{Form, Part};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Map, Value, json};
 use tokio::fs;
 use tracing::warn;
@@ -535,6 +538,26 @@ struct OpenAiSpeechRequest<'a> {
     response_format: &'a str,
 }
 
+fn map_voice_to_app<T, U>(value: &T) -> Result<U>
+where
+    T: Serialize,
+    U: DeserializeOwned,
+{
+    serde_json::from_value(serde_json::to_value(value).context("failed to serialize voice value")?)
+        .context("failed to deserialize voice app value")
+}
+
+fn map_voice_from_app<T, U>(value: &T) -> Result<U>
+where
+    T: Serialize,
+    U: DeserializeOwned,
+{
+    serde_json::from_value(
+        serde_json::to_value(value).context("failed to serialize voice app value")?,
+    )
+    .context("failed to deserialize voice value")
+}
+
 fn normalize_voice_provider_name(value: &str) -> String {
     value.trim().to_ascii_lowercase()
 }
@@ -575,69 +598,17 @@ fn resolve_voice_provider_for_stt(
     config: &AppConfig,
     provider_override: Option<&str>,
 ) -> Result<ResolvedVoiceProvider> {
-    let requested = provider_override
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or(config.voice.stt.provider.as_str());
-    let provider = normalize_voice_provider_name(requested);
-    let api_base_url = config
-        .voice
-        .stt
-        .api_base_url
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(ToString::to_string)
-        .or_else(|| default_voice_api_base_url(&provider).map(ToString::to_string))
-        .ok_or_else(|| {
-            anyhow!(
-                "voice STT provider '{}' requires voice.stt.api_base_url for OpenAI-compatible routing",
-                provider
-            )
-        })?;
-    let api_key_env = config
-        .voice
-        .stt
-        .api_key_env
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(ToString::to_string)
-        .or_else(|| default_voice_api_key_env(config, &provider))
-        .ok_or_else(|| {
-            anyhow!(
-                "voice STT provider '{}' requires voice.stt.api_key_env or a known provider key binding",
-                provider
-            )
-        })?;
-
-    if provider == "deepgram" {
-        return Ok(ResolvedVoiceProvider {
-            provider,
-            api_key_env,
-            api_base_url: api_base_url.trim_end_matches('/').to_string(),
-            lane: "deepgram_listen".to_string(),
-            supports_inbound_notes: true,
-            supports_voice_catalog: false,
-            notes: vec![
-                "deepgram_rest".to_string(),
-                "endpoint must expose /listen".to_string(),
-            ],
-        });
-    }
-
-    let mut notes = vec!["openai_compatible".to_string()];
-    if provider != "openai" {
-        notes.push("endpoint must expose /audio/transcriptions".to_string());
-    }
-
+    let resolved = app_voice_lifecycle::VoiceRuntimeLifecycleService::new()
+        .resolve_voice_provider_for_stt(config, provider_override)
+        .map_err(|error| anyhow!(error.to_string()))?;
     Ok(ResolvedVoiceProvider {
-        provider,
-        api_key_env,
-        api_base_url: api_base_url.trim_end_matches('/').to_string(),
-        lane: "openai_compatible".to_string(),
-        supports_inbound_notes: true,
-        supports_voice_catalog: false,
-        notes,
+        provider: resolved.provider,
+        api_key_env: resolved.api_key_env,
+        api_base_url: resolved.api_base_url,
+        lane: resolved.lane,
+        supports_inbound_notes: resolved.supports_inbound_notes,
+        supports_voice_catalog: resolved.supports_voice_catalog,
+        notes: resolved.notes,
     })
 }
 
@@ -645,54 +616,17 @@ fn resolve_voice_provider_for_tts(
     config: &AppConfig,
     provider_override: Option<&str>,
 ) -> Result<ResolvedVoiceProvider> {
-    let requested = provider_override
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or(config.voice.tts.provider.as_str());
-    let provider = normalize_voice_provider_name(requested);
-    let api_base_url = config
-        .voice
-        .tts
-        .api_base_url
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(ToString::to_string)
-        .or_else(|| default_voice_api_base_url(&provider).map(ToString::to_string))
-        .ok_or_else(|| {
-            anyhow!(
-                "voice TTS provider '{}' requires voice.tts.api_base_url for OpenAI-compatible routing",
-                provider
-            )
-        })?;
-    let api_key_env = config
-        .voice
-        .tts
-        .api_key_env
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(ToString::to_string)
-        .or_else(|| default_voice_api_key_env(config, &provider))
-        .ok_or_else(|| {
-            anyhow!(
-                "voice TTS provider '{}' requires voice.tts.api_key_env or a known provider key binding",
-                provider
-            )
-        })?;
-
-    let mut notes = vec!["openai_compatible".to_string()];
-    if provider != "openai" {
-        notes.push("endpoint must expose /audio/speech".to_string());
-    }
-
+    let resolved = app_voice_lifecycle::VoiceRuntimeLifecycleService::new()
+        .resolve_voice_provider_for_tts(config, provider_override)
+        .map_err(|error| anyhow!(error.to_string()))?;
     Ok(ResolvedVoiceProvider {
-        provider,
-        api_key_env,
-        api_base_url: api_base_url.trim_end_matches('/').to_string(),
-        lane: "openai_compatible".to_string(),
-        supports_inbound_notes: false,
-        supports_voice_catalog: true,
-        notes,
+        provider: resolved.provider,
+        api_key_env: resolved.api_key_env,
+        api_base_url: resolved.api_base_url,
+        lane: resolved.lane,
+        supports_inbound_notes: resolved.supports_inbound_notes,
+        supports_voice_catalog: resolved.supports_voice_catalog,
+        notes: resolved.notes,
     })
 }
 
@@ -714,36 +648,13 @@ fn provider_status_from_resolved(
 }
 
 pub fn voice_provider_catalog(config: &AppConfig) -> VoiceProviderCatalog {
-    let mut stt = Vec::new();
-    let mut tts = Vec::new();
-
-    for provider in ["openai", "openrouter", "deepgram"] {
-        if let Ok(profile) = resolve_voice_provider_for_stt(config, Some(provider)) {
-            stt.push(provider_status_from_resolved(profile, "stt"));
-        }
-    }
-
-    for provider in ["openai", "openrouter"] {
-        if let Ok(profile) = resolve_voice_provider_for_tts(config, Some(provider)) {
-            tts.push(provider_status_from_resolved(profile, "tts"));
-        }
-    }
-
-    let configured_stt = normalize_voice_provider_name(&config.voice.stt.provider);
-    if !["openai", "openrouter", "deepgram"].contains(&configured_stt.as_str()) {
-        if let Ok(profile) = resolve_voice_provider_for_stt(config, Some(&configured_stt)) {
-            stt.push(provider_status_from_resolved(profile, "stt"));
-        }
-    }
-
-    let configured_tts = normalize_voice_provider_name(&config.voice.tts.provider);
-    if !["openai", "openrouter"].contains(&configured_tts.as_str()) {
-        if let Ok(profile) = resolve_voice_provider_for_tts(config, Some(&configured_tts)) {
-            tts.push(provider_status_from_resolved(profile, "tts"));
-        }
-    }
-
-    VoiceProviderCatalog { stt, tts }
+    map_voice_from_app::<_, VoiceProviderCatalog>(
+        &app_voice_lifecycle::VoiceRuntimeLifecycleService::new().provider_catalog(config),
+    )
+    .unwrap_or_else(|_| VoiceProviderCatalog {
+        stt: Vec::new(),
+        tts: Vec::new(),
+    })
 }
 
 impl InboundVoiceTranscriber {
@@ -1680,26 +1591,11 @@ pub async fn voice_session_transcript(
     session_id: &str,
 ) -> Result<VoiceSessionTranscript> {
     let session = inspect_voice_session(workspace_root, session_id).await?;
-    Ok(VoiceSessionTranscript {
-        session_id: session.id,
-        status: session.status,
-        live_state: session.live_state,
-        turn_count: session.turns.len(),
-        last_activity_at: session.last_activity_at,
-        closed_at: session.closed_at,
-        turns: session
-            .turns
-            .into_iter()
-            .enumerate()
-            .map(|(index, turn)| VoiceSessionTranscriptTurn {
-                index,
-                role: turn.role,
-                text: turn.text,
-                created_at: turn.created_at,
-                synthesized_output_path: turn.synthesized_output_path,
-            })
-            .collect(),
-    })
+    map_voice_from_app::<_, VoiceSessionTranscript>(
+        &app_voice_reporting::VoiceRuntimeReportingService::new().session_transcript(
+            map_voice_to_app::<_, app_voice_lifecycle::VoiceSessionRecord>(&session)?,
+        ),
+    )
 }
 
 pub async fn voice_session_artifacts(
@@ -1707,37 +1603,26 @@ pub async fn voice_session_artifacts(
     session_id: &str,
 ) -> Result<VoiceSessionArtifacts> {
     let session = inspect_voice_session(workspace_root, session_id).await?;
-    let mut artifacts = Vec::new();
-    let mut total_bytes = 0_u64;
-
+    let mut snapshots = Vec::new();
     for (index, turn) in session.turns.iter().enumerate() {
         let Some(path) = turn.synthesized_output_path.as_ref() else {
             continue;
         };
         let resolved_path = resolve_voice_artifact_path(workspace_root, path);
         let metadata = fs::metadata(&resolved_path).await.ok();
-        let bytes = metadata.as_ref().map(|entry| entry.len());
-        if let Some(size) = bytes {
-            total_bytes += size;
-        }
-        artifacts.push(VoiceSessionArtifact {
+        snapshots.push(app_voice_reporting::VoiceArtifactSnapshot {
             index,
-            role: turn.role.clone(),
-            created_at: turn.created_at.clone(),
             path: path.clone(),
             exists: metadata.is_some(),
-            bytes,
+            bytes: metadata.as_ref().map(|entry| entry.len()),
         });
     }
-
-    Ok(VoiceSessionArtifacts {
-        session_id: session.id,
-        status: session.status,
-        live_state: session.live_state,
-        artifact_count: artifacts.len(),
-        total_bytes,
-        artifacts,
-    })
+    map_voice_from_app::<_, VoiceSessionArtifacts>(
+        &app_voice_reporting::VoiceRuntimeReportingService::new().session_artifacts(
+            &map_voice_to_app::<_, app_voice_lifecycle::VoiceSessionRecord>(&session)?,
+            snapshots,
+        ),
+    )
 }
 
 pub async fn voice_session_events(
@@ -1745,88 +1630,11 @@ pub async fn voice_session_events(
     session_id: &str,
 ) -> Result<VoiceSessionEvents> {
     let session = inspect_voice_session(workspace_root, session_id).await?;
-    let mut events = Vec::new();
-
-    events.push(VoiceSessionEvent {
-        index: 0,
-        kind: "session_started".to_string(),
-        created_at: session.created_at.clone(),
-        summary: format!(
-            "session started with stt={} tts={} voice={}",
-            session.stt_provider, session.tts_provider, session.tts_voice
+    map_voice_from_app::<_, VoiceSessionEvents>(
+        &app_voice_reporting::VoiceRuntimeReportingService::new().session_events(
+            &map_voice_to_app::<_, app_voice_lifecycle::VoiceSessionRecord>(&session)?,
         ),
-        synthesized_output_path: None,
-    });
-
-    events.extend(session.turns.iter().map(|turn| VoiceSessionEvent {
-        index: 0,
-        kind: format!("{}_turn", turn.role),
-        created_at: turn.created_at.clone(),
-        summary: truncate_voice_event_summary(&turn.text, 96),
-        synthesized_output_path: turn.synthesized_output_path.clone(),
-    }));
-
-    if let Some(created_at) = session.last_reconnected_at.as_ref() {
-        events.push(VoiceSessionEvent {
-            index: 0,
-            kind: "session_reconnected".to_string(),
-            created_at: created_at.clone(),
-            summary: format!("reconnect_count={}", session.reconnect_count),
-            synthesized_output_path: None,
-        });
-    }
-    if let Some(created_at) = session.last_paused_at.as_ref() {
-        events.push(VoiceSessionEvent {
-            index: 0,
-            kind: "session_paused".to_string(),
-            created_at: created_at.clone(),
-            summary: format!("pause_count={}", session.pause_count),
-            synthesized_output_path: None,
-        });
-    }
-    if let Some(created_at) = session.last_resumed_at.as_ref() {
-        events.push(VoiceSessionEvent {
-            index: 0,
-            kind: "session_resumed".to_string(),
-            created_at: created_at.clone(),
-            summary: "session resumed".to_string(),
-            synthesized_output_path: None,
-        });
-    }
-    if let Some(created_at) = session.last_interrupted_at.as_ref() {
-        events.push(VoiceSessionEvent {
-            index: 0,
-            kind: "session_interrupted".to_string(),
-            created_at: created_at.clone(),
-            summary: format!("interrupted_count={}", session.interrupted_count),
-            synthesized_output_path: None,
-        });
-    }
-    if let Some(created_at) = session.closed_at.as_ref() {
-        events.push(VoiceSessionEvent {
-            index: 0,
-            kind: "session_ended".to_string(),
-            created_at: created_at.clone(),
-            summary: session
-                .end_reason
-                .clone()
-                .unwrap_or_else(|| "session ended".to_string()),
-            synthesized_output_path: None,
-        });
-    }
-
-    events.sort_by(|left, right| left.created_at.cmp(&right.created_at));
-    for (index, event) in events.iter_mut().enumerate() {
-        event.index = index;
-    }
-
-    Ok(VoiceSessionEvents {
-        session_id: session.id,
-        status: session.status,
-        live_state: session.live_state,
-        event_count: events.len(),
-        events,
-    })
+    )
 }
 
 pub async fn voice_session_metrics(
@@ -1843,44 +1651,14 @@ pub async fn voice_metrics(workspace_root: &Path) -> Result<VoiceMetricsSummary>
     for session in list.sessions {
         sessions.push(build_voice_session_metrics(workspace_root, session).await?);
     }
-
-    let total_sessions = sessions.len();
-    let active_sessions = sessions
-        .iter()
-        .filter(|entry| entry.status == "active")
-        .count();
-    let ended_sessions = sessions
-        .iter()
-        .filter(|entry| entry.status == "ended")
-        .count();
-    let total_turns = sessions.iter().map(|entry| entry.turn_count).sum();
-    let total_artifacts = sessions.iter().map(|entry| entry.artifact_count).sum();
-    let total_artifact_bytes = sessions.iter().map(|entry| entry.artifact_bytes).sum();
-    let total_transcript_chars = sessions.iter().map(|entry| entry.transcript_chars).sum();
-    let avg_turns_per_session = if total_sessions == 0 {
-        0.0
-    } else {
-        total_turns as f64 / total_sessions as f64
-    };
-    let durations = sessions
-        .iter()
-        .filter_map(|entry| entry.duration_secs.map(|value| value as f64))
-        .collect::<Vec<_>>();
-    let avg_session_duration_secs =
-        (!durations.is_empty()).then(|| durations.iter().sum::<f64>() / durations.len() as f64);
-
-    Ok(VoiceMetricsSummary {
-        total_sessions,
-        active_sessions,
-        ended_sessions,
-        total_turns,
-        total_artifacts,
-        total_artifact_bytes,
-        total_transcript_chars,
-        avg_turns_per_session,
-        avg_session_duration_secs,
-        sessions,
-    })
+    map_voice_from_app::<_, VoiceMetricsSummary>(
+        &app_voice_reporting::VoiceRuntimeReportingService::new().metrics_summary(
+            sessions
+                .iter()
+                .map(map_voice_to_app::<_, app_voice_reporting::VoiceSessionMetrics>)
+                .collect::<Result<Vec<_>>>()?,
+        ),
+    )
 }
 
 pub async fn voice_session_outcomes(
@@ -1888,43 +1666,27 @@ pub async fn voice_session_outcomes(
     stale_after_secs: Option<u64>,
     limit: Option<usize>,
 ) -> Result<VoiceOutcomesSummary> {
-    let stale_after_secs = resolved_voice_stale_after_secs(stale_after_secs);
+    let service = app_voice_lifecycle::VoiceRuntimeLifecycleService::new();
+    let stale_after_secs = service.resolved_stale_after_secs(stale_after_secs);
     let list = list_voice_sessions(workspace_root).await?;
     let mut outcomes = Vec::new();
-    let mut attention_needed = 0usize;
-    let mut active_sessions = 0usize;
-    let mut ended_sessions = 0usize;
     let total_sessions = list.sessions.len();
 
     for session in list.sessions {
         let outcome = summarize_voice_outcome(workspace_root, &session, stale_after_secs).await?;
-        if outcome.attention_needed {
-            attention_needed += 1;
-        }
-        if session.status == "active" {
-            active_sessions += 1;
-        } else if session.status == "ended" {
-            ended_sessions += 1;
-        }
         outcomes.push(outcome);
     }
-
-    outcomes.sort_by(|left, right| {
-        right
-            .last_activity_at
-            .cmp(&left.last_activity_at)
-            .then_with(|| left.session_id.cmp(&right.session_id))
-    });
-    outcomes.truncate(limit.unwrap_or(20).max(1));
-
-    Ok(VoiceOutcomesSummary {
-        stale_after_secs,
-        total_sessions,
-        attention_needed,
-        active_sessions,
-        ended_sessions,
-        outcomes,
-    })
+    map_voice_from_app::<_, VoiceOutcomesSummary>(
+        &app_voice_reporting::VoiceRuntimeReportingService::new().outcomes_summary(
+            stale_after_secs,
+            total_sessions,
+            outcomes
+                .iter()
+                .map(map_voice_to_app::<_, app_voice_reporting::VoiceOutcomeRecord>)
+                .collect::<Result<Vec<_>>>()?,
+            limit.unwrap_or(20),
+        ),
+    )
 }
 
 pub async fn start_voice_session(
@@ -1932,38 +1694,11 @@ pub async fn start_voice_session(
     workspace_root: &Path,
     request: VoiceSessionStartRequest,
 ) -> Result<VoiceSessionRecord> {
-    let session_id = request
-        .session_id
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or_else(|| Uuid::new_v4().to_string());
-    let now = Utc::now().to_rfc3339();
-    let stt_provider = resolve_voice_provider_for_stt(config, None)?.provider;
-    let tts_provider = resolve_voice_provider_for_tts(config, None)?.provider;
-    let tts_voice = request
-        .voice
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or_else(|| config.voice.tts.voice.clone());
-    let session = VoiceSessionRecord {
-        id: session_id,
-        status: "active".to_string(),
-        live_state: "listening".to_string(),
-        stt_provider,
-        tts_provider,
-        tts_voice,
-        assistant_prompt: request.assistant_prompt,
-        end_reason: None,
-        created_at: now.clone(),
-        last_activity_at: now,
-        closed_at: None,
-        reconnect_count: 0,
-        last_reconnected_at: None,
-        pause_count: 0,
-        interrupted_count: 0,
-        last_paused_at: None,
-        last_resumed_at: None,
-        last_interrupted_at: None,
-        turns: Vec::new(),
-    };
+    let session = map_voice_from_app::<_, VoiceSessionRecord>(
+        &app_voice_lifecycle::VoiceRuntimeLifecycleService::new()
+            .start_session(config, map_voice_to_app(&request)?, Utc::now().to_rfc3339())
+            .map_err(|error| anyhow!(error.to_string()))?,
+    )?;
     save_voice_session(workspace_root, &session).await?;
     Ok(session)
 }
@@ -1973,20 +1708,15 @@ pub async fn append_voice_session_user(
     session_id: &str,
     request: VoiceSessionAppendRequest,
 ) -> Result<VoiceSessionRecord> {
-    let mut session = inspect_voice_session(workspace_root, session_id).await?;
-    ensure_voice_session_accepts_turns(&session)?;
-    let text = request.text.trim();
-    if text.is_empty() {
-        return Err(anyhow!("text is required"));
-    }
-    session.turns.push(VoiceSessionTurn {
-        role: "user".to_string(),
-        text: text.to_string(),
-        created_at: Utc::now().to_rfc3339(),
-        synthesized_output_path: None,
-    });
-    session.live_state = "listening".to_string();
-    session.last_activity_at = Utc::now().to_rfc3339();
+    let session = map_voice_from_app::<_, VoiceSessionRecord>(
+        &app_voice_lifecycle::VoiceRuntimeLifecycleService::new()
+            .append_user(
+                map_voice_to_app(&inspect_voice_session(workspace_root, session_id).await?)?,
+                map_voice_to_app(&request)?,
+                Utc::now().to_rfc3339(),
+            )
+            .map_err(|error| anyhow!(error.to_string()))?,
+    )?;
     save_voice_session(workspace_root, &session).await?;
     Ok(session)
 }
@@ -1997,43 +1727,42 @@ pub async fn respond_voice_session(
     session_id: &str,
     request: VoiceSessionRespondRequest,
 ) -> Result<VoiceSessionRespondResult> {
-    let mut session = inspect_voice_session(workspace_root, session_id).await?;
+    let session = inspect_voice_session(workspace_root, session_id).await?;
     ensure_voice_session_accepts_turns(&session)?;
     let text = request.text.trim();
     if text.is_empty() {
         return Err(anyhow!("text is required"));
     }
+    let request_for_service = request.clone();
 
     let synthesis = synthesize_with_config(
         config,
         workspace_root,
         VoiceSynthesizeRequest {
             text: text.to_string(),
-            provider: request.provider,
-            model: request.model,
+            provider: request.provider.clone(),
+            model: request.model.clone(),
             voice: request
                 .voice
                 .clone()
                 .or_else(|| Some(session.tts_voice.clone())),
-            format: request.format,
-            output_path: request.output_path,
+            format: request.format.clone(),
+            output_path: request.output_path.clone(),
         },
     )
     .await?;
-    if let Some(voice) = request.voice.filter(|value| !value.trim().is_empty()) {
-        session.tts_voice = voice;
-    }
-    session.turns.push(VoiceSessionTurn {
-        role: "assistant".to_string(),
-        text: text.to_string(),
-        created_at: Utc::now().to_rfc3339(),
-        synthesized_output_path: Some(synthesis.output_path.clone()),
-    });
-    session.live_state = "speaking".to_string();
-    session.last_activity_at = Utc::now().to_rfc3339();
-    save_voice_session(workspace_root, &session).await?;
-
-    Ok(VoiceSessionRespondResult { session, synthesis })
+    let result = map_voice_from_app::<_, VoiceSessionRespondResult>(
+        &app_voice_lifecycle::VoiceRuntimeLifecycleService::new()
+            .respond(
+                map_voice_to_app(&session)?,
+                map_voice_to_app(&request_for_service)?,
+                map_voice_to_app(&synthesis)?,
+                Utc::now().to_rfc3339(),
+            )
+            .map_err(|error| anyhow!(error.to_string()))?,
+    )?;
+    save_voice_session(workspace_root, &result.session).await?;
+    Ok(result)
 }
 
 pub async fn end_voice_session(
@@ -2041,14 +1770,15 @@ pub async fn end_voice_session(
     session_id: &str,
     request: VoiceSessionEndRequest,
 ) -> Result<VoiceSessionRecord> {
-    let mut session = inspect_voice_session(workspace_root, session_id).await?;
-    ensure_voice_session_active(&session)?;
-    session.status = "ended".to_string();
-    session.live_state = "ended".to_string();
-    session.end_reason = request.reason;
-    let now = Utc::now().to_rfc3339();
-    session.last_activity_at = now.clone();
-    session.closed_at = Some(now);
+    let session = map_voice_from_app::<_, VoiceSessionRecord>(
+        &app_voice_lifecycle::VoiceRuntimeLifecycleService::new()
+            .end(
+                map_voice_to_app(&inspect_voice_session(workspace_root, session_id).await?)?,
+                map_voice_to_app(&request)?,
+                Utc::now().to_rfc3339(),
+            )
+            .map_err(|error| anyhow!(error.to_string()))?,
+    )?;
     save_voice_session(workspace_root, &session).await?;
     Ok(session)
 }
@@ -2059,25 +1789,10 @@ pub async fn reconnect_voice_session(
     session_id: &str,
     request: VoiceSessionReconnectRequest,
 ) -> Result<VoiceSessionReconnectResult> {
-    let mut session = inspect_voice_session(workspace_root, session_id).await?;
+    let session = inspect_voice_session(workspace_root, session_id).await?;
     ensure_voice_session_accepts_turns(&session)?;
 
-    if let Some(assistant_prompt) = request
-        .assistant_prompt
-        .filter(|value| !value.trim().is_empty())
-    {
-        session.assistant_prompt = Some(assistant_prompt);
-    }
-    if let Some(voice) = request.voice.filter(|value| !value.trim().is_empty()) {
-        session.tts_voice = voice;
-    }
-
-    let now = Utc::now().to_rfc3339();
-    session.reconnect_count += 1;
-    session.last_reconnected_at = Some(now.clone());
-    session.last_activity_at = now;
-    session.live_state = "listening".to_string();
-
+    let request_for_service = request.clone();
     let synthesis =
         if let Some(greeting) = request.greeting.filter(|value| !value.trim().is_empty()) {
             let synthesis = synthesize_with_config(
@@ -2093,19 +1808,25 @@ pub async fn reconnect_voice_session(
                 },
             )
             .await?;
-            session.turns.push(VoiceSessionTurn {
-                role: "assistant".to_string(),
-                text: greeting,
-                created_at: Utc::now().to_rfc3339(),
-                synthesized_output_path: Some(synthesis.output_path.clone()),
-            });
             Some(synthesis)
         } else {
             None
         };
-
-    save_voice_session(workspace_root, &session).await?;
-    Ok(VoiceSessionReconnectResult { session, synthesis })
+    let result = map_voice_from_app::<_, VoiceSessionReconnectResult>(
+        &app_voice_lifecycle::VoiceRuntimeLifecycleService::new()
+            .reconnect(
+                map_voice_to_app(&session)?,
+                map_voice_to_app(&request_for_service)?,
+                synthesis
+                    .as_ref()
+                    .map(map_voice_to_app::<_, app_voice_lifecycle::VoiceSynthesizeResult>)
+                    .transpose()?,
+                Utc::now().to_rfc3339(),
+            )
+            .map_err(|error| anyhow!(error.to_string()))?,
+    )?;
+    save_voice_session(workspace_root, &result.session).await?;
+    Ok(result)
 }
 
 pub async fn pause_voice_session(
@@ -2113,16 +1834,14 @@ pub async fn pause_voice_session(
     session_id: &str,
     _request: VoiceSessionControlRequest,
 ) -> Result<VoiceSessionRecord> {
-    let mut session = inspect_voice_session(workspace_root, session_id).await?;
-    ensure_voice_session_active(&session)?;
-    if session.live_state == "paused" {
-        return Err(anyhow!("voice session '{}' is already paused", session.id));
-    }
-    let now = Utc::now().to_rfc3339();
-    session.live_state = "paused".to_string();
-    session.pause_count += 1;
-    session.last_paused_at = Some(now.clone());
-    session.last_activity_at = now;
+    let session = map_voice_from_app::<_, VoiceSessionRecord>(
+        &app_voice_lifecycle::VoiceRuntimeLifecycleService::new()
+            .pause(
+                map_voice_to_app(&inspect_voice_session(workspace_root, session_id).await?)?,
+                Utc::now().to_rfc3339(),
+            )
+            .map_err(|error| anyhow!(error.to_string()))?,
+    )?;
     save_voice_session(workspace_root, &session).await?;
     Ok(session)
 }
@@ -2132,19 +1851,14 @@ pub async fn resume_voice_session(
     session_id: &str,
     _request: VoiceSessionControlRequest,
 ) -> Result<VoiceSessionRecord> {
-    let mut session = inspect_voice_session(workspace_root, session_id).await?;
-    ensure_voice_session_active(&session)?;
-    if !matches!(session.live_state.as_str(), "paused" | "interrupted") {
-        return Err(anyhow!(
-            "voice session '{}' is not paused or interrupted ({})",
-            session.id,
-            session.live_state
-        ));
-    }
-    let now = Utc::now().to_rfc3339();
-    session.live_state = "listening".to_string();
-    session.last_resumed_at = Some(now.clone());
-    session.last_activity_at = now;
+    let session = map_voice_from_app::<_, VoiceSessionRecord>(
+        &app_voice_lifecycle::VoiceRuntimeLifecycleService::new()
+            .resume(
+                map_voice_to_app(&inspect_voice_session(workspace_root, session_id).await?)?,
+                Utc::now().to_rfc3339(),
+            )
+            .map_err(|error| anyhow!(error.to_string()))?,
+    )?;
     save_voice_session(workspace_root, &session).await?;
     Ok(session)
 }
@@ -2154,13 +1868,14 @@ pub async fn interrupt_voice_session(
     session_id: &str,
     _request: VoiceSessionControlRequest,
 ) -> Result<VoiceSessionRecord> {
-    let mut session = inspect_voice_session(workspace_root, session_id).await?;
-    ensure_voice_session_active(&session)?;
-    let now = Utc::now().to_rfc3339();
-    session.live_state = "interrupted".to_string();
-    session.interrupted_count += 1;
-    session.last_interrupted_at = Some(now.clone());
-    session.last_activity_at = now;
+    let session = map_voice_from_app::<_, VoiceSessionRecord>(
+        &app_voice_lifecycle::VoiceRuntimeLifecycleService::new()
+            .interrupt(
+                map_voice_to_app(&inspect_voice_session(workspace_root, session_id).await?)?,
+                Utc::now().to_rfc3339(),
+            )
+            .map_err(|error| anyhow!(error.to_string()))?,
+    )?;
     save_voice_session(workspace_root, &session).await?;
     Ok(session)
 }
@@ -2169,38 +1884,44 @@ pub async fn voice_session_health(
     workspace_root: &Path,
     request: VoiceSessionHealthRequest,
 ) -> Result<VoiceSessionHealthSummary> {
-    let stale_after_secs = resolved_voice_stale_after_secs(request.stale_after_secs);
+    let service = app_voice_lifecycle::VoiceRuntimeLifecycleService::new();
+    let stale_after_secs = service.resolved_stale_after_secs(request.stale_after_secs);
     let sessions = list_voice_sessions(workspace_root).await?.sessions;
-    Ok(summarize_voice_sessions(sessions, stale_after_secs))
+    map_voice_from_app::<_, VoiceSessionHealthSummary>(
+        &service.summarize_sessions(
+            sessions
+                .iter()
+                .map(map_voice_to_app::<_, app_voice_lifecycle::VoiceSessionRecord>)
+                .collect::<Result<Vec<_>>>()?,
+            stale_after_secs,
+            Utc::now(),
+        ),
+    )
 }
 
 pub async fn reap_voice_sessions(
     workspace_root: &Path,
     request: VoiceSessionReapRequest,
 ) -> Result<VoiceSessionReapResult> {
-    let stale_after_secs = resolved_voice_stale_after_secs(request.stale_after_secs);
+    let service = app_voice_lifecycle::VoiceRuntimeLifecycleService::new();
+    let stale_after_secs = service.resolved_stale_after_secs(request.stale_after_secs);
     let reason = request
         .reason
         .filter(|value| !value.trim().is_empty())
         .unwrap_or_else(|| "stale_reaped".to_string());
-    let mut reaped_sessions = Vec::new();
     let sessions = list_voice_sessions(workspace_root).await?.sessions;
-    let now = Utc::now().to_rfc3339();
-
-    for mut session in sessions {
-        if session.status != "active" {
-            continue;
-        }
-        let idle_secs = voice_session_idle_secs(&session, Utc::now());
-        if idle_secs < stale_after_secs {
-            continue;
-        }
-        session.status = "ended".to_string();
-        session.end_reason = Some(reason.clone());
-        session.last_activity_at = now.clone();
-        session.closed_at = Some(now.clone());
+    let reaped_sessions = service.reap_sessions(
+        sessions
+            .iter()
+            .map(map_voice_to_app::<_, app_voice_lifecycle::VoiceSessionRecord>)
+            .collect::<Result<Vec<_>>>()?,
+        stale_after_secs,
+        &reason,
+        Utc::now(),
+    );
+    for session in &reaped_sessions {
+        let session = map_voice_from_app::<_, VoiceSessionRecord>(session)?;
         save_voice_session(workspace_root, &session).await?;
-        reaped_sessions.push(session);
     }
 
     let health = voice_session_health(
@@ -2214,7 +1935,10 @@ pub async fn reap_voice_sessions(
     Ok(VoiceSessionReapResult {
         stale_after_secs,
         reason,
-        reaped_sessions,
+        reaped_sessions: reaped_sessions
+            .iter()
+            .map(map_voice_from_app::<_, VoiceSessionRecord>)
+            .collect::<Result<Vec<_>>>()?,
         health,
     })
 }
@@ -2224,24 +1948,13 @@ pub async fn prewarm_voice_runtime(
     workspace_root: &Path,
     request: VoicePrewarmRequest,
 ) -> Result<VoiceSynthesizeResult> {
-    let greeting = request
-        .greeting
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .unwrap_or("OpenRustClaw voice runtime warmup.");
-
     synthesize_with_config(
         config,
         workspace_root,
-        VoiceSynthesizeRequest {
-            text: greeting.to_string(),
-            provider: request.provider,
-            model: request.model,
-            voice: request.voice,
-            format: request.format,
-            output_path: request.output_path,
-        },
+        map_voice_from_app::<_, VoiceSynthesizeRequest>(
+            &app_voice_lifecycle::VoiceRuntimeLifecycleService::new()
+                .prewarm_synthesis_request(map_voice_to_app(&request)?),
+        )?,
     )
     .await
 }
@@ -2282,48 +1995,16 @@ async fn build_voice_session_metrics(
     workspace_root: &Path,
     session: VoiceSessionRecord,
 ) -> Result<VoiceSessionMetrics> {
-    let turn_count = session.turns.len();
-    let user_turn_count = session
-        .turns
-        .iter()
-        .filter(|turn| turn.role == "user")
-        .count();
-    let assistant_turn_count = session
-        .turns
-        .iter()
-        .filter(|turn| turn.role == "assistant")
-        .count();
-    let user_chars = session
-        .turns
-        .iter()
-        .filter(|turn| turn.role == "user")
-        .map(|turn| turn.text.chars().count())
-        .sum::<usize>();
-    let assistant_chars = session
-        .turns
-        .iter()
-        .filter(|turn| turn.role == "assistant")
-        .map(|turn| turn.text.chars().count())
-        .sum::<usize>();
-    let transcript_chars = user_chars + assistant_chars;
-
-    let mut artifact_count = 0_usize;
     let mut artifact_bytes = 0_u64;
     for turn in &session.turns {
         let Some(path) = turn.synthesized_output_path.as_ref() else {
             continue;
         };
-        artifact_count += 1;
         let resolved_path = resolve_voice_artifact_path(workspace_root, path);
         if let Ok(metadata) = fs::metadata(&resolved_path).await {
             artifact_bytes += metadata.len();
         }
     }
-
-    let avg_user_turn_chars =
-        (user_turn_count > 0).then(|| user_chars as f64 / user_turn_count as f64);
-    let avg_assistant_turn_chars =
-        (assistant_turn_count > 0).then(|| assistant_chars as f64 / assistant_turn_count as f64);
     let idle_secs = seconds_since(&session.last_activity_at).unwrap_or(0);
     let duration_secs = seconds_between(
         &session.created_at,
@@ -2332,27 +2013,14 @@ async fn build_voice_session_metrics(
             .as_deref()
             .unwrap_or(session.last_activity_at.as_str()),
     );
-
-    Ok(VoiceSessionMetrics {
-        session_id: session.id,
-        status: session.status,
-        live_state: session.live_state,
-        turn_count,
-        user_turn_count,
-        assistant_turn_count,
-        transcript_chars,
-        user_chars,
-        assistant_chars,
-        artifact_count,
-        artifact_bytes,
-        reconnect_count: session.reconnect_count,
-        pause_count: session.pause_count,
-        interrupted_count: session.interrupted_count,
-        idle_secs,
-        duration_secs,
-        avg_user_turn_chars,
-        avg_assistant_turn_chars,
-    })
+    map_voice_from_app::<_, VoiceSessionMetrics>(
+        &app_voice_reporting::VoiceRuntimeReportingService::new().session_metrics(
+            map_voice_to_app::<_, app_voice_lifecycle::VoiceSessionRecord>(&session)?,
+            artifact_bytes,
+            idle_secs,
+            duration_secs,
+        ),
+    )
 }
 
 async fn summarize_voice_outcome(
@@ -2361,12 +2029,6 @@ async fn summarize_voice_outcome(
     stale_after_secs: u64,
 ) -> Result<VoiceOutcomeRecord> {
     let idle_secs = seconds_since(&session.last_activity_at).unwrap_or(0);
-    let stale = session.status == "active" && idle_secs >= stale_after_secs;
-    let artifact_count = session
-        .turns
-        .iter()
-        .filter(|turn| turn.synthesized_output_path.is_some())
-        .count();
     let has_missing_artifact = {
         let mut missing = false;
         for turn in &session.turns {
@@ -2381,77 +2043,14 @@ async fn summarize_voice_outcome(
         }
         missing
     };
-
-    let (outcome_label, detail, attention_needed) = if stale {
-        (
-            "stale".to_string(),
-            format!("idle for {idle_secs}s; intervention recommended"),
-            true,
-        )
-    } else if session.status == "ended" {
-        (
-            "ended".to_string(),
-            session
-                .end_reason
-                .clone()
-                .unwrap_or_else(|| "session ended".to_string()),
-            false,
-        )
-    } else if session.live_state == "paused" {
-        (
-            "paused".to_string(),
-            "session paused and awaiting resume".to_string(),
-            true,
-        )
-    } else if session.live_state == "interrupted" {
-        (
-            "interrupted".to_string(),
-            "session interrupted and awaiting resume".to_string(),
-            true,
-        )
-    } else if has_missing_artifact {
-        (
-            "artifact_gap".to_string(),
-            "session references missing synthesized output artifacts".to_string(),
-            true,
-        )
-    } else if session.status == "active" {
-        (
-            "active".to_string(),
-            format!(
-                "{} turns, {} audio artifacts, idle {}s",
-                session.turns.len(),
-                artifact_count,
-                idle_secs
-            ),
-            false,
-        )
-    } else {
-        (
-            session.status.clone(),
-            format!(
-                "status={} live_state={}",
-                session.status, session.live_state
-            ),
-            true,
-        )
-    };
-
-    Ok(VoiceOutcomeRecord {
-        session_id: session.id.clone(),
-        status: session.status.clone(),
-        live_state: session.live_state.clone(),
-        outcome_label,
-        detail,
-        attention_needed,
-        stale,
-        idle_secs,
-        turn_count: session.turns.len(),
-        artifact_count,
-        end_reason: session.end_reason.clone(),
-        last_activity_at: session.last_activity_at.clone(),
-        closed_at: session.closed_at.clone(),
-    })
+    map_voice_from_app::<_, VoiceOutcomeRecord>(
+        &app_voice_reporting::VoiceRuntimeReportingService::new().outcome(
+            &map_voice_to_app::<_, app_voice_lifecycle::VoiceSessionRecord>(session)?,
+            stale_after_secs,
+            idle_secs,
+            has_missing_artifact,
+        ),
+    )
 }
 
 fn seconds_since(timestamp: &str) -> Option<u64> {

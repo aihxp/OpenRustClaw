@@ -22,72 +22,19 @@
 - ✅ **v1.17 Greenfield Conversion: Completion Metrics and Remaining Hotspots** — shipped 2026-03-28. Archive: `.planning/milestones/v1.17-ROADMAP.md`
 - ✅ **v1.18 Greenfield Conversion: Final Ranked Seam and 100% Completion Path** — shipped 2026-03-28. Archive: `.planning/milestones/v1.18-ROADMAP.md`
 - ✅ **v1.19 Full Greenfield Conversion: Control Plane Route Families I** — shipped 2026-03-28. Archive: `.planning/milestones/v1.19-ROADMAP.md`
-- 🚧 **v1.20 Full Greenfield Conversion: Control Plane Route Families II** — active
+- ✅ **v1.20 Full Greenfield Conversion: Control Plane Route Families II** — shipped 2026-03-28. Archive: `.planning/milestones/v1.20-ROADMAP.md`
+- ✅ **v1.21 Full Greenfield Conversion: Mobile and Voice Runtime Services** — shipped 2026-03-28. Archive: `.planning/milestones/v1.21-ROADMAP.md`
 
 ## Current Status
 
-- Active milestone: **v1.20 Full Greenfield Conversion: Control Plane Route Families II**
-- Progress: **0 of 4 phases complete**
-- Most recent shipment: **v1.19 Full Greenfield Conversion: Control Plane Route Families I**
-- Greenfield conversion baseline: **historical `18/18` ranked seam ledger complete; deeper follow-on program now begins with remaining `start.rs` route families**
-- Remaining ranked seam: **the retired `18/18` ledger remains closed; follow-on work now uses the full-conversion roadmap in `.planning/codebase/GREENFIELD-FULL-CONVERSION.md`**
-- Full-conversion roadmap progress: **`1/6` milestones shipped, or about `17%`; `v1.20` targets `2/6`, or about `33%`**
-- Current execution: **Second follow-on control-plane route queue defined**
-- Next step: `$gsd-plan-phase 85` or `$gsd-autonomous`
+- Active milestone: **none**
+- Progress: **0 live phases**
+- Most recent shipment: **v1.21 Full Greenfield Conversion: Mobile and Voice Runtime Services**
+- Greenfield conversion baseline: **historical `18/18` ranked seam ledger complete and retired**
+- Full-conversion roadmap progress: **`3/6` milestones shipped, or about `50%`**
+- Current execution: **No active milestone**
+- Next step: `$gsd-new-milestone`
 
 ## Live Planning
 
-### Phase Checklist
-
-- [ ] **Phase 85: Autonomy Lessons and Lesson Mutation Route Families**
-- [ ] **Phase 86: Remaining Skill-Control Route Families**
-- [ ] **Phase 87: Voice-Call and Channel-Extension Control Route Families**
-- [ ] **Phase 88: Control-Plane Route Registration and Shared State Cleanup**
-
-### Current Queue Rule
-
-The original ranked greenfield seam inventory is closed at `18/18` and retired. Follow-on work now proceeds under the full-conversion roadmap in `.planning/codebase/GREENFIELD-FULL-CONVERSION.md`, which aims for adapter-only legacy command surfaces instead of extending the retired historical denominator.
-
-### Phase 85: Autonomy Lessons and Lesson Mutation Route Families
-
-**Goal:** Move the autonomy lesson listing, detail, and mutation route families out of `start.rs` so lesson-control flows become another bounded application-owned route family.
-
-**Success criteria:**
-- the autonomy lesson route family is composed through `openrustclaw-app`
-- `start.rs` becomes the HTTP adapter for lesson summary and lesson mutation flows instead of owning the business rules directly
-- verification proves the shipped lesson-control contract remains truthful
-
-**Plans:** 0/0 plans complete
-
-### Phase 86: Remaining Skill-Control Route Families
-
-**Goal:** Move the remaining skill-control route families out of `start.rs` so those control surfaces stop relying on route-local orchestration over legacy command helpers.
-
-**Success criteria:**
-- the remaining skill-control route families are composed through `openrustclaw-app`
-- `start.rs` becomes the HTTP adapter for those skill-control surfaces instead of owning orchestration directly
-- verification proves the shipped skill-control contract remains truthful
-
-**Plans:** 0/0 plans complete
-
-### Phase 87: Voice-Call and Channel-Extension Control Route Families
-
-**Goal:** Move the remaining voice-call and channel-extension control route families out of `start.rs` so those control surfaces stop depending on route-local business logic.
-
-**Success criteria:**
-- voice-call and channel-extension control routes compose through `openrustclaw-app`
-- `start.rs` becomes the HTTP adapter for those control surfaces instead of owning business orchestration directly
-- verification proves the shipped voice-call and channel-extension control contract remains truthful
-
-**Plans:** 0/0 plans complete
-
-### Phase 88: Control-Plane Route Registration and Shared State Cleanup
-
-**Goal:** Reduce shared route registration, state wiring, and helper sprawl after the first two control-plane route milestones so future route extractions stop depending on oversized `start.rs` setup.
-
-**Success criteria:**
-- shared control-plane route registration and state wiring are materially simpler after the migrated route families
-- the migrated route families no longer require ad hoc `start.rs` helper sprawl to register or resolve shared state
-- verification proves the shipped control-plane route map still behaves truthfully after cleanup
-
-**Plans:** 0/0 plans complete
+No live phases. The next likely follow-on is `v1.22 Full Greenfield Conversion: Orchestration and Browser Services` from `.planning/codebase/GREENFIELD-FULL-CONVERSION.md`.
