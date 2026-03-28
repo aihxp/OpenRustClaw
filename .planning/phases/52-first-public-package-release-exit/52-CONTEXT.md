@@ -11,8 +11,8 @@ Close the milestone with a truthful public publication checkpoint across crates.
 
 - The first public crate boundary is `openrustclaw-core`.
 - Packaging, docs generation, docs.rs-style docs generation, and `cargo publish --dry-run` all pass for `openrustclaw-core`.
-- The environment has no `CARGO_REGISTRY_TOKEN` and no `~/.cargo/credentials.toml`.
-- `cargo search openrustclaw-core --limit 5` returns no existing crate match, so the current blocker is publication auth rather than an obvious name collision.
+- A live publish attempt with a provided token reached the upload step but failed with `403 Forbidden` because the token lacks the required publish permissions.
+- `cargo search openrustclaw-core --limit 5` still returns no existing crate match, so the current blocker is token scope rather than an obvious name collision.
 
 ## Constraints
 
@@ -23,5 +23,5 @@ Close the milestone with a truthful public publication checkpoint across crates.
 ## Implementation Direction
 
 - attempt the live `cargo publish` for `openrustclaw-core`
-- capture the crates.io auth outcome directly
-- if auth is missing, sync the milestone to a blocked checkpoint instead of faking completion
+- capture the crates.io auth or authorization outcome directly
+- if publish is rejected, sync the milestone to a blocked checkpoint instead of faking completion

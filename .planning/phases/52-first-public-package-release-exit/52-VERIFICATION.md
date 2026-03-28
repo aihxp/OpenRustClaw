@@ -21,4 +21,4 @@ score: "0/3 must-haves verified"
 
 ## Result
 
-Blocked pending live crates.io credentials. The live publish attempt returned `error: no token found, please run cargo login or use environment variable CARGO_REGISTRY_TOKEN`. All local preflight and dry-run checks are complete, but the final public publish and docs.rs follow-up cannot happen until a maintainer provides valid crates.io auth in this environment.
+Blocked pending a crates.io token with publish permission. A live `cargo publish -p openrustclaw-core --allow-dirty` reached the upload step and then failed with `403 Forbidden` because the token does not have the required permissions to perform this action. All local preflight and dry-run checks are complete, but the final public publish and docs.rs follow-up cannot happen until a maintainer provides a crates.io token with publish scope.

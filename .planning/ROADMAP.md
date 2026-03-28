@@ -88,4 +88,4 @@ Plans:
 Plans:
 - [ ] 52-01 Attempt the first public crate release
 
-**Current blocker:** `cargo publish -p openrustclaw-core --allow-dirty` fails with `no token found, please run cargo login` because neither `CARGO_REGISTRY_TOKEN` nor `~/.cargo/credentials.toml` is present in this environment.
+**Current blocker:** `cargo publish -p openrustclaw-core --allow-dirty` reaches upload and then fails with `403 Forbidden` because the provided crates.io token does not have publish permission.
