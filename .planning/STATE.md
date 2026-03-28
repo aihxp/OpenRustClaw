@@ -3,18 +3,18 @@ gsd_state_version: 1.0
 milestone: v1.13
 milestone_name: Brownfield-to-Greenfield Transition
 current_phase: 57
-current_phase_name: Greenfield Boundary Contract and Migration Inventory
+current_phase_name: Greenfield Core Shell and Service Interfaces
 current_plan: null
-status: Defining requirements and roadmap for v1.13
-stopped_at: Run $gsd-plan-phase 57 or $gsd-autonomous to begin v1.13.
+status: Phase 57 complete; ready to begin Phase 58
+stopped_at: Run $gsd-plan-phase 58 or $gsd-autonomous to continue v1.13.
 last_updated: "2026-03-28T06:39:52Z"
-last_activity: 2026-03-28 -- started v1.13 Brownfield-to-Greenfield Transition
+last_activity: 2026-03-28 -- completed Phase 57 Greenfield Boundary Contract and Migration Inventory
 progress:
   total_phases: 4
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  completed_phases: 1
+  total_plans: 1
+  completed_plans: 1
+  percent: 25
 ---
 
 # Project State
@@ -28,17 +28,17 @@ See: .planning/PROJECT.md (updated 2026-03-28)
 
 ## Current Position
 
-Current Phase: 57
-Current Phase Name: Greenfield Boundary Contract and Migration Inventory
+Current Phase: 58
+Current Phase Name: Greenfield Core Shell and Service Interfaces
 Total Phases: 4
 Current Plan: -
 Total Plans in Phase: 0
-Status: Defining requirements and roadmap for v1.13
-Last activity: 2026-03-28 -- started v1.13 Brownfield-to-Greenfield Transition
+Status: Phase 57 complete; ready to begin Phase 58
+Last activity: 2026-03-28 -- completed Phase 57 Greenfield Boundary Contract and Migration Inventory
 
-Phase: 0 of 4
-Plan: 0 of 0
-Progress: [----------] 0%
+Phase: 1 of 4
+Plan: 1 of 1
+Progress: [███-------] 25%
 
 ## Performance Metrics
 
@@ -75,6 +75,7 @@ Recent decisions affecting current work:
 - Phase 52 published `openrustclaw-core v0.1.0` to crates.io and confirmed docs.rs visibility for the new crate page.
 - v1.12 turned the remote-connectivity story into a shipped contract: node-first remote guidance, SSH tunnel fallback, reverse-proxy last resort, persisted setup-state profile, and aligned operator/docs surfaces now tell one story.
 - v1.13 starts the architectural posture shift: instead of treating future work as more brownfield patching, the repo will carve out a greenfield-style core lane and migrate into it incrementally.
+- Phase 57 defined the canonical greenfield lane, ranked migration targets, and selected setup handoff reporting as the first proving slice with an existing verification bundle.
 
 ### Pending Todos
 
@@ -87,5 +88,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-28 02:39
-Stopped at: Run $gsd-plan-phase 57 or $gsd-autonomous to begin v1.13.
+Stopped at: Run $gsd-plan-phase 58 or $gsd-autonomous to continue v1.13.
 Resume file: None

@@ -20,16 +20,16 @@
 ## Current Status
 
 - Active milestone: **v1.13 Brownfield-to-Greenfield Transition**
-- Progress: 0 of 4 phases complete
+- Progress: 1 of 4 phases complete
 - Most recent shipment: **v1.12 Secure Node Connectivity and SSH Tunnel Revisit**
-- Current execution: **Phase 57 not started**
-- Next step: `$gsd-plan-phase 57` or `$gsd-autonomous`
+- Current execution: **Phase 58 not started**
+- Next step: `$gsd-plan-phase 58` or `$gsd-autonomous`
 
 ## Live Planning
 
 ### Phase Checklist
 
-- [ ] **Phase 57: Greenfield Boundary Contract and Migration Inventory**
+- [x] **Phase 57: Greenfield Boundary Contract and Migration Inventory** (completed 2026-03-28)
 - [ ] **Phase 58: Greenfield Core Shell and Service Interfaces**
 - [ ] **Phase 59: First Vertical Slice Migration**
 - [ ] **Phase 60: Brownfield Containment and Contributor Defaults**
@@ -43,10 +43,10 @@
 - first migration candidates are chosen explicitly
 - brownfield containment rules are documented for future work
 
-**Plans:** 0/1 plans complete
+**Plans:** 1/1 plans complete
 
 Plans:
-- [ ] 57-01 Define the architecture boundary and migration inventory
+- [x] 57-01 Define the architecture boundary and migration inventory
 
 ### Phase 58: Greenfield Core Shell and Service Interfaces
 
