@@ -1,16 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: none
-milestone_name: null
-current_phase: null
-current_phase_name: null
+milestone: v1.13
+milestone_name: Brownfield-to-Greenfield Transition
+current_phase: 57
+current_phase_name: Greenfield Boundary Contract and Migration Inventory
 current_plan: null
-status: No active milestone; v1.12 archived and shipped
-stopped_at: Awaiting the next milestone definition via $gsd-new-milestone.
-last_updated: "2026-03-28T05:10:02Z"
-last_activity: 2026-03-28 -- archived v1.12 Secure Node Connectivity and SSH Tunnel Revisit
+status: Defining requirements and roadmap for v1.13
+stopped_at: Run $gsd-plan-phase 57 or $gsd-autonomous to begin v1.13.
+last_updated: "2026-03-28T06:39:52Z"
+last_activity: 2026-03-28 -- started v1.13 Brownfield-to-Greenfield Transition
 progress:
-  total_phases: 0
+  total_phases: 4
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -24,19 +24,19 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-28)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** Await the next milestone
+**Current focus:** Define and execute v1.13 Brownfield-to-Greenfield Transition
 
 ## Current Position
 
-Current Phase: -
-Current Phase Name: -
-Total Phases: 0
+Current Phase: 57
+Current Phase Name: Greenfield Boundary Contract and Migration Inventory
+Total Phases: 4
 Current Plan: -
 Total Plans in Phase: 0
-Status: No active milestone; v1.12 archived and shipped
-Last activity: 2026-03-28 -- archived v1.12 Secure Node Connectivity and SSH Tunnel Revisit
+Status: Defining requirements and roadmap for v1.13
+Last activity: 2026-03-28 -- started v1.13 Brownfield-to-Greenfield Transition
 
-Phase: 0 of 0
+Phase: 0 of 4
 Plan: 0 of 0
 Progress: [----------] 0%
 
@@ -74,6 +74,7 @@ Recent decisions affecting current work:
 - Phase 51 added a rerunnable crates.io readiness script, a docs-site publish runbook, and a passing publish dry-run for `openrustclaw-core`.
 - Phase 52 published `openrustclaw-core v0.1.0` to crates.io and confirmed docs.rs visibility for the new crate page.
 - v1.12 turned the remote-connectivity story into a shipped contract: node-first remote guidance, SSH tunnel fallback, reverse-proxy last resort, persisted setup-state profile, and aligned operator/docs surfaces now tell one story.
+- v1.13 starts the architectural posture shift: instead of treating future work as more brownfield patching, the repo will carve out a greenfield-style core lane and migrate into it incrementally.
 
 ### Pending Todos
 
@@ -85,6 +86,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-28 01:10
-Stopped at: Awaiting the next milestone definition via $gsd-new-milestone.
+Last session: 2026-03-28 02:39
+Stopped at: Run $gsd-plan-phase 57 or $gsd-autonomous to begin v1.13.
 Resume file: None
