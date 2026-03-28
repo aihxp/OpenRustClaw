@@ -25,12 +25,12 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 ## Current Milestone: v1.12 Secure Node Connectivity and SSH Tunnel Revisit
 
-**Goal:** Revisit OpenRustClaw's node model around a node-first remote connectivity path, while providing a permanent SSH tunnel fallback when the preferred node path is unavailable or unhealthy.
+**Goal:** Revisit OpenRustClaw's node model around a node-first remote connectivity path, while providing an SSH tunnel fallback when the preferred node path is unavailable or unhealthy.
 
 **Target features:**
 - define one bounded node and topology contract across local runtime, distributed nodes, mobile nodes, and SSH-tunneled remote access
 - align the primary remote-connectivity path with OpenClaw-style node usage instead of treating tunnels as the default transport
-- add an explicit permanent SSH tunnel fallback path for self-hosted remote connectivity when the node path fails or cannot be established
+- add an explicit SSH tunnel fallback path for self-hosted remote connectivity when the node path fails or cannot be established
 - expose remote-node, failover, and tunnel health, enrollment, and recovery evidence through shipped operator surfaces
 - align onboarding and docs so operators can choose local-only, remote-node, or SSH-tunneled deployments deliberately
 
@@ -71,7 +71,7 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 ### Active
 
 - [ ] OpenRustClaw must define one truthful node and topology model that explains when operators are using a local runtime, a mobile node, a distributed cluster node, or an SSH-tunneled remote control path — v1.12
-- [ ] Operators must have one explicit supported node-first remote connectivity path plus a permanent SSH tunnel fallback for remote node or remote control setups, with clear trust boundaries and config ownership — v1.12
+- [ ] Operators must have one explicit supported node-first remote connectivity path plus an SSH tunnel fallback for remote node or remote control setups, with clear trust boundaries and config ownership — v1.12
 - [ ] Shipped operator surfaces must expose remote-node connectivity, failover state, tunnel state, and recovery evidence instead of leaving operators to infer failures from raw endpoints — v1.12
 - [ ] Onboarding and docs must explain standard local deployment versus advanced remote node or SSH tunnel deployment, including when and how to switch between them — v1.12
 
@@ -90,7 +90,7 @@ The most recent milestone closed a trust gap at the public release edge: GitHub 
 
 The most recent milestone extended that public distribution story from GitHub release binaries into the Rust ecosystem itself. Instead of over-claiming the whole workspace, v1.11 published a curated first crate surface around `openrustclaw-core`, aligned its package metadata and docs.rs contract, and proved the end-to-end public publication path.
 
-The next milestone revisits a different trust gap: node and remote-connectivity behavior exists across mobile and distributed surfaces, but onboarding still effectively tells operators to provide their own tunnel or reverse proxy. v1.12 turns that implied workaround into an explicit product contract around node roles, a node-first remote path, a permanent SSH tunnel fallback, and operator-visible connectivity state.
+The next milestone revisits a different trust gap: node and remote-connectivity behavior exists across mobile and distributed surfaces, but onboarding still effectively tells operators to provide their own tunnel or reverse proxy. v1.12 turns that implied workaround into an explicit product contract around node roles, a node-first remote path, an SSH tunnel fallback, and operator-visible connectivity state.
 
 ## Constraints
 
@@ -125,12 +125,12 @@ The next milestone revisits a different trust gap: node and remote-connectivity 
 | Treat tagged binary release automation as part of the shipped public trust surface | A public tag that cannot produce downloadable artifacts undermines the repo's production-ready story even if the runtime itself is healthy | ✓ Good |
 | Treat crates.io and docs.rs as a curated public package surface, not an automatic dump of the whole workspace | The workspace mixes internal crates, binaries, tests, and potential public libraries, so publishability has to be explicit and truthful | ✓ Good |
 | Revisit nodes and SSH tunnel connectivity as product work rather than leaving it as operator improvisation | The repo already has distributed and mobile node surfaces, but the setup story still treats remote exposure as an external workaround instead of a supported deployment contract | ✓ Good |
-| Make remote connectivity node-first with a permanent tunnel fallback instead of treating the tunnel as the primary transport | The product should preserve the cleaner node model where available, but operators still need a durable recovery path when direct node connectivity is broken or unsupported | ✓ Good |
+| Make remote connectivity node-first with an SSH tunnel fallback instead of treating the tunnel as the primary transport | The product should preserve the cleaner node model where available, but operators still need a durable recovery path when direct node connectivity is broken or unsupported | ✓ Good |
 
 ## Next Milestone Goals
 
 - define the node and topology contract across local, mobile, distributed, and SSH-tunneled remote access paths
-- ship one explicit node-first remote path plus a permanent SSH tunnel fallback and trust boundary for advanced self-hosted remote deployments
+- ship one explicit node-first remote path plus an SSH tunnel fallback and trust boundary for advanced self-hosted remote deployments
 - surface remote-node connectivity, failover, and recovery state through shipped operator inspection paths
 - align onboarding and docs with the supported local versus remote connectivity modes
 

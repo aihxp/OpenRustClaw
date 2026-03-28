@@ -47,20 +47,20 @@
 Plans:
 - [ ] 53-01 Define the bounded node and topology contract
 
-### Phase 54: Node-First Remote Connectivity and Permanent Tunnel Fallback
+### Phase 54: Node-First Remote Connectivity and SSH Tunnel Fallback
 
-**Goal:** Make remote connectivity node-first while turning permanent SSH tunnel usage into an explicit advanced fallback path for self-hosted deployments.
+**Goal:** Make remote connectivity node-first while turning SSH tunnel usage into an explicit advanced fallback path for self-hosted deployments.
 
 **Success criteria:**
 - the supported node-first path is documented or configured intentionally
-- permanent tunnel fallback steps are documented or configured intentionally
+- SSH tunnel fallback steps are documented or configured intentionally
 - bootstrap and failover steps for remote connectivity are repeatable
 - the node path and tunnel fallback both preserve the existing security and control boundary
 
 **Plans:** 0 plans complete
 
 Plans:
-- [ ] 54-01 Implement the node-first path with permanent tunnel fallback
+- [ ] 54-01 Implement the node-first path with SSH tunnel fallback
 
 ### Phase 55: Node Inspection, Recovery, and Operator Controls
 

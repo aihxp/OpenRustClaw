@@ -2,7 +2,7 @@
 
 ## Active Milestone: v1.12 Secure Node Connectivity and SSH Tunnel Revisit
 
-**Goal:** Revisit OpenRustClaw's node model around a primary node-first remote path and a permanent SSH tunnel fallback for self-hosted deployments, with operator-visible health, failover, recovery, and documentation.
+**Goal:** Revisit OpenRustClaw's node model around a primary node-first remote path and an SSH tunnel fallback for self-hosted deployments, with operator-visible health, failover, recovery, and documentation.
 
 ## Requirements
 
@@ -17,11 +17,11 @@ OpenRustClaw must define one bounded node and topology model that explains how t
 
 ### NODE-02 SSH tunnel bootstrap path
 
-Operators must have one explicit supported node-first remote bootstrap path for advanced self-hosted deployments plus a permanent SSH tunnel fallback, including required config, trust boundaries, failover expectations, and the relationship between the local gateway and the remote endpoint.
+Operators must have one explicit supported node-first remote bootstrap path for advanced self-hosted deployments plus an SSH tunnel fallback, including required config, trust boundaries, failover expectations, and the relationship between the local gateway and the remote endpoint.
 
 **Acceptance signals:**
 - onboarding or setup can describe or configure the supported node-first path intentionally
-- the permanent SSH tunnel fallback is documented or configurable as a recovery path
+- the SSH tunnel fallback is documented or configurable as a recovery path
 - the security boundary for both the node path and tunneled fallback is documented and inspectable
 - remote exposure no longer depends on vague "bring your own tunnel" wording alone
 
