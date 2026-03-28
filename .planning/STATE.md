@@ -1,20 +1,20 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.15
-milestone_name: Deeper Greenfield Conversion
-current_phase: 68
-current_phase_name: Runtime Command Boundary Cleanup
+milestone: none
+milestone_name: null
+current_phase: null
+current_phase_name: null
 current_plan: null
-status: Phase 67 complete; ready to begin Phase 68
-stopped_at: Run $gsd-discuss-phase 68, $gsd-plan-phase 68, or $gsd-autonomous to continue v1.15.
-last_updated: "2026-03-28T18:45:00Z"
-last_activity: 2026-03-28 -- completed Phase 67 Skills Mutation and Registry Boundary
+status: No active milestone; v1.15 archived and shipped
+stopped_at: Awaiting the next milestone definition via $gsd-new-milestone.
+last_updated: "2026-03-28T16:10:00Z"
+last_activity: 2026-03-28 -- archived v1.15 Deeper Greenfield Conversion
 progress:
-  total_phases: 4
-  completed_phases: 3
-  total_plans: 3
-  completed_plans: 3
-  percent: 75
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -24,27 +24,27 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-28)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** Continue v1.15 Deeper Greenfield Conversion
+**Current focus:** Await the next milestone
 
 ## Current Position
 
-Current Phase: 68
-Current Phase Name: Runtime Command Boundary Cleanup
-Total Phases: 4
+Current Phase: -
+Current Phase Name: -
+Total Phases: 0
 Current Plan: -
 Total Plans in Phase: 0
-Status: Phase 67 complete; ready to begin Phase 68
-Last activity: 2026-03-28 -- completed Phase 67 Skills Mutation and Registry Boundary
+Status: No active milestone; v1.15 archived and shipped
+Last activity: 2026-03-28 -- archived v1.15 Deeper Greenfield Conversion
 
-Phase: 3 of 4
-Plan: 3 of 3
-Progress: [███████---] 75%
+Phase: 0 of 0
+Plan: 0 of 0
+Progress: [----------] 0%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 70
+- Total plans completed: 74
 - Average duration: historical average retained across shipped milestones
 - Total execution time: multiple shipped milestones completed across v1.0-v1.15
 
@@ -84,10 +84,11 @@ Recent decisions affecting current work:
 - Phase 62 moved the first bounded `start.rs` control route family into the greenfield lane: the self-hosted product-mode transition path now delegates transition-and-report orchestration through `openrustclaw-app`, while `start.rs` only remains the HTTP adapter.
 - Phase 63 proved the greenfield lane on a second operator-facing surface: the mobile node operator report now runs through `openrustclaw-app`, while `mobile.rs` only adapts node state, metrics, and recent activity into the report service.
 - Phase 64 carved the first stable seam out of `skills.rs`: compiled manifest loading, artifact loading, executable-component derivation, and compiled reference reading now run through `openrustclaw-app`, while `skills.rs` and `start.rs` only adapt that shared compiled-skill overview lane.
-- v1.15 continues the same transition pattern with the next ranked seams: another inspection aggregate, another route family, the mutation-heavy `skills.rs` lanes, and one bounded runtime command extraction.
+- v1.15 continued the same transition pattern with the next ranked seams: another inspection aggregate, another route family, the mutation-heavy `skills.rs` lanes, and one bounded runtime command extraction.
 - Phase 65 moved the enterprise admin aggregation into `openrustclaw-app`, with `inspect.rs` now acting as the adapter that loads enterprise access, policy, autonomy, and orchestration state into the new service.
 - Phase 66 moved the enterprise access write route family into `openrustclaw-app`, with `start.rs` now acting as the HTTP adapter for bootstrap, operator-upsert, and governance-rule-upsert flows while preserving the shipped enterprise access summary contract.
 - Phase 67 moved the skills install, update, and uninstall mutation lane into `openrustclaw-app`, with `skills.rs` now acting as the adapter around workspace files, DB state, registry operations, compile attempts, and plugin-event publication.
+- Phase 68 moved the runtime provider or model switch lane into `openrustclaw-app`, with `runtime.rs` now acting as the adapter around config loading, provider validation, and config persistence with backup.
 
 ### Pending Todos
 
@@ -100,5 +101,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-28 04:45
-Stopped at: Run $gsd-discuss-phase 68, $gsd-plan-phase 68, or $gsd-autonomous to continue v1.15.
+Stopped at: Awaiting the next milestone definition via $gsd-new-milestone.
 Resume file: None

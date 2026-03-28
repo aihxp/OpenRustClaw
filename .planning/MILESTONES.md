@@ -1,5 +1,20 @@
 # Project Milestones: OpenRustClaw
 
+## v1.15 Deeper Greenfield Conversion (Shipped: 2026-03-28)
+
+**Phases completed:** 4 phases, 4 plans, 0 tasks
+**Verification archive:** `.planning/milestones/v1.15-VERIFICATIONS.md`
+**Verification debt:** none
+
+**Key accomplishments:**
+
+- Broadened the greenfield application lane across another enterprise aggregation family, another routed control-write seam, a mutation-heavy `skills.rs` lane, and the first bounded runtime command seam.
+- Moved enterprise admin aggregation out of `inspect.rs` and into `openrustclaw-app` while preserving the shipped enterprise operator summary.
+- Moved enterprise access bootstrap and governance write-route orchestration behind a stable application service seam instead of leaving it in `start.rs`.
+- Extracted skill install, update, and uninstall mutation behavior plus runtime provider/model switching into `openrustclaw-app`, reducing two more legacy command hotspots to adapters.
+
+---
+
 ## v1.14 Continued Greenfield Conversion (Shipped: 2026-03-28)
 
 **Phases completed:** 4 phases, 4 plans, 0 tasks

@@ -65,6 +65,8 @@ The next route-family extraction is now shipped too. The enterprise access boots
 
 The first mutation-heavy `skills.rs` seam is now shipped too. The install, update, and uninstall registry lane now runs through `openrustclaw-app`, while `skills.rs` only adapts workspace files, DB state, registry operations, compile attempts, and plugin-event publication into that shared service.
 
+The first bounded runtime command seam is now shipped too. The runtime switch-provider and switch-model lane now runs through `openrustclaw-app`, while `runtime.rs` only adapts config loading, provider validation, and config persistence with backup into that shared service.
+
 ## Contributor Defaults
 
 When adding or changing behavior during this transition:

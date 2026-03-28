@@ -2,7 +2,7 @@
 
 ## What This Is
 
-OpenRustClaw is a self-hosted open-source Rust-first OpenClaw-style assistant platform with shipped v1.0 through v1.14 milestones. It now has a coherent production-ready baseline across onboarding, assistant continuity, memory policy, tool and coding evidence, communications, runtime operations, security posture, release exit, milestone verification integrity, materially deeper operator parity across browser, orchestration, mobile, Control UI, and voice or call handling surfaces, an enterprise-first foundation for scoped operator identity, policy, audit export, supervised autonomy, governance, and an operator-gated full-autonomy lane, an explicit self-hosted product-mode contract across `solo`, `team`, `company`, and `enterprise` deployments, a truthful setup lifecycle from first install through repair and handoff, a canonical documentation contract that keeps the repo entrypoint, guided docs, and planning docs aligned, a cleaner codebase baseline with explicit cleanup inventory, repo-hygiene guardrails, an extracted control-auth boundary, a repaired tagged-release workflow that now produces truthful downloadable binary artifacts on GitHub, a first truthful public Rust package surface on crates.io and docs.rs, a bounded remote-connectivity story around node-first guidance with SSH tunnel and reverse-proxy fallbacks preserved explicitly in setup state and operator surfaces, and a broadened greenfield application lane that now owns multiple typed report, route, and compiled-skill seams while the remaining legacy command hubs are being reduced incrementally instead of rewritten wholesale.
+OpenRustClaw is a self-hosted open-source Rust-first OpenClaw-style assistant platform with shipped v1.0 through v1.15 milestones. It now has a coherent production-ready baseline across onboarding, assistant continuity, memory policy, tool and coding evidence, communications, runtime operations, security posture, release exit, milestone verification integrity, materially deeper operator parity across browser, orchestration, mobile, Control UI, and voice or call handling surfaces, an enterprise-first foundation for scoped operator identity, policy, audit export, supervised autonomy, governance, and an operator-gated full-autonomy lane, an explicit self-hosted product-mode contract across `solo`, `team`, `company`, and `enterprise` deployments, a truthful setup lifecycle from first install through repair and handoff, a canonical documentation contract that keeps the repo entrypoint, guided docs, and planning docs aligned, a cleaner codebase baseline with explicit cleanup inventory, repo-hygiene guardrails, an extracted control-auth boundary, a repaired tagged-release workflow that now produces truthful downloadable binary artifacts on GitHub, a first truthful public Rust package surface on crates.io and docs.rs, a bounded remote-connectivity story around node-first guidance with SSH tunnel and reverse-proxy fallbacks preserved explicitly in setup state and operator surfaces, and a broadened greenfield application lane that now owns typed report, route, mutation, and bounded runtime-command seams while the remaining legacy command hubs are being reduced incrementally instead of rewritten wholesale.
 
 The product target remains broader than the MVP: a general-purpose assistant platform that can eventually support coding, communications, business operations, and deeper autonomous workflows. After v1.7, the repo also has one clearer documentation story instead of several drifting versions of the product. After v1.8, the repo also has a more explicit cleanup contract for keeping that surface maintainable.
 
@@ -12,26 +12,20 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 ## Current State
 
-- **Shipped milestones:** v1.0 Rust OpenClaw MVP, v1.1 Lifecycle Integrity and Enterprise Foundations, v1.2 Deeper OpenClaw Surface Parity, v1.3 Enterprise Expansion and Supervised Autonomy Foundations, v1.4 Enterprise Governance and Operator-Gated Full Autonomy, v1.5 Self-Hosted Product Modes and Lifecycle Packaging, v1.6 Proper Onboarding and Setup, v1.7 Documentation Convergence and OpenClaw-Inspired Docs Rewrite, v1.8 Clean Codebase, v1.9 GitHub Repository Presence and Actions Recovery, v1.10 Release Binaries Workflow Recovery, v1.11 Crates.io and Docs.rs Publication Foundation, v1.12 Secure Node Connectivity and SSH Tunnel Revisit, v1.13 Brownfield-to-Greenfield Transition, and v1.14 Continued Greenfield Conversion
-- **Archive:** `.planning/milestones/v1.0-*` through `.planning/milestones/v1.14-*`
-- **Planning state:** v1.15 is active
+- **Shipped milestones:** v1.0 Rust OpenClaw MVP, v1.1 Lifecycle Integrity and Enterprise Foundations, v1.2 Deeper OpenClaw Surface Parity, v1.3 Enterprise Expansion and Supervised Autonomy Foundations, v1.4 Enterprise Governance and Operator-Gated Full Autonomy, v1.5 Self-Hosted Product Modes and Lifecycle Packaging, v1.6 Proper Onboarding and Setup, v1.7 Documentation Convergence and OpenClaw-Inspired Docs Rewrite, v1.8 Clean Codebase, v1.9 GitHub Repository Presence and Actions Recovery, v1.10 Release Binaries Workflow Recovery, v1.11 Crates.io and Docs.rs Publication Foundation, v1.12 Secure Node Connectivity and SSH Tunnel Revisit, v1.13 Brownfield-to-Greenfield Transition, v1.14 Continued Greenfield Conversion, and v1.15 Deeper Greenfield Conversion
+- **Archive:** `.planning/milestones/v1.0-*` through `.planning/milestones/v1.15-*`
+- **Planning state:** no active milestone is open
 - **Known audit debt:** v1.0 archive still records missing phase `VERIFICATION.md` artifacts; v1.1 closed that workflow gap going forward
 
-## Most Recent Milestone: v1.14 Continued Greenfield Conversion
+## Most Recent Milestone: v1.15 Deeper Greenfield Conversion
 
-**Result:** Shipped 2026-03-28. OpenRustClaw broadened the greenfield lane beyond the first proving slice: typed self-hosted reporting, one shipped control-route family, the mobile operator report, and the first bounded `skills.rs` seam now all run through `openrustclaw-app` or its adapters instead of deepening legacy command hubs by default.
+**Result:** Shipped 2026-03-28. OpenRustClaw deepened the greenfield lane across another enterprise aggregation family, another control-write route family, the first mutation-heavy `skills.rs` seam, and the first bounded runtime command seam, so `inspect.rs`, `start.rs`, `skills.rs`, and `runtime.rs` all shed more business-logic ownership without breaking the shipped operator surface.
 
-**Archive:** `.planning/milestones/v1.14-ROADMAP.md`, `.planning/milestones/v1.14-REQUIREMENTS.md`, `.planning/milestones/v1.14-MILESTONE-AUDIT.md`, `.planning/milestones/v1.14-VERIFICATIONS.md`
+**Archive:** `.planning/milestones/v1.15-ROADMAP.md`, `.planning/milestones/v1.15-REQUIREMENTS.md`, `.planning/milestones/v1.15-MILESTONE-AUDIT.md`, `.planning/milestones/v1.15-VERIFICATIONS.md`
 
-## Current Milestone: v1.15 Deeper Greenfield Conversion
+## Current Milestone
 
-**Goal:** Continue the greenfield transition by extracting the next real route, report, runtime, and mutation-heavy skills seams out of the largest legacy command hubs without breaking the shipped operator surface.
-
-**Target features:**
-- move another meaningful inspection or aggregation family out of `inspect.rs`
-- extract another bounded runtime or control route family behind a cleaner application-facing seam
-- migrate the remaining mutation-heavy `skills.rs` lanes starting with compiled-skill mutation and registry flows
-- reduce direct business-logic ownership inside remaining runtime command hubs instead of leaving greenfield work concentrated only in report surfaces
+No active milestone is open. Use `$gsd-new-milestone` to define the next cycle.
 
 ## Requirements
 
@@ -78,10 +72,11 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 - ✓ The enterprise admin aggregation now runs through `openrustclaw-app`, with `inspect.rs` reduced to the workspace adapter for enterprise access, policy, autonomy, and supervision inputs — v1.15 Phase 65
 - ✓ The enterprise access write route family now runs through `openrustclaw-app`, with `start.rs` reduced to the HTTP adapter for bootstrap, operator-upsert, and governance-rule-upsert orchestration — v1.15 Phase 66
 - ✓ The install, update, and uninstall skills mutation lane now runs through `openrustclaw-app`, with `skills.rs` reduced to the adapter around workspace files, DB state, registry operations, compile attempts, and plugin-event publication — v1.15 Phase 67
+- ✓ The runtime switch-provider and switch-model lane now runs through `openrustclaw-app`, with `runtime.rs` reduced to the adapter around config loading, provider validation, and config persistence with backup — v1.15 Phase 68
 
 ### Active
 
-- [ ] Remaining runtime command seams still need bounded application or adapter extraction so greenfield work does not stall at report composition only — v1.15
+- [ ] No active milestone requirements until the next milestone opens
 
 ### Out of Scope
 
@@ -98,7 +93,7 @@ The most recent milestone changed the implementation posture instead of adding a
 
 The most recent milestone broadened that work into the next ranked migration queue. Instead of stopping at one proving slice, `v1.14` extended the greenfield lane across inspection summaries, selected control routes, mobile operator reporting, and the first bounded `skills.rs` cleanup seam.
 
-The next milestone continues that same migration strategy without changing the contract. `v1.15` now focuses on the remaining bounded runtime command seam, with the next route-family extraction and the first mutation-heavy `skills.rs` seam already completed in Phases 66 and 67.
+The most recent milestone deepened that same migration strategy without changing the contract. `v1.15` closed its planned queue: another inspection aggregate, another route family, the first mutation-heavy `skills.rs` seam, and the first bounded runtime command seam are now all completed.
 
 ## Constraints
 
@@ -146,13 +141,11 @@ The next milestone continues that same migration strategy without changing the c
 | Use the enterprise admin surface as the next inspection aggregation extraction instead of trying to move every enterprise summary at once | It is a real shipped aggregation over access, policy, autonomy, and supervision, so moving that composition first reduces `inspect.rs` ownership without forcing a broad enterprise rewrite in one phase | ✓ Good |
 | Use the enterprise access write family as the next bounded `start.rs` route extraction | The bootstrap, operator-upsert, and governance-rule-upsert handlers all shared the same mutation-and-report pattern, so extracting them together reduced real route coupling without changing the shipped enterprise summary contract | ✓ Good |
 | Use the install, update, and uninstall lane as the first mutation-heavy `skills.rs` extraction | That lane already powered the shipped control API and combined registry calls, policy checks, DB writes, compile attempts, and mutation-result shaping, so moving it first created a real service seam instead of another read-only helper split | ✓ Good |
+| Use the provider or model switch lane as the first bounded runtime command extraction | That lane already powered the shipped CLI and control API, owned real config mutation plus backup persistence, and stayed narrow enough to migrate without reopening the larger backup, reload, or upgrade surfaces in the same phase | ✓ Good |
 
 ## Next Milestone Goals
 
-- move another typed report or aggregation family into `openrustclaw-app`
-- extract another bounded runtime or control route family behind a stable application seam
-- migrate compiled-skill mutation and registry flows out of `skills.rs` as the next truthful skills boundary
-- reduce remaining runtime command concentration with one bounded service extraction
+- No active next-milestone goals yet — use `$gsd-new-milestone` to open the next cycle
 
 ## Evolution
 
@@ -172,4 +165,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-28 after completing v1.15 Phase 67*
+*Last updated: 2026-03-28 after archiving v1.15 milestone*
