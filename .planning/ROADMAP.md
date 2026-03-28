@@ -15,14 +15,77 @@
 - ✅ **v1.10 Release Binaries Workflow Recovery** — shipped 2026-03-28. Archive: `.planning/milestones/v1.10-ROADMAP.md`
 - ✅ **v1.11 Crates.io and Docs.rs Publication Foundation** — shipped 2026-03-28. Archive: `.planning/milestones/v1.11-ROADMAP.md`
 - ✅ **v1.12 Secure Node Connectivity and SSH Tunnel Revisit** — shipped 2026-03-28. Archive: `.planning/milestones/v1.12-ROADMAP.md`
+- 🚧 **v1.13 Brownfield-to-Greenfield Transition** — active
 
 ## Current Status
 
-- Active milestone: none
-- Progress: 0 active phases
+- Active milestone: **v1.13 Brownfield-to-Greenfield Transition**
+- Progress: 0 of 4 phases complete
 - Most recent shipment: **v1.12 Secure Node Connectivity and SSH Tunnel Revisit**
-- Next step: `$gsd-new-milestone`
+- Current execution: **Phase 57 not started**
+- Next step: `$gsd-plan-phase 57` or `$gsd-autonomous`
 
 ## Live Planning
 
-No active milestone is open. The last completed roadmap is archived at `.planning/milestones/v1.12-ROADMAP.md`.
+### Phase Checklist
+
+- [ ] **Phase 57: Greenfield Boundary Contract and Migration Inventory**
+- [ ] **Phase 58: Greenfield Core Shell and Service Interfaces**
+- [ ] **Phase 59: First Vertical Slice Migration**
+- [ ] **Phase 60: Brownfield Containment and Contributor Defaults**
+
+### Phase 57: Greenfield Boundary Contract and Migration Inventory
+
+**Goal:** Define the clean architecture contract, ownership rules, no-touch seams, and first migration targets that turn the repo from opportunistic brownfield change into deliberate greenfield transition work.
+
+**Success criteria:**
+- the repo has one canonical greenfield boundary contract
+- first migration candidates are chosen explicitly
+- brownfield containment rules are documented for future work
+
+**Plans:** 0/1 plans complete
+
+Plans:
+- [ ] 57-01 Define the architecture boundary and migration inventory
+
+### Phase 58: Greenfield Core Shell and Service Interfaces
+
+**Goal:** Introduce a clean core shell and stable service interfaces so future work can land in the new lane instead of attaching directly to legacy command and runtime modules.
+
+**Success criteria:**
+- a real greenfield core shell exists in shipped code
+- dependency direction is cleaner and bounded
+- stable service interfaces exist for the first migration work
+
+**Plans:** 0/1 plans complete
+
+Plans:
+- [ ] 58-01 Create the greenfield core shell and service boundaries
+
+### Phase 59: First Vertical Slice Migration
+
+**Goal:** Migrate one high-value shipped vertical slice into the new architecture lane to prove the transition with production code.
+
+**Success criteria:**
+- one real operator or user flow runs through the new boundary
+- direct coupling to legacy modules is reduced for that slice
+- verification preserves end-to-end behavior for the migrated path
+
+**Plans:** 0/1 plans complete
+
+Plans:
+- [ ] 59-01 Migrate the first proving slice into the greenfield lane
+
+### Phase 60: Brownfield Containment and Contributor Defaults
+
+**Goal:** Make the new lane the default for future work through contributor guidance, compatibility rules, and explicit deprecation follow-up.
+
+**Success criteria:**
+- contributor guidance points new work at the new lane
+- compatibility rules are explicit for mixed old and new surfaces
+- deprecation or follow-on migration work is preserved truthfully
+
+**Plans:** 0/1 plans complete
+
+Plans:
+- [ ] 60-01 Lock contributor defaults and brownfield containment rules
