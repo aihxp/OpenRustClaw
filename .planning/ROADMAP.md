@@ -25,17 +25,95 @@
 - ✅ **v1.20 Full Greenfield Conversion: Control Plane Route Families II** — shipped 2026-03-28. Archive: `.planning/milestones/v1.20-ROADMAP.md`
 - ✅ **v1.21 Full Greenfield Conversion: Mobile and Voice Runtime Services** — shipped 2026-03-28. Archive: `.planning/milestones/v1.21-ROADMAP.md`
 - ✅ **v1.22 Full Greenfield Conversion: Orchestration and Browser Services** — shipped 2026-03-28. Archive: `.planning/milestones/v1.22-ROADMAP.md`
+- 🚧 **v1.23 Full Greenfield Conversion: Setup and Secondary Command Surfaces** — active. Baseline: `4/6` shipped milestones, or about `67%`; target after shipment: `5/6`, or about `83%`
 
 ## Current Status
 
-- Active milestone: **none**
-- Progress: **0 live phases**
+- Active milestone: **v1.23 Full Greenfield Conversion: Setup and Secondary Command Surfaces**
+- Progress: **0 of 4 phases complete**
 - Most recent shipment: **v1.22 Full Greenfield Conversion: Orchestration and Browser Services**
 - Greenfield conversion baseline: **historical `18/18` ranked seam ledger complete and retired**
 - Full-conversion roadmap progress: **`4/6` milestones shipped, or about `67%`**
-- Current execution: **No active milestone**
-- Next step: `$gsd-new-milestone`
+- Current execution: **Phase 97 ready for planning**
+- Next step: `$gsd-plan-phase 97` or `$gsd-autonomous`
 
 ## Live Planning
 
-No live phases. The next likely follow-on is `v1.23 Full Greenfield Conversion: Setup and Secondary Command Surfaces` from `.planning/codebase/GREENFIELD-FULL-CONVERSION.md`.
+### Phase Checklist
+
+- [ ] **Phase 97: Onboarding, Repair, and Resume Orchestration Services**
+- [ ] **Phase 98: Secondary Lifecycle Command Services**
+- [ ] **Phase 99: Secondary Operator, Media, Tools, and Memory Service Seams**
+- [ ] **Phase 100: Transition Helper Cleanup and Adapter Convergence**
+
+### Current Queue Rule
+
+The original ranked greenfield seam inventory remains closed at `18/18` and retired. Follow-on work proceeds under the six-milestone full-conversion roadmap in `.planning/codebase/GREENFIELD-FULL-CONVERSION.md`, which measures progress by migrated adapter-only queues instead of extending the retired historical denominator.
+
+### Phase 97: Onboarding, Repair, and Resume Orchestration Services
+
+**Goal:** Move onboarding, repair, and resume orchestration business logic out of `onboard.rs` so setup lifecycle flows compose through `openrustclaw-app` instead of command-local orchestration.
+
+**Depends on:** Phase 96
+**Requirements:** `GFC-37`
+
+**Success criteria:**
+1. onboarding, repair, and resume orchestration compose through `openrustclaw-app`
+2. `onboard.rs` no longer owns the dominant setup-transition and step-planning rules for the targeted slice
+3. verification proves the shipped setup lifecycle contract remains truthful
+
+**Plans:** 0/0 plans complete
+
+Plans:
+- none yet
+
+### Phase 98: Secondary Lifecycle Command Services
+
+**Goal:** Move the targeted residual lifecycle seams in `channels.rs`, `schedule.rs`, `services.rs`, and `control.rs` behind `openrustclaw-app` so those command modules keep shrinking toward adapter-only ownership.
+
+**Depends on:** Phase 97
+**Requirements:** `GFC-38`
+
+**Success criteria:**
+1. the targeted secondary lifecycle command seams compose through `openrustclaw-app`
+2. legacy lifecycle command modules stop owning the dominant mutation and report-composition rules for those seams
+3. verification proves the shipped lifecycle and control contracts remain truthful
+
+**Plans:** 0/0 plans complete
+
+Plans:
+- none yet
+
+### Phase 99: Secondary Operator, Media, Tools, and Memory Service Seams
+
+**Goal:** Move the targeted residual operator, media, tools, and memory helper seams behind `openrustclaw-app` so neighboring secondary command modules stop deepening brownfield ownership.
+
+**Depends on:** Phase 98
+**Requirements:** `GFC-39`
+
+**Success criteria:**
+1. the targeted operator, media, tools, and memory seams compose through `openrustclaw-app`
+2. affected secondary command modules become adapters around bounded workspace, runtime, or artifact I/O
+3. verification proves the shipped operator-facing helper contracts remain truthful
+
+**Plans:** 0/0 plans complete
+
+Plans:
+- none yet
+
+### Phase 100: Transition Helper Cleanup and Adapter Convergence
+
+**Goal:** Clean up transition-era helper duplication and normalize the affected adapters after the setup and secondary command-surface extractions land.
+
+**Depends on:** Phase 99
+**Requirements:** `GFC-40`
+
+**Success criteria:**
+1. duplicated transition-era helper logic is removed, consolidated, or explicitly bounded
+2. the affected command modules expose clearer shared adapter and service boundaries after the milestone extractions
+3. verification proves the cleanup does not regress the migrated setup and secondary command contracts
+
+**Plans:** 0/0 plans complete
+
+Plans:
+- none yet
