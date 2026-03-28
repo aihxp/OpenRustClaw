@@ -17,10 +17,10 @@
 ## Current Status
 
 - Active milestone: **v1.10 Release Binaries Workflow Recovery**
-- Progress: 1 of 4 phases complete
+- Progress: 2 of 4 phases complete
 - Most recent shipment: **v1.9 GitHub Repository Presence and Actions Recovery**
-- Current phase: **46**
-- Next step: continue `$gsd-autonomous` after the live `Release Binaries` validation run settles
+- Current phase: **47**
+- Next step: continue `$gsd-autonomous` after the live tagged `Release Binaries` run `23674815012` settles
 
 ## Live Planning
 
