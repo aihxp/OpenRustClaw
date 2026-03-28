@@ -14,7 +14,7 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 - **Shipped milestones:** v1.0 Rust OpenClaw MVP, v1.1 Lifecycle Integrity and Enterprise Foundations, v1.2 Deeper OpenClaw Surface Parity, v1.3 Enterprise Expansion and Supervised Autonomy Foundations, v1.4 Enterprise Governance and Operator-Gated Full Autonomy, v1.5 Self-Hosted Product Modes and Lifecycle Packaging, v1.6 Proper Onboarding and Setup, v1.7 Documentation Convergence and OpenClaw-Inspired Docs Rewrite, v1.8 Clean Codebase, v1.9 GitHub Repository Presence and Actions Recovery, v1.10 Release Binaries Workflow Recovery, v1.11 Crates.io and Docs.rs Publication Foundation, v1.12 Secure Node Connectivity and SSH Tunnel Revisit, and v1.13 Brownfield-to-Greenfield Transition
 - **Archive:** `.planning/milestones/v1.0-*` through `.planning/milestones/v1.13-*`
-- **Planning state:** no active milestone is open
+- **Planning state:** v1.14 is active
 - **Known audit debt:** v1.0 archive still records missing phase `VERIFICATION.md` artifacts; v1.1 closed that workflow gap going forward
 
 ## Most Recent Milestone: v1.13 Brownfield-to-Greenfield Transition
@@ -25,7 +25,15 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 ## Current Milestone
 
-No active milestone is open. Use `$gsd-new-milestone` to define the next cycle.
+## Current Milestone: v1.14 Continued Greenfield Conversion
+
+**Goal:** Continue moving real shipped behavior out of legacy CLI command hubs and into the greenfield application lane so the architecture shift becomes broader than the first proving slice.
+
+**Target features:**
+- migrate broader inspection summary composition into `openrustclaw-app`
+- extract selected `start.rs` control route families behind cleaner service boundaries
+- move mobile operator reporting into the new application lane
+- begin deliberate `skills.rs` boundary cleanup instead of allowing more opportunistic growth
 
 ## Requirements
 
@@ -68,7 +76,10 @@ No active milestone is open. Use `$gsd-new-milestone` to define the next cycle.
 
 ### Active
 
-- [ ] No active milestone requirements until the next milestone opens
+- [ ] More inspection and report composition logic must move into `openrustclaw-app` so `inspect.rs` stops acting as the long-term business-logic owner for typed operator summaries — v1.14
+- [ ] Selected control route families must stop coupling directly to mixed CLI command modules and instead call stable greenfield services — v1.14
+- [ ] Mobile operator reporting must follow the proving-slice pattern so one more real operator surface runs through the greenfield application lane — v1.14
+- [ ] The `skills.rs` command surface needs a bounded service seam so future work stops deepening that hotspot by default — v1.14
 
 ### Out of Scope
 
@@ -82,6 +93,8 @@ No active milestone is open. Use `$gsd-new-milestone` to define the next cycle.
 This remains a large brownfield Rust monorepo with broad runtime, CLI, control-plane, memory, tools, channel, voice, browser, deployment, and operator surfaces. v1.0 converted that breadth into a cleaner MVP by making operator trust visible at the edges that matter, v1.1 hardened the lifecycle and enterprise baseline around that trust, v1.2 deepened the most operator-visible OpenClaw parity surfaces without reopening MVP sprawl, v1.3 turned the first enterprise and supervised-autonomy contracts into a coherent operator loop, v1.4 extended that loop into explicit governance and operator-gated full autonomy, v1.5 made the platform legible as one self-hosted open-source product with explicit deployment paths and transition visibility, v1.6 turned onboarding and setup into one truthful lifecycle from first install through repair and handoff, v1.7 made the documentation set legible enough to match the shipped product baseline, v1.8 converted cleanup debt into an explicit maintained contract instead of leaving it as background churn, v1.9 repaired the public GitHub repo surface, v1.10 restored the final broken public automation lane around tagged binary releases, and v1.11 extended that distribution story into the Rust ecosystem through the first truthful crates.io and docs.rs publication path.
 
 The most recent milestone changed the implementation posture instead of adding another wide product surface. v1.13 created a greenfield-style lane inside the existing repo, proved it with a shipped setup handoff slice, and turned that lane into the default contribution contract for follow-on work.
+
+The next milestone extends that work into the next ranked migration queue. Instead of stopping at one proving slice, `v1.14` broadens the greenfield lane across inspection summaries, selected control routes, mobile operator reporting, and the first bounded `skills.rs` cleanup seam.
 
 ## Constraints
 
@@ -126,7 +139,10 @@ The most recent milestone changed the implementation posture instead of adding a
 
 ## Next Milestone Goals
 
-- No active next-milestone goals yet — use `$gsd-new-milestone` to open the next cycle
+- broaden the app-layer migration beyond the first proving slice
+- reduce direct business-logic ownership inside `inspect.rs` and selected `start.rs` route families
+- prove a second operator-visible surface through the greenfield lane
+- create the first bounded service seam for the `skills.rs` hotspot
 
 ## Evolution
 
@@ -146,4 +162,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-28 after completing v1.13*
+*Last updated: 2026-03-28 after starting v1.14*
