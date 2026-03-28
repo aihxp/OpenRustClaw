@@ -2,7 +2,7 @@
 
 ## What This Is
 
-OpenRustClaw is a self-hosted open-source Rust-first OpenClaw-style assistant platform with shipped v1.0 through v1.8 milestones. It now has a coherent production-ready baseline across onboarding, assistant continuity, memory policy, tool and coding evidence, communications, runtime operations, security posture, release exit, milestone verification integrity, materially deeper operator parity across browser, orchestration, mobile, Control UI, and voice or call handling surfaces, an enterprise-first foundation for scoped operator identity, policy, audit export, supervised autonomy, governance, and an operator-gated full-autonomy lane, an explicit self-hosted product-mode contract across `solo`, `team`, `company`, and `enterprise` deployments, a truthful setup lifecycle from first install through repair and handoff, a canonical documentation contract that keeps the repo entrypoint, guided docs, and planning docs aligned, and a cleaner codebase baseline with explicit cleanup inventory, repo-hygiene guardrails, and an extracted control-auth boundary.
+OpenRustClaw is a self-hosted open-source Rust-first OpenClaw-style assistant platform with shipped v1.0 through v1.9 milestones. It now has a coherent production-ready baseline across onboarding, assistant continuity, memory policy, tool and coding evidence, communications, runtime operations, security posture, release exit, milestone verification integrity, materially deeper operator parity across browser, orchestration, mobile, Control UI, and voice or call handling surfaces, an enterprise-first foundation for scoped operator identity, policy, audit export, supervised autonomy, governance, and an operator-gated full-autonomy lane, an explicit self-hosted product-mode contract across `solo`, `team`, `company`, and `enterprise` deployments, a truthful setup lifecycle from first install through repair and handoff, a canonical documentation contract that keeps the repo entrypoint, guided docs, and planning docs aligned, and a cleaner codebase baseline with explicit cleanup inventory, repo-hygiene guardrails, and an extracted control-auth boundary.
 
 The product target remains broader than the MVP: a general-purpose assistant platform that can eventually support coding, communications, business operations, and deeper autonomous workflows. After v1.7, the repo also has one clearer documentation story instead of several drifting versions of the product. After v1.8, the repo also has a more explicit cleanup contract for keeping that surface maintainable.
 
@@ -12,26 +12,20 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 ## Current State
 
-- **Shipped milestones:** v1.0 Rust OpenClaw MVP, v1.1 Lifecycle Integrity and Enterprise Foundations, v1.2 Deeper OpenClaw Surface Parity, v1.3 Enterprise Expansion and Supervised Autonomy Foundations, v1.4 Enterprise Governance and Operator-Gated Full Autonomy, v1.5 Self-Hosted Product Modes and Lifecycle Packaging, v1.6 Proper Onboarding and Setup, v1.7 Documentation Convergence and OpenClaw-Inspired Docs Rewrite, and v1.8 Clean Codebase
-- **Archive:** `.planning/milestones/v1.0-*` through `.planning/milestones/v1.8-*`
-- **Planning state:** v1.9 is complete and ready for audit and archive
+- **Shipped milestones:** v1.0 Rust OpenClaw MVP, v1.1 Lifecycle Integrity and Enterprise Foundations, v1.2 Deeper OpenClaw Surface Parity, v1.3 Enterprise Expansion and Supervised Autonomy Foundations, v1.4 Enterprise Governance and Operator-Gated Full Autonomy, v1.5 Self-Hosted Product Modes and Lifecycle Packaging, v1.6 Proper Onboarding and Setup, v1.7 Documentation Convergence and OpenClaw-Inspired Docs Rewrite, v1.8 Clean Codebase, and v1.9 GitHub Repository Presence and Actions Recovery
+- **Archive:** `.planning/milestones/v1.0-*` through `.planning/milestones/v1.9-*`
+- **Planning state:** no active milestone is open
 - **Known audit debt:** v1.0 archive still records missing phase `VERIFICATION.md` artifacts; v1.1 closed that workflow gap going forward
 
 ## Most Recent Milestone: v1.9 GitHub Repository Presence and Actions Recovery
 
-**Result:** Shipped 2026-03-28. OpenRustClaw now has truthful GitHub repo metadata, a canonical topic contract, a repo-admin metadata helper, a workflow-health admin helper, and a repaired shipped-surface GitHub Actions contract whose latest `main` CI and E2E runs both pass.
+**Result:** Shipped 2026-03-28. OpenRustClaw now has truthful live GitHub About metadata, a canonical discovery-topic contract, a repo-admin metadata helper, a workflow-health helper, and a repaired shipped-surface GitHub Actions contract whose latest `main` CI and E2E runs pass.
 
-**Archive:** pending milestone completion this turn
+**Archive:** `.planning/milestones/v1.9-ROADMAP.md`, `.planning/milestones/v1.9-REQUIREMENTS.md`, `.planning/milestones/v1.9-MILESTONE-AUDIT.md`, `.planning/milestones/v1.9-VERIFICATIONS.md`
 
-## Current Milestone: v1.9 GitHub Repository Presence and Actions Recovery
+## Current Milestone
 
-**Goal:** Make the public GitHub surface describe the shipped product truthfully and restore the repo automation contract so the repo page, topics, badges, and Actions status all match the real state of OpenRustClaw.
-
-**Target features:**
-- update the GitHub repo About and linked public entry surface to match the current self-hosted Rust-first product
-- define and sync the canonical GitHub topic or tag set for discovery
-- audit and repair stale or failing GitHub Actions workflows and badges against the current shipped verification bundle
-- add a repeatable repo-admin sync and verification path for future GitHub metadata and workflow maintenance
+No active milestone is open. Use `$gsd-new-milestone` to define the next cycle.
 
 ## Requirements
 

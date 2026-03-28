@@ -1,5 +1,20 @@
 # Project Milestones: OpenRustClaw
 
+## v1.9 GitHub Repository Presence and Actions Recovery (Shipped: 2026-03-28)
+
+**Phases completed:** 4 phases, 8 plans, 0 tasks
+**Verification archive:** `.planning/milestones/v1.9-VERIFICATIONS.md`
+**Verification debt:** none
+
+**Key accomplishments:**
+
+- Replaced the stale public GitHub repo framing with the current self-hosted Rust-first assistant product story.
+- Made the canonical GitHub topic contract explicit and re-verifiable through the repo-admin workflow.
+- Repaired the shipped-surface GitHub workflow contract so the latest `main` CI and E2E runs now pass on the live repo surface.
+- Added one repeatable repo-admin loop for both metadata sync and GitHub Actions health verification.
+
+---
+
 ## v1.8 Clean Codebase (Shipped: 2026-03-27)
 
 **Phases completed:** 4 phases, 8 plans, 0 tasks
