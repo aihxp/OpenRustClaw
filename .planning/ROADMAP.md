@@ -19,19 +19,19 @@
 ## Current Status
 
 - Active milestone: **v1.12 Secure Node Connectivity and SSH Tunnel Revisit**
-- Progress: 0 of 4 phases complete
+- Progress: 4 of 4 phases complete
 - Most recent shipment: **v1.11 Crates.io and Docs.rs Publication Foundation**
-- Current execution: **Phase 53 not started**
-- Next step: `$gsd-plan-phase 53` or `$gsd-autonomous`
+- Current execution: **Phase 56 complete**
+- Next step: milestone audit and archive
 
 ## Live Planning
 
 ### Phase Checklist
 
-- [ ] **Phase 53: Node Identity and Topology Contract**
-- [ ] **Phase 54: SSH Tunnel Bootstrap and Remote Connectivity Path**
-- [ ] **Phase 55: Node Inspection, Recovery, and Operator Controls**
-- [ ] **Phase 56: Node Docs, Onboarding, and Verification Exit**
+- [x] **Phase 53: Node Identity and Topology Contract** (completed 2026-03-28)
+- [x] **Phase 54: SSH Tunnel Bootstrap and Remote Connectivity Path** (completed 2026-03-28)
+- [x] **Phase 55: Node Inspection, Recovery, and Operator Controls** (completed 2026-03-28)
+- [x] **Phase 56: Node Docs, Onboarding, and Verification Exit** (completed 2026-03-28)
 
 ### Phase 53: Node Identity and Topology Contract
 
@@ -42,10 +42,10 @@
 - the trust boundary between local runtime and remote connectivity is clear
 - unsupported or future node behaviors are called out honestly
 
-**Plans:** 0 plans complete
+**Plans:** 1/1 plans complete
 
 Plans:
-- [ ] 53-01 Define the bounded node and topology contract
+- [x] 53-01 Define the bounded node and topology contract
 
 ### Phase 54: Node-First Remote Connectivity and Fallback Paths
 
@@ -58,10 +58,10 @@ Plans:
 - bootstrap and failover steps for remote connectivity are repeatable
 - the node path, SSH tunnel fallback, and reverse-proxy fallback all preserve the existing security and control boundary
 
-**Plans:** 0 plans complete
+**Plans:** 1/1 plans complete
 
 Plans:
-- [ ] 54-01 Implement the node-first path with SSH tunnel and reverse-proxy fallbacks
+- [x] 54-01 Implement the node-first path with SSH tunnel and reverse-proxy fallbacks
 
 ### Phase 55: Node Inspection, Recovery, and Operator Controls
 
@@ -72,10 +72,10 @@ Plans:
 - failure modes distinguish auth, config, connectivity, node-path, SSH-tunnel-fallback, and reverse-proxy-fallback problems
 - repair or reconnect guidance is preserved in runtime evidence or operator docs
 
-**Plans:** 0 plans complete
+**Plans:** 1/1 plans complete
 
 Plans:
-- [ ] 55-01 Surface node and tunnel health in operator controls
+- [x] 55-01 Surface node and tunnel health in operator controls
 
 ### Phase 56: Node Docs, Onboarding, and Verification Exit
 
@@ -86,7 +86,7 @@ Plans:
 - docs and control surfaces tell the same node and tunnel story
 - milestone verification preserves the supported node and SSH tunnel contract
 
-**Plans:** 0 plans complete
+**Plans:** 1/1 plans complete
 
 Plans:
-- [ ] 56-01 Align docs, onboarding, and milestone verification
+- [x] 56-01 Align docs, onboarding, and milestone verification
