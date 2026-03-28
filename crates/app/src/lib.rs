@@ -11,3 +11,4 @@ pub mod enterprise_admin;
 pub mod mobile_operator;
 pub mod self_hosted_product;
 pub mod setup_handoff;
+pub mod skill_registry_mutation;

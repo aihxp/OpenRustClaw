@@ -6,6 +6,7 @@ license.workspace = true
 description = "Application-layer services for the greenfield OpenRustClaw architecture lane"
 
 [dependencies]
+async-trait.workspace = true
 openrustclaw-core.workspace = true
 openrustclaw-skills.workspace = true
 serde.workspace = true
@@ -13,3 +14,4 @@ serde_json.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+tokio.workspace = true
