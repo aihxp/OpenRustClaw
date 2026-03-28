@@ -1,5 +1,20 @@
 # Project Milestones: OpenRustClaw
 
+## v1.14 Continued Greenfield Conversion (Shipped: 2026-03-28)
+
+**Phases completed:** 4 phases, 4 plans, 0 tasks
+**Verification archive:** `.planning/milestones/v1.14-VERIFICATIONS.md`
+**Verification debt:** none
+
+**Key accomplishments:**
+
+- Broadened the greenfield application lane from one proving slice into multiple shipped service seams across reports, routes, and compiled-skill overview behavior.
+- Moved self-hosted product-mode summary composition and the `/control/self-hosted/product-mode` transition path behind `openrustclaw-app`.
+- Migrated the mobile node operator summary report into the greenfield lane while preserving the shipped runtime and Control UI contract.
+- Carved the first bounded `skills.rs` seam by centralizing compiled manifests, artifacts, executable-component discovery, and reference reading behind one shared application service.
+
+---
+
 ## v1.13 Brownfield-to-Greenfield Transition (Shipped: 2026-03-28)
 
 **Phases completed:** 4 phases, 4 plans, 0 tasks

@@ -2,7 +2,7 @@
 
 ## What This Is
 
-OpenRustClaw is a self-hosted open-source Rust-first OpenClaw-style assistant platform with shipped v1.0 through v1.13 milestones. It now has a coherent production-ready baseline across onboarding, assistant continuity, memory policy, tool and coding evidence, communications, runtime operations, security posture, release exit, milestone verification integrity, materially deeper operator parity across browser, orchestration, mobile, Control UI, and voice or call handling surfaces, an enterprise-first foundation for scoped operator identity, policy, audit export, supervised autonomy, governance, and an operator-gated full-autonomy lane, an explicit self-hosted product-mode contract across `solo`, `team`, `company`, and `enterprise` deployments, a truthful setup lifecycle from first install through repair and handoff, a canonical documentation contract that keeps the repo entrypoint, guided docs, and planning docs aligned, a cleaner codebase baseline with explicit cleanup inventory, repo-hygiene guardrails, an extracted control-auth boundary, a repaired tagged-release workflow that now produces truthful downloadable binary artifacts on GitHub, a first truthful public Rust package surface on crates.io and docs.rs, a bounded remote-connectivity story around node-first guidance with SSH tunnel and reverse-proxy fallbacks preserved explicitly in setup state and operator surfaces, and the first real greenfield application lane for future migration work.
+OpenRustClaw is a self-hosted open-source Rust-first OpenClaw-style assistant platform with shipped v1.0 through v1.14 milestones. It now has a coherent production-ready baseline across onboarding, assistant continuity, memory policy, tool and coding evidence, communications, runtime operations, security posture, release exit, milestone verification integrity, materially deeper operator parity across browser, orchestration, mobile, Control UI, and voice or call handling surfaces, an enterprise-first foundation for scoped operator identity, policy, audit export, supervised autonomy, governance, and an operator-gated full-autonomy lane, an explicit self-hosted product-mode contract across `solo`, `team`, `company`, and `enterprise` deployments, a truthful setup lifecycle from first install through repair and handoff, a canonical documentation contract that keeps the repo entrypoint, guided docs, and planning docs aligned, a cleaner codebase baseline with explicit cleanup inventory, repo-hygiene guardrails, an extracted control-auth boundary, a repaired tagged-release workflow that now produces truthful downloadable binary artifacts on GitHub, a first truthful public Rust package surface on crates.io and docs.rs, a bounded remote-connectivity story around node-first guidance with SSH tunnel and reverse-proxy fallbacks preserved explicitly in setup state and operator surfaces, and a broadened greenfield application lane that now owns multiple typed report, route, and compiled-skill seams for future migration work.
 
 The product target remains broader than the MVP: a general-purpose assistant platform that can eventually support coding, communications, business operations, and deeper autonomous workflows. After v1.7, the repo also has one clearer documentation story instead of several drifting versions of the product. After v1.8, the repo also has a more explicit cleanup contract for keeping that surface maintainable.
 
@@ -12,28 +12,20 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 ## Current State
 
-- **Shipped milestones:** v1.0 Rust OpenClaw MVP, v1.1 Lifecycle Integrity and Enterprise Foundations, v1.2 Deeper OpenClaw Surface Parity, v1.3 Enterprise Expansion and Supervised Autonomy Foundations, v1.4 Enterprise Governance and Operator-Gated Full Autonomy, v1.5 Self-Hosted Product Modes and Lifecycle Packaging, v1.6 Proper Onboarding and Setup, v1.7 Documentation Convergence and OpenClaw-Inspired Docs Rewrite, v1.8 Clean Codebase, v1.9 GitHub Repository Presence and Actions Recovery, v1.10 Release Binaries Workflow Recovery, v1.11 Crates.io and Docs.rs Publication Foundation, v1.12 Secure Node Connectivity and SSH Tunnel Revisit, and v1.13 Brownfield-to-Greenfield Transition
-- **Archive:** `.planning/milestones/v1.0-*` through `.planning/milestones/v1.13-*`
-- **Planning state:** v1.14 is active and all planned phases are complete
+- **Shipped milestones:** v1.0 Rust OpenClaw MVP, v1.1 Lifecycle Integrity and Enterprise Foundations, v1.2 Deeper OpenClaw Surface Parity, v1.3 Enterprise Expansion and Supervised Autonomy Foundations, v1.4 Enterprise Governance and Operator-Gated Full Autonomy, v1.5 Self-Hosted Product Modes and Lifecycle Packaging, v1.6 Proper Onboarding and Setup, v1.7 Documentation Convergence and OpenClaw-Inspired Docs Rewrite, v1.8 Clean Codebase, v1.9 GitHub Repository Presence and Actions Recovery, v1.10 Release Binaries Workflow Recovery, v1.11 Crates.io and Docs.rs Publication Foundation, v1.12 Secure Node Connectivity and SSH Tunnel Revisit, v1.13 Brownfield-to-Greenfield Transition, and v1.14 Continued Greenfield Conversion
+- **Archive:** `.planning/milestones/v1.0-*` through `.planning/milestones/v1.14-*`
+- **Planning state:** no active milestone is open
 - **Known audit debt:** v1.0 archive still records missing phase `VERIFICATION.md` artifacts; v1.1 closed that workflow gap going forward
 
-## Most Recent Milestone: v1.13 Brownfield-to-Greenfield Transition
+## Most Recent Milestone: v1.14 Continued Greenfield Conversion
 
-**Result:** Shipped 2026-03-28. OpenRustClaw now has a canonical greenfield transition contract, a real application-layer shell in `openrustclaw-app`, a shipped proving slice around setup handoff reporting, and explicit contributor defaults that keep future work from deepening legacy command hubs by default.
+**Result:** Shipped 2026-03-28. OpenRustClaw broadened the greenfield lane beyond the first proving slice: typed self-hosted reporting, one shipped control-route family, the mobile operator report, and the first bounded `skills.rs` seam now all run through `openrustclaw-app` or its adapters instead of deepening legacy command hubs by default.
 
-**Archive:** `.planning/milestones/v1.13-ROADMAP.md`, `.planning/milestones/v1.13-REQUIREMENTS.md`, `.planning/milestones/v1.13-MILESTONE-AUDIT.md`, `.planning/milestones/v1.13-VERIFICATIONS.md`
+**Archive:** `.planning/milestones/v1.14-ROADMAP.md`, `.planning/milestones/v1.14-REQUIREMENTS.md`, `.planning/milestones/v1.14-MILESTONE-AUDIT.md`, `.planning/milestones/v1.14-VERIFICATIONS.md`
 
 ## Current Milestone
 
-## Current Milestone: v1.14 Continued Greenfield Conversion
-
-**Goal:** Continue moving real shipped behavior out of legacy CLI command hubs and into the greenfield application lane so the architecture shift becomes broader than the first proving slice.
-
-**Target features:**
-- migrate broader inspection summary composition into `openrustclaw-app`
-- extract selected `start.rs` control route families behind cleaner service boundaries
-- move mobile operator reporting into the new application lane
-- begin deliberate `skills.rs` boundary cleanup instead of allowing more opportunistic growth
+No active milestone is open. Use `$gsd-new-milestone` to define the next cycle.
 
 ## Requirements
 
@@ -80,7 +72,7 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 ### Active
 
-- [ ] No new v1.14 requirements remain; milestone is ready for audit and archive
+- [ ] No active milestone requirements until the next milestone opens
 
 ### Out of Scope
 
@@ -95,7 +87,7 @@ This remains a large brownfield Rust monorepo with broad runtime, CLI, control-p
 
 The most recent milestone changed the implementation posture instead of adding another wide product surface. v1.13 created a greenfield-style lane inside the existing repo, proved it with a shipped setup handoff slice, and turned that lane into the default contribution contract for follow-on work.
 
-The current milestone extends that work into the next ranked migration queue. Instead of stopping at one proving slice, `v1.14` broadens the greenfield lane across inspection summaries, selected control routes, mobile operator reporting, and the first bounded `skills.rs` cleanup seam.
+The most recent milestone broadened that work into the next ranked migration queue. Instead of stopping at one proving slice, `v1.14` extended the greenfield lane across inspection summaries, selected control routes, mobile operator reporting, and the first bounded `skills.rs` cleanup seam.
 
 ## Constraints
 
@@ -143,10 +135,7 @@ The current milestone extends that work into the next ranked migration queue. In
 
 ## Next Milestone Goals
 
-- broaden the app-layer migration beyond the first proving slice
-- reduce direct business-logic ownership inside `inspect.rs` and selected `start.rs` route families
-- prove a second operator-visible surface through the greenfield lane
-- create the first bounded service seam for the `skills.rs` hotspot
+- No active next-milestone goals yet — use `$gsd-new-milestone` to open the next cycle
 
 ## Evolution
 
@@ -166,4 +155,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-28 after completing v1.14 execution*
+*Last updated: 2026-03-28 after completing v1.14*
