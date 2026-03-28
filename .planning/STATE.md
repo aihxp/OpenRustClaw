@@ -1,20 +1,20 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.12
-milestone_name: Secure Node Connectivity and SSH Tunnel Revisit
-current_phase: 56
-current_phase_name: Node Docs, Onboarding, and Verification Exit
-current_plan: complete
-status: Ready for milestone audit
-stopped_at: All v1.12 phases are complete. Run milestone audit and archive.
-last_updated: "2026-03-28T17:25:00.000Z"
-last_activity: 2026-03-28 -- completed Phase 56 Node Docs, Onboarding, and Verification Exit
+milestone: none
+milestone_name: null
+current_phase: null
+current_phase_name: null
+current_plan: null
+status: No active milestone; v1.12 archived and shipped
+stopped_at: Awaiting the next milestone definition via $gsd-new-milestone.
+last_updated: "2026-03-28T05:10:02Z"
+last_activity: 2026-03-28 -- archived v1.12 Secure Node Connectivity and SSH Tunnel Revisit
 progress:
-  total_phases: 4
-  completed_phases: 4
-  total_plans: 4
-  completed_plans: 4
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -24,29 +24,29 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-28)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** Define and execute v1.12 Secure Node Connectivity and SSH Tunnel Revisit
+**Current focus:** Await the next milestone
 
 ## Current Position
 
-Current Phase: 56
-Current Phase Name: Node Docs, Onboarding, and Verification Exit
-Total Phases: 4
-Current Plan: complete
-Total Plans in Phase: 1
-Status: Ready for milestone audit
-Last activity: 2026-03-28 -- completed Phase 56 Node Docs, Onboarding, and Verification Exit
+Current Phase: -
+Current Phase Name: -
+Total Phases: 0
+Current Plan: -
+Total Plans in Phase: 0
+Status: No active milestone; v1.12 archived and shipped
+Last activity: 2026-03-28 -- archived v1.12 Secure Node Connectivity and SSH Tunnel Revisit
 
-Phase: 4 of 4
-Plan: 1 of 1
-Progress: [██████████] 100%
+Phase: 0 of 0
+Plan: 0 of 0
+Progress: [----------] 0%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 62
+- Total plans completed: 66
 - Average duration: historical average retained across shipped milestones
-- Total execution time: multiple shipped milestones completed across v1.0-v1.10
+- Total execution time: multiple shipped milestones completed across v1.0-v1.12
 
 ## Accumulated Context
 
@@ -73,7 +73,7 @@ Recent decisions affecting current work:
 - Phase 50 added an explicit docs.rs build contract and a real crate-level rustdoc landing surface for `openrustclaw-core`.
 - Phase 51 added a rerunnable crates.io readiness script, a docs-site publish runbook, and a passing publish dry-run for `openrustclaw-core`.
 - Phase 52 published `openrustclaw-core v0.1.0` to crates.io and confirmed docs.rs visibility for the new crate page.
-- v1.12 reopens the remote-connectivity story so nodes, advanced remote access, and SSH tunnel usage become an explicit product contract instead of an onboarding footnote, with node-first behavior, SSH tunnel fallback, and reverse-proxy last-resort fallback.
+- v1.12 turned the remote-connectivity story into a shipped contract: node-first remote guidance, SSH tunnel fallback, reverse-proxy last resort, persisted setup-state profile, and aligned operator/docs surfaces now tell one story.
 
 ### Pending Todos
 
@@ -85,6 +85,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-28 17:25
-Stopped at: All v1.12 phases are complete. Run milestone audit and archive.
+Last session: 2026-03-28 01:10
+Stopped at: Awaiting the next milestone definition via $gsd-new-milestone.
 Resume file: None

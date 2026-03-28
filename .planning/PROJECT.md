@@ -2,7 +2,7 @@
 
 ## What This Is
 
-OpenRustClaw is a self-hosted open-source Rust-first OpenClaw-style assistant platform with shipped v1.0 through v1.11 milestones. It now has a coherent production-ready baseline across onboarding, assistant continuity, memory policy, tool and coding evidence, communications, runtime operations, security posture, release exit, milestone verification integrity, materially deeper operator parity across browser, orchestration, mobile, Control UI, and voice or call handling surfaces, an enterprise-first foundation for scoped operator identity, policy, audit export, supervised autonomy, governance, and an operator-gated full-autonomy lane, an explicit self-hosted product-mode contract across `solo`, `team`, `company`, and `enterprise` deployments, a truthful setup lifecycle from first install through repair and handoff, a canonical documentation contract that keeps the repo entrypoint, guided docs, and planning docs aligned, a cleaner codebase baseline with explicit cleanup inventory, repo-hygiene guardrails, an extracted control-auth boundary, a repaired tagged-release workflow that now produces truthful downloadable binary artifacts on GitHub, and a first truthful public Rust package surface on crates.io and docs.rs.
+OpenRustClaw is a self-hosted open-source Rust-first OpenClaw-style assistant platform with shipped v1.0 through v1.12 milestones. It now has a coherent production-ready baseline across onboarding, assistant continuity, memory policy, tool and coding evidence, communications, runtime operations, security posture, release exit, milestone verification integrity, materially deeper operator parity across browser, orchestration, mobile, Control UI, and voice or call handling surfaces, an enterprise-first foundation for scoped operator identity, policy, audit export, supervised autonomy, governance, and an operator-gated full-autonomy lane, an explicit self-hosted product-mode contract across `solo`, `team`, `company`, and `enterprise` deployments, a truthful setup lifecycle from first install through repair and handoff, a canonical documentation contract that keeps the repo entrypoint, guided docs, and planning docs aligned, a cleaner codebase baseline with explicit cleanup inventory, repo-hygiene guardrails, an extracted control-auth boundary, a repaired tagged-release workflow that now produces truthful downloadable binary artifacts on GitHub, a first truthful public Rust package surface on crates.io and docs.rs, and a bounded remote-connectivity story around node-first guidance with SSH tunnel and reverse-proxy fallbacks preserved explicitly in setup state and operator surfaces.
 
 The product target remains broader than the MVP: a general-purpose assistant platform that can eventually support coding, communications, business operations, and deeper autonomous workflows. After v1.7, the repo also has one clearer documentation story instead of several drifting versions of the product. After v1.8, the repo also has a more explicit cleanup contract for keeping that surface maintainable.
 
@@ -12,28 +12,20 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 ## Current State
 
-- **Shipped milestones:** v1.0 Rust OpenClaw MVP, v1.1 Lifecycle Integrity and Enterprise Foundations, v1.2 Deeper OpenClaw Surface Parity, v1.3 Enterprise Expansion and Supervised Autonomy Foundations, v1.4 Enterprise Governance and Operator-Gated Full Autonomy, v1.5 Self-Hosted Product Modes and Lifecycle Packaging, v1.6 Proper Onboarding and Setup, v1.7 Documentation Convergence and OpenClaw-Inspired Docs Rewrite, v1.8 Clean Codebase, v1.9 GitHub Repository Presence and Actions Recovery, v1.10 Release Binaries Workflow Recovery, and v1.11 Crates.io and Docs.rs Publication Foundation
-- **Archive:** `.planning/milestones/v1.0-*` through `.planning/milestones/v1.11-*`
-- **Planning state:** v1.12 is active
+- **Shipped milestones:** v1.0 Rust OpenClaw MVP, v1.1 Lifecycle Integrity and Enterprise Foundations, v1.2 Deeper OpenClaw Surface Parity, v1.3 Enterprise Expansion and Supervised Autonomy Foundations, v1.4 Enterprise Governance and Operator-Gated Full Autonomy, v1.5 Self-Hosted Product Modes and Lifecycle Packaging, v1.6 Proper Onboarding and Setup, v1.7 Documentation Convergence and OpenClaw-Inspired Docs Rewrite, v1.8 Clean Codebase, v1.9 GitHub Repository Presence and Actions Recovery, v1.10 Release Binaries Workflow Recovery, v1.11 Crates.io and Docs.rs Publication Foundation, and v1.12 Secure Node Connectivity and SSH Tunnel Revisit
+- **Archive:** `.planning/milestones/v1.0-*` through `.planning/milestones/v1.12-*`
+- **Planning state:** no active milestone is open
 - **Known audit debt:** v1.0 archive still records missing phase `VERIFICATION.md` artifacts; v1.1 closed that workflow gap going forward
 
-## Most Recent Milestone: v1.11 Crates.io and Docs.rs Publication Foundation
+## Most Recent Milestone: v1.12 Secure Node Connectivity and SSH Tunnel Revisit
 
-**Result:** Shipped 2026-03-28. OpenRustClaw now has a truthful first public Rust package surface: `openrustclaw-core v0.1.0` is published on crates.io, served on docs.rs, and backed by a repeatable local readiness and publish runbook.
+**Result:** Shipped 2026-03-28. OpenRustClaw now treats remote connectivity as an explicit product contract instead of an onboarding footnote: docs and onboarding lead with a node-first path, SSH tunnel remains the bounded fallback, reverse proxy remains last resort, and the chosen remote-connectivity profile is preserved in setup state and surfaced in the operator handoff.
 
-**Archive:** `.planning/milestones/v1.11-ROADMAP.md`, `.planning/milestones/v1.11-REQUIREMENTS.md`, `.planning/milestones/v1.11-MILESTONE-AUDIT.md`, `.planning/milestones/v1.11-VERIFICATIONS.md`
+**Archive:** `.planning/milestones/v1.12-ROADMAP.md`, `.planning/milestones/v1.12-REQUIREMENTS.md`, `.planning/milestones/v1.12-MILESTONE-AUDIT.md`, `.planning/milestones/v1.12-VERIFICATIONS.md`
 
-## Current Milestone: v1.12 Secure Node Connectivity and SSH Tunnel Revisit
+## Current Milestone
 
-**Goal:** Revisit OpenRustClaw's node model around a node-first remote connectivity path, while providing an SSH tunnel fallback and a reverse-proxy last-resort fallback when the preferred node path is unavailable or unhealthy.
-
-**Target features:**
-- define one bounded node and topology contract across local runtime, distributed nodes, mobile nodes, and SSH-tunneled remote access
-- align the primary remote-connectivity path with OpenClaw-style node usage instead of treating tunnels as the default transport
-- add an explicit SSH tunnel fallback path for self-hosted remote connectivity when the node path fails or cannot be established
-- define a bounded reverse-proxy fallback as the third failsafe when node-first and SSH tunnel paths are unavailable
-- expose remote-node, failover, and tunnel health, enrollment, and recovery evidence through shipped operator surfaces
-- align onboarding and docs so operators can choose local-only, remote-node, or SSH-tunneled deployments deliberately
+No active milestone is open. Use `$gsd-new-milestone` to define the next cycle.
 
 ## Requirements
 
@@ -68,13 +60,11 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 - ✓ OpenRustClaw now has a canonical docs ownership contract, rewritten entry surfaces, aligned getting-started and operator guides, and a standing docs audit and maintenance workflow — v1.7 Phases 32-36
 - ✓ The public GitHub repo entry surface, discovery metadata, and GitHub workflow-health contract now match the shipped product and can be revalidated through repeatable admin helpers — v1.9 Phases 41-44
 - ✓ Tagged GitHub releases now publish truthful tarball and checksum assets for all supported targets, with one repeatable operator validation path — v1.10 Phases 45-48
+- ✓ Node-first remote connectivity, SSH tunnel fallback, reverse-proxy last resort, and the saved remote-connectivity profile are now aligned across onboarding, setup state, operator handoff, and docs — v1.12 Phases 53-56
 
 ### Active
 
-- [ ] OpenRustClaw must define one truthful node and topology model that explains when operators are using a local runtime, a mobile node, a distributed cluster node, or an SSH-tunneled remote control path — v1.12
-- [ ] Operators must have one explicit supported node-first remote connectivity path plus an SSH tunnel fallback and bounded reverse-proxy fallback for remote node or remote control setups, with clear trust boundaries and config ownership — v1.12
-- [ ] Shipped operator surfaces must expose remote-node connectivity, failover state, tunnel state, reverse-proxy fallback state, and recovery evidence instead of leaving operators to infer failures from raw endpoints — v1.12
-- [ ] Onboarding and docs must explain standard local deployment versus advanced remote node or SSH tunnel deployment, including when and how to switch between them — v1.12
+- [ ] No active milestone requirements until the next milestone opens
 
 ### Out of Scope
 
@@ -85,13 +75,9 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 ## Context
 
-This remains a large brownfield Rust monorepo with broad runtime, CLI, control-plane, memory, tools, channel, voice, browser, deployment, and operator surfaces. v1.0 converted that breadth into a cleaner MVP by making operator trust visible at the edges that matter, v1.1 hardened the lifecycle and enterprise baseline around that trust, v1.2 deepened the most operator-visible OpenClaw parity surfaces without reopening MVP sprawl, v1.3 turned the first enterprise and supervised-autonomy contracts into a coherent operator loop, v1.4 extended that loop into explicit governance and operator-gated full autonomy, v1.5 made the platform legible as one self-hosted open-source product with explicit deployment paths and transition visibility, v1.6 turned onboarding and setup into one truthful lifecycle from first install through repair and handoff, v1.7 made the documentation set legible enough to match the shipped product baseline, v1.8 converted cleanup debt into an explicit maintained contract instead of leaving it as background churn, v1.9 repaired the public GitHub repo surface, and v1.10 restored the final broken public automation lane around tagged binary releases.
+This remains a large brownfield Rust monorepo with broad runtime, CLI, control-plane, memory, tools, channel, voice, browser, deployment, and operator surfaces. v1.0 converted that breadth into a cleaner MVP by making operator trust visible at the edges that matter, v1.1 hardened the lifecycle and enterprise baseline around that trust, v1.2 deepened the most operator-visible OpenClaw parity surfaces without reopening MVP sprawl, v1.3 turned the first enterprise and supervised-autonomy contracts into a coherent operator loop, v1.4 extended that loop into explicit governance and operator-gated full autonomy, v1.5 made the platform legible as one self-hosted open-source product with explicit deployment paths and transition visibility, v1.6 turned onboarding and setup into one truthful lifecycle from first install through repair and handoff, v1.7 made the documentation set legible enough to match the shipped product baseline, v1.8 converted cleanup debt into an explicit maintained contract instead of leaving it as background churn, v1.9 repaired the public GitHub repo surface, v1.10 restored the final broken public automation lane around tagged binary releases, and v1.11 extended that distribution story into the Rust ecosystem through the first truthful crates.io and docs.rs publication path.
 
-The most recent milestone closed a trust gap at the public release edge: GitHub tags now produce truthful downloadable binary artifacts again, and the repo has one repeatable operator validation loop for future release tags. The next milestone can build on a working release-distribution baseline instead of first repairing it.
-
-The most recent milestone extended that public distribution story from GitHub release binaries into the Rust ecosystem itself. Instead of over-claiming the whole workspace, v1.11 published a curated first crate surface around `openrustclaw-core`, aligned its package metadata and docs.rs contract, and proved the end-to-end public publication path.
-
-The next milestone revisits a different trust gap: node and remote-connectivity behavior exists across mobile and distributed surfaces, but onboarding still effectively tells operators to provide their own tunnel or reverse proxy. v1.12 turns that implied workaround into an explicit product contract around node roles, a node-first remote path, an SSH tunnel fallback, a reverse-proxy last-resort fallback, and operator-visible connectivity state.
+The most recent milestone closed a different operator trust gap: remote connectivity is no longer left as improvised tunnel advice. v1.12 aligned the docs, onboarding copy, setup state, and Control UI handoff around one bounded contract: node-first where supported, SSH tunnel as the main fallback, reverse proxy as the bounded last resort.
 
 ## Constraints
 
@@ -131,10 +117,7 @@ The next milestone revisits a different trust gap: node and remote-connectivity 
 
 ## Next Milestone Goals
 
-- define the node and topology contract across local, mobile, distributed, and SSH-tunneled remote access paths
-- ship one explicit node-first remote path plus an SSH tunnel fallback and reverse-proxy last-resort fallback for advanced self-hosted remote deployments
-- surface remote-node connectivity, failover, and recovery state through shipped operator inspection paths
-- align onboarding and docs with the supported local versus remote connectivity modes
+- No active next-milestone goals yet — use `$gsd-new-milestone` to open the next cycle
 
 ## Evolution
 
@@ -154,4 +137,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-28 after starting v1.12*
+*Last updated: 2026-03-28 after completing v1.12*

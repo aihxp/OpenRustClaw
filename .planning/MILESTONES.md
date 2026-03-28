@@ -1,5 +1,20 @@
 # Project Milestones: OpenRustClaw
 
+## v1.12 Secure Node Connectivity and SSH Tunnel Revisit (Shipped: 2026-03-28)
+
+**Phases completed:** 4 phases, 4 plans, 0 tasks
+**Verification archive:** `.planning/milestones/v1.12-VERIFICATIONS.md`
+**Verification debt:** none
+
+**Key accomplishments:**
+
+- Defined one bounded node and topology contract across local runtime, distributed and mobile nodes, SSH tunnel fallback, and reverse-proxy last-resort recovery.
+- Persisted the chosen remote-connectivity profile in onboarding and setup state instead of leaving remote access as transient tunnel guidance.
+- Surfaced the saved primary remote path and fallback order in the shipped `Setup Handoff` operator surface.
+- Aligned installation, quickstart, deployment docs, and milestone verification around the same node-first remote-connectivity story.
+
+---
+
 ## v1.11 Crates.io and Docs.rs Publication Foundation (Shipped: 2026-03-28)
 
 **Phases completed:** 4 phases, 4 plans, 0 tasks
