@@ -14,7 +14,7 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 - **Shipped milestones:** v1.0 Rust OpenClaw MVP, v1.1 Lifecycle Integrity and Enterprise Foundations, v1.2 Deeper OpenClaw Surface Parity, v1.3 Enterprise Expansion and Supervised Autonomy Foundations, v1.4 Enterprise Governance and Operator-Gated Full Autonomy, v1.5 Self-Hosted Product Modes and Lifecycle Packaging, v1.6 Proper Onboarding and Setup, v1.7 Documentation Convergence and OpenClaw-Inspired Docs Rewrite, v1.8 Clean Codebase, and v1.9 GitHub Repository Presence and Actions Recovery
 - **Archive:** `.planning/milestones/v1.0-*` through `.planning/milestones/v1.9-*`
-- **Planning state:** no active milestone is open
+- **Planning state:** v1.10 is open and ready for Phase 45 planning
 - **Known audit debt:** v1.0 archive still records missing phase `VERIFICATION.md` artifacts; v1.1 closed that workflow gap going forward
 
 ## Most Recent Milestone: v1.9 GitHub Repository Presence and Actions Recovery
@@ -23,9 +23,15 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 **Archive:** `.planning/milestones/v1.9-ROADMAP.md`, `.planning/milestones/v1.9-REQUIREMENTS.md`, `.planning/milestones/v1.9-MILESTONE-AUDIT.md`, `.planning/milestones/v1.9-VERIFICATIONS.md`
 
-## Current Milestone
+## Current Milestone: v1.10 Release Binaries Workflow Recovery
 
-No active milestone is open. Use `$gsd-new-milestone` to define the next cycle.
+**Goal:** Make the GitHub `Release Binaries` workflow produce truthful, repeatable tagged OpenRustClaw release artifacts again.
+
+**Target features:**
+- audit the live `release-binaries.yml` failures against the current tagged workflow runs
+- repair Linux release-build dependencies for `x86_64-unknown-linux-gnu` and `aarch64-unknown-linux-gnu`
+- harden the publish path so successful tag builds actually upload release assets to GitHub Releases
+- add a repeatable release verification and operator runbook path for future milestone tags
 
 ## Requirements
 
@@ -62,7 +68,10 @@ No active milestone is open. Use `$gsd-new-milestone` to define the next cycle.
 
 ### Active
 
-- [ ] No active milestone requirements until the next milestone opens
+- [ ] Tagged `Release Binaries` workflow runs must execute against the current repo and release packaging contract without immediate Linux dependency failures
+- [ ] Linux release targets must either build successfully on GitHub-hosted runners or be explicitly re-scoped with truthful target support boundaries
+- [ ] Successful tagged release runs must publish the expected tarball and checksum artifacts to GitHub Releases
+- [ ] The release workflow must have one repeatable verification and operator recovery path
 
 ### Out of Scope
 
@@ -75,7 +84,7 @@ No active milestone is open. Use `$gsd-new-milestone` to define the next cycle.
 
 This remains a large brownfield Rust monorepo with broad runtime, CLI, control-plane, memory, tools, channel, voice, browser, deployment, and operator surfaces. v1.0 converted that breadth into a cleaner MVP by making operator trust visible at the edges that matter, v1.1 hardened the lifecycle and enterprise baseline around that trust, v1.2 deepened the most operator-visible OpenClaw parity surfaces without reopening MVP sprawl, v1.3 turned the first enterprise and supervised-autonomy contracts into a coherent operator loop, v1.4 extended that loop into explicit governance and operator-gated full autonomy, v1.5 made the platform legible as one self-hosted open-source product with explicit deployment paths and transition visibility, v1.6 turned onboarding and setup into one truthful lifecycle from first install through repair and handoff, v1.7 made the documentation set legible enough to match the shipped product baseline, and v1.8 converted cleanup debt into an explicit maintained contract instead of leaving it as background churn.
 
-The most recent milestone was outward-facing: the public GitHub repo now has truthful About and topic metadata, and the Actions page now reflects the current verification story with a passing `main` CI and E2E surface. The next milestone can build on a cleaner GitHub baseline instead of first repairing public repo drift.
+The most recent milestone was outward-facing: the public GitHub repo now has truthful About and topic metadata, and the Actions page now reflects the current verification story with a passing `main` CI and E2E surface. The next milestone narrows onto the remaining broken public automation lane: the tagged `Release Binaries` workflow still fails on Linux release packaging and currently does not produce a trustworthy release artifact path.
 
 ## Constraints
 
@@ -110,7 +119,10 @@ The most recent milestone was outward-facing: the public GitHub repo now has tru
 
 ## Next Milestone Goals
 
-- No active next-milestone goals yet — use `$gsd-new-milestone` to open the next cycle
+- Audit the current `Release Binaries` workflow failures against live tag-triggered runs
+- Repair Linux release-build dependency gaps and cross-compilation setup
+- Make tagged release publishing produce the expected GitHub release artifacts
+- Add a repeatable release verification and operator runbook path
 
 ## Evolution
 
@@ -130,4 +142,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-28 after completing v1.9*
+*Last updated: 2026-03-28 after starting v1.10*

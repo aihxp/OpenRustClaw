@@ -1,13 +1,60 @@
 # Requirements: OpenRustClaw
 
-No active milestone requirements are currently open.
+## Active Milestone: v1.10 Release Binaries Workflow Recovery
 
-## Most Recent Archive
+Defined: 2026-03-28
 
-- Last shipped milestone: `v1.9 GitHub Repository Presence and Actions Recovery`
-- Archived requirements: `.planning/milestones/v1.9-REQUIREMENTS.md`
-- Archived verification bundle: `.planning/milestones/v1.9-VERIFICATIONS.md`
+### Core Value
 
-## Next Step
+Make OpenRustClaw's tagged release automation truthful again so a version tag can reliably produce the artifacts operators expect to download.
 
-Use `$gsd-new-milestone` to define the next active requirement set.
+## Active Requirements
+
+### REL-01 Live Failure Contract
+
+Tagged `Release Binaries` workflow failures must be tied to the current repo and live GitHub Actions evidence, not guessed from stale assumptions.
+
+**Acceptance criteria**
+- The current failing tagged workflow run is inspected and summarized in milestone artifacts.
+- The release workflow contract clearly states which targets are currently supported and why.
+- Known failures are translated into executable repair work instead of being left as vague CI debt.
+
+### REL-02 Linux Release Build Recovery
+
+The Linux release targets in `release-binaries.yml` must either build successfully on GitHub-hosted runners or be explicitly re-scoped with truthful support boundaries.
+
+**Acceptance criteria**
+- `x86_64-unknown-linux-gnu` no longer fails immediately on missing system dependency setup.
+- `aarch64-unknown-linux-gnu` has a truthful cross-compile path or is explicitly removed from the shipped release contract.
+- Any new target-specific environment or package requirements are documented in the repo.
+
+### REL-03 Release Asset Publish Contract
+
+Successful tagged release runs must produce the expected release archives and checksum artifacts and publish them to GitHub Releases.
+
+**Acceptance criteria**
+- The workflow emits the expected packaged artifacts for all supported targets.
+- The publish job consumes those artifacts without mismatched names or missing files.
+- A successful tagged run leaves verifiable release assets attached to the GitHub release.
+
+### REL-04 Repeatable Release Verification
+
+The repo must contain one repeatable operator path for validating or recovering the release workflow without rediscovering the same failure modes by hand.
+
+**Acceptance criteria**
+- The repo includes a documented release verification or recovery path.
+- Operators can validate the live workflow state from local tooling.
+- Milestone closeout preserves the release verification evidence.
+
+## Out of Scope
+
+- Redesigning packaging or distribution for every possible platform beyond the current release workflow scope.
+- Building installers, package-manager publishing, or a separate auto-update system in this milestone.
+- Reworking unrelated `main` CI or E2E pipelines unless they directly block `release-binaries.yml`.
+
+## Traceability
+
+- Phase 45: Release Workflow Failure Audit and Target Contract -> REL-01
+- Phase 46: Linux Release Build Dependency Repair -> REL-02
+- Phase 47: Release Publish Path and Tag Contract Hardening -> REL-03
+- Phase 48: Release Verification and Operator Exit -> REL-04

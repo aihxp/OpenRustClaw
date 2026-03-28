@@ -1,16 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: none
-milestone_name: null
-current_phase: null
-current_phase_name: null
+milestone: v1.10
+milestone_name: Release Binaries Workflow Recovery
+current_phase: 45
+current_phase_name: Release Workflow Failure Audit and Target Contract
 current_plan: null
-status: No active milestone; v1.9 archived and shipped
-stopped_at: Awaiting the next milestone definition via $gsd-new-milestone.
-last_updated: "2026-03-28T00:41:00Z"
-last_activity: 2026-03-28 -- archived v1.9 GitHub Repository Presence and Actions Recovery
+status: Ready to plan Phase 45
+stopped_at: Milestone initialized; next step is Phase 45 planning.
+last_updated: "2026-03-28T01:18:00Z"
+last_activity: 2026-03-28 -- initialized v1.10 release-binaries workflow recovery
 progress:
-  total_phases: 0
+  total_phases: 4
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -24,19 +24,19 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-28)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** Await the next milestone
+**Current focus:** Plan Phase 45 release workflow failure audit
 
 ## Current Position
 
-Current Phase: -
-Current Phase Name: -
-Total Phases: 0
+Current Phase: 45
+Current Phase Name: Release Workflow Failure Audit and Target Contract
+Total Phases: 4
 Current Plan: -
 Total Plans in Phase: 0
-Status: No active milestone; v1.9 archived and shipped
-Last activity: 2026-03-28 -- archived v1.9 GitHub Repository Presence and Actions Recovery
+Status: Ready to plan Phase 45
+Last activity: 2026-03-28 -- initialized v1.10 release-binaries workflow recovery
 
-Phase: 0 of 0
+Phase: 0 of 4
 Plan: 0 of 0
 Progress: [----------] 0%
 
@@ -67,6 +67,7 @@ Recent decisions affecting current work:
 - v1.8 converted codebase cleanup into an explicit contract with a maintained inventory, CI-safe repo-hygiene checks, and a bounded `start/auth.rs` extraction.
 - Phase 40 added a repo-hygiene verification script, wired it into CI, and preserved a rerun bundle for future cleanup follow-up work.
 - v1.9 closed the public GitHub drift by aligning repo metadata, topics, workflow health, and repo-admin verification with the shipped product surface.
+- v1.10 is focused on the remaining broken public automation lane: the tagged `Release Binaries` workflow still fails on Linux dependency and cross-compile setup before publish can complete.
 
 ### Pending Todos
 
@@ -78,6 +79,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-28 00:41
-Stopped at: Awaiting the next milestone definition via $gsd-new-milestone.
+Last session: 2026-03-28 01:18
+Stopped at: Milestone initialized; next step is Phase 45 planning.
 Resume file: None
