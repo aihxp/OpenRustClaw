@@ -18,14 +18,77 @@
 - ✅ **v1.13 Brownfield-to-Greenfield Transition** — shipped 2026-03-28. Archive: `.planning/milestones/v1.13-ROADMAP.md`
 - ✅ **v1.14 Continued Greenfield Conversion** — shipped 2026-03-28. Archive: `.planning/milestones/v1.14-ROADMAP.md`
 - ✅ **v1.15 Deeper Greenfield Conversion** — shipped 2026-03-28. Archive: `.planning/milestones/v1.15-ROADMAP.md`
+- 🚧 **v1.16 Greenfield Conversion: Skills and Runtime Hotspots** — active
 
 ## Current Status
 
-- Active milestone: none
-- Progress: 0 active phases
+- Active milestone: **v1.16 Greenfield Conversion: Skills and Runtime Hotspots**
+- Progress: 0 of 4 phases complete
 - Most recent shipment: **v1.15 Deeper Greenfield Conversion**
-- Next step: `$gsd-new-milestone`
+- Current execution: **Milestone defined; ready for Phase 69**
+- Next step: `$gsd-discuss-phase 69`, `$gsd-plan-phase 69`, or `$gsd-autonomous`
 
 ## Live Planning
 
-No active milestone is open. The last completed roadmap is archived at `.planning/milestones/v1.15-ROADMAP.md`.
+### Phase Checklist
+
+- [ ] **Phase 69: Remaining Skills Plugin Lifecycle Boundary**
+- [ ] **Phase 70: Runtime Vault and Secret Mutation Boundary**
+- [ ] **Phase 71: Runtime Recovery and Upgrade Boundary**
+- [ ] **Phase 72: High-Value Control Route Follow-On Extraction**
+
+### Phase 69: Remaining Skills Plugin Lifecycle Boundary
+
+**Goal:** Move the next remaining plugin-binding, auth-plugin, or voice-plugin mutation lane out of `skills.rs` so the hotspot keeps shrinking after the first registry-mutation extraction.
+
+**Success criteria:**
+- one real remaining plugin-lifecycle mutation lane is composed through `openrustclaw-app`
+- `skills.rs` becomes the adapter for the migrated plugin lane instead of owning the business rules directly
+- verification proves the shipped CLI and control/runtime mutation contract still behaves truthfully
+
+**Plans:** 0/1 plans complete
+
+Plans:
+- [ ] 69-01 Extract the next remaining plugin-lifecycle mutation lane from `skills.rs`
+
+### Phase 70: Runtime Vault and Secret Mutation Boundary
+
+**Goal:** Move one real runtime vault, secret, or equivalent configuration-mutation seam into the greenfield lane so `runtime.rs` stops owning more high-risk mutation logic directly.
+
+**Success criteria:**
+- one real runtime vault or secret mutation seam is built by `openrustclaw-app`
+- the shipped CLI and control API contract remains intact
+- verification proves the migrated runtime mutation path still behaves truthfully
+
+**Plans:** 0/1 plans complete
+
+Plans:
+- [ ] 70-01 Extract the runtime vault or secret mutation lane
+
+### Phase 71: Runtime Recovery and Upgrade Boundary
+
+**Goal:** Migrate one larger runtime recovery, backup, reload, or upgrade-planning seam behind a cleaner application service so the greenfield transition expands beyond the first bounded provider-switch lane.
+
+**Success criteria:**
+- one larger runtime recovery or upgrade-oriented seam moves behind a stable service boundary
+- operator-facing runtime behavior remains stable from the shipped contract perspective
+- verification proves the migrated command path still behaves truthfully
+
+**Plans:** 0/1 plans complete
+
+Plans:
+- [ ] 71-01 Extract one larger runtime recovery or upgrade seam
+
+### Phase 72: High-Value Control Route Follow-On Extraction
+
+**Goal:** Move one more bounded `/control/...` route family behind the new greenfield services introduced by this milestone if it materially reduces remaining legacy coupling.
+
+**Success criteria:**
+- one real bounded control route family moves behind a stable application seam
+- the runtime API contract remains intact
+- the extraction clearly reduces remaining cross-calls around the migrated runtime or skills surfaces
+
+**Plans:** 0/1 plans complete
+
+Plans:
+- [ ] 72-01 Extract one high-value follow-on control route family
