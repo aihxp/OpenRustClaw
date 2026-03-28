@@ -488,8 +488,11 @@ impl WhatsAppChannel {
                                 // Apply rate limiting
                                 rate_limiter.until_ready().await;
 
-                                let (chat_jid, chat_id) =
-                                    normalize_whatsapp_chat_target(from, *is_group, group_id.as_deref());
+                                let (chat_jid, chat_id) = normalize_whatsapp_chat_target(
+                                    from,
+                                    *is_group,
+                                    group_id.as_deref(),
+                                );
 
                                 let incoming = IncomingMessage {
                                     session_id: Uuid::new_v4(),
@@ -545,8 +548,11 @@ impl WhatsAppChannel {
                                     format_media_type(&media.media_type),
                                     media.caption.as_deref().unwrap_or("No caption")
                                 );
-                                let (chat_jid, chat_id) =
-                                    normalize_whatsapp_chat_target(from, *is_group, group_id.as_deref());
+                                let (chat_jid, chat_id) = normalize_whatsapp_chat_target(
+                                    from,
+                                    *is_group,
+                                    group_id.as_deref(),
+                                );
 
                                 let incoming = IncomingMessage {
                                     session_id: Uuid::new_v4(),

@@ -1556,8 +1556,7 @@ impl Channel for GmailPubSub {
                     let Some(message_id) = message_id else {
                         return Err(ChannelError::InvalidFormat {
                             platform: "gmail".to_string(),
-                            message: "Missing gmail_message_id for gmail_action=reply"
-                                .to_string(),
+                            message: "Missing gmail_message_id for gmail_action=reply".to_string(),
                         }
                         .into());
                     };
@@ -1569,8 +1568,7 @@ impl Channel for GmailPubSub {
                     let Some(message_id) = message_id else {
                         return Err(ChannelError::InvalidFormat {
                             platform: "gmail".to_string(),
-                            message: "Missing gmail_message_id for gmail_action=label"
-                                .to_string(),
+                            message: "Missing gmail_message_id for gmail_action=label".to_string(),
                         }
                         .into());
                     };
@@ -1592,20 +1590,14 @@ impl Channel for GmailPubSub {
                         .into());
                     };
                     self.runtime
-                        .modify_labels(
-                            &message_id,
-                            Vec::new(),
-                            vec!["INBOX".to_string()],
-                            &token,
-                        )
+                        .modify_labels(&message_id, Vec::new(), vec!["INBOX".to_string()], &token)
                         .await
                 }
                 "delete" => {
                     let Some(message_id) = message_id else {
                         return Err(ChannelError::InvalidFormat {
                             platform: "gmail".to_string(),
-                            message: "Missing gmail_message_id for gmail_action=delete"
-                                .to_string(),
+                            message: "Missing gmail_message_id for gmail_action=delete".to_string(),
                         }
                         .into());
                     };
