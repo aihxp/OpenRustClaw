@@ -25,6 +25,8 @@ Choose:
 - a deployment mode: `solo`, `team`, `company`, or `enterprise`
 - a setup depth: `Standard`, `Advanced`, or `Custom`
 
+If you enter the advanced remote gateway guidance path, onboarding now saves the intended remote-connectivity profile so later operator surfaces can show the chosen primary path and fallback order.
+
 ## 2. Verify Readiness
 
 ```bash
@@ -77,6 +79,7 @@ http://127.0.0.1:18789/control/ui
 Use it to confirm:
 
 - `Setup Handoff` reflects the current workspace state
+- `Setup Handoff` shows the saved remote-connectivity path and fallback order when remote guidance was selected
 - `Self-Hosted Product Mode` matches the deployment mode you selected
 - session continuity and recent memory or tool activity are visible
 - runtime and enterprise surfaces are available for the current workspace
@@ -88,7 +91,7 @@ You can upgrade or downgrade the deployment mode later from the shipped product-
 ## Next Steps
 
 - [First Agent](./first-agent.md)
+- [Remote Connectivity](../deployment/remote-connectivity.md)
 - [Production Deployment](../deployment/production.md)
 - [Security](../guides/security.md)
 - [Observability & Monitoring](../operations/observability.md)
-

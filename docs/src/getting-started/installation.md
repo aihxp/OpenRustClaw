@@ -77,6 +77,12 @@ The onboarding flow now does the real first-start work:
 | `Advanced` | operators who want deeper configuration choices up front |
 | `Custom` | operators who want the most explicit control over what gets configured |
 
+If you choose advanced remote guidance during setup, OpenRustClaw now saves the intended remote-connectivity profile as part of the setup contract:
+
+- prefer a node-first path
+- use SSH tunnel as the first fallback
+- use reverse proxy only as a bounded last resort
+
 ## 4. Verify Readiness
 
 After onboarding, run:
@@ -116,5 +122,5 @@ Python is no longer part of the default production path. Install and run the sid
 
 - [Quickstart](./quickstart.md) for the first persisted assistant loop
 - [First Agent](./first-agent.md) for a first useful assistant workflow
+- [Remote Connectivity](../deployment/remote-connectivity.md) for advanced remote topology decisions
 - [Production Deployment](../deployment/production.md) for operator-managed environments
-

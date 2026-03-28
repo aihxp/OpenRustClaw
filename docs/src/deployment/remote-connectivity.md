@@ -65,6 +65,7 @@ As of `v1.12` planning:
 - mobile nodes are shipped and inspectable
 - distributed runtime components exist, but the broader distributed lane remains gated from the shipped surface
 - onboarding does not yet automate a complete node-first remote bootstrap
+- onboarding now records the intended remote-connectivity profile in setup state and the `Setup Handoff` surface
 - SSH tunnel and reverse proxy remain operator-managed advanced paths until later phases harden the bootstrap and inspection flow
 
 ## Operator Rules
