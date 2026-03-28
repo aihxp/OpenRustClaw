@@ -1,5 +1,20 @@
 # Project Milestones: OpenRustClaw
 
+## v1.11 Crates.io and Docs.rs Publication Foundation (Shipped: 2026-03-28)
+
+**Phases completed:** 4 phases, 4 plans, 0 tasks
+**Verification archive:** `.planning/milestones/v1.11-VERIFICATIONS.md`
+**Verification debt:** none
+
+**Key accomplishments:**
+
+- Selected `openrustclaw-core` as the first public crate boundary instead of over-claiming the whole workspace.
+- Normalized crates.io metadata and added an explicit docs.rs build contract plus a real crate-level documentation entry surface.
+- Added a repeatable crates.io readiness script and operator runbook for future package releases.
+- Published `openrustclaw-core v0.1.0` to crates.io and confirmed docs.rs availability.
+
+---
+
 ## v1.10 Release Binaries Workflow Recovery (Shipped: 2026-03-28)
 
 **Phases completed:** 4 phases, 4 plans, 0 tasks
