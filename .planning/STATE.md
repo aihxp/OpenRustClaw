@@ -5,14 +5,14 @@ milestone_name: Crates.io and Docs.rs Publication Foundation
 current_phase: 52
 current_phase_name: First Public Package Release Exit
 current_plan: null
-status: Phase 51 complete; Phase 52 next
-stopped_at: Continue with Phase 52 live publication exit.
+status: Phase 52 blocked on missing crates.io credentials
+stopped_at: Provide crates.io auth (`cargo login` or `CARGO_REGISTRY_TOKEN`) and rerun $gsd-autonomous.
 last_updated: "2026-03-28T03:19:17Z"
-last_activity: 2026-03-28 -- completed Phase 51 Crates.io Publish Path and Dry-Run Verification
+last_activity: 2026-03-28 -- attempted live crates.io publish; blocked by missing auth
 progress:
   total_phases: 4
   completed_phases: 3
-  total_plans: 3
+  total_plans: 4
   completed_plans: 3
   percent: 75
 ---
@@ -24,7 +24,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-28)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** v1.11 Phase 52 First Public Package Release Exit
+**Current focus:** v1.11 blocked at Phase 52 pending crates.io auth
 
 ## Current Position
 
@@ -32,9 +32,9 @@ Current Phase: 52
 Current Phase Name: First Public Package Release Exit
 Total Phases: 4
 Current Plan: -
-Total Plans in Phase: 0
-Status: Phase 51 complete; Phase 52 next
-Last activity: 2026-03-28 -- completed Phase 51 Crates.io Publish Path and Dry-Run Verification
+Total Plans in Phase: 1
+Status: Phase 52 blocked on missing crates.io credentials
+Last activity: 2026-03-28 -- attempted live crates.io publish; blocked by missing auth
 
 Phase: 3 of 4
 Plan: 0 of 0
@@ -72,6 +72,7 @@ Recent decisions affecting current work:
 - Phase 49 locked the first public crate boundary around `openrustclaw-core` and corrected the workspace repo metadata for crates.io discovery.
 - Phase 50 added an explicit docs.rs build contract and a real crate-level rustdoc landing surface for `openrustclaw-core`.
 - Phase 51 added a rerunnable crates.io readiness script, a docs-site publish runbook, and a passing publish dry-run for `openrustclaw-core`.
+- Phase 52 confirmed the final blocker is live crates.io auth: `cargo publish -p openrustclaw-core --allow-dirty` fails with `no token found`.
 
 ### Pending Todos
 
@@ -84,5 +85,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-28 02:22
-Stopped at: Continue with Phase 52 live publication exit.
+Stopped at: Provide crates.io auth (`cargo login` or `CARGO_REGISTRY_TOKEN`) and rerun $gsd-autonomous.
 Resume file: None

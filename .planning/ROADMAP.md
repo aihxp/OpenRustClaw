@@ -20,8 +20,8 @@
 - Active milestone: **v1.11 Crates.io and Docs.rs Publication Foundation**
 - Progress: 3 of 4 phases complete
 - Most recent shipment: **v1.10 Release Binaries Workflow Recovery**
-- Current execution: **Phase 51 complete**
-- Next step: Phase 52, First Public Package Release Exit
+- Current execution: **Phase 52 blocked**
+- Next step: provide crates.io auth, then rerun Phase 52
 
 ## Live Planning
 
@@ -82,3 +82,10 @@ Plans:
 - the first public publication is completed or blocked with preserved evidence
 - post-publish checks cover crates.io and docs.rs visibility
 - milestone verification archives the public package evidence bundle
+
+**Plans:** 1 plan in progress
+
+Plans:
+- [ ] 52-01 Attempt the first public crate release
+
+**Current blocker:** `cargo publish -p openrustclaw-core --allow-dirty` fails with `no token found, please run cargo login` because neither `CARGO_REGISTRY_TOKEN` nor `~/.cargo/credentials.toml` is present in this environment.
