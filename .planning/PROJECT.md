@@ -14,7 +14,7 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 - **Shipped milestones:** v1.0 Rust OpenClaw MVP, v1.1 Lifecycle Integrity and Enterprise Foundations, v1.2 Deeper OpenClaw Surface Parity, v1.3 Enterprise Expansion and Supervised Autonomy Foundations, v1.4 Enterprise Governance and Operator-Gated Full Autonomy, v1.5 Self-Hosted Product Modes and Lifecycle Packaging, v1.6 Proper Onboarding and Setup, v1.7 Documentation Convergence and OpenClaw-Inspired Docs Rewrite, v1.8 Clean Codebase, v1.9 GitHub Repository Presence and Actions Recovery, v1.10 Release Binaries Workflow Recovery, v1.11 Crates.io and Docs.rs Publication Foundation, v1.12 Secure Node Connectivity and SSH Tunnel Revisit, v1.13 Brownfield-to-Greenfield Transition, v1.14 Continued Greenfield Conversion, and v1.15 Deeper Greenfield Conversion
 - **Archive:** `.planning/milestones/v1.0-*` through `.planning/milestones/v1.15-*`
-- **Planning state:** no active milestone is open
+- **Planning state:** v1.16 is active
 - **Known audit debt:** v1.0 archive still records missing phase `VERIFICATION.md` artifacts; v1.1 closed that workflow gap going forward
 
 ## Most Recent Milestone: v1.15 Deeper Greenfield Conversion
@@ -23,9 +23,15 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 **Archive:** `.planning/milestones/v1.15-ROADMAP.md`, `.planning/milestones/v1.15-REQUIREMENTS.md`, `.planning/milestones/v1.15-MILESTONE-AUDIT.md`, `.planning/milestones/v1.15-VERIFICATIONS.md`
 
-## Current Milestone
+## Current Milestone: v1.16 Greenfield Conversion: Skills and Runtime Hotspots
 
-No active milestone is open. Use `$gsd-new-milestone` to define the next cycle.
+**Goal:** Continue the greenfield transition by extracting the next remaining mutation-heavy `skills.rs` lanes and the next larger runtime command seams out of legacy command hubs without breaking the shipped operator surface.
+
+**Target features:**
+- migrate the remaining plugin-binding and voice-plugin mutation lanes out of `skills.rs`
+- extract runtime vault or secret mutation behind a stable application service seam
+- extract one larger runtime recovery or upgrade command seam behind the greenfield lane
+- move one more bounded `/control/...` route family behind the new application services if it materially reduces remaining hub coupling
 
 ## Requirements
 
@@ -76,7 +82,10 @@ No active milestone is open. Use `$gsd-new-milestone` to define the next cycle.
 
 ### Active
 
-- [ ] No active milestone requirements until the next milestone opens
+- [ ] Remaining plugin-binding and voice-plugin mutation behavior should stop deepening `skills.rs` and move behind one stable greenfield service boundary — target v1.16
+- [ ] Runtime vault or secret mutation should move out of `runtime.rs` into `openrustclaw-app` while preserving the shipped control and CLI contract — target v1.16
+- [ ] One larger runtime recovery or upgrade seam should move behind the greenfield lane instead of staying in command-local orchestration — target v1.16
+- [ ] One more bounded control route family should call the new application services directly instead of reopening mixed command coupling — target v1.16
 
 ### Out of Scope
 
@@ -94,6 +103,8 @@ The most recent milestone changed the implementation posture instead of adding a
 The most recent milestone broadened that work into the next ranked migration queue. Instead of stopping at one proving slice, `v1.14` extended the greenfield lane across inspection summaries, selected control routes, mobile operator reporting, and the first bounded `skills.rs` cleanup seam.
 
 The most recent milestone deepened that same migration strategy without changing the contract. `v1.15` closed its planned queue: another inspection aggregate, another route family, the first mutation-heavy `skills.rs` seam, and the first bounded runtime command seam are now all completed.
+
+The next milestone keeps that same posture but focuses on the next ranked hotspots instead of restarting broad migration language. `v1.16` targets the remaining plugin-binding and voice-plugin `skills.rs` lanes, the next larger runtime mutation and recovery seams, and one more bounded route family only where it clearly shrinks the remaining legacy path.
 
 ## Constraints
 
@@ -142,10 +153,14 @@ The most recent milestone deepened that same migration strategy without changing
 | Use the enterprise access write family as the next bounded `start.rs` route extraction | The bootstrap, operator-upsert, and governance-rule-upsert handlers all shared the same mutation-and-report pattern, so extracting them together reduced real route coupling without changing the shipped enterprise summary contract | ✓ Good |
 | Use the install, update, and uninstall lane as the first mutation-heavy `skills.rs` extraction | That lane already powered the shipped control API and combined registry calls, policy checks, DB writes, compile attempts, and mutation-result shaping, so moving it first created a real service seam instead of another read-only helper split | ✓ Good |
 | Use the provider or model switch lane as the first bounded runtime command extraction | That lane already powered the shipped CLI and control API, owned real config mutation plus backup persistence, and stayed narrow enough to migrate without reopening the larger backup, reload, or upgrade surfaces in the same phase | ✓ Good |
+| Continue greenfield conversion by prioritizing the remaining `skills.rs` plugin lanes and larger `runtime.rs` seams before reopening broad new migration targets | The next honest hotspots are now the remaining mutation-heavy skills behavior and the larger runtime mutation and recovery lanes, with another route extraction only where it materially reduces coupling around those seams | ✓ Good |
 
 ## Next Milestone Goals
 
-- No active next-milestone goals yet — use `$gsd-new-milestone` to open the next cycle
+- migrate the remaining plugin-binding and voice-plugin mutation lanes out of `skills.rs`
+- extract runtime vault or secret mutation behind a stable application seam
+- extract one larger runtime recovery or upgrade command seam into the greenfield lane
+- move one more bounded control route family behind the new services if it materially reduces remaining legacy coupling
 
 ## Evolution
 
@@ -165,4 +180,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-28 after archiving v1.15 milestone*
+*Last updated: 2026-03-28 after starting v1.16 milestone*
