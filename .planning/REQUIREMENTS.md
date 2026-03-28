@@ -21,6 +21,8 @@ OpenRustClaw must move another real inspection or aggregation family out of `cra
 
 Another bounded runtime or `/control/...` route family must stop coupling directly to mixed command-local logic and instead call a stable application-facing service or adapter boundary.
 
+**Status:** Completed in v1.15 Phase 66 via the enterprise access control route family.
+
 **Acceptance signals:**
 - one real route family moves behind a cleaner service seam
 - route behavior remains stable from the runtime API perspective
@@ -52,4 +54,4 @@ At least one remaining runtime command seam must move behind a cleaner applicati
 
 ## Next Step
 
-Continue with `$gsd-discuss-phase 66`, `$gsd-plan-phase 66`, or `$gsd-autonomous`.
+Continue with `$gsd-discuss-phase 67`, `$gsd-plan-phase 67`, or `$gsd-autonomous`.

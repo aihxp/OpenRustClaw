@@ -61,6 +61,8 @@ The first bounded `skills.rs` seam is now shipped too. The compiled-skill overvi
 
 The enterprise admin aggregation now follows the same pattern too. `openrustclaw-app` owns the enterprise admin status, detail, and supervision composition, while `inspect.rs` only adapts enterprise access, policy, autonomy, and orchestration state into that shared service and preserves the shipped `/control/enterprise/admin` contract.
 
+The next route-family extraction is now shipped too. The enterprise access bootstrap, operator-upsert, and governance-rule-upsert flow now runs through `openrustclaw-app`, while `start.rs` only adapts HTTP payloads, records operator tool results, and returns the same enterprise access summary contract.
+
 ## Contributor Defaults
 
 When adding or changing behavior during this transition:

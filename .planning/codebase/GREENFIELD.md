@@ -139,6 +139,15 @@ The greenfield lane now also owns the enterprise admin aggregation:
 3. `inspect.rs` acts as the workspace adapter that maps enterprise state into that aggregation service
 4. the shipped `/control/enterprise/admin` route and Control UI continue to consume the same enterprise admin contract
 
+### Current Phase 66 Outcome
+
+The greenfield lane now also owns the first enterprise access write-route family:
+
+1. enterprise access persistence and protected-scope enforcement still live behind the existing CLI enterprise access module
+2. `openrustclaw-app` now owns the bootstrap, operator-upsert, governance-rule-upsert, and report-reload orchestration for that route family
+3. `start.rs` acts as the HTTP adapter that maps payloads into the shared service and records operator tool results
+4. the shipped `/control/enterprise/access/bootstrap`, `/control/enterprise/access/operators`, and `/control/enterprise/governance/rules` surface continues to return the same enterprise access summary contract
+
 ## Review Defaults
 
 When reviewing new work during `v1.13`:
@@ -172,11 +181,11 @@ After `v1.14`, the next `skills.rs` migration queue should start from the remain
 2. install and registry workflows
 3. auth-plugin and voice-plugin lifecycle helpers
 
-After Phase 65, the next ranked greenfield queue is:
+After Phase 66, the next ranked greenfield queue is:
 
-1. another bounded runtime or `/control/...` route family
-2. the mutation-heavy `skills.rs` lanes
-3. a bounded runtime command seam outside report composition
+1. the mutation-heavy `skills.rs` lanes
+2. a bounded runtime command seam outside report composition
+3. another bounded route family only if it materially improves the remaining migration path
 
 ## Verification Bundle
 

@@ -22,17 +22,17 @@
 ## Current Status
 
 - Active milestone: **v1.15 Deeper Greenfield Conversion**
-- Progress: 1 of 4 phases complete
+- Progress: 2 of 4 phases complete
 - Most recent shipment: **v1.14 Continued Greenfield Conversion**
-- Current execution: **Phase 66 not started**
-- Next step: `$gsd-discuss-phase 66`, `$gsd-plan-phase 66`, or `$gsd-autonomous`
+- Current execution: **Phase 67 not started**
+- Next step: `$gsd-discuss-phase 67`, `$gsd-plan-phase 67`, or `$gsd-autonomous`
 
 ## Live Planning
 
 ### Phase Checklist
 
 - [x] **Phase 65: Inspection Aggregation Expansion** (completed 2026-03-28)
-- [ ] **Phase 66: Additional Route Family Extraction**
+- [x] **Phase 66: Additional Route Family Extraction** (completed 2026-03-28)
 - [ ] **Phase 67: Skills Mutation and Registry Boundary**
 - [ ] **Phase 68: Runtime Command Boundary Cleanup**
 
@@ -58,6 +58,11 @@ Plans:
 - one real route family moves behind a stable service boundary
 - route behavior stays stable from the runtime API perspective
 - the migration reduces cross-calls from route handlers into mixed legacy command helpers
+
+**Plans:** 1/1 plans complete
+
+Plans:
+- [x] 66-01 Extract the enterprise access route family
 
 ### Phase 67: Skills Mutation and Registry Boundary
 
