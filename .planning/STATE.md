@@ -1,16 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: none
-milestone_name: null
-current_phase: null
-current_phase_name: null
+milestone: v1.12
+milestone_name: Secure Node Connectivity and SSH Tunnel Revisit
+current_phase: 53
+current_phase_name: Node Identity and Topology Contract
 current_plan: null
-status: No active milestone; v1.11 archived and shipped
-stopped_at: Awaiting the next milestone definition via $gsd-new-milestone.
-last_updated: "2026-03-28T04:27:57.349Z"
-last_activity: 2026-03-28 -- archived v1.11 Crates.io and Docs.rs Publication Foundation
+status: Defining requirements and roadmap for v1.12
+stopped_at: Run $gsd-plan-phase 53 or $gsd-autonomous to begin v1.12.
+last_updated: "2026-03-28T16:45:00.000Z"
+last_activity: 2026-03-28 -- started v1.12 Secure Node Connectivity and SSH Tunnel Revisit
 progress:
-  total_phases: 0
+  total_phases: 4
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -24,19 +24,19 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-28)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** Await the next milestone
+**Current focus:** Define and execute v1.12 Secure Node Connectivity and SSH Tunnel Revisit
 
 ## Current Position
 
-Current Phase: -
-Current Phase Name: -
-Total Phases: 0
+Current Phase: 53
+Current Phase Name: Node Identity and Topology Contract
+Total Phases: 4
 Current Plan: -
 Total Plans in Phase: 0
-Status: No active milestone; v1.11 archived and shipped
-Last activity: 2026-03-28 -- archived v1.11 Crates.io and Docs.rs Publication Foundation
+Status: Defining requirements and roadmap for v1.12
+Last activity: 2026-03-28 -- started v1.12 Secure Node Connectivity and SSH Tunnel Revisit
 
-Phase: 0 of 0
+Phase: 0 of 4
 Plan: 0 of 0
 Progress: [----------] 0%
 
@@ -73,6 +73,7 @@ Recent decisions affecting current work:
 - Phase 50 added an explicit docs.rs build contract and a real crate-level rustdoc landing surface for `openrustclaw-core`.
 - Phase 51 added a rerunnable crates.io readiness script, a docs-site publish runbook, and a passing publish dry-run for `openrustclaw-core`.
 - Phase 52 published `openrustclaw-core v0.1.0` to crates.io and confirmed docs.rs visibility for the new crate page.
+- v1.12 reopens the remote-connectivity story so nodes, advanced remote access, and SSH tunnel usage become an explicit product contract instead of an onboarding footnote.
 
 ### Pending Todos
 
@@ -84,6 +85,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-28 02:22
-Stopped at: Awaiting the next milestone definition via $gsd-new-milestone.
+Last session: 2026-03-28 12:45
+Stopped at: Run $gsd-plan-phase 53 or $gsd-autonomous to begin v1.12.
 Resume file: None

@@ -14,7 +14,7 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 - **Shipped milestones:** v1.0 Rust OpenClaw MVP, v1.1 Lifecycle Integrity and Enterprise Foundations, v1.2 Deeper OpenClaw Surface Parity, v1.3 Enterprise Expansion and Supervised Autonomy Foundations, v1.4 Enterprise Governance and Operator-Gated Full Autonomy, v1.5 Self-Hosted Product Modes and Lifecycle Packaging, v1.6 Proper Onboarding and Setup, v1.7 Documentation Convergence and OpenClaw-Inspired Docs Rewrite, v1.8 Clean Codebase, v1.9 GitHub Repository Presence and Actions Recovery, v1.10 Release Binaries Workflow Recovery, and v1.11 Crates.io and Docs.rs Publication Foundation
 - **Archive:** `.planning/milestones/v1.0-*` through `.planning/milestones/v1.11-*`
-- **Planning state:** no active milestone is open
+- **Planning state:** v1.12 is active
 - **Known audit debt:** v1.0 archive still records missing phase `VERIFICATION.md` artifacts; v1.1 closed that workflow gap going forward
 
 ## Most Recent Milestone: v1.11 Crates.io and Docs.rs Publication Foundation
@@ -23,9 +23,15 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 **Archive:** `.planning/milestones/v1.11-ROADMAP.md`, `.planning/milestones/v1.11-REQUIREMENTS.md`, `.planning/milestones/v1.11-MILESTONE-AUDIT.md`, `.planning/milestones/v1.11-VERIFICATIONS.md`
 
-## Current Milestone
+## Current Milestone: v1.12 Secure Node Connectivity and SSH Tunnel Revisit
 
-No active milestone is open. Use `$gsd-new-milestone` to define the next cycle.
+**Goal:** Revisit OpenRustClaw's node model and turn remote node and SSH tunnel usage into a truthful, operator-supported connectivity path instead of an implied workaround.
+
+**Target features:**
+- define one bounded node and topology contract across local runtime, distributed nodes, mobile nodes, and SSH-tunneled remote access
+- add an explicit SSH tunnel bootstrap path for self-hosted remote connectivity instead of relying on ad hoc tunnel guidance
+- expose remote-node and tunnel health, enrollment, and recovery evidence through shipped operator surfaces
+- align onboarding and docs so operators can choose local-only, remote-node, or SSH-tunneled deployments deliberately
 
 ## Requirements
 
@@ -63,7 +69,10 @@ No active milestone is open. Use `$gsd-new-milestone` to define the next cycle.
 
 ### Active
 
-- [ ] No active milestone requirements until the next milestone opens
+- [ ] OpenRustClaw must define one truthful node and topology model that explains when operators are using a local runtime, a mobile node, a distributed cluster node, or an SSH-tunneled remote control path — v1.12
+- [ ] Operators must have one explicit supported SSH tunnel bootstrap path for remote node or remote control setups, with clear trust boundaries and config ownership — v1.12
+- [ ] Shipped operator surfaces must expose remote-node connectivity, tunnel state, and recovery evidence instead of leaving operators to infer failures from raw endpoints — v1.12
+- [ ] Onboarding and docs must explain standard local deployment versus advanced remote node or SSH tunnel deployment, including when and how to switch between them — v1.12
 
 ### Out of Scope
 
@@ -79,6 +88,8 @@ This remains a large brownfield Rust monorepo with broad runtime, CLI, control-p
 The most recent milestone closed a trust gap at the public release edge: GitHub tags now produce truthful downloadable binary artifacts again, and the repo has one repeatable operator validation loop for future release tags. The next milestone can build on a working release-distribution baseline instead of first repairing it.
 
 The most recent milestone extended that public distribution story from GitHub release binaries into the Rust ecosystem itself. Instead of over-claiming the whole workspace, v1.11 published a curated first crate surface around `openrustclaw-core`, aligned its package metadata and docs.rs contract, and proved the end-to-end public publication path.
+
+The next milestone revisits a different trust gap: node and remote-connectivity behavior exists across mobile and distributed surfaces, but onboarding still effectively tells operators to provide their own tunnel or reverse proxy. v1.12 turns that implied workaround into an explicit product contract around node roles, SSH tunnel bootstrap, and operator-visible connectivity state.
 
 ## Constraints
 
@@ -112,10 +123,14 @@ The most recent milestone extended that public distribution story from GitHub re
 | Treat GitHub repo metadata, topics, and Actions as part of the shipped product surface | The repo page and automation are the first operator touchpoints, so stale metadata or broken workflows undermine trust before users even clone the code | ✓ Good |
 | Treat tagged binary release automation as part of the shipped public trust surface | A public tag that cannot produce downloadable artifacts undermines the repo's production-ready story even if the runtime itself is healthy | ✓ Good |
 | Treat crates.io and docs.rs as a curated public package surface, not an automatic dump of the whole workspace | The workspace mixes internal crates, binaries, tests, and potential public libraries, so publishability has to be explicit and truthful | ✓ Good |
+| Revisit nodes and SSH tunnel connectivity as product work rather than leaving it as operator improvisation | The repo already has distributed and mobile node surfaces, but the setup story still treats remote exposure as an external workaround instead of a supported deployment contract | ✓ Good |
 
 ## Next Milestone Goals
 
-- No active next-milestone goals yet — use `$gsd-new-milestone` to open the next cycle
+- define the node and topology contract across local, mobile, distributed, and SSH-tunneled remote access paths
+- ship one explicit SSH tunnel bootstrap and trust boundary for advanced self-hosted remote deployments
+- surface remote-node connectivity and recovery state through shipped operator inspection paths
+- align onboarding and docs with the supported local versus remote connectivity modes
 
 ## Evolution
 
@@ -135,4 +150,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-28 after completing v1.11*
+*Last updated: 2026-03-28 after starting v1.12*
