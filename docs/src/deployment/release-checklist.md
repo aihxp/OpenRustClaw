@@ -31,6 +31,7 @@ Use this checklist before promoting an OpenRustClaw MVP release candidate.
 ## 4. Artifacts and Budgets
 
 - Build the release artifact with `scripts/build-release-artifacts.sh --target <triple>`.
+- Dry-run the GitHub release matrix on the candidate branch with `gh workflow run release-binaries.yml --ref <branch>` when workflow changes or target support changed.
 - Run `scripts/check-runtime-budgets.sh`.
 - Confirm the produced tarball and `.sha256` checksum exist for the target runtime.
 - Confirm the candidate binary path used by `openrustclaw runtime self-update-plan --artifact <path>` matches the artifact being promoted.
@@ -45,6 +46,9 @@ Use this checklist before promoting an OpenRustClaw MVP release candidate.
   - `cargo test -p openrustclaw-e2e-tests smoke_gateway_metrics_endpoint -- --nocapture`
 - Run the bundled gate:
   - `scripts/run-release-gate.sh`
+- Validate the latest release workflow state:
+  - `scripts/github-actions-admin.sh check-release-binaries`
+  - `scripts/github-actions-admin.sh check-release-binaries <candidate-branch-or-tag>`
 
 ## Exit Criteria
 

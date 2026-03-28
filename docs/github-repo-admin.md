@@ -76,6 +76,7 @@ Minimum live verification when GitHub auth is available:
 bash scripts/github-repo-admin.sh check-live
 bash scripts/github-actions-admin.sh recent-runs
 bash scripts/github-actions-admin.sh check-main-ci
+bash scripts/github-actions-admin.sh check-release-binaries
 ```
 
 ## Notes
@@ -91,6 +92,7 @@ Use the Actions helper for the public automation surface:
 bash scripts/github-actions-admin.sh workflows
 bash scripts/github-actions-admin.sh recent-runs
 bash scripts/github-actions-admin.sh check-main-ci
+bash scripts/github-actions-admin.sh check-release-binaries
 ```
 
 `check-main-ci` currently expects the latest `main` runs for:
@@ -109,3 +111,13 @@ Within `Shipped Surface CI`, the current hard gate is the shipped-surface verifi
 - runtime budget checks
 
 `Shipped Surface Clippy (Informational)` and `Shipped Surface Security Audit` stay visible in the run, but they are currently advisory signals rather than workflow-failing gates because they still reflect broader workspace lint and upstream dependency debt outside this GitHub-recovery milestone.
+
+`check-release-binaries` inspects the latest `Release Binaries` run, or the latest run for a specific branch or tag when you pass a ref:
+
+```bash
+bash scripts/github-actions-admin.sh check-release-binaries
+bash scripts/github-actions-admin.sh check-release-binaries v1.10
+bash scripts/github-actions-admin.sh check-release-binaries main
+```
+
+For non-tag `workflow_dispatch` runs, it requires all build jobs to pass and allows the publish job to stay `skipped`. For tag runs, it also requires `Publish GitHub Release Assets` to succeed.

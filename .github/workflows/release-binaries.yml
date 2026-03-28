@@ -19,9 +19,18 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
+            install: sudo apt-get update && sudo apt-get install -y protobuf-compiler libasound2-dev
           - os: ubuntu-latest
             target: aarch64-unknown-linux-gnu
-            install: sudo apt-get update && sudo apt-get install -y protobuf-compiler gcc-aarch64-linux-gnu
+            install: |
+              sudo dpkg --add-architecture arm64
+              sudo apt-get update
+              sudo apt-get install -y \
+                protobuf-compiler \
+                gcc-aarch64-linux-gnu \
+                pkg-config \
+                libssl-dev:arm64 \
+                libasound2-dev:arm64
             linker_env: CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
           - os: macos-13
             target: x86_64-apple-darwin
@@ -38,15 +47,18 @@ jobs:
       - name: Install target dependencies
         if: ${{ matrix.install != '' }}
         run: ${{ matrix.install }}
-      - name: Install default Linux build dependency
-        if: ${{ startsWith(matrix.os, 'ubuntu') && matrix.install == '' }}
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
       - name: Build packaged artifacts
         run: |
           chmod +x scripts/build-release-artifacts.sh
           scripts/build-release-artifacts.sh --target "${{ matrix.target }}" --output dist
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: ${{ matrix.target == 'aarch64-unknown-linux-gnu' && 'aarch64-linux-gnu-gcc' || '' }}
+          PKG_CONFIG_ALLOW_CROSS: ${{ matrix.target == 'aarch64-unknown-linux-gnu' && '1' || '' }}
+          PKG_CONFIG_SYSROOT_DIR: ${{ matrix.target == 'aarch64-unknown-linux-gnu' && '/' || '' }}
+          PKG_CONFIG_PATH: ${{ matrix.target == 'aarch64-unknown-linux-gnu' && '/usr/lib/aarch64-linux-gnu/pkgconfig:/usr/share/pkgconfig' || '' }}
+          PKG_CONFIG_LIBDIR: ${{ matrix.target == 'aarch64-unknown-linux-gnu' && '/usr/lib/aarch64-linux-gnu/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig' || '' }}
+          AARCH64_UNKNOWN_LINUX_GNU_OPENSSL_LIB_DIR: ${{ matrix.target == 'aarch64-unknown-linux-gnu' && '/usr/lib/aarch64-linux-gnu' || '' }}
+          AARCH64_UNKNOWN_LINUX_GNU_OPENSSL_INCLUDE_DIR: ${{ matrix.target == 'aarch64-unknown-linux-gnu' && '/usr/include' || '' }}
       - uses: actions/upload-artifact@v4
         with:
           name: openrustclaw-${{ matrix.target }}
