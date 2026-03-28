@@ -11,6 +11,7 @@ path = "src/main.rs"
 
 [dependencies]
 openrustclaw-core.workspace = true
+openrustclaw-app.workspace = true
 openrustclaw-db.workspace = true
 openrustclaw-memory.workspace = true
 openrustclaw-providers.workspace = true

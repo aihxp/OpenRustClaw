@@ -772,7 +772,8 @@ async fn run_gateway_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
 
     wizard.state.gateway_configured = true;
     let workspace_root = std::env::current_dir()?;
-    let (remote_status, remote_detail) = remote_connectivity_bootstrap_outcome(&connectivity_profile);
+    let (remote_status, remote_detail) =
+        remote_connectivity_bootstrap_outcome(&connectivity_profile);
     record_bootstrap_outcome(
         &workspace_root,
         "remote_connectivity",
@@ -796,7 +797,9 @@ fn local_connectivity_profile() -> RemoteConnectivityProfile {
         mode: "local_only".to_string(),
         primary_path: "local_runtime".to_string(),
         fallback_paths: Vec::new(),
-        detail: "Local runtime selected. No remote connectivity fallback is active for this workspace.".to_string(),
+        detail:
+            "Local runtime selected. No remote connectivity fallback is active for this workspace."
+                .to_string(),
     }
 }
 

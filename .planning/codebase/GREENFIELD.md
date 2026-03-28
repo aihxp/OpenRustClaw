@@ -85,6 +85,15 @@ The migrated slice should look like:
 3. route handlers and CLI surfaces call that service
 4. Control UI renders the returned report without owning the business rules
 
+### Current Phase 59 Outcome
+
+That target shape is now real for the first proving slice:
+
+1. durable setup state still lives in the CLI onboarding module
+2. `openrustclaw-app` now owns setup handoff report composition
+3. `inspect.rs` acts as the compatibility adapter into that service
+4. `start.rs` and Control UI still consume the same report contract
+
 ## Review Defaults
 
 When reviewing new work during `v1.13`:

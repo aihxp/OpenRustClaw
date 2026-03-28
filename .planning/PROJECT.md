@@ -69,11 +69,10 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 - ✓ Node-first remote connectivity, SSH tunnel fallback, reverse-proxy last resort, and the saved remote-connectivity profile are now aligned across onboarding, setup state, operator handoff, and docs — v1.12 Phases 53-56
 - ✓ The repo now has a canonical greenfield transition contract with explicit containment rules, target layers, and a chosen first proving slice around setup handoff reporting — v1.13 Phase 57
 - ✓ The repo now has a real greenfield application shell in `openrustclaw-app` plus a stable setup-handoff service boundary for future adapters — v1.13 Phase 58
+- ✓ The setup handoff proving slice now runs through `openrustclaw-app`, with CLI code reduced to a bounded adapter that preserves the existing runtime and Control UI contract — v1.13 Phase 59
 
 ### Active
 
-- [ ] The repo must gain a real greenfield core shell and stable service interfaces so new features stop attaching directly to legacy command or runtime surfaces by default — v1.13
-- [ ] At least one high-value shipped vertical slice must be migrated into the new boundary to prove the architecture works in production code instead of only in planning docs — v1.13
 - [ ] Contributor and operator guidance must make the new lane the default, while preserving compatibility and explicit deprecation rules for remaining brownfield surfaces — v1.13
 
 ### Out of Scope
@@ -129,6 +128,7 @@ The next milestone changes the implementation posture rather than adding another
 | Treat the brownfield-to-greenfield shift as a staged carve-out inside the shipped repo rather than a rewrite-from-scratch reset | The product already has real users and operator surfaces, so the safer path is to create a clean lane and migrate into it with compatibility boundaries | ✓ Good |
 | Use setup handoff reporting as the first greenfield proving slice | It crosses setup state, report composition, route exposure, and Control UI rendering while already having bounded regression tests | ✓ Good |
 | Use `openrustclaw-app` as the first application shell instead of extending the CLI crate into a second mixed-responsibility hub | The transition needs one bounded home for services, but the new lane should not immediately inherit transport and command concerns from `openrustclaw-cli` | ✓ Good |
+| Keep durable setup-state persistence in the CLI onboarding module for the first migrated slice while moving report composition into `openrustclaw-app` | The proving slice needed to shrink report ownership first without expanding migration scope into storage or onboarding behavior | ✓ Good |
 
 ## Next Milestone Goals
 

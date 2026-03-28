@@ -1,6 +1,12 @@
 use anyhow::Result;
 use chrono::Utc;
+use openrustclaw_app::setup_handoff::{
+    RemoteConnectivityProfile as AppRemoteConnectivityProfile,
+    SetupBootstrapOutcome as AppSetupBootstrapOutcome, SetupHandoffReport, SetupHandoffService,
+    SetupHandoffState, SetupHandoffStateSource, SetupStatus,
+};
 use openrustclaw_core::config::AppConfig;
+use openrustclaw_core::error::Error as CoreError;
 use openrustclaw_core::types::{MemoryEntry, Message};
 use openrustclaw_db::models::MemoryArchiveRow;
 use openrustclaw_db::{
@@ -169,27 +175,6 @@ pub struct SelfHostedProductModeReport {
     pub downgrade_targets: Vec<String>,
     pub current_warnings: Vec<String>,
     pub recent_transitions: Vec<self_hosted::SelfHostedProductTransitionEvent>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct SetupHandoffReport {
-    pub status: String,
-    pub detail: String,
-    pub manifest_path: String,
-    pub explicit_setup_state: bool,
-    pub deployment_mode: Option<String>,
-    pub deployment_path: Option<String>,
-    pub remote_connectivity_profile: Option<onboard::RemoteConnectivityProfile>,
-    pub setup_path: Option<String>,
-    pub workspace_action: Option<String>,
-    pub current_step: Option<String>,
-    pub next_action: Option<String>,
-    pub ready_for_first_start: bool,
-    pub selected_step_count: usize,
-    pub completed_step_count: usize,
-    pub pending_steps: Vec<String>,
-    pub blockers: Vec<String>,
-    pub bootstrap_outcomes: Vec<onboard::SetupBootstrapOutcome>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -990,56 +975,105 @@ pub fn self_hosted_product_mode_summary(
     })
 }
 
-pub fn setup_handoff_summary(workspace_root: &Path) -> Result<SetupHandoffReport> {
-    let manifest_path = onboard::setup_state_path(workspace_root)
-        .display()
-        .to_string();
-    let setup_state = onboard::load_setup_state(workspace_root)?;
-    if let Some(setup_state) = setup_state {
-        let status = onboard::setup_handoff_status(&setup_state.setup).to_string();
-        let detail = onboard::setup_handoff_detail(&setup_state.setup);
-        let pending_steps = onboard::pending_step_names(&setup_state.setup);
-        let ready_for_first_start = status == "ready";
-        Ok(SetupHandoffReport {
-            status,
-            detail,
-            manifest_path,
-            explicit_setup_state: true,
-            deployment_mode: setup_state.setup.deployment_mode,
-            deployment_path: setup_state.setup.deployment_path,
-            remote_connectivity_profile: setup_state.setup.remote_connectivity_profile,
-            setup_path: setup_state.setup.setup_path,
-            workspace_action: Some(setup_state.setup.workspace_action),
-            current_step: setup_state.setup.current_step,
-            next_action: setup_state.setup.next_action,
-            ready_for_first_start,
-            selected_step_count: setup_state.setup.selected_steps.len(),
-            completed_step_count: setup_state.setup.completed_steps.len(),
-            pending_steps,
-            blockers: setup_state.setup.blockers,
-            bootstrap_outcomes: setup_state.setup.bootstrap_outcomes,
-        })
-    } else {
-        Ok(SetupHandoffReport {
-            status: "not_started".to_string(),
-            detail: "No durable setup state is recorded yet. Run `openrustclaw onboard` to create the setup contract before first start.".to_string(),
-            manifest_path,
-            explicit_setup_state: false,
-            deployment_mode: None,
-            deployment_path: None,
-            remote_connectivity_profile: None,
-            setup_path: None,
-            workspace_action: None,
-            current_step: None,
-            next_action: Some("Run `openrustclaw onboard`.".to_string()),
-            ready_for_first_start: false,
-            selected_step_count: 0,
-            completed_step_count: 0,
-            pending_steps: Vec::new(),
-            blockers: Vec::new(),
-            bootstrap_outcomes: Vec::new(),
-        })
+struct WorkspaceSetupHandoffSource<'a> {
+    workspace_root: &'a Path,
+    manifest_path: String,
+}
+
+impl<'a> WorkspaceSetupHandoffSource<'a> {
+    fn new(workspace_root: &'a Path) -> Self {
+        Self {
+            workspace_root,
+            manifest_path: onboard::setup_state_path(workspace_root)
+                .display()
+                .to_string(),
+        }
     }
+}
+
+impl SetupHandoffStateSource for WorkspaceSetupHandoffSource<'_> {
+    fn load_setup_handoff_state(
+        &self,
+    ) -> openrustclaw_core::error::Result<Option<SetupHandoffState>> {
+        let setup_state = onboard::load_setup_state(self.workspace_root).map_err(|error| {
+            CoreError::Internal(format!("failed to load durable setup state: {error}"))
+        })?;
+        Ok(setup_state.map(|manifest| map_setup_handoff_state(manifest, self.manifest_path())))
+    }
+
+    fn manifest_path(&self) -> String {
+        self.manifest_path.clone()
+    }
+}
+
+fn map_setup_status(setup: &onboard::SetupState) -> SetupStatus {
+    match onboard::setup_handoff_status(setup) {
+        "ready" => SetupStatus::Ready,
+        "degraded" => SetupStatus::Degraded,
+        "pending" => SetupStatus::Pending,
+        _ => SetupStatus::NotStarted,
+    }
+}
+
+fn map_remote_connectivity_profile(
+    profile: onboard::RemoteConnectivityProfile,
+) -> AppRemoteConnectivityProfile {
+    AppRemoteConnectivityProfile {
+        mode: profile.mode,
+        primary_path: profile.primary_path,
+        fallback_paths: profile.fallback_paths,
+        detail: profile.detail,
+    }
+}
+
+fn map_bootstrap_outcome(outcome: onboard::SetupBootstrapOutcome) -> AppSetupBootstrapOutcome {
+    AppSetupBootstrapOutcome {
+        category: outcome.category,
+        target: outcome.target,
+        status: outcome.status,
+        detail: outcome.detail,
+        updated_at: outcome.updated_at,
+    }
+}
+
+fn map_setup_handoff_state(
+    manifest: onboard::SetupStateManifest,
+    manifest_path: String,
+) -> SetupHandoffState {
+    let setup = manifest.setup;
+    let status = map_setup_status(&setup);
+    let detail = onboard::setup_handoff_detail(&setup);
+    let pending_steps = onboard::pending_step_names(&setup);
+
+    SetupHandoffState {
+        manifest_path,
+        status,
+        detail,
+        explicit_setup_state: true,
+        deployment_mode: setup.deployment_mode,
+        deployment_path: setup.deployment_path,
+        remote_connectivity_profile: setup
+            .remote_connectivity_profile
+            .map(map_remote_connectivity_profile),
+        setup_path: setup.setup_path,
+        workspace_action: Some(setup.workspace_action),
+        current_step: setup.current_step,
+        next_action: setup.next_action,
+        selected_step_count: setup.selected_steps.len(),
+        completed_step_count: setup.completed_steps.len(),
+        pending_steps,
+        blockers: setup.blockers,
+        bootstrap_outcomes: setup
+            .bootstrap_outcomes
+            .into_iter()
+            .map(map_bootstrap_outcome)
+            .collect(),
+    }
+}
+
+pub fn setup_handoff_summary(workspace_root: &Path) -> Result<SetupHandoffReport> {
+    let service = SetupHandoffService::new(WorkspaceSetupHandoffSource::new(workspace_root));
+    service.report().map_err(Into::into)
 }
 
 pub fn enterprise_access_summary(workspace_root: &Path) -> Result<EnterpriseAccessReport> {

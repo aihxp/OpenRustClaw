@@ -5667,6 +5667,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "openrustclaw-app"
+version = "0.1.0"
+dependencies = [
+ "openrustclaw-core",
+ "serde",
+]
+
+[[package]]
 name = "openrustclaw-automation"
 version = "0.1.0"
 dependencies = [
@@ -5795,6 +5803,7 @@ dependencies = [
  "image 0.25.10",
  "indicatif",
  "openrustclaw-agent",
+ "openrustclaw-app",
  "openrustclaw-automation",
  "openrustclaw-channels",
  "openrustclaw-core",

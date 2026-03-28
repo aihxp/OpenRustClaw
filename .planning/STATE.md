@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.13
 milestone_name: Brownfield-to-Greenfield Transition
-current_phase: 59
-current_phase_name: First Vertical Slice Migration
+current_phase: 60
+current_phase_name: Brownfield Containment and Contributor Defaults
 current_plan: null
-status: Phase 58 complete; ready to begin Phase 59
-stopped_at: Run $gsd-plan-phase 59 or $gsd-autonomous to continue v1.13.
-last_updated: "2026-03-28T06:39:52Z"
-last_activity: 2026-03-28 -- completed Phase 58 Greenfield Core Shell and Service Interfaces
+status: Phase 59 complete; ready to begin Phase 60
+stopped_at: Run $gsd-plan-phase 60 or $gsd-autonomous to continue v1.13.
+last_updated: "2026-03-28T11:55:00Z"
+last_activity: 2026-03-28 -- completed Phase 59 First Vertical Slice Migration
 progress:
   total_phases: 4
-  completed_phases: 2
-  total_plans: 2
-  completed_plans: 2
-  percent: 50
+  completed_phases: 3
+  total_plans: 3
+  completed_plans: 3
+  percent: 75
 ---
 
 # Project State
@@ -28,17 +28,17 @@ See: .planning/PROJECT.md (updated 2026-03-28)
 
 ## Current Position
 
-Current Phase: 59
-Current Phase Name: First Vertical Slice Migration
+Current Phase: 60
+Current Phase Name: Brownfield Containment and Contributor Defaults
 Total Phases: 4
 Current Plan: -
 Total Plans in Phase: 0
-Status: Phase 58 complete; ready to begin Phase 59
-Last activity: 2026-03-28 -- completed Phase 58 Greenfield Core Shell and Service Interfaces
+Status: Phase 59 complete; ready to begin Phase 60
+Last activity: 2026-03-28 -- completed Phase 59 First Vertical Slice Migration
 
-Phase: 2 of 4
+Phase: 3 of 4
 Plan: 1 of 1
-Progress: [█████-----] 50%
+Progress: [████████--] 75%
 
 ## Performance Metrics
 
@@ -77,6 +77,7 @@ Recent decisions affecting current work:
 - v1.13 starts the architectural posture shift: instead of treating future work as more brownfield patching, the repo will carve out a greenfield-style core lane and migrate into it incrementally.
 - Phase 57 defined the canonical greenfield lane, ranked migration targets, and selected setup handoff reporting as the first proving slice with an existing verification bundle.
 - Phase 58 landed the first real application shell in `openrustclaw-app` and defined a stable setup-handoff service boundary that later adapters can call.
+- Phase 59 proved the greenfield lane with shipped code: setup handoff reporting now runs through `openrustclaw-app`, while CLI code only adapts durable onboarding state into that service.
 
 ### Pending Todos
 
@@ -88,6 +89,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-28 02:39
-Stopped at: Run $gsd-plan-phase 59 or $gsd-autonomous to continue v1.13.
+Last session: 2026-03-28 07:55
+Stopped at: Run $gsd-plan-phase 60 or $gsd-autonomous to continue v1.13.
 Resume file: None

@@ -49,6 +49,8 @@ That slice currently spans:
 
 It is the right first slice because it is operator-visible, already tested, and small enough to migrate without destabilizing the whole control plane.
 
+That migration is now in place: `inspect.rs` loads the durable setup state, maps it into `openrustclaw-app`, and returns the same setup handoff report contract to the runtime and Control UI surfaces.
+
 ## Contributor Defaults
 
 When adding or changing behavior during this transition:

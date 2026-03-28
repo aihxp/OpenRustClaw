@@ -207,10 +207,7 @@ mod tests {
                 remote_connectivity_profile: Some(RemoteConnectivityProfile {
                     mode: "advanced".to_string(),
                     primary_path: "node_first".to_string(),
-                    fallback_paths: vec![
-                        "ssh_tunnel".to_string(),
-                        "reverse_proxy".to_string(),
-                    ],
+                    fallback_paths: vec!["ssh_tunnel".to_string(), "reverse_proxy".to_string()],
                     detail: "Prefer the node path and fall back to SSH tunnel only if needed."
                         .to_string(),
                 }),
