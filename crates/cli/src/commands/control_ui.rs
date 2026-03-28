@@ -93,6 +93,8 @@ mod tests {
         assert!(CONTROL_UI_HTML.contains("setup-handoff"));
         assert!(CONTROL_UI_HTML.contains("setup-bootstrap-outcomes"));
         assert!(CONTROL_UI_HTML.contains("Current onboarding status"));
+        assert!(CONTROL_UI_HTML.contains("Remote Path"));
+        assert!(CONTROL_UI_HTML.contains("remote_connectivity_profile"));
         assert!(CONTROL_UI_HTML.contains("function loadSetupHandoff"));
         assert!(CONTROL_UI_HTML.contains("function renderSetupHandoff"));
     }

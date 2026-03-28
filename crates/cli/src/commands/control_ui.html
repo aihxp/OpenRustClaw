@@ -2985,6 +2985,14 @@
           return;
         }
 
+        const remoteProfile = report.remote_connectivity_profile || null;
+        const remotePrimary = remoteProfile
+          ? String(remoteProfile.primary_path || "-").replaceAll("_", " ")
+          : "local runtime";
+        const remoteFallbacks = remoteProfile
+          ? ((remoteProfile.fallback_paths || []).map((value) => String(value).replaceAll("_", " ")).join(", ") || "none")
+          : "none";
+
         renderSummaryCard("setup-handoff", "No setup handoff summary available.", buildSummaryMarkup({
           kicker: "Onboarding / Setup",
           title: `${String(report.status || "unknown").replaceAll("_", " ")} handoff`,
@@ -2992,6 +3000,7 @@
           stats: [
             { label: "Ready", value: report.ready_for_first_start ? "yes" : "no", detail: report.next_action || report.manifest_path || "-" },
             { label: "Deployment", value: report.deployment_mode || "-", detail: report.deployment_path || "-" },
+            { label: "Remote Path", value: remotePrimary, detail: remoteFallbacks },
             { label: "Path", value: report.setup_path || "-", detail: report.workspace_action || "-" },
             { label: "Steps", value: `${report.completed_step_count || 0}/${report.selected_step_count || 0}`, detail: (report.pending_steps || []).join(", ") || "no pending steps" },
             { label: "Current", value: report.current_step || "-", detail: report.next_action || "-" },
@@ -3005,6 +3014,11 @@
         }
         if ((report.pending_steps || []).length) {
           extras.push(`<div style="margin-top: 10px"><strong>Pending</strong>: ${escapeHtml(report.pending_steps.join(", "))}</div>`);
+        }
+        if (remoteProfile) {
+          extras.push(
+            `<div style="margin-top: 10px"><strong>Remote connectivity</strong>: ${escapeHtml(remoteProfile.detail || "-")}</div>`
+          );
         }
         if (extras.length) {
           document.getElementById("setup-handoff").insertAdjacentHTML("beforeend", `<div class="muted" style="margin-top: 12px">${extras.join("")}</div>`);
