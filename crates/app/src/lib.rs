@@ -5,6 +5,7 @@
 //! interfaces that adapters can call without reintroducing CLI or transport
 //! coupling.
 
+pub mod compiled_skill_overview;
 pub mod mobile_operator;
 pub mod self_hosted_product;
 pub mod setup_handoff;

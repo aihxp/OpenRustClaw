@@ -3,6 +3,7 @@
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use indicatif::{ProgressBar, ProgressStyle};
+use openrustclaw_app::compiled_skill_overview::CompiledSkillOverviewService;
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
 use std::collections::{BTreeMap, HashSet};
@@ -17,9 +18,8 @@ use openrustclaw_security::sso::{OidcClient, OidcConfig, SsoClient};
 use openrustclaw_skills::{
     ClawHubRegistry, CompiledBackgroundService, CompiledSkillArtifact, CompiledSkillManifest,
     ExtensionManifest, SearchFilters, SortBy, compile_skill_to_dir,
-    compiled_skill_background_services, execute_compiled_skill_artifact, list_compiled_manifests,
-    list_extension_manifests, load_compiled_artifact, load_extension_manifest,
-    normalize_capability_names, remove_compiled_artifact,
+    compiled_skill_background_services, execute_compiled_skill_artifact, list_extension_manifests,
+    load_extension_manifest, normalize_capability_names, remove_compiled_artifact,
     resolve_compiled_skill_background_service,
 };
 
@@ -1334,15 +1334,17 @@ async fn compile_skill_by_name_internal(name: &str) -> Result<CompiledSkillArtif
 }
 
 pub async fn compiled_skills_data() -> Result<Vec<CompiledSkillManifest>> {
-    let root = compiled_skill_root();
-    list_compiled_manifests(&root)
+    let service = CompiledSkillOverviewService::new(compiled_skill_root());
+    service
+        .manifests()
         .map_err(|error| anyhow::anyhow!(error.to_string()))
         .context("Failed to load compiled skill manifests")
 }
 
 pub async fn compiled_skill_detail_data(name: &str) -> Result<CompiledSkillArtifact> {
-    let root = compiled_skill_root();
-    load_compiled_artifact(&root, name)
+    let service = CompiledSkillOverviewService::new(compiled_skill_root());
+    service
+        .artifact(name)
         .map_err(|error| anyhow::anyhow!(error.to_string()))
         .with_context(|| format!("Failed to load compiled skill '{}'", name))
 }
@@ -1379,80 +1381,10 @@ fn read_compiled_skill_reference(
     reference: &str,
     max_chars: Option<usize>,
 ) -> Result<serde_json::Value> {
-    if !artifact
-        .manifest
-        .references
-        .iter()
-        .any(|entry| entry == reference)
-    {
-        anyhow::bail!(
-            "Reference '{}' is not part of compiled skill '{}'",
-            reference,
-            artifact.manifest.name
-        );
-    }
-
-    let canonical_candidate = resolve_skill_relative_path(artifact, reference)?;
-
-    let bytes = fs::read(&canonical_candidate)
-        .with_context(|| format!("Failed to read {}", canonical_candidate.display()))?;
-    let metadata = fs::metadata(&canonical_candidate)
-        .with_context(|| format!("Failed to stat {}", canonical_candidate.display()))?;
-    let max_chars = max_chars.unwrap_or(4000).max(1);
-    match String::from_utf8(bytes) {
-        Ok(text) => {
-            let char_len = text.chars().count();
-            let truncated = char_len > max_chars;
-            let content = if truncated {
-                text.chars().take(max_chars).collect::<String>()
-            } else {
-                text
-            };
-            Ok(serde_json::json!({
-                "reference": reference,
-                "path": canonical_candidate.display().to_string(),
-                "binary": false,
-                "bytes": metadata.len(),
-                "truncated": truncated,
-                "content": content,
-            }))
-        }
-        Err(error) => Ok(serde_json::json!({
-            "reference": reference,
-            "path": canonical_candidate.display().to_string(),
-            "binary": true,
-            "bytes": metadata.len(),
-            "encoding_error": error.to_string(),
-        })),
-    }
-}
-
-fn resolve_skill_relative_path(
-    artifact: &CompiledSkillArtifact,
-    relative: &str,
-) -> Result<PathBuf> {
-    let skill_file = PathBuf::from(&artifact.manifest.local_path);
-    let skill_root = skill_file.parent().ok_or_else(|| {
-        anyhow::anyhow!(
-            "Compiled skill '{}' does not have a resolvable root",
-            artifact.manifest.name
-        )
-    })?;
-    let canonical_root = skill_root
-        .canonicalize()
-        .with_context(|| format!("Failed to canonicalize {}", skill_root.display()))?;
-    let candidate = skill_root.join(relative);
-    let canonical_candidate = candidate
-        .canonicalize()
-        .with_context(|| format!("Failed to resolve {}", candidate.display()))?;
-    if !canonical_candidate.starts_with(&canonical_root) {
-        anyhow::bail!(
-            "Path '{}' escapes the skill root for '{}'",
-            relative,
-            artifact.manifest.name
-        );
-    }
-    Ok(canonical_candidate)
+    let service = CompiledSkillOverviewService::new(compiled_skill_root());
+    service
+        .read_reference(artifact, reference, max_chars)
+        .map_err(|error| anyhow::anyhow!(error.to_string()))
 }
 
 pub async fn invoke_data(name: &str, options: SkillInvokeOptions<'_>) -> Result<SkillInvokeResult> {

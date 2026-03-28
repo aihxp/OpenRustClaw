@@ -16,6 +16,7 @@ use axum::{
 use chrono::{DateTime, Utc};
 use futures::{SinkExt, Stream, StreamExt};
 use openrustclaw_agent::runtime::AgentRuntime;
+use openrustclaw_app::compiled_skill_overview::CompiledSkillOverviewService;
 use openrustclaw_channels::discord::DiscordInteractionsHandler;
 use openrustclaw_channels::gmail_pubsub::GmailWebhookHandler;
 use openrustclaw_channels::google_chat::GoogleChatWebhookHandler;
@@ -72,7 +73,6 @@ use openrustclaw_scheduler::{SchedulerWorker, worker::SchedulerConfig as WorkerS
 use openrustclaw_security::OriginValidator;
 use openrustclaw_skills::{
     CompiledSkillArtifact, CompiledSkillStatus, compiled_skill_background_services,
-    list_compiled_manifests, load_compiled_artifact,
 };
 use sqlx::Row;
 use uuid::Uuid;
@@ -11528,19 +11528,13 @@ fn compiled_skill_schedule_tool_name(artifact: &CompiledSkillArtifact) -> String
 }
 
 fn compiled_skill_executable_components(artifact: &CompiledSkillArtifact) -> Vec<String> {
-    artifact
-        .manifest
-        .scripts
-        .iter()
-        .chain(artifact.manifest.references.iter())
-        .filter(|path| path.ends_with(".wasm") || path.ends_with(".wat"))
-        .cloned()
-        .collect()
+    CompiledSkillOverviewService::executable_components(artifact)
 }
 
 fn load_compiled_skill_artifacts(workspace_root: &Path) -> Vec<CompiledSkillArtifact> {
     let root = compiled_skill_root(workspace_root);
-    let manifests = match list_compiled_manifests(&root) {
+    let service = CompiledSkillOverviewService::new(root.clone());
+    let manifests = match service.manifests() {
         Ok(manifests) => manifests,
         Err(error) => {
             warn!(
@@ -11554,20 +11548,18 @@ fn load_compiled_skill_artifacts(workspace_root: &Path) -> Vec<CompiledSkillArti
 
     manifests
         .into_iter()
-        .filter_map(
-            |manifest| match load_compiled_artifact(&root, &manifest.name) {
-                Ok(artifact) => Some(artifact),
-                Err(error) => {
-                    warn!(
-                        skill = %manifest.name,
-                        path = %root.display(),
-                        error = %error,
-                        "Failed to load compiled skill artifact for MCP registration"
-                    );
-                    None
-                }
-            },
-        )
+        .filter_map(|manifest| match service.artifact(&manifest.name) {
+            Ok(artifact) => Some(artifact),
+            Err(error) => {
+                warn!(
+                    skill = %manifest.name,
+                    path = %root.display(),
+                    error = %error,
+                    "Failed to load compiled skill artifact for MCP registration"
+                );
+                None
+            }
+        })
         .collect()
 }
 
@@ -11768,74 +11760,22 @@ fn read_compiled_skill_reference(
     reference: &str,
     max_chars: Option<usize>,
 ) -> openrustclaw_core::error::Result<serde_json::Value> {
-    let skill_file = PathBuf::from(&artifact.manifest.local_path);
-    let skill_root = skill_file.parent().ok_or_else(|| {
-        mcp_tool_error(format!(
-            "Compiled skill '{}' does not have a resolvable root",
-            artifact.manifest.name
-        ))
-    })?;
-    let canonical_root = skill_root.canonicalize().map_err(|error| {
-        mcp_tool_error(format!(
-            "Failed to canonicalize skill root for '{}': {}",
-            artifact.manifest.name, error
-        ))
-    })?;
-    let reference_path = skill_root.join(reference);
-    let canonical_reference = reference_path.canonicalize().map_err(|error| {
-        mcp_tool_error(format!(
-            "Failed to resolve reference '{}' for '{}': {}",
-            reference, artifact.manifest.name, error
-        ))
-    })?;
-    if !canonical_reference.starts_with(&canonical_root) {
-        return Err(mcp_tool_error(format!(
-            "Reference '{}' escapes the skill root for '{}'",
-            reference, artifact.manifest.name
-        )));
+    let service = CompiledSkillOverviewService::new(compiled_skill_root(Path::new(".")));
+    let mut payload = service
+        .read_reference(artifact, reference, max_chars)
+        .map_err(|error| {
+            mcp_tool_error(format!(
+                "Failed to read reference '{}' for '{}': {}",
+                reference, artifact.manifest.name, error
+            ))
+        })?;
+    if let Some(object) = payload.as_object_mut() {
+        object.insert(
+            "skill".to_string(),
+            serde_json::Value::String(artifact.manifest.name.clone()),
+        );
     }
-
-    let bytes = std::fs::read(&canonical_reference).map_err(|error| {
-        mcp_tool_error(format!(
-            "Failed to read reference '{}' for '{}': {}",
-            reference, artifact.manifest.name, error
-        ))
-    })?;
-    let metadata = std::fs::metadata(&canonical_reference).map_err(|error| {
-        mcp_tool_error(format!(
-            "Failed to stat reference '{}' for '{}': {}",
-            reference, artifact.manifest.name, error
-        ))
-    })?;
-    let max_chars = max_chars.unwrap_or(4000).max(1);
-    match String::from_utf8(bytes) {
-        Ok(text) => {
-            let char_len = text.chars().count();
-            let truncated = char_len > max_chars;
-            let content = if truncated {
-                text.chars().take(max_chars).collect::<String>()
-            } else {
-                text
-            };
-            Ok(serde_json::json!({
-                "skill": artifact.manifest.name,
-                "reference": reference,
-                "path": canonical_reference.display().to_string(),
-                "binary": false,
-                "bytes": metadata.len(),
-                "truncated": truncated,
-                "content": content,
-            }))
-        }
-        Err(error) => Ok(serde_json::json!({
-            "skill": artifact.manifest.name,
-            "reference": reference,
-            "path": canonical_reference.display().to_string(),
-            "binary": true,
-            "bytes": metadata.len(),
-            "encoding_error": error.to_string(),
-        })),
-    }
+    Ok(payload)
 }
 
 fn register_compiled_skill_mcp_handlers(

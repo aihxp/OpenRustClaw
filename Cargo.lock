@@ -5671,8 +5671,10 @@ name = "openrustclaw-app"
 version = "0.1.0"
 dependencies = [
  "openrustclaw-core",
+ "openrustclaw-skills",
  "serde",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]
