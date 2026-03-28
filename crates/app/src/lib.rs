@@ -6,6 +6,8 @@
 //! coupling.
 
 pub mod autonomy_lessons_control;
+pub mod browser_backend_control;
+pub mod browser_workflow_service;
 pub mod channel_registry_lifecycle;
 pub mod compiled_skill_overview;
 pub mod control_config;
@@ -17,6 +19,8 @@ pub mod mobile_operator;
 pub mod mobile_runtime_control;
 pub mod mobile_runtime_status;
 pub mod operator_status_control;
+pub mod orchestration_reporting;
+pub mod orchestration_routing;
 pub mod runtime_maintenance_control;
 pub mod runtime_maintenance_planning;
 pub mod runtime_provider_switch;

@@ -1,5 +1,20 @@
 # Project Milestones: OpenRustClaw
 
+## v1.22 Full Greenfield Conversion: Orchestration and Browser Services (Shipped: 2026-03-28)
+
+**Phases completed:** 4 phases, 4 plans, 0 tasks
+**Verification archive:** `.planning/milestones/v1.22-VERIFICATIONS.md`
+**Verification debt:** none
+
+**Key accomplishments:**
+
+- Moved orchestration request routing, override validation, and operator intervention state transitions out of `orchestrate.rs` and behind `openrustclaw-app`.
+- Moved orchestration trace-resource aggregation, reflection-candidate generation, and supervision inspection composition out of `orchestrate.rs` and behind `openrustclaw-app`.
+- Moved browser backend policy normalization, denial logic, and audit-entry shaping out of `browser.rs` and behind `openrustclaw-app`.
+- Moved browser session-record shaping, workflow-record composition, and workflow-history filtering out of `browser.rs` and behind `openrustclaw-app`.
+
+---
+
 ## v1.21 Full Greenfield Conversion: Mobile and Voice Runtime Services (Shipped: 2026-03-28)
 
 **Phases completed:** 4 phases, 4 plans, 0 tasks

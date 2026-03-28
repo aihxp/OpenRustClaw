@@ -4,6 +4,16 @@ use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
+use openrustclaw_app::browser_backend_control::{
+    BrowserBackendControlService, ExternalBackendAuditEntry as AppExternalBackendAuditEntry,
+    ExternalBackendPolicy as AppExternalBackendPolicy,
+};
+use openrustclaw_app::browser_workflow_service::{
+    BrowserSessionRecord as AppBrowserSessionRecord,
+    BrowserSessionSummary as AppBrowserSessionSummary,
+    BrowserWorkflowHistoryReport as AppBrowserWorkflowHistoryReport,
+    BrowserWorkflowRecord as AppBrowserWorkflowRecord, BrowserWorkflowService,
+};
 use openrustclaw_automation::browser::{
     Cookie, LoadState, PdfOptions, ScreenshotFormat, ScreenshotOptions,
 };
@@ -1048,14 +1058,13 @@ pub fn open_session(
         .unwrap_or_else(|| Uuid::new_v4().to_string());
     let state_path = browser_state_root_for(workspace_root).join(format!("{session_id}.json"));
     let now = chrono::Utc::now().to_rfc3339();
-    let record = BrowserSessionRecord {
-        id: session_id.clone(),
-        label: request.label,
-        backend: backend.as_str().to_string(),
-        created_at: now.clone(),
-        updated_at: now,
-        state_path: workspace_relative_path(workspace_root, &state_path),
-    };
+    let record = browser_session_record_from_app(&BrowserWorkflowService::new().session_record(
+        session_id.clone(),
+        request.label,
+        backend.as_str().to_string(),
+        workspace_relative_path(workspace_root, &state_path),
+        now,
+    ));
     save_session_state(&state_path, &BrowserSessionState::default())?;
     save_session_record(workspace_root, &record)?;
     Ok(record_to_summary(record))
@@ -1201,9 +1210,17 @@ pub fn list_backend_audit(
             })?;
         entries.push(entry);
     }
-    entries.sort_by(|left, right| right.timestamp.cmp(&left.timestamp));
-    entries.truncate(limit);
-    Ok(entries)
+    Ok(BrowserBackendControlService::new()
+        .sorted_audit_entries(
+            entries
+                .into_iter()
+                .map(|entry| app_external_backend_audit_entry(&entry))
+                .collect(),
+            limit,
+        )
+        .iter()
+        .map(external_backend_audit_entry_from_app)
+        .collect())
 }
 
 pub fn list_workflow_history(
@@ -1239,17 +1256,149 @@ pub fn list_workflow_history(
         }
         entries.push(record);
     }
-
-    entries.sort_by(|left, right| right.created_at.cmp(&left.created_at));
-    entries.truncate(limit.max(1));
-    Ok(BrowserWorkflowHistoryReport {
-        limit: limit.max(1),
-        entries,
-    })
+    Ok(browser_workflow_history_from_app(
+        &BrowserWorkflowService::new().workflow_history(
+            entries
+                .iter()
+                .map(app_browser_workflow_record)
+                .collect::<Vec<_>>(),
+            limit,
+            action,
+            backend,
+        ),
+    ))
 }
 
 fn normalize_backend_name(raw: &str) -> String {
-    raw.trim().to_ascii_lowercase().replace('-', "_")
+    BrowserBackendControlService::new().normalize_backend_name(raw)
+}
+
+fn app_external_backend_policy(policy: &ExternalBackendPolicy) -> AppExternalBackendPolicy {
+    AppExternalBackendPolicy {
+        allowed_backends: policy.allowed_backends.clone(),
+        allow_local_cli_wrappers: policy.allow_local_cli_wrappers,
+        allow_cloud_agent_execution: policy.allow_cloud_agent_execution,
+        audit_log_path: policy.audit_log_path.clone(),
+        command_env_allowlist: policy.command_env_allowlist.clone(),
+    }
+}
+
+fn external_backend_policy_from_app(policy: &AppExternalBackendPolicy) -> ExternalBackendPolicy {
+    ExternalBackendPolicy {
+        allowed_backends: policy.allowed_backends.clone(),
+        allow_local_cli_wrappers: policy.allow_local_cli_wrappers,
+        allow_cloud_agent_execution: policy.allow_cloud_agent_execution,
+        audit_log_path: policy.audit_log_path.clone(),
+        command_env_allowlist: policy.command_env_allowlist.clone(),
+    }
+}
+
+fn app_external_backend_audit_entry(
+    entry: &ExternalBackendAuditEntry,
+) -> AppExternalBackendAuditEntry {
+    AppExternalBackendAuditEntry {
+        timestamp: entry.timestamp.clone(),
+        backend: entry.backend.clone(),
+        transport: entry.transport.clone(),
+        action: entry.action.clone(),
+        session_id: entry.session_id.clone(),
+        allowed: entry.allowed,
+        success: entry.success,
+        detail: entry.detail.clone(),
+    }
+}
+
+fn external_backend_audit_entry_from_app(
+    entry: &AppExternalBackendAuditEntry,
+) -> ExternalBackendAuditEntry {
+    ExternalBackendAuditEntry {
+        timestamp: entry.timestamp.clone(),
+        backend: entry.backend.clone(),
+        transport: entry.transport.clone(),
+        action: entry.action.clone(),
+        session_id: entry.session_id.clone(),
+        allowed: entry.allowed,
+        success: entry.success,
+        detail: entry.detail.clone(),
+    }
+}
+
+fn app_browser_session_record(record: &BrowserSessionRecord) -> AppBrowserSessionRecord {
+    AppBrowserSessionRecord {
+        id: record.id.clone(),
+        label: record.label.clone(),
+        backend: record.backend.clone(),
+        created_at: record.created_at.clone(),
+        updated_at: record.updated_at.clone(),
+        state_path: record.state_path.clone(),
+    }
+}
+
+fn browser_session_record_from_app(record: &AppBrowserSessionRecord) -> BrowserSessionRecord {
+    BrowserSessionRecord {
+        id: record.id.clone(),
+        label: record.label.clone(),
+        backend: record.backend.clone(),
+        created_at: record.created_at.clone(),
+        updated_at: record.updated_at.clone(),
+        state_path: record.state_path.clone(),
+    }
+}
+
+fn browser_session_summary_from_app(summary: &AppBrowserSessionSummary) -> BrowserSessionSummary {
+    BrowserSessionSummary {
+        id: summary.id.clone(),
+        label: summary.label.clone(),
+        backend: summary.backend.clone(),
+        created_at: summary.created_at.clone(),
+        updated_at: summary.updated_at.clone(),
+        state_path: summary.state_path.clone(),
+    }
+}
+
+fn app_browser_workflow_record(record: &BrowserWorkflowRecord) -> AppBrowserWorkflowRecord {
+    AppBrowserWorkflowRecord {
+        id: record.id.clone(),
+        action: record.action.clone(),
+        backend: record.backend.clone(),
+        session_id: record.session_id.clone(),
+        status: record.status.clone(),
+        final_url: record.final_url.clone(),
+        title: record.title.clone(),
+        step_count: record.step_count,
+        artifact_path: record.artifact_path.clone(),
+        created_at: record.created_at.clone(),
+        result_preview: record.result_preview.clone(),
+    }
+}
+
+fn browser_workflow_record_from_app(record: &AppBrowserWorkflowRecord) -> BrowserWorkflowRecord {
+    BrowserWorkflowRecord {
+        id: record.id.clone(),
+        action: record.action.clone(),
+        backend: record.backend.clone(),
+        session_id: record.session_id.clone(),
+        status: record.status.clone(),
+        final_url: record.final_url.clone(),
+        title: record.title.clone(),
+        step_count: record.step_count,
+        artifact_path: record.artifact_path.clone(),
+        created_at: record.created_at.clone(),
+        result_preview: record.result_preview.clone(),
+    }
+}
+
+fn browser_workflow_history_from_app(
+    report: &AppBrowserWorkflowHistoryReport,
+) -> BrowserWorkflowHistoryReport {
+    BrowserWorkflowHistoryReport {
+        limit: report.limit,
+        entries: report
+            .entries
+            .iter()
+            .map(browser_workflow_record_from_app)
+            .collect(),
+    }
 }
 
 fn workflow_history_log_path(workspace_root: &Path) -> PathBuf {
@@ -1286,19 +1435,17 @@ fn new_browser_workflow_record(
     artifact_path: impl Into<String>,
     result_preview: Option<Value>,
 ) -> BrowserWorkflowRecord {
-    BrowserWorkflowRecord {
-        id: Uuid::new_v4().to_string(),
-        action: action.into(),
-        backend: backend.into(),
+    browser_workflow_record_from_app(&BrowserWorkflowService::new().workflow_record(
+        action,
+        backend,
         session_id,
-        status: status.into(),
-        final_url: final_url.into(),
-        title: title.into(),
-        step_count: step_count.max(1),
-        artifact_path: artifact_path.into(),
-        created_at: chrono::Utc::now().to_rfc3339(),
+        status,
+        final_url,
+        title,
+        step_count,
+        artifact_path,
         result_preview,
-    }
+    ))
 }
 
 fn load_runtime_config_for(workspace_root: &Path) -> AppConfig {
@@ -1313,23 +1460,12 @@ fn load_runtime_config_for(workspace_root: &Path) -> AppConfig {
 }
 
 fn policy_from_config(config: &AppConfig, workspace_root: &Path) -> ExternalBackendPolicy {
-    let mut allowed_backends: Vec<String> = config
-        .external_backends
-        .allowed_backends
-        .iter()
-        .map(|value| normalize_backend_name(value))
-        .collect();
-    allowed_backends.sort();
-    allowed_backends.dedup();
     let audit_path =
         absolute_workspace_path(workspace_root, &config.external_backends.audit_log_path);
-    ExternalBackendPolicy {
-        allowed_backends,
-        allow_local_cli_wrappers: config.external_backends.allow_local_cli_wrappers,
-        allow_cloud_agent_execution: config.external_backends.allow_cloud_agent_execution,
-        audit_log_path: workspace_relative_path(workspace_root, &audit_path),
-        command_env_allowlist: config.external_backends.command_env_allowlist.clone(),
-    }
+    external_backend_policy_from_app(
+        &BrowserBackendControlService::new()
+            .policy_from_config(config, workspace_relative_path(workspace_root, &audit_path)),
+    )
 }
 
 fn external_backend_audit_path(workspace_root: &Path, policy: &ExternalBackendPolicy) -> PathBuf {
@@ -1369,19 +1505,15 @@ fn record_external_backend_audit(
     append_external_backend_audit_entry(
         workspace_root,
         policy,
-        &ExternalBackendAuditEntry {
-            timestamp: chrono::Utc::now().to_rfc3339(),
-            backend: backend.as_str().to_string(),
-            transport: match backend {
-                BrowserBackendKind::NativeCdp => "native".to_string(),
-                BrowserBackendKind::AgentBrowserCli => "local_cli_wrapper".to_string(),
-            },
-            action: action.to_string(),
-            session_id: session_id.map(ToString::to_string),
+        &external_backend_audit_entry_from_app(&BrowserBackendControlService::new().audit_entry(
+            backend.as_str(),
+            action,
+            session_id,
             allowed,
             success,
             detail,
-        },
+            chrono::Utc::now().to_rfc3339(),
+        )),
     )
 }
 
@@ -1392,38 +1524,24 @@ fn ensure_backend_execution_allowed_with_policy(
     action: &str,
     session_id: Option<&str>,
 ) -> Result<()> {
-    if backend != BrowserBackendKind::AgentBrowserCli {
-        return Ok(());
-    }
-    if !policy.allow_local_cli_wrappers {
-        record_external_backend_audit(
-            workspace_root,
-            policy,
-            backend,
-            action,
-            session_id,
-            false,
-            false,
-            Some("local CLI wrapper execution is disabled by policy".to_string()),
-        )?;
-        bail!("agent-browser backend is disabled by external backend policy");
-    }
-    if !policy
-        .allowed_backends
-        .iter()
-        .any(|value| value == backend.as_str())
-    {
-        record_external_backend_audit(
-            workspace_root,
-            policy,
-            backend,
-            action,
-            session_id,
-            false,
-            false,
-            Some("backend is not in the external backend allowlist".to_string()),
-        )?;
-        bail!("agent-browser backend is not in the external backend allowlist");
+    let decision = BrowserBackendControlService::new().evaluate_backend_execution(
+        &app_external_backend_policy(policy),
+        backend.as_str(),
+        action,
+        session_id,
+        chrono::Utc::now().to_rfc3339(),
+    );
+    if !decision.allowed {
+        if let Some(entry) = decision.audit_entry.as_ref() {
+            append_external_backend_audit_entry(
+                workspace_root,
+                policy,
+                &external_backend_audit_entry_from_app(entry),
+            )?;
+        }
+        if let Some(message) = decision.error_message {
+            bail!("{message}");
+        }
     }
     Ok(())
 }
@@ -1489,14 +1607,9 @@ fn absolute_workspace_path(workspace_root: &Path, path: &str) -> PathBuf {
 }
 
 fn record_to_summary(record: BrowserSessionRecord) -> BrowserSessionSummary {
-    BrowserSessionSummary {
-        id: record.id,
-        label: record.label,
-        backend: record.backend,
-        created_at: record.created_at,
-        updated_at: record.updated_at,
-        state_path: record.state_path,
-    }
+    browser_session_summary_from_app(
+        &BrowserWorkflowService::new().session_summary(&app_browser_session_record(&record)),
+    )
 }
 
 fn save_session_record(workspace_root: &Path, record: &BrowserSessionRecord) -> Result<()> {

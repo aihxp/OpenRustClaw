@@ -9,6 +9,24 @@ use std::time::Instant;
 
 use anyhow::{Context, Result};
 use chrono::Utc;
+use openrustclaw_app::orchestration_reporting::{
+    ActiveSupervisionSnapshot as AppActiveSupervisionSnapshot,
+    OrchestrationActorResourceSummary as AppOrchestrationActorResourceSummary,
+    OrchestrationReportingService, OrchestrationResourceTotals as AppOrchestrationResourceTotals,
+    OrchestrationSupervisionSummary as AppOrchestrationSupervisionSummary,
+    OrchestrationTraceEntrySummary as AppOrchestrationTraceEntrySummary,
+    ReflectionCandidate as AppReflectionCandidate,
+    ReflectionRoutingContext as AppReflectionRoutingContext,
+    ReflectionWorkerResult as AppReflectionWorkerResult,
+};
+use openrustclaw_app::orchestration_routing::{
+    OrchestrationAutonomyPolicy as AppOrchestrationAutonomyPolicy,
+    OrchestrationClawRouteSpec as AppOrchestrationClawRouteSpec,
+    OrchestrationLifecycleSummary as AppOrchestrationLifecycleSummary,
+    OrchestrationRequest as AppOrchestrationRequest,
+    OrchestrationRequestOverrides as AppOrchestrationRequestOverrides, OrchestrationRoutingService,
+    OrchestrationRuntimeSpec as AppOrchestrationRuntimeSpec,
+};
 use openrustclaw_core::config::AppConfig;
 use openrustclaw_core::traits::LlmProvider;
 use openrustclaw_core::types::{CompletionRequest, Message};
@@ -1276,99 +1294,246 @@ fn apply_active_lifecycle_action(
     rollback_reference: Option<&str>,
 ) -> Result<ActiveOrchestrationRun> {
     let monitor = ActiveRunMonitor::new(workspace_root, run_id);
-    let (stage, status, note, resulting_state) = match action {
-        "pause" => (
-            "supervision_pause",
-            "pause_requested",
-            reason
-                .map(|value| format!("pause requested by operator: {value}"))
-                .unwrap_or_else(|| "pause requested by operator".to_string()),
-            "pause_requested".to_string(),
-        ),
-        "resume" => (
-            "supervision_resume",
-            "running",
-            reason
-                .map(|value| format!("resumed by operator: {value}"))
-                .unwrap_or_else(|| "resumed by operator".to_string()),
-            "running".to_string(),
-        ),
-        "kill" => (
-            "supervision_kill",
-            "kill_requested",
-            reason
-                .map(|value| format!("kill requested by operator: {value}"))
-                .unwrap_or_else(|| "kill requested by operator".to_string()),
-            "kill_requested".to_string(),
-        ),
-        "escalate" => (
-            "supervision_escalate",
-            "escalated",
-            reason
-                .map(|value| format!("escalated for operator review: {value}"))
-                .unwrap_or_else(|| "escalated for operator review".to_string()),
-            "escalated".to_string(),
-        ),
-        "rollback" => (
-            "supervision_rollback",
-            "rollback_requested",
-            reason
-                .map(|value| format!("rollback requested by operator: {value}"))
-                .unwrap_or_else(|| "rollback requested by operator".to_string()),
-            "rollback_requested".to_string(),
-        ),
-        other => anyhow::bail!("unsupported orchestration lifecycle action '{other}'"),
-    };
+    let transition = OrchestrationRoutingService::new().intervention_transition(
+        action,
+        reason,
+        rollback_reference,
+    )?;
     monitor.mutate_snapshot(|snapshot| {
-        match action {
-            "pause" => {
-                snapshot.pause_requested = true;
-                snapshot.lifecycle.state = "pause_requested".to_string();
-                snapshot.lifecycle.intervention_required = false;
-            }
-            "resume" => {
-                snapshot.pause_requested = false;
-                snapshot.lifecycle.state = "running".to_string();
-                snapshot.lifecycle.intervention_required = false;
-                snapshot.lifecycle.escalation_requested = false;
-            }
-            "kill" => {
-                snapshot.kill_requested = true;
-                snapshot.lifecycle.state = "kill_requested".to_string();
-                snapshot.lifecycle.intervention_required = true;
-            }
-            "escalate" => {
-                snapshot.pause_requested = true;
-                snapshot.lifecycle.state = "escalated".to_string();
-                snapshot.lifecycle.intervention_required = true;
-                snapshot.lifecycle.escalation_requested = true;
-            }
-            "rollback" => {
-                snapshot.pause_requested = true;
-                snapshot.kill_requested = true;
-                snapshot.lifecycle.state = "rollback_requested".to_string();
-                snapshot.lifecycle.intervention_required = true;
-                snapshot.lifecycle.rollback_requested = true;
-                snapshot.lifecycle.rollback_reference = rollback_reference.map(ToString::to_string);
-            }
-            _ => {}
-        }
-        snapshot.current_stage = Some(stage.to_string());
-        snapshot.current_note = Some(note.clone());
+        snapshot.pause_requested = transition.pause_requested;
+        snapshot.kill_requested = transition.kill_requested;
+        snapshot.lifecycle = supervision_lifecycle_from_app(&transition.lifecycle);
+        snapshot.current_stage = Some(transition.stage.clone());
+        snapshot.current_note = Some(transition.note.clone());
     })?;
-    monitor.append_event(stage, "operator", requested_by, status, note.clone())?;
+    monitor.append_event(
+        transition.stage.as_str(),
+        "operator",
+        requested_by,
+        transition.status.as_str(),
+        transition.note.clone(),
+    )?;
     let decision = monitor.append_decision(
         action,
         requested_by,
         reason,
         rollback_reference,
-        &resulting_state,
+        &transition.resulting_state,
     )?;
     let updated = monitor.mutate_snapshot(|snapshot| {
         snapshot.lifecycle.decision_count += 1;
         snapshot.lifecycle.last_decision_at = Some(decision.created_at.clone());
     })?;
     Ok(updated)
+}
+
+fn app_orchestration_request(request: &OrchestrationRequest) -> AppOrchestrationRequest {
+    AppOrchestrationRequest {
+        prompt: request.prompt.clone(),
+        task_id: request.task_id.clone(),
+        category: request.category.clone(),
+        claw_id: request.claw_id.clone(),
+        mode: request.mode.clone(),
+        overrides: AppOrchestrationRequestOverrides {
+            model_profile_id: request.overrides.model_profile_id.clone(),
+            worker_model_profile_id: request.overrides.worker_model_profile_id.clone(),
+            autonomy_level: request.overrides.autonomy_level.clone(),
+            max_delegations: request.overrides.max_delegations,
+            max_iterations: request.overrides.max_iterations,
+            max_runtime_secs: request.overrides.max_runtime_secs,
+            approval_policy: request.overrides.approval_policy.clone(),
+        },
+    }
+}
+
+fn app_runtime_spec_from_control(
+    runtime: &control::RuntimeModeSpec,
+) -> AppOrchestrationRuntimeSpec {
+    AppOrchestrationRuntimeSpec {
+        mode: runtime.mode.clone(),
+        default_claw_id: runtime.default_claw_id.clone(),
+        orchestrator_claw_id: runtime.orchestrator_claw_id.clone(),
+        task_assignments: runtime
+            .task_assignments
+            .iter()
+            .map(|(task_id, claw_id)| (task_id.clone(), claw_id.clone()))
+            .collect(),
+        category_assignments: runtime
+            .category_assignments
+            .iter()
+            .map(|(category, claw_id)| (category.clone(), claw_id.clone()))
+            .collect(),
+        allow_shared_context: runtime.allow_shared_context,
+        isolation_mode: runtime.isolation_mode.clone(),
+        autonomy: AppOrchestrationAutonomyPolicy {
+            autonomy_level: runtime.autonomy.autonomy_level.clone(),
+            yolo_mode: runtime.autonomy.yolo_mode,
+            steering_enabled: runtime.autonomy.steering_enabled,
+            decision_learning_enabled: runtime.autonomy.decision_learning_enabled,
+            critic_enabled: runtime.autonomy.critic_enabled,
+            max_delegations: runtime.autonomy.max_delegations,
+            max_iterations: runtime.autonomy.max_iterations,
+            max_runtime_secs: runtime.autonomy.max_runtime_secs,
+            max_lesson_hints: runtime.autonomy.max_lesson_hints,
+            approval_policy: runtime.autonomy.approval_policy.clone(),
+        },
+    }
+}
+
+fn app_claw_route_specs(registry: &control::ControlRegistry) -> Vec<AppOrchestrationClawRouteSpec> {
+    registry
+        .claws
+        .values()
+        .map(|claw| AppOrchestrationClawRouteSpec {
+            id: claw.id.clone(),
+            role: claw.role.clone(),
+            enabled: claw.enabled,
+        })
+        .collect()
+}
+
+fn control_autonomy_policy_from_app(
+    autonomy: &AppOrchestrationAutonomyPolicy,
+) -> control::AutonomyPolicy {
+    control::AutonomyPolicy {
+        autonomy_level: autonomy.autonomy_level.clone(),
+        yolo_mode: autonomy.yolo_mode,
+        steering_enabled: autonomy.steering_enabled,
+        decision_learning_enabled: autonomy.decision_learning_enabled,
+        critic_enabled: autonomy.critic_enabled,
+        max_delegations: autonomy.max_delegations,
+        max_iterations: autonomy.max_iterations,
+        max_runtime_secs: autonomy.max_runtime_secs,
+        max_lesson_hints: autonomy.max_lesson_hints,
+        approval_policy: autonomy.approval_policy.clone(),
+    }
+}
+
+fn supervision_lifecycle_from_app(
+    lifecycle: &AppOrchestrationLifecycleSummary,
+) -> SupervisionLifecycleSummary {
+    SupervisionLifecycleSummary {
+        state: lifecycle.state.clone(),
+        intervention_required: lifecycle.intervention_required,
+        escalation_requested: lifecycle.escalation_requested,
+        rollback_requested: lifecycle.rollback_requested,
+        rollback_reference: lifecycle.rollback_reference.clone(),
+        ..SupervisionLifecycleSummary::default()
+    }
+}
+
+fn app_trace_entries(trace: &[OrchestrationTraceEntry]) -> Vec<AppOrchestrationTraceEntrySummary> {
+    trace
+        .iter()
+        .map(|entry| AppOrchestrationTraceEntrySummary {
+            actor_type: entry.actor_type.clone(),
+            actor_id: entry.actor_id.clone(),
+            estimated_input_tokens: entry.estimated_input_tokens,
+            estimated_output_tokens: entry.estimated_output_tokens,
+            duration_ms: entry.duration_ms,
+        })
+        .collect()
+}
+
+fn cli_resource_totals_from_app(
+    totals: &AppOrchestrationResourceTotals,
+) -> OrchestrationResourceTotals {
+    OrchestrationResourceTotals {
+        trace_count: totals.trace_count,
+        estimated_input_tokens: totals.estimated_input_tokens,
+        estimated_output_tokens: totals.estimated_output_tokens,
+        duration_ms: totals.duration_ms,
+    }
+}
+
+fn app_resource_totals_from_cli(
+    totals: &OrchestrationResourceTotals,
+) -> AppOrchestrationResourceTotals {
+    AppOrchestrationResourceTotals {
+        trace_count: totals.trace_count,
+        estimated_input_tokens: totals.estimated_input_tokens,
+        estimated_output_tokens: totals.estimated_output_tokens,
+        duration_ms: totals.duration_ms,
+    }
+}
+
+fn cli_actor_summary_from_app(
+    summary: &AppOrchestrationActorResourceSummary,
+) -> OrchestrationActorResourceSummary {
+    OrchestrationActorResourceSummary {
+        actor_type: summary.actor_type.clone(),
+        actor_id: summary.actor_id.clone(),
+        stage_count: summary.stage_count,
+        estimated_input_tokens: summary.estimated_input_tokens,
+        estimated_output_tokens: summary.estimated_output_tokens,
+        duration_ms: summary.duration_ms,
+    }
+}
+
+fn app_actor_summary_from_cli(
+    summary: &OrchestrationActorResourceSummary,
+) -> AppOrchestrationActorResourceSummary {
+    AppOrchestrationActorResourceSummary {
+        actor_type: summary.actor_type.clone(),
+        actor_id: summary.actor_id.clone(),
+        stage_count: summary.stage_count,
+        estimated_input_tokens: summary.estimated_input_tokens,
+        estimated_output_tokens: summary.estimated_output_tokens,
+        duration_ms: summary.duration_ms,
+    }
+}
+
+fn app_reflection_worker_from_cli(worker: &WorkerResultEnvelope) -> AppReflectionWorkerResult {
+    AppReflectionWorkerResult {
+        claw_id: worker.claw_id.clone(),
+        status: worker.status.clone(),
+        summary: worker.summary.clone(),
+        questions: worker.questions.clone(),
+        confidence: worker.confidence,
+        next_step_recommendation: worker.next_step_recommendation.clone(),
+        model_profile_id: worker.model_profile_id.clone(),
+        provider: worker.provider.clone(),
+    }
+}
+
+fn cli_reflection_candidate_from_app(candidate: &AppReflectionCandidate) -> ReflectionCandidate {
+    ReflectionCandidate {
+        kind: candidate.kind.clone(),
+        signal: candidate.signal.clone(),
+        recommendation: candidate.recommendation.clone(),
+        rationale: candidate.rationale.clone(),
+        confidence: candidate.confidence,
+        claw_id: candidate.claw_id.clone(),
+        model_profile_id: candidate.model_profile_id.clone(),
+        provider: candidate.provider.clone(),
+    }
+}
+
+fn app_reflection_candidate_from_cli(candidate: &ReflectionCandidate) -> AppReflectionCandidate {
+    AppReflectionCandidate {
+        kind: candidate.kind.clone(),
+        signal: candidate.signal.clone(),
+        recommendation: candidate.recommendation.clone(),
+        rationale: candidate.rationale.clone(),
+        confidence: candidate.confidence,
+        claw_id: candidate.claw_id.clone(),
+        model_profile_id: candidate.model_profile_id.clone(),
+        provider: candidate.provider.clone(),
+    }
+}
+
+fn cli_supervision_summary_from_app(
+    summary: &AppOrchestrationSupervisionSummary,
+) -> SupervisionSummary {
+    SupervisionSummary {
+        checkpoint_count: summary.checkpoint_count,
+        worker_count: summary.worker_count,
+        needs_input_count: summary.needs_input_count,
+        failed_count: summary.failed_count,
+        low_confidence_workers: summary.low_confidence_workers.clone(),
+        reflection_candidate_count: summary.reflection_candidate_count,
+        escalation_recommended: summary.escalation_recommended,
+    }
 }
 
 pub fn pause_active_run(workspace_root: &Path, run_id: &str) -> Result<ActiveOrchestrationRun> {
@@ -1431,32 +1596,35 @@ pub fn read_run_checkpoints(
 
 pub fn read_run_trace(workspace_root: &Path, receipt_id: &str) -> Result<serde_json::Value> {
     let run = read_run(workspace_root, receipt_id)?;
-    Ok(serde_json::json!({
-        "run_id": run.run_id,
-        "trace": run.trace,
-        "relationships": run.relationships,
-    }))
+    Ok(OrchestrationReportingService::new().trace_payload(
+        &run.run_id,
+        serde_json::to_value(run.trace)?,
+        serde_json::to_value(run.relationships)?,
+    ))
 }
 
 pub fn read_run_transcript(workspace_root: &Path, receipt_id: &str) -> Result<serde_json::Value> {
     let run = read_run(workspace_root, receipt_id)?;
-    Ok(serde_json::json!({
-        "run_id": run.run_id,
-        "transcript": run.transcript,
-        "relationships": run.relationships,
-    }))
+    Ok(OrchestrationReportingService::new().transcript_payload(
+        &run.run_id,
+        serde_json::to_value(run.transcript)?,
+        serde_json::to_value(run.relationships)?,
+    ))
 }
 
 pub fn read_run_resources(workspace_root: &Path, receipt_id: &str) -> Result<serde_json::Value> {
     let run = read_run(workspace_root, receipt_id)?;
     let totals = summarize_trace_resources(&run.trace);
     let actors = summarize_actor_resources(&run.trace);
-    Ok(serde_json::json!({
-        "run_id": run.run_id,
-        "totals": totals,
-        "actors": actors,
-        "trace": run.trace,
-    }))
+    Ok(OrchestrationReportingService::new().resources_payload(
+        &run.run_id,
+        &app_resource_totals_from_cli(&totals),
+        &actors
+            .iter()
+            .map(app_actor_summary_from_cli)
+            .collect::<Vec<_>>(),
+        serde_json::to_value(run.trace)?,
+    ))
 }
 
 pub fn read_run_supervision(workspace_root: &Path, receipt_id: &str) -> Result<serde_json::Value> {
@@ -1513,7 +1681,8 @@ pub fn read_run_supervision(workspace_root: &Path, receipt_id: &str) -> Result<s
         reflection_candidates: run.reflection_candidates,
         decision_history: run.decision_history,
     };
-    Ok(serde_json::to_value(report)?)
+    Ok(OrchestrationReportingService::new()
+        .receipt_supervision_payload(serde_json::to_value(report)?))
 }
 
 pub fn read_active_run_supervision(
@@ -1524,45 +1693,32 @@ pub fn read_active_run_supervision(
     let run = read_active_run(workspace_root, run_id)?;
     let recent_events = read_active_run_events(workspace_root, run_id, event_limit.max(1))?;
     let decision_history = read_active_run_decisions(workspace_root, run_id, event_limit.max(1))?;
-    let mut attention_signals = Vec::new();
-    if run.lifecycle.intervention_required {
-        attention_signals.push(format!(
-            "operator intervention required: {}",
-            run.lifecycle.state
-        ));
-    }
-    if run.pause_requested {
-        attention_signals.push("pause requested by operator".to_string());
-    }
-    if run.kill_requested {
-        attention_signals.push("kill requested by operator".to_string());
-    }
-    if matches!(run.status.as_str(), "failed" | "killed") {
-        attention_signals.push(format!("run is {}", run.status));
-    }
-    if let Some(error) = run.last_error.as_deref()
-        && !error.trim().is_empty()
-    {
-        attention_signals.push(format!("last error: {error}"));
-    }
-    if recent_events
-        .iter()
-        .any(|event| matches!(event.status.as_str(), "failed" | "killed"))
-    {
-        attention_signals.push("recent events include failed or killed status".to_string());
-    }
-    if run.lifecycle.rollback_requested {
-        attention_signals.push("rollback requested for this run".to_string());
-    }
-    if run.lifecycle.escalation_requested {
-        attention_signals.push("run has been escalated for operator review".to_string());
-    }
-    Ok(serde_json::to_value(ActiveRunSupervisionReport {
-        run,
-        recent_events,
-        attention_signals,
-        decision_history,
-    })?)
+    let attention_signals = OrchestrationReportingService::new().attention_signals(
+        &AppActiveSupervisionSnapshot {
+            status: run.status.clone(),
+            pause_requested: run.pause_requested,
+            kill_requested: run.kill_requested,
+            lifecycle_state: run.lifecycle.state.clone(),
+            intervention_required: run.lifecycle.intervention_required,
+            escalation_requested: run.lifecycle.escalation_requested,
+            rollback_requested: run.lifecycle.rollback_requested,
+            last_error: run.last_error.clone(),
+        },
+        &recent_events
+            .iter()
+            .map(|event| event.status.clone())
+            .collect::<Vec<_>>(),
+    );
+    Ok(
+        OrchestrationReportingService::new().active_supervision_payload(serde_json::to_value(
+            ActiveRunSupervisionReport {
+                run,
+                recent_events,
+                attention_signals,
+                decision_history,
+            },
+        )?),
+    )
 }
 
 pub fn promote_reflection_candidate(
@@ -1655,7 +1811,7 @@ fn resolve_routing(
     config: &AppConfig,
     request: &OrchestrationRequest,
 ) -> Result<RoutingDecision> {
-    let mut runtime = registry
+    let runtime = registry
         .runtime
         .clone()
         .unwrap_or(control::RuntimeModeSpec {
@@ -1669,102 +1825,18 @@ fn resolve_routing(
             autonomy: control::AutonomyPolicy::default(),
             metadata: serde_json::json!({}),
         });
-    apply_request_overrides(&mut runtime, &request.overrides);
-    validate_request_overrides(&runtime.autonomy)?;
-
+    let route = OrchestrationRoutingService::new().resolve_route(
+        &app_runtime_spec_from_control(&runtime),
+        &app_claw_route_specs(registry),
+        &app_orchestration_request(request),
+    )?;
+    let mut resolved_runtime = runtime.clone();
+    resolved_runtime.autonomy = control_autonomy_policy_from_app(&route.autonomy);
     let mut warnings = Vec::new();
-    let (claw_id, route_source) = if let Some(claw_id) = &request.claw_id {
-        (claw_id.clone(), "explicit_claw".to_string())
-    } else if let Some(task_id) = &request.task_id {
-        if let Some(claw_id) = runtime.task_assignments.get(task_id) {
-            (claw_id.clone(), "task_assignment".to_string())
-        } else if let Some(category) = &request.category {
-            if let Some(claw_id) = runtime.category_assignments.get(category) {
-                (claw_id.clone(), "category_assignment".to_string())
-            } else if runtime.mode == "orchestrated" {
-                (
-                    runtime
-                        .orchestrator_claw_id
-                        .clone()
-                        .or_else(|| runtime.default_claw_id.clone())
-                        .context("No orchestrator/default claw configured")?,
-                    "orchestrated_default".to_string(),
-                )
-            } else {
-                (
-                    runtime
-                        .default_claw_id
-                        .clone()
-                        .or_else(|| first_enabled_claw_id(registry))
-                        .context("No default claw configured")?,
-                    "default_claw".to_string(),
-                )
-            }
-        } else if runtime.mode == "orchestrated" {
-            (
-                runtime
-                    .orchestrator_claw_id
-                    .clone()
-                    .or_else(|| runtime.default_claw_id.clone())
-                    .context("No orchestrator/default claw configured")?,
-                "orchestrated_default".to_string(),
-            )
-        } else {
-            (
-                runtime
-                    .default_claw_id
-                    .clone()
-                    .or_else(|| first_enabled_claw_id(registry))
-                    .context("No default claw configured")?,
-                "default_claw".to_string(),
-            )
-        }
-    } else if let Some(category) = &request.category {
-        if let Some(claw_id) = runtime.category_assignments.get(category) {
-            (claw_id.clone(), "category_assignment".to_string())
-        } else if runtime.mode == "orchestrated" {
-            (
-                runtime
-                    .orchestrator_claw_id
-                    .clone()
-                    .or_else(|| runtime.default_claw_id.clone())
-                    .context("No orchestrator/default claw configured")?,
-                "orchestrated_default".to_string(),
-            )
-        } else {
-            (
-                runtime
-                    .default_claw_id
-                    .clone()
-                    .or_else(|| first_enabled_claw_id(registry))
-                    .context("No default claw configured")?,
-                "default_claw".to_string(),
-            )
-        }
-    } else if runtime.mode == "orchestrated" && request.mode != "direct" {
-        (
-            runtime
-                .orchestrator_claw_id
-                .clone()
-                .or_else(|| runtime.default_claw_id.clone())
-                .context("No orchestrator/default claw configured")?,
-            "orchestrated_default".to_string(),
-        )
-    } else {
-        (
-            runtime
-                .default_claw_id
-                .clone()
-                .or_else(|| first_enabled_claw_id(registry))
-                .context("No default claw configured")?,
-            "default_claw".to_string(),
-        )
-    };
-
     let claw = registry
         .claws
-        .get(&claw_id)
-        .with_context(|| format!("Unknown claw '{}'", claw_id))?;
+        .get(&route.selected_claw_id)
+        .with_context(|| format!("Unknown claw '{}'", route.selected_claw_id))?;
     let selected_model_profile_id = request
         .overrides
         .model_profile_id
@@ -1792,79 +1864,31 @@ fn resolve_routing(
         registry,
         request,
         claw,
-        &runtime,
+        &resolved_runtime,
         &model.decision.selected_profile_id,
         &model.decision.provider,
     );
-    let steering_notes = build_steering_notes(&runtime.autonomy, &applied_lessons);
-    let available_workers = registry
-        .claws
-        .values()
-        .filter(|candidate| candidate.enabled && candidate.id != claw.id)
-        .map(|candidate| candidate.id.clone())
-        .collect::<Vec<_>>();
+    let steering_notes = build_steering_notes(&resolved_runtime.autonomy, &applied_lessons);
 
     Ok(RoutingDecision {
-        execution_mode: runtime.mode,
-        route_source,
+        execution_mode: route.execution_mode,
+        route_source: route.route_source,
         task_id: request.task_id.clone(),
         category: request.category.clone(),
         selected_claw_id: claw.id.clone(),
-        selected_claw_role: claw.role.clone(),
+        selected_claw_role: route.selected_claw_role,
         selected_agent_profile_id: claw.agent_profile_id.clone(),
         selected_model_profile_id,
         selected_model: model.decision,
-        available_workers,
-        autonomy: runtime.autonomy,
-        allow_shared_context: runtime.allow_shared_context,
-        isolation_mode: runtime.isolation_mode,
+        available_workers: route.available_workers,
+        autonomy: control_autonomy_policy_from_app(&route.autonomy),
+        allow_shared_context: route.allow_shared_context,
+        isolation_mode: route.isolation_mode,
         applied_lessons,
         steering_notes,
         warnings,
         request_overrides: request.overrides.clone(),
     })
-}
-
-fn apply_request_overrides(
-    runtime: &mut control::RuntimeModeSpec,
-    overrides: &OrchestrationRequestOverrides,
-) {
-    if let Some(level) = overrides.autonomy_level.as_deref() {
-        runtime.autonomy.autonomy_level = level.to_string();
-        runtime.autonomy.yolo_mode = level == "yolo";
-    }
-    if let Some(max_delegations) = overrides.max_delegations {
-        runtime.autonomy.max_delegations = max_delegations.max(1);
-    }
-    if let Some(max_iterations) = overrides.max_iterations {
-        runtime.autonomy.max_iterations = max_iterations.max(1);
-    }
-    if let Some(max_runtime_secs) = overrides.max_runtime_secs {
-        runtime.autonomy.max_runtime_secs = max_runtime_secs.max(1);
-    }
-    if let Some(approval_policy) = overrides.approval_policy.as_deref() {
-        runtime.autonomy.approval_policy = approval_policy.to_string();
-    }
-}
-
-fn validate_request_overrides(autonomy: &control::AutonomyPolicy) -> Result<()> {
-    match autonomy.autonomy_level.as_str() {
-        "assisted" | "supervised" | "managed" | "autonomous" | "yolo" => {}
-        other => anyhow::bail!("invalid autonomy level '{}'", other),
-    }
-    match autonomy.approval_policy.as_str() {
-        "none" | "side_effects" | "always" => {}
-        other => anyhow::bail!("invalid approval policy '{}'", other),
-    }
-    Ok(())
-}
-
-fn first_enabled_claw_id(registry: &control::ControlRegistry) -> Option<String> {
-    registry
-        .claws
-        .values()
-        .find(|claw| claw.enabled)
-        .map(|claw| claw.id.clone())
 }
 
 fn matching_lessons(
@@ -2116,47 +2140,19 @@ fn estimate_tokens(input: &str) -> usize {
 }
 
 fn summarize_trace_resources(trace: &[OrchestrationTraceEntry]) -> OrchestrationResourceTotals {
-    OrchestrationResourceTotals {
-        trace_count: trace.len(),
-        estimated_input_tokens: trace
-            .iter()
-            .map(|entry| entry.estimated_input_tokens.unwrap_or(0))
-            .sum(),
-        estimated_output_tokens: trace
-            .iter()
-            .map(|entry| entry.estimated_output_tokens.unwrap_or(0))
-            .sum(),
-        duration_ms: trace
-            .iter()
-            .map(|entry| entry.duration_ms.unwrap_or(0))
-            .sum(),
-    }
+    cli_resource_totals_from_app(
+        &OrchestrationReportingService::new().summarize_trace_resources(&app_trace_entries(trace)),
+    )
 }
 
 fn summarize_actor_resources(
     trace: &[OrchestrationTraceEntry],
 ) -> Vec<OrchestrationActorResourceSummary> {
-    let mut by_actor: BTreeMap<(String, String), OrchestrationActorResourceSummary> =
-        BTreeMap::new();
-    for entry in trace {
-        let key = (entry.actor_type.clone(), entry.actor_id.clone());
-        let summary =
-            by_actor
-                .entry(key.clone())
-                .or_insert_with(|| OrchestrationActorResourceSummary {
-                    actor_type: key.0.clone(),
-                    actor_id: key.1.clone(),
-                    stage_count: 0,
-                    estimated_input_tokens: 0,
-                    estimated_output_tokens: 0,
-                    duration_ms: 0,
-                });
-        summary.stage_count += 1;
-        summary.estimated_input_tokens += entry.estimated_input_tokens.unwrap_or(0);
-        summary.estimated_output_tokens += entry.estimated_output_tokens.unwrap_or(0);
-        summary.duration_ms += entry.duration_ms.unwrap_or(0);
-    }
-    by_actor.into_values().collect()
+    OrchestrationReportingService::new()
+        .summarize_actor_resources(&app_trace_entries(trace))
+        .iter()
+        .map(cli_actor_summary_from_app)
+        .collect()
 }
 
 fn make_lesson_id(run_id: &str, candidate_index: usize, kind: &str) -> String {
@@ -2190,79 +2186,23 @@ fn build_reflection_candidates(
     routing: &RoutingDecision,
     worker_results: &[WorkerResultEnvelope],
 ) -> Vec<ReflectionCandidate> {
-    let mut candidates = Vec::new();
-    if routing.selected_model.fallback_path.len() > 1 {
-        candidates.push(ReflectionCandidate {
-            kind: "fallback_path".to_string(),
-            signal: format!(
-                "model profile '{}' required fallback path {}",
-                routing.selected_model.requested_profile_id,
-                routing.selected_model.fallback_path.join(" -> ")
-            ),
-            recommendation:
-                "preflight this provider/model lane or promote a healthier fallback for this route"
-                    .to_string(),
-            rationale: Some(
-                "The primary model profile was unavailable or unsupported at run time.".to_string(),
-            ),
-            confidence: Some(0.82),
-            claw_id: Some(routing.selected_claw_id.clone()),
-            model_profile_id: Some(routing.selected_model_profile_id.clone()),
-            provider: Some(routing.selected_model.provider.clone()),
-        });
-    }
-
-    for worker in worker_results {
-        if worker.status == "failed" || worker.status == "needs_input" {
-            candidates.push(ReflectionCandidate {
-                kind: "worker_status".to_string(),
-                signal: format!("worker '{}' returned status '{}'", worker.claw_id, worker.status),
-                recommendation: if worker.status == "needs_input" {
-                    "tighten task framing or add an approval/escalation checkpoint before delegation".to_string()
-                } else {
-                    "capture a task-specific lesson and consider revising worker/model routing".to_string()
-                },
-                rationale: worker.next_step_recommendation.clone(),
-                confidence: worker.confidence.or(Some(0.7)),
-                claw_id: Some(worker.claw_id.clone()),
-                model_profile_id: Some(worker.model_profile_id.clone()),
-                provider: Some(worker.provider.clone()),
-            });
-        }
-        if let Some(confidence) = worker.confidence
-            && confidence < 0.6
-        {
-            candidates.push(ReflectionCandidate {
-                kind: "low_confidence".to_string(),
-                signal: format!(
-                    "worker '{}' reported low confidence {:.2}",
-                    worker.claw_id, confidence
-                ),
-                recommendation:
-                    "route a critic or human review step before exposing this output as final"
-                        .to_string(),
-                rationale: Some(worker.summary.clone()),
-                confidence: Some(confidence),
-                claw_id: Some(worker.claw_id.clone()),
-                model_profile_id: Some(worker.model_profile_id.clone()),
-                provider: Some(worker.provider.clone()),
-            });
-        }
-        if !worker.questions.is_empty() {
-            candidates.push(ReflectionCandidate {
-                kind: "open_questions".to_string(),
-                signal: format!("worker '{}' returned {} open questions", worker.claw_id, worker.questions.len()),
-                recommendation: "surface blockers explicitly or add a follow-up worker turn instead of treating the run as fully complete".to_string(),
-                rationale: Some(worker.questions.join(" | ")),
-                confidence: worker.confidence.or(Some(0.65)),
-                claw_id: Some(worker.claw_id.clone()),
-                model_profile_id: Some(worker.model_profile_id.clone()),
-                provider: Some(worker.provider.clone()),
-            });
-        }
-    }
-
-    candidates
+    OrchestrationReportingService::new()
+        .build_reflection_candidates(
+            &AppReflectionRoutingContext {
+                selected_claw_id: routing.selected_claw_id.clone(),
+                selected_model_profile_id: routing.selected_model_profile_id.clone(),
+                requested_model_profile_id: routing.selected_model.requested_profile_id.clone(),
+                provider: routing.selected_model.provider.clone(),
+                fallback_path: routing.selected_model.fallback_path.clone(),
+            },
+            &worker_results
+                .iter()
+                .map(app_reflection_worker_from_cli)
+                .collect::<Vec<_>>(),
+        )
+        .iter()
+        .map(cli_reflection_candidate_from_app)
+        .collect()
 }
 
 fn summarize_supervision(
@@ -2270,32 +2210,19 @@ fn summarize_supervision(
     worker_results: &[WorkerResultEnvelope],
     reflection_candidates: &[ReflectionCandidate],
 ) -> SupervisionSummary {
-    let needs_input_count = worker_results
-        .iter()
-        .filter(|worker| worker.status == "needs_input")
-        .count();
-    let failed_count = worker_results
-        .iter()
-        .filter(|worker| worker.status == "failed")
-        .count();
-    let low_confidence_workers = worker_results
-        .iter()
-        .filter_map(|worker| match worker.confidence {
-            Some(confidence) if confidence < 0.6 => Some(worker.claw_id.clone()),
-            _ => None,
-        })
-        .collect::<Vec<_>>();
-    SupervisionSummary {
-        checkpoint_count: checkpoints.len(),
-        worker_count: worker_results.len(),
-        needs_input_count,
-        failed_count,
-        low_confidence_workers,
-        reflection_candidate_count: reflection_candidates.len(),
-        escalation_recommended: failed_count > 0
-            || needs_input_count > 0
-            || !reflection_candidates.is_empty(),
-    }
+    cli_supervision_summary_from_app(
+        &OrchestrationReportingService::new().summarize_supervision(
+            checkpoints.len(),
+            &worker_results
+                .iter()
+                .map(app_reflection_worker_from_cli)
+                .collect::<Vec<_>>(),
+            &reflection_candidates
+                .iter()
+                .map(app_reflection_candidate_from_cli)
+                .collect::<Vec<_>>(),
+        ),
+    )
 }
 
 fn resolve_model_with_fallback(

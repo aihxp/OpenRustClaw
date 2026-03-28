@@ -24,95 +24,18 @@
 - ✅ **v1.19 Full Greenfield Conversion: Control Plane Route Families I** — shipped 2026-03-28. Archive: `.planning/milestones/v1.19-ROADMAP.md`
 - ✅ **v1.20 Full Greenfield Conversion: Control Plane Route Families II** — shipped 2026-03-28. Archive: `.planning/milestones/v1.20-ROADMAP.md`
 - ✅ **v1.21 Full Greenfield Conversion: Mobile and Voice Runtime Services** — shipped 2026-03-28. Archive: `.planning/milestones/v1.21-ROADMAP.md`
-- 🚧 **v1.22 Full Greenfield Conversion: Orchestration and Browser Services** — active. Baseline: `3/6` shipped milestones, or about `50%`; target after shipment: `4/6`, or about `67%`
+- ✅ **v1.22 Full Greenfield Conversion: Orchestration and Browser Services** — shipped 2026-03-28. Archive: `.planning/milestones/v1.22-ROADMAP.md`
 
 ## Current Status
 
-- Active milestone: **v1.22 Full Greenfield Conversion: Orchestration and Browser Services**
-- Progress: **0 of 4 phases complete**
-- Most recent shipment: **v1.21 Full Greenfield Conversion: Mobile and Voice Runtime Services**
+- Active milestone: **none**
+- Progress: **0 live phases**
+- Most recent shipment: **v1.22 Full Greenfield Conversion: Orchestration and Browser Services**
 - Greenfield conversion baseline: **historical `18/18` ranked seam ledger complete and retired**
-- Full-conversion roadmap progress: **`3/6` milestones shipped, or about `50%`**
-- Current execution: **Defining requirements for Phase 93**
-- Next step: `$gsd-plan-phase 93` or `$gsd-autonomous`
+- Full-conversion roadmap progress: **`4/6` milestones shipped, or about `67%`**
+- Current execution: **No active milestone**
+- Next step: `$gsd-new-milestone`
 
 ## Live Planning
 
-### Phase Checklist
-
-- [ ] **Phase 93: Orchestration Request Routing, Override Validation, and Lifecycle-State Transition Services**
-- [ ] **Phase 94: Orchestration Checkpoint, Transcript, Trace, Reflection, and Supervision Summary Services**
-- [ ] **Phase 95: Browser Backend Policy and Audit Services**
-- [ ] **Phase 96: Browser Session Persistence, Workflow Execution, Inspection, and Sequence-Orchestration Services**
-
-### Current Queue Rule
-
-The original ranked greenfield seam inventory remains closed at `18/18` and retired. Follow-on work proceeds under the six-milestone full-conversion roadmap in `.planning/codebase/GREENFIELD-FULL-CONVERSION.md`, which measures progress by migrated adapter-only queues instead of extending the retired historical denominator.
-
-### Phase 93: Orchestration Request Routing, Override Validation, and Lifecycle-State Transition Services
-
-**Goal:** Move orchestration request routing, override validation, and lifecycle-state transition business logic out of `orchestrate.rs` so those flows compose through `openrustclaw-app` instead of route-local command orchestration.
-
-**Depends on:** Phase 92
-**Requirements:** `GFC-33`
-
-**Success criteria:**
-1. orchestration request routing and override validation compose through `openrustclaw-app`
-2. lifecycle-state transition decisions no longer live primarily in `orchestrate.rs`
-3. verification proves the shipped orchestration mutation contract remains truthful
-
-**Plans:** 0/1 plans complete
-
-Plans:
-- [ ] 93-01 Extract orchestration request routing and lifecycle-state transition services
-
-### Phase 94: Orchestration Checkpoint, Transcript, Trace, Reflection, and Supervision Summary Services
-
-**Goal:** Move the remaining orchestration checkpoint, transcript, trace, reflection, and supervision summary composition behind `openrustclaw-app` so `orchestrate.rs` keeps shrinking toward an adapter-only surface.
-
-**Depends on:** Phase 93
-**Requirements:** `GFC-34`
-
-**Success criteria:**
-1. orchestration summary and evidence composition flows through `openrustclaw-app`
-2. `orchestrate.rs` stops owning the dominant checkpoint, transcript, trace, reflection, and supervision reporting rules
-3. verification proves the shipped orchestration reporting contract remains truthful
-
-**Plans:** 0/1 plans complete
-
-Plans:
-- [ ] 94-01 Extract orchestration reporting and supervision summary services
-
-### Phase 95: Browser Backend Policy and Audit Services
-
-**Goal:** Move browser backend policy and audit handling behind `openrustclaw-app` so browser control decisions stop deepening legacy command ownership.
-
-**Depends on:** Phase 94
-**Requirements:** `GFC-35`
-
-**Success criteria:**
-1. browser backend policy and audit flows compose through `openrustclaw-app`
-2. legacy browser command surfaces become adapters for policy and audit handling instead of owning business rules directly
-3. verification proves the shipped browser policy and audit contract remains truthful
-
-**Plans:** 0/1 plans complete
-
-Plans:
-- [ ] 95-01 Extract browser backend policy and audit services
-
-### Phase 96: Browser Session Persistence, Workflow Execution, Inspection, and Sequence-Orchestration Services
-
-**Goal:** Move browser session persistence, workflow execution, inspection, and sequence orchestration behind `openrustclaw-app` so the browser command surface approaches adapter-only ownership for its remaining execution lanes.
-
-**Depends on:** Phase 95
-**Requirements:** `GFC-36`
-
-**Success criteria:**
-1. browser session persistence and workflow execution compose through `openrustclaw-app`
-2. browser inspection and sequence orchestration stop depending on dominant route-local business logic
-3. verification proves the shipped browser execution and inspection contract remains truthful
-
-**Plans:** 0/1 plans complete
-
-Plans:
-- [ ] 96-01 Extract browser workflow execution and inspection services
+No live phases. The next likely follow-on is `v1.23 Full Greenfield Conversion: Setup and Secondary Command Surfaces` from `.planning/codebase/GREENFIELD-FULL-CONVERSION.md`.
