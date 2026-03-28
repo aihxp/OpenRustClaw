@@ -8,4 +8,4 @@ description = "Application-layer services for the greenfield OpenRustClaw archit
 [dependencies]
 openrustclaw-core.workspace = true
 serde.workspace = true
-
+serde_json.workspace = true

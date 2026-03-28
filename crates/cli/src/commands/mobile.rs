@@ -4,6 +4,19 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, anyhow};
 use chrono::{DateTime, Utc};
+use openrustclaw_app::mobile_operator::{
+    MobileAppSessionMetricsSummary as AppMobileAppSessionMetricsSummary,
+    MobileCommandMetricsSummary as AppMobileCommandMetricsSummary,
+    MobileNodeActivityEntry as AppMobileNodeActivityEntry,
+    MobileNodeManifest as AppMobileNodeManifest,
+    MobileNodeOperatorReport as AppMobileNodeOperatorReport, MobileNodeOperatorService,
+    MobileNodeOperatorSource, MobileNodeOperatorState as AppMobileNodeOperatorState,
+    MobileNodePushState as AppMobileNodePushState,
+    MobileNodeRuntimeState as AppMobileNodeRuntimeState, MobileNodeSpec as AppMobileNodeSpec,
+    MobileNodeStatus as AppMobileNodeStatus, MobileNodeSummary as AppMobileNodeSummary,
+    MobileNodeSyncState as AppMobileNodeSyncState,
+    MobileNotificationSpec as AppMobileNotificationSpec, MobileSyncSpec as AppMobileSyncSpec,
+};
 use openrustclaw_mobile::node::MobileMessage;
 use openrustclaw_mobile::notifications::{
     Notification, NotificationConfig, NotificationPriority, NotificationType,
@@ -650,6 +663,454 @@ pub struct MobileNodeOperatorReport {
     pub recent_activity: Vec<MobileNodeActivityEntry>,
     #[serde(default)]
     pub attention_signals: Vec<MobileOperatorAttentionSignal>,
+}
+
+struct WorkspaceMobileNodeOperatorSource<'a> {
+    workspace_root: &'a Path,
+    node_id: &'a str,
+    activity_limit: Option<usize>,
+}
+
+impl<'a> WorkspaceMobileNodeOperatorSource<'a> {
+    fn new(workspace_root: &'a Path, node_id: &'a str, activity_limit: Option<usize>) -> Self {
+        Self {
+            workspace_root,
+            node_id,
+            activity_limit,
+        }
+    }
+}
+
+impl MobileNodeOperatorSource for WorkspaceMobileNodeOperatorSource<'_> {
+    fn load_mobile_node_operator_state(
+        &self,
+    ) -> openrustclaw_core::error::Result<AppMobileNodeOperatorState> {
+        let manifest =
+            inspect_node_data(self.workspace_root, self.node_id).map_err(map_mobile_error)?;
+        let node_status =
+            node_status_data(self.workspace_root, self.node_id).map_err(map_mobile_error)?;
+        let summary = mobile_node_summary_data(self.workspace_root, self.node_id)
+            .map_err(map_mobile_error)?
+            .summary;
+        let runtime =
+            node_runtime_data(self.workspace_root, self.node_id).map_err(map_mobile_error)?;
+        let push =
+            node_push_state_data(self.workspace_root, self.node_id).map_err(map_mobile_error)?;
+        let sync =
+            node_sync_state_data(self.workspace_root, self.node_id).map_err(map_mobile_error)?;
+        let app_session_metrics =
+            app_session_metrics_data(self.workspace_root, Some(self.node_id), None)
+                .map_err(map_mobile_error)?
+                .metrics;
+        let command_metrics = command_metrics_data(self.workspace_root, Some(self.node_id), None)
+            .map_err(map_mobile_error)?
+            .metrics;
+        let recent_activity =
+            node_activity_data(self.workspace_root, self.node_id, self.activity_limit)
+                .map_err(map_mobile_error)?
+                .entries;
+
+        Ok(AppMobileNodeOperatorState {
+            manifest: map_manifest_to_app(manifest),
+            node_status: map_node_status_to_app(node_status),
+            summary: map_summary_to_app(summary),
+            runtime: map_runtime_to_app(runtime),
+            push: map_push_to_app(push),
+            sync: map_sync_to_app(sync),
+            app_session_metrics: map_app_session_metrics_to_app(app_session_metrics),
+            command_metrics: map_command_metrics_to_app(command_metrics),
+            recent_activity: recent_activity
+                .into_iter()
+                .map(map_activity_to_app)
+                .collect(),
+        })
+    }
+}
+
+fn map_mobile_error(error: anyhow::Error) -> openrustclaw_core::error::Error {
+    openrustclaw_core::error::Error::Internal(format!(
+        "failed to load mobile operator report state: {error}"
+    ))
+}
+
+fn map_manifest_to_app(manifest: MobileNodeManifest) -> AppMobileNodeManifest {
+    AppMobileNodeManifest {
+        version: manifest.version,
+        node: AppMobileNodeSpec {
+            id: manifest.node.id,
+            gateway_url: manifest.node.gateway_url,
+            auth_token_env: manifest.node.auth_token_env,
+            device_name: manifest.node.device_name,
+            enabled: manifest.node.enabled,
+            platform: manifest.node.platform,
+            capabilities: manifest.node.capabilities,
+            sync: AppMobileSyncSpec {
+                mode: manifest.node.sync.mode,
+                priority: manifest.node.sync.priority,
+                conflict_resolution: manifest.node.sync.conflict_resolution,
+                max_sync_interval_secs: manifest.node.sync.max_sync_interval_secs,
+                min_battery_percent: manifest.node.sync.min_battery_percent,
+            },
+            notifications: AppMobileNotificationSpec {
+                enabled: manifest.node.notifications.enabled,
+                apns_enabled: manifest.node.notifications.apns_enabled,
+                fcm_enabled: manifest.node.notifications.fcm_enabled,
+                show_badge: manifest.node.notifications.show_badge,
+                play_sound: manifest.node.notifications.play_sound,
+                sound_name: manifest.node.notifications.sound_name,
+                vibration: manifest.node.notifications.vibration,
+                batch_interval_secs: manifest.node.notifications.batch_interval_secs,
+            },
+            metadata: manifest.node.metadata,
+        },
+    }
+}
+
+fn map_node_status_to_app(status: MobileNodeStatus) -> AppMobileNodeStatus {
+    AppMobileNodeStatus {
+        id: status.id,
+        enabled: status.enabled,
+        platform: status.platform,
+        gateway_url: status.gateway_url,
+        device_name: status.device_name,
+        capabilities: status.capabilities,
+        auth_token_env: status.auth_token_env,
+        auth_token_present: status.auth_token_present,
+        readiness: status.readiness,
+        sync: AppMobileSyncSpec {
+            mode: status.sync.mode,
+            priority: status.sync.priority,
+            conflict_resolution: status.sync.conflict_resolution,
+            max_sync_interval_secs: status.sync.max_sync_interval_secs,
+            min_battery_percent: status.sync.min_battery_percent,
+        },
+        notifications: AppMobileNotificationSpec {
+            enabled: status.notifications.enabled,
+            apns_enabled: status.notifications.apns_enabled,
+            fcm_enabled: status.notifications.fcm_enabled,
+            show_badge: status.notifications.show_badge,
+            play_sound: status.notifications.play_sound,
+            sound_name: status.notifications.sound_name,
+            vibration: status.notifications.vibration,
+            batch_interval_secs: status.notifications.batch_interval_secs,
+        },
+    }
+}
+
+fn map_summary_to_app(summary: MobileNodeSummary) -> AppMobileNodeSummary {
+    AppMobileNodeSummary {
+        node_id: summary.node_id,
+        runtime_status: summary.runtime_status,
+        app_state: summary.app_state,
+        network: summary.network,
+        reachable: summary.reachable,
+        push_token_present: summary.push_token_present,
+        notifications_authorized: summary.notifications_authorized,
+        wake_state: summary.wake_state,
+        rehydrate_state: summary.rehydrate_state,
+        sync_state: summary.sync_state,
+        battery_percent: summary.battery_percent,
+        pairings: summary.pairings,
+        app_sessions: summary.app_sessions,
+        active_app_sessions: summary.active_app_sessions,
+        ended_app_sessions: summary.ended_app_sessions,
+        sync_conflicts: summary.sync_conflicts,
+        notifications: summary.notifications,
+        inbox_messages: summary.inbox_messages,
+        outbox_messages: summary.outbox_messages,
+        commands: summary.commands,
+        capability_executions: summary.capability_executions,
+        media_artifacts: summary.media_artifacts,
+    }
+}
+
+fn map_runtime_to_app(runtime: MobileNodeRuntimeState) -> AppMobileNodeRuntimeState {
+    AppMobileNodeRuntimeState {
+        node_id: runtime.node_id,
+        runtime_status: runtime.runtime_status,
+        app_state: runtime.app_state,
+        network: runtime.network,
+        reachable: runtime.reachable,
+        push_token_present: runtime.push_token_present,
+        notifications_authorized: runtime.notifications_authorized,
+        push_provider: runtime.push_provider,
+        push_token_updated_at: runtime.push_token_updated_at,
+        battery_percent: runtime.battery_percent,
+        last_heartbeat_at: runtime.last_heartbeat_at,
+        wake_state: runtime.wake_state,
+        wake_requested_at: runtime.wake_requested_at,
+        wake_requested_by: runtime.wake_requested_by,
+        wake_reason: runtime.wake_reason,
+        last_wake_command_id: runtime.last_wake_command_id,
+        rehydrate_state: runtime.rehydrate_state,
+        rehydrate_requested_at: runtime.rehydrate_requested_at,
+        rehydrate_requested_by: runtime.rehydrate_requested_by,
+        rehydrate_reason: runtime.rehydrate_reason,
+        rehydrate_pending_change_count: runtime.rehydrate_pending_change_count,
+        last_rehydrate_command_id: runtime.last_rehydrate_command_id,
+        sync_state: runtime.sync_state,
+        pending_change_count: runtime.pending_change_count,
+        last_sync_requested_at: runtime.last_sync_requested_at,
+        last_sync_at: runtime.last_sync_at,
+        last_sync_result: runtime.last_sync_result,
+        pending_notification_count: runtime.pending_notification_count,
+        delivered_notification_count: runtime.delivered_notification_count,
+        last_notification_at: runtime.last_notification_at,
+        pending_inbound_message_count: runtime.pending_inbound_message_count,
+        acknowledged_inbound_message_count: runtime.acknowledged_inbound_message_count,
+        last_inbound_message_at: runtime.last_inbound_message_at,
+        pending_outbound_message_count: runtime.pending_outbound_message_count,
+        acknowledged_outbound_message_count: runtime.acknowledged_outbound_message_count,
+        last_outbound_message_at: runtime.last_outbound_message_at,
+        metadata: runtime.metadata,
+    }
+}
+
+fn map_push_to_app(push: MobileNodePushState) -> AppMobileNodePushState {
+    AppMobileNodePushState {
+        node_id: push.node_id,
+        push_token_present: push.push_token_present,
+        notifications_authorized: push.notifications_authorized,
+        push_provider: push.push_provider,
+        push_token_updated_at: push.push_token_updated_at,
+        runtime_status: push.runtime_status,
+    }
+}
+
+fn map_sync_to_app(sync: MobileNodeSyncState) -> AppMobileNodeSyncState {
+    AppMobileNodeSyncState {
+        node_id: sync.node_id,
+        sync_state: sync.sync_state,
+        pending_change_count: sync.pending_change_count,
+        pending_conflict_count: sync.pending_conflict_count,
+        resolved_conflict_count: sync.resolved_conflict_count,
+        last_sync_requested_at: sync.last_sync_requested_at,
+        last_sync_at: sync.last_sync_at,
+        last_sync_result: sync.last_sync_result,
+        runtime_status: sync.runtime_status,
+    }
+}
+
+fn map_app_session_metrics_to_app(
+    metrics: MobileAppSessionMetricsSummary,
+) -> AppMobileAppSessionMetricsSummary {
+    AppMobileAppSessionMetricsSummary {
+        total_sessions: metrics.total_sessions,
+        active_sessions: metrics.active_sessions,
+        ended_sessions: metrics.ended_sessions,
+        by_status: metrics.by_status,
+        avg_duration_secs: metrics.avg_duration_secs,
+        newest_session_at: metrics.newest_session_at,
+        oldest_session_at: metrics.oldest_session_at,
+    }
+}
+
+fn map_command_metrics_to_app(
+    metrics: MobileCommandMetricsSummary,
+) -> AppMobileCommandMetricsSummary {
+    AppMobileCommandMetricsSummary {
+        total_commands: metrics.total_commands,
+        pending_approval_commands: metrics.pending_approval_commands,
+        approved_commands: metrics.approved_commands,
+        executed_commands: metrics.executed_commands,
+        rejected_commands: metrics.rejected_commands,
+        by_command_kind: metrics.by_command_kind,
+        avg_execution_latency_secs: metrics.avg_execution_latency_secs,
+    }
+}
+
+fn map_activity_to_app(entry: MobileNodeActivityEntry) -> AppMobileNodeActivityEntry {
+    AppMobileNodeActivityEntry {
+        kind: entry.kind,
+        id: entry.id,
+        status: entry.status,
+        created_at: entry.created_at,
+        summary: entry.summary,
+    }
+}
+
+fn map_report_from_app(report: AppMobileNodeOperatorReport) -> MobileNodeOperatorReport {
+    MobileNodeOperatorReport {
+        status: report.status,
+        manifest: MobileNodeManifest {
+            version: report.manifest.version,
+            node: MobileNodeSpec {
+                id: report.manifest.node.id,
+                gateway_url: report.manifest.node.gateway_url,
+                auth_token_env: report.manifest.node.auth_token_env,
+                device_name: report.manifest.node.device_name,
+                enabled: report.manifest.node.enabled,
+                platform: report.manifest.node.platform,
+                capabilities: report.manifest.node.capabilities,
+                sync: MobileSyncSpec {
+                    mode: report.manifest.node.sync.mode,
+                    priority: report.manifest.node.sync.priority,
+                    conflict_resolution: report.manifest.node.sync.conflict_resolution,
+                    max_sync_interval_secs: report.manifest.node.sync.max_sync_interval_secs,
+                    min_battery_percent: report.manifest.node.sync.min_battery_percent,
+                },
+                notifications: MobileNotificationSpec {
+                    enabled: report.manifest.node.notifications.enabled,
+                    apns_enabled: report.manifest.node.notifications.apns_enabled,
+                    fcm_enabled: report.manifest.node.notifications.fcm_enabled,
+                    show_badge: report.manifest.node.notifications.show_badge,
+                    play_sound: report.manifest.node.notifications.play_sound,
+                    sound_name: report.manifest.node.notifications.sound_name,
+                    vibration: report.manifest.node.notifications.vibration,
+                    batch_interval_secs: report.manifest.node.notifications.batch_interval_secs,
+                },
+                metadata: report.manifest.node.metadata,
+            },
+        },
+        node_status: MobileNodeStatus {
+            id: report.node_status.id,
+            enabled: report.node_status.enabled,
+            platform: report.node_status.platform,
+            gateway_url: report.node_status.gateway_url,
+            device_name: report.node_status.device_name,
+            capabilities: report.node_status.capabilities,
+            auth_token_env: report.node_status.auth_token_env,
+            auth_token_present: report.node_status.auth_token_present,
+            readiness: report.node_status.readiness,
+            sync: MobileSyncSpec {
+                mode: report.node_status.sync.mode,
+                priority: report.node_status.sync.priority,
+                conflict_resolution: report.node_status.sync.conflict_resolution,
+                max_sync_interval_secs: report.node_status.sync.max_sync_interval_secs,
+                min_battery_percent: report.node_status.sync.min_battery_percent,
+            },
+            notifications: MobileNotificationSpec {
+                enabled: report.node_status.notifications.enabled,
+                apns_enabled: report.node_status.notifications.apns_enabled,
+                fcm_enabled: report.node_status.notifications.fcm_enabled,
+                show_badge: report.node_status.notifications.show_badge,
+                play_sound: report.node_status.notifications.play_sound,
+                sound_name: report.node_status.notifications.sound_name,
+                vibration: report.node_status.notifications.vibration,
+                batch_interval_secs: report.node_status.notifications.batch_interval_secs,
+            },
+        },
+        summary: MobileNodeSummary {
+            node_id: report.summary.node_id,
+            runtime_status: report.summary.runtime_status,
+            app_state: report.summary.app_state,
+            network: report.summary.network,
+            reachable: report.summary.reachable,
+            push_token_present: report.summary.push_token_present,
+            notifications_authorized: report.summary.notifications_authorized,
+            wake_state: report.summary.wake_state,
+            rehydrate_state: report.summary.rehydrate_state,
+            sync_state: report.summary.sync_state,
+            battery_percent: report.summary.battery_percent,
+            pairings: report.summary.pairings,
+            app_sessions: report.summary.app_sessions,
+            active_app_sessions: report.summary.active_app_sessions,
+            ended_app_sessions: report.summary.ended_app_sessions,
+            sync_conflicts: report.summary.sync_conflicts,
+            notifications: report.summary.notifications,
+            inbox_messages: report.summary.inbox_messages,
+            outbox_messages: report.summary.outbox_messages,
+            commands: report.summary.commands,
+            capability_executions: report.summary.capability_executions,
+            media_artifacts: report.summary.media_artifacts,
+        },
+        runtime: MobileNodeRuntimeState {
+            node_id: report.runtime.node_id,
+            runtime_status: report.runtime.runtime_status,
+            app_state: report.runtime.app_state,
+            network: report.runtime.network,
+            reachable: report.runtime.reachable,
+            push_token_present: report.runtime.push_token_present,
+            notifications_authorized: report.runtime.notifications_authorized,
+            push_provider: report.runtime.push_provider,
+            push_token_updated_at: report.runtime.push_token_updated_at,
+            battery_percent: report.runtime.battery_percent,
+            last_heartbeat_at: report.runtime.last_heartbeat_at,
+            wake_state: report.runtime.wake_state,
+            wake_requested_at: report.runtime.wake_requested_at,
+            wake_requested_by: report.runtime.wake_requested_by,
+            wake_reason: report.runtime.wake_reason,
+            last_wake_command_id: report.runtime.last_wake_command_id,
+            rehydrate_state: report.runtime.rehydrate_state,
+            rehydrate_requested_at: report.runtime.rehydrate_requested_at,
+            rehydrate_requested_by: report.runtime.rehydrate_requested_by,
+            rehydrate_reason: report.runtime.rehydrate_reason,
+            rehydrate_pending_change_count: report.runtime.rehydrate_pending_change_count,
+            last_rehydrate_command_id: report.runtime.last_rehydrate_command_id,
+            sync_state: report.runtime.sync_state,
+            pending_change_count: report.runtime.pending_change_count,
+            last_sync_requested_at: report.runtime.last_sync_requested_at,
+            last_sync_at: report.runtime.last_sync_at,
+            last_sync_result: report.runtime.last_sync_result,
+            last_notification_at: report.runtime.last_notification_at,
+            pending_notification_count: report.runtime.pending_notification_count,
+            delivered_notification_count: report.runtime.delivered_notification_count,
+            last_inbound_message_at: report.runtime.last_inbound_message_at,
+            pending_inbound_message_count: report.runtime.pending_inbound_message_count,
+            acknowledged_inbound_message_count: report.runtime.acknowledged_inbound_message_count,
+            last_outbound_message_at: report.runtime.last_outbound_message_at,
+            pending_outbound_message_count: report.runtime.pending_outbound_message_count,
+            acknowledged_outbound_message_count: report.runtime.acknowledged_outbound_message_count,
+            metadata: report.runtime.metadata,
+        },
+        push: MobileNodePushState {
+            node_id: report.push.node_id,
+            push_token_present: report.push.push_token_present,
+            notifications_authorized: report.push.notifications_authorized,
+            push_provider: report.push.push_provider,
+            push_token_updated_at: report.push.push_token_updated_at,
+            runtime_status: report.push.runtime_status,
+        },
+        sync: MobileNodeSyncState {
+            node_id: report.sync.node_id,
+            sync_state: report.sync.sync_state,
+            pending_change_count: report.sync.pending_change_count,
+            pending_conflict_count: report.sync.pending_conflict_count,
+            resolved_conflict_count: report.sync.resolved_conflict_count,
+            last_sync_requested_at: report.sync.last_sync_requested_at,
+            last_sync_at: report.sync.last_sync_at,
+            last_sync_result: report.sync.last_sync_result,
+            runtime_status: report.sync.runtime_status,
+        },
+        app_session_metrics: MobileAppSessionMetricsSummary {
+            total_sessions: report.app_session_metrics.total_sessions,
+            active_sessions: report.app_session_metrics.active_sessions,
+            ended_sessions: report.app_session_metrics.ended_sessions,
+            by_status: report.app_session_metrics.by_status,
+            avg_duration_secs: report.app_session_metrics.avg_duration_secs,
+            newest_session_at: report.app_session_metrics.newest_session_at,
+            oldest_session_at: report.app_session_metrics.oldest_session_at,
+        },
+        command_metrics: MobileCommandMetricsSummary {
+            total_commands: report.command_metrics.total_commands,
+            pending_approval_commands: report.command_metrics.pending_approval_commands,
+            approved_commands: report.command_metrics.approved_commands,
+            executed_commands: report.command_metrics.executed_commands,
+            rejected_commands: report.command_metrics.rejected_commands,
+            by_command_kind: report.command_metrics.by_command_kind,
+            avg_execution_latency_secs: report.command_metrics.avg_execution_latency_secs,
+        },
+        recent_activity: report
+            .recent_activity
+            .into_iter()
+            .map(|entry| MobileNodeActivityEntry {
+                kind: entry.kind,
+                id: entry.id,
+                status: entry.status,
+                created_at: entry.created_at,
+                summary: entry.summary,
+            })
+            .collect(),
+        attention_signals: report
+            .attention_signals
+            .into_iter()
+            .map(|signal| MobileOperatorAttentionSignal {
+                kind: signal.kind,
+                severity: signal.severity,
+                summary: signal.summary,
+            })
+            .collect(),
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1697,39 +2158,15 @@ pub fn mobile_node_report_data(
     node_id: &str,
     activity_limit: Option<usize>,
 ) -> Result<MobileNodeOperatorReport> {
-    let manifest = inspect_node_data(workspace_root, node_id)?;
-    let node_status = node_status_data(workspace_root, node_id)?;
-    let summary = mobile_node_summary_data(workspace_root, node_id)?.summary;
-    let runtime = node_runtime_data(workspace_root, node_id)?;
-    let push = node_push_state_data(workspace_root, node_id)?;
-    let sync = node_sync_state_data(workspace_root, node_id)?;
-    let app_session_metrics =
-        app_session_metrics_data(workspace_root, Some(node_id), None)?.metrics;
-    let command_metrics = command_metrics_data(workspace_root, Some(node_id), None)?.metrics;
-    let recent_activity = node_activity_data(workspace_root, node_id, activity_limit)?.entries;
-    let attention_signals = mobile_attention_signals(
-        &node_status,
-        &summary,
-        &runtime,
-        &push,
-        &sync,
-        &app_session_metrics,
-        &command_metrics,
-    );
-
-    Ok(MobileNodeOperatorReport {
-        status: "ok".to_string(),
-        manifest,
-        node_status,
-        summary,
-        runtime,
-        push,
-        sync,
-        app_session_metrics,
-        command_metrics,
-        recent_activity,
-        attention_signals,
-    })
+    let service = MobileNodeOperatorService::new(WorkspaceMobileNodeOperatorSource::new(
+        workspace_root,
+        node_id,
+        activity_limit,
+    ));
+    service
+        .report()
+        .map(map_report_from_app)
+        .map_err(Into::into)
 }
 
 pub fn mobile_metrics_data() -> Result<MobileMetricsResult> {
@@ -4235,127 +4672,6 @@ fn runtime_activity_entries(runtime: &MobileNodeRuntimeState) -> Vec<MobileNodeA
     entries
 }
 
-fn mobile_attention_signals(
-    node_status: &MobileNodeStatus,
-    summary: &MobileNodeSummary,
-    runtime: &MobileNodeRuntimeState,
-    push: &MobileNodePushState,
-    sync: &MobileNodeSyncState,
-    app_session_metrics: &MobileAppSessionMetricsSummary,
-    command_metrics: &MobileCommandMetricsSummary,
-) -> Vec<MobileOperatorAttentionSignal> {
-    let mut signals = Vec::new();
-
-    if node_status.readiness != "ready_for_runtime" {
-        signals.push(MobileOperatorAttentionSignal {
-            kind: "node_readiness".to_string(),
-            severity: "high".to_string(),
-            summary: format!("node readiness is {}", node_status.readiness),
-        });
-    }
-    if !runtime.reachable {
-        signals.push(MobileOperatorAttentionSignal {
-            kind: "connectivity".to_string(),
-            severity: "high".to_string(),
-            summary: "node is not currently reachable".to_string(),
-        });
-    }
-    if !push.push_token_present {
-        signals.push(MobileOperatorAttentionSignal {
-            kind: "push_registration".to_string(),
-            severity: "medium".to_string(),
-            summary: "push token is missing".to_string(),
-        });
-    }
-    if !push.notifications_authorized {
-        signals.push(MobileOperatorAttentionSignal {
-            kind: "notification_authorization".to_string(),
-            severity: "medium".to_string(),
-            summary: "device notifications are not authorized".to_string(),
-        });
-    }
-    if sync.pending_conflict_count > 0 {
-        signals.push(MobileOperatorAttentionSignal {
-            kind: "sync_conflicts".to_string(),
-            severity: "high".to_string(),
-            summary: format!(
-                "{} sync conflict(s) need resolution",
-                sync.pending_conflict_count
-            ),
-        });
-    }
-    if command_metrics.pending_approval_commands > 0 {
-        signals.push(MobileOperatorAttentionSignal {
-            kind: "pending_approval".to_string(),
-            severity: "high".to_string(),
-            summary: format!(
-                "{} mobile command(s) are waiting for approval",
-                command_metrics.pending_approval_commands
-            ),
-        });
-    }
-    if matches!(runtime.wake_state.as_str(), "requested" | "dispatched") {
-        signals.push(MobileOperatorAttentionSignal {
-            kind: "wake_request".to_string(),
-            severity: "medium".to_string(),
-            summary: format!("wake request is {}", runtime.wake_state),
-        });
-    }
-    if runtime.rehydrate_state == "requested" {
-        signals.push(MobileOperatorAttentionSignal {
-            kind: "rehydrate_request".to_string(),
-            severity: "medium".to_string(),
-            summary: "rehydrate has been requested but not completed".to_string(),
-        });
-    }
-    if runtime.pending_notification_count > 0 {
-        signals.push(MobileOperatorAttentionSignal {
-            kind: "notifications_pending".to_string(),
-            severity: "low".to_string(),
-            summary: format!(
-                "{} notification(s) remain pending acknowledgement",
-                runtime.pending_notification_count
-            ),
-        });
-    }
-    if runtime.pending_inbound_message_count > 0 {
-        signals.push(MobileOperatorAttentionSignal {
-            kind: "inbox_backlog".to_string(),
-            severity: "low".to_string(),
-            summary: format!(
-                "{} inbound mobile message(s) remain unacknowledged",
-                runtime.pending_inbound_message_count
-            ),
-        });
-    }
-    if runtime.pending_outbound_message_count > 0 {
-        signals.push(MobileOperatorAttentionSignal {
-            kind: "outbox_backlog".to_string(),
-            severity: "low".to_string(),
-            summary: format!(
-                "{} outbound mobile message(s) remain unacknowledged",
-                runtime.pending_outbound_message_count
-            ),
-        });
-    }
-    if summary.capability_executions > 0 && summary.media_artifacts == 0 {
-        signals.push(MobileOperatorAttentionSignal {
-            kind: "capability_artifacts".to_string(),
-            severity: "low".to_string(),
-            summary: "capability executions exist without derived media artifacts yet".to_string(),
-        });
-    }
-    if runtime.reachable && app_session_metrics.active_sessions == 0 {
-        signals.push(MobileOperatorAttentionSignal {
-            kind: "app_sessions".to_string(),
-            severity: "low".to_string(),
-            summary: "node is reachable but has no active app sessions".to_string(),
-        });
-    }
-
-    signals
-}
-
 fn summarize_body(value: &str, limit: usize) -> String {
     let trimmed = value.trim();
     if trimmed.chars().count() <= limit {
@@ -5561,6 +5877,94 @@ mod tests {
         assert!(activity.entry_count >= 7);
         unsafe {
             std::env::remove_var("MOBILE_ACTIVITY_TOKEN");
+        }
+    }
+
+    #[tokio::test]
+    async fn mobile_node_report_surfaces_attention_signals_through_app_lane() {
+        let temp = tempdir().expect("tempdir");
+        unsafe {
+            std::env::set_var("MOBILE_REPORT_TOKEN", "secret");
+        }
+        pair_node_data(
+            temp.path(),
+            MobilePairRequest {
+                id: "iphone-report".to_string(),
+                gateway_url: "wss://example.com/gateway".to_string(),
+                auth_token_env: "MOBILE_REPORT_TOKEN".to_string(),
+                device_name: Some("Report iPhone".to_string()),
+                platform: Some("ios".to_string()),
+                capabilities: vec!["mobile".to_string(), "camera".to_string()],
+                enabled: true,
+                sync: None,
+                notifications: None,
+                metadata: Value::Null,
+            },
+        )
+        .expect("pair node");
+
+        heartbeat_node_data(
+            temp.path(),
+            "iphone-report",
+            MobileHeartbeatRequest {
+                app_state: Some("background".to_string()),
+                network: Some("cellular".to_string()),
+                reachable: Some(false),
+                push_token_present: Some(false),
+                battery_percent: Some(48),
+                metadata: Value::Null,
+            },
+        )
+        .expect("heartbeat");
+        report_sync_conflict_data(
+            temp.path(),
+            MobileSyncConflictReportRequest {
+                node_id: "iphone-report".to_string(),
+                item_key: "calendar:event:42".to_string(),
+                conflict_type: "calendar_conflict".to_string(),
+                summary: Some("calendar changed on both ends".to_string()),
+                details: None,
+                resolution_hint: Some("manual_review".to_string()),
+            },
+        )
+        .expect("sync conflict");
+        dispatch_command_data(
+            temp.path(),
+            MobileCommandDispatchRequest {
+                node_id: "iphone-report".to_string(),
+                command: DeviceCommandKind::SendMessage,
+                payload: json!({"target":"ops-room","content":"approval needed"}),
+                approved_by: None,
+                require_approval: Some(true),
+            },
+        )
+        .await
+        .expect("dispatch command");
+
+        let report =
+            mobile_node_report_data(temp.path(), "iphone-report", Some(16)).expect("report");
+        assert_eq!(report.status, "ok");
+        assert_eq!(report.summary.node_id, "iphone-report");
+        assert!(
+            report
+                .attention_signals
+                .iter()
+                .any(|signal| signal.kind == "connectivity")
+        );
+        assert!(
+            report
+                .attention_signals
+                .iter()
+                .any(|signal| signal.kind == "sync_conflicts")
+        );
+        assert!(
+            report
+                .attention_signals
+                .iter()
+                .any(|signal| signal.kind == "pending_approval")
+        );
+        unsafe {
+            std::env::remove_var("MOBILE_REPORT_TOKEN");
         }
     }
 
