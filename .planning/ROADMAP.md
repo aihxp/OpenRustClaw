@@ -17,14 +17,57 @@
 - ✅ **v1.12 Secure Node Connectivity and SSH Tunnel Revisit** — shipped 2026-03-28. Archive: `.planning/milestones/v1.12-ROADMAP.md`
 - ✅ **v1.13 Brownfield-to-Greenfield Transition** — shipped 2026-03-28. Archive: `.planning/milestones/v1.13-ROADMAP.md`
 - ✅ **v1.14 Continued Greenfield Conversion** — shipped 2026-03-28. Archive: `.planning/milestones/v1.14-ROADMAP.md`
+- 🚧 **v1.15 Deeper Greenfield Conversion** — active
 
 ## Current Status
 
-- Active milestone: none
-- Progress: 0 active phases
+- Active milestone: **v1.15 Deeper Greenfield Conversion**
+- Progress: 0 of 4 phases complete
 - Most recent shipment: **v1.14 Continued Greenfield Conversion**
-- Next step: `$gsd-new-milestone`
+- Current execution: **Phase 65 not started**
+- Next step: `$gsd-discuss-phase 65`, `$gsd-plan-phase 65`, or `$gsd-autonomous`
 
 ## Live Planning
 
-No active milestone is open. The last completed roadmap is archived at `.planning/milestones/v1.14-ROADMAP.md`.
+### Phase Checklist
+
+- [ ] **Phase 65: Inspection Aggregation Expansion**
+- [ ] **Phase 66: Additional Route Family Extraction**
+- [ ] **Phase 67: Skills Mutation and Registry Boundary**
+- [ ] **Phase 68: Runtime Command Boundary Cleanup**
+
+### Phase 65: Inspection Aggregation Expansion
+
+**Goal:** Move another real inspection or aggregation family into `openrustclaw-app` so `inspect.rs` continues shrinking as a business-logic owner.
+
+**Success criteria:**
+- at least one additional inspection or aggregation family is composed in `openrustclaw-app`
+- `inspect.rs` becomes an adapter for the migrated surface
+- report-facing verification remains truthful
+
+### Phase 66: Additional Route Family Extraction
+
+**Goal:** Reduce direct command-local orchestration inside another bounded runtime or `/control/...` route family by moving it behind a cleaner application-facing seam.
+
+**Success criteria:**
+- one real route family moves behind a stable service boundary
+- route behavior stays stable from the runtime API perspective
+- the migration reduces cross-calls from route handlers into mixed legacy command helpers
+
+### Phase 67: Skills Mutation and Registry Boundary
+
+**Goal:** Start the next truthful `skills.rs` migration by moving one mutation-heavy or registry-heavy lane behind a real service seam.
+
+**Success criteria:**
+- one real mutation-heavy `skills.rs` slice moves behind a stable boundary
+- the migration starts from mutation, removal, install, or registry flows rather than reopening the compiled overview seam
+- contributor guidance can point future skills work at the new boundary
+
+### Phase 68: Runtime Command Boundary Cleanup
+
+**Goal:** Move one bounded runtime command seam behind a cleaner application or adapter boundary so the greenfield transition broadens beyond reports and route wrappers.
+
+**Success criteria:**
+- one real runtime command seam is migrated out of a legacy command hub
+- the shipped CLI or runtime contract remains intact
+- verification proves the migrated runtime path still behaves truthfully
