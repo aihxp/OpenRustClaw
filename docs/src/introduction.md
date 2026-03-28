@@ -9,6 +9,7 @@ If you are new to the project:
 1. Read [Installation](./getting-started/installation.md)
 2. Follow [Quickstart](./getting-started/quickstart.md)
 3. Use [First Agent](./getting-started/first-agent.md) once the base runtime is working
+4. Read [Remote Connectivity](./deployment/remote-connectivity.md) before exposing the control plane beyond one local host
 
 If you are evaluating the shipped product surface:
 
@@ -29,7 +30,7 @@ If you are evaluating the shipped product surface:
 ## How to Read the Docs
 
 - `Getting Started` is for new operators bringing up a workspace
-- `Deployment`, `Operations`, and `Guides` are for running and extending the system
+- `Deployment`, `Operations`, and `Guides` are for running and extending the system, including advanced remote-connectivity decisions
 - `Planning` exposes the canonical shipped-surface references
 - `API Reference` documents core runtime contracts
 

@@ -9,6 +9,7 @@
 
 # Operate
 - [Production Deployment](./deployment/production.md)
+- [Remote Connectivity](./deployment/remote-connectivity.md)
 - [Release Checklist](./deployment/release-checklist.md)
 - [Crates.io Release](./deployment/crates-io-release.md)
 - [Observability & Monitoring](./operations/observability.md)

@@ -11,6 +11,15 @@ Provides distributed capabilities for horizontal scaling:
 - **Load Balancing**: Request distribution across nodes
 - **Clustering**: Node discovery and membership
 
+This crate is the distributed cluster lane. It is not the whole remote-connectivity story by itself.
+
+- a `distributed node` is an advanced cluster member for multi-machine coordination
+- a `mobile node` is a bounded device-side participant with its own operator surface
+- an `SSH tunnel` is a transport fallback for reaching a protected local runtime when a node-first path is unavailable
+- a `reverse proxy` is a bounded last-resort remote-access path, not the preferred topology
+
+The local runtime remains the primary production anchor unless a deployment explicitly opts into the distributed lane.
+
 ## Components
 
 ### Raft Consensus

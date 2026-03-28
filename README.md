@@ -22,6 +22,12 @@ OpenRustClaw is packaged as one product with four deployment modes:
 
 The setup flow supports `Standard`, `Advanced`, and `Custom` depth, can resume partially completed work, and supports explicit upgrade or downgrade transitions between deployment modes.
 
+For advanced remote deployments, the current product direction is:
+
+- prefer a node-first topology when you need a remote execution or control boundary
+- use an SSH tunnel as the first fallback when the preferred node path is unavailable
+- use a reverse proxy only as a bounded last resort when you fully control that path end to end
+
 ## What Ships Today
 
 - Guided self-hosted onboarding with durable setup state, repair, and setup handoff
@@ -91,6 +97,7 @@ Use these as the main entry points:
 | Install and configure a workspace | [docs/src/getting-started/installation.md](docs/src/getting-started/installation.md) |
 | Get running quickly | [docs/src/getting-started/quickstart.md](docs/src/getting-started/quickstart.md) |
 | Production deployment and operations | [docs/src/deployment/production.md](docs/src/deployment/production.md) |
+| Remote nodes and fallback connectivity | [docs/src/deployment/remote-connectivity.md](docs/src/deployment/remote-connectivity.md) |
 | Security model and operator guidance | [docs/src/guides/security.md](docs/src/guides/security.md) |
 | Observability and runtime signals | [docs/src/operations/observability.md](docs/src/operations/observability.md) |
 | GitHub repo metadata and admin sync | [docs/github-repo-admin.md](docs/github-repo-admin.md) |

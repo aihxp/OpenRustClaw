@@ -719,7 +719,7 @@ async fn run_gateway_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
     if mode == 1 {
         println!("Remote gateway/client mode is not a separate shipped runtime yet.");
         println!(
-            "Use the local gateway for now and expose it through your own tunnel or reverse proxy if needed."
+            "Current remote-connectivity direction: prefer a node-first path, fall back to an SSH tunnel if needed, and only use a reverse proxy as a last resort you fully control."
         );
     }
 

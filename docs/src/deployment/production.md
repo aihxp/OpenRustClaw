@@ -15,6 +15,8 @@ Choose a posture that matches the product mode you selected during onboarding:
 
 OpenRustClaw is self-hosted. There is no hosted control plane that substitutes for your runtime, storage, or operator discipline.
 
+For advanced remote deployments, use the current connectivity order from [Remote Connectivity](./remote-connectivity.md): node-first, then SSH tunnel fallback, then reverse proxy fallback as a bounded last resort.
+
 ## Baseline Production Loop
 
 The normal production loop is:
@@ -46,6 +48,7 @@ Production deployments should treat the control plane as a protected operator su
 - use the normal control auth boundary for `/control/...`
 - enable the bearer-token gate when the deployment needs explicit operator auth
 - use the trusted-proxy mode only when you control the reverse proxy path end to end
+- do not use a reverse proxy as the default remote-access story when a node-first or SSH tunnel path is viable
 
 ### Enterprise operator boundary
 
@@ -99,4 +102,3 @@ When something drifts:
 4. restore from backup or use rollback planning before manual surgery
 
 The product should recover through shipped operator paths before resorting to hand-edited workspace state.
-
