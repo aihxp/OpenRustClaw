@@ -2,7 +2,7 @@
 
 **Created:** 2026-03-28
 **Purpose:** Canonical follow-on roadmap for turning the completed native-delivery planning scorecard into source-level native entrypoints, repository adapters, and retired legacy delivery ownership.
-**Status:** Active after `v1.33` at `1/6` shipped milestones, or about `17%`
+**Status:** Active after `v1.33` at `1/6` shipped milestones, or about `17%`, with `v1.34` targeting `2/6`, or about `33%`
 **Baselines preserved:** historical greenfield seam ledger closed at `18/18`; adapter-only full-conversion roadmap closed at `6/6`; native-delivery planning roadmap closed at `8/8`
 
 ## What "Continue Greenfield Conversion" Means Now

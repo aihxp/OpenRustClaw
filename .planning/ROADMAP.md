@@ -36,21 +36,97 @@
 - ✅ **v1.31 Native Delivery Layer: Legacy Module Retirement and Compatibility Shutdown** — shipped 2026-03-28. Archive: `.planning/milestones/v1.31-ROADMAP.md`
 - ✅ **v1.32 Native Delivery Layer: Native Product Exit Audit and Packaging** — shipped 2026-03-28. Archive: `.planning/milestones/v1.32-ROADMAP.md`
 - ✅ **v1.33 Native Delivery Implementation: Gateway and MCP Successor Entry Points** — shipped 2026-03-28. Archive: `.planning/milestones/v1.33-ROADMAP.md`
+- 🚧 **v1.34 Native Delivery Implementation: Native CLI Dispatch and Core Operator Paths** — active. Baseline: native-delivery implementation roadmap `1/6` shipped milestones, or about `17%`; target after shipment: `2/6`, or about `33%`
 
 ## Current Status
 
-- Active milestone: **none**
-- Progress: **no live phases**
+- Active milestone: **v1.34 Native Delivery Implementation: Native CLI Dispatch and Core Operator Paths**
+- Progress: **0 of 4 phases complete**
 - Most recent shipment: **v1.33 Native Delivery Implementation: Gateway and MCP Successor Entry Points**
 - Greenfield conversion baseline: **historical `18/18` ranked seam ledger complete and retired**
 - Full-conversion roadmap progress: **`6/6` milestones shipped, or `100%`**
 - Native-delivery planning roadmap progress: **`8/8` milestones shipped, or `100%`**
 - Native-delivery implementation roadmap progress: **`1/6` milestones shipped, or about `17%`**
-- Current execution: **no active milestone**
-- Next step: `$gsd-new-milestone continue native delivery implementation`
+- Current execution: **Phase 141 ready for planning**
+- Next step: `$gsd-plan-phase 141` or `$gsd-autonomous`
 
 ## Live Planning
 
 ### Current Queue Rule
 
 The original ranked greenfield seam inventory remains closed at `18/18` and retired. The follow-on adapter-only roadmap in `.planning/codebase/GREENFIELD-FULL-CONVERSION.md` is also complete at `6/6`. The native-delivery planning program in `.planning/codebase/NATIVE-DELIVERY-LAYER-ROADMAP.md` is also complete at `8/8`. The active follow-on program now runs through `.planning/codebase/NATIVE-DELIVERY-IMPLEMENTATION-ROADMAP.md`, which stands at `1/6` and measures source-level successor entrypoint implementation instead of reopening any completed denominator.
+
+### Phase Checklist
+
+- [ ] **Phase 141: Native CLI Dispatch Bootstrap**
+- [ ] **Phase 142: Assistant, Session, and Inspect Native CLI Paths**
+- [ ] **Phase 143: Control and Runtime Native CLI Handoff**
+- [ ] **Phase 144: Native CLI Compatibility and Verification Rule**
+
+### Phase 141: Native CLI Dispatch Bootstrap
+
+**Goal:** Define the first native CLI dispatch slice that reduces top-level routing ownership in the legacy command tree.
+
+**Depends on:** Phase 140
+**Requirements:** `NDI-5`
+
+**Success criteria:**
+1. the roadmap defines the first native CLI dispatch slice explicitly
+2. the slice ties top-level CLI routing ownership to native dispatch modules instead of the legacy command tree
+3. the milestone leaves a concrete implementation path for the first CLI successor entrypoint
+
+**Plans:** 0/0 plans complete
+
+Plans:
+- none yet
+
+### Phase 142: Assistant, Session, and Inspect Native CLI Paths
+
+**Goal:** Define the first assistant, chat, session, and inspect native CLI delivery slice.
+
+**Depends on:** Phase 141
+**Requirements:** `NDI-6`
+
+**Success criteria:**
+1. the roadmap defines the first core operator native CLI path explicitly
+2. assistant, session, and inspect flows are aligned to native CLI ownership instead of command-to-command routing
+3. the milestone keeps the core operator slice concrete enough to implement without rediscovering ownership
+
+**Plans:** 0/0 plans complete
+
+Plans:
+- none yet
+
+### Phase 143: Control and Runtime Native CLI Handoff
+
+**Goal:** Define the first control and runtime native CLI handoff slice.
+
+**Depends on:** Phase 142
+**Requirements:** `NDI-7`
+
+**Success criteria:**
+1. the roadmap defines which control and runtime CLI responsibilities leave the legacy command tree first
+2. any surviving compatibility forwarding is bounded explicitly instead of implied
+3. the milestone preserves a truthful path for later source-level CLI deletion or isolation
+
+**Plans:** 0/0 plans complete
+
+Plans:
+- none yet
+
+### Phase 144: Native CLI Compatibility and Verification Rule
+
+**Goal:** Define the compatibility and verification rules for the first native CLI operator-path slice.
+
+**Depends on:** Phase 143
+**Requirements:** `NDI-8`
+
+**Success criteria:**
+1. the roadmap defines how the first native CLI successor paths are verified directly
+2. compatibility rules prevent hidden fallback routing ownership from weakening the source-level claim
+3. the live planning surface advances the implementation roadmap to `2/6`, or about `33%`, only when the first CLI slice is explicit end to end
+
+**Plans:** 0/0 plans complete
+
+Plans:
+- none yet
