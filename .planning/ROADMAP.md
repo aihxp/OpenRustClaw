@@ -33,18 +33,96 @@
 - ✅ **v1.28 Native Delivery Layer: CLI Operator Commands II and UI-Adjacent Flows** — shipped 2026-03-28. Archive: `.planning/milestones/v1.28-ROADMAP.md`
 - ✅ **v1.29 Native Delivery Layer: Runtime Hosts and Background Workers** — shipped 2026-03-28. Archive: `.planning/milestones/v1.29-ROADMAP.md`
 - ✅ **v1.30 Native Delivery Layer: Repositories and Integration Adapters** — shipped 2026-03-28. Archive: `.planning/milestones/v1.30-ROADMAP.md`
+- 🚧 **v1.31 Native Delivery Layer: Legacy Module Retirement and Compatibility Shutdown** — active. Baseline: native-delivery roadmap `6/8` shipped milestones, or `75%`; target after shipment: `7/8`, or about `88%`
 
 ## Current Status
 
-- Active milestone: **none**
-- Progress: **no live phases**
+- Active milestone: **v1.31 Native Delivery Layer: Legacy Module Retirement and Compatibility Shutdown**
+- Progress: **0 of 4 phases complete**
 - Most recent shipment: **v1.30 Native Delivery Layer: Repositories and Integration Adapters**
 - Greenfield conversion baseline: **historical `18/18` ranked seam ledger complete and retired**
 - Full-conversion roadmap progress: **`6/6` milestones shipped, or `100%`**
 - Native-delivery roadmap progress: **`6/8` milestones shipped, or `75%`**
-- Current execution: **no active milestone**
-- Next step: `$gsd-new-milestone continue native delivery layer`
+- Current execution: **Phase 129 ready for planning**
+- Next step: `$gsd-plan-phase 129` or `$gsd-autonomous`
 
 ## Live Planning
 
-There is no active milestone. The original ranked greenfield seam inventory remains closed at `18/18` and retired, the follow-on adapter-only roadmap in `.planning/codebase/GREENFIELD-FULL-CONVERSION.md` remains complete at `6/6`, and the native-delivery program in `.planning/codebase/NATIVE-DELIVERY-LAYER-ROADMAP.md` now stands at `6/8` shipped milestones, or `75%`.
+### Phase Checklist
+
+- [ ] **Phase 129: Legacy Module Retirement Inventory**
+- [ ] **Phase 130: Compatibility Shim and Delete Boundaries**
+- [ ] **Phase 131: Main Bootstrap Retirement Path**
+- [ ] **Phase 132: Guardrails and Retirement Verification**
+
+### Current Queue Rule
+
+The original ranked greenfield seam inventory remains closed at `18/18` and retired. The follow-on adapter-only roadmap in `.planning/codebase/GREENFIELD-FULL-CONVERSION.md` is also complete at `6/6`. The native-delivery program proceeds under `.planning/codebase/NATIVE-DELIVERY-LAYER-ROADMAP.md`, which currently stands at `6/8` shipped milestones and measures progress by native delivery-layer and legacy-retirement milestones instead of extending either completed denominator.
+
+### Phase 129: Legacy Module Retirement Inventory
+
+**Goal:** Define which legacy command modules leave the main product path first and what retirement state each one enters.
+
+**Depends on:** Phase 128
+**Requirements:** `NDL-25`
+
+**Success criteria:**
+1. the roadmap defines the first legacy-module retirement inventory explicitly
+2. each targeted module is assigned a retirement state instead of remaining vague future cleanup
+3. the milestone leaves a concrete implementation path for removing legacy modules from the product path incrementally
+
+**Plans:** 0/0 plans complete
+
+Plans:
+- none yet
+
+### Phase 130: Compatibility Shim and Delete Boundaries
+
+**Goal:** Define how still-live legacy surfaces become thin compatibility shims or hard deletes.
+
+**Depends on:** Phase 129
+**Requirements:** `NDL-26`
+
+**Success criteria:**
+1. the roadmap defines which remaining live surfaces become shims and which are deleted
+2. compatibility behavior is bounded explicitly instead of preserving legacy orchestration ownership
+3. the milestone keeps the retirement slice concrete enough to implement without rediscovering compatibility rules
+
+**Plans:** 0/0 plans complete
+
+Plans:
+- none yet
+
+### Phase 131: Main Bootstrap Retirement Path
+
+**Goal:** Define how `main.rs` shrinks to binary bootstrap only or is replaced entirely.
+
+**Depends on:** Phase 130
+**Requirements:** `NDL-27`
+
+**Success criteria:**
+1. the roadmap defines the target end-state for `main.rs` explicitly
+2. the bootstrap-retirement path is aligned to the native delivery entrypoints instead of the legacy command tree
+3. the milestone preserves a bounded migration story while bootstrap ownership changes hands
+
+**Plans:** 0/0 plans complete
+
+Plans:
+- none yet
+
+### Phase 132: Guardrails and Retirement Verification
+
+**Goal:** Define the guardrails and verification rules proving new product entrypoints no longer depend on retired delivery files.
+
+**Depends on:** Phase 131
+**Requirements:** `NDL-28`
+
+**Success criteria:**
+1. the roadmap defines the verification and guardrail model for retired legacy delivery files
+2. the ownership-exit rules make it explicit when retired files can no longer regain product-path ownership
+3. the live planning surface leaves the native-delivery roadmap at `7/8`, or about `88%`, only if the retirement slice is explicit end to end
+
+**Plans:** 0/0 plans complete
+
+Plans:
+- none yet
