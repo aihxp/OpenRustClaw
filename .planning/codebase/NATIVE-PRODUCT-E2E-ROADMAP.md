@@ -2,7 +2,7 @@
 
 **Created:** 2026-03-29
 **Purpose:** Canonical follow-on roadmap for verifying the shipped product end to end and applying repairs through greenfield-native ownership when failures appear.
-**Status:** Active at `0/1` shipped milestones, or `0%`
+**Status:** Complete at `1/1` shipped milestones, or `100%`
 **Baselines preserved:** historical greenfield seam ledger closed at `18/18`; adapter-only full-conversion roadmap closed at `6/6`; native-delivery planning roadmap closed at `8/8`; native-delivery implementation roadmap closed at `6/6`
 
 ## What "Continue Greenfield Conversion" Means Now
@@ -18,7 +18,7 @@ This roadmap measures:
 
 ## Milestone Sequence
 
-### v1.39 Native Product E2E Verification and Greenfield Repairs
+### v1.39 Native Product E2E Verification and Greenfield Repairs (Shipped: 2026-03-29)
 
 Primary target: run the product end to end, classify failures by ownership, apply any required greenfield-first repairs, and close with truthful revalidation.
 
@@ -26,6 +26,8 @@ Primary target: run the product end to end, classify failures by ownership, appl
 - failure ownership and evidence matrix over the current codebase
 - greenfield-first repair path for defects found during verification
 - revalidation plus operator-facing exit report after repair
+
+Result: the shipped E2E and integration verification matrix passed cleanly, no repair-triggering product failures were found, and the roadmap closes truthfully at `1/1` without inventing cleanup work as a fake repair.
 
 ## Exit Criteria
 
