@@ -2,7 +2,7 @@
 
 **Created:** 2026-03-28
 **Purpose:** Canonical follow-on roadmap for replacing the remaining legacy delivery layer with native delivery surfaces built directly around `openrustclaw-app` ports and explicit infrastructure adapters.
-**Status:** Active after `v1.26` at `2/8` shipped milestones, or `25%`
+**Status:** Active after `v1.27` at `3/8` shipped milestones, or about `38%`
 **Baselines preserved:** historical greenfield seam ledger closed at `18/18`; full-conversion roadmap closed at `6/6`
 
 ## What "Move Completely Off Legacy" Means
@@ -34,6 +34,15 @@ The repo is fully off legacy when:
 - defined the target native MCP delivery ownership around `openrustclaw-mcp` plus `McpServerPort`
 - split the future gateway bootstrap contract away from the `start.rs` hotspot so native startup can become the primary path
 - aligned Control UI serving and wiring to the native gateway-delivery contract instead of leaving the UI tied to the legacy bootstrap monopoly
+
+## v1.27 Outcome
+
+`v1.27` did not replace the CLI in code yet. It made the first CLI-retirement slice concrete enough to implement without rediscovering delivery boundaries:
+
+- defined the target native CLI dispatch ownership that will replace `main.rs` as the permanent routing owner
+- defined the first core operator CLI delivery family for assistant, chat, session, and inspect entrypoints over app ports
+- defined the native CLI delivery ownership for control and runtime entrypoints instead of leaving those flows inside legacy command hubs
+- separated parsing, rendering, and app invocation responsibilities explicitly, with a bounded compatibility shim plan for any still-live legacy paths
 
 ## Remaining Legacy Delivery Inventory
 
@@ -182,6 +191,56 @@ Control UI transport should align with the gateway-native delivery path instead 
 
 This keeps the UI story honest: the UI is not “off legacy” merely because app logic is greenfielded; it is only off legacy when the UI-serving and route-ownership path is also native.
 
+### v1.27 CLI Dispatch Contract
+
+The native CLI dispatch path should make `openrustclaw` a thin bootstrap over app-facing delivery modules instead of a permanent `main.rs` routing monopoly.
+
+| Concern | Native Owner | Notes |
+| --- | --- | --- |
+| top-level argument routing | `openrustclaw-cli` native dispatch layer | `main.rs` should narrow toward binary bootstrap while route selection moves into delivery modules |
+| command-family selection | native CLI delivery modules over app ports | dispatch should choose a delivery module by capability family instead of command-to-command cross-calls |
+| app invocation | app ports in `openrustclaw-app` | delivery modules call app contracts directly rather than reusing legacy command hubs as orchestration layers |
+| temporary entrypoint forwarding | bounded compatibility shims only where needed | shims are allowed only after native dispatch exists and must point to the replacement module explicitly |
+
+This keeps the binary stable while changing ownership: the `openrustclaw` executable may remain, but `main.rs` should stop being where the product path is assembled.
+
+### v1.27 Operator Delivery Family I
+
+The first core operator CLI family to move behind native delivery modules is assistant, chat, session, and inspect.
+
+| Flow Family | Port Family | Native Delivery Target |
+| --- | --- | --- |
+| assistant and chat requests | `AssistantConversationPort` | native CLI assistant and chat delivery module |
+| session lifecycle operations | `SessionManagementPort` | native CLI session delivery module |
+| inspection and continuity summaries | `InspectionPort` | native CLI inspect delivery module |
+
+The reason to group these first is that they are core operator entrypoints with strong app-port definitions already available, and they force the roadmap to separate parsing and rendering from app-use orchestration before broader command-family retirement begins.
+
+### v1.27 Control and Runtime CLI Delivery
+
+The next CLI slice in this milestone is control and runtime command delivery, because those entrypoints still default to legacy command hubs even after the control HTTP and runtime app seams exist.
+
+| Flow Family | Port Family | Native Delivery Target |
+| --- | --- | --- |
+| control CLI entrypoints | `ControlPlanePort` | native CLI control delivery module |
+| runtime CLI entrypoints | `RuntimeOperationsPort` | native CLI runtime delivery module |
+| compatibility forwarding | bounded shims in `openrustclaw-cli` only | any legacy forwarding must declare the native module it points to and must not regain orchestration ownership |
+
+This keeps the CLI roadmap honest: HTTP control routes alone do not retire legacy delivery if the operator CLI still defaults to command-local orchestration.
+
+### v1.27 CLI Boundary Separation
+
+The CLI replacement slice is only implementable if parsing, rendering, and app invocation are treated as separate responsibilities.
+
+| Responsibility | Native Owner | Legacy-Retirement Rule |
+| --- | --- | --- |
+| argument parsing | native CLI delivery modules | parsing must not imply orchestration ownership |
+| output rendering | native CLI delivery modules | rendering stays at the edge and should not pull domain decisions back into CLI helpers |
+| app invocation | app ports in `openrustclaw-app` | use-case orchestration lives behind ports, not inside render or parse helpers |
+| compatibility shims | bounded forwarding modules only | shims may translate old entrypoints, but they may not become the long-term home for new behavior |
+
+This boundary split gives future milestones a defensible deletion path for `main.rs` and the command tree instead of another round of mixed-responsibility helpers.
+
 ### Why This Topology
 
 - the workspace already has `openrustclaw-gateway` and `openrustclaw-mcp`, so the roadmap can reuse existing crates instead of forcing all delivery through `openrustclaw-cli`
@@ -242,7 +301,7 @@ Status after shipment: complete. This milestone defined the native control HTTP 
 
 ### v1.27 Native Delivery Layer: CLI Core Dispatch and Operator Commands I
 
-Primary target: break the top-level binary and core operator flows away from `main.rs` plus the legacy command tree.
+Status after shipment: complete. This milestone defined the native CLI dispatch path that will replace `main.rs` as the routing owner, the first core operator CLI delivery family over app ports, the native CLI ownership for control and runtime entrypoints, and the boundary plus compatibility-shim rules needed for the first CLI implementation slice.
 
 - new CLI dispatch layer over app ports
 - native delivery for assistant, chat, session, inspect, control, and runtime entrypoints

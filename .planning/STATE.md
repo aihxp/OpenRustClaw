@@ -1,13 +1,13 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.27
-milestone_name: "Native Delivery Layer: CLI Core Dispatch and Operator Commands I"
-current_phase: 113
-current_phase_name: "Native CLI Dispatch Layer"
+milestone: v1.28
+milestone_name: "Native Delivery Layer: CLI Operator Commands II and UI-Adjacent Flows"
+current_phase: 117
+current_phase_name: "Large Operator Command Family Native Delivery"
 current_plan: none
 status: ready for planning
-stopped_at: Run $gsd-plan-phase 113 or $gsd-autonomous.
-last_updated: "2026-03-29T01:05:00.000Z"
+stopped_at: Run $gsd-plan-phase 117 or $gsd-autonomous.
+last_updated: "2026-03-29T01:40:00.000Z"
 last_activity: 2026-03-28
 progress:
   total_phases: 4
@@ -24,16 +24,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-28)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** Plan and execute `v1.27 Native Delivery Layer: CLI Core Dispatch and Operator Commands I` from the native-delivery baseline of `2/8` shipped milestones, or `25%`, while preserving the completed `18/18` and `6/6` programs as finished denominators.
+**Current focus:** Plan and execute `v1.28 Native Delivery Layer: CLI Operator Commands II and UI-Adjacent Flows` from the native-delivery baseline of `3/8` shipped milestones, or about `38%`, while preserving the completed `18/18` and `6/6` programs as finished denominators.
 
 ## Current Position
 
-Current Phase: 113
-Current Phase Name: Native CLI Dispatch Layer
+Current Phase: 117
+Current Phase Name: Large Operator Command Family Native Delivery
 Total Phases: 4
 Current Plan: none
 Total Plans in Phase: 0
-Status: Milestone started; Phase 113 ready for planning
+Status: Milestone started; Phase 117 ready for planning
 Last activity: 2026-03-28
 
 Phase: 0 of 4
@@ -44,9 +44,9 @@ Progress: [----------] 0%
 
 **Velocity:**
 
-- Total plans completed: 106
+- Total plans completed: 110
 - Average duration: historical average retained across shipped milestones
-- Total execution time: multiple shipped milestones completed across v1.0-v1.26 planning and shipped execution
+- Total execution time: multiple shipped milestones completed across v1.0-v1.27 planning and shipped execution
 
 ## Accumulated Context
 
@@ -63,8 +63,9 @@ Recent decisions affecting current work:
 - The broader full-conversion roadmap now stands at `6/6` shipped milestones, or `100%`.
 - v1.25 completed the first native-delivery milestone by defining the legacy delivery inventory, app-port catalog, successor topology, and deletion-gate model.
 - v1.26 completed the next native-delivery milestone by defining the native control HTTP path, native MCP path, gateway-bootstrap split, and Control UI alignment story.
-- The native-delivery roadmap now stands at `2/8` shipped milestones, or `25%`.
-- v1.27 starts the next native-delivery milestone from that `2/8` baseline, targeting CLI core dispatch plus the first operator command-family delivery slice.
+- v1.27 completed the next native-delivery milestone by defining the native CLI dispatch path, the first core operator CLI delivery family, the control and runtime CLI ownership path, and the CLI compatibility-shim boundaries.
+- The native-delivery roadmap now stands at `3/8` shipped milestones, or about `38%`.
+- v1.28 starts the next native-delivery milestone from that `3/8` baseline, targeting the second CLI operator-delivery slice plus UI-adjacent alignment.
 
 ### Pending Todos
 
@@ -77,5 +78,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-28 20:09
-Stopped at: Run $gsd-plan-phase 113 or $gsd-autonomous.
+Stopped at: Run $gsd-plan-phase 117 or $gsd-autonomous.
 Resume file: None

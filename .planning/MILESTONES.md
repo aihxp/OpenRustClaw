@@ -1,5 +1,20 @@
 # Project Milestones: OpenRustClaw
 
+## v1.27 Native Delivery Layer: CLI Core Dispatch and Operator Commands I (Shipped: 2026-03-28)
+
+**Phases completed:** 4 phases, 4 plans, 0 tasks
+**Verification archive:** `.planning/milestones/v1.27-VERIFICATIONS.md`
+**Verification debt:** none
+
+**Key accomplishments:**
+
+- Defined the native CLI dispatch contract that will replace `main.rs` as the permanent routing owner for the `openrustclaw` product path.
+- Defined the first core operator CLI delivery family for assistant, chat, session, and inspect entrypoints over app ports.
+- Defined the native CLI delivery ownership path for control and runtime entrypoints instead of leaving those flows in legacy command hubs.
+- Defined explicit parsing, rendering, app-invocation, and compatibility-shim boundaries for the first native CLI implementation slice.
+
+---
+
 ## v1.26 Native Delivery Layer: Control, MCP, and Gateway Delivery (Shipped: 2026-03-28)
 
 **Phases completed:** 4 phases, 4 plans, 0 tasks
