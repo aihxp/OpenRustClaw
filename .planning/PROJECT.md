@@ -24,9 +24,15 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 **Archive:** `.planning/milestones/v1.40-ROADMAP.md`, `.planning/milestones/v1.40-REQUIREMENTS.md`, `.planning/milestones/v1.40-MILESTONE-AUDIT.md`, `.planning/milestones/v1.40-VERIFICATIONS.md`
 
-## Current Planning State
+## Current Milestone: v1.41 Markdown Surface Audit, Cleanup, and Consolidation
 
-There is no active milestone. The internal architecture and verification queues remain closed, the public-product convergence roadmap is now complete at `1/1`, and any further work requires a new canonical denominator instead of reopening the completed queues.
+**Goal:** Audit every non-generated Markdown surface in the repo, classify stale or duplicated content, and update, merge, or delete it without breaking the shipped documentation story.
+
+**Target features:**
+- Inventory the full Markdown surface outside generated docs output and classify canonical, stale, duplicated, or archive-only files.
+- Cleanly merge, rewrite, or delete stale Markdown files so the remaining repo docs tell one consistent story.
+- Synchronize repo entry docs, crate READMEs, docs-site content, and planning references where they overlap.
+- Preserve truthfulness through explicit verification, documented deletion rationale, and an end-of-milestone documentation audit.
 
 ## Requirements
 
@@ -167,12 +173,12 @@ There is no active milestone. The internal architecture and verification queues 
 - ✓ Remaining native shims and compatibility exceptions are now audited explicitly instead of being hidden inside a broad native-product completion claim — v1.38 Phase 159
 - ✓ The final source-level native-product exit claim is now bounded by explicit evidence, exceptions, and claim limits instead of asserting deletion not verified in source — v1.38 Phase 160
 
-### Recently Closed In v1.40
+### Active
 
-- ✓ PPC-01: Public-facing docs, package metadata, and repo entrypoints no longer use internal migration terminology and instead describe the shipped product plainly.
-- ✓ PPC-02: The codebase cleanup inventory resulted in safe deletion, merge, or simplification of stale files and surfaces without regressing shipped behavior.
-- ✓ PPC-03: GitHub Actions workflows are now repaired or intentionally retired with rationale, and the checked-in CI and release lanes are green locally.
-- ✓ PPC-04: The `1.4.0` public release was prepared and published with synchronized versioning, release notes, package metadata, crates.io state, and the repo tag `v1.4.0`.
+- **MDA-01:** The repo has one explicit inventory of non-generated Markdown files with freshness, ownership, and disposition status.
+- **MDA-02:** Stale, duplicated, or superseded Markdown content is either merged into a canonical surface or deleted with clear rationale.
+- **MDA-03:** Repo entry docs, crate READMEs, docs-site pages, and planning references that should agree are synchronized after cleanup.
+- **MDA-04:** The post-cleanup Markdown surface is reverified for internal consistency, broken references, and truthful public product language.
 
 ### Out of Scope
 
