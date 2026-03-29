@@ -1,5 +1,20 @@
 # Project Milestones: OpenRustClaw
 
+## v1.34 Native Delivery Implementation: Native CLI Dispatch and Core Operator Paths (Shipped: 2026-03-28)
+
+**Phases completed:** 4 phases, 4 plans, 0 tasks
+**Verification archive:** `.planning/milestones/v1.34-VERIFICATIONS.md`
+**Verification debt:** none
+
+**Key accomplishments:**
+
+- Defined the first native CLI dispatch bootstrap slice so top-level `openrustclaw` routing can leave `main.rs` and the legacy command tree through an explicit successor path.
+- Defined the first assistant, session, and inspect native CLI operator-path slice so those user-facing flows no longer survive only as a vague later migration target.
+- Defined the first control and runtime native CLI handoff slice so the biggest remaining operator command hotspots now have a bounded successor ownership path.
+- Defined the direct native CLI compatibility and verification rules that keep the second implementation milestone truthful instead of over-claiming source-level replacement.
+
+---
+
 ## v1.33 Native Delivery Implementation: Gateway and MCP Successor Entry Points (Shipped: 2026-03-28)
 
 **Phases completed:** 4 phases, 4 plans, 0 tasks

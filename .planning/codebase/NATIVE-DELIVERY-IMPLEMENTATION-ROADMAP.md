@@ -2,7 +2,7 @@
 
 **Created:** 2026-03-28
 **Purpose:** Canonical follow-on roadmap for turning the completed native-delivery planning scorecard into source-level native entrypoints, repository adapters, and retired legacy delivery ownership.
-**Status:** Active after `v1.33` at `1/6` shipped milestones, or about `17%`, with `v1.34` targeting `2/6`, or about `33%`
+**Status:** Active after `v1.34` at `2/6` shipped milestones, or about `33%`
 **Baselines preserved:** historical greenfield seam ledger closed at `18/18`; adapter-only full-conversion roadmap closed at `6/6`; native-delivery planning roadmap closed at `8/8`
 
 ## What "Continue Greenfield Conversion" Means Now
@@ -38,12 +38,21 @@ Status after shipment: complete. This milestone defined the first concrete sourc
 
 ### v1.34 Native Delivery Implementation: Native CLI Dispatch and Core Operator Paths
 
-Primary target: move the top-level CLI dispatch and first operator entrypoints off the legacy command tree.
+Status after shipment: complete. This milestone defined the first native CLI dispatch slice, the first assistant or session and inspect operator-path slice, the first control and runtime CLI handoff, and the first direct compatibility-and-verification rules needed to implement the successor CLI path without rediscovering top-level routing ownership.
 
 - native CLI dispatch layer in `openrustclaw-cli`
 - assistant, chat, session, inspect, control, and runtime entrypoint lift
 - command-to-command routing removal for the first operator families
 - compatibility shims only where required to preserve the shipped interface
+
+## v1.34 Outcome
+
+`v1.34` did not implement the native CLI dispatch and operator paths in source yet. It advanced the implementation roadmap to `2/6` by defining the first CLI successor-entry slice explicitly enough to build and verify instead of leaving `main.rs` and the first operator command families under one broad future replacement claim.
+
+- the implementation roadmap now names the first native CLI dispatch bootstrap slice explicitly
+- the implementation roadmap now names the first assistant, session, and inspect operator-path slice over native CLI ownership
+- the first control and runtime CLI responsibilities leaving the legacy command tree are now explicit instead of vague future cleanup
+- the roadmap now defines how the first native CLI successor paths are verified directly while any compatibility forwarding remains bounded
 
 ### v1.35 Native Delivery Implementation: Runtime Hosts and Background Workers
 
