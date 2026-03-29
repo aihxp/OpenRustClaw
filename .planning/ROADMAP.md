@@ -40,17 +40,68 @@
 
 ## Current Status
 
-- Active milestone: **none**
-- Progress: **no live phases**
+- Active milestone: **v1.35 Native Delivery Implementation: Runtime Hosts and Background Workers**
+- Progress: **4 planned phases**
 - Most recent shipment: **v1.34 Native Delivery Implementation: Native CLI Dispatch and Core Operator Paths**
 - Greenfield conversion baseline: **historical `18/18` ranked seam ledger complete and retired**
 - Full-conversion roadmap progress: **`6/6` milestones shipped, or `100%`**
 - Native-delivery planning roadmap progress: **`8/8` milestones shipped, or `100%`**
 - Native-delivery implementation roadmap progress: **`2/6` milestones shipped, or about `33%`**
-- Current execution: **no active milestone**
-- Next step: `$gsd-new-milestone continue native delivery implementation`
+- Current execution: **Phase 145 ready for planning**
+- Next step: `$gsd-plan-phase 145` or `$gsd-autonomous`
 
 ## Live Planning
+
+### Phase Checklist
+
+- [ ] **Phase 145: Native Runtime-Host Bootstrap**
+- [ ] **Phase 146: Runtime Startup Boundary Contracts**
+- [ ] **Phase 147: Worker Boot Migration**
+- [ ] **Phase 148: Runtime-Host Compatibility and Verification Rule**
+
+### Phase 145: Native Runtime-Host Bootstrap
+
+**Goal:** Define the first native runtime-host bootstrap slice so service-manager, probes, maintenance, and scheduler startup no longer remain a broad future replacement claim.
+
+**Requirements:** `NDI-9`
+
+**Success criteria:**
+1. The roadmap names the first native runtime-host bootstrap slice explicitly enough to implement without rediscovering startup ownership.
+2. The slice ties successor ownership to the real runtime-host startup surface instead of leaving it under the legacy command layer as a whole.
+3. The milestone preserves a concrete implementation path for the first runtime-host successor entrypoint.
+
+### Phase 146: Runtime Startup Boundary Contracts
+
+**Goal:** Define the runtime startup-boundary contracts needed to move worker lifecycle startup off the legacy command layer truthfully.
+
+**Requirements:** `NDI-10`
+
+**Success criteria:**
+1. The roadmap defines the startup-boundary contracts for service-manager, probes, maintenance, and scheduler flows explicitly.
+2. The contracts separate native runtime-host ownership from still-bounded compatibility forwarding instead of leaving startup coupling implicit.
+3. The milestone keeps the first runtime lifecycle handoff concrete enough to implement without rediscovering boundary rules.
+
+### Phase 147: Worker Boot Migration
+
+**Goal:** Define the mobile, voice, and orchestration worker-boot migration slice over native runtime-host ownership.
+
+**Requirements:** `NDI-11`
+
+**Success criteria:**
+1. The roadmap defines the first mobile, voice, and orchestration worker-boot migration slice explicitly.
+2. The slice ties successor ownership to the real worker-boot hotspots instead of leaving them under generic runtime cleanup language.
+3. The milestone keeps the first worker-boot migration slice concrete enough to implement without rediscovering worker startup ownership.
+
+### Phase 148: Runtime-Host Compatibility and Verification Rule
+
+**Goal:** Define the direct compatibility and verification rules for the first native runtime-host handoff slice.
+
+**Requirements:** `NDI-12`
+
+**Success criteria:**
+1. The roadmap defines how the first runtime-host successor paths are verified directly.
+2. Compatibility rules keep fallback startup ownership explicit and bounded instead of hidden inside the legacy command layer.
+3. The live planning surface only advances the implementation roadmap toward `3/6`, or `50%`, when the first runtime-host slice is explicit end to end.
 
 ### Current Queue Rule
 

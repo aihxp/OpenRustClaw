@@ -1,0 +1,51 @@
+# Requirements: v1.35 Native Delivery Implementation: Runtime Hosts and Background Workers
+
+**Started:** 2026-03-28
+**Historical greenfield baseline:** retired `18/18` ranked seam ledger complete, or `100%`
+**Full-conversion roadmap baseline:** `6/6` milestones shipped, or `100%`
+**Native-delivery planning roadmap baseline:** `8/8` milestones shipped, or `100%`
+**Native-delivery implementation roadmap baseline:** `2/6` milestones shipped, or about `33%`
+**Target after shipment:** `3/6` milestones shipped, or `50%`
+
+## Scope
+
+This milestone continues the source-level native-delivery implementation roadmap by defining the first native runtime-host bootstrap slice, the runtime startup-boundary contracts for service-manager and scheduler ownership, the first mobile or voice or orchestration worker-boot migration slice, and the first compatibility-and-verification rules for the native runtime-host successor path.
+
+## Milestone Requirements
+
+### Runtime-Host Bootstrap
+
+- [ ] **NDI-9**: The roadmap defines the first native runtime-host bootstrap slice for service-manager, probes, maintenance, and scheduler ownership.
+
+### Startup Boundaries
+
+- [ ] **NDI-10**: The roadmap defines the runtime startup-boundary contracts needed to move worker lifecycle startup off the legacy command layer.
+
+### Worker Boot Migration
+
+- [ ] **NDI-11**: The roadmap defines the mobile, voice, and orchestration worker-boot migration slice over native runtime-host ownership.
+
+### Compatibility and Verification
+
+- [ ] **NDI-12**: The roadmap defines the direct compatibility and verification rules for the first native runtime-host handoff slice.
+
+## Future Requirements
+
+- Later milestones must continue runtime-host, repository, retirement, and verification implementation through the same roadmap instead of inventing a new denominator.
+- The completed `18/18`, `6/6`, and `8/8` denominators must remain closed and must not be silently reinterpreted as source-level implementation percentages.
+- The implementation roadmap should only advance beyond `3/6` when the first native runtime-host successor slice is explicit enough to implement and verify.
+- Any compatibility shim that survives the runtime-host handoff must stay bounded explicitly instead of preserving hidden startup ownership.
+
+## Out of Scope
+
+- Reopening the completed historical, adapter-only, or planning denominators with a new meaning
+- Claiming the native runtime-host and worker-boot successor paths are already implemented in source before the implementation milestones ship
+- Retiring the whole command tree in the same milestone that starts the first runtime-host slice
+- Treating planning-only completion as proof of source-level runtime lifecycle ownership
+
+## Traceability
+
+- `NDI-9` -> Phase 145
+- `NDI-10` -> Phase 146
+- `NDI-11` -> Phase 147
+- `NDI-12` -> Phase 148
