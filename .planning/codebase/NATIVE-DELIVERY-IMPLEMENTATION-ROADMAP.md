@@ -2,7 +2,7 @@
 
 **Created:** 2026-03-28
 **Purpose:** Canonical follow-on roadmap for turning the completed native-delivery planning scorecard into source-level native entrypoints, repository adapters, and retired legacy delivery ownership.
-**Status:** Active after `v1.36` at `4/6` shipped milestones, or about `67%`, with `v1.37` targeting `5/6`, or about `83%`
+**Status:** Active after `v1.37` at `5/6` shipped milestones, or about `83%`
 **Baselines preserved:** historical greenfield seam ledger closed at `18/18`; adapter-only full-conversion roadmap closed at `6/6`; native-delivery planning roadmap closed at `8/8`
 
 ## What "Continue Greenfield Conversion" Means Now
@@ -92,12 +92,21 @@ Status after shipment: complete. This milestone defined the first repository-ada
 
 ### v1.37 Native Delivery Implementation: Legacy Command Tree Retirement
 
-Primary target: delete, isolate, or freeze the superseded command-tree hotspots once successor paths are implemented.
+Status after shipment: complete. This milestone defined the first legacy module retirement inventory and successor ownership slice, the first delete-or-shim boundaries for superseded command-tree hotspots, the first `main.rs` bootstrap retirement path, and the first direct guardrails plus compatibility-and-verification rules needed to implement legacy command-tree retirement without rediscovering shutdown ownership.
 
 - retire or remove `crates/cli/src/commands/*` families that leave the main product path
 - shrink `main.rs` to thin bootstrap-only ownership or replace it outright
 - preserve only bounded native shims where deletion is not yet safe
 - enforce source-level guardrails so retired files cannot regain ownership
+
+## v1.37 Outcome
+
+`v1.37` did not retire the legacy command tree in source yet. It advanced the implementation roadmap to `5/6` by defining the first retirement slice explicitly enough to build and verify instead of leaving legacy module shutdown under one broad future replacement claim.
+
+- the implementation roadmap now names the first legacy module retirement inventory and successor ownership slice explicitly
+- the implementation roadmap now names the first delete-or-shim boundaries for superseded command-tree hotspots and the `main.rs` bootstrap retirement path
+- the first shutdown responsibilities leaving the legacy command tree are now explicit instead of vague future cleanup
+- the roadmap now defines how the first retirement successor paths are verified directly while any compatibility forwarding remains bounded
 
 ### v1.38 Native Product Verification and Packaging Exit
 

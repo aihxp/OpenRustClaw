@@ -1,5 +1,20 @@
 # Project Milestones: OpenRustClaw
 
+## v1.37 Native Delivery Implementation: Legacy Command Tree Retirement (Shipped: 2026-03-28)
+
+**Phases completed:** 4 phases, 4 plans, 0 tasks
+**Verification archive:** `.planning/milestones/v1.37-VERIFICATIONS.md`
+**Verification debt:** none
+
+**Key accomplishments:**
+
+- Defined the first legacy module retirement inventory and successor ownership slice so superseded command-tree hotspots can leave the main product path through explicit successor states.
+- Defined the first delete-or-shim boundaries for still-live legacy surfaces so compatibility no longer hides shutdown ownership.
+- Defined the first `main.rs` bootstrap retirement path so top-level binary routing now has an explicit successor ownership story outside the retired command tree.
+- Defined the direct retirement guardrails and verification rules that keep the fifth implementation milestone truthful instead of over-claiming source-level retirement.
+
+---
+
 ## v1.36 Native Delivery Implementation: Repository and Integration Adapter Lift (Shipped: 2026-03-28)
 
 **Phases completed:** 4 phases, 4 plans, 0 tasks
