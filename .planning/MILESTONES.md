@@ -1,5 +1,20 @@
 # Project Milestones: OpenRustClaw
 
+## v1.29 Native Delivery Layer: Runtime Hosts and Background Workers (Shipped: 2026-03-28)
+
+**Phases completed:** 4 phases, 4 plans, 0 tasks
+**Verification archive:** `.planning/milestones/v1.29-VERIFICATIONS.md`
+**Verification debt:** none
+
+**Key accomplishments:**
+
+- Defined the dedicated runtime-host and background-worker entrypoints over app ports so worker startup no longer defaults conceptually to legacy command bootstraps.
+- Defined the startup-boundary contracts for service-manager, probe-runner, runtime-maintenance, and scheduler flows needed by the native runtime-host path.
+- Aligned mobile, voice, and orchestration worker boot contracts to the native runtime-host delivery model instead of leaving each family as a separate legacy startup exception.
+- Defined bounded compatibility and removal rules so legacy command ownership over worker lifecycle startup can be reduced truthfully in later implementation milestones.
+
+---
+
 ## v1.28 Native Delivery Layer: CLI Operator Commands II and UI-Adjacent Flows (Shipped: 2026-03-28)
 
 **Phases completed:** 4 phases, 4 plans, 0 tasks

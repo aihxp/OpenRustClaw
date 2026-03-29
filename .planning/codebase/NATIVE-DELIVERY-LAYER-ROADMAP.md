@@ -2,7 +2,7 @@
 
 **Created:** 2026-03-28
 **Purpose:** Canonical follow-on roadmap for replacing the remaining legacy delivery layer with native delivery surfaces built directly around `openrustclaw-app` ports and explicit infrastructure adapters.
-**Status:** Active after `v1.28` at `4/8` shipped milestones, or `50%`
+**Status:** Active after `v1.29` at `5/8` shipped milestones, or about `63%`
 **Baselines preserved:** historical greenfield seam ledger closed at `18/18`; full-conversion roadmap closed at `6/6`
 
 ## What "Move Completely Off Legacy" Means
@@ -52,6 +52,15 @@ The repo is fully off legacy when:
 - defined the native delivery ownership for the secondary operator and utility command families over app ports
 - defined how the remaining CLI families stop depending on legacy command-to-command orchestration
 - aligned UI-adjacent operator surfaces to native entrypoints so the second CLI slice has an end-to-end delivery story
+
+## v1.29 Outcome
+
+`v1.29` did not implement the runtime hosts in code yet. It made the runtime-host replacement slice concrete enough to build without rediscovering startup ownership:
+
+- defined dedicated runtime-host and background-worker entrypoints over app ports instead of preserving legacy command bootstraps as the implicit long-term owner
+- defined the startup boundaries for service-manager, probes, runtime maintenance, and scheduler flows needed by the native runtime-host path
+- aligned mobile, voice, and orchestration worker boot contracts to native runtime-host delivery instead of command-local startup ownership
+- made legacy command ownership over worker lifecycle startup explicitly temporary, bounded, and removable in future implementation milestones
 
 ## Remaining Legacy Delivery Inventory
 
@@ -301,6 +310,57 @@ UI-adjacent operator surfaces should align with the native entrypoints defined a
 
 This avoids a split-brain architecture where the CLI moves toward native delivery while UI-adjacent operator surfaces still depend conceptually on legacy command ownership.
 
+### v1.29 Runtime Host Entry Points
+
+The native runtime-host path should become the permanent owner for worker startup and background lifecycle delivery instead of continuing to route those concerns through legacy command entrypoints.
+
+| Runtime Concern | Native Owner | Notes |
+| --- | --- | --- |
+| runtime-host bootstrap | `openrustclaw-runtime-host` or equivalent runtime-host binary layer | this entrypoint should own long-lived runtime lifecycle startup instead of `start.rs` or `runtime.rs` |
+| background-worker bootstrap | `openrustclaw-runtime-host` worker subcommands or dedicated worker binaries | worker startup should no longer require command-family routing as the permanent bootstrap path |
+| app orchestration | `RuntimeOperationsPort`, `MobileOperationsPort`, `VoiceRuntimePort`, and `OrchestrationPort` in `openrustclaw-app` | runtime-host entrypoints should call app ports directly instead of composing through command-local startup helpers |
+| temporary compatibility forwarding | bounded compatibility shims only | any remaining legacy startup path must point explicitly to the native runtime-host entrypoint it forwards to |
+
+This keeps the runtime-host slice honest: background execution is only off legacy when the worker entrypoints themselves stop being assembled in the command tree.
+
+### v1.29 Runtime Startup Boundaries
+
+The runtime-host implementation slice needs explicit startup contracts for the background systems that are still assembled implicitly in legacy command helpers.
+
+| Startup Boundary | Native Owner | Notes |
+| --- | --- | --- |
+| service-manager lifecycle | `ServiceManagerGateway` behind native runtime-host delivery | service boot, restart, health, and shutdown hooks should be adapter-backed rather than embedded in command helpers |
+| probe runner and readiness checks | `SetupLifecyclePort` plus infrastructure probe adapters | runtime health and readiness startup should be callable from the runtime host without reaching back into CLI command ownership |
+| runtime-maintenance and reload lifecycle | `RuntimeOperationsPort` plus `RuntimeRepository` | maintenance windows, reload work, and recovery paths should be orchestrated from app ports over explicit adapters |
+| scheduler startup and durable jobs | `SchedulerGateway` plus app scheduling ports | background job registration and run ownership should belong to native runtime-host startup rather than `schedule.rs` or `services.rs` |
+
+These startup boundaries make the runtime-host milestone implementable because they describe which concerns remain delivery-level wiring and which are app-port contracts.
+
+### v1.29 Worker Boot Alignment
+
+Mobile, voice, and orchestration workers should align to the same runtime-host delivery model instead of each retaining separate legacy command startup assumptions.
+
+| Worker Family | App Port | Native Delivery Target | Compatibility Rule |
+| --- | --- | --- | --- |
+| mobile worker startup | `MobileOperationsPort` | runtime-host worker module for mobile notification, dispatch, heartbeat, and sync flows | temporary shims may forward from `mobile.rs`, but they must name the runtime-host target explicitly |
+| voice worker startup | `VoiceRuntimePort` | runtime-host worker module for voice provider, session, transcript, artifact, and outcome flows | legacy voice startup can remain only as a forwarding shell during rollout |
+| orchestration worker startup | `OrchestrationPort` | runtime-host worker module for checkpoints, reflections, interventions, and supervision flows | orchestration boot may not remain permanently inside CLI command helpers once the runtime-host path exists |
+
+This alignment keeps the worker story end to end instead of treating each worker family as a separate startup exception.
+
+### v1.29 Legacy Startup Ownership Removal
+
+The runtime-host slice should reduce legacy startup ownership by changing what the command tree is allowed to do once native worker entrypoints exist.
+
+| Legacy Surface | Allowed Transitional State | Removal Rule |
+| --- | --- | --- |
+| `start.rs` startup helpers | bounded compatibility shell only | route or startup assembly must move to native runtime-host modules before any claim of runtime legacy exit |
+| `runtime.rs`, `services.rs`, and `schedule.rs` startup helpers | translation or forwarding only | these files may invoke native startup contracts temporarily, but they must stop owning lifecycle composition |
+| `mobile.rs` and `voice_runtime.rs` worker startup paths | compatibility forwarding only | worker-family commands may remain as operator entrypoints temporarily, but native worker boot must be the real owner |
+| new worker behavior | native runtime-host path only | no new lifecycle ownership may land in legacy startup helpers after this milestone |
+
+This makes the milestone measurable: the runtime-host roadmap only advances to `5/8` when the legacy command tree is explicitly downgraded from owner to bounded compatibility surface for worker startup.
+
 ### Why This Topology
 
 - the workspace already has `openrustclaw-gateway` and `openrustclaw-mcp`, so the roadmap can reuse existing crates instead of forcing all delivery through `openrustclaw-cli`
@@ -379,12 +439,12 @@ Status after shipment: complete. This milestone defined the remaining large oper
 
 ### v1.29 Native Delivery Layer: Runtime Hosts and Background Workers
 
-Primary target: move worker startup and runtime-host entrypoints off the legacy command layer.
+Status after shipment: complete. This milestone defined the dedicated runtime-host and background-worker entrypoints, the explicit startup-boundary contracts, the aligned worker boot model, and the bounded removal rules needed to move worker lifecycle startup off the legacy command layer in the next implementation slices.
 
 - dedicated runtime-host and background-worker entrypoints over app ports
 - service-manager, probe-runner, runtime-maintenance, and scheduler startup boundaries
 - mobile, voice, and orchestration worker boot contracts aligned with native delivery
-- removal of legacy command ownership for worker lifecycle startup
+- bounded removal of legacy command ownership for worker lifecycle startup
 
 ### v1.30 Native Delivery Layer: Repositories and Integration Adapters
 
