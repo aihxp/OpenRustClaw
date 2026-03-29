@@ -1,20 +1,20 @@
 ---
 gsd_state_version: 1.0
-milestone: none
-milestone_name: none
-current_phase: none
-current_phase_name: none
+milestone: v1.27
+milestone_name: "Native Delivery Layer: CLI Core Dispatch and Operator Commands I"
+current_phase: 113
+current_phase_name: "Native CLI Dispatch Layer"
 current_plan: none
-status: milestone complete
-stopped_at: Run $gsd-new-milestone continue native delivery layer.
-last_updated: "2026-03-29T00:45:00.000Z"
+status: ready for planning
+stopped_at: Run $gsd-plan-phase 113 or $gsd-autonomous.
+last_updated: "2026-03-29T01:05:00.000Z"
 last_activity: 2026-03-28
 progress:
-  total_phases: 0
+  total_phases: 4
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
-  percent: 100
+  percent: 0
 ---
 
 # Project State
@@ -24,21 +24,21 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-28)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** Preserve the completed `18/18` and `6/6` programs while the native-delivery roadmap now stands at `2/8` shipped milestones, or `25%`, and wait for the next milestone definition.
+**Current focus:** Plan and execute `v1.27 Native Delivery Layer: CLI Core Dispatch and Operator Commands I` from the native-delivery baseline of `2/8` shipped milestones, or `25%`, while preserving the completed `18/18` and `6/6` programs as finished denominators.
 
 ## Current Position
 
-Current Phase: none
-Current Phase Name: none
-Total Phases: 0
+Current Phase: 113
+Current Phase Name: Native CLI Dispatch Layer
+Total Phases: 4
 Current Plan: none
 Total Plans in Phase: 0
-Status: v1.26 milestone complete; no active milestone
+Status: Milestone started; Phase 113 ready for planning
 Last activity: 2026-03-28
 
-Phase: 0 of 0
+Phase: 0 of 4
 Plan: 0 of 0
-Progress: [##########] 100%
+Progress: [----------] 0%
 
 ## Performance Metrics
 
@@ -64,6 +64,7 @@ Recent decisions affecting current work:
 - v1.25 completed the first native-delivery milestone by defining the legacy delivery inventory, app-port catalog, successor topology, and deletion-gate model.
 - v1.26 completed the next native-delivery milestone by defining the native control HTTP path, native MCP path, gateway-bootstrap split, and Control UI alignment story.
 - The native-delivery roadmap now stands at `2/8` shipped milestones, or `25%`.
+- v1.27 starts the next native-delivery milestone from that `2/8` baseline, targeting CLI core dispatch plus the first operator command-family delivery slice.
 
 ### Pending Todos
 
@@ -76,5 +77,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-28 20:09
-Stopped at: Run $gsd-new-milestone continue native delivery layer.
+Stopped at: Run $gsd-plan-phase 113 or $gsd-autonomous.
 Resume file: None

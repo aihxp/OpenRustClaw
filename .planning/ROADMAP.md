@@ -29,20 +29,96 @@
 - ✅ **v1.24 Full Greenfield Conversion: Adapter-Only Exit and Enforcement** — shipped 2026-03-28. Archive: `.planning/milestones/v1.24-ROADMAP.md`
 - ✅ **v1.25 Native Delivery Layer: Port Contracts and Legacy Inventory** — shipped 2026-03-28. Archive: `.planning/milestones/v1.25-ROADMAP.md`
 - ✅ **v1.26 Native Delivery Layer: Control, MCP, and Gateway Delivery** — shipped 2026-03-28. Archive: `.planning/milestones/v1.26-ROADMAP.md`
+- 🚧 **v1.27 Native Delivery Layer: CLI Core Dispatch and Operator Commands I** — active. Baseline: native-delivery roadmap `2/8` shipped milestones, or `25%`; target after shipment: `3/8`, or about `38%`
 
 ## Current Status
 
-- Active milestone: **none**
-- Progress: **0 active phases**
+- Active milestone: **v1.27 Native Delivery Layer: CLI Core Dispatch and Operator Commands I**
+- Progress: **0 of 4 phases complete**
 - Most recent shipment: **v1.26 Native Delivery Layer: Control, MCP, and Gateway Delivery**
 - Greenfield conversion baseline: **historical `18/18` ranked seam ledger complete and retired**
 - Full-conversion roadmap progress: **`6/6` milestones shipped, or `100%`**
 - Native-delivery roadmap progress: **`2/8` milestones shipped, or `25%`**
-- Current execution: **native-delivery milestone queue idle**
-- Next step: `$gsd-new-milestone continue native delivery layer`
+- Current execution: **Phase 113 ready for planning**
+- Next step: `$gsd-plan-phase 113` or `$gsd-autonomous`
 
 ## Live Planning
 
-The original ranked greenfield seam inventory remains closed at `18/18` and retired. The follow-on adapter-only roadmap in `.planning/codebase/GREENFIELD-FULL-CONVERSION.md` is also complete at `6/6`. The native-delivery program now proceeds under `.planning/codebase/NATIVE-DELIVERY-LAYER-ROADMAP.md`, which stands at `2/8` shipped milestones after `v1.26` and uses native delivery-layer plus legacy-retirement milestones as the active denominator.
+### Phase Checklist
 
-There is no active milestone or live phase queue. Start the next native-delivery slice with `$gsd-new-milestone continue native delivery layer`.
+- [ ] **Phase 113: Native CLI Dispatch Layer**
+- [ ] **Phase 114: Assistant, Chat, Session, and Inspect Native Delivery**
+- [ ] **Phase 115: Control and Runtime Native CLI Delivery**
+- [ ] **Phase 116: CLI Boundary Separation and Compatibility Shim Plan**
+
+### Current Queue Rule
+
+The original ranked greenfield seam inventory remains closed at `18/18` and retired. The follow-on adapter-only roadmap in `.planning/codebase/GREENFIELD-FULL-CONVERSION.md` is also complete at `6/6`. The native-delivery program proceeds under `.planning/codebase/NATIVE-DELIVERY-LAYER-ROADMAP.md`, which currently stands at `2/8` shipped milestones and measures progress by native delivery-layer and legacy-retirement milestones instead of extending either completed denominator.
+
+### Phase 113: Native CLI Dispatch Layer
+
+**Goal:** Define the new top-level CLI dispatch layer over app ports so `main.rs` stops being the permanent routing owner for the product path.
+
+**Depends on:** Phase 112
+**Requirements:** `NDL-09`
+
+**Success criteria:**
+1. the roadmap defines the target native CLI dispatch ownership explicitly
+2. the dispatch path is described in terms of app-port invocation rather than command-module cross-calls
+3. the milestone leaves a compatibility-preserving path for the existing `openrustclaw` binary while breaking the `main.rs` monopoly
+
+**Plans:** 0/0 plans complete
+
+Plans:
+- none yet
+
+### Phase 114: Assistant, Chat, Session, and Inspect Native Delivery
+
+**Goal:** Define the first core operator CLI delivery family over app ports for assistant, chat, session, and inspect entrypoints.
+
+**Depends on:** Phase 113
+**Requirements:** `NDL-10`
+
+**Success criteria:**
+1. the roadmap defines the native delivery ownership for assistant, chat, session, and inspect flows
+2. the entrypoint plan separates CLI parsing and rendering from app-use orchestration
+3. the affected flows no longer depend conceptually on command-to-command routing inside the legacy tree
+
+**Plans:** 0/0 plans complete
+
+Plans:
+- none yet
+
+### Phase 115: Control and Runtime Native CLI Delivery
+
+**Goal:** Define the native CLI delivery path for control and runtime entrypoints so those operator flows stop defaulting to legacy command hubs.
+
+**Depends on:** Phase 114
+**Requirements:** `NDL-11`
+
+**Success criteria:**
+1. the roadmap defines native CLI ownership for control and runtime entrypoints explicitly
+2. the control and runtime command path is routed through app ports instead of command-local orchestration
+3. the milestone preserves a compatibility story for any still-live legacy entrypoints
+
+**Plans:** 0/0 plans complete
+
+Plans:
+- none yet
+
+### Phase 116: CLI Boundary Separation and Compatibility Shim Plan
+
+**Goal:** Make parsing, rendering, app invocation boundaries, and the temporary compatibility shim plan explicit enough to implement the native CLI slice safely.
+
+**Depends on:** Phase 115
+**Requirements:** `NDL-12`
+
+**Success criteria:**
+1. the roadmap separates parsing, rendering, and app invocation responsibilities explicitly
+2. the compatibility shim rule for any still-live legacy CLI paths is concrete and bounded
+3. the live planning surface leaves the native-delivery roadmap at `3/8`, or about `38%`, only if the CLI replacement slice is explicit end to end
+
+**Plans:** 0/0 plans complete
+
+Plans:
+- none yet

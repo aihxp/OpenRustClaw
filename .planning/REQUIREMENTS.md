@@ -1,0 +1,50 @@
+# Requirements: v1.27 Native Delivery Layer: CLI Core Dispatch and Operator Commands I
+
+**Started:** 2026-03-28
+**Historical greenfield baseline:** retired `18/18` ranked seam ledger complete, or `100%`
+**Full-conversion roadmap baseline:** `6/6` milestones shipped, or `100%`
+**Native-delivery roadmap baseline:** `2/8` milestones shipped, or `25%`
+**Target after shipment:** `3/8` milestones shipped, or about `38%`
+
+## Scope
+
+This milestone starts the next native-delivery execution slice by defining the new CLI dispatch layer over app ports plus the first core operator entrypoint families that should stop depending on `main.rs` and the legacy command tree.
+
+## Milestone Requirements
+
+### CLI Dispatch
+
+- [ ] **NDL-09**: The roadmap defines the native CLI dispatch layer over app ports and makes the `main.rs` replacement path explicit.
+
+### Core Operator Entry Points I
+
+- [ ] **NDL-10**: The roadmap defines native delivery for assistant, chat, session, and inspect entrypoints without routing those flows back through legacy command-to-command ownership.
+
+### Core Operator Entry Points II
+
+- [ ] **NDL-11**: The roadmap defines native delivery for control and runtime CLI entrypoints over app ports.
+
+### CLI Boundaries and Shims
+
+- [ ] **NDL-12**: The roadmap separates parsing, rendering, and app invocation boundaries explicitly and leaves a bounded compatibility shim plan for any still-live legacy CLI paths.
+
+## Future Requirements
+
+- Later milestones must implement the native CLI dispatch and operator-delivery paths described here.
+- `main.rs` must stop acting as the main routing owner for the product path once the native CLI dispatch layer ships.
+- Any compatibility shims retained after this milestone must point to native CLI delivery modules instead of continuing the legacy command-tree topology.
+- The native-delivery roadmap should only advance to `3/8` when the CLI replacement slice is explicit enough to implement directly.
+
+## Out of Scope
+
+- Full deletion of `main.rs` during `v1.27`
+- Replacing all remaining operator command families in the same milestone
+- Worker-host and repository-adapter implementation work that belongs to later native-delivery milestones
+- Reopening the completed `18/18` or `6/6` denominators with a new meaning
+
+## Traceability
+
+- `NDL-09` -> Phase 113
+- `NDL-10` -> Phase 114
+- `NDL-11` -> Phase 115
+- `NDL-12` -> Phase 116
