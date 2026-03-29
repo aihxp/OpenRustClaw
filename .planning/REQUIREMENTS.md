@@ -1,0 +1,51 @@
+# Requirements: v1.36 Native Delivery Implementation: Repository and Integration Adapter Lift
+
+**Started:** 2026-03-28
+**Historical greenfield baseline:** retired `18/18` ranked seam ledger complete, or `100%`
+**Full-conversion roadmap baseline:** `6/6` milestones shipped, or `100%`
+**Native-delivery planning roadmap baseline:** `8/8` milestones shipped, or `100%`
+**Native-delivery implementation roadmap baseline:** `3/6` milestones shipped, or `50%`
+**Target after shipment:** `4/6` milestones shipped, or about `67%`
+
+## Scope
+
+This milestone continues the source-level native-delivery implementation roadmap by defining the first repository-adapter inventory and successor ownership slice, the first integration gateway slice for providers or channels or external services, the first app-port to repository-adapter alignment slice, and the first compatibility-and-verification rules for repository and integration adapter lift.
+
+## Milestone Requirements
+
+### Repository Adapters
+
+- [ ] **NDI-13**: The roadmap defines the first repository-adapter inventory and successor ownership slice for sqlite, workspace files, audit logs, runtime config, compiled-skill cache, and registries.
+
+### Integration Gateways
+
+- [ ] **NDI-14**: The roadmap defines the first integration gateway slice for providers, channels, and external service integrations over native infrastructure ownership.
+
+### App-Port Alignment
+
+- [ ] **NDI-15**: The roadmap defines app-port to repository-adapter alignment needed to move persistence-heavy and side-effect-heavy ownership off command-local helpers.
+
+### Compatibility and Verification
+
+- [ ] **NDI-16**: The roadmap defines the direct verification and compatibility rules for the first repository and integration adapter lift slice.
+
+## Future Requirements
+
+- Later milestones must continue repository lift, legacy retirement, and final verification implementation through the same roadmap instead of inventing a new denominator.
+- The completed `18/18`, `6/6`, and `8/8` denominators must remain closed and must not be silently reinterpreted as source-level implementation percentages.
+- The implementation roadmap should only advance beyond `4/6` when the first repository and integration adapter successor slice is explicit enough to implement and verify.
+- Any compatibility shim that survives the repository-lift handoff must stay bounded explicitly instead of preserving hidden persistence or side-effect ownership.
+
+## Out of Scope
+
+- Reopening the completed historical, adapter-only, or planning denominators with a new meaning
+- Claiming the repository and integration adapter successor paths are already implemented in source before the implementation milestones ship
+- Retiring the whole command tree in the same milestone that starts the first repository-lift slice
+- Treating planning-only completion as proof of source-level persistence and integration ownership
+
+## Traceability
+
+- `NDI-13` -> Phase 149
+- `NDI-14` -> Phase 150
+- `NDI-15` -> Phase 151
+- `NDI-16` -> Phase 152
