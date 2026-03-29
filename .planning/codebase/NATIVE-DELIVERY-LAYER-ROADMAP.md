@@ -2,7 +2,7 @@
 
 **Created:** 2026-03-28
 **Purpose:** Canonical follow-on roadmap for replacing the remaining legacy delivery layer with native delivery surfaces built directly around `openrustclaw-app` ports and explicit infrastructure adapters.
-**Status:** Active after `v1.27` at `3/8` shipped milestones, or about `38%`
+**Status:** Active after `v1.28` at `4/8` shipped milestones, or `50%`
 **Baselines preserved:** historical greenfield seam ledger closed at `18/18`; full-conversion roadmap closed at `6/6`
 
 ## What "Move Completely Off Legacy" Means
@@ -43,6 +43,15 @@ The repo is fully off legacy when:
 - defined the first core operator CLI delivery family for assistant, chat, session, and inspect entrypoints over app ports
 - defined the native CLI delivery ownership for control and runtime entrypoints instead of leaving those flows inside legacy command hubs
 - separated parsing, rendering, and app invocation responsibilities explicitly, with a bounded compatibility shim plan for any still-live legacy paths
+
+## v1.28 Outcome
+
+`v1.28` did not replace the second CLI slice in code yet. It made the remaining operator-family CLI work concrete enough to implement without rediscovering ownership:
+
+- defined the native delivery ownership for the remaining large operator command families over app ports
+- defined the native delivery ownership for the secondary operator and utility command families over app ports
+- defined how the remaining CLI families stop depending on legacy command-to-command orchestration
+- aligned UI-adjacent operator surfaces to native entrypoints so the second CLI slice has an end-to-end delivery story
 
 ## Remaining Legacy Delivery Inventory
 
@@ -241,6 +250,57 @@ The CLI replacement slice is only implementable if parsing, rendering, and app i
 
 This boundary split gives future milestones a defensible deletion path for `main.rs` and the command tree instead of another round of mixed-responsibility helpers.
 
+### v1.28 Large Operator Family Delivery
+
+The second CLI slice starts with the remaining large operator command families that still dominate the legacy delivery tree.
+
+| Flow Family | Port Family | Native Delivery Target |
+| --- | --- | --- |
+| browser operator flows | `BrowserAutomationPort` | native CLI browser delivery module |
+| orchestration operator flows | `OrchestrationPort` | native CLI orchestration delivery module |
+| mobile operator flows | `MobileOperationsPort` | native CLI mobile delivery module |
+| voice runtime flows | `VoiceRuntimePort` | native CLI voice-runtime delivery module |
+| onboarding and repair flows | `SetupLifecyclePort` | native CLI onboarding delivery module |
+| skills and self-hosted operator flows | `SkillLifecyclePort` plus adjacent control or inspection ports | native CLI skill or self-hosted delivery modules |
+
+These families stay grouped because they remain the largest operator-facing hotspots after the first CLI slice and require explicit app-port ownership before any truthful retirement work can continue.
+
+### v1.28 Secondary Operator and Utility Delivery
+
+The milestone also defines the remaining secondary utility and operator families so the CLI replacement story covers more than the largest command hubs.
+
+| Flow Family | Port Family | Native Delivery Target |
+| --- | --- | --- |
+| channels and schedules | `ChannelOperationsPort` | native CLI channel and schedule delivery modules |
+| services and control-adjacent utilities | `ControlPlanePort` plus runtime or service-facing ports | native CLI services and control utility modules |
+| tools, media, and memory flows | `ArtifactMediaPort` plus `MemoryOperationsPort` | native CLI tools, media, and memory delivery modules |
+
+This keeps the second CLI slice truthful: the secondary command families are part of the product surface and cannot be left as unowned cleanup behind the larger operator modules.
+
+### v1.28 CLI Dependency Removal
+
+The remaining CLI families should no longer rely on command-to-command orchestration once native delivery modules exist.
+
+| Dependency Problem | Native Rule |
+| --- | --- |
+| one command module reuses another command module for orchestration | native modules call app ports directly instead |
+| shared helper ownership drifts back into legacy files | shared concerns move to app ports or explicit delivery helpers, not cross-file command calls |
+| compatibility shims silently become permanent routing layers | shims must point to native delivery modules and stay bounded to forwarding or translation only |
+
+This makes future implementation safer because module relationships are defined by ports and delivery concerns, not by inherited file topology from the legacy tree.
+
+### v1.28 UI-Adjacent Delivery Alignment
+
+UI-adjacent operator surfaces should align with the native entrypoints defined across the first and second CLI slices.
+
+| Surface | Native Alignment |
+| --- | --- |
+| operator-facing UI actions that mirror CLI capabilities | point to native gateway or native CLI ownership paths instead of legacy command hubs |
+| shared summaries and entry contracts | derive from the same app-port-backed delivery modules that native CLI and gateway surfaces use |
+| temporary UI-facing compatibility bridges | allowed only as bounded forwarding layers that name the native replacement explicitly |
+
+This avoids a split-brain architecture where the CLI moves toward native delivery while UI-adjacent operator surfaces still depend conceptually on legacy command ownership.
+
 ### Why This Topology
 
 - the workspace already has `openrustclaw-gateway` and `openrustclaw-mcp`, so the roadmap can reuse existing crates instead of forcing all delivery through `openrustclaw-cli`
@@ -310,7 +370,7 @@ Status after shipment: complete. This milestone defined the native CLI dispatch 
 
 ### v1.28 Native Delivery Layer: CLI Operator Commands II and UI-Adjacent Flows
 
-Primary target: finish the large operator-facing command families that still sit inside the legacy command tree.
+Status after shipment: complete. This milestone defined the remaining large operator CLI families, the secondary operator and utility families, the CLI dependency-removal rules, and the UI-adjacent alignment needed for the second CLI implementation slice.
 
 - native delivery for browser, orchestration, mobile, voice runtime, onboarding, skills, and self-hosted operator flows
 - native delivery for channels, services, schedule, tools, media, and memory operator flows

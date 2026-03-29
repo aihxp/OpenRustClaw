@@ -1,5 +1,20 @@
 # Project Milestones: OpenRustClaw
 
+## v1.28 Native Delivery Layer: CLI Operator Commands II and UI-Adjacent Flows (Shipped: 2026-03-28)
+
+**Phases completed:** 4 phases, 4 plans, 0 tasks
+**Verification archive:** `.planning/milestones/v1.28-VERIFICATIONS.md`
+**Verification debt:** none
+
+**Key accomplishments:**
+
+- Defined the native CLI delivery path for the remaining large operator-facing command families across browser, orchestration, mobile, voice runtime, onboarding, skills, and self-hosted flows.
+- Defined the native CLI delivery path for the secondary operator and utility families across channels, services, schedule, tools, media, and memory flows.
+- Defined the rules for removing command-to-command orchestration dependencies between the remaining CLI families as native delivery modules take over.
+- Aligned UI-adjacent operator entrypoints to native delivery paths so the second CLI slice has an end-to-end native ownership story.
+
+---
+
 ## v1.27 Native Delivery Layer: CLI Core Dispatch and Operator Commands I (Shipped: 2026-03-28)
 
 **Phases completed:** 4 phases, 4 plans, 0 tasks
