@@ -2,6 +2,7 @@
 
 **Created:** 2026-03-28
 **Purpose:** Canonical follow-on roadmap for pushing OpenRustClaw from the retired `18/18` seam ledger toward a fully greenfield architecture where legacy command modules are adapter-only surfaces.
+**Status:** Completed 2026-03-28 at `6/6` shipped milestones, or `100%`
 
 ## What "Full Greenfield Conversion" Means
 
@@ -99,6 +100,22 @@ OpenRustClaw should only claim full greenfield conversion when all of the follow
 - new route families and command surfaces default to application-owned orchestration
 - the architecture rules are enforced by tests, review defaults, or CI checks instead of relying on contributor memory alone
 - a canonical exit audit says the remaining legacy command surfaces are compatibility wrappers rather than hidden ownership hubs
+
+## Enforcement Defaults
+
+After `v1.24`, contributors should treat the adapter-only contract as a standing repo rule:
+
+- new business rules, report composition, and operator-facing policy logic default to `openrustclaw-app` or a successor application crate
+- legacy command modules may parse transport input, load workspace or persistence state, call application services, and shape CLI or HTTP output
+- legacy command modules should not grow new cross-cutting helper families when those helpers decide validation, mutation, summary, or orchestration behavior
+- any exception should be justified explicitly in milestone planning instead of being treated as the new default
+- regression tests for new behavior should prefer application-service coverage first, with adapter tests reserved for transport or persistence wiring
+
+The migrated end-state now depends on named adapter seams instead of helper sprawl in the final hotspots:
+
+- `inspect.rs` bridges assistant continuity and tool execution history through `AssistantContinuityService`, `ToolExecutionAuditService`, and `ToolExecutionAuditFileStore`
+- `skills.rs` bridges compiled-skill reference reads and voice-call reporting through `CompiledSkillMcpService` and `VoiceCallReportingService`
+- `start.rs` bridges compiled-skill MCP registration through `CompiledSkillWorkspaceCatalog` over `CompiledSkillMcpService`
 
 ## Companion Documents
 

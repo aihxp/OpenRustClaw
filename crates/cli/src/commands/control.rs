@@ -5,6 +5,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
+use openrustclaw_app::control_registry as app_control_registry;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use walkdir::WalkDir;
@@ -306,6 +307,119 @@ pub struct ControlRegistry {
     pub claws: BTreeMap<String, ClawSpec>,
     pub lessons: BTreeMap<String, DecisionLessonSpec>,
     pub runtime: Option<RuntimeModeSpec>,
+}
+
+fn app_agent_profile(profile: &AgentProfileSpec) -> app_control_registry::AgentProfileSpec {
+    app_control_registry::AgentProfileSpec {
+        id: profile.id.clone(),
+        extends: profile.extends.clone(),
+        model_profile_id: profile.model_profile_id.clone(),
+        memory_scope: profile.memory_scope.clone(),
+        output_policy: profile.output_policy.clone(),
+    }
+}
+
+fn app_model_profile(profile: &ModelProfileSpec) -> app_control_registry::ModelProfileSpec {
+    app_control_registry::ModelProfileSpec {
+        id: profile.id.clone(),
+        provider: profile.provider.clone(),
+        model: profile.model.clone(),
+        role_tags: profile.role_tags.clone(),
+        artifact_preferences: profile.artifact_preferences.clone(),
+        fallback_order: profile.fallback_order.clone(),
+    }
+}
+
+fn app_claw_spec(claw: &ClawSpec) -> app_control_registry::ClawSpec {
+    app_control_registry::ClawSpec {
+        id: claw.id.clone(),
+        name: claw.name.clone(),
+        role: claw.role.clone(),
+        agent_profile_id: claw.agent_profile_id.clone(),
+        model_profile_id: claw.model_profile_id.clone(),
+        memory_scope: claw.memory_scope.clone(),
+        task_categories: claw.task_categories.clone(),
+        enabled: claw.enabled,
+    }
+}
+
+fn app_autonomy_policy(policy: &AutonomyPolicy) -> app_control_registry::AutonomyPolicy {
+    app_control_registry::AutonomyPolicy {
+        autonomy_level: policy.autonomy_level.clone(),
+        yolo_mode: policy.yolo_mode,
+        steering_enabled: policy.steering_enabled,
+        decision_learning_enabled: policy.decision_learning_enabled,
+        critic_enabled: policy.critic_enabled,
+        max_delegations: policy.max_delegations,
+        max_iterations: policy.max_iterations,
+        max_runtime_secs: policy.max_runtime_secs,
+        max_lesson_hints: policy.max_lesson_hints,
+        approval_policy: policy.approval_policy.clone(),
+    }
+}
+
+fn app_runtime_spec(runtime: &RuntimeModeSpec) -> app_control_registry::RuntimeModeSpec {
+    app_control_registry::RuntimeModeSpec {
+        mode: runtime.mode.clone(),
+        default_claw_id: runtime.default_claw_id.clone(),
+        orchestrator_claw_id: runtime.orchestrator_claw_id.clone(),
+        task_assignments: runtime
+            .task_assignments
+            .iter()
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect(),
+        category_assignments: runtime
+            .category_assignments
+            .iter()
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect(),
+        allow_shared_context: runtime.allow_shared_context,
+        isolation_mode: runtime.isolation_mode.clone(),
+        autonomy: app_autonomy_policy(&runtime.autonomy),
+    }
+}
+
+fn app_lesson_scope(scope: &DecisionLessonScope) -> app_control_registry::DecisionLessonScope {
+    app_control_registry::DecisionLessonScope {
+        category: scope.category.clone(),
+        claw_id: scope.claw_id.clone(),
+        model_profile_id: scope.model_profile_id.clone(),
+        provider: scope.provider.clone(),
+        autonomy_level: scope.autonomy_level.clone(),
+        execution_mode: scope.execution_mode.clone(),
+    }
+}
+
+fn app_lesson(lesson: &DecisionLessonSpec) -> app_control_registry::DecisionLessonSpec {
+    app_control_registry::DecisionLessonSpec {
+        id: lesson.id.clone(),
+        active: lesson.active,
+        signal: lesson.signal.clone(),
+        recommendation: lesson.recommendation.clone(),
+        confidence: lesson.confidence,
+        source: lesson.source.clone(),
+        scope: app_lesson_scope(&lesson.scope),
+    }
+}
+
+fn app_registry_snapshot(
+    registry: &ControlRegistry,
+) -> app_control_registry::ControlRegistrySnapshot {
+    app_control_registry::ControlRegistrySnapshot {
+        agent_profiles: registry
+            .agent_profiles
+            .values()
+            .map(app_agent_profile)
+            .collect(),
+        model_profiles: registry
+            .model_profiles
+            .values()
+            .map(app_model_profile)
+            .collect(),
+        claws: registry.claws.values().map(app_claw_spec).collect(),
+        lessons: registry.lessons.values().map(app_lesson).collect(),
+        runtime: registry.runtime.as_ref().map(app_runtime_spec),
+    }
 }
 
 pub fn control_root_for(root: impl AsRef<Path>) -> PathBuf {
@@ -1132,71 +1246,8 @@ pub fn load_registry(root: PathBuf) -> Result<ControlRegistry> {
 
 pub fn describe_registry(root: PathBuf) -> Result<Value> {
     let registry = load_registry(root)?;
-    validate_registry(&registry)?;
-
-    let available_claws: Vec<_> = registry
-        .claws
-        .values()
-        .map(|claw| {
-            serde_json::json!({
-                "id": claw.id,
-                "name": claw.name,
-                "role": claw.role,
-                "agent_profile_id": claw.agent_profile_id,
-                "model_profile_id": claw.model_profile_id,
-                "memory_scope": claw.memory_scope,
-                "task_categories": claw.task_categories,
-                "enabled": claw.enabled,
-            })
-        })
-        .collect();
-    let runtime = registry.runtime.unwrap_or(RuntimeModeSpec {
-        mode: default_runtime_mode(),
-        default_claw_id: None,
-        orchestrator_claw_id: None,
-        task_assignments: BTreeMap::new(),
-        category_assignments: BTreeMap::new(),
-        allow_shared_context: false,
-        isolation_mode: default_isolation_mode(),
-        autonomy: AutonomyPolicy::default(),
-        metadata: serde_json::json!({}),
-    });
-
-    Ok(serde_json::json!({
-        "execution_mode": runtime.mode,
-        "default_claw": runtime.default_claw_id,
-        "orchestrator_claw": runtime.orchestrator_claw_id,
-        "allow_shared_context": runtime.allow_shared_context,
-        "isolation_mode": runtime.isolation_mode,
-        "autonomy": runtime.autonomy,
-        "task_assignments": runtime.task_assignments,
-        "category_assignments": runtime.category_assignments,
-        "available_claws": available_claws,
-        "agent_profiles": registry.agent_profiles.values().map(|profile| serde_json::json!({
-            "id": profile.id,
-            "model_profile_id": profile.model_profile_id,
-            "memory_scope": profile.memory_scope,
-            "output_policy": profile.output_policy,
-            "extends": profile.extends,
-        })).collect::<Vec<_>>(),
-        "model_profiles": registry.model_profiles.values().map(|profile| serde_json::json!({
-            "id": profile.id,
-            "provider": profile.provider,
-            "model": profile.model,
-            "role_tags": profile.role_tags,
-            "artifact_preferences": profile.artifact_preferences,
-            "fallback_order": profile.fallback_order,
-        })).collect::<Vec<_>>(),
-        "decision_lessons": registry.lessons.values().map(|lesson| serde_json::json!({
-            "id": lesson.id,
-            "active": lesson.active,
-            "signal": lesson.signal,
-            "recommendation": lesson.recommendation,
-            "confidence": lesson.confidence,
-            "source": lesson.source,
-            "scope": lesson.scope,
-        })).collect::<Vec<_>>(),
-    }))
+    Ok(app_control_registry::ControlRegistryService::new()
+        .describe_registry(&app_registry_snapshot(&registry))?)
 }
 
 pub fn sync_runtime_artifact(root: &Path) -> Result<()> {
@@ -1212,167 +1263,8 @@ pub fn sync_runtime_artifact(root: &Path) -> Result<()> {
 }
 
 pub fn validate_registry(registry: &ControlRegistry) -> Result<()> {
-    if let Some(runtime) = &registry.runtime {
-        match runtime.mode.as_str() {
-            "solo_claw" | "task_assigned" | "category_assigned" | "orchestrated" => {}
-            other => anyhow::bail!("invalid runtime mode '{}'", other),
-        }
-
-        if let Some(default_claw) = &runtime.default_claw_id
-            && !registry.claws.contains_key(default_claw)
-        {
-            anyhow::bail!("runtime.default_claw_id '{}' does not exist", default_claw);
-        }
-        if let Some(orchestrator) = &runtime.orchestrator_claw_id
-            && !registry.claws.contains_key(orchestrator)
-        {
-            anyhow::bail!(
-                "runtime.orchestrator_claw_id '{}' does not exist",
-                orchestrator
-            );
-        }
-        for (task, claw_id) in &runtime.task_assignments {
-            if !registry.claws.contains_key(claw_id) {
-                anyhow::bail!(
-                    "task assignment '{}' references unknown claw '{}'",
-                    task,
-                    claw_id
-                );
-            }
-        }
-        for (category, claw_id) in &runtime.category_assignments {
-            if !registry.claws.contains_key(claw_id) {
-                anyhow::bail!(
-                    "category assignment '{}' references unknown claw '{}'",
-                    category,
-                    claw_id
-                );
-            }
-        }
-
-        match runtime.autonomy.autonomy_level.as_str() {
-            "assisted" | "supervised" | "managed" | "autonomous" | "yolo" => {}
-            other => anyhow::bail!("invalid autonomy level '{}'", other),
-        }
-        match runtime.autonomy.approval_policy.as_str() {
-            "none" | "side_effects" | "always" => {}
-            other => anyhow::bail!("invalid approval policy '{}'", other),
-        }
-        if runtime.autonomy.yolo_mode && runtime.autonomy.autonomy_level != "yolo" {
-            anyhow::bail!("yolo_mode requires autonomy_level 'yolo'");
-        }
-        if runtime.autonomy.max_delegations == 0 {
-            anyhow::bail!("autonomy.max_delegations must be at least 1");
-        }
-        if runtime.autonomy.max_iterations == 0 {
-            anyhow::bail!("autonomy.max_iterations must be at least 1");
-        }
-        if runtime.autonomy.max_runtime_secs == 0 {
-            anyhow::bail!("autonomy.max_runtime_secs must be at least 1");
-        }
-        if runtime.autonomy.max_lesson_hints == 0 {
-            anyhow::bail!("autonomy.max_lesson_hints must be at least 1");
-        }
-    }
-
-    for profile in registry.agent_profiles.values() {
-        for parent in &profile.extends {
-            if !registry.agent_profiles.contains_key(parent) {
-                anyhow::bail!(
-                    "agent profile '{}' extends missing profile '{}'",
-                    profile.id,
-                    parent
-                );
-            }
-        }
-        if let Some(model_profile_id) = &profile.model_profile_id
-            && !registry.model_profiles.contains_key(model_profile_id)
-        {
-            anyhow::bail!(
-                "agent profile '{}' references missing model profile '{}'",
-                profile.id,
-                model_profile_id
-            );
-        }
-    }
-
-    for profile in registry.model_profiles.values() {
-        for fallback in &profile.fallback_order {
-            if !registry.model_profiles.contains_key(fallback) {
-                anyhow::bail!(
-                    "model profile '{}' fallback '{}' does not exist",
-                    profile.id,
-                    fallback
-                );
-            }
-        }
-    }
-
-    for claw in registry.claws.values() {
-        if !registry.agent_profiles.contains_key(&claw.agent_profile_id) {
-            anyhow::bail!(
-                "claw '{}' references missing agent profile '{}'",
-                claw.id,
-                claw.agent_profile_id
-            );
-        }
-        if !registry.model_profiles.contains_key(&claw.model_profile_id) {
-            anyhow::bail!(
-                "claw '{}' references missing model profile '{}'",
-                claw.id,
-                claw.model_profile_id
-            );
-        }
-    }
-
-    for lesson in registry.lessons.values() {
-        if lesson.signal.trim().is_empty() {
-            anyhow::bail!("lesson '{}' is missing signal", lesson.id);
-        }
-        if lesson.recommendation.trim().is_empty() {
-            anyhow::bail!("lesson '{}' is missing recommendation", lesson.id);
-        }
-        if let Some(claw_id) = &lesson.scope.claw_id
-            && !registry.claws.contains_key(claw_id)
-        {
-            anyhow::bail!(
-                "lesson '{}' references missing claw '{}'",
-                lesson.id,
-                claw_id
-            );
-        }
-        if let Some(model_profile_id) = &lesson.scope.model_profile_id
-            && !registry.model_profiles.contains_key(model_profile_id)
-        {
-            anyhow::bail!(
-                "lesson '{}' references missing model profile '{}'",
-                lesson.id,
-                model_profile_id
-            );
-        }
-        if let Some(autonomy_level) = &lesson.scope.autonomy_level {
-            match autonomy_level.as_str() {
-                "assisted" | "supervised" | "managed" | "autonomous" | "yolo" => {}
-                other => anyhow::bail!(
-                    "lesson '{}' uses invalid autonomy level '{}'",
-                    lesson.id,
-                    other
-                ),
-            }
-        }
-        if let Some(execution_mode) = &lesson.scope.execution_mode {
-            match execution_mode.as_str() {
-                "solo_claw" | "task_assigned" | "category_assigned" | "orchestrated" => {}
-                other => anyhow::bail!(
-                    "lesson '{}' uses invalid execution mode '{}'",
-                    lesson.id,
-                    other
-                ),
-            }
-        }
-    }
-
-    Ok(())
+    Ok(app_control_registry::ControlRegistryService::new()
+        .validate_registry(&app_registry_snapshot(registry))?)
 }
 
 fn render_runtime_markdown(description: &Value) -> String {

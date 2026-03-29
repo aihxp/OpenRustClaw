@@ -7,11 +7,11 @@ use base64::Engine;
 use google_gemini::{
     Content, GeminiClient, GeminiModel, GenerateContentRequest, GenerationConfig, Part,
 };
+use openrustclaw_app::media_support as app_media_support;
 use openrustclaw_automation::browser::{Screenshot, ScreenshotFormat};
 use openrustclaw_automation::vision::VisionCapabilities;
 use openrustclaw_core::config::AppConfig;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use tokio::fs;
 
 use super::voice_runtime;
@@ -607,6 +607,20 @@ enum VisionRequestFormat {
     Gemini,
 }
 
+fn app_vision_provider_profile(
+    provider: &VisionProviderProfile,
+) -> Option<app_media_support::VisionProviderProfile> {
+    let request_format = match provider.request_format {
+        VisionRequestFormat::Anthropic => app_media_support::VisionRequestFormat::Anthropic,
+        VisionRequestFormat::Ollama => app_media_support::VisionRequestFormat::Ollama,
+        VisionRequestFormat::OpenAiCompatible => {
+            app_media_support::VisionRequestFormat::OpenAiCompatible
+        }
+        VisionRequestFormat::Gemini => return None,
+    };
+    Some(app_media_support::VisionProviderProfile { request_format })
+}
+
 fn vision_provider_catalog(config: &AppConfig) -> Vec<MediaProviderStatus> {
     let mut extractors = Vec::new();
     for (provider, lane, model, api_key_env, api_base_url, note) in [
@@ -881,28 +895,7 @@ fn resolve_vision_provider(
 }
 
 fn extract_chat_completion_text(payload: &serde_json::Value) -> Option<String> {
-    let content = payload
-        .get("choices")?
-        .as_array()?
-        .first()?
-        .get("message")?
-        .get("content")?;
-    if let Some(text) = content.as_str() {
-        let text = text.trim();
-        return (!text.is_empty()).then_some(text.to_string());
-    }
-    let parts = content.as_array()?;
-    let text = parts
-        .iter()
-        .filter_map(|part| {
-            part.get("text")
-                .and_then(serde_json::Value::as_str)
-                .map(str::trim)
-        })
-        .filter(|part| !part.is_empty())
-        .collect::<Vec<_>>()
-        .join("\n");
-    (!text.is_empty()).then_some(text)
+    app_media_support::MediaSupportService::new().extract_chat_completion_text(payload)
 }
 
 fn extract_gemini_text(payload: &serde_json::Value) -> Option<String> {
@@ -934,13 +927,7 @@ fn cleaned_optional_text(value: Option<&str>) -> Option<String> {
 }
 
 fn build_image_extract_text_prompt(requested_prompt: Option<&str>) -> String {
-    requested_prompt
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(ToString::to_string)
-        .unwrap_or_else(|| {
-            "Extract the visible text from this image. Preserve reading order, line breaks, and short labels where possible. Return only the extracted text.".to_string()
-        })
+    app_media_support::MediaSupportService::new().build_image_extract_text_prompt(requested_prompt)
 }
 
 fn build_text_media_describe_prompt(
@@ -948,25 +935,10 @@ fn build_text_media_describe_prompt(
     requested_prompt: Option<&str>,
     extracted_text: &str,
 ) -> String {
-    let default_prompt = match media_kind {
-        "audio" => {
-            "Summarize the audio artifact from this bounded transcript. Highlight the main points and any action items."
-        }
-        _ => {
-            "Summarize the document artifact from this bounded extracted text. Highlight the main points and any action items."
-        }
-    };
-    let source_label = if media_kind == "audio" {
-        "bounded transcript"
-    } else {
-        "bounded extracted text"
-    };
-    let excerpt = truncate_for_prompt(extracted_text, 16_000);
-    format!(
-        "{}\n\n{}:\n{}",
-        requested_prompt.unwrap_or(default_prompt),
-        source_label,
-        excerpt
+    app_media_support::MediaSupportService::new().build_text_media_describe_prompt(
+        media_kind,
+        requested_prompt,
+        extracted_text,
     )
 }
 
@@ -978,57 +950,21 @@ fn build_image_describe_request(
     bytes: &[u8],
     mime: &str,
 ) -> serde_json::Value {
-    match provider.request_format {
-        VisionRequestFormat::Anthropic => json!({
-            "model": model,
-            "max_tokens": max_tokens,
-            "messages": [{
-                "role": "user",
-                "content": [
-                    { "type": "text", "text": prompt },
-                    {
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": mime,
-                            "data": base64::engine::general_purpose::STANDARD.encode(bytes)
-                        }
-                    }
-                ]
-            }]
-        }),
-        VisionRequestFormat::Ollama => json!({
-            "model": model,
-            "stream": false,
-            "messages": [{
-                "role": "user",
-                "content": prompt,
-                "images": [
-                    base64::engine::general_purpose::STANDARD.encode(bytes)
-                ]
-            }]
-        }),
-        VisionRequestFormat::OpenAiCompatible => {
-            let data_url = format!(
-                "data:{};base64,{}",
-                mime,
-                base64::engine::general_purpose::STANDARD.encode(bytes)
-            );
-            json!({
-                "model": model,
-                "messages": [{
-                    "role": "user",
-                    "content": [
-                        { "type": "text", "text": prompt },
-                        { "type": "image_url", "image_url": { "url": data_url } }
-                    ]
-                }],
-                "max_tokens": max_tokens,
-            })
-        }
-        VisionRequestFormat::Gemini => unreachable!(
+    if let Some(app_provider) = app_vision_provider_profile(provider) {
+        let base64_image = base64::engine::general_purpose::STANDARD.encode(bytes);
+        let data_url = format!("data:{};base64,{}", mime, base64_image);
+        app_media_support::MediaSupportService::new().build_image_describe_request(
+            &app_provider,
+            model,
+            max_tokens,
+            prompt,
+            &data_url,
+            &base64_image,
+        )
+    } else {
+        unreachable!(
             "Gemini image describe request bodies are handled through the native google-gemini SDK"
-        ),
+        )
     }
 }
 
@@ -1038,36 +974,17 @@ fn build_text_describe_request(
     max_tokens: u32,
     prompt: &str,
 ) -> serde_json::Value {
-    match provider.request_format {
-        VisionRequestFormat::Anthropic => json!({
-            "model": model,
-            "max_tokens": max_tokens,
-            "messages": [{
-                "role": "user",
-                "content": [
-                    { "type": "text", "text": prompt }
-                ]
-            }]
-        }),
-        VisionRequestFormat::Ollama => json!({
-            "model": model,
-            "stream": false,
-            "messages": [{
-                "role": "user",
-                "content": prompt
-            }]
-        }),
-        VisionRequestFormat::OpenAiCompatible => json!({
-            "model": model,
-            "messages": [{
-                "role": "user",
-                "content": prompt
-            }],
-            "max_tokens": max_tokens,
-        }),
-        VisionRequestFormat::Gemini => unreachable!(
+    if let Some(app_provider) = app_vision_provider_profile(provider) {
+        app_media_support::MediaSupportService::new().build_text_describe_request(
+            &app_provider,
+            model,
+            max_tokens,
+            prompt,
+        )
+    } else {
+        unreachable!(
             "Gemini text describe request bodies are handled through the native google-gemini SDK"
-        ),
+        )
     }
 }
 
@@ -1196,17 +1113,6 @@ fn extract_gemini_response_text(
     (!text.is_empty()).then_some(text)
 }
 
-fn truncate_for_prompt(text: &str, limit: usize) -> &str {
-    if text.len() <= limit {
-        return text;
-    }
-    let mut end = limit;
-    while !text.is_char_boundary(end) {
-        end -= 1;
-    }
-    &text[..end]
-}
-
 async fn call_media_describe_provider(
     provider: &VisionProviderProfile,
     body: &serde_json::Value,
@@ -1297,42 +1203,19 @@ async fn call_media_describe_provider(
 }
 
 fn extract_ollama_chat_text(payload: &serde_json::Value) -> Option<String> {
-    payload
-        .get("message")?
-        .get("content")?
-        .as_str()
-        .map(str::trim)
-        .filter(|text| !text.is_empty())
-        .map(ToString::to_string)
+    app_media_support::MediaSupportService::new().extract_ollama_chat_text(payload)
 }
 
 fn extract_anthropic_text(payload: &serde_json::Value) -> Option<String> {
-    let content = payload.get("content")?.as_array()?;
-    let text = content
-        .iter()
-        .filter_map(|part| {
-            (part.get("type").and_then(serde_json::Value::as_str) == Some("text"))
-                .then(|| part.get("text").and_then(serde_json::Value::as_str))
-                .flatten()
-                .map(str::trim)
-        })
-        .filter(|part| !part.is_empty())
-        .collect::<Vec<_>>()
-        .join("\n");
-    (!text.is_empty()).then_some(text)
+    app_media_support::MediaSupportService::new().extract_anthropic_text(payload)
 }
 
 fn normalized_extension(path: &Path) -> Option<String> {
-    path.extension()
-        .and_then(|value| value.to_str())
-        .map(|value| value.trim().to_ascii_lowercase())
+    app_media_support::MediaSupportService::new().normalized_extension(path)
 }
 
 fn is_text_document(path: &Path) -> bool {
-    matches!(
-        normalized_extension(path).as_deref(),
-        Some("txt" | "md" | "json" | "yaml" | "yml" | "toml" | "csv" | "html" | "xml" | "log")
-    )
+    app_media_support::MediaSupportService::new().is_text_document(path)
 }
 
 fn is_rich_text_document(path: &Path) -> bool {
@@ -1352,13 +1235,7 @@ fn is_pdf_document(path: &Path) -> bool {
 }
 
 fn load_text_preview(bytes: &[u8]) -> String {
-    let text = String::from_utf8_lossy(bytes);
-    let preview = text.chars().take(280).collect::<String>();
-    if text.chars().count() > 280 {
-        format!("{preview}...")
-    } else {
-        preview
-    }
+    app_media_support::MediaSupportService::new().load_text_preview(bytes)
 }
 
 fn pdf_text_extractor_available() -> bool {
@@ -1497,6 +1374,7 @@ fn clean_whitespace(input: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
     use tempfile::tempdir;
 
     #[tokio::test]

@@ -5,12 +5,13 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
+use openrustclaw_app::schedule_planning as app_schedule_planning;
 use openrustclaw_scheduler::tasks::{TaskTrigger, default_export_path, disabled_until_utc};
 use openrustclaw_scheduler::{
     DEFAULT_TASKS_DIR, DurableEventBus, LoadedTaskManifest, TaskManifest, TaskSpec,
     load_task_manifest, manifest_job_id, render_task_manifest, tasks_dir_for_root,
 };
-use serde_json::{Map, Value};
+use serde_json::Value;
 use sqlx::Row;
 use uuid::Uuid;
 use walkdir::WalkDir;
@@ -95,66 +96,54 @@ fn detect_manifest_paths(root: &Path) -> Vec<PathBuf> {
     manifests
 }
 
-fn trigger_from_inline(every_seconds: Option<u64>, at: Option<&str>) -> Result<TaskTrigger> {
-    if every_seconds.is_some() && at.is_some() {
-        anyhow::bail!("Use either --every-seconds or --at, not both");
+fn app_task_trigger(trigger: &TaskTrigger) -> app_schedule_planning::TaskTriggerSpec {
+    match trigger {
+        TaskTrigger::Interval { every_seconds } => {
+            app_schedule_planning::TaskTriggerSpec::Interval {
+                every_seconds: *every_seconds,
+            }
+        }
+        TaskTrigger::Absolute { at } => {
+            app_schedule_planning::TaskTriggerSpec::Absolute { at: at.clone() }
+        }
+        TaskTrigger::Event { event_name } => app_schedule_planning::TaskTriggerSpec::Event {
+            event_name: event_name.clone(),
+        },
+        TaskTrigger::Dependency { depends_on } => {
+            app_schedule_planning::TaskTriggerSpec::Dependency {
+                depends_on: depends_on.clone(),
+            }
+        }
     }
+}
 
-    if let Some(run_at) = at {
-        DateTime::parse_from_rfc3339(run_at)
-            .with_context(|| format!("Invalid RFC3339 timestamp for --at: {}", run_at))?;
-        Ok(TaskTrigger::Absolute {
-            at: run_at.to_string(),
-        })
-    } else {
-        Ok(TaskTrigger::Interval {
-            every_seconds: every_seconds.unwrap_or(3600),
-        })
+fn task_trigger_from_app(trigger: app_schedule_planning::TaskTriggerSpec) -> TaskTrigger {
+    match trigger {
+        app_schedule_planning::TaskTriggerSpec::Interval { every_seconds } => {
+            TaskTrigger::Interval { every_seconds }
+        }
+        app_schedule_planning::TaskTriggerSpec::Absolute { at } => TaskTrigger::Absolute { at },
+        app_schedule_planning::TaskTriggerSpec::Event { event_name } => {
+            TaskTrigger::Event { event_name }
+        }
+        app_schedule_planning::TaskTriggerSpec::Dependency { depends_on } => {
+            TaskTrigger::Dependency { depends_on }
+        }
     }
+}
+
+fn trigger_from_inline(every_seconds: Option<u64>, at: Option<&str>) -> Result<TaskTrigger> {
+    Ok(task_trigger_from_app(
+        app_schedule_planning::SchedulePlanningService::new()
+            .trigger_from_inline(every_seconds, at)?,
+    ))
 }
 
 fn trigger_config_and_next_run(
     trigger: &TaskTrigger,
 ) -> Result<(String, Value, Option<DateTime<Utc>>)> {
-    match trigger {
-        TaskTrigger::Interval { every_seconds } => Ok((
-            "interval".to_string(),
-            serde_json::json!({
-                "type": "interval",
-                "interval_secs": every_seconds,
-            }),
-            Some(Utc::now() + chrono::Duration::seconds(*every_seconds as i64)),
-        )),
-        TaskTrigger::Absolute { at } => {
-            let run_at = DateTime::parse_from_rfc3339(at)
-                .with_context(|| format!("Invalid RFC3339 timestamp for absolute trigger: {at}"))?
-                .with_timezone(&Utc);
-            Ok((
-                "absolute".to_string(),
-                serde_json::json!({
-                    "type": "absolute",
-                    "run_at": run_at.to_rfc3339(),
-                }),
-                Some(run_at),
-            ))
-        }
-        TaskTrigger::Event { event_name } => Ok((
-            "event".to_string(),
-            serde_json::json!({
-                "type": "event",
-                "event_name": event_name,
-            }),
-            None,
-        )),
-        TaskTrigger::Dependency { depends_on } => Ok((
-            "dependency".to_string(),
-            serde_json::json!({
-                "type": "dependency",
-                "depends_on": depends_on,
-            }),
-            None,
-        )),
-    }
+    Ok(app_schedule_planning::SchedulePlanningService::new()
+        .trigger_config_and_next_run(&app_task_trigger(trigger), Utc::now())?)
 }
 
 fn build_metadata(
@@ -169,28 +158,18 @@ fn build_metadata(
     hook_policy: Option<&Value>,
     routing: Option<&Value>,
 ) -> Value {
-    let mut object = metadata.as_object().cloned().unwrap_or_else(Map::new);
-    object.insert("input".to_string(), payload);
-    object.insert(
-        "task".to_string(),
-        serde_json::json!({
-            "priority": priority,
-            "owner": owner,
-            "tags": tags,
-            "source_kind": source_kind,
-            "manifest_path": manifest_path.map(|value| value.display().to_string()),
-        }),
-    );
-    if let Some(policy) = delivery_policy.cloned() {
-        object.insert("delivery_policy".to_string(), policy);
-    }
-    if let Some(policy) = hook_policy.cloned() {
-        object.insert("hook_policy".to_string(), policy);
-    }
-    if let Some(route) = routing.cloned() {
-        object.insert("routing".to_string(), route);
-    }
-    Value::Object(object)
+    app_schedule_planning::SchedulePlanningService::new().build_metadata(
+        payload,
+        priority,
+        owner,
+        tags,
+        manifest_path,
+        source_kind,
+        metadata,
+        delivery_policy,
+        hook_policy,
+        routing,
+    )
 }
 
 struct AppliedTaskResult {

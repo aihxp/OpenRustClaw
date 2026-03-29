@@ -1,5 +1,35 @@
 # Project Milestones: OpenRustClaw
 
+## v1.24 Full Greenfield Conversion: Adapter-Only Exit and Enforcement (Shipped: 2026-03-28)
+
+**Phases completed:** 4 phases, 4 plans, 0 tasks
+**Verification archive:** `.planning/milestones/v1.24-VERIFICATIONS.md`
+**Verification debt:** none
+
+**Key accomplishments:**
+
+- Extracted the last targeted helper-owned continuity, audit, voice-call reporting, and compiled-skill MCP seams behind `openrustclaw-app`.
+- Formalized named adapter boundaries in the remaining hotspots so `inspect.rs`, `skills.rs`, and `start.rs` read more explicitly as adapter surfaces.
+- Added durable source-level guardrail tests plus contributor-facing enforcement defaults for the adapter-only architecture.
+- Closed the six-milestone full-conversion roadmap at `6/6`, or `100%`, with a truthful exit audit and scorecard.
+
+---
+
+## v1.23 Full Greenfield Conversion: Setup and Secondary Command Surfaces (Shipped: 2026-03-28)
+
+**Phases completed:** 4 phases, 4 plans, 0 tasks
+**Verification archive:** `.planning/milestones/v1.23-VERIFICATIONS.md`
+**Verification debt:** none
+
+**Key accomplishments:**
+
+- Moved onboarding, repair, and resume orchestration out of `onboard.rs` and behind `openrustclaw-app`.
+- Moved the targeted residual lifecycle seams in `channels.rs`, `schedule.rs`, `services.rs`, and `control.rs` behind `openrustclaw-app`.
+- Moved the targeted secondary operator-helper, media, tools, and memory seams out of their command-local helpers and behind `openrustclaw-app`.
+- Reduced transition-era helper duplication and left the affected secondary command modules closer to adapter-only ownership.
+
+---
+
 ## v1.22 Full Greenfield Conversion: Orchestration and Browser Services (Shipped: 2026-03-28)
 
 **Phases completed:** 4 phases, 4 plans, 0 tasks

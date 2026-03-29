@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use anyhow::Result;
 use chrono::{DateTime, Utc};
+use openrustclaw_app::channel_health_monitor as app_channel_health_monitor;
 use openrustclaw_core::config::{AppConfig, IMessageBridgeMode};
 use openrustclaw_db::{SqlitePool, init_pool};
 use serde::Serialize;
@@ -146,6 +147,60 @@ pub struct LiveRuntimeMetadata {
     pub gateway_addr: String,
     pub started_at: Option<DateTime<Utc>>,
     pub sidecar_running: bool,
+}
+
+fn app_channel_probe_entry(
+    entry: &ChannelProbeEntry,
+) -> app_channel_health_monitor::ChannelProbeEntry {
+    app_channel_health_monitor::ChannelProbeEntry {
+        platform: entry.platform.clone(),
+        enabled: entry.enabled,
+        status: match entry.status {
+            ChannelProbeStatus::Ready => app_channel_health_monitor::ChannelProbeStatus::Ready,
+            ChannelProbeStatus::Warning => app_channel_health_monitor::ChannelProbeStatus::Warning,
+            ChannelProbeStatus::Failed => app_channel_health_monitor::ChannelProbeStatus::Failed,
+        },
+        probe_kind: entry.probe_kind.clone(),
+        detail: entry.detail.clone(),
+    }
+}
+
+fn app_channel_health_monitor_status(
+    status: &ChannelHealthMonitorStatus,
+) -> app_channel_health_monitor::ChannelHealthMonitorStatus {
+    app_channel_health_monitor::ChannelHealthMonitorStatus {
+        generated_at: status.generated_at.clone(),
+        health_monitor_enabled: status.health_monitor_enabled,
+        auto_restart_on_failure: status.auto_restart_on_failure,
+        auto_restart_ready: status.auto_restart_ready,
+        consecutive_failure_threshold: status.consecutive_failure_threshold,
+        current_consecutive_failures: status.current_consecutive_failures,
+        degraded: status.degraded,
+        failing_platforms: status.failing_platforms.clone(),
+        last_failure_at: status.last_failure_at.clone(),
+        last_healthy_at: status.last_healthy_at.clone(),
+        restart_requested: status.restart_requested,
+        restart_reason: status.restart_reason.clone(),
+    }
+}
+
+fn channel_health_monitor_status_from_app(
+    status: app_channel_health_monitor::ChannelHealthMonitorStatus,
+) -> ChannelHealthMonitorStatus {
+    ChannelHealthMonitorStatus {
+        generated_at: status.generated_at,
+        health_monitor_enabled: status.health_monitor_enabled,
+        auto_restart_on_failure: status.auto_restart_on_failure,
+        auto_restart_ready: status.auto_restart_ready,
+        consecutive_failure_threshold: status.consecutive_failure_threshold,
+        current_consecutive_failures: status.current_consecutive_failures,
+        degraded: status.degraded,
+        failing_platforms: status.failing_platforms,
+        last_failure_at: status.last_failure_at,
+        last_healthy_at: status.last_healthy_at,
+        restart_requested: status.restart_requested,
+        restart_reason: status.restart_reason,
+    }
 }
 
 pub async fn status(config_path: &str, workspace_root: &Path) -> Result<ServiceStatusReport> {
@@ -858,54 +913,19 @@ fn compose_channel_health_monitor_status(
     previous: Option<&ChannelHealthMonitorStatus>,
     entries: &[ChannelProbeEntry],
 ) -> ChannelHealthMonitorStatus {
-    let now = Utc::now().to_rfc3339();
-    let failing_platforms = entries
+    let app_previous = previous.map(app_channel_health_monitor_status);
+    let app_entries = entries
         .iter()
-        .filter(|entry| entry.enabled && entry.status == ChannelProbeStatus::Failed)
-        .map(|entry| entry.platform.clone())
+        .map(app_channel_probe_entry)
         .collect::<Vec<_>>();
-    let degraded = !failing_platforms.is_empty();
-    let current_consecutive_failures = if degraded {
-        previous
-            .map(|status| status.current_consecutive_failures + 1)
-            .unwrap_or(1)
-    } else {
-        0
-    };
-    let restart_requested = config.channels.runtime.health_monitor_enabled
-        && config.channels.runtime.auto_restart_on_failure
-        && auto_restart_ready
-        && current_consecutive_failures >= config.channels.runtime.failure_threshold;
-    let restart_reason = restart_requested.then(|| {
-        format!(
-            "Channel health monitor requested a managed restart after {} consecutive failing scans: {}",
-            current_consecutive_failures,
-            failing_platforms.join(", ")
-        )
-    });
-
-    ChannelHealthMonitorStatus {
-        generated_at: now.clone(),
-        health_monitor_enabled: config.channels.runtime.health_monitor_enabled,
-        auto_restart_on_failure: config.channels.runtime.auto_restart_on_failure,
-        auto_restart_ready,
-        consecutive_failure_threshold: config.channels.runtime.failure_threshold,
-        current_consecutive_failures,
-        degraded,
-        failing_platforms,
-        last_failure_at: if degraded {
-            Some(now.clone())
-        } else {
-            previous.and_then(|status| status.last_failure_at.clone())
-        },
-        last_healthy_at: if degraded {
-            previous.and_then(|status| status.last_healthy_at.clone())
-        } else {
-            Some(now)
-        },
-        restart_requested,
-        restart_reason,
-    }
+    channel_health_monitor_status_from_app(
+        app_channel_health_monitor::ChannelHealthMonitorService::new().compose_status(
+            config,
+            auto_restart_ready,
+            app_previous.as_ref(),
+            &app_entries,
+        ),
+    )
 }
 
 fn ready_entry(platform: &str, probe_kind: &str, detail: impl Into<String>) -> ChannelProbeEntry {
@@ -939,44 +959,7 @@ fn failed_entry(platform: &str, probe_kind: &str, detail: impl Into<String>) -> 
 }
 
 fn enabled_channels(config: &AppConfig) -> Vec<String> {
-    let mut channels = Vec::new();
-    if config.channels.telegram.enabled {
-        channels.push("telegram".to_string());
-    }
-    if config.channels.discord.enabled {
-        channels.push("discord".to_string());
-    }
-    if config.channels.slack.enabled {
-        channels.push("slack".to_string());
-    }
-    if config.channels.whatsapp.enabled {
-        channels.push("whatsapp".to_string());
-    }
-    if config.channels.teams.enabled {
-        channels.push("teams".to_string());
-    }
-    if config.channels.mattermost.enabled {
-        channels.push("mattermost".to_string());
-    }
-    if config.channels.google_chat.enabled {
-        channels.push("google_chat".to_string());
-    }
-    if config.channels.google_meet.enabled {
-        channels.push("google_meet".to_string());
-    }
-    if config.channels.gmail_pubsub.enabled {
-        channels.push("gmail_pubsub".to_string());
-    }
-    if config.channels.signal.enabled {
-        channels.push("signal".to_string());
-    }
-    if config.channels.matrix.enabled {
-        channels.push("matrix".to_string());
-    }
-    if config.channels.imessage.enabled {
-        channels.push("imessage".to_string());
-    }
-    channels
+    app_channel_health_monitor::ChannelHealthMonitorService::new().enabled_channels(config)
 }
 
 #[cfg(test)]

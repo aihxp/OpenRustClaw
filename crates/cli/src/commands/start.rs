@@ -28,7 +28,7 @@ use openrustclaw_app::channel_registry_lifecycle::{
     ChannelRegistryLifecycleService, ChannelRegistryLifecycleSource,
     ChannelSendPolicyRequest as AppChannelSendPolicyRequest,
 };
-use openrustclaw_app::compiled_skill_overview::CompiledSkillOverviewService;
+use openrustclaw_app::compiled_skill_mcp::{CompiledSkillMcpService, CompiledSkillMcpToolSpec};
 use openrustclaw_app::control_config::{ControlConfigService, ControlConfigSource};
 use openrustclaw_app::control_diagnostics::{ControlDiagnosticsService, ControlDiagnosticsSource};
 use openrustclaw_app::enterprise_access_control::{
@@ -10458,7 +10458,8 @@ fn build_mcp_server(
     let session_store = SqliteSessionStore::new(pool.clone());
     let optimization_store = OptimizationStore::new(pool.clone());
     let event_bus = DurableEventBus::new(pool.clone(), 256);
-    let compiled_skill_artifacts = load_compiled_skill_artifacts(&workspace_root);
+    let compiled_skill_catalog = CompiledSkillWorkspaceCatalog::new(&workspace_root);
+    let compiled_skill_artifacts = compiled_skill_catalog.artifacts();
     let mut server = McpServer::new(McpServerConfig {
         name: "openrustclaw".to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
@@ -11094,7 +11095,10 @@ fn build_mcp_server(
                 }),
             },
             ];
-            tools.extend(compiled_skill_mcp_tools(&compiled_skill_artifacts));
+            tools.extend(compiled_skill_mcp_tools(
+                compiled_skill_catalog.service(),
+                &compiled_skill_artifacts,
+            ));
             tools
         },
     });
@@ -11303,7 +11307,12 @@ fn build_mcp_server(
         }),
     );
 
-    register_compiled_skill_mcp_handlers(&mut server, &compiled_skill_artifacts, langsmith.clone());
+    register_compiled_skill_mcp_handlers(
+        &mut server,
+        compiled_skill_catalog.service().clone(),
+        &compiled_skill_artifacts,
+        langsmith.clone(),
+    );
 
     let memory_store_for_search = memory_store.clone();
     let event_bus_for_search = event_bus.clone();
@@ -12721,310 +12730,102 @@ fn compiled_skill_root(workspace_root: &Path) -> PathBuf {
     workspace_root.join(".claw").join("skills").join("compiled")
 }
 
-fn sanitize_compiled_skill_name(value: &str) -> String {
-    value
-        .chars()
-        .map(|ch| match ch {
-            'a'..='z' | 'A'..='Z' | '0'..='9' | '-' | '_' | '.' | '/' => ch,
-            _ => '-',
-        })
-        .collect::<String>()
-        .replace('/', "__")
+struct CompiledSkillWorkspaceCatalog {
+    service: CompiledSkillMcpService,
 }
 
-fn compiled_skill_tool_prefix(name: &str) -> String {
-    format!("skill.{}", sanitize_compiled_skill_name(name))
+impl CompiledSkillWorkspaceCatalog {
+    fn new(workspace_root: &Path) -> Self {
+        Self {
+            service: CompiledSkillMcpService::new(compiled_skill_root(workspace_root)),
+        }
+    }
+
+    fn service(&self) -> &CompiledSkillMcpService {
+        &self.service
+    }
+
+    fn artifacts(&self) -> Vec<CompiledSkillArtifact> {
+        self.service.artifacts()
+    }
 }
 
 fn compiled_skill_summary_tool_name(artifact: &CompiledSkillArtifact) -> String {
-    format!(
-        "{}.summary",
-        compiled_skill_tool_prefix(&artifact.manifest.name)
-    )
+    CompiledSkillMcpService::summary_tool_name(artifact)
 }
 
 fn compiled_skill_details_tool_name(artifact: &CompiledSkillArtifact) -> String {
-    format!(
-        "{}.details",
-        compiled_skill_tool_prefix(&artifact.manifest.name)
-    )
+    CompiledSkillMcpService::detail_tool_name(artifact)
 }
 
 fn compiled_skill_reference_tool_name(artifact: &CompiledSkillArtifact, reference: &str) -> String {
-    format!(
-        "{}.reference.{}",
-        compiled_skill_tool_prefix(&artifact.manifest.name),
-        sanitize_compiled_skill_name(reference)
-    )
+    CompiledSkillMcpService::reference_tool_name(artifact, reference)
 }
 
 fn compiled_skill_execute_tool_name(artifact: &CompiledSkillArtifact) -> String {
-    format!(
-        "{}.execute",
-        compiled_skill_tool_prefix(&artifact.manifest.name)
-    )
+    CompiledSkillMcpService::execute_tool_name(artifact)
 }
 
 fn compiled_skill_schedule_tool_name(artifact: &CompiledSkillArtifact) -> String {
-    format!(
-        "{}.schedule",
-        compiled_skill_tool_prefix(&artifact.manifest.name)
-    )
+    CompiledSkillMcpService::schedule_tool_name(artifact)
 }
 
 fn compiled_skill_executable_components(artifact: &CompiledSkillArtifact) -> Vec<String> {
-    CompiledSkillOverviewService::executable_components(artifact)
+    CompiledSkillMcpService::executable_components(artifact)
 }
 
-fn load_compiled_skill_artifacts(workspace_root: &Path) -> Vec<CompiledSkillArtifact> {
-    let root = compiled_skill_root(workspace_root);
-    let service = CompiledSkillOverviewService::new(root.clone());
-    let manifests = match service.manifests() {
-        Ok(manifests) => manifests,
-        Err(error) => {
-            warn!(
-                path = %root.display(),
-                error = %error,
-                "Failed to load compiled skill manifests for MCP registration"
-            );
-            return Vec::new();
-        }
-    };
+fn mcp_tool_from_spec(spec: CompiledSkillMcpToolSpec) -> McpServerTool {
+    McpServerTool {
+        name: spec.name,
+        description: spec.description,
+        input_schema: spec.input_schema,
+    }
+}
 
-    manifests
+fn compiled_skill_mcp_tools(
+    service: &CompiledSkillMcpService,
+    artifacts: &[CompiledSkillArtifact],
+) -> Vec<McpServerTool> {
+    service
+        .tool_specs(artifacts)
         .into_iter()
-        .filter_map(|manifest| match service.artifact(&manifest.name) {
-            Ok(artifact) => Some(artifact),
-            Err(error) => {
-                warn!(
-                    skill = %manifest.name,
-                    path = %root.display(),
-                    error = %error,
-                    "Failed to load compiled skill artifact for MCP registration"
-                );
-                None
-            }
-        })
+        .map(mcp_tool_from_spec)
         .collect()
 }
 
-fn compiled_skill_mcp_tools(artifacts: &[CompiledSkillArtifact]) -> Vec<McpServerTool> {
-    if artifacts.is_empty() {
-        return Vec::new();
-    }
-
-    let mut tools = vec![
-        McpServerTool {
-            name: "list_compiled_skills".to_string(),
-            description: "List compiled skills that are available to the MCP server.".to_string(),
-            input_schema: serde_json::json!({"type": "object", "properties": {}}),
-        },
-        McpServerTool {
-            name: "inspect_compiled_skill".to_string(),
-            description: "Inspect one compiled skill artifact bundle from the workspace cache."
-                .to_string(),
-            input_schema: serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "name": {"type": "string"}
-                },
-                "required": ["name"]
-            }),
-        },
-    ];
-
-    for artifact in artifacts {
-        tools.push(McpServerTool {
-            name: compiled_skill_summary_tool_name(artifact),
-            description: format!(
-                "Return the token-efficient compiled summary for skill '{}'.",
-                artifact.manifest.name
-            ),
-            input_schema: serde_json::json!({"type": "object", "properties": {}}),
-        });
-        tools.push(McpServerTool {
-            name: compiled_skill_details_tool_name(artifact),
-            description: format!(
-                "Return the compiled detail bundle for skill '{}'.",
-                artifact.manifest.name
-            ),
-            input_schema: serde_json::json!({"type": "object", "properties": {}}),
-        });
-
-        let executable_components = compiled_skill_executable_components(artifact);
-        let background_services = compiled_skill_background_services(artifact);
-        if !matches!(artifact.manifest.status, CompiledSkillStatus::Blocked)
-            && !executable_components.is_empty()
-        {
-            let mut execute_schema = serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "input": {
-                        "description": "Optional JSON value forwarded into the bounded Rust/WASM skill executor."
-                    }
-                }
-            });
-            if executable_components.len() > 1 {
-                execute_schema["properties"]["component"] = serde_json::json!({
-                    "type": "string",
-                    "description": "Executable `.wasm` or `.wat` component path from the compiled skill artifact."
-                });
-                execute_schema["required"] = serde_json::json!(["component"]);
-            } else {
-                execute_schema["properties"]["component"] = serde_json::json!({
-                    "type": "string",
-                    "description": "Optional executable component path. Omit to use the only available `.wasm`/`.wat` artifact."
-                });
-            }
-            tools.push(McpServerTool {
-                name: compiled_skill_execute_tool_name(artifact),
-                description: format!(
-                    "Execute bounded Rust/WASM component{} for skill '{}'.",
-                    if executable_components.len() == 1 {
-                        format!(" '{}'", executable_components[0])
-                    } else {
-                        "s".to_string()
-                    },
-                    artifact.manifest.name
-                ),
-                input_schema: execute_schema,
-            });
-        }
-
-        if !matches!(artifact.manifest.status, CompiledSkillStatus::Blocked)
-            && !background_services.is_empty()
-        {
-            tools.push(McpServerTool {
-                name: compiled_skill_schedule_tool_name(artifact),
-                description: format!(
-                    "Schedule a durable background workflow for compiled skill '{}'.",
-                    artifact.manifest.name
-                ),
-                input_schema: serde_json::json!({
-                    "type": "object",
-                    "properties": {
-                        "service": {"type": "string"},
-                        "component": {"type": "string"},
-                        "input": {
-                            "description": "Optional JSON value forwarded into the background workflow executor."
-                        },
-                        "every_seconds": {"type": "integer", "minimum": 1},
-                        "at": {"type": "string", "description": "Optional RFC3339 timestamp for a one-shot execution."},
-                        "priority": {"type": "integer"}
-                    }
-                }),
-            });
-        }
-
-        if !matches!(artifact.manifest.status, CompiledSkillStatus::Blocked) {
-            for reference in &artifact.manifest.references {
-                tools.push(McpServerTool {
-                    name: compiled_skill_reference_tool_name(artifact, reference),
-                    description: format!(
-                        "Read compiled skill reference '{}' from skill '{}'.",
-                        reference, artifact.manifest.name
-                    ),
-                    input_schema: serde_json::json!({
-                        "type": "object",
-                        "properties": {
-                            "max_chars": {"type": "integer", "minimum": 1}
-                        }
-                    }),
-                });
-            }
-        }
-    }
-
-    tools
+fn compiled_skill_summary_payload(
+    service: &CompiledSkillMcpService,
+    artifact: &CompiledSkillArtifact,
+) -> serde_json::Value {
+    service.summary_payload(artifact)
 }
 
-fn compiled_skill_summary_payload(artifact: &CompiledSkillArtifact) -> serde_json::Value {
-    serde_json::json!({
-        "manifest": &artifact.manifest,
-        "help": {
-            "summary": &artifact.help_index.summary,
-            "argument_hint": &artifact.help_index.argument_hint,
-            "allowed_tools": &artifact.help_index.allowed_tools,
-            "capabilities": &artifact.help_index.capabilities,
-            "scripts": &artifact.help_index.scripts,
-            "references": &artifact.help_index.references,
-            "safety_notes": &artifact.help_index.safety_notes,
-        },
-        "cli": &artifact.cli_schema,
-        "mcp": {
-            "summary_tool": compiled_skill_summary_tool_name(artifact),
-            "details_tool": compiled_skill_details_tool_name(artifact),
-            "execute_tool": if compiled_skill_executable_components(artifact).is_empty() {
-                serde_json::Value::Null
-            } else {
-                serde_json::json!(compiled_skill_execute_tool_name(artifact))
-            },
-            "schedule_tool": if compiled_skill_background_services(artifact).is_empty() {
-                serde_json::Value::Null
-            } else {
-                serde_json::json!(compiled_skill_schedule_tool_name(artifact))
-            },
-            "executable_components": compiled_skill_executable_components(artifact),
-            "background_services": compiled_skill_background_services(artifact),
-            "reference_tools": artifact
-                .manifest
-                .references
-                .iter()
-                .map(|reference| compiled_skill_reference_tool_name(artifact, reference))
-                .collect::<Vec<_>>(),
-        },
-        "scan_report": &artifact.scan_report,
-    })
-}
-
-fn compiled_skill_detail_payload(artifact: &CompiledSkillArtifact) -> serde_json::Value {
-    let blocked = matches!(artifact.manifest.status, CompiledSkillStatus::Blocked);
-    serde_json::json!({
-        "manifest": &artifact.manifest,
-        "help_index": {
-            "summary": &artifact.help_index.summary,
-            "body_excerpt": if blocked { serde_json::Value::Null } else { serde_json::json!(&artifact.help_index.body_excerpt) },
-            "argument_hint": &artifact.help_index.argument_hint,
-            "allowed_tools": &artifact.help_index.allowed_tools,
-            "capabilities": &artifact.help_index.capabilities,
-            "scripts": &artifact.help_index.scripts,
-            "references": &artifact.help_index.references,
-            "examples": if blocked { serde_json::json!([]) } else { serde_json::json!(&artifact.help_index.examples) },
-            "safety_notes": &artifact.help_index.safety_notes,
-        },
-        "mcp_schema": &artifact.mcp_schema,
-        "cli_schema": &artifact.cli_schema,
-        "background_services": compiled_skill_background_services(artifact),
-        "scan_report": &artifact.scan_report,
-        "blocked_content_redacted": blocked,
-    })
+fn compiled_skill_detail_payload(
+    service: &CompiledSkillMcpService,
+    artifact: &CompiledSkillArtifact,
+) -> serde_json::Value {
+    service.detail_payload(artifact)
 }
 
 fn read_compiled_skill_reference(
+    service: &CompiledSkillMcpService,
     artifact: &CompiledSkillArtifact,
     reference: &str,
     max_chars: Option<usize>,
 ) -> openrustclaw_core::error::Result<serde_json::Value> {
-    let service = CompiledSkillOverviewService::new(compiled_skill_root(Path::new(".")));
-    let mut payload = service
+    service
         .read_reference(artifact, reference, max_chars)
         .map_err(|error| {
             mcp_tool_error(format!(
                 "Failed to read reference '{}' for '{}': {}",
                 reference, artifact.manifest.name, error
             ))
-        })?;
-    if let Some(object) = payload.as_object_mut() {
-        object.insert(
-            "skill".to_string(),
-            serde_json::Value::String(artifact.manifest.name.clone()),
-        );
-    }
-    Ok(payload)
+        })
 }
 
 fn register_compiled_skill_mcp_handlers(
     server: &mut McpServer,
+    service: CompiledSkillMcpService,
     artifacts: &[CompiledSkillArtifact],
     langsmith: Option<LangSmithClient>,
 ) {
@@ -13047,6 +12848,7 @@ fn register_compiled_skill_mcp_handlers(
         .iter()
         .map(|artifact| (artifact.manifest.name.clone(), artifact.clone()))
         .collect::<HashMap<_, _>>();
+    let inspect_service = service.clone();
     server.register_handler(
         "inspect_compiled_skill",
         traced_mcp_handler(langsmith.clone(), "inspect_compiled_skill", move |args| {
@@ -13054,26 +12856,34 @@ fn register_compiled_skill_mcp_handlers(
             let artifact = artifacts_by_name.get(&request.name).ok_or_else(|| {
                 mcp_tool_error(format!("Compiled skill '{}' was not found", request.name))
             })?;
-            Ok(compiled_skill_detail_payload(artifact))
+            Ok(compiled_skill_detail_payload(&inspect_service, artifact))
         }),
     );
 
     for artifact in artifacts {
+        let payload_service = service.clone();
         let summary_artifact = artifact.clone();
         let summary_tool = compiled_skill_summary_tool_name(artifact);
         server.register_handler(
             &summary_tool,
             traced_mcp_handler(langsmith.clone(), "compiled_skill_summary", move |_| {
-                Ok(compiled_skill_summary_payload(&summary_artifact))
+                Ok(compiled_skill_summary_payload(
+                    &payload_service,
+                    &summary_artifact,
+                ))
             }),
         );
 
+        let detail_service = service.clone();
         let detail_artifact = artifact.clone();
         let detail_tool = compiled_skill_details_tool_name(artifact);
         server.register_handler(
             &detail_tool,
             traced_mcp_handler(langsmith.clone(), "compiled_skill_details", move |_| {
-                Ok(compiled_skill_detail_payload(&detail_artifact))
+                Ok(compiled_skill_detail_payload(
+                    &detail_service,
+                    &detail_artifact,
+                ))
             }),
         );
 
@@ -13153,6 +12963,7 @@ fn register_compiled_skill_mcp_handlers(
         }
 
         for reference in &artifact.manifest.references {
+            let reference_service = service.clone();
             let reference_name = reference.clone();
             let reference_tool = compiled_skill_reference_tool_name(artifact, &reference_name);
             let reference_artifact = artifact.clone();
@@ -13161,6 +12972,7 @@ fn register_compiled_skill_mcp_handlers(
                 traced_mcp_handler(langsmith.clone(), "compiled_skill_reference", move |args| {
                     let request: McpCompiledSkillReferenceArgs = parse_tool_args(args)?;
                     read_compiled_skill_reference(
+                        &reference_service,
                         &reference_artifact,
                         &reference_name,
                         request.max_chars,

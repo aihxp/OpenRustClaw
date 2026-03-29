@@ -5,6 +5,7 @@ use chrono::Utc;
 use console::style;
 use dialoguer::{Confirm, Input, MultiSelect, Password, Select, theme::ColorfulTheme};
 use indicatif::{ProgressBar, ProgressStyle};
+use openrustclaw_app::setup_lifecycle as app_setup_lifecycle;
 use serde::{Deserialize, Serialize};
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
@@ -63,14 +64,6 @@ impl OnboardingProfile {
             OnboardingProfile::Standard => "Standard",
             OnboardingProfile::Advanced => "Advanced",
             OnboardingProfile::Custom => "Custom",
-        }
-    }
-
-    fn from_label(label: &str) -> Self {
-        match label {
-            "Advanced" => OnboardingProfile::Advanced,
-            "Custom" => OnboardingProfile::Custom,
-            _ => OnboardingProfile::Standard,
         }
     }
 }
@@ -713,7 +706,11 @@ pub fn should_offer_assistant_launch(
     stdin_is_terminal: bool,
     provider: Option<&str>,
 ) -> bool {
-    healthy && stdin_is_terminal && provider.is_some()
+    app_setup_lifecycle::SetupLifecycleService::new().should_offer_assistant_launch(
+        healthy,
+        stdin_is_terminal,
+        provider,
+    )
 }
 
 // ============================================================================
@@ -1327,91 +1324,118 @@ fn step_from_id(id: &str) -> Option<OnboardingStep> {
     }
 }
 
-fn selected_steps_from_setup_state(setup: &SetupState) -> Vec<OnboardingStep> {
-    let selected = setup
-        .selected_steps
-        .iter()
-        .filter(|id| !setup.completed_steps.contains(*id))
-        .filter_map(|id| step_from_id(id))
-        .collect::<Vec<_>>();
-    if selected.is_empty() {
-        steps_for_profile(OnboardingProfile::from_label(
-            setup.setup_path.as_deref().unwrap_or("Standard"),
-        ))
-    } else {
-        selected
+fn app_bootstrap_outcome(
+    outcome: &SetupBootstrapOutcome,
+) -> app_setup_lifecycle::SetupBootstrapOutcome {
+    app_setup_lifecycle::SetupBootstrapOutcome {
+        category: outcome.category.clone(),
+        target: outcome.target.clone(),
+        status: outcome.status.clone(),
+        detail: outcome.detail.clone(),
+        updated_at: outcome.updated_at.clone(),
     }
 }
 
-pub fn pending_step_names(setup: &SetupState) -> Vec<String> {
-    setup
-        .selected_steps
-        .iter()
-        .filter(|id| !setup.completed_steps.contains(*id))
-        .filter_map(|id| step_from_id(id))
-        .map(|step| step.name().to_string())
+fn setup_bootstrap_outcome_from_app(
+    outcome: app_setup_lifecycle::SetupBootstrapOutcome,
+) -> SetupBootstrapOutcome {
+    SetupBootstrapOutcome {
+        category: outcome.category,
+        target: outcome.target,
+        status: outcome.status,
+        detail: outcome.detail,
+        updated_at: outcome.updated_at,
+    }
+}
+
+fn app_setup_state(setup: &SetupState) -> app_setup_lifecycle::SetupLifecycleState {
+    app_setup_lifecycle::SetupLifecycleState {
+        status: setup.status.clone(),
+        setup_path: setup.setup_path.clone(),
+        selected_steps: setup.selected_steps.clone(),
+        completed_steps: setup.completed_steps.clone(),
+        blockers: setup.blockers.clone(),
+        next_action: setup.next_action.clone(),
+        bootstrap_outcomes: setup
+            .bootstrap_outcomes
+            .iter()
+            .map(app_bootstrap_outcome)
+            .collect(),
+    }
+}
+
+fn app_diagnostic_check(
+    check: &doctor::DiagnosticCheck,
+) -> app_setup_lifecycle::SetupDiagnosticCheck {
+    app_setup_lifecycle::SetupDiagnosticCheck {
+        id: check.id.clone(),
+        label: check.label.clone(),
+        status: match check.status {
+            doctor::DiagnosticStatus::Ok => app_setup_lifecycle::SetupDiagnosticStatus::Ok,
+            doctor::DiagnosticStatus::Warning => {
+                app_setup_lifecycle::SetupDiagnosticStatus::Warning
+            }
+            doctor::DiagnosticStatus::Failed => app_setup_lifecycle::SetupDiagnosticStatus::Failed,
+        },
+        message: check.message.clone(),
+    }
+}
+
+fn app_onboarding_profile(profile: OnboardingProfile) -> app_setup_lifecycle::OnboardingProfile {
+    match profile {
+        OnboardingProfile::Standard => app_setup_lifecycle::OnboardingProfile::Standard,
+        OnboardingProfile::Advanced => app_setup_lifecycle::OnboardingProfile::Advanced,
+        OnboardingProfile::Custom => app_setup_lifecycle::OnboardingProfile::Custom,
+    }
+}
+
+fn onboarding_profile_from_app(
+    profile: app_setup_lifecycle::OnboardingProfile,
+) -> OnboardingProfile {
+    match profile {
+        app_setup_lifecycle::OnboardingProfile::Standard => OnboardingProfile::Standard,
+        app_setup_lifecycle::OnboardingProfile::Advanced => OnboardingProfile::Advanced,
+        app_setup_lifecycle::OnboardingProfile::Custom => OnboardingProfile::Custom,
+    }
+}
+
+fn onboarding_step_from_app(step: app_setup_lifecycle::SetupStep) -> OnboardingStep {
+    match step {
+        app_setup_lifecycle::SetupStep::Gateway => OnboardingStep::Gateway,
+        app_setup_lifecycle::SetupStep::Channel => OnboardingStep::Channel,
+        app_setup_lifecycle::SetupStep::Model => OnboardingStep::Model,
+        app_setup_lifecycle::SetupStep::ControlPlane => OnboardingStep::ControlPlane,
+        app_setup_lifecycle::SetupStep::Skill => OnboardingStep::Skill,
+        app_setup_lifecycle::SetupStep::Daemon => OnboardingStep::Daemon,
+    }
+}
+
+fn selected_steps_from_setup_state(setup: &SetupState) -> Vec<OnboardingStep> {
+    app_setup_lifecycle::SetupLifecycleService::new()
+        .selected_remaining_steps(&app_setup_state(setup))
+        .into_iter()
+        .map(onboarding_step_from_app)
         .collect()
 }
 
+pub fn pending_step_names(setup: &SetupState) -> Vec<String> {
+    app_setup_lifecycle::SetupLifecycleService::new().pending_step_names(&app_setup_state(setup))
+}
+
 pub fn non_ready_bootstrap_outcomes(setup: &SetupState) -> Vec<SetupBootstrapOutcome> {
-    setup
-        .bootstrap_outcomes
-        .iter()
-        .filter(|outcome| outcome.status != "ready")
-        .cloned()
+    app_setup_lifecycle::SetupLifecycleService::new()
+        .non_ready_bootstrap_outcomes(&app_setup_state(setup))
+        .into_iter()
+        .map(setup_bootstrap_outcome_from_app)
         .collect()
 }
 
 pub fn setup_handoff_status(setup: &SetupState) -> &'static str {
-    if setup.status == "blocked"
-        || setup
-            .bootstrap_outcomes
-            .iter()
-            .any(|outcome| outcome.status == "blocked")
-    {
-        "blocked"
-    } else if setup
-        .bootstrap_outcomes
-        .iter()
-        .any(|outcome| outcome.status == "warning")
-    {
-        "degraded"
-    } else if matches!(setup.status.as_str(), "ready" | "completed") {
-        "ready"
-    } else if setup.status == "in_progress" {
-        "in_progress"
-    } else {
-        "unknown"
-    }
+    app_setup_lifecycle::SetupLifecycleService::new().handoff_status(&app_setup_state(setup))
 }
 
 pub fn setup_handoff_detail(setup: &SetupState) -> String {
-    match setup_handoff_status(setup) {
-        "blocked" => setup
-            .blockers
-            .first()
-            .cloned()
-            .or_else(|| setup.next_action.clone())
-            .unwrap_or_else(|| "Setup is blocked and needs operator attention.".to_string()),
-        "degraded" => non_ready_bootstrap_outcomes(setup)
-            .first()
-            .map(|outcome| {
-                format!(
-                    "{} {} needs review: {}",
-                    outcome.category, outcome.target, outcome.detail
-                )
-            })
-            .or_else(|| setup.next_action.clone())
-            .unwrap_or_else(|| {
-                "Setup is usable but still has warning-level bootstrap issues.".to_string()
-            }),
-        "ready" => "The workspace is ready for first start and assistant handoff.".to_string(),
-        "in_progress" => setup
-            .next_action
-            .clone()
-            .unwrap_or_else(|| "Setup is still in progress.".to_string()),
-        _ => "Setup state exists but does not yet map to a known handoff status.".to_string(),
-    }
+    app_setup_lifecycle::SetupLifecycleService::new().handoff_detail(&app_setup_state(setup))
 }
 
 fn with_setup_state_mut<F>(workspace_root: &Path, mutator: F) -> Result<()>
@@ -1754,94 +1778,21 @@ fn derive_setup_repair_plan(
     setup_state: Option<&SetupState>,
     report: &doctor::DiagnosticReport,
 ) -> SetupRepairPlan {
-    let mut steps = Vec::new();
-    let mut reasons = Vec::new();
-
-    if let Some(setup) = setup_state {
-        let unfinished_steps = selected_steps_from_setup_state(setup);
-        for step in &unfinished_steps {
-            add_repair_step(&mut steps, *step);
-        }
-        if !unfinished_steps.is_empty() {
-            reasons.push("Durable setup state still has unfinished steps.".to_string());
-        }
-
-        for outcome in &setup.bootstrap_outcomes {
-            if outcome.status == "ready" {
-                continue;
-            }
-            if let Some(step) = repair_step_for_bootstrap_outcome(outcome) {
-                add_repair_step(&mut steps, step);
-                reasons.push(format!(
-                    "{} bootstrap is {}: {}",
-                    outcome.target, outcome.status, outcome.detail
-                ));
-            }
-        }
-    }
-
-    for check in &report.checks {
-        if !diagnostic_check_requires_repair(check) {
-            continue;
-        }
-        if let Some(step) = repair_step_for_diagnostic_check(check) {
-            add_repair_step(&mut steps, step);
-            reasons.push(format!(
-                "{} requires repair: {}",
-                check.label,
-                check
-                    .message
-                    .clone()
-                    .unwrap_or_else(|| "diagnostic reported a blocker".to_string())
-            ));
-        }
-    }
-
-    SetupRepairPlan { steps, reasons }
-}
-
-fn diagnostic_check_requires_repair(check: &doctor::DiagnosticCheck) -> bool {
-    match check.id.as_str() {
-        _ if check.status == doctor::DiagnosticStatus::Failed => true,
-        "api_keys" | "control_registry" | "onboarding_state" => {
-            check.status != doctor::DiagnosticStatus::Ok
-        }
-        "channel_readiness" => {
-            if check.status == doctor::DiagnosticStatus::Ok {
-                false
-            } else {
-                let message = check.message.as_deref().unwrap_or_default();
-                !message.contains("No shipped channels are enabled")
-            }
-        }
-        _ => false,
-    }
-}
-
-fn repair_step_for_bootstrap_outcome(outcome: &SetupBootstrapOutcome) -> Option<OnboardingStep> {
-    match (outcome.category.as_str(), outcome.target.as_str()) {
-        ("runtime", "gateway") => Some(OnboardingStep::Gateway),
-        ("provider", _) => Some(OnboardingStep::Model),
-        ("runtime", "control_plane_lane") => Some(OnboardingStep::Model),
-        ("runtime", "execution_mode") => Some(OnboardingStep::ControlPlane),
-        ("channel", _) => Some(OnboardingStep::Channel),
-        _ => None,
-    }
-}
-
-fn repair_step_for_diagnostic_check(check: &doctor::DiagnosticCheck) -> Option<OnboardingStep> {
-    match check.id.as_str() {
-        "api_keys" => Some(OnboardingStep::Model),
-        "channel_readiness" => Some(OnboardingStep::Channel),
-        "control_registry" => Some(OnboardingStep::ControlPlane),
-        "onboarding_state" => Some(OnboardingStep::Model),
-        _ => None,
-    }
-}
-
-fn add_repair_step(steps: &mut Vec<OnboardingStep>, step: OnboardingStep) {
-    if !steps.contains(&step) {
-        steps.push(step);
+    let app_setup = setup_state.map(app_setup_state);
+    let app_checks = report
+        .checks
+        .iter()
+        .map(app_diagnostic_check)
+        .collect::<Vec<_>>();
+    let plan = app_setup_lifecycle::SetupLifecycleService::new()
+        .derive_repair_plan(app_setup.as_ref(), &app_checks);
+    SetupRepairPlan {
+        steps: plan
+            .steps
+            .into_iter()
+            .map(onboarding_step_from_app)
+            .collect(),
+        reasons: plan.reasons,
     }
 }
 
@@ -2045,18 +1996,13 @@ impl OnboardingProfile {
 }
 
 fn default_onboarding_profile_for_mode(mode: &str) -> OnboardingProfile {
-    match mode {
-        self_hosted::MODE_COMPANY | self_hosted::MODE_ENTERPRISE => OnboardingProfile::Advanced,
-        _ => OnboardingProfile::Standard,
-    }
+    onboarding_profile_from_app(
+        app_setup_lifecycle::SetupLifecycleService::new().default_onboarding_profile_for_mode(mode),
+    )
 }
 
 fn default_runtime_mode_index(mode: Option<&str>) -> usize {
-    match mode.unwrap_or(self_hosted::MODE_SOLO) {
-        self_hosted::MODE_TEAM => 1,
-        self_hosted::MODE_COMPANY | self_hosted::MODE_ENTERPRISE => 3,
-        _ => 0,
-    }
+    app_setup_lifecycle::SetupLifecycleService::new().default_runtime_mode_index(mode)
 }
 
 fn select_deployment_mode(
@@ -2080,23 +2026,11 @@ fn select_deployment_mode(
 }
 
 fn steps_for_profile(profile: OnboardingProfile) -> Vec<OnboardingStep> {
-    match profile {
-        OnboardingProfile::Standard => vec![
-            OnboardingStep::Gateway,
-            OnboardingStep::Channel,
-            OnboardingStep::Model,
-            OnboardingStep::ControlPlane,
-        ],
-        OnboardingProfile::Advanced => vec![
-            OnboardingStep::Gateway,
-            OnboardingStep::Channel,
-            OnboardingStep::Model,
-            OnboardingStep::ControlPlane,
-            OnboardingStep::Skill,
-            OnboardingStep::Daemon,
-        ],
-        OnboardingProfile::Custom => Vec::new(),
-    }
+    app_setup_lifecycle::SetupLifecycleService::new()
+        .steps_for_profile(app_onboarding_profile(profile))
+        .into_iter()
+        .map(onboarding_step_from_app)
+        .collect()
 }
 
 fn select_setup_path(

@@ -2,12 +2,38 @@
 
 use anyhow::{Context, Result};
 use chrono::Utc;
+use openrustclaw_app::memory_views as app_memory_views;
 use openrustclaw_core::traits::{CoreMemoryStore, MemoryStore};
 use openrustclaw_core::types::{CoreEntry, MemoryEntry, MemoryQuery, MemoryType, SourceType};
 use openrustclaw_db::{SqliteCoreMemoryStore, SqliteMemoryStore};
 use openrustclaw_memory::WorkspaceArtifactRegistry;
 use sqlx::Row;
 use std::path::{Path, PathBuf};
+
+fn app_core_item(entry: &CoreEntry) -> app_memory_views::CoreMemoryItem {
+    app_memory_views::CoreMemoryItem {
+        key: entry.key.clone(),
+        value: entry.value.clone(),
+    }
+}
+
+fn app_recall_item(entry: &MemoryEntry) -> app_memory_views::RecallMemoryItem {
+    app_memory_views::RecallMemoryItem {
+        id: entry.id.to_string(),
+        memory_type: memory_type_label(entry.memory_type).to_string(),
+        namespace: entry.namespace.clone(),
+        content: entry.content.clone(),
+    }
+}
+
+fn app_archive_item(
+    entry: &openrustclaw_db::models::MemoryArchiveRow,
+) -> app_memory_views::ArchiveMemoryItem {
+    app_memory_views::ArchiveMemoryItem {
+        id: entry.id.clone(),
+        summary: entry.summary.clone(),
+    }
+}
 
 /// Export memories to markdown.
 pub async fn export(output: &str, user_id: Option<&str>) -> Result<()> {
@@ -616,114 +642,57 @@ async fn open_pool() -> Result<sqlx::SqlitePool> {
 }
 
 fn render_core_view(user_id: &str, entries: &[CoreEntry]) -> String {
-    let mut out = format!("# Core Memory\n\nUser: {}\n\n", user_id);
-    for entry in entries {
-        out.push_str(&format!("## {}\n{}\n\n", entry.key, entry.value));
-    }
-    out
+    app_memory_views::MemoryViewsService::new().render_core_view(
+        user_id,
+        &entries.iter().map(app_core_item).collect::<Vec<_>>(),
+    )
 }
 
 fn render_recall_view(user_id: &str, entries: &[MemoryEntry]) -> String {
-    let mut out = format!("# Recall Memory\n\nUser: {}\n\n", user_id);
-    for entry in entries {
-        out.push_str(&format!(
-            "## {} | {} | {}\n{}\n\n",
-            entry.id,
-            memory_type_label(entry.memory_type),
-            entry.namespace,
-            entry.content
-        ));
-    }
-    out
+    app_memory_views::MemoryViewsService::new().render_recall_view(
+        user_id,
+        &entries.iter().map(app_recall_item).collect::<Vec<_>>(),
+    )
 }
 
 fn render_archive_view(
     namespace: &str,
     entries: &[openrustclaw_db::models::MemoryArchiveRow],
 ) -> String {
-    let mut out = format!("# Archive Memory\n\nNamespace: {}\n\n", namespace);
-    for entry in entries {
-        out.push_str(&format!("## {}\n{}\n\n", entry.id, entry.summary));
-    }
-    out
+    app_memory_views::MemoryViewsService::new().render_archive_view(
+        namespace,
+        &entries.iter().map(app_archive_item).collect::<Vec<_>>(),
+    )
 }
 
 fn parse_core_view(content: &str) -> Vec<CoreEntry> {
-    let mut entries = Vec::new();
-    let mut current_key = None;
-    let mut current_value = String::new();
-    for line in content.lines() {
-        if let Some(rest) = line.strip_prefix("## ") {
-            if let Some(key) = current_key.take() {
-                entries.push(CoreEntry {
-                    key,
-                    value: current_value.trim().to_string(),
-                    importance: 0.8,
-                    token_count: current_value.len() / 4,
-                    updated_at: Utc::now(),
-                });
-            }
-            current_key = Some(rest.trim().to_string());
-            current_value.clear();
-            continue;
-        }
-        if current_key.is_some() {
-            current_value.push_str(line);
-            current_value.push('\n');
-        }
-    }
-    if let Some(key) = current_key.take() {
-        entries.push(CoreEntry {
-            key,
-            value: current_value.trim().to_string(),
+    app_memory_views::MemoryViewsService::new()
+        .parse_core_view(content)
+        .into_iter()
+        .map(|entry| CoreEntry {
+            key: entry.key,
+            value: entry.value.clone(),
             importance: 0.8,
-            token_count: current_value.len() / 4,
+            token_count: entry.value.len() / 4,
             updated_at: Utc::now(),
-        });
-    }
-    entries
+        })
+        .collect()
 }
 
 fn parse_recall_view(content: &str, user_id: &str) -> Vec<MemoryEntry> {
-    let mut entries = Vec::new();
-    let mut current_header: Option<(String, String, String)> = None;
-    let mut current_body = String::new();
-    for line in content.lines() {
-        if let Some(rest) = line.strip_prefix("## ") {
-            if let Some((id, typ, namespace)) = current_header.take() {
-                entries.push(build_memory_entry(
-                    &id,
-                    &typ,
-                    &namespace,
-                    user_id,
-                    &current_body,
-                ));
-            }
-            let parts: Vec<_> = rest
-                .split('|')
-                .map(|part| part.trim().to_string())
-                .collect();
-            if parts.len() == 3 {
-                current_header = Some((parts[0].clone(), parts[1].clone(), parts[2].clone()));
-            }
-            current_body.clear();
-            continue;
-        }
-        if current_header.is_some() {
-            current_body.push_str(line);
-            current_body.push('\n');
-        }
-    }
-    if let Some((id, typ, namespace)) = current_header.take() {
-        entries.push(build_memory_entry(
-            &id,
-            &typ,
-            &namespace,
-            user_id,
-            &current_body,
-        ));
-    }
-    entries
+    app_memory_views::MemoryViewsService::new()
+        .parse_recall_view(content)
+        .into_iter()
+        .map(|entry| {
+            build_memory_entry(
+                &entry.id,
+                &entry.memory_type,
+                &entry.namespace,
+                user_id,
+                &entry.content,
+            )
+        })
+        .collect()
 }
 
 fn build_memory_entry(
@@ -768,24 +737,14 @@ fn memory_type_label(value: MemoryType) -> &'static str {
 }
 
 fn assistant_write_policy_summary(entry: &MemoryEntry) -> Option<String> {
-    let policy = entry.metadata.get("assistant_write_policy")?;
-    let basis = policy.get("basis")?.as_str()?;
-    let reason = policy
-        .get("declared_reason")
-        .and_then(|value| value.as_str())
-        .unwrap_or("");
-    if reason.is_empty() {
-        Some(format!("basis={basis}"))
-    } else {
-        Some(format!("basis={basis}; reason={reason}"))
-    }
+    app_memory_views::MemoryViewsService::new().assistant_write_policy_summary(&entry.metadata)
 }
 
 fn parse_memory_type(value: &str) -> Result<MemoryType> {
-    match value.to_lowercase().as_str() {
-        "episodic" => Ok(MemoryType::Episodic),
-        "semantic" => Ok(MemoryType::Semantic),
-        "procedural" => Ok(MemoryType::Procedural),
+    match app_memory_views::MemoryViewsService::new().parse_memory_type(value) {
+        Some("episodic") => Ok(MemoryType::Episodic),
+        Some("semantic") => Ok(MemoryType::Semantic),
+        Some("procedural") => Ok(MemoryType::Procedural),
         _ => anyhow::bail!(
             "Unknown memory type '{}'. Available: episodic, semantic, procedural",
             value
@@ -794,13 +753,13 @@ fn parse_memory_type(value: &str) -> Result<MemoryType> {
 }
 
 fn parse_source_type(value: &str) -> Result<SourceType> {
-    match value.to_lowercase().as_str() {
-        "document" => Ok(SourceType::Document),
-        "code" => Ok(SourceType::Code),
-        "config" => Ok(SourceType::Config),
-        "conversation" => Ok(SourceType::Conversation),
-        "runbook" => Ok(SourceType::Runbook),
-        "tool_schema" | "tool-schema" => Ok(SourceType::ToolSchema),
+    match app_memory_views::MemoryViewsService::new().parse_source_type(value) {
+        Some("document") => Ok(SourceType::Document),
+        Some("code") => Ok(SourceType::Code),
+        Some("config") => Ok(SourceType::Config),
+        Some("conversation") => Ok(SourceType::Conversation),
+        Some("runbook") => Ok(SourceType::Runbook),
+        Some("tool_schema") => Ok(SourceType::ToolSchema),
         _ => anyhow::bail!(
             "Unknown source type '{}'. Available: document, code, config, conversation, runbook, tool_schema",
             value

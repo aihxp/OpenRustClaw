@@ -3,6 +3,7 @@
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use indicatif::{ProgressBar, ProgressStyle};
+use openrustclaw_app::compiled_skill_mcp::CompiledSkillMcpService;
 use openrustclaw_app::compiled_skill_overview::CompiledSkillOverviewService;
 use openrustclaw_app::skill_auth_plugin_binding::{
     SkillAuthPluginBindingRequest as AppSkillAuthPluginBindingRequest,
@@ -22,6 +23,12 @@ use openrustclaw_app::skill_registry_mutation::{
 };
 use openrustclaw_app::skill_voice_plugin_binding::{
     SkillVoicePluginBindingReport, SkillVoicePluginBindingRequest, SkillVoicePluginBindingService,
+};
+use openrustclaw_app::voice_call_reporting::{
+    VoiceCallArtifact as AppVoiceCallArtifact, VoiceCallEvent as AppVoiceCallEvent,
+    VoiceCallHealthSummary as AppVoiceCallHealthSummary,
+    VoiceCallMetricsSummary as AppVoiceCallMetricsSummary, VoiceCallRecord as AppVoiceCallRecord,
+    VoiceCallReportingService,
 };
 use openrustclaw_core::error::Error as CoreError;
 use serde::{Deserialize, Serialize};
@@ -592,42 +599,7 @@ struct SkillVoicePluginRegistry {
     pub bindings: BTreeMap<String, SkillVoicePluginBinding>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SkillVoiceCallRecord {
-    pub call_id: String,
-    pub plugin_id: String,
-    pub skill_name: String,
-    pub status: String,
-    #[serde(default = "default_voice_call_health")]
-    pub health: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub remote: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub greeting_text: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub greeting_audio_path: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub reason: Option<String>,
-    #[serde(default)]
-    pub metadata: serde_json::Value,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub start_hook_output: Option<serde_json::Value>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub end_hook_output: Option<serde_json::Value>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub reconnect_hook_output: Option<serde_json::Value>,
-    pub started_at: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub last_seen_at: Option<String>,
-    #[serde(default)]
-    pub reconnect_count: usize,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub last_reconnected_at: Option<String>,
-    #[serde(default = "default_voice_call_stale_after_secs")]
-    pub stale_after_secs: u64,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub ended_at: Option<String>,
-}
+pub type SkillVoiceCallRecord = AppVoiceCallRecord;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 struct SkillVoiceCallRegistry {
@@ -666,16 +638,7 @@ pub struct SkillVoiceCallsResult {
     pub calls: Vec<SkillVoiceCallRecord>,
 }
 
-#[derive(Debug, Clone, Serialize)]
-pub struct SkillVoiceCallHealthSummary {
-    pub total: usize,
-    pub active: usize,
-    pub stale: usize,
-    pub ended: usize,
-    pub reaped: usize,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub oldest_active_call_id: Option<String>,
-}
+pub type SkillVoiceCallHealthSummary = AppVoiceCallHealthSummary;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct SkillVoiceCallHealthResult {
@@ -683,21 +646,7 @@ pub struct SkillVoiceCallHealthResult {
     pub health: SkillVoiceCallHealthSummary,
 }
 
-#[derive(Debug, Clone, Serialize)]
-pub struct SkillVoiceCallEvent {
-    pub kind: String,
-    pub observed_at: String,
-    pub call_id: String,
-    pub plugin_id: String,
-    pub skill_name: String,
-    pub status: String,
-    pub health: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub remote: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub reason: Option<String>,
-    pub details: serde_json::Value,
-}
+pub type SkillVoiceCallEvent = AppVoiceCallEvent;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct SkillVoiceCallEventsResult {
@@ -706,15 +655,7 @@ pub struct SkillVoiceCallEventsResult {
     pub events: Vec<SkillVoiceCallEvent>,
 }
 
-#[derive(Debug, Clone, Serialize)]
-pub struct SkillVoiceCallArtifact {
-    pub kind: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub path: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub output: Option<serde_json::Value>,
-    pub observed_at: String,
-}
+pub type SkillVoiceCallArtifact = AppVoiceCallArtifact;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct SkillVoiceCallArtifactsResult {
@@ -723,19 +664,7 @@ pub struct SkillVoiceCallArtifactsResult {
     pub artifacts: Vec<SkillVoiceCallArtifact>,
 }
 
-#[derive(Debug, Clone, Serialize)]
-pub struct SkillVoiceCallMetricsSummary {
-    pub total: usize,
-    pub active: usize,
-    pub stale: usize,
-    pub ended: usize,
-    pub reaped: usize,
-    pub reconnects: usize,
-    pub with_greeting_audio: usize,
-    pub with_start_hook_output: usize,
-    pub with_end_hook_output: usize,
-    pub with_reconnect_hook_output: usize,
-}
+pub type SkillVoiceCallMetricsSummary = AppVoiceCallMetricsSummary;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct SkillVoiceCallMetricsResult {
@@ -1321,10 +1250,6 @@ fn default_voice_call_stale_after_secs() -> u64 {
     900
 }
 
-fn default_voice_call_health() -> String {
-    "active".to_string()
-}
-
 fn ensure_compiled_root() -> Result<PathBuf> {
     let root = compiled_skill_root();
     std::fs::create_dir_all(&root)
@@ -1796,8 +1721,7 @@ fn read_compiled_skill_reference(
     reference: &str,
     max_chars: Option<usize>,
 ) -> Result<serde_json::Value> {
-    let service = CompiledSkillOverviewService::new(compiled_skill_root());
-    service
+    CompiledSkillMcpService::new(compiled_skill_root())
         .read_reference(artifact, reference, max_chars)
         .map_err(|error| anyhow::anyhow!(error.to_string()))
 }
@@ -2673,10 +2597,7 @@ pub async fn bind_voice_plugin_data(
 
 pub async fn voice_calls_data_for(workspace_root: &Path) -> Result<SkillVoiceCallsResult> {
     let mut registry = load_voice_call_registry(&workspace_root)?;
-    let now = Utc::now();
-    for call in &mut registry.calls {
-        refresh_voice_call_health(call, now);
-    }
+    VoiceCallReportingService::refresh_all_health(&mut registry.calls, Utc::now());
     registry
         .calls
         .sort_by(|left, right| right.started_at.cmp(&left.started_at));
@@ -2698,7 +2619,7 @@ pub async fn voice_call_health_data_for(
     let result = voice_calls_data_for(workspace_root).await?;
     Ok(SkillVoiceCallHealthResult {
         status: "ok".to_string(),
-        health: voice_call_health_summary(&result.calls),
+        health: VoiceCallReportingService::health_summary(&result.calls),
     })
 }
 
@@ -2714,7 +2635,7 @@ pub async fn voice_call_events_data(call_id: &str) -> Result<SkillVoiceCallEvent
         .into_iter()
         .find(|call| call.call_id == call_id)
         .ok_or_else(|| anyhow::anyhow!("Voice call '{}' not found", call_id))?;
-    let events = voice_call_events_for_record(&call);
+    let events = VoiceCallReportingService::events_for_record(&call);
     Ok(SkillVoiceCallEventsResult {
         status: "ok".to_string(),
         call,
@@ -2729,7 +2650,7 @@ pub async fn voice_call_artifacts_data(call_id: &str) -> Result<SkillVoiceCallAr
         .into_iter()
         .find(|call| call.call_id == call_id)
         .ok_or_else(|| anyhow::anyhow!("Voice call '{}' not found", call_id))?;
-    let artifacts = voice_call_artifacts_for_record(&call);
+    let artifacts = VoiceCallReportingService::artifacts_for_record(&call);
     Ok(SkillVoiceCallArtifactsResult {
         status: "ok".to_string(),
         call,
@@ -2743,7 +2664,7 @@ pub async fn voice_call_metrics_data_for(
     let result = voice_calls_data_for(workspace_root).await?;
     Ok(SkillVoiceCallMetricsResult {
         status: "ok".to_string(),
-        metrics: voice_call_metrics_summary(&result.calls),
+        metrics: VoiceCallReportingService::metrics_summary(&result.calls),
     })
 }
 
@@ -2789,249 +2710,6 @@ fn parse_rfc3339_utc(raw: &str) -> Option<DateTime<Utc>> {
     chrono::DateTime::parse_from_rfc3339(raw)
         .ok()
         .map(|value| value.with_timezone(&Utc))
-}
-
-fn refresh_voice_call_health(call: &mut SkillVoiceCallRecord, now: DateTime<Utc>) {
-    if call.ended_at.is_some() {
-        if call.status == "reaped" {
-            call.health = "reaped".to_string();
-        } else {
-            call.health = "ended".to_string();
-        }
-        return;
-    }
-
-    let reference = call
-        .last_seen_at
-        .as_deref()
-        .and_then(parse_rfc3339_utc)
-        .or_else(|| parse_rfc3339_utc(&call.started_at))
-        .unwrap_or(now);
-    let stale_after_secs = call.stale_after_secs.max(1);
-    let age = now.signed_duration_since(reference).num_seconds().max(0) as u64;
-    call.health = if age > stale_after_secs {
-        "stale".to_string()
-    } else {
-        "active".to_string()
-    };
-}
-
-fn voice_call_health_summary(calls: &[SkillVoiceCallRecord]) -> SkillVoiceCallHealthSummary {
-    let mut active = 0usize;
-    let mut stale = 0usize;
-    let mut ended = 0usize;
-    let mut reaped = 0usize;
-    let mut oldest_active: Option<(DateTime<Utc>, String)> = None;
-
-    for call in calls {
-        match call.health.as_str() {
-            "active" => {
-                active += 1;
-                if let Some(started_at) = parse_rfc3339_utc(&call.started_at) {
-                    let replace = oldest_active
-                        .as_ref()
-                        .map(|(current, _)| started_at < *current)
-                        .unwrap_or(true);
-                    if replace {
-                        oldest_active = Some((started_at, call.call_id.clone()));
-                    }
-                }
-            }
-            "stale" => stale += 1,
-            "reaped" => reaped += 1,
-            _ => ended += 1,
-        }
-    }
-
-    SkillVoiceCallHealthSummary {
-        total: calls.len(),
-        active,
-        stale,
-        ended,
-        reaped,
-        oldest_active_call_id: oldest_active.map(|(_, id)| id),
-    }
-}
-
-fn voice_call_metrics_summary(calls: &[SkillVoiceCallRecord]) -> SkillVoiceCallMetricsSummary {
-    let mut summary = SkillVoiceCallMetricsSummary {
-        total: calls.len(),
-        active: 0,
-        stale: 0,
-        ended: 0,
-        reaped: 0,
-        reconnects: 0,
-        with_greeting_audio: 0,
-        with_start_hook_output: 0,
-        with_end_hook_output: 0,
-        with_reconnect_hook_output: 0,
-    };
-
-    for call in calls {
-        summary.reconnects += call.reconnect_count;
-        if call.greeting_audio_path.is_some() {
-            summary.with_greeting_audio += 1;
-        }
-        if call.start_hook_output.is_some() {
-            summary.with_start_hook_output += 1;
-        }
-        if call.end_hook_output.is_some() {
-            summary.with_end_hook_output += 1;
-        }
-        if call.reconnect_hook_output.is_some() {
-            summary.with_reconnect_hook_output += 1;
-        }
-        match call.health.as_str() {
-            "active" => summary.active += 1,
-            "stale" => summary.stale += 1,
-            "reaped" => summary.reaped += 1,
-            _ => summary.ended += 1,
-        }
-    }
-
-    summary
-}
-
-fn voice_call_artifacts_for_record(call: &SkillVoiceCallRecord) -> Vec<SkillVoiceCallArtifact> {
-    let mut artifacts = Vec::new();
-    if let Some(path) = call.greeting_audio_path.clone() {
-        artifacts.push(SkillVoiceCallArtifact {
-            kind: "greeting_audio".to_string(),
-            path: Some(path),
-            output: None,
-            observed_at: call.started_at.clone(),
-        });
-    }
-    if let Some(output) = call.start_hook_output.clone() {
-        artifacts.push(SkillVoiceCallArtifact {
-            kind: "start_hook_output".to_string(),
-            path: None,
-            output: Some(output),
-            observed_at: call.started_at.clone(),
-        });
-    }
-    if let Some(output) = call.reconnect_hook_output.clone() {
-        artifacts.push(SkillVoiceCallArtifact {
-            kind: "reconnect_hook_output".to_string(),
-            path: None,
-            output: Some(output),
-            observed_at: call.last_reconnected_at.clone().unwrap_or_else(|| {
-                call.last_seen_at
-                    .clone()
-                    .unwrap_or_else(|| call.started_at.clone())
-            }),
-        });
-    }
-    if let Some(output) = call.end_hook_output.clone() {
-        artifacts.push(SkillVoiceCallArtifact {
-            kind: "end_hook_output".to_string(),
-            path: None,
-            output: Some(output),
-            observed_at: call.ended_at.clone().unwrap_or_else(|| {
-                call.last_seen_at
-                    .clone()
-                    .unwrap_or_else(|| call.started_at.clone())
-            }),
-        });
-    }
-    artifacts
-}
-
-fn voice_call_events_for_record(call: &SkillVoiceCallRecord) -> Vec<SkillVoiceCallEvent> {
-    let mut events = Vec::new();
-    events.push(SkillVoiceCallEvent {
-        kind: "started".to_string(),
-        observed_at: call.started_at.clone(),
-        call_id: call.call_id.clone(),
-        plugin_id: call.plugin_id.clone(),
-        skill_name: call.skill_name.clone(),
-        status: call.status.clone(),
-        health: call.health.clone(),
-        remote: call.remote.clone(),
-        reason: None,
-        details: serde_json::json!({
-            "greeting_text": call.greeting_text,
-            "stale_after_secs": call.stale_after_secs,
-            "reconnect_count": call.reconnect_count,
-        }),
-    });
-
-    if call.reconnect_count > 0 {
-        events.push(SkillVoiceCallEvent {
-            kind: "reconnected".to_string(),
-            observed_at: call.last_reconnected_at.clone().unwrap_or_else(|| {
-                call.last_seen_at
-                    .clone()
-                    .unwrap_or_else(|| call.started_at.clone())
-            }),
-            call_id: call.call_id.clone(),
-            plugin_id: call.plugin_id.clone(),
-            skill_name: call.skill_name.clone(),
-            status: call.status.clone(),
-            health: call.health.clone(),
-            remote: call.remote.clone(),
-            reason: None,
-            details: serde_json::json!({
-                "reconnect_count": call.reconnect_count,
-                "greeting_audio_path": call.greeting_audio_path,
-            }),
-        });
-    }
-
-    events.push(SkillVoiceCallEvent {
-        kind: "health_snapshot".to_string(),
-        observed_at: call.last_seen_at.clone().unwrap_or_else(|| {
-            call.ended_at
-                .clone()
-                .unwrap_or_else(|| call.started_at.clone())
-        }),
-        call_id: call.call_id.clone(),
-        plugin_id: call.plugin_id.clone(),
-        skill_name: call.skill_name.clone(),
-        status: call.status.clone(),
-        health: call.health.clone(),
-        remote: call.remote.clone(),
-        reason: call.reason.clone(),
-        details: serde_json::json!({
-            "last_seen_at": call.last_seen_at,
-            "ended_at": call.ended_at,
-            "stale_after_secs": call.stale_after_secs,
-        }),
-    });
-
-    if call.ended_at.is_some() {
-        events.push(SkillVoiceCallEvent {
-            kind: if call.status == "reaped" {
-                "reaped".to_string()
-            } else {
-                "ended".to_string()
-            },
-            observed_at: call.ended_at.clone().unwrap_or_else(|| {
-                call.last_seen_at
-                    .clone()
-                    .unwrap_or_else(|| call.started_at.clone())
-            }),
-            call_id: call.call_id.clone(),
-            plugin_id: call.plugin_id.clone(),
-            skill_name: call.skill_name.clone(),
-            status: call.status.clone(),
-            health: call.health.clone(),
-            remote: call.remote.clone(),
-            reason: call.reason.clone(),
-            details: serde_json::json!({
-                "reason": call.reason,
-                "end_hook_output": call.end_hook_output,
-            }),
-        });
-    }
-
-    events.sort_by(|left, right| {
-        left.observed_at
-            .cmp(&right.observed_at)
-            .then_with(|| left.kind.cmp(&right.kind))
-    });
-
-    events
 }
 
 pub async fn start_voice_call_data(
@@ -3416,9 +3094,7 @@ pub async fn reap_voice_calls_data(
     let limit = options.limit.unwrap_or(usize::MAX);
     let mut reaped_calls = Vec::new();
 
-    for call in &mut call_registry.calls {
-        refresh_voice_call_health(call, now);
-    }
+    VoiceCallReportingService::refresh_all_health(&mut call_registry.calls, now);
 
     let checked = call_registry.calls.len();
 
@@ -5792,7 +5468,7 @@ capabilities:
             ended_at: Some("2026-01-01T00:03:00Z".to_string()),
         };
 
-        let events = voice_call_events_for_record(&call);
+        let events = VoiceCallReportingService::events_for_record(&call);
         assert_eq!(events.len(), 4);
         assert_eq!(events[0].kind, "started");
         assert_eq!(events[1].kind, "reconnected");

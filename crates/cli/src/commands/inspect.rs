@@ -1,5 +1,6 @@
 use anyhow::Result;
 use chrono::Utc;
+use openrustclaw_app::assistant_continuity::AssistantContinuityService;
 use openrustclaw_app::enterprise_admin::{
     EnterpriseAdminAccessState as AppEnterpriseAdminAccessState,
     EnterpriseAdminAutonomyState as AppEnterpriseAdminAutonomyState,
@@ -20,6 +21,7 @@ use openrustclaw_app::setup_handoff::{
     SetupBootstrapOutcome as AppSetupBootstrapOutcome, SetupHandoffReport, SetupHandoffService,
     SetupHandoffState, SetupHandoffStateSource, SetupStatus,
 };
+use openrustclaw_app::tool_execution_audit::ToolExecutionAuditService;
 use openrustclaw_core::config::AppConfig;
 use openrustclaw_core::error::Error as CoreError;
 use openrustclaw_core::types::{MemoryEntry, Message};
@@ -38,20 +40,8 @@ use super::{
     orchestrate, self_hosted, skills, talk, voice_runtime,
 };
 
-#[derive(Debug, Clone, Serialize)]
-pub struct AssistantContinuitySummary {
-    pub assistant_managed: bool,
-    pub assistant_identity: Option<String>,
-    pub assistant_surface: Option<String>,
-    pub assistant_session_model: Option<String>,
-    pub route_key: Option<String>,
-    pub workspace_root: Option<String>,
-    pub route_bound: bool,
-    pub history_messages: usize,
-    pub likely_resumed: bool,
-    pub status_label: String,
-    pub detail: String,
-}
+pub use openrustclaw_app::assistant_continuity::AssistantContinuitySummary;
+pub use openrustclaw_app::tool_execution_audit::{ToolExecutionHistoryReport, ToolExecutionRecord};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct SessionListEntry {
@@ -132,27 +122,6 @@ pub struct JobDetailReport {
     pub job: Option<JobSummary>,
     pub recent_runs: Vec<JobRunSummary>,
     pub dead_letters: Vec<DeadLetterSummary>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ToolExecutionRecord {
-    pub id: String,
-    pub tool_name: String,
-    pub source: String,
-    pub status: String,
-    pub status_detail: String,
-    pub duration_ms: u64,
-    pub created_at: String,
-    pub error: Option<String>,
-    pub artifact_path: Option<String>,
-    pub args: Option<serde_json::Value>,
-    pub result_preview: Option<serde_json::Value>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct ToolExecutionHistoryReport {
-    pub limit: usize,
-    pub entries: Vec<ToolExecutionRecord>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -419,52 +388,11 @@ pub fn assistant_continuity_summary(
     session: &PersistedSession,
     history_messages: usize,
 ) -> AssistantContinuitySummary {
-    let assistant_identity = metadata_string(&session.session.metadata, "assistant_identity");
-    let assistant_surface = metadata_string(&session.session.metadata, "assistant_surface");
-    let assistant_session_model =
-        metadata_string(&session.session.metadata, "assistant_session_model");
-    let route_key = session
-        .route_key
-        .clone()
-        .or_else(|| metadata_string(&session.session.metadata, "route_key"));
-    let workspace_root = metadata_string(&session.session.metadata, "workspace_root");
-    let route_bound = route_key.is_some();
-    let assistant_managed = assistant_identity.is_some()
-        || assistant_surface.is_some()
-        || assistant_session_model.is_some();
-    let likely_resumed = assistant_managed && route_bound && history_messages > 0;
-    let status_label = if !assistant_managed {
-        "generic"
-    } else if likely_resumed {
-        "resumed"
-    } else if route_bound {
-        "route-bound"
-    } else if assistant_session_model.as_deref() == Some("persisted") {
-        "persisted"
-    } else {
-        "assistant"
-    }
-    .to_string();
-    let detail = continuity_detail(
-        assistant_managed,
-        assistant_surface.as_deref(),
-        route_bound,
+    AssistantContinuityService::summarize(
+        &session.session.metadata,
+        session.route_key.as_deref(),
         history_messages,
-    );
-
-    AssistantContinuitySummary {
-        assistant_managed,
-        assistant_identity,
-        assistant_surface,
-        assistant_session_model,
-        route_key,
-        workspace_root,
-        route_bound,
-        history_messages,
-        likely_resumed,
-        status_label,
-        detail,
-    }
+    )
 }
 
 async fn count_history_messages(pool: &SqlitePool, session_id: &str) -> Result<usize> {
@@ -473,43 +401,6 @@ async fn count_history_messages(pool: &SqlitePool, session_id: &str) -> Result<u
         .fetch_one(pool)
         .await?;
     Ok(count.max(0) as usize)
-}
-
-fn metadata_string(metadata: &serde_json::Value, key: &str) -> Option<String> {
-    metadata
-        .get(key)
-        .and_then(|value| value.as_str())
-        .map(ToString::to_string)
-}
-
-fn continuity_detail(
-    assistant_managed: bool,
-    assistant_surface: Option<&str>,
-    route_bound: bool,
-    history_messages: usize,
-) -> String {
-    let history_label = if history_messages == 1 {
-        "1 persisted message".to_string()
-    } else {
-        format!("{history_messages} persisted messages")
-    };
-
-    if !assistant_managed {
-        return format!("Generic session with {history_label}.");
-    }
-
-    let surface = assistant_surface.unwrap_or("assistant");
-    if route_bound && history_messages > 0 {
-        return format!(
-            "Primary {surface} assistant session matched by route key with {history_label} restored."
-        );
-    }
-    if route_bound {
-        return format!(
-            "Primary {surface} assistant session is route-bound and ready to accumulate persisted history."
-        );
-    }
-    format!("Primary {surface} assistant session with {history_label}.")
 }
 
 fn approval_scope_detail(approval_policy: &str) -> String {
@@ -558,25 +449,67 @@ pub async fn memory_timeline(
     })
 }
 
+struct ToolExecutionAuditFileStore {
+    workspace_root: PathBuf,
+}
+
+impl ToolExecutionAuditFileStore {
+    fn new(workspace_root: &Path) -> Self {
+        Self {
+            workspace_root: workspace_root.to_path_buf(),
+        }
+    }
+
+    fn path(&self) -> PathBuf {
+        self.workspace_root
+            .join(".claw")
+            .join("control")
+            .join("tool-executions.jsonl")
+    }
+
+    fn append(&self, record: &ToolExecutionRecord) -> Result<()> {
+        let path = self.path();
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let mut file = OpenOptions::new().create(true).append(true).open(&path)?;
+        serde_json::to_writer(&mut file, record)?;
+        file.write_all(b"\n")?;
+        Ok(())
+    }
+
+    fn read_all(&self) -> Result<Vec<ToolExecutionRecord>> {
+        let path = self.path();
+        if !path.exists() {
+            return Ok(Vec::new());
+        }
+
+        let file = OpenOptions::new().read(true).open(&path)?;
+        let reader = BufReader::new(file);
+        let mut entries = Vec::new();
+        for line in reader.lines() {
+            let line = line?;
+            if line.trim().is_empty() {
+                continue;
+            }
+            let Ok(record) = serde_json::from_str::<ToolExecutionRecord>(&line) else {
+                continue;
+            };
+            entries.push(record);
+        }
+        Ok(entries)
+    }
+}
+
 pub fn tool_execution_log_path(workspace_root: &Path) -> PathBuf {
-    workspace_root
-        .join(".claw")
-        .join("control")
-        .join("tool-executions.jsonl")
+    ToolExecutionAuditFileStore::new(workspace_root).path()
 }
 
 pub fn append_tool_execution_record(
     workspace_root: &Path,
     record: &ToolExecutionRecord,
 ) -> Result<()> {
-    let path = tool_execution_log_path(workspace_root);
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    let mut file = OpenOptions::new().create(true).append(true).open(&path)?;
-    serde_json::to_writer(&mut file, record)?;
-    file.write_all(b"\n")?;
-    Ok(())
+    ToolExecutionAuditFileStore::new(workspace_root).append(record)
 }
 
 pub fn tool_execution_history(
@@ -586,44 +519,10 @@ pub fn tool_execution_history(
     status: Option<&str>,
     tool_name: Option<&str>,
 ) -> Result<ToolExecutionHistoryReport> {
-    let path = tool_execution_log_path(workspace_root);
-    if !path.exists() {
-        return Ok(ToolExecutionHistoryReport {
-            limit: limit.max(1),
-            entries: Vec::new(),
-        });
-    }
-
-    let file = OpenOptions::new().read(true).open(&path)?;
-    let reader = BufReader::new(file);
-    let mut entries = Vec::new();
-    for line in reader.lines() {
-        let line = line?;
-        if line.trim().is_empty() {
-            continue;
-        }
-        let Ok(record) = serde_json::from_str::<ToolExecutionRecord>(&line) else {
-            continue;
-        };
-        if source.is_some_and(|value| record.source != value) {
-            continue;
-        }
-        if status.is_some_and(|value| record.status != value) {
-            continue;
-        }
-        if tool_name.is_some_and(|value| record.tool_name != value) {
-            continue;
-        }
-        entries.push(record);
-    }
-
-    entries.sort_by(|left, right| right.created_at.cmp(&left.created_at));
-    entries.truncate(limit.max(1));
-
-    Ok(ToolExecutionHistoryReport {
-        limit: limit.max(1),
-        entries,
-    })
+    let records = ToolExecutionAuditFileStore::new(workspace_root).read_all()?;
+    Ok(ToolExecutionAuditService::history(
+        &records, limit, source, status, tool_name,
+    ))
 }
 
 pub fn new_tool_execution_record(
@@ -637,19 +536,21 @@ pub fn new_tool_execution_record(
     args: Option<serde_json::Value>,
     result_preview: Option<serde_json::Value>,
 ) -> ToolExecutionRecord {
-    ToolExecutionRecord {
-        id: uuid::Uuid::new_v4().to_string(),
-        tool_name: tool_name.into(),
-        source: source.into(),
-        status: status.into(),
-        status_detail: status_detail.into(),
+    let tool_name = tool_name.into();
+    let source = source.into();
+    let status = status.into();
+    let status_detail = status_detail.into();
+    ToolExecutionAuditService::new_record(
+        &tool_name,
+        &source,
+        &status,
+        &status_detail,
         duration_ms,
-        created_at: Utc::now().to_rfc3339(),
-        error,
-        artifact_path,
+        error.as_deref(),
+        artifact_path.as_deref(),
         args,
         result_preview,
-    }
+    )
 }
 
 fn collect_mobile_command_audit_entries(

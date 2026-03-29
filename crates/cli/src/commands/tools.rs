@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, anyhow, bail};
 use chrono::Utc;
 use clap::ValueEnum;
-use regex::Regex;
+use openrustclaw_app::tool_host_service as app_tool_host;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tokio::process::Command;
@@ -44,36 +44,6 @@ impl AiHost {
         }
     }
 
-    fn display_name(self) -> &'static str {
-        match self {
-            Self::ClaudeCode => "Claude Code",
-            Self::Cursor => "Cursor",
-            Self::Codex => "Codex",
-            Self::GeminiCli => "Gemini CLI",
-            Self::GithubCopilot => "GitHub Copilot",
-        }
-    }
-
-    fn startup_hint(self) -> &'static str {
-        match self {
-            Self::ClaudeCode => {
-                "Use this as a compact startup reference for local tool behavior and safe invocation patterns."
-            }
-            Self::Cursor => {
-                "Use this alongside project rules or MCP setup so the IDE agent sees the same local tool contract."
-            }
-            Self::Codex => {
-                "Use this as a deterministic briefing for command discovery instead of relying on ad hoc probing."
-            }
-            Self::GeminiCli => {
-                "Use this as a repo-local tool briefing before asking the model to call or wrap the tool."
-            }
-            Self::GithubCopilot => {
-                "Use this as a workspace reference for local CLI behavior and common operator-safe patterns."
-            }
-        }
-    }
-
     fn from_id(value: &str) -> Option<Self> {
         match value {
             "claude-code" => Some(Self::ClaudeCode),
@@ -83,6 +53,26 @@ impl AiHost {
             "github-copilot" => Some(Self::GithubCopilot),
             _ => None,
         }
+    }
+}
+
+fn app_host(host: AiHost) -> app_tool_host::AiHost {
+    match host {
+        AiHost::ClaudeCode => app_tool_host::AiHost::ClaudeCode,
+        AiHost::Cursor => app_tool_host::AiHost::Cursor,
+        AiHost::Codex => app_tool_host::AiHost::Codex,
+        AiHost::GeminiCli => app_tool_host::AiHost::GeminiCli,
+        AiHost::GithubCopilot => app_tool_host::AiHost::GithubCopilot,
+    }
+}
+
+fn host_from_app(host: app_tool_host::AiHost) -> AiHost {
+    match host {
+        app_tool_host::AiHost::ClaudeCode => AiHost::ClaudeCode,
+        app_tool_host::AiHost::Cursor => AiHost::Cursor,
+        app_tool_host::AiHost::Codex => AiHost::Codex,
+        app_tool_host::AiHost::GeminiCli => AiHost::GeminiCli,
+        app_tool_host::AiHost::GithubCopilot => AiHost::GithubCopilot,
     }
 }
 
@@ -199,6 +189,31 @@ pub struct ToolSyncReport {
     pub artifact_root: String,
     pub applied: bool,
     pub changes: Vec<ToolSyncChange>,
+}
+
+fn app_tool_profile_snapshot(profile: &ToolProfile) -> app_tool_host::ToolProfileSnapshot {
+    app_tool_host::ToolProfileSnapshot {
+        name: profile.name.clone(),
+        executable: profile.executable.clone(),
+        executable_path: profile.executable_path.clone(),
+        version_text: profile.version_text.clone(),
+        summary: profile.summary.clone(),
+        detected_subcommands: profile.detected_subcommands.clone(),
+        detected_flags: profile.detected_flags.clone(),
+        hosts: profile.hosts.clone(),
+        inspected_at: profile.inspected_at.clone(),
+    }
+}
+
+fn app_tool_profile_fingerprint(profile: &ToolProfile) -> app_tool_host::ToolProfileFingerprint {
+    app_tool_host::ToolProfileFingerprint {
+        executable_sha256: profile.executable_sha256.clone(),
+        help_digest: profile.help_digest.clone(),
+        version_text: profile.version_text.clone(),
+        detected_subcommands: profile.detected_subcommands.clone(),
+        detected_flags: profile.detected_flags.clone(),
+        hosts: profile.hosts.clone(),
+    }
 }
 
 pub fn tool_registry_path_for(workspace_root: impl AsRef<Path>) -> PathBuf {
@@ -581,76 +596,19 @@ async fn probe_command(executable: &Path, args: &[&str]) -> Result<String> {
 }
 
 fn extract_version(output: &str) -> Option<String> {
-    output
-        .lines()
-        .map(str::trim)
-        .find(|line| !line.is_empty())
-        .map(ToOwned::to_owned)
+    app_tool_host::ToolHostService::new().extract_version(output)
 }
 
 fn extract_summary(help_output: &str) -> Option<String> {
-    help_output
-        .lines()
-        .map(str::trim)
-        .find(|line| {
-            !line.is_empty()
-                && !line.starts_with("Usage:")
-                && !line.starts_with("USAGE:")
-                && !line.starts_with("Options:")
-                && !line.starts_with("OPTIONS:")
-                && !line.starts_with("Commands:")
-                && !line.starts_with("SUBCOMMANDS:")
-                && !line.starts_with('-')
-        })
-        .map(ToOwned::to_owned)
+    app_tool_host::ToolHostService::new().extract_summary(help_output)
 }
 
 fn extract_subcommands(help_output: &str) -> Vec<String> {
-    let mut in_section = false;
-    let mut values = BTreeSet::new();
-    for line in help_output.lines() {
-        let trimmed = line.trim_end();
-        let normalized = trimmed.trim();
-        if normalized.eq_ignore_ascii_case("commands:")
-            || normalized.eq_ignore_ascii_case("subcommands:")
-            || normalized.eq_ignore_ascii_case("available commands:")
-        {
-            in_section = true;
-            continue;
-        }
-        if in_section && normalized.is_empty() {
-            in_section = false;
-            continue;
-        }
-        if !in_section || normalized.is_empty() {
-            continue;
-        }
-
-        let token = normalized
-            .split_whitespace()
-            .next()
-            .unwrap_or_default()
-            .trim_matches(':');
-        if !token.is_empty()
-            && token
-                .chars()
-                .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
-        {
-            values.insert(token.to_string());
-        }
-    }
-    values.into_iter().collect()
+    app_tool_host::ToolHostService::new().extract_subcommands(help_output)
 }
 
 fn extract_flags(help_output: &str) -> Vec<String> {
-    let regex = Regex::new(r"(?m)(--[a-zA-Z0-9][a-zA-Z0-9-]*)").expect("valid flag regex");
-    let mut values = regex
-        .captures_iter(help_output)
-        .filter_map(|capture| capture.get(1))
-        .map(|flag| flag.as_str().to_string())
-        .collect::<BTreeSet<_>>();
-    values.retain(|flag| !flag.is_empty());
-    values.into_iter().collect()
+    app_tool_host::ToolHostService::new().extract_flags(help_output)
 }
 
 fn sha256_file(path: &Path) -> Result<String> {
@@ -675,35 +633,21 @@ fn display_path(path: impl AsRef<Path>) -> String {
 }
 
 fn normalized_hosts(existing: Option<&[String]>, requested: &[AiHost]) -> Vec<AiHost> {
-    if !requested.is_empty() {
-        return requested.to_vec();
-    }
-
-    let from_existing = existing
-        .unwrap_or_default()
-        .iter()
-        .filter_map(|value| AiHost::from_id(value))
-        .collect::<Vec<_>>();
-    if !from_existing.is_empty() {
-        return from_existing;
-    }
-
-    vec![
-        AiHost::ClaudeCode,
-        AiHost::Cursor,
-        AiHost::Codex,
-        AiHost::GeminiCli,
-        AiHost::GithubCopilot,
-    ]
+    app_tool_host::ToolHostService::new()
+        .normalized_hosts(
+            existing,
+            &requested.iter().copied().map(app_host).collect::<Vec<_>>(),
+        )
+        .into_iter()
+        .map(host_from_app)
+        .collect()
 }
 
 fn tool_profiles_changed(left: &ToolProfile, right: &ToolProfile) -> bool {
-    left.executable_sha256 != right.executable_sha256
-        || left.help_digest != right.help_digest
-        || left.version_text != right.version_text
-        || left.detected_subcommands != right.detected_subcommands
-        || left.detected_flags != right.detected_flags
-        || left.hosts != right.hosts
+    app_tool_host::ToolHostService::new().profile_changed(
+        &app_tool_profile_fingerprint(left),
+        &app_tool_profile_fingerprint(right),
+    )
 }
 
 fn sync_artifacts(
@@ -801,74 +745,18 @@ fn write_host_indexes(
 }
 
 fn render_host_markdown(host: AiHost, profile: &ToolProfile) -> String {
-    let mut body = String::new();
-    body.push_str(&format!(
-        "# {} tool briefing for {}\n\n",
-        profile.name,
-        host.display_name()
-    ));
-    body.push_str(host.startup_hint());
-    body.push_str("\n\n");
-    body.push_str(&format!(
-        "- Executable: `{}`\n- Path: `{}`\n",
-        profile.executable, profile.executable_path
-    ));
-    if let Some(version) = &profile.version_text {
-        body.push_str(&format!("- Version: `{}`\n", version));
-    }
-    if let Some(summary) = &profile.summary {
-        body.push_str(&format!("- Summary: {}\n", summary));
-    }
-    body.push_str(&format!("- Inspected: `{}`\n", profile.inspected_at));
-    body.push_str("\n## Suggested use\n\n");
-    body.push_str(
-        "Prefer these bounded invocation patterns before improvising new flags or subcommands.\n\n",
-    );
-
-    if !profile.detected_subcommands.is_empty() {
-        body.push_str("### Discovered subcommands\n\n");
-        for subcommand in &profile.detected_subcommands {
-            body.push_str(&format!("- `{}`\n", subcommand));
-        }
-        body.push('\n');
-    }
-
-    if !profile.detected_flags.is_empty() {
-        body.push_str("### Common flags\n\n");
-        for flag in profile.detected_flags.iter().take(24) {
-            body.push_str(&format!("- `{}`\n", flag));
-        }
-        body.push('\n');
-    }
-
-    body.push_str("### Safe operator note\n\n");
-    body.push_str(
-        "This profile came from local `--help` and `--version` probing. Re-run `openrustclaw tools sync` when the local executable changes.\n",
-    );
-    body
+    app_tool_host::ToolHostService::new()
+        .render_host_markdown(app_host(host), &app_tool_profile_snapshot(profile))
 }
 
 fn render_host_index(host: AiHost, profiles: &[&ToolProfile]) -> String {
-    let mut body = format!("# {} startup bundle\n\n", host.display_name());
-    body.push_str(host.startup_hint());
-    body.push_str("\n\n");
-    body.push_str("Generated tool briefings:\n\n");
-    for profile in profiles {
-        body.push_str(&format!(
-            "- `{}`: {}{}\n",
-            profile.name,
-            profile
-                .summary
-                .as_deref()
-                .unwrap_or("Local tool profile generated from CLI probing."),
-            profile
-                .version_text
-                .as_ref()
-                .map(|version| format!(" (`{}`)", version))
-                .unwrap_or_default()
-        ));
-    }
-    body
+    app_tool_host::ToolHostService::new().render_host_index(
+        app_host(host),
+        &profiles
+            .iter()
+            .map(|profile| app_tool_profile_snapshot(profile))
+            .collect::<Vec<_>>(),
+    )
 }
 
 fn sanitize_name(name: &str) -> String {
