@@ -2,7 +2,7 @@
 
 **Created:** 2026-03-28
 **Purpose:** Canonical follow-on roadmap for turning the completed native-delivery planning scorecard into source-level native entrypoints, repository adapters, and retired legacy delivery ownership.
-**Status:** Active after `v1.35` at `3/6` shipped milestones, or `50%`, with `v1.36` targeting `4/6`, or about `67%`
+**Status:** Active after `v1.36` at `4/6` shipped milestones, or about `67%`
 **Baselines preserved:** historical greenfield seam ledger closed at `18/18`; adapter-only full-conversion roadmap closed at `6/6`; native-delivery planning roadmap closed at `8/8`
 
 ## What "Continue Greenfield Conversion" Means Now
@@ -74,12 +74,21 @@ Status after shipment: complete. This milestone defined the first native runtime
 
 ### v1.36 Native Delivery Implementation: Repository and Integration Adapter Lift
 
-Primary target: replace command-local persistence and side-effect helpers with explicit repositories and infrastructure adapters used by app ports.
+Status after shipment: complete. This milestone defined the first repository-adapter inventory and successor ownership slice, the first integration gateway slice for providers or channels or external services, the first app-port to repository-adapter alignment slice, and the first direct compatibility-and-verification rules needed to implement repository and integration adapter lift without rediscovering persistence and side-effect ownership.
 
 - repository adapters for sqlite, workspace files, audit logs, runtime config, compiled-skill cache, and registries
 - infrastructure gateways for providers, channels, and external service integrations
 - app-service migration from command-local helpers to repository or adapter contracts
 - direct repository and integration verification over native surfaces
+
+## v1.36 Outcome
+
+`v1.36` did not implement the repository and integration adapter successor paths in source yet. It advanced the implementation roadmap to `4/6` by defining the first repository-lift slice explicitly enough to build and verify instead of leaving persistence-heavy and side-effect-heavy ownership under one broad future replacement claim.
+
+- the implementation roadmap now names the first repository-adapter inventory and successor ownership slice explicitly
+- the implementation roadmap now names the first integration gateway slice for providers, channels, and external service integrations
+- the first persistence-heavy and side-effect-heavy responsibilities leaving command-local helpers are now explicit instead of vague future cleanup
+- the roadmap now defines how the first repository and integration adapter successor paths are verified directly while any compatibility forwarding remains bounded
 
 ### v1.37 Native Delivery Implementation: Legacy Command Tree Retirement
 

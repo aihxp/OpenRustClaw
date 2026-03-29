@@ -1,5 +1,20 @@
 # Project Milestones: OpenRustClaw
 
+## v1.36 Native Delivery Implementation: Repository and Integration Adapter Lift (Shipped: 2026-03-28)
+
+**Phases completed:** 4 phases, 4 plans, 0 tasks
+**Verification archive:** `.planning/milestones/v1.36-VERIFICATIONS.md`
+**Verification debt:** none
+
+**Key accomplishments:**
+
+- Defined the first repository-adapter inventory and successor ownership slice so sqlite-backed state, workspace files, audit logs, runtime config, compiled-skill cache, and registries can leave command-local helpers through explicit successor paths.
+- Defined the first integration gateway slice for providers, channels, and external service integrations so side-effect-heavy ownership moves toward native infrastructure contracts.
+- Defined the first app-port to repository-adapter alignment slice so persistence-heavy and side-effect-heavy hotspots now have a bounded successor ownership path.
+- Defined the direct repository-lift compatibility and verification rules that keep the fourth implementation milestone truthful instead of over-claiming source-level replacement.
+
+---
+
 ## v1.35 Native Delivery Implementation: Runtime Hosts and Background Workers (Shipped: 2026-03-28)
 
 **Phases completed:** 4 phases, 4 plans, 0 tasks

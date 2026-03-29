@@ -38,71 +38,21 @@
 - ✅ **v1.33 Native Delivery Implementation: Gateway and MCP Successor Entry Points** — shipped 2026-03-28. Archive: `.planning/milestones/v1.33-ROADMAP.md`
 - ✅ **v1.34 Native Delivery Implementation: Native CLI Dispatch and Core Operator Paths** — shipped 2026-03-28. Archive: `.planning/milestones/v1.34-ROADMAP.md`
 - ✅ **v1.35 Native Delivery Implementation: Runtime Hosts and Background Workers** — shipped 2026-03-28. Archive: `.planning/milestones/v1.35-ROADMAP.md`
+- ✅ **v1.36 Native Delivery Implementation: Repository and Integration Adapter Lift** — shipped 2026-03-28. Archive: `.planning/milestones/v1.36-ROADMAP.md`
 
 ## Current Status
 
-- Active milestone: **v1.36 Native Delivery Implementation: Repository and Integration Adapter Lift**
-- Progress: **4 planned phases**
-- Most recent shipment: **v1.35 Native Delivery Implementation: Runtime Hosts and Background Workers**
+- Active milestone: **none**
+- Progress: **no live phases**
+- Most recent shipment: **v1.36 Native Delivery Implementation: Repository and Integration Adapter Lift**
 - Greenfield conversion baseline: **historical `18/18` ranked seam ledger complete and retired**
 - Full-conversion roadmap progress: **`6/6` milestones shipped, or `100%`**
 - Native-delivery planning roadmap progress: **`8/8` milestones shipped, or `100%`**
-- Native-delivery implementation roadmap progress: **`3/6` milestones shipped, or `50%`**
-- Current execution: **Phase 149 ready for planning**
-- Next step: `$gsd-plan-phase 149` or `$gsd-autonomous`
+- Native-delivery implementation roadmap progress: **`4/6` milestones shipped, or about `67%`**
+- Current execution: **no active milestone**
+- Next step: `$gsd-new-milestone continue native delivery implementation`
 
 ## Live Planning
-
-### Phase Checklist
-
-- [ ] **Phase 149: Repository Adapter Inventory**
-- [ ] **Phase 150: Integration Gateway Boundaries**
-- [ ] **Phase 151: App-Port to Repository Alignment**
-- [ ] **Phase 152: Repository Lift Compatibility and Verification Rule**
-
-### Phase 149: Repository Adapter Inventory
-
-**Goal:** Define the first repository-adapter inventory and successor ownership slice so persistence-heavy command-local helpers no longer remain a broad future replacement claim.
-
-**Requirements:** `NDI-13`
-
-**Success criteria:**
-1. The roadmap names the first repository-adapter inventory and successor ownership slice explicitly enough to implement without rediscovering persistence ownership.
-2. The slice ties successor ownership to the real persistence-heavy command-local helper surfaces instead of leaving them under the legacy command layer as a whole.
-3. The milestone preserves a concrete implementation path for the first repository-adapter successor slice.
-
-### Phase 150: Integration Gateway Boundaries
-
-**Goal:** Define the first integration gateway slice so provider, channel, and external service integrations move toward explicit native infrastructure ownership.
-
-**Requirements:** `NDI-14`
-
-**Success criteria:**
-1. The roadmap defines the first integration gateway slice for providers, channels, and external services explicitly.
-2. The slice separates native infrastructure ownership from still-bounded compatibility forwarding instead of leaving side-effect coupling implicit.
-3. The milestone keeps the first integration gateway handoff concrete enough to implement without rediscovering boundary rules.
-
-### Phase 151: App-Port to Repository Alignment
-
-**Goal:** Define app-port to repository-adapter alignment needed to move persistence-heavy and side-effect-heavy ownership off command-local helpers.
-
-**Requirements:** `NDI-15`
-
-**Success criteria:**
-1. The roadmap defines the first app-port to repository-adapter alignment slice explicitly.
-2. The slice ties successor ownership to the real persistence and side-effect hotspots instead of leaving them under generic infrastructure cleanup language.
-3. The milestone keeps the first repository-lift alignment slice concrete enough to implement without rediscovering app-service ownership.
-
-### Phase 152: Repository Lift Compatibility and Verification Rule
-
-**Goal:** Define the direct compatibility and verification rules for the first repository and integration adapter lift slice.
-
-**Requirements:** `NDI-16`
-
-**Success criteria:**
-1. The roadmap defines how the first repository and integration adapter successor paths are verified directly.
-2. Compatibility rules keep fallback persistence and side-effect ownership explicit and bounded instead of hidden inside command-local helpers.
-3. The live planning surface only advances the implementation roadmap toward `4/6`, or about `67%`, when the first repository-lift slice is explicit end to end.
 
 ### Current Queue Rule
 
