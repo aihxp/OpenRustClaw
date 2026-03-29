@@ -27,7 +27,7 @@ Primary target: clean and simplify the repo without regressions, remove internal
 - codebase cleanup and sync across source, docs, workflows, and packaging
 - CI and release-automation repair plus release publication
 
-**Shipped result:** The queue is now closed at `1/1`. Public docs and package metadata use product-facing language, the checked-in CI and release lanes are locally reproducible, `openrustclaw-core 0.1.1` is published on crates.io, and the repo is aligned to the public tag `v0.1.1`.
+**Shipped result:** The queue is now closed at `1/1`. Public docs and package metadata use product-facing language, the checked-in CI and release lanes are locally reproducible, `openrustclaw-core 1.4.0` is published on crates.io, and the repo is aligned to the public tag `v1.4.0`.
 
 ## Exit Criteria
 

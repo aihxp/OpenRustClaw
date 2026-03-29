@@ -14,7 +14,7 @@ Ship the prepared release, verify the public package surface, align the repo tag
 ## Implementation Decisions
 
 ### publish then align tags
-Publish the crate first once credentials exist, then align the repo’s public version line with a matching `v0.1.1` tag.
+Publish the crate first once credentials exist, then align the repo’s public version line with a matching `v1.4.0` tag.
 
 ### public version over milestone number
 Treat the public release version as the source for package, tag, and release alignment; keep the milestone number internal.
@@ -36,8 +36,8 @@ Only claim shipped once crates.io publish succeeds and the repo tag line is upda
 <specifics>
 ## Specific Ideas
 
-- Publish `openrustclaw-core 0.1.1`.
-- Commit and tag the repo at `v0.1.1`.
+- Publish `openrustclaw-core 1.4.0`.
+- Commit and tag the repo at `v1.4.0`.
 - Push `main` and the new public tag so the repo’s public version line matches crates.io.
 
 </specifics>

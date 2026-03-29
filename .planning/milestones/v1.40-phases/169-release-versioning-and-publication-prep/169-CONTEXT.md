@@ -14,7 +14,7 @@ Prepare the next public release across versioning, package metadata, changelog, 
 ## Implementation Decisions
 
 ### public semver lane
-Treat the public release as `0.1.1`, independent from the internal milestone numbering.
+Treat the public release as `1.4.0`, independent from the internal milestone numbering.
 
 ### crates-first prep
 Verify the crates.io publish path fully before attempting publication.
@@ -36,8 +36,8 @@ Update changelog, docs examples, and package metadata in the same phase as the v
 <specifics>
 ## Specific Ideas
 
-- Bump the workspace version to `0.1.1`.
-- Update public release docs and examples to `0.1.1`.
+- Bump the workspace version to `1.4.0`.
+- Update public release docs and examples to `1.4.0`.
 - Run the full crates.io readiness script for `openrustclaw-core`.
 
 </specifics>

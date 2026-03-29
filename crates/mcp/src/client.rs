@@ -40,7 +40,7 @@ impl McpClient {
                     "capabilities": {},
                     "clientInfo": {
                         "name": "openrustclaw",
-                        "version": "0.1.1"
+                        "version": "1.4.0"
                     }
                 })),
             )

@@ -210,7 +210,7 @@ First stable release of OpenRustClaw, a hybrid Rust + Python AI agent framework.
 - Device integration (camera, screen, voice)
 - Community channel plugins
 
-## [0.1.1] - 2026-03-29
+## [1.4.0] - 2026-03-29
 
 ### Changed
 

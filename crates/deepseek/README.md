@@ -20,7 +20,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-deepseek = "0.1.1"
+deepseek = "1.4.0"
 ```
 
 ## Quick Start

@@ -56,7 +56,7 @@ Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
 
 - v1.39 completed the native-product E2E milestone by running the shipped E2E and integration matrix, finding no repair-triggering product failures, and closing the roadmap truthfully at `1/1`.
-- v1.40 completed the public-product convergence milestone by cleaning the repo safely, converging public docs and package metadata, repairing the checked-in CI and release automation paths, publishing `openrustclaw-core 0.1.1`, and aligning the public repo tag line to `v0.1.1`.
+- v1.40 completed the public-product convergence milestone by cleaning the repo safely, converging public docs and package metadata, repairing the checked-in CI and release automation paths, publishing `openrustclaw-core 1.4.0`, and aligning the public repo tag line to `v1.4.0`.
 - The public-product convergence roadmap now stands at `1/1`, or `100%`.
 
 ### Pending Todos

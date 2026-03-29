@@ -21,7 +21,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-ollama-sdk = "0.1.1"
+ollama-sdk = "1.4.0"
 ```
 
 ## Quick Start

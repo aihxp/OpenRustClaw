@@ -12,5 +12,5 @@ rg -n "0\\.1\\.1|v0\\.1\\.1" README.md docs crates -g '!docs/book/**' -g '!targe
 
 Passed.
 
-- `openrustclaw-core` readiness passed end to end for version `0.1.1`.
+- `openrustclaw-core` readiness passed end to end for version `1.4.0`.
 - Public version references were synchronized to the new release lane.

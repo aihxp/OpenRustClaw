@@ -52,7 +52,7 @@ kubectl logs -f deployment/openrustclaw -n openrustclaw
 replicaCount: 3
 
 image:
-  tag: "v0.1.1"
+  tag: "v1.4.0"
 
 config:
   logLevel: info

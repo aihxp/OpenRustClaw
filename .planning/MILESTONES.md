@@ -11,7 +11,7 @@
 - Removed internal migration vocabulary from public docs and package metadata and replaced the stale public architecture page with a product-facing application-boundaries page.
 - Cleaned the source tree enough that `cargo check --workspace`, `cargo test --workspace --lib`, and `cargo clippy --workspace -- -D warnings` now pass cleanly.
 - Repaired the checked-in CI and release automation surfaces with a repo-owned security audit script, an E2E workflow dispatch trigger, and a non-flaky runtime-budget script.
-- Shipped the public `0.1.1` release by publishing `openrustclaw-core 0.1.1` to crates.io and aligning the repo to the pushed public tag `v0.1.1`.
+- Shipped the public `1.4.0` release by publishing `openrustclaw-core 1.4.0` to crates.io and aligning the repo to the pushed public tag `v1.4.0`.
 
 ---
 
