@@ -1,20 +1,20 @@
 ---
 gsd_state_version: 1.0
-milestone: none
-milestone_name: none
-current_phase: none
-current_phase_name: none
+milestone: v1.40
+milestone_name: Public Product Cleanup, Documentation Convergence, CI Repair, and Release
+current_phase: "165"
+current_phase_name: Cleanup Inventory and Regression Baseline
 current_plan: none
-status: milestone complete
-stopped_at: Run $gsd-new-milestone only if a new canonical follow-on queue is required.
+status: defining requirements
+stopped_at: Run $gsd-plan-phase 165 or $gsd-autonomous.
 last_updated: "2026-03-29T04:18:24Z"
 last_activity: 2026-03-29
 progress:
-  total_phases: 0
+  total_phases: 6
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
-  percent: 100
+  percent: 0
 ---
 
 # Project State
@@ -24,21 +24,21 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-29)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** No active milestone. The last queue closed the native-product E2E roadmap with a passing shipped verification matrix and no repair-triggering defects.
+**Current focus:** Start `v1.40 Public Product Cleanup, Documentation Convergence, CI Repair, and Release` by defining the cleanup, docs, CI, and release queue around one public-facing convergence milestone.
 
 ## Current Position
 
-Current Phase: none
-Current Phase Name: none
-Total Phases: 0
+Current Phase: 165
+Current Phase Name: Cleanup Inventory and Regression Baseline
+Total Phases: 6
 Current Plan: none
 Total Plans in Phase: 0
-Status: Milestone complete
+Status: Defining requirements
 Last activity: 2026-03-29
 
-Phase: 0 of 0
+Phase: 0 of 6
 Plan: 0 of 0
-Progress: [##########] 100%
+Progress: [----------] 0%
 
 ## Performance Metrics
 
@@ -75,6 +75,7 @@ Recent decisions affecting current work:
 - v1.38 completed the final native-delivery implementation milestone by verifying the native-delivery scorecard against shipped source, aligning packaging and canonical docs to the implemented crate and entrypoint story, auditing the remaining bounded compatibility exceptions, and defining the final source-level native-product claim boundary.
 - The native-delivery implementation roadmap now stands at `6/6` shipped milestones, or `100%`.
 - v1.39 completed the native-product E2E milestone by running the shipped E2E and integration matrix, finding no repair-triggering product failures, and closing the roadmap truthfully at `1/1`.
+- v1.40 starts the public-product convergence milestone by targeting safe cleanup, public docs convergence, CI repair, and public release work without reopening the closed internal programs.
 
 ### Pending Todos
 
@@ -87,5 +88,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-29 04:18 UTC
-Stopped at: Run $gsd-new-milestone only if a new canonical follow-on queue is required.
+Stopped at: Run $gsd-plan-phase 165 or $gsd-autonomous.
 Resume file: None

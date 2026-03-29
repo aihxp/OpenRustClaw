@@ -2,7 +2,7 @@
 
 ## What This Is
 
-OpenRustClaw is a self-hosted open-source Rust-first OpenClaw-style assistant platform with shipped v1.0 through v1.39 milestones. It now has a coherent production-ready baseline across onboarding, assistant continuity, memory policy, tool and coding evidence, communications, runtime operations, security posture, release exit, milestone verification integrity, materially deeper operator parity across browser, orchestration, mobile, Control UI, and voice or call handling surfaces, an enterprise-first foundation for scoped operator identity, policy, audit export, supervised autonomy, governance, and an operator-gated full-autonomy lane, an explicit self-hosted product-mode contract across `solo`, `team`, `company`, and `enterprise` deployments, a truthful setup lifecycle from first install through repair and handoff, a canonical documentation contract that keeps the repo entrypoint, guided docs, and planning docs aligned, a cleaner codebase baseline with explicit cleanup inventory, repo-hygiene guardrails, an extracted control-auth boundary, a repaired tagged-release workflow that now produces truthful downloadable binary artifacts on GitHub, a first truthful public Rust package surface on crates.io and docs.rs, a bounded remote-connectivity story around node-first guidance with SSH tunnel and reverse-proxy fallbacks preserved explicitly in setup state and operator surfaces, and a greenfield application lane that now owns the full ranked seam inventory behind `openrustclaw-app`, with the retired historical ledger closed truthfully at `18/18` migrated seams, the adapter-only program closed at `6/6`, the native-delivery planning roadmap closed at `8/8`, the source-level native-delivery implementation roadmap closed truthfully at `6/6`, and the native-product E2E roadmap now also closed truthfully at `1/1`, or `100%`. The current truth is stronger than the previous architecture-only claim: the shipped E2E and integration product matrix passed cleanly and required no greenfield repair.
+OpenRustClaw is a self-hosted open-source Rust-first OpenClaw-style assistant platform with shipped v1.0 through v1.39 milestones. It now has a coherent production-ready baseline across onboarding, assistant continuity, memory policy, tool and coding evidence, communications, runtime operations, security posture, release exit, milestone verification integrity, materially deeper operator parity across browser, orchestration, mobile, Control UI, and voice or call handling surfaces, an enterprise-first foundation for scoped operator identity, policy, audit export, supervised autonomy, governance, and an operator-gated full-autonomy lane, an explicit self-hosted product-mode contract across `solo`, `team`, `company`, and `enterprise` deployments, a truthful setup lifecycle from first install through repair and handoff, a canonical documentation contract that keeps the repo entrypoint, guided docs, and planning docs aligned, a cleaner codebase baseline with explicit cleanup inventory, repo-hygiene guardrails, an extracted control-auth boundary, a repaired tagged-release workflow that now produces truthful downloadable binary artifacts on GitHub, a first truthful public Rust package surface on crates.io and docs.rs, and a bounded remote-connectivity story around node-first guidance with SSH tunnel and reverse-proxy fallbacks preserved explicitly in setup state and operator surfaces. The closed architecture and verification programs remain preserved internally, and the next live queue is now public-product convergence: clean the repo safely, synchronize public docs and metadata, repair CI, and ship the next release.
 
 The product target remains broader than the MVP: a general-purpose assistant platform that can eventually support coding, communications, business operations, and deeper autonomous workflows. After v1.7, the repo also has one clearer documentation story instead of several drifting versions of the product. After v1.8, the repo also has a more explicit cleanup contract for keeping that surface maintainable.
 
@@ -14,9 +14,9 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 - **Shipped milestones:** v1.0 Rust OpenClaw MVP, v1.1 Lifecycle Integrity and Enterprise Foundations, v1.2 Deeper OpenClaw Surface Parity, v1.3 Enterprise Expansion and Supervised Autonomy Foundations, v1.4 Enterprise Governance and Operator-Gated Full Autonomy, v1.5 Self-Hosted Product Modes and Lifecycle Packaging, v1.6 Proper Onboarding and Setup, v1.7 Documentation Convergence and OpenClaw-Inspired Docs Rewrite, v1.8 Clean Codebase, v1.9 GitHub Repository Presence and Actions Recovery, v1.10 Release Binaries Workflow Recovery, v1.11 Crates.io and Docs.rs Publication Foundation, v1.12 Secure Node Connectivity and SSH Tunnel Revisit, v1.13 Brownfield-to-Greenfield Transition, v1.14 Continued Greenfield Conversion, v1.15 Deeper Greenfield Conversion, v1.16 Greenfield Conversion: Skills and Runtime Hotspots, v1.17 Greenfield Conversion: Completion Metrics and Remaining Hotspots, v1.18 Greenfield Conversion: Final Ranked Seam and 100% Completion Path, v1.19 Full Greenfield Conversion: Control Plane Route Families I, v1.20 Full Greenfield Conversion: Control Plane Route Families II, v1.21 Full Greenfield Conversion: Mobile and Voice Runtime Services, v1.22 Full Greenfield Conversion: Orchestration and Browser Services, v1.23 Full Greenfield Conversion: Setup and Secondary Command Surfaces, v1.24 Full Greenfield Conversion: Adapter-Only Exit and Enforcement, v1.25 Native Delivery Layer: Port Contracts and Legacy Inventory, v1.26 Native Delivery Layer: Control, MCP, and Gateway Delivery, v1.27 Native Delivery Layer: CLI Core Dispatch and Operator Commands I, v1.28 Native Delivery Layer: CLI Operator Commands II and UI-Adjacent Flows, v1.29 Native Delivery Layer: Runtime Hosts and Background Workers, v1.30 Native Delivery Layer: Repositories and Integration Adapters, v1.31 Native Delivery Layer: Legacy Module Retirement and Compatibility Shutdown, v1.32 Native Delivery Layer: Native Product Exit Audit and Packaging, v1.33 Native Delivery Implementation: Gateway and MCP Successor Entry Points, v1.34 Native Delivery Implementation: Native CLI Dispatch and Core Operator Paths, v1.35 Native Delivery Implementation: Runtime Hosts and Background Workers, v1.36 Native Delivery Implementation: Repository and Integration Adapter Lift, v1.37 Native Delivery Implementation: Legacy Command Tree Retirement, v1.38 Native Delivery Implementation: Native Product Verification and Packaging Exit, and v1.39 Native Product E2E Verification and Greenfield Repairs
 - **Archive:** `.planning/milestones/v1.0-*` through `.planning/milestones/v1.39-*`
-- **Planning state:** no active milestone
+- **Planning state:** active milestone `v1.40 Public Product Cleanup, Documentation Convergence, CI Repair, and Release`
 - **Known audit debt:** v1.0 archive still records missing phase `VERIFICATION.md` artifacts; v1.1 closed that workflow gap going forward
-- **Greenfield conversion baseline:** canonical `18/18` ranked seams migrated, or `100%` complete, across the retired historical transition inventory; the follow-on full-conversion roadmap is also closed at `6/6` shipped milestones, or `100%`; the native-delivery planning roadmap is also closed at `8/8` shipped milestones, or `100%`; the native-delivery implementation roadmap is also closed at `6/6`, or `100%`; and the native-product E2E roadmap is now also closed at `1/1`, or `100%`
+- **Program baselines:** the internal architecture and verification denominators remain closed, and the new public-product convergence roadmap now starts at `0/1`, or `0%`
 
 ## Most Recent Milestone: v1.39 Native Product E2E Verification and Greenfield Repairs
 
@@ -24,9 +24,15 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 **Archive:** `.planning/milestones/v1.39-ROADMAP.md`, `.planning/milestones/v1.39-REQUIREMENTS.md`, `.planning/milestones/v1.39-MILESTONE-AUDIT.md`, `.planning/milestones/v1.39-VERIFICATIONS.md`
 
-## Current Milestone
+## Current Milestone: v1.40 Public Product Cleanup, Documentation Convergence, CI Repair, and Release
 
-No active milestone. The native-product E2E roadmap is now complete at `1/1`, and any deeper follow-on work requires a new canonical queue.
+**Goal:** Clean and simplify the repo without breaking shipped behavior, converge public documentation and metadata, repair GitHub Actions failures, and ship the next public release including crates publication.
+
+**Target features:**
+- remove internal migration terminology from public docs, package metadata, and public repo entrypoints
+- delete, merge, or simplify stale code, docs, workflows, and support files where verification can prove the cleanup is safe
+- fix or intentionally retire failing GitHub Actions workflows until the relevant CI and release lanes are green
+- prepare and ship the next release across Cargo metadata, GitHub release surfaces, and crates.io publication
 
 ## Requirements
 
@@ -169,10 +175,10 @@ No active milestone. The native-product E2E roadmap is now complete at `1/1`, an
 
 ### Active
 
-- **E2E-01:** The milestone verifies the shipped product end to end across the real CLI, control, gateway, MCP, runtime-host, and operator paths.
-- **E2E-02:** The milestone records a failure and ownership matrix that distinguishes app-lane, native-delivery, infrastructure, and bounded legacy exceptions.
-- **E2E-03:** Any repairs found during end-to-end verification land through greenfield-native ownership first instead of reviving legacy command-local logic.
-- **E2E-04:** The milestone closes with revalidation and a truthful operator-facing exit report covering what works, what was repaired, and what remains bounded.
+- **PPC-01:** Public-facing docs, package metadata, and repo entrypoints no longer use internal migration terminology and instead describe the shipped product plainly.
+- **PPC-02:** The codebase cleanup inventory results in safe deletion, merge, or simplification of stale files and surfaces without regressing shipped behavior.
+- **PPC-03:** GitHub Actions workflows are repaired or intentionally retired with rationale until the relevant CI and release lanes are green.
+- **PPC-04:** The next public release is prepared and published with synchronized versioning, release notes, package metadata, and crates.io state.
 
 ### Out of Scope
 
@@ -219,7 +225,9 @@ The next implementation queue then turned that same source-level posture toward 
 
 The final implementation queue then turned that same source-level posture toward native-product verification and packaging truth. `v1.38` verified the native-delivery scorecard, aligned packaging and canonical docs to the implemented crate and entrypoint story, audited the remaining bounded compatibility exceptions, and closed the final source-level exit claim without pretending that every surviving legacy file is already deleted in source.
 
-The next follow-on queue now turns that evidence-backed architectural closure into a real product-behavior check. `v1.39` starts the first native-product E2E milestone so the repo runs through actual end-to-end verification, failure ownership triage, greenfield-first repairs, and revalidation rather than stopping at compile and architecture evidence.
+The next follow-on queue turned that evidence-backed architectural closure into a real product-behavior check. `v1.39` ran the shipped E2E and integration matrix, closed the product-verification denominator at `1/1`, and confirmed that no repair-triggering product failures were present.
+
+The current queue now shifts from internal architecture proof to public product convergence. `v1.40` is about cleaning the repo safely, making the public docs and package surfaces consistent, fixing broken GitHub Actions lanes, and shipping the next release without exposing internal migration vocabulary as the main public story.
 
 ## Constraints
 
@@ -280,13 +288,13 @@ The next follow-on queue now turns that evidence-backed architectural closure in
 
 ## Current Program Status
 
-- the retired historical greenfield ledger remains closed at `18/18`, or `100%`
-- the broader adapter-only full-conversion roadmap is now also closed at `6/6`, or `100%`
-- the native-delivery planning roadmap is now closed at `8/8`, or `100%`
-- the native-delivery implementation roadmap is now also closed at `6/6`, or `100%`
-- the native-product E2E roadmap now starts at `0/1`, or `0%`, with `v1.39` targeting `1/1`, or `100%`
-- contributor defaults and source-level tests still preserve `openrustclaw-app` as the default home for new business logic while the completed native roadmap’s exit scorecard defines the truthful claim boundary for implementation work
-- future follow-on work now routes through `.planning/codebase/NATIVE-PRODUCT-E2E-ROADMAP.md` instead of quietly extending any finished roadmap
+- the internal historical seam ledger remains closed at `18/18`, or `100%`
+- the broader internal adapter-only roadmap is closed at `6/6`, or `100%`
+- the internal native-delivery planning roadmap is closed at `8/8`, or `100%`
+- the internal native-delivery implementation roadmap is closed at `6/6`, or `100%`
+- the internal native-product E2E roadmap is closed at `1/1`, or `100%`
+- the new public-product convergence roadmap now starts at `0/1`, with `v1.40` targeting `1/1`, or `100%`
+- public docs and release surfaces are now the active cleanup target, while the closed internal migration programs remain preserved as internal historical context
 
 ## Evolution
 
@@ -306,4 +314,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-29 after starting v1.39 milestone*
+*Last updated: 2026-03-29 after starting v1.40 milestone*
