@@ -35,22 +35,97 @@
 - ✅ **v1.30 Native Delivery Layer: Repositories and Integration Adapters** — shipped 2026-03-28. Archive: `.planning/milestones/v1.30-ROADMAP.md`
 - ✅ **v1.31 Native Delivery Layer: Legacy Module Retirement and Compatibility Shutdown** — shipped 2026-03-28. Archive: `.planning/milestones/v1.31-ROADMAP.md`
 - ✅ **v1.32 Native Delivery Layer: Native Product Exit Audit and Packaging** — shipped 2026-03-28. Archive: `.planning/milestones/v1.32-ROADMAP.md`
+- 🚧 **v1.33 Native Delivery Implementation: Gateway and MCP Successor Entry Points** — active. Baseline: native-delivery implementation roadmap `0/6` shipped milestones, or `0%`; target after shipment: `1/6`, or about `17%`
 
 ## Current Status
 
-- Active milestone: **none**
-- Progress: **no live phases**
+- Active milestone: **v1.33 Native Delivery Implementation: Gateway and MCP Successor Entry Points**
+- Progress: **0 of 4 phases complete**
 - Most recent shipment: **v1.32 Native Delivery Layer: Native Product Exit Audit and Packaging**
 - Greenfield conversion baseline: **historical `18/18` ranked seam ledger complete and retired**
 - Full-conversion roadmap progress: **`6/6` milestones shipped, or `100%`**
-- Native-delivery roadmap progress: **`8/8` milestones shipped, or `100%`**
-- Current execution: **no active milestone**
-- Next step: `$gsd-new-milestone` only if you want to define a new canonical follow-on queue
+- Native-delivery planning roadmap progress: **`8/8` milestones shipped, or `100%`**
+- Native-delivery implementation roadmap progress: **`0/6` milestones shipped, or `0%`**
+- Current execution: **Phase 137 ready for planning**
+- Next step: `$gsd-plan-phase 137` or `$gsd-autonomous`
 
 ## Live Planning
 
-No active milestone. The historical greenfield seam ledger remains closed at `18/18`, the adapter-only full-conversion roadmap remains closed at `6/6`, and the native-delivery roadmap is now closed at `8/8`.
+### Phase Checklist
+
+- [ ] **Phase 137: Native Gateway Control Bootstrap**
+- [ ] **Phase 138: Native MCP and Control UI Startup**
+- [ ] **Phase 139: Legacy Start Handoff Slice**
+- [ ] **Phase 140: Successor Entry Verification and Compatibility Rule**
 
 ### Current Queue Rule
 
-The original ranked greenfield seam inventory remains closed at `18/18` and retired. The follow-on adapter-only roadmap in `.planning/codebase/GREENFIELD-FULL-CONVERSION.md` is also complete at `6/6`. The native-delivery program in `.planning/codebase/NATIVE-DELIVERY-LAYER-ROADMAP.md` is now also complete at `8/8`. Any deeper architecture or implementation work now requires a new canonical follow-on queue instead of silently extending a completed denominator.
+The original ranked greenfield seam inventory remains closed at `18/18` and retired. The follow-on adapter-only roadmap in `.planning/codebase/GREENFIELD-FULL-CONVERSION.md` is also complete at `6/6`. The native-delivery planning program in `.planning/codebase/NATIVE-DELIVERY-LAYER-ROADMAP.md` is also complete at `8/8`. The active follow-on queue now runs through `.planning/codebase/NATIVE-DELIVERY-IMPLEMENTATION-ROADMAP.md`, which starts at `0/6` and measures source-level successor entrypoint implementation instead of reopening any completed denominator.
+
+### Phase 137: Native Gateway Control Bootstrap
+
+**Goal:** Define the first source-level native control HTTP bootstrap slice over `openrustclaw-gateway`.
+
+**Depends on:** Phase 136
+**Requirements:** `NDI-1`
+
+**Success criteria:**
+1. the roadmap defines the first implemented gateway-native control bootstrap slice explicitly
+2. the slice ties startup ownership to `openrustclaw-gateway` instead of `start.rs`
+3. the milestone leaves a concrete implementation path for the gateway successor entrypoint
+
+**Plans:** 0/0 plans complete
+
+Plans:
+- none yet
+
+### Phase 138: Native MCP and Control UI Startup
+
+**Goal:** Define the first source-level native MCP bootstrap slice plus the Control UI serving alignment needed for the successor startup path.
+
+**Depends on:** Phase 137
+**Requirements:** `NDI-2`
+
+**Success criteria:**
+1. the roadmap defines the first implemented MCP-native startup slice explicitly
+2. Control UI serving is aligned to the gateway-native startup path instead of being left coupled to `start.rs`
+3. the milestone keeps the MCP and UI startup slice concrete enough to implement without rediscovering ownership
+
+**Plans:** 0/0 plans complete
+
+Plans:
+- none yet
+
+### Phase 139: Legacy Start Handoff Slice
+
+**Goal:** Define the first bounded startup handoff that reduces `start.rs` ownership truthfully while preserving compatibility coverage.
+
+**Depends on:** Phase 138
+**Requirements:** `NDI-3`
+
+**Success criteria:**
+1. the roadmap defines which startup responsibilities leave `start.rs` first
+2. any surviving compatibility forwarding is bounded explicitly instead of implied
+3. the milestone preserves a truthful handoff path for later source-level deletion or isolation
+
+**Plans:** 0/0 plans complete
+
+Plans:
+- none yet
+
+### Phase 140: Successor Entry Verification and Compatibility Rule
+
+**Goal:** Define the first source-level compatibility and verification rules for the gateway and MCP successor entrypoints.
+
+**Depends on:** Phase 139
+**Requirements:** `NDI-4`
+
+**Success criteria:**
+1. the roadmap defines how the first successor entrypoints are verified directly
+2. compatibility rules prevent hidden fallback ownership from weakening the source-level claim
+3. the live planning surface advances the implementation roadmap to `1/6`, or about `17%`, only when the first successor slice is explicit end to end
+
+**Plans:** 0/0 plans complete
+
+Plans:
+- none yet
