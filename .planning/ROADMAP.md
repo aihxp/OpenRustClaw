@@ -34,18 +34,96 @@
 - ✅ **v1.29 Native Delivery Layer: Runtime Hosts and Background Workers** — shipped 2026-03-28. Archive: `.planning/milestones/v1.29-ROADMAP.md`
 - ✅ **v1.30 Native Delivery Layer: Repositories and Integration Adapters** — shipped 2026-03-28. Archive: `.planning/milestones/v1.30-ROADMAP.md`
 - ✅ **v1.31 Native Delivery Layer: Legacy Module Retirement and Compatibility Shutdown** — shipped 2026-03-28. Archive: `.planning/milestones/v1.31-ROADMAP.md`
+- 🚧 **v1.32 Native Delivery Layer: Native Product Exit Audit and Packaging** — active. Baseline: native-delivery roadmap `7/8` shipped milestones, or about `88%`; target after shipment: `8/8`, or `100%`
 
 ## Current Status
 
-- Active milestone: **none**
-- Progress: **no live phases**
+- Active milestone: **v1.32 Native Delivery Layer: Native Product Exit Audit and Packaging**
+- Progress: **0 of 4 phases complete**
 - Most recent shipment: **v1.31 Native Delivery Layer: Legacy Module Retirement and Compatibility Shutdown**
 - Greenfield conversion baseline: **historical `18/18` ranked seam ledger complete and retired**
 - Full-conversion roadmap progress: **`6/6` milestones shipped, or `100%`**
 - Native-delivery roadmap progress: **`7/8` milestones shipped, or about `88%`**
-- Current execution: **no active milestone**
-- Next step: `$gsd-new-milestone continue native delivery layer`
+- Current execution: **Phase 133 ready for planning**
+- Next step: `$gsd-plan-phase 133` or `$gsd-autonomous`
 
 ## Live Planning
 
-There is no active milestone. The original ranked greenfield seam inventory remains closed at `18/18` and retired, the follow-on adapter-only roadmap in `.planning/codebase/GREENFIELD-FULL-CONVERSION.md` remains complete at `6/6`, and the native-delivery program in `.planning/codebase/NATIVE-DELIVERY-LAYER-ROADMAP.md` now stands at `7/8` shipped milestones, or about `88%`.
+### Phase Checklist
+
+- [ ] **Phase 133: Native Delivery Exit Scorecard**
+- [ ] **Phase 134: Native Architecture Docs and Packaging Alignment**
+- [ ] **Phase 135: Compatibility Exception Audit**
+- [ ] **Phase 136: Native Product Exit Claim**
+
+### Current Queue Rule
+
+The original ranked greenfield seam inventory remains closed at `18/18` and retired. The follow-on adapter-only roadmap in `.planning/codebase/GREENFIELD-FULL-CONVERSION.md` is also complete at `6/6`. The native-delivery program proceeds under `.planning/codebase/NATIVE-DELIVERY-LAYER-ROADMAP.md`, which currently stands at `7/8` shipped milestones and measures progress by native delivery-layer and legacy-retirement milestones instead of extending either completed denominator.
+
+### Phase 133: Native Delivery Exit Scorecard
+
+**Goal:** Define the final scorecard proving the main product entrypoints are native delivery surfaces.
+
+**Depends on:** Phase 132
+**Requirements:** `NDL-29`
+
+**Success criteria:**
+1. the roadmap defines a concrete native-delivery scorecard for the shipped product path
+2. the scorecard ties directly to entrypoints, ownership, and remaining exceptions
+3. the milestone leaves a concrete implementation and audit path for the final exit claim
+
+**Plans:** 0/0 plans complete
+
+Plans:
+- none yet
+
+### Phase 134: Native Architecture Docs and Packaging Alignment
+
+**Goal:** Define the docs, packaging, and contributor-guidance updates required for the native architecture.
+
+**Depends on:** Phase 133
+**Requirements:** `NDL-30`
+
+**Success criteria:**
+1. the roadmap defines the required documentation and packaging alignment work explicitly
+2. contributor guidance is aligned to the native architecture instead of the legacy command tree
+3. the milestone keeps the exit slice concrete enough to implement without rediscovering publication or packaging ownership
+
+**Plans:** 0/0 plans complete
+
+Plans:
+- none yet
+
+### Phase 135: Compatibility Exception Audit
+
+**Goal:** Define the final audit of any remaining compatibility shims or exceptions.
+
+**Depends on:** Phase 134
+**Requirements:** `NDL-31`
+
+**Success criteria:**
+1. the roadmap defines how remaining compatibility exceptions are inventoried and judged
+2. any surviving shim or exception is bounded explicitly instead of hidden inside the exit claim
+3. the milestone preserves a truthful path for handling exceptions without weakening the native-product claim
+
+**Plans:** 0/0 plans complete
+
+Plans:
+- none yet
+
+### Phase 136: Native Product Exit Claim
+
+**Goal:** Define the explicit native-product exit claim and the conditions under which it is truthful.
+
+**Depends on:** Phase 135
+**Requirements:** `NDL-32`
+
+**Success criteria:**
+1. the roadmap defines the final native-product exit claim explicitly
+2. the claim is tied to the scorecard, docs or packaging updates, and compatibility-exception audit
+3. the live planning surface leaves the native-delivery roadmap at `8/8`, or `100%`, only if the exit claim is explicit end to end
+
+**Plans:** 0/0 plans complete
+
+Plans:
+- none yet

@@ -1,20 +1,20 @@
 ---
 gsd_state_version: 1.0
-milestone: none
-milestone_name: "No active milestone"
-current_phase: none
-current_phase_name: "No active phase"
+milestone: v1.32
+milestone_name: "Native Delivery Layer: Native Product Exit Audit and Packaging"
+current_phase: 133
+current_phase_name: "Native Delivery Exit Scorecard"
 current_plan: none
-status: milestone complete
-stopped_at: Run $gsd-new-milestone continue native delivery layer.
-last_updated: "2026-03-29T03:45:00.000Z"
+status: ready for planning
+stopped_at: Run $gsd-plan-phase 133 or $gsd-autonomous.
+last_updated: "2026-03-29T04:00:00.000Z"
 last_activity: 2026-03-28
 progress:
-  total_phases: 0
+  total_phases: 4
   completed_phases: 0
-  total_plans: 126
-  completed_plans: 126
-  percent: 100
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -24,21 +24,21 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-28)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** Start the final native-delivery milestone from the completed `v1.31` baseline of `7/8` shipped milestones, or about `88%`, while preserving the completed `18/18` and `6/6` programs as finished denominators.
+**Current focus:** Plan and execute `v1.32 Native Delivery Layer: Native Product Exit Audit and Packaging` from the native-delivery baseline of `7/8` shipped milestones, or about `88%`, while preserving the completed `18/18` and `6/6` programs as finished denominators.
 
 ## Current Position
 
-Current Phase: none
-Current Phase Name: No active phase
-Total Phases: 0
+Current Phase: 133
+Current Phase Name: Native Delivery Exit Scorecard
+Total Phases: 4
 Current Plan: none
 Total Plans in Phase: 0
-Status: Milestone complete; no active milestone
+Status: Milestone started; Phase 133 ready for planning
 Last activity: 2026-03-28
 
-Phase: 0 of 0
-Plan: 126 of 126
-Progress: [##########] 100%
+Phase: 0 of 4
+Plan: 0 of 0
+Progress: [----------] 0%
 
 ## Performance Metrics
 
@@ -65,6 +65,7 @@ Recent decisions affecting current work:
 - v1.30 completed the next native-delivery milestone by defining the repository and gateway adapter inventory, the integration gateway boundaries, the app-port-to-repository contract alignment, and the adapter verification plus ownership-exit rules for persistence and side-effect replacement.
 - v1.31 completed the next native-delivery milestone by defining the legacy-module retirement inventory, the compatibility-shim and delete boundaries, the `main.rs` bootstrap-retirement path, and the guardrails plus verification model for retired delivery files.
 - The native-delivery roadmap now stands at `7/8` shipped milestones, or about `88%`.
+- v1.32 starts the final native-delivery milestone from that `7/8` baseline, targeting the native-product exit scorecard, architecture-doc and packaging alignment, compatibility-exception audit, and the final explicit exit claim.
 
 ### Pending Todos
 
@@ -76,6 +77,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-28 23:45
-Stopped at: Run $gsd-new-milestone continue native delivery layer.
+Last session: 2026-03-29 00:00
+Stopped at: Run $gsd-plan-phase 133 or $gsd-autonomous.
 Resume file: None
