@@ -14,7 +14,7 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 - **Shipped milestones:** v1.0 Rust OpenClaw MVP, v1.1 Lifecycle Integrity and Enterprise Foundations, v1.2 Deeper OpenClaw Surface Parity, v1.3 Enterprise Expansion and Supervised Autonomy Foundations, v1.4 Enterprise Governance and Operator-Gated Full Autonomy, v1.5 Self-Hosted Product Modes and Lifecycle Packaging, v1.6 Proper Onboarding and Setup, v1.7 Documentation Convergence and OpenClaw-Inspired Docs Rewrite, v1.8 Clean Codebase, v1.9 GitHub Repository Presence and Actions Recovery, v1.10 Release Binaries Workflow Recovery, v1.11 Crates.io and Docs.rs Publication Foundation, v1.12 Secure Node Connectivity and SSH Tunnel Revisit, v1.13 Brownfield-to-Greenfield Transition, v1.14 Continued Greenfield Conversion, v1.15 Deeper Greenfield Conversion, v1.16 Greenfield Conversion: Skills and Runtime Hotspots, v1.17 Greenfield Conversion: Completion Metrics and Remaining Hotspots, v1.18 Greenfield Conversion: Final Ranked Seam and 100% Completion Path, v1.19 Full Greenfield Conversion: Control Plane Route Families I, v1.20 Full Greenfield Conversion: Control Plane Route Families II, v1.21 Full Greenfield Conversion: Mobile and Voice Runtime Services, v1.22 Full Greenfield Conversion: Orchestration and Browser Services, v1.23 Full Greenfield Conversion: Setup and Secondary Command Surfaces, v1.24 Full Greenfield Conversion: Adapter-Only Exit and Enforcement, v1.25 Native Delivery Layer: Port Contracts and Legacy Inventory, v1.26 Native Delivery Layer: Control, MCP, and Gateway Delivery, v1.27 Native Delivery Layer: CLI Core Dispatch and Operator Commands I, v1.28 Native Delivery Layer: CLI Operator Commands II and UI-Adjacent Flows, v1.29 Native Delivery Layer: Runtime Hosts and Background Workers, v1.30 Native Delivery Layer: Repositories and Integration Adapters, v1.31 Native Delivery Layer: Legacy Module Retirement and Compatibility Shutdown, v1.32 Native Delivery Layer: Native Product Exit Audit and Packaging, v1.33 Native Delivery Implementation: Gateway and MCP Successor Entry Points, v1.34 Native Delivery Implementation: Native CLI Dispatch and Core Operator Paths, v1.35 Native Delivery Implementation: Runtime Hosts and Background Workers, v1.36 Native Delivery Implementation: Repository and Integration Adapter Lift, and v1.37 Native Delivery Implementation: Legacy Command Tree Retirement
 - **Archive:** `.planning/milestones/v1.0-*` through `.planning/milestones/v1.37-*`
-- **Planning state:** no active milestone
+- **Planning state:** active milestone `v1.38 Native Delivery Implementation: Native Product Verification and Packaging Exit`
 - **Known audit debt:** v1.0 archive still records missing phase `VERIFICATION.md` artifacts; v1.1 closed that workflow gap going forward
 - **Greenfield conversion baseline:** canonical `18/18` ranked seams migrated, or `100%` complete, across the retired historical transition inventory; the follow-on full-conversion roadmap is also closed at `6/6` shipped milestones, or `100%`; the native-delivery planning roadmap is also closed at `8/8` shipped milestones, or `100%`; the native-delivery implementation roadmap now stands at `5/6` shipped milestones, or about `83%`
 
@@ -24,13 +24,14 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 **Archive:** `.planning/milestones/v1.37-ROADMAP.md`, `.planning/milestones/v1.37-REQUIREMENTS.md`, `.planning/milestones/v1.37-MILESTONE-AUDIT.md`, `.planning/milestones/v1.37-VERIFICATIONS.md`
 
-## Current Milestone: None Active
+## Current Milestone: v1.38 Native Delivery Implementation: Native Product Verification and Packaging Exit
 
-**Goal:** No active milestone. The completed historical greenfield ledger (`18/18`), adapter-only full-conversion roadmap (`6/6`), native-delivery planning roadmap (`8/8`), and the first five implementation slices (`5/6`) now define the current canonical progress baselines.
+**Goal:** Close the final native-delivery implementation milestone by verifying the source-level native-product claim end to end, aligning packaging and docs to implemented entrypoints, auditing any remaining bounded exceptions, and defining the final evidence-backed exit claim.
 
 **Target features:**
-- start the next implementation milestone only through the existing native-delivery implementation roadmap
-- preserve the closed denominators instead of silently redefining them
+- verify the native-delivery scorecard against the shipped codebase instead of relying on roadmap memory
+- align packaging, docs, and compatibility statements to the implemented native entrypoints
+- audit any remaining native shims or bounded exceptions before making the final source-level native-product claim
 
 ## Requirements
 
@@ -169,7 +170,10 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 ### Active
 
-- None. The next follow-on work should continue through the native-delivery implementation roadmap, which now stands at `5/6` shipped milestones, or about `83%`.
+- **NDI-21:** The milestone verifies the source-level native-delivery scorecard against the shipped codebase and implemented entrypoints.
+- **NDI-22:** The milestone aligns packaging, docs, and contributor guidance to the implemented native delivery surfaces instead of the retired command-tree story.
+- **NDI-23:** The milestone audits any remaining native shims or true compatibility exceptions explicitly instead of hiding them inside a completion claim.
+- **NDI-24:** The milestone defines the final source-level native-product exit claim truthfully against implemented evidence.
 
 ### Out of Scope
 
@@ -213,6 +217,8 @@ The next implementation queue then turned that same source-level posture toward 
 The next implementation queue then turned that same source-level posture toward persistence and side-effect ownership. `v1.36` started the repository and integration adapter lift slice so sqlite-backed state, workspace-file ownership, audit and registry persistence, runtime config writes, and external provider or channel integrations can leave command-local helpers through explicit native infrastructure contracts.
 
 The next implementation queue then turned that same source-level posture toward legacy-surface shutdown itself. `v1.37` defined the first legacy command-tree retirement inventory, delete-or-shim boundaries, `main.rs` bootstrap retirement path, and retirement guardrails so superseded command modules can leave the primary product path through explicit successor ownership instead of remaining indefinitely as compatibility debt.
+
+The final implementation queue now turns that same source-level posture toward native-product verification and packaging truth. `v1.38` starts the last implementation slice so the native-delivery scorecard, packaging and docs alignment, remaining exception audit, and final source-level exit claim all point at implemented code instead of planning-only completion memory.
 
 ## Constraints
 
@@ -276,7 +282,7 @@ The next implementation queue then turned that same source-level posture toward 
 - the retired historical greenfield ledger remains closed at `18/18`, or `100%`
 - the broader adapter-only full-conversion roadmap is now also closed at `6/6`, or `100%`
 - the native-delivery planning roadmap is now closed at `8/8`, or `100%`
-- the native-delivery implementation roadmap now stands at `5/6`, or about `83%`
+- the native-delivery implementation roadmap now stands at `5/6`, or about `83%`, with `v1.38` targeting `6/6`, or `100%`
 - contributor defaults and source-level tests still preserve `openrustclaw-app` as the default home for new business logic while the completed native roadmap’s exit scorecard defines the truthful claim boundary for implementation work
 - future source-level legacy-retirement work now routes through `.planning/codebase/NATIVE-DELIVERY-IMPLEMENTATION-ROADMAP.md` instead of quietly extending the finished denominators
 
@@ -298,4 +304,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-28 after shipping v1.37 milestone*
+*Last updated: 2026-03-28 after starting v1.38 milestone*
