@@ -2,7 +2,7 @@
 
 **Created:** 2026-03-28
 **Purpose:** Canonical follow-on roadmap for turning the completed native-delivery planning scorecard into source-level native entrypoints, repository adapters, and retired legacy delivery ownership.
-**Status:** Active after `v1.34` at `2/6` shipped milestones, or about `33%`, with `v1.35` targeting `3/6`, or `50%`
+**Status:** Active after `v1.35` at `3/6` shipped milestones, or `50%`
 **Baselines preserved:** historical greenfield seam ledger closed at `18/18`; adapter-only full-conversion roadmap closed at `6/6`; native-delivery planning roadmap closed at `8/8`
 
 ## What "Continue Greenfield Conversion" Means Now
@@ -56,12 +56,21 @@ Status after shipment: complete. This milestone defined the first native CLI dis
 
 ### v1.35 Native Delivery Implementation: Runtime Hosts and Background Workers
 
-Primary target: implement native runtime-host and worker boot entrypoints so worker lifecycle startup no longer depends on legacy command bootstraps.
+Status after shipment: complete. This milestone defined the first native runtime-host bootstrap slice, the runtime startup-boundary contracts for service-manager and scheduler ownership, the first mobile or voice or orchestration worker-boot migration slice, and the first direct compatibility-and-verification rules needed to implement the runtime-host successor path without rediscovering startup ownership.
 
 - native runtime-host bootstrap for service-manager, probes, maintenance, and scheduler flows
 - mobile, voice, and orchestration worker boot migration
 - legacy startup ownership removal from `start.rs`, `runtime.rs`, and adjacent worker helpers
 - focused runtime-host verification instead of command-local startup tests
+
+## v1.35 Outcome
+
+`v1.35` did not implement the native runtime-host and worker-boot successor paths in source yet. It advanced the implementation roadmap to `3/6` by defining the first runtime-host successor slice explicitly enough to build and verify instead of leaving worker lifecycle startup under one broad future replacement claim.
+
+- the implementation roadmap now names the first native runtime-host bootstrap slice explicitly
+- the implementation roadmap now names the runtime startup-boundary contracts for service-manager, probes, maintenance, and scheduler ownership
+- the first mobile, voice, and orchestration worker-boot responsibilities leaving the legacy command layer are now explicit instead of vague future cleanup
+- the roadmap now defines how the first runtime-host successor paths are verified directly while any compatibility forwarding remains bounded
 
 ### v1.36 Native Delivery Implementation: Repository and Integration Adapter Lift
 

@@ -1,20 +1,20 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.35
-milestone_name: "Native Delivery Implementation: Runtime Hosts and Background Workers"
-current_phase: 145
-current_phase_name: "Native Runtime-Host Bootstrap"
+milestone: none
+milestone_name: none
+current_phase: none
+current_phase_name: none
 current_plan: none
-status: ready for planning
-stopped_at: Run $gsd-plan-phase 145 or $gsd-autonomous.
-last_updated: "2026-03-29T07:00:00.000Z"
+status: milestone complete
+stopped_at: Run $gsd-new-milestone continue native delivery implementation.
+last_updated: "2026-03-29T07:30:00.000Z"
 last_activity: 2026-03-28
 progress:
-  total_phases: 4
+  total_phases: 0
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
-  percent: 0
+  percent: 100
 ---
 
 # Project State
@@ -24,29 +24,29 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-28)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** Plan and execute `v1.35 Native Delivery Implementation: Runtime Hosts and Background Workers` from the native-delivery implementation baseline of `2/6` shipped milestones, or about `33%`, while preserving the completed `18/18`, `6/6`, and `8/8` programs as finished denominators.
+**Current focus:** Preserve the completed `18/18`, `6/6`, and `8/8` baselines while advancing the native-delivery implementation roadmap, which now stands at `3/6` shipped milestones, or `50%`, after shipping `v1.35 Native Delivery Implementation: Runtime Hosts and Background Workers`.
 
 ## Current Position
 
-Current Phase: 145
-Current Phase Name: Native Runtime-Host Bootstrap
-Total Phases: 4
+Current Phase: none
+Current Phase Name: none
+Total Phases: 0
 Current Plan: none
 Total Plans in Phase: 0
-Status: Milestone started; Phase 145 ready for planning
+Status: No active milestone
 Last activity: 2026-03-28
 
-Phase: 0 of 4
+Phase: 0 of 0
 Plan: 0 of 0
-Progress: [----------] 0%
+Progress: [##########] 100%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 138
+- Total plans completed: 142
 - Average duration: historical average retained across shipped milestones
-- Total execution time: multiple shipped milestones completed across v1.0-v1.34 planning and shipped execution
+- Total execution time: multiple shipped milestones completed across v1.0-v1.35 planning and shipped execution
 
 ## Accumulated Context
 
@@ -68,8 +68,8 @@ Recent decisions affecting current work:
 - The native-delivery planning roadmap now stands at `8/8` shipped milestones, or `100%`.
 - v1.33 completed the first native-delivery implementation milestone by defining the gateway-native control bootstrap slice, the MCP-native startup slice, the Control UI serving handoff, and the first bounded `start.rs` compatibility-and-verification rules.
 - v1.34 completed the next native-delivery implementation milestone by defining the first native CLI dispatch slice, the first assistant/session and inspect operator-path slice, the first control/runtime CLI handoff, and the first direct native CLI compatibility-and-verification rules.
-- The native-delivery implementation roadmap now stands at `2/6` shipped milestones, or about `33%`.
-- v1.35 starts the next native-delivery implementation milestone from that `2/6` baseline, targeting native runtime-host bootstrap, runtime startup-boundary contracts, worker-boot migration, and the first runtime-host compatibility-and-verification slice.
+- v1.35 completed the next native-delivery implementation milestone by defining the first native runtime-host bootstrap slice, the runtime startup-boundary contracts for service-manager and scheduler ownership, the first mobile/voice/orchestration worker-boot migration slice, and the first direct runtime-host compatibility-and-verification rules.
+- The native-delivery implementation roadmap now stands at `3/6` shipped milestones, or `50%`.
 
 ### Pending Todos
 
@@ -81,6 +81,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-29 03:00
-Stopped at: Run $gsd-plan-phase 145 or $gsd-autonomous.
+Last session: 2026-03-29 03:30
+Stopped at: Run $gsd-new-milestone continue native delivery implementation.
 Resume file: None

@@ -1,5 +1,20 @@
 # Project Milestones: OpenRustClaw
 
+## v1.35 Native Delivery Implementation: Runtime Hosts and Background Workers (Shipped: 2026-03-28)
+
+**Phases completed:** 4 phases, 4 plans, 0 tasks
+**Verification archive:** `.planning/milestones/v1.35-VERIFICATIONS.md`
+**Verification debt:** none
+
+**Key accomplishments:**
+
+- Defined the first native runtime-host bootstrap slice so service-manager, probes, maintenance, and scheduler startup can leave the legacy command layer through an explicit successor path.
+- Defined the runtime startup-boundary contracts needed to move worker lifecycle startup off the legacy command layer without rediscovering ownership.
+- Defined the first mobile, voice, and orchestration worker-boot migration slice so the major worker families now have a bounded successor ownership path.
+- Defined the direct runtime-host compatibility and verification rules that keep the third implementation milestone truthful instead of over-claiming source-level replacement.
+
+---
+
 ## v1.34 Native Delivery Implementation: Native CLI Dispatch and Core Operator Paths (Shipped: 2026-03-28)
 
 **Phases completed:** 4 phases, 4 plans, 0 tasks
