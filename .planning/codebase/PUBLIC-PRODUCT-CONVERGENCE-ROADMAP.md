@@ -2,7 +2,7 @@
 
 **Created:** 2026-03-29
 **Purpose:** Canonical follow-on roadmap for cleaning the repo safely, converging public documentation and metadata, repairing CI and release automation, and shipping the next public package release.
-**Status:** Active at `0/1` shipped milestones, or `0%`
+**Status:** Complete at `1/1` shipped milestones, or `100%`
 **Baselines preserved:** historical seam ledger closed at `18/18`; adapter-only full-conversion roadmap closed at `6/6`; native-delivery planning roadmap closed at `8/8`; native-delivery implementation roadmap closed at `6/6`; native-product E2E roadmap closed at `1/1`
 
 ## What This Queue Means
@@ -27,6 +27,8 @@ Primary target: clean and simplify the repo without regressions, remove internal
 - codebase cleanup and sync across source, docs, workflows, and packaging
 - CI and release-automation repair plus release publication
 
+**Shipped result:** The queue is now closed at `1/1`. Public docs and package metadata use product-facing language, the checked-in CI and release lanes are locally reproducible, `openrustclaw-core 0.1.1` is published on crates.io, and the repo is aligned to the public tag `v0.1.1`.
+
 ## Exit Criteria
 
 OpenRustClaw should only claim this queue complete when all of the following are true:
@@ -35,6 +37,8 @@ OpenRustClaw should only claim this queue complete when all of the following are
 - public-facing docs and metadata no longer rely on internal migration terminology
 - relevant GitHub Actions workflows are green or intentionally retired with rationale
 - the next public package and release artifacts are shipped and the docs match the shipped result
+
+All exit criteria were met in `v1.40`.
 
 ## Companion Documents
 

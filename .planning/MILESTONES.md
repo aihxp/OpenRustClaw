@@ -1,5 +1,20 @@
 # Project Milestones: OpenRustClaw
 
+## v1.40 Public Product Cleanup, Documentation Convergence, CI Repair, and Release (Shipped: 2026-03-29)
+
+**Phases completed:** 6 phases, 6 plans, 0 tasks
+**Verification archive:** `.planning/milestones/v1.40-VERIFICATIONS.md`
+**Verification debt:** none
+
+**Key accomplishments:**
+
+- Removed internal migration vocabulary from public docs and package metadata and replaced the stale public architecture page with a product-facing application-boundaries page.
+- Cleaned the source tree enough that `cargo check --workspace`, `cargo test --workspace --lib`, and `cargo clippy --workspace -- -D warnings` now pass cleanly.
+- Repaired the checked-in CI and release automation surfaces with a repo-owned security audit script, an E2E workflow dispatch trigger, and a non-flaky runtime-budget script.
+- Shipped the public `0.1.1` release by publishing `openrustclaw-core 0.1.1` to crates.io and aligning the repo to the pushed public tag `v0.1.1`.
+
+---
+
 ## v1.39 Native Product E2E Verification and Greenfield Repairs (Shipped: 2026-03-29)
 
 **Phases completed:** 4 phases, 4 plans, 0 tasks
