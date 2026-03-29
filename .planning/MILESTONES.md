@@ -1,5 +1,20 @@
 # Project Milestones: OpenRustClaw
 
+## v1.33 Native Delivery Implementation: Gateway and MCP Successor Entry Points (Shipped: 2026-03-28)
+
+**Phases completed:** 4 phases, 4 plans, 0 tasks
+**Verification archive:** `.planning/milestones/v1.33-VERIFICATIONS.md`
+**Verification debt:** none
+
+**Key accomplishments:**
+
+- Defined the first gateway-native control bootstrap slice so the implementation roadmap now has a concrete source-level control-entry handoff instead of a broad future replacement claim.
+- Defined the first MCP-native startup slice and the Control UI serving alignment needed for the successor startup path.
+- Defined the first bounded startup responsibilities leaving `start.rs` so the bootstrap hotspot no longer survives as vague future cleanup in the implementation roadmap.
+- Defined the direct successor-entry verification and compatibility rules that keep the first implementation handoff slice truthful.
+
+---
+
 ## v1.32 Native Delivery Layer: Native Product Exit Audit and Packaging (Shipped: 2026-03-28)
 
 **Phases completed:** 4 phases, 4 plans, 0 tasks

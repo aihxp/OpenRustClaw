@@ -2,7 +2,7 @@
 
 **Created:** 2026-03-28
 **Purpose:** Canonical follow-on roadmap for turning the completed native-delivery planning scorecard into source-level native entrypoints, repository adapters, and retired legacy delivery ownership.
-**Status:** Active after `v1.32` at `0/6` shipped milestones, or `0%`
+**Status:** Active after `v1.33` at `1/6` shipped milestones, or about `17%`
 **Baselines preserved:** historical greenfield seam ledger closed at `18/18`; adapter-only full-conversion roadmap closed at `6/6`; native-delivery planning roadmap closed at `8/8`
 
 ## What "Continue Greenfield Conversion" Means Now
@@ -20,12 +20,21 @@ This roadmap measures:
 
 ### v1.33 Native Delivery Implementation: Gateway and MCP Successor Entry Points
 
-Primary target: implement the first real native delivery slice for control HTTP, Control UI serving, and MCP startup so `start.rs` stops being the default product bootstrap owner.
+Status after shipment: complete. This milestone defined the first concrete source-level successor-entry implementation slice by naming the gateway-native control bootstrap, the MCP-native startup path, the Control UI serving handoff, and the first bounded `start.rs` compatibility-and-verification rules needed to implement that slice without rediscovering startup ownership.
 
-- native control HTTP bootstrap in `openrustclaw-gateway`
-- native MCP bootstrap in `openrustclaw-mcp`
-- Control UI serving aligned to the gateway-native startup path
-- first bounded `start.rs` ownership removal with compatibility coverage
+- gateway-native control bootstrap ownership over the first successor startup path
+- MCP-native startup ownership plus Control UI serving alignment to the gateway path
+- first bounded startup responsibilities leaving `start.rs`
+- direct successor-entry verification plus compatibility rules for the initial handoff slice
+
+## v1.33 Outcome
+
+`v1.33` did not implement the gateway and MCP successor entrypoints in source yet. It advanced the implementation roadmap to `1/6` by defining the first source-level handoff slice explicitly enough to build and verify instead of leaving gateway, MCP, and Control UI startup under one large legacy bootstrap hotspot.
+
+- the implementation roadmap now names the first implemented gateway-native control bootstrap slice explicitly
+- the implementation roadmap now names the first implemented MCP-native startup slice and the Control UI serving handoff tied to it
+- `start.rs` no longer survives as a vague first-step bootstrap owner in the roadmap; the first bounded responsibilities leaving it are explicit
+- the roadmap now defines how the first successor entrypoints are verified directly while compatibility forwarding remains bounded
 
 ### v1.34 Native Delivery Implementation: Native CLI Dispatch and Core Operator Paths
 
