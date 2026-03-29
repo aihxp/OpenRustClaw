@@ -2,7 +2,7 @@
 
 **Created:** 2026-03-28
 **Purpose:** Canonical follow-on roadmap for replacing the remaining legacy delivery layer with native delivery surfaces built directly around `openrustclaw-app` ports and explicit infrastructure adapters.
-**Status:** Active after `v1.29` at `5/8` shipped milestones, or about `63%`
+**Status:** Active after `v1.30` at `6/8` shipped milestones, or `75%`
 **Baselines preserved:** historical greenfield seam ledger closed at `18/18`; full-conversion roadmap closed at `6/6`
 
 ## What "Move Completely Off Legacy" Means
@@ -61,6 +61,15 @@ The repo is fully off legacy when:
 - defined the startup boundaries for service-manager, probes, runtime maintenance, and scheduler flows needed by the native runtime-host path
 - aligned mobile, voice, and orchestration worker boot contracts to native runtime-host delivery instead of command-local startup ownership
 - made legacy command ownership over worker lifecycle startup explicitly temporary, bounded, and removable in future implementation milestones
+
+## v1.30 Outcome
+
+`v1.30` did not implement the repository and integration adapters in code yet. It made the adapter-replacement slice concrete enough to build without rediscovering persistence and side-effect ownership:
+
+- defined the repository and gateway adapter inventory for sqlite, workspace files, audit logs, runtime config, compiled-skill cache, and registries instead of preserving command-local persistence ownership as the long-term default
+- defined the infrastructure gateway boundaries for channel providers and external services so side-effect wiring is no longer described as command-local helper work
+- aligned app-port ownership with repository and gateway contracts instead of leaving app services conceptually dependent on command-file filesystem or registry helpers
+- made adapter verification and ownership-exit rules explicit so the roadmap can measure when command modules stop owning persistence and integration behavior
 
 ## Remaining Legacy Delivery Inventory
 
@@ -361,6 +370,59 @@ The runtime-host slice should reduce legacy startup ownership by changing what t
 
 This makes the milestone measurable: the runtime-host roadmap only advances to `5/8` when the legacy command tree is explicitly downgraded from owner to bounded compatibility surface for worker startup.
 
+### v1.30 Repository Adapter Inventory
+
+The repository-adapter slice should make persistence ownership explicit enough that command modules stop being the default place where filesystem layout and sqlite-backed state are assembled.
+
+| Persistence Concern | Native Owner | Notes |
+| --- | --- | --- |
+| workspace layout and control files | `WorkspaceRepository` behind infrastructure adapters | workspace paths, control files, artifact roots, and compiled-skill cache paths should move behind named repository contracts instead of command-file path helpers |
+| runtime config and maintenance state | `RuntimeRepository` | runtime config, vault, reload state, maintenance artifacts, and runtime status persistence should no longer be assembled directly in command modules |
+| skill registry and compiled artifact state | `SkillRepository` | registries, compiled artifacts, bindings, plugin metadata, and compile receipts should be owned by adapter-backed repositories |
+| session, audit, and inspection persistence | `SessionRepository` plus `AuditLogRepository` | session history and audit evidence should stop depending on command-local file or sqlite wiring |
+| channel and memory persistence | `ChannelRepository` plus `MemoryRepository` | bindings, schedules, health state, memory store, archive state, and derived views should be repository-backed rather than command-local |
+
+This inventory makes the persistence slice implementable because it names which repositories replace the remaining command-owned filesystem and sqlite helpers.
+
+### v1.30 Integration Gateway Boundaries
+
+The integration-adapter slice should make external side-effect ownership explicit instead of leaving provider wiring in command-local helper clusters.
+
+| Integration Concern | Native Owner | Notes |
+| --- | --- | --- |
+| channel-provider APIs | `ExternalServiceGateway` plus `CommunicationChannelPort` | Gmail, Matrix, Signal, WhatsApp, webhooks, and related providers should move behind gateway-backed contracts instead of command-local provider wiring |
+| scheduler and background integration hooks | `SchedulerGateway` | durable scheduling, next-run computation, and workflow startup should be injected through gateways rather than command modules |
+| service-manager hooks | `ServiceManagerGateway` | runtime process interactions should stay behind explicit gateways once repository-backed runtime services land |
+| registry and external metadata sources | repository or gateway adapters as appropriate | registry refresh, remote metadata access, and provider capability lookups should no longer be hidden inside command-local helpers |
+
+These gateway boundaries keep integration work distinct from app orchestration and make later side-effect replacement measurable.
+
+### v1.30 App Port to Repository Contract Alignment
+
+The repository-adapter slice should align app services to repositories and gateways directly so delivery layers stop depending on command-owned persistence helpers.
+
+| App Port Family | Repository or Gateway Contract | Alignment Rule |
+| --- | --- | --- |
+| `RuntimeOperationsPort` | `RuntimeRepository`, `ServiceManagerGateway`, `SchedulerGateway` | runtime services should read and mutate state through repositories and gateways instead of `runtime.rs`, `services.rs`, or `schedule.rs` helper ownership |
+| `SkillLifecyclePort` | `SkillRepository`, `WorkspaceRepository`, `ExternalServiceGateway` where needed | compiled-skill and registry flows should stop depending on `skills.rs` filesystem and registry helper orchestration |
+| `InspectionPort`, `SessionManagementPort`, and `ControlPlanePort` | `SessionRepository`, `AuditLogRepository`, `WorkspaceRepository` | inspection and control flows should consume durable state through repository contracts instead of command-local sqlite or file access |
+| `ChannelOperationsPort`, `MemoryOperationsPort`, and adjacent ports | `ChannelRepository`, `MemoryRepository`, `ExternalServiceGateway` | channel, memory, and external integration flows should align to adapter-backed ownership rather than command-file coupling |
+
+This keeps the adapter story honest: app services are only off legacy persistence ownership when they depend on repositories and gateways directly.
+
+### v1.30 Adapter Verification and Ownership Exit Criteria
+
+The repository-adapter slice should define how progress is verified and what the command tree is no longer allowed to own once adapter-backed paths exist.
+
+| Verification Concern | Native Rule | Failure Signal |
+| --- | --- | --- |
+| repository-backed behavior tests | verification should target repositories, gateways, and app services directly | command-local persistence verification remains the main evidence source |
+| adapter ownership boundaries | command modules may translate or forward, but they may not remain the place where sqlite, file layout, or registry rules are assembled | new persistence or integration behavior lands first in command helpers |
+| compatibility shims | allowed only after repository-backed and gateway-backed paths exist | legacy files stay primary because the replacement adapter path is not explicit |
+| roadmap advancement | the milestone only advances to `6/8` when adapter ownership and verification are explicit end to end | progress is claimed from inventory alone without verification or exit rules |
+
+This makes the milestone measurable: the repository-adapter roadmap only advances to `6/8` when command-module persistence and integration ownership is explicitly downgraded from primary owner to bounded compatibility surface.
+
 ### Why This Topology
 
 - the workspace already has `openrustclaw-gateway` and `openrustclaw-mcp`, so the roadmap can reuse existing crates instead of forcing all delivery through `openrustclaw-cli`
@@ -448,7 +510,7 @@ Status after shipment: complete. This milestone defined the dedicated runtime-ho
 
 ### v1.30 Native Delivery Layer: Repositories and Integration Adapters
 
-Primary target: remove command-module knowledge of persistence layout and external integration wiring.
+Status after shipment: complete. This milestone defined the repository and gateway adapter inventory, the integration gateway boundaries, the app-port-to-repository contract alignment, and the adapter verification or ownership-exit rules needed to move persistence and side-effect ownership off the legacy command layer in the next implementation slices.
 
 - repository or gateway adapters for sqlite, workspace files, audit logs, runtime config, compiled-skill cache, and registries
 - infrastructure boundaries for channel providers and external services

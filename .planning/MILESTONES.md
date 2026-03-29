@@ -1,5 +1,20 @@
 # Project Milestones: OpenRustClaw
 
+## v1.30 Native Delivery Layer: Repositories and Integration Adapters (Shipped: 2026-03-28)
+
+**Phases completed:** 4 phases, 4 plans, 0 tasks
+**Verification archive:** `.planning/milestones/v1.30-VERIFICATIONS.md`
+**Verification debt:** none
+
+**Key accomplishments:**
+
+- Defined the repository and gateway adapter inventory for sqlite, workspace files, audit logs, runtime config, compiled-skill cache, registries, and adjacent persistence-heavy delivery families.
+- Defined the integration gateway boundaries for channel providers and external services so side-effect wiring is no longer left conceptually inside command-local helper clusters.
+- Defined how app ports align directly to repositories and gateway adapters instead of command-local filesystem, sqlite, or registry helpers.
+- Defined the verification and ownership-exit rules that make persistence and integration retirement measurable before the legacy-module shutdown slice begins.
+
+---
+
 ## v1.29 Native Delivery Layer: Runtime Hosts and Background Workers (Shipped: 2026-03-28)
 
 **Phases completed:** 4 phases, 4 plans, 0 tasks
