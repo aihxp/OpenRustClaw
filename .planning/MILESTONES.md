@@ -1,5 +1,20 @@
 # Project Milestones: OpenRustClaw
 
+## v1.38 Native Delivery Implementation: Native Product Verification and Packaging Exit (Shipped: 2026-03-28)
+
+**Phases completed:** 4 phases, 4 plans, 0 tasks
+**Verification archive:** `.planning/milestones/v1.38-VERIFICATIONS.md`
+**Verification debt:** none
+
+**Key accomplishments:**
+
+- Verified the native-delivery scorecard directly against the shipped source tree, workspace crates, and current entrypoint files instead of relying on roadmap memory.
+- Aligned packaging and canonical planning docs to the implemented native crate and entrypoint story instead of the retired command-tree narrative.
+- Audited the remaining `main.rs` and command-tree compatibility surfaces as explicit bounded exceptions rather than hidden ownership.
+- Closed the native-delivery implementation roadmap at `6/6`, or `100%`, without claiming legacy-file deletion that is not evidenced in source.
+
+---
+
 ## v1.37 Native Delivery Implementation: Legacy Command Tree Retirement (Shipped: 2026-03-28)
 
 **Phases completed:** 4 phases, 4 plans, 0 tasks

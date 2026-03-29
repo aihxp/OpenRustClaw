@@ -2,7 +2,7 @@
 
 **Created:** 2026-03-28
 **Purpose:** Canonical follow-on roadmap for turning the completed native-delivery planning scorecard into source-level native entrypoints, repository adapters, and retired legacy delivery ownership.
-**Status:** Active after `v1.37` at `5/6` shipped milestones, or about `83%`
+**Status:** Closed after `v1.38` at `6/6` shipped milestones, or `100%`
 **Baselines preserved:** historical greenfield seam ledger closed at `18/18`; adapter-only full-conversion roadmap closed at `6/6`; native-delivery planning roadmap closed at `8/8`
 
 ## What "Continue Greenfield Conversion" Means Now
@@ -110,12 +110,21 @@ Status after shipment: complete. This milestone defined the first legacy module 
 
 ### v1.38 Native Product Verification and Packaging Exit
 
-Primary target: verify the source-level native-product claim end to end and align packaging, docs, and compatibility statements to that implemented state.
+Status after shipment: complete. This milestone verified the native-delivery scorecard against the shipped source tree, aligned packaging and canonical docs to the implemented native-entrypoint story, audited the remaining bounded compatibility exceptions explicitly, and defined the final source-level native-product claim boundary against evidence instead of roadmap memory.
 
 - end-to-end verification of the native-delivery scorecard against shipped code
 - final packaging and docs alignment to implemented native entrypoints
 - explicit audit of any remaining native shims or true exceptions
 - final source-level native-product exit claim
+
+## v1.38 Outcome
+
+`v1.38` closes the native-delivery implementation roadmap at `6/6`, or `100%`, but it does so through an evidence-backed claim boundary rather than by asserting that every legacy delivery file is already deleted. The shipped source tree now supports a truthful end-state statement: the canonical native-delivery implementation roadmap is complete, the native crates and app lane are real and verified, and the remaining legacy delivery surfaces are explicit bounded exceptions instead of hidden ownership.
+
+- the implementation roadmap now records the code-grounded native-delivery scorecard instead of relying on planning-only completion claims
+- packaging, canonical planning docs, and contributor-facing claim boundaries now point at the implemented native delivery surfaces and current workspace crate layout
+- the remaining `main.rs` and command-tree surfaces are treated as audited bounded exceptions rather than silently disproving the native-product claim
+- future work after `v1.38` now requires a new canonical denominator instead of extending the completed implementation roadmap implicitly
 
 ## Sequence Rationale
 
