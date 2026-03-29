@@ -1,0 +1,3 @@
+# Phase 175 Summary
+
+Cleaned the active planning and reference layer. [CLAUDE.md](/home/hprincivil/projects/OpenRustClaw/CLAUDE.md) now reflects current repo facts, the Markdown audit now has explicit maintained references in [MARKDOWN-SURFACE-INVENTORY.md](/home/hprincivil/projects/OpenRustClaw/.planning/codebase/MARKDOWN-SURFACE-INVENTORY.md), [MARKDOWN-CANONICAL-SURFACES.md](/home/hprincivil/projects/OpenRustClaw/.planning/codebase/MARKDOWN-CANONICAL-SURFACES.md), and [MARKDOWN-SURFACE-DISPOSITION.md](/home/hprincivil/projects/OpenRustClaw/.planning/codebase/MARKDOWN-SURFACE-DISPOSITION.md), and [CLEANUP.md](/home/hprincivil/projects/OpenRustClaw/.planning/codebase/CLEANUP.md) is now clearly marked as a historical `v1.8` contract.

@@ -270,7 +270,7 @@ The `CLAUDE.md` file provides project instructions for Claude Code:
 # OpenRustClaw
 
 ## Project Structure
-Rust workspace with 14 crates in `crates/`. Python sidecar in `sidecar/`.
+Rust workspace with 42 crates in `crates/`. The Python sidecar in `sidecar/` is an optional compatibility lane, not the default production runtime.
 
 ## Build
 ```
@@ -286,7 +286,7 @@ cargo test --workspace
 - Native provider SDKs only — never raw HTTP outside providers crate
 - All DB access through crates/db
 - Memory writes go through crates/memory/src/policies.rs
-- No cron jobs — all scheduling via LangGraph workflows in sidecar/
+- No cron jobs — use the durable scheduler in `crates/scheduler`
 - MCP tools defined in crates/mcp/server.rs
 - Security: WebSocket auth enabled by default in the gateway configuration
 - 3-tier memory: Core → Recall → Archive

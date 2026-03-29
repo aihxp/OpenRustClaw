@@ -1,0 +1,3 @@
+# Phase 174 Summary
+
+Cleaned the core package surface by updating the README intros for [agent/README.md](/home/hprincivil/projects/OpenRustClaw/crates/agent/README.md), [channels/README.md](/home/hprincivil/projects/OpenRustClaw/crates/channels/README.md), [core/README.md](/home/hprincivil/projects/OpenRustClaw/crates/core/README.md), [gateway/README.md](/home/hprincivil/projects/OpenRustClaw/crates/gateway/README.md), [memory/README.md](/home/hprincivil/projects/OpenRustClaw/crates/memory/README.md), and [skills/README.md](/home/hprincivil/projects/OpenRustClaw/crates/skills/README.md). The provider SDK READMEs were audited and retained as canonical package docs.

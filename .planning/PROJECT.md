@@ -2,7 +2,7 @@
 
 ## What This Is
 
-OpenRustClaw is a self-hosted open-source Rust-first OpenClaw-style assistant platform with shipped v1.0 through v1.40 milestones. It now has a coherent production-ready baseline across onboarding, assistant continuity, memory policy, tool and coding evidence, communications, runtime operations, security posture, release exit, milestone verification integrity, materially deeper operator parity across browser, orchestration, mobile, Control UI, and voice or call handling surfaces, an enterprise-first foundation for scoped operator identity, policy, audit export, supervised autonomy, governance, and an operator-gated full-autonomy lane, an explicit self-hosted product-mode contract across `solo`, `team`, `company`, and `enterprise` deployments, a truthful setup lifecycle from first install through repair and handoff, a canonical documentation contract that keeps the repo entrypoint, guided docs, and planning docs aligned, a cleaner codebase baseline with explicit cleanup inventory, repo-hygiene guardrails, an extracted control-auth boundary, a repaired tagged-release workflow that now produces truthful downloadable binary artifacts on GitHub, a maintained public Rust package surface on crates.io, a bounded remote-connectivity story around node-first guidance with SSH tunnel and reverse-proxy fallbacks preserved explicitly in setup state and operator surfaces, and a public release line now aligned around the shipped `v1.4.0` tag plus `openrustclaw-core 1.4.0`. The closed architecture and verification programs remain preserved internally, and `v1.40` closed the public-product convergence queue at `1/1`.
+OpenRustClaw is a self-hosted open-source Rust-first OpenClaw-style assistant platform with shipped v1.0 through v1.41 milestones. It now has a coherent production-ready baseline across onboarding, assistant continuity, memory policy, tool and coding evidence, communications, runtime operations, security posture, release exit, milestone verification integrity, materially deeper operator parity across browser, orchestration, mobile, Control UI, and voice or call handling surfaces, an enterprise-first foundation for scoped operator identity, policy, audit export, supervised autonomy, governance, and an operator-gated full-autonomy lane, an explicit self-hosted product-mode contract across `solo`, `team`, `company`, and `enterprise` deployments, a truthful setup lifecycle from first install through repair and handoff, a canonical documentation contract that keeps the repo entrypoint, guided docs, and planning docs aligned, a cleaner codebase baseline with explicit cleanup inventory, repo-hygiene guardrails, an extracted control-auth boundary, a repaired tagged-release workflow that now produces truthful downloadable binary artifacts on GitHub, a maintained public Rust package surface on crates.io, a bounded remote-connectivity story around node-first guidance with SSH tunnel and reverse-proxy fallbacks preserved explicitly in setup state and operator surfaces, a public release line aligned around the shipped `v1.4.0` tag plus `openrustclaw-core 1.4.0`, and a repo-wide Markdown audit that leaves one cleaner canonical documentation story behind. The closed architecture and verification programs remain preserved internally, `v1.40` closed the public-product convergence queue at `1/1`, and `v1.41` closed the markdown-surface audit queue at `1/1`.
 
 The product target remains broader than the MVP: a general-purpose assistant platform that can eventually support coding, communications, business operations, and deeper autonomous workflows. After v1.7, the repo also has one clearer documentation story instead of several drifting versions of the product. After v1.8, the repo also has a more explicit cleanup contract for keeping that surface maintainable.
 
@@ -12,27 +12,24 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 ## Current State
 
-- **Shipped milestones:** v1.0 Rust OpenClaw MVP, v1.1 Lifecycle Integrity and Enterprise Foundations, v1.2 Deeper OpenClaw Surface Parity, v1.3 Enterprise Expansion and Supervised Autonomy Foundations, v1.4 Enterprise Governance and Operator-Gated Full Autonomy, v1.5 Self-Hosted Product Modes and Lifecycle Packaging, v1.6 Proper Onboarding and Setup, v1.7 Documentation Convergence and OpenClaw-Inspired Docs Rewrite, v1.8 Clean Codebase, v1.9 GitHub Repository Presence and Actions Recovery, v1.10 Release Binaries Workflow Recovery, v1.11 Crates.io and Docs.rs Publication Foundation, v1.12 Secure Node Connectivity and SSH Tunnel Revisit, v1.13 Brownfield-to-Greenfield Transition, v1.14 Continued Greenfield Conversion, v1.15 Deeper Greenfield Conversion, v1.16 Greenfield Conversion: Skills and Runtime Hotspots, v1.17 Greenfield Conversion: Completion Metrics and Remaining Hotspots, v1.18 Greenfield Conversion: Final Ranked Seam and 100% Completion Path, v1.19 Full Greenfield Conversion: Control Plane Route Families I, v1.20 Full Greenfield Conversion: Control Plane Route Families II, v1.21 Full Greenfield Conversion: Mobile and Voice Runtime Services, v1.22 Full Greenfield Conversion: Orchestration and Browser Services, v1.23 Full Greenfield Conversion: Setup and Secondary Command Surfaces, v1.24 Full Greenfield Conversion: Adapter-Only Exit and Enforcement, v1.25 Native Delivery Layer: Port Contracts and Legacy Inventory, v1.26 Native Delivery Layer: Control, MCP, and Gateway Delivery, v1.27 Native Delivery Layer: CLI Core Dispatch and Operator Commands I, v1.28 Native Delivery Layer: CLI Operator Commands II and UI-Adjacent Flows, v1.29 Native Delivery Layer: Runtime Hosts and Background Workers, v1.30 Native Delivery Layer: Repositories and Integration Adapters, v1.31 Native Delivery Layer: Legacy Module Retirement and Compatibility Shutdown, v1.32 Native Delivery Layer: Native Product Exit Audit and Packaging, v1.33 Native Delivery Implementation: Gateway and MCP Successor Entry Points, v1.34 Native Delivery Implementation: Native CLI Dispatch and Core Operator Paths, v1.35 Native Delivery Implementation: Runtime Hosts and Background Workers, v1.36 Native Delivery Implementation: Repository and Integration Adapter Lift, v1.37 Native Delivery Implementation: Legacy Command Tree Retirement, v1.38 Native Delivery Implementation: Native Product Verification and Packaging Exit, v1.39 Native Product E2E Verification and Greenfield Repairs, and v1.40 Public Product Cleanup, Documentation Convergence, CI Repair, and Release
-- **Archive:** `.planning/milestones/v1.0-*` through `.planning/milestones/v1.40-*`
+- **Shipped milestones:** v1.0 Rust OpenClaw MVP, v1.1 Lifecycle Integrity and Enterprise Foundations, v1.2 Deeper OpenClaw Surface Parity, v1.3 Enterprise Expansion and Supervised Autonomy Foundations, v1.4 Enterprise Governance and Operator-Gated Full Autonomy, v1.5 Self-Hosted Product Modes and Lifecycle Packaging, v1.6 Proper Onboarding and Setup, v1.7 Documentation Convergence and OpenClaw-Inspired Docs Rewrite, v1.8 Clean Codebase, v1.9 GitHub Repository Presence and Actions Recovery, v1.10 Release Binaries Workflow Recovery, v1.11 Crates.io and Docs.rs Publication Foundation, v1.12 Secure Node Connectivity and SSH Tunnel Revisit, v1.13 Brownfield-to-Greenfield Transition, v1.14 Continued Greenfield Conversion, v1.15 Deeper Greenfield Conversion, v1.16 Greenfield Conversion: Skills and Runtime Hotspots, v1.17 Greenfield Conversion: Completion Metrics and Remaining Hotspots, v1.18 Greenfield Conversion: Final Ranked Seam and 100% Completion Path, v1.19 Full Greenfield Conversion: Control Plane Route Families I, v1.20 Full Greenfield Conversion: Control Plane Route Families II, v1.21 Full Greenfield Conversion: Mobile and Voice Runtime Services, v1.22 Full Greenfield Conversion: Orchestration and Browser Services, v1.23 Full Greenfield Conversion: Setup and Secondary Command Surfaces, v1.24 Full Greenfield Conversion: Adapter-Only Exit and Enforcement, v1.25 Native Delivery Layer: Port Contracts and Legacy Inventory, v1.26 Native Delivery Layer: Control, MCP, and Gateway Delivery, v1.27 Native Delivery Layer: CLI Core Dispatch and Operator Commands I, v1.28 Native Delivery Layer: CLI Operator Commands II and UI-Adjacent Flows, v1.29 Native Delivery Layer: Runtime Hosts and Background Workers, v1.30 Native Delivery Layer: Repositories and Integration Adapters, v1.31 Native Delivery Layer: Legacy Module Retirement and Compatibility Shutdown, v1.32 Native Delivery Layer: Native Product Exit Audit and Packaging, v1.33 Native Delivery Implementation: Gateway and MCP Successor Entry Points, v1.34 Native Delivery Implementation: Native CLI Dispatch and Core Operator Paths, v1.35 Native Delivery Implementation: Runtime Hosts and Background Workers, v1.36 Native Delivery Implementation: Repository and Integration Adapter Lift, v1.37 Native Delivery Implementation: Legacy Command Tree Retirement, v1.38 Native Delivery Implementation: Native Product Verification and Packaging Exit, v1.39 Native Product E2E Verification and Greenfield Repairs, v1.40 Public Product Cleanup, Documentation Convergence, CI Repair, and Release, and v1.41 Markdown Surface Audit, Cleanup, and Consolidation
+- **Archive:** `.planning/milestones/v1.0-*` through `.planning/milestones/v1.41-*`
 - **Planning state:** no active milestone
 - **Known audit debt:** v1.0 archive still records missing phase `VERIFICATION.md` artifacts; v1.1 closed that workflow gap going forward
 - **Program baselines:** the internal architecture and verification denominators remain closed, and the public-product convergence roadmap is now complete at `1/1`, or `100%`
 
-## Most Recent Milestone: v1.40 Public Product Cleanup, Documentation Convergence, CI Repair, and Release
+## Most Recent Milestone: v1.41 Markdown Surface Audit, Cleanup, and Consolidation
 
-**Result:** Shipped 2026-03-29. OpenRustClaw closed the public-product convergence roadmap at `1/1`, removed internal migration language from public docs and package metadata, cleaned the repo and lint debt without regressing the product, repaired the checked-in CI and release automation paths, published `openrustclaw-core 1.4.0`, and aligned the public repo tag line to `v1.4.0`.
+**Result:** Shipped 2026-03-29. OpenRustClaw closed the markdown-surface audit roadmap at `1/1`, inventoried the non-generated Markdown surface, defined canonical and mirror ownership rules, deleted an orphaned one-off doc, normalized drifting mirror pages, refreshed stale contributor guidance, and left the repo, docs site, crate READMEs, and live planning references in sync.
 
-**Archive:** `.planning/milestones/v1.40-ROADMAP.md`, `.planning/milestones/v1.40-REQUIREMENTS.md`, `.planning/milestones/v1.40-MILESTONE-AUDIT.md`, `.planning/milestones/v1.40-VERIFICATIONS.md`
+**Archive:** `.planning/milestones/v1.41-ROADMAP.md`, `.planning/milestones/v1.41-REQUIREMENTS.md`, `.planning/milestones/v1.41-MILESTONE-AUDIT.md`, `.planning/milestones/v1.41-VERIFICATIONS.md`
 
-## Current Milestone: v1.41 Markdown Surface Audit, Cleanup, and Consolidation
+## Current Milestone: none
 
-**Goal:** Audit every non-generated Markdown surface in the repo, classify stale or duplicated content, and update, merge, or delete it without breaking the shipped documentation story.
+**Goal:** Define a new canonical follow-on queue only when new work warrants it.
 
 **Target features:**
-- Inventory the full Markdown surface outside generated docs output and classify canonical, stale, duplicated, or archive-only files.
-- Cleanly merge, rewrite, or delete stale Markdown files so the remaining repo docs tell one consistent story.
-- Synchronize repo entry docs, crate READMEs, docs-site content, and planning references where they overlap.
-- Preserve truthfulness through explicit verification, documented deletion rationale, and an end-of-milestone documentation audit.
+- None. The markdown-surface audit queue is closed.
 
 ## Requirements
 
@@ -227,7 +224,7 @@ The final implementation queue then turned that same source-level posture toward
 
 The next follow-on queue turned that evidence-backed architectural closure into a real product-behavior check. `v1.39` ran the shipped E2E and integration matrix, closed the product-verification denominator at `1/1`, and confirmed that no repair-triggering product failures were present.
 
-The current queue now shifts from internal architecture proof to public product convergence. `v1.40` is about cleaning the repo safely, making the public docs and package surfaces consistent, fixing broken GitHub Actions lanes, and shipping the next release without exposing internal migration vocabulary as the main public story.
+The most recent queue turned that public-product convergence posture into a deeper repo-wide documentation cleanup. `v1.41` audited the full non-generated Markdown surface, classified canonical versus mirror versus historical documentation, deleted or merged stale one-off pages, and closed with a verified disposition report instead of leaving freshness cleanup as open-ended churn.
 
 ## Constraints
 
@@ -293,8 +290,9 @@ The current queue now shifts from internal architecture proof to public product 
 - the internal native-delivery planning roadmap is closed at `8/8`, or `100%`
 - the internal native-delivery implementation roadmap is closed at `6/6`, or `100%`
 - the internal native-product E2E roadmap is closed at `1/1`, or `100%`
-- the new public-product convergence roadmap now starts at `0/1`, with `v1.40` targeting `1/1`, or `100%`
-- public docs and release surfaces are now the active cleanup target, while the closed internal migration programs remain preserved as internal historical context
+- the public-product convergence roadmap is now closed at `1/1`, or `100%`
+- the markdown-surface audit roadmap is now closed at `1/1`, or `100%`
+- there is no active milestone; further cleanup or product work needs a new canonical denominator
 
 ## Evolution
 
@@ -314,4 +312,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-29 after starting v1.40 milestone*
+*Last updated: 2026-03-29 after shipping v1.41 milestone*

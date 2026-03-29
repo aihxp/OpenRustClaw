@@ -2,6 +2,13 @@
 
 OpenRustClaw supports multiple LLM providers with native SDK compliance, automatic fallback chains, and standardized tool formats.
 
+## Coverage Snapshot
+
+- First-class provider SDK crates live under the workspace `crates/` tree alongside the shared `openrustclaw-providers` layer.
+- Common operator defaults center on Anthropic, OpenAI, OpenRouter, and Ollama.
+- Additional maintained provider SDK crates cover AI21, Azure OpenAI, AWS Bedrock, Cloudflare AI, Cohere, DeepSeek, Fireworks, Gemini, Groq, llama.cpp, Perplexity, Replicate, Together AI, and vLLM.
+- Use this page for architecture and fallback behavior; use each crate README for package-specific quick starts.
+
 ---
 
 ## 🎯 Provider Architecture

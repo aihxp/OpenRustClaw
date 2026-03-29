@@ -2,7 +2,7 @@
 
 **Created:** 2026-03-29
 **Purpose:** Canonical follow-on roadmap for auditing every non-generated Markdown surface in the repository, then updating, merging, or deleting stale documentation cleanly.
-**Status:** Active at `0/1` shipped milestones, or `0%`
+**Status:** Closed at `1/1` shipped milestones, or `100%`
 **Baselines preserved:** internal architecture roadmap families closed; public-product convergence roadmap closed at `1/1`
 
 ## What This Queue Means
@@ -26,6 +26,9 @@ Primary target: produce a repo-wide Markdown inventory, clean stale or overlappi
 - canonical surface definition and overlap map
 - cleanup pass across repo-root docs, docs-site pages, crate READMEs, and live planning references
 - final verification and deletion rationale archive
+
+**Shipped:** 2026-03-29
+**Result:** Closed the markdown-surface audit queue at `1/1` with an explicit inventory, canonical-surface map, final disposition report, and passing documentation plus planning verification.
 
 ## Exit Criteria
 

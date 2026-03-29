@@ -1,6 +1,6 @@
 # OpenRustClaw Gateway
 
-HTTP/WebSocket gateway for the OpenRustClaw AI agent platform.
+HTTP/WebSocket gateway for the OpenRustClaw assistant platform.
 
 ## Overview
 

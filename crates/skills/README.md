@@ -1,6 +1,6 @@
 # OpenRustClaw Skills
 
-Skill management and execution for the OpenRustClaw AI agent.
+Skill management and execution for the OpenRustClaw assistant platform.
 
 ## Overview
 

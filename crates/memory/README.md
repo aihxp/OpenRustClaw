@@ -1,6 +1,6 @@
 # OpenRustClaw Memory
 
-Memory management system for the OpenRustClaw AI agent.
+Memory management system for the OpenRustClaw assistant runtime.
 
 ## Overview
 

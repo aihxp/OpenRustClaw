@@ -2,28 +2,10 @@
 
 The source-of-truth roadmap lives in `docs/roadmap.md` at the repository root.
 
-This book page exists so the mdBook navigation can expose the same planning surface without depending on files outside `docs/src`.
+Use it to answer:
 
-## Current intent
+- the current shipped product baseline,
+- the rules for what counts as part of the supported surface,
+- the bounded forward direction for future product work.
 
-- Ship a coherent OpenRustClaw operator surface.
-- Keep OpenRustClaw's stronger Rust-native choices where they are better.
-- Remove Python from the production-critical runtime path over time.
-- Use a three-tier execution model:
-  - Rust-native for production-critical paths,
-  - sidecar compatibility for bounded fallback and integration cases,
-  - LangGraph for experimentation and authoring, not as the production runtime brain.
-- The Rust-native autonomous optimization framework is now implemented for skills, RAG, prompts, policies, bounded workflows/code improvements, and research-program targets.
-
-## Phase summary
-
-1. Product contract and surface inventory
-2. Rust runtime contract and sidecar retirement
-3. Durable scheduler and eventing
-4. Memory, sessions, context, and RAG
-5. Channels and routing
-6. Tools, MCP, CLI, and Control surfaces
-7. Skills, plugins, media, voice, and nodes
-8. Security, operations, observability, and release exit
-
-For the detailed checklist and current status, use the repo-root roadmap file.
+This book page stays intentionally thin so the repo-root roadmap remains the canonical planning-facing source instead of drifting into a second copy.

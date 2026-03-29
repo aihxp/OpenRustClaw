@@ -1,5 +1,20 @@
 # Project Milestones: OpenRustClaw
 
+## v1.41 Markdown Surface Audit, Cleanup, and Consolidation (Shipped: 2026-03-29)
+
+**Phases completed:** 6 phases, 6 plans, 0 tasks
+**Verification archive:** `.planning/milestones/v1.41-VERIFICATIONS.md`
+**Verification debt:** none
+
+**Key accomplishments:**
+
+- Inventoried the full tracked Markdown surface, separated live product docs from mirrors, internal system docs, and archives, and recorded the canonical ownership map explicitly.
+- Deleted the orphaned `LLM_SDK_SUMMARY.md` file after merging the only still-useful provider coverage context into the canonical provider SDK architecture page.
+- Normalized drifting Markdown surfaces including the `docs/src/planning/roadmap.md` mirror, stale `CLAUDE.md` guidance, the Cursor integration sample, and the provider guide wording.
+- Closed the markdown-surface audit roadmap at `1/1` with a final disposition report, a passing docs build, and clean roadmap consistency verification.
+
+---
+
 ## v1.40 Public Product Cleanup, Documentation Convergence, CI Repair, and Release (Shipped: 2026-03-29)
 
 **Phases completed:** 6 phases, 6 plans, 0 tasks

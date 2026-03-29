@@ -4,9 +4,9 @@ This guide covers configuring and using the various LLM providers supported by O
 
 ---
 
-## 🎯 Supported Providers
+## 🎯 Common Provider Setups
 
-OpenRustClaw supports the following LLM providers:
+This guide focuses on the most common provider setups. For the broader provider inventory, see `docs/src/architecture/provider-sdks.md` and the provider crate READMEs under `crates/`.
 
 | Provider | Models | Best For |
 |----------|--------|----------|

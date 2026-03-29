@@ -2,6 +2,7 @@
 
 **Created:** 2026-03-27
 **Purpose:** Canonical cleanup inventory for `v1.8 Clean Codebase`
+**Status:** Historical cleanup contract retained for `v1.8` context. The canonical Markdown-audit contract now lives in `.planning/codebase/MARKDOWN-SURFACE-AUDIT-ROADMAP.md`.
 
 ## How To Use This File
 

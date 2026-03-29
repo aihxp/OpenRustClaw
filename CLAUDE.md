@@ -1,7 +1,7 @@
 # OpenRustClaw
 
 ## Project Structure
-Rust workspace with 14 crates in `crates/`. Python sidecar in `sidecar/`.
+Rust workspace with 42 crates in `crates/`. The Python sidecar in `sidecar/` is an optional compatibility lane, not the default production runtime.
 
 ## Build
 ```
@@ -14,23 +14,22 @@ cargo test --workspace
 ```
 
 ## Key Conventions
-- Native provider SDKs only (reqwest for now, anthropic_rust/async-openai/openrouter_api planned) — never raw HTTP outside providers crate
-- All DB access through crates/db — sqlx for general, libSQL for vectors, rusqlite for CLI
-- Memory writes go through crates/memory/src/policies.rs (dedupe, confidence, TTL)
-- No cron jobs — all scheduling via LangGraph workflows in sidecar/
-- MCP tools defined in crates/mcp/server.rs
-- Security: WebSocket origin validation on all connections; token auth enabled by default via gateway config
-- 3-tier memory: Core (always loaded, ~500 tokens) → Recall (on-demand search) → Archive (consolidated)
-- Recall-only memory: NEVER inject full memory files into system prompt
+- Prefer provider crates and `openrustclaw-providers` abstractions instead of ad hoc raw HTTP in feature code.
+- Keep database access routed through the established persistence crates and typed runtime services.
+- Memory writes go through the memory-policy layer so dedupe, confidence, and TTL rules stay consistent.
+- No cron jobs — use the durable scheduler in `crates/scheduler` and the shipped scheduling surfaces.
+- MCP server and tool surfaces live under `crates/mcp`.
+- Security-sensitive surfaces should preserve origin validation, token checks, and bounded runtime trust by default.
+- 3-tier memory remains the active model: Core → Recall → Archive.
+- Avoid injecting full memory files directly into prompts when a bounded memory surface already exists.
 
 ## Crate Dependency Order
 core → db → memory, providers, mcp, observability, security → agent → gateway → channels → skills, scheduler → langbridge → cli
 
 ## Greenfield Transition Defaults
-- `openrustclaw-app` is the default home for new application-level business logic during the greenfield transition milestones
-- Treat `crates/cli/src/commands/start.rs`, `mobile.rs`, `skills.rs`, `runtime.rs`, and `inspect.rs` as adapter or compatibility surfaces unless an active migration slice explicitly targets them
-- If a change must touch a legacy hotspot, keep the logic bounded and preserve the proving-slice verification bundle before broadening scope
-- Current migrated slices: setup handoff reporting, self-hosted product-mode summary and route flows, the mobile operator report, and the compiled-skill overview seam
+- Prefer `openrustclaw-app` for new application-level business logic.
+- Treat `crates/cli/src/commands/start.rs`, `mobile.rs`, `skills.rs`, `runtime.rs`, and `inspect.rs` as compatibility-heavy surfaces unless a task is explicitly about those adapters.
+- If a change must touch a large legacy hotspot, keep the logic bounded and preserve verification coverage before broadening scope.
 
 ## Error Handling
 - thiserror for library errors (crates/core/src/error.rs)

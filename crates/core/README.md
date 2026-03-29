@@ -1,10 +1,10 @@
 # OpenRustClaw Core
 
-Core types, traits, and configuration for the OpenRustClaw AI agent platform.
+Core types, traits, and configuration for the OpenRustClaw assistant platform.
 
 ## Overview
 
-This crate provides the foundational components used by all other OpenRustClaw crates:
+This crate provides the foundational components used by the rest of the OpenRustClaw workspace:
 
 - **Types**: Core data structures (Message, Session, etc.)
 - **Traits**: Abstractions for channels, memory, and skills

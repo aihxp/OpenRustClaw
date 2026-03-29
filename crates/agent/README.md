@@ -1,6 +1,6 @@
 # OpenRustClaw Agent
 
-AI agent runtime and orchestration for OpenRustClaw.
+Assistant runtime and orchestration for OpenRustClaw.
 
 ## Overview
 

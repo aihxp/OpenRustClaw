@@ -1,6 +1,6 @@
 # OpenRustClaw Channels
 
-Messaging platform integrations for the OpenRustClaw AI agent.
+Messaging platform integrations for the OpenRustClaw assistant platform.
 
 ## Supported Channels
 
