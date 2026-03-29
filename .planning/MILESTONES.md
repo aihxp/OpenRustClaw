@@ -1,5 +1,20 @@
 # Project Milestones: OpenRustClaw
 
+## v1.25 Native Delivery Layer: Port Contracts and Legacy Inventory (Shipped: 2026-03-28)
+
+**Phases completed:** 4 phases, 4 plans, 0 tasks
+**Verification archive:** `.planning/milestones/v1.25-VERIFICATIONS.md`
+**Verification debt:** none
+
+**Key accomplishments:**
+
+- Inventoried the remaining legacy delivery layer, including `main.rs`, `start.rs`, the command tree, worker bootstraps, and the command-owned repository wiring.
+- Defined the app-port contract catalog needed for native CLI, control, MCP, runtime-host, and repository-facing delivery work.
+- Chose a successor native topology built around `openrustclaw-app`, `openrustclaw-cli`, `openrustclaw-gateway`, `openrustclaw-mcp`, and planned runtime-host plus infrastructure layers.
+- Defined explicit compatibility states and deletion gates so later milestones can retire legacy delivery surfaces without hand-waving over readiness.
+
+---
+
 ## v1.24 Full Greenfield Conversion: Adapter-Only Exit and Enforcement (Shipped: 2026-03-28)
 
 **Phases completed:** 4 phases, 4 plans, 0 tasks

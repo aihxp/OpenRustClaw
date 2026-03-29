@@ -2,7 +2,7 @@
 
 ## What This Is
 
-OpenRustClaw is a self-hosted open-source Rust-first OpenClaw-style assistant platform with shipped v1.0 through v1.24 milestones. It now has a coherent production-ready baseline across onboarding, assistant continuity, memory policy, tool and coding evidence, communications, runtime operations, security posture, release exit, milestone verification integrity, materially deeper operator parity across browser, orchestration, mobile, Control UI, and voice or call handling surfaces, an enterprise-first foundation for scoped operator identity, policy, audit export, supervised autonomy, governance, and an operator-gated full-autonomy lane, an explicit self-hosted product-mode contract across `solo`, `team`, `company`, and `enterprise` deployments, a truthful setup lifecycle from first install through repair and handoff, a canonical documentation contract that keeps the repo entrypoint, guided docs, and planning docs aligned, a cleaner codebase baseline with explicit cleanup inventory, repo-hygiene guardrails, an extracted control-auth boundary, a repaired tagged-release workflow that now produces truthful downloadable binary artifacts on GitHub, a first truthful public Rust package surface on crates.io and docs.rs, a bounded remote-connectivity story around node-first guidance with SSH tunnel and reverse-proxy fallbacks preserved explicitly in setup state and operator surfaces, and a greenfield application lane that now owns the full ranked seam inventory behind `openrustclaw-app`, with the retired historical ledger closed truthfully at `18/18` migrated seams and all six post-ledger full-conversion queues shipped.
+OpenRustClaw is a self-hosted open-source Rust-first OpenClaw-style assistant platform with shipped v1.0 through v1.25 milestones. It now has a coherent production-ready baseline across onboarding, assistant continuity, memory policy, tool and coding evidence, communications, runtime operations, security posture, release exit, milestone verification integrity, materially deeper operator parity across browser, orchestration, mobile, Control UI, and voice or call handling surfaces, an enterprise-first foundation for scoped operator identity, policy, audit export, supervised autonomy, governance, and an operator-gated full-autonomy lane, an explicit self-hosted product-mode contract across `solo`, `team`, `company`, and `enterprise` deployments, a truthful setup lifecycle from first install through repair and handoff, a canonical documentation contract that keeps the repo entrypoint, guided docs, and planning docs aligned, a cleaner codebase baseline with explicit cleanup inventory, repo-hygiene guardrails, an extracted control-auth boundary, a repaired tagged-release workflow that now produces truthful downloadable binary artifacts on GitHub, a first truthful public Rust package surface on crates.io and docs.rs, a bounded remote-connectivity story around node-first guidance with SSH tunnel and reverse-proxy fallbacks preserved explicitly in setup state and operator surfaces, and a greenfield application lane that now owns the full ranked seam inventory behind `openrustclaw-app`, with the retired historical ledger closed truthfully at `18/18` migrated seams, the adapter-only program closed at `6/6`, and the native-delivery roadmap now initialized at `1/8`.
 
 The product target remains broader than the MVP: a general-purpose assistant platform that can eventually support coding, communications, business operations, and deeper autonomous workflows. After v1.7, the repo also has one clearer documentation story instead of several drifting versions of the product. After v1.8, the repo also has a more explicit cleanup contract for keeping that surface maintainable.
 
@@ -12,21 +12,27 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 ## Current State
 
-- **Shipped milestones:** v1.0 Rust OpenClaw MVP, v1.1 Lifecycle Integrity and Enterprise Foundations, v1.2 Deeper OpenClaw Surface Parity, v1.3 Enterprise Expansion and Supervised Autonomy Foundations, v1.4 Enterprise Governance and Operator-Gated Full Autonomy, v1.5 Self-Hosted Product Modes and Lifecycle Packaging, v1.6 Proper Onboarding and Setup, v1.7 Documentation Convergence and OpenClaw-Inspired Docs Rewrite, v1.8 Clean Codebase, v1.9 GitHub Repository Presence and Actions Recovery, v1.10 Release Binaries Workflow Recovery, v1.11 Crates.io and Docs.rs Publication Foundation, v1.12 Secure Node Connectivity and SSH Tunnel Revisit, v1.13 Brownfield-to-Greenfield Transition, v1.14 Continued Greenfield Conversion, v1.15 Deeper Greenfield Conversion, v1.16 Greenfield Conversion: Skills and Runtime Hotspots, v1.17 Greenfield Conversion: Completion Metrics and Remaining Hotspots, v1.18 Greenfield Conversion: Final Ranked Seam and 100% Completion Path, v1.19 Full Greenfield Conversion: Control Plane Route Families I, v1.20 Full Greenfield Conversion: Control Plane Route Families II, v1.21 Full Greenfield Conversion: Mobile and Voice Runtime Services, v1.22 Full Greenfield Conversion: Orchestration and Browser Services, v1.23 Full Greenfield Conversion: Setup and Secondary Command Surfaces, and v1.24 Full Greenfield Conversion: Adapter-Only Exit and Enforcement
-- **Archive:** `.planning/milestones/v1.0-*` through `.planning/milestones/v1.24-*`
-- **Planning state:** no active milestone
+- **Shipped milestones:** v1.0 Rust OpenClaw MVP, v1.1 Lifecycle Integrity and Enterprise Foundations, v1.2 Deeper OpenClaw Surface Parity, v1.3 Enterprise Expansion and Supervised Autonomy Foundations, v1.4 Enterprise Governance and Operator-Gated Full Autonomy, v1.5 Self-Hosted Product Modes and Lifecycle Packaging, v1.6 Proper Onboarding and Setup, v1.7 Documentation Convergence and OpenClaw-Inspired Docs Rewrite, v1.8 Clean Codebase, v1.9 GitHub Repository Presence and Actions Recovery, v1.10 Release Binaries Workflow Recovery, v1.11 Crates.io and Docs.rs Publication Foundation, v1.12 Secure Node Connectivity and SSH Tunnel Revisit, v1.13 Brownfield-to-Greenfield Transition, v1.14 Continued Greenfield Conversion, v1.15 Deeper Greenfield Conversion, v1.16 Greenfield Conversion: Skills and Runtime Hotspots, v1.17 Greenfield Conversion: Completion Metrics and Remaining Hotspots, v1.18 Greenfield Conversion: Final Ranked Seam and 100% Completion Path, v1.19 Full Greenfield Conversion: Control Plane Route Families I, v1.20 Full Greenfield Conversion: Control Plane Route Families II, v1.21 Full Greenfield Conversion: Mobile and Voice Runtime Services, v1.22 Full Greenfield Conversion: Orchestration and Browser Services, v1.23 Full Greenfield Conversion: Setup and Secondary Command Surfaces, v1.24 Full Greenfield Conversion: Adapter-Only Exit and Enforcement, and v1.25 Native Delivery Layer: Port Contracts and Legacy Inventory
+- **Archive:** `.planning/milestones/v1.0-*` through `.planning/milestones/v1.25-*`
+- **Planning state:** active milestone `v1.26 Native Delivery Layer: Control, MCP, and Gateway Delivery`
 - **Known audit debt:** v1.0 archive still records missing phase `VERIFICATION.md` artifacts; v1.1 closed that workflow gap going forward
-- **Greenfield conversion baseline:** canonical `18/18` ranked seams migrated, or `100%` complete, across the retired historical transition inventory; the follow-on full-conversion roadmap is now also closed at `6/6` shipped milestones, or `100%`
+- **Greenfield conversion baseline:** canonical `18/18` ranked seams migrated, or `100%` complete, across the retired historical transition inventory; the follow-on full-conversion roadmap is also closed at `6/6` shipped milestones, or `100%`; the native-delivery roadmap now stands at `1/8` shipped milestones, or about `13%`
 
-## Most Recent Milestone: v1.24 Full Greenfield Conversion: Adapter-Only Exit and Enforcement
+## Most Recent Milestone: v1.25 Native Delivery Layer: Port Contracts and Legacy Inventory
 
-**Result:** Shipped 2026-03-28. OpenRustClaw completed the final post-`18/18` full-conversion queue by extracting the last targeted helper-owned seams, formalizing named adapter boundaries in the remaining hotspots, and adding durable guardrails plus a truthful exit audit. The full-conversion roadmap is now closed at `6/6` shipped milestones, or `100%`.
+**Result:** Shipped 2026-03-28. OpenRustClaw started the native-delivery and legacy-retirement program by turning the remaining legacy delivery layer into a canonical inventory, an app-port catalog, a successor delivery topology, and a deletion-gate model. The native-delivery roadmap now stands at `1/8` shipped milestones, or about `13%`.
 
-**Archive:** `.planning/milestones/v1.24-ROADMAP.md`, `.planning/milestones/v1.24-REQUIREMENTS.md`, `.planning/milestones/v1.24-MILESTONE-AUDIT.md`, `.planning/milestones/v1.24-VERIFICATIONS.md`
+**Archive:** `.planning/milestones/v1.25-ROADMAP.md`, `.planning/milestones/v1.25-REQUIREMENTS.md`, `.planning/milestones/v1.25-MILESTONE-AUDIT.md`, `.planning/milestones/v1.25-VERIFICATIONS.md`
 
-## Current Milestone: none
+## Current Milestone: v1.26 Native Delivery Layer: Control, MCP, and Gateway Delivery
 
-No milestone is active. The adapter-only full-conversion program is complete; any deeper refactor or follow-on cleanup requires a new canonical queue and milestone.
+**Goal:** Start replacing the `start.rs` bootstrap monopoly by defining the native control HTTP, MCP, gateway startup, and Control UI delivery path over app ports.
+
+**Target features:**
+- native control HTTP delivery layer over app ports
+- native MCP server delivery layer over app ports
+- gateway or server bootstrap split out of `start.rs`
+- Control UI serving and wiring aligned to the native gateway delivery path
 
 ## Requirements
 
@@ -110,10 +116,17 @@ No milestone is active. The adapter-only full-conversion program is complete; an
 - ✓ The final targeted persistence and external-integration boundaries now use named adapter seams in the remaining hotspots instead of mixed helper ownership — v1.24 Phase 102
 - ✓ Source-level guardrails and contributor-facing enforcement defaults now preserve the adapter-only contract after the full-conversion program ships — v1.24 Phase 103
 - ✓ The full-conversion roadmap now closes at `6/6`, or `100%`, with a truthful exit audit, verification bundle, and scorecard — v1.24 Phase 104
+- ✓ The remaining legacy delivery surface is now inventoried explicitly, with each major family mapped to a target native home instead of being left as vague “future cleanup” — v1.25 Phase 105
+- ✓ The repo now has a canonical app-port catalog for native CLI, control, MCP, runtime-host, and repository-facing delivery work — v1.25 Phase 106
+- ✓ The native-delivery roadmap now defines a successor topology around `openrustclaw-app`, `openrustclaw-cli`, `openrustclaw-gateway`, `openrustclaw-mcp`, and planned runtime-host plus infrastructure layers — v1.25 Phase 107
+- ✓ The native-delivery roadmap now has an explicit denominator, deletion gates, compatibility states, and shutdown rules before any future milestone claims legacy retirement — v1.25 Phase 108
 
 ### Active
 
-- None
+- `NDL-05` Native control HTTP delivery layer over app ports
+- `NDL-06` Native MCP server delivery layer over app ports
+- `NDL-07` Gateway bootstrap split and `start.rs` retirement slice
+- `NDL-08` Control UI serving and native delivery alignment
 
 ### Out of Scope
 
@@ -137,6 +150,10 @@ The most recent milestone kept that same posture and closed the next ranked hots
 The most recent milestone finished the current ranked migration queue. `v1.18` moved the last remaining channel-extension and background workflow lifecycle seam behind `openrustclaw-app`, advanced the canonical baseline to `18/18`, and retired the current ranked ledger with an explicit rule that any deeper follow-on queue must be defined separately.
 
 The most recent milestones turned that follow-on decision into a real execution program. `v1.19` started the broader full-conversion roadmap by extracting the first four remaining control-plane route families from `start.rs`, `v1.20` completed the second control-plane queue while advancing the roadmap baseline to `2/6` shipped milestones, `v1.21` completed the next operator-runtime queue around `mobile.rs` and `voice_runtime.rs`, `v1.22` completed the orchestration and browser queue, `v1.23` completed the setup plus secondary command-surface queue, and `v1.24` closed the program by extracting the final targeted helper seams, formalizing named adapter boundaries, and shipping the guardrails plus exit audit that make the adapter-only claim durable.
+
+The next follow-on queue is stricter than adapter-only completion. `v1.25` started the native-delivery roadmap, which treats `main.rs`, `crates/cli/src/commands/*`, `start.rs`, and the worker bootstraps as legacy delivery surfaces to be replaced by native entrypoints built directly on app ports instead of being kept indefinitely as compatibility shells.
+
+The next native-delivery queue moves from planning the replacement to defining the first real execution slice. `v1.26` targets the control HTTP layer, MCP server delivery, gateway bootstrap split, and Control UI serving alignment so the repo can start retiring `start.rs` as the central bootstrap hotspot.
 
 ## Constraints
 
@@ -192,13 +209,16 @@ The most recent milestones turned that follow-on decision into a real execution 
 | Retire the current ranked seam inventory at `18/18` and require any deeper follow-on work to define a new canonical queue explicitly | Preserving a fixed completed denominator keeps historical progress truthful and prevents future work from silently rewriting the meaning of the shipped `100%` baseline | ✓ Good |
 | Treat post-`18/18` full conversion as an adapter-only architecture program rather than as an attempt to maximize lines moved into one crate | The real target is ownership of business logic and stable boundaries, not raw line migration or a cosmetic crate split | ✓ Good |
 | Close the full-conversion program only after the remaining hotspots expose named adapter seams plus durable source-level guardrails | Reaching `6/6` is only truthful if the repo can defend the adapter-only claim after shipment instead of relying on milestone memory alone | ✓ Good |
+| Start a separate native-delivery roadmap after `v1.24` instead of pretending adapter-only completion equals full legacy retirement | Replacing the remaining delivery layer is a different kind of work, needs a new denominator, and must include `main.rs`, control or MCP bootstrap, worker entrypoints, and repository wiring | ✓ Good |
+| Replace the legacy command tree with native delivery layers built directly around app ports before deleting the old modules | A clean greenfield product needs stable successor entrypoints first; deleting compatibility shells before the native delivery layer exists would trade architectural cleanliness for regressions | ✓ Good |
 
 ## Current Program Status
 
 - the retired historical greenfield ledger remains closed at `18/18`, or `100%`
 - the broader adapter-only full-conversion roadmap is now also closed at `6/6`, or `100%`
-- contributor defaults and source-level tests now preserve `openrustclaw-app` as the default home for new business logic
-- any deeper cleanup or architecture work requires a new canonical queue instead of quietly extending the finished denominators
+- the native-delivery roadmap now stands at `1/8`, or about `13%`, with `v1.26` targeting `2/8`, or `25%`
+- contributor defaults and source-level tests still preserve `openrustclaw-app` as the default home for new business logic while `v1.26` starts replacing the `start.rs` delivery monopoly itself
+- future legacy-retirement work now routes through `.planning/codebase/NATIVE-DELIVERY-LAYER-ROADMAP.md` instead of quietly extending the finished denominators
 
 ## Evolution
 
@@ -218,4 +238,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-28 after completing v1.24 milestone*
+*Last updated: 2026-03-28 after starting v1.26 milestone*

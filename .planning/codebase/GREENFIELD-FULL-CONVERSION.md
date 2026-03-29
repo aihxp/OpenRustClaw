@@ -3,6 +3,7 @@
 **Created:** 2026-03-28
 **Purpose:** Canonical follow-on roadmap for pushing OpenRustClaw from the retired `18/18` seam ledger toward a fully greenfield architecture where legacy command modules are adapter-only surfaces.
 **Status:** Completed 2026-03-28 at `6/6` shipped milestones, or `100%`
+**Successor:** `.planning/codebase/NATIVE-DELIVERY-LAYER-ROADMAP.md`
 
 ## What "Full Greenfield Conversion" Means
 
@@ -121,5 +122,6 @@ The migrated end-state now depends on named adapter seams instead of helper spra
 
 - `.planning/codebase/GREENFIELD.md` — original greenfield transition contract and containment rules
 - `.planning/codebase/GREENFIELD-INVENTORY.md` — retired historical `18/18` seam ledger from `v1.13` through `v1.18`
+- `.planning/codebase/NATIVE-DELIVERY-LAYER-ROADMAP.md` — successor roadmap for retiring the remaining legacy delivery layer after the adapter-only end-state
 - `.planning/ROADMAP.md` — active milestone phases
 - `.planning/PROJECT.md` — project-level milestone context and decisions
