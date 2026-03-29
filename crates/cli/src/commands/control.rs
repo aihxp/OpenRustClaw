@@ -910,6 +910,7 @@ pub fn describe(root: Option<&str>, json: bool) -> Result<()> {
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn create_agent(
     root: Option<&str>,
     id: &str,
@@ -964,6 +965,7 @@ pub fn create_agent(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn create_model(
     root: Option<&str>,
     id: &str,
@@ -1014,6 +1016,7 @@ pub fn create_model(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn create_claw(
     root: Option<&str>,
     id: &str,
@@ -1058,6 +1061,7 @@ pub fn create_claw(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn configure_mode(
     root: Option<&str>,
     mode: &str,

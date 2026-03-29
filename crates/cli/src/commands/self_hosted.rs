@@ -73,7 +73,6 @@ pub struct SelfHostedModeDescriptor {
     pub onboarding_path: &'static str,
     pub operator_model: &'static str,
     pub recommended_runtime_mode: &'static str,
-    pub multi_user: bool,
 }
 
 pub fn self_hosted_product_path(workspace_root: &Path) -> PathBuf {
@@ -264,7 +263,6 @@ pub fn descriptor_for(mode: &str) -> Result<SelfHostedModeDescriptor> {
             onboarding_path: "solo_starter",
             operator_model: "One primary operator on one self-hosted workspace",
             recommended_runtime_mode: "solo_claw",
-            multi_user: false,
         },
         MODE_TEAM => SelfHostedModeDescriptor {
             mode: MODE_TEAM,
@@ -272,7 +270,6 @@ pub fn descriptor_for(mode: &str) -> Result<SelfHostedModeDescriptor> {
             onboarding_path: "shared_team_setup",
             operator_model: "A small team shares one self-hosted deployment",
             recommended_runtime_mode: "task_assigned",
-            multi_user: true,
         },
         MODE_COMPANY => SelfHostedModeDescriptor {
             mode: MODE_COMPANY,
@@ -280,7 +277,6 @@ pub fn descriptor_for(mode: &str) -> Result<SelfHostedModeDescriptor> {
             onboarding_path: "company_ops_setup",
             operator_model: "An operator-managed company deployment with stronger operational defaults",
             recommended_runtime_mode: "orchestrated",
-            multi_user: true,
         },
         MODE_ENTERPRISE => SelfHostedModeDescriptor {
             mode: MODE_ENTERPRISE,
@@ -288,7 +284,6 @@ pub fn descriptor_for(mode: &str) -> Result<SelfHostedModeDescriptor> {
             onboarding_path: "enterprise_governed_setup",
             operator_model: "A governed enterprise deployment with explicit access, policy, and audit expectations",
             recommended_runtime_mode: "orchestrated",
-            multi_user: true,
         },
         _ => unreachable!("normalize_mode validates all supported modes"),
     };
@@ -426,7 +421,6 @@ mod tests {
         let descriptor = default_descriptor();
         assert_eq!(descriptor.mode, MODE_SOLO);
         assert_eq!(descriptor.recommended_runtime_mode, "solo_claw");
-        assert!(!descriptor.multi_user);
     }
 
     #[test]

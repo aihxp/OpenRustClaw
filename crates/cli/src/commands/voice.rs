@@ -247,6 +247,7 @@ pub async fn append_user(config_path: &str, session_id: &str, text: &str) -> Res
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn respond(
     config_path: &str,
     session_id: &str,

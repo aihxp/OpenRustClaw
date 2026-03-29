@@ -80,6 +80,7 @@ impl BrowserWorkflowService {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn workflow_record(
         &self,
         action: impl Into<String>,
@@ -115,8 +116,8 @@ impl BrowserWorkflowService {
         backend: Option<&str>,
     ) -> BrowserWorkflowHistoryReport {
         entries.retain(|record| {
-            !action.is_some_and(|value| record.action != value)
-                && !backend.is_some_and(|value| record.backend != value)
+            action.is_none_or(|value| record.action == value)
+                && backend.is_none_or(|value| record.backend == value)
         });
         entries.sort_by(|left, right| right.created_at.cmp(&left.created_at));
         entries.truncate(limit.max(1));

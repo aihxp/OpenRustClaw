@@ -210,6 +210,20 @@ First stable release of OpenRustClaw, a hybrid Rust + Python AI agent framework.
 - Device integration (camera, screen, voice)
 - Community channel plugins
 
+## [0.1.1] - 2026-03-29
+
+### Changed
+
+- aligned public documentation and package metadata to describe the current shipped product without internal migration-program language
+- tightened workspace lint hygiene and compatibility wrappers so `cargo check`, `cargo test --workspace --lib`, and `cargo clippy --workspace -- -D warnings` all pass cleanly
+- made runtime-budget and security-audit checks repo-owned and reproducible through checked-in scripts used by GitHub Actions
+
+### Fixed
+
+- repaired the E2E workflow trigger configuration for manual regression runs
+- removed a flaky runtime-budget port race by retrying runtime startup with a fresh port when the first candidate is claimed concurrently
+- stabilized vault-environment tests by serializing the conflicting runtime-secret cases
+
 ---
 
 ## Migration Notes

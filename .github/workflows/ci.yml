@@ -100,14 +100,9 @@ jobs:
     name: Shipped Surface Security Audit
     runs-on: ubuntu-latest
     needs: parity-inventory
-    # Informational only -- upstream transitive dependency advisories
-    # (e.g. protobuf v2 via raft, rsa via sqlx-mysql) cannot be fixed here
-    continue-on-error: true
-    permissions:
-      issues: write
-      checks: write
     steps:
       - uses: actions/checkout@v4
-      - uses: rustsec/audit-check@v2.0.0
-        with:
-          token: ${{ github.token }}
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo install cargo-audit --locked
+      - run: chmod +x scripts/check-security-audit.sh
+      - run: scripts/check-security-audit.sh

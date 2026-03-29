@@ -91,6 +91,7 @@ pub async fn process_notification(config_path: &str, input: &str) -> Result<()> 
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn send(
     config_path: &str,
     to: &[String],

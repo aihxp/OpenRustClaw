@@ -789,7 +789,7 @@ fn probe_signal(config: &openrustclaw_core::config::SignalConfig) -> ChannelProb
         .signal_cli_path
         .clone()
         .unwrap_or_else(|| PathBuf::from("signal-cli"));
-    if path.exists() || path == PathBuf::from("signal-cli") {
+    if path.exists() || path == Path::new("signal-cli") {
         ready_entry("signal", "local_runtime", "Signal CLI path is configured")
     } else {
         failed_entry(

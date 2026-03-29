@@ -146,6 +146,7 @@ fn trigger_config_and_next_run(
         .trigger_config_and_next_run(&app_task_trigger(trigger), Utc::now())?)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_metadata(
     payload: Value,
     priority: i64,
@@ -916,10 +917,10 @@ pub async fn inspect(id: &str) -> Result<()> {
     println!("  Checkpoints: {}", checkpoint_count);
     if row.get::<String, _>("trigger_type") == "event" {
         let trigger_config_raw: String = row.get("trigger_config");
-        if let Ok(trigger_config) = serde_json::from_str::<Value>(&trigger_config_raw) {
-            if let Some(event_name) = trigger_config.get("event_name").and_then(Value::as_str) {
-                println!("  Event subscription: {}", event_name);
-            }
+        if let Ok(trigger_config) = serde_json::from_str::<Value>(&trigger_config_raw)
+            && let Some(event_name) = trigger_config.get("event_name").and_then(Value::as_str)
+        {
+            println!("  Event subscription: {}", event_name);
         }
     }
     if let Some(run) = latest_run {

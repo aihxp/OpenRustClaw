@@ -1424,6 +1424,7 @@ fn append_browser_workflow_record(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn new_browser_workflow_record(
     action: impl Into<String>,
     backend: impl Into<String>,
@@ -1492,6 +1493,7 @@ fn append_external_backend_audit_entry(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn record_external_backend_audit(
     workspace_root: &Path,
     policy: &ExternalBackendPolicy,
@@ -2365,10 +2367,10 @@ async fn open_page(
     session_state: Option<&BrowserSessionState>,
 ) -> Result<openrustclaw_automation::Page> {
     let page = browser.new_page().await?;
-    if let Some(session_state) = session_state {
-        if !session_state.cookies.is_empty() {
-            page.add_cookies(session_state.cookies.clone()).await?;
-        }
+    if let Some(session_state) = session_state
+        && !session_state.cookies.is_empty()
+    {
+        page.add_cookies(session_state.cookies.clone()).await?;
     }
     page.goto(&normalize_url(url)).await?;
     if let Some(session_state) = session_state {

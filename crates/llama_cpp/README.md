@@ -29,7 +29,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-llama-cpp = "0.1.0"
+llama-cpp = "0.1.1"
 ```
 
 ### Feature Flags

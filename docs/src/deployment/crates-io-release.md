@@ -1,10 +1,10 @@
 # Crates.io Release
 
-OpenRustClaw's first public Rust package surface is intentionally narrow. For the `v1.11` release lane, the publish target is:
+OpenRustClaw's current public Rust package surface is intentionally narrow. The maintained crates.io lane is:
 
 - `openrustclaw-core`
 
-The rest of the workspace remains out of the first crates.io release wave until it has an explicit publish contract.
+The rest of the workspace remains out of the public crates.io lane until it has an explicit publish contract.
 
 ## Preflight
 
@@ -18,14 +18,15 @@ bash scripts/check-crates-io-readiness.sh openrustclaw-core
 ```
 
 3. Confirm the crate version in `crates/core/Cargo.toml` resolves to the intended release version through the workspace version.
+4. Confirm the current published version on crates.io so the next release version is an increment rather than a duplicate.
 
 ## Publish Order
 
-For the first public package release, publish only:
+For the current package release lane, publish only:
 
 1. `openrustclaw-core`
 
-No other workspace crate is part of the first public crates.io contract yet.
+No other workspace crate is part of the public crates.io contract yet.
 
 ## Publish
 
@@ -39,7 +40,7 @@ cargo publish -p openrustclaw-core
 
 After publish succeeds:
 
-1. Confirm the crate appears on crates.io.
+1. Confirm the crate appears on crates.io with the new version.
 2. Confirm the docs.rs build starts for `openrustclaw-core`.
 3. Check the docs.rs landing page once the build finishes.
 4. Record the crate version, crates.io URL, and docs.rs URL in milestone verification.

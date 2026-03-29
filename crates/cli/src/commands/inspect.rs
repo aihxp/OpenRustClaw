@@ -501,6 +501,7 @@ impl ToolExecutionAuditFileStore {
     }
 }
 
+#[cfg(test)]
 pub fn tool_execution_log_path(workspace_root: &Path) -> PathBuf {
     ToolExecutionAuditFileStore::new(workspace_root).path()
 }
@@ -525,6 +526,7 @@ pub fn tool_execution_history(
     ))
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn new_tool_execution_record(
     tool_name: impl Into<String>,
     source: impl Into<String>,
@@ -1127,15 +1129,13 @@ pub fn enterprise_access_summary(workspace_root: &Path) -> Result<EnterpriseAcce
                         || rule.approver_roles.iter().any(|allowed| allowed == *role)
                 })
                 .count();
-            let coverage_status = if !rule.active {
-                "disabled".to_string()
-            } else if rule.approval_mode == "dual"
+            let dual_coverage_gap = rule.approval_mode == "dual"
                 && (eligible_requester_count == 0
                     || eligible_approver_count == 0
-                    || active_operator_roles.len() < 2)
-            {
-                "coverage_gap".to_string()
-            } else if eligible_requester_count == 0 {
+                    || active_operator_roles.len() < 2);
+            let coverage_status = if !rule.active {
+                "disabled".to_string()
+            } else if eligible_requester_count == 0 || dual_coverage_gap {
                 "coverage_gap".to_string()
             } else {
                 "ready".to_string()
@@ -1478,7 +1478,7 @@ pub async fn inspect_job(
     .bind(id_or_name)
     .fetch_optional(pool)
     .await?
-    .map(|row| row_to_job_summary(row));
+    .map(row_to_job_summary);
 
     let Some(job) = job else {
         return Ok(JobDetailReport {

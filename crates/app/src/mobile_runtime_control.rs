@@ -499,6 +499,7 @@ impl MobileRuntimeControlService {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn wake_node(
         &self,
         node_id: &str,
@@ -534,6 +535,7 @@ impl MobileRuntimeControlService {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn rehydrate_node(
         &self,
         node_id: &str,

@@ -365,6 +365,7 @@ pub fn show_account(root: Option<&str>, id: &str) -> Result<()> {
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn create_account(
     root: Option<&str>,
     id: &str,
@@ -443,6 +444,7 @@ pub fn activation(root: Option<&str>, id: &str, mode: &str) -> Result<()> {
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn bind(
     root: Option<&str>,
     id: &str,
@@ -718,10 +720,12 @@ pub fn identity_from_message(message: &IncomingMessage) -> ChannelIdentity {
     )
 }
 
+#[allow(dead_code)]
 pub fn message_workspace_id(message: &IncomingMessage) -> Option<String> {
     app_channel_routing::ChannelRoutingService::new().message_workspace_id(message)
 }
 
+#[allow(dead_code)]
 pub fn message_channel_scope(message: &IncomingMessage) -> Option<String> {
     app_channel_routing::ChannelRoutingService::new().message_channel_scope(message)
 }
@@ -742,10 +746,12 @@ pub fn channel_scope_from_metadata(
         .channel_scope_from_metadata(metadata, thread_overrides_channel)
 }
 
+#[allow(dead_code)]
 pub fn parent_channel_scope_from_metadata(metadata: &serde_json::Value) -> Option<String> {
     app_channel_routing::ChannelRoutingService::new().parent_channel_scope_from_metadata(metadata)
 }
 
+#[allow(dead_code)]
 pub fn channel_scope_candidates(
     metadata: &serde_json::Value,
     thread_overrides_channel: bool,
@@ -774,6 +780,7 @@ pub fn channel_route_key_with_binding(
     )
 }
 
+#[allow(dead_code)]
 pub fn resolve_channel_binding<'a>(
     registry: &'a ChannelRegistry,
     platform: Platform,
@@ -802,6 +809,7 @@ pub fn resolve_channel_binding<'a>(
         })
 }
 
+#[allow(dead_code)]
 pub fn default_send_policy(policy: &SessionRoutingConfig) -> ChannelSendPolicy {
     send_policy_from_app(
         app_channel_routing::ChannelRoutingService::new().default_send_policy(policy),

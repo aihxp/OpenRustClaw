@@ -3232,14 +3232,6 @@ fn command_timeline_events(command: &MobileCommandRecord) -> Vec<MobileCommandEv
         .unwrap_or_default()
 }
 
-fn command_execution_latency_secs(command: &MobileCommandRecord) -> Option<u64> {
-    let executed_at = command.executed_at.as_ref()?;
-    let latency = executed_at
-        .signed_duration_since(command.created_at)
-        .num_seconds();
-    Some(latency.max(0) as u64)
-}
-
 pub fn command_events_data(
     workspace_root: &Path,
     command_id: &str,

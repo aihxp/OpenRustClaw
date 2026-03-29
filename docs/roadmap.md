@@ -47,7 +47,7 @@ Together they define:
 
 - a feature is only part of the shipped surface when runtime behavior, operator visibility, and docs all agree
 - a bounded or gated lane should be described as bounded or gated, not promoted into default behavior
-- new milestones should expand the product from the current truthful baseline, not revive old migration-era framing
+- new milestones should expand the product from the current truthful baseline instead of reopening retired internal programs
 
 ## Forward Direction
 
@@ -59,4 +59,3 @@ Future work should be framed as incremental expansion or hardening on top of the
 - stronger release automation and operational hardening
 
 The baseline itself already exists. The roadmap now protects that truth instead of speculating past it.
-

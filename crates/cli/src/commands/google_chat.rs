@@ -77,6 +77,7 @@ pub async fn send(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn send_card(
     config_path: &str,
     space: &str,

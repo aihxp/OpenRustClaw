@@ -576,34 +576,19 @@ When shipped behavior changes:
 4. update `docs/docs-audit.md` if the feature-family coverage changed
 5. delete stale duplicates instead of leaving them behind
 
-## Greenfield Transition Defaults
+## Application Service Defaults
 
-During `v1.14`, new code should default to the greenfield transition lane:
+New work should default to the shared application-service model:
 
 1. keep domain contracts in the existing shared crates
 2. put new business logic in `openrustclaw-app` unless the work is purely domain-layer or purely presentation-layer
-3. treat large command modules like `start.rs`, `mobile.rs`, `skills.rs`, and `inspect.rs` as adapters unless the task is explicitly a compatibility fix
-4. if you touch a legacy hotspot, state whether the change is `compatibility-only` or part of an active migration slice
-5. migrate bounded shipped slices one at a time instead of mixing rewrite work with broad feature churn
+3. treat large command modules like `start.rs`, `mobile.rs`, `skills.rs`, and `inspect.rs` as adapters unless the task is explicitly delivery-only
+4. if you touch an older hotspot, state whether the change is transport-only or whether it expands a shared application service
+5. keep shipped slices bounded instead of mixing broad cleanup with new feature churn
 
-The first proving slice, setup handoff reporting, is already migrated: onboarding state still persists in the CLI onboarding module, but `openrustclaw-app` now owns the report composition used by the runtime and Control UI.
+The current service boundary already covers setup handoff, self-hosted product-mode reporting and transitions, mobile node summaries, compiled-skill overview and bindings, enterprise admin aggregation, enterprise access route families, and selected runtime and skills control paths.
 
-That migration set now also includes:
-
-- self-hosted product-mode summary composition
-- the `/control/self-hosted/product-mode` transition route family
-- the mobile node operator summary report
-- the compiled-skill overview seam shared by `skills.rs` and `start.rs`
-- the enterprise admin aggregation service used by the shipped enterprise admin surface
-
-The next migration queue is:
-
-1. additional `start.rs` route families beyond the self-hosted product-mode path
-2. remaining typed report families still composed directly in adapter modules
-3. `skills.rs` mutation, install, and plugin lifecycle lanes
-4. runtime-facing command seams still concentrated in legacy command hubs
-
-Use the current baseline before widening that slice:
+Use the current baseline before widening those shared-service surfaces:
 
 ```bash
 cargo test -p openrustclaw-cli setup_handoff_summary -- --nocapture

@@ -2857,6 +2857,7 @@ impl Drop for RuntimeLockGuard {
 mod tests {
     use super::*;
     use crate::commands::logs;
+    use serial_test::serial;
     use tempfile::tempdir;
 
     struct EnvVarGuard {
@@ -3454,6 +3455,7 @@ mod tests {
     }
 
     #[test]
+    #[serial(vault_env)]
     fn set_and_delete_vault_secret_use_service_lane() -> Result<()> {
         let temp = tempdir()?;
         let workspace_root = temp.path();

@@ -701,6 +701,12 @@ Let's get started!
     }
 }
 
+impl Default for OnboardingWizard {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub fn should_offer_assistant_launch(
     healthy: bool,
     stdin_is_terminal: bool,

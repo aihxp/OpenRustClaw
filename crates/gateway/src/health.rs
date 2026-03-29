@@ -12,7 +12,7 @@
 //! {
 //!   "status": "healthy",
 //!   "service": "openrustclaw-gateway",
-//!   "version": "0.1.0",
+//!   "version": "0.1.1",
 //!   "timestamp": "2024-01-15T10:30:00Z"
 //! }
 //! ```

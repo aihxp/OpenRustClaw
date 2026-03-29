@@ -1561,15 +1561,15 @@ impl ChannelAgent {
             .await;
         }
         let mut trace = self.channel_trace(&incoming, &route_state.session_id, trimmed_content);
-        if let (Some(client), Some(run)) = (&self.langsmith, trace.as_ref()) {
-            if let Err(error) = client.trace_run(run).await {
-                warn!(
-                    error = %error,
-                    platform = ?incoming.platform,
-                    user_id = %incoming.user_id,
-                    "Failed to create LangSmith channel trace"
-                );
-            }
+        if let (Some(client), Some(run)) = (&self.langsmith, trace.as_ref())
+            && let Err(error) = client.trace_run(run).await
+        {
+            warn!(
+                error = %error,
+                platform = ?incoming.platform,
+                user_id = %incoming.user_id,
+                "Failed to create LangSmith channel trace"
+            );
         }
 
         let core_memory = if let Some(store) = self.core_memory_store.as_ref() {
@@ -2680,6 +2680,7 @@ fn record_operator_tool_status(tool_name: &str, started_at: std::time::Instant, 
     );
 }
 
+#[allow(clippy::too_many_arguments)]
 fn persist_operator_execution_record(
     tool_name: &str,
     source: &str,
@@ -12924,8 +12925,8 @@ fn register_compiled_skill_mcp_handlers(
                         )
                         .await
                         .map_err(|error| mcp_tool_error(error.to_string()))?;
-                        Ok(serde_json::to_value(result)
-                            .map_err(|error| mcp_tool_error(error.to_string()))?)
+                        serde_json::to_value(result)
+                            .map_err(|error| mcp_tool_error(error.to_string()))
                     })
                 }),
             );
@@ -12955,8 +12956,8 @@ fn register_compiled_skill_mcp_handlers(
                         )
                         .await
                         .map_err(|error| mcp_tool_error(error.to_string()))?;
-                        Ok(serde_json::to_value(result)
-                            .map_err(|error| mcp_tool_error(error.to_string()))?)
+                        serde_json::to_value(result)
+                            .map_err(|error| mcp_tool_error(error.to_string()))
                     })
                 }),
             );
@@ -13619,6 +13620,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial(vault_env)]
     async fn runtime_vault_route_family_uses_service_lane() {
         let temp = tempdir().unwrap();
         std::fs::create_dir_all(temp.path().join("config")).unwrap();

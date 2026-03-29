@@ -293,6 +293,7 @@ impl ChannelRoutingService {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn route_key_with_binding(
         &self,
         message: &IncomingMessage,

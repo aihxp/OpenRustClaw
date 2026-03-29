@@ -1979,6 +1979,7 @@ fn build_steering_notes(
     notes
 }
 
+#[allow(clippy::too_many_arguments)]
 fn make_checkpoint(
     stage: &str,
     status: &str,
@@ -2005,6 +2006,7 @@ fn make_checkpoint(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn make_trace_entry(
     stage: &str,
     actor_type: &str,

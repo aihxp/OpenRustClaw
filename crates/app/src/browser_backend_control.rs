@@ -63,6 +63,7 @@ impl BrowserBackendControlService {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn audit_entry(
         &self,
         backend: &str,

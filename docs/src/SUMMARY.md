@@ -27,7 +27,7 @@
 
 # Architecture
 - [Overview](./architecture/overview.md)
-- [Greenfield Transition](./architecture/greenfield-transition.md)
+- [Application Service Boundaries](./architecture/application-boundaries.md)
 - [Rust Core](./architecture/rust-core.md)
 - [LangGraph Sidecar](./architecture/langgraph-sidecar.md)
 - [Provider SDKs](./architecture/provider-sdks.md)

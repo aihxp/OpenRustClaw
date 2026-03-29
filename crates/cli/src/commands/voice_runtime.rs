@@ -456,10 +456,6 @@ struct ResolvedVoiceProvider {
     provider: String,
     api_key_env: String,
     api_base_url: String,
-    lane: String,
-    supports_inbound_notes: bool,
-    supports_voice_catalog: bool,
-    notes: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -562,38 +558,6 @@ fn normalize_voice_provider_name(value: &str) -> String {
     value.trim().to_ascii_lowercase()
 }
 
-fn default_voice_api_base_url(provider: &str) -> Option<&'static str> {
-    match provider {
-        "openai" => Some("https://api.openai.com/v1"),
-        "openrouter" => Some("https://openrouter.ai/api/v1"),
-        "deepgram" => Some("https://api.deepgram.com/v1"),
-        _ => None,
-    }
-}
-
-fn default_voice_api_key_env(config: &AppConfig, provider: &str) -> Option<String> {
-    match provider {
-        "openai" => Some(
-            config
-                .providers
-                .openai
-                .api_key_env
-                .clone()
-                .unwrap_or_else(|| "OPENAI_API_KEY".to_string()),
-        ),
-        "openrouter" => Some(
-            config
-                .providers
-                .openrouter
-                .api_key_env
-                .clone()
-                .unwrap_or_else(|| "OPENROUTER_API_KEY".to_string()),
-        ),
-        "deepgram" => Some("DEEPGRAM_API_KEY".to_string()),
-        _ => None,
-    }
-}
-
 fn resolve_voice_provider_for_stt(
     config: &AppConfig,
     provider_override: Option<&str>,
@@ -605,10 +569,6 @@ fn resolve_voice_provider_for_stt(
         provider: resolved.provider,
         api_key_env: resolved.api_key_env,
         api_base_url: resolved.api_base_url,
-        lane: resolved.lane,
-        supports_inbound_notes: resolved.supports_inbound_notes,
-        supports_voice_catalog: resolved.supports_voice_catalog,
-        notes: resolved.notes,
     })
 }
 
@@ -623,28 +583,7 @@ fn resolve_voice_provider_for_tts(
         provider: resolved.provider,
         api_key_env: resolved.api_key_env,
         api_base_url: resolved.api_base_url,
-        lane: resolved.lane,
-        supports_inbound_notes: resolved.supports_inbound_notes,
-        supports_voice_catalog: resolved.supports_voice_catalog,
-        notes: resolved.notes,
     })
-}
-
-fn provider_status_from_resolved(
-    profile: ResolvedVoiceProvider,
-    kind: &str,
-) -> VoiceProviderStatus {
-    VoiceProviderStatus {
-        provider: profile.provider,
-        lane: profile.lane,
-        kind: kind.to_string(),
-        api_base_url: profile.api_base_url,
-        api_key_env: profile.api_key_env.clone(),
-        api_key_present: std::env::var(&profile.api_key_env).is_ok(),
-        supports_inbound_notes: profile.supports_inbound_notes,
-        supports_voice_catalog: profile.supports_voice_catalog,
-        notes: profile.notes,
-    }
 }
 
 pub fn voice_provider_catalog(config: &AppConfig) -> VoiceProviderCatalog {
@@ -928,14 +867,14 @@ impl InboundVoiceTranscriber {
                 let response = response.error_for_status().with_context(|| {
                     format!("remote audio download returned an error for {url}")
                 })?;
-                if let Some(content_length) = response.content_length() {
-                    if content_length as usize > self.stt.max_audio_bytes {
-                        return Err(anyhow!(
-                            "remote audio payload exceeded max size ({} > {})",
-                            content_length,
-                            self.stt.max_audio_bytes
-                        ));
-                    }
+                if let Some(content_length) = response.content_length()
+                    && content_length as usize > self.stt.max_audio_bytes
+                {
+                    return Err(anyhow!(
+                        "remote audio payload exceeded max size ({} > {})",
+                        content_length,
+                        self.stt.max_audio_bytes
+                    ));
                 }
                 let bytes = response
                     .bytes()
@@ -981,20 +920,12 @@ pub fn voice_status(config: &AppConfig, workspace_root: &Path) -> VoiceStatus {
             provider: normalize_voice_provider_name(&config.voice.stt.provider),
             api_key_env: config.voice.stt.api_key_env.clone().unwrap_or_default(),
             api_base_url: config.voice.stt.api_base_url.clone().unwrap_or_default(),
-            lane: "openai_compatible".to_string(),
-            supports_inbound_notes: false,
-            supports_voice_catalog: false,
-            notes: Vec::new(),
         });
     let tts_provider =
         resolve_voice_provider_for_tts(config, None).unwrap_or_else(|_| ResolvedVoiceProvider {
             provider: normalize_voice_provider_name(&config.voice.tts.provider),
             api_key_env: config.voice.tts.api_key_env.clone().unwrap_or_default(),
             api_base_url: config.voice.tts.api_base_url.clone().unwrap_or_default(),
-            lane: "openai_compatible".to_string(),
-            supports_inbound_notes: false,
-            supports_voice_catalog: false,
-            notes: Vec::new(),
         });
 
     VoiceStatus {
@@ -1250,16 +1181,14 @@ fn apply_transcription(
         if let Some(file_refs) = metadata
             .get_mut("file_references")
             .and_then(|value| value.as_array_mut())
-        {
-            if let Some(entry) = file_refs
+            && let Some(entry) = file_refs
                 .get_mut(candidate.index)
                 .and_then(Value::as_object_mut)
-            {
-                entry.insert(
-                    "local_path".into(),
-                    json!(local_path.to_string_lossy().to_string()),
-                );
-            }
+        {
+            entry.insert(
+                "local_path".into(),
+                json!(local_path.to_string_lossy().to_string()),
+            );
         }
     }
 
@@ -1323,10 +1252,10 @@ fn media_kind_from_entry(entry: &Value, metadata: &Value) -> Option<String> {
         .or_else(|| entry.get("whatsapp_media_type"))
         .and_then(|value| value.as_str())
         .map(|value| value.to_ascii_lowercase());
-    if let Some(kind) = explicit_kind {
-        if is_audio_kind(&kind) {
-            return Some(kind);
-        }
+    if let Some(kind) = explicit_kind
+        && is_audio_kind(&kind)
+    {
+        return Some(kind);
     }
 
     if let Some(kind) = metadata
@@ -1346,20 +1275,20 @@ fn media_kind_from_entry(entry: &Value, metadata: &Value) -> Option<String> {
         .or_else(|| entry.get("content_type"))
         .and_then(|value| value.as_str())
         .map(|value| value.to_ascii_lowercase());
-    if let Some(mime) = mime {
-        if mime.starts_with("audio/") {
-            return Some("audio".to_string());
-        }
+    if let Some(mime) = mime
+        && mime.starts_with("audio/")
+    {
+        return Some("audio".to_string());
     }
 
     let name = entry
         .get("name")
         .and_then(|value| value.as_str())
         .unwrap_or_default();
-    if let Some(mime) = mime_from_filename(name) {
-        if mime.starts_with("audio/") {
-            return Some("audio".to_string());
-        }
+    if let Some(mime) = mime_from_filename(name)
+        && mime.starts_with("audio/")
+    {
+        return Some("audio".to_string());
     }
 
     None
@@ -1463,87 +1392,6 @@ fn voice_sessions_dir(workspace_root: &Path) -> PathBuf {
 
 fn voice_session_path(workspace_root: &Path, session_id: &str) -> PathBuf {
     voice_sessions_dir(workspace_root).join(format!("{session_id}.json"))
-}
-
-fn default_voice_stale_after_secs() -> u64 {
-    900
-}
-
-fn resolved_voice_stale_after_secs(value: Option<u64>) -> u64 {
-    value.unwrap_or_else(default_voice_stale_after_secs).max(30)
-}
-
-fn parse_rfc3339_utc(value: &str) -> Option<chrono::DateTime<Utc>> {
-    chrono::DateTime::parse_from_rfc3339(value)
-        .ok()
-        .map(|parsed| parsed.with_timezone(&Utc))
-}
-
-fn voice_session_idle_secs(session: &VoiceSessionRecord, now: chrono::DateTime<Utc>) -> u64 {
-    parse_rfc3339_utc(&session.last_activity_at)
-        .map(|last_activity| {
-            now.signed_duration_since(last_activity)
-                .num_seconds()
-                .max(0) as u64
-        })
-        .unwrap_or_default()
-}
-
-fn summarize_voice_sessions(
-    sessions: Vec<VoiceSessionRecord>,
-    stale_after_secs: u64,
-) -> VoiceSessionHealthSummary {
-    let now = Utc::now();
-    let mut rows = Vec::new();
-    let mut active_sessions = 0usize;
-    let mut ended_sessions = 0usize;
-    let mut stale_sessions = 0usize;
-    let mut oldest_active_idle_secs: Option<u64> = None;
-
-    for session in sessions {
-        let idle_secs = voice_session_idle_secs(&session, now);
-        let active = session.status == "active";
-        let stale = active && idle_secs >= stale_after_secs;
-        if active {
-            active_sessions += 1;
-            oldest_active_idle_secs = Some(
-                oldest_active_idle_secs
-                    .map(|current| current.max(idle_secs))
-                    .unwrap_or(idle_secs),
-            );
-        } else {
-            ended_sessions += 1;
-        }
-        if stale {
-            stale_sessions += 1;
-        }
-        rows.push(VoiceSessionHealthRecord {
-            id: session.id,
-            status: session.status,
-            last_activity_at: session.last_activity_at,
-            closed_at: session.closed_at,
-            turn_count: session.turns.len(),
-            idle_secs,
-            stale,
-        });
-    }
-
-    rows.sort_by(|left, right| {
-        right
-            .idle_secs
-            .cmp(&left.idle_secs)
-            .then_with(|| left.id.cmp(&right.id))
-    });
-
-    VoiceSessionHealthSummary {
-        total_sessions: rows.len(),
-        active_sessions,
-        ended_sessions,
-        stale_after_secs,
-        stale_sessions,
-        oldest_active_idle_secs,
-        sessions: rows,
-    }
 }
 
 pub async fn list_voice_sessions(workspace_root: &Path) -> Result<VoiceSessionList> {
@@ -1980,15 +1828,6 @@ fn resolve_voice_artifact_path(workspace_root: &Path, path: &str) -> PathBuf {
     } else {
         workspace_root.join(candidate)
     }
-}
-
-fn truncate_voice_event_summary(text: &str, limit: usize) -> String {
-    let trimmed = text.trim();
-    if trimmed.chars().count() <= limit {
-        return trimmed.to_string();
-    }
-    let summarized = trimmed.chars().take(limit).collect::<String>();
-    format!("{summarized}...")
 }
 
 async fn build_voice_session_metrics(

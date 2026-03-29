@@ -20,7 +20,7 @@ A native Rust SDK for the [Replicate](https://replicate.com) API - Run ML models
 
 ```toml
 [dependencies]
-replicate = "0.1.0"
+replicate = "0.1.1"
 ```
 
 ## Quick Start

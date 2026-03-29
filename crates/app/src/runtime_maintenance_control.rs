@@ -40,7 +40,7 @@ impl RuntimeMaintenanceControlService {
 
         let detail = if let Some(next_seam) = remaining_queue.first() {
             format!(
-                "Greenfield conversion is {}% complete ({} of {} ranked seams migrated). Next remaining seam: {}.",
+                "Application boundary migration is {}% complete ({} of {} ranked seams migrated). Next remaining seam: {}.",
                 greenfield_progress.completion_percent,
                 greenfield_progress.completed_seams,
                 greenfield_progress.total_seams,
@@ -48,7 +48,7 @@ impl RuntimeMaintenanceControlService {
             )
         } else {
             format!(
-                "Greenfield conversion is {}% complete and the current ranked seam inventory is retired at 18/18. Future follow-on work requires an explicit new canonical queue.",
+                "Application boundary migration is {}% complete and the current ranked seam inventory is retired at 18/18. Future follow-on work requires an explicit new canonical queue.",
                 greenfield_progress.completion_percent
             )
         };

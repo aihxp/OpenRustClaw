@@ -30,53 +30,78 @@ startup_latency_ms="$(((end_ns - start_ns) / 1000000))"
 
 tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT
-cp -R config "$tmpdir/"
 
-port=""
-for candidate in $(shuf -i 30000-45000 -n 20); do
-    if ! ss -ltn "sport = :${candidate}" | tail -n +2 | grep -q .; then
-        port="$candidate"
-        break
-    fi
-done
-
-if [[ -z "$port" ]]; then
-    echo "Failed to select a free TCP port for runtime budget checks" >&2
-    exit 1
-fi
-
-perl -0pi -e "s/port = 18789/port = ${port}/" "$tmpdir/config/default.toml"
-
-echo "[INFO] Measuring startup latency and idle RSS on port ${port}"
-(
-    cd "$tmpdir"
-    "$OLDPWD/$BIN_PATH" start --config config/default.toml >"$tmpdir/runtime.out" 2>"$tmpdir/runtime.err"
-) &
-runtime_pid=$!
+select_free_port() {
+    local candidate
+    for candidate in $(shuf -i 30000-45000 -n 50); do
+        if ! ss -H -ltn "sport = :${candidate}" | grep -q .; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
 
 bind_detected=false
-for _ in $(seq 1 $((STARTUP_TIMEOUT_SECS * 10))); do
-    if ! ps -p "$runtime_pid" >/dev/null 2>&1; then
-        break
-    fi
-    if ss -ltn "sport = :${port}" | tail -n +2 | grep -q .; then
-        bind_detected=true
-        break
-    fi
-    sleep 0.1
-done
+runtime_pid=""
+idle_rss_kb=""
+port=""
 
-if [[ "$bind_detected" != true ]]; then
+for attempt in $(seq 1 10); do
+    port="$(select_free_port)" || {
+        echo "Failed to select a free TCP port for runtime budget checks" >&2
+        exit 1
+    }
+
+    rm -rf "$tmpdir/config"
+    cp -R config "$tmpdir/"
+    perl -0pi -e "s/port = \\d+/port = ${port}/" "$tmpdir/config/default.toml"
+
+    echo "[INFO] Measuring startup latency and idle RSS on port ${port} (attempt ${attempt}/10)"
+    (
+        cd "$tmpdir"
+        "$OLDPWD/$BIN_PATH" start --config config/default.toml >"$tmpdir/runtime.out" 2>"$tmpdir/runtime.err"
+    ) &
+    runtime_pid=$!
+
+    bind_detected=false
+    for _ in $(seq 1 $((STARTUP_TIMEOUT_SECS * 10))); do
+        if ! ps -p "$runtime_pid" >/dev/null 2>&1; then
+            break
+        fi
+        if ss -H -ltn "sport = :${port}" | grep -q .; then
+            bind_detected=true
+            break
+        fi
+        sleep 0.1
+    done
+
+    if [[ "$bind_detected" == true ]]; then
+        idle_rss_kb="$(ps -o rss= -p "$runtime_pid" | tr -d ' ')"
+        kill "$runtime_pid" >/dev/null 2>&1 || true
+        wait "$runtime_pid" >/dev/null 2>&1 || true
+        break
+    fi
+
+    if grep -q "Address already in use" "$tmpdir/runtime.err"; then
+        echo "[WARN] Runtime port ${port} raced with another listener; retrying" >&2
+        kill "$runtime_pid" >/dev/null 2>&1 || true
+        wait "$runtime_pid" >/dev/null 2>&1 || true
+        continue
+    fi
+
     echo "Runtime failed to bind within ${STARTUP_TIMEOUT_SECS}s" >&2
     sed -n '1,120p' "$tmpdir/runtime.err" >&2 || true
     kill "$runtime_pid" >/dev/null 2>&1 || true
     wait "$runtime_pid" >/dev/null 2>&1 || true
     exit 1
-fi
+done
 
-idle_rss_kb="$(ps -o rss= -p "$runtime_pid" | tr -d ' ')"
-kill "$runtime_pid" >/dev/null 2>&1 || true
-wait "$runtime_pid" >/dev/null 2>&1 || true
+if [[ "$bind_detected" != true ]]; then
+    echo "Runtime failed to bind after repeated port retries" >&2
+    sed -n '1,120p' "$tmpdir/runtime.err" >&2 || true
+    exit 1
+fi
 
 echo "[INFO] release_binary_size_bytes=${binary_size_bytes}"
 echo "[INFO] cli_startup_latency_ms=${startup_latency_ms}"

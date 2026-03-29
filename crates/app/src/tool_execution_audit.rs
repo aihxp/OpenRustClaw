@@ -49,6 +49,7 @@ impl ToolExecutionAuditService {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn new_record(
         tool_name: &str,
         source: &str,

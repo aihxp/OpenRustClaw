@@ -103,7 +103,7 @@ EOF
 docker-compose -f docker-compose.yml --env-file .env.production up -d
 ```
 
-The production Compose path now runs the Rust runtime only. If you need the optional compatibility sidecar, run it as a separate bounded migration service instead of relying on the default production container.
+The production Compose path now runs the Rust runtime only. If you need the optional compatibility sidecar, run it as a separate bounded support service instead of relying on the default production container.
 
 ### With Reverse Proxy (Nginx)
 
@@ -181,7 +181,7 @@ docker buildx create --name openrustclaw-builder --use
 ./scripts/docker-build.sh \
     --platforms linux/amd64,linux/arm64 \
     --push \
-    v0.1.0
+    v0.1.1
 ```
 
 ### Platform-Specific Builds
@@ -203,7 +203,7 @@ export REGISTRY=docker.io/yourusername
 export DOCKER_USERNAME=yourusername
 export DOCKER_PASSWORD=yourpassword
 
-./scripts/docker-push.sh --latest v0.1.0
+./scripts/docker-push.sh --latest v0.1.1
 ```
 
 ### Push to GitHub Container Registry
@@ -213,7 +213,7 @@ export REGISTRY=ghcr.io/yourorg
 export DOCKER_USERNAME=yourusername
 export DOCKER_PASSWORD=ghp_yourtoken
 
-./scripts/docker-push.sh --build --latest v0.1.0
+./scripts/docker-push.sh --build --latest v0.1.1
 ```
 
 ### Push to AWS ECR
@@ -225,7 +225,7 @@ aws ecr get-login-password --region us-east-1 | \
 
 # Build and push
 export REGISTRY=123456789012.dkr.ecr.us-east-1.amazonaws.com/yourrepo
-./scripts/docker-push.sh --latest v0.1.0
+./scripts/docker-push.sh --latest v0.1.1
 ```
 
 ## Monitoring and Health
@@ -239,7 +239,7 @@ curl http://localhost:18789/health
 # Expected response:
 {
   "status": "healthy",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "timestamp": "2026-03-16T12:00:00Z"
 }
 ```

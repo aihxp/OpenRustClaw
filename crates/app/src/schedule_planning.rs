@@ -97,6 +97,7 @@ impl SchedulePlanningService {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn build_metadata(
         &self,
         payload: Value,

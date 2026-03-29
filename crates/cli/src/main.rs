@@ -2155,6 +2155,7 @@ enum TalkRuntimeAction {
 }
 
 #[derive(Subcommand)]
+#[allow(clippy::large_enum_variant)]
 enum OptimizeAction {
     /// List registered optimization targets
     ListTargets,
@@ -4769,11 +4770,8 @@ async fn main() -> Result<()> {
                 let workspace_root = std::env::current_dir()?;
                 let payload =
                     commands::orchestrate::read_run_supervision(&workspace_root, &receipt_id)?;
-                if json {
-                    println!("{}", serde_json::to_string_pretty(&payload)?);
-                } else {
-                    println!("{}", serde_json::to_string_pretty(&payload)?);
-                }
+                let _ = json;
+                println!("{}", serde_json::to_string_pretty(&payload)?);
                 Ok(())
             }
             OrchestrateAction::Trace { receipt_id } => {

@@ -411,6 +411,7 @@ pub async fn help_cmd(
 }
 
 /// Run mcp2cli execute command
+#[allow(clippy::too_many_arguments)]
 pub async fn run(
     saved: Option<String>,
     mcp: Option<String>,

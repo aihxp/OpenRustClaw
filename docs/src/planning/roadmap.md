@@ -11,7 +11,7 @@ This book page exists so the mdBook navigation can expose the same planning surf
 - Remove Python from the production-critical runtime path over time.
 - Use a three-tier execution model:
   - Rust-native for production-critical paths,
-  - sidecar compatibility for migration,
+  - sidecar compatibility for bounded fallback and integration cases,
   - LangGraph for experimentation and authoring, not as the production runtime brain.
 - The Rust-native autonomous optimization framework is now implemented for skills, RAG, prompts, policies, bounded workflows/code improvements, and research-program targets.
 

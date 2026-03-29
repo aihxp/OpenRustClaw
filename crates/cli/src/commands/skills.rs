@@ -57,7 +57,7 @@ use super::{control, runtime, voice_runtime};
 
 fn parse_hex_bytes(input: &str) -> Result<Vec<u8>> {
     let trimmed = input.trim();
-    if trimmed.len() % 2 != 0 {
+    if !trimmed.len().is_multiple_of(2) {
         anyhow::bail!("hex value must contain an even number of characters");
     }
 
@@ -169,6 +169,7 @@ fn enforce_external_skill_policy(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn upsert_skill_record(
     pool: &sqlx::SqlitePool,
     name: &str,
@@ -1802,7 +1803,7 @@ fn invoke_compiled_skill(
             );
         }
         Some(reference) => Some(read_compiled_skill_reference(
-            &artifact,
+            artifact,
             reference,
             options.max_chars,
         )?),
@@ -2596,7 +2597,7 @@ pub async fn bind_voice_plugin_data(
 }
 
 pub async fn voice_calls_data_for(workspace_root: &Path) -> Result<SkillVoiceCallsResult> {
-    let mut registry = load_voice_call_registry(&workspace_root)?;
+    let mut registry = load_voice_call_registry(workspace_root)?;
     VoiceCallReportingService::refresh_all_health(&mut registry.calls, Utc::now());
     registry
         .calls
@@ -3716,6 +3717,7 @@ pub async fn list_auth_plugins() -> Result<()> {
 }
 
 /// Bind a compiled skill to a bounded OIDC auth-provider lane.
+#[allow(clippy::too_many_arguments)]
 pub async fn bind_auth_plugin(
     provider_id: &str,
     skill_name: &str,
@@ -4728,15 +4730,15 @@ fn parse_skill_metadata(content: &str) -> Result<ParsedSkillMetadata> {
         if line.starts_with("version:") || line.starts_with("Version:") {
             version = line.split_once(':').map(|(_, s)| s.trim().to_string());
         }
-        if line.starts_with("capabilities:") || line.starts_with("Capabilities:") {
-            if let Some((_, raw)) = line.split_once(':') {
-                capabilities = raw
-                    .split(',')
-                    .map(|value| value.trim().trim_matches('"'))
-                    .filter(|value| !value.is_empty())
-                    .map(ToString::to_string)
-                    .collect();
-            }
+        if (line.starts_with("capabilities:") || line.starts_with("Capabilities:"))
+            && let Some((_, raw)) = line.split_once(':')
+        {
+            capabilities = raw
+                .split(',')
+                .map(|value| value.trim().trim_matches('"'))
+                .filter(|value| !value.is_empty())
+                .map(ToString::to_string)
+                .collect();
         }
         if line.starts_with("signature:") || line.starts_with("Signature:") {
             signature = line
@@ -5472,7 +5474,7 @@ capabilities:
         assert_eq!(events.len(), 4);
         assert_eq!(events[0].kind, "started");
         assert_eq!(events[1].kind, "reconnected");
-        assert_eq!(events[2].kind, "health_snapshot");
+        assert_eq!(events[2].kind, "heartbeat");
         assert_eq!(events[3].kind, "ended");
         assert_eq!(events[3].reason.as_deref(), Some("operator_end"));
     }

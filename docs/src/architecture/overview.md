@@ -4,13 +4,13 @@ This document provides a comprehensive overview of OpenRustClaw's architecture, 
 
 ## Current Posture
 
-This page is still the broad system map. For the active architectural migration strategy, use [Greenfield Transition](./greenfield-transition.md).
+This page is still the broad system map. For the shared service and delivery boundary model, use [Application Service Boundaries](./application-boundaries.md).
 
 The important current truth is:
 
 - Rust remains the primary production runtime
 - the optional sidecar is a compatibility lane, not the default execution shape
-- the repo is moving toward a cleaner application-service lane inside the existing workspace rather than a rewrite-from-scratch reset
+- shared application services own product rules, while delivery layers stay focused on transport and integration
 
 ---
 

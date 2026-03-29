@@ -32,11 +32,7 @@ pub fn build_runtime(
 
 pub fn cli_route_key(user_id: &str, workspace_root: &Path) -> String {
     let digest = Sha256::digest(workspace_root.display().to_string().as_bytes());
-    format!(
-        "cli:assistant:{}:{}",
-        user_id,
-        hex::encode(&digest)[..12].to_string()
-    )
+    format!("cli:assistant:{}:{}", user_id, &hex::encode(digest)[..12])
 }
 
 pub fn session_metadata(

@@ -221,19 +221,17 @@ impl VoiceRuntimeLifecycleService {
         }
 
         let configured_stt = self.normalize_voice_provider_name(&config.voice.stt.provider);
-        if !["openai", "openrouter", "deepgram"].contains(&configured_stt.as_str()) {
-            if let Ok(profile) = self.resolve_voice_provider_for_stt(config, Some(&configured_stt))
-            {
-                stt.push(self.provider_status_from_resolved(profile, "stt"));
-            }
+        if !["openai", "openrouter", "deepgram"].contains(&configured_stt.as_str())
+            && let Ok(profile) = self.resolve_voice_provider_for_stt(config, Some(&configured_stt))
+        {
+            stt.push(self.provider_status_from_resolved(profile, "stt"));
         }
 
         let configured_tts = self.normalize_voice_provider_name(&config.voice.tts.provider);
-        if !["openai", "openrouter"].contains(&configured_tts.as_str()) {
-            if let Ok(profile) = self.resolve_voice_provider_for_tts(config, Some(&configured_tts))
-            {
-                tts.push(self.provider_status_from_resolved(profile, "tts"));
-            }
+        if !["openai", "openrouter"].contains(&configured_tts.as_str())
+            && let Ok(profile) = self.resolve_voice_provider_for_tts(config, Some(&configured_tts))
+        {
+            tts.push(self.provider_status_from_resolved(profile, "tts"));
         }
 
         VoiceProviderCatalog { stt, tts }

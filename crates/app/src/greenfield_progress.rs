@@ -218,7 +218,7 @@ impl GreenfieldProgressService {
                 "continue_current_ranked_inventory".to_string()
             },
             follow_on_note: if remaining_seams == 0 {
-                "The current ranked seam inventory is complete at 18/18. Future greenfield follow-on work requires an explicit new canonical inventory instead of silently extending this ledger.".to_string()
+                "The current ranked seam inventory is complete at 18/18. Future follow-on work requires an explicit new canonical inventory instead of silently extending this ledger.".to_string()
             } else {
                 "Continue using this ranked seam inventory as the canonical denominator until all remaining seams are migrated or an explicit new inventory supersedes it.".to_string()
             },
