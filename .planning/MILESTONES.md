@@ -1,5 +1,20 @@
 # Project Milestones: OpenRustClaw
 
+## v1.32 Native Delivery Layer: Native Product Exit Audit and Packaging (Shipped: 2026-03-28)
+
+**Phases completed:** 4 phases, 4 plans, 0 tasks
+**Verification archive:** `.planning/milestones/v1.32-VERIFICATIONS.md`
+**Verification debt:** none
+
+**Key accomplishments:**
+
+- Defined the final native-delivery scorecard that ties the main product entrypoints to named successor ownership instead of relying on milestone memory.
+- Defined the documentation, packaging, and contributor-guidance alignment rules that keep the repo entrypoints and published architecture story pointed at native delivery surfaces.
+- Defined the compatibility-exception audit model that forces every remaining shim or exception into an explicit classified state.
+- Defined the final native-product exit claim boundary so roadmap completion does not over-claim source-level legacy retirement that has not yet been verified.
+
+---
+
 ## v1.31 Native Delivery Layer: Legacy Module Retirement and Compatibility Shutdown (Shipped: 2026-03-28)
 
 **Phases completed:** 4 phases, 4 plans, 0 tasks

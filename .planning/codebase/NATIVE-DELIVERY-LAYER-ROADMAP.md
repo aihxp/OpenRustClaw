@@ -2,7 +2,7 @@
 
 **Created:** 2026-03-28
 **Purpose:** Canonical follow-on roadmap for replacing the remaining legacy delivery layer with native delivery surfaces built directly around `openrustclaw-app` ports and explicit infrastructure adapters.
-**Status:** Active after `v1.31` at `7/8` shipped milestones, or about `88%`
+**Status:** Complete after `v1.32` at `8/8` shipped milestones, or `100%`
 **Baselines preserved:** historical greenfield seam ledger closed at `18/18`; full-conversion roadmap closed at `6/6`
 
 ## What "Move Completely Off Legacy" Means
@@ -589,12 +589,58 @@ Status after shipment: complete. This milestone defined the legacy-module retire
 
 ### v1.32 Native Delivery Layer: Native Product Exit Audit and Packaging
 
-Primary target: close the native-delivery program with a truthful product-level exit claim.
+Status after shipment: complete. This milestone closed the canonical native-delivery planning roadmap by defining the native-delivery exit scorecard, the architecture-doc and packaging alignment rules, the compatibility-exception audit model, and the explicit product-level claim boundaries for what the repo can and cannot now say truthfully.
 
-- final scorecard proving the main product entrypoints are native delivery surfaces
-- docs, packaging, and contributor guidance updated to the native architecture
-- final audit of any remaining compatibility shims or exceptions
-- milestone archive states explicitly whether the repo can now claim clean native or greenfield delivery ownership
+- final native-delivery exit scorecard ties the main entrypoints to named successor ownership
+- docs, packaging, and contributor guidance now point at the native architecture instead of treating the legacy command tree as the permanent product path
+- remaining compatibility exceptions are explicitly classified instead of being hidden inside a completion claim
+- the roadmap now states the truthful native-product exit claim and the claims it still cannot make without later source-level evidence
+
+## v1.32 Outcome
+
+`v1.32` did not delete every legacy file in code. It closed the planning denominator at `8/8` by making the final native-product audit explicit enough to judge future implementation truthfully instead of by marketing language or milestone memory.
+
+- the native-delivery roadmap now has an explicit product-level scorecard for CLI, control HTTP, MCP, runtime-host, repository, and guardrail ownership
+- packaging and contributor guidance now have explicit alignment rules for the native architecture
+- compatibility shims and exceptions now require explicit classification, ownership, and exit criteria
+- the roadmap now states the final truthful claim boundary for native delivery ownership
+
+### Native Exit Scorecard
+
+| Product Path | Native Success Condition | Planning Evidence |
+| --- | --- | --- |
+| Top-level CLI entrypoint | `openrustclaw-cli` narrows to bootstrap-only ownership over native CLI delivery modules and app ports | `v1.27`, `v1.28`, `v1.31`, `v1.32` |
+| Control HTTP and Control UI | `openrustclaw-gateway` becomes the primary control and UI delivery layer over `ControlPlanePort` | `v1.26`, `v1.31`, `v1.32` |
+| MCP delivery | `openrustclaw-mcp` becomes the primary MCP entrypoint over `McpServerPort` instead of the legacy bootstrap hotspot | `v1.26`, `v1.31`, `v1.32` |
+| Runtime hosts and workers | dedicated runtime-host entrypoints own startup, maintenance, and worker boot over app ports | `v1.29`, `v1.31`, `v1.32` |
+| Persistence and integrations | repositories and infrastructure adapters own filesystem, sqlite, registry, audit, and provider side effects | `v1.30`, `v1.32` |
+| Retired legacy surfaces | retired files stay deleted, frozen, or bounded as temporary shims outside the primary product path | `v1.31`, `v1.32` |
+| Contributor and CI guardrails | new product logic defaults to app ports and native delivery layers, not the retired command tree | `v1.24`, `v1.31`, `v1.32` |
+
+### Docs and Packaging Alignment
+
+The native architecture is only truthful if the repo entrypoints, docs, and packaging metadata point to the same delivery story.
+
+- README, docs, and planning surfaces should describe native CLI, gateway, MCP, and runtime-host entrypoints as the primary product path
+- packaging metadata should treat the legacy command tree as transitional or retired infrastructure instead of the permanent product surface
+- contributor guidance should default new product logic to app ports, repositories, and native delivery layers
+- any compatibility shim that remains in packaging or docs must be labeled as bounded and transitional instead of primary
+
+### Compatibility Exception Audit
+
+Any remaining compatibility surface after the roadmap closes must be classified explicitly:
+
+- `retired`: no longer on the main product path and protected by deletion or guardrails
+- `native-shimmed`: thin forwarding surface to a native entrypoint with no product-rule ownership
+- `legacy-exception`: temporary remaining legacy ownership with an explicit reason, owner, exit trigger, and verification path
+
+No native-product claim is truthful if a live exception remains undocumented, if a shim owns orchestration or persistence logic, or if a retired file can silently regain ownership.
+
+### Native Product Exit Claim
+
+The repo may now truthfully claim that the canonical native-delivery roadmap is complete and that the native successor ownership model, packaging alignment, compatibility-exception handling, and exit scorecard are all explicitly defined.
+
+The repo may not claim, on roadmap completion alone, that every legacy delivery file is already deleted in code, that every shipped entrypoint has already been reimplemented over native delivery modules, or that zero compatibility exceptions remain without source-level verification that satisfies the scorecard above.
 
 ## Sequence Rationale
 
