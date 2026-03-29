@@ -31,20 +31,96 @@
 - ✅ **v1.26 Native Delivery Layer: Control, MCP, and Gateway Delivery** — shipped 2026-03-28. Archive: `.planning/milestones/v1.26-ROADMAP.md`
 - ✅ **v1.27 Native Delivery Layer: CLI Core Dispatch and Operator Commands I** — shipped 2026-03-28. Archive: `.planning/milestones/v1.27-ROADMAP.md`
 - ✅ **v1.28 Native Delivery Layer: CLI Operator Commands II and UI-Adjacent Flows** — shipped 2026-03-28. Archive: `.planning/milestones/v1.28-ROADMAP.md`
+- 🚧 **v1.29 Native Delivery Layer: Runtime Hosts and Background Workers** — active. Baseline: native-delivery roadmap `4/8` shipped milestones, or `50%`; target after shipment: `5/8`, or about `63%`
 
 ## Current Status
 
-- Active milestone: **none**
-- Progress: **0 active phases**
+- Active milestone: **v1.29 Native Delivery Layer: Runtime Hosts and Background Workers**
+- Progress: **0 of 4 phases complete**
 - Most recent shipment: **v1.28 Native Delivery Layer: CLI Operator Commands II and UI-Adjacent Flows**
 - Greenfield conversion baseline: **historical `18/18` ranked seam ledger complete and retired**
 - Full-conversion roadmap progress: **`6/6` milestones shipped, or `100%`**
 - Native-delivery roadmap progress: **`4/8` milestones shipped, or `50%`**
-- Current execution: **native-delivery milestone queue idle**
-- Next step: `$gsd-new-milestone continue native delivery layer`
+- Current execution: **Phase 121 ready for planning**
+- Next step: `$gsd-plan-phase 121` or `$gsd-autonomous`
 
 ## Live Planning
 
-The original ranked greenfield seam inventory remains closed at `18/18` and retired. The follow-on adapter-only roadmap in `.planning/codebase/GREENFIELD-FULL-CONVERSION.md` is also complete at `6/6`. The native-delivery program now proceeds under `.planning/codebase/NATIVE-DELIVERY-LAYER-ROADMAP.md`, which stands at `4/8` shipped milestones after `v1.28` and uses native delivery-layer plus legacy-retirement milestones as the active denominator.
+### Phase Checklist
 
-There is no active milestone or live phase queue. Start the next native-delivery slice with `$gsd-new-milestone continue native delivery layer`.
+- [ ] **Phase 121: Runtime Host Entry Points**
+- [ ] **Phase 122: Runtime Startup Boundary Contracts**
+- [ ] **Phase 123: Worker Boot Alignment**
+- [ ] **Phase 124: Legacy Runtime Startup Ownership Removal**
+
+### Current Queue Rule
+
+The original ranked greenfield seam inventory remains closed at `18/18` and retired. The follow-on adapter-only roadmap in `.planning/codebase/GREENFIELD-FULL-CONVERSION.md` is also complete at `6/6`. The native-delivery program proceeds under `.planning/codebase/NATIVE-DELIVERY-LAYER-ROADMAP.md`, which currently stands at `4/8` shipped milestones and measures progress by native delivery-layer and legacy-retirement milestones instead of extending either completed denominator.
+
+### Phase 121: Runtime Host Entry Points
+
+**Goal:** Define the dedicated runtime-host and background-worker entrypoints over app ports so worker startup no longer depends on legacy command-layer bootstraps.
+
+**Depends on:** Phase 120
+**Requirements:** `NDL-17`
+
+**Success criteria:**
+1. the roadmap defines dedicated runtime-host and background-worker entrypoints explicitly
+2. the entrypoints are described in terms of app ports rather than legacy command startup helpers
+3. the milestone leaves an incremental implementation path for replacing legacy runtime bootstraps
+
+**Plans:** 0/0 plans complete
+
+Plans:
+- none yet
+
+### Phase 122: Runtime Startup Boundary Contracts
+
+**Goal:** Define the service-manager, probe-runner, runtime-maintenance, and scheduler startup boundaries needed for native runtime-host delivery.
+
+**Depends on:** Phase 121
+**Requirements:** `NDL-18`
+
+**Success criteria:**
+1. the roadmap defines the native startup boundaries for service manager, probes, maintenance, and scheduler flows
+2. those boundaries are described as explicit delivery or infrastructure contracts instead of command-local helpers
+3. the runtime-host story is concrete enough to implement without rediscovering startup ownership
+
+**Plans:** 0/0 plans complete
+
+Plans:
+- none yet
+
+### Phase 123: Worker Boot Alignment
+
+**Goal:** Align mobile, voice, and orchestration worker boot contracts with the native runtime-host delivery path.
+
+**Depends on:** Phase 122
+**Requirements:** `NDL-19`
+
+**Success criteria:**
+1. the roadmap defines native worker boot ownership for mobile, voice, and orchestration flows
+2. the worker boot contracts are aligned to native runtime-host entrypoints instead of legacy command ownership
+3. the milestone preserves a compatibility story for any still-live legacy worker startup paths
+
+**Plans:** 0/0 plans complete
+
+Plans:
+- none yet
+
+### Phase 124: Legacy Runtime Startup Ownership Removal
+
+**Goal:** Make the removal of legacy command ownership for worker lifecycle startup explicit enough to support the next implementation slice.
+
+**Depends on:** Phase 123
+**Requirements:** `NDL-20`
+
+**Success criteria:**
+1. the roadmap defines how legacy command ownership over worker startup is removed or reduced
+2. compatibility rules for any temporary startup shims are explicit and bounded
+3. the live planning surface leaves the native-delivery roadmap at `5/8`, or about `63%`, only if the runtime-host replacement slice is explicit end to end
+
+**Plans:** 0/0 plans complete
+
+Plans:
+- none yet

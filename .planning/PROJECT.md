@@ -14,9 +14,9 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 - **Shipped milestones:** v1.0 Rust OpenClaw MVP, v1.1 Lifecycle Integrity and Enterprise Foundations, v1.2 Deeper OpenClaw Surface Parity, v1.3 Enterprise Expansion and Supervised Autonomy Foundations, v1.4 Enterprise Governance and Operator-Gated Full Autonomy, v1.5 Self-Hosted Product Modes and Lifecycle Packaging, v1.6 Proper Onboarding and Setup, v1.7 Documentation Convergence and OpenClaw-Inspired Docs Rewrite, v1.8 Clean Codebase, v1.9 GitHub Repository Presence and Actions Recovery, v1.10 Release Binaries Workflow Recovery, v1.11 Crates.io and Docs.rs Publication Foundation, v1.12 Secure Node Connectivity and SSH Tunnel Revisit, v1.13 Brownfield-to-Greenfield Transition, v1.14 Continued Greenfield Conversion, v1.15 Deeper Greenfield Conversion, v1.16 Greenfield Conversion: Skills and Runtime Hotspots, v1.17 Greenfield Conversion: Completion Metrics and Remaining Hotspots, v1.18 Greenfield Conversion: Final Ranked Seam and 100% Completion Path, v1.19 Full Greenfield Conversion: Control Plane Route Families I, v1.20 Full Greenfield Conversion: Control Plane Route Families II, v1.21 Full Greenfield Conversion: Mobile and Voice Runtime Services, v1.22 Full Greenfield Conversion: Orchestration and Browser Services, v1.23 Full Greenfield Conversion: Setup and Secondary Command Surfaces, v1.24 Full Greenfield Conversion: Adapter-Only Exit and Enforcement, v1.25 Native Delivery Layer: Port Contracts and Legacy Inventory, v1.26 Native Delivery Layer: Control, MCP, and Gateway Delivery, v1.27 Native Delivery Layer: CLI Core Dispatch and Operator Commands I, and v1.28 Native Delivery Layer: CLI Operator Commands II and UI-Adjacent Flows
 - **Archive:** `.planning/milestones/v1.0-*` through `.planning/milestones/v1.28-*`
-- **Planning state:** no active milestone
+- **Planning state:** active milestone `v1.29 Native Delivery Layer: Runtime Hosts and Background Workers`
 - **Known audit debt:** v1.0 archive still records missing phase `VERIFICATION.md` artifacts; v1.1 closed that workflow gap going forward
-- **Greenfield conversion baseline:** canonical `18/18` ranked seams migrated, or `100%` complete, across the retired historical transition inventory; the follow-on full-conversion roadmap is also closed at `6/6` shipped milestones, or `100%`; the native-delivery roadmap now stands at `4/8` shipped milestones, or `50%`
+- **Greenfield conversion baseline:** canonical `18/18` ranked seams migrated, or `100%` complete, across the retired historical transition inventory; the follow-on full-conversion roadmap is also closed at `6/6` shipped milestones, or `100%`; the native-delivery roadmap now stands at `4/8` shipped milestones, or `50%`, with `v1.29` targeting `5/8`, or about `63%`
 
 ## Most Recent Milestone: v1.28 Native Delivery Layer: CLI Operator Commands II and UI-Adjacent Flows
 
@@ -24,15 +24,15 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 **Archive:** `.planning/milestones/v1.28-ROADMAP.md`, `.planning/milestones/v1.28-REQUIREMENTS.md`, `.planning/milestones/v1.28-MILESTONE-AUDIT.md`, `.planning/milestones/v1.28-VERIFICATIONS.md`
 
-## Current Milestone: None Active
+## Current Milestone: v1.29 Native Delivery Layer: Runtime Hosts and Background Workers
 
-**Goal:** Start the next native-delivery milestone when the repo is ready to continue replacing the remaining legacy delivery layer.
+**Goal:** Continue replacing the legacy delivery layer by defining the runtime-host and background-worker entrypoints over app ports so startup and worker lifecycle ownership can leave the legacy command layer.
 
 **Target features:**
-- next native-delivery milestone definition
-- continued worker and runtime-host entrypoint replacement
-- continued infrastructure and repository delivery convergence
-- continued legacy-retirement execution
+- dedicated runtime-host and background-worker entrypoints over app ports
+- service-manager, probe-runner, runtime-maintenance, and scheduler startup boundaries
+- mobile, voice, and orchestration worker boot contracts aligned with native delivery
+- removal of legacy command ownership for worker lifecycle startup
 
 ## Requirements
 
@@ -135,7 +135,10 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 ### Active
 
-- None. Start the next native-delivery milestone to define a new active requirement set.
+- `NDL-17` Dedicated runtime-host and background-worker entrypoints over app ports
+- `NDL-18` Service-manager, probe-runner, runtime-maintenance, and scheduler startup boundaries
+- `NDL-19` Mobile, voice, and orchestration worker boot contracts aligned with native delivery
+- `NDL-20` Removal of legacy command ownership for worker lifecycle startup
 
 ### Out of Scope
 
@@ -225,8 +228,8 @@ The next native-delivery queue moves from planning the replacement to defining t
 
 - the retired historical greenfield ledger remains closed at `18/18`, or `100%`
 - the broader adapter-only full-conversion roadmap is now also closed at `6/6`, or `100%`
-- the native-delivery roadmap now stands at `4/8`, or `50%`
-- contributor defaults and source-level tests still preserve `openrustclaw-app` as the default home for new business logic while the native-delivery program now has explicit second-slice CLI operator-family and UI-adjacent delivery contracts
+- the native-delivery roadmap now stands at `4/8`, or `50%`, with `v1.29` targeting `5/8`, or about `63%`
+- contributor defaults and source-level tests still preserve `openrustclaw-app` as the default home for new business logic while `v1.29` starts the runtime-host and background-worker replacement slice
 - future legacy-retirement work now routes through `.planning/codebase/NATIVE-DELIVERY-LAYER-ROADMAP.md` instead of quietly extending the finished denominators
 
 ## Evolution
@@ -247,4 +250,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-28 after completing v1.28 milestone*
+*Last updated: 2026-03-28 after starting v1.29 milestone*
