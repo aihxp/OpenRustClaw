@@ -2,7 +2,7 @@
 
 **Created:** 2026-03-28
 **Purpose:** Canonical follow-on roadmap for replacing the remaining legacy delivery layer with native delivery surfaces built directly around `openrustclaw-app` ports and explicit infrastructure adapters.
-**Status:** Active after `v1.25` at `1/8` shipped milestones, or about `13%`
+**Status:** Active after `v1.26` at `2/8` shipped milestones, or `25%`
 **Baselines preserved:** historical greenfield seam ledger closed at `18/18`; full-conversion roadmap closed at `6/6`
 
 ## What "Move Completely Off Legacy" Means
@@ -25,6 +25,15 @@ The repo is fully off legacy when:
 - defined the app-port families needed to replace the legacy command tree
 - chose a successor native delivery topology that reuses `openrustclaw-gateway` and `openrustclaw-mcp` while planning new runtime-host and infrastructure layers
 - established explicit shutdown gates so future milestones can delete or isolate legacy delivery code without guessing when the replacement path is ready
+
+## v1.26 Outcome
+
+`v1.26` did not implement the native delivery layers yet. It made the first execution slice concrete enough to build without rediscovering boundaries:
+
+- defined the target native control HTTP delivery ownership around `openrustclaw-gateway` plus `ControlPlanePort`
+- defined the target native MCP delivery ownership around `openrustclaw-mcp` plus `McpServerPort`
+- split the future gateway bootstrap contract away from the `start.rs` hotspot so native startup can become the primary path
+- aligned Control UI serving and wiring to the native gateway-delivery contract instead of leaving the UI tied to the legacy bootstrap monopoly
 
 ## Remaining Legacy Delivery Inventory
 
@@ -121,6 +130,58 @@ The native delivery layer should converge on these entrypoints:
 - `openrustclaw-runtime-host` or equivalent worker host: own scheduler, runtime maintenance, mobile, voice, and orchestration worker startup
 - legacy subcommands may forward temporarily, but they should never remain the primary bootstrap path once their native replacement ships
 
+### v1.26 Control HTTP Delivery Contract
+
+The native control HTTP delivery path should ship through `openrustclaw-gateway` instead of adding more route ownership to `crates/cli/src/commands/start.rs`.
+
+| Concern | Native Owner | Notes |
+| --- | --- | --- |
+| route registration | `openrustclaw-gateway` | the route table should be assembled in gateway-native modules instead of in `start.rs` |
+| request parsing and HTTP shaping | `openrustclaw-gateway` | transport concerns stay in the gateway layer, preserving current HTTP compatibility where needed |
+| business-use orchestration | `ControlPlanePort` in `openrustclaw-app` | route handlers should call app ports directly rather than command-module helpers |
+| stateful persistence and external side effects | infrastructure or repository ports | filesystem, sqlite, registries, and runtime interactions should arrive through adapter traits instead of gateway-local helpers |
+
+The first retirement slice is to move future control-route additions and selected migrated families into gateway-native route modules while leaving temporary forwarding shims in `start.rs` only where startup compatibility still requires them.
+
+### v1.26 MCP Delivery Contract
+
+The native MCP server path should converge on `openrustclaw-mcp` as the transport owner, with `openrustclaw-app` defining the tool and invocation contract.
+
+| Concern | Native Owner | Notes |
+| --- | --- | --- |
+| MCP server bootstrap | `openrustclaw-mcp` | MCP startup should no longer require `start.rs` once the native bootstrap lands |
+| tool catalog and capability exposure | `McpServerPort` in `openrustclaw-app` | compiled-skill exposure, tool metadata, and capability selection should flow through named app ports |
+| tool invocation and result shaping | `McpServerPort` plus downstream app ports | invocation should route through app-layer contracts instead of command-local tool helpers |
+| bridge or compatibility forwarding | bounded shim in `openrustclaw-cli` or gateway bootstrap only when required | shims are allowed only after the native MCP path exists and must point back to `openrustclaw-mcp` explicitly |
+
+This keeps MCP transport and control HTTP delivery as separate native ownership lanes even when both used to originate in the same `start.rs` hotspot.
+
+### v1.26 Gateway Bootstrap Split
+
+The gateway bootstrap split is the first concrete retirement slice for `start.rs`.
+
+| Bootstrap Responsibility | Current Owner | Native Target |
+| --- | --- | --- |
+| control HTTP startup | `crates/cli/src/commands/start.rs` | `openrustclaw-gateway` native bootstrap |
+| websocket, webhook, and related gateway startup | `crates/cli/src/commands/start.rs` plus adjacent legacy helpers | `openrustclaw-gateway` native bootstrap modules |
+| MCP startup coupling | `crates/cli/src/commands/start.rs` | `openrustclaw-mcp` startup entrypoint |
+| temporary compatibility forwarding | legacy bootstrap shell | thin forwarding layer only while native startup is rolled out |
+
+The retirement slice is truthful only if startup ownership changes before route deletion. `start.rs` can remain as a bounded compatibility shell temporarily, but it should stop being the place where the main gateway lifecycle is assembled.
+
+### v1.26 Control UI Alignment
+
+Control UI transport should align with the gateway-native delivery path instead of depending on the legacy `start.rs` bootstrap contract.
+
+| UI Concern | Native Owner | Compatibility Rule |
+| --- | --- | --- |
+| static asset and HTML serving | `openrustclaw-gateway` | preserve the shipped UI route contract while moving serving ownership into gateway-native modules |
+| UI-to-control API wiring | `openrustclaw-gateway` plus `ControlPlanePort` | UI actions should target the same gateway-native control routes that the native delivery layer owns |
+| websocket or live-event wiring | `openrustclaw-gateway` | avoid reintroducing route ownership into `start.rs` as live UI surfaces evolve |
+| temporary legacy entrypoints | bounded forwarding shell only | UI compatibility shims must document the gateway-native replacement path |
+
+This keeps the UI story honest: the UI is not “off legacy” merely because app logic is greenfielded; it is only off legacy when the UI-serving and route-ownership path is also native.
+
 ### Why This Topology
 
 - the workspace already has `openrustclaw-gateway` and `openrustclaw-mcp`, so the roadmap can reuse existing crates instead of forcing all delivery through `openrustclaw-cli`
@@ -172,7 +233,7 @@ Status after shipment: complete. This milestone defined the remaining legacy del
 
 ### v1.26 Native Delivery Layer: Control, MCP, and Gateway Delivery
 
-Primary target: replace the `start.rs` control and MCP bootstrap monopoly with native delivery surfaces.
+Status after shipment: complete. This milestone defined the native control HTTP ownership path in `openrustclaw-gateway`, the native MCP ownership path in `openrustclaw-mcp`, the first truthful gateway-bootstrap split away from `start.rs`, and the Control UI alignment rules needed for the next implementation milestones.
 
 - native control HTTP delivery layer over app ports
 - native MCP server delivery layer over app ports

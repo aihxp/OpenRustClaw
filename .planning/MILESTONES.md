@@ -1,5 +1,20 @@
 # Project Milestones: OpenRustClaw
 
+## v1.26 Native Delivery Layer: Control, MCP, and Gateway Delivery (Shipped: 2026-03-28)
+
+**Phases completed:** 4 phases, 4 plans, 0 tasks
+**Verification archive:** `.planning/milestones/v1.26-VERIFICATIONS.md`
+**Verification debt:** none
+
+**Key accomplishments:**
+
+- Defined the native control HTTP delivery contract around `openrustclaw-gateway` plus `ControlPlanePort` instead of leaving future control-route work inside `start.rs`.
+- Defined the native MCP server delivery contract around `openrustclaw-mcp` plus `McpServerPort`, separating tool-catalog and invocation ownership from the legacy bootstrap hotspot.
+- Defined the first truthful gateway-bootstrap split away from `start.rs`, including control, websocket, webhook, and MCP startup ownership.
+- Aligned Control UI serving and wiring to the native gateway delivery path so the UI transport story is no longer coupled to the legacy bootstrap monopoly.
+
+---
+
 ## v1.25 Native Delivery Layer: Port Contracts and Legacy Inventory (Shipped: 2026-03-28)
 
 **Phases completed:** 4 phases, 4 plans, 0 tasks
