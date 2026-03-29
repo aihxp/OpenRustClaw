@@ -2,7 +2,7 @@
 
 **Created:** 2026-03-28
 **Purpose:** Canonical follow-on roadmap for replacing the remaining legacy delivery layer with native delivery surfaces built directly around `openrustclaw-app` ports and explicit infrastructure adapters.
-**Status:** Active after `v1.30` at `6/8` shipped milestones, or `75%`
+**Status:** Active after `v1.31` at `7/8` shipped milestones, or about `88%`
 **Baselines preserved:** historical greenfield seam ledger closed at `18/18`; full-conversion roadmap closed at `6/6`
 
 ## What "Move Completely Off Legacy" Means
@@ -70,6 +70,15 @@ The repo is fully off legacy when:
 - defined the infrastructure gateway boundaries for channel providers and external services so side-effect wiring is no longer described as command-local helper work
 - aligned app-port ownership with repository and gateway contracts instead of leaving app services conceptually dependent on command-file filesystem or registry helpers
 - made adapter verification and ownership-exit rules explicit so the roadmap can measure when command modules stop owning persistence and integration behavior
+
+## v1.31 Outcome
+
+`v1.31` did not delete the legacy modules in code yet. It made the retirement slice concrete enough to build without rediscovering which files leave the product path, which stay as shims temporarily, and how bootstrap ownership is proven to have moved:
+
+- defined the first legacy-module retirement inventory so the main command-tree hotspots now have explicit retirement states instead of open-ended future cleanup
+- defined which still-live legacy surfaces become bounded compatibility shims and which are expected to be hard-deleted once the native path is present
+- defined the `main.rs` bootstrap-retirement path so the final binary entrypoint no longer depends conceptually on the legacy command tree
+- defined the guardrails and retirement verification rules that prove retired delivery files can no longer regain product-path ownership
 
 ## Remaining Legacy Delivery Inventory
 
@@ -423,6 +432,58 @@ The repository-adapter slice should define how progress is verified and what the
 
 This makes the milestone measurable: the repository-adapter roadmap only advances to `6/8` when command-module persistence and integration ownership is explicitly downgraded from primary owner to bounded compatibility surface.
 
+### v1.31 Legacy Module Retirement Inventory
+
+The retirement slice should identify which legacy files leave the main product path first and what state each one enters once a native replacement exists.
+
+| Legacy Surface | Retirement State | Native Replacement Path | Notes |
+| --- | --- | --- | --- |
+| `crates/cli/src/commands/start.rs` | `native-shimmed` leading to retired | `openrustclaw-gateway`, `openrustclaw-mcp`, and runtime-host startup paths | the largest bootstrap hotspot should stop assembling the product path directly even before full deletion |
+| `crates/cli/src/main.rs` plus `commands/mod.rs` | `native-shimmed` leading to retired | thin CLI bootstrap over native delivery modules | top-level binary routing should narrow toward bootstrap-only ownership |
+| large operator command families (`skills.rs`, `mobile.rs`, `voice_runtime.rs`, `orchestrate.rs`, `browser.rs`, `runtime.rs`, `inspect.rs`, `onboard.rs`) | mixed `native-shimmed` and `retired` by family readiness | native CLI delivery modules plus runtime-host entrypoints | retirement state depends on whether a bounded compatibility path is still needed |
+| secondary operator or utility command families | mostly `retired` or `native-shimmed` | native CLI utility modules and adapter-backed services | these files should not remain implicitly active once native entrypoints exist |
+
+This inventory makes legacy retirement implementable because it assigns a concrete state to the major command-tree surfaces instead of leaving retirement as a vague final cleanup step.
+
+### v1.31 Compatibility Shim and Delete Boundaries
+
+The retirement slice should define exactly when a legacy surface survives as a shim and when it should be hard-deleted instead.
+
+| Legacy Condition | Allowed State | Retirement Rule |
+| --- | --- | --- |
+| native entrypoint exists but operators still need old invocation compatibility | bounded shim only | the legacy file may translate or forward, but it may not regain orchestration, persistence, or policy ownership |
+| native entrypoint exists and no compatibility contract is required | hard delete or archive | the legacy surface should leave the product path entirely |
+| native entrypoint does not exist yet | not eligible for retirement | the blocker must be documented as a missing native path, not left as silent legacy ownership |
+| new feature work touches a shimmed surface | disallowed | new work must land in the native path, with the shim only forwarding if needed |
+
+These boundaries keep shutdown honest by making shim behavior explicit and temporary instead of allowing compatibility to become a second permanent command layer.
+
+### v1.31 Main Bootstrap Retirement Path
+
+The retirement slice should define how the top-level binary path stops depending on the legacy command tree even if the `openrustclaw` binary name remains.
+
+| Bootstrap Concern | Native Owner | Retirement Rule |
+| --- | --- | --- |
+| top-level binary entry | thin `openrustclaw-cli` bootstrap or replacement binary layer | `main.rs` should retain only binary initialization and dispatch into native delivery modules |
+| command-family routing | native CLI delivery modules | `commands/mod.rs` and the legacy tree should stop being the routing topology for shipped flows |
+| startup handoff to gateway, MCP, and runtime-host paths | native delivery binaries and modules | bootstrap handoff should point to native entrypoints directly, not to legacy command assemblies |
+| temporary compatibility routing | bounded shims only | any compatibility path must name the native owner explicitly and must stay outside the main product path |
+
+This keeps bootstrap retirement measurable: the product is not off legacy if `main.rs` still assembles the old command tree as the real runtime path.
+
+### v1.31 Guardrails and Retirement Verification
+
+The retirement slice should define how the repo proves retired delivery files stay retired and how regressions are caught.
+
+| Verification Concern | Native Rule | Failure Signal |
+| --- | --- | --- |
+| retired-file dependency checks | CI or source-level guardrails fail when product entrypoints depend on retired files | new delivery work silently reaches back into the command tree |
+| compatibility-shim verification | shims are verified only as forwarding or translation layers | shim tests still validate orchestration or persistence behavior owned by the legacy file |
+| bootstrap and entrypoint verification | tests target native entrypoints and ensure the command tree is bypassed in the main path | `main.rs` or legacy commands remain the effective runtime assembly path |
+| contributor guidance | docs and guardrails direct new work away from retired files | retirement relies on memory and code review alone |
+
+This makes the milestone measurable: the roadmap only advances to `7/8` when retirement states, shim rules, bootstrap ownership, and regression guardrails are explicit end to end.
+
 ### Why This Topology
 
 - the workspace already has `openrustclaw-gateway` and `openrustclaw-mcp`, so the roadmap can reuse existing crates instead of forcing all delivery through `openrustclaw-cli`
@@ -519,7 +580,7 @@ Status after shipment: complete. This milestone defined the repository and gatew
 
 ### v1.31 Native Delivery Layer: Legacy Module Retirement and Compatibility Shutdown
 
-Primary target: delete, freeze, or isolate the superseded legacy command tree.
+Status after shipment: complete. This milestone defined the legacy-module retirement inventory, the compatibility-shim and delete boundaries, the `main.rs` bootstrap-retirement path, and the guardrails plus verification model needed to remove the superseded command tree from the main product path in the next implementation slices.
 
 - remove legacy command modules from the main product path
 - replace any remaining live legacy surfaces with thin compatibility shims or hard deletes

@@ -1,5 +1,20 @@
 # Project Milestones: OpenRustClaw
 
+## v1.31 Native Delivery Layer: Legacy Module Retirement and Compatibility Shutdown (Shipped: 2026-03-28)
+
+**Phases completed:** 4 phases, 4 plans, 0 tasks
+**Verification archive:** `.planning/milestones/v1.31-VERIFICATIONS.md`
+**Verification debt:** none
+
+**Key accomplishments:**
+
+- Defined the first explicit retirement inventory for the superseded command-tree hotspots, including which files become `native-shimmed` first and which are expected to retire outright.
+- Defined bounded compatibility-shim and hard-delete rules so still-live legacy surfaces cannot remain implicit permanent routing layers.
+- Defined the `main.rs` bootstrap-retirement path so top-level binary routing is no longer left conceptually inside the legacy command tree.
+- Defined the guardrails and verification model that prove retired delivery files cannot regain main product-path ownership.
+
+---
+
 ## v1.30 Native Delivery Layer: Repositories and Integration Adapters (Shipped: 2026-03-28)
 
 **Phases completed:** 4 phases, 4 plans, 0 tasks
