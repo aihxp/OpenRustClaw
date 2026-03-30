@@ -14,7 +14,7 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 - **Shipped milestones:** v1.0 Rust OpenClaw MVP, v1.1 Lifecycle Integrity and Enterprise Foundations, v1.2 Deeper OpenClaw Surface Parity, v1.3 Enterprise Expansion and Supervised Autonomy Foundations, v1.4 Enterprise Governance and Operator-Gated Full Autonomy, v1.5 Self-Hosted Product Modes and Lifecycle Packaging, v1.6 Proper Onboarding and Setup, v1.7 Documentation Convergence and OpenClaw-Inspired Docs Rewrite, v1.8 Clean Codebase, v1.9 GitHub Repository Presence and Actions Recovery, v1.10 Release Binaries Workflow Recovery, v1.11 Crates.io and Docs.rs Publication Foundation, v1.12 Secure Node Connectivity and SSH Tunnel Revisit, v1.13 Brownfield-to-Greenfield Transition, v1.14 Continued Greenfield Conversion, v1.15 Deeper Greenfield Conversion, v1.16 Greenfield Conversion: Skills and Runtime Hotspots, v1.17 Greenfield Conversion: Completion Metrics and Remaining Hotspots, v1.18 Greenfield Conversion: Final Ranked Seam and 100% Completion Path, v1.19 Full Greenfield Conversion: Control Plane Route Families I, v1.20 Full Greenfield Conversion: Control Plane Route Families II, v1.21 Full Greenfield Conversion: Mobile and Voice Runtime Services, v1.22 Full Greenfield Conversion: Orchestration and Browser Services, v1.23 Full Greenfield Conversion: Setup and Secondary Command Surfaces, v1.24 Full Greenfield Conversion: Adapter-Only Exit and Enforcement, v1.25 Native Delivery Layer: Port Contracts and Legacy Inventory, v1.26 Native Delivery Layer: Control, MCP, and Gateway Delivery, v1.27 Native Delivery Layer: CLI Core Dispatch and Operator Commands I, v1.28 Native Delivery Layer: CLI Operator Commands II and UI-Adjacent Flows, v1.29 Native Delivery Layer: Runtime Hosts and Background Workers, v1.30 Native Delivery Layer: Repositories and Integration Adapters, v1.31 Native Delivery Layer: Legacy Module Retirement and Compatibility Shutdown, v1.32 Native Delivery Layer: Native Product Exit Audit and Packaging, v1.33 Native Delivery Implementation: Gateway and MCP Successor Entry Points, v1.34 Native Delivery Implementation: Native CLI Dispatch and Core Operator Paths, v1.35 Native Delivery Implementation: Runtime Hosts and Background Workers, v1.36 Native Delivery Implementation: Repository and Integration Adapter Lift, v1.37 Native Delivery Implementation: Legacy Command Tree Retirement, v1.38 Native Delivery Implementation: Native Product Verification and Packaging Exit, v1.39 Native Product E2E Verification and Greenfield Repairs, v1.40 Public Product Cleanup, Documentation Convergence, CI Repair, and Release, and v1.41 Markdown Surface Audit, Cleanup, and Consolidation
 - **Archive:** `.planning/milestones/v1.0-*` through `.planning/milestones/v1.41-*`
-- **Planning state:** no active milestone
+- **Planning state:** active milestone `v1.42 Onboarding Primary LLM Selection`
 - **Known audit debt:** v1.0 archive still records missing phase `VERIFICATION.md` artifacts; v1.1 closed that workflow gap going forward
 - **Program baselines:** the internal architecture and verification denominators remain closed, and the public-product convergence roadmap is now complete at `1/1`, or `100%`
 
@@ -24,12 +24,15 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 **Archive:** `.planning/milestones/v1.41-ROADMAP.md`, `.planning/milestones/v1.41-REQUIREMENTS.md`, `.planning/milestones/v1.41-MILESTONE-AUDIT.md`, `.planning/milestones/v1.41-VERIFICATIONS.md`
 
-## Current Milestone: none
+## Current Milestone: v1.42 Onboarding Primary LLM Selection
 
-**Goal:** Define a new canonical follow-on queue only when new work warrants it.
+**Goal:** Make onboarding choose and persist a real primary task model instead of stopping at provider selection and implicit defaults.
 
 **Target features:**
-- None. The markdown-surface audit queue is closed.
+- Provider selection handles provider-specific access modes cleanly, including subscription-only, API-key-only, or both.
+- Onboarding verifies live provider connectivity before the setup flow claims readiness.
+- Onboarding discovers or scans available models after provider setup and lets the operator choose the primary task model explicitly.
+- The selected provider and model are persisted into setup state or handoff so later onboarding steps do not require a separate post-setup runtime model switch.
 
 ## Requirements
 
@@ -172,10 +175,10 @@ Ship a trustworthy Rust-native assistant platform that can do real work end-to-e
 
 ### Active
 
-- **MDA-01:** The repo has one explicit inventory of non-generated Markdown files with freshness, ownership, and disposition status.
-- **MDA-02:** Stale, duplicated, or superseded Markdown content is either merged into a canonical surface or deleted with clear rationale.
-- **MDA-03:** Repo entry docs, crate READMEs, docs-site pages, and planning references that should agree are synchronized after cleanup.
-- **MDA-04:** The post-cleanup Markdown surface is reverified for internal consistency, broken references, and truthful public product language.
+- **ONB-01:** Operators can choose a primary LLM provider during onboarding through a flow that represents the provider's supported access modes truthfully.
+- **ONB-02:** Onboarding verifies the chosen provider connection before it reports the model step as ready.
+- **ONB-03:** Onboarding can discover or scan available models for the chosen provider and persist an explicit primary task model selection.
+- **ONB-04:** Setup state, handoff, and follow-on operator guidance reflect the persisted primary provider and model without requiring a separate runtime switch step.
 
 ### Out of Scope
 
@@ -225,6 +228,8 @@ The final implementation queue then turned that same source-level posture toward
 The next follow-on queue turned that evidence-backed architectural closure into a real product-behavior check. `v1.39` ran the shipped E2E and integration matrix, closed the product-verification denominator at `1/1`, and confirmed that no repair-triggering product failures were present.
 
 The most recent queue turned that public-product convergence posture into a deeper repo-wide documentation cleanup. `v1.41` audited the full non-generated Markdown surface, classified canonical versus mirror versus historical documentation, deleted or merged stale one-off pages, and closed with a verified disposition report instead of leaving freshness cleanup as open-ended churn.
+
+The next follow-on queue returns to onboarding behavior rather than broad repo cleanup. `v1.42` is scoped to the first-run provider and primary-model selection lane so onboarding can capture access mode, verify connectivity, scan or discover models where possible, and persist a truthful primary task model before handoff.
 
 ## Constraints
 
@@ -312,4 +317,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-29 after shipping v1.41 milestone*
+*Last updated: 2026-03-30 after starting v1.42 milestone*
