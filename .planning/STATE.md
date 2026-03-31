@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.42
 milestone_name: Onboarding Primary LLM Selection
-current_phase: 179
-current_phase_name: Primary Model Discovery and Persistence
+current_phase: 180
+current_phase_name: Handoff, Repair, and First-Launch Continuity
 current_plan: none
 status: ready to discuss
-stopped_at: 'Phase 178 completed and verified; Phase 179 is ready for discuss.'
-last_updated: "2026-03-31T02:17:00Z"
+stopped_at: 'Phase 179 completed and verified; Phase 180 is ready for discuss.'
+last_updated: "2026-03-31T02:30:22Z"
 last_activity: 2026-03-30
 progress:
   total_phases: 4
-  completed_phases: 2
-  total_plans: 2
-  completed_plans: 2
-  percent: 50
+  completed_phases: 3
+  total_plans: 3
+  completed_plans: 3
+  percent: 75
 ---
 
 # Project State
@@ -24,21 +24,21 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-30)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** v1.42 Phase 179, Primary Model Discovery and Persistence.
+**Current focus:** v1.42 Phase 180, Handoff, Repair, and First-Launch Continuity.
 
 ## Current Position
 
-Current Phase: 179
-Current Phase Name: Primary Model Discovery and Persistence
+Current Phase: 180
+Current Phase Name: Handoff, Repair, and First-Launch Continuity
 Total Phases: 4
 Current Plan: none
 Total Plans in Phase: 0
 Status: ready to discuss
 Last activity: 2026-03-30
 
-Phase: 3 of 4
+Phase: 4 of 4
 Plan: 0 of 0
-Progress: [#####-----] 50%
+Progress: [########--] 75%
 
 ## Performance Metrics
 
@@ -60,6 +60,7 @@ Recent decisions affecting current work:
 - v1.42 is now roadmapped as four bounded phases covering truthful provider access selection, live verification, explicit primary-model choice, and setup handoff or first-launch continuity.
 - Phase 177 is complete: onboarding now persists provider and access-mode selection through setup state, lifecycle, and handoff surfaces.
 - Phase 178 is complete: onboarding now records provider verification classification and recovery guidance as durable bootstrap evidence.
+- Phase 179 is complete: onboarding now captures an explicit primary model and persists its source-of-truth provider-model pair through the runtime switch lane.
 
 ### Pending Todos
 
@@ -73,5 +74,5 @@ Recent decisions affecting current work:
 ## Session Continuity
 
 Last session: 2026-03-30
-Stopped at: Phase 178 completed and verified; Phase 179 is ready for discuss.
+Stopped at: Phase 179 completed and verified; Phase 180 is ready for discuss.
 Resume file: None

@@ -6,9 +6,11 @@ use console::style;
 use dialoguer::{Confirm, Input, MultiSelect, Password, Select, theme::ColorfulTheme};
 use indicatif::{ProgressBar, ProgressStyle};
 use openrustclaw_app::setup_lifecycle as app_setup_lifecycle;
+use openrustclaw_core::config::AppConfig;
 use serde::{Deserialize, Serialize};
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 use tokio::fs;
 
 use super::{channels, control, doctor, runtime, self_hosted, services};
@@ -22,6 +24,8 @@ pub struct OnboardingState {
     pub model_configured: bool,
     pub preferred_provider: Option<String>,
     pub selected_access_mode: Option<String>,
+    pub selected_primary_model: Option<String>,
+    pub selected_primary_model_source: Option<String>,
     pub execution_mode: Option<String>,
     pub deployment_mode: Option<String>,
     pub deployment_path: Option<String>,
@@ -164,6 +168,10 @@ pub struct SetupState {
     pub selected_provider: Option<String>,
     #[serde(default)]
     pub selected_access_mode: Option<String>,
+    #[serde(default)]
+    pub selected_primary_model: Option<String>,
+    #[serde(default)]
+    pub selected_primary_model_source: Option<String>,
     #[serde(default)]
     pub selected_steps: Vec<String>,
     #[serde(default)]
@@ -310,6 +318,8 @@ fn persist_provider_path_selection(
     with_setup_state_mut(workspace_root, |setup| {
         setup.selected_provider = Some(provider.to_string());
         setup.selected_access_mode = access_mode.map(ToString::to_string);
+        setup.selected_primary_model = None;
+        setup.selected_primary_model_source = None;
     })
 }
 
@@ -540,6 +550,8 @@ impl OnboardingWizard {
                     setup_path: self.state.profile.clone(),
                     selected_provider: self.state.preferred_provider.clone(),
                     selected_access_mode: self.state.selected_access_mode.clone(),
+                    selected_primary_model: self.state.selected_primary_model.clone(),
+                    selected_primary_model_source: self.state.selected_primary_model_source.clone(),
                     selected_steps: step_ids(&steps),
                     completed_steps: Vec::new(),
                     blockers: Vec::new(),
@@ -586,6 +598,9 @@ Let's get started!
         self.state.profile = setup_state.setup.setup_path.clone();
         self.state.preferred_provider = setup_state.setup.selected_provider.clone();
         self.state.selected_access_mode = setup_state.setup.selected_access_mode.clone();
+        self.state.selected_primary_model = setup_state.setup.selected_primary_model.clone();
+        self.state.selected_primary_model_source =
+            setup_state.setup.selected_primary_model_source.clone();
         self.state.workspace_action = Some(setup_state.setup.workspace_action.clone());
         Ok(())
     }
@@ -680,6 +695,15 @@ Let's get started!
                 "✗ Not configured"
             }
         );
+        if let Some(provider) = self.state.preferred_provider.as_deref() {
+            println!("  Provider: {provider}");
+        }
+        if let Some(access_mode) = self.state.selected_access_mode.as_deref() {
+            println!("  Access Mode: {access_mode}");
+        }
+        if let Some(model) = self.state.selected_primary_model.as_deref() {
+            println!("  Primary Model: {model}");
+        }
         println!(
             "  Runtime Mode: {}",
             self.state
@@ -1204,6 +1228,8 @@ async fn run_model_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
 
     let access_mode = select_provider_access_mode(wizard, descriptor)?;
     wizard.state.selected_access_mode = Some(access_mode.id().to_string());
+    wizard.state.selected_primary_model = None;
+    wizard.state.selected_primary_model_source = None;
 
     let workspace_root = std::env::current_dir()?;
     persist_provider_path_selection(
@@ -1257,10 +1283,14 @@ async fn run_model_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
         }
     }
 
-    wizard.state.model_configured = true;
     let provider_assessment =
-        validate_provider_bootstrap(&workspace_root, descriptor.id, Some(access_mode.id()))
-            .await?;
+        validate_provider_bootstrap(
+            &workspace_root,
+            descriptor.id,
+            Some(access_mode.id()),
+            true,
+        )
+        .await?;
     record_bootstrap_outcome_with_metadata(
         &workspace_root,
         "provider",
@@ -1270,6 +1300,46 @@ async fn run_model_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
         Some(&provider_assessment),
     )?;
     print_bootstrap_assessment(descriptor.id, &provider_assessment);
+    if provider_assessment.blocking {
+        return Err(anyhow!(provider_assessment.detail));
+    }
+
+    let primary_model = select_primary_model(wizard, &workspace_root, descriptor.id).await?;
+    runtime::switch_provider(
+        "config/default.toml",
+        &workspace_root,
+        descriptor.id,
+        Some(primary_model.model.as_str()),
+        None,
+        None,
+    )?;
+    wizard.state.selected_primary_model = Some(primary_model.model.clone());
+    wizard.state.selected_primary_model_source = Some(primary_model.source.clone());
+    persist_primary_model_selection(
+        &workspace_root,
+        &primary_model.model,
+        &primary_model.source,
+    )?;
+
+    let provider_assessment =
+        validate_provider_bootstrap(
+            &workspace_root,
+            descriptor.id,
+            Some(access_mode.id()),
+            false,
+        )
+        .await?;
+    record_bootstrap_outcome_with_metadata(
+        &workspace_root,
+        "provider",
+        descriptor.id,
+        provider_assessment.status,
+        provider_assessment.detail.clone(),
+        Some(&provider_assessment),
+    )?;
+    print_bootstrap_assessment(descriptor.id, &provider_assessment);
+
+    wizard.state.model_configured = true;
     let runtime_assessment =
         runtime_lane_assessment(&workspace_root, wizard.state.deployment_mode.as_deref()).await?;
     record_bootstrap_outcome(
@@ -1284,9 +1354,10 @@ async fn run_model_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
         return Err(anyhow!(provider_assessment.detail));
     }
     println!(
-        "✓ Model configured ({} via {})",
+        "✓ Model configured ({} via {} / {})",
         descriptor.label,
-        access_mode.label()
+        access_mode.label(),
+        primary_model.model
     );
     println!("  Control-plane actions will prefer the dedicated fallback lane in config/default.toml");
     println!();
@@ -1549,6 +1620,8 @@ fn app_setup_state(setup: &SetupState) -> app_setup_lifecycle::SetupLifecycleSta
         setup_path: setup.setup_path.clone(),
         selected_provider: setup.selected_provider.clone(),
         selected_access_mode: setup.selected_access_mode.clone(),
+        selected_primary_model: setup.selected_primary_model.clone(),
+        selected_primary_model_source: setup.selected_primary_model_source.clone(),
         selected_steps: setup.selected_steps.clone(),
         completed_steps: setup.completed_steps.clone(),
         blockers: setup.blockers.clone(),
@@ -1653,6 +1726,8 @@ where
             setup_path: None,
             selected_provider: None,
             selected_access_mode: None,
+            selected_primary_model: None,
+            selected_primary_model_source: None,
             selected_steps: Vec::new(),
             completed_steps: Vec::new(),
             blockers: Vec::new(),
@@ -1830,6 +1905,7 @@ async fn validate_provider_bootstrap(
     workspace_root: &Path,
     provider_name: &str,
     access_mode: Option<&str>,
+    allow_model_unavailable: bool,
 ) -> Result<BootstrapAssessment> {
     let report =
         runtime::runtime_health_status("config/default.toml", workspace_root, true).await?;
@@ -1866,10 +1942,11 @@ async fn validate_provider_bootstrap(
         })
     } else {
         let issue_kind = onboarding_provider_issue_kind(provider_name, access_mode, entry);
+        let allow_warning = issue_kind == "model_unavailable" && allow_model_unavailable;
         Ok(BootstrapAssessment {
-            status: "blocked",
+            status: if allow_warning { "warning" } else { "blocked" },
             detail: provider_verification_detail(provider_name, &issue_kind, entry),
-            blocking: true,
+            blocking: !allow_warning,
             issue_kind: Some(issue_kind.clone()),
             verification_stage: Some("provider_connection".to_string()),
             suggested_action: Some(provider_verification_next_action(
@@ -2063,6 +2140,237 @@ fn provider_verification_next_action(provider_name: &str, issue_kind: &str) -> S
             "Review the `{provider_name}` verification failure and rerun onboarding."
         ),
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PrimaryModelSelection {
+    model: String,
+    source: String,
+}
+
+fn configured_model_for_provider(config: &AppConfig, provider: &str) -> String {
+    match provider {
+        "anthropic" => config.providers.anthropic.model.clone(),
+        "openai" => config.providers.openai.model.clone(),
+        "openrouter" => config.providers.openrouter.model.clone(),
+        "ollama" => config.providers.ollama.model.clone(),
+        _ => String::new(),
+    }
+}
+
+fn build_model_shortlist(recommended: &str, discovered: Vec<String>) -> Vec<String> {
+    let mut discovered = discovered
+        .into_iter()
+        .filter(|entry| !entry.trim().is_empty())
+        .collect::<Vec<_>>();
+    discovered.sort();
+    discovered.dedup();
+
+    let mut shortlist = Vec::new();
+    if !recommended.is_empty() && discovered.iter().any(|entry| entry == recommended) {
+        shortlist.push(recommended.to_string());
+    }
+    for model in discovered {
+        if model == recommended || shortlist.iter().any(|entry| entry == &model) {
+            continue;
+        }
+        shortlist.push(model);
+        if shortlist.len() >= 25 {
+            break;
+        }
+    }
+    shortlist
+}
+
+fn persist_primary_model_selection(
+    workspace_root: &Path,
+    model: &str,
+    source: &str,
+) -> Result<()> {
+    with_setup_state_mut(workspace_root, |setup| {
+        setup.selected_primary_model = Some(model.to_string());
+        setup.selected_primary_model_source = Some(source.to_string());
+    })
+}
+
+async fn discover_live_provider_models(workspace_root: &Path, provider: &str) -> Result<Vec<String>> {
+    let config = runtime::load_effective_config("config/default.toml", workspace_root)?;
+    let client = reqwest::Client::new();
+
+    let mut models = match provider {
+        "anthropic" => {
+            let api_key = std::env::var(
+                config
+                    .providers
+                    .anthropic
+                    .api_key_env
+                    .as_deref()
+                    .unwrap_or("ANTHROPIC_API_KEY"),
+            )?;
+            let response = client
+                .get("https://api.anthropic.com/v1/models")
+                .timeout(Duration::from_secs(5))
+                .bearer_auth(api_key)
+                .header("anthropic-version", config.providers.anthropic.api_version.clone())
+                .send()
+                .await?
+                .error_for_status()?;
+            let body: serde_json::Value = response.json().await?;
+            body["data"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|entry| entry.get("id").and_then(|value| value.as_str()))
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        }
+        "openai" => {
+            let api_key = std::env::var(
+                config
+                    .providers
+                    .openai
+                    .api_key_env
+                    .as_deref()
+                    .unwrap_or("OPENAI_API_KEY"),
+            )?;
+            let response = client
+                .get("https://api.openai.com/v1/models")
+                .timeout(Duration::from_secs(5))
+                .bearer_auth(api_key)
+                .send()
+                .await?
+                .error_for_status()?;
+            let body: serde_json::Value = response.json().await?;
+            body["data"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|entry| entry.get("id").and_then(|value| value.as_str()))
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        }
+        "openrouter" => {
+            let api_key = std::env::var(
+                config
+                    .providers
+                    .openrouter
+                    .api_key_env
+                    .as_deref()
+                    .unwrap_or("OPENROUTER_API_KEY"),
+            )?;
+            let response = client
+                .get("https://openrouter.ai/api/v1/models")
+                .timeout(Duration::from_secs(5))
+                .bearer_auth(api_key)
+                .send()
+                .await?
+                .error_for_status()?;
+            let body: serde_json::Value = response.json().await?;
+            body["data"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|entry| entry.get("id").and_then(|value| value.as_str()))
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        }
+        "ollama" => {
+            let response = client
+                .get(format!(
+                    "{}/api/tags",
+                    config.providers.ollama.base_url.trim_end_matches('/')
+                ))
+                .timeout(Duration::from_secs(5))
+                .send()
+                .await?
+                .error_for_status()?;
+            let body: serde_json::Value = response.json().await?;
+            body["models"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|entry| entry.get("name").and_then(|value| value.as_str()))
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        }
+        _ => Vec::new(),
+    };
+
+    models.sort();
+    models.dedup();
+    Ok(models)
+}
+
+async fn select_primary_model(
+    wizard: &OnboardingWizard,
+    workspace_root: &Path,
+    provider: &str,
+) -> Result<PrimaryModelSelection> {
+    let config = runtime::load_effective_config("config/default.toml", workspace_root)?;
+    let recommended_model = configured_model_for_provider(&config, provider);
+
+    match discover_live_provider_models(workspace_root, provider).await {
+        Ok(discovered) if !discovered.is_empty() => {
+            let shortlist = build_model_shortlist(&recommended_model, discovered);
+            if !shortlist.is_empty() {
+                let mut labels = shortlist
+                    .iter()
+                    .map(|model| {
+                        if model == &recommended_model {
+                            format!("{model} - Recommended")
+                        } else {
+                            model.clone()
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                labels.push("Enter a model manually".to_string());
+                let default = shortlist
+                    .iter()
+                    .position(|model| model == &recommended_model)
+                    .unwrap_or(0);
+                let selection = Select::with_theme(&wizard.theme)
+                    .with_prompt(format!(
+                        "Choose the primary task model for {}",
+                        provider
+                    ))
+                    .items(&labels)
+                    .default(default)
+                    .interact()?;
+                if selection < shortlist.len() {
+                    return Ok(PrimaryModelSelection {
+                        model: shortlist[selection].clone(),
+                        source: "live_discovery".to_string(),
+                    });
+                }
+            }
+        }
+        Ok(_) => {
+            println!(
+                "  Live model discovery returned no models for `{provider}`. Falling back to manual entry."
+            );
+        }
+        Err(error) => {
+            println!(
+                "  Live model discovery for `{provider}` was unavailable: {}",
+                error
+            );
+            println!("  Falling back to manual model entry.");
+        }
+    }
+
+    let selected = Input::with_theme(&wizard.theme)
+        .with_prompt(format!("Primary task model for {}", provider))
+        .with_initial_text(recommended_model.clone())
+        .interact_text()?;
+    let source = if selected == recommended_model {
+        "recommended_fallback"
+    } else {
+        "manual_entry"
+    };
+    Ok(PrimaryModelSelection {
+        model: selected,
+        source: source.to_string(),
+    })
 }
 
 async fn validate_channel_bootstrap(
@@ -2530,6 +2838,8 @@ mod tests {
         assert!(!state.model_configured);
         assert!(state.preferred_provider.is_none());
         assert!(state.selected_access_mode.is_none());
+        assert!(state.selected_primary_model.is_none());
+        assert!(state.selected_primary_model_source.is_none());
         assert!(state.deployment_mode.is_none());
         assert!(state.deployment_path.is_none());
         assert!(!state.daemon_installed);
@@ -2546,6 +2856,8 @@ mod tests {
         assert!(!wizard.state.model_configured);
         assert!(wizard.state.preferred_provider.is_none());
         assert!(wizard.state.selected_access_mode.is_none());
+        assert!(wizard.state.selected_primary_model.is_none());
+        assert!(wizard.state.selected_primary_model_source.is_none());
         assert!(wizard.state.deployment_mode.is_none());
         assert!(wizard.state.deployment_path.is_none());
         assert!(!wizard.state.daemon_installed);
@@ -2619,11 +2931,18 @@ mod tests {
         state.model_configured = true;
         state.preferred_provider = Some("ollama".to_string());
         state.selected_access_mode = Some("local_runtime".to_string());
+        state.selected_primary_model = Some("llama3.1".to_string());
+        state.selected_primary_model_source = Some("live_discovery".to_string());
         state.daemon_installed = true;
         assert!(state.gateway_configured);
         assert!(state.model_configured);
         assert_eq!(state.preferred_provider.as_deref(), Some("ollama"));
         assert_eq!(state.selected_access_mode.as_deref(), Some("local_runtime"));
+        assert_eq!(state.selected_primary_model.as_deref(), Some("llama3.1"));
+        assert_eq!(
+            state.selected_primary_model_source.as_deref(),
+            Some("live_discovery")
+        );
         assert!(state.daemon_installed);
     }
 
@@ -2712,6 +3031,8 @@ mod tests {
                 setup_path: Some("Custom".to_string()),
                 selected_provider: Some("openrouter".to_string()),
                 selected_access_mode: Some("api_key".to_string()),
+                selected_primary_model: Some("openai/gpt-4o".to_string()),
+                selected_primary_model_source: Some("live_discovery".to_string()),
                 selected_steps: vec!["gateway".to_string(), "model".to_string()],
                 completed_steps: vec!["gateway".to_string()],
                 blockers: Vec::new(),
@@ -2726,6 +3047,14 @@ mod tests {
         assert_eq!(loaded.setup.setup_path.as_deref(), Some("Custom"));
         assert_eq!(loaded.setup.selected_provider.as_deref(), Some("openrouter"));
         assert_eq!(loaded.setup.selected_access_mode.as_deref(), Some("api_key"));
+        assert_eq!(
+            loaded.setup.selected_primary_model.as_deref(),
+            Some("openai/gpt-4o")
+        );
+        assert_eq!(
+            loaded.setup.selected_primary_model_source.as_deref(),
+            Some("live_discovery")
+        );
         assert_eq!(
             loaded
                 .setup
@@ -2840,6 +3169,8 @@ mod tests {
             setup_path: Some("Advanced".to_string()),
             selected_provider: Some("anthropic".to_string()),
             selected_access_mode: Some("api_key".to_string()),
+            selected_primary_model: Some("claude-sonnet-4-20250514".to_string()),
+            selected_primary_model_source: Some("manual_entry".to_string()),
             selected_steps: vec![
                 "gateway".to_string(),
                 "model".to_string(),
@@ -2934,6 +3265,8 @@ mod tests {
                 setup_path: Some("Advanced".to_string()),
                 selected_provider: Some("anthropic".to_string()),
                 selected_access_mode: Some("api_key".to_string()),
+                selected_primary_model: Some("claude-sonnet-4-20250514".to_string()),
+                selected_primary_model_source: Some("manual_entry".to_string()),
                 selected_steps: vec![
                     "gateway".to_string(),
                     "model".to_string(),
@@ -2997,6 +3330,27 @@ mod tests {
     }
 
     #[test]
+    fn test_build_model_shortlist_prefers_recommended_model() {
+        let shortlist = build_model_shortlist(
+            "gpt-4o",
+            vec![
+                "gpt-4o-mini".to_string(),
+                "gpt-4o".to_string(),
+                "gpt-4o".to_string(),
+                "o3-mini".to_string(),
+            ],
+        );
+        assert_eq!(
+            shortlist,
+            vec![
+                "gpt-4o".to_string(),
+                "gpt-4o-mini".to_string(),
+                "o3-mini".to_string()
+            ]
+        );
+    }
+
+    #[test]
     fn test_mark_setup_state_step_blocked_prefers_provider_verification_action() {
         let dir = tempfile::tempdir().unwrap();
         let manifest = SetupStateManifest {
@@ -3013,6 +3367,8 @@ mod tests {
                 setup_path: Some("Standard".to_string()),
                 selected_provider: Some("ollama".to_string()),
                 selected_access_mode: Some("local_runtime".to_string()),
+                selected_primary_model: None,
+                selected_primary_model_source: None,
                 selected_steps: vec!["model".to_string()],
                 completed_steps: Vec::new(),
                 blockers: Vec::new(),
@@ -3048,6 +3404,44 @@ mod tests {
             loaded.setup.next_action.as_deref(),
             Some("Start the local runtime, confirm it is reachable, then rerun onboarding.")
         );
+    }
+
+    #[test]
+    fn test_persist_provider_path_selection_clears_prior_model_selection() {
+        let dir = tempfile::tempdir().unwrap();
+        let manifest = SetupStateManifest {
+            version: SETUP_STATE_VERSION,
+            setup: SetupState {
+                started_at: Utc::now().to_rfc3339(),
+                updated_at: Utc::now().to_rfc3339(),
+                completed_at: None,
+                status: "in_progress".to_string(),
+                workspace_action: "resume".to_string(),
+                deployment_mode: Some(self_hosted::MODE_SOLO.to_string()),
+                deployment_path: Some("solo_starter".to_string()),
+                remote_connectivity_profile: None,
+                setup_path: Some("Standard".to_string()),
+                selected_provider: Some("anthropic".to_string()),
+                selected_access_mode: Some("api_key".to_string()),
+                selected_primary_model: Some("claude-sonnet-4-20250514".to_string()),
+                selected_primary_model_source: Some("live_discovery".to_string()),
+                selected_steps: vec!["model".to_string()],
+                completed_steps: Vec::new(),
+                blockers: Vec::new(),
+                next_action: Some("Complete AI Model Setup".to_string()),
+                current_step: Some("model".to_string()),
+                bootstrap_outcomes: Vec::new(),
+            },
+        };
+        save_setup_state(dir.path(), &manifest).unwrap();
+
+        persist_provider_path_selection(dir.path(), "openai", Some("api_key")).unwrap();
+
+        let loaded = load_setup_state(dir.path()).unwrap().unwrap();
+        assert_eq!(loaded.setup.selected_provider.as_deref(), Some("openai"));
+        assert_eq!(loaded.setup.selected_access_mode.as_deref(), Some("api_key"));
+        assert!(loaded.setup.selected_primary_model.is_none());
+        assert!(loaded.setup.selected_primary_model_source.is_none());
     }
 
     #[test]

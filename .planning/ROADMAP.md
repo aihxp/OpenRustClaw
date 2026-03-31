@@ -17,7 +17,7 @@
 
 - [x] **Phase 177: Provider Access Modes and Resume State** - Choose a supported onboarding provider path and persist access-mode context without losing progress. (completed 2026-03-30)
 - [x] **Phase 178: Live Verification and Bootstrap Evidence** - Verify the chosen provider lane before readiness and classify failures truthfully. (completed 2026-03-30)
-- [ ] **Phase 179: Primary Model Discovery and Persistence** - Select an explicit primary task model and persist provider plus model together in onboarding.
+- [x] **Phase 179: Primary Model Discovery and Persistence** - Select an explicit primary task model and persist provider plus model together in onboarding. (completed 2026-03-30)
 - [ ] **Phase 180: Handoff, Repair, and First-Launch Continuity** - Surface the selected lane in setup handoff and reuse it on resume, repair, and first launch.
 
 ## Phase Details
@@ -59,7 +59,10 @@ Plans:
   3. Operator can enter a primary task model manually when live model discovery is unavailable, account-scoped, empty, or unsupported for the selected provider path.
   4. The selected provider and primary task model are persisted into runtime configuration in the same onboarding flow without requiring a separate post-setup runtime switch step.
   5. Onboarding records whether the selected primary model came from live discovery, recommended fallback, or manual entry.
-**Plans**: TBD
+**Plans**: 1/1 plans complete
+
+Plans:
+- [x] 179-01 Add live model discovery, explicit selection, and provider-model persistence
 
 ### Phase 180: Handoff, Repair, and First-Launch Continuity
 **Goal**: Setup handoff and first launch remain aligned with the provider, access mode, and primary model established during onboarding.
@@ -77,5 +80,5 @@ Plans:
 |-------|----------------|--------|-----------|
 | 177. Provider Access Modes and Resume State | 1/1 | Complete | 2026-03-30 |
 | 178. Live Verification and Bootstrap Evidence | 1/1 | Complete | 2026-03-30 |
-| 179. Primary Model Discovery and Persistence | 0/TBD | Not started | - |
+| 179. Primary Model Discovery and Persistence | 1/1 | Complete | 2026-03-30 |
 | 180. Handoff, Repair, and First-Launch Continuity | 0/TBD | Not started | - |

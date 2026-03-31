@@ -999,6 +999,8 @@ fn map_setup_handoff_state(
         explicit_setup_state: true,
         selected_provider: setup.selected_provider,
         selected_access_mode: setup.selected_access_mode,
+        selected_primary_model: setup.selected_primary_model,
+        selected_primary_model_source: setup.selected_primary_model_source,
         deployment_mode: setup.deployment_mode,
         deployment_path: setup.deployment_path,
         remote_connectivity_profile: setup
@@ -2089,6 +2091,8 @@ mod tests {
                     setup_path: Some("Advanced".to_string()),
                     selected_provider: Some("openrouter".to_string()),
                     selected_access_mode: Some("api_key".to_string()),
+                    selected_primary_model: Some("openai/gpt-4o".to_string()),
+                    selected_primary_model_source: Some("live_discovery".to_string()),
                     selected_steps: vec!["gateway".to_string(), "model".to_string()],
                     completed_steps: vec!["gateway".to_string(), "model".to_string()],
                     blockers: Vec::new(),
@@ -2116,6 +2120,7 @@ mod tests {
         assert!(!report.ready_for_first_start);
         assert_eq!(report.selected_provider.as_deref(), Some("openrouter"));
         assert_eq!(report.selected_access_mode.as_deref(), Some("api_key"));
+        assert_eq!(report.selected_primary_model.as_deref(), Some("openai/gpt-4o"));
         assert_eq!(report.completed_step_count, 2);
         assert_eq!(report.bootstrap_outcomes.len(), 1);
         assert_eq!(report.bootstrap_outcomes[0].issue_kind.as_deref(), Some("auth"));
