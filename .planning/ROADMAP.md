@@ -2,56 +2,74 @@
 
 ## Milestones
 
-- ✅ **v1.0 Rust OpenClaw MVP** — shipped 2026-03-26. Archive: `.planning/milestones/v1.0-ROADMAP.md`
-- ✅ **v1.1 Lifecycle Integrity and Enterprise Foundations** — shipped 2026-03-26. Archive: `.planning/milestones/v1.1-ROADMAP.md`
-- ✅ **v1.2 Deeper OpenClaw Surface Parity** — shipped 2026-03-27. Archive: `.planning/milestones/v1.2-ROADMAP.md`
-- ✅ **v1.3 Enterprise Expansion and Supervised Autonomy Foundations** — shipped 2026-03-27. Archive: `.planning/milestones/v1.3-ROADMAP.md`
-- ✅ **v1.4 Enterprise Governance and Operator-Gated Full Autonomy** — shipped 2026-03-27. Archive: `.planning/milestones/v1.4-ROADMAP.md`
-- ✅ **v1.5 Self-Hosted Product Modes and Lifecycle Packaging** — shipped 2026-03-27. Archive: `.planning/milestones/v1.5-ROADMAP.md`
-- ✅ **v1.6 Proper Onboarding and Setup** — shipped 2026-03-28. Archive: `.planning/milestones/v1.6-ROADMAP.md`
-- ✅ **v1.7 Documentation Convergence and OpenClaw-Inspired Docs Rewrite** — shipped 2026-03-27. Archive: `.planning/milestones/v1.7-ROADMAP.md`
-- ✅ **v1.8 Clean Codebase** — shipped 2026-03-27. Archive: `.planning/milestones/v1.8-ROADMAP.md`
-- ✅ **v1.9 GitHub Repository Presence and Actions Recovery** — shipped 2026-03-28. Archive: `.planning/milestones/v1.9-ROADMAP.md`
-- ✅ **v1.10 Release Binaries Workflow Recovery** — shipped 2026-03-28. Archive: `.planning/milestones/v1.10-ROADMAP.md`
-- ✅ **v1.11 Crates.io and Docs.rs Publication Foundation** — shipped 2026-03-28. Archive: `.planning/milestones/v1.11-ROADMAP.md`
-- ✅ **v1.12 Secure Node Connectivity and SSH Tunnel Revisit** — shipped 2026-03-28. Archive: `.planning/milestones/v1.12-ROADMAP.md`
-- ✅ **v1.13 Brownfield-to-Greenfield Transition** — shipped 2026-03-28. Archive: `.planning/milestones/v1.13-ROADMAP.md`
-- ✅ **v1.14 Continued Greenfield Conversion** — shipped 2026-03-28. Archive: `.planning/milestones/v1.14-ROADMAP.md`
-- ✅ **v1.15 Deeper Greenfield Conversion** — shipped 2026-03-28. Archive: `.planning/milestones/v1.15-ROADMAP.md`
-- ✅ **v1.16 Greenfield Conversion: Skills and Runtime Hotspots** — shipped 2026-03-28. Archive: `.planning/milestones/v1.16-ROADMAP.md`
-- ✅ **v1.17 Greenfield Conversion: Completion Metrics and Remaining Hotspots** — shipped 2026-03-28. Archive: `.planning/milestones/v1.17-ROADMAP.md`
-- ✅ **v1.18 Greenfield Conversion: Final Ranked Seam and 100% Completion Path** — shipped 2026-03-28. Archive: `.planning/milestones/v1.18-ROADMAP.md`
-- ✅ **v1.19 Full Greenfield Conversion: Control Plane Route Families I** — shipped 2026-03-28. Archive: `.planning/milestones/v1.19-ROADMAP.md`
-- ✅ **v1.20 Full Greenfield Conversion: Control Plane Route Families II** — shipped 2026-03-28. Archive: `.planning/milestones/v1.20-ROADMAP.md`
-- ✅ **v1.21 Full Greenfield Conversion: Mobile and Voice Runtime Services** — shipped 2026-03-28. Archive: `.planning/milestones/v1.21-ROADMAP.md`
-- ✅ **v1.22 Full Greenfield Conversion: Orchestration and Browser Services** — shipped 2026-03-28. Archive: `.planning/milestones/v1.22-ROADMAP.md`
-- ✅ **v1.23 Full Greenfield Conversion: Setup and Secondary Command Surfaces** — shipped 2026-03-28. Archive: `.planning/milestones/v1.23-ROADMAP.md`
-- ✅ **v1.24 Full Greenfield Conversion: Adapter-Only Exit and Enforcement** — shipped 2026-03-28. Archive: `.planning/milestones/v1.24-ROADMAP.md`
-- ✅ **v1.25 Native Delivery Layer: Port Contracts and Legacy Inventory** — shipped 2026-03-28. Archive: `.planning/milestones/v1.25-ROADMAP.md`
-- ✅ **v1.26 Native Delivery Layer: Control, MCP, and Gateway Delivery** — shipped 2026-03-28. Archive: `.planning/milestones/v1.26-ROADMAP.md`
-- ✅ **v1.27 Native Delivery Layer: CLI Core Dispatch and Operator Commands I** — shipped 2026-03-28. Archive: `.planning/milestones/v1.27-ROADMAP.md`
-- ✅ **v1.28 Native Delivery Layer: CLI Operator Commands II and UI-Adjacent Flows** — shipped 2026-03-28. Archive: `.planning/milestones/v1.28-ROADMAP.md`
-- ✅ **v1.29 Native Delivery Layer: Runtime Hosts and Background Workers** — shipped 2026-03-28. Archive: `.planning/milestones/v1.29-ROADMAP.md`
-- ✅ **v1.30 Native Delivery Layer: Repositories and Integration Adapters** — shipped 2026-03-28. Archive: `.planning/milestones/v1.30-ROADMAP.md`
-- ✅ **v1.31 Native Delivery Layer: Legacy Module Retirement and Compatibility Shutdown** — shipped 2026-03-28. Archive: `.planning/milestones/v1.31-ROADMAP.md`
-- ✅ **v1.32 Native Delivery Layer: Native Product Exit Audit and Packaging** — shipped 2026-03-28. Archive: `.planning/milestones/v1.32-ROADMAP.md`
-- ✅ **v1.33 Native Delivery Implementation: Gateway and MCP Successor Entry Points** — shipped 2026-03-28. Archive: `.planning/milestones/v1.33-ROADMAP.md`
-- ✅ **v1.34 Native Delivery Implementation: Native CLI Dispatch and Core Operator Paths** — shipped 2026-03-28. Archive: `.planning/milestones/v1.34-ROADMAP.md`
-- ✅ **v1.35 Native Delivery Implementation: Runtime Hosts and Background Workers** — shipped 2026-03-28. Archive: `.planning/milestones/v1.35-ROADMAP.md`
-- ✅ **v1.36 Native Delivery Implementation: Repository and Integration Adapter Lift** — shipped 2026-03-28. Archive: `.planning/milestones/v1.36-ROADMAP.md`
-- ✅ **v1.37 Native Delivery Implementation: Legacy Command Tree Retirement** — shipped 2026-03-28. Archive: `.planning/milestones/v1.37-ROADMAP.md`
-- ✅ **v1.38 Native Delivery Implementation: Native Product Verification and Packaging Exit** — shipped 2026-03-28. Archive: `.planning/milestones/v1.38-ROADMAP.md`
-- ✅ **v1.39 Native Product E2E Verification and Greenfield Repairs** — shipped 2026-03-29. Archive: `.planning/milestones/v1.39-ROADMAP.md`
-- ✅ **v1.40 Public Product Cleanup, Documentation Convergence, CI Repair, and Release** — shipped 2026-03-29. Archive: `.planning/milestones/v1.40-ROADMAP.md`
-- ✅ **v1.41 Markdown Surface Audit, Cleanup, and Consolidation** — shipped 2026-03-29. Archive: `.planning/milestones/v1.41-ROADMAP.md`
+- ✅ **v1.0 through v1.41** - shipped. Full milestone history and archives: `.planning/MILESTONES.md`
+- 🚧 **v1.42 Onboarding Primary LLM Selection** - Phases 177-180
 
-## Current Status
+## Overview
 
-- Active milestone: **none**
-- Progress: **no live phases**
-- Most recent shipment: **v1.41 Markdown Surface Audit, Cleanup, and Consolidation**
-- Internal architecture baselines: **all preserved and closed**
-- Public-product convergence roadmap progress: **`1/1` milestones shipped, or `100%`**
-- Markdown-surface audit roadmap progress: **`1/1` milestones shipped, or `100%`**
-- Current execution: **none**
-- Next step: `$gsd-new-milestone`
+`v1.42` keeps the milestone bounded to CLI onboarding, setup-state and handoff continuity, related operator verification surfaces, and the docs or regression work needed to keep that path truthful. It does not broaden into a generic provider framework or a Control UI redesign.
+
+## Phases
+
+**Phase Numbering:**
+- Integer phases continue the live sequence from the prior milestone.
+- This milestone starts at Phase 177 because `v1.41` ended at Phase 176.
+
+- [ ] **Phase 177: Provider Access Modes and Resume State** - Choose a supported onboarding provider path and persist access-mode context without losing progress.
+- [ ] **Phase 178: Live Verification and Bootstrap Evidence** - Verify the chosen provider lane before readiness and classify failures truthfully.
+- [ ] **Phase 179: Primary Model Discovery and Persistence** - Select an explicit primary task model and persist provider plus model together in onboarding.
+- [ ] **Phase 180: Handoff, Repair, and First-Launch Continuity** - Surface the selected lane in setup handoff and reuse it on resume, repair, and first launch.
+
+## Phase Details
+
+### Phase 177: Provider Access Modes and Resume State
+**Goal**: Operators can choose a truthful onboarding provider path and resume the model setup step without losing valid provider or access-mode context.
+**Depends on**: Nothing (first phase)
+**Requirements**: ACCS-01, ACCS-02, ACCS-03, ACCS-04
+**Success Criteria** (what must be TRUE):
+  1. Operator can choose the primary LLM provider from the onboarding-supported provider list during the model setup step.
+  2. Operator sees only the access modes that actually apply to the selected provider, including API key, subscription-managed, local-runtime, or bounded combinations where applicable.
+  3. Onboarding requests only the credential or runtime input required for the chosen provider path instead of asking for irrelevant secrets.
+  4. The model setup step can resume without losing the previously selected provider and access mode when those choices are still valid.
+**Plans**: TBD
+
+### Phase 178: Live Verification and Bootstrap Evidence
+**Goal**: Onboarding can prove the selected provider lane is actually usable before the model step claims readiness.
+**Depends on**: Phase 177
+**Requirements**: VERF-01, VERF-02, VERF-03
+**Success Criteria** (what must be TRUE):
+  1. Onboarding verifies the chosen provider connection before the model setup step is marked ready.
+  2. Operator can see whether verification failed because of authentication or access, missing local runtime, model unavailability, billing or quota, rate limiting, or generic provider reachability issues.
+  3. Verification outcomes are recorded in durable bootstrap evidence so repair and resume can target the failed verification sub-step directly.
+**Plans**: TBD
+
+### Phase 179: Primary Model Discovery and Persistence
+**Goal**: Operators can choose an explicit primary task model during onboarding and have that provider-model pair persisted through the shared runtime mutation lane.
+**Depends on**: Phase 178
+**Requirements**: MODL-01, MODL-02, MODL-03, MODL-04, MODL-05
+**Success Criteria** (what must be TRUE):
+  1. Onboarding can discover or scan available models for the chosen provider when that provider and access mode expose a usable live catalog.
+  2. Operator can choose the primary task model explicitly from the discovered model list when discovery succeeds.
+  3. Operator can enter a primary task model manually when live model discovery is unavailable, account-scoped, empty, or unsupported for the selected provider path.
+  4. The selected provider and primary task model are persisted into runtime configuration in the same onboarding flow without requiring a separate post-setup runtime switch step.
+  5. Onboarding records whether the selected primary model came from live discovery, recommended fallback, or manual entry.
+**Plans**: TBD
+
+### Phase 180: Handoff, Repair, and First-Launch Continuity
+**Goal**: Setup handoff and first launch remain aligned with the provider, access mode, and primary model established during onboarding.
+**Depends on**: Phase 179
+**Requirements**: HNDF-01, HNDF-02, HNDF-03
+**Success Criteria** (what must be TRUE):
+  1. Setup handoff surfaces show the selected provider, access mode, primary task model, and current readiness outcome for the onboarding model lane.
+  2. Resume and repair flows can distinguish incomplete provider selection, failed verification, and incomplete model selection when re-entering the onboarding model step.
+  3. First assistant launch after onboarding uses the provider and primary task model established during onboarding when the workspace is otherwise ready.
+**Plans**: TBD
+
+## Progress
+
+| Phase | Plans Complete | Status | Completed |
+|-------|----------------|--------|-----------|
+| 177. Provider Access Modes and Resume State | 0/TBD | Not started | - |
+| 178. Live Verification and Bootstrap Evidence | 0/TBD | Not started | - |
+| 179. Primary Model Discovery and Persistence | 0/TBD | Not started | - |
+| 180. Handoff, Repair, and First-Launch Continuity | 0/TBD | Not started | - |

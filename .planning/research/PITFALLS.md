@@ -1,0 +1,15 @@
+# Pitfall Research: v1.42 Onboarding Primary LLM Selection
+
+**Scope:** onboarding-time provider access-mode handling, live provider verification, model discovery or scan, and persisted primary task model selection
+**Researched:** 2026-03-30
+
+| Risk | Why It Matters | Prevention | Likely Owner |
+|------|----------------|------------|--------------|
+| Access-mode ambiguity | A provider may support multiple commercial paths, but onboarding can still ask for the wrong credential type or imply support it does not actually have. | Model access mode explicitly in provider descriptors and make prompts conditional on the chosen mode. | Provider access requirements and onboarding flow |
+| Static model lists treated as truth | `models::scan()` and docs examples are not account-aware catalogs and can point operators toward models they cannot actually use. | Prefer live catalog discovery when supported; otherwise fall back to recommended defaults plus manual entry with explicit caveats. | Model discovery requirements |
+| Verification that only checks reachability | A provider endpoint can respond while the selected model is unavailable, access is limited, or billing is blocked. | Reuse the runtime-health classification and model-availability logic instead of inventing a simpler onboarding-only probe. | Verification and architecture phases |
+| Local-provider edge cases are collapsed into remote-provider logic | Ollama and similar local paths do not behave like remote API providers, especially for setup, verification, and catalog semantics. | Keep a distinct local-provider path and reuse the existing `probe_ollama_provider` behavior instead of forcing a generic remote probe contract. | Verification and implementation phases |
+| Config and setup state drift | If provider or model selection is stored differently across runtime config, setup state, and handoff, resume and repair will become unreliable. | Persist provider plus model through one shared mutation lane and extend setup state or handoff with the same canonical values. | Architecture and persistence phases |
+| Onboarding completion without model completeness | The flow can mark provider setup complete while the operator still lacks an explicit primary model. | Make model selection part of the readiness contract for the onboarding model step. | Requirements and verification phases |
+| Over-scoping the milestone into a generic provider-management system | The repo already has runtime mutation and health logic; a new generic provider framework would slow delivery and add drift risk. | Keep v1.42 bounded to onboarding, setup handoff, docs, and regression coverage for the current onboarding providers. | Roadmap and phase scoping |
+| Resume or repair loses failure context | If failed verification or empty discovery results are not recorded precisely, repair guidance will be vague or wrong. | Record concise bootstrap outcomes for access mode, verification, and model discovery so repair can target the broken sub-step. | Setup state and repair coverage |

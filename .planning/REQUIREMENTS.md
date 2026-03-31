@@ -57,27 +57,27 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| ACCS-01 | Unmapped | Pending |
-| ACCS-02 | Unmapped | Pending |
-| ACCS-03 | Unmapped | Pending |
-| ACCS-04 | Unmapped | Pending |
-| VERF-01 | Unmapped | Pending |
-| VERF-02 | Unmapped | Pending |
-| VERF-03 | Unmapped | Pending |
-| MODL-01 | Unmapped | Pending |
-| MODL-02 | Unmapped | Pending |
-| MODL-03 | Unmapped | Pending |
-| MODL-04 | Unmapped | Pending |
-| MODL-05 | Unmapped | Pending |
-| HNDF-01 | Unmapped | Pending |
-| HNDF-02 | Unmapped | Pending |
-| HNDF-03 | Unmapped | Pending |
+| ACCS-01 | Phase 177 | Pending |
+| ACCS-02 | Phase 177 | Pending |
+| ACCS-03 | Phase 177 | Pending |
+| ACCS-04 | Phase 177 | Pending |
+| VERF-01 | Phase 178 | Pending |
+| VERF-02 | Phase 178 | Pending |
+| VERF-03 | Phase 178 | Pending |
+| MODL-01 | Phase 179 | Pending |
+| MODL-02 | Phase 179 | Pending |
+| MODL-03 | Phase 179 | Pending |
+| MODL-04 | Phase 179 | Pending |
+| MODL-05 | Phase 179 | Pending |
+| HNDF-01 | Phase 180 | Pending |
+| HNDF-02 | Phase 180 | Pending |
+| HNDF-03 | Phase 180 | Pending |
 
 **Coverage:**
 - v1 requirements: 15 total
-- Mapped to phases: 0
-- Unmapped: 15 ⚠️
+- Mapped to phases: 15
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-30*
-*Last updated: 2026-03-30 after initial definition for v1.42*
+*Last updated: 2026-03-30 after roadmap mapping for v1.42*

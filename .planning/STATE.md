@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.42
 milestone_name: Onboarding Primary LLM Selection
-current_phase: none
-current_phase_name: requirements definition
+current_phase: 177
+current_phase_name: Provider Access Modes and Resume State
 current_plan: none
-status: defining requirements
-stopped_at: milestone started; requirements and roadmap in progress.
-last_updated: "2026-03-30T21:21:03Z"
+status: ready to plan
+stopped_at: roadmap created; Phase 177 is ready for planning.
+last_updated: "2026-03-31T01:45:15Z"
 last_activity: 2026-03-30
 progress:
-  total_phases: 0
+  total_phases: 4
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -21,22 +21,22 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-03-29)
+See: .planning/PROJECT.md (updated 2026-03-30)
 
 **Core value:** Ship a trustworthy Rust-native assistant platform that can do real work end-to-end, not just demo isolated features.
-**Current focus:** v1.42 Onboarding Primary LLM Selection. Define requirements and roadmap for first-run provider and primary-model selection.
+**Current focus:** v1.42 Phase 177, Provider Access Modes and Resume State.
 
 ## Current Position
 
-Current Phase: none
-Current Phase Name: requirements definition
-Total Phases: 0
+Current Phase: 177
+Current Phase Name: Provider Access Modes and Resume State
+Total Phases: 4
 Current Plan: none
 Total Plans in Phase: 0
-Status: defining requirements
+Status: ready to plan
 Last activity: 2026-03-30
 
-Phase: 0 of 0
+Phase: 1 of 4
 Plan: 0 of 0
 Progress: [----------] 0%
 
@@ -46,7 +46,7 @@ Progress: [----------] 0%
 
 - Total plans completed: 170
 - Average duration: historical average retained across shipped milestones
-- Total execution time: multiple shipped milestones completed across v1.0-v1.40 planning and shipped execution
+- Total execution time: multiple shipped milestones completed across v1.0-v1.41 planning and shipped execution
 
 ## Accumulated Context
 
@@ -55,10 +55,9 @@ Progress: [----------] 0%
 Decisions are logged in PROJECT.md Key Decisions table.
 Recent decisions affecting current work:
 
-- v1.39 completed the native-product E2E milestone by running the shipped E2E and integration matrix, finding no repair-triggering product failures, and closing the roadmap truthfully at `1/1`.
-- v1.40 completed the public-product convergence milestone by cleaning the repo safely, converging public docs and package metadata, repairing the checked-in CI and release automation paths, publishing `openrustclaw-core 1.4.0`, and aligning the public repo tag line to `v1.4.0`.
+- v1.40 completed the public-product convergence milestone by cleaning the repo safely, converging public docs and package metadata, repairing CI and release automation, publishing `openrustclaw-core 1.4.0`, and aligning the public repo tag line to `v1.4.0`.
 - v1.41 completed the markdown-surface audit milestone by inventorying the non-generated Markdown surface, defining canonical ownership rules, deleting or merging stale docs, and closing the roadmap truthfully at `1/1`.
-- v1.42 reopens the active milestone queue around onboarding so the first-run flow can select and persist a truthful primary provider and model instead of relying on implicit defaults.
+- v1.42 is now roadmapped as four bounded phases covering truthful provider access selection, live verification, explicit primary-model choice, and setup handoff or first-launch continuity.
 
 ### Pending Todos
 
@@ -66,11 +65,11 @@ Recent decisions affecting current work:
 
 ### Blockers/Concerns
 
-- v1.0 archive notes missing phase verification artifacts as lifecycle debt already captured in the archive.
-- None active.
+- v1.42 must stay bounded to CLI onboarding, setup state or handoff, related verification surfaces, and supporting docs or regression work.
+- Do not broaden this milestone into a generic provider framework or a Control UI redesign.
 
 ## Session Continuity
 
 Last session: 2026-03-30
-Stopped at: milestone started; requirements and roadmap in progress.
+Stopped at: roadmap created; Phase 177 is ready for planning.
 Resume file: None
