@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.4.1] - 2026-03-31
+
+### Added
+
+- Onboarding now supports provider-specific access modes instead of assuming one implicit API-key path.
+- The setup flow now verifies provider connectivity before readiness and records classified bootstrap evidence for repair and resume.
+- Operators can now select an explicit primary task model during onboarding from discovered models or a manual fallback entry.
+
+### Changed
+
+- Setup handoff, resume, repair, and optional first launch now stay aligned with the provider, access mode, and primary model selected during onboarding.
+
 ## [1.0.0] - 2024-XX-XX
 
 ### 🎉 Initial Release

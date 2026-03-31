@@ -1,5 +1,20 @@
 # Project Milestones: OpenRustClaw
 
+## v1.42 Onboarding Primary LLM Selection (Shipped: 2026-03-31)
+
+**Phases completed:** 4 phases, 4 plans, 0 tasks
+**Verification archive:** `.planning/milestones/v1.42-VERIFICATIONS.md`
+**Verification debt:** none
+
+**Key accomplishments:**
+
+- Onboarding now treats provider setup as a truthful provider-path decision, persists the selected access mode, and restores that state on resume instead of assuming one implicit API-key lane.
+- The model lane now records live provider verification as durable bootstrap evidence, including classified failure kinds and targeted recovery actions for repair and resume flows.
+- Operators now choose an explicit primary task model during onboarding through live model discovery where supported or a manual fallback path where discovery is unavailable.
+- Setup handoff, repair, resume, and optional first launch now stay aligned with the onboarding-selected provider, access mode, and primary model instead of relying on hidden runtime defaults.
+
+---
+
 ## v1.41 Markdown Surface Audit, Cleanup, and Consolidation (Shipped: 2026-03-29)
 
 **Phases completed:** 6 phases, 6 plans, 0 tasks
