@@ -994,6 +994,8 @@ fn map_setup_handoff_state(
         status,
         detail,
         explicit_setup_state: true,
+        selected_provider: setup.selected_provider,
+        selected_access_mode: setup.selected_access_mode,
         deployment_mode: setup.deployment_mode,
         deployment_path: setup.deployment_path,
         remote_connectivity_profile: setup
@@ -2082,6 +2084,8 @@ mod tests {
                         detail: "Remote access profile saved.".to_string(),
                     }),
                     setup_path: Some("Advanced".to_string()),
+                    selected_provider: Some("openrouter".to_string()),
+                    selected_access_mode: Some("api_key".to_string()),
                     selected_steps: vec!["gateway".to_string(), "model".to_string()],
                     completed_steps: vec!["gateway".to_string(), "model".to_string()],
                     blockers: Vec::new(),
@@ -2102,6 +2106,8 @@ mod tests {
         assert_eq!(report.status, "degraded");
         assert!(report.explicit_setup_state);
         assert!(!report.ready_for_first_start);
+        assert_eq!(report.selected_provider.as_deref(), Some("openrouter"));
+        assert_eq!(report.selected_access_mode.as_deref(), Some("api_key"));
         assert_eq!(report.completed_step_count, 2);
         assert_eq!(report.bootstrap_outcomes.len(), 1);
         assert_eq!(

@@ -71,6 +71,8 @@ pub struct SetupBootstrapOutcome {
 pub struct SetupLifecycleState {
     pub status: String,
     pub setup_path: Option<String>,
+    pub selected_provider: Option<String>,
+    pub selected_access_mode: Option<String>,
     pub selected_steps: Vec<String>,
     pub completed_steps: Vec<String>,
     pub blockers: Vec<String>,
@@ -391,6 +393,8 @@ mod tests {
         let setup = SetupLifecycleState {
             status: "ready".to_string(),
             setup_path: Some("Advanced".to_string()),
+            selected_provider: Some("anthropic".to_string()),
+            selected_access_mode: Some("api_key".to_string()),
             selected_steps: vec!["gateway".to_string()],
             completed_steps: vec!["gateway".to_string()],
             blockers: Vec::new(),
@@ -417,6 +421,8 @@ mod tests {
         let setup = SetupLifecycleState {
             status: "blocked".to_string(),
             setup_path: Some("Advanced".to_string()),
+            selected_provider: Some("anthropic".to_string()),
+            selected_access_mode: Some("api_key".to_string()),
             selected_steps: vec![
                 "gateway".to_string(),
                 "model".to_string(),

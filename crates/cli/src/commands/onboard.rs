@@ -21,6 +21,7 @@ pub struct OnboardingState {
     pub channels_configured: Vec<String>,
     pub model_configured: bool,
     pub preferred_provider: Option<String>,
+    pub selected_access_mode: Option<String>,
     pub execution_mode: Option<String>,
     pub deployment_mode: Option<String>,
     pub deployment_path: Option<String>,
@@ -160,6 +161,10 @@ pub struct SetupState {
     #[serde(default)]
     pub setup_path: Option<String>,
     #[serde(default)]
+    pub selected_provider: Option<String>,
+    #[serde(default)]
+    pub selected_access_mode: Option<String>,
+    #[serde(default)]
     pub selected_steps: Vec<String>,
     #[serde(default)]
     pub completed_steps: Vec<String>,
@@ -186,6 +191,161 @@ pub struct SetupBootstrapOutcome {
 struct SetupRepairPlan {
     steps: Vec<OnboardingStep>,
     reasons: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum OnboardingProviderAccessMode {
+    ApiKey,
+    LocalRuntime,
+    SubscriptionManaged,
+}
+
+impl OnboardingProviderAccessMode {
+    fn id(self) -> &'static str {
+        match self {
+            Self::ApiKey => "api_key",
+            Self::LocalRuntime => "local_runtime",
+            Self::SubscriptionManaged => "subscription_managed",
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::ApiKey => "API key",
+            Self::LocalRuntime => "Local runtime",
+            Self::SubscriptionManaged => "Subscription-managed account",
+        }
+    }
+
+    fn detail(self) -> &'static str {
+        match self {
+            Self::ApiKey => "Use a provider API key stored in `.env`.",
+            Self::LocalRuntime => "Use a local runtime already running on this machine.",
+            Self::SubscriptionManaged => {
+                "Use a subscription-managed provider path without a direct API key."
+            }
+        }
+    }
+
+    fn from_id(value: &str) -> Option<Self> {
+        match value {
+            "api_key" => Some(Self::ApiKey),
+            "local_runtime" => Some(Self::LocalRuntime),
+            "subscription_managed" => Some(Self::SubscriptionManaged),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct OnboardingProviderDescriptor {
+    id: &'static str,
+    label: &'static str,
+    access_modes: &'static [OnboardingProviderAccessMode],
+    api_key_prompt: Option<&'static str>,
+    recommended: bool,
+}
+
+impl OnboardingProviderDescriptor {
+    fn display_label(self) -> String {
+        if self.recommended {
+            format!("{} - Recommended", self.label)
+        } else {
+            self.label.to_string()
+        }
+    }
+}
+
+const PROVIDER_ACCESS_API_KEY: [OnboardingProviderAccessMode; 1] =
+    [OnboardingProviderAccessMode::ApiKey];
+const PROVIDER_ACCESS_LOCAL_RUNTIME: [OnboardingProviderAccessMode; 1] =
+    [OnboardingProviderAccessMode::LocalRuntime];
+
+const ONBOARDING_PROVIDER_DESCRIPTORS: [OnboardingProviderDescriptor; 4] = [
+    OnboardingProviderDescriptor {
+        id: "anthropic",
+        label: "Anthropic (Claude)",
+        access_modes: &PROVIDER_ACCESS_API_KEY,
+        api_key_prompt: Some("Anthropic API key (starts with sk-ant-...)"),
+        recommended: true,
+    },
+    OnboardingProviderDescriptor {
+        id: "openai",
+        label: "OpenAI (GPT)",
+        access_modes: &PROVIDER_ACCESS_API_KEY,
+        api_key_prompt: Some("OpenAI API key (starts with sk-...)"),
+        recommended: false,
+    },
+    OnboardingProviderDescriptor {
+        id: "openrouter",
+        label: "OpenRouter (Multiple models)",
+        access_modes: &PROVIDER_ACCESS_API_KEY,
+        api_key_prompt: Some("OpenRouter API key"),
+        recommended: false,
+    },
+    OnboardingProviderDescriptor {
+        id: "ollama",
+        label: "Ollama (Local models)",
+        access_modes: &PROVIDER_ACCESS_LOCAL_RUNTIME,
+        api_key_prompt: None,
+        recommended: false,
+    },
+];
+
+fn onboarding_provider_descriptors() -> &'static [OnboardingProviderDescriptor] {
+    &ONBOARDING_PROVIDER_DESCRIPTORS
+}
+
+fn persist_provider_path_selection(
+    workspace_root: &Path,
+    provider: &str,
+    access_mode: Option<&str>,
+) -> Result<()> {
+    with_setup_state_mut(workspace_root, |setup| {
+        setup.selected_provider = Some(provider.to_string());
+        setup.selected_access_mode = access_mode.map(ToString::to_string);
+    })
+}
+
+fn select_provider_access_mode(
+    wizard: &OnboardingWizard,
+    descriptor: OnboardingProviderDescriptor,
+) -> Result<OnboardingProviderAccessMode> {
+    if descriptor.access_modes.len() == 1 {
+        let mode = descriptor.access_modes[0];
+        println!(
+            "  {} uses the {} onboarding path.",
+            descriptor.label,
+            mode.label()
+        );
+        return Ok(mode);
+    }
+
+    let labels = descriptor
+        .access_modes
+        .iter()
+        .map(|mode| format!("{} - {}", mode.label(), mode.detail()))
+        .collect::<Vec<_>>();
+    let default = wizard
+        .state
+        .selected_access_mode
+        .as_deref()
+        .and_then(OnboardingProviderAccessMode::from_id)
+        .and_then(|current| descriptor.access_modes.iter().position(|mode| *mode == current))
+        .unwrap_or(0);
+    let selection = Select::with_theme(&wizard.theme)
+        .with_prompt(format!(
+            "Choose how onboarding should access {}",
+            descriptor.label
+        ))
+        .items(&labels)
+        .default(default)
+        .interact()?;
+    descriptor
+        .access_modes
+        .get(selection)
+        .copied()
+        .ok_or_else(|| anyhow!("invalid provider access-mode selection"))
 }
 
 fn default_setup_state_version() -> u32 {
@@ -372,6 +532,8 @@ impl OnboardingWizard {
                     deployment_path: self.state.deployment_path.clone(),
                     remote_connectivity_profile: self.state.remote_connectivity_profile.clone(),
                     setup_path: self.state.profile.clone(),
+                    selected_provider: self.state.preferred_provider.clone(),
+                    selected_access_mode: self.state.selected_access_mode.clone(),
                     selected_steps: step_ids(&steps),
                     completed_steps: Vec::new(),
                     blockers: Vec::new(),
@@ -416,6 +578,8 @@ Let's get started!
         self.state.remote_connectivity_profile =
             setup_state.setup.remote_connectivity_profile.clone();
         self.state.profile = setup_state.setup.setup_path.clone();
+        self.state.preferred_provider = setup_state.setup.selected_provider.clone();
+        self.state.selected_access_mode = setup_state.setup.selected_access_mode.clone();
         self.state.workspace_action = Some(setup_state.setup.workspace_action.clone());
         Ok(())
     }
@@ -998,116 +1162,116 @@ async fn setup_slack(wizard: &mut OnboardingWizard) -> Result<&'static str> {
 // ============================================================================
 
 async fn run_model_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
-    let providers = vec![
-        "Anthropic (Claude) - Recommended",
-        "OpenAI (GPT-4)",
-        "OpenRouter (Multiple models)",
-        "Ollama (Local models)",
-    ];
+    let providers = onboarding_provider_descriptors();
+    let provider_labels = providers
+        .iter()
+        .map(|descriptor| descriptor.display_label())
+        .collect::<Vec<_>>();
+    let default_provider_index = wizard
+        .state
+        .preferred_provider
+        .as_deref()
+        .and_then(|provider| providers.iter().position(|descriptor| descriptor.id == provider))
+        .unwrap_or(0);
 
     let selection = Select::with_theme(&wizard.theme)
         .with_prompt("Choose your LLM provider")
-        .items(&providers)
-        .default(0)
+        .items(&provider_labels)
+        .default(default_provider_index)
         .interact()?;
+    let descriptor = providers
+        .get(selection)
+        .copied()
+        .ok_or_else(|| anyhow!("invalid provider selection"))?;
 
-    let (provider_name, api_key_prompt) = match selection {
-        0 => ("anthropic", "Anthropic API key (starts with sk-ant-...)"),
-        1 => ("openai", "OpenAI API key (starts with sk-...)"),
-        2 => ("openrouter", "OpenRouter API key"),
-        3 => {
-            println!("Make sure Ollama is running locally (http://localhost:11434)");
-            let workspace_root = std::env::current_dir()?;
+    wizard.state.preferred_provider = Some(descriptor.id.to_string());
+
+    let access_mode = select_provider_access_mode(wizard, descriptor)?;
+    wizard.state.selected_access_mode = Some(access_mode.id().to_string());
+
+    let workspace_root = std::env::current_dir()?;
+    persist_provider_path_selection(
+        &workspace_root,
+        descriptor.id,
+        wizard.state.selected_access_mode.as_deref(),
+    )?;
+
+    match access_mode {
+        OnboardingProviderAccessMode::LocalRuntime => {
+            println!("Using {} via {}.", descriptor.label, access_mode.label());
+            println!("  {}", access_mode.detail());
+            println!("  Make sure Ollama is running locally (http://localhost:11434)");
             runtime::switch_provider(
                 "config/default.toml",
                 &workspace_root,
-                "ollama",
+                descriptor.id,
                 None,
                 None,
                 None,
             )?;
-            wizard.state.model_configured = true;
-            wizard.state.preferred_provider = Some("ollama".to_string());
-            let provider_assessment =
-                validate_provider_bootstrap(&workspace_root, "ollama").await?;
-            record_bootstrap_outcome(
-                &workspace_root,
-                "provider",
-                "ollama",
-                provider_assessment.status,
-                provider_assessment.detail.clone(),
-            )?;
-            print_bootstrap_assessment("ollama", &provider_assessment);
-            let runtime_assessment =
-                runtime_lane_assessment(&workspace_root, wizard.state.deployment_mode.as_deref())
-                    .await?;
-            record_bootstrap_outcome(
-                &workspace_root,
-                "runtime",
-                "control_plane_lane",
-                runtime_assessment.status,
-                runtime_assessment.detail.clone(),
-            )?;
-            print_bootstrap_assessment("control-plane lane", &runtime_assessment);
-            if provider_assessment.blocking {
-                return Err(anyhow!(provider_assessment.detail));
+        }
+        OnboardingProviderAccessMode::ApiKey => {
+            println!("Using {} via {}.", descriptor.label, access_mode.label());
+            println!("  {}", access_mode.detail());
+            let api_key_prompt = descriptor
+                .api_key_prompt
+                .ok_or_else(|| anyhow!("{} requires an API key prompt", descriptor.id))?;
+            let api_key = Password::with_theme(&wizard.theme)
+                .with_prompt(api_key_prompt)
+                .interact()?;
+            if api_key.is_empty() {
+                println!("⚠️  No API key provided, skipping model setup");
+                return Ok(true);
             }
-            println!("✓ Model configured (Ollama - local)");
-            return Ok(true);
+            save_provider_config(descriptor.id, &api_key).await?;
+            runtime::switch_provider(
+                "config/default.toml",
+                &workspace_root,
+                descriptor.id,
+                None,
+                None,
+                None,
+            )?;
         }
-        _ => return Ok(true),
-    };
-
-    let api_key = Password::with_theme(&wizard.theme)
-        .with_prompt(api_key_prompt)
-        .interact()?;
-
-    if !api_key.is_empty() {
-        save_provider_config(provider_name, &api_key).await?;
-        let workspace_root = std::env::current_dir()?;
-        runtime::switch_provider(
-            "config/default.toml",
-            &workspace_root,
-            provider_name,
-            None,
-            None,
-            None,
-        )?;
-        wizard.state.model_configured = true;
-        wizard.state.preferred_provider = Some(provider_name.to_string());
-        let provider_assessment =
-            validate_provider_bootstrap(&workspace_root, provider_name).await?;
-        record_bootstrap_outcome(
-            &workspace_root,
-            "provider",
-            provider_name,
-            provider_assessment.status,
-            provider_assessment.detail.clone(),
-        )?;
-        print_bootstrap_assessment(provider_name, &provider_assessment);
-        let runtime_assessment =
-            runtime_lane_assessment(&workspace_root, wizard.state.deployment_mode.as_deref())
-                .await?;
-        record_bootstrap_outcome(
-            &workspace_root,
-            "runtime",
-            "control_plane_lane",
-            runtime_assessment.status,
-            runtime_assessment.detail.clone(),
-        )?;
-        print_bootstrap_assessment("control-plane lane", &runtime_assessment);
-        if provider_assessment.blocking {
-            return Err(anyhow!(provider_assessment.detail));
+        OnboardingProviderAccessMode::SubscriptionManaged => {
+            return Err(anyhow!(
+                "{} does not yet expose a subscription-managed onboarding path",
+                descriptor.label
+            ));
         }
-        println!("✓ Model configured ({provider_name})");
-        println!(
-            "  Control-plane actions will prefer the dedicated fallback lane in config/default.toml"
-        );
-        println!();
-        models::scan().await?;
-    } else {
-        println!("⚠️  No API key provided, skipping model setup");
     }
+
+    wizard.state.model_configured = true;
+    let provider_assessment = validate_provider_bootstrap(&workspace_root, descriptor.id).await?;
+    record_bootstrap_outcome(
+        &workspace_root,
+        "provider",
+        descriptor.id,
+        provider_assessment.status,
+        provider_assessment.detail.clone(),
+    )?;
+    print_bootstrap_assessment(descriptor.id, &provider_assessment);
+    let runtime_assessment =
+        runtime_lane_assessment(&workspace_root, wizard.state.deployment_mode.as_deref()).await?;
+    record_bootstrap_outcome(
+        &workspace_root,
+        "runtime",
+        "control_plane_lane",
+        runtime_assessment.status,
+        runtime_assessment.detail.clone(),
+    )?;
+    print_bootstrap_assessment("control-plane lane", &runtime_assessment);
+    if provider_assessment.blocking {
+        return Err(anyhow!(provider_assessment.detail));
+    }
+    println!(
+        "✓ Model configured ({} via {})",
+        descriptor.label,
+        access_mode.label()
+    );
+    println!("  Control-plane actions will prefer the dedicated fallback lane in config/default.toml");
+    println!();
+    models::scan().await?;
 
     Ok(true)
 }
@@ -1358,6 +1522,8 @@ fn app_setup_state(setup: &SetupState) -> app_setup_lifecycle::SetupLifecycleSta
     app_setup_lifecycle::SetupLifecycleState {
         status: setup.status.clone(),
         setup_path: setup.setup_path.clone(),
+        selected_provider: setup.selected_provider.clone(),
+        selected_access_mode: setup.selected_access_mode.clone(),
         selected_steps: setup.selected_steps.clone(),
         completed_steps: setup.completed_steps.clone(),
         blockers: setup.blockers.clone(),
@@ -1460,6 +1626,8 @@ where
             deployment_path: None,
             remote_connectivity_profile: None,
             setup_path: None,
+            selected_provider: None,
+            selected_access_mode: None,
             selected_steps: Vec::new(),
             completed_steps: Vec::new(),
             blockers: Vec::new(),
@@ -2171,6 +2339,7 @@ mod tests {
         assert!(state.channels_configured.is_empty());
         assert!(!state.model_configured);
         assert!(state.preferred_provider.is_none());
+        assert!(state.selected_access_mode.is_none());
         assert!(state.deployment_mode.is_none());
         assert!(state.deployment_path.is_none());
         assert!(!state.daemon_installed);
@@ -2186,6 +2355,7 @@ mod tests {
         assert!(wizard.state.channels_configured.is_empty());
         assert!(!wizard.state.model_configured);
         assert!(wizard.state.preferred_provider.is_none());
+        assert!(wizard.state.selected_access_mode.is_none());
         assert!(wizard.state.deployment_mode.is_none());
         assert!(wizard.state.deployment_path.is_none());
         assert!(!wizard.state.daemon_installed);
@@ -2258,11 +2428,35 @@ mod tests {
         state.gateway_configured = true;
         state.model_configured = true;
         state.preferred_provider = Some("ollama".to_string());
+        state.selected_access_mode = Some("local_runtime".to_string());
         state.daemon_installed = true;
         assert!(state.gateway_configured);
         assert!(state.model_configured);
         assert_eq!(state.preferred_provider.as_deref(), Some("ollama"));
+        assert_eq!(state.selected_access_mode.as_deref(), Some("local_runtime"));
         assert!(state.daemon_installed);
+    }
+
+    #[test]
+    fn test_onboarding_provider_descriptors_match_current_supported_paths() {
+        let descriptors = onboarding_provider_descriptors();
+        assert_eq!(descriptors.len(), 4);
+        assert_eq!(
+            descriptors
+                .iter()
+                .find(|descriptor| descriptor.id == "anthropic")
+                .unwrap()
+                .access_modes,
+            &[OnboardingProviderAccessMode::ApiKey]
+        );
+        assert_eq!(
+            descriptors
+                .iter()
+                .find(|descriptor| descriptor.id == "ollama")
+                .unwrap()
+                .access_modes,
+            &[OnboardingProviderAccessMode::LocalRuntime]
+        );
     }
 
     #[test]
@@ -2326,6 +2520,8 @@ mod tests {
                     detail: "Remote access profile saved.".to_string(),
                 }),
                 setup_path: Some("Custom".to_string()),
+                selected_provider: Some("openrouter".to_string()),
+                selected_access_mode: Some("api_key".to_string()),
                 selected_steps: vec!["gateway".to_string(), "model".to_string()],
                 completed_steps: vec!["gateway".to_string()],
                 blockers: Vec::new(),
@@ -2338,6 +2534,8 @@ mod tests {
         save_setup_state(dir.path(), &manifest).unwrap();
         let loaded = load_setup_state(dir.path()).unwrap().unwrap();
         assert_eq!(loaded.setup.setup_path.as_deref(), Some("Custom"));
+        assert_eq!(loaded.setup.selected_provider.as_deref(), Some("openrouter"));
+        assert_eq!(loaded.setup.selected_access_mode.as_deref(), Some("api_key"));
         assert_eq!(
             loaded
                 .setup
@@ -2449,6 +2647,8 @@ mod tests {
             deployment_path: Some("shared_team_setup".to_string()),
             remote_connectivity_profile: None,
             setup_path: Some("Advanced".to_string()),
+            selected_provider: Some("anthropic".to_string()),
+            selected_access_mode: Some("api_key".to_string()),
             selected_steps: vec![
                 "gateway".to_string(),
                 "model".to_string(),
@@ -2535,6 +2735,8 @@ mod tests {
                 deployment_path: Some("company_ops_setup".to_string()),
                 remote_connectivity_profile: None,
                 setup_path: Some("Advanced".to_string()),
+                selected_provider: Some("anthropic".to_string()),
+                selected_access_mode: Some("api_key".to_string()),
                 selected_steps: vec![
                     "gateway".to_string(),
                     "model".to_string(),
