@@ -227,19 +227,28 @@ impl SetupLifecycleService {
             "blocked" => self
                 .non_ready_bootstrap_outcomes(setup)
                 .first()
-                .map(Self::bootstrap_attention_detail)
+                .map(|outcome| Self::bootstrap_attention_detail(setup, outcome))
                 .or_else(|| setup.blockers.first().cloned())
                 .or_else(|| setup.next_action.clone())
                 .unwrap_or_else(|| "Setup is blocked and needs operator attention.".to_string()),
             "degraded" => self
                 .non_ready_bootstrap_outcomes(setup)
                 .first()
-                .map(Self::bootstrap_attention_detail)
+                .map(|outcome| Self::bootstrap_attention_detail(setup, outcome))
                 .or_else(|| setup.next_action.clone())
                 .unwrap_or_else(|| {
                     "Setup is usable but still has warning-level bootstrap issues.".to_string()
                 }),
-            "ready" => "The workspace is ready for first start and assistant handoff.".to_string(),
+            "ready" => Self::selected_model_lane_summary(setup)
+                .map(|summary| {
+                    format!(
+                        "The workspace is ready for first start and assistant handoff with {}.",
+                        summary
+                    )
+                })
+                .unwrap_or_else(|| {
+                    "The workspace is ready for first start and assistant handoff.".to_string()
+                }),
             "in_progress" => setup
                 .next_action
                 .clone()
@@ -355,16 +364,21 @@ impl SetupLifecycleService {
         }
     }
 
-    fn bootstrap_attention_detail(outcome: &SetupBootstrapOutcome) -> String {
+    fn bootstrap_attention_detail(
+        setup: &SetupLifecycleState,
+        outcome: &SetupBootstrapOutcome,
+    ) -> String {
         if outcome.verification_stage.as_deref() == Some("provider_connection") {
             let label = outcome
                 .issue_kind
                 .as_deref()
                 .map(bootstrap_issue_label)
                 .unwrap_or("verification blocked");
+            let lane = Self::selected_model_lane_summary(setup)
+                .unwrap_or_else(|| format!("provider `{}`", outcome.target));
             return format!(
-                "Provider verification for `{}` is {}: {}",
-                outcome.target, label, outcome.detail
+                "Provider verification for {} is {}: {}",
+                lane, label, outcome.detail
             );
         }
 
@@ -372,6 +386,20 @@ impl SetupLifecycleService {
             "{} {} needs review: {}",
             outcome.category, outcome.target, outcome.detail
         )
+    }
+
+    fn selected_model_lane_summary(setup: &SetupLifecycleState) -> Option<String> {
+        let provider = setup.selected_provider.as_deref()?;
+        let access_mode = setup.selected_access_mode.as_deref();
+        let model = setup.selected_primary_model.as_deref();
+        match (access_mode, model) {
+            (Some(access_mode), Some(model)) => {
+                Some(format!("`{provider}` via `{access_mode}` using `{model}`"))
+            }
+            (Some(access_mode), None) => Some(format!("`{provider}` via `{access_mode}`")),
+            (None, Some(model)) => Some(format!("`{provider}` using `{model}`")),
+            (None, None) => Some(format!("`{provider}`")),
+        }
     }
 }
 
@@ -442,8 +470,8 @@ mod tests {
                 target: "anthropic".to_string(),
                 status: "warning".to_string(),
                 detail: "provider reachable but degraded".to_string(),
-                issue_kind: None,
-                verification_stage: None,
+                issue_kind: Some("rate_limited".to_string()),
+                verification_stage: Some("provider_connection".to_string()),
                 suggested_action: None,
                 updated_at: "2026-03-28T00:00:00Z".to_string(),
             }],
@@ -452,7 +480,7 @@ mod tests {
         assert!(
             service
                 .handoff_detail(&setup)
-                .contains("provider anthropic needs review")
+                .contains("`anthropic` via `api_key`")
         );
     }
 
@@ -571,6 +599,30 @@ mod tests {
             service
                 .handoff_detail(&setup)
                 .contains("local runtime unavailable")
+        );
+    }
+
+    #[test]
+    fn handoff_detail_ready_includes_selected_model_lane() {
+        let service = SetupLifecycleService::new();
+        let setup = SetupLifecycleState {
+            status: "ready".to_string(),
+            setup_path: Some("Advanced".to_string()),
+            selected_provider: Some("openrouter".to_string()),
+            selected_access_mode: Some("api_key".to_string()),
+            selected_primary_model: Some("openai/gpt-4o".to_string()),
+            selected_primary_model_source: Some("live_discovery".to_string()),
+            selected_steps: vec!["model".to_string()],
+            completed_steps: vec!["model".to_string()],
+            blockers: Vec::new(),
+            next_action: Some("Run `openrustclaw start`.".to_string()),
+            bootstrap_outcomes: Vec::new(),
+        };
+
+        assert!(
+            service
+                .handoff_detail(&setup)
+                .contains("`openrouter` via `api_key` using `openai/gpt-4o`")
         );
     }
 }

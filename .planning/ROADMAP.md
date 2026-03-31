@@ -18,7 +18,7 @@
 - [x] **Phase 177: Provider Access Modes and Resume State** - Choose a supported onboarding provider path and persist access-mode context without losing progress. (completed 2026-03-30)
 - [x] **Phase 178: Live Verification and Bootstrap Evidence** - Verify the chosen provider lane before readiness and classify failures truthfully. (completed 2026-03-30)
 - [x] **Phase 179: Primary Model Discovery and Persistence** - Select an explicit primary task model and persist provider plus model together in onboarding. (completed 2026-03-30)
-- [ ] **Phase 180: Handoff, Repair, and First-Launch Continuity** - Surface the selected lane in setup handoff and reuse it on resume, repair, and first launch.
+- [x] **Phase 180: Handoff, Repair, and First-Launch Continuity** - Surface the selected lane in setup handoff and reuse it on resume, repair, and first launch. (completed 2026-03-30)
 
 ## Phase Details
 
@@ -72,7 +72,10 @@ Plans:
   1. Setup handoff surfaces show the selected provider, access mode, primary task model, and current readiness outcome for the onboarding model lane.
   2. Resume and repair flows can distinguish incomplete provider selection, failed verification, and incomplete model selection when re-entering the onboarding model step.
   3. First assistant launch after onboarding uses the provider and primary task model established during onboarding when the workspace is otherwise ready.
-**Plans**: TBD
+**Plans**: 1/1 plans complete
+
+Plans:
+- [x] 180-01 Align handoff detail, repair guidance, and first launch with the selected onboarding model lane
 
 ## Progress
 
@@ -81,4 +84,10 @@ Plans:
 | 177. Provider Access Modes and Resume State | 1/1 | Complete | 2026-03-30 |
 | 178. Live Verification and Bootstrap Evidence | 1/1 | Complete | 2026-03-30 |
 | 179. Primary Model Discovery and Persistence | 1/1 | Complete | 2026-03-30 |
-| 180. Handoff, Repair, and First-Launch Continuity | 0/TBD | Not started | - |
+| 180. Handoff, Repair, and First-Launch Continuity | 1/1 | Complete | 2026-03-30 |
+
+## Current Status
+
+- Active milestone: v1.42 Onboarding Primary LLM Selection
+- Roadmap progress: 4/4 phases complete
+- Next step: `$gsd-audit-milestone`

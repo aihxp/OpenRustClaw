@@ -878,6 +878,17 @@ Let's get started!
         }
     }
 
+    fn assistant_model(&self, provider: &str) -> Option<String> {
+        if let Some(model) = self.state.selected_primary_model.clone() {
+            return Some(model);
+        }
+
+        let workspace_root = std::env::current_dir().ok()?;
+        let config = runtime::load_effective_config("config/default.toml", &workspace_root).ok()?;
+        let model = configured_model_for_provider(&config, provider);
+        (!model.trim().is_empty()).then_some(model)
+    }
+
     async fn maybe_launch_assistant(&self, healthy: bool) -> Result<()> {
         let provider = self.assistant_provider();
         if !should_offer_assistant_launch(
@@ -888,17 +899,22 @@ Let's get started!
             return Ok(());
         }
         let provider = provider.expect("launch gate requires a resolved provider");
+        let model = self.assistant_model(&provider);
 
         let launch = Confirm::with_theme(&self.theme)
             .with_prompt(format!(
-                "Launch the persisted assistant session now with `{provider}`?"
+                "Launch the persisted assistant session now with `{provider}`{}?",
+                model
+                    .as_deref()
+                    .map(|value| format!(" / `{value}`"))
+                    .unwrap_or_default()
             ))
             .default(true)
             .interact()?;
 
         if launch {
             println!();
-            chat::run(&provider, None).await?;
+            chat::run(&provider, model.as_deref()).await?;
         }
 
         Ok(())
@@ -1741,20 +1757,37 @@ where
     save_setup_state(workspace_root, &manifest)
 }
 
-fn next_pending_step_name(setup: &SetupState) -> Option<String> {
-    setup
-        .selected_steps
-        .iter()
-        .find(|id| !setup.completed_steps.contains(*id))
-        .and_then(|id| step_from_id(id))
-        .map(|step| step.name().to_string())
+fn step_next_action(setup: &SetupState, step: &OnboardingStep) -> String {
+    match step {
+        OnboardingStep::Model => {
+            if setup.selected_provider.is_none() || setup.selected_access_mode.is_none() {
+                "Choose the LLM provider and access mode".to_string()
+            } else if setup.selected_primary_model.is_none() {
+                "Choose the primary task model".to_string()
+            } else if let Some(outcome) = setup.bootstrap_outcomes.iter().rev().find(|outcome| {
+                outcome.status != "ready"
+                    && matches!(
+                        outcome.verification_stage.as_deref(),
+                        Some("provider_connection")
+                    )
+            }) {
+                outcome
+                    .suggested_action
+                    .clone()
+                    .unwrap_or_else(|| "Resolve provider verification and rerun onboarding".to_string())
+            } else {
+                format!("Complete {}", step.name())
+            }
+        }
+        _ => format!("Complete {}", step.name()),
+    }
 }
 
 fn set_setup_state_current_step(workspace_root: &Path, step: &OnboardingStep) -> Result<()> {
     with_setup_state_mut(workspace_root, |setup| {
         setup.status = "in_progress".to_string();
         setup.current_step = Some(step.id().to_string());
-        setup.next_action = Some(format!("Complete {}", step.name()));
+        setup.next_action = Some(step_next_action(setup, step));
     })
 }
 
@@ -1768,7 +1801,12 @@ fn mark_setup_state_step_completed(workspace_root: &Path, step: &OnboardingStep)
             .blockers
             .retain(|item| !item.contains(step.name()) && !item.contains(step.id()));
         setup.current_step = None;
-        setup.next_action = next_pending_step_name(setup).map(|name| format!("Complete {name}"));
+        setup.next_action = setup
+            .selected_steps
+            .iter()
+            .find(|id| !setup.completed_steps.contains(*id))
+            .and_then(|id| step_from_id(id))
+            .map(|next_step| step_next_action(setup, &next_step));
     })
 }
 
@@ -2493,7 +2531,7 @@ fn prepare_setup_state_for_repair(workspace_root: &Path, steps: &[OnboardingStep
         setup.current_step = steps.first().map(|step| step.id().to_string());
         setup.next_action = steps
             .first()
-            .map(|step| format!("Complete {}", step.name()));
+            .map(|step| step_next_action(setup, step));
     })
 }
 
@@ -2977,6 +3015,17 @@ mod tests {
     }
 
     #[test]
+    fn test_assistant_model_prefers_onboarding_state() {
+        let mut wizard = OnboardingWizard::new();
+        wizard.state.selected_primary_model = Some("openai/gpt-4o".to_string());
+
+        assert_eq!(
+            wizard.assistant_model("openrouter").as_deref(),
+            Some("openai/gpt-4o")
+        );
+    }
+
+    #[test]
     fn test_workspace_status_defaults_to_absent() {
         let dir = tempfile::tempdir().unwrap();
         let status = workspace_status(dir.path());
@@ -3080,6 +3129,44 @@ mod tests {
         assert_eq!(
             remote.fallback_paths,
             vec!["ssh_tunnel".to_string(), "reverse_proxy".to_string()]
+        );
+    }
+
+    #[test]
+    fn test_step_next_action_distinguishes_model_substeps() {
+        let mut setup = SetupState {
+            started_at: Utc::now().to_rfc3339(),
+            updated_at: Utc::now().to_rfc3339(),
+            completed_at: None,
+            status: "in_progress".to_string(),
+            workspace_action: "resume".to_string(),
+            deployment_mode: None,
+            deployment_path: None,
+            remote_connectivity_profile: None,
+            setup_path: Some("Standard".to_string()),
+            selected_provider: None,
+            selected_access_mode: None,
+            selected_primary_model: None,
+            selected_primary_model_source: None,
+            selected_steps: vec!["model".to_string()],
+            completed_steps: Vec::new(),
+            blockers: Vec::new(),
+            next_action: None,
+            current_step: Some("model".to_string()),
+            bootstrap_outcomes: Vec::new(),
+        };
+
+        assert_eq!(
+            step_next_action(&setup, &OnboardingStep::Model),
+            "Choose the LLM provider and access mode"
+        );
+
+        setup.selected_provider = Some("openrouter".to_string());
+        setup.selected_access_mode = Some("api_key".to_string());
+
+        assert_eq!(
+            step_next_action(&setup, &OnboardingStep::Model),
+            "Choose the primary task model"
         );
     }
 

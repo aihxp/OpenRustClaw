@@ -351,6 +351,8 @@ fn trim_messages(messages: &mut Vec<Message>) {
 mod tests {
     use super::*;
     use openrustclaw_db::run_migrations;
+    use serial_test::serial;
+    use std::fs;
     use tempfile::tempdir;
 
     #[tokio::test]
@@ -393,6 +395,31 @@ mod tests {
         assert_eq!(resumed.session_id, first.session_id);
         assert_eq!(resumed.messages.len(), 1);
         assert_eq!(resumed.messages[0].content, "hello from the first run");
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[serial(cwd)]
+    async fn load_chat_config_uses_persisted_model_when_no_override_is_supplied() -> Result<()> {
+        let workspace = tempdir()?;
+        fs::create_dir_all(workspace.path().join("config"))?;
+
+        let mut config = openrustclaw_core::config::AppConfig::default();
+        config.providers.default_provider = "openrouter".to_string();
+        config.providers.openrouter.model = "openai/gpt-4o".to_string();
+        fs::write(
+            workspace.path().join("config/default.toml"),
+            toml::to_string_pretty(&config)?,
+        )?;
+
+        let previous = std::env::current_dir()?;
+        std::env::set_current_dir(workspace.path())?;
+        let loaded = load_chat_config("openrouter", None).await;
+        std::env::set_current_dir(previous)?;
+        let loaded = loaded?;
+
+        assert_eq!(loaded.providers.default_provider, "openrouter");
+        assert_eq!(loaded.providers.openrouter.model, "openai/gpt-4o");
         Ok(())
     }
 }
