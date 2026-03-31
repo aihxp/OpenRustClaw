@@ -184,6 +184,12 @@ pub struct SetupBootstrapOutcome {
     pub target: String,
     pub status: String,
     pub detail: String,
+    #[serde(default)]
+    pub issue_kind: Option<String>,
+    #[serde(default)]
+    pub verification_stage: Option<String>,
+    #[serde(default)]
+    pub suggested_action: Option<String>,
     pub updated_at: String,
 }
 
@@ -723,10 +729,20 @@ Let's get started!
             if !outcomes.is_empty() {
                 println!("  Bootstrap attention:");
                 for outcome in outcomes {
-                    println!(
-                        "    - {} {}: {}",
-                        outcome.category, outcome.target, outcome.detail
-                    );
+                    if let Some(issue_kind) = outcome.issue_kind.as_deref() {
+                        println!(
+                            "    - {} {} [{}]: {}",
+                            outcome.category, outcome.target, issue_kind, outcome.detail
+                        );
+                    } else {
+                        println!(
+                            "    - {} {}: {}",
+                            outcome.category, outcome.target, outcome.detail
+                        );
+                    }
+                    if let Some(next_action) = outcome.suggested_action.as_deref() {
+                        println!("      next: {next_action}");
+                    }
                 }
             }
         }
@@ -1242,13 +1258,16 @@ async fn run_model_setup(wizard: &mut OnboardingWizard) -> Result<bool> {
     }
 
     wizard.state.model_configured = true;
-    let provider_assessment = validate_provider_bootstrap(&workspace_root, descriptor.id).await?;
-    record_bootstrap_outcome(
+    let provider_assessment =
+        validate_provider_bootstrap(&workspace_root, descriptor.id, Some(access_mode.id()))
+            .await?;
+    record_bootstrap_outcome_with_metadata(
         &workspace_root,
         "provider",
         descriptor.id,
         provider_assessment.status,
         provider_assessment.detail.clone(),
+        Some(&provider_assessment),
     )?;
     print_bootstrap_assessment(descriptor.id, &provider_assessment);
     let runtime_assessment =
@@ -1502,6 +1521,9 @@ fn app_bootstrap_outcome(
         target: outcome.target.clone(),
         status: outcome.status.clone(),
         detail: outcome.detail.clone(),
+        issue_kind: outcome.issue_kind.clone(),
+        verification_stage: outcome.verification_stage.clone(),
+        suggested_action: outcome.suggested_action.clone(),
         updated_at: outcome.updated_at.clone(),
     }
 }
@@ -1514,6 +1536,9 @@ fn setup_bootstrap_outcome_from_app(
         target: outcome.target,
         status: outcome.status,
         detail: outcome.detail,
+        issue_kind: outcome.issue_kind,
+        verification_stage: outcome.verification_stage,
+        suggested_action: outcome.suggested_action,
         updated_at: outcome.updated_at,
     }
 }
@@ -1683,7 +1708,20 @@ fn mark_setup_state_step_blocked(
         if !setup.blockers.contains(&message) {
             setup.blockers.push(message.clone());
         }
-        setup.next_action = Some(format!("Review {} and rerun onboarding", step.name()));
+        setup.next_action = setup
+            .bootstrap_outcomes
+            .iter()
+            .rev()
+            .find(|outcome| {
+                outcome.status != "ready"
+                    && step == &OnboardingStep::Model
+                    && matches!(
+                        outcome.verification_stage.as_deref(),
+                        Some("provider_connection")
+                    )
+            })
+            .and_then(|outcome| outcome.suggested_action.clone())
+            .or_else(|| Some(format!("Review {} and rerun onboarding", step.name())));
     })
 }
 
@@ -1715,6 +1753,9 @@ struct BootstrapAssessment {
     status: &'static str,
     detail: String,
     blocking: bool,
+    issue_kind: Option<String>,
+    verification_stage: Option<String>,
+    suggested_action: Option<String>,
 }
 
 fn print_bootstrap_assessment(target: &str, assessment: &BootstrapAssessment) {
@@ -1724,6 +1765,11 @@ fn print_bootstrap_assessment(target: &str, assessment: &BootstrapAssessment) {
         _ => "✗",
     };
     println!("  {label} {} bootstrap: {}", target, assessment.detail);
+    if let Some(next_action) = assessment.suggested_action.as_deref()
+        && assessment.status != "ready"
+    {
+        println!("    Next action: {next_action}");
+    }
 }
 
 fn record_bootstrap_outcome(
@@ -1733,6 +1779,17 @@ fn record_bootstrap_outcome(
     status: &str,
     detail: impl Into<String>,
 ) -> Result<()> {
+    record_bootstrap_outcome_with_metadata(workspace_root, category, target, status, detail, None)
+}
+
+fn record_bootstrap_outcome_with_metadata(
+    workspace_root: &Path,
+    category: &str,
+    target: &str,
+    status: &str,
+    detail: impl Into<String>,
+    metadata: Option<&BootstrapAssessment>,
+) -> Result<()> {
     let detail = detail.into();
     with_setup_state_mut(workspace_root, |setup| {
         let outcome = SetupBootstrapOutcome {
@@ -1740,6 +1797,9 @@ fn record_bootstrap_outcome(
             target: target.to_string(),
             status: status.to_string(),
             detail,
+            issue_kind: metadata.and_then(|value| value.issue_kind.clone()),
+            verification_stage: metadata.and_then(|value| value.verification_stage.clone()),
+            suggested_action: metadata.and_then(|value| value.suggested_action.clone()),
             updated_at: Utc::now().to_rfc3339(),
         };
         if let Some(existing) = setup
@@ -1769,6 +1829,7 @@ fn bootstrap_outcome_for<'a>(
 async fn validate_provider_bootstrap(
     workspace_root: &Path,
     provider_name: &str,
+    access_mode: Option<&str>,
 ) -> Result<BootstrapAssessment> {
     let report =
         runtime::runtime_health_status("config/default.toml", workspace_root, true).await?;
@@ -1783,6 +1844,11 @@ async fn validate_provider_bootstrap(
                 "Runtime health did not return a `{provider_name}` provider entry after setup."
             ),
             blocking: true,
+            issue_kind: Some("provider_unavailable".to_string()),
+            verification_stage: Some("provider_connection".to_string()),
+            suggested_action: Some(format!(
+                "Review the `{provider_name}` runtime configuration, then rerun onboarding."
+            )),
         });
     };
 
@@ -1790,22 +1856,26 @@ async fn validate_provider_bootstrap(
         Ok(BootstrapAssessment {
             status: "ready",
             detail: format!(
-                "Provider `{provider_name}` is reachable with model `{}`.",
+                "Live verification succeeded for provider `{provider_name}` with model `{}`.",
                 entry.model
             ),
             blocking: false,
+            issue_kind: None,
+            verification_stage: Some("provider_connection".to_string()),
+            suggested_action: None,
         })
     } else {
+        let issue_kind = onboarding_provider_issue_kind(provider_name, access_mode, entry);
         Ok(BootstrapAssessment {
             status: "blocked",
-            detail: format!(
-                "Provider `{provider_name}` is configured but not ready: {}",
-                entry
-                    .issue
-                    .clone()
-                    .unwrap_or_else(|| "health probe failed".to_string())
-            ),
+            detail: provider_verification_detail(provider_name, &issue_kind, entry),
             blocking: true,
+            issue_kind: Some(issue_kind.clone()),
+            verification_stage: Some("provider_connection".to_string()),
+            suggested_action: Some(provider_verification_next_action(
+                provider_name,
+                &issue_kind,
+            )),
         })
     }
 }
@@ -1828,6 +1898,9 @@ async fn runtime_lane_assessment(
                     "No healthy control-plane fallback is available yet for the current runtime lane.".to_string()
                 }),
             blocking: false,
+            issue_kind: None,
+            verification_stage: None,
+            suggested_action: None,
         });
     }
 
@@ -1838,6 +1911,9 @@ async fn runtime_lane_assessment(
             "Runtime provider lane is healthy for the current `{mode_label}` deployment path."
         ),
         blocking: false,
+        issue_kind: None,
+        verification_stage: None,
+        suggested_action: None,
     })
 }
 
@@ -1852,6 +1928,9 @@ fn validate_execution_mode_bootstrap(
             status: "blocked",
             detail: "Control-plane runtime registry was not written during setup.".to_string(),
             blocking: true,
+            issue_kind: None,
+            verification_stage: None,
+            suggested_action: None,
         });
     };
 
@@ -1865,6 +1944,9 @@ fn validate_execution_mode_bootstrap(
                 runtime_spec.mode, descriptor.label
             ),
             blocking: false,
+            issue_kind: None,
+            verification_stage: None,
+            suggested_action: None,
         })
     } else if runtime_spec.mode == execution_mode {
         Ok(BootstrapAssessment {
@@ -1874,6 +1956,9 @@ fn validate_execution_mode_bootstrap(
                 runtime_spec.mode, descriptor.label, descriptor.recommended_runtime_mode
             ),
             blocking: false,
+            issue_kind: None,
+            verification_stage: None,
+            suggested_action: None,
         })
     } else {
         Ok(BootstrapAssessment {
@@ -1883,7 +1968,100 @@ fn validate_execution_mode_bootstrap(
                 runtime_spec.mode
             ),
             blocking: true,
+            issue_kind: None,
+            verification_stage: None,
+            suggested_action: None,
         })
+    }
+}
+
+fn onboarding_provider_issue_kind(
+    provider_name: &str,
+    access_mode: Option<&str>,
+    entry: &runtime::RuntimeHealthProviderEntry,
+) -> String {
+    let raw_issue = entry.issue.as_deref().unwrap_or_default().to_ascii_lowercase();
+    if provider_name == "ollama"
+        && access_mode == Some("local_runtime")
+        && matches!(
+            entry.issue_kind.as_deref(),
+            Some("probe_failed") | Some("provider_unavailable")
+        )
+        && (raw_issue.contains("failed to reach")
+            || raw_issue.contains("connection refused")
+            || raw_issue.contains("tcp connect")
+            || raw_issue.contains("timed out"))
+    {
+        return "local_runtime_missing".to_string();
+    }
+
+    entry.issue_kind
+        .clone()
+        .unwrap_or_else(|| "probe_failed".to_string())
+}
+
+fn provider_verification_detail(
+    provider_name: &str,
+    issue_kind: &str,
+    entry: &runtime::RuntimeHealthProviderEntry,
+) -> String {
+    let raw_issue = entry
+        .issue
+        .clone()
+        .unwrap_or_else(|| "health probe failed".to_string());
+    match issue_kind {
+        "auth" => format!(
+            "Provider `{provider_name}` rejected live verification due to authentication or access: {raw_issue}"
+        ),
+        "local_runtime_missing" => format!(
+            "Local runtime for `{provider_name}` is not reachable during live verification: {raw_issue}"
+        ),
+        "model_unavailable" => format!(
+            "Configured model `{}` is not available during live verification for provider `{provider_name}`: {raw_issue}",
+            entry.model
+        ),
+        "billing" => format!(
+            "Provider `{provider_name}` blocked live verification because billing or quota is not available: {raw_issue}"
+        ),
+        "rate_limited" => format!(
+            "Provider `{provider_name}` is rate-limited, so onboarding cannot verify readiness yet: {raw_issue}"
+        ),
+        "provider_unavailable" => format!(
+            "Provider `{provider_name}` could not be reached during live verification: {raw_issue}"
+        ),
+        "not_configured" => format!(
+            "Provider `{provider_name}` is selected but the required credential or runtime configuration is missing: {raw_issue}"
+        ),
+        _ => format!("Provider `{provider_name}` failed live verification: {raw_issue}"),
+    }
+}
+
+fn provider_verification_next_action(provider_name: &str, issue_kind: &str) -> String {
+    match issue_kind {
+        "auth" => format!(
+            "Review the `{provider_name}` credential or account access, then rerun onboarding."
+        ),
+        "local_runtime_missing" => {
+            "Start the local runtime, confirm it is reachable, then rerun onboarding.".to_string()
+        }
+        "model_unavailable" => format!(
+            "Choose or pull a model that `{provider_name}` exposes, then rerun onboarding."
+        ),
+        "billing" => format!(
+            "Resolve billing or quota for `{provider_name}`, then rerun onboarding."
+        ),
+        "rate_limited" => format!(
+            "Wait for `{provider_name}` rate limits to reset or switch provider path, then rerun onboarding."
+        ),
+        "provider_unavailable" => format!(
+            "Check provider reachability for `{provider_name}`, then rerun onboarding."
+        ),
+        "not_configured" => format!(
+            "Configure the required `{provider_name}` credential or runtime, then rerun onboarding."
+        ),
+        _ => format!(
+            "Review the `{provider_name}` verification failure and rerun onboarding."
+        ),
     }
 }
 
@@ -1902,6 +2080,9 @@ async fn validate_channel_bootstrap(
             status: "blocked",
             detail: format!("No `{platform}` channel probe result was produced after setup."),
             blocking: true,
+            issue_kind: None,
+            verification_stage: None,
+            suggested_action: None,
         });
     };
 
@@ -1910,16 +2091,25 @@ async fn validate_channel_bootstrap(
             status: "ready",
             detail: entry.detail.clone(),
             blocking: false,
+            issue_kind: None,
+            verification_stage: None,
+            suggested_action: None,
         }),
         services::ChannelProbeStatus::Warning => Ok(BootstrapAssessment {
             status: "warning",
             detail: entry.detail.clone(),
             blocking: true,
+            issue_kind: None,
+            verification_stage: None,
+            suggested_action: None,
         }),
         services::ChannelProbeStatus::Failed => Ok(BootstrapAssessment {
             status: "blocked",
             detail: entry.detail.clone(),
             blocking: true,
+            issue_kind: None,
+            verification_stage: None,
+            suggested_action: None,
         }),
     }
 }
@@ -2589,6 +2779,7 @@ mod tests {
         let outcome = bootstrap_outcome_for(&loaded.setup, "provider", "anthropic").unwrap();
         assert_eq!(outcome.status, "ready");
         assert_eq!(outcome.detail, "provider reachable");
+        assert!(outcome.issue_kind.is_none());
     }
 
     #[test]
@@ -2664,6 +2855,9 @@ mod tests {
                     target: "anthropic".to_string(),
                     status: "blocked".to_string(),
                     detail: "provider not ready".to_string(),
+                    issue_kind: None,
+                    verification_stage: None,
+                    suggested_action: None,
                     updated_at: Utc::now().to_rfc3339(),
                 },
                 SetupBootstrapOutcome {
@@ -2671,6 +2865,9 @@ mod tests {
                     target: "slack".to_string(),
                     status: "warning".to_string(),
                     detail: "channel probe failed".to_string(),
+                    issue_kind: None,
+                    verification_stage: None,
+                    suggested_action: None,
                     updated_at: Utc::now().to_rfc3339(),
                 },
             ],
@@ -2773,6 +2970,83 @@ mod tests {
         assert_eq!(
             loaded.setup.next_action.as_deref(),
             Some("Complete AI Model Setup")
+        );
+    }
+
+    #[test]
+    fn test_validate_provider_bootstrap_classifies_local_runtime_missing() {
+        let entry = runtime::RuntimeHealthProviderEntry {
+            provider: "ollama".to_string(),
+            role: "primary".to_string(),
+            model: "llama3".to_string(),
+            configured: true,
+            healthy: false,
+            issue_kind: Some("probe_failed".to_string()),
+            recommendation: None,
+            issue: Some("Failed to reach Ollama: tcp connect error: Connection refused".to_string()),
+            model_available: None,
+            limit_snapshot: None,
+        };
+
+        let issue_kind = onboarding_provider_issue_kind("ollama", Some("local_runtime"), &entry);
+        assert_eq!(issue_kind, "local_runtime_missing");
+        let detail = provider_verification_detail("ollama", &issue_kind, &entry);
+        assert!(detail.contains("Local runtime"));
+        let next_action = provider_verification_next_action("ollama", &issue_kind);
+        assert!(next_action.contains("Start the local runtime"));
+    }
+
+    #[test]
+    fn test_mark_setup_state_step_blocked_prefers_provider_verification_action() {
+        let dir = tempfile::tempdir().unwrap();
+        let manifest = SetupStateManifest {
+            version: SETUP_STATE_VERSION,
+            setup: SetupState {
+                started_at: Utc::now().to_rfc3339(),
+                updated_at: Utc::now().to_rfc3339(),
+                completed_at: None,
+                status: "in_progress".to_string(),
+                workspace_action: "resume".to_string(),
+                deployment_mode: Some(self_hosted::MODE_SOLO.to_string()),
+                deployment_path: Some("solo_starter".to_string()),
+                remote_connectivity_profile: None,
+                setup_path: Some("Standard".to_string()),
+                selected_provider: Some("ollama".to_string()),
+                selected_access_mode: Some("local_runtime".to_string()),
+                selected_steps: vec!["model".to_string()],
+                completed_steps: Vec::new(),
+                blockers: Vec::new(),
+                next_action: Some("Complete AI Model Setup".to_string()),
+                current_step: Some("model".to_string()),
+                bootstrap_outcomes: vec![SetupBootstrapOutcome {
+                    category: "provider".to_string(),
+                    target: "ollama".to_string(),
+                    status: "blocked".to_string(),
+                    detail: "Local runtime is not reachable".to_string(),
+                    issue_kind: Some("local_runtime_missing".to_string()),
+                    verification_stage: Some("provider_connection".to_string()),
+                    suggested_action: Some(
+                        "Start the local runtime, confirm it is reachable, then rerun onboarding."
+                            .to_string(),
+                    ),
+                    updated_at: Utc::now().to_rfc3339(),
+                }],
+            },
+        };
+        save_setup_state(dir.path(), &manifest).unwrap();
+
+        mark_setup_state_step_blocked(
+            dir.path(),
+            &OnboardingStep::Model,
+            "AI Model Setup failed: provider verification failed".to_string(),
+        )
+        .unwrap();
+
+        let loaded = load_setup_state(dir.path()).unwrap().unwrap();
+        assert_eq!(loaded.setup.status, "blocked");
+        assert_eq!(
+            loaded.setup.next_action.as_deref(),
+            Some("Start the local runtime, confirm it is reachable, then rerun onboarding.")
         );
     }
 

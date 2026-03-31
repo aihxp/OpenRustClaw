@@ -976,6 +976,9 @@ fn map_bootstrap_outcome(outcome: onboard::SetupBootstrapOutcome) -> AppSetupBoo
         target: outcome.target,
         status: outcome.status,
         detail: outcome.detail,
+        issue_kind: outcome.issue_kind,
+        verification_stage: outcome.verification_stage,
+        suggested_action: outcome.suggested_action,
         updated_at: outcome.updated_at,
     }
 }
@@ -2096,6 +2099,11 @@ mod tests {
                         target: "slack".to_string(),
                         status: "warning".to_string(),
                         detail: "Slack auth probe failed".to_string(),
+                        issue_kind: Some("auth".to_string()),
+                        verification_stage: None,
+                        suggested_action: Some(
+                            "Review the Slack credential and rerun onboarding.".to_string(),
+                        ),
                         updated_at: Utc::now().to_rfc3339(),
                     }],
                 },
@@ -2110,6 +2118,7 @@ mod tests {
         assert_eq!(report.selected_access_mode.as_deref(), Some("api_key"));
         assert_eq!(report.completed_step_count, 2);
         assert_eq!(report.bootstrap_outcomes.len(), 1);
+        assert_eq!(report.bootstrap_outcomes[0].issue_kind.as_deref(), Some("auth"));
         assert_eq!(
             report
                 .remote_connectivity_profile

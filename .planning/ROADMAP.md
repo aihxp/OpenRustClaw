@@ -16,7 +16,7 @@
 - This milestone starts at Phase 177 because `v1.41` ended at Phase 176.
 
 - [x] **Phase 177: Provider Access Modes and Resume State** - Choose a supported onboarding provider path and persist access-mode context without losing progress. (completed 2026-03-30)
-- [ ] **Phase 178: Live Verification and Bootstrap Evidence** - Verify the chosen provider lane before readiness and classify failures truthfully.
+- [x] **Phase 178: Live Verification and Bootstrap Evidence** - Verify the chosen provider lane before readiness and classify failures truthfully. (completed 2026-03-30)
 - [ ] **Phase 179: Primary Model Discovery and Persistence** - Select an explicit primary task model and persist provider plus model together in onboarding.
 - [ ] **Phase 180: Handoff, Repair, and First-Launch Continuity** - Surface the selected lane in setup handoff and reuse it on resume, repair, and first launch.
 
@@ -44,7 +44,10 @@ Plans:
   1. Onboarding verifies the chosen provider connection before the model setup step is marked ready.
   2. Operator can see whether verification failed because of authentication or access, missing local runtime, model unavailability, billing or quota, rate limiting, or generic provider reachability issues.
   3. Verification outcomes are recorded in durable bootstrap evidence so repair and resume can target the failed verification sub-step directly.
-**Plans**: TBD
+**Plans**: 1/1 plans complete
+
+Plans:
+- [x] 178-01 Enrich provider verification evidence, classification, and recovery routing
 
 ### Phase 179: Primary Model Discovery and Persistence
 **Goal**: Operators can choose an explicit primary task model during onboarding and have that provider-model pair persisted through the shared runtime mutation lane.
@@ -73,6 +76,6 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 177. Provider Access Modes and Resume State | 1/1 | Complete | 2026-03-30 |
-| 178. Live Verification and Bootstrap Evidence | 0/TBD | Not started | - |
+| 178. Live Verification and Bootstrap Evidence | 1/1 | Complete | 2026-03-30 |
 | 179. Primary Model Discovery and Persistence | 0/TBD | Not started | - |
 | 180. Handoff, Repair, and First-Launch Continuity | 0/TBD | Not started | - |

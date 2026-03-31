@@ -64,6 +64,12 @@ pub struct SetupBootstrapOutcome {
     pub target: String,
     pub status: String,
     pub detail: String,
+    #[serde(default)]
+    pub issue_kind: Option<String>,
+    #[serde(default)]
+    pub verification_stage: Option<String>,
+    #[serde(default)]
+    pub suggested_action: Option<String>,
     pub updated_at: String,
 }
 
@@ -216,21 +222,17 @@ impl SetupLifecycleService {
 
     pub fn handoff_detail(&self, setup: &SetupLifecycleState) -> String {
         match self.handoff_status(setup) {
-            "blocked" => setup
-                .blockers
+            "blocked" => self
+                .non_ready_bootstrap_outcomes(setup)
                 .first()
-                .cloned()
+                .map(Self::bootstrap_attention_detail)
+                .or_else(|| setup.blockers.first().cloned())
                 .or_else(|| setup.next_action.clone())
                 .unwrap_or_else(|| "Setup is blocked and needs operator attention.".to_string()),
             "degraded" => self
                 .non_ready_bootstrap_outcomes(setup)
                 .first()
-                .map(|outcome| {
-                    format!(
-                        "{} {} needs review: {}",
-                        outcome.category, outcome.target, outcome.detail
-                    )
-                })
+                .map(Self::bootstrap_attention_detail)
                 .or_else(|| setup.next_action.clone())
                 .unwrap_or_else(|| {
                     "Setup is usable but still has warning-level bootstrap issues.".to_string()
@@ -350,6 +352,38 @@ impl SetupLifecycleService {
             steps.push(step);
         }
     }
+
+    fn bootstrap_attention_detail(outcome: &SetupBootstrapOutcome) -> String {
+        if outcome.verification_stage.as_deref() == Some("provider_connection") {
+            let label = outcome
+                .issue_kind
+                .as_deref()
+                .map(bootstrap_issue_label)
+                .unwrap_or("verification blocked");
+            return format!(
+                "Provider verification for `{}` is {}: {}",
+                outcome.target, label, outcome.detail
+            );
+        }
+
+        format!(
+            "{} {} needs review: {}",
+            outcome.category, outcome.target, outcome.detail
+        )
+    }
+}
+
+fn bootstrap_issue_label(issue_kind: &str) -> &'static str {
+    match issue_kind {
+        "auth" => "authentication or access blocked",
+        "local_runtime_missing" => "local runtime unavailable",
+        "model_unavailable" => "model unavailable",
+        "billing" => "billing or quota blocked",
+        "rate_limited" => "rate-limited",
+        "provider_unavailable" => "provider unreachable",
+        "not_configured" => "not configured",
+        _ => "verification blocked",
+    }
 }
 
 #[cfg(test)]
@@ -404,6 +438,9 @@ mod tests {
                 target: "anthropic".to_string(),
                 status: "warning".to_string(),
                 detail: "provider reachable but degraded".to_string(),
+                issue_kind: None,
+                verification_stage: None,
+                suggested_action: None,
                 updated_at: "2026-03-28T00:00:00Z".to_string(),
             }],
         };
@@ -437,6 +474,9 @@ mod tests {
                     target: "anthropic".to_string(),
                     status: "blocked".to_string(),
                     detail: "provider not ready".to_string(),
+                    issue_kind: None,
+                    verification_stage: None,
+                    suggested_action: None,
                     updated_at: "2026-03-28T00:00:00Z".to_string(),
                 },
                 SetupBootstrapOutcome {
@@ -444,6 +484,9 @@ mod tests {
                     target: "slack".to_string(),
                     status: "warning".to_string(),
                     detail: "channel probe failed".to_string(),
+                    issue_kind: None,
+                    verification_stage: None,
+                    suggested_action: None,
                     updated_at: "2026-03-28T00:00:00Z".to_string(),
                 },
             ],
@@ -489,5 +532,37 @@ mod tests {
         assert!(!service.should_offer_assistant_launch(false, true, Some("openrouter")));
         assert!(!service.should_offer_assistant_launch(true, false, Some("openrouter")));
         assert!(!service.should_offer_assistant_launch(true, true, None));
+    }
+
+    #[test]
+    fn handoff_detail_surfaces_provider_verification_issue_kind() {
+        let service = SetupLifecycleService::new();
+        let setup = SetupLifecycleState {
+            status: "blocked".to_string(),
+            setup_path: Some("Advanced".to_string()),
+            selected_provider: Some("ollama".to_string()),
+            selected_access_mode: Some("local_runtime".to_string()),
+            selected_steps: vec!["model".to_string()],
+            completed_steps: Vec::new(),
+            blockers: vec!["AI Model Setup failed".to_string()],
+            next_action: Some("Start Ollama and rerun onboarding.".to_string()),
+            bootstrap_outcomes: vec![SetupBootstrapOutcome {
+                category: "provider".to_string(),
+                target: "ollama".to_string(),
+                status: "blocked".to_string(),
+                detail: "Local Ollama is not reachable at http://localhost:11434.".to_string(),
+                issue_kind: Some("local_runtime_missing".to_string()),
+                verification_stage: Some("provider_connection".to_string()),
+                suggested_action: Some("Start Ollama and rerun onboarding.".to_string()),
+                updated_at: "2026-03-30T00:00:00Z".to_string(),
+            }],
+        };
+
+        assert_eq!(service.handoff_status(&setup), "blocked");
+        assert!(
+            service
+                .handoff_detail(&setup)
+                .contains("local runtime unavailable")
+        );
     }
 }

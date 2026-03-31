@@ -39,6 +39,12 @@ pub struct SetupBootstrapOutcome {
     pub target: String,
     pub status: String,
     pub detail: String,
+    #[serde(default)]
+    pub issue_kind: Option<String>,
+    #[serde(default)]
+    pub verification_stage: Option<String>,
+    #[serde(default)]
+    pub suggested_action: Option<String>,
     pub updated_at: String,
 }
 
@@ -234,6 +240,9 @@ mod tests {
                     target: "control".to_string(),
                     status: "ready".to_string(),
                     detail: "Gateway bootstrap completed.".to_string(),
+                    issue_kind: None,
+                    verification_stage: None,
+                    suggested_action: None,
                     updated_at: "2026-03-28T00:00:00Z".to_string(),
                 }],
             }),
