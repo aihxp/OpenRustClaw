@@ -1,99 +1,101 @@
 # Technology Stack
 
-**Analysis Date:** 2026-03-26
+**Analysis Date:** 2026-04-04
 
 ## Languages
 
 **Primary:**
-- Rust 2024 edition - Main product runtime, CLI, gateway, providers, scheduling, security, channels, skills, voice, automation, and mobile support across the workspace declared in `Cargo.toml`
+- Rust 2024 edition - main workspace language across `Cargo.toml`, `crates/`, `tests/`, and `benches/`
 
 **Secondary:**
-- Python 3 - Optional compatibility sidecar under `sidecar/` for LangGraph-based workflows and gRPC bridging
-- TOML / YAML / Markdown / JSON - Runtime config, CI, deployment manifests, docs book, roadmap artifacts, and operator control files
-- Shell - Release and quality scripts under `scripts/`
+- Python 3.11+ - optional LangGraph sidecar in `sidecar/pyproject.toml` and `sidecar/src/`
+- JavaScript / Node.js 18+ - WhatsApp bridge only in `crates/channels/baileys-bridge/package.json`
 
 ## Runtime
 
 **Environment:**
-- Native Rust async runtime built on `tokio` across the workspace
-- Optional Python virtualenv sidecar in `sidecar/.venv` for compatibility workflows
-- SQLite-backed local persistence via `sqlx`, `rusqlite`, and `libsql`
+- Rust stable toolchain with `rustfmt` and `clippy` in `rust-toolchain.toml`
+- Rust 1.85 baseline in provider SDK crates such as `crates/anthropic_rust/Cargo.toml`, `crates/async_openai/Cargo.toml`, and `crates/openrouter_api/Cargo.toml`
+- Tokio async runtime is the default execution model from workspace deps in `Cargo.toml`
+- Python sidecar runs as `python -m src.server` through `crates/langbridge/src/sidecar.rs` and `sidecar/src/server.py`
 
-**Package Manager / Build Tools:**
-- Cargo workspace with a single top-level `Cargo.toml` and `Cargo.lock`
-- Python packaging via `sidecar/pyproject.toml`
-- Protobuf compilation required in CI (`protobuf-compiler` installed in `.github/workflows/ci.yml`)
+**Package Manager:**
+- Cargo - workspace package manager in `Cargo.toml`
+- Lockfile: present in `Cargo.lock`
+- Python packaging uses `setuptools` and editable installs from `sidecar/pyproject.toml`
+- Python lockfile: missing
+- Node package manager is only needed for `crates/channels/baileys-bridge/package.json`
 
 ## Frameworks
 
 **Core:**
-- `axum` - HTTP and WebSocket control/gateway surfaces, especially in `crates/gateway/` and large command/control handlers in `crates/cli/src/commands/start.rs`
-- `clap` - CLI command tree in `crates/cli/src/main.rs`
-- `tokio` / `futures` / `async-trait` - Async execution model across runtime crates
-- `tonic` / `prost` - gRPC bridge and protobuf transport for orchestration/runtime integration
+- Axum 0.8 - HTTP/WebSocket gateway and internal APIs in `Cargo.toml` and `crates/gateway/src/server.rs`
+- Tonic 0.12 / Prost 0.13 - Rust↔Python gRPC contract in `Cargo.toml`, `crates/langbridge/Cargo.toml`, and `sidecar/src/proto/`
+- LangGraph / LangChain - Python workflow orchestration in `sidecar/pyproject.toml` and `sidecar/src/workflows/`
+- Model Context Protocol - JSON-RPC MCP server/client in `crates/mcp/Cargo.toml` and `crates/mcp/src/server.rs`
 
-**Persistence / State:**
-- `sqlx`, `rusqlite`, `libsql` - SQLite and vector-oriented persistence
-- File-backed operator state under `.claw/` and generated planning state under `.planning/`
+**Testing:**
+- Cargo test - workspace-native testing path in `README.md`, `Makefile`, and `.github/workflows/ci.yml`
+- Pytest / pytest-asyncio - sidecar testing in `sidecar/pyproject.toml` and `sidecar/test_sidecar.py`
+- Wiremock / Mockito / serial_test / proptest - HTTP, isolation, and property tests from `Cargo.toml`
 
-**Observability / Security:**
-- `tracing`, `opentelemetry`, `prometheus` - Tracing and metrics
-- `ed25519-dalek`, `argon2`, `jsonwebtoken`, `chacha20poly1305`, `wasmtime` - Auth, signing, vault, and WASM sandboxing
-
-**Compatibility / AI Workflows:**
-- LangGraph + gRPC Python sidecar documented in `sidecar/README.md`
+**Build/Dev:**
+- cargo-chef - Docker dependency caching in `Dockerfile`
+- Docker / Docker Compose - local and production packaging in `Dockerfile`, `Dockerfile.dev`, `docker-compose.yml`, and `docker-compose.dev.yml`
+- GitHub Actions - CI, E2E, and release automation in `.github/workflows/ci.yml`, `.github/workflows/e2e-tests.yml`, and `.github/workflows/release-binaries.yml`
+- Ruff and mypy - sidecar linting and typing in `sidecar/pyproject.toml`
 
 ## Key Dependencies
 
-**Critical runtime dependencies:**
-- `tokio` - async runtime used across nearly every crate
-- `axum` - gateway/control HTTP surfaces
-- `reqwest` - provider and external integration HTTP client layer
-- `serde` / `serde_json` / `toml` - config and API serialization
-- `sqlx` / `rusqlite` / `libsql` - durable state and memory storage
-- `clap` - operator-facing CLI
-- `tonic` / `prost` - gRPC interop with the sidecar and distributed components
+**Critical:**
+- `tokio` - async runtime used across the workspace in `Cargo.toml`
+- `serde`, `serde_json`, `toml`, `config` - config and data serialization in `Cargo.toml` and `crates/core/src/config.rs`
+- `axum`, `tower`, `tower-http` - gateway, control routes, and CORS handling in `Cargo.toml` and `crates/gateway/src/server.rs`
+- `reqwest` - shared HTTP client layer for provider SDKs, channels, observability, and voice in `Cargo.toml`
+- `sqlx` - primary async persistence layer in `Cargo.toml`, `crates/db/src/pool.rs`, and `crates/db/src/session_store.rs`
+- `tracing`, `tracing-subscriber`, `metrics` - structured logging and metrics in `Cargo.toml` and `crates/observability/src/tracing_config.rs`
+- `jsonwebtoken`, `argon2`, `ed25519-dalek`, `chacha20poly1305` - auth, crypto, and vault/security primitives in `Cargo.toml` and `crates/security/`
 
-**Infrastructure-heavy areas:**
-- `crates/providers/` plus many provider-specific SDK crates under `crates/*`
-- `crates/channels/` for platform integrations
-- `crates/security/` and `crates/skills/` for sandboxing and extension execution
+**Infrastructure:**
+- `openrustclaw-providers` - runtime-wired LLM adapters for Anthropic, OpenAI, OpenRouter, Ollama, and Gemini in `crates/providers/Cargo.toml` and `crates/providers/src/`
+- Native provider SDK crates - standalone workspace crates in `crates/anthropic_rust/`, `crates/async_openai/`, `crates/openrouter_api/`, `crates/azure_openai/`, `crates/bedrock/`, `crates/cohere/`, `crates/deepseek/`, `crates/fireworks/`, `crates/groq/`, `crates/mistral/`, `crates/perplexity/`, `crates/replicate/`, `crates/together/`, `crates/vllm/`, `crates/cloudflare_ai/`, `crates/ai21/`, and `crates/llama_cpp/`
+- `langsmith`, `opentelemetry`, `opentelemetry-otlp`, `metrics-exporter-prometheus` - tracing export and metrics in `sidecar/pyproject.toml`, `crates/observability/Cargo.toml`, and `crates/gateway/src/metrics_endpoint.rs`
+- `tokio-tungstenite` - WebSocket integrations for channels and CDP in `crates/channels/Cargo.toml` and `crates/automation/Cargo.toml`
+- `headless_chrome`, Playwright/CDP support - browser automation in `crates/automation/Cargo.toml`
 
 ## Configuration
 
-**Runtime configuration:**
-- Main shipped config in `config/default.toml`
-- Example channel/provider configs under `config/*-example.toml`
-- Runtime also uses workspace state under `.claw/`
+**Environment:**
+- Runtime config loads from `config/default.toml` and `OPENRUSTCLAW_...` environment overrides with `__` separators in `crates/core/src/config.rs`
+- Example override format: `OPENRUSTCLAW_GATEWAY__PORT=8080` from `crates/core/src/config.rs`
+- Environment templates exist as `.env.example` and `.env.docker`
+- Workspace secrets can also be stored in the encrypted runtime vault at `.claw/control/runtime-vault.json` via `crates/cli/src/commands/runtime.rs` and `crates/app/src/runtime_vault_control.rs`
+- Vault access is gated by `OPENRUSTCLAW_VAULT_PASSPHRASE` in `crates/cli/src/commands/runtime.rs`
 
-**Build / project configuration:**
-- `Cargo.toml`, `Cargo.lock`, `rust-toolchain.toml`
-- `sidecar/pyproject.toml`
-- GitHub Actions in `.github/workflows/ci.yml`
-- Docker and compose files at repository root plus deployment manifests under `deployments/`
+**Build:**
+- Workspace manifest and shared deps: `Cargo.toml`
+- Rust toolchain pinning: `rust-toolchain.toml`
+- Sidecar packaging and lint/type/test settings: `sidecar/pyproject.toml`
+- Production container image: `Dockerfile`
+- Development containers: `Dockerfile.dev` and `docker-compose.dev.yml`
+- Production compose stack: `docker-compose.yml`
+- Local helper commands: `Makefile`
 
 ## Platform Requirements
 
 **Development:**
-- Rust toolchain with Cargo
-- Protobuf compiler for full check/test/CI parity
-- Python environment only if using the sidecar compatibility path
-- Local SQLite storage under `data/`
+- Rust stable / 1.85-capable toolchain from `rust-toolchain.toml` and `Dockerfile.dev`
+- `protobuf-compiler` for gRPC/proto builds in `Dockerfile`, `Dockerfile.dev`, and `.github/workflows/*.yml`
+- `libasound2-dev` for audio-capable builds in `.github/workflows/ci.yml` and `.github/workflows/e2e-tests.yml`
+- Python 3.11+ for `sidecar/` from `sidecar/pyproject.toml`
+- Node.js 18+ only when using the WhatsApp Baileys bridge from `crates/channels/baileys-bridge/package.json`
 
-**Production / deployment targets:**
-- Rust-first runtime is the intended production baseline
-- Docker / Compose support via `Dockerfile`, `Dockerfile.dev`, `docker-compose.yml`, and `docker-compose.dev.yml`
-- Kubernetes and Terraform support under `deployments/helm/` and `deployments/terraform/`
-
-## High-Signal Paths
-
-- `Cargo.toml`
-- `crates/cli/src/main.rs`
-- `config/default.toml`
-- `crates/gateway/src/lib.rs`
-- `sidecar/README.md`
-- `.github/workflows/ci.yml`
+**Production:**
+- Self-hosted binary or Docker deployment; canonical container target is Debian Bookworm Slim in `Dockerfile`
+- Persistent local volume for SQLite data under `/app/data` from `Dockerfile` and `docker-compose.yml`
+- Optional reverse proxy / TLS sidecars via `nginx` and `certbot` profiles in `docker-compose.yml`
+- GitHub Releases publish tagged multi-arch binaries from `.github/workflows/release-binaries.yml`
 
 ---
-*Stack analysis: 2026-03-26*
-*Update after major dependency, runtime, or deployment changes*
+
+*Stack analysis: 2026-04-04*

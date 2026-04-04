@@ -1,104 +1,125 @@
 # Coding Conventions
 
-**Analysis Date:** 2026-03-26
+**Analysis Date:** 2026-04-04
 
 ## Naming Patterns
 
-**Files and modules:**
-- Rust modules use snake_case file names such as `origin_check.rs`, `memory_tools.rs`, `tool_factory.rs`
-- Command surfaces are grouped by domain in `crates/cli/src/commands/*.rs`
-- Provider/channel/platform modules are usually one file per integration
-- Test-heavy modules often keep `mod tests` in the same file rather than splitting unit tests into separate files
+**Files:**
+- Use `snake_case` for Rust modules and Python modules: `crates/security/src/origin_check.rs`, `crates/gateway/src/metrics_endpoint.rs`, `sidecar/src/workflow_contract.py`.
+- Use descriptive `_test.rs` filenames for multi-crate Rust integration coverage: `tests/integration/src/provider_chain_test.rs`, `tests/integration/src/security_posture_test.rs`.
+- Use `test_*.rs` and category folders for E2E suites: `tests/e2e/src/test_provider_fallback.rs`, `tests/e2e/tests/smoke/test_health.rs`, `tests/e2e/tests/regression/test_memory_recall.rs`.
+- Use `test_*.py` and `test_*`/`async def test_*` functions for Python sidecar tests: `sidecar/test_sidecar.py`.
 
-**Functions and types:**
-- Functions, variables, and module names are snake_case in Rust
-- Public structs, enums, and traits use PascalCase
-- Constants are UPPER_SNAKE_CASE, for example `DEFAULT_VAULT_PATH` in `crates/cli/src/commands/runtime.rs`
-- Traits are used heavily for stable subsystem boundaries, e.g. `LlmProvider`, `Tool`, `MemoryStore`, `Channel` in `crates/core/src/traits.rs`
+**Functions:**
+- Use `snake_case` for Rust and Python functions: `parse_workflow_request` in `sidecar/src/workflow_contract.py`, `install_metrics_with_config` in `crates/gateway/src/metrics_endpoint.rs`.
+- Use `new` for constructors and `with_*` for configuration builders: `OriginValidator::new` in `crates/security/src/origin_check.rs`, `ProviderChain::with_cooldown` in `tests/integration/src/provider_chain_test.rs`, `MockRateLimitedProvider::with_retry_after` in `tests/e2e/src/common/mod.rs`.
+- Name tests as behavior statements instead of generic cases: `accepts_allowed_origin` in `crates/security/src/origin_check.rs`, `falls_back_on_rate_limit` in `tests/integration/src/provider_chain_test.rs`, `test_rag_pipeline_supports_required_source_filters` in `sidecar/test_sidecar.py`.
+
+**Variables:**
+- Use `snake_case` locals and fields consistently: `allowed_origins` in `crates/security/src/origin_check.rs`, `current_step` in `sidecar/src/server.py`, `mock_server` in `crates/anthropic_rust/tests/integration_tests.rs`.
+- Prefer explicit domain names over short abbreviations in public code: `origin_validator` in `tests/e2e/src/common/mod.rs`, `workflow_builder` and `parsed_request` in `sidecar/src/server.py`.
+
+**Types:**
+- Use `UpperCamelCase` for structs, enums, traits, and error types: `OriginValidator` in `crates/security/src/origin_check.rs`, `MetricsState` in `crates/gateway/src/metrics_endpoint.rs`, `WorkflowContractError` in `sidecar/src/workflow_contract.py`.
+- Keep enums semantically named and variant-rich rather than stringly typed: `ProviderError`, `SecurityError`, and `Error` in `crates/core/src/error.rs`.
 
 ## Code Style
 
 **Formatting:**
-- `cargo fmt` is enforced in CI via `.github/workflows/ci.yml`
-- `cargo clippy -- -D warnings` is also enforced in CI
-- Rustdoc-style module comments are common at file tops using `//!`
-- Imports are usually grouped with std imports first, then third-party crates, then local crate imports
+- Rust formatting is driven by the default `rustfmt` toolchain. No repo-level `rustfmt.toml` or `.rustfmt.toml` was detected at the repo root.
+- Contributor docs in `docs/src/contributing/development.md` standardize on `cargo fmt --all` and `cargo fmt --all -- --check`.
+- Python formatting is standardized in `sidecar/pyproject.toml`.
+- Key Python settings from `sidecar/pyproject.toml`:
+  - `line-length = 100`
+  - `target-version = "py311"`
 
-**Lint / compile posture:**
-- CI sets `RUSTFLAGS: "-D warnings"`
-- Workspace code tends to compile under a strict warning-free standard
+**Linting:**
+- Rust linting is standardized through Clippy commands documented in `docs/src/contributing/development.md`: `cargo clippy --workspace --all-targets --all-features`.
+- No repo-level `clippy.toml` was detected at the repo root.
+- Python linting is enforced through Ruff in `sidecar/pyproject.toml`.
+- Key Ruff settings in `sidecar/pyproject.toml`:
+  - `select = ["E", "F", "W", "I", "N", "D"]`
+  - `ignore = ["D100", "D104"]`
+- Python typing is part of the convention. `sidecar/pyproject.toml` sets `disallow_untyped_defs = true`, so new sidecar functions should be explicitly typed.
 
-## Import and Module Organization
+## Import Organization
 
 **Order:**
-1. `std` imports
-2. external crate imports
-3. internal crate/module imports
+1. Standard library imports first: `std::sync::Arc` in `crates/security/src/origin_check.rs`, `json` and `threading` in `sidecar/src/server.py`.
+2. Third-party crates and packages second: `axum`, `metrics_exporter_prometheus`, `tokio`, `wiremock`, `grpc`, `pytest`.
+3. Internal workspace crates or local relative modules last: `openrustclaw_core::*` in `crates/gateway/src/metrics_endpoint.rs`, `.proto` and `.workflows.*` imports in `sidecar/src/server.py`.
 
-**Patterns:**
-- `pub mod ...` and `pub use ...` are used to build small public facades, for example in:
-  - `crates/gateway/src/lib.rs`
-  - `crates/agent/src/lib.rs`
-  - `crates/cli/src/lib.rs`
+**Path Aliases:**
+- Rust uses crate names directly instead of alias layers: `openrustclaw_core`, `openrustclaw_gateway`, `openrustclaw_memory`, `anthropic_rust`.
+- Python sidecar uses normal relative imports from `sidecar/src/`: `.proto`, `.langsmith_bridge`, `.workflows.agent_orchestrator`.
+- No custom Rust or Python path alias system was detected in `Cargo.toml` or `sidecar/pyproject.toml`.
 
 ## Error Handling
 
-**Primary pattern:**
-- Use `Result`-returning functions, often with `anyhow::Result` or crate-local result aliases
-- Convert errors at CLI or HTTP boundaries instead of panicking in runtime code
-- Use serde/typed structs for request and response boundaries
+**Patterns:**
+- Library crates use `thiserror`-based domain errors. The canonical pattern is centralized in `crates/core/src/error.rs`.
+- Return the workspace `Result<T>` alias from library-facing logic and convert underlying errors into specific variants such as `ProviderError`, `DatabaseError`, or `SecurityError`.
+- Use `anyhow` at CLI/application boundaries. `crates/cli/src/commands/mcp2cli.rs` imports `anyhow::{Context, Result}` and adds user-facing context with `Context`/`anyhow!`/`bail!`.
+- Prefer structured early returns over panics in runtime code. For example, `sidecar/src/server.py` catches `WorkflowContractError` and returns a structured `WorkflowResponse` with `status="error"`.
+- Use `expect`/`unwrap` freely in tests when failure should abort the test immediately: `tests/integration/src/common.rs`, `tests/e2e/src/common/mod.rs`, `crates/anthropic_rust/tests/integration_tests.rs`.
 
-**Observed exceptions:**
-- Test code uses many `unwrap()` / `expect()` calls
-- Some source files also contain `expect()` / `unwrap()` in places that deserve care during edits, especially large command modules and SDK wrappers
+## Logging
 
-## Logging and Observability
-
-**Framework:**
-- `tracing` is the shared logging/tracing path
-- OpenTelemetry and Prometheus are first-class observability dependencies
+**Framework:** `tracing` in Rust, standard `logging` in Python
 
 **Patterns:**
-- Operational/runtime surfaces tend to favor structured state over ad hoc stdout
-- CLI commands still mix human-readable output with typed JSON-style reporting in some areas
+- Use structured `tracing` macros in Rust runtime code: `warn!(origin = %origin, "...")` in `crates/security/src/origin_check.rs`, `info!(command_id = %slash_command.command_id, "...")` in `crates/channels/src/google_chat.rs`.
+- Prefer structured fields over interpolated strings when the fields matter operationally.
+- Use `#[instrument(...)]` on request handlers or cross-cutting async boundaries where tracing context matters, as in `metrics_handler` in `crates/gateway/src/metrics_endpoint.rs`.
+- Keep `println!` scoped to CLI commands, examples, and test runners. Runtime/library crates use `tracing`; visible `println!` usage is concentrated in `crates/cli/src/commands/*.rs`, `tests/e2e/src/main.rs`, and example files.
+- Python sidecar logging uses a module logger: `logger = logging.getLogger(__name__)` in `sidecar/src/server.py`, with `logger.info`, `logger.error`, and `logger.exception` for workflow lifecycle reporting.
 
-## Comments and Documentation
+## Comments
 
-**Patterns:**
-- File-level `//!` comments are common and usually explain subsystem purpose
-- README and docs coverage is broad: root `README.md`, crate READMEs, `docs/src/`, ADRs
-- This repo treats docs as part of the maintained surface contract, not just ancillary notes
+**When to Comment:**
+- Add module-level docs with `//!` in Rust and triple-quoted module docstrings in Python. Representative files: `crates/security/src/origin_check.rs`, `crates/gateway/src/metrics_endpoint.rs`, `sidecar/src/server.py`.
+- Use `///` on public Rust items that form the external API or clarify a non-obvious responsibility.
+- Use short inline comments for important transitions, setup steps, or test section boundaries. Examples: migration comments in `tests/integration/src/common.rs`, section dividers in `tests/e2e/src/common/mod.rs`, and workflow comments in `sidecar/src/server.py`.
+- Avoid redundant line-by-line narration. Existing comments tend to explain intent, not syntax.
 
-## Function and Module Design
+**JSDoc/TSDoc:**
+- Not applicable. The repo does not use TypeScript.
 
-**Observed design norms:**
-- Small crates expose narrow public surfaces through `lib.rs`
-- Large command surfaces collect many related handlers in one file rather than splitting deeply
-- Traits and crate boundaries are the main abstraction strategy; implementation details sit behind them
-- Async functions do not use naming prefixes like `async_`; async behavior is inferred from signature
+## Function Design
 
-## Testing Conventions
+**Size:** Prefer medium-sized functions with explicit setup over dense helper abstractions
+- Many core functions do one end-to-end task with visible steps: `parse_workflow_request` in `sidecar/src/workflow_contract.py`, `install_metrics` in `crates/gateway/src/metrics_endpoint.rs`.
+- Large files exist, but even inside them the code is split into focused helpers and inline test modules: `crates/channels/src/google_chat.rs`, `crates/cli/src/commands/mcp2cli.rs`.
 
-- Unit tests usually live inline under `mod tests`
-- Broader behavior is covered by `tests/integration/` and `tests/e2e/`
-- `#[tokio::test]` is the dominant async test pattern
-- Several crates also maintain their own `tests/integration_tests.rs`
+**Parameters:** Prefer explicit structs and named arguments over positional tuples
+- Rust request flows pass typed structs like `CompletionRequest` or `WorkflowResponse` instead of loose maps: `tests/integration/src/provider_chain_test.rs`, `sidecar/src/server.py`.
+- Builder-style APIs are used when requests are complex: `MessageRequest::builder(...)` in `crates/anthropic_rust/tests/integration_tests.rs`.
 
-## Practical Guidance for Edits
+**Return Values:** Prefer typed `Result<T>` or explicit domain objects
+- Rust library code returns `Result<T>` from `openrustclaw_core::error`.
+- Python helpers return dataclasses or dictionaries with clear shape: `ParsedWorkflowRequest` in `sidecar/src/workflow_contract.py`, `WorkflowRegistry.get()` in `sidecar/src/server.py`.
 
-- Match the existing crate/module split before creating new top-level abstractions
-- Prefer extending trait-backed layers over bypassing them directly
-- Keep operator/config/runtime paths typed and serializable
-- Be cautious when touching very large subsystem files because local conventions may be file-specific
+## Module Design
 
-## High-Signal Paths
+**Exports:** Re-export public APIs through `lib.rs` when a crate wants a stable top-level surface
+- `crates/openrouter_api/src/lib.rs` and `crates/observability/src/lib.rs` use `pub use` to present curated crate APIs.
+- Test crates also re-export shared helpers: `tests/e2e/src/lib.rs` re-exports `common::*`.
 
-- `crates/core/src/traits.rs`
-- `crates/gateway/src/lib.rs`
-- `crates/agent/src/lib.rs`
-- `crates/cli/src/main.rs`
-- `.github/workflows/ci.yml`
+**Barrel Files:** Used selectively
+- Rust crate roots use `lib.rs` as the barrel layer.
+- Test crates use `common.rs` or `common/mod.rs` as shared helper entry points: `tests/integration/src/common.rs`, `tests/e2e/src/common/mod.rs`.
+- Python sidecar does not use barrel modules heavily; it imports directly from concrete files under `sidecar/src/`.
+
+## Prescriptive Guidance
+
+- Follow the established import grouping: stdlib, third-party, internal crate or local imports.
+- Keep new Rust modules and new test files in `snake_case`.
+- Add module docs for new Rust modules that define a meaningful subsystem or external integration.
+- Use `thiserror`-based domain errors in library crates and reserve `anyhow` for CLI/app entry points.
+- Use `tracing` macros for runtime observability; only use `println!` in CLI UX, examples, and tests.
+- For sidecar Python, keep full type annotations and stay within the Ruff/Mypy contract from `sidecar/pyproject.toml`.
+- Reuse `common` test helper modules instead of duplicating provider mocks, tempdir setup, or tracing initialization.
 
 ---
-*Convention analysis: 2026-03-26*
-*Update when formatting, CI enforcement, or abstraction patterns materially change*
+
+*Convention analysis: 2026-04-04*
