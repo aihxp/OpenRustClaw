@@ -1,6 +1,6 @@
 //! Hybrid search: BM25 + vector similarity fusion.
 
-use openrustclaw_core::types::{RetrievalExplanation, ScoredMemory};
+use openrustclaw_core::types::ScoredMemory;
 
 /// Fuse BM25 and vector search results using Reciprocal Rank Fusion (RRF).
 pub fn reciprocal_rank_fusion(
@@ -119,7 +119,7 @@ pub(crate) fn content_overlap(a: &str, b: &str) -> f32 {
 mod tests {
     use super::*;
     use chrono::Utc;
-    use openrustclaw_core::types::{MemoryEntry, MemoryType};
+    use openrustclaw_core::types::{MemoryEntry, MemoryType, RetrievalExplanation};
     use uuid::Uuid;
 
     fn make_scored(id: &str, content: &str, score: f32) -> ScoredMemory {

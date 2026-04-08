@@ -107,6 +107,7 @@ use openrustclaw_gateway::server::{GatewayServer, GatewayState};
 use openrustclaw_gateway::sessions::SessionManager;
 use openrustclaw_langbridge::sidecar::SidecarManager;
 use openrustclaw_mcp::server::{McpServer, McpServerConfig, McpServerTool};
+use openrustclaw_memory::context::build_recall_pack;
 use openrustclaw_memory::{MemoryPolicies, WorkspaceArtifactRegistry};
 use openrustclaw_observability::LangSmithClient;
 use openrustclaw_observability::langsmith::RunType;
@@ -305,6 +306,7 @@ pub async fn run(config_path: &str, channels: Option<&str>) -> Result<()> {
         memory_store: Some(memory_store.clone()),
         core_memory_store: Some(core_memory_store.clone()),
         rag_store: Some(rag_store),
+        embedding_service: None,
         langsmith: gateway_langsmith_client(&config),
     };
 
@@ -9817,6 +9819,7 @@ async fn control_memory_timeline_handler(
 ) -> impl IntoResponse {
     match inspect::memory_timeline(
         &state.memory_store,
+        &state.pool,
         query.namespace.as_deref(),
         query.limit.unwrap_or(20),
     )
@@ -11334,23 +11337,24 @@ fn build_mcp_server(
                     recency_weight: 0.0,
                 };
                 let results = memory_store.search(&query).await?;
+                let recall_pack = build_recall_pack(&results, query.limit, 220);
                 if let Err(error) = event_bus
                     .publish(Event::MemorySearched {
                         query: query.text.clone(),
-                        result_count: results.len(),
+                        namespace: query.namespace.clone(),
+                        result_count: recall_pack.items.len(),
+                        recall_pack: recall_pack.clone(),
                     })
                     .await
                 {
                     warn!(error = %error, "Failed to publish memory.searched event");
                 }
                 Ok(serde_json::json!({
-                    "memories": results.into_iter().map(|scored| serde_json::json!({
-                        "id": scored.entry.id,
-                        "content": scored.entry.content,
-                        "score": scored.score,
-                        "importance": scored.entry.importance,
-                        "created_at": scored.entry.created_at,
-                    })).collect::<Vec<_>>()
+                    "retrieval": {
+                        "degraded": recall_pack.degraded,
+                        "result_count": recall_pack.items.len(),
+                    },
+                    "memories": recall_pack.items
                 }))
             })
         }),
@@ -11479,19 +11483,22 @@ fn build_mcp_server(
     );
 
     let memory_store_for_timeline = memory_store.clone();
+    let pool_for_timeline = pool.clone();
     server.register_handler(
         "memory_timeline",
         traced_mcp_handler(langsmith.clone(), "memory_timeline", move |args| {
             let request: McpMemoryTimelineArgs = parse_tool_args(args)?;
             let memory_store = memory_store_for_timeline.clone();
+            let pool = pool_for_timeline.clone();
             block_on_tool(async move {
-                let entries = memory_store
-                    .list_recent(
-                        request.namespace.as_deref(),
-                        request.limit.unwrap_or(20).max(1),
-                    )
-                    .await?;
-                Ok(serde_json::json!({ "entries": entries }))
+                let report = inspect::memory_timeline(
+                    &memory_store,
+                    &pool,
+                    request.namespace.as_deref(),
+                    request.limit.unwrap_or(20).max(1),
+                )
+                .await?;
+                Ok(serde_json::json!(report))
             })
         }),
     );

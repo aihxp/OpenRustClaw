@@ -1,6 +1,6 @@
 //! RAG pipeline: chunk, embed, retrieve, grade.
 
-use openrustclaw_core::types::{RetrievalExplanation, ScoredMemory, SourceType};
+use openrustclaw_core::types::{ScoredMemory, SourceType};
 
 /// Configuration for the RAG chunking pipeline.
 #[derive(Debug, Clone)]
@@ -74,7 +74,7 @@ pub fn grade_results(results: Vec<ScoredMemory>, min_score: f32) -> Vec<ScoredMe
 mod tests {
     use super::*;
     use chrono::Utc;
-    use openrustclaw_core::types::{MemoryEntry, MemoryType};
+    use openrustclaw_core::types::{MemoryEntry, MemoryType, RetrievalExplanation};
     use uuid::Uuid;
 
     fn make_scored_memory(content: &str, score: f32) -> ScoredMemory {

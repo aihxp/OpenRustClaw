@@ -8,6 +8,7 @@ use openrustclaw_app::channel_health_monitor as app_channel_health_monitor;
 use openrustclaw_core::config::{AppConfig, IMessageBridgeMode};
 use openrustclaw_db::{SqlitePool, init_pool};
 use serde::Serialize;
+use serde_json::Value;
 use sqlx::Row;
 
 use super::{channels::ChannelRegistry, runtime};
@@ -93,6 +94,7 @@ pub struct RuntimeEventSummary {
     pub event_name: String,
     pub event_type: String,
     pub session_id: Option<String>,
+    pub payload: Value,
     pub status: String,
     pub created_at: String,
     pub processed_at: Option<String>,
@@ -492,7 +494,7 @@ pub async fn runtime_events_with_pool(
     let rows = if let Some(event_name) = event_name {
         sqlx::query(
             r#"
-            SELECT id, event_name, event_type, session_id, status, created_at, processed_at
+            SELECT id, event_name, event_type, session_id, payload, status, created_at, processed_at
             FROM runtime_events
             WHERE event_name = ?
             ORDER BY created_at DESC
@@ -506,7 +508,7 @@ pub async fn runtime_events_with_pool(
     } else {
         sqlx::query(
             r#"
-            SELECT id, event_name, event_type, session_id, status, created_at, processed_at
+            SELECT id, event_name, event_type, session_id, payload, status, created_at, processed_at
             FROM runtime_events
             ORDER BY created_at DESC
             LIMIT ?
@@ -524,6 +526,8 @@ pub async fn runtime_events_with_pool(
                 event_name: row.get("event_name"),
                 event_type: row.get("event_type"),
                 session_id: row.get("session_id"),
+                payload: serde_json::from_str(&row.get::<String, _>("payload"))
+                    .unwrap_or_else(|_| serde_json::json!({})),
                 status: row.get("status"),
                 created_at: row.get("created_at"),
                 processed_at: row.get("processed_at"),

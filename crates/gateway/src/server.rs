@@ -16,6 +16,7 @@ use openrustclaw_core::error::{Error, Result as CoreResult, SecurityError};
 use openrustclaw_core::traits::{CoreMemoryStore, MemoryStore};
 use openrustclaw_core::types::{MemoryEntry, MemoryQuery, MemoryType, SourceType};
 use openrustclaw_db::{RagChunkInput, SqliteCoreMemoryStore, SqliteMemoryStore, SqliteRagStore};
+use openrustclaw_memory::context::build_recall_pack;
 use openrustclaw_memory::embeddings::EmbeddingService;
 use openrustclaw_observability::LangSmithClient;
 use openrustclaw_observability::langsmith::{RunType, TraceRun};
@@ -349,7 +350,10 @@ async fn internal_memory_search_handler(
 
     let results = if let Some(embedding_service) = &state.embedding_service {
         match embedding_service.embed_query(&query.text).await {
-            Ok(query_embedding) => match memory_store.search_with_embedding(&query, &query_embedding).await {
+            Ok(query_embedding) => match memory_store
+                .search_with_embedding(&query, &query_embedding)
+                .await
+            {
                 Ok(results) => results,
                 Err(error) => {
                     warn!(error = %error, "Hybrid gateway memory search unavailable, falling back to lexical retrieval");
@@ -364,7 +368,8 @@ async fn internal_memory_search_handler(
                                 Some(error_message.clone()),
                             )
                             .await;
-                            return (StatusCode::INTERNAL_SERVER_ERROR, error_message).into_response();
+                            return (StatusCode::INTERNAL_SERVER_ERROR, error_message)
+                                .into_response();
                         }
                     }
                 }
@@ -404,21 +409,18 @@ async fn internal_memory_search_handler(
         }
     };
 
+    let recall_pack = build_recall_pack(&results, query.limit, 220);
     let body = json!({
         "retrieval": {
-            "degraded": results.iter().any(|scored| scored.explanation.degraded_state.is_some()),
-            "vector_lane": results
+            "degraded": recall_pack.degraded,
+            "result_count": recall_pack.items.len(),
+            "vector_lane": recall_pack
+                .items
                 .first()
-                .map(|scored| format!("{:?}", scored.explanation.factors.vector_lane))
+                .map(|item| format!("{:?}", item.explanation.factors.vector_lane))
                 .unwrap_or_else(|| "none".to_string()),
         },
-        "memories": results.into_iter().map(|scored| json!({
-            "id": scored.entry.id,
-            "content": scored.entry.content,
-            "score": scored.score,
-            "importance": scored.entry.importance,
-            "explanation": scored.explanation,
-        })).collect::<Vec<_>>()
+        "memories": recall_pack.items
     });
     complete_gateway_trace(
         state.langsmith.as_ref(),
@@ -1936,16 +1938,16 @@ mod tests {
             .uri("/internal/memory/search")
             .header(CONTENT_TYPE, "application/json")
             .header("x-openrustclaw-internal-token", "test-token")
-            .body(Body::from(r#"{"user_id":"user-2","query":"fallback","limit":2}"#))
+            .body(Body::from(
+                r#"{"user_id":"user-2","query":"fallback","limit":2}"#,
+            ))
             .unwrap();
         let search_response = app.oneshot(search_request).await.unwrap();
         let search_body = to_bytes(search_response.into_body(), usize::MAX)
             .await
             .unwrap();
         let search_json: serde_json::Value = serde_json::from_slice(&search_body).unwrap();
-        assert!(
-            search_json["memories"][0]["explanation"]["degraded_state"].is_object()
-        );
+        assert!(search_json["memories"][0]["explanation"]["degraded_state"].is_object());
 
         let _ = std::fs::remove_file(db_path);
     }

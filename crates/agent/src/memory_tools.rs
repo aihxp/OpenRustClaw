@@ -6,7 +6,10 @@ use async_trait::async_trait;
 use chrono::Utc;
 use openrustclaw_core::error::Result;
 use openrustclaw_core::traits::{CoreMemoryStore, MemoryStore, Tool, ToolContext};
-use openrustclaw_core::types::{CoreEntry, MemoryQuery, MemorySource, MemoryType, ToolOutput};
+use openrustclaw_core::types::{
+    CoreEntry, MemoryQuery, MemorySource, MemoryType, RecallPack, ToolOutput,
+};
+use openrustclaw_memory::context::build_recall_pack;
 use openrustclaw_memory::embeddings::EmbeddingService;
 use openrustclaw_memory::{AssistantMemoryWriteBasis, MemoryPolicies, RecallMemory};
 use serde_json::Value;
@@ -127,27 +130,8 @@ impl Tool for MemorySearchTool {
             });
         }
 
-        let degraded_messages: Vec<String> = results
-            .iter()
-            .filter_map(|scored| scored.explanation.degraded_state.as_ref())
-            .map(|state| state.message.clone())
-            .collect();
-
-        let mut content = String::from("Found the following relevant memories:\n\n");
-        if !degraded_messages.is_empty() {
-            content.push_str("Retrieval status: degraded vector lane.\n");
-            content.push_str(&format!("Reason: {}\n\n", degraded_messages.join(" | ")));
-        }
-        for (i, scored) in results.iter().enumerate() {
-            content.push_str(&format!(
-                "{}. {} (score: {:.2}, importance: {:.2}, vector lane: {:?})\n",
-                i + 1,
-                scored.entry.content,
-                scored.score,
-                scored.entry.importance,
-                scored.explanation.factors.vector_lane
-            ));
-        }
+        let pack = build_recall_pack(&results, limit, 220);
+        let content = render_recall_pack(&pack);
 
         Ok(ToolOutput {
             tool_call_id: String::new(),
@@ -155,6 +139,48 @@ impl Tool for MemorySearchTool {
             is_error: false,
         })
     }
+}
+
+fn render_recall_pack(pack: &RecallPack) -> String {
+    let mut content = String::from("Found the following relevant memories:\n\n");
+    if pack.degraded {
+        let reasons = pack
+            .items
+            .iter()
+            .filter_map(|item| item.explanation.degraded_state.as_ref())
+            .map(|state| state.message.as_str())
+            .collect::<Vec<_>>();
+        if !reasons.is_empty() {
+            content.push_str("Retrieval status: degraded vector lane.\n");
+            content.push_str(&format!("Reason: {}\n\n", reasons.join(" | ")));
+        }
+    }
+
+    for (index, item) in pack.items.iter().enumerate() {
+        content.push_str(&format!("{}. {}\n", index + 1, item.content));
+        content.push_str(&format!(
+            "   score={:.2} importance={:.2} confidence={:.2}\n",
+            item.score, item.importance, item.confidence
+        ));
+        content.push_str(&format!(
+            "   artifact={:?} namespace={} vector_lane={:?}\n",
+            item.explanation.primary_artifact.artifact_kind,
+            item.namespace,
+            item.explanation.factors.vector_lane
+        ));
+        if let Some(freshness) = &item.explanation.freshness {
+            content.push_str(&format!(
+                "   freshness: age_seconds={} created_at={}\n",
+                freshness.age_seconds, freshness.created_at
+            ));
+        }
+        if let Some(source_label) = &item.explanation.primary_artifact.source_label {
+            content.push_str(&format!("   source={}\n", source_label));
+        }
+        content.push('\n');
+    }
+
+    content
 }
 
 /// Tool: Store important information for later recall.
@@ -595,10 +621,8 @@ mod tests {
     #[tokio::test]
     async fn memory_search_uses_query_embeddings_when_service_is_available() {
         let store = Arc::new(RecordingMemoryStore::new());
-        let embedding_service = Arc::new(EmbeddingService::new(
-            Arc::new(StaticEmbeddingProvider),
-            1,
-        ));
+        let embedding_service =
+            Arc::new(EmbeddingService::new(Arc::new(StaticEmbeddingProvider), 1));
         let tool = MemorySearchTool::new(store.clone(), Some(embedding_service));
 
         let output = tool

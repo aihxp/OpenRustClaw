@@ -4,7 +4,10 @@ use anyhow::{Context, Result};
 use chrono::Utc;
 use openrustclaw_app::memory_views as app_memory_views;
 use openrustclaw_core::traits::{CoreMemoryStore, MemoryStore};
-use openrustclaw_core::types::{CoreEntry, MemoryEntry, MemoryQuery, MemoryType, SourceType};
+use openrustclaw_core::types::{
+    CoreEntry, MemoryEntry, MemoryQuery, MemoryType, RetrievalArtifactKind, RetrievalExplanation,
+    RetrievalVectorLane, SourceType,
+};
 use openrustclaw_db::{SqliteCoreMemoryStore, SqliteMemoryStore};
 use openrustclaw_memory::WorkspaceArtifactRegistry;
 use sqlx::Row;
@@ -18,11 +21,42 @@ fn app_core_item(entry: &CoreEntry) -> app_memory_views::CoreMemoryItem {
 }
 
 fn app_recall_item(entry: &MemoryEntry) -> app_memory_views::RecallMemoryItem {
+    let explanation = recall_view_explanation(entry);
+    let freshness = explanation.freshness.clone();
     app_memory_views::RecallMemoryItem {
         id: entry.id.to_string(),
         memory_type: memory_type_label(entry.memory_type).to_string(),
         namespace: entry.namespace.clone(),
         content: entry.content.clone(),
+        score: None,
+        importance: Some(entry.importance),
+        confidence: Some(entry.confidence),
+        artifact_kind: Some(
+            app_memory_views::MemoryViewsService::new()
+                .artifact_kind_label(explanation.primary_artifact.artifact_kind)
+                .to_string(),
+        ),
+        source_type: entry.source_type.map(source_type_label).map(str::to_string),
+        source_label: explanation.primary_artifact.source_label.clone(),
+        created_at: freshness
+            .as_ref()
+            .map(|value| value.created_at.to_rfc3339()),
+        last_accessed: freshness
+            .as_ref()
+            .and_then(|value| value.last_accessed.map(|ts| ts.to_rfc3339())),
+        age_seconds: freshness.as_ref().map(|value| value.age_seconds),
+        lexical_score: Some(explanation.factors.lexical_score),
+        vector_score: explanation.factors.vector_score,
+        recency_score: Some(explanation.factors.recency_score),
+        confidence_score: Some(explanation.factors.confidence_score),
+        importance_score: Some(explanation.factors.importance_score),
+        fused_score: Some(explanation.factors.fused_score),
+        vector_lane: Some(
+            app_memory_views::MemoryViewsService::new()
+                .vector_lane_label(explanation.factors.vector_lane)
+                .to_string(),
+        ),
+        degraded_reason: explanation.degraded_state.map(|state| state.message),
     }
 }
 
@@ -689,7 +723,7 @@ fn parse_recall_view(content: &str, user_id: &str) -> Vec<MemoryEntry> {
                 &entry.memory_type,
                 &entry.namespace,
                 user_id,
-                &entry.content,
+                &entry,
             )
         })
         .collect()
@@ -700,7 +734,7 @@ fn build_memory_entry(
     typ: &str,
     namespace: &str,
     user_id: &str,
-    body: &str,
+    entry: &app_memory_views::RecallMemoryItem,
 ) -> MemoryEntry {
     MemoryEntry {
         id: uuid::Uuid::parse_str(id).unwrap_or_else(|_| uuid::Uuid::new_v4()),
@@ -709,21 +743,41 @@ fn build_memory_entry(
             "procedural" => MemoryType::Procedural,
             _ => MemoryType::Semantic,
         },
-        content: body.trim().to_string(),
-        content_hash: openrustclaw_memory::MemoryPolicies::content_hash(body.trim()),
+        content: entry.content.trim().to_string(),
+        content_hash: openrustclaw_memory::MemoryPolicies::content_hash(entry.content.trim()),
         source: Some("memory_views_import".to_string()),
-        source_type: Some(SourceType::Conversation),
+        source_type: entry
+            .source_type
+            .as_deref()
+            .and_then(parse_source_type_optional)
+            .or(Some(SourceType::Conversation)),
         session_id: None,
         user_id: Some(user_id.to_string()),
         namespace: namespace.to_string(),
-        importance: 0.7,
-        confidence: 1.0,
+        importance: entry.importance.unwrap_or(0.7),
+        confidence: entry.confidence.unwrap_or(1.0),
         access_count: 0,
         last_accessed: None,
         created_at: Utc::now(),
         expires_at: None,
         metadata: serde_json::json!({
             "source": "memory_views_import",
+            "recall_view": {
+                "score": entry.score,
+                "artifact_kind": entry.artifact_kind,
+                "source_label": entry.source_label,
+                "created_at": entry.created_at,
+                "last_accessed": entry.last_accessed,
+                "age_seconds": entry.age_seconds,
+                "lexical_score": entry.lexical_score,
+                "vector_score": entry.vector_score,
+                "recency_score": entry.recency_score,
+                "confidence_score": entry.confidence_score,
+                "importance_score": entry.importance_score,
+                "fused_score": entry.fused_score,
+                "vector_lane": entry.vector_lane,
+                "degraded_reason": entry.degraded_reason,
+            }
         }),
     }
 }
@@ -765,6 +819,102 @@ fn parse_source_type(value: &str) -> Result<SourceType> {
             value
         ),
     }
+}
+
+fn parse_source_type_optional(value: &str) -> Option<SourceType> {
+    parse_source_type(value).ok()
+}
+
+fn source_type_label(value: SourceType) -> &'static str {
+    match value {
+        SourceType::Document => "document",
+        SourceType::Code => "code",
+        SourceType::Config => "config",
+        SourceType::Conversation => "conversation",
+        SourceType::Runbook => "runbook",
+        SourceType::ToolSchema => "tool_schema",
+    }
+}
+
+fn recall_view_explanation(entry: &MemoryEntry) -> RetrievalExplanation {
+    let stored = entry
+        .metadata
+        .get("recall_view")
+        .cloned()
+        .and_then(|value| serde_json::from_value::<RetrievalExplanationProxy>(value).ok());
+    if let Some(stored) = stored {
+        return stored.into_explanation(entry);
+    }
+
+    RetrievalExplanation::empty(
+        RetrievalArtifactKind::from_memory_parts(entry.memory_type, entry.source_type),
+        entry.id.to_string(),
+        entry.namespace.clone(),
+    )
+}
+
+#[derive(serde::Deserialize)]
+struct RetrievalExplanationProxy {
+    score: Option<f32>,
+    source_label: Option<String>,
+    created_at: Option<String>,
+    last_accessed: Option<String>,
+    age_seconds: Option<i64>,
+    lexical_score: Option<f32>,
+    vector_score: Option<f32>,
+    recency_score: Option<f32>,
+    confidence_score: Option<f32>,
+    importance_score: Option<f32>,
+    fused_score: Option<f32>,
+    vector_lane: Option<String>,
+    degraded_reason: Option<String>,
+}
+
+impl RetrievalExplanationProxy {
+    fn into_explanation(self, entry: &MemoryEntry) -> RetrievalExplanation {
+        let mut explanation = RetrievalExplanation::empty(
+            RetrievalArtifactKind::from_memory_parts(entry.memory_type, entry.source_type),
+            entry.id.to_string(),
+            entry.namespace.clone(),
+        );
+        explanation.primary_artifact.source_label = self.source_label;
+        if self.created_at.is_some() || self.last_accessed.is_some() || self.age_seconds.is_some() {
+            explanation.freshness = Some(openrustclaw_core::types::RetrievalFreshness {
+                created_at: self
+                    .created_at
+                    .as_deref()
+                    .and_then(parse_timestamp)
+                    .unwrap_or(entry.created_at),
+                last_accessed: self.last_accessed.as_deref().and_then(parse_timestamp),
+                age_seconds: self.age_seconds.unwrap_or(0),
+            });
+        }
+        explanation.factors.lexical_score = self.lexical_score.unwrap_or(0.0);
+        explanation.factors.vector_score = self.vector_score;
+        explanation.factors.recency_score = self.recency_score.unwrap_or(0.0);
+        explanation.factors.confidence_score = self.confidence_score.unwrap_or(entry.confidence);
+        explanation.factors.importance_score = self.importance_score.unwrap_or(entry.importance);
+        explanation.factors.fused_score =
+            self.fused_score.or(self.score).unwrap_or(entry.importance);
+        explanation.factors.vector_lane = match self.vector_lane.as_deref() {
+            Some("native_libsql") => RetrievalVectorLane::NativeLibsql,
+            Some("rust_rescored") => RetrievalVectorLane::RustRescored,
+            _ => RetrievalVectorLane::Unavailable,
+        };
+        explanation.degraded_state =
+            self.degraded_reason
+                .map(|message| openrustclaw_core::types::RetrievalDegradedState {
+                    code: openrustclaw_core::types::RetrievalDegradedCode::VectorUnavailable,
+                    message,
+                });
+        explanation
+    }
+}
+
+fn parse_timestamp(value: &str) -> Option<chrono::DateTime<Utc>> {
+    chrono::DateTime::parse_from_rfc3339(value)
+        .ok()
+        .map(|value| value.with_timezone(&Utc))
 }
 
 /// Simple SHA-256 hash

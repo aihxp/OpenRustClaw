@@ -5,9 +5,7 @@
 
 use crate::policies::MemoryPolicies;
 use chrono::Utc;
-use openrustclaw_core::types::{
-    MemoryEntry, MemorySource, MemoryType, RetrievalExplanation, ScoredMemory,
-};
+use openrustclaw_core::types::{MemoryEntry, MemorySource, MemoryType, ScoredMemory};
 use tracing::debug;
 use uuid::Uuid;
 
@@ -91,6 +89,7 @@ impl RecallMemory {
 mod tests {
     use super::*;
     use chrono::DateTime;
+    use openrustclaw_core::types::RetrievalExplanation;
 
     fn default_recall() -> RecallMemory {
         RecallMemory::new(MemoryPolicies::default())

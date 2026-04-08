@@ -3,7 +3,11 @@
 //! Manages the system prompt and context to stay within token budgets.
 //! Core memory (~500 tokens) is the only memory always injected.
 
-use openrustclaw_core::types::{CoreEntry, Message, ToolDefinition};
+use std::collections::HashSet;
+
+use openrustclaw_core::types::{
+    CoreEntry, Message, RecallPack, RecallPackItem, ScoredMemory, ToolDefinition,
+};
 
 /// Manages context window budget.
 pub struct ContextManager {
@@ -122,11 +126,67 @@ impl ContextManager {
     }
 }
 
+/// Assemble a bounded, deduplicated recall pack from scored memory results.
+pub fn build_recall_pack(
+    results: &[ScoredMemory],
+    max_items: usize,
+    max_content_chars: usize,
+) -> RecallPack {
+    let mut seen = HashSet::new();
+    let mut items = Vec::new();
+
+    for scored in results {
+        let dedupe_key = if scored.entry.content_hash.is_empty() {
+            scored.explanation.primary_artifact.artifact_id.clone()
+        } else {
+            scored.entry.content_hash.clone()
+        };
+        if !seen.insert(dedupe_key) {
+            continue;
+        }
+
+        items.push(RecallPackItem {
+            id: scored.entry.id.to_string(),
+            memory_type: scored.entry.memory_type,
+            namespace: scored.entry.namespace.clone(),
+            content: clip_excerpt(&scored.entry.content, max_content_chars),
+            score: scored.score,
+            importance: scored.entry.importance,
+            confidence: scored.entry.confidence,
+            explanation: scored.explanation.clone(),
+        });
+
+        if items.len() >= max_items.max(1) {
+            break;
+        }
+    }
+
+    let degraded = items
+        .iter()
+        .any(|item| item.explanation.degraded_state.is_some());
+
+    RecallPack { degraded, items }
+}
+
+fn clip_excerpt(content: &str, max_content_chars: usize) -> String {
+    let trimmed = content.trim();
+    if trimmed.chars().count() <= max_content_chars {
+        return trimmed.to_string();
+    }
+
+    let clipped: String = trimmed.chars().take(max_content_chars).collect();
+    format!("{}...", clipped.trim_end())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use chrono::Utc;
-    use openrustclaw_core::types::{CoreEntry, Role};
+    use openrustclaw_core::types::{
+        CoreEntry, MemoryEntry, MemoryType, RetrievalArtifactKind, RetrievalExplanation, Role,
+        ScoredMemory, SourceType,
+    };
+    use uuid::Uuid;
 
     fn make_core_entry(key: &str, value: &str) -> CoreEntry {
         CoreEntry {
@@ -144,6 +204,41 @@ mod tests {
             description: desc.to_string(),
             parameters: serde_json::json!({}),
             strict: false,
+        }
+    }
+
+    fn make_scored_memory(
+        id: &str,
+        content: &str,
+        content_hash: &str,
+        score: f32,
+        source_type: Option<SourceType>,
+    ) -> ScoredMemory {
+        ScoredMemory {
+            entry: MemoryEntry {
+                id: Uuid::parse_str(id).unwrap_or_else(|_| Uuid::new_v4()),
+                memory_type: MemoryType::Semantic,
+                content: content.to_string(),
+                content_hash: content_hash.to_string(),
+                source: Some("test-source".to_string()),
+                source_type,
+                session_id: None,
+                user_id: Some("user-1".to_string()),
+                namespace: "user-1".to_string(),
+                importance: 0.7,
+                confidence: 0.9,
+                access_count: 0,
+                last_accessed: None,
+                created_at: Utc::now(),
+                expires_at: None,
+                metadata: serde_json::json!({}),
+            },
+            score,
+            explanation: RetrievalExplanation::empty(
+                RetrievalArtifactKind::from_memory_parts(MemoryType::Semantic, source_type),
+                id.to_string(),
+                "user-1".to_string(),
+            ),
         }
     }
 
@@ -335,5 +430,34 @@ mod tests {
             .map(|m| ContextManager::estimate_tokens(&m.content))
             .sum();
         assert_eq!(built.estimated_tokens, sys_tokens + msg_tokens);
+    }
+
+    #[test]
+    fn build_recall_pack_deduplicates_and_clips() {
+        let results = vec![
+            make_scored_memory(
+                "00000000-0000-0000-0000-000000000001",
+                "Rust ownership keeps memory safety intact over time.",
+                "same-hash",
+                0.95,
+                Some(SourceType::Conversation),
+            ),
+            make_scored_memory(
+                "00000000-0000-0000-0000-000000000002",
+                "Rust ownership keeps memory safety intact over time.",
+                "same-hash",
+                0.82,
+                Some(SourceType::Conversation),
+            ),
+        ];
+
+        let pack = build_recall_pack(&results, 5, 24);
+        assert_eq!(pack.items.len(), 1);
+        assert!(pack.items[0].content.ends_with("..."));
+        assert_eq!(
+            pack.items[0].explanation.primary_artifact.artifact_kind,
+            RetrievalArtifactKind::ConversationMemory
+        );
+        assert!(pack.degraded);
     }
 }

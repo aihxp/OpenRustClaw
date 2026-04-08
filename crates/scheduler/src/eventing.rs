@@ -139,14 +139,18 @@ fn event_envelope(event: Event) -> EventEnvelope {
         },
         Event::MemorySearched {
             query,
+            namespace,
             result_count,
+            recall_pack,
         } => EventEnvelope {
             event_name: "memory.searched".to_string(),
             event_type: "memory_searched".to_string(),
             session_id: None,
             payload: serde_json::json!({
                 "query": query,
+                "namespace": namespace,
                 "result_count": result_count,
+                "recall_pack": recall_pack,
             }),
         },
         Event::SessionCreated { session } => EventEnvelope {

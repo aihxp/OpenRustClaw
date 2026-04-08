@@ -81,7 +81,7 @@
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 181. Hybrid Retrieval and Recall Inspection | 0/0 | Not started | - |
+| 181. Hybrid Retrieval and Recall Inspection | 2/2 | In progress (verification blocked on `protoc`) | - |
 | 182. Structured Memory Artifacts and Model Control | 0/0 | Not started | - |
 | 183. Learning Candidate Review and Lesson Promotion | 0/0 | Not started | - |
 | 184. Skill Proposal Verification and Reuse | 0/0 | Not started | - |
@@ -91,4 +91,6 @@
 
 - Active milestone: v1.43 Learning Loop, Memory Depth, and God Mode
 - Roadmap progress: 0/5 phases complete
-- Next step: `$gsd-plan-phase 181`
+- Current work: Phase 181 implementation is in place across the retrieval seam, bounded recall-pack assembly, recall views, and durable `memory.searched` telemetry
+- Verification blocker: the local machine does not have `protoc`, so `openrustclaw-langbridge` blocks full `openrustclaw-cli` verification
+- Next step: install `protoc` or set `PROTOC`, then run the Phase 181 CLI verification pass and write `181-01-SUMMARY.md` plus `181-02-SUMMARY.md`

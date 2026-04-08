@@ -24,7 +24,7 @@ use openrustclaw_app::setup_handoff::{
 use openrustclaw_app::tool_execution_audit::ToolExecutionAuditService;
 use openrustclaw_core::config::AppConfig;
 use openrustclaw_core::error::Error as CoreError;
-use openrustclaw_core::types::{MemoryEntry, Message};
+use openrustclaw_core::types::{MemoryEntry, Message, RecallPack};
 use openrustclaw_db::models::MemoryArchiveRow;
 use openrustclaw_db::{
     PersistedSession, SessionStatus, SqliteMemoryStore, SqlitePool, SqliteSessionStore,
@@ -60,12 +60,24 @@ pub struct SessionDetailReport {
 pub struct MemoryTimelineReport {
     pub namespace: Option<String>,
     pub entries: Vec<MemoryEntry>,
+    #[serde(default)]
+    pub recent_searches: Vec<MemorySearchInspectionReport>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct MemoryArchiveReport {
     pub namespace: Option<String>,
     pub entries: Vec<MemoryArchiveRow>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MemorySearchInspectionReport {
+    pub query: String,
+    pub namespace: Option<String>,
+    pub result_count: usize,
+    pub degraded: bool,
+    pub recall_pack: RecallPack,
+    pub created_at: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -438,14 +450,66 @@ fn browser_backend_policy_detail(policy: &browser::ExternalBackendPolicy) -> Str
 
 pub async fn memory_timeline(
     store: &SqliteMemoryStore,
+    pool: &SqlitePool,
     namespace: Option<&str>,
     limit: usize,
 ) -> Result<MemoryTimelineReport> {
     let namespace_value = namespace.map(|value| value.to_string());
     let entries = store.list_recent(namespace, limit.max(1)).await?;
+    let search_rows = sqlx::query(
+        r#"
+        SELECT payload, created_at
+        FROM runtime_events
+        WHERE event_name = 'memory.searched'
+        ORDER BY created_at DESC
+        LIMIT ?
+        "#,
+    )
+    .bind(limit.max(1) as i64)
+    .fetch_all(pool)
+    .await?;
+
+    let mut recent_searches = Vec::new();
+    for row in search_rows {
+        let payload = row.get::<String, _>("payload");
+        let payload: serde_json::Value =
+            serde_json::from_str(&payload).unwrap_or_else(|_| serde_json::json!({}));
+        let payload_namespace = payload
+            .get("namespace")
+            .and_then(|value| value.as_str())
+            .map(|value| value.to_string());
+        if namespace_value.as_ref().is_some()
+            && payload_namespace.as_deref() != namespace_value.as_deref()
+        {
+            continue;
+        }
+
+        let recall_pack: RecallPack = payload
+            .get("recall_pack")
+            .cloned()
+            .and_then(|value| serde_json::from_value(value).ok())
+            .unwrap_or_default();
+        recent_searches.push(MemorySearchInspectionReport {
+            query: payload
+                .get("query")
+                .and_then(|value| value.as_str())
+                .unwrap_or_default()
+                .to_string(),
+            namespace: payload_namespace,
+            result_count: payload
+                .get("result_count")
+                .and_then(|value| value.as_u64())
+                .unwrap_or_default() as usize,
+            degraded: recall_pack.degraded,
+            recall_pack,
+            created_at: row.get("created_at"),
+        });
+    }
+
     Ok(MemoryTimelineReport {
         namespace: namespace_value,
         entries,
+        recent_searches,
     })
 }
 
@@ -2120,10 +2184,16 @@ mod tests {
         assert!(!report.ready_for_first_start);
         assert_eq!(report.selected_provider.as_deref(), Some("openrouter"));
         assert_eq!(report.selected_access_mode.as_deref(), Some("api_key"));
-        assert_eq!(report.selected_primary_model.as_deref(), Some("openai/gpt-4o"));
+        assert_eq!(
+            report.selected_primary_model.as_deref(),
+            Some("openai/gpt-4o")
+        );
         assert_eq!(report.completed_step_count, 2);
         assert_eq!(report.bootstrap_outcomes.len(), 1);
-        assert_eq!(report.bootstrap_outcomes[0].issue_kind.as_deref(), Some("auth"));
+        assert_eq!(
+            report.bootstrap_outcomes[0].issue_kind.as_deref(),
+            Some("auth")
+        );
         assert_eq!(
             report
                 .remote_connectivity_profile

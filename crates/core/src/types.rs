@@ -627,6 +627,28 @@ pub struct ScoredMemory {
     pub explanation: RetrievalExplanation,
 }
 
+/// A bounded recall item ready for tool, control, or inspection surfaces.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct RecallPackItem {
+    pub id: String,
+    pub memory_type: MemoryType,
+    pub namespace: String,
+    pub content: String,
+    pub score: f32,
+    pub importance: f32,
+    pub confidence: f32,
+    pub explanation: RetrievalExplanation,
+}
+
+/// A deduplicated, bounded recall pack assembled from retrieval results.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct RecallPack {
+    #[serde(default)]
+    pub degraded: bool,
+    #[serde(default)]
+    pub items: Vec<RecallPackItem>,
+}
+
 /// A slot in the agent's persistent core memory (key-value pairs held in the system prompt).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CoreEntry {
@@ -706,8 +728,13 @@ pub enum Event {
     MemorySearched {
         /// The query that was executed.
         query: String,
+        /// The namespace the query was scoped to.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        namespace: Option<String>,
         /// How many results were returned.
         result_count: usize,
+        /// Bounded retrieval detail kept for inspection and debugging.
+        recall_pack: RecallPack,
     },
     /// A new session was created.
     SessionCreated {
@@ -1127,5 +1154,12 @@ mod tests {
         );
         assert_eq!(explanation.factors.vector_score, None);
         assert!(explanation.degraded_state.is_some());
+    }
+
+    #[test]
+    fn recall_pack_defaults_to_empty_non_degraded_state() {
+        let pack = RecallPack::default();
+        assert!(!pack.degraded);
+        assert!(pack.items.is_empty());
     }
 }
