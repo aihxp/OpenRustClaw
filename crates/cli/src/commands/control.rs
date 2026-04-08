@@ -8,6 +8,10 @@ use anyhow::{Context, Result};
 use async_trait::async_trait;
 use openrustclaw_app::agent_backend_catalog::AgentBackendCatalogService;
 use openrustclaw_app::agent_backend_control::AgentBackendControlService;
+use openrustclaw_app::agent_fabric_registry::{
+    AgentFabricAdvertisement, AgentFabricRegistry, AgentFabricRegistryService,
+    EnrollRemoteHostRequest, FabricRouteSignal, TrustedRemoteHostRecord,
+};
 use openrustclaw_app::autonomy_lessons_control::AutonomyLessonRequest;
 use openrustclaw_app::control_registry as app_control_registry;
 use openrustclaw_app::learning_review::{LearningReviewService, LearningReviewSource};
@@ -474,6 +478,10 @@ fn runtime_artifact_path(root: &Path) -> PathBuf {
     root.join("CLAW_RUNTIME.md")
 }
 
+fn agent_fabric_path(root: &Path) -> PathBuf {
+    root.join("agent-fabric.json")
+}
+
 fn skill_proposals_dir(root: &Path) -> PathBuf {
     root.join("skill-proposals")
 }
@@ -733,6 +741,130 @@ fn write_detected_delegated_model_profiles(root: &Path) -> Result<()> {
         )?;
     }
     Ok(())
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct FabricRegistryReport {
+    pub manifest_path: String,
+    pub local_advertisement: AgentFabricAdvertisement,
+    pub registry: AgentFabricRegistry,
+    pub route_signals: Vec<FabricRouteSignal>,
+}
+
+fn workspace_root_from_control_root(root: &Path) -> PathBuf {
+    root.parent()
+        .and_then(Path::parent)
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| root.to_path_buf()))
+}
+
+fn load_agent_fabric_registry(root: &Path) -> Result<AgentFabricRegistry> {
+    let path = agent_fabric_path(root);
+    if !path.exists() {
+        return Ok(AgentFabricRegistry::default());
+    }
+    let raw = fs::read_to_string(&path)
+        .with_context(|| format!("Failed to read '{}'", path.display()))?;
+    serde_json::from_str(&raw).with_context(|| format!("Failed to parse '{}'", path.display()))
+}
+
+fn save_agent_fabric_registry(root: &Path, registry: &AgentFabricRegistry) -> Result<()> {
+    let path = agent_fabric_path(root);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(&path, serde_json::to_string_pretty(registry)?)
+        .with_context(|| format!("Failed to write '{}'", path.display()))
+}
+
+pub fn fabric_export(root: Option<&str>) -> Result<AgentFabricAdvertisement> {
+    let root = resolve_root(root)?;
+    let workspace_root = workspace_root_from_control_root(&root);
+    let host_label = workspace_root
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("local")
+        .to_string();
+    let catalog = AgentBackendCatalogService::new().discover();
+    let contracts = AgentBackendControlService::new().contracts_from_catalog(&catalog);
+    Ok(
+        AgentFabricRegistryService::new().export_local_advertisement(
+            "local",
+            &host_label,
+            chrono::Utc::now().to_rfc3339(),
+            &catalog,
+            &contracts,
+        ),
+    )
+}
+
+pub fn fabric_enroll(
+    root: Option<&str>,
+    host_id: &str,
+    host_label: &str,
+    from: &Path,
+    base_url: Option<&str>,
+    notes: Option<&str>,
+) -> Result<TrustedRemoteHostRecord> {
+    let root = resolve_root(root)?;
+    let raw =
+        fs::read_to_string(from).with_context(|| format!("Failed to read '{}'", from.display()))?;
+    let advertisement = serde_json::from_str::<AgentFabricAdvertisement>(&raw)
+        .with_context(|| format!("Failed to parse '{}'", from.display()))?;
+    let mut registry = load_agent_fabric_registry(&root)?;
+    AgentFabricRegistryService::new().enroll_remote_host(
+        &mut registry,
+        EnrollRemoteHostRequest {
+            host_id: host_id.to_string(),
+            host_label: host_label.to_string(),
+            base_url: base_url.map(ToString::to_string),
+            notes: notes.map(ToString::to_string),
+            enrolled_at: chrono::Utc::now().to_rfc3339(),
+            advertisement,
+        },
+    );
+    save_agent_fabric_registry(&root, &registry)?;
+    registry
+        .hosts
+        .into_iter()
+        .find(|host| host.host_id == host_id)
+        .ok_or_else(|| anyhow::anyhow!("fabric host '{}' was not persisted", host_id))
+}
+
+pub fn fabric_refresh(
+    root: Option<&str>,
+    host_id: &str,
+    from: &Path,
+) -> Result<TrustedRemoteHostRecord> {
+    let root = resolve_root(root)?;
+    let existing = load_agent_fabric_registry(&root)?
+        .hosts
+        .into_iter()
+        .find(|host| host.host_id == host_id)
+        .ok_or_else(|| anyhow::anyhow!("fabric host '{}' is not enrolled", host_id))?;
+    fabric_enroll(
+        root.to_str(),
+        host_id,
+        &existing.host_label,
+        from,
+        existing.base_url.as_deref(),
+        existing.notes.as_deref(),
+    )
+}
+
+pub fn fabric_hosts(root: Option<&str>) -> Result<FabricRegistryReport> {
+    let root = resolve_root(root)?;
+    let manifest_path = agent_fabric_path(&root).display().to_string();
+    let local_advertisement = fabric_export(root.to_str())?;
+    let registry = load_agent_fabric_registry(&root)?;
+    let route_signals =
+        AgentFabricRegistryService::new().route_signals(&local_advertisement, &registry);
+    Ok(FabricRegistryReport {
+        manifest_path,
+        local_advertisement,
+        registry,
+        route_signals,
+    })
 }
 
 pub fn list(root: Option<&str>) -> Result<()> {

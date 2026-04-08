@@ -16,7 +16,7 @@
 - This milestone starts at Phase 191 because `v1.44` ended at Phase 190.
 
 - [x] **Phase 191: Cursor Surface Verification and Backend Expansion** - Confirm Cursor’s programmable surface truthfully and either add a supported backend lane or preserve detection-only behavior with explicit reasons.
-- [ ] **Phase 192: Trusted Remote Backend Registry and Fabric Signals** - Add trusted remote hosts and routeable delegated backend inventory beyond one machine.
+- [x] **Phase 192: Trusted Remote Backend Registry and Fabric Signals** - Add trusted remote hosts and routeable delegated backend inventory beyond one machine.
 - [ ] **Phase 193: Delegated Route Policy, Audit, and Recovery** - Extend delegated execution controls so multi-host routes stay bounded, attributable, and recoverable.
 - [ ] **Phase 194: Agent Routing Console and Operator Policy UX** - Build a dedicated routing console across Control UI, CLI, and inspect surfaces.
 - [ ] **Phase 195: Guided First-Task Orchestration and Fallbacks** - Make the first real task after onboarding or repair choose a coherent route with actionable fallback guidance.
@@ -46,7 +46,12 @@
   1. Operators can register trusted remote hosts and inspect their delegated backend inventory.
   2. Route selection can compare local and remote delegated backends using readiness, policy, and compatibility signals.
   3. Remote backend inventory remains explicit and operator-enrolled instead of ambient or hidden.
-**Plans**: TBD
+**Plans**:
+- [192-CONTEXT.md](./phases/192-trusted-remote-backend-registry-and-fabric-signals/192-CONTEXT.md)
+- [192-01-PLAN.md](./phases/192-trusted-remote-backend-registry-and-fabric-signals/192-01-PLAN.md)
+- [192-02-PLAN.md](./phases/192-trusted-remote-backend-registry-and-fabric-signals/192-02-PLAN.md)
+- [192-01-SUMMARY.md](./phases/192-trusted-remote-backend-registry-and-fabric-signals/192-01-SUMMARY.md)
+- [192-02-SUMMARY.md](./phases/192-trusted-remote-backend-registry-and-fabric-signals/192-02-SUMMARY.md)
 
 ### Phase 193: Delegated Route Policy, Audit, and Recovery
 **Goal**: Multi-host delegated execution stays bounded and recoverable under one policy and audit contract.
@@ -83,7 +88,7 @@
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 191. Cursor Surface Verification and Backend Expansion | 2/2 | Complete | 2026-04-08 |
-| 192. Trusted Remote Backend Registry and Fabric Signals | 0/2 | Not Started | — |
+| 192. Trusted Remote Backend Registry and Fabric Signals | 2/2 | Complete | 2026-04-08 |
 | 193. Delegated Route Policy, Audit, and Recovery | 0/2 | Not Started | — |
 | 194. Agent Routing Console and Operator Policy UX | 0/2 | Not Started | — |
 | 195. Guided First-Task Orchestration and Fallbacks | 0/2 | Not Started | — |
@@ -91,6 +96,6 @@
 ## Current Status
 
 - Active milestone: v1.45 Agent Fabric, Routing Console, and Guided Delegation
-- Roadmap progress: 1/5 phases complete
-- Current work: Phase 191 is complete; Phase 192 is next
-- Next step: `$gsd-autonomous` or `$gsd-plan-phase 192`
+- Roadmap progress: 2/5 phases complete
+- Current work: Phase 192 is complete; Phase 193 is next
+- Next step: `$gsd-autonomous` or `$gsd-plan-phase 193`

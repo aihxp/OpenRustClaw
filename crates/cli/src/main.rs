@@ -2914,6 +2914,38 @@ enum ControlAction {
         #[arg(long)]
         path: Option<String>,
     },
+    /// Export this machine's delegated backend inventory for trusted remote enrollment
+    FabricExport {
+        #[arg(long)]
+        path: Option<String>,
+    },
+    /// Enroll or replace a trusted remote host from an exported backend inventory snapshot
+    FabricEnroll {
+        host_id: String,
+        #[arg(long)]
+        label: String,
+        #[arg(long)]
+        from: String,
+        #[arg(long)]
+        base_url: Option<String>,
+        #[arg(long)]
+        notes: Option<String>,
+        #[arg(long)]
+        path: Option<String>,
+    },
+    /// Refresh one trusted remote host from a newer exported backend inventory snapshot
+    FabricRefresh {
+        host_id: String,
+        #[arg(long)]
+        from: String,
+        #[arg(long)]
+        path: Option<String>,
+    },
+    /// Show trusted remote hosts plus local and remote delegated route signals
+    FabricHosts {
+        #[arg(long)]
+        path: Option<String>,
+    },
 }
 
 #[cfg(feature = "cursor")]
@@ -4916,6 +4948,48 @@ async fn main() -> Result<()> {
                 claw_id,
                 path,
             } => commands::control::assign_category(path.as_deref(), &category, &claw_id),
+            ControlAction::FabricExport { path } => {
+                let report = commands::control::fabric_export(path.as_deref())?;
+                println!("{}", serde_json::to_string_pretty(&report)?);
+                Ok(())
+            }
+            ControlAction::FabricEnroll {
+                host_id,
+                label,
+                from,
+                base_url,
+                notes,
+                path,
+            } => {
+                let record = commands::control::fabric_enroll(
+                    path.as_deref(),
+                    &host_id,
+                    &label,
+                    std::path::Path::new(&from),
+                    base_url.as_deref(),
+                    notes.as_deref(),
+                )?;
+                println!("{}", serde_json::to_string_pretty(&record)?);
+                Ok(())
+            }
+            ControlAction::FabricRefresh {
+                host_id,
+                from,
+                path,
+            } => {
+                let record = commands::control::fabric_refresh(
+                    path.as_deref(),
+                    &host_id,
+                    std::path::Path::new(&from),
+                )?;
+                println!("{}", serde_json::to_string_pretty(&record)?);
+                Ok(())
+            }
+            ControlAction::FabricHosts { path } => {
+                let report = commands::control::fabric_hosts(path.as_deref())?;
+                println!("{}", serde_json::to_string_pretty(&report)?);
+                Ok(())
+            }
         },
         Commands::Runtime { action } => match action {
             RuntimeAction::Status { config } => {

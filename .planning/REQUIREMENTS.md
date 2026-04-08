@@ -62,8 +62,8 @@
 | CURS-01 | Phase 191 | Complete |
 | CURS-02 | Phase 191 | Complete |
 | CURS-03 | Phase 191 | Complete |
-| FABR-01 | Phase 192 | Pending |
-| FABR-02 | Phase 192 | Pending |
+| FABR-01 | Phase 192 | Complete |
+| FABR-02 | Phase 192 | Complete |
 | FABR-03 | Phase 193 | Pending |
 | FABR-04 | Phase 193 | Pending |
 | ROUTX-01 | Phase 194 | Pending |

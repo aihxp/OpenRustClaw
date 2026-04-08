@@ -5,6 +5,7 @@
 
 pub mod agent_backend_catalog;
 pub mod agent_backend_control;
+pub mod agent_fabric_registry;
 pub mod assistant_continuity;
 pub mod autonomy_lessons_control;
 pub mod browser_backend_control;
