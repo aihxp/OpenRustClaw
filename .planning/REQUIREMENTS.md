@@ -20,9 +20,9 @@
 
 ### Routing Console
 
-- [ ] **ROUTX-01**: Control UI exposes a dedicated routing console that shows delegated backend inventory, readiness, policy state, and routeable capacity.
-- [ ] **ROUTX-02**: Operator can enable, disable, or constrain delegated backends and route policy through shipped CLI and Control UI surfaces without editing raw files.
-- [ ] **ROUTX-03**: Operators can inspect route decisions and delegated receipts per task or run using the same vocabulary across CLI, Control UI, and inspect surfaces.
+- [x] **ROUTX-01**: Control UI exposes a dedicated routing console that shows delegated backend inventory, readiness, policy state, and routeable capacity.
+- [x] **ROUTX-02**: Operator can enable, disable, or constrain delegated backends and route policy through shipped CLI and Control UI surfaces without editing raw files.
+- [x] **ROUTX-03**: Operators can inspect route decisions and delegated receipts per task or run using the same vocabulary across CLI, Control UI, and inspect surfaces.
 
 ### Guided First-Task Orchestration
 
@@ -66,9 +66,9 @@
 | FABR-02 | Phase 192 | Complete |
 | FABR-03 | Phase 193 | Complete |
 | FABR-04 | Phase 193 | Complete |
-| ROUTX-01 | Phase 194 | Pending |
-| ROUTX-02 | Phase 194 | Pending |
-| ROUTX-03 | Phase 194 | Pending |
+| ROUTX-01 | Phase 194 | Complete |
+| ROUTX-02 | Phase 194 | Complete |
+| ROUTX-03 | Phase 194 | Complete |
 | TASK-01 | Phase 195 | Pending |
 | TASK-02 | Phase 195 | Pending |
 | TASK-03 | Phase 195 | Pending |

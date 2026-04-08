@@ -100,6 +100,17 @@ mod tests {
     }
 
     #[test]
+    fn dashboard_includes_agent_routing_console_panel() {
+        assert!(CONTROL_UI_HTML.contains("agent-routing-console"));
+        assert!(CONTROL_UI_HTML.contains("routing-fabric-signals"));
+        assert!(CONTROL_UI_HTML.contains("routing-receipts"));
+        assert!(CONTROL_UI_HTML.contains("routing-policy-submit"));
+        assert!(CONTROL_UI_HTML.contains("function loadRoutingConsole"));
+        assert!(CONTROL_UI_HTML.contains("function renderRoutingConsole"));
+        assert!(CONTROL_UI_HTML.contains("function updateRoutingPolicy"));
+    }
+
+    #[test]
     fn dashboard_includes_orchestration_supervision_tables() {
         assert!(CONTROL_UI_HTML.contains("orchestration-workers"));
         assert!(CONTROL_UI_HTML.contains("orchestration-delegations"));

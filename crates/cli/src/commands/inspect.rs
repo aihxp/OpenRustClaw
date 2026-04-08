@@ -273,6 +273,20 @@ pub struct EnterpriseAdminReport {
     pub supervision: EnterpriseAdminSupervisionSummary,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct AgentRoutingConsoleReport {
+    pub status: String,
+    pub detail: String,
+    pub policy: enterprise_policy::EnterprisePolicyReport,
+    pub fabric: control::FabricRegistryReport,
+    pub receipts: control::RouteDecisionHistoryReport,
+    pub local_routeable_count: usize,
+    pub remote_routeable_count: usize,
+    pub blocked_signal_count: usize,
+    pub selected_receipt_count: usize,
+    pub blocked_receipt_count: usize,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct VoiceOperatorReportRequest {
     #[serde(default)]
@@ -1209,6 +1223,64 @@ pub fn setup_handoff_summary(workspace_root: &Path) -> Result<SetupHandoffReport
     Ok(report)
 }
 
+pub fn agent_routing_console_summary(
+    workspace_root: &Path,
+    config_path: &str,
+    recent_limit: usize,
+) -> Result<AgentRoutingConsoleReport> {
+    let control_root = control::control_root_for(workspace_root);
+    let control_root_string = control_root.display().to_string();
+    let policy = enterprise_policy::summary(workspace_root, config_path)?;
+    let fabric = control::fabric_hosts(Some(control_root_string.as_str()))?;
+    let receipts =
+        control::route_receipts(Some(control_root_string.as_str()), recent_limit.max(1))?;
+
+    let local_routeable_count = fabric
+        .route_signals
+        .iter()
+        .filter(|signal| signal.host_scope == "local" && signal.routeable)
+        .count();
+    let remote_routeable_count = fabric
+        .route_signals
+        .iter()
+        .filter(|signal| signal.host_scope == "remote" && signal.routeable)
+        .count();
+    let blocked_signal_count = fabric
+        .route_signals
+        .iter()
+        .filter(|signal| !signal.routeable)
+        .count();
+    let selected_receipt_count = receipts
+        .entries
+        .iter()
+        .filter(|entry| entry.status == "selected")
+        .count();
+    let blocked_receipt_count = receipts
+        .entries
+        .iter()
+        .filter(|entry| entry.status != "selected")
+        .count();
+
+    Ok(AgentRoutingConsoleReport {
+        status: "ok".to_string(),
+        detail: format!(
+            "Routing console tracks {} local routeable lane(s), {} remote routeable lane(s), {} blocked signal(s), and {} recent route decision(s).",
+            local_routeable_count,
+            remote_routeable_count,
+            blocked_signal_count,
+            receipts.entries.len()
+        ),
+        policy,
+        fabric,
+        receipts,
+        local_routeable_count,
+        remote_routeable_count,
+        blocked_signal_count,
+        selected_receipt_count,
+        blocked_receipt_count,
+    })
+}
+
 pub fn enterprise_access_summary(workspace_root: &Path) -> Result<EnterpriseAccessReport> {
     let registry_path = enterprise_access::enterprise_access_path(workspace_root)
         .display()
@@ -1979,10 +2051,11 @@ fn build_voice_operator_recent_activity(
 #[cfg(test)]
 mod tests {
     use super::{
-        enterprise_access_summary, enterprise_admin_summary, enterprise_foundations_summary,
-        greenfield_progress_summary, memory_model_artifacts, memory_timeline,
-        new_tool_execution_record, self_hosted_product_mode_summary, setup_handoff_summary,
-        tool_execution_log_path, transition_self_hosted_product_mode_summary,
+        agent_routing_console_summary, enterprise_access_summary, enterprise_admin_summary,
+        enterprise_foundations_summary, greenfield_progress_summary, memory_model_artifacts,
+        memory_timeline, new_tool_execution_record, self_hosted_product_mode_summary,
+        setup_handoff_summary, tool_execution_log_path,
+        transition_self_hosted_product_mode_summary,
     };
     use anyhow::Result;
     use chrono::{DateTime, Utc};
@@ -2381,6 +2454,28 @@ mod tests {
         assert_eq!(
             report.autonomy.governance_scope,
             "enterprise.full_autonomy.manage"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn agent_routing_console_summary_reports_fabric_and_receipts() -> Result<()> {
+        let root = tempdir().expect("tempdir");
+        let control_root = crate::commands::control::control_root_for(root.path());
+        crate::commands::control::init(Some(control_root.to_str().unwrap()))?;
+        let _ = crate::commands::control::resolve_route(
+            Some(control_root.to_str().unwrap()),
+            openrustclaw_app::agent_route_policy::DelegatedRouteRequest::default(),
+        )?;
+
+        let report = agent_routing_console_summary(root.path(), "config/default.toml", 10)?;
+
+        assert_eq!(report.status, "ok");
+        assert!(report.fabric.manifest_path.ends_with("agent-fabric.json"));
+        assert_eq!(report.receipts.entries.len(), 1);
+        assert_eq!(
+            report.selected_receipt_count + report.blocked_receipt_count,
+            report.receipts.entries.len()
         );
         Ok(())
     }

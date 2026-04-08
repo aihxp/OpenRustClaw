@@ -3365,6 +3365,8 @@ fn runtime_control_router(state: RuntimeControlState) -> Router {
             get(runtime_rollback_plan_handler),
         )
         .route("/control/tools", get(tool_status_handler))
+        .route("/control/routing/console", get(routing_console_handler))
+        .route("/control/routing/policy", post(routing_policy_handler))
         .route(
             "/control/tool-executions",
             get(tool_execution_history_handler),
@@ -6999,6 +7001,42 @@ async fn setup_handoff_handler(State(state): State<RuntimeControlState>) -> impl
         Ok(summary) => (StatusCode::OK, Json(serde_json::json!(summary))).into_response(),
         Err(error) => (
             StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn routing_console_handler(State(state): State<RuntimeControlState>) -> impl IntoResponse {
+    match inspect::agent_routing_console_summary(&state.workspace_root, &state.config_path, 12) {
+        Ok(summary) => (StatusCode::OK, Json(serde_json::json!(summary))).into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": error.to_string()})),
+        )
+            .into_response(),
+    }
+}
+
+async fn routing_policy_handler(
+    State(state): State<RuntimeControlState>,
+    Json(payload): Json<enterprise_policy::EnterprisePolicyUpdateRequest>,
+) -> impl IntoResponse {
+    let started_at = std::time::Instant::now();
+    let result =
+        enterprise_policy::update_policy(&state.workspace_root, &state.config_path, payload)
+            .and_then(|_| {
+                inspect::agent_routing_console_summary(
+                    &state.workspace_root,
+                    &state.config_path,
+                    12,
+                )
+            });
+    record_operator_tool_result("routing.policy.update", started_at, &result);
+    match result {
+        Ok(summary) => (StatusCode::OK, Json(serde_json::json!(summary))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_REQUEST,
             Json(serde_json::json!({"error": error.to_string()})),
         )
             .into_response(),

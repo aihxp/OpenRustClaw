@@ -18,7 +18,7 @@
 - [x] **Phase 191: Cursor Surface Verification and Backend Expansion** - Confirm Cursor’s programmable surface truthfully and either add a supported backend lane or preserve detection-only behavior with explicit reasons.
 - [x] **Phase 192: Trusted Remote Backend Registry and Fabric Signals** - Add trusted remote hosts and routeable delegated backend inventory beyond one machine.
 - [x] **Phase 193: Delegated Route Policy, Audit, and Recovery** - Extend delegated execution controls so multi-host routes stay bounded, attributable, and recoverable.
-- [ ] **Phase 194: Agent Routing Console and Operator Policy UX** - Build a dedicated routing console across Control UI, CLI, and inspect surfaces.
+- [x] **Phase 194: Agent Routing Console and Operator Policy UX** - Build a dedicated routing console across Control UI, CLI, and inspect surfaces.
 - [ ] **Phase 195: Guided First-Task Orchestration and Fallbacks** - Make the first real task after onboarding or repair choose a coherent route with actionable fallback guidance.
 
 ## Phase Details
@@ -76,7 +76,12 @@
   1. Control UI exposes a dedicated routing console with backend inventory, routeable capacity, and policy state.
   2. CLI and Control UI can manage delegated backend policy without raw file editing.
   3. Route decisions and delegated receipts stay legible across Control UI, inspect, and CLI surfaces.
-**Plans**: TBD
+**Plans**:
+- [194-CONTEXT.md](./phases/194-agent-routing-console-and-operator-policy-ux/194-CONTEXT.md)
+- [194-01-PLAN.md](./phases/194-agent-routing-console-and-operator-policy-ux/194-01-PLAN.md)
+- [194-02-PLAN.md](./phases/194-agent-routing-console-and-operator-policy-ux/194-02-PLAN.md)
+- [194-01-SUMMARY.md](./phases/194-agent-routing-console-and-operator-policy-ux/194-01-SUMMARY.md)
+- [194-02-SUMMARY.md](./phases/194-agent-routing-console-and-operator-policy-ux/194-02-SUMMARY.md)
 
 ### Phase 195: Guided First-Task Orchestration and Fallbacks
 **Goal**: The first task after onboarding or repair uses the selected lane and available backend fabric to guide operators into a real execution path instead of generic defaults.
@@ -95,12 +100,12 @@
 | 191. Cursor Surface Verification and Backend Expansion | 2/2 | Complete | 2026-04-08 |
 | 192. Trusted Remote Backend Registry and Fabric Signals | 2/2 | Complete | 2026-04-08 |
 | 193. Delegated Route Policy, Audit, and Recovery | 2/2 | Complete | 2026-04-08 |
-| 194. Agent Routing Console and Operator Policy UX | 0/2 | Not Started | — |
+| 194. Agent Routing Console and Operator Policy UX | 2/2 | Complete | 2026-04-08 |
 | 195. Guided First-Task Orchestration and Fallbacks | 0/2 | Not Started | — |
 
 ## Current Status
 
 - Active milestone: v1.45 Agent Fabric, Routing Console, and Guided Delegation
-- Roadmap progress: 3/5 phases complete
-- Current work: Phase 193 is complete; Phase 194 is next
-- Next step: `$gsd-autonomous` or `$gsd-plan-phase 194`
+- Roadmap progress: 4/5 phases complete
+- Current work: Phase 194 is complete; Phase 195 is next
+- Next step: `$gsd-autonomous` or `$gsd-plan-phase 195`

@@ -759,7 +759,7 @@ pub struct FabricRegistryReport {
     pub route_signals: Vec<FabricRouteSignal>,
 }
 
-fn workspace_root_from_control_root(root: &Path) -> PathBuf {
+pub fn workspace_root_from_control_root(root: &Path) -> PathBuf {
     root.parent()
         .and_then(Path::parent)
         .map(Path::to_path_buf)

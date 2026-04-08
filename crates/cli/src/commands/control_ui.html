@@ -482,6 +482,40 @@
             </table>
           </div>
         </article>
+        <article class="panel span-12">
+          <h2>Agent Routing Console</h2>
+          <p class="muted">Delegated backend inventory, trusted remote hosts, route policy, and recent routing receipts on one operator surface.</p>
+          <div class="surface"><div id="agent-routing-console" class="summary-card empty">Loading…</div></div>
+          <div class="surface" style="margin-top: 12px">
+            <table class="table">
+              <thead>
+                <tr><th>Host</th><th>Backend</th><th>Readiness</th><th>Routeable</th><th>Detail</th></tr>
+              </thead>
+              <tbody id="routing-fabric-signals"><tr><td colspan="5" class="muted">Loading…</td></tr></tbody>
+            </table>
+          </div>
+          <div class="surface" style="margin-top: 12px">
+            <table class="table">
+              <thead>
+                <tr><th>When</th><th>Status</th><th>Selection</th><th>Detail</th></tr>
+              </thead>
+              <tbody id="routing-receipts"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
+            </table>
+          </div>
+          <div class="form-grid" style="margin-top: 12px">
+            <input id="routing-allowed-backends" type="text" placeholder="allowed backends, comma separated" />
+            <input id="routing-command-env-allowlist" type="text" placeholder="command env allowlist, comma separated" />
+            <select id="routing-approval-policy">
+              <option value="side_effects">approval policy: side_effects</option>
+              <option value="never">approval policy: never</option>
+              <option value="always">approval policy: always</option>
+            </select>
+            <label class="muted"><input id="routing-allow-local-cli" type="checkbox" /> Allow local CLI wrappers</label>
+            <label class="muted"><input id="routing-allow-cloud-agent" type="checkbox" /> Allow cloud agent execution</label>
+            <button id="routing-policy-submit">Apply Routing Policy</button>
+          </div>
+          <div class="surface" style="margin-top: 12px"><pre id="routing-policy-result">No routing policy update submitted yet.</pre></div>
+        </article>
         <article class="panel span-6">
           <h2>Security Posture</h2>
           <div class="surface"><pre id="security-posture">Loading…</pre></div>
@@ -3135,6 +3169,104 @@
         renderSetupHandoff(payload);
       }
 
+      function parseCommaSeparatedList(raw) {
+        return String(raw || "")
+          .split(",")
+          .map((value) => value.trim())
+          .filter(Boolean);
+      }
+
+      function renderRoutingConsole(report) {
+        if (!report || report.error) {
+          renderSummaryCard("agent-routing-console", report?.error || "No agent routing console summary available.", null);
+          renderTableRows("routing-fabric-signals", [], "No delegated backend inventory available.");
+          renderTableRows("routing-receipts", [], "No routing receipts recorded yet.");
+          return;
+        }
+
+        const policy = report.policy || {};
+        const browserPolicy = policy.browser || {};
+        const fabric = report.fabric || {};
+        const routeSignals = fabric.route_signals || [];
+        const receipts = (report.receipts || {}).entries || [];
+        const remoteHostCount = ((fabric.registry || {}).hosts || []).length;
+
+        renderSummaryCard("agent-routing-console", "No agent routing console summary available.", buildSummaryMarkup({
+          kicker: "Delegated Agent Fabric",
+          title: `${report.local_routeable_count || 0} local / ${report.remote_routeable_count || 0} remote routeable lanes`,
+          copy: report.detail || "No agent routing console summary available.",
+          stats: [
+            { label: "Allowed Backends", value: `${(browserPolicy.allowed_backends || []).length}`, detail: (browserPolicy.allowed_backends || []).join(", ") || "none" },
+            { label: "Remote Hosts", value: `${remoteHostCount}`, detail: fabric.manifest_path || "-" },
+            { label: "Signals", value: `${routeSignals.length}`, detail: `${report.blocked_signal_count || 0} blocked` },
+            { label: "Receipts", value: `${receipts.length}`, detail: `${report.selected_receipt_count || 0} selected / ${report.blocked_receipt_count || 0} blocked` },
+            { label: "Approval", value: policy.approval_policy || "-", detail: policy.autonomy_level || "-" },
+            { label: "CLI Wrappers", value: browserPolicy.allow_local_cli_wrappers ? "allowed" : "blocked", detail: browserPolicy.allow_cloud_agent_execution ? "cloud execution allowed" : "cloud execution blocked" },
+          ],
+        }));
+
+        document.getElementById("routing-allowed-backends").value = (browserPolicy.allowed_backends || []).join(", ");
+        document.getElementById("routing-command-env-allowlist").value = (browserPolicy.command_env_allowlist || []).join(", ");
+        document.getElementById("routing-approval-policy").value = policy.approval_policy || "side_effects";
+        document.getElementById("routing-allow-local-cli").checked = !!browserPolicy.allow_local_cli_wrappers;
+        document.getElementById("routing-allow-cloud-agent").checked = !!browserPolicy.allow_cloud_agent_execution;
+
+        renderTableRows(
+          "routing-fabric-signals",
+          routeSignals.map((signal) => `
+            <tr>
+              <td><strong>${escapeHtml(signal.host_label || signal.host_id || "-")}</strong><div class="muted mono">${escapeHtml(`${signal.host_scope || "-"}:${signal.host_id || "-"}`)}</div></td>
+              <td><strong>${escapeHtml(signal.display_name || signal.backend_id || "-")}</strong><div class="muted mono">${escapeHtml(signal.backend_id || "-")}</div></td>
+              <td>${escapeHtml((signal.readiness || "-").replaceAll("_", " "))}</td>
+              <td>${escapeHtml(signal.routeable ? "yes" : "no")}</td>
+              <td>${escapeHtml(signal.route_reason || signal.readiness_reason || signal.compatibility || "-")}</td>
+            </tr>
+          `),
+          "No delegated backend inventory available."
+        );
+
+        renderTableRows(
+          "routing-receipts",
+          receipts.map((entry) => {
+            const selection = entry.selected_backend_id
+              ? `${entry.selected_backend_id} on ${entry.selected_host_label || entry.selected_host_id || "-"}`
+              : "no route selected";
+            const detail = [entry.reason || "-", ...(entry.recovery_hints || []).slice(0, 2)].join(" | ");
+            return `
+              <tr>
+                <td>${escapeHtml(entry.decided_at || "-")}</td>
+                <td>${escapeHtml(entry.status || "-")}</td>
+                <td>${escapeHtml(selection)}</td>
+                <td>${escapeHtml(detail)}</td>
+              </tr>
+            `;
+          }),
+          "No routing receipts recorded yet."
+        );
+      }
+
+      async function loadRoutingConsole() {
+        const payload = await fetchJson("/control/routing/console");
+        renderRoutingConsole(payload);
+      }
+
+      async function updateRoutingPolicy() {
+        const payload = await fetchJson("/control/routing/policy", {
+          method: "POST",
+          body: JSON.stringify({
+            approval_policy: document.getElementById("routing-approval-policy").value,
+            browser: {
+              allowed_backends: parseCommaSeparatedList(document.getElementById("routing-allowed-backends").value),
+              allow_local_cli_wrappers: document.getElementById("routing-allow-local-cli").checked,
+              allow_cloud_agent_execution: document.getElementById("routing-allow-cloud-agent").checked,
+              command_env_allowlist: parseCommaSeparatedList(document.getElementById("routing-command-env-allowlist").value),
+            },
+          }),
+        });
+        setText("routing-policy-result", payload);
+        renderRoutingConsole(payload);
+      }
+
       async function transitionSelfHostedProductMode() {
         const result = await fetchJson("/control/self-hosted/product-mode", {
           method: "POST",
@@ -5612,6 +5744,7 @@
             loadSecurityPosture(),
             loadSelfHostedProductMode(),
             loadSetupHandoff(),
+            loadRoutingConsole(),
             loadEnterpriseFoundations(),
             loadEnterpriseAdmin(),
             loadEnterpriseAccess(),
@@ -6734,6 +6867,13 @@
           await loadAutonomy();
         } catch (error) {
           setText("autonomy-policy", { error: error.message });
+        }
+      });
+      document.getElementById("routing-policy-submit").addEventListener("click", async () => {
+        try {
+          await updateRoutingPolicy();
+        } catch (error) {
+          setText("routing-policy-result", { error: error.message });
         }
       });
 

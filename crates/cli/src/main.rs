@@ -2974,6 +2974,36 @@ enum ControlAction {
         #[arg(long)]
         path: Option<String>,
     },
+    /// Show one consolidated agent-routing console report across fabric, policy, and receipts
+    RouteConsole {
+        #[arg(short, long, default_value_t = 12)]
+        limit: usize,
+        #[arg(long, default_value = "config/default.toml")]
+        config: String,
+        #[arg(long)]
+        path: Option<String>,
+    },
+    /// Update delegated routing policy without editing config files by hand
+    RoutePolicy {
+        #[arg(long)]
+        approval_policy: Option<String>,
+        #[arg(long = "allowed-backend")]
+        allowed_backends: Vec<String>,
+        #[arg(long, default_value_t = false)]
+        clear_allowed_backends: bool,
+        #[arg(long)]
+        allow_local_cli_wrappers: Option<bool>,
+        #[arg(long)]
+        allow_cloud_agent_execution: Option<bool>,
+        #[arg(long = "command-env")]
+        command_env_allowlist: Vec<String>,
+        #[arg(long, default_value_t = false)]
+        clear_command_env_allowlist: bool,
+        #[arg(long, default_value = "config/default.toml")]
+        config: String,
+        #[arg(long)]
+        path: Option<String>,
+    },
 }
 
 #[cfg(feature = "cursor")]
@@ -5048,6 +5078,79 @@ async fn main() -> Result<()> {
                 let envelope =
                     commands::control::remote_route_envelope(path.as_deref(), &receipt_id)?;
                 println!("{}", serde_json::to_string_pretty(&envelope)?);
+                Ok(())
+            }
+            ControlAction::RouteConsole {
+                limit,
+                config,
+                path,
+            } => {
+                let control_root = commands::control::resolve_root(path.as_deref())?;
+                let workspace_root =
+                    commands::control::workspace_root_from_control_root(&control_root);
+                let report = commands::inspect::agent_routing_console_summary(
+                    &workspace_root,
+                    &config,
+                    limit,
+                )?;
+                println!("{}", serde_json::to_string_pretty(&report)?);
+                Ok(())
+            }
+            ControlAction::RoutePolicy {
+                approval_policy,
+                allowed_backends,
+                clear_allowed_backends,
+                allow_local_cli_wrappers,
+                allow_cloud_agent_execution,
+                command_env_allowlist,
+                clear_command_env_allowlist,
+                config,
+                path,
+            } => {
+                let control_root = commands::control::resolve_root(path.as_deref())?;
+                let workspace_root =
+                    commands::control::workspace_root_from_control_root(&control_root);
+                let browser_update = (clear_allowed_backends || !allowed_backends.is_empty())
+                    .then_some(())
+                    .or(allow_local_cli_wrappers.map(|_| ()))
+                    .or(allow_cloud_agent_execution.map(|_| ()))
+                    .or(
+                        (clear_command_env_allowlist || !command_env_allowlist.is_empty())
+                            .then_some(()),
+                    )
+                    .map(
+                        |_| commands::enterprise_policy::EnterpriseBrowserPolicyUpdate {
+                            allowed_backends: if clear_allowed_backends {
+                                Some(Vec::new())
+                            } else if !allowed_backends.is_empty() {
+                                Some(allowed_backends)
+                            } else {
+                                None
+                            },
+                            allow_local_cli_wrappers,
+                            allow_cloud_agent_execution,
+                            command_env_allowlist: if clear_command_env_allowlist {
+                                Some(Vec::new())
+                            } else if !command_env_allowlist.is_empty() {
+                                Some(command_env_allowlist)
+                            } else {
+                                None
+                            },
+                        },
+                    );
+                let _ = commands::enterprise_policy::update_policy(
+                    &workspace_root,
+                    &config,
+                    commands::enterprise_policy::EnterprisePolicyUpdateRequest {
+                        approval_policy,
+                        browser: browser_update,
+                        mobile: None,
+                        audit_export: None,
+                    },
+                )?;
+                let report =
+                    commands::inspect::agent_routing_console_summary(&workspace_root, &config, 12)?;
+                println!("{}", serde_json::to_string_pretty(&report)?);
                 Ok(())
             }
         },
