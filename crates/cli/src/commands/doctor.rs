@@ -546,10 +546,14 @@ fn sidecar_source_dir() -> PathBuf {
 
 /// Check configuration files.
 fn check_config(config_path: Option<&str>) -> Result<()> {
-    let path = config_path.unwrap_or("config/default.toml");
+    let workspace_root = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let path = runtime::resolve_runtime_config_path(
+        &workspace_root,
+        config_path.unwrap_or("config/default.toml"),
+    );
     // Check default config exists
-    if !Path::new(path).exists() {
-        anyhow::bail!("{} not found", path);
+    if !path.exists() {
+        anyhow::bail!("{} not found", path.display());
     }
 
     // Try to load config

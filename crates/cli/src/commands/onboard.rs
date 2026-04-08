@@ -694,6 +694,7 @@ impl OnboardingWizard {
     pub async fn run(&mut self) -> Result<()> {
         self.print_welcome();
         let workspace_root = std::env::current_dir()?;
+        ensure_onboarding_runtime_config(&workspace_root)?;
 
         let workspace_status = workspace_status(workspace_root.as_path());
         let existing_setup_state = load_setup_state(&workspace_root)?;
@@ -1175,7 +1176,7 @@ Let's get started!
             "\n{}",
             style("Running post-onboarding health check...").cyan()
         );
-        let report = doctor::collect_report(false, true, None).await?;
+        let report = doctor::collect_report(false, false, None).await?;
         let readiness = doctor::first_start_readiness(&report);
         println!(
             "  Health check: {} passed, {} warnings, {} failed",
@@ -2966,11 +2967,21 @@ async fn build_setup_repair_plan(
     _workspace_root: &Path,
     setup_state: Option<&SetupStateManifest>,
 ) -> Result<SetupRepairPlan> {
-    let report = doctor::collect_report(false, true, None).await?;
+    let report = doctor::collect_report(false, false, None).await?;
     Ok(derive_setup_repair_plan(
         setup_state.map(|manifest| &manifest.setup),
         &report,
     ))
+}
+
+fn ensure_onboarding_runtime_config(workspace_root: &Path) -> Result<()> {
+    let config_path = runtime::resolve_runtime_config_path(workspace_root, "config/default.toml");
+    let created = !config_path.exists();
+    runtime::ensure_runtime_config_exists("config/default.toml", workspace_root)?;
+    if created {
+        println!("  Initialized runtime config at {}", config_path.display());
+    }
+    Ok(())
 }
 
 fn derive_setup_repair_plan(
@@ -4358,5 +4369,19 @@ mod tests {
             Some("openrouter")
         ));
         assert!(!should_offer_assistant_launch(true, true, None));
+    }
+
+    #[test]
+    fn test_ensure_onboarding_runtime_config_scaffolds_workspace_config() {
+        let dir = tempfile::tempdir().unwrap();
+
+        ensure_onboarding_runtime_config(dir.path()).unwrap();
+
+        let config_path = dir.path().join("config/default.toml");
+        assert!(config_path.exists());
+        let loaded =
+            openrustclaw_core::config::AppConfig::load_from(&config_path.display().to_string())
+                .unwrap();
+        assert_eq!(loaded.providers.default_provider, "anthropic");
     }
 }

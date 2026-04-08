@@ -834,7 +834,8 @@ pub fn acquire_runtime_lock(
 
 pub fn load_effective_config(config_path: &str, workspace_root: &Path) -> Result<AppConfig> {
     apply_runtime_secret_sources(workspace_root)?;
-    AppConfig::load_from(config_path)
+    let resolved_config_path = resolve_runtime_config_path(workspace_root, config_path);
+    AppConfig::load_from(&resolved_config_path.display().to_string())
         .with_context(|| format!("Failed to load config from {}", config_path))
 }
 
@@ -1741,7 +1742,10 @@ async fn probe_delegated_provider_health(
     }
 
     let detail = contract.readiness_reason.clone().unwrap_or_else(|| {
-        format!("delegated backend '{}' is visible, but not ready yet", provider)
+        format!(
+            "delegated backend '{}' is visible, but not ready yet",
+            provider
+        )
     });
     let normalized = detail.to_ascii_lowercase();
     let issue_kind = if normalized.contains("login")
@@ -2191,6 +2195,9 @@ impl<'a> WorkspaceRuntimeConfigMutationSource<'a> {
 
 impl RuntimeConfigMutationSource for WorkspaceRuntimeConfigMutationSource<'_> {
     fn load_effective_runtime_config(&self) -> openrustclaw_core::error::Result<AppConfig> {
+        ensure_runtime_config_exists(self.config_path, self.workspace_root).map_err(|error| {
+            CoreError::Internal(format!("failed to scaffold runtime config: {error}"))
+        })?;
         load_effective_config(self.config_path, self.workspace_root)
             .map_err(|error| CoreError::Internal(format!("failed to load runtime config: {error}")))
     }
@@ -2209,7 +2216,11 @@ impl RuntimeConfigMutationSource for WorkspaceRuntimeConfigMutationSource<'_> {
         &self,
         config: &AppConfig,
     ) -> openrustclaw_core::error::Result<()> {
-        write_config_with_backup(self.config_path, config).map_err(|error| {
+        write_config_with_backup_at_path(
+            &resolve_runtime_config_path(self.workspace_root, self.config_path),
+            config,
+        )
+        .map_err(|error| {
             CoreError::Internal(format!(
                 "failed to write runtime config with backup: {error}"
             ))
@@ -2245,8 +2256,11 @@ fn provider_model_for<'a>(config: &'a AppConfig, provider: &str) -> &'a str {
 }
 
 pub fn write_config_with_backup(config_path: &str, config: &AppConfig) -> Result<()> {
+    write_config_with_backup_at_path(&PathBuf::from(config_path), config)
+}
+
+fn write_config_with_backup_at_path(path: &Path, config: &AppConfig) -> Result<()> {
     let rendered = toml::to_string_pretty(config).context("Failed to render config TOML")?;
-    let path = PathBuf::from(config_path);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)
             .with_context(|| format!("Failed to create '{}'", parent.display()))?;
@@ -2254,7 +2268,7 @@ pub fn write_config_with_backup(config_path: &str, config: &AppConfig) -> Result
 
     if path.exists() {
         let backup_path = path.with_extension(format!("{}.bak", Utc::now().format("%Y%m%d%H%M%S")));
-        fs::copy(&path, &backup_path).with_context(|| {
+        fs::copy(path, &backup_path).with_context(|| {
             format!(
                 "Failed to create runtime config backup '{}' -> '{}'",
                 path.display(),
@@ -2263,9 +2277,27 @@ pub fn write_config_with_backup(config_path: &str, config: &AppConfig) -> Result
         })?;
     }
 
-    fs::write(&path, rendered.as_bytes())
+    fs::write(path, rendered.as_bytes())
         .with_context(|| format!("Failed to write '{}'", path.display()))?;
     Ok(())
+}
+
+pub fn ensure_runtime_config_exists(config_path: &str, workspace_root: &Path) -> Result<PathBuf> {
+    let resolved_config_path = resolve_runtime_config_path(workspace_root, config_path);
+    if resolved_config_path.exists() {
+        return Ok(resolved_config_path);
+    }
+
+    if let Some(parent) = resolved_config_path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("Failed to create '{}'", parent.display()))?;
+    }
+    fs::write(
+        &resolved_config_path,
+        toml::to_string_pretty(&AppConfig::default()).context("Failed to render default config")?,
+    )
+    .with_context(|| format!("Failed to write '{}'", resolved_config_path.display()))?;
+    Ok(resolved_config_path)
 }
 
 pub fn backup_runtime_state(
@@ -2974,7 +3006,7 @@ fn user_launchd_service_path() -> Option<PathBuf> {
     })
 }
 
-fn resolve_runtime_config_path(workspace_root: &Path, config_path: &str) -> PathBuf {
+pub fn resolve_runtime_config_path(workspace_root: &Path, config_path: &str) -> PathBuf {
     let config_path = PathBuf::from(config_path);
     if config_path.is_absolute() {
         config_path
@@ -3619,6 +3651,45 @@ mod tests {
             status.control_plane_fallback_chain,
             vec!["ollama".to_string(), "anthropic".to_string()]
         );
+        Ok(())
+    }
+
+    #[test]
+    #[serial(cwd)]
+    fn load_effective_config_resolves_relative_path_against_workspace_root() -> Result<()> {
+        let workspace = tempdir()?;
+        let elsewhere = tempdir()?;
+        fs::create_dir_all(workspace.path().join("config"))?;
+
+        let mut config = AppConfig::default();
+        config.gateway.port = 24567;
+        fs::write(
+            workspace.path().join("config/default.toml"),
+            toml::to_string_pretty(&config)?,
+        )?;
+
+        let previous = std::env::current_dir()?;
+        std::env::set_current_dir(elsewhere.path())?;
+        let loaded = load_effective_config("config/default.toml", workspace.path());
+        std::env::set_current_dir(previous)?;
+
+        let loaded = loaded?;
+        assert_eq!(loaded.gateway.port, 24567);
+        Ok(())
+    }
+
+    #[test]
+    fn ensure_runtime_config_exists_scaffolds_workspace_default_config() -> Result<()> {
+        let temp = tempdir()?;
+        let workspace_root = temp.path();
+
+        let path = ensure_runtime_config_exists("config/default.toml", workspace_root)?;
+        assert_eq!(path, workspace_root.join("config/default.toml"));
+        assert!(path.exists());
+
+        let loaded = AppConfig::load_from(&path.display().to_string())?;
+        assert_eq!(loaded.gateway.port, 18789);
+        assert_eq!(loaded.providers.default_provider, "anthropic");
         Ok(())
     }
 
