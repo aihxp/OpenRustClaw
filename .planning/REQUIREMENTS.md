@@ -70,31 +70,31 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| RETR-01 | TBD | Pending |
-| RETR-02 | TBD | Pending |
-| RETR-03 | TBD | Pending |
-| RETR-04 | TBD | Pending |
-| MODL-01 | TBD | Pending |
-| MODL-02 | TBD | Pending |
-| MODL-03 | TBD | Pending |
-| MODL-04 | TBD | Pending |
-| LEAR-01 | TBD | Pending |
-| LEAR-02 | TBD | Pending |
-| LEAR-03 | TBD | Pending |
-| LEAR-04 | TBD | Pending |
-| SKIL-01 | TBD | Pending |
-| SKIL-02 | TBD | Pending |
-| SKIL-03 | TBD | Pending |
-| GOD-01 | TBD | Pending |
-| GOD-02 | TBD | Pending |
-| GOD-03 | TBD | Pending |
-| GOD-04 | TBD | Pending |
+| RETR-01 | Phase 181 | Pending |
+| RETR-02 | Phase 181 | Pending |
+| RETR-03 | Phase 181 | Pending |
+| RETR-04 | Phase 181 | Pending |
+| MODL-01 | Phase 182 | Pending |
+| MODL-02 | Phase 182 | Pending |
+| MODL-03 | Phase 182 | Pending |
+| MODL-04 | Phase 182 | Pending |
+| LEAR-01 | Phase 183 | Pending |
+| LEAR-02 | Phase 183 | Pending |
+| LEAR-03 | Phase 183 | Pending |
+| LEAR-04 | Phase 183 | Pending |
+| SKIL-01 | Phase 184 | Pending |
+| SKIL-02 | Phase 184 | Pending |
+| SKIL-03 | Phase 184 | Pending |
+| GOD-01 | Phase 185 | Pending |
+| GOD-02 | Phase 185 | Pending |
+| GOD-03 | Phase 185 | Pending |
+| GOD-04 | Phase 185 | Pending |
 
 **Coverage:**
 - v1 requirements: 19 total
-- Mapped to phases: 0
-- Unmapped: 19
+- Mapped to phases: 19
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-04-07*
-*Last updated: 2026-04-07 after milestone v1.43 definition*
+*Last updated: 2026-04-07 after roadmap creation*
